@@ -1078,50 +1078,8 @@ inline uint32_t depth_from_coverage(uint32_t cov, uint32_t child_count) noexcept
 // Compile-time-CC upload helpers (dispatch targets)
 // -------------------------------------------------------
 
-template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::tree_based_grid G>
-    requires(cpn_v<Dim, CC> <= 16)
-SvoBuffer svo_upload_tree_cc(const G& grid) {
-    constexpr uint32_t CPN = cpn_v<Dim, CC>;
-    SvoBuffer buf;
-    const uint32_t n = static_cast<uint32_t>(grid.count());
-
-    if (n == 0) {
-        std::array<CoordT, Dim> zero_origin{};
-        push_header<Dim>(buf.words, 0u, CPN, 0u, zero_origin);
-        return buf;
-    }
-
-    std::array<CoordT, Dim> origin;
-    {
-        bool first = true;
-        for (const auto& pos : grid.iter_pos()) {
-            if (first) {
-                origin = pos;
-                first  = false;
-                continue;
-            }
-            for (std::size_t axis = 0; axis < Dim; ++axis) origin[axis] = std::min(origin[axis], pos[axis]);
-        }
-    }
-
-    const uint32_t depth = depth_from_coverage(grid.coverage(), static_cast<uint32_t>(CC));
-
-    std::vector<std::pair<std::array<uint32_t, Dim>, uint32_t>> cells;
-    cells.reserve(n);
-    uint32_t idx = 0;
-    for (const auto& pos : grid.iter_pos()) {
-        std::array<uint32_t, Dim> rel;
-        for (std::size_t axis = 0; axis < Dim; ++axis) rel[axis] = static_cast<uint32_t>(pos[axis] - origin[axis]);
-        cells.push_back({rel, idx++});
-    }
-
-    push_header<Dim>(buf.words, depth, CPN, n, origin);
-    build_and_serialize<Dim, CC>(buf.words, depth, cells);
-    return buf;
-}
-
 template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::viewable_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && cpn_v<Dim, CC> <= 16)
+    requires(cpn_v<Dim, CC> <= 16)
 SvoBuffer svo_upload_flat_cc(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
     SvoBuffer buf;
@@ -1347,53 +1305,8 @@ inline uint32_t depth_from_coverage64(uint64_t cov, uint32_t child_count) noexce
 // Constraint: cpn <= 32 (valid_mask + leaf_mask fit in 64 bits)
 // -------------------------------------------------------
 
-template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::tree_based_grid G>
-    requires(cpn_v<Dim, CC> <= 32)
-SvoBuffer64 svo_upload_tree_cc64(const G& grid) {
-    constexpr uint32_t CPN = cpn_v<Dim, CC>;
-    SvoBuffer64 buf;
-    const uint64_t n = static_cast<uint64_t>(grid.count());
-
-    using OriginT = std::conditional_t<std::is_signed_v<CoordT>, int64_t, uint64_t>;
-    if (n == 0) {
-        std::array<OriginT, Dim> zero_origin{};
-        push_header64<Dim>(buf.words, 0u, CPN, 0u, zero_origin);
-        return buf;
-    }
-
-    std::array<OriginT, Dim> origin;
-    {
-        bool first = true;
-        for (const auto& pos : grid.iter_pos()) {
-            if (first) {
-                for (std::size_t a = 0; a < Dim; ++a) origin[a] = static_cast<OriginT>(pos[a]);
-                first = false;
-                continue;
-            }
-            for (std::size_t axis = 0; axis < Dim; ++axis)
-                origin[axis] = std::min(origin[axis], static_cast<OriginT>(pos[axis]));
-        }
-    }
-
-    const uint32_t depth = depth_from_coverage64(static_cast<uint64_t>(grid.coverage()), static_cast<uint32_t>(CC));
-
-    std::vector<std::pair<std::array<uint64_t, Dim>, uint64_t>> cells;
-    cells.reserve(static_cast<std::size_t>(n));
-    uint64_t idx = 0;
-    for (const auto& pos : grid.iter_pos()) {
-        std::array<uint64_t, Dim> rel;
-        for (std::size_t axis = 0; axis < Dim; ++axis)
-            rel[axis] = static_cast<uint64_t>(static_cast<OriginT>(pos[axis]) - origin[axis]);
-        cells.push_back({rel, idx++});
-    }
-
-    push_header64<Dim>(buf.words, depth, CPN, n, origin);
-    build_and_serialize64<Dim, CC>(buf.words, depth, cells);
-    return buf;
-}
-
 template <std::size_t CC, std::size_t Dim, typename CoordT, epix::ext::grid::viewable_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && cpn_v<Dim, CC> <= 32)
+    requires(cpn_v<Dim, CC> <= 32)
 SvoBuffer64 svo_upload_flat_cc64(const G& grid) {
     constexpr uint32_t CPN = cpn_v<Dim, CC>;
     SvoBuffer64 buf;
@@ -1532,51 +1445,21 @@ export struct SvoConfig {
 // -------------------------------------------------------
 
 /**
- * @brief Serialize any tree-based grid (has coverage()) into a flat SvoBuffer.
+ * @brief Serialize any viewable_grid into a flat SvoBuffer.
  *
- * @tparam G      Grid type satisfying tree_based_grid.
+ * Depth is computed from the occupied bounding box.
+ * Works for all grid types: dense_grid, sparse_grid, packed_grid,
+ * dense_extendible_grid, tree_extendible_grid, tree_grid, etc.
+ *
+ * @tparam G      Grid type satisfying viewable_grid.
  * @param  grid   Source grid.
  * @param  config GPU tree configuration (default: binary tree with child_count=2).
  * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
  *
  * DATA INDEX in each leaf = 0-based ordinal of that cell in grid.iter_pos().
  */
-export template <epix::ext::grid::tree_based_grid G>
-    requires(epix::ext::grid::grid_trait<G>::dim >= 1)
-std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
-    using Trait               = epix::ext::grid::grid_trait<G>;
-    constexpr std::size_t Dim = Trait::dim;
-    using CoordT              = typename Trait::coord_type;
-    switch (config.child_count) {
-        case 2:
-            if constexpr (detail::cpn_v<Dim, 2> <= 16) return detail::svo_upload_tree_cc<2, Dim, CoordT>(grid);
-            break;
-        case 4:
-            if constexpr (detail::cpn_v<Dim, 4> <= 16) return detail::svo_upload_tree_cc<4, Dim, CoordT>(grid);
-            break;
-        case 8:
-            if constexpr (detail::cpn_v<Dim, 8> <= 16) return detail::svo_upload_tree_cc<8, Dim, CoordT>(grid);
-            break;
-        default:
-            break;
-    }
-    return std::unexpected(SvoUploadError{SvoUploadError::InvalidChildCount{config.child_count, Dim}});
-}
-
-/**
- * @brief Serialize any flat (non-tree) grid into a flat SvoBuffer.
- *
- * Works for dense_grid, sparse_grid, dense_extendible_grid, packed_grid, and
- * any other grid type without coverage(). Depth is computed from the occupied
- * bounding box.
- *
- * @tparam G      Grid type satisfying viewable_grid but not tree_based_grid.
- * @param  grid   Source grid.
- * @param  config GPU tree configuration (default: binary tree with child_count=2).
- * @return SvoBuffer on success, or SvoUploadError (kind=InvalidChildCount) for unsupported child_count.
- */
 export template <epix::ext::grid::viewable_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1)
+    requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
     constexpr std::size_t Dim = Trait::dim;
@@ -1664,53 +1547,18 @@ export struct SvoConfig64 {
 };
 
 /**
- * @brief Serialize any tree-based grid into a flat SvoBuffer64 (64-bit words).
+ * @brief Serialize any viewable_grid into a flat SvoBuffer64 (64-bit words).
  *
- * Identical semantics to svo_upload() but the output buffer uses uint64_t words,
- * enabling data_count > 4 billion, int64/uint64 coordinates, and node-pool indices
- * beyond 4 billion.  Also relaxes the dimension constraint: cpn <= 32 (vs cpn <= 16
- * for svo_upload), making binary trees valid up to 5 dimensions.
+ * Depth is computed from the occupied bounding box.
+ * Works for all grid types.  Relaxed constraint: cpn <= 32.
  *
- * @tparam G      Grid type satisfying tree_based_grid.
- * @param  grid   Source grid.
- * @param  config GPU tree configuration (default: binary tree with child_count=2).
- * @return SvoBuffer64 on success, or SvoUploadError64 on invalid child_count.
- */
-export template <epix::ext::grid::tree_based_grid G>
-    requires(epix::ext::grid::grid_trait<G>::dim >= 1)
-std::expected<SvoBuffer64, SvoUploadError64> svo_upload64(const G& grid, const SvoConfig64& config = {}) {
-    using Trait               = epix::ext::grid::grid_trait<G>;
-    constexpr std::size_t Dim = Trait::dim;
-    using CoordT              = typename Trait::coord_type;
-    switch (config.child_count) {
-        case 2:
-            if constexpr (detail::cpn_v<Dim, 2> <= 32) return detail::svo_upload_tree_cc64<2, Dim, CoordT>(grid);
-            break;
-        case 4:
-            if constexpr (detail::cpn_v<Dim, 4> <= 32) return detail::svo_upload_tree_cc64<4, Dim, CoordT>(grid);
-            break;
-        case 8:
-            if constexpr (detail::cpn_v<Dim, 8> <= 32) return detail::svo_upload_tree_cc64<8, Dim, CoordT>(grid);
-            break;
-        default:
-            break;
-    }
-    return std::unexpected(SvoUploadError64{SvoUploadError64::InvalidChildCount{config.child_count, Dim}});
-}
-
-/**
- * @brief Serialize any flat (non-tree) grid into a flat SvoBuffer64 (64-bit words).
- *
- * Works for dense_grid, sparse_grid, dense_extendible_grid, packed_grid, and any other
- * grid type without coverage().  Same relaxed constraint: cpn <= 32.
- *
- * @tparam G      Grid type satisfying viewable_grid but not tree_based_grid.
+ * @tparam G      Grid type satisfying viewable_grid.
  * @param  grid   Source grid.
  * @param  config GPU tree configuration (default: binary tree with child_count=2).
  * @return SvoBuffer64 on success, or SvoUploadError64 on invalid child_count.
  */
 export template <epix::ext::grid::viewable_grid G>
-    requires(!epix::ext::grid::tree_based_grid<G> && epix::ext::grid::grid_trait<G>::dim >= 1)
+    requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer64, SvoUploadError64> svo_upload64(const G& grid, const SvoConfig64& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
     constexpr std::size_t Dim = Trait::dim;
