@@ -42,7 +42,8 @@ export enum class grid_category : unsigned {
     const_viewable   = 1 << 4,  // 0b010000 → const G is viewable_grid
     const_iterable   = 1 << 5,  // 0b100000 → const G is iterable_grid
     const_unsafe     = 1 << 6,  // 0b1000000 → const G is unsafe_viewable_grid
-    copyable         = 1 << 7,  // 0b10000000 → copy_constructible + copy_assignable
+    counted          = 1 << 7,  // 0b10000000 → counted_grid (count())
+    copyable         = 1 << 8,  // 0b100000000 → copy_constructible + copy_assignable
 };
 
 export constexpr auto operator|(grid_category a, grid_category b) -> grid_category {
@@ -99,7 +100,8 @@ concept satisfies_category_base =
     (!has_category(Cat, grid_category::container) || grid_container<G>) &&
     (!has_category(Cat, grid_category::unsafe_viewable) || unsafe_viewable_grid<G>) &&
     (!has_category(Cat, grid_category::unsafe_container) || unsafe_grid_container<G>) &&
-    (!has_category(Cat, grid_category::copyable) || std::copy_constructible<G>);
+    (!has_category(Cat, grid_category::copyable) || std::copy_constructible<G>) &&
+    (!has_category(Cat, grid_category::counted) || counted_grid<G>);
 
 /** @brief Check that const G satisfies the const-related categories individually. */
 template <typename G, grid_category Cat>
@@ -110,21 +112,26 @@ concept satisfies_category_const = (!has_category(Cat, grid_category::const_view
 /** @brief Derive the default category from a concrete grid type G. */
 template <viewable_grid G>
 constexpr auto default_category_for() -> grid_category {
-    constexpr grid_category it_cat = iterable_grid<G> ? grid_category::iterable : grid_category::none;
-    constexpr grid_category ct_cat = grid_container<G> ? grid_category::container : grid_category::none;
-    constexpr grid_category uv_cat = unsafe_viewable_grid<G> ? grid_category::unsafe_viewable : grid_category::none;
-    constexpr grid_category uc_cat = unsafe_grid_container<G> ? grid_category::unsafe_container : grid_category::none;
-    constexpr grid_category cp_cat = std::copy_constructible<G> ? grid_category::copyable : grid_category::none;
-    constexpr grid_category cv_cat = viewable_grid<const G> ? grid_category::const_viewable : grid_category::none;
-    constexpr grid_category ci_cat = iterable_grid<const G> ? grid_category::const_iterable : grid_category::none;
-    constexpr grid_category cu_cat = unsafe_viewable_grid<const G> ? grid_category::const_unsafe : grid_category::none;
-    return it_cat | ct_cat | uv_cat | uc_cat | cp_cat | cv_cat | ci_cat | cu_cat;
+    constexpr grid_category it_cat  = iterable_grid<G> ? grid_category::iterable : grid_category::none;
+    constexpr grid_category ct_cat  = grid_container<G> ? grid_category::container : grid_category::none;
+    constexpr grid_category uv_cat  = unsafe_viewable_grid<G> ? grid_category::unsafe_viewable : grid_category::none;
+    constexpr grid_category uc_cat  = unsafe_grid_container<G> ? grid_category::unsafe_container : grid_category::none;
+    constexpr grid_category cp_cat  = std::copy_constructible<G> ? grid_category::copyable : grid_category::none;
+    constexpr grid_category cnt_cat = counted_grid<G> ? grid_category::counted : grid_category::none;
+    constexpr grid_category cv_cat =
+        viewable_grid<add_const_t<G>> ? grid_category::const_viewable : grid_category::none;
+    constexpr grid_category ci_cat =
+        iterable_grid<add_const_t<G>> ? grid_category::const_iterable : grid_category::none;
+    constexpr grid_category cu_cat =
+        unsafe_viewable_grid<add_const_t<G>> ? grid_category::const_unsafe : grid_category::none;
+    return it_cat | ct_cat | uv_cat | uc_cat | cp_cat | cnt_cat | cv_cat | ci_cat | cu_cat;
 }
 }  // namespace detail
 
 /** @brief Check that G satisfies all concepts required by Cat, including const variants. */
 export template <typename G, grid_category Cat>
-concept satisfies_category = detail::satisfies_category_base<G, Cat> && detail::satisfies_category_const<const G, Cat>;
+concept satisfies_category =
+    detail::satisfies_category_base<G, Cat> && detail::satisfies_category_const<detail::add_const_t<G>, Cat>;
 
 export template <typename G>
 constexpr auto get_category() -> grid_category {
@@ -164,13 +171,11 @@ struct untyped_concept {
     using get_unsafe_const_ret =
         std::conditional_t<std::is_reference_v<GetType>, const std::remove_reference_t<GetType>&, GetType>;
 
-    virtual ~untyped_concept()                         = default;
-    virtual auto dimensions() -> std::array<DimT, Dim> = 0;
-    virtual auto contains(const pos_type& pos) -> bool = 0;
-    virtual auto get(const pos_type& pos) -> get_ret   = 0;
+    virtual ~untyped_concept()                               = default;
+    virtual auto dimensions() const -> std::array<DimT, Dim> = 0;
+    virtual auto contains(const pos_type& pos) const -> bool = 0;
+    virtual auto get(const pos_type& pos) -> get_ret         = 0;
     virtual auto clone() const -> std::unique_ptr<untyped_concept> { std::unreachable(); }
-    virtual auto dimensions_c() const -> std::array<DimT, Dim> { std::unreachable(); }
-    virtual auto contains_c(const pos_type& pos) const -> bool { std::unreachable(); }
     virtual auto get_c(const pos_type& pos) const -> get_const_ret { std::unreachable(); }
     virtual auto iter_pos() -> utils::input_iterable<pos_type> { std::unreachable(); }
     virtual auto iter_pos_c() const -> utils::input_iterable<pos_type> { std::unreachable(); }
@@ -192,6 +197,7 @@ struct untyped_concept {
     virtual auto set_unsafe(const pos_type& pos, cell_type val) -> get_unsafe_ret { std::unreachable(); }
     virtual auto remove_unsafe(const pos_type& pos) -> void { std::unreachable(); }
     virtual auto take_unsafe(const pos_type& pos) -> cell_type { std::unreachable(); }
+    virtual auto count() const -> std::size_t { std::unreachable(); }
 };
 }  // namespace detail
 
@@ -204,7 +210,7 @@ export template <std::size_t Dim,
                  grid_category Cat = grid_category::iterable | grid_category::container |
                                      grid_category::unsafe_viewable | grid_category::unsafe_container |
                                      grid_category::const_viewable | grid_category::const_iterable |
-                                     grid_category::const_unsafe,
+                                     grid_category::const_unsafe | grid_category::counted,
                  typename DimT     = std::uint32_t,
                  typename PosT     = std::int32_t>
 class any_grid {
@@ -238,21 +244,9 @@ class any_grid {
             else
                 std::unreachable();
         }
-        auto dimensions() -> std::array<DimT, Dim> override { return m_grid.dimensions(); }
-        auto contains(const pos_type& pos) -> bool override { return m_grid.contains(pos); }
+        auto dimensions() const -> std::array<DimT, Dim> override { return m_grid.dimensions(); }
+        auto contains(const pos_type& pos) const -> bool override { return m_grid.contains(pos); }
         auto get(const pos_type& pos) -> get_ret override { return m_grid.get(pos); }
-        auto dimensions_c() const -> std::array<DimT, Dim> override {
-            if constexpr (has_category(Cat, grid_category::const_viewable))
-                return m_grid.dimensions();
-            else
-                std::unreachable();
-        }
-        auto contains_c(const pos_type& pos) const -> bool override {
-            if constexpr (has_category(Cat, grid_category::const_viewable))
-                return m_grid.contains(pos);
-            else
-                std::unreachable();
-        }
         auto get_c(const pos_type& pos) const -> get_const_ret override {
             if constexpr (has_category(Cat, grid_category::const_viewable))
                 return m_grid.get(pos);
@@ -350,6 +344,12 @@ class any_grid {
             else
                 std::unreachable();
         }
+        auto count() const -> std::size_t override {
+            if constexpr (has_category(Cat, grid_category::counted))
+                return m_grid.count();
+            else
+                std::unreachable();
+        }
     };
 
     std::unique_ptr<concept_t> m_impl;
@@ -387,21 +387,11 @@ class any_grid {
     template <std::size_t, typename, grid_category, typename, typename>
     friend class any_grid;
 
-    // ─── viewable_grid (always) ────────────────────────────────
-    auto dimensions() -> std::array<DimT, Dim> { return m_impl->dimensions(); }
-    auto contains(const pos_type& pos) -> bool { return m_impl->contains(pos); }
+    // ─── viewable_grid ──────────────────────────
+    auto dimensions() const -> std::array<DimT, Dim> { return m_impl->dimensions(); }
+    auto contains(const pos_type& pos) const -> bool { return m_impl->contains(pos); }
     auto get(const pos_type& pos) -> get_ret { return m_impl->get(pos); }
 
-    auto dimensions() const -> std::array<DimT, Dim>
-        requires(has_category(Cat, grid_category::const_viewable))
-    {
-        return m_impl->dimensions_c();
-    }
-    auto contains(const pos_type& pos) const -> bool
-        requires(has_category(Cat, grid_category::const_viewable))
-    {
-        return m_impl->contains_c(pos);
-    }
     auto get(const pos_type& pos) const -> get_const_ret
         requires(has_category(Cat, grid_category::const_viewable))
     {
@@ -497,6 +487,13 @@ class any_grid {
     {
         return m_impl->take_unsafe(pos);
     }
+
+    // ─── counted_grid ──────────────────────────────────────────
+    auto count() const -> std::size_t
+        requires(has_category(Cat, grid_category::counted))
+    {
+        return m_impl->count();
+    }
 };
 
 export template <viewable_grid G>
@@ -552,6 +549,7 @@ class any_grid_view {
         auto (*set_unsafe)(void* ptr, const pos_type& pos, cell_type val) -> get_unsafe_ret;
         void (*remove_unsafe)(void* ptr, const pos_type& pos);
         auto (*take_unsafe)(void* ptr, const pos_type& pos) -> cell_type;
+        auto (*count)(void* ptr) -> std::size_t;
     };
 
     template <typename G>
@@ -563,22 +561,10 @@ class any_grid_view {
                  (!detail::is_any_grid_view<std::remove_cvref_t<G>>::value) &&
                  satisfies_category<std::remove_cvref_t<G>, Cat>
     static constexpr vtable_t s_vtable{
-        .dimensions   = [](void* ptr) -> std::array<DimT, Dim> { return static_cast<G*>(ptr)->dimensions(); },
-        .contains     = [](void* ptr, const pos_type& pos) -> bool { return static_cast<G*>(ptr)->contains(pos); },
-        .get          = [](void* ptr, const pos_type& pos) -> get_ret { return static_cast<G*>(ptr)->get(pos); },
-        .dimensions_c = [](void* ptr) -> std::array<DimT, Dim> {
-            if constexpr (has_category(Cat, grid_category::const_viewable))
-                return static_cast<const G*>(ptr)->dimensions();
-            else
-                std::unreachable();
-        },
-        .contains_c = [](void* ptr, const pos_type& pos) -> bool {
-            if constexpr (has_category(Cat, grid_category::const_viewable))
-                return static_cast<const G*>(ptr)->contains(pos);
-            else
-                std::unreachable();
-        },
-        .get_c = [](void* ptr, const pos_type& pos) -> get_const_ret {
+        .dimensions = [](void* ptr) -> std::array<DimT, Dim> { return static_cast<const G*>(ptr)->dimensions(); },
+        .contains   = [](void* ptr, const pos_type& pos) -> bool { return static_cast<const G*>(ptr)->contains(pos); },
+        .get        = [](void* ptr, const pos_type& pos) -> get_ret { return static_cast<G*>(ptr)->get(pos); },
+        .get_c      = [](void* ptr, const pos_type& pos) -> get_const_ret {
             if constexpr (has_category(Cat, grid_category::const_viewable))
                 return static_cast<const G*>(ptr)->get(pos);
             else
@@ -678,6 +664,12 @@ class any_grid_view {
             else
                 std::unreachable();
         },
+        .count = [](void* ptr) -> std::size_t {
+            if constexpr (has_category(Cat, grid_category::counted))
+                return static_cast<const G*>(ptr)->count();
+            else
+                std::unreachable();
+        },
     };
 
     void* m_ptr          = nullptr;
@@ -693,7 +685,7 @@ class any_grid_view {
                  std::same_as<typename detail::grid_dimensions_type<G>::value_type, DimT> &&
                  std::same_as<typename detail::grid_pos_type<G>::value_type, PosT> &&
                  (!detail::is_any_grid_view<std::remove_cvref_t<G>>::value) && satisfies_category<G, Cat>
-    any_grid_view(G& grid) noexcept : m_vt(&s_vtable<G>) {
+    any_grid_view(G& grid) noexcept : m_vt(&s_vtable<std::remove_reference_t<G>>) {
         if constexpr (std::is_const_v<G>)
             m_ptr = const_cast<void*>(static_cast<const void*>(std::addressof(grid)));
         else
@@ -709,21 +701,10 @@ class any_grid_view {
     template <std::size_t, typename, grid_category, typename, typename>
     friend class any_grid_view;
 
-    // ─── viewable_grid (always) ────────────────────────────────
-    auto dimensions() -> std::array<DimT, Dim> { return m_vt->dimensions(m_ptr); }
-    auto contains(const pos_type& pos) -> bool { return m_vt && m_vt->contains(m_ptr, pos); }
+    // ─── viewable_grid ──────────────────────────
+    auto dimensions() const -> std::array<DimT, Dim> { return m_vt->dimensions(m_ptr); }
+    auto contains(const pos_type& pos) const -> bool { return m_vt && m_vt->contains(m_ptr, pos); }
     auto get(const pos_type& pos) -> get_ret { return m_vt->get(m_ptr, pos); }
-
-    auto dimensions() const -> std::array<DimT, Dim>
-        requires(has_category(Cat, grid_category::const_viewable))
-    {
-        return m_vt->dimensions_c(m_ptr);
-    }
-    auto contains(const pos_type& pos) const -> bool
-        requires(has_category(Cat, grid_category::const_viewable))
-    {
-        return m_vt->contains_c(m_ptr, pos);
-    }
 
     auto get(const pos_type& pos) const -> get_const_ret
         requires(has_category(Cat, grid_category::const_viewable))
@@ -812,6 +793,13 @@ class any_grid_view {
         requires(has_category(Cat, grid_category::unsafe_container))
     {
         return m_vt->take_unsafe(m_ptr, pos);
+    }
+
+    // ─── counted_grid ──────────────────────────────────────────
+    auto count() const -> std::size_t
+        requires(has_category(Cat, grid_category::counted))
+    {
+        return m_vt->count(m_ptr);
     }
 };
 

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <utility>
 #endif
 
 export module epix.extension.grid:concepts;
@@ -106,6 +107,18 @@ struct unwrap_get_access_type<std::expected<Cell, grid_error>> {
 template <typename G>
 using grid_get_type = typename unwrap_get_access_type<
     std::remove_cvref_t<decltype(std::declval<G>().get(std::declval<const grid_pos_type<G>&>()))>>::type;
+
+template <typename T>
+struct add_const {
+    using type = const T;
+};
+template <typename T>
+struct add_const<T&> {
+    using type = const T&;
+};
+template <typename T>
+using add_const_t = typename add_const<T>::type;
+
 }  // namespace detail
 
 // ============================================================
@@ -121,7 +134,7 @@ using grid_dimensions_type = detail::grid_dimensions_type<G>;
 /**
  * @brief Structural concept: query dimensions, containment, and cell values.
  *
- * Checks `get(pos)` on `G` (not `const G&`) — a grid may provide mutable
+ * Checks `get(pos)` on `G`
  * access via a non-const `get()` overload or read-only access via `get() const`.
  *
  * A `viewable_grid` exposes:
@@ -129,16 +142,12 @@ using grid_dimensions_type = detail::grid_dimensions_type<G>;
  *  - `contains(pos)` → bool
  *  - `get(pos)`      → expected<reference_wrapper<const cell_type>, grid_error>
  *                       OR expected<cell_type, grid_error>
- *
- * `pos_type` must be `std::array<std::int32_t, N>` (or another signed integral).
  */
 export template <typename G>
-concept viewable_grid = requires(G g) {
-    // requires std::unsigned_integral<typename detail::grid_dimensions_type<G>::value_type>;
-    // requires std::signed_integral<typename detail::grid_pos_type<G>::value_type>;
+concept viewable_grid = requires(std::remove_reference_t<G>& g, const std::remove_reference_t<G>& cg) {
     requires std::tuple_size_v<detail::grid_dimensions_type<G>> == std::tuple_size_v<detail::grid_pos_type<G>>;
-    { g.dimensions() } -> std::same_as<detail::grid_dimensions_type<G>>;
-    { g.contains(std::declval<const detail::grid_pos_type<G>&>()) } -> std::same_as<bool>;
+    { cg.dimensions() } -> std::same_as<detail::grid_dimensions_type<G>>;
+    { cg.contains(std::declval<const detail::grid_pos_type<G>&>()) } -> std::same_as<bool>;
     { g.get(std::declval<const detail::grid_pos_type<G>&>()) } -> detail::valid_get_return<detail::grid_cell_type<G>>;
 };
 
@@ -153,7 +162,7 @@ concept viewable_grid = requires(G g) {
  *  - `clear()`             → void
  */
 export template <typename G>
-concept grid_container = viewable_grid<G> && requires(G g) {
+concept grid_container = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     {
         g.set(std::declval<const detail::grid_pos_type<G>&>(), std::declval<detail::grid_cell_type<G>>())
     } -> std::same_as<std::expected<std::reference_wrapper<detail::grid_cell_type<G>>, grid_error>>;
@@ -171,7 +180,7 @@ concept grid_container = viewable_grid<G> && requires(G g) {
  * @brief Unsafe bounds-unchecked access.
  */
 export template <typename G>
-concept unsafe_viewable_grid = viewable_grid<G> && requires(G g) {
+concept unsafe_viewable_grid = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     { g.get_unsafe(std::declval<const detail::grid_pos_type<G>&>()) } -> std::convertible_to<detail::grid_get_type<G>>;
 };
 
@@ -179,7 +188,7 @@ concept unsafe_viewable_grid = viewable_grid<G> && requires(G g) {
  * @brief Full unsafe container: unchecked set/remove/take.
  */
 export template <typename G>
-concept unsafe_grid_container = unsafe_viewable_grid<G> && requires(G g) {
+concept unsafe_grid_container = unsafe_viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     {
         g.set_unsafe(std::declval<const detail::grid_pos_type<G>&>(), std::declval<detail::grid_cell_type<G>>())
     } -> std::same_as<detail::grid_cell_type<G>&>;
@@ -195,7 +204,7 @@ concept unsafe_grid_container = unsafe_viewable_grid<G> && requires(G g) {
  *  - `iter()`       → input_range of (pos_type, cell_type&) or (pos_type, const cell_type&)
  */
 export template <typename G>
-concept iterable_grid = viewable_grid<G> && requires(G g) {
+concept iterable_grid = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     { g.iter_pos() } -> std::ranges::input_range;
     { g.iter_cells() } -> std::ranges::input_range;
     { g.iter() } -> std::ranges::input_range;
@@ -214,7 +223,7 @@ concept iterable_grid = viewable_grid<G> && requires(G g) {
  * type convertible to `std::size_t`.
  */
 export template <typename G>
-concept counted_grid = viewable_grid<G> && requires(const G g) {
+concept counted_grid = viewable_grid<G> && requires(const std::remove_reference_t<G>& g) {
     { g.count() } -> std::convertible_to<std::size_t>;
 };
 

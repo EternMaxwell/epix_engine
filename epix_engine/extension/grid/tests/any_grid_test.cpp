@@ -25,7 +25,7 @@ using namespace epix::ext::grid;
 
 namespace {
 constexpr auto kFullCat = grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
-                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe;
+                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe | grid_category::counted;
 template <std::size_t Dim, typename T>
 using ugrid = any_grid<Dim, T, kFullCat, std::uint32_t, std::uint32_t>;
 }  // namespace

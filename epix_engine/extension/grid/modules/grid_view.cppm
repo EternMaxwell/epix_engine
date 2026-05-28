@@ -45,10 +45,10 @@ struct filter_view {
 
     // ─── viewable_grid interface (always present) ─────────────────────────
 
-    auto dimensions() noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
+    auto dimensions() const noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
 
-    bool contains(const pos_type& pos) noexcept(noexcept(grid.get(pos)) &&
-                                                noexcept(pred(std::declval<const cell_type&>()))) {
+    bool contains(const pos_type& pos) const
+        noexcept(noexcept(grid.get(pos)) && noexcept(pred(std::declval<const cell_type&>()))) {
         return grid.get(pos)
             .transform([&](const cell_type& cell) { return static_cast<bool>(pred(cell)); })
             .value_or(false);
@@ -137,9 +137,9 @@ struct transform_view {
     G grid;
     Func func;
 
-    auto dimensions() noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
+    auto dimensions() const noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
 
-    bool contains(const pos_type& pos) noexcept(noexcept(grid.contains(pos))) { return grid.contains(pos); }
+    bool contains(const pos_type& pos) const noexcept(noexcept(grid.contains(pos))) { return grid.contains(pos); }
 
     auto get(const pos_type& pos) noexcept(
         noexcept(grid.get(pos)) && noexcept(std::invoke(func, std::declval<typename grid_trait<G>::get_type>())))
@@ -418,9 +418,9 @@ struct shadow_view {
 
     // ─── viewable_grid interface (always present) ─────────────────────────
 
-    auto dimensions() noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
+    auto dimensions() const noexcept(noexcept(grid.dimensions())) { return grid.dimensions(); }
 
-    bool contains(const pos_type& pos) noexcept(noexcept(pred(pos)) && noexcept(grid.contains(pos))) {
+    bool contains(const pos_type& pos) const noexcept(noexcept(pred(pos)) && noexcept(grid.contains(pos))) {
         return static_cast<bool>(pred(pos)) && grid.contains(pos);
     }
 
