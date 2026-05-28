@@ -93,14 +93,14 @@ static_assert(viewable_grid<sv_t>);
 static_assert(unsafe_viewable_grid<sv_t>);
 
 // ────────────────────────────────────────────────────────────
-// untyped_grid / untyped_grid_view — must satisfy viewable + iterable
+// any_grid / any_grid_view — must satisfy viewable + iterable
 // ────────────────────────────────────────────────────────────
 
-static_assert(viewable_grid<untyped_grid<2, int>>);
-static_assert(iterable_grid<untyped_grid<2, int>>);
-static_assert(viewable_grid<untyped_grid_view<2, int&>>);
-static_assert(viewable_grid<untyped_grid_view<2, int&, grid_category::iterable>>);
-static_assert(iterable_grid<untyped_grid_view<2, int&, grid_category::iterable>>);
+static_assert(viewable_grid<any_grid<2, int>>);
+static_assert(iterable_grid<any_grid<2, int>>);
+static_assert(viewable_grid<any_grid_view<2, int&>>);
+static_assert(viewable_grid<any_grid_view<2, int&, grid_category::iterable>>);
+static_assert(iterable_grid<any_grid_view<2, int&, grid_category::iterable>>);
 
 // transform_view with value-returning get() must satisfy viewable_grid
 static_assert(viewable_grid<

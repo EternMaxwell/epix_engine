@@ -27,7 +27,7 @@ using std::uint32_t;
 // ============================================================
 // benchmark_basic — ALL grid types, ALL operations, RNG-based
 //   Grids: packed, dense, sparse, dense_extendible, tree_extendible,
-//          tree, bit, untyped (over dense)
+//          tree, bit, any (over dense)
 //   Ops:   contains, get, iter_pos/cells/iter, get_unsafe,
 //          set/set_new/remove/take/clear,
 //          set_unsafe/remove_unsafe/take_unsafe
@@ -149,17 +149,17 @@ using DX = dense_extendible_grid<2, int>;
 using TX = tree_extendible_grid<2, int>;
 using TR = tree_grid<2, int>;
 using BT = bit_grid<2>;
-// Untyped wrapper aliases
+// Any-wrapper aliases
 constexpr grid_category kCat = static_cast<grid_category>(
     static_cast<unsigned>(grid_category::iterable) | static_cast<unsigned>(grid_category::container) |
     static_cast<unsigned>(grid_category::unsafe_viewable) | static_cast<unsigned>(grid_category::unsafe_container) |
     static_cast<unsigned>(grid_category::constness) | static_cast<unsigned>(grid_category::copyable));
-using UPK = untyped_grid<2, int&, kCat, uint32_t, uint32_t>;
-using UDN = untyped_grid<2, int&, kCat, uint32_t, uint32_t>;
-using USP = untyped_grid<2, int&, kCat, uint32_t, uint32_t>;
-using UTR = untyped_grid<2, int&, kCat, uint32_t, uint32_t>;
-using UDX = untyped_grid<2, int&, kCat, uint32_t, int32_t>;
-using UTX = untyped_grid<2, int&, kCat, uint32_t, int32_t>;
+using UPK = any_grid<2, int&, kCat, uint32_t, uint32_t>;
+using UDN = any_grid<2, int&, kCat, uint32_t, uint32_t>;
+using USP = any_grid<2, int&, kCat, uint32_t, uint32_t>;
+using UTR = any_grid<2, int&, kCat, uint32_t, uint32_t>;
+using UDX = any_grid<2, int&, kCat, uint32_t, int32_t>;
+using UTX = any_grid<2, int&, kCat, uint32_t, int32_t>;
 
 }  // namespace
 
@@ -167,7 +167,7 @@ using UTX = untyped_grid<2, int&, kCat, uint32_t, int32_t>;
 struct Row {
     std::string op;
     double pk, dn, sp, dx, tx, tr, bt;    // raw grids
-    double udn, upk, usp, udx, utx, utr;  // untyped wrappers
+    double udn, upk, usp, udx, utx, utr;  // any wrappers
 };
 
 void report(std::string_view title, const std::vector<Row>& rows) {
@@ -193,7 +193,7 @@ constexpr bool is_bit_v = std::same_as<std::remove_cvref_t<G>, BT>;
 // ============================================================
 int main() {
     const auto Pi = make_pos_i32(42u);  // int32  — extendible grids
-    const auto Pu = make_pos_u32(42u);  // uint32 — fixed / bit / untyped
+    const auto Pu = make_pos_u32(42u);  // uint32 — fixed / bit / any
     const auto V  = make_vals(99u);
 
     // Seed dispatcher: bit_grid uses seed_bit, others use seed.

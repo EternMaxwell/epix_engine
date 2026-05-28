@@ -14,7 +14,7 @@ module;
 #include <utility>
 #endif
 
-export module epix.extension.grid:untyped_grid;
+export module epix.extension.grid:any_grid;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
@@ -28,7 +28,7 @@ namespace epix::ext::grid {
 // grid_category — bitmask for type-erased grid capabilities
 // ============================================================
 
-/** @brief Bitmask controlling which concepts an untyped_grid / untyped_grid_view satisfies.
+/** @brief Bitmask controlling which concepts an any_grid / any_grid_view satisfies.
  *
  * `viewable_grid` is always required and not part of the category.
  * Other capabilities are opt-in via bitwise OR.
@@ -126,21 +126,26 @@ concept satisfies_category =
     detail::satisfies_category_base<G, Cat> &&
     (!has_category(Cat, grid_category::constness) || detail::satisfies_category_const<const G, Cat>);
 
+export template <typename G>
+constexpr auto get_category() -> grid_category {
+    return detail::default_category_for<G>();
+}
+
 export template <std::size_t, typename, grid_category, typename, typename>
-class untyped_grid;
+class any_grid;
 export template <std::size_t, typename, grid_category, typename, typename>
-class untyped_grid_view;
+class any_grid_view;
 
 namespace detail {
 template <typename T>
-struct is_untyped_grid : std::false_type {};
+struct is_any_grid : std::false_type {};
 template <std::size_t Dim, typename GetType, grid_category Cat, typename DimT, typename PosT>
-struct is_untyped_grid<untyped_grid<Dim, GetType, Cat, DimT, PosT>> : std::true_type {};
+struct is_any_grid<any_grid<Dim, GetType, Cat, DimT, PosT>> : std::true_type {};
 
 template <typename T>
-struct is_untyped_grid_view : std::false_type {};
+struct is_any_grid_view : std::false_type {};
 template <std::size_t Dim, typename GetType, grid_category Cat, typename DimT, typename PosT>
-struct is_untyped_grid_view<untyped_grid_view<Dim, GetType, Cat, DimT, PosT>> : std::true_type {};
+struct is_any_grid_view<any_grid_view<Dim, GetType, Cat, DimT, PosT>> : std::true_type {};
 
 }  // namespace detail
 
@@ -191,7 +196,7 @@ struct untyped_concept {
 }  // namespace detail
 
 // ============================================================
-// untyped_grid — type-erased owning grid
+// any_grid — type-erased owning grid
 // ============================================================
 
 export template <std::size_t Dim,
@@ -201,7 +206,7 @@ export template <std::size_t Dim,
                                      grid_category::constness,
                  typename DimT     = std::uint32_t,
                  typename PosT     = std::int32_t>
-class untyped_grid {
+class any_grid {
    public:
     using pos_type       = std::array<PosT, Dim>;
     using cell_type      = std::remove_cvref_t<GetType>;
@@ -349,15 +354,15 @@ class untyped_grid {
     std::unique_ptr<concept_t> m_impl;
 
    public:
-    untyped_grid(untyped_grid&&) noexcept                    = default;
-    auto operator=(untyped_grid&&) noexcept -> untyped_grid& = default;
+    any_grid(any_grid&&) noexcept                    = default;
+    auto operator=(any_grid&&) noexcept -> any_grid& = default;
 
-    untyped_grid(const untyped_grid& other)
+    any_grid(const any_grid& other)
         requires(has_category(Cat, grid_category::copyable))
     {
         m_impl = other.m_impl->clone();
     }
-    auto operator=(const untyped_grid& other) -> untyped_grid&
+    auto operator=(const any_grid& other) -> any_grid&
         requires(has_category(Cat, grid_category::copyable))
     {
         if (this != &other) m_impl = other.m_impl->clone();
@@ -369,17 +374,17 @@ class untyped_grid {
                  (std::tuple_size_v<typename std::decay_t<G>::pos_type> == Dim) &&
                  std::same_as<typename detail::grid_dimensions_type<G>::value_type, DimT> &&
                  std::same_as<typename detail::grid_pos_type<G>::value_type, PosT> &&
-                 (!detail::is_untyped_grid<std::remove_cvref_t<G>>::value) &&
+                 (!detail::is_any_grid<std::remove_cvref_t<G>>::value) &&
                  satisfies_category<std::remove_cvref_t<G>, Cat>
-    untyped_grid(G&& grid) : m_impl(std::make_unique<model_t<std::remove_cvref_t<G>>>(std::forward<G>(grid))) {}
+    any_grid(G&& grid) : m_impl(std::make_unique<model_t<std::remove_cvref_t<G>>>(std::forward<G>(grid))) {}
 
-    /** @brief Convert from another untyped_grid with a superset of this category. */
+    /** @brief Convert from another any_grid with a superset of this category. */
     template <grid_category OtherCat>
         requires((static_cast<unsigned>(OtherCat) & static_cast<unsigned>(Cat)) == static_cast<unsigned>(Cat))
-    untyped_grid(untyped_grid<Dim, GetType, OtherCat, DimT, PosT>&& other) noexcept : m_impl(std::move(other.m_impl)) {}
+    any_grid(any_grid<Dim, GetType, OtherCat, DimT, PosT>&& other) noexcept : m_impl(std::move(other.m_impl)) {}
 
     template <std::size_t, typename, grid_category, typename, typename>
-    friend class untyped_grid;
+    friend class any_grid;
 
     // ─── viewable_grid (always) ────────────────────────────────
     auto dimensions() -> std::array<DimT, Dim> { return m_impl->dimensions(); }
@@ -494,14 +499,14 @@ class untyped_grid {
 };
 
 export template <viewable_grid G>
-untyped_grid(G&&) -> untyped_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
+any_grid(G&&) -> any_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
                                   detail::grid_get_type<std::remove_cvref_t<G>>,
                                   detail::default_category_for<std::remove_cvref_t<G>>(),
                                   typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
                                   typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type>;
 
 // ============================================================
-// untyped_grid_view — type-erased non-owning grid view
+// any_grid_view — type-erased non-owning grid view
 // ============================================================
 
 export template <std::size_t Dim,
@@ -509,7 +514,7 @@ export template <std::size_t Dim,
                  grid_category Cat = grid_category::none,
                  typename DimT     = std::uint32_t,
                  typename PosT     = std::int32_t>
-class untyped_grid_view {
+class any_grid_view {
    public:
     using pos_type       = std::array<PosT, Dim>;
     using cell_type      = std::remove_cvref_t<GetType>;
@@ -554,7 +559,7 @@ class untyped_grid_view {
                  std::same_as<detail::grid_cell_type<std::remove_cvref_t<G>>, cell_type> &&
                  std::same_as<typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type, DimT> &&
                  std::same_as<typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type, PosT> &&
-                 (!detail::is_untyped_grid_view<std::remove_cvref_t<G>>::value) &&
+                 (!detail::is_any_grid_view<std::remove_cvref_t<G>>::value) &&
                  satisfies_category<std::remove_cvref_t<G>, Cat>
     static constexpr vtable_t s_vtable{
         .dimensions   = [](void* ptr) -> std::array<DimT, Dim> { return static_cast<G*>(ptr)->dimensions(); },
@@ -678,7 +683,7 @@ class untyped_grid_view {
     const vtable_t* m_vt = nullptr;
 
    public:
-    // untyped_grid_view() noexcept = default;
+    // any_grid_view() noexcept = default;
 
     template <viewable_grid G>
         requires std::same_as<detail::grid_get_type<G>, GetType> &&
@@ -686,22 +691,22 @@ class untyped_grid_view {
                  std::same_as<detail::grid_cell_type<G>, cell_type> &&
                  std::same_as<typename detail::grid_dimensions_type<G>::value_type, DimT> &&
                  std::same_as<typename detail::grid_pos_type<G>::value_type, PosT> &&
-                 (!detail::is_untyped_grid_view<std::remove_cvref_t<G>>::value) && satisfies_category<G, Cat>
-    untyped_grid_view(G& grid) noexcept : m_vt(&s_vtable<G>) {
+                 (!detail::is_any_grid_view<std::remove_cvref_t<G>>::value) && satisfies_category<G, Cat>
+    any_grid_view(G& grid) noexcept : m_vt(&s_vtable<G>) {
         if constexpr (std::is_const_v<G>)
             m_ptr = const_cast<void*>(static_cast<const void*>(std::addressof(grid)));
         else
             m_ptr = static_cast<void*>(std::addressof(grid));
     }
 
-    /** @brief Convert from another untyped_grid_view with a superset of this category. */
+    /** @brief Convert from another any_grid_view with a superset of this category. */
     template <grid_category OtherCat>
         requires((static_cast<unsigned>(OtherCat) & static_cast<unsigned>(Cat)) == static_cast<unsigned>(Cat))
-    untyped_grid_view(const untyped_grid_view<Dim, GetType, OtherCat, DimT, PosT>& other) noexcept
+    any_grid_view(const any_grid_view<Dim, GetType, OtherCat, DimT, PosT>& other) noexcept
         : m_ptr(other.m_ptr), m_vt(other.m_vt) {}
 
     template <std::size_t, typename, grid_category, typename, typename>
-    friend class untyped_grid_view;
+    friend class any_grid_view;
 
     // ─── viewable_grid (always) ────────────────────────────────
     auto dimensions() -> std::array<DimT, Dim> { return m_vt->dimensions(m_ptr); }
@@ -810,7 +815,7 @@ class untyped_grid_view {
 };
 
 export template <viewable_grid G>
-untyped_grid_view(G&&) -> untyped_grid_view<std::tuple_size_v<detail::grid_pos_type<std::remove_cvref_t<G>>>,
+any_grid_view(G&&) -> any_grid_view<std::tuple_size_v<detail::grid_pos_type<std::remove_cvref_t<G>>>,
                                             detail::grid_get_type<std::remove_cvref_t<G>>,
                                             detail::default_category_for<std::remove_cvref_t<G>>(),
                                             typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
