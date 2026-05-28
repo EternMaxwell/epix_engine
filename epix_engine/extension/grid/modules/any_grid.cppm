@@ -39,8 +39,10 @@ export enum class grid_category : unsigned {
     container        = 1 << 1,  // 0b000010 → grid_container
     unsafe_viewable  = 1 << 2,  // 0b000100 → unsafe_viewable_grid
     unsafe_container = 1 << 3,  // 0b001000 → unsafe_grid_container
-    constness        = 1 << 4,  // 0b010000 → const G satisfies same concepts
-    copyable         = 1 << 5,  // 0b100000 → copy_constructible + copy_assignable
+    const_viewable   = 1 << 4,  // 0b010000 → const G is viewable_grid
+    const_iterable   = 1 << 5,  // 0b100000 → const G is iterable_grid
+    const_unsafe     = 1 << 6,  // 0b1000000 → const G is unsafe_viewable_grid
+    copyable         = 1 << 7,  // 0b10000000 → copy_constructible + copy_assignable
 };
 
 export constexpr auto operator|(grid_category a, grid_category b) -> grid_category {
@@ -90,7 +92,7 @@ struct get_const_return_type<const Cell&> {
 template <typename GetType>
 using get_const_return_t = typename get_const_return_type<GetType>::type;
 
-/** @brief Check that G satisfies all concepts required by Cat, except constness itself. */
+/** @brief Check that G satisfies all concepts required by Cat, except const-related bits. */
 template <typename G, grid_category Cat>
 concept satisfies_category_base =
     viewable_grid<G> && (!has_category(Cat, grid_category::iterable) || iterable_grid<G>) &&
@@ -99,11 +101,11 @@ concept satisfies_category_base =
     (!has_category(Cat, grid_category::unsafe_container) || unsafe_grid_container<G>) &&
     (!has_category(Cat, grid_category::copyable) || std::copy_constructible<G>);
 
-/** @brief Check that const G satisfies read-only categories (only viewable + iterable). */
+/** @brief Check that const G satisfies the const-related categories individually. */
 template <typename G, grid_category Cat>
-concept satisfies_category_const =
-    viewable_grid<G> && (!has_category(Cat, grid_category::iterable) || iterable_grid<G>) &&
-    (!has_category(Cat, grid_category::unsafe_viewable) || unsafe_viewable_grid<G>);
+concept satisfies_category_const = (!has_category(Cat, grid_category::const_viewable) || viewable_grid<G>) &&
+                                   (!has_category(Cat, grid_category::const_iterable) || iterable_grid<G>) &&
+                                   (!has_category(Cat, grid_category::const_unsafe) || unsafe_viewable_grid<G>);
 
 /** @brief Derive the default category from a concrete grid type G. */
 template <viewable_grid G>
@@ -113,18 +115,16 @@ constexpr auto default_category_for() -> grid_category {
     constexpr grid_category uv_cat = unsafe_viewable_grid<G> ? grid_category::unsafe_viewable : grid_category::none;
     constexpr grid_category uc_cat = unsafe_grid_container<G> ? grid_category::unsafe_container : grid_category::none;
     constexpr grid_category cp_cat = std::copy_constructible<G> ? grid_category::copyable : grid_category::none;
-    constexpr grid_category cat    = it_cat | ct_cat | uv_cat | uc_cat | cp_cat;
-    constexpr grid_category cn_cat =
-        satisfies_category_const<const G, cat> ? grid_category::constness : grid_category::none;
-    return cat | cn_cat;
+    constexpr grid_category cv_cat = viewable_grid<const G> ? grid_category::const_viewable : grid_category::none;
+    constexpr grid_category ci_cat = iterable_grid<const G> ? grid_category::const_iterable : grid_category::none;
+    constexpr grid_category cu_cat = unsafe_viewable_grid<const G> ? grid_category::const_unsafe : grid_category::none;
+    return it_cat | ct_cat | uv_cat | uc_cat | cp_cat | cv_cat | ci_cat | cu_cat;
 }
 }  // namespace detail
 
-/** @brief Check that G satisfies all concepts required by Cat, including constness. */
+/** @brief Check that G satisfies all concepts required by Cat, including const variants. */
 export template <typename G, grid_category Cat>
-concept satisfies_category =
-    detail::satisfies_category_base<G, Cat> &&
-    (!has_category(Cat, grid_category::constness) || detail::satisfies_category_const<const G, Cat>);
+concept satisfies_category = detail::satisfies_category_base<G, Cat> && detail::satisfies_category_const<const G, Cat>;
 
 export template <typename G>
 constexpr auto get_category() -> grid_category {
@@ -203,7 +203,8 @@ export template <std::size_t Dim,
                  typename GetType,
                  grid_category Cat = grid_category::iterable | grid_category::container |
                                      grid_category::unsafe_viewable | grid_category::unsafe_container |
-                                     grid_category::constness,
+                                     grid_category::const_viewable | grid_category::const_iterable |
+                                     grid_category::const_unsafe,
                  typename DimT     = std::uint32_t,
                  typename PosT     = std::int32_t>
 class any_grid {
@@ -241,19 +242,19 @@ class any_grid {
         auto contains(const pos_type& pos) -> bool override { return m_grid.contains(pos); }
         auto get(const pos_type& pos) -> get_ret override { return m_grid.get(pos); }
         auto dimensions_c() const -> std::array<DimT, Dim> override {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return m_grid.dimensions();
             else
                 std::unreachable();
         }
         auto contains_c(const pos_type& pos) const -> bool override {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return m_grid.contains(pos);
             else
                 std::unreachable();
         }
         auto get_c(const pos_type& pos) const -> get_const_ret override {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return m_grid.get(pos);
             else
                 std::unreachable();
@@ -265,7 +266,7 @@ class any_grid {
                 std::unreachable();
         }
         auto iter_pos_c() const -> utils::input_iterable<pos_type> override {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return m_grid.iter_pos();
             else
                 std::unreachable();
@@ -277,7 +278,7 @@ class any_grid {
                 std::unreachable();
         }
         auto iter_cells_c() const -> utils::input_iterable<get_unsafe_const_ret> override {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return m_grid.iter_cells();
             else
                 std::unreachable();
@@ -289,7 +290,7 @@ class any_grid {
                 std::unreachable();
         }
         auto iter_c() const -> utils::input_iterable<std::tuple<pos_type, get_unsafe_const_ret>> override {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return m_grid.iter();
             else
                 std::unreachable();
@@ -326,7 +327,7 @@ class any_grid {
                 std::unreachable();
         }
         auto get_unsafe_c(const pos_type& pos) const -> get_unsafe_const_ret override {
-            if constexpr (has_category(Cat, grid_category::unsafe_viewable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::unsafe_viewable | grid_category::const_unsafe))
                 return m_grid.get_unsafe(pos);
             else
                 std::unreachable();
@@ -392,17 +393,17 @@ class any_grid {
     auto get(const pos_type& pos) -> get_ret { return m_impl->get(pos); }
 
     auto dimensions() const -> std::array<DimT, Dim>
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_impl->dimensions_c();
     }
     auto contains(const pos_type& pos) const -> bool
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_impl->contains_c(pos);
     }
     auto get(const pos_type& pos) const -> get_const_ret
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_impl->get_c(pos);
     }
@@ -424,17 +425,17 @@ class any_grid {
         return m_impl->iter();
     }
     auto iter_pos() const -> utils::input_iterable<pos_type>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_impl->iter_pos_c();
     }
     auto iter_cells() const -> utils::input_iterable<const cell_type&>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_impl->iter_cells_c();
     }
     auto iter() const -> utils::input_iterable<std::tuple<pos_type, const cell_type&>>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_impl->iter_c();
     }
@@ -475,7 +476,7 @@ class any_grid {
         return m_impl->get_unsafe(pos);
     }
     auto get_unsafe(const pos_type& pos) const -> const cell_type&
-        requires(has_category(Cat, grid_category::unsafe_viewable | grid_category::constness))
+        requires(has_category(Cat, grid_category::unsafe_viewable | grid_category::const_unsafe))
     {
         return m_impl->get_unsafe_c(pos);
     }
@@ -500,10 +501,10 @@ class any_grid {
 
 export template <viewable_grid G>
 any_grid(G&&) -> any_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
-                                  detail::grid_get_type<std::remove_cvref_t<G>>,
-                                  detail::default_category_for<std::remove_cvref_t<G>>(),
-                                  typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
-                                  typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type>;
+                          detail::grid_get_type<std::remove_cvref_t<G>>,
+                          detail::default_category_for<std::remove_cvref_t<G>>(),
+                          typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
+                          typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type>;
 
 // ============================================================
 // any_grid_view — type-erased non-owning grid view
@@ -566,19 +567,19 @@ class any_grid_view {
         .contains     = [](void* ptr, const pos_type& pos) -> bool { return static_cast<G*>(ptr)->contains(pos); },
         .get          = [](void* ptr, const pos_type& pos) -> get_ret { return static_cast<G*>(ptr)->get(pos); },
         .dimensions_c = [](void* ptr) -> std::array<DimT, Dim> {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return static_cast<const G*>(ptr)->dimensions();
             else
                 std::unreachable();
         },
         .contains_c = [](void* ptr, const pos_type& pos) -> bool {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return static_cast<const G*>(ptr)->contains(pos);
             else
                 std::unreachable();
         },
         .get_c = [](void* ptr, const pos_type& pos) -> get_const_ret {
-            if constexpr (has_category(Cat, grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::const_viewable))
                 return static_cast<const G*>(ptr)->get(pos);
             else
                 std::unreachable();
@@ -602,19 +603,19 @@ class any_grid_view {
                 std::unreachable();
         },
         .iter_pos_c = [](void* ptr) -> utils::input_iterable<pos_type> {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return static_cast<const G*>(ptr)->iter_pos();
             else
                 std::unreachable();
         },
         .iter_cells_c = [](void* ptr) -> utils::input_iterable<get_unsafe_const_ret> {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return static_cast<const G*>(ptr)->iter_cells();
             else
                 std::unreachable();
         },
         .iter_c = [](void* ptr) -> utils::input_iterable<std::tuple<pos_type, get_unsafe_const_ret>> {
-            if constexpr (has_category(Cat, grid_category::iterable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::iterable | grid_category::const_iterable))
                 return static_cast<const G*>(ptr)->iter();
             else
                 std::unreachable();
@@ -653,7 +654,7 @@ class any_grid_view {
                 std::unreachable();
         },
         .get_unsafe_c = [](void* ptr, const pos_type& pos) -> get_unsafe_const_ret {
-            if constexpr (has_category(Cat, grid_category::unsafe_viewable | grid_category::constness))
+            if constexpr (has_category(Cat, grid_category::unsafe_viewable | grid_category::const_unsafe))
                 return static_cast<const G*>(ptr)->get_unsafe(pos);
             else
                 std::unreachable();
@@ -714,18 +715,18 @@ class any_grid_view {
     auto get(const pos_type& pos) -> get_ret { return m_vt->get(m_ptr, pos); }
 
     auto dimensions() const -> std::array<DimT, Dim>
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_vt->dimensions_c(m_ptr);
     }
     auto contains(const pos_type& pos) const -> bool
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_vt->contains_c(m_ptr, pos);
     }
 
     auto get(const pos_type& pos) const -> get_const_ret
-        requires(has_category(Cat, grid_category::constness))
+        requires(has_category(Cat, grid_category::const_viewable))
     {
         return m_vt->get_c(m_ptr, pos);
     }
@@ -747,17 +748,17 @@ class any_grid_view {
         return m_vt->iter(m_ptr);
     }
     auto iter_pos() const -> utils::input_iterable<pos_type>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_vt->iter_pos_c(m_ptr);
     }
     auto iter_cells() const -> utils::input_iterable<get_unsafe_const_ret>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_vt->iter_cells_c(m_ptr);
     }
     auto iter() const -> utils::input_iterable<std::tuple<pos_type, get_unsafe_const_ret>>
-        requires(has_category(Cat, grid_category::iterable | grid_category::constness))
+        requires(has_category(Cat, grid_category::iterable | grid_category::const_iterable))
     {
         return m_vt->iter_c(m_ptr);
     }
@@ -791,7 +792,7 @@ class any_grid_view {
         return m_vt->get_unsafe(m_ptr, pos);
     }
     auto get_unsafe(const pos_type& pos) const -> get_unsafe_const_ret
-        requires(has_category(Cat, grid_category::unsafe_viewable | grid_category::constness))
+        requires(has_category(Cat, grid_category::unsafe_viewable | grid_category::const_unsafe))
     {
         return m_vt->get_unsafe_c(m_ptr, pos);
     }
@@ -816,9 +817,9 @@ class any_grid_view {
 
 export template <viewable_grid G>
 any_grid_view(G&&) -> any_grid_view<std::tuple_size_v<detail::grid_pos_type<std::remove_cvref_t<G>>>,
-                                            detail::grid_get_type<std::remove_cvref_t<G>>,
-                                            detail::default_category_for<std::remove_cvref_t<G>>(),
-                                            typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
-                                            typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type>;
+                                    detail::grid_get_type<std::remove_cvref_t<G>>,
+                                    detail::default_category_for<std::remove_cvref_t<G>>(),
+                                    typename detail::grid_dimensions_type<std::remove_cvref_t<G>>::value_type,
+                                    typename detail::grid_pos_type<std::remove_cvref_t<G>>::value_type>;
 
 }  // namespace epix::ext::grid

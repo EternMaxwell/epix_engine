@@ -153,7 +153,8 @@ using BT = bit_grid<2>;
 constexpr grid_category kCat = static_cast<grid_category>(
     static_cast<unsigned>(grid_category::iterable) | static_cast<unsigned>(grid_category::container) |
     static_cast<unsigned>(grid_category::unsafe_viewable) | static_cast<unsigned>(grid_category::unsafe_container) |
-    static_cast<unsigned>(grid_category::constness) | static_cast<unsigned>(grid_category::copyable));
+    static_cast<unsigned>(grid_category::const_viewable) | static_cast<unsigned>(grid_category::const_iterable) |
+    static_cast<unsigned>(grid_category::const_unsafe) | static_cast<unsigned>(grid_category::copyable));
 using UPK = any_grid<2, int&, kCat, uint32_t, uint32_t>;
 using UDN = any_grid<2, int&, kCat, uint32_t, uint32_t>;
 using USP = any_grid<2, int&, kCat, uint32_t, uint32_t>;

@@ -25,7 +25,7 @@ using namespace epix::ext::grid;
 
 namespace {
 constexpr auto kFullCat = grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
-                          grid_category::unsafe_container | grid_category::constness;
+                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe;
 template <std::size_t Dim, typename T>
 using ugrid = any_grid<Dim, T, kFullCat, std::uint32_t, std::uint32_t>;
 }  // namespace
@@ -54,7 +54,7 @@ static_assert(
     std::is_constructible_v<any_grid_view<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
                             const full_view&>);
 static_assert(
-    !std::is_constructible_v<any_grid_view<2, int&, grid_category::constness, std::uint32_t, std::uint32_t>,
+    !std::is_constructible_v<any_grid_view<2, int&, grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe, std::uint32_t, std::uint32_t>,
                              const full_view&>);
 
 // ============================================================
@@ -421,7 +421,7 @@ using uview_full =
     any_grid_view<2,
                       int&,
                       grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
-                          grid_category::unsafe_container | grid_category::constness,
+                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe,
                       std::uint32_t,
                       std::uint32_t>;
 using uview_all = any_grid_view<2,
