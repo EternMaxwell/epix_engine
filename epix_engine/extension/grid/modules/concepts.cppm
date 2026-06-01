@@ -26,7 +26,7 @@ export enum class grid_error {
     NotSupportedOperation, /**< The requested operation is not supported by this grid type. */
 };
 // ============================================================
-// Grid concepts — view series (read-only) + mutable extensions
+// Grid concepts
 // ============================================================
 
 namespace detail {
@@ -234,7 +234,8 @@ concept counted_grid = viewable_grid<G> && requires(const std::remove_reference_
  *   `viewable_grid` + `grid_container` + `iterable_grid` + `counted_grid`.
  */
 export template <typename G>
-concept basic_grid = viewable_grid<G> && grid_container<G> && iterable_grid<G> && counted_grid<G>;
+concept basic_grid = viewable_grid<G> && grid_container<G> && iterable_grid<G> && counted_grid<G> &&
+                     viewable_grid<detail::add_const_t<G>> && iterable_grid<detail::add_const_t<G>>;
 
 // ============================================================
 // grid_trait — constrained on viewable_grid, derives facts from the interface

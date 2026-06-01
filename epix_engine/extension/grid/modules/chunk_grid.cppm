@@ -377,7 +377,7 @@ struct ExtendibleChunkGrid {
     /** @brief Retrieves an immutable chunk reference at chunk coordinates. */
     auto get_chunk(std::array<std::int32_t, Dim> pos) const noexcept { return m_chunk_grid.get(pos); }
     /** @brief Retrieves a mutable chunk reference at chunk coordinates. */
-    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) noexcept { return m_chunk_grid.get_mut(pos); }
+    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) noexcept { return m_chunk_grid.get(pos); }
 
     /** @brief Compacts internal sparse tree storage. */
     void shrink_grid() { m_chunk_grid.shrink(); }
@@ -407,13 +407,13 @@ struct ExtendibleChunkGrid {
     /** @brief Iterates immutable chunk values. */
     auto iter_chunks() const { return m_chunk_grid.iter_cells(); }
     /** @brief Iterates mutable chunk values. */
-    auto iter_chunks_mut() { return m_chunk_grid.iter_cells_mut(); }
+    auto iter_chunks_mut() { return m_chunk_grid.iter_cells(); }
     /** @brief Iterates chunk coordinates. */
     auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
     /** @brief Iterates immutable pairs of chunk coordinates and chunks. */
     auto iter_chunk_with_pos() const { return m_chunk_grid.iter(); }
     /** @brief Iterates mutable pairs of chunk coordinates and chunks. */
-    auto iter_chunk_with_pos_mut() { return m_chunk_grid.iter_mut(); }
+    auto iter_chunk_with_pos_mut() { return m_chunk_grid.iter(); }
 
     /** @brief Inserts or updates a typed cell at world-space coordinates.
      * @tparam T Value type.
@@ -424,7 +424,7 @@ struct ExtendibleChunkGrid {
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
 
         auto [chunk_pos, cell_pos] = coords_result.value();
-        return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
+        return m_chunk_grid.get(chunk_pos).transform_error(map_err).and_then(
             [&cell_pos, &value](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
                 return chunk.set(cell_pos, std::forward<T>(value));
             });
@@ -436,7 +436,7 @@ struct ExtendibleChunkGrid {
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
 
         auto [chunk_pos, cell_pos] = coords_result.value();
-        return m_chunk_grid.get_mut(chunk_pos).transform_error(map_err).and_then(
+        return m_chunk_grid.get(chunk_pos).transform_error(map_err).and_then(
             [&cell_pos, &value...](Chunk<Dim>& chunk) -> std::expected<void, ChunkGridError> {
                 return chunk.set_multi(cell_pos, std::forward<Args>(value)...);
             });
@@ -462,7 +462,7 @@ struct ExtendibleChunkGrid {
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
 
         auto [chunk_pos, cell_pos] = coords_result.value();
-        auto chunk_result          = m_chunk_grid.get_mut(chunk_pos).transform_error(map_err);
+        auto chunk_result          = m_chunk_grid.get(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
         ChunkLayer<Dim>& layer = chunk_result.value().get();
@@ -475,7 +475,7 @@ struct ExtendibleChunkGrid {
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
 
         auto [chunk_pos, cell_pos] = coords_result.value();
-        auto chunk_result          = m_chunk_grid.get_mut(chunk_pos).transform_error(map_err);
+        auto chunk_result          = m_chunk_grid.get(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
         ChunkLayer<Dim>& layer = chunk_result.value().get();
@@ -487,7 +487,7 @@ struct ExtendibleChunkGrid {
         if (!coords_result.has_value()) return std::unexpected(coords_result.error());
 
         auto [chunk_pos, cell_pos] = coords_result.value();
-        auto chunk_result          = m_chunk_grid.get_mut(chunk_pos).transform_error(map_err);
+        auto chunk_result          = m_chunk_grid.get(chunk_pos).transform_error(map_err);
         if (!chunk_result.has_value()) return std::unexpected(chunk_result.error());
 
         return chunk_result.value().get().remove_all(cell_pos).transform_error(map_err);
@@ -553,7 +553,7 @@ struct ExtendibleChunkRefGrid {
     auto get_chunk(std::array<std::int32_t, Dim> pos) const noexcept { return m_chunk_grid.get(pos).transform(deref); }
     /** @brief Retrieves a mutable referenced chunk at chunk coordinates. */
     auto get_chunk_mut(std::array<std::int32_t, Dim> pos) noexcept {
-        return m_chunk_grid.get_mut(pos).transform(deref_mut);
+        return m_chunk_grid.get(pos).transform(deref_mut);
     }
 
     /** @brief Compacts internal sparse tree storage. */
@@ -581,7 +581,7 @@ struct ExtendibleChunkRefGrid {
     /** @brief Iterates immutable referenced chunks. */
     auto iter_chunks() const { return std::views::transform(m_chunk_grid.iter_cells(), deref); }
     /** @brief Iterates mutable referenced chunks. */
-    auto iter_chunks_mut() { return std::views::transform(m_chunk_grid.iter_cells_mut(), deref_mut); }
+    auto iter_chunks_mut() { return std::views::transform(m_chunk_grid.iter_cells(), deref_mut); }
     /** @brief Iterates chunk coordinates. */
     auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
     /** @brief Iterates immutable pairs of chunk coordinates and referenced chunks. */
@@ -738,7 +738,7 @@ struct ExtendibleMutChunkRefGrid {
     /** @brief Mutable access to the `Mut<Chunk>` wrapper at chunk coordinates. */
     auto get_chunk_mut(std::array<std::int32_t, Dim> pos)
         -> std::expected<epix::core::Mut<Chunk<Dim>>, ChunkGridError> {
-        return m_chunk_grid.get_mut(pos).transform(deref_mut);
+        return m_chunk_grid.get(pos).transform(deref_mut);
     }
 
     void shrink_grid() { m_chunk_grid.shrink(); }
@@ -757,7 +757,7 @@ struct ExtendibleMutChunkRefGrid {
     }
 
     auto iter_chunks() const { return std::views::transform(m_chunk_grid.iter_cells(), deref); }
-    auto iter_chunks_mut() { return std::views::transform(m_chunk_grid.iter_cells_mut(), deref_mut); }
+    auto iter_chunks_mut() { return std::views::transform(m_chunk_grid.iter_cells(), deref_mut); }
     auto iter_chunk_pos() const { return m_chunk_grid.iter_pos(); }
     auto iter_chunk_with_pos() const { return std::views::zip(iter_chunk_pos(), iter_chunks()); }
     auto iter_chunk_with_pos_mut() { return std::views::zip(iter_chunk_pos(), iter_chunks_mut()); }
@@ -1119,7 +1119,7 @@ class PackedLayer : public ChunkLayer<Dim> {
    private:
     std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid.get_mut(pos).transform_error(map_err).transform(
+        return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
@@ -1155,7 +1155,7 @@ class PackedLayer : public ChunkLayer<Dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
         meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
@@ -1195,7 +1195,7 @@ class TreeLayer : public ChunkLayer<Dim> {
    private:
     std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid.get_mut(pos).transform_error(map_err).transform(
+        return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
@@ -1231,7 +1231,7 @@ class TreeLayer : public ChunkLayer<Dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
         meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
@@ -1271,7 +1271,7 @@ class DenseLayer : public ChunkLayer<Dim> {
    private:
     std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid.get_mut(pos).transform_error(map_err).transform(
+        return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
@@ -1307,7 +1307,7 @@ class DenseLayer : public ChunkLayer<Dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
         meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
@@ -1347,7 +1347,7 @@ class SparseLayer : public ChunkLayer<Dim> {
    private:
     std::expected<void*, LayerError> get_mut(meta::type_index type, std::array<std::int32_t, Dim> pos) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid.get_mut(pos).transform_error(map_err).transform(
+        return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<T> ref) { return static_cast<void*>(std::addressof(ref.get())); });
     }
     std::expected<const void*, LayerError> get(meta::type_index type,
@@ -1383,7 +1383,7 @@ class SparseLayer : public ChunkLayer<Dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::int32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
         meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
@@ -1419,7 +1419,7 @@ class BasicGridLayer : public ChunkLayer<grid_trait<Grid>::dim> {
     std::expected<void*, LayerError> get_mut(meta::type_index type,
                                              std::array<std::uint32_t, grid_trait<Grid>::dim> pos) override {
         if (!supports_type(type)) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid.get_mut(pos).transform_error(map_err).transform(
+        return m_grid.get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<typename grid_trait<Grid>::cell_type> ref) {
                 return static_cast<void*>(std::addressof(ref.get()));
             });
@@ -1465,7 +1465,7 @@ class BasicGridLayer : public ChunkLayer<grid_trait<Grid>::dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, grid_trait<Grid>::dim>, void*>>, LayerError>
     try_iter_type_mut(meta::type_index type) override {
         if (!supports_type(type)) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid.iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
@@ -1498,7 +1498,7 @@ class BasicGridRefLayer : public ChunkLayer<grid_trait<Grid>::dim> {
     std::expected<void*, LayerError> get_mut(meta::type_index type,
                                              std::array<std::uint32_t, grid_trait<Grid>::dim> pos) override {
         if (!supports_type(type)) return std::unexpected(LayerError::UnsupportedType);
-        return m_grid_ref.get_mut().get_mut(pos).transform_error(map_err).transform(
+        return m_grid_ref.get_mut().get(pos).transform_error(map_err).transform(
             [](std::reference_wrapper<typename grid_trait<Grid>::cell_type> ref) {
                 return static_cast<void*>(std::addressof(ref.get()));
             });
@@ -1546,7 +1546,7 @@ class BasicGridRefLayer : public ChunkLayer<grid_trait<Grid>::dim> {
     std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, grid_trait<Grid>::dim>, void*>>, LayerError>
     try_iter_type_mut(meta::type_index type) override {
         if (!supports_type(type)) return std::unexpected(LayerError::UnsupportedType);
-        return std::views::transform(m_grid_ref.get_mut().iter_mut(), [](auto&& pair) {
+        return std::views::transform(m_grid_ref.get_mut().iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
             return std::make_pair(std::move(pos), static_cast<void*>(std::addressof(value)));
         });
