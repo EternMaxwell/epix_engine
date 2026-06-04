@@ -1,5 +1,4 @@
 #include <imgui.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -16,27 +15,24 @@
 #include <thread>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.assets;
-import epix.core;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.render;
-import epix.core_graph;
-import epix.mesh;
-import epix.transform;
-import epix.input;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
-import epix.render.imgui;
-import epix.shader;
-import BS.thread_pool;
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/window.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/mesh.hpp>
+#include <epix/transform.hpp>
+#include <epix/input.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/shader.hpp>
+#include <BS_thread_pool.hpp>
 
 using std::size_t;
 using std::uint32_t;
@@ -584,7 +580,7 @@ struct GpuPressureProjector {
 
         // Common preamble: inplace (bindings 0=chunk_data RW, 1=chunk_svo)
         static const std::string kSlangCommonInplace = R"slg(
-import epix.ext.grid.svo;
+#include <epix/ext/grid/svo.hpp>
 [[vk::binding(0,0)]] RWStructuredBuffer<int>  chunk_data;
 [[vk::binding(1,0)]] StructuredBuffer<uint>   chunk_svo;
 static const int CHUNK_SIZE         = 16;
@@ -668,7 +664,7 @@ void set_v(int gx, int gy, int val) {
 
         // Common preamble: output (bindings 0=chunk_data RO, 1=chunk_out RW, 2=chunk_svo)
         static const std::string kSlangCommonOutput = R"slg(
-import epix.ext.grid.svo;
+#include <epix/ext/grid/svo.hpp>
 [[vk::binding(0,0)]] StructuredBuffer<int>    chunk_data;
 [[vk::binding(1,0)]] RWStructuredBuffer<int>  chunk_out;
 [[vk::binding(2,0)]] StructuredBuffer<uint>   chunk_svo;
@@ -1255,7 +1251,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 
         // Common preamble: inplace (bindings 0=chunk_data RW, 1=chunk_svo)
         static const std::string kSlangCommonInplace = R"slg(
-import epix.ext.grid.svo;
+#include <epix/ext/grid/svo.hpp>
 [[vk::binding(0,0)]] RWStructuredBuffer<int>  chunk_data;
 [[vk::binding(1,0)]] StructuredBuffer<uint>   chunk_svo;
 static const int CHUNK_SIZE         = 16;
@@ -1339,7 +1335,7 @@ void set_v(int gx, int gy, int val) {
 
         // Common preamble: output (bindings 0=chunk_data RO, 1=chunk_out RW, 2=chunk_svo)
         static const std::string kSlangCommonOutput = R"slg(
-import epix.ext.grid.svo;
+#include <epix/ext/grid/svo.hpp>
 [[vk::binding(0,0)]] StructuredBuffer<int>    chunk_data;
 [[vk::binding(1,0)]] RWStructuredBuffer<int>  chunk_out;
 [[vk::binding(2,0)]] StructuredBuffer<uint>   chunk_svo;

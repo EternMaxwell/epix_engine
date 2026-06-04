@@ -1,17 +1,11 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <optional>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :entities;
-import :world.entity_ref;
-import :world.interface;
+#include <epix/core/entities.hpp>
+#include <epix/core/world/entity_ref.hpp>
+#include <epix/core/world/interface.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {

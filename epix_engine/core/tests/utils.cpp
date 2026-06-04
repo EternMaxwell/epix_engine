@@ -1,6 +1,6 @@
 ﻿#include <gtest/gtest.h>
 
-import epix.utils;
+#include <epix/utils.hpp>
 
 using namespace epix;
 

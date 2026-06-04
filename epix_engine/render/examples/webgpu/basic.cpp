@@ -43,6 +43,18 @@
 
 #if !defined(__EMSCRIPTEN__)
 #include <GLFW/glfw3native.h>
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef None
+#undef None
+#endif
 #endif
 #include <webgpu/webgpu.h>
 
@@ -134,11 +146,9 @@ WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 #endif
 }
 
-import epix.core;
-import epix.render;
-
-import webgpu;
-
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <webgpu/webgpu.hpp>
 wgpu::Surface glfwGetWGPUSurface(const wgpu::Instance& instance, GLFWwindow* window) {
     auto res = glfwGetWGPUSurfaceRaw(instance, window);
     return std::move(*reinterpret_cast<wgpu::Surface*>(&res));

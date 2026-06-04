@@ -4,7 +4,6 @@
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -13,11 +12,7 @@
 #include <optional>
 #include <string>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
+#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

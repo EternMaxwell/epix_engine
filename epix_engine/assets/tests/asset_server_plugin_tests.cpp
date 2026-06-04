@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 
 #include <asio/awaitable.hpp>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -23,15 +22,11 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.meta;
-import epix.assets;
-import epix.tasks;
-import epix.async_channel;
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/assets.hpp>
+#include <epix/tasks.hpp>
+#include <epix/async_channel.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

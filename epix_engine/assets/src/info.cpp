@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <expected>
 #include <functional>
@@ -12,16 +10,12 @@ module;
 #include <unordered_set>
 #include <utility>
 #include <variant>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.utils;
-import epix.core;
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
+#include <epix/core.hpp>
 namespace epix::assets {
 void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,

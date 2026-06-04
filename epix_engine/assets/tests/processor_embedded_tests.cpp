@@ -4,7 +4,6 @@
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -21,14 +20,10 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
-import epix.core;
-import epix.utils;
-import epix.meta;
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/utils.hpp>
+#include <epix/meta.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

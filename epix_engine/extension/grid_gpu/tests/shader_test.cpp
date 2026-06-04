@@ -1,41 +1,10 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <expected>
-#include <map>
-#include <memory>
-#include <optional>
-#include <random>
-#include <span>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
-import epix.assets;
-import epix.shader;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
 
-#if defined(_MSC_VER)
-#pragma warning(disable : 4834)
-#elif defined(__clang__)
-#pragma clang diagnostic ignored "-Wunused-value"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic ignored "-Wunused-result"
-#pragma GCC diagnostic ignored "-Wunused-value"
-#endif
-
+#include <webgpu/webgpu.hpp>
+#include <epix/assets.hpp>
+#include <epix/shader.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
 using namespace epix::assets;
 using namespace epix::shader;
 using namespace epix::ext::grid;
@@ -222,7 +191,6 @@ static wgpu::ShaderModule create_shader_module_from_compiled(const wgpu::Device&
 TEST(SvoShaderCache, LibraryRegisters_CompileSucceeds) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [shader("compute")]
 [numthreads(1,1,1)]
 void computeMain() {}
@@ -310,7 +278,6 @@ TEST(SvoShaderCache, CallerWithStructAccess_CompileSucceeds) {
     // Caller uses epix::ext::grid::SvoGrid2D inside a compute shader.
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint> svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -328,7 +295,6 @@ void computeMain()
 TEST(SvoShaderCache, CallerWithSvoGrid3D_CompileSucceeds) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint> svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -346,7 +312,6 @@ void computeMain()
 TEST(SvoShaderCache, CallerWithContains_CompileSucceeds) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint> svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<uint> out_result;
 
@@ -364,7 +329,6 @@ void computeMain()
 TEST(SvoShaderCache, CallerWith1D_CompileSucceeds) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint> svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -387,7 +351,6 @@ void computeMain()
 TEST(SvoGpuCompute, Lookup2D_KnownCell_ReturnsDataIndex) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint>  svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -516,7 +479,6 @@ void computeMain()
 TEST(SvoGpuCompute, Lookup3D_TwoCells_HitsAndMiss) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint>  svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -637,7 +599,6 @@ void computeMain()
 TEST(SvoGpuCompute, EmptyGrid_LookupReturnsMinusOne) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint>  svo_buf;
 [[vk::binding(1, 0)]] RWStructuredBuffer<int> out_result;
 
@@ -757,7 +718,6 @@ void computeMain()
 TEST(SvoGpuCompute, LargeScale3D_RandomGrid_BatchLookup) {
     auto words = compile_svo_caller(R"(
 import epix.ext.grid.svo;
-
 [[vk::binding(0, 0)]] StructuredBuffer<uint>  svo_buf;
 [[vk::binding(1, 0)]] StructuredBuffer<int>   queries;  // packed x,y,z per entry
 [[vk::binding(2, 0)]] RWStructuredBuffer<int> results;

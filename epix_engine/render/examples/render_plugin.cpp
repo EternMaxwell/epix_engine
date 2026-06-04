@@ -2,16 +2,13 @@
 
 #include <stacktrace>
 
-import epix.core;
-import epix.input;
-import epix.window;
-import epix.transform;
-import epix.render;
-import epix.glfw.core;
-import epix.glfw.render;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/core.hpp>
+#include <epix/input.hpp>
+#include <epix/window.hpp>
+#include <epix/transform.hpp>
+#include <epix/render.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
 using namespace epix;
 using namespace epix::core;
 

@@ -44,6 +44,18 @@
 
 #if !defined(__EMSCRIPTEN__)
 #include <GLFW/glfw3native.h>
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef None
+#undef None
+#endif
 #endif
 #include <webgpu/webgpu.h>
 #ifdef WEBGPU_BACKEND_WGPU

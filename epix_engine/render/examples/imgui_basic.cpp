@@ -1,21 +1,16 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-import epix.core;
-import epix.input;
-import epix.window;
-import epix.transform;
-import epix.render;
-import epix.core_graph;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.render.imgui;
-#ifndef EPIX_IMPORT_STD
+#include <epix/core.hpp>
+#include <epix/input.hpp>
+#include <epix/window.hpp>
+#include <epix/transform.hpp>
+#include <epix/render.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render/imgui.hpp>
 #include <array>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix;
 using namespace epix::core;
 

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
@@ -13,7 +11,6 @@ module;
 #include <ranges>
 #include <stdexcept>
 #include <utility>
-#endif
 #ifdef EPIX_ENABLE_TRACY
 #include <tracy/Tracy.hpp>
 #endif
@@ -24,15 +21,12 @@ module;
 
 #include <stacktrace>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
+#include <epix/meta.hpp>
 
-import :app;
-import :labels;
-import :schedule;
+#include <epix/core/app.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 

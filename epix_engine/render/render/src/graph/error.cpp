@@ -1,15 +1,10 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <format>
 #include <string>
 #include <variant>
-#endif
+#include <epix/render/graph/error.hpp>
 
-module epix.render;
-
-import :graph.error;
 
 namespace epix::render::graph {
 

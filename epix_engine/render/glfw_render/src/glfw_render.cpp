@@ -1,9 +1,5 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
 #include <stdexcept>
 #include <utility>
-#endif
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX 2
 #define WGPU_TARGET_WINDOWS 3
@@ -41,19 +37,28 @@ module;
 
 #if !defined(__EMSCRIPTEN__)
 #include <GLFW/glfw3native.h>
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef None
+#ifdef Status
+#undef Status
+#endif
+#undef None
+#endif
 #endif
 #include <spdlog/spdlog.h>
 #include <webgpu/webgpu.h>
 
-module epix.glfw.render;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.render;
-import epix.glfw.core;
-import epix.window;
-import webgpu;
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/window.hpp>
+#include <webgpu/webgpu.hpp>
 
 WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 #if WGPU_TARGET == WGPU_TARGET_MACOS
@@ -165,6 +170,7 @@ wgpu::Surface epix::glfw::render::get_wgpu_surface(const wgpu::Instance& instanc
 }
 
 using namespace epix::core;
+using namespace epix::glfw;
 
 using epix::render::window::SurfaceCreation;
 

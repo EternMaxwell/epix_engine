@@ -1,9 +1,7 @@
-module;
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-
-module epix.render.imgui;
+#include <epix/render/imgui.hpp>
 
 namespace epix::imgui {
 

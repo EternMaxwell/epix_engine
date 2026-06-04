@@ -1,17 +1,12 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <variant>
-#endif
+#include <epix/render/graph/slot.hpp>
 
-module epix.render;
-
-import :graph.slot;
 
 using namespace epix::render;
 using namespace epix::render::graph;

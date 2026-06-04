@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -12,12 +10,9 @@ module;
 #include <thread>
 #include <utility>
 #include <variant>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/render/pipeline_server.hpp>
 
-module epix.render;
-
-import :pipeline_server;
 
 using namespace epix::shader;
 

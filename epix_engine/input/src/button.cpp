@@ -1,10 +1,7 @@
-module;
 
 #include <spdlog/spdlog.h>
+#include <epix/input.hpp>
 
-module epix.input;
-
-import :button;
 
 namespace epix::input {
 void ButtonInput<KeyCode>::collect_events(ResMut<ButtonInput<KeyCode>> input, EventReader<KeyInput> reader) {

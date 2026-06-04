@@ -1,15 +1,10 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <ranges>
 #include <sstream>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.utils;
-import epix.core;
+#include <epix/utils.hpp>
+#include <epix/core.hpp>
 
 TEST(core, input_iterable) {
     using namespace epix::utils;

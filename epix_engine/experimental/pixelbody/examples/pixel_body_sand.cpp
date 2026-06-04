@@ -5,7 +5,6 @@
 #include <box2d/id.h>
 #include <box2d/types.h>
 #include <imgui.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -16,27 +15,24 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.core;
-import epix.assets;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.render;
-import epix.render.imgui;
-import epix.core_graph;
-import epix.mesh;
-import epix.transform;
-import epix.input;
-import epix.extension.grid;
-import epix.extension.fallingsand;
-import epix.experimental.pixelbody;
-import epix.time;
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
+#include <epix/core.hpp>
+#include <epix/assets.hpp>
+#include <epix/window.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/mesh.hpp>
+#include <epix/transform.hpp>
+#include <epix/input.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/experimental/pixelbody.hpp>
+#include <epix/time.hpp>
 
 using namespace epix;
 using namespace epix::core;

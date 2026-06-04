@@ -1,22 +1,16 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <cstddef>
 #include <cstdint>
 #include <format>
 #include <ios>
 #include <iostream>
 #include <memory>
-#include <print>
 #include <random>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
+#include <epix/core.hpp>
 
 namespace {
 struct T1 {

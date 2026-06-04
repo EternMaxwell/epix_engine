@@ -4,14 +4,13 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
-import epix.core;
-import epix.render;
-import epix.render.screenshot;
-import epix.image;
-import epix.assets;
-import epix.tasks;
-import webgpu;
-
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/render/screenshot.hpp>
+#include <epix/image.hpp>
+#include <epix/assets.hpp>
+#include <epix/tasks.hpp>
+#include <webgpu/webgpu.hpp>
 using namespace epix::core;
 using namespace epix::render;
 using namespace epix::render::screenshot;

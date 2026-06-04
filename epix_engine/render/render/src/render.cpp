@@ -1,23 +1,17 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
-#endif
 #include <spdlog/spdlog.h>
 
 // include header to deal with partial specialization problem in MSVC
 #include <format>
 #include <stacktrace>
 
-module epix.render;
 
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <webgpu/webgpu.hpp>
+#include <epix/render.hpp>
 using namespace epix::render;
 using namespace epix::core;
 

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <exception>
@@ -10,15 +8,11 @@ module;
 #include <ranges>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :schedule;
-import :labels;
+#include <epix/core/schedule.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 void Schedule::add_config(SetConfig config, bool accept_system) {

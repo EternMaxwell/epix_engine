@@ -1,19 +1,13 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <ranges>
 #include <utility>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :app.main_schedule;
-import :labels;
+#include <epix/core/app/main_schedule.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 void MainSchedulePlugin::attach(App& app) {

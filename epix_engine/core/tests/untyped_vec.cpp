@@ -1,16 +1,11 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <atomic>
 #include <cstddef>
 #include <string>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.core;
+#include <epix/meta.hpp>
+#include <epix/core.hpp>
 
 namespace {
 struct Heavy {

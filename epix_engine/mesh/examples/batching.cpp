@@ -1,26 +1,22 @@
-#ifndef EPIX_IMPORT_STD
 #include <cmath>
 #include <cstdint>
 #include <optional>
 #include <random>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.core;
-import epix.assets;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.render;
-import epix.core_graph;
-import epix.mesh;
-import epix.transform;
-import epix.input;
-import epix.image;
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
+#include <epix/core.hpp>
+#include <epix/assets.hpp>
+#include <epix/window.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/mesh.hpp>
+#include <epix/transform.hpp>
+#include <epix/input.hpp>
+#include <epix/image.hpp>
 
 using namespace epix;
 

@@ -1,6 +1,5 @@
-module;
+#include <epix/image.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -17,7 +16,6 @@ module;
 #include <string_view>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <stb_image_resize2.h>
@@ -25,12 +23,8 @@ module;
 
 #include <asio/awaitable.hpp>
 
-module epix.image;
 
-import epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/assets.hpp>
 namespace epix::image {
 namespace {
 Image create_like(const Image& image, Format format) {

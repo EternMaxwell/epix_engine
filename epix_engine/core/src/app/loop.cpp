@@ -1,19 +1,13 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <memory>
 #include <tuple>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :app.loop;
-import :app.main_schedule;
-import :system;
-import :query;
+#include <epix/core/app/loop.hpp>
+#include <epix/core/app/main_schedule.hpp>
+#include <epix/core/system.hpp>
+#include <epix/core/query.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 struct LoopRunner : public AppRunner {

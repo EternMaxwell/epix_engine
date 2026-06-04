@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -12,15 +10,11 @@ module;
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :bundle;
-import :entities;
+#include <epix/core/bundle.hpp>
+#include <epix/core/entities.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 BundleInfo BundleInfo::create(std::string_view bundle_type_name,

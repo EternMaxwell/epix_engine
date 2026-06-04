@@ -1,15 +1,9 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstddef>
 #include <utility>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/core.hpp>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::core {
 void CommandQueue::append(CommandQueue& other) {
     spdlog::trace("[world] Appending {} commands from another queue.", other.metas_.size());

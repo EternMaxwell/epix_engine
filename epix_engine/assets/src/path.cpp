@@ -1,5 +1,3 @@
-module;
-#ifndef EPIX_IMPORT_STD
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -7,11 +5,7 @@ module;
 #include <string_view>
 #include <utility>
 #include <vector>
-#endif
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/assets.hpp>
 namespace epix::assets {
 
 std::string AssetPath::string() const {

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <deque>
@@ -16,14 +14,10 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :schedule;
+#include <epix/core/schedule.hpp>
+#include <epix/core.hpp>
 
 using namespace epix::core;
 using namespace executors;

@@ -1,16 +1,11 @@
 ﻿#include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <cstdint>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.extension.grid;
+#include <epix/extension/grid.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

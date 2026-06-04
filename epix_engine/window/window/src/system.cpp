@@ -1,14 +1,10 @@
-module;
+#include <epix/window.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <optional>
 #include <unordered_set>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.window;
 
-import :system;
 
 using namespace epix::core;
 

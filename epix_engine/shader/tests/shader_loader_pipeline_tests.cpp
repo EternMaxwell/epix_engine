@@ -1,4 +1,3 @@
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -13,19 +12,14 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <gtest/gtest.h>
 #include <slang-com-ptr.h>
 #include <slang.h>
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
-import epix.core;
-import epix.shader;
-import epix.tasks;
-import webgpu;
-
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
+#include <webgpu/webgpu.hpp>
 using namespace epix::assets;
 using namespace epix::core;
 using namespace epix::shader;

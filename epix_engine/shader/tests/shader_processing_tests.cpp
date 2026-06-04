@@ -3,7 +3,6 @@
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -23,18 +22,13 @@
 #include <variant>
 #include <vector>
 #include <chrono>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
-import epix.core;
-import epix.meta;
-import epix.shader;
-import epix.tasks;
-import epix.async_channel;
-import webgpu;
-
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
+#include <epix/async_channel.hpp>
+#include <webgpu/webgpu.hpp>
 using namespace epix::assets;
 using namespace epix::core;
 using namespace epix::shader;

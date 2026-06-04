@@ -1,154 +1,237 @@
 module;
-
-#ifndef EPIX_IMPORT_STD
-#include <array>
-#include <concepts>
-#include <filesystem>
-#include <format>
-#include <optional>
-#include <span>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
-#endif
+#include <epix/assets.hpp>
 
 export module epix.assets;
 
-export import :concepts;
-export import :async_channel;
-export import :async_broadcast;
-export import :index;
-export import :id;
-export import :path;
-export import :handle;
-export import :meta;
-export import :store;
-export import :server.info;
-export import :server.loader;
-export import :server;
-export import :saver;
-export import :transformer;
-export import :processor.process;
-export import :processor.log;
-export import :processor;
-export import :io.processor_gated;
-export import :io.memory;
-export import :io.memory.asset;
-export import :io.reader;
-export import :io.file.asset;
-export import :io.file.watcher;
-export import :io.source;
-export import :io.embedded;
+export namespace uuids {
+using ::uuids::to_string;
+using ::uuids::uuid;
+} // namespace uuids
 
-using namespace epix::core;
+export namespace epix::assets {
+using epix::assets::Asset;
+using epix::assets::AssetAction;
+using epix::assets::AssetActionMinimal;
+using epix::assets::AssetActionType;
+using epix::assets::AssetContainer;
+using epix::assets::AssetError;
+using epix::assets::AssetEvent;
+using epix::assets::AssetHash;
+using epix::assets::AssetId;
+using epix::assets::AssetIndex;
+using epix::assets::AssetLoadError;
+using epix::assets::AssetLoadFailedEvent;
+using epix::assets::AssetLoader;
+using epix::assets::AssetMeta;
+using epix::assets::AssetMetaCheck;
+using epix::assets::AssetMetaDyn;
+using epix::assets::AssetMetaMinimal;
+using epix::assets::AssetNotPresent;
+using epix::assets::AssetPath;
+using epix::assets::AssetPlugin;
+using epix::assets::AssetProcessor;
+using epix::assets::AssetProcessorData;
+using epix::assets::AssetReader;
+using epix::assets::AssetReaderError;
+using epix::assets::AssetSaver;
+using epix::assets::AssetServer;
+using epix::assets::AssetServerMode;
+using epix::assets::AssetSource;
+using epix::assets::AssetSourceBuilder;
+using epix::assets::AssetSourceBuilders;
+using epix::assets::AssetSourceEvent;
+using epix::assets::AssetSourceId;
+using epix::assets::AssetSources;
+using epix::assets::AssetSystems;
+using epix::assets::AssetTransformer;
+using epix::assets::AssetWatcher;
+using epix::assets::AssetWriter;
+using epix::assets::AssetWriterError;
+using epix::assets::Assets;
+using epix::assets::DependencyLoadState;
+using epix::assets::EMBEDDED;
+using epix::assets::EmbeddedAssetRegistry;
+using epix::assets::EmptySettings;
+using epix::assets::ErasedAssetLoader;
+using epix::assets::ErasedAssetSaver;
+using epix::assets::ErasedLoadedAsset;
+using epix::assets::ErasedProcessor;
+using epix::assets::FileAssetReader;
+using epix::assets::FileAssetWatcher;
+using epix::assets::FileAssetWriter;
+using epix::assets::FileTransactionLogFactory;
+using epix::assets::GenMismatch;
+using epix::assets::GetProcessorError;
+using epix::assets::Handle;
+using epix::assets::HandleProvider;
+using epix::assets::IdentityAssetTransformer;
+using epix::assets::IndexOutOfBound;
+using epix::assets::LoadContext;
+using epix::assets::LoadState;
+using epix::assets::LoadStateOK;
+using epix::assets::LoadTransformAndSave;
+using epix::assets::LoadTransformAndSaveSettings;
+using epix::assets::LoadedAsset;
+using epix::assets::LoadedFolder;
+using epix::assets::LoadedUntypedAsset;
+using epix::assets::LogEntry;
+using epix::assets::LogEntryError;
+using epix::assets::LogEntryKind;
+using epix::assets::META_FORMAT_VERSION;
+using epix::assets::MemoryAssetReader;
+using epix::assets::MemoryAssetWatcher;
+using epix::assets::MemoryAssetWriter;
+using epix::assets::MetaTransform;
+using epix::assets::MissingAssetSourceError;
+using epix::assets::NestedLoader;
+using epix::assets::Process;
+using epix::assets::ProcessContext;
+using epix::assets::ProcessDependencyInfo;
+using epix::assets::ProcessError;
+using epix::assets::ProcessResult;
+using epix::assets::ProcessResultKind;
+using epix::assets::ProcessStatus;
+using epix::assets::ProcessedInfo;
+using epix::assets::ProcessorState;
+using epix::assets::ProcessorTransactionLog;
+using epix::assets::ProcessorTransactionLogFactory;
+using epix::assets::Reader;
+using epix::assets::RecursiveDependencyLoadState;
+using epix::assets::SavedAsset;
+using epix::assets::SetTransactionLogFactoryError;
+using epix::assets::Settings;
+using epix::assets::SlotEmpty;
+using epix::assets::StrongHandle;
+using epix::assets::TransformedAsset;
+using epix::assets::TransformedSubAsset;
+using epix::assets::UnapprovedPathMode;
+using epix::assets::UntypedAssetConversionError;
+using epix::assets::UntypedAssetId;
+using epix::assets::UntypedAssetLoadFailedEvent;
+using epix::assets::UntypedHandle;
+using epix::assets::ValidateLogError;
+using epix::assets::VecReader;
+using epix::assets::VecWriter;
+using epix::assets::VisitAssetDependencies;
+using epix::assets::WaitForAssetError;
+using epix::assets::Writer;
+using epix::assets::app_preregister_loader;
+using epix::assets::app_register_asset;
+using epix::assets::app_register_asset_processor;
+using epix::assets::app_register_loader;
+using epix::assets::app_set_default_asset_processor;
+using epix::assets::deserialize_asset_meta;
+using epix::assets::deserialize_meta_minimal;
+using epix::assets::deserialize_processed_info;
+using epix::assets::is_settings;
+using epix::assets::serialize_asset_meta;
+using epix::assets::serialize_meta_minimal;
+using ::uuids::to_string;
+using ::uuids::uuid;
+using epix::assets::uuid_handle;
+} // namespace epix::assets
 
-namespace epix::assets {
+export namespace epix::assets::asset_meta_check {
+using epix::assets::asset_meta_check::Always;
+using epix::assets::asset_meta_check::Never;
+using epix::assets::asset_meta_check::Paths;
+} // namespace epix::assets::asset_meta_check
 
-/** @brief Built-in system set labels for asset event processing order. */
-export enum class AssetSystems {
-    HandleEvents, /**< Systems that react to handle lifecycle events. */
-    WriteEvents,  /**< Systems that emit asset lifecycle events. */
-};
-/** @brief Asset plugin configuration and source setup.
- *  Mirrors Bevy's AssetPlugin role: configure sources/mode and build core resources/systems. */
-export struct AssetPlugin {
-   private:
-    std::vector<std::pair<AssetSourceId, AssetSourceBuilder>> m_source_builders;
+export namespace epix::assets::get_processor_errors {
+using epix::assets::get_processor_errors::Ambiguous;
+using epix::assets::get_processor_errors::Missing;
+} // namespace epix::assets::get_processor_errors
 
-   public:
-    /** @brief Filesystem path to the default asset source directory. */
-    std::filesystem::path file_path = "assets";
-    /** @brief Optional processed-asset directory path. */
-    std::optional<std::filesystem::path> processed_file_path = "processed_assets";
-    /** @brief Optional processed-asset directory for the embedded source.
-     *  Defaults to nullopt so embedded assets stay on the in-memory source reader and do not
-     *  participate in the processed-asset pipeline unless explicitly opted in.
-     *  When set, a FileAssetReader/Writer rooted at {workspace}/{path} is used for the embedded
-     *  source's processed IO. */
-    std::optional<std::filesystem::path> embedded_processed_path = std::nullopt;
-    /** @brief Asset server mode. */
-    AssetServerMode mode = AssetServerMode::Processed;
-    /** @brief Optional watch override (mirrors Bevy's watch_for_changes_override). */
-    std::optional<bool> watch_for_changes_override = std::nullopt;
-    /** @brief Optional processor override in Processed mode (mirrors Bevy's use_asset_processor_override). */
-    std::optional<bool> use_asset_processor_override = std::nullopt;
-    /** @brief Controls when and how asset metadata files are checked. */
-    AssetMetaCheck meta_check = AssetMetaCheck{asset_meta_check::Always{}};
-    /** @brief Controls how unapproved asset paths are handled. */
-    UnapprovedPathMode unapproved_path_mode = UnapprovedPathMode::Forbid;
+export namespace epix::assets::internal_asset_event {
+using epix::assets::internal_asset_event::Failed;
+} // namespace epix::assets::internal_asset_event
 
-    /** @brief Register a named asset source builder. */
-    AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder source);
-    /** @brief Build the plugin, inserting asset resources into the app. */
-    void attach(App& app);
-    /** @brief Finalize the plugin after all other plugins have built. */
-    void ready(App& app);
-};
+export namespace epix::assets::load_error {
+using epix::assets::load_error::AssetLoaderException;
+using epix::assets::load_error::AssetMetaReadError;
+using epix::assets::load_error::AssetReaderError;
+using epix::assets::load_error::CannotLoadIgnoredAsset;
+using epix::assets::load_error::CannotLoadProcessedAsset;
+using epix::assets::load_error::DeserializeMeta;
+using epix::assets::load_error::MissingAssetLoader;
+using epix::assets::load_error::MissingAssetSourceError;
+using epix::assets::load_error::MissingLabel;
+using epix::assets::load_error::MissingProcessedAssetReaderError;
+using epix::assets::load_error::RequestHandleMismatch;
+} // namespace epix::assets::load_error
 
-/** @brief AssetApp-style helper: register an asset type directly on an App with an existing AssetServer. */
-export template <std::movable T>
-App& app_register_asset(App& app) {
-    if (app.world_mut().get_resource<Assets<T>>().has_value()) return app;
-    app.world_mut().init_resource<Assets<T>>();
-    app.resource_mut<AssetServer>().register_asset(app.resource<Assets<T>>());
-    app.add_events<AssetEvent<T>>();
-    app.add_events<AssetLoadFailedEvent<T>>();
-    app.add_systems(PostStartup,
-                    into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
-                         into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
-                        .chain()
-                        .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
-                                              std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(PreStartup,
-                    into(Assets<T>::asset_events)
-                        .in_set(AssetSystems::WriteEvents)
-                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(First, into(Assets<T>::asset_events)
-                               .in_set(AssetSystems::WriteEvents)
-                               .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(Last, into(Assets<T>::asset_events)
-                              .in_set(AssetSystems::WriteEvents)
-                              .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(PostUpdate, into(Assets<T>::handle_events)
-                                    .in_set(AssetSystems::HandleEvents)
-                                    .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
-    return app;
-}
+export namespace epix::assets::log_entry_errors {
+using epix::assets::log_entry_errors::DuplicateTransaction;
+using epix::assets::log_entry_errors::EndedMissingTransaction;
+using epix::assets::log_entry_errors::UnfinishedTransaction;
+} // namespace epix::assets::log_entry_errors
 
-/** @brief AssetApp-style helper: register a loader directly on an App with an existing AssetServer. */
-export template <AssetLoader T>
-App& app_register_loader(App& app, const T& t = T()) {
-    app.resource_mut<AssetServer>().register_loader(t);
-    return app;
-}
+export namespace epix::assets::memory {
+using epix::assets::memory::Data;
+using epix::assets::memory::DirEvent;
+using epix::assets::memory::DirEventType;
+using epix::assets::memory::Directory;
+using epix::assets::memory::DirectoryError;
+using epix::assets::memory::ExceptionError;
+using epix::assets::memory::IoError;
+using epix::assets::memory::NotFoundError;
+using epix::assets::memory::Value;
+} // namespace epix::assets::memory
 
-/** @brief AssetApp-style helper: preregister a loader extension mapping directly on an App. */
-export template <AssetLoader T>
-App& app_preregister_loader(App& app, std::span<std::string_view> extensions) {
-    app.resource_mut<AssetServer>().template preregister_loader<T>(extensions);
-    return app;
-}
+export namespace epix::assets::process_errors {
+using epix::assets::process_errors::AmbiguousProcessor;
+using epix::assets::process_errors::AssetLoadError;
+using epix::assets::process_errors::AssetReaderError;
+using epix::assets::process_errors::AssetSaveError;
+using epix::assets::process_errors::AssetTransformError;
+using epix::assets::process_errors::AssetWriterError;
+using epix::assets::process_errors::DeserializeMetaError;
+using epix::assets::process_errors::ExtensionRequired;
+using epix::assets::process_errors::MissingAssetLoaderForExtension;
+using epix::assets::process_errors::MissingProcessedAssetReader;
+using epix::assets::process_errors::MissingProcessedAssetWriter;
+using epix::assets::process_errors::MissingProcessor;
+using epix::assets::process_errors::ReadAssetMetaError;
+using epix::assets::process_errors::WrongMetaType;
+} // namespace epix::assets::process_errors
 
-/** @brief AssetApp-style helper: register an asset processor directly on an App. */
-export template <Process P>
-App& app_register_asset_processor(App& app, P processor) {
-    if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
-        throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
-    }
-    app.resource_mut<AssetProcessor>().register_processor(std::move(processor));
-    return app;
-}
+export namespace epix::assets::reader_errors {
+using epix::assets::reader_errors::HttpError;
+using epix::assets::reader_errors::IoError;
+using epix::assets::reader_errors::NotFound;
+} // namespace epix::assets::reader_errors
 
-/** @brief AssetApp-style helper: set the default asset processor for an extension directly on an App. */
-export template <Process P>
-App& app_set_default_asset_processor(App& app, const std::string& extension) {
-    if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
-        throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
-    }
-    app.resource_mut<AssetProcessor>().template set_default_processor<P>(extension);
-    return app;
-}
+export namespace epix::assets::set_transaction_log_factory_errors {
+using epix::assets::set_transaction_log_factory_errors::AlreadyInUse;
+} // namespace epix::assets::set_transaction_log_factory_errors
 
-}  // namespace epix::assets
+export namespace epix::assets::source_events {
+using epix::assets::source_events::AddedAsset;
+using epix::assets::source_events::AddedDirectory;
+using epix::assets::source_events::AddedMeta;
+using epix::assets::source_events::ModifiedAsset;
+using epix::assets::source_events::ModifiedMeta;
+using epix::assets::source_events::RemovedAsset;
+using epix::assets::source_events::RemovedDirectory;
+using epix::assets::source_events::RemovedMeta;
+using epix::assets::source_events::RemovedUnknown;
+using epix::assets::source_events::RenamedAsset;
+using epix::assets::source_events::RenamedDirectory;
+using epix::assets::source_events::RenamedMeta;
+} // namespace epix::assets::source_events
+
+export namespace epix::assets::validate_log_errors {
+using epix::assets::validate_log_errors::EntryErrors;
+using epix::assets::validate_log_errors::ReadLogError;
+using epix::assets::validate_log_errors::UnrecoverableError;
+} // namespace epix::assets::validate_log_errors
+
+export namespace epix::assets::wait_for_asset_error {
+using epix::assets::wait_for_asset_error::DependencyFailed;
+using epix::assets::wait_for_asset_error::Failed;
+using epix::assets::wait_for_asset_error::NotLoaded;
+} // namespace epix::assets::wait_for_asset_error
+
+export namespace epix::assets::writer_errors {
+using epix::assets::writer_errors::IoError;
+} // namespace epix::assets::writer_errors

@@ -1,17 +1,11 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <ranges>
 #include <tuple>
 #include <utility>
 #include <vector>
-#endif
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :query.access;
+#include <epix/core/query/access.hpp>
+#include <epix/core.hpp>
 
 namespace epix::core {
 void Access::merge(const Access& other) {

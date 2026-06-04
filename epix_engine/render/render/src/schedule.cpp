@@ -1,6 +1,4 @@
-module epix.render;
-import :schedule;
-
+#include <epix/render/schedule.hpp>
 using namespace epix::core;
 
 namespace epix::render {

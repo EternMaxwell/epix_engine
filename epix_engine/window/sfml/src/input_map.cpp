@@ -1,9 +1,8 @@
-module;
+#include <epix/sfml/core.hpp>
 
 #include <SFML/Window/Keyboard.hpp>
 #include <SFML/Window/Mouse.hpp>
 
-module epix.sfml.core;
 
 namespace epix::sfml {
     input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key) {

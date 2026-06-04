@@ -1,11 +1,8 @@
-module;
+#include <epix/window.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <ranges>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.window;
 
 using namespace epix::window;
 using namespace epix::core;

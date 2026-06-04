@@ -1,13 +1,8 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <ranges>
 #include <string>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
+#include <epix/core.hpp>
 
 namespace {
 struct P {

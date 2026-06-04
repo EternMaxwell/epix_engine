@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstdint>
 #include <deque>
@@ -11,12 +9,9 @@ module;
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/render.hpp>
 
-module epix.render;
-
-import :graph;
 
 using namespace epix::render::graph;
 

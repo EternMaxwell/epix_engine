@@ -1,6 +1,4 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
-#include <array>
+﻿#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -9,15 +7,10 @@
 #include <ranges>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/extension/fallingsand.hpp>
 
-module epix.extension.fallingsand;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
-
+#include <webgpu/webgpu.hpp>
 using namespace epix::core;
 
 namespace epix::ext::fallingsand {
@@ -299,7 +292,7 @@ void simulate_worlds(Res<ElementRegistry> registry,
             (void)therm_g;
             bool settled = dirty_rect.get_mut().count_time();
             if (settled) {
-                for (auto&& [lpos, elem] : elem_g.get_mut().iter_mut()) {
+                for (auto&& [lpos, elem] : elem_g.get_mut().iter()) {
                     (void)lpos;
                     elem.set_freefall(false);
                     elem.velocity = {};

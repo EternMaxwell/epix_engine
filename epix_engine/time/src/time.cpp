@@ -1,19 +1,13 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <memory>
 #include <utility>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/time.hpp>
 
-module epix.time;
 
-import epix.meta;
-import epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/meta.hpp>
+#include <epix/core.hpp>
 using namespace epix::core;
 namespace epix::time {
 

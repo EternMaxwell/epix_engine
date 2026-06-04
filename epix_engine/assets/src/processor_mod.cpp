@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <expected>
 #include <filesystem>
 #include <memory>
@@ -9,15 +7,11 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::assets;
 
 // ---- ProcessorAssetInfo ----

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <expected>
 #include <functional>
 #include <future>
@@ -11,11 +9,7 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/assets.hpp>
 using namespace epix::assets;
 
 UntypedHandle AssetServer::load_untyped(const AssetPath& path) const {

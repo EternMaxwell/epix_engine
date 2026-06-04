@@ -1,5 +1,4 @@
 ﻿#include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -7,15 +6,11 @@
 #include <thread>
 #include <variant>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
-import epix.async_channel;
+#include <epix/assets.hpp>
+#include <epix/async_channel.hpp>
 
 using namespace epix::assets;
-using namespace epix::async_channel;
+// using namespace epix::async_channel; -- ambiguous with epix::utils::epix::async_channel::Receiver
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -46,7 +41,7 @@ static void write_file(const std::filesystem::path& p, std::string_view content 
 // Returns the collected events that triggered the predicate, or empty on
 // timeout.
 template <typename Pred>
-static std::vector<AssetSourceEvent> poll_until(const Receiver<AssetSourceEvent>& rx,
+static std::vector<AssetSourceEvent> poll_until(const epix::async_channel::Receiver<AssetSourceEvent>& rx,
                                                 Pred pred,
                                                 std::chrono::milliseconds timeout   = std::chrono::milliseconds(3000),
                                                 std::chrono::milliseconds poll_step = std::chrono::milliseconds(20)) {
@@ -87,7 +82,7 @@ static bool any_event(const std::vector<AssetSourceEvent>& events, Pred pred) {
 class FileWatcherTest : public ::testing::Test {
    protected:
     TempDir dir;
-    Receiver<AssetSourceEvent> rx{};
+    epix::async_channel::Receiver<AssetSourceEvent> rx{};
     std::unique_ptr<FileAssetWatcher> watcher;
 
     void SetUp() override {

@@ -1,12 +1,7 @@
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <print>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.extension.grid;
-import epix.extension.grid_gpu;
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)
@@ -15,7 +10,6 @@ import epix.extension.grid_gpu;
 #elif defined(__GNUC__)
 #pragma GCC diagnostic ignored "-Wunused-result"
 #pragma GCC diagnostic ignored "-Wunused-value"
-#endif
 
 using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
@@ -57,3 +51,4 @@ int main() {
     std::println("\nAll done.");
     return 0;
 }
+#endif

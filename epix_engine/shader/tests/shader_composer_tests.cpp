@@ -1,12 +1,7 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <string>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.shader;
+#include <epix/shader.hpp>
 
 using namespace epix::shader;
 

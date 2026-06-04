@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-import epix.assets;
-import epix.shader;
+#include <epix/assets.hpp>
+#include <epix/shader.hpp>
 
 using namespace epix::assets;
 using namespace epix::shader;

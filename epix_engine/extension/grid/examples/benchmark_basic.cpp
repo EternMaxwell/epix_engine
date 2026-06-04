@@ -13,11 +13,8 @@
 #include <string_view>
 #include <vector>
 #endif
-import epix.extension.grid;
+#include <epix/extension/grid.hpp>
 
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 
 using namespace epix::ext::grid;
 using std::int32_t;

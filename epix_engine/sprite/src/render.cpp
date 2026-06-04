@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <bit>
 #include <cmath>
@@ -14,26 +12,22 @@ module;
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.sprite;
 
-import epix.assets;
-import epix.core_graph;
-import epix.image;
-import epix.render;
-import epix.transform;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/render.hpp>
+#include <epix/sprite.hpp>
+#include <epix/transform.hpp>
 using namespace epix;
 using namespace epix::core;
+using namespace epix::core_graph;
 using namespace epix::sprite;
 
 namespace {
 constexpr std::string_view kSpriteVertexShader = R"(
-import epix.view;
 
 struct SpriteInstance {
     float4x4 model;

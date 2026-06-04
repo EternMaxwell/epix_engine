@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -10,16 +8,12 @@ module;
 #include <string>
 #include <system_error>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
 #include <asio/awaitable.hpp>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::assets {
 
 // ---------------------------------------------------------------------------

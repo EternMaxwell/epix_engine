@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -12,14 +10,10 @@ module;
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.utils;
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::expected<void, ValidateLogError> validate_transaction_log(const ProcessorTransactionLogFactory& log_factory) {

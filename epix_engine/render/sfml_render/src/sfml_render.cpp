@@ -1,11 +1,7 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <utility>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <memory>
@@ -43,6 +39,18 @@ module;
 
 #if WGPU_TARGET == WGPU_TARGET_LINUX && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef None
+#ifdef Status
+#undef Status
+#endif
+#undef None
+#endif
 
 namespace sf::priv {
 std::shared_ptr<Display> openDisplay();
@@ -51,15 +59,12 @@ std::shared_ptr<Display> openDisplay();
 
 #include <webgpu/webgpu.h>
 
-module epix.sfml.render;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.render;
-import epix.sfml.core;
-import epix.window;
-import webgpu;
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/sfml/core.hpp>
+#include <epix/sfml/render.hpp>
+#include <epix/window.hpp>
+#include <webgpu/webgpu.hpp>
 
 WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::WindowBase* window) {
 #if WGPU_TARGET == WGPU_TARGET_WINDOWS
@@ -145,6 +150,7 @@ wgpu::Surface sfmlGetWGPUSurface(const wgpu::Instance& instance, sf::WindowBase*
 }
 
 using namespace epix::core;
+using namespace epix::sfml;
 
 using epix::render::window::SurfaceCreation;
 

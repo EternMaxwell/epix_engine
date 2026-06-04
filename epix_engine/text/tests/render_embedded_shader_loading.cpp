@@ -1,12 +1,12 @@
 ﻿#include <gtest/gtest.h>
 
-import epix.assets;
-import epix.core;
-import epix.mesh;
-import epix.shader;
-import epix.sprite;
-import epix.tasks;
-import epix.text;
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/mesh.hpp>
+#include <epix/shader.hpp>
+#include <epix/sprite.hpp>
+#include <epix/tasks.hpp>
+#include <epix/text.hpp>
 
 using namespace epix::assets;
 using namespace epix::core;

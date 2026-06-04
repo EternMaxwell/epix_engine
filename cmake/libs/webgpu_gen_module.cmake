@@ -3,6 +3,11 @@
 set(WEBGPU_CPP_GENERATOR_DIR "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-wrapper" CACHE INTERNAL "Path to WebGPU-Cpp generator")
 set(WEBGPU_CPP_GENERATOR_SCRIPT "${WEBGPU_CPP_GENERATOR_DIR}/generate.py" CACHE INTERNAL "Path to generator script")
 
+# Template paths (in the main project, NOT in the submodule)
+set(WEBGPU_CPP_HEADER_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/webgpu.template.hpp" CACHE INTERNAL "Path to header template")
+set(WEBGPU_CPP_SOURCE_TEMPLATE "${CMAKE_CURRENT_SOURCE_DIR}/scripts/webgpu.template.cpp" CACHE INTERNAL "Path to source template")
+set(WEBGPU_CPP_MODULE_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/scripts/generate_webgpu_module.py" CACHE INTERNAL "Path to module re-export generator")
+
 # Check if Python is available
 find_package(Python3 COMPONENTS Interpreter)
 if (NOT Python3_FOUND)
@@ -17,8 +22,6 @@ endif()
 # Parameters:
 #   OUTPUT_DIR - Directory where generated files will be placed
 #   HEADER_FILES - List of WebGPU header files to process
-#   GENERATE_MODULE - Whether to generate C++20 module (ON/OFF)
-#   MODULE_NAME - Name of the module (default: webgpu)
 function(generate_webgpu_wrapper)
     cmake_parse_arguments(
         GEN
@@ -49,45 +52,65 @@ function(generate_webgpu_wrapper)
         list(APPEND HEADER_ARGS "-i" "${HEADER}")
     endforeach()
 
-    # Generate regular header
-    set(OUTPUT_FILE "${GEN_OUTPUT_DIR}/webgpu.cppm")
-    
-    # Select appropriate template
-    set(TEMPLATE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/libs/webgpu-wrapper/webgpu.template.cppm")
+    # Output files
+    set(OUTPUT_HEADER "${GEN_OUTPUT_DIR}/webgpu.hpp")
+    set(OUTPUT_SOURCE "${GEN_OUTPUT_DIR}/webgpu.cpp")
+    set(OUTPUT_MODULE "${GEN_OUTPUT_DIR}/webgpu.cppm")
 
     message(STATUS "Generating WebGPU C++ wrapper...")
     message(STATUS "  Headers: ${GEN_HEADER_FILES}")
-    message(STATUS "  Output: ${OUTPUT_FILE}")
-    message(STATUS "  Template: ${TEMPLATE_FILE}")
+    message(STATUS "  Output header: ${OUTPUT_HEADER}")
+    message(STATUS "  Output source: ${OUTPUT_SOURCE}")
 
-    # Generate main wrapper
-    # execute_process(
-    #     COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
-    #         ${HEADER_ARGS}
-    #         -t "${TEMPLATE_FILE}"
-    #         -o "${OUTPUT_FILE}"
-    #         --use-raii
-    #         --indexed-handle all
-    #     WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
-    #     RESULT_VARIABLE GEN_RESULT
-    #     OUTPUT_VARIABLE GEN_OUTPUT
-    #     ERROR_VARIABLE GEN_ERROR
-    # )
-    add_custom_command(
-        OUTPUT ${OUTPUT_FILE}
+    # Generate the header at configure time (always needed, header-only library)
+    execute_process(
         COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
             ${HEADER_ARGS}
-            -t "${TEMPLATE_FILE}"
-            -o "${OUTPUT_FILE}"
+            -t "${WEBGPU_CPP_HEADER_TEMPLATE}"
+            -o "${OUTPUT_HEADER}"
             --use-raii
             --indexed-handle BindGroupLayout
-        DEPENDS ${GEN_HEADER_FILES} ${TEMPLATE_FILE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
-        COMMENT "Generating WebGPU C++ wrapper..."
+        RESULT_VARIABLE GEN_RESULT
+        OUTPUT_VARIABLE GEN_OUTPUT
+        ERROR_VARIABLE GEN_ERROR
+    )
+    if (NOT GEN_RESULT EQUAL 0)
+        message(WARNING "WebGPU header generation failed: ${GEN_ERROR}")
+    endif()
+
+    # Generate the source file (out-of-class definitions) at configure time
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
+            ${HEADER_ARGS}
+            -t "${WEBGPU_CPP_SOURCE_TEMPLATE}"
+            -o "${OUTPUT_SOURCE}"
+            --use-raii
+            --indexed-handle BindGroupLayout
+        WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
+        RESULT_VARIABLE GEN_SRC_RESULT
+        ERROR_VARIABLE GEN_SRC_ERROR
+    )
+    if (NOT GEN_SRC_RESULT EQUAL 0)
+        message(WARNING "WebGPU source generation failed: ${GEN_SRC_ERROR}")
+    endif()
+
+    # Generate the module re-export at build time (depends on the header)
+    add_custom_command(
+        OUTPUT ${OUTPUT_MODULE}
+        COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_MODULE_SCRIPT}
+            -i "${OUTPUT_HEADER}"
+            -o "${OUTPUT_MODULE}"
+            -n "webgpu"
+        DEPENDS ${OUTPUT_HEADER} ${WEBGPU_CPP_MODULE_SCRIPT}
+        COMMENT "Generating WebGPU module re-export..."
+        VERBATIM
     )
 
-    message(STATUS "Generated: ${OUTPUT_FILE}")
+    message(STATUS "Output module: ${OUTPUT_MODULE}")
 
     # Store output files in parent scope
-    set(WEBGPU_GENERATED_MODULE "${OUTPUT_FILE}" PARENT_SCOPE)
+    set(WEBGPU_GENERATED_HEADER "${OUTPUT_HEADER}" PARENT_SCOPE)
+    set(WEBGPU_GENERATED_SOURCE "${OUTPUT_SOURCE}" PARENT_SCOPE)
+    set(WEBGPU_GENERATED_MODULE "${OUTPUT_MODULE}" PARENT_SCOPE)
 endfunction()

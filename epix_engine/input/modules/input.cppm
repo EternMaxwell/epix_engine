@@ -1,21 +1,16 @@
+module;
+#include <epix/input.hpp>
+
 export module epix.input;
 
-export import :enums;
-export import :events;
-export import :button;
-
-import epix.core;
-
-using namespace epix::core;
-
 export namespace epix::input {
-/** @brief Plugin that registers input event handling systems. */
-struct InputPlugin {
-    void attach(App& app);
-};
-/** @brief Debug system that logs all received input events to the console. */
-void log_inputs(EventReader<KeyInput> key_reader,
-                EventReader<MouseButtonInput> mouse_reader,
-                EventReader<MouseMove> mouse_move_reader,
-                EventReader<MouseScroll> mouse_scroll_reader);
-}  // namespace input
+using epix::input::ButtonInput;
+using epix::input::InputPlugin;
+using epix::input::KeyCode;
+using epix::input::KeyInput;
+using epix::input::MouseButton;
+using epix::input::MouseButtonInput;
+using epix::input::MouseMove;
+using epix::input::MouseScroll;
+using epix::input::log_inputs;
+} // namespace epix::input

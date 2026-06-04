@@ -1,8 +1,5 @@
 #include <gtest/gtest.h>
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.time;
+#include <epix/time.hpp>
 
 using namespace epix::time;
 using namespace std::chrono_literals;

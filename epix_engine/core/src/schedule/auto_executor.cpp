@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <format>
@@ -11,13 +9,9 @@ module;
 #include <utility>
 #include <vector>
 #include <chrono>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/core.hpp>
 
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::core::executors {
 struct AutoExecutor::Impl {
     std::vector<std::pair<std::unique_ptr<ScheduleExecutor>, double>> m_executors;

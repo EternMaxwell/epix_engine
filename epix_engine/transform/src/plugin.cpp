@@ -1,14 +1,12 @@
-module;
+#include <epix/core.hpp>
+#include <epix/transform.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <functional>
 #include <ranges>
 #include <stack>
 #include <unordered_map>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.transform;
 
 using namespace epix::transform;
 using namespace epix::core;

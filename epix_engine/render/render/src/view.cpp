@@ -1,16 +1,13 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstring>
 #include <optional>
 #include <string_view>
 #include <variant>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/render/view.hpp>
+#include <epix/render/schedule.hpp>
+#include <epix/render/extract.hpp>
 
-module epix.render;
-
-import :view;
 
 using namespace epix::core;
 using namespace epix::render;

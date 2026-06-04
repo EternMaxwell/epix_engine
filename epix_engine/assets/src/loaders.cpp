@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <functional>
@@ -12,15 +10,11 @@ module;
 #include <tuple>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.utils;
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::shared_ptr<ErasedAssetLoader> MaybeAssetLoader::get() const {

@@ -21,18 +21,39 @@ if (EPIX_WGPU_GENERATE_ON_CONFIGURE AND WEBGPU_CPP_GENERATOR_AVAILABLE)
         list(APPEND WEBGPU_HEADERS "${WGPU_NATIVE_DIR}/include/webgpu/wgpu.h")
     endif()
 
-    # Generate wrapper
+    # Generate wrapper (header + source, and optionally module re-export)
     generate_webgpu_wrapper(
         OUTPUT_DIR ${WEBGPU_GENERATED_DIR}
         HEADER_FILES ${WEBGPU_HEADERS}
     )
 endif()
 
-# Create WebGPU wrapper target
+# Create WebGPU wrapper target — always STATIC (has generated .cpp source)
 add_library(webgpu STATIC)
+
+# Generated source: out-of-class definitions, compiled once
+target_sources(webgpu PRIVATE "${WEBGPU_GENERATED_DIR}/webgpu.cpp")
+
+# Generated header: declarations and inline/template definitions
 target_sources(webgpu
-    PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
-        "${WEBGPU_GENERATED_DIR}/webgpu.cppm"
+    PUBLIC FILE_SET HEADERS
+    BASE_DIRS ${WEBGPU_GENERATED_DIR}
+    FILES "${WEBGPU_GENERATED_DIR}/webgpu.hpp"
 )
+
+# Include path so that <webgpu/webgpu.hpp> resolves:
+#   ${CMAKE_BINARY_DIR}/generated/webgpu/webgpu.hpp → <webgpu/webgpu.hpp>
+target_include_directories(webgpu PUBLIC "${CMAKE_BINARY_DIR}/generated")
+
 target_link_libraries(webgpu PUBLIC wgpu_native)
-message(STATUS "WebGPU module target created: webgpu")
+
+# Conditionally add the module re-export
+if (EPIX_CXX_MODULE)
+    target_sources(webgpu
+        PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES
+            "${WEBGPU_GENERATED_DIR}/webgpu.cppm"
+    )
+    message(STATUS "WebGPU module re-export enabled: ${WEBGPU_GENERATED_DIR}/webgpu.cppm")
+endif()
+
+message(STATUS "WebGPU target created: webgpu (header-primary, module=${EPIX_CXX_MODULE})")

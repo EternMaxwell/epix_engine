@@ -1,16 +1,11 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <functional>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
+#include <epix/core.hpp>
 
 using namespace epix::core;
 

@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <atomic>
 #include <chrono>
 #include <cstddef>
@@ -12,11 +11,7 @@
 #include <string_view>
 #include <thread>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
+#include <epix/assets.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-value"

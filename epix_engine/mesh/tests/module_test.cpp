@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
 
-import epix.mesh;
-import webgpu;
-import glm;
+#include <epix/mesh.hpp>
+#include <webgpu/webgpu.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
 
 namespace mesh = epix::mesh;
 

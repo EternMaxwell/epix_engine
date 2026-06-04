@@ -10,8 +10,8 @@
 
 #include "../src/font_array.hpp"
 
-import epix.assets;
-import epix.text;
+#include <epix/assets.hpp>
+#include <epix/text.hpp>
 
 using namespace epix;
 

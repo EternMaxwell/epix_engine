@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <expected>
 #include <filesystem>
@@ -17,14 +15,12 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <slang-com-ptr.h>
 #include <slang.h>
 #include <spdlog/spdlog.h>
+#include <epix/shader.hpp>
 
-module epix.shader;
 
-import :shader_cache;
 
 using namespace epix::shader;
 

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstddef>
 #include <exception>
 #include <expected>
@@ -17,19 +15,15 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
+#include <epix/assets.hpp>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.tasks;
+#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 

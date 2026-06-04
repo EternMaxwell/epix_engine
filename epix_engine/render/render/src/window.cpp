@@ -1,18 +1,17 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
 #include <optional>
 #include <ranges>
-#endif
 #include <spdlog/spdlog.h>
-
-module epix.render;
-
-import :window;
+#include <epix/render/window.hpp>
+#include <epix/render/schedule.hpp>
+#include <epix/render/extract.hpp>
 
 using namespace epix::render::window;
-using namespace epix::window;
 using namespace epix::core;
+using epix::window::Window;
+using epix::window::PrimaryWindow;
+using epix::window::WindowClosed;
+using epix::window::PresentMode;
+using epix::window::CompositeAlphaMode;
 
 void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);

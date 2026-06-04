@@ -1,6 +1,4 @@
-﻿module;
+module;
+#include <epix/traits.hpp>
 
 export module epix.traits;
-
-export import :templates;
-export import :function;

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -14,7 +12,6 @@ module;
 #include <system_error>
 #include <utility>
 #include <vector>
-#endif
 #include <asio/awaitable.hpp>
 #include <asio/detail/config.hpp>
 #ifdef ASIO_HAS_FILE
@@ -34,13 +31,10 @@ module;
 #include <liburing.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <epix/assets.hpp>
 #endif
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.utils;
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 

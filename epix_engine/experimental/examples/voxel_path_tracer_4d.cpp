@@ -5,7 +5,6 @@
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -17,30 +16,25 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.core;
-import epix.render;
-import epix.core_graph;
-import epix.transform;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
-import epix.assets;
-import epix.shader;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.input;
-import epix.time;
-import epix.render.imgui;
-
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/transform.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
+#include <epix/assets.hpp>
+#include <epix/shader.hpp>
+#include <epix/window.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/time.hpp>
+#include <epix/render/imgui.hpp>
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-value"
-#endif
 
 using namespace epix;
 using namespace epix::core;
@@ -66,7 +60,6 @@ namespace tf     = epix::transform;
 constexpr std::string_view kV4DTraceSlangPath = "voxel4d/trace.slang";
 constexpr std::string_view kV4DTraceSlang     = R"slang(
 import epix.ext.grid.svo;
-
 // 4D camera: pos + 4 orthonormal basis vectors + previous frame for TAA
 struct Voxel4DCamera {
     float4 pos;
@@ -1602,3 +1595,4 @@ int main() {
 
     app.run();
 }
+#endif

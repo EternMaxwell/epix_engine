@@ -1,6 +1,4 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
+﻿#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
@@ -13,14 +11,10 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/extension/fallingsand.hpp>
 
-module epix.extension.fallingsand;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.tasks;
+#include <epix/tasks.hpp>
 
 namespace epix::ext::fallingsand {
 
@@ -268,7 +262,7 @@ void SandSimulation::touch(std::int64_t x, std::int64_t y) {
             static_cast<std::int32_t>(x >> shift),
             static_cast<std::int32_t>(y >> shift),
         };
-        auto dr_opt = m_chunk_dirty_rects.get_mut(cpos);
+        auto dr_opt = m_chunk_dirty_rects.get(cpos);
         if (dr_opt.has_value()) {
             dr_opt->get()->touch(static_cast<std::int32_t>(x & mask), static_cast<std::int32_t>(y & mask));
         }
@@ -1384,7 +1378,7 @@ void SandSimulation::step_cells() {
 
                 // Check dirty status (const read — thread-safe)
                 bool is_dirty = false;
-                auto dr_opt   = m_chunk_dirty_rects.get(cpos);
+                auto dr_opt   = std::as_const(m_chunk_dirty_rects).get(cpos);
                 if (dr_opt.has_value()) {
                     is_dirty = dr_opt->get()->active();
                 }

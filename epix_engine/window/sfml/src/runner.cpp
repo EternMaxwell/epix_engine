@@ -1,6 +1,5 @@
-module;
+#include <epix/sfml/core.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <exception>
@@ -10,15 +9,10 @@ module;
 #include <ranges>
 #include <utility>
 #include <variant>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/WindowBase.hpp>
 
-module epix.sfml.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::core;
 using namespace epix::sfml;
 using namespace epix::window;
@@ -67,7 +61,7 @@ SFMLRunner::SFMLRunner(App& app) {
 }
 
 template <typename... Ts>
-struct visitor : Ts... {
+struct runner_visitor : Ts... {
     using Ts::operator()...;
 };
 
@@ -80,7 +74,7 @@ bool SFMLRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : sfml_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                std::visit(runner_visitor{[&](const ValidateParamError& validate_error) {
                                        spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}",
                                                      sys->name(), validate_error.param_type.short_name(),
                                                      validate_error.message);
@@ -103,7 +97,7 @@ bool SFMLRunner::step(App& app) {
             if (!sys->initialized()) sys->initialize(world);
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
                 std::visit(
-                    visitor{
+                    runner_visitor{
                         [&](const ValidateParamError& validate_error) {
                             spdlog::error("SFML extra system [{}] parameter validation error: type: {}, msg: {}",
                                           sys->name(), validate_error.param_type.short_name(), validate_error.message);

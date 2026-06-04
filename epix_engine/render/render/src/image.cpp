@@ -1,10 +1,7 @@
-module;
 
 #include <spdlog/spdlog.h>
+#include <epix/render/image.hpp>
 
-module epix.render;
-
-import :image;
 
 namespace epix::render {
 

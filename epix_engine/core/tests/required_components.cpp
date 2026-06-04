@@ -1,13 +1,8 @@
 ﻿#include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <memory>
 #include <string>
 #include <type_traits>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
+#include <epix/core.hpp>
 
 using namespace epix::core;
 

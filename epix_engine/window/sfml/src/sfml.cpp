@@ -1,10 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <ranges>
-#include <unordered_set>
-#include <variant>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/Clipboard.hpp>
@@ -17,12 +11,24 @@ module;
 #include <SFML/Window/WindowEnums.hpp>
 #include <SFML/Window/WindowHandle.hpp>
 #include <memory>
+#include <ranges>
+#include <unordered_set>
+#include <variant>
 
 #if defined(__linux__) && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
 #include <X11/extensions/Xrandr.h>
 
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Always
+#undef Always
+#endif
 #ifdef None
+#ifdef Status
+#undef Status
+#endif
 #undef None
 #endif
 
@@ -31,9 +37,8 @@ std::shared_ptr<Display> openDisplay();
 }
 #endif
 
-module epix.sfml.core;
-
-import epix.utils;
+#include <epix/sfml/core.hpp>
+#include <epix/utils.hpp>
 
 using namespace epix::sfml;
 using namespace epix::window;

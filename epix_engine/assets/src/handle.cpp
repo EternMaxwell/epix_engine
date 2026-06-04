@@ -1,13 +1,10 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <variant>
-#endif
 #include <spdlog/spdlog.h>
+#include <epix/assets.hpp>
 
-module epix.assets;
 
-import epix.meta;
+#include <epix/meta.hpp>
 
 namespace meta = epix::meta;
 using namespace epix::assets;

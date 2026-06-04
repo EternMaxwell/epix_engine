@@ -1,10 +1,9 @@
-module;
+#include <epix/sfml/core.hpp>
 
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/WindowBase.hpp>
 
-module epix.sfml.core;
 
 using namespace epix::sfml;
 using namespace epix::core;

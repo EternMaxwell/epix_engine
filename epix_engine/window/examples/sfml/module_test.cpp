@@ -1,16 +1,13 @@
 #include <spdlog/spdlog.h>
-#ifndef EPIX_IMPORT_STD
+
 #include <array>
 #include <iostream>
 #include <ostream>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.window;
-import epix.sfml.core;
-import epix.input;
+
+#include <epix/core.hpp>
+#include <epix/window.hpp>
+#include <epix/sfml/core.hpp>
+#include <epix/input.hpp>
 
 void test_func() { std::cout << "Test function called!" << std::endl; }
 

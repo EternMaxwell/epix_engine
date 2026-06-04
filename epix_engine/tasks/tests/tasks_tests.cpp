@@ -5,8 +5,7 @@
 #include <asio/awaitable.hpp>
 #include <asio/use_awaitable.hpp>
 
-import epix.tasks;
-#ifndef EPIX_IMPORT_STD
+#include <epix/tasks.hpp>
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
@@ -18,10 +17,6 @@ import epix.tasks;
 #include <thread>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::tasks;
 
 // ─── Task<T> — basic lifecycle ───────────────────────────────────────────────

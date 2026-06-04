@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
@@ -11,14 +10,10 @@
 #include <variant>
 #include <vector>
 #include <chrono>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.assets;
-import epix.core;
-import epix.shader;
-import epix.tasks;
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 using namespace epix::core;

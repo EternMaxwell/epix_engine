@@ -1,6 +1,5 @@
-module;
+#include <epix/glfw/core.hpp>
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <exception>
@@ -10,14 +9,9 @@ module;
 #include <ranges>
 #include <utility>
 #include <variant>
-#endif
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
-module epix.glfw.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::core;
 using namespace epix::glfw;
 using namespace epix::window;
@@ -65,7 +59,7 @@ GLFWRunner::GLFWRunner(App& app) {
         [&](World& world) { std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->initialize(world); }); });
 }
 template <typename... Ts>
-struct visitor : Ts... {
+struct runner_visitor : Ts... {
     using Ts::operator()...;
 };
 bool GLFWRunner::step(App& app) {
@@ -78,7 +72,7 @@ bool GLFWRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : glfw_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                std::visit(runner_visitor{[&](const ValidateParamError& validate_error) {
                                        spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}",
                                                      sys->name(), validate_error.param_type.short_name(),
                                                      validate_error.message);
@@ -101,7 +95,7 @@ bool GLFWRunner::step(App& app) {
             if (!sys->initialized()) sys->initialize(world);
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
                 std::visit(
-                    visitor{
+                    runner_visitor{
                         [&](const ValidateParamError& validate_error) {
                             spdlog::error("GLFW extra system [{}] parameter validation error: type: {}, msg: {}",
                                           sys->name(), validate_error.param_type.short_name(), validate_error.message);

@@ -1,6 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -8,14 +6,11 @@ module;
 #include <optional>
 #include <ranges>
 #include <vector>
-#endif
 #include <glm/gtc/constants.hpp>
+#include <epix/mesh.hpp>
 
-module epix.mesh;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
 
 using namespace epix::mesh;
 namespace mesh = epix::mesh;

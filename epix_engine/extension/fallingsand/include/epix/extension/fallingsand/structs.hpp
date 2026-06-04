@@ -1,0 +1,423 @@
+#pragma once
+
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <limits>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#include <variant>
+
+#include <glm/glm.hpp>
+#include <epix/core.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/meta.hpp>
+#include <epix/extension/fallingsand/elements.hpp>
+#include <epix/extension/fallingsand/temperature.hpp>
+
+namespace epix::ext::fallingsand {
+
+/** @brief Chunk coordinate component — placed on child entities of a SandWorld entity. */
+struct SandChunkPos {
+    std::array<std::int32_t, kDim> value;
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Chunk grid components — replace the unified ext::grid::Chunk<kDim> component.
+// Storing each grid as its own ECS component lets change-detection track them
+// independently: e.g. mesh build can react only to ChunkElementGrid changes
+// while heat / air updates touch only their own grids.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** @brief Sparse element grid stored on a chunk entity (one per chunk). */
+using ChunkElementGrid = grid::tree_grid<kDim, Element>;
+/** @brief Dense air grid stored on a chunk entity (one per chunk). */
+using ChunkAirGrid = grid::packed_grid<kDim, AirCell>;
+/** @brief Dense thermal grid stored on a chunk entity (one per chunk). */
+using ChunkThermalGrid = grid::tree_grid<kDim, ThermalCell>;
+
+/** @brief Marker: entity is simulated automatically by FallingSandPlugin. */
+struct SimulatedByPlugin {};
+
+/** @brief Marker: entity's chunk content meshes are built by FallingSandPlugin. */
+struct MeshBuildByPlugin {};
+
+/** @brief Tag for the chunk content mesh child entity. */
+struct SandChunkMesh {};
+
+/** @brief Tag for the chunk outline mesh child entity. */
+struct SandChunkOutline {};
+
+/** @brief Tag for the body-cell debug mesh child entity. */
+struct SandChunkBodyDebug {};
+
+/**
+ * @brief Tracks render-child entities for a chunk entity.
+ *
+ * `mesh_entity`    — present when the parent world has MeshBuildByPlugin.
+ * `outline_entity` — present when show_chunk_outlines is true.
+ */
+struct SandChunkRenderChildren {
+    std::optional<core::Entity> mesh_entity;
+    std::optional<core::Entity> outline_entity;
+    std::optional<core::Entity> body_debug_entity;  ///< Separate mesh for Body-type elements (debug).
+};
+
+/**
+ * @brief Pure-configuration component for a falling-sand simulation world entity.
+ *
+ * Stores only settings (chunk layout, cell size, paused state, tick counter).
+ * The element registry and thread pool live elsewhere — pass them explicitly to
+ * SandSimulation::create at step time.
+ */
+struct SandWorld {
+   private:
+    std::size_t m_chunk_shift = 5;
+    float m_cell_size         = 4.0f;
+
+   public:
+    bool m_paused                 = false;
+    bool m_missing_chunk_as_solid = false;             ///< Treat absent chunks as solid walls.
+    glm::vec2 m_gravity           = {0.0f, -1200.0f};  ///< Gravity acceleration in units/s².
+
+   public:
+    SandWorld() = default;
+    SandWorld(std::size_t chunk_shift, float cell_size) noexcept : m_chunk_shift(chunk_shift), m_cell_size(cell_size) {}
+    std::size_t chunk_shift() const noexcept { return m_chunk_shift; }
+    float cell_size() const noexcept { return m_cell_size; }
+    void set_cell_size(float s) noexcept { m_cell_size = s; }
+    bool paused() const noexcept { return m_paused; }
+    void set_paused(bool p) noexcept { m_paused = p; }
+    const glm::vec2& gravity() const noexcept { return m_gravity; }
+    bool missing_chunk_as_solid() const noexcept { return m_missing_chunk_as_solid; }
+    void set_missing_chunk_as_solid(bool v) noexcept { m_missing_chunk_as_solid = v; }
+};
+
+struct SandWorldDebug {
+    bool show_body_debug     = false;  ///< Whether to build/render the body debug mesh.
+    bool show_chunk_outlines = false;  ///< Whether to build/render chunk outline meshes.
+    bool show_heat_map       = false;  ///< Colour elements by temperature instead of their own colour.
+};
+
+/**
+ * @brief Per-chunk dirty-rectangle that tracks the active simulation area.
+ *
+ * Two-buffer system matching old feature/pixel_b2d:
+ *   - Current buffer (xmin/xmax/ymin/ymax): active area this frame.
+ *   - Next buffer (xmin_next/xmax_next/ymin_next/ymax_next): accumulates touches this frame.
+ *   - count_time() is called each tick; when time_threshold is reached it swaps
+ *     next → current and resets next.  Returns true (settled) when the chunk
+ *     has no active area after the swap — caller should force-sleep all cells.
+ *   - touch(x, y): updates both buffers.  If current is not active it is first
+ *     expanded to the full chunk so the step loop covers everything.
+ */
+struct SandChunkDirtyRect {
+   private:
+    // Current active area (empty = xmin > xmax)
+    std::int32_t xmin = 0;
+    std::int32_t xmax = 0;
+    std::int32_t ymin = 0;
+    std::int32_t ymax = 0;
+    // Next-frame accumulated area
+    std::int32_t xmin_next = 0;
+    std::int32_t xmax_next = 0;
+    std::int32_t ymin_next = 0;
+    std::int32_t ymax_next = 0;
+    // Timer
+    std::int32_t time_since_last_swap = 0;
+    std::int32_t time_threshold       = 12;
+    // Chunk side length in cells (needed to represent "empty" as xmin=width, xmax=0)
+    std::int32_t width = 0;
+
+   public:
+    /** Initialize in the "not active" / empty state for a chunk of the given width. */
+    static SandChunkDirtyRect make_empty(std::int32_t chunk_width) noexcept {
+        SandChunkDirtyRect r;
+        r.width     = chunk_width;
+        r.xmin      = chunk_width;
+        r.xmax      = 0;
+        r.ymin      = chunk_width;
+        r.ymax      = 0;
+        r.xmin_next = chunk_width;
+        r.xmax_next = 0;
+        r.ymin_next = chunk_width;
+        r.ymax_next = 0;
+        return r;
+    }
+
+    /** Initialize in the "full chunk active" state. */
+    static SandChunkDirtyRect make_full(std::int32_t chunk_width) noexcept {
+        SandChunkDirtyRect r;
+        r.width     = chunk_width;
+        r.xmin      = 0;
+        r.xmax      = chunk_width - 1;
+        r.ymin      = 0;
+        r.ymax      = chunk_width - 1;
+        r.xmin_next = 0;
+        r.xmax_next = chunk_width - 1;
+        r.ymin_next = 0;
+        r.ymax_next = chunk_width - 1;
+        return r;
+    }
+
+    bool active() const noexcept { return xmin <= xmax && ymin <= ymax; }
+
+    // touch: update both current and next buffers (matches old Chunk::touch)
+    void touch(std::int32_t x, std::int32_t y) noexcept {
+        if (!active()) {
+            xmin = 0;
+            xmax = width - 1;
+            ymin = 0;
+            ymax = width - 1;
+        }
+        if (x < xmin) xmin = x;
+        if (x > xmax) xmax = x;
+        if (y < ymin) ymin = y;
+        if (y > ymax) ymax = y;
+        if (x < xmin_next) xmin_next = x;
+        if (x > xmax_next) xmax_next = x;
+        if (y < ymin_next) ymin_next = y;
+        if (y > ymax_next) ymax_next = y;
+    }
+
+    // swap_area: copy next → current, reset next.
+    // Returns true when chunk has no active area after swap (settled).
+    bool swap_area() noexcept {
+        xmin      = xmin_next;
+        xmax      = xmax_next;
+        ymin      = ymin_next;
+        ymax      = ymax_next;
+        xmin_next = width;
+        xmax_next = 0;
+        ymin_next = width;
+        ymax_next = 0;
+        return !active();
+    }
+
+    // count_time: increment timer; swap when threshold reached.
+    // Returns true when chunk settled (caller should force-sleep all cells).
+    bool count_time() noexcept {
+        time_since_last_swap++;
+        bool settled = false;
+        if (time_since_last_swap >= time_threshold) {
+            time_since_last_swap = 0;
+            settled              = swap_area();
+        }
+        time_threshold = 12;
+        return settled;
+    }
+
+    // in_area: check next-frame buffer (matches old Chunk::in_area)
+    bool in_area(std::int32_t x, std::int32_t y) const noexcept {
+        return x >= xmin_next && x <= xmax_next && y >= ymin_next && y <= ymax_next;
+    }
+
+    void set_time_threshold(std::int32_t t) noexcept { time_threshold = t; }
+    std::int32_t get_time_threshold() const noexcept { return time_threshold; }
+
+    std::tuple<std::int32_t, std::int32_t, std::int32_t, std::int32_t> get_current_area() const noexcept {
+        return {xmin, xmax, ymin, ymax};
+    }
+    std::int32_t get_xmin() const noexcept { return xmin; }
+    std::int32_t get_xmax() const noexcept { return xmax; }
+    std::int32_t get_ymin() const noexcept { return ymin; }
+    std::int32_t get_ymax() const noexcept { return ymax; }
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SandSimulation — transient wrapper for a single simulation step.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/** @brief Error variants returned by SandSimulation::create. */
+namespace sand_sim_error {
+/** @brief Two chunks share the same SandChunkPos under the same world. */
+struct DuplicateChunkPos {
+    std::array<std::int32_t, kDim> pos;
+};
+/** @brief A chunk is missing a required layer (Element or AirCell). */
+struct MissingRequiredLayer {
+    std::array<std::int32_t, kDim> pos;
+    meta::type_index missing_type;
+};
+}  // namespace sand_sim_error
+
+/** @brief Error type returned by SandSimulation::create. */
+using SandSimCreateError =
+    std::variant<sand_sim_error::DuplicateChunkPos, sand_sim_error::MissingRequiredLayer, grid::ChunkGridError>;
+
+/**
+ * @brief Transient simulation handle assembled from a SandWorld and a range of
+ *        per-chunk `(grid::Chunk<kDim>, SandChunkPos&, SandChunkDirtyRect&)` tuples.
+ *
+ * `SandSimulation` is generic over the actual layer types stored inside each
+ * supplied `grid::Chunk<kDim>`.  The user (typically the FallingSandPlugin or an
+ * application-level system) is responsible for building each transient Chunk
+ * from whichever grid types they choose — for example, three `BasicGridRefLayer`s
+ * wrapping per-grid ECS components (`tree_grid<kDim, Element>` +
+ * `packed_grid<kDim, AirCell>` + `tree_grid<kDim, ThermalCell>`).
+ *
+ * SandSimulation only requires that, for every inserted chunk,
+ *   - `chunk.supports_type(meta::type_id<Element>())`
+ *   - `chunk.supports_type(meta::type_id<AirCell>())`
+ *   - `chunk.supports_type(meta::type_id<ThermalCell>())`
+ * are all true — otherwise `create` fails with `MissingRequiredLayer`.
+ *
+ * The ownership model is OWNING: the caller `std::move`s each transient Chunk
+ * into `create`, and SandSimulation holds them for the duration of the tick via
+ * its `grid::ExtendibleChunkGrid<kDim>` base.
+ */
+struct SandSimulation : grid::ExtendibleChunkGrid<kDim> {
+   private:
+    SandWorld* m_world;
+    const ElementRegistry* m_registry;
+    grid::tree_extendible_grid<kDim, SandChunkDirtyRect*> m_chunk_dirty_rects;
+
+    explicit SandSimulation(SandWorld& world, const ElementRegistry& registry)
+        : grid::ExtendibleChunkGrid<kDim>(world.chunk_shift()), m_world(&world), m_registry(&registry) {}
+
+    enum class CellState { Occupied, EmptyInChunk, Blocked };
+    CellState cell_state(std::int64_t x, std::int64_t y) const;
+    bool has_cell(std::int64_t x, std::int64_t y) const;
+    bool set_cell(std::int64_t x, std::int64_t y, Element value);
+    bool clear_cell(std::int64_t x, std::int64_t y);
+    bool move_cell(std::int64_t fx, std::int64_t fy, std::int64_t tx, std::int64_t ty);
+    bool swap_cells(std::int64_t fx, std::int64_t fy, std::int64_t tx, std::int64_t ty);
+    void mutate_cell(std::int64_t x, std::int64_t y, epix::utils::function_ref<void(Element&)> fn);
+
+    /// @brief Raycast step result.
+    struct RaycastResult {
+        int steps;
+        std::int64_t new_x, new_y;
+        std::optional<std::pair<std::int64_t, std::int64_t>> hit;
+    };
+
+    Element* get_elem_ptr(std::int64_t x, std::int64_t y);
+    ThermalCell* get_thermal_ptr(std::int64_t x, std::int64_t y);
+    bool valid(std::int64_t x, std::int64_t y) const;
+    RaycastResult raycast_to(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
+    bool collide(std::int64_t x, std::int64_t y, std::int64_t tx, std::int64_t ty);
+    glm::vec2 get_grav(std::int64_t x, std::int64_t y) const;
+    glm::vec2 get_default_vel(std::int64_t x, std::int64_t y) const;
+    float air_density(std::int64_t x, std::int64_t y) const;
+    int not_moving_threshold(glm::vec2 grav) const;
+
+    void step_particle_powder(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+    void step_particle_liquid(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+    void step_particle_gas(std::int64_t x, std::int64_t y, std::uint64_t tick, float delta);
+
+    void step_particle(std::int64_t x, std::int64_t y, std::uint64_t tick);
+    void step_cells();
+
+    // ── Temperature / air / transitions ────────────────────────────────────
+
+    void step_air_full(grid::chunk_element_view<kDim, AirCell>& air_view,
+                       const std::array<std::int32_t, kDim>& cpos,
+                       float delta);
+    void step_air_decay(grid::chunk_element_view<kDim, AirCell>& air_view,
+                        const std::array<std::int32_t, kDim>& cpos,
+                        float delta);
+
+    void spread_heat(std::int64_t wx, std::int64_t wy, float delta);
+    void conduct_thermal_thermal(
+        ThermalCell& t1, const ElementBase& b1, ThermalCell& t2, const ElementBase& b2, float delta);
+    void convect_thermal_air(ThermalCell& t, const ElementBase& base, AirCell& air, float delta);
+
+    void random_tick_chunk(const std::array<std::int32_t, kDim>& cpos,
+                           grid::chunk_element_view<kDim, Element>& elem_view);
+    void try_transition(std::int64_t x, std::int64_t y, Element& elem, ThermalCell& thermal, const ElementBase& base);
+    void spawn_nearby(std::int64_t x, std::int64_t y, std::size_t element_id, int count, std::uint8_t spawn_tag);
+
+   public:
+    /** @brief Mark cell (x,y) as active: expand its chunk's dirty rect and wake the cell. */
+    void touch(std::int64_t x, std::int64_t y);
+
+    /**
+     * @brief Insert or overwrite a cell and immediately touch it to wake simulation.
+     *
+     * Combines `insert_cell<Element>` + `touch` in one call.
+     * Returns false when the target position is outside all registered chunks.
+     */
+    bool put_cell(std::array<std::int64_t, kDim> pos, Element elem);
+
+    /**
+     * @brief Remove a cell and immediately touch the position to wake neighbours.
+     *
+     * Combines `remove_cell<Element>` + `touch`.
+     * Returns false when the position is outside all registered chunks.
+     */
+    bool erase_cell(std::array<std::int64_t, kDim> pos);
+
+    /**
+     * @brief Apply a reusable simulation command (e.g. ops::Spawn, ops::Explode).
+     *
+     * The command is any callable convertible to
+     * `epix::utils::function_ref<void(SandSimulation&)>`.
+     */
+    void apply(epix::utils::function_ref<void(SandSimulation&)> cmd) { cmd(*this); }
+
+    /** @brief Access the element registry this simulation was constructed with. */
+    const ElementRegistry& registry() const { return *m_registry; }
+
+    /**
+     * @brief Factory: build a SandSimulation from a SandWorld and a range of
+     *        `(grid::Chunk<kDim>, const SandChunkPos&, SandChunkDirtyRect&)` tuples.
+     *
+     * The caller is responsible for constructing each transient `grid::Chunk<kDim>`
+     * with whichever layer types they need (see class docs).  Each chunk is
+     * `std::move`-d into the simulation; SandSimulation owns it for the tick.
+     *
+     * Validates per chunk that `Element`, `AirCell`, `ThermalCell` layers are
+     * supported; on failure returns `MissingRequiredLayer`.  On duplicate chunk
+     * position returns `DuplicateChunkPos`.  Other failures forward as `ChunkGridError`.
+     */
+    template <std::ranges::input_range R>
+        requires std::same_as<std::tuple<grid::Chunk<kDim>, const SandChunkPos&, SandChunkDirtyRect&>,
+                              std::ranges::range_value_t<R>>
+    static std::expected<SandSimulation, SandSimCreateError> create(SandWorld& world,
+                                                                    const ElementRegistry& registry,
+                                                                    R&& chunks) {
+        SandSimulation sim(world, registry);
+        for (auto&& item : std::forward<R>(chunks)) {
+            auto&& [chunk, pos, dirty_rect] = item;
+
+            if (!chunk.supports_type(meta::type_id<Element>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<Element>()}});
+            }
+            if (!chunk.supports_type(meta::type_id<AirCell>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<AirCell>()}});
+            }
+            if (!chunk.supports_type(meta::type_id<ThermalCell>())) {
+                return std::unexpected(
+                    SandSimCreateError{sand_sim_error::MissingRequiredLayer{pos.value, meta::type_id<ThermalCell>()}});
+            }
+
+            auto result = sim.insert_chunk(pos.value, std::move(chunk));
+            if (!result.has_value()) {
+                auto& err = result.error();
+                if (std::holds_alternative<grid::grid_error>(err) &&
+                    std::get<grid::grid_error>(err) == grid::grid_error::AlreadyOccupied) {
+                    return std::unexpected(SandSimCreateError{sand_sim_error::DuplicateChunkPos{pos.value}});
+                }
+                return std::unexpected(SandSimCreateError{err});
+            }
+            (void)sim.m_chunk_dirty_rects.set(pos.value, &dirty_rect);
+        }
+        return sim;
+    }
+
+    SandWorld& world_mut() { return *m_world; }
+    const SandWorld& world() const { return *m_world; }
+
+    /** @brief Run one simulation step. */
+    void step();
+};
+
+}  // namespace epix::ext::fallingsand
