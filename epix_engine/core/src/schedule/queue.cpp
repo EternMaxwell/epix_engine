@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/core/schedule/queue.hpp>
 #include <mutex>
 #include <utility>
 #include <vector>
-#include <epix/core/schedule/queue.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 // smallvec

@@ -8,9 +8,9 @@
 import std;
 #endif
 #include <epix/core.hpp>
-#include <epix/window.hpp>
-#include <epix/sfml/core.hpp>
 #include <epix/input.hpp>
+#include <epix/sfml/core.hpp>
+#include <epix/window.hpp>
 void test_func() { std::cout << "Test function called!" << std::endl; }
 
 enum class TestFuncState {

@@ -8,4 +8,4 @@ namespace epix::core_graph {
 struct CoreGraphPlugin {
     void attach(epix::core::App& app);
 };
-}  // namespace core_graph
+}  // namespace epix::core_graph

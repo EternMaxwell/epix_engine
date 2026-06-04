@@ -3,17 +3,16 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/text/font.hpp>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include <epix/text/font.hpp>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/image.hpp>
 namespace epix::text {
 /** @brief Re-export of font::Font for convenience. */
 using font::Font;

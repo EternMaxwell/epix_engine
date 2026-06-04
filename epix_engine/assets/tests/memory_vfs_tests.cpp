@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
+
 #include <cstddef>
+#include <epix/assets.hpp>
 #include <filesystem>
 #include <memory>
 #include <optional>
@@ -9,7 +11,6 @@
 #include <tuple>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

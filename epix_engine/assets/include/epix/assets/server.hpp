@@ -1,6 +1,18 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
+#include <asio/awaitable.hpp>
 #include <concepts>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/io/source.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/server/info.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/assets/server/loaders.hpp>
+#include <epix/meta.hpp>
+#include <epix/tasks.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -13,21 +25,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/tasks.hpp>
-
-#include <epix/assets/server/info.hpp>
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/server/loaders.hpp>
-
-#include <epix/assets/meta.hpp>
-#include <epix/assets/io/source.hpp>
-#include <epix/assets/io/reader.hpp>
 
 namespace epix::assets {
 /** @brief Operational mode of the asset server. */

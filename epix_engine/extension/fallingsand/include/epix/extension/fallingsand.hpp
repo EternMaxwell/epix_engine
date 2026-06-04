@@ -1,13 +1,12 @@
 #pragma once
 
+#include <epix/core.hpp>
 #include <epix/extension/fallingsand/elements.hpp>
-#include <epix/extension/fallingsand/temperature.hpp>
-#include <epix/extension/fallingsand/structs.hpp>
 #include <epix/extension/fallingsand/helpers.hpp>
 #include <epix/extension/fallingsand/ops.hpp>
+#include <epix/extension/fallingsand/structs.hpp>
 #include <epix/extension/fallingsand/systems.hpp>
-
-#include <epix/core.hpp>
+#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {
 

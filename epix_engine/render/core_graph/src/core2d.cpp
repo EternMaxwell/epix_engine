@@ -1,10 +1,11 @@
 
+#include <spdlog/spdlog.h>
+
 #include <array>
+#include <epix/core_graph.hpp>
 #include <functional>
 #include <optional>
 #include <utility>
-#include <spdlog/spdlog.h>
-#include <epix/core_graph.hpp>
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
 

@@ -1,8 +1,8 @@
 #pragma once
 
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <thread>
-#include <BS_thread_pool.hpp>
 
 namespace epix::utils {
 

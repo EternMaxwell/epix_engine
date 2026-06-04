@@ -3,11 +3,11 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/mesh.hpp>
+#include <glm/gtc/constants.hpp>
 #include <optional>
 #include <ranges>
 #include <vector>
-#include <glm/gtc/constants.hpp>
-#include <epix/mesh.hpp>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
@@ -44,8 +44,7 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
     if (color) {
         [[maybe_unused]] auto result =
             mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
-                                  std::views::take(std::views::repeat(*color),
-                                                   static_cast<std::size_t>(segments) + 1));
+                                  std::views::take(std::views::repeat(*color), static_cast<std::size_t>(segments) + 1));
     }
     return mesh;
 }
@@ -67,8 +66,8 @@ Mesh mesh::make_box2d(float width, float height, std::optional<glm::vec4> color)
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_indices<std::uint16_t>(indices);
     if (color) {
-        [[maybe_unused]] auto result =
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
+        [[maybe_unused]] auto result = mesh.insert_attribute(
+            Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
     }
     return mesh;
 }

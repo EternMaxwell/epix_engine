@@ -1,21 +1,20 @@
 #pragma once
 
 #include <cassert>
-
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/entities.hpp>
+#include <epix/core/storage/dense.hpp>
+#include <epix/core/storage/sparse_array.hpp>
+#include <epix/core/tick.hpp>
+#include <epix/core/type_registry.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <utility>
 #include <vector>
-#include <epix/core/entities.hpp>
-#include <epix/core/tick.hpp>
-#include <epix/core/type_registry.hpp>
-#include <epix/core/storage/dense.hpp>
-#include <epix/core/storage/sparse_array.hpp>
 
 namespace epix::core {
 struct ComponentSparseSet {

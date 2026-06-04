@@ -1,13 +1,12 @@
 #pragma once
 
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <memory>
 #include <stdexcept>
 #include <vector>
-
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
 namespace epix::imgui {
 
 /** @brief Thread-safe snapshot of ImDrawData for pipelined rendering.

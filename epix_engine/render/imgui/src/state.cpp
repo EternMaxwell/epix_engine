@@ -1,6 +1,7 @@
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
+
 #include <epix/render/imgui.hpp>
 
 namespace epix::imgui {

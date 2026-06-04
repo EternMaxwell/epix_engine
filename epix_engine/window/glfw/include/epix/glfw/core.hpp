@@ -1,5 +1,12 @@
 #pragma once
 
+#include <GLFW/glfw3.h>
+
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/window.hpp>
 #include <future>
 #include <memory>
 #include <optional>
@@ -8,14 +15,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <GLFW/glfw3.h>
-
-#include <epix/core.hpp>
-#include <epix/input.hpp>
-#include <epix/window.hpp>
-#include <epix/assets.hpp>
-#include <epix/image.hpp>
-
 
 namespace epix::glfw {
 using namespace epix::core;

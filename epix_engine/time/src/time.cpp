@@ -1,13 +1,12 @@
 
+#include <spdlog/spdlog.h>
+
 #include <array>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/time.hpp>
 #include <memory>
 #include <utility>
-#include <spdlog/spdlog.h>
-#include <epix/time.hpp>
-
-
-#include <epix/meta.hpp>
-#include <epix/core.hpp>
 using namespace epix::core;
 namespace epix::time {
 

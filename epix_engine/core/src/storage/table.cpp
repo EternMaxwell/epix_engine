@@ -1,19 +1,15 @@
 
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <utility>
-#include <vector>
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-
-
-#include <epix/meta.hpp>
-
-#include <epix/core/storage/table.hpp>
+#include <cstddef>
+#include <cstdint>
 #include <epix/core.hpp>
+#include <epix/core/storage/table.hpp>
+#include <epix/meta.hpp>
+#include <optional>
+#include <utility>
+#include <vector>
 
 namespace epix::core {
 std::optional<Entity> Table::swap_remove(this Table& self, size_t dense_index) {

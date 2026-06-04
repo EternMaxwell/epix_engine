@@ -2,6 +2,11 @@
 
 #include <array>
 #include <concepts>
+#include <epix/render/graph/context.hpp>
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/error.hpp>
+#include <epix/render/graph/node.hpp>
+#include <epix/render/graph/slot.hpp>
 #include <expected>
 #include <functional>
 #include <optional>
@@ -10,12 +15,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
-
-#include <epix/render/graph/decl.hpp>
-#include <epix/render/graph/slot.hpp>
-#include <epix/render/graph/node.hpp>
-#include <epix/render/graph/context.hpp>
-#include <epix/render/graph/error.hpp>
 namespace epix::render::graph {
 /** @brief Directed acyclic graph of render nodes.
  *
@@ -133,10 +132,10 @@ struct RenderGraphRunner {
                           std::span<const SlotValue> inputs,
                           std::optional<Entity> view_entity);
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph
 
 namespace epix::render {
 using graph::GraphContext;
 using graph::RenderContext;
 using graph::RenderGraph;
-}  // namespace render
+}  // namespace epix::render

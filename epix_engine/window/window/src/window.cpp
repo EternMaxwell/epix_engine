@@ -1,8 +1,7 @@
-#include <epix/window.hpp>
-
-#include <ranges>
 #include <spdlog/spdlog.h>
 
+#include <epix/window.hpp>
+#include <ranges>
 
 using namespace epix::window;
 using namespace epix::core;

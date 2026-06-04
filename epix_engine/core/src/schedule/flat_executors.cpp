@@ -1,7 +1,11 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <deque>
+#include <epix/core.hpp>
+#include <epix/core/schedule.hpp>
 #include <exception>
 #include <format>
 #include <functional>
@@ -14,10 +18,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/core/schedule.hpp>
-#include <epix/core.hpp>
 
 using namespace epix::core;
 using namespace executors;
@@ -216,10 +216,9 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
 
     auto check_cond = [&](size_t orig_index) -> bool {
         return std::ranges::fold_left(
-            std::views::transform(untest_conditions[orig_index].iter_ones() ,
-                [&](size_t i) {
-                    return std::make_tuple(i, std::ref(*cache->nodes[orig_index].node->conditions[i]));
-                }),
+            std::views::transform(
+                untest_conditions[orig_index].iter_ones(),
+                [&](size_t i) { return std::make_tuple(i, std::ref(*cache->nodes[orig_index].node->conditions[i])); }),
             true, [&](bool v, auto&& pair) -> bool {
                 auto&& [cond_index, condition] = pair;
                 auto& access                   = cache->nodes[orig_index].node->condition_access[cond_index];

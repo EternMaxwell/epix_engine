@@ -4,9 +4,9 @@ module;
 export module epix.core_graph;
 
 export namespace epix::core_graph {
-using epix::core_graph::core_2d::Core2d;
 using epix::core_graph::CoreGraphPlugin;
-} // namespace epix::core_graph
+using epix::core_graph::core_2d::Core2d;
+}  // namespace epix::core_graph
 
 export namespace epix::core_graph::core_2d {
 using epix::core_graph::core_2d::Camera2D;
@@ -17,4 +17,4 @@ using epix::core_graph::core_2d::Core2dPlugin;
 using epix::core_graph::core_2d::Opaque2D;
 using epix::core_graph::core_2d::Transparent2D;
 using epix::core_graph::core_2d::UI2DItem;
-} // namespace epix::core_graph::core_2d
+}  // namespace epix::core_graph::core_2d

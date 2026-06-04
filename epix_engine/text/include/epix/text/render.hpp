@@ -2,16 +2,15 @@
 
 #include <array>
 #include <cstddef>
-#include <span>
-#include <utility>
-
-#include <epix/text/font.hpp>
-#include <epix/text/text.hpp>
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
+#include <epix/text/font.hpp>
+#include <epix/text/text.hpp>
 #include <epix/transform.hpp>
+#include <span>
+#include <utility>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 namespace epix::text {

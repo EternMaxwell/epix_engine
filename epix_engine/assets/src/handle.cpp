@@ -1,10 +1,9 @@
 
-#include <variant>
 #include <spdlog/spdlog.h>
+
 #include <epix/assets.hpp>
-
-
 #include <epix/meta.hpp>
+#include <variant>
 
 namespace meta = epix::meta;
 using namespace epix::assets;

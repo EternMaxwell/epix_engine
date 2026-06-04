@@ -1,18 +1,18 @@
 
+#include <spdlog/spdlog.h>
+#include <zpp_bits.h>
+
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
 #include <expected>
 #include <optional>
 #include <span>
 #include <string>
 #include <system_error>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <zpp_bits.h>
-
-#include <asio/awaitable.hpp>
-#include <epix/assets.hpp>
 
 namespace epix::assets {
 

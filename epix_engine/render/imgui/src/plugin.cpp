@@ -1,27 +1,26 @@
 
-#include <array>
-#include <cstddef>
-#include <cstring>
-#include <memory>
-#include <optional>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <vector>
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_wgpu.h>
 #include <spdlog/spdlog.h>
 
-
+#include <array>
+#include <cstddef>
+#include <cstring>
 #include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
-#include <epix/glfw/render.hpp>
 #include <epix/window.hpp>
-#include <epix/glfw/core.hpp>
+#include <memory>
+#include <optional>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 using namespace epix;
 using namespace epix::core;

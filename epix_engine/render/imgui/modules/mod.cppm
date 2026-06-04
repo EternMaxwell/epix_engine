@@ -11,4 +11,4 @@ using epix::imgui::DrawDataSnapshot;
 using epix::imgui::ImGuiPlugin;
 using epix::imgui::ImGuiState;
 using epix::imgui::ViewportDrawDataSnapshot;
-} // namespace epix::imgui
+}  // namespace epix::imgui

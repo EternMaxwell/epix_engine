@@ -1,10 +1,10 @@
 #pragma once
 
 #include <concepts>
+#include <epix/core/system/param.hpp>
+#include <epix/core/utils.hpp>
 #include <tuple>
 #include <utility>
-#include <epix/core/utils.hpp>
-#include <epix/core/system/param.hpp>
 
 namespace epix::core {
 template <typename T>

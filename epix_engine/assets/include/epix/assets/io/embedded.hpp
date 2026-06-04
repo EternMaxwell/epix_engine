@@ -1,15 +1,14 @@
 #pragma once
 
 #include <cstddef>
-#include <filesystem>
-#include <span>
-#include <string_view>
-#include <epix/utils.hpp>
-
 #include <epix/assets/io/memory.hpp>
 #include <epix/assets/io/memory/asset.hpp>
 #include <epix/assets/io/source.hpp>
 #include <epix/assets/path.hpp>
+#include <epix/utils.hpp>
+#include <filesystem>
+#include <span>
+#include <string_view>
 
 namespace epix::assets {
 

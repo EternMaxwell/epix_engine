@@ -2,16 +2,14 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/render.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <variant>
 #include <vector>
-
-#include <epix/mesh/mesh.hpp>
-
-#include <epix/render.hpp>
-#include <epix/assets.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::mesh {
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.

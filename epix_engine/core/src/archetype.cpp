@@ -1,18 +1,15 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/core/archetype.hpp>
 #include <optional>
 #include <ranges>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <cassert>
-
-
-#include <epix/core/archetype.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 Archetype Archetype::create(ComponentIndex& component_index,

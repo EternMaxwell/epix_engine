@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
+
 #include <array>
-#include <string>
 #include <epix/shader.hpp>
+#include <string>
 
 using namespace epix::shader;
 

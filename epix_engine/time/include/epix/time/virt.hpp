@@ -3,9 +3,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
-
-#include <epix/time/time_clock.hpp>
 #include <epix/time/real.hpp>
+#include <epix/time/time_clock.hpp>
 
 namespace epix::time {
 

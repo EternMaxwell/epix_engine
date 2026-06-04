@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <iostream>
 #include <memory>
 #include <print>
@@ -7,7 +8,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <chrono>
 #endif
 #ifdef EPIX_IMPORT_STD
 import std;

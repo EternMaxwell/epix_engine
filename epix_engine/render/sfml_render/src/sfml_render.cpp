@@ -1,10 +1,9 @@
+#include <spdlog/spdlog.h>
+
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <utility>
-#include <spdlog/spdlog.h>
-
-#include <memory>
 
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX 2

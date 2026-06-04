@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
+
+#include <epix/core.hpp>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <epix/core.hpp>
 
 TEST(core, hierarchy) {
     using namespace epix::core;

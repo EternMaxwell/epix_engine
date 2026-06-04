@@ -1,4 +1,8 @@
 
+#include <spdlog/spdlog.h>
+
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -10,10 +14,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
-
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::expected<void, ValidateLogError> validate_transaction_log(const ProcessorTransactionLogFactory& log_factory) {

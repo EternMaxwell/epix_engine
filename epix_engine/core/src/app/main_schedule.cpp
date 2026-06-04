@@ -1,13 +1,13 @@
 
-#include <algorithm>
-#include <array>
-#include <ranges>
-#include <utility>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <array>
+#include <epix/core.hpp>
 #include <epix/core/app/main_schedule.hpp>
 #include <epix/core/labels.hpp>
-#include <epix/core.hpp>
+#include <ranges>
+#include <utility>
 
 namespace epix::core {
 void MainSchedulePlugin::attach(App& app) {

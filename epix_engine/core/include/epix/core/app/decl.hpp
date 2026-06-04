@@ -3,4 +3,4 @@
 namespace epix::core {
 /** @brief Forward declaration of the application type. */
 struct App;
-}  // namespace core
+}  // namespace epix::core

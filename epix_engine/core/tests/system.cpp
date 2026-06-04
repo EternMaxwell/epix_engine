@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <epix/core.hpp>
 #include <format>
 #include <functional>
 #include <iostream>
@@ -11,7 +13,6 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include <epix/core.hpp>
 
 namespace {
 struct C1 {

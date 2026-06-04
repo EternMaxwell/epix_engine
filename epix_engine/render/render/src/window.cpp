@@ -1,17 +1,18 @@
+#include <spdlog/spdlog.h>
+
+#include <epix/render/extract.hpp>
+#include <epix/render/schedule.hpp>
+#include <epix/render/window.hpp>
 #include <optional>
 #include <ranges>
-#include <spdlog/spdlog.h>
-#include <epix/render/window.hpp>
-#include <epix/render/schedule.hpp>
-#include <epix/render/extract.hpp>
 
 using namespace epix::render::window;
 using namespace epix::core;
-using epix::window::Window;
-using epix::window::PrimaryWindow;
-using epix::window::WindowClosed;
-using epix::window::PresentMode;
 using epix::window::CompositeAlphaMode;
+using epix::window::PresentMode;
+using epix::window::PrimaryWindow;
+using epix::window::Window;
+using epix::window::WindowClosed;
 
 void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);

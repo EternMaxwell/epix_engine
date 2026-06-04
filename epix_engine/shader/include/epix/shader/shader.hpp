@@ -1,8 +1,13 @@
 #pragma once
 
+#include <zpp_bits.h>
+
+#include <asio/awaitable.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -19,12 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <zpp_bits.h>
-
-#include <asio/awaitable.hpp>
-
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::shader {
 

@@ -14,4 +14,4 @@ struct LoopPlugin {
     /** @brief Register the main loop and exit event with the app. */
     void attach(App& app);
 };
-}  // namespace core
+}  // namespace epix::core

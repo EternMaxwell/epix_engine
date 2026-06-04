@@ -11,7 +11,6 @@
 #endif
 #include <epix/extension/grid.hpp>
 
-
 using namespace epix::ext::grid;
 
 namespace {

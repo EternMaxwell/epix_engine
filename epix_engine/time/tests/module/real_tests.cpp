@@ -93,4 +93,3 @@ TEST(TimeReal, AsGeneric) {
     EXPECT_EQ(g.delta(), 500ms);
     EXPECT_EQ(g.elapsed(), 500ms);
 }
-

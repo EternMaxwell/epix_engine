@@ -2,6 +2,31 @@
 
 #include <array>
 #include <concepts>
+#include <epix/assets/async_broadcast.hpp>
+#include <epix/assets/async_channel.hpp>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/handle.hpp>
+#include <epix/assets/id.hpp>
+#include <epix/assets/index.hpp>
+#include <epix/assets/io/embedded.hpp>
+#include <epix/assets/io/file/asset.hpp>
+#include <epix/assets/io/file/watcher.hpp>
+#include <epix/assets/io/memory.hpp>
+#include <epix/assets/io/memory/asset.hpp>
+#include <epix/assets/io/processor_gated.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/io/source.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/path.hpp>
+#include <epix/assets/processor.hpp>
+#include <epix/assets/processor/log.hpp>
+#include <epix/assets/processor/process.hpp>
+#include <epix/assets/saver.hpp>
+#include <epix/assets/server.hpp>
+#include <epix/assets/server/info.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/assets/store.hpp>
+#include <epix/assets/transformer.hpp>
 #include <filesystem>
 #include <format>
 #include <optional>
@@ -11,33 +36,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-
-#include <epix/assets/concepts.hpp>
-#include <epix/assets/async_channel.hpp>
-#include <epix/assets/async_broadcast.hpp>
-#include <epix/assets/index.hpp>
-#include <epix/assets/id.hpp>
-#include <epix/assets/path.hpp>
-#include <epix/assets/handle.hpp>
-#include <epix/assets/meta.hpp>
-#include <epix/assets/store.hpp>
-#include <epix/assets/server/info.hpp>
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/server.hpp>
-#include <epix/assets/saver.hpp>
-#include <epix/assets/transformer.hpp>
-#include <epix/assets/processor/process.hpp>
-#include <epix/assets/processor/log.hpp>
-#include <epix/assets/processor.hpp>
-#include <epix/assets/io/processor_gated.hpp>
-#include <epix/assets/io/memory.hpp>
-#include <epix/assets/io/memory/asset.hpp>
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/io/file/asset.hpp>
-#include <epix/assets/io/file/watcher.hpp>
-#include <epix/assets/io/source.hpp>
-#include <epix/assets/io/embedded.hpp>
-
 
 namespace epix::assets {
 using namespace epix::core;

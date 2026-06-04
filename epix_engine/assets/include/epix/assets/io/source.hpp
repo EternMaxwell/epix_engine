@@ -2,6 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <epix/assets/async_channel.hpp>
+#include <epix/assets/io/file/asset.hpp>
+#include <epix/assets/io/file/watcher.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/path.hpp>
+#include <epix/utils.hpp>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -11,14 +17,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-
-#include <epix/utils.hpp>
-#include <epix/assets/async_channel.hpp>
-
-#include <epix/assets/path.hpp>
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/io/file/asset.hpp>
-#include <epix/assets/io/file/watcher.hpp>
 
 namespace epix::assets {
 struct AssetSource {

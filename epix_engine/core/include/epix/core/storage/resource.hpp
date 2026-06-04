@@ -2,11 +2,11 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core/storage/sparse_set.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <epix/core/storage/sparse_set.hpp>
 
 namespace epix::core {
 /**

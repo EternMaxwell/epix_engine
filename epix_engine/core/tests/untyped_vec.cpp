@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
+
 #include <atomic>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <string>
 #include <utility>
 #include <vector>
-#include <epix/meta.hpp>
-#include <epix/core.hpp>
 
 namespace {
 struct Heavy {

@@ -1,13 +1,13 @@
 
-#include <memory>
-#include <tuple>
 #include <spdlog/spdlog.h>
 
+#include <epix/core.hpp>
 #include <epix/core/app/loop.hpp>
 #include <epix/core/app/main_schedule.hpp>
-#include <epix/core/system.hpp>
 #include <epix/core/query.hpp>
-#include <epix/core.hpp>
+#include <epix/core/system.hpp>
+#include <memory>
+#include <tuple>
 
 namespace epix::core {
 struct LoopRunner : public AppRunner {

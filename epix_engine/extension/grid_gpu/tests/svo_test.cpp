@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
+
 #include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
+#include <vector>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

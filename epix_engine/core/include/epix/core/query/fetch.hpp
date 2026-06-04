@@ -2,20 +2,18 @@
 
 #include <cassert>
 #include <cstddef>
+#include <epix/core/component.hpp>
+#include <epix/core/query/access.hpp>
+#include <epix/core/query/decl.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/world/decl.hpp>
+#include <epix/core/world/entity_ref.hpp>
 #include <functional>
 #include <optional>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <cassert>
-
-#include <epix/core/query/decl.hpp>
-#include <epix/core/query/access.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/world/entity_ref.hpp>
 
 namespace epix::core {
 /** @brief Represents the items (components) in a query result as a tuple.

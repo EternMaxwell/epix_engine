@@ -3,11 +3,11 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
 #include <format>
 #include <functional>
 #include <string>
 #include <type_traits>
-#include <epix/meta.hpp>
 
 namespace epix::core {
 /** @brief Generic label identified by a type_index and an optional extra discriminator.

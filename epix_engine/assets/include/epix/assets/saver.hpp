@@ -1,6 +1,11 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
 #include <concepts>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/assets/transformer.hpp>
+#include <epix/meta.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -11,13 +16,6 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/assets/concepts.hpp>
-
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/transformer.hpp>
 
 namespace epix::assets {
 

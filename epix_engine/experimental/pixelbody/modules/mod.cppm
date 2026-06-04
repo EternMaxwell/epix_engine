@@ -11,4 +11,4 @@ using epix::experimental::pixelbody::PixelBodySandBlockers;
 using epix::experimental::pixelbody::PixelBodyWorld;
 using epix::experimental::pixelbody::SandStaticBody;
 using epix::experimental::pixelbody::Velocity;
-} // namespace epix::experimental::pixelbody
+}  // namespace epix::experimental::pixelbody

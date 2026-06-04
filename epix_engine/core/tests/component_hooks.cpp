@@ -1,13 +1,13 @@
 #include <gtest/gtest.h>
+
+#include <chrono>
+#include <epix/core.hpp>
 #include <iostream>
 #include <memory>
-
 #include <random>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <chrono>
-#include <epix/core.hpp>
 
 using namespace epix::core;
 

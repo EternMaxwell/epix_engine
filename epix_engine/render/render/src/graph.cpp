@@ -1,12 +1,12 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
+#include <epix/render.hpp>
 #include <expected>
 #include <ranges>
 #include <stdexcept>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/render.hpp>
-
 
 using namespace epix::render::graph;
 

@@ -3,19 +3,19 @@
 #include <utility>
 #include <vector>
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <webgpu/webgpu.hpp>
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
-#include <epix/window.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
-#include <epix/render.hpp>
-#include <epix/core_graph.hpp>
-#include <epix/mesh.hpp>
-#include <epix/transform.hpp>
-#include <epix/input.hpp>
 #include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/mesh.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
 
 using namespace epix;
 

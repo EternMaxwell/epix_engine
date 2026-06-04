@@ -1,10 +1,8 @@
-#include <epix/glfw/core.hpp>
-
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
 #include <cstdlib>
-
+#include <epix/glfw/core.hpp>
 
 using namespace epix::glfw;
 using namespace epix::core;
@@ -51,6 +49,4 @@ void GLFWPlugin::attach(App& app) {
     app.add_events<SetClipboardString>().set_runner(std::make_unique<GLFWRunner>(app));
 }
 
-void GLFWPlugin::detach(App& app) {
-    glfwTerminate();
-}
+void GLFWPlugin::detach(App& app) { glfwTerminate(); }

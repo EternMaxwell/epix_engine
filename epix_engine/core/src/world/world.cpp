@@ -1,8 +1,7 @@
 
-#include <memory>
-
-#include <epix/core/world.hpp>
 #include <epix/core.hpp>
+#include <epix/core/world.hpp>
+#include <memory>
 
 namespace epix::core {
 

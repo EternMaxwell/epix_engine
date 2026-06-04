@@ -1,12 +1,10 @@
-#include <epix/glfw/core.hpp>
-
-#include <ranges>
-#include <unordered_set>
-#include <variant>
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
-
+#include <epix/glfw/core.hpp>
+#include <ranges>
+#include <unordered_set>
+#include <variant>
 
 using namespace epix::glfw;
 using namespace epix::window;

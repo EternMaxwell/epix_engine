@@ -5,6 +5,12 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/entities.hpp>
+#include <epix/core/storage/sparse_set.hpp>
+#include <epix/core/storage/table.hpp>
+#include <epix/core/tick.hpp>
+#include <epix/core/type_registry.hpp>
+#include <epix/core/world/decl.hpp>
 #include <functional>
 #include <memory>
 #include <ranges>
@@ -13,14 +19,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <cassert>
-
-#include <epix/core/entities.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/type_registry.hpp>
-#include <epix/core/tick.hpp>
-#include <epix/core/storage/sparse_set.hpp>
-#include <epix/core/storage/table.hpp>
 
 namespace epix::core {
 /** @brief Context passed to component lifecycle hook callbacks.
@@ -281,7 +279,7 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
         using C = std::invoke_result_t<F>;
         assert(required == registry().type_id<C>() && "required type must match the constructor return type");
         auto& required_components = get_mut(requiree).value().get()._required_components;
-        auto existing_required = required_components.components.find(required);
+        auto existing_required    = required_components.components.find(required);
         if (existing_required != required_components.components.end() &&
             existing_required->second.inheritance_depth == 0) {
             return;
@@ -314,7 +312,7 @@ struct Components : public SparseSet<TypeId, ComponentInfo> {
      *  @param constructor Type-erased factory for the required component. */
     void register_required_dyn(TypeId requiree, TypeId required, RequiredComponentConstructor constructor) {
         auto& required_components = get_mut(requiree).value().get()._required_components;
-        auto existing_required = required_components.components.find(required);
+        auto existing_required    = required_components.components.find(required);
         if (existing_required != required_components.components.end() &&
             existing_required->second.inheritance_depth == 0) {
             return;

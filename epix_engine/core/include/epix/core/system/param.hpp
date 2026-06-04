@@ -3,6 +3,10 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/query.hpp>
+#include <epix/core/world/entity_ref.hpp>
+#include <epix/core/world/interface.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -14,11 +18,6 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <epix/meta.hpp>
-
-#include <epix/core/query.hpp>
-#include <epix/core/world/interface.hpp>
-#include <epix/core/world/entity_ref.hpp>
 
 namespace epix::core {
 /** @brief Trait class defining how a type is used as a system parameter.

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <epix/render/imgui/state.hpp>
 #include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
+#include <epix/render/imgui/state.hpp>
 #include <epix/window.hpp>
-#include <epix/glfw/core.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::imgui {
 /** @brief Plugin that integrates Dear ImGui with the engine.
@@ -40,9 +40,11 @@ inline struct BeginFrameSetT {
 } BeginFrameSet;
 
 // Frame lifecycle systems (main world)
-void imgui_begin_frame(epix::core::ResMut<ImGuiState> state,
-                       epix::core::Res<epix::glfw::GLFWwindows> windows,
-                       epix::core::Query<epix::core::Item<epix::core::Entity>, epix::core::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
+void imgui_begin_frame(
+    epix::core::ResMut<ImGuiState> state,
+    epix::core::Res<epix::glfw::GLFWwindows> windows,
+    epix::core::Query<epix::core::Item<epix::core::Entity>,
+                      epix::core::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
 void imgui_end_frame(epix::core::ResMut<ImGuiState> state);
 
 // Post-PreUpdate system that consumes input events handled by ImGui.

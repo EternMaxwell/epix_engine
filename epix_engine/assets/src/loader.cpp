@@ -1,4 +1,9 @@
 
+#include <spdlog/spdlog.h>
+
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <format>
 #include <functional>
@@ -10,11 +15,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(

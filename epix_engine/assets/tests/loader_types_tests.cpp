@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#include <algorithm>
-#include <array>
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
 #include <exception>
 #include <expected>
 #include <ranges>
@@ -13,8 +15,6 @@
 #include <string>
 #include <string_view>
 #include <utility>
-#include <epix/assets.hpp>
-#include <epix/meta.hpp>
 
 using namespace epix::assets;
 

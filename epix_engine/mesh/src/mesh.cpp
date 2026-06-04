@@ -1,13 +1,11 @@
 
 #include <cstddef>
+#include <epix/assets.hpp>
+#include <epix/mesh.hpp>
 #include <expected>
 #include <functional>
 #include <string>
 #include <utility>
-
-
-#include <epix/assets.hpp>
-#include <epix/mesh.hpp>
 
 using namespace epix::mesh;
 

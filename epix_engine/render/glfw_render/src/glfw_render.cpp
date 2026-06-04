@@ -54,9 +54,9 @@
 #include <webgpu/webgpu.h>
 
 #include <epix/core.hpp>
-#include <epix/render.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
 

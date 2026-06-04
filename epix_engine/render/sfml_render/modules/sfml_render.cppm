@@ -5,8 +5,8 @@ export module epix.sfml.render;
 
 export namespace epix::sfml {
 using epix::sfml::render::SFMLRenderPlugin;
-} // namespace epix::sfml
+}  // namespace epix::sfml
 
 export namespace epix::sfml::render {
 using epix::sfml::render::SFMLRenderPlugin;
-} // namespace epix::sfml::render
+}  // namespace epix::sfml::render

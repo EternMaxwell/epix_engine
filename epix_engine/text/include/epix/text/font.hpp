@@ -1,8 +1,12 @@
 #pragma once
 
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -16,11 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <asio/awaitable.hpp>
-
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/image.hpp>
 namespace epix::text::font {
 /** @brief Font resource holding raw font file data (e.g. TTF/OTF) in memory. */
 struct Font {

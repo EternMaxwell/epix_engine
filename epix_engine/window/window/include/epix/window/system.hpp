@@ -1,12 +1,10 @@
 #pragma once
 
+#include <epix/core.hpp>
+#include <epix/window/events.hpp>
+#include <epix/window/structs.hpp>
 #include <optional>
 #include <unordered_set>
-
-#include <epix/core.hpp>
-
-#include <epix/window/structs.hpp>
-#include <epix/window/events.hpp>
 
 namespace epix::window {
 void exit_on_all_closed(core::EventWriter<core::AppExit> exit_writer,

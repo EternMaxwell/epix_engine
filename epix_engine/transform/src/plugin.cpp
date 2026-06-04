@@ -1,12 +1,11 @@
+#include <spdlog/spdlog.h>
+
 #include <epix/core.hpp>
 #include <epix/transform.hpp>
-
 #include <functional>
 #include <ranges>
 #include <stack>
 #include <unordered_map>
-#include <spdlog/spdlog.h>
-
 
 using namespace epix::transform;
 using namespace epix::core;

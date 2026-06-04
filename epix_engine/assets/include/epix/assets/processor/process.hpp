@@ -1,7 +1,17 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
+#include <asio/awaitable.hpp>
 #include <concepts>
 #include <cstddef>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/saver.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/assets/transformer.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <memory>
@@ -14,18 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-
-#include <epix/assets/meta.hpp>
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/saver.hpp>
-#include <epix/assets/transformer.hpp>
 
 namespace epix::assets {
 
@@ -102,19 +100,19 @@ struct ExtensionRequired {};
 }  // namespace process_errors
 
 using ProcessError = std::variant<process_errors::MissingAssetLoaderForExtension,
-                                         process_errors::MissingProcessor,
-                                         process_errors::AmbiguousProcessor,
-                                         process_errors::AssetReaderError,
-                                         process_errors::AssetWriterError,
-                                         process_errors::MissingProcessedAssetReader,
-                                         process_errors::MissingProcessedAssetWriter,
-                                         process_errors::ReadAssetMetaError,
-                                         process_errors::DeserializeMetaError,
-                                         process_errors::AssetLoadError,
-                                         process_errors::WrongMetaType,
-                                         process_errors::AssetSaveError,
-                                         process_errors::AssetTransformError,
-                                         process_errors::ExtensionRequired>;
+                                  process_errors::MissingProcessor,
+                                  process_errors::AmbiguousProcessor,
+                                  process_errors::AssetReaderError,
+                                  process_errors::AssetWriterError,
+                                  process_errors::MissingProcessedAssetReader,
+                                  process_errors::MissingProcessedAssetWriter,
+                                  process_errors::ReadAssetMetaError,
+                                  process_errors::DeserializeMetaError,
+                                  process_errors::AssetLoadError,
+                                  process_errors::WrongMetaType,
+                                  process_errors::AssetSaveError,
+                                  process_errors::AssetTransformError,
+                                  process_errors::ExtensionRequired>;
 
 // ---- ProcessResult ----
 

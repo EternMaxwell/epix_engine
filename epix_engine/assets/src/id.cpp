@@ -1,10 +1,11 @@
-#include <format>
-#include <string>
-#include <variant>
 #include <uuid.h>
+
 #include <epix/assets.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
+#include <format>
+#include <string>
+#include <variant>
 
 namespace uuids {
 

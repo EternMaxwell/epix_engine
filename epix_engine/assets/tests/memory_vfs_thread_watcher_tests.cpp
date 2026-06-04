@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
+
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <epix/assets.hpp>
 #include <filesystem>
 #include <memory>
 #include <mutex>
@@ -11,7 +13,6 @@
 #include <string_view>
 #include <thread>
 #include <vector>
-#include <epix/assets.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-value"

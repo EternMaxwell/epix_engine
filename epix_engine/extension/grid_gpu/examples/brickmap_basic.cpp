@@ -1,7 +1,7 @@
 #include <cstdint>
-#include <print>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
+#include <print>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
 #include <format>
 #include <ios>
 #include <iostream>
@@ -10,7 +12,6 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <epix/core.hpp>
 
 namespace {
 struct T1 {

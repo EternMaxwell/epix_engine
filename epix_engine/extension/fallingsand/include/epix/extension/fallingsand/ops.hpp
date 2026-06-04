@@ -4,15 +4,14 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <limits>
-#include <variant>
-
-#include <glm/glm.hpp>
 #include <epix/core.hpp>
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/structs.hpp>
 #include <epix/extension/fallingsand/temperature.hpp>
+#include <functional>
+#include <glm/glm.hpp>
+#include <limits>
+#include <variant>
 
 namespace epix::ext::fallingsand::ops {
 

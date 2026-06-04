@@ -3,20 +3,19 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/sprite/sprite.hpp>
 #include <expected>
 #include <format>
 #include <optional>
 #include <span>
 #include <vector>
-
-#include <epix/sprite/sprite.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <webgpu/webgpu.hpp>
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
 namespace epix::sprite {
 /** @brief Snapshot of a sprite extracted from the main world for rendering.
  *

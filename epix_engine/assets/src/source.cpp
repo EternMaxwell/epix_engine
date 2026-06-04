@@ -1,10 +1,10 @@
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <optional>
 #include <utility>
-#include <epix/assets.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 

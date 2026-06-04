@@ -1,7 +1,10 @@
 
+#include <spdlog/spdlog.h>
+
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <epix/render/pipeline_server.hpp>
 #include <expected>
 #include <future>
 #include <memory>
@@ -10,9 +13,6 @@
 #include <thread>
 #include <utility>
 #include <variant>
-#include <spdlog/spdlog.h>
-#include <epix/render/pipeline_server.hpp>
-
 
 using namespace epix::shader;
 

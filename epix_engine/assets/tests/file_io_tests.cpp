@@ -5,6 +5,7 @@
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
 #include <cstdint>
+#include <epix/assets.hpp>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -12,7 +13,6 @@
 #include <optional>
 #include <string>
 #include <vector>
-#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

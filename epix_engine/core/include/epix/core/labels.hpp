@@ -2,9 +2,9 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core/label.hpp>
 #include <functional>
 #include <type_traits>
-#include <epix/core/label.hpp>
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \

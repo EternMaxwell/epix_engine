@@ -1,7 +1,14 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
+#include <epix/assets/server/info.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/meta.hpp>
+#include <epix/tasks.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -14,14 +21,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/tasks.hpp>
-
-#include <epix/assets/server/info.hpp>
-#include <epix/assets/server/loader.hpp>
 
 namespace epix::assets {
 struct PendingAssetLoader {

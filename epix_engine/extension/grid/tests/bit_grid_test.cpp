@@ -1,10 +1,11 @@
 ﻿#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
 #include <epix/extension/grid.hpp>
+#include <vector>
 
 using namespace epix::ext::grid;
 

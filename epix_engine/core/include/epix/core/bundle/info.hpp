@@ -4,6 +4,13 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <epix/core/archetype.hpp>
+#include <epix/core/component.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/type_registry.hpp>
+#include <epix/core/utils.hpp>
+#include <epix/traits.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -13,16 +20,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <cassert>
-
-#include <epix/traits.hpp>
-#include <epix/utils.hpp>
-
-#include <epix/core/utils.hpp>
-#include <epix/core/type_registry.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/archetype.hpp>
 
 namespace epix::core {
 template <typename T>

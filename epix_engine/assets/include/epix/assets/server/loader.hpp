@@ -1,7 +1,15 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
 #include <concepts>
 #include <cstddef>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/handle.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/store.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -19,16 +27,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/assets/concepts.hpp>
-
-#include <epix/assets/store.hpp>
-#include <epix/assets/handle.hpp>
-#include <epix/assets/meta.hpp>
-#include <epix/assets/io/reader.hpp>
 
 namespace epix::assets {
 template <typename E>
@@ -322,16 +320,16 @@ struct MissingLabel {
 
 /** @brief Union of all asset load error variants. Matches bevy_asset's AssetLoadError. */
 using AssetLoadError = std::variant<load_error::RequestHandleMismatch,
-                                           load_error::MissingAssetLoader,
-                                           load_error::AssetLoaderException,
-                                           load_error::AssetReaderError,
-                                           load_error::MissingAssetSourceError,
-                                           load_error::MissingProcessedAssetReaderError,
-                                           load_error::AssetMetaReadError,
-                                           load_error::DeserializeMeta,
-                                           load_error::CannotLoadProcessedAsset,
-                                           load_error::CannotLoadIgnoredAsset,
-                                           load_error::MissingLabel>;
+                                    load_error::MissingAssetLoader,
+                                    load_error::AssetLoaderException,
+                                    load_error::AssetReaderError,
+                                    load_error::MissingAssetSourceError,
+                                    load_error::MissingProcessedAssetReaderError,
+                                    load_error::AssetMetaReadError,
+                                    load_error::DeserializeMeta,
+                                    load_error::CannotLoadProcessedAsset,
+                                    load_error::CannotLoadIgnoredAsset,
+                                    load_error::MissingLabel>;
 
 /** @brief Simple load-state discriminant without associated error data. */
 enum LoadStateOK { NotLoaded, Loading, Loaded };

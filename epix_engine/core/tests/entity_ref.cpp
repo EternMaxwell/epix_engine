@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
+
+#include <epix/core.hpp>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <type_traits>
-#include <epix/core.hpp>
 
 namespace {
 struct A {

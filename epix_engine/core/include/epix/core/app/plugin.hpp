@@ -1,8 +1,12 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/core/app/decl.hpp>
+#include <epix/meta.hpp>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -12,11 +16,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/meta.hpp>
-
-#include <epix/core/app/decl.hpp>
 
 namespace epix::core {
 template <typename T>

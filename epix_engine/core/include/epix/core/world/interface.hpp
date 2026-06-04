@@ -1,9 +1,21 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/bundle.hpp>
+#include <epix/core/component.hpp>
+#include <epix/core/entities.hpp>
+#include <epix/core/query.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/type_registry.hpp>
+#include <epix/core/utils.hpp>
+#include <epix/core/world/commands.hpp>
+#include <epix/core/world/decl.hpp>
+#include <epix/core/world/entity_ref/decl.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -13,18 +25,6 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <spdlog/spdlog.h>
-
-#include <epix/core/utils.hpp>
-#include <epix/core/type_registry.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/entities.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/bundle.hpp>
-#include <epix/core/world/entity_ref/decl.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/world/commands.hpp>
-#include <epix/core/query.hpp>
 
 namespace epix::core {
 

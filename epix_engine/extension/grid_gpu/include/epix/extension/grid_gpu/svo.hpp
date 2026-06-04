@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid.hpp>
 #include <expected>
 #include <format>
 #include <print>
@@ -15,8 +16,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <epix/extension/grid.hpp>
 
 // Bring fixed-width integer types into scope (MSVC only exports them under std::)
 using std::int32_t;
@@ -546,7 +545,7 @@ public typealias SvoGrid3D = SvoGrid<3, 2>;
  * and CC=4 for Dim 1–2.  The C++ SvoBuffer64 may be built with larger cpn values
  * but those cannot be traversed with this shader.
  */
-inline inline constexpr std::string_view kSvoGridSlangSource64 = R"slang(
+inline constexpr std::string_view kSvoGridSlangSource64 = R"slang(
 // epix.ext.grid.svo64 - GPU-side SVO traversal for sparse voxel trees (64-bit word buffer).
 // Companion to epix.extension.grid_gpu (C++ module), 64-bit buffer variant.
 //

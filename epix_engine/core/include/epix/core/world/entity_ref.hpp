@@ -3,21 +3,19 @@
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <epix/core/bundle.hpp>
+#include <epix/core/entities.hpp>
+#include <epix/core/hierarchy.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/ticks.hpp>
+#include <epix/core/world/decl.hpp>
+#include <epix/core/world/entity_ref/decl.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <cassert>
-
-#include <epix/core/world/entity_ref/decl.hpp>
-#include <epix/core/entities.hpp>
-#include <epix/core/ticks.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/bundle.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/hierarchy.hpp>
 
 namespace epix::core {
 /**

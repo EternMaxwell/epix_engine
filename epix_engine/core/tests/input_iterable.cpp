@@ -1,10 +1,11 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
+#include <epix/core.hpp>
+#include <epix/utils.hpp>
 #include <ranges>
 #include <sstream>
 #include <vector>
-#include <epix/utils.hpp>
-#include <epix/core.hpp>
 
 TEST(core, input_iterable) {
     using namespace epix::utils;

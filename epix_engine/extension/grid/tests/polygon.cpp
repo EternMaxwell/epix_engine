@@ -1,8 +1,9 @@
 ﻿#include <gtest/gtest.h>
+
 #include <array>
 #include <cstdint>
-#include <vector>
 #include <epix/extension/grid.hpp>
+#include <vector>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

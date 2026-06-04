@@ -1,8 +1,14 @@
 #pragma once
 
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/core/label.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule/queue.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -17,14 +23,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <BS_thread_pool.hpp>
-#include <epix/meta.hpp>
-
-#include <epix/core/schedule/queue.hpp>
-
-#include <epix/core/label.hpp>
-#include <epix/core/labels.hpp>
-#include <epix/core/storage.hpp>
 
 namespace epix::core {
 struct Node;

@@ -2,14 +2,13 @@
 
 #include <array>
 #include <cstddef>
-#include <optional>
-#include <span>
-#include <utility>
-
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/image.hpp>
 #include <epix/transform.hpp>
+#include <optional>
+#include <span>
+#include <utility>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 namespace epix::sprite {
@@ -52,7 +51,8 @@ struct SpriteBundle {
 
 template <>
 struct epix::core::Bundle<epix::sprite::SpriteBundle> {
-    static void get_components(sprite::SpriteBundle& bundle, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+    static void get_components(sprite::SpriteBundle& bundle,
+                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) sprite::Sprite(std::move(bundle.sprite)); });
         write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
         write_component([&](void* ptr) { new (ptr) assets::Handle<image::Image>(std::move(bundle.texture)); });

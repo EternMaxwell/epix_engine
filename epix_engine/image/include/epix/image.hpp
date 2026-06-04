@@ -2,9 +2,12 @@
 
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -16,10 +19,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <asio/awaitable.hpp>
-
-#include <epix/core.hpp>
-#include <epix/assets.hpp>
 namespace epix::image {
 
 /** @brief Pixel format for images.

@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
+#include <epix/core.hpp>
 #include <ranges>
 #include <string>
-#include <epix/core.hpp>
 
 namespace {
 struct P {

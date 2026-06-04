@@ -1,10 +1,9 @@
 #pragma once
 
 #include <cstdint>
-
-#include <glm/glm.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
+#include <glm/glm.hpp>
 
 namespace epix::ext::fallingsand {
 
@@ -17,8 +16,8 @@ namespace epix::ext::fallingsand {
  * @param cam_transform Transform of the camera entity.
  */
 inline glm::vec2 relative_to_world(glm::vec2 relative_pos,
-                                          const render::camera::Camera& camera,
-                                          const transform::Transform& cam_transform) {
+                                   const render::camera::Camera& camera,
+                                   const transform::Transform& cam_transform) {
     float ndc_x = relative_pos.x * 2.0f;
     float ndc_y = relative_pos.y * 2.0f;
 

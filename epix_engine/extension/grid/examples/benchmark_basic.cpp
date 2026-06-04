@@ -15,7 +15,6 @@
 #endif
 #include <epix/extension/grid.hpp>
 
-
 using namespace epix::ext::grid;
 using std::int32_t;
 using std::size_t;

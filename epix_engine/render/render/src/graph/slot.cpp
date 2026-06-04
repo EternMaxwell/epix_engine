@@ -1,12 +1,11 @@
 
 #include <cstdint>
+#include <epix/render/graph/slot.hpp>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <string_view>
 #include <variant>
-#include <epix/render/graph/slot.hpp>
-
 
 using namespace epix::render;
 using namespace epix::render::graph;

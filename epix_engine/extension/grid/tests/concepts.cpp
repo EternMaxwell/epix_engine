@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <array>
 #include <cstdint>
 #include <epix/extension/grid.hpp>

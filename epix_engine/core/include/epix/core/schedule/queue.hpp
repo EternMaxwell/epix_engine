@@ -1,19 +1,18 @@
 #pragma once
 
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <epix/core/query.hpp>
+#include <epix/core/system.hpp>
+#include <epix/core/tick.hpp>
+#include <epix/core/world.hpp>
+#include <epix/traits.hpp>
 #include <mutex>
 #include <ranges>
 #include <thread>
 #include <vector>
-#include <epix/traits.hpp>
-#include <BS_thread_pool.hpp>
-
-#include <epix/core/query.hpp>
-#include <epix/core/system.hpp>
-#include <epix/core/world.hpp>
-#include <epix/core/tick.hpp>
 
 namespace epix::core {
 struct smallvec : std::ranges::view_interface<smallvec> {
@@ -68,6 +67,7 @@ struct async_queue {
 struct ScheduleThreadPool {
     BS::thread_pool<BS::tp::none> pool;
     ScheduleThreadPool()
-        : pool(std::thread::hardware_concurrency(), []() { (void)0 /* set_os_thread_name not available via header include */; }) {}
+        : pool(std::thread::hardware_concurrency(),
+               []() { (void)0 /* set_os_thread_name not available via header include */; }) {}
 };
 }  // namespace epix::core

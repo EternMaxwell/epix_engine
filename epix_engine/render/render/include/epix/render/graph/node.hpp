@@ -3,15 +3,13 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/slot.hpp>
 #include <memory>
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-#include <epix/render/graph/decl.hpp>
-#include <epix/render/graph/slot.hpp>
-#include <epix/core.hpp>
-
 
 namespace epix::render::graph {
 using epix::core::Entity;

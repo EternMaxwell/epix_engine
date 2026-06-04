@@ -1,7 +1,6 @@
-#include <epix/glfw/core.hpp>
-
 #include <GLFW/glfw3.h>
 
+#include <epix/glfw/core.hpp>
 
 namespace epix::glfw {
 

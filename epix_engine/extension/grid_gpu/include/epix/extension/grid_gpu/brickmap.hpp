@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid.hpp>
 #include <expected>
 #include <format>
 #include <string>
@@ -13,8 +14,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <epix/extension/grid.hpp>
 
 using std::int32_t;
 using std::int64_t;

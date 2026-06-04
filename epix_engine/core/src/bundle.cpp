@@ -1,6 +1,11 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/core/bundle.hpp>
+#include <epix/core/entities.hpp>
 #include <format>
 #include <functional>
 #include <optional>
@@ -10,11 +15,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/core/bundle.hpp>
-#include <epix/core/entities.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 BundleInfo BundleInfo::create(std::string_view bundle_type_name,

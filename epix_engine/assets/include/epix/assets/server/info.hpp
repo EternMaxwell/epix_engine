@@ -1,7 +1,15 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/assets/store.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <future>
@@ -15,15 +23,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/core.hpp>
-
-#include <epix/assets/store.hpp>
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/meta.hpp>
 
 namespace epix::assets {
 struct AssetInfo {

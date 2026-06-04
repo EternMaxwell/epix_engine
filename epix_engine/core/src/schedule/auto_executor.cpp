@@ -1,6 +1,10 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
+#include <epix/core.hpp>
 #include <format>
 #include <limits>
 #include <memory>
@@ -8,9 +12,6 @@
 #include <ranges>
 #include <utility>
 #include <vector>
-#include <chrono>
-#include <spdlog/spdlog.h>
-#include <epix/core.hpp>
 
 namespace epix::core::executors {
 struct AutoExecutor::Impl {

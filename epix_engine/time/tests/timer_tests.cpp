@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
-#include <cstdint>
-#include <limits>
+
 #include <chrono>
+#include <cstdint>
 #include <epix/time.hpp>
+#include <limits>
 
 using namespace epix::time;
 using namespace std::chrono_literals;
@@ -163,4 +164,3 @@ TEST(Timer, Reset) {
     EXPECT_EQ(t.elapsed(), 0ns);
     EXPECT_EQ(t.times_finished_this_tick(), 0u);
 }
-

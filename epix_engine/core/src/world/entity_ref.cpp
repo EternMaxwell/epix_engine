@@ -1,11 +1,11 @@
 
-#include <optional>
 #include <spdlog/spdlog.h>
 
+#include <epix/core.hpp>
 #include <epix/core/entities.hpp>
 #include <epix/core/world/entity_ref.hpp>
 #include <epix/core/world/interface.hpp>
-#include <epix/core.hpp>
+#include <optional>
 
 namespace epix::core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {

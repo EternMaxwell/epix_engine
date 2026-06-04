@@ -1,9 +1,8 @@
 #pragma once
 
 #include <chrono>
-#include <optional>
-
 #include <epix/time/time_clock.hpp>
+#include <optional>
 
 namespace epix::time {
 

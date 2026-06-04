@@ -25,8 +25,10 @@ using epix::ext::fallingsand::FallingSandPlugin;
 using epix::ext::fallingsand::HasTag;
 using epix::ext::fallingsand::Ignite;
 using epix::ext::fallingsand::IsBurning;
+using epix::ext::fallingsand::kDim;
 using epix::ext::fallingsand::MeshBuildByPlugin;
 using epix::ext::fallingsand::RandomTick;
+using epix::ext::fallingsand::relative_to_world;
 using epix::ext::fallingsand::SandChunkBodyDebug;
 using epix::ext::fallingsand::SandChunkDirtyRect;
 using epix::ext::fallingsand::SandChunkMesh;
@@ -44,18 +46,16 @@ using epix::ext::fallingsand::TemperatureAbove;
 using epix::ext::fallingsand::TemperatureBelow;
 using epix::ext::fallingsand::ThermalCell;
 using epix::ext::fallingsand::TransformTo;
-using epix::ext::fallingsand::kDim;
-using epix::ext::fallingsand::relative_to_world;
-} // namespace epix::ext::fallingsand
+}  // namespace epix::ext::fallingsand
 
 export namespace epix::ext::fallingsand::ops {
 using epix::ext::fallingsand::ops::Explode;
 using epix::ext::fallingsand::ops::Heat;
 using epix::ext::fallingsand::ops::Remove;
 using epix::ext::fallingsand::ops::Spawn;
-} // namespace epix::ext::fallingsand::ops
+}  // namespace epix::ext::fallingsand::ops
 
 export namespace epix::ext::fallingsand::sand_sim_error {
 using epix::ext::fallingsand::sand_sim_error::DuplicateChunkPos;
 using epix::ext::fallingsand::sand_sim_error::MissingRequiredLayer;
-} // namespace epix::ext::fallingsand::sand_sim_error
+}  // namespace epix::ext::fallingsand::sand_sim_error

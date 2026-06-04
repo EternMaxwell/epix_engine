@@ -1,7 +1,7 @@
 
 #include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
 
+#include <epix/assets.hpp>
 
 namespace epix::assets {
 

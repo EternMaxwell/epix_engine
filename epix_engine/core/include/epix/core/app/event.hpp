@@ -5,14 +5,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <epix/core/system.hpp>
+#include <epix/core/ticks.hpp>
+#include <epix/core/world.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <tuple>
 #include <utility>
-#include <epix/core/system.hpp>
-#include <epix/core/ticks.hpp>
-#include <epix/core/world.hpp>
 
 namespace epix::core {
 /** @brief Double-buffered event queue for type T.

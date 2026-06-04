@@ -1,17 +1,16 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/thread_pool.hpp>
 #include <concepts>
+#include <epix/tasks/task.hpp>
 #include <exception>
 #include <optional>
 #include <thread>
 #include <type_traits>
 #include <utility>
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/thread_pool.hpp>
-
-#include <epix/tasks/task.hpp>
 
 namespace epix::tasks {
 

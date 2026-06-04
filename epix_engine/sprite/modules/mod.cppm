@@ -15,4 +15,4 @@ using epix::sprite::SpriteGeometryBuffers;
 using epix::sprite::SpriteInstanceBuffer;
 using epix::sprite::SpriteInstanceData;
 using epix::sprite::SpritePlugin;
-} // namespace epix::sprite
+}  // namespace epix::sprite

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <epix/shader/shader.hpp>
 #include <expected>
 #include <span>
 #include <string>
@@ -7,8 +8,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-
-#include <epix/shader/shader.hpp>
 namespace epix::shader {
 
 /** @brief Error returned while composing WGSL source. */

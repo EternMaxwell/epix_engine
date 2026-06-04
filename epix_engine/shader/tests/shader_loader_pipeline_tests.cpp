@@ -1,6 +1,14 @@
+#include <gtest/gtest.h>
+#include <slang-com-ptr.h>
+#include <slang.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -12,13 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <gtest/gtest.h>
-#include <slang-com-ptr.h>
-#include <slang.h>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/shader.hpp>
-#include <epix/tasks.hpp>
 #include <webgpu/webgpu.hpp>
 using namespace epix::assets;
 using namespace epix::core;

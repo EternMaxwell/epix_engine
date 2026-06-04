@@ -1,7 +1,9 @@
-#include <epix/sfml/core.hpp>
+#include <spdlog/spdlog.h>
 
+#include <SFML/Window/WindowBase.hpp>
 #include <algorithm>
 #include <array>
+#include <epix/sfml/core.hpp>
 #include <exception>
 #include <future>
 #include <memory>
@@ -9,9 +11,6 @@
 #include <ranges>
 #include <utility>
 #include <variant>
-#include <spdlog/spdlog.h>
-
-#include <SFML/Window/WindowBase.hpp>
 
 using namespace epix::core;
 using namespace epix::sfml;
@@ -74,22 +73,22 @@ bool SFMLRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : sfml_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(runner_visitor{[&](const ValidateParamError& validate_error) {
-                                       spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}",
-                                                     sys->name(), validate_error.param_type.short_name(),
-                                                     validate_error.message);
-                                   },
-                                   [&](const SystemException& sys_exception) {
-                                       try {
-                                           if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
-                                       } catch (const std::exception& e) {
-                                           spdlog::error("SFML System [{}] exception during run: {}", sys->name(),
-                                                         e.what());
-                                       } catch (...) {
-                                           spdlog::error("SFML System [{}] unknown exception during run.", sys->name());
-                                       }
-                                   }},
-                           error);
+                std::visit(
+                    runner_visitor{
+                        [&](const ValidateParamError& validate_error) {
+                            spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}", sys->name(),
+                                          validate_error.param_type.short_name(), validate_error.message);
+                        },
+                        [&](const SystemException& sys_exception) {
+                            try {
+                                if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                            } catch (const std::exception& e) {
+                                spdlog::error("SFML System [{}] exception during run: {}", sys->name(), e.what());
+                            } catch (...) {
+                                spdlog::error("SFML System [{}] unknown exception during run.", sys->name());
+                            }
+                        }},
+                    error);
                 return error;
             });
         }

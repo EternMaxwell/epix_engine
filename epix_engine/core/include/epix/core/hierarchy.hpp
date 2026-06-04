@@ -1,9 +1,9 @@
 #pragma once
 
-#include <unordered_set>
+#include <epix/core/component.hpp>
 #include <epix/core/entities.hpp>
 #include <epix/core/world/decl.hpp>
-#include <epix/core/component.hpp>
+#include <unordered_set>
 
 namespace epix::core {
 /** @brief Component that marks an entity as a child of another entity.

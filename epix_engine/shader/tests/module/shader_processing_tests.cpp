@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -22,7 +23,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <chrono>
 #endif
 #ifdef EPIX_IMPORT_STD
 import std;

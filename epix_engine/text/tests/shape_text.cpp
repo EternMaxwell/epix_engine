@@ -4,14 +4,13 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/text.hpp>
 #include <limits>
 #include <memory>
 #include <stdexcept>
 
 #include "../src/font_array.hpp"
-
-#include <epix/assets.hpp>
-#include <epix/text.hpp>
 
 using namespace epix;
 

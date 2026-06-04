@@ -1,7 +1,10 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstdint>
 #include <deque>
+#include <epix/render.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -9,9 +12,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/render.hpp>
-
 
 using namespace epix::render::graph;
 

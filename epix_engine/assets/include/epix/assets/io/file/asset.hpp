@@ -1,17 +1,15 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <system_error>
 #include <utility>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-
-#include <epix/assets/io/reader.hpp>
 
 namespace epix::assets {
 struct FileAssetReader : public AssetReader {

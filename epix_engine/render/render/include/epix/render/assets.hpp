@@ -2,6 +2,9 @@
 
 #include <concepts>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/render/extract.hpp>
 #include <exception>
 #include <format>
 #include <memory>
@@ -14,11 +17,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/render/extract.hpp>
-
 
 namespace epix::render {
 using namespace epix::core;
@@ -244,4 +242,4 @@ struct ExtractAssetPlugin {
         }
     }
 };
-}  // namespace render
+}  // namespace epix::render

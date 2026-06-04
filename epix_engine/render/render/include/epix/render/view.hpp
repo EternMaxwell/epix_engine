@@ -4,6 +4,12 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/render/graph.hpp>
+#include <epix/render/render_phase.hpp>
+#include <epix/render/window.hpp>
+#include <epix/transform.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <optional>
 #include <ranges>
@@ -12,15 +18,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <epix/transform.hpp>
-#include <epix/core.hpp>
-#include <epix/utils.hpp>
 #include <webgpu/webgpu.hpp>
-#include <epix/render/window.hpp>
-#include <epix/render/graph.hpp>
-#include <epix/render/render_phase.hpp>
-
 
 namespace epix::render::camera {
 /** @brief Defines a sub-region of the render target for camera output. */
@@ -382,9 +380,7 @@ struct PerspectiveProjection {
     /** @brief Set the near clipping plane distance. */
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute the perspective projection matrix. */
-    glm::mat4 get_projection_matrix() const {
-        return glm::perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
-    }
+    glm::mat4 get_projection_matrix() const { return glm::perspectiveLH(fov, aspect_ratio, near_plane, far_plane); }
     /** @brief Compute the 8 corners of the perspective frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
         float tan_half_fov = glm::tan(fov / 2.0f);

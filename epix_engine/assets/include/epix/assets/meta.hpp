@@ -7,6 +7,9 @@
 #include <asio/awaitable.hpp>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/path.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
 #include <istream>
@@ -18,10 +21,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-
-#include <epix/meta.hpp>
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/path.hpp>
 
 namespace epix::assets {
 
@@ -367,8 +366,7 @@ std::expected<AssetMeta<LS, PS>, std::errc> deserialize_asset_meta(std::span<con
  *  valid with zpp::bits sequential deserialization.  Used during processor
  *  start-up to restore the stored hash without needing to know the settings types.
  *  Matches bevy_asset's ProcessedInfoMinimal concept. */
-std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(
-    std::span<const std::byte> bytes);
+std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(std::span<const std::byte> bytes);
 
 /** @brief Overload accepting std::vector<std::byte>. */
 inline std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(

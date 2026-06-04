@@ -1,12 +1,18 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
 #include <exception>
 #include <format>
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <taskflow/taskflow.hpp>
 #include <thread>
 #include <tuple>
 #include <unordered_map>
@@ -14,13 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <taskflow/taskflow.hpp>
-
-#include <epix/core/schedule.hpp>
-#include <epix/core/labels.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 

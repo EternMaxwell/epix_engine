@@ -1,8 +1,8 @@
 
-#include <filesystem>
 #include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
 
+#include <epix/assets.hpp>
+#include <filesystem>
 
 using namespace epix::assets;
 using namespace epix::core;

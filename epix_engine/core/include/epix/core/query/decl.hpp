@@ -1,13 +1,13 @@
 #pragma once
 
 #include <concepts>
+#include <epix/core/archetype.hpp>
+#include <epix/core/component.hpp>
+#include <epix/core/tick.hpp>
+#include <epix/core/world/decl.hpp>
 #include <functional>
 #include <optional>
 #include <type_traits>
-#include <epix/core/archetype.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/tick.hpp>
 
 namespace epix::core {
 /** @brief Trait class for types usable as query data elements (e.g. template arguments of Item).
@@ -97,4 +97,4 @@ template <typename T>
 struct AddOptional<T> {
     using type = std::optional<std::reference_wrapper<std::remove_reference_t<T>>>;
 };
-}  // namespace core
+}  // namespace epix::core

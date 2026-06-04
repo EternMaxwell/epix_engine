@@ -1,8 +1,9 @@
 
-#include <cstddef>
-#include <utility>
 #include <spdlog/spdlog.h>
+
+#include <cstddef>
 #include <epix/core.hpp>
+#include <utility>
 
 namespace epix::core {
 void CommandQueue::append(CommandQueue& other) {

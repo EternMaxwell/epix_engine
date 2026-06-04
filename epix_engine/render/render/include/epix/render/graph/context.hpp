@@ -1,17 +1,15 @@
 #pragma once
 
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/node.hpp>
+#include <epix/render/graph/slot.hpp>
 #include <optional>
 #include <span>
 #include <utility>
 #include <vector>
-
 #include <webgpu/webgpu.hpp>
-#include <epix/core.hpp>
-#include <epix/render/graph/decl.hpp>
-#include <epix/render/graph/slot.hpp>
-#include <epix/render/graph/node.hpp>
-
 
 namespace epix::render::graph {
 using epix::core::Entity;

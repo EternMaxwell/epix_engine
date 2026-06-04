@@ -1,10 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <epix/core/schedule/schedule.hpp>
 #include <memory>
 #include <vector>
-
-#include <epix/core/schedule/schedule.hpp>
 
 namespace epix::core::executors {
 /** @brief Default executor using thread-pool-based parallel dispatch. */

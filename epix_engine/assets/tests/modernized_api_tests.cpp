@@ -5,6 +5,7 @@
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
 #include <cstdint>
+#include <epix/assets.hpp>
 #include <exception>
 #include <expected>
 #include <memory>
@@ -13,7 +14,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

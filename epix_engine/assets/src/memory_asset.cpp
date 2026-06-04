@@ -1,7 +1,10 @@
 
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -14,10 +17,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <asio/awaitable.hpp>
-#include <epix/assets.hpp>
-
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 

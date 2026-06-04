@@ -1,21 +1,20 @@
+#include <spdlog/spdlog.h>
+
 #include <chrono>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/screenshot.hpp>
+#include <epix/tasks.hpp>
 #include <filesystem>
 #include <format>
 #include <optional>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-
-#include <epix/core.hpp>
-#include <epix/render.hpp>
-#include <epix/render/screenshot.hpp>
-#include <epix/image.hpp>
-#include <epix/assets.hpp>
-#include <epix/tasks.hpp>
-#include <epix/input.hpp>
 #include <webgpu/webgpu.hpp>
 using namespace epix::render::screenshot;
 using namespace epix::core;

@@ -1,13 +1,12 @@
 #pragma once
 
+#include <epix/core.hpp>
+#include <epix/window.hpp>
 #include <functional>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
-
-#include <epix/core.hpp>
-#include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::render::window {
 /**
@@ -83,16 +82,19 @@ struct WindowSurfaces {
  */
 void extract_windows(
     epix::core::ResMut<ExtractedWindows> extracted_windows,
-    epix::core::Extract<epix::core::Query<epix::core::Item<epix::core::Entity, const epix::window::Window&, const epix::render::window::SurfaceCreation&, epix::core::Has<epix::window::PrimaryWindow>>>> windows,
+    epix::core::Extract<epix::core::Query<epix::core::Item<epix::core::Entity,
+                                                           const epix::window::Window&,
+                                                           const epix::render::window::SurfaceCreation&,
+                                                           epix::core::Has<epix::window::PrimaryWindow>>>> windows,
     epix::core::ResMut<WindowSurfaces> window_surfaces,
     epix::core::Extract<epix::core::EventReader<epix::window::WindowClosed>> closed);
 /**
  * @brief System for making swapchain texture and texture view available.
  */
 void prepare_windows(epix::core::ResMut<ExtractedWindows> windows,
-                            epix::core::ResMut<WindowSurfaces> window_surfaces,
-                            epix::core::Res<wgpu::Device> device,
-                            epix::core::Res<wgpu::Instance> instance);
+                     epix::core::ResMut<WindowSurfaces> window_surfaces,
+                     epix::core::Res<wgpu::Device> device,
+                     epix::core::Res<wgpu::Instance> instance);
 void create_surfaces(epix::core::Res<ExtractedWindows> windows,
                      epix::core::ResMut<WindowSurfaces> window_surfaces,
                      epix::core::Res<wgpu::Instance> instance,

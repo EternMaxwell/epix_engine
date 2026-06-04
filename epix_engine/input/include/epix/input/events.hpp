@@ -1,10 +1,8 @@
 #pragma once
 
-#include <utility>
-
 #include <epix/core.hpp>
 #include <epix/input/enums.hpp>
-
+#include <utility>
 
 namespace epix::input {
 using namespace epix::core;
@@ -44,4 +42,4 @@ struct MouseScroll {
     /** @brief Entity of the window that received the event. */
     Entity window;
 };
-}  // namespace input
+}  // namespace epix::input

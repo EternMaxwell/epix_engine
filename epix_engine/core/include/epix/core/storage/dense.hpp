@@ -3,16 +3,14 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/storage/untyped_vector.hpp>
+#include <epix/core/tick.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
-#include <cassert>
-
-#include <epix/core/tick.hpp>
-#include <epix/core/storage/untyped_vector.hpp>
 
 namespace epix::core {
 struct Dense {

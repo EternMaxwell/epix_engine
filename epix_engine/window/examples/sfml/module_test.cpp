@@ -1,13 +1,12 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <epix/core.hpp>
+#include <epix/input.hpp>
+#include <epix/sfml/core.hpp>
+#include <epix/window.hpp>
 #include <iostream>
 #include <ostream>
-
-#include <epix/core.hpp>
-#include <epix/window.hpp>
-#include <epix/sfml/core.hpp>
-#include <epix/input.hpp>
 
 void test_func() { std::cout << "Test function called!" << std::endl; }
 

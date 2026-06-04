@@ -1,5 +1,5 @@
-#include <string_view>
 #include <epix/input.hpp>
+#include <string_view>
 
 namespace epix::input {
 

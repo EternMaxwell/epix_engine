@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 #ifndef EPIX_IMPORT_STD
+#include <chrono>
 #include <cstdint>
 #include <limits>
-#include <chrono>
 #endif
 #ifdef EPIX_IMPORT_STD
 import std;
@@ -168,4 +168,3 @@ TEST(Timer, Reset) {
     EXPECT_EQ(t.elapsed(), 0ns);
     EXPECT_EQ(t.times_finished_this_tick(), 0u);
 }
-

@@ -1,15 +1,15 @@
 
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
 #include <span>
 #include <system_error>
 #include <vector>
-#include <asio/awaitable.hpp>
-#include <epix/assets.hpp>
 
 namespace epix::assets {
 

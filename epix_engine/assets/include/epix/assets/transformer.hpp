@@ -1,5 +1,9 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/meta.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -8,12 +12,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/assets/concepts.hpp>
-
-#include <epix/assets/server/loader.hpp>
 
 namespace epix::assets {
 template <Asset A>

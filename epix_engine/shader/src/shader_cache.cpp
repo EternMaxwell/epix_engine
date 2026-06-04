@@ -1,5 +1,10 @@
 
+#include <slang-com-ptr.h>
+#include <slang.h>
+#include <spdlog/spdlog.h>
+
 #include <cstdint>
+#include <epix/shader.hpp>
 #include <expected>
 #include <filesystem>
 #include <iterator>
@@ -15,12 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <slang-com-ptr.h>
-#include <slang.h>
-#include <spdlog/spdlog.h>
-#include <epix/shader.hpp>
-
-
 
 using namespace epix::shader;
 

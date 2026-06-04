@@ -1,9 +1,17 @@
 
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/image.hpp>
+#include <epix/render.hpp>
+#include <epix/sprite.hpp>
+#include <epix/transform.hpp>
 #include <format>
 #include <limits>
 #include <optional>
@@ -12,15 +20,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-
-#include <epix/assets.hpp>
-#include <epix/image.hpp>
-#include <epix/core_graph.hpp>
-#include <epix/render.hpp>
-#include <epix/sprite.hpp>
-#include <epix/transform.hpp>
 using namespace epix;
 using namespace epix::core;
 using namespace epix::core_graph;

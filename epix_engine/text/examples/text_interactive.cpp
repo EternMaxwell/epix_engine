@@ -1,14 +1,10 @@
 #include <cmath>
 #include <cstdint>
-#include <format>
-#include <optional>
-#include <string_view>
-#include <utility>
-#include <vector>
-#include <webgpu/webgpu.hpp>
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
@@ -16,8 +12,12 @@
 #include <epix/text.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
-#include <epix/glfw/core.hpp>
-#include <epix/glfw/render.hpp>
+#include <format>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
+#include <webgpu/webgpu.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 

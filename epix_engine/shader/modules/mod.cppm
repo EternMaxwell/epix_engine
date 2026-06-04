@@ -23,4 +23,4 @@ using epix::shader::ShaderRef;
 using epix::shader::ShaderSettings;
 using epix::shader::Source;
 using epix::shader::ValidateShader;
-} // namespace epix::shader
+}  // namespace epix::shader

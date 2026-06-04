@@ -1,12 +1,13 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid.hpp>
 #include <set>
 #include <utility>
 #include <vector>
-#include <epix/extension/grid.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

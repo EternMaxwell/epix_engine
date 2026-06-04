@@ -1,11 +1,16 @@
 #include <gtest/gtest.h>
 
-#include <asio/awaitable.hpp>
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/async_channel.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/tasks.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -22,11 +27,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
-#include <epix/assets.hpp>
-#include <epix/tasks.hpp>
-#include <epix/async_channel.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

@@ -1,11 +1,11 @@
 #pragma once
 
 #include <cstdint>
-#include <memory>
-#include <epix/core/utils.hpp>
+#include <epix/core/entities.hpp>
 #include <epix/core/tick.hpp>
 #include <epix/core/type_registry.hpp>
-#include <epix/core/entities.hpp>
+#include <epix/core/utils.hpp>
+#include <memory>
 
 namespace epix::core {
 /** @brief Forward declaration of the ECS world. */

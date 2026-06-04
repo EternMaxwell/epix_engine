@@ -1,8 +1,8 @@
 
 #include <spdlog/spdlog.h>
-#include <epix/render/graph/context.hpp>
-#include <epix/render/graph.hpp>
 
+#include <epix/render/graph.hpp>
+#include <epix/render/graph/context.hpp>
 
 using namespace epix::render::graph;
 

@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cstddef>
+#include <epix/core.hpp>
 #include <functional>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-#include <epix/core.hpp>
 
 using namespace epix::core;
 

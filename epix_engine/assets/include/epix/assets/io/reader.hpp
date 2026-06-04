@@ -1,7 +1,10 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -14,10 +17,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 namespace reader_errors {
@@ -155,19 +154,21 @@ struct RemovedUnknown {
 
 }  // namespace source_events
 using AssetSourceEvent = std::variant<source_events::AddedAsset,
-                                             source_events::ModifiedAsset,
-                                             source_events::RemovedAsset,
-                                             source_events::RenamedAsset,
-                                             source_events::AddedMeta,
-                                             source_events::ModifiedMeta,
-                                             source_events::RemovedMeta,
-                                             source_events::RenamedMeta,
-                                             source_events::AddedDirectory,
-                                             source_events::RemovedDirectory,
-                                             source_events::RenamedDirectory,
-                                             source_events::RemovedUnknown>;
+                                      source_events::ModifiedAsset,
+                                      source_events::RemovedAsset,
+                                      source_events::RenamedAsset,
+                                      source_events::AddedMeta,
+                                      source_events::ModifiedMeta,
+                                      source_events::RemovedMeta,
+                                      source_events::RenamedMeta,
+                                      source_events::AddedDirectory,
+                                      source_events::RemovedDirectory,
+                                      source_events::RenamedDirectory,
+                                      source_events::RemovedUnknown>;
 
-inline std::filesystem::path get_meta_path(const std::filesystem::path& asset_path) { return asset_path.string() + ".meta"; }
+inline std::filesystem::path get_meta_path(const std::filesystem::path& asset_path) {
+    return asset_path.string() + ".meta";
+}
 
 struct AssetWatcher {
     virtual ~AssetWatcher() = default;

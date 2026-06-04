@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/core/component.hpp>
+#include <epix/core/query/access.hpp>
+#include <epix/core/query/decl.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/world/decl.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -11,11 +16,6 @@
 #include <stdexcept>
 #include <utility>
 #include <vector>
-#include <epix/core/query/decl.hpp>
-#include <epix/core/query/access.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/component.hpp>
 
 namespace epix::core {
 /** @brief Cached query state holding matched archetypes and component access info.

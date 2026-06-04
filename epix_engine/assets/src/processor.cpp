@@ -1,7 +1,15 @@
 
+#include <spdlog/spdlog.h>
+
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/tasks.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -14,15 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
-#include <epix/assets.hpp>
-
-#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 

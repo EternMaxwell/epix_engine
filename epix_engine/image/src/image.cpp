@@ -1,11 +1,17 @@
-#include <epix/image.hpp>
+#include <spdlog/spdlog.h>
+#include <stb_image.h>
+#include <stb_image_resize2.h>
+#include <stb_image_write.h>
 
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -16,15 +22,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <stb_image.h>
-#include <stb_image_resize2.h>
-#include <stb_image_write.h>
-
-#include <asio/awaitable.hpp>
-
-
-#include <epix/assets.hpp>
 namespace epix::image {
 namespace {
 Image create_like(const Image& image, Format format) {

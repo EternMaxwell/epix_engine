@@ -1,16 +1,14 @@
 
+#include <spdlog/spdlog.h>
+
 #include <atomic>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/core/entities.hpp>
 #include <limits>
 #include <optional>
-#include <spdlog/spdlog.h>
-
-#include <cassert>
-
-#include <epix/core/entities.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 void Entities::verify_flush() noexcept {

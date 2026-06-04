@@ -1,20 +1,19 @@
 #pragma once
 
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <unordered_set>
-#include <vector>
-
 #include <box2d/box2d.h>
 #include <box2d/id.h>
 #include <box2d/types.h>
 
-#include <glm/glm.hpp>
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <epix/core.hpp>
-#include <epix/extension/grid.hpp>
 #include <epix/extension/fallingsand.hpp>
+#include <epix/extension/grid.hpp>
+#include <glm/glm.hpp>
+#include <optional>
+#include <unordered_set>
+#include <vector>
 
 namespace epix::experimental::pixelbody {
 

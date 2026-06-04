@@ -1,10 +1,24 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/app/decl.hpp>
+#include <epix/core/app/event.hpp>
+#include <epix/core/app/extract.hpp>
+#include <epix/core/app/loop.hpp>
+#include <epix/core/app/main_schedule.hpp>
+#include <epix/core/app/plugin.hpp>
+#include <epix/core/app/schedules.hpp>
+#include <epix/core/app/state.hpp>
+#include <epix/core/app/task_pool_plugin.hpp>
+#include <epix/core/label.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/traits.hpp>
 #include <expected>
 #include <functional>
 #include <list>
@@ -19,22 +33,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/traits.hpp>
-
-#include <epix/core/label.hpp>
-#include <epix/core/labels.hpp>
-
-#include <epix/core/app/decl.hpp>
-#include <epix/core/app/state.hpp>
-#include <epix/core/app/loop.hpp>
-#include <epix/core/app/schedules.hpp>
-#include <epix/core/app/main_schedule.hpp>
-#include <epix/core/app/event.hpp>
-#include <epix/core/app/extract.hpp>
-#include <epix/core/app/plugin.hpp>
-#include <epix/core/app/task_pool_plugin.hpp>
 
 namespace epix::core {
 /** @brief Error returned when the app's world has been moved to a system dispatcher. */

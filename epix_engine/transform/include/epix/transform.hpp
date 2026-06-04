@@ -4,11 +4,11 @@
 #include <utility>
 
 #define GLM_ENABLE_EXPERIMENTAL
+#include <epix/core.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <epix/core.hpp>
 namespace epix::transform {
 /** @brief Generic transform component with translation, rotation, and scale.
  *

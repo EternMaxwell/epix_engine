@@ -5,6 +5,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid/concepts.hpp>
 #include <expected>
 #include <functional>
 #include <limits>
@@ -13,8 +14,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-#include <epix/extension/grid/concepts.hpp>
 
 namespace epix::ext::grid {
 constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();

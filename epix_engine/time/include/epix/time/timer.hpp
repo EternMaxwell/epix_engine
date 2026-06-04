@@ -3,9 +3,8 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <limits>
-
 #include <epix/time/stopwatch.hpp>
+#include <limits>
 
 namespace epix::time {
 

@@ -1,12 +1,16 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -20,10 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/utils.hpp>
-#include <epix/meta.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

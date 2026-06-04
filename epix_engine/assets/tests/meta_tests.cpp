@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
 #include <memory>
 #include <optional>
 #include <span>
@@ -9,7 +11,6 @@
 #include <typeinfo>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

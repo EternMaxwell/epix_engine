@@ -3,9 +3,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#include <epix/core.hpp>
 #include <epix/assets/concepts.hpp>
+#include <epix/core.hpp>
+#include <functional>
 
 namespace epix::assets {
 struct StrongHandle;

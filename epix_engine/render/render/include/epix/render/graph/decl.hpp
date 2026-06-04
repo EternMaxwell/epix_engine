@@ -2,10 +2,9 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core.hpp>
 #include <functional>
 #include <type_traits>
-
-#include <epix/core.hpp>
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
     struct type : public ::epix::core::Label {                                        \
@@ -18,7 +17,6 @@
             : Label(t) {}                                                             \
     };
 #endif
-
 
 namespace epix::render::graph {
 /** @brief Label type identifying a node within a render graph. */

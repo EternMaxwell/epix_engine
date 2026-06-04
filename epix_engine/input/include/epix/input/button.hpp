@@ -1,15 +1,12 @@
 #pragma once
 
 #include <algorithm>
+#include <epix/core.hpp>
+#include <epix/input/enums.hpp>
+#include <epix/input/events.hpp>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-
-#include <epix/core.hpp>
-
-#include <epix/input/enums.hpp>
-#include <epix/input/events.hpp>
-
 
 namespace epix::input {
 using namespace epix::core;

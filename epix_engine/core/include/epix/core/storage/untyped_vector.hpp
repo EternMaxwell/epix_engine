@@ -3,6 +3,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <epix/meta.hpp>
 #include <limits>
 #include <memory>
 #include <ranges>
@@ -10,9 +11,6 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
-#include <cassert>
-
-#include <epix/meta.hpp>
 
 namespace epix::core {
 /** @brief Type-erased dynamic array that stores elements by their runtime type_info.

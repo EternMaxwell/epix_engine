@@ -2,6 +2,10 @@
 
 #include <cassert>
 #include <concepts>
+#include <epix/assets/id.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/path.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <memory>
@@ -11,13 +15,6 @@
 #include <string_view>
 #include <utility>
 #include <variant>
-#include <cassert>
-
-#include <epix/utils.hpp>
-
-#include <epix/assets/id.hpp>
-#include <epix/assets/path.hpp>
-#include <epix/assets/meta.hpp>
 
 namespace epix::assets {
 using core::Receiver;

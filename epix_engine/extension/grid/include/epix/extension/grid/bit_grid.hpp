@@ -6,14 +6,12 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid/basic_grid.hpp>
 #include <expected>
 #include <limits>
 #include <ranges>
 #include <utility>
 #include <vector>
-
-
-#include <epix/extension/grid/basic_grid.hpp>
 
 namespace epix::ext::grid {
 /**

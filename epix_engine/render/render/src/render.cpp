@@ -1,17 +1,16 @@
 
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
-#include <spdlog/spdlog.h>
 
 // include header to deal with partial specialization problem in MSVC
+#include <epix/render.hpp>
 #include <format>
 #include <stacktrace>
-
-
 #include <webgpu/webgpu.hpp>
-#include <epix/render.hpp>
 using namespace epix::render;
 using namespace epix::core;
 

@@ -4,6 +4,8 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid/concepts.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <memory>
@@ -11,10 +13,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-
-
-#include <epix/extension/grid/concepts.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::ext::grid {
 
@@ -200,13 +198,12 @@ struct untyped_concept {
 // ============================================================
 
 template <std::size_t Dim,
-                 typename GetType,
-                 grid_category Cat = grid_category::iterable | grid_category::container |
-                                     grid_category::unsafe_viewable | grid_category::unsafe_container |
-                                     grid_category::const_viewable | grid_category::const_iterable |
-                                     grid_category::const_unsafe | grid_category::counted,
-                 typename DimT     = std::uint32_t,
-                 typename PosT     = std::int32_t>
+          typename GetType,
+          grid_category Cat = grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
+                              grid_category::unsafe_container | grid_category::const_viewable |
+                              grid_category::const_iterable | grid_category::const_unsafe | grid_category::counted,
+          typename DimT     = std::uint32_t,
+          typename PosT     = std::int32_t>
 class any_grid {
    public:
     using pos_type       = std::array<PosT, Dim>;
@@ -502,10 +499,10 @@ any_grid(G&&) -> any_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
 // ============================================================
 
 template <std::size_t Dim,
-                 typename GetType,
-                 grid_category Cat = grid_category::none,
-                 typename DimT     = std::uint32_t,
-                 typename PosT     = std::int32_t>
+          typename GetType,
+          grid_category Cat = grid_category::none,
+          typename DimT     = std::uint32_t,
+          typename PosT     = std::int32_t>
 class any_grid_view {
    public:
     using pos_type       = std::array<PosT, Dim>;

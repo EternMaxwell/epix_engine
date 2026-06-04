@@ -1,18 +1,17 @@
 #pragma once
 
 #include <concepts>
+#include <epix/core/query.hpp>
+#include <epix/core/system.hpp>
+#include <epix/core/tick.hpp>
+#include <epix/core/ticks.hpp>
+#include <epix/core/world.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
 #include <stdexcept>
 #include <utility>
-#include <epix/meta.hpp>
-
-#include <epix/core/world.hpp>
-#include <epix/core/system.hpp>
-#include <epix/core/tick.hpp>
-#include <epix/core/query.hpp>
-#include <epix/core/ticks.hpp>
 
 namespace epix::core {
 /** @brief Wrapper that redirects a system parameter's data source to the extracted (main) world.

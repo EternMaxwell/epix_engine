@@ -1,5 +1,6 @@
 
 #include <spdlog/spdlog.h>
+
 #include <epix/core_graph.hpp>
 
 namespace epix::core_graph {

@@ -9,6 +9,9 @@ using epix::mesh::BindMesh2dTexture;
 using epix::mesh::DrawMesh2dBatch;
 using epix::mesh::ExtractedMesh2d;
 using epix::mesh::GPUMesh;
+using epix::mesh::make_box2d;
+using epix::mesh::make_box2d_uv;
+using epix::mesh::make_circle;
 using epix::mesh::Mesh;
 using epix::mesh::Mesh2d;
 using epix::mesh::MeshAlphaMode2d;
@@ -24,7 +27,4 @@ using epix::mesh::MeshMaterial2d;
 using epix::mesh::MeshPlugin;
 using epix::mesh::MeshRenderPlugin;
 using epix::mesh::MeshTextureMaterial2d;
-using epix::mesh::make_box2d;
-using epix::mesh::make_box2d_uv;
-using epix::mesh::make_circle;
-} // namespace epix::mesh
+}  // namespace epix::mesh

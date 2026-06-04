@@ -1,13 +1,13 @@
 #pragma once
 
-#include <optional>
-#include <utility>
-#include <epix/core/query/decl.hpp>
 #include <epix/core/query/access.hpp>
-#include <epix/core/query/state.hpp>
+#include <epix/core/query/decl.hpp>
 #include <epix/core/query/fetch.hpp>
 #include <epix/core/query/filter.hpp>
 #include <epix/core/query/iter.hpp>
+#include <epix/core/query/state.hpp>
+#include <optional>
+#include <utility>
 
 namespace epix::core {
 /** @brief High-level query handle providing iteration, single-entity lookup, and existence checks.

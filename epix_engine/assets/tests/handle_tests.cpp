@@ -1,8 +1,9 @@
 #include <gtest/gtest.h>
+
+#include <epix/assets.hpp>
 #include <stdexcept>
 #include <string>
 #include <utility>
-#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

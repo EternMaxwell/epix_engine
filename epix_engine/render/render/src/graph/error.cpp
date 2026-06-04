@@ -1,10 +1,9 @@
 
 #include <cstdint>
+#include <epix/render/graph/error.hpp>
 #include <format>
 #include <string>
 #include <variant>
-#include <epix/render/graph/error.hpp>
-
 
 namespace epix::render::graph {
 

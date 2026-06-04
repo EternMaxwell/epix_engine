@@ -4,6 +4,7 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <epix/core/bundle/info.hpp>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -13,9 +14,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <cassert>
-
-#include <epix/core/bundle/info.hpp>
 
 namespace epix::core {
 /**

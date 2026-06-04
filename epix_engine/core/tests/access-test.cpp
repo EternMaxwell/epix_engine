@@ -1,7 +1,8 @@
 #include <gtest/gtest.h>
+
 #include <cstddef>
-#include <utility>
 #include <epix/core.hpp>
+#include <utility>
 
 TEST(core, access) {
     using namespace epix::core;

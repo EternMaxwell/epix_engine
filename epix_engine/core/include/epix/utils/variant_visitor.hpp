@@ -15,4 +15,4 @@ struct visitor : Visitors... {
 };
 template <typename... Visitors>
 visitor(Visitors...) -> visitor<Visitors...>;
-}  // namespace utils
+}  // namespace epix::utils

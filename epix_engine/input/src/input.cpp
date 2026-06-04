@@ -1,16 +1,15 @@
-#include <epix/core.hpp>
-
 #include <spdlog/spdlog.h>
-#include <epix/input.hpp>
 
+#include <epix/core.hpp>
+#include <epix/input.hpp>
 
 using namespace epix::core;
 namespace epix::input {
 
 void log_inputs(EventReader<KeyInput> key_reader,
-                       EventReader<MouseButtonInput> mouse_reader,
-                       EventReader<MouseMove> mouse_move_reader,
-                       EventReader<MouseScroll> mouse_scroll_reader) {
+                EventReader<MouseButtonInput> mouse_reader,
+                EventReader<MouseMove> mouse_move_reader,
+                EventReader<MouseScroll> mouse_scroll_reader) {
     for (auto&& [key, scancode, pressed, repeat, window] : key_reader.read()) {
         spdlog::info("Key: {}, Scancode: {}, Pressed: {}, Repeat: {}", key_name(key), scancode, pressed, repeat);
     }

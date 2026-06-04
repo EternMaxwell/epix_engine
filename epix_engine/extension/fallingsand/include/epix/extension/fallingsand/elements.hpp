@@ -2,17 +2,16 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/fallingsand/temperature.hpp>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
-
-#include <glm/glm.hpp>
-#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <epix/time.hpp>
 
 using namespace epix::time;
@@ -143,4 +144,3 @@ TEST(TimeVirtual, AsGeneric) {
     EXPECT_EQ(g.delta(), 200ms);
     EXPECT_EQ(g.elapsed(), 200ms);
 }
-

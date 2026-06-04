@@ -1,13 +1,13 @@
 
+#include <spdlog/spdlog.h>
+
 #include <cstring>
+#include <epix/render/extract.hpp>
+#include <epix/render/schedule.hpp>
+#include <epix/render/view.hpp>
 #include <optional>
 #include <string_view>
 #include <variant>
-#include <spdlog/spdlog.h>
-#include <epix/render/view.hpp>
-#include <epix/render/schedule.hpp>
-#include <epix/render/extract.hpp>
-
 
 using namespace epix::core;
 using namespace epix::render;

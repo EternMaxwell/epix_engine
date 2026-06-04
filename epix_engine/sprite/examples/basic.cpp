@@ -1,18 +1,18 @@
 ﻿#include <cstdint>
-#include <utility>
-#include <vector>
+#include <epix/assets.hpp>
 #include <epix/core.hpp>
-#include <epix/window.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
-#include <epix/core_graph.hpp>
-#include <epix/transform.hpp>
-#include <epix/input.hpp>
-#include <epix/image.hpp>
 #include <epix/sprite.hpp>
-#include <epix/assets.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <utility>
+#include <vector>
 
 using namespace epix;
 

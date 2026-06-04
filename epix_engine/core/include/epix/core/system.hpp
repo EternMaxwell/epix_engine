@@ -2,6 +2,12 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core/label.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/system/commands.hpp>
+#include <epix/core/system/from_param.hpp>
+#include <epix/core/system/input.hpp>
+#include <epix/core/system/param.hpp>
 #include <exception>
 #include <expected>
 #include <memory>
@@ -13,13 +19,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/core/label.hpp>
-#include <epix/core/labels.hpp>
-
-#include <epix/core/system/param.hpp>
-#include <epix/core/system/input.hpp>
-#include <epix/core/system/from_param.hpp>
-#include <epix/core/system/commands.hpp>
 
 namespace epix::core {
 /** @brief Wrapper around an exception caught during system execution. */

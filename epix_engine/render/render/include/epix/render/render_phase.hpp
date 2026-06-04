@@ -1,9 +1,18 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/render/graph.hpp>
+#include <epix/render/pipeline.hpp>
+#include <epix/render/pipeline_server.hpp>
+#include <epix/traits.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -23,15 +32,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/traits.hpp>
-#include <epix/render/graph.hpp>
-#include <epix/render/pipeline.hpp>
-#include <epix/render/pipeline_server.hpp>
 
 namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
@@ -85,8 +85,10 @@ struct OpaqueSortKey {
         if (!other.impl) return std::strong_ordering::greater;
 
         // typeid on the polymorphic object gives the concrete Model<T> type — no extra virtual needed
-        const std::type_info& ta = typeid(*impl);
-        const std::type_info& tb = typeid(*other.impl);
+        Concept& a               = *impl;
+        Concept& b               = *other.impl;
+        const std::type_info& ta = typeid(a);
+        const std::type_info& tb = typeid(b);
         if (ta != tb) {
             return ta.before(tb) ? std::strong_ordering::less : std::strong_ordering::greater;
         }

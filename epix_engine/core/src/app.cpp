@@ -19,14 +19,12 @@
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 
-#include <stacktrace>
-
-#include <epix/meta.hpp>
-
+#include <epix/core.hpp>
 #include <epix/core/app.hpp>
 #include <epix/core/labels.hpp>
 #include <epix/core/schedule.hpp>
-#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <stacktrace>
 
 namespace epix::core {
 

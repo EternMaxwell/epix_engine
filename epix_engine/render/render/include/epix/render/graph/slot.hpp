@@ -2,6 +2,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -10,10 +13,6 @@
 #include <string_view>
 #include <variant>
 #include <vector>
-
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/utils.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::render::graph {
 using epix::core::Entity;

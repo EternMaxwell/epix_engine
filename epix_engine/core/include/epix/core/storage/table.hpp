@@ -1,10 +1,11 @@
 #pragma once
 
-#include <cassert>
-
 #include <algorithm>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/storage/dense.hpp>
+#include <epix/core/storage/sparse_set.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -13,8 +14,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/core/storage/sparse_set.hpp>
-#include <epix/core/storage/dense.hpp>
 
 namespace epix::core {
 struct Table {

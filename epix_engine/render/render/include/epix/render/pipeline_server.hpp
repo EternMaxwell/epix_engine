@@ -1,8 +1,13 @@
 #pragma once
 
+#include <BS_thread_pool.hpp>
 #include <chrono>
 #include <concepts>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/render/pipeline.hpp>
+#include <epix/shader.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <future>
@@ -14,14 +19,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-
-#include <epix/core.hpp>
-#include <epix/utils.hpp>
-#include <epix/shader.hpp>
-#include <BS_thread_pool.hpp>
-
-#include <epix/render/pipeline.hpp>
-
 
 namespace epix::render {
 using namespace epix::core;
@@ -101,10 +98,10 @@ struct PipelineStateRecoverableShaderError {
 };
 /** @brief Current state of a cached pipeline in its lifecycle. */
 using CachedPipelineState = std::variant<PipelineStateQueued,
-                                                PipelineStateCreating,
-                                                PipelineStateRecoverableShaderError,
-                                                Pipeline,
-                                                PipelineServerError>;
+                                         PipelineStateCreating,
+                                         PipelineStateRecoverableShaderError,
+                                         Pipeline,
+                                         PipelineServerError>;
 struct CachedPipeline {
     PipelineDescriptor descriptor;
     CachedPipelineState state;

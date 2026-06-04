@@ -1,7 +1,12 @@
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core_graph.hpp>
+#include <epix/render.hpp>
+#include <epix/text.hpp>
 #include <expected>
 #include <format>
 #include <optional>
@@ -12,11 +17,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/core_graph.hpp>
-#include <epix/render.hpp>
-#include <epix/text.hpp>
 #include <webgpu/webgpu.hpp>
 using namespace epix::core;
 using namespace epix::text;

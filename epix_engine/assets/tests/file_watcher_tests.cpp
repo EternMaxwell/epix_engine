@@ -1,13 +1,14 @@
 ﻿#include <gtest/gtest.h>
+
 #include <chrono>
+#include <epix/assets.hpp>
+#include <epix/async_channel.hpp>
 #include <filesystem>
 #include <fstream>
 #include <optional>
 #include <thread>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
-#include <epix/async_channel.hpp>
 
 using namespace epix::assets;
 // using namespace epix::async_channel; -- ambiguous with epix::utils::epix::async_channel::Receiver

@@ -1,9 +1,13 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
 #include <map>
@@ -15,11 +19,7 @@
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <spdlog/spdlog.h>
-
 #include <webgpu/webgpu.hpp>
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 
@@ -344,15 +344,15 @@ inline const MeshAttribute Mesh::ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFl
  * @param segment_count Number of line segments; auto-calculated if not provided.
  */
 Mesh make_circle(float radius,
-                        std::optional<glm::vec4> color             = std::nullopt,
-                        std::optional<std::uint32_t> segment_count = std::nullopt);
+                 std::optional<glm::vec4> color             = std::nullopt,
+                 std::optional<std::uint32_t> segment_count = std::nullopt);
 /** @brief Create a box mesh on the XY plane. */
 Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
 /** @brief Create a box mesh on the XY plane with UV coordinates. */
 Mesh make_box2d_uv(float width,
-                          float height,
-                          glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
-                          std::optional<glm::vec4> vertex_color = std::nullopt);
+                   float height,
+                   glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                   std::optional<glm::vec4> vertex_color = std::nullopt);
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
 struct MeshPlugin {

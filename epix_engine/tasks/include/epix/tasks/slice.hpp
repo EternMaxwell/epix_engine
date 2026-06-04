@@ -3,13 +3,12 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/tasks/task_pool.hpp>
 #include <optional>
 #include <span>
 #include <type_traits>
 #include <utility>
 #include <vector>
-
-#include <epix/tasks/task_pool.hpp>
 
 namespace epix::tasks {
 

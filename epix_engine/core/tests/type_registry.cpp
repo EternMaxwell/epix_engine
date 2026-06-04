@@ -1,13 +1,14 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
 #include <memory>
 #include <thread>
 #include <utility>
 #include <vector>
-#include <epix/core.hpp>
 
 using namespace epix::core;
 

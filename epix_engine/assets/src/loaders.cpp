@@ -1,6 +1,11 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -10,11 +15,6 @@
 #include <tuple>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::shared_ptr<ErasedAssetLoader> MaybeAssetLoader::get() const {

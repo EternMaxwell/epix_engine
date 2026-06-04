@@ -12,4 +12,4 @@ using epix::transform::Transform;
 using epix::transform::TransformPlugin;
 using epix::transform::TransformSets;
 using epix::transform::TransformT;
-} // namespace epix::transform
+}  // namespace epix::transform

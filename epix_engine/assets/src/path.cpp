@@ -1,3 +1,4 @@
+#include <epix/assets.hpp>
 #include <filesystem>
 #include <optional>
 #include <sstream>
@@ -5,7 +6,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <epix/assets.hpp>
 namespace epix::assets {
 
 std::string AssetPath::string() const {

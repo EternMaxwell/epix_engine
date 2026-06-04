@@ -1,5 +1,9 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
+#include <epix/assets/path.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -10,11 +14,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <epix/utils.hpp>
-
-#include <epix/assets/path.hpp>
 
 namespace epix::assets {
 
@@ -85,8 +84,8 @@ struct UnfinishedTransaction {
 }  // namespace log_entry_errors
 
 using LogEntryError = std::variant<log_entry_errors::DuplicateTransaction,
-                                          log_entry_errors::EndedMissingTransaction,
-                                          log_entry_errors::UnfinishedTransaction>;
+                                   log_entry_errors::EndedMissingTransaction,
+                                   log_entry_errors::UnfinishedTransaction>;
 
 // ---- ValidateLogError ----
 
@@ -103,8 +102,8 @@ struct EntryErrors {
 }  // namespace validate_log_errors
 
 using ValidateLogError = std::variant<validate_log_errors::UnrecoverableError,
-                                             validate_log_errors::ReadLogError,
-                                             validate_log_errors::EntryErrors>;
+                                      validate_log_errors::ReadLogError,
+                                      validate_log_errors::EntryErrors>;
 
 // ---- validate_transaction_log ----
 

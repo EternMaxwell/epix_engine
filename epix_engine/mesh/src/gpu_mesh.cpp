@@ -1,13 +1,12 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <epix/mesh.hpp>
 #include <optional>
 #include <ranges>
-
-#include <spdlog/spdlog.h>
-#include <epix/mesh.hpp>
-
 
 using namespace epix;
 using namespace epix::mesh;

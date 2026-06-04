@@ -1,10 +1,9 @@
 
 #include <spdlog/spdlog.h>
 
-
+#include <epix/core.hpp>
 #include <epix/core/app/schedules.hpp>
 #include <epix/core/labels.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 std::optional<std::reference_wrapper<const Schedule>> Schedules::get_schedule(

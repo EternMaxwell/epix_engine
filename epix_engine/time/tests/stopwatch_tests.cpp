@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <epix/time.hpp>
 
 using namespace epix::time;
@@ -59,4 +60,3 @@ TEST(Stopwatch, SetElapsed) {
     EXPECT_EQ(sw.elapsed(), 3s);
     EXPECT_FLOAT_EQ(sw.elapsed_secs(), 3.0f);
 }
-

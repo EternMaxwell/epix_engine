@@ -1,6 +1,10 @@
 #pragma once
 
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/shader/shader.hpp>
+#include <epix/shader/shader_composer.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -14,11 +18,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <epix/core.hpp>
-#include <epix/utils.hpp>
-#include <epix/shader/shader.hpp>
-#include <epix/shader/shader_composer.hpp>
 
 namespace epix::shader {
 

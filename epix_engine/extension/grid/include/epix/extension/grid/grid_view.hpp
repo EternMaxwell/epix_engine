@@ -1,6 +1,7 @@
 #pragma once
 
 #include <concepts>
+#include <epix/extension/grid/concepts.hpp>
 #include <expected>
 #include <functional>
 #include <limits>
@@ -8,9 +9,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-
-
-#include <epix/extension/grid/concepts.hpp>
 
 namespace epix::ext::grid::views {
 

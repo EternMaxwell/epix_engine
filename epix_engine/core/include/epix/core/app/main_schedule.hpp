@@ -1,12 +1,12 @@
 #pragma once
 
+#include <epix/core/app/decl.hpp>
+#include <epix/core/app/state.hpp>
+#include <epix/core/schedule.hpp>
+#include <epix/core/ticks.hpp>
 #include <functional>
 #include <type_traits>
 #include <vector>
-#include <epix/core/app/decl.hpp>
-#include <epix/core/app/state.hpp>
-#include <epix/core/ticks.hpp>
-#include <epix/core/schedule.hpp>
 
 namespace epix::core {
 /** @brief A schedule label with optional system-set transforms.
@@ -109,4 +109,4 @@ struct MainSchedulePlugin {
     /** @brief Register all built-in schedules with the app. */
     void attach(App& app);
 };
-}  // namespace core
+}  // namespace epix::core

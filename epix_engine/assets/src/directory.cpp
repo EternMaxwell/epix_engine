@@ -1,6 +1,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -14,8 +16,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
-#include <epix/utils.hpp>
 
 namespace epix::assets::memory {
 

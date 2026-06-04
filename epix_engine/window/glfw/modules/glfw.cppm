@@ -11,4 +11,4 @@ using epix::glfw::GLFWwindows;
 using epix::glfw::PathDrop;
 using epix::glfw::ReceivedCharacter;
 using epix::glfw::SetClipboardString;
-} // namespace epix::glfw
+}  // namespace epix::glfw

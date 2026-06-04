@@ -7,4 +7,4 @@ struct EntityRef;
 struct EntityRefMut;
 /** @brief Mutable reference with full world access for spawning/despawning. */
 struct EntityWorldMut;
-}  // namespace core
+}  // namespace epix::core

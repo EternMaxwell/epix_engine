@@ -1,9 +1,14 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/handle.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -17,13 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <spdlog/spdlog.h>
-
-#include <epix/assets/concepts.hpp>
-
-#include <epix/assets/handle.hpp>
-#include <epix/utils.hpp>
 using epix::utils::visitor;
 
 namespace epix::assets {

@@ -1,11 +1,11 @@
 #pragma once
 
+#include <epix/core/schedule.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <unordered_map>
 #include <utility>
-#include <epix/core/schedule.hpp>
 
 namespace epix::core {
 /**

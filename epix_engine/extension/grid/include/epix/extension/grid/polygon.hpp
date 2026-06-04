@@ -4,15 +4,14 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid/bit_grid.hpp>
+#include <epix/extension/grid/concepts.hpp>
+#include <epix/extension/grid/grid_view.hpp>
+#include <glm/glm.hpp>
 #include <span>
 #include <stack>
 #include <utility>
 #include <vector>
-
-#include <glm/glm.hpp>
-#include <epix/extension/grid/concepts.hpp>
-#include <epix/extension/grid/bit_grid.hpp>
-#include <epix/extension/grid/grid_view.hpp>
 
 namespace epix::ext::grid {
 

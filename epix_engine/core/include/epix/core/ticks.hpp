@@ -1,9 +1,9 @@
 #pragma once
 
 #include <concepts>
+#include <epix/core/tick.hpp>
 #include <memory>
 #include <type_traits>
-#include <epix/core/tick.hpp>
 
 namespace epix::core {
 struct Ticks {
@@ -68,158 +68,158 @@ template <typename T>
 struct copy_ref : public std::false_type {};
 template <typename T>
 concept refable = !std::is_reference_v<T> && !std::is_const_v<T>;
-    /** @brief Immutable reference wrapper with change-detection tick metadata.
-     *
-     * Provides read-only access to a value along with tick information
-     * to detect whether the value was added or modified since the last
-     * system run. When copy_ref<T> is true, the value is copied instead
-     * of referenced.
-     * @tparam T The referenced value type (must not be a reference or const).
-     */
-    template <refable T>
-    struct Ref;
-    template <refable T>
-        requires(!copy_ref<T>::value)
-    struct Ref<T> {
-       private:
-        const T* value;
-        Ticks ticks;
+/** @brief Immutable reference wrapper with change-detection tick metadata.
+ *
+ * Provides read-only access to a value along with tick information
+ * to detect whether the value was added or modified since the last
+ * system run. When copy_ref<T> is true, the value is copied instead
+ * of referenced.
+ * @tparam T The referenced value type (must not be a reference or const).
+ */
+template <refable T>
+struct Ref;
+template <refable T>
+    requires(!copy_ref<T>::value)
+struct Ref<T> {
+   private:
+    const T* value;
+    Ticks ticks;
 
-       public:
-        Ref(const T* value, Ticks ticks) noexcept : value(value), ticks(ticks) {}
+   public:
+    Ref(const T* value, Ticks ticks) noexcept : value(value), ticks(ticks) {}
 
-        /** @brief Get a const pointer to the value. */
-        const T* ptr() const noexcept { return value; }
-        /** @brief Get a const reference to the value. */
-        const T& get() const noexcept { return *value; }
-        /** @brief Dereference to const pointer. */
-        const T* operator->() const noexcept { return value; }
-        /** @brief Dereference to const reference. */
-        const T& operator*() const noexcept { return *value; }
-        operator const T&() const noexcept { return *value; }
-        /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const noexcept { return ticks.is_added(); }
-        /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const noexcept { return ticks.is_modified(); }
-        /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const noexcept { return ticks.last_modified(); }
-        /** @brief Get the tick when the value was added. */
-        Tick added_tick() const noexcept { return ticks.added_tick(); }
-    };
-    template <refable T>
-        requires(copy_ref<T>::value && std::copy_constructible<T>)
-    struct Ref<T> {
-       private:
-        T value;
-        Ticks ticks;
+    /** @brief Get a const pointer to the value. */
+    const T* ptr() const noexcept { return value; }
+    /** @brief Get a const reference to the value. */
+    const T& get() const noexcept { return *value; }
+    /** @brief Dereference to const pointer. */
+    const T* operator->() const noexcept { return value; }
+    /** @brief Dereference to const reference. */
+    const T& operator*() const noexcept { return *value; }
+    operator const T&() const noexcept { return *value; }
+    /** @brief Check whether the value was added since the last system run. */
+    bool is_added() const noexcept { return ticks.is_added(); }
+    /** @brief Check whether the value was modified since the last system run. */
+    bool is_modified() const noexcept { return ticks.is_modified(); }
+    /** @brief Get the tick when the value was last modified. */
+    Tick last_modified() const noexcept { return ticks.last_modified(); }
+    /** @brief Get the tick when the value was added. */
+    Tick added_tick() const noexcept { return ticks.added_tick(); }
+};
+template <refable T>
+    requires(copy_ref<T>::value && std::copy_constructible<T>)
+struct Ref<T> {
+   private:
+    T value;
+    Ticks ticks;
 
-       public:
-        Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
+   public:
+    Ref(const T* value, Ticks ticks) : value(*value), ticks(ticks) {}
 
-        /** @brief Get a const pointer to the copied value. */
-        const T* ptr() const noexcept { return std::addressof(value); }
-        /** @brief Get a mutable pointer to the copied value. */
-        T* ptr_mut() noexcept { return std::addressof(value); }
-        /** @brief Get a const reference to the copied value. */
-        const T& get() const noexcept { return value; }
-        /** @brief Get a mutable reference to the copied value. */
-        T& get_mut() noexcept { return value; }
-        /** @brief Dereference to const pointer. */
-        const T* operator->() const noexcept { return std::addressof(value); }
-        /** @brief Dereference to mutable pointer. */
-        T* operator->() noexcept { return std::addressof(value); }
-        /** @brief Dereference to const reference. */
-        const T& operator*() const noexcept { return value; }
-        /** @brief Dereference to mutable reference. */
-        T& operator*() noexcept { return value; }
-        operator const T&() const noexcept { return value; }
-        operator T&() noexcept { return value; }
-        /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const noexcept { return ticks.is_added(); }
-        /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const noexcept { return ticks.is_modified(); }
-        /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const noexcept { return ticks.last_modified(); }
-        /** @brief Get the tick when the value was added. */
-        Tick added_tick() const noexcept { return ticks.added_tick(); }
-    };
-    /** @brief Mutable reference wrapper with change-detection tick metadata.
-     *
-     * Provides read-write access to a value. Mutating access (get_mut, operator->,
-     * operator*) automatically marks the value as modified.
-     * @tparam T The referenced value type (must not be a reference or const).
-     */
-    template <refable T>
-    struct Mut {
-       private:
-        T* value;
-        TicksMut ticks;
+    /** @brief Get a const pointer to the copied value. */
+    const T* ptr() const noexcept { return std::addressof(value); }
+    /** @brief Get a mutable pointer to the copied value. */
+    T* ptr_mut() noexcept { return std::addressof(value); }
+    /** @brief Get a const reference to the copied value. */
+    const T& get() const noexcept { return value; }
+    /** @brief Get a mutable reference to the copied value. */
+    T& get_mut() noexcept { return value; }
+    /** @brief Dereference to const pointer. */
+    const T* operator->() const noexcept { return std::addressof(value); }
+    /** @brief Dereference to mutable pointer. */
+    T* operator->() noexcept { return std::addressof(value); }
+    /** @brief Dereference to const reference. */
+    const T& operator*() const noexcept { return value; }
+    /** @brief Dereference to mutable reference. */
+    T& operator*() noexcept { return value; }
+    operator const T&() const noexcept { return value; }
+    operator T&() noexcept { return value; }
+    /** @brief Check whether the value was added since the last system run. */
+    bool is_added() const noexcept { return ticks.is_added(); }
+    /** @brief Check whether the value was modified since the last system run. */
+    bool is_modified() const noexcept { return ticks.is_modified(); }
+    /** @brief Get the tick when the value was last modified. */
+    Tick last_modified() const noexcept { return ticks.last_modified(); }
+    /** @brief Get the tick when the value was added. */
+    Tick added_tick() const noexcept { return ticks.added_tick(); }
+};
+/** @brief Mutable reference wrapper with change-detection tick metadata.
+ *
+ * Provides read-write access to a value. Mutating access (get_mut, operator->,
+ * operator*) automatically marks the value as modified.
+ * @tparam T The referenced value type (must not be a reference or const).
+ */
+template <refable T>
+struct Mut {
+   private:
+    T* value;
+    TicksMut ticks;
 
-       public:
-        Mut(T* value, TicksMut ticks) noexcept : value(value), ticks(ticks) {}
+   public:
+    Mut(T* value, TicksMut ticks) noexcept : value(value), ticks(ticks) {}
 
-        /** @brief Get a const pointer to the value without marking as modified. */
-        const T* ptr() const noexcept { return value; }
-        /** @brief Get a mutable pointer, marking the value as modified. */
-        T* ptr_mut() noexcept {
-            ticks.set_modified();
-            return value;
-        }
-        /** @brief Get a const reference to the value without marking as modified. */
-        const T& get() const noexcept { return *value; }
-        /** @brief Get a mutable reference, marking the value as modified. */
-        T& get_mut() noexcept {
-            ticks.set_modified();
-            return *value;
-        }
-        /** @brief Dereference to const pointer. */
-        const T* operator->() const noexcept { return value; }
-        /** @brief Dereference to mutable pointer, marking the value as modified. */
-        T* operator->() noexcept {
-            ticks.set_modified();
-            return value;
-        }
-        /** @brief Dereference to const reference. */
-        const T& operator*() const noexcept { return *value; }
-        /** @brief Dereference to mutable reference, marking the value as modified. */
-        T& operator*() noexcept {
-            ticks.set_modified();
-            return *value;
-        }
-        /** @brief Implicit conversion to mutable reference, marking as modified. */
-        operator T&() noexcept {
-            ticks.set_modified();
-            return *value;
-        }
-        operator const T&() const noexcept { return *value; }
-        /** @brief Check whether the value was added since the last system run. */
-        bool is_added() const noexcept { return ticks.is_added(); }
-        /** @brief Check whether the value was modified since the last system run. */
-        bool is_modified() const noexcept { return ticks.is_modified(); }
-        /** @brief Get the tick when the value was last modified. */
-        Tick last_modified() const noexcept { return ticks.last_modified(); }
-        /** @brief Get the tick when the value was added. */
-        Tick added_tick() const noexcept { return ticks.added_tick(); }
-        /** @brief Convertable to Ref */
-        operator Ref<T>() const { return Ref<T>(value, ticks); }
-    };
+    /** @brief Get a const pointer to the value without marking as modified. */
+    const T* ptr() const noexcept { return value; }
+    /** @brief Get a mutable pointer, marking the value as modified. */
+    T* ptr_mut() noexcept {
+        ticks.set_modified();
+        return value;
+    }
+    /** @brief Get a const reference to the value without marking as modified. */
+    const T& get() const noexcept { return *value; }
+    /** @brief Get a mutable reference, marking the value as modified. */
+    T& get_mut() noexcept {
+        ticks.set_modified();
+        return *value;
+    }
+    /** @brief Dereference to const pointer. */
+    const T* operator->() const noexcept { return value; }
+    /** @brief Dereference to mutable pointer, marking the value as modified. */
+    T* operator->() noexcept {
+        ticks.set_modified();
+        return value;
+    }
+    /** @brief Dereference to const reference. */
+    const T& operator*() const noexcept { return *value; }
+    /** @brief Dereference to mutable reference, marking the value as modified. */
+    T& operator*() noexcept {
+        ticks.set_modified();
+        return *value;
+    }
+    /** @brief Implicit conversion to mutable reference, marking as modified. */
+    operator T&() noexcept {
+        ticks.set_modified();
+        return *value;
+    }
+    operator const T&() const noexcept { return *value; }
+    /** @brief Check whether the value was added since the last system run. */
+    bool is_added() const noexcept { return ticks.is_added(); }
+    /** @brief Check whether the value was modified since the last system run. */
+    bool is_modified() const noexcept { return ticks.is_modified(); }
+    /** @brief Get the tick when the value was last modified. */
+    Tick last_modified() const noexcept { return ticks.last_modified(); }
+    /** @brief Get the tick when the value was added. */
+    Tick added_tick() const noexcept { return ticks.added_tick(); }
+    /** @brief Convertable to Ref */
+    operator Ref<T>() const { return Ref<T>(value, ticks); }
+};
 
-    /** @brief Immutable resource reference, extending Ref<T> for use with resources.
-     * @tparam T The resource type.
-     */
-    template <refable T>
-    struct Res : public Ref<T> {
-       public:
-        using Ref<T>::Ref;
-    };
-    /** @brief Mutable resource reference, extending Mut<T> for use with resources.
-     *
-     * Mutating access automatically marks the resource as modified.
-     * @tparam T The resource type.
-     */
-    template <refable T>
-    struct ResMut : public Mut<T> {
-       public:
-        using Mut<T>::Mut;
-    };
+/** @brief Immutable resource reference, extending Ref<T> for use with resources.
+ * @tparam T The resource type.
+ */
+template <refable T>
+struct Res : public Ref<T> {
+   public:
+    using Ref<T>::Ref;
+};
+/** @brief Mutable resource reference, extending Mut<T> for use with resources.
+ *
+ * Mutating access automatically marks the resource as modified.
+ * @tparam T The resource type.
+ */
+template <refable T>
+struct ResMut : public Mut<T> {
+   public:
+    using Mut<T>::Mut;
+};
 }  // namespace epix::core

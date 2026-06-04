@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
+
+#include <epix/core.hpp>
 #include <format>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
-#include <epix/core.hpp>
 
 using namespace epix::core;
 

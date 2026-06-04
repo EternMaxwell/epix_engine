@@ -4,6 +4,11 @@
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <epix/core/component.hpp>
+#include <epix/core/query/access.hpp>
+#include <epix/core/query/decl.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/world/decl.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -11,11 +16,6 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <epix/core/query/decl.hpp>
-#include <epix/core/query/access.hpp>
-#include <epix/core/world/decl.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/storage.hpp>
 
 namespace epix::core {
 template <query_filter... Fs>

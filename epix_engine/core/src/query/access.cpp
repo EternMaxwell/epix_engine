@@ -1,11 +1,11 @@
 
 #include <algorithm>
+#include <epix/core.hpp>
+#include <epix/core/query/access.hpp>
 #include <ranges>
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <epix/core/query/access.hpp>
-#include <epix/core.hpp>
 
 namespace epix::core {
 void Access::merge(const Access& other) {
@@ -199,4 +199,4 @@ AccessConflicts FilteredAccessSet::get_conflicts(const FilteredAccess& other) co
     }
     return conflicts;
 }
-}  // namespace core
+}  // namespace epix::core

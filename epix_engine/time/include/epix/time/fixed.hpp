@@ -3,7 +3,6 @@
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
-
 #include <epix/time/time_clock.hpp>
 #include <epix/time/virt.hpp>
 

@@ -1,18 +1,16 @@
 #pragma once
 
+#include <asio/awaitable.hpp>
 #include <cstdint>
+#include <epix/assets/io/memory.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <utility>
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/io/memory.hpp>
 
 namespace epix::assets {
 

@@ -1,14 +1,12 @@
 #pragma once
 
-#include <filesystem>
-#include <memory>
 #include <efsw/efsw.hpp>
-
+#include <epix/assets/async_channel.hpp>
+#include <epix/assets/io/reader.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
-#include <epix/assets/async_channel.hpp>
-
-#include <epix/assets/io/reader.hpp>
+#include <filesystem>
+#include <memory>
 
 namespace epix::assets {
 struct FileAssetWatcher : public AssetWatcher {

@@ -1,9 +1,8 @@
 #pragma once
 
+#include <epix/core.hpp>
 #include <epix/experimental/pixelbody/structs.hpp>
 #include <epix/experimental/pixelbody/systems.hpp>
-
-#include <epix/core.hpp>
 
 namespace epix::experimental::pixelbody {
 

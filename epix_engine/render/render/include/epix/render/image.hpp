@@ -1,11 +1,9 @@
 #pragma once
 
-#include <tuple>
-
-#include <epix/render/assets.hpp>
-
-#include <epix/image.hpp>
 #include <epix/assets.hpp>
+#include <epix/image.hpp>
+#include <epix/render/assets.hpp>
+#include <tuple>
 #include <webgpu/webgpu.hpp>
 namespace epix::render {
 /** @brief Resource holding the default sampler used for image textures. */

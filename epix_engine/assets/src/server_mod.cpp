@@ -1,4 +1,5 @@
 
+#include <epix/assets.hpp>
 #include <expected>
 #include <functional>
 #include <future>
@@ -9,7 +10,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
 using namespace epix::assets;
 
 UntypedHandle AssetServer::load_untyped(const AssetPath& path) const {

@@ -1,14 +1,14 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
+#include <epix/core/app/decl.hpp>
+#include <epix/tasks.hpp>
 #include <functional>
 #include <optional>
 #include <thread>
-#include <spdlog/spdlog.h>
-
-#include <epix/tasks.hpp>
-#include <epix/core/app/decl.hpp>
 
 namespace epix::core {
 

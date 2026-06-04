@@ -118,4 +118,3 @@ TEST(TimeClock, AsGeneric) {
     EXPECT_EQ(g.elapsed(), 500ms);
     EXPECT_EQ(g.wrap_period(), t.wrap_period());
 }
-

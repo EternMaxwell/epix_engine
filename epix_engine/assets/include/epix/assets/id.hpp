@@ -1,7 +1,13 @@
 #pragma once
 
+#include <uuid.h>
+
 #include <concepts>
 #include <cstddef>
+#include <epix/assets/concepts.hpp>
+#include <epix/assets/index.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <format>
 #include <functional>
 #include <optional>
@@ -9,19 +15,12 @@
 #include <tuple>
 #include <utility>
 #include <variant>
-#include <uuid.h>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-
-#include <epix/assets/index.hpp>
-#include <epix/assets/concepts.hpp>
 
 namespace uuids {
 /** @brief Three-way comparison for uuids::uuid, providing strong ordering. */
 std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
-using uuids::uuid;
 using uuids::to_string;
+using uuids::uuid;
 }  // namespace uuids
 static_assert(std::three_way_comparable<uuids::uuid>);
 

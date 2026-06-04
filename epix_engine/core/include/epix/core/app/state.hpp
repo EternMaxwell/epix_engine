@@ -1,8 +1,8 @@
 #pragma once
 
-#include <type_traits>
 #include <epix/core/app/decl.hpp>
 #include <epix/core/ticks.hpp>
+#include <type_traits>
 
 namespace epix::core {
 /** @brief Read-only state resource wrapping an enum value.

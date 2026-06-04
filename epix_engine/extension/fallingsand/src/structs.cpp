@@ -1,8 +1,12 @@
-﻿#include <algorithm>
+﻿#include <spdlog/spdlog.h>
+
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/tasks.hpp>
 #include <functional>
 #include <limits>
 #include <optional>
@@ -11,10 +15,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-#include <epix/extension/fallingsand.hpp>
-
-#include <epix/tasks.hpp>
 
 namespace epix::ext::fallingsand {
 

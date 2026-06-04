@@ -1,13 +1,13 @@
 #pragma once
 
 #include <algorithm>
+#include <epix/core/type_registry.hpp>
+#include <epix/core/utils.hpp>
 #include <format>
 #include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
-#include <epix/core/utils.hpp>
-#include <epix/core/type_registry.hpp>
 
 namespace epix::core {
 /** @brief Tracks which component/resource accesses conflict between systems. */

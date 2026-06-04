@@ -5,6 +5,7 @@
 #include <box2d/id.h>
 #include <box2d/types.h>
 #include <imgui.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -16,23 +17,23 @@
 #include <unordered_map>
 #include <vector>
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <webgpu/webgpu.hpp>
-#include <epix/core.hpp>
 #include <epix/assets.hpp>
-#include <epix/window.hpp>
+#include <epix/core.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/experimental/pixelbody.hpp>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/extension/grid.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
-#include <epix/core_graph.hpp>
-#include <epix/mesh.hpp>
-#include <epix/transform.hpp>
-#include <epix/input.hpp>
-#include <epix/extension/grid.hpp>
-#include <epix/extension/fallingsand.hpp>
-#include <epix/experimental/pixelbody.hpp>
 #include <epix/time.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
 
 using namespace epix;
 using namespace epix::core;

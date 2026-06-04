@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
+#include <epix/assets.hpp>
 #include <optional>
 #include <string>
 #include <tuple>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

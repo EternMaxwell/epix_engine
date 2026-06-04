@@ -2,17 +2,16 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core/hierarchy.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/system/param.hpp>
+#include <epix/core/world/commands.hpp>
+#include <epix/meta.hpp>
 #include <optional>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <epix/meta.hpp>
-
-#include <epix/core/world/commands.hpp>
-#include <epix/core/hierarchy.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/system/param.hpp>
 
 namespace epix::core {
 template <>

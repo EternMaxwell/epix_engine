@@ -1,14 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-
-#include <epix/core.hpp>
-#include <epix/assets.hpp>
-#include <epix/image.hpp>
 namespace epix::window {
 /** @brief Controls how the window position is interpreted. */
 enum PosType {

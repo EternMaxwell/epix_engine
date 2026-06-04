@@ -1,12 +1,12 @@
 #pragma once
 
 #include <cstddef>
+#include <epix/tasks/task_pool.hpp>
 #include <exception>
 #include <functional>
 #include <mutex>
 #include <utility>
 #include <vector>
-#include <epix/tasks/task_pool.hpp>
 
 namespace epix::tasks {
 
@@ -18,7 +18,7 @@ namespace epix::tasks {
  */
 
 #define EPIX_DEFINE_TASK_POOL(Name)                                                       \
-    struct Name {                                                                  \
+    struct Name {                                                                         \
        private:                                                                           \
         TaskPool m_pool;                                                                  \
         explicit Name(TaskPool p) : m_pool(std::move(p)) {}                               \

@@ -1,14 +1,11 @@
 #pragma once
 
 #include <chrono>
-
-#include <epix/time/time_clock.hpp>
-#include <epix/time/real.hpp>
-#include <epix/time/virt.hpp>
-#include <epix/time/timer.hpp>
-
 #include <epix/core.hpp>
-
+#include <epix/time/real.hpp>
+#include <epix/time/time_clock.hpp>
+#include <epix/time/timer.hpp>
+#include <epix/time/virt.hpp>
 
 namespace epix::time {
 using namespace epix::core;

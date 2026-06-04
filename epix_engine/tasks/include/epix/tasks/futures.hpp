@@ -1,7 +1,7 @@
 #pragma once
 
-#include <optional>
 #include <epix/tasks/task.hpp>
+#include <optional>
 
 namespace epix::tasks {
 

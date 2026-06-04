@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/utils.hpp>
+#include <epix/meta.hpp>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -10,9 +12,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-#include <epix/meta.hpp>
-
-#include <epix/core/utils.hpp>
 
 namespace epix::core {
 enum class StorageType : std::uint8_t {

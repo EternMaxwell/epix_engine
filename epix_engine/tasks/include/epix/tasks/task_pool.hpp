@@ -1,16 +1,6 @@
 #pragma once
 
-#include <concepts>
-#include <cstddef>
-#include <exception>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <string>
-#include <thread>
-#include <type_traits>
-#include <utility>
-#include <vector>
+#include <BS_thread_pool.hpp>
 #include <asio/any_io_executor.hpp>
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
@@ -20,9 +10,18 @@
 #include <asio/post.hpp>
 #include <asio/thread_pool.hpp>
 #include <asio/use_awaitable.hpp>
-
-#include <BS_thread_pool.hpp>
+#include <concepts>
+#include <cstddef>
 #include <epix/tasks/task.hpp>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <string>
+#include <thread>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 namespace epix::tasks {
 

@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
+
 #include <bit>
 #include <cstdint>
-#include <vector>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
+#include <vector>
 
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-value"

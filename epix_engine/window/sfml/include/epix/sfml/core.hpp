@@ -1,5 +1,17 @@
 #pragma once
 
+#include <SFML/Window/Clipboard.hpp>
+#include <SFML/Window/Cursor.hpp>
+#include <SFML/Window/Event.hpp>
+#include <SFML/Window/VideoMode.hpp>
+#include <SFML/Window/WindowBase.hpp>
+#include <SFML/Window/WindowEnums.hpp>
+#include <SFML/Window/WindowHandle.hpp>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/window.hpp>
 #include <future>
 #include <memory>
 #include <optional>
@@ -8,20 +20,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <SFML/Window/Clipboard.hpp>
-#include <SFML/Window/Cursor.hpp>
-#include <SFML/Window/Event.hpp>
-#include <SFML/Window/VideoMode.hpp>
-#include <SFML/Window/WindowBase.hpp>
-#include <SFML/Window/WindowEnums.hpp>
-#include <SFML/Window/WindowHandle.hpp>
-
-#include <epix/core.hpp>
-#include <epix/input.hpp>
-#include <epix/window.hpp>
-#include <epix/assets.hpp>
-#include <epix/image.hpp>
-
 
 namespace epix::sfml {
 using namespace epix::core;

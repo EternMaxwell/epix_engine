@@ -4,11 +4,11 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include <epix/assets.hpp>
 #include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
-#include <epix/image.hpp>
-#include <epix/assets.hpp>
 #include <epix/tasks.hpp>
 #include <webgpu/webgpu.hpp>
 using namespace epix::core;

@@ -1,5 +1,11 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <memory>
@@ -10,12 +16,6 @@
 #include <unordered_set>
 #include <utility>
 #include <variant>
-#include <spdlog/spdlog.h>
-#include <epix/assets.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/core.hpp>
 namespace epix::assets {
 void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,

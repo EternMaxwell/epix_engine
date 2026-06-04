@@ -1,21 +1,19 @@
 #pragma once
 
-#include <functional>
-
 #include <epix/core.hpp>
-#include <webgpu/webgpu.hpp>
-#include <epix/shader.hpp>
-
-#include <epix/render/schedule.hpp>
-#include <epix/render/extract.hpp>
 #include <epix/render/assets.hpp>
+#include <epix/render/extract.hpp>
 #include <epix/render/graph.hpp>
 #include <epix/render/image.hpp>
-#include <epix/render/window.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
 #include <epix/render/render_phase.hpp>
+#include <epix/render/schedule.hpp>
 #include <epix/render/view.hpp>
+#include <epix/render/window.hpp>
+#include <epix/shader.hpp>
+#include <functional>
+#include <webgpu/webgpu.hpp>
 
 namespace epix::render {
 /**

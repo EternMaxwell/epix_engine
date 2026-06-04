@@ -1,7 +1,13 @@
 #include <gtest/gtest.h>
+
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
 #include <filesystem>
 #include <memory>
 #include <thread>
@@ -9,11 +15,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <chrono>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/shader.hpp>
-#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 using namespace epix::core;

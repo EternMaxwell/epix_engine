@@ -1,14 +1,13 @@
 #pragma once
 
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
 #include <filesystem>
 #include <optional>
 #include <vector>
-
-#include <epix/core.hpp>
-#include <epix/render.hpp>
-#include <epix/image.hpp>
-#include <epix/assets.hpp>
-#include <epix/input.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::render::screenshot {
 

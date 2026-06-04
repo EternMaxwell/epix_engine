@@ -1,4 +1,8 @@
 
+#include <spdlog/spdlog.h>
+
+#include <asio/awaitable.hpp>
+#include <epix/assets.hpp>
 #include <expected>
 #include <filesystem>
 #include <memory>
@@ -7,10 +11,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-#include <epix/assets.hpp>
 
 using namespace epix::assets;
 

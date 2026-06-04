@@ -1,10 +1,9 @@
 #pragma once
 
+#include <epix/core.hpp>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include <epix/core.hpp>
 
 namespace epix::window {
 /**
@@ -89,4 +88,4 @@ struct WindowMoved {
     /** @brief New position (x, y) of the window on screen. */
     std::pair<int, int> position;
 };
-}  // namespace window
+}  // namespace epix::window

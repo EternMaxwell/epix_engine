@@ -1,5 +1,21 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
+#include <asio/awaitable.hpp>
+#include <epix/assets/async_broadcast.hpp>
+#include <epix/assets/async_channel.hpp>
+#include <epix/assets/io/reader.hpp>
+#include <epix/assets/io/source.hpp>
+#include <epix/assets/meta.hpp>
+#include <epix/assets/path.hpp>
+#include <epix/assets/processor/log.hpp>
+#include <epix/assets/processor/process.hpp>
+#include <epix/assets/server.hpp>
+#include <epix/assets/server/loader.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -13,24 +29,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/core.hpp>
-
-#include <epix/assets/path.hpp>
-#include <epix/assets/meta.hpp>
-#include <epix/assets/io/reader.hpp>
-#include <epix/assets/io/source.hpp>
-#include <epix/assets/server/loader.hpp>
-#include <epix/assets/server.hpp>
-#include <epix/assets/processor/process.hpp>
-#include <epix/assets/processor/log.hpp>
-#include <epix/assets/async_channel.hpp>
-#include <epix/assets/async_broadcast.hpp>
 
 namespace epix::assets {
 

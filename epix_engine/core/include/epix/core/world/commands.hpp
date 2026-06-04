@@ -2,11 +2,11 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/core/world/decl.hpp>
 #include <functional>
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <epix/core/world/decl.hpp>
 
 namespace epix::core {
 template <typename T>

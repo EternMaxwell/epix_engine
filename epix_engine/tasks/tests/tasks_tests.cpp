@@ -2,13 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <asio/awaitable.hpp>
 #include <asio/use_awaitable.hpp>
-
-#include <epix/tasks.hpp>
-#include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <epix/tasks.hpp>
 #include <numeric>
 #include <optional>
 #include <span>

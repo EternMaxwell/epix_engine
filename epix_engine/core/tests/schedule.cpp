@@ -1,11 +1,12 @@
 #include <gtest/gtest.h>
+
+#include <epix/core.hpp>
 #include <iostream>
 #include <memory>
 #include <random>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <epix/core.hpp>
 
 namespace {
 struct Comp1 {

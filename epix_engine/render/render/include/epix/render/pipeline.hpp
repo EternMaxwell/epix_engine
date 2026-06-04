@@ -18,8 +18,8 @@
         std::uint64_t id{0};                                                                            \
     };
 
-#include <epix/shader.hpp>
 #include <epix/assets.hpp>
+#include <epix/shader.hpp>
 #include <webgpu/webgpu.hpp>
 namespace epix::render {
 make_atomic_id(RenderPipelineId);

@@ -2,13 +2,12 @@
 
 #include <array>
 #include <cstddef>
-#include <optional>
-#include <span>
-#include <utility>
-
 #include <epix/core.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
+#include <optional>
+#include <span>
+#include <utility>
 #include <webgpu/webgpu.hpp>
 
 namespace epix::core_graph::core_2d {
@@ -70,10 +69,11 @@ struct UI2DItem {
 
 template <typename P>
 struct Node2D : epix::render::graph::Node {
-    std::optional<epix::core::QueryState<
-        epix::core::Item<const epix::render::view::ExtractedView&, const epix::render::view::ViewTarget&,
-                         const epix::render::view::ViewDepth&, const epix::render::phase::RenderPhase<P>&>,
-        epix::core::Filter<>>>
+    std::optional<epix::core::QueryState<epix::core::Item<const epix::render::view::ExtractedView&,
+                                                          const epix::render::view::ViewTarget&,
+                                                          const epix::render::view::ViewDepth&,
+                                                          const epix::render::phase::RenderPhase<P>&>,
+                                         epix::core::Filter<>>>
         views;
     void update(const epix::core::World& world) override {
         if (!views) {
@@ -84,15 +84,15 @@ struct Node2D : epix::render::graph::Node {
             views->update_archetypes(world);
         }
     }
-    void run(epix::render::graph::GraphContext& ctx, epix::render::graph::RenderContext& render_ctx,
+    void run(epix::render::graph::GraphContext& ctx,
+             epix::render::graph::RenderContext& render_ctx,
              const epix::core::World& world) override {
         if (!views) return;
         auto view_entity = ctx.view_entity();
-        auto view_opt =
-            views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
+        auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
         if (!view_opt) return;
         auto&& [exview, target, depth, phase] = *view_opt;
-        auto render_pass = render_ctx.command_encoder().beginRenderPass(
+        auto render_pass                      = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
                 .setColorAttachments(std::array{wgpu::RenderPassColorAttachment{}
                                                     .setView(target.texture_view)
@@ -135,8 +135,9 @@ struct Camera2DBundle {
 
 template <>
 struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
-    static void get_components(epix::core_graph::core_2d::Camera2DBundle& bundle,
-                               epix::utils::function_ref<void(epix::utils::function_ref<void(void*)>)> write_component) noexcept {
+    static void get_components(
+        epix::core_graph::core_2d::Camera2DBundle& bundle,
+        epix::utils::function_ref<void(epix::utils::function_ref<void(void*)>)> write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) epix::render::camera::Camera(std::move(bundle.camera)); });
         write_component([&](void* ptr) { new (ptr) epix::render::camera::Projection(std::move(bundle.projection)); });
         write_component(
@@ -144,8 +145,7 @@ struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
         write_component([&](void* ptr) { new (ptr) epix::transform::Transform(std::move(bundle.transform)); });
         write_component(
             [&](void* ptr) { new (ptr) epix::render::view::VisibleEntities(std::move(bundle.visible_entities)); });
-        write_component(
-            [&](void* ptr) { new (ptr) epix::core_graph::core_2d::Camera2D(std::move(bundle.camera_2d)); });
+        write_component([&](void* ptr) { new (ptr) epix::core_graph::core_2d::Camera2D(std::move(bundle.camera_2d)); });
         write_component(
             [&](void* ptr) { new (ptr) epix::render::camera::RenderLayer(std::move(bundle.render_layer)); });
     }

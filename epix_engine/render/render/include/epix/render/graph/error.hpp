@@ -1,11 +1,10 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
-#include <variant>
-
 #include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/slot.hpp>
+#include <string>
+#include <variant>
 namespace epix::render::graph {
 /** @brief Error indicating a node was not found in the graph. */
 struct NodeNotPresent {
@@ -86,4 +85,4 @@ struct GraphError : std::variant<NodeNotPresent, EdgeError, SubGraphExists> {
     using std::variant<NodeNotPresent, EdgeError, SubGraphExists>::variant;
     std::string to_string() const;
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph

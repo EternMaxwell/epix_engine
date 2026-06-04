@@ -2,6 +2,12 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <epix/core/query/decl.hpp>
+#include <epix/core/query/fetch.hpp>
+#include <epix/core/query/filter.hpp>
+#include <epix/core/query/state.hpp>
+#include <epix/core/storage.hpp>
+#include <epix/core/world/decl.hpp>
 #include <iterator>
 #include <numeric>
 #include <optional>
@@ -10,12 +16,6 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
-#include <epix/core/query/decl.hpp>
-#include <epix/core/query/state.hpp>
-#include <epix/core/query/fetch.hpp>
-#include <epix/core/query/filter.hpp>
-#include <epix/core/storage.hpp>
-#include <epix/core/world/decl.hpp>
 
 namespace epix::core {
 /** @brief Low-level cursor for iterating over query results across archetypes.

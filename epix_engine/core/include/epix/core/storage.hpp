@@ -1,15 +1,14 @@
 #pragma once
 
-#include <memory>
-#include <epix/core/storage/untyped_vector.hpp>
+#include <epix/core/component.hpp>
+#include <epix/core/storage/dense.hpp>
+#include <epix/core/storage/resource.hpp>
 #include <epix/core/storage/sparse_array.hpp>
 #include <epix/core/storage/sparse_set.hpp>
-#include <epix/core/storage/resource.hpp>
 #include <epix/core/storage/table.hpp>
-#include <epix/core/storage/dense.hpp>
-
+#include <epix/core/storage/untyped_vector.hpp>
 #include <epix/core/type_registry.hpp>
-#include <epix/core/component.hpp>
+#include <memory>
 
 namespace epix::core {
 struct Storage {

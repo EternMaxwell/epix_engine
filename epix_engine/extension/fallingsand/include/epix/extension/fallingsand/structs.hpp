@@ -4,8 +4,14 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/extension/fallingsand/elements.hpp>
+#include <epix/extension/fallingsand/temperature.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -13,13 +19,6 @@
 #include <tuple>
 #include <type_traits>
 #include <variant>
-
-#include <glm/glm.hpp>
-#include <epix/core.hpp>
-#include <epix/extension/grid.hpp>
-#include <epix/meta.hpp>
-#include <epix/extension/fallingsand/elements.hpp>
-#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {
 

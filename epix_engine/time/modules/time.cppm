@@ -22,9 +22,9 @@ using epix::time::Real;
 using epix::time::Stopwatch;
 using epix::time::Time;
 using epix::time::TimePlugin;
-using epix::time::TimeUpdateConfig;
-using epix::time::TimeUpdateStrategy;
 using epix::time::Timer;
 using epix::time::TimerMode;
+using epix::time::TimeUpdateConfig;
+using epix::time::TimeUpdateStrategy;
 using epix::time::Virtual;
-} // namespace epix::time
+}  // namespace epix::time

@@ -1,19 +1,17 @@
 #pragma once
 
 #include <concepts>
-#include <format>
-#include <optional>
-
 #include <epix/core.hpp>
 #include <epix/meta.hpp>
 #include <epix/render/schedule.hpp>
+#include <format>
+#include <optional>
 
 namespace epix::render {
 using namespace epix::core;
 /** @brief Schedule sentinel for the extract phase that copies data from
  * the main world into the render world. */
-struct ExtractScheduleT {
-};
+struct ExtractScheduleT {};
 inline ExtractScheduleT ExtractSchedule;
 template <std::copyable T>
 void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<T>>> resources) {
@@ -38,4 +36,4 @@ struct ExtractResourcePlugin {
 /** @brief Marker component indicating an entity has a custom rendering
  * process and should be skipped by standard render pipelines. */
 struct CustomRendered {};
-}  // namespace render
+}  // namespace epix::render

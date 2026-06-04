@@ -1,10 +1,9 @@
 #pragma once
 
-#include <optional>
-
 #include <epix/window/events.hpp>
 #include <epix/window/structs.hpp>
 #include <epix/window/system.hpp>
+#include <optional>
 
 namespace epix::window {
 /** @brief Determines when the application should exit based on window

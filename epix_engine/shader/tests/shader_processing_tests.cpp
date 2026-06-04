@@ -1,13 +1,20 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-#include <algorithm>
-#include <array>
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/async_channel.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/shader.hpp>
+#include <epix/tasks.hpp>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -21,13 +28,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <chrono>
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
-#include <epix/shader.hpp>
-#include <epix/tasks.hpp>
-#include <epix/async_channel.hpp>
 #include <webgpu/webgpu.hpp>
 using namespace epix::assets;
 using namespace epix::core;

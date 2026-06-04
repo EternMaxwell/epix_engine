@@ -4,11 +4,10 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/traits.hpp>
 #include <expected>
 #include <functional>
 #include <utility>
-
-#include <epix/traits.hpp>
 
 namespace epix::ext::grid {
 /** @brief Error codes returned by grid operations. */

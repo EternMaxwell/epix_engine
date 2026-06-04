@@ -1,11 +1,16 @@
 #pragma once
 
-#include <cassert>
-
 #include <algorithm>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core/component.hpp>
+#include <epix/core/entities.hpp>
+#include <epix/core/type_registry.hpp>
+#include <epix/core/utils.hpp>
+#include <epix/core/world/decl.hpp>
+#include <epix/traits.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -15,13 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/traits.hpp>
-
-#include <epix/core/utils.hpp>
-#include <epix/core/entities.hpp>
-#include <epix/core/type_registry.hpp>
-#include <epix/core/component.hpp>
-#include <epix/core/world/decl.hpp>
 
 namespace epix::core {
 template <typename R>

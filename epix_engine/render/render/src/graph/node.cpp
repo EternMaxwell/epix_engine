@@ -1,12 +1,12 @@
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <ranges>
-#include <spdlog/spdlog.h>
-#include <epix/render/graph/node.hpp>
 #include <epix/render/graph/context.hpp>
-
+#include <epix/render/graph/node.hpp>
+#include <ranges>
 
 namespace epix::render::graph {
 

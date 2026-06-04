@@ -9,14 +9,14 @@
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <webgpu/webgpu.hpp>
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/image.hpp>
-#include <epix/render.hpp>
-#include <epix/mesh/mesh.hpp>
 #include <epix/mesh/gpumesh.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/render.hpp>
+#include <glm/glm.hpp>
+#include <webgpu/webgpu.hpp>
 
 namespace epix::mesh {
 /** @brief Alpha blending mode for 2D mesh rendering. */
