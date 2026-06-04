@@ -31,10 +31,9 @@
 #include <liburing.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#include <epix/assets.hpp>
 #endif
 
+#include <epix/assets.hpp>
 #include <epix/utils.hpp>
 
 namespace epix::assets {
