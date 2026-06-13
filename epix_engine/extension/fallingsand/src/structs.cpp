@@ -268,7 +268,7 @@ void SandSimulation::touch(std::int64_t x, std::int64_t y) {
             static_cast<std::int32_t>(x >> shift),
             static_cast<std::int32_t>(y >> shift),
         };
-        auto dr_opt = m_chunk_dirty_rects.get_mut(cpos);
+        auto dr_opt = m_chunk_dirty_rects.get(cpos);
         if (dr_opt.has_value()) {
             dr_opt->get()->touch(static_cast<std::int32_t>(x & mask), static_cast<std::int32_t>(y & mask));
         }

@@ -299,7 +299,7 @@ void simulate_worlds(Res<ElementRegistry> registry,
             (void)therm_g;
             bool settled = dirty_rect.get_mut().count_time();
             if (settled) {
-                for (auto&& [lpos, elem] : elem_g.get_mut().iter_mut()) {
+                for (auto&& [lpos, elem] : elem_g.get().iter_mut()) {
                     (void)lpos;
                     elem.set_freefall(false);
                     elem.velocity = {};
