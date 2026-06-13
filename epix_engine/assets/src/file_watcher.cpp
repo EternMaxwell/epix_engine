@@ -71,11 +71,14 @@ FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, async_channel::Se
                 case efsw::Action::Moved:
                     if (old_full_path) {
                         if (is_directory) {
-                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedDirectory{*old_full_path, full_path}));
+                            (void)sender.try_send(
+                                AssetSourceEvent(source_events::RenamedDirectory{*old_full_path, full_path}));
                         } else if (is_meta) {
-                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedMeta{*old_full_path, full_path}));
+                            (void)sender.try_send(
+                                AssetSourceEvent(source_events::RenamedMeta{*old_full_path, full_path}));
                         } else {
-                            (void)sender.try_send(AssetSourceEvent(source_events::RenamedAsset{*old_full_path, full_path}));
+                            (void)sender.try_send(
+                                AssetSourceEvent(source_events::RenamedAsset{*old_full_path, full_path}));
                         }
                     }
                     break;

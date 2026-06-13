@@ -41,4 +41,4 @@ export enum class RenderSet {
     /** @brief Post-render cleanup of temporary resources. */
     Cleanup,
 };
-}  // namespace render
+}  // namespace epix::render

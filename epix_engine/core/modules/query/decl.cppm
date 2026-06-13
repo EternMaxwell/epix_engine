@@ -103,4 +103,4 @@ template <typename T>
 struct AddOptional<T> {
     using type = std::optional<std::reference_wrapper<std::remove_reference_t<T>>>;
 };
-}  // namespace core
+}  // namespace epix::core

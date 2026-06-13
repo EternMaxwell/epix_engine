@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -10,7 +11,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <chrono>
 #endif
 #ifdef EPIX_IMPORT_STD
 import std;

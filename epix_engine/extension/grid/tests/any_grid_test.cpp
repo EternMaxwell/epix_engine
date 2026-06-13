@@ -25,7 +25,8 @@ using namespace epix::ext::grid;
 
 namespace {
 constexpr auto kFullCat = grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
-                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe | grid_category::counted;
+                          grid_category::unsafe_container | grid_category::const_viewable |
+                          grid_category::const_iterable | grid_category::const_unsafe | grid_category::counted;
 template <std::size_t Dim, typename T>
 using ugrid = any_grid<Dim, T, kFullCat, std::uint32_t, std::uint32_t>;
 }  // namespace
@@ -39,10 +40,10 @@ static_assert(
     std::is_constructible_v<any_grid<2, int&, grid_category::none, std::uint32_t, std::uint32_t>, full_grid&&>);
 static_assert(
     std::is_constructible_v<any_grid<2, int&, grid_category::iterable, std::uint32_t, std::uint32_t>, full_grid&&>);
-static_assert(std::is_constructible_v<any_grid<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
-                                      full_grid&&>);
-static_assert(!std::is_constructible_v<any_grid<2, int&, grid_category::copyable, std::uint32_t, std::uint32_t>,
-                                       full_grid&&>);
+static_assert(
+    std::is_constructible_v<any_grid<2, int&, grid_category::container, std::uint32_t, std::uint32_t>, full_grid&&>);
+static_assert(
+    !std::is_constructible_v<any_grid<2, int&, grid_category::copyable, std::uint32_t, std::uint32_t>, full_grid&&>);
 
 using full_view =
     any_grid_view<2, int&, grid_category::iterable | grid_category::container, std::uint32_t, std::uint32_t>;
@@ -50,12 +51,15 @@ static_assert(std::is_constructible_v<any_grid_view<2, int&, grid_category::none
                                       const full_view&>);
 static_assert(std::is_constructible_v<any_grid_view<2, int&, grid_category::iterable, std::uint32_t, std::uint32_t>,
                                       const full_view&>);
-static_assert(
-    std::is_constructible_v<any_grid_view<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
-                            const full_view&>);
-static_assert(
-    !std::is_constructible_v<any_grid_view<2, int&, grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe, std::uint32_t, std::uint32_t>,
-                             const full_view&>);
+static_assert(std::is_constructible_v<any_grid_view<2, int&, grid_category::container, std::uint32_t, std::uint32_t>,
+                                      const full_view&>);
+static_assert(!std::is_constructible_v<
+              any_grid_view<2,
+                            int&,
+                            grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe,
+                            std::uint32_t,
+                            std::uint32_t>,
+              const full_view&>);
 
 // ============================================================
 // any_grid tests
@@ -417,19 +421,19 @@ using uview_ctr =
     any_grid_view<2, int&, grid_category::iterable | grid_category::container, std::uint32_t, std::uint32_t>;
 using uview_unsafe =
     any_grid_view<2, int&, grid_category::iterable | grid_category::unsafe_viewable, std::uint32_t, std::uint32_t>;
-using uview_full =
-    any_grid_view<2,
-                      int&,
-                      grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
-                          grid_category::unsafe_container | grid_category::const_viewable | grid_category::const_iterable | grid_category::const_unsafe,
-                      std::uint32_t,
-                      std::uint32_t>;
-using uview_all = any_grid_view<2,
-                                    int&,
-                                    grid_category::iterable | grid_category::container |
-                                        grid_category::unsafe_viewable | grid_category::unsafe_container,
-                                    std::uint32_t,
-                                    std::uint32_t>;
+using uview_full = any_grid_view<2,
+                                 int&,
+                                 grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
+                                     grid_category::unsafe_container | grid_category::const_viewable |
+                                     grid_category::const_iterable | grid_category::const_unsafe,
+                                 std::uint32_t,
+                                 std::uint32_t>;
+using uview_all  = any_grid_view<2,
+                                 int&,
+                                 grid_category::iterable | grid_category::container | grid_category::unsafe_viewable |
+                                     grid_category::unsafe_container,
+                                 std::uint32_t,
+                                 std::uint32_t>;
 
 // ── construction ────────────────────────────────────────────
 

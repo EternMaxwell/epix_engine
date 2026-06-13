@@ -43,4 +43,4 @@ struct ExtractResourcePlugin {
 /** @brief Marker component indicating an entity has a custom rendering
  * process and should be skipped by standard render pipelines. */
 export struct CustomRendered {};
-}  // namespace render
+}  // namespace epix::render

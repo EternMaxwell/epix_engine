@@ -18,4 +18,4 @@ void log_inputs(EventReader<KeyInput> key_reader,
                 EventReader<MouseButtonInput> mouse_reader,
                 EventReader<MouseMove> mouse_move_reader,
                 EventReader<MouseScroll> mouse_scroll_reader);
-}  // namespace input
+}  // namespace epix::input

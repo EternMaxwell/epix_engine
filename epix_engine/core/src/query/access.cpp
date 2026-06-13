@@ -205,4 +205,4 @@ AccessConflicts FilteredAccessSet::get_conflicts(const FilteredAccess& other) co
     }
     return conflicts;
 }
-}  // namespace core
+}  // namespace epix::core

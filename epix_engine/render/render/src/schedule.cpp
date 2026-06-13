@@ -19,4 +19,4 @@ Schedule RenderT::render_schedule() {
     schedule.set_default_schedule_config(config);
     return schedule;
 }
-}  // namespace render
+}  // namespace epix::render

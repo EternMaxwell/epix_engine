@@ -6,7 +6,7 @@ module;
 module epix.sfml.core;
 
 namespace epix::sfml {
-    input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key) {
+input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key) {
     switch (key) {
         case sf::Keyboard::Key::A:
             return input::KeyCode::KeyA;
@@ -215,7 +215,7 @@ namespace epix::sfml {
     }
 }
 
-    input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button) {
+input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button) {
     switch (button) {
         case sf::Mouse::Button::Left:
             return input::MouseButton::MouseButton1;
@@ -231,4 +231,4 @@ namespace epix::sfml {
             return input::MouseButton::MouseButtonUnknown;
     }
 }
-    }  // namespace epix::sfml
+}  // namespace epix::sfml

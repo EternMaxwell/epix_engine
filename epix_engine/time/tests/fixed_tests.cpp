@@ -119,4 +119,3 @@ TEST(TimeFixed, AsGeneric) {
     EXPECT_EQ(g.delta(), 1s);
     EXPECT_EQ(g.elapsed(), 1s);
 }
-

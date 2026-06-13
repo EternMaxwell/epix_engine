@@ -92,4 +92,4 @@ struct GraphError : std::variant<NodeNotPresent, EdgeError, SubGraphExists> {
     using std::variant<NodeNotPresent, EdgeError, SubGraphExists>::variant;
     std::string to_string() const;
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph

@@ -151,21 +151,13 @@ export struct Source {
     std::variant<Wgsl, SpirV, Slang, SlangIr> data;
 
     /** @brief Create WGSL source. */
-    static Source wgsl(std::string code) noexcept {
-        return {Wgsl{std::move(code)}};
-    }
+    static Source wgsl(std::string code) noexcept { return {Wgsl{std::move(code)}}; }
     /** @brief Create SPIR-V source. */
-    static Source spirv(std::vector<std::uint8_t> bytes) noexcept {
-        return {SpirV{std::move(bytes)}};
-    }
+    static Source spirv(std::vector<std::uint8_t> bytes) noexcept { return {SpirV{std::move(bytes)}}; }
     /** @brief Create Slang source. */
-    static Source slang(std::string code) noexcept {
-        return {Slang{std::move(code)}};
-    }
+    static Source slang(std::string code) noexcept { return {Slang{std::move(code)}}; }
     /** @brief Create a pre-compiled Slang IR module source. */
-    static Source slang_ir(std::vector<std::uint8_t> bytes) noexcept {
-        return {SlangIr{std::move(bytes)}};
-    }
+    static Source slang_ir(std::vector<std::uint8_t> bytes) noexcept { return {SlangIr{std::move(bytes)}}; }
 
     /** @brief Returns `true` when this source holds WGSL text. */
     bool is_wgsl() const noexcept { return std::holds_alternative<Wgsl>(data); }
@@ -381,9 +373,7 @@ export struct ShaderLoaderError {
     std::variant<Io, Parse> data;
 
     /** @brief Build an I/O error value. */
-    static ShaderLoaderError io(std::error_code code, std::filesystem::path p) {
-        return {Io{code, std::move(p)}};
-    }
+    static ShaderLoaderError io(std::error_code code, std::filesystem::path p) { return {Io{code, std::move(p)}}; }
     /** @brief Build a parse error value. */
     static ShaderLoaderError parse(std::filesystem::path p, std::size_t offset = 0) {
         return {Parse{std::move(p), offset}};
@@ -488,17 +478,11 @@ export struct ShaderRef {
     ShaderRef(ByPath p) : value(std::move(p)) {}
 
     /** @brief Create a handle-based shader reference. */
-    static ShaderRef from_handle(assets::Handle<Shader> h) {
-        return ShaderRef{ByHandle{std::move(h)}};
-    }
+    static ShaderRef from_handle(assets::Handle<Shader> h) { return ShaderRef{ByHandle{std::move(h)}}; }
     /** @brief Create a path-based shader reference. */
-    static ShaderRef from_path(std::filesystem::path p) {
-        return ShaderRef{ByPath{std::move(p)}};
-    }
+    static ShaderRef from_path(std::filesystem::path p) { return ShaderRef{ByPath{std::move(p)}}; }
     /** @brief Create a path-based shader reference from text. */
-    static ShaderRef from_str(std::string_view s) {
-        return ShaderRef{ByPath{std::filesystem::path{s}}};
-    }
+    static ShaderRef from_str(std::string_view s) { return ShaderRef{ByPath{std::filesystem::path{s}}}; }
 
     /** @brief Returns `true` when this is the default shader. */
     bool is_default() const noexcept { return std::holds_alternative<Default>(value); }

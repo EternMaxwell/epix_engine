@@ -94,4 +94,4 @@ struct WindowMoved {
     /** @brief New position (x, y) of the window on screen. */
     std::pair<int, int> position;
 };
-}  // namespace window
+}  // namespace epix::window

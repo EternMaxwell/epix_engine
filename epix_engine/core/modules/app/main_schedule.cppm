@@ -115,4 +115,4 @@ export struct MainSchedulePlugin {
     /** @brief Register all built-in schedules with the app. */
     void attach(App& app);
 };
-}  // namespace core
+}  // namespace epix::core

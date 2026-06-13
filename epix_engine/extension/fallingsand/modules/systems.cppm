@@ -45,7 +45,8 @@ namespace epix::ext::fallingsand {
 // void setup_chunk_render_children(
 //     Commands cmd,
 //     ResMut<assets::Assets<mesh::Mesh>> meshes,
-//     Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>, Without<SandChunkRenderChildren>>>
+//     Query<Item<Entity, const Parent&>, Filter<With<grid::Chunk<kDim>, SandChunkPos>,
+//     Without<SandChunkRenderChildren>>>
 //         new_chunks,
 //     Query<Entity, With<SandWorld, transform::Transform, MeshBuildByPlugin>> mesh_worlds);
 
@@ -68,7 +69,8 @@ namespace epix::ext::fallingsand {
 //  *  Body-type sentinel elements (alpha == 0) are excluded from this mesh. */
 // void build_chunk_meshes(
 //     Commands cmd,
-//     Query<Item<Entity, Ref<grid::Chunk<kDim>>, const SandChunkRenderChildren&, Mut<SandChunkDirtyRect>, const Parent&>>
+//     Query<Item<Entity, Ref<grid::Chunk<kDim>>, const SandChunkRenderChildren&, Mut<SandChunkDirtyRect>, const
+//     Parent&>>
 //         chunks,
 //     Query<Item<const SandWorld&>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
 //     ResMut<assets::Assets<mesh::Mesh>> meshes);

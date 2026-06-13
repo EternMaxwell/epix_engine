@@ -62,4 +62,3 @@ TEST(Stopwatch, SetElapsed) {
     EXPECT_EQ(sw.elapsed(), 3s);
     EXPECT_FLOAT_EQ(sw.elapsed_secs(), 3.0f);
 }
-

@@ -50,4 +50,4 @@ struct MouseScroll {
     /** @brief Entity of the window that received the event. */
     Entity window;
 };
-}  // namespace input
+}  // namespace epix::input

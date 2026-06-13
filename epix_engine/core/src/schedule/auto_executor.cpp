@@ -2,6 +2,7 @@ module;
 
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <format>
 #include <limits>
@@ -10,7 +11,6 @@ module;
 #include <ranges>
 #include <utility>
 #include <vector>
-#include <chrono>
 #endif
 #include <spdlog/spdlog.h>
 

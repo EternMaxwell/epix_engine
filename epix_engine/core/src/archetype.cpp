@@ -13,7 +13,6 @@ module;
 
 #include <cassert>
 
-
 module epix.core;
 #ifdef EPIX_IMPORT_STD
 import std;

@@ -139,10 +139,10 @@ struct RenderGraphRunner {
                           std::span<const SlotValue> inputs,
                           std::optional<Entity> view_entity);
 };
-}  // namespace render::graph
+}  // namespace epix::render::graph
 
 export namespace epix::render {
 using graph::GraphContext;
 using graph::RenderContext;
 using graph::RenderGraph;
-}  // namespace render
+}  // namespace epix::render

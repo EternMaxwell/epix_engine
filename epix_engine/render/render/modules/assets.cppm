@@ -251,4 +251,4 @@ struct ExtractAssetPlugin {
         }
     }
 };
-}  // namespace render
+}  // namespace epix::render

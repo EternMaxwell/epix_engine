@@ -1,7 +1,7 @@
 module;
 #ifndef EPIX_IMPORT_STD
-#include <cstdint>
 #include <chrono>
+#include <cstdint>
 #endif
 
 export module epix.time;

@@ -52,6 +52,4 @@ void GLFWPlugin::attach(App& app) {
     app.add_events<SetClipboardString>().set_runner(std::make_unique<GLFWRunner>(app));
 }
 
-void GLFWPlugin::detach(App& app) {
-    glfwTerminate();
-}
+void GLFWPlugin::detach(App& app) { glfwTerminate(); }

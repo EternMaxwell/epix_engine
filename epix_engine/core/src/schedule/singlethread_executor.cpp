@@ -220,14 +220,12 @@ void SingleThreadExecutor::execute(ScheduleSystems& _data, World& world, const E
         case DeferredApply::Ignore: {
             std::vector<std::shared_ptr<Node>> to_apply;
             to_apply.reserve(exec_state.finished_nodes.size());
-            std::ranges::for_each(std::views::filter(
-                                      std::views::transform(exec_state.finished_nodes.iter_ones(), [&](size_t index) {
-                                          return cache->nodes[index].node;
-                                      }),
-                                      [&](auto&& node) {
-                                          return ((bool)node->system) && node->system.get()->is_deferred();
-                                      }),
-                                  [&](auto&& node) { to_apply.push_back(node); });
+            std::ranges::for_each(
+                std::views::filter(
+                    std::views::transform(exec_state.finished_nodes.iter_ones(),
+                                          [&](size_t index) { return cache->nodes[index].node; }),
+                    [&](auto&& node) { return ((bool)node->system) && node->system.get()->is_deferred(); }),
+                [&](auto&& node) { to_apply.push_back(node); });
             _data.pending_applies = std::move(to_apply);
         } break;
     }
@@ -243,9 +241,9 @@ void SingleThreadExecutor::execute(ScheduleSystems& _data, World& world, const E
                 return std::format("(set {}#{})", node->label.type_index().short_name(), node->label.extra());
             }
         };
-        auto remaining_nodes = std::views::transform(exec_state.finished_nodes.iter_zeros(), index_to_name);
-        auto entered_nodes   = std::views::transform(exec_state.entered_nodes.iter_ones(), index_to_name);
-        auto remaining_depends = std::views::transform(exec_state.finished_nodes.iter_zeros(), [&](size_t i) {
+        auto remaining_nodes    = std::views::transform(exec_state.finished_nodes.iter_zeros(), index_to_name);
+        auto entered_nodes      = std::views::transform(exec_state.entered_nodes.iter_ones(), index_to_name);
+        auto remaining_depends  = std::views::transform(exec_state.finished_nodes.iter_zeros(), [&](size_t i) {
             return std::format("\n\t{}", std::views::transform(exec_state.dependencies[i].iter_ones(), index_to_name));
         });
         auto remaining_children = std::views::transform(exec_state.finished_nodes.iter_zeros(), [&](size_t i) {

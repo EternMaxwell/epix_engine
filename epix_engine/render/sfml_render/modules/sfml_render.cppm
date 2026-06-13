@@ -8,7 +8,7 @@ namespace epix::sfml::render {
 export struct SFMLRenderPlugin {
     void attach(core::App& app);
 };
-}  // namespace sfml::render
+}  // namespace epix::sfml::render
 
 namespace epix::sfml {
 export using render::SFMLRenderPlugin;
