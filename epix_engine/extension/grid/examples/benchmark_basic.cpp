@@ -13,6 +13,9 @@
 #include <string_view>
 #include <vector>
 #endif
+#ifdef _MSC_VER
+#include <intrin.h>
+#endif
 import epix.extension.grid;
 
 #ifdef EPIX_IMPORT_STD
