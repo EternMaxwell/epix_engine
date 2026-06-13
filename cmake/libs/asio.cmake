@@ -14,7 +14,8 @@ if(IS_DIRECTORY "${asio_SOURCE_DIR}/asio/include/asio")
 else()
   target_include_directories(asio INTERFACE ${asio_SOURCE_DIR}/include)
 endif()
-target_compile_definitions(asio INTERFACE ASIO_STANDALONE ASIO_NO_DEPRECATED)
+# ASIO_DISABLE_WORKING_EXPRESSION_SFINAE disables ASIO's use of expression SFINAE in certain places, which can cause MSVC to emit c2672
+target_compile_definitions(asio INTERFACE ASIO_STANDALONE ASIO_NO_DEPRECATED ASIO_DISABLE_WORKING_EXPRESSION_SFINAE)
 
 # Platform-specific ASIO setup: async file I/O (asio::stream_file / ASIO_HAS_FILE).
 #
