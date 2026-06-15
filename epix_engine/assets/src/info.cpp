@@ -20,7 +20,7 @@ auto AssetInfos::get_handle_by_path_type(const AssetPath& path, epix::meta::type
 }
 void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
-                                        const epix::utils::Sender<InternalAssetEvent>& sender) {
+                                        const epix::async_channel::Sender<InternalAssetEvent>& sender) {
     auto deps_wait_on_rec_load = [&]() -> std::optional<std::unordered_set<UntypedAssetId>> {
         if (auto info_opt = get_info_mut(waiting_id)) {
             auto& info = info_opt->get();
@@ -28,7 +28,7 @@ void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
             if (info.loading_rec_deps.empty() && info.failed_rec_deps.empty()) {
                 info.rec_dep_state = LoadStateOK::Loaded;
                 if (info.state == LoadState{LoadStateOK::Loaded}) {
-                    sender.send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{waiting_id}});
+                    sender.try_send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{waiting_id}});
                 }
                 return std::move(info.deps_wait_on_rec_dep_load);
             }
@@ -108,7 +108,7 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
                                     epix::core::World& world,
-                                    const epix::utils::Sender<InternalAssetEvent>& sender) {
+                                    const epix::async_channel::Sender<InternalAssetEvent>& sender) {
     // Process all the labeled assets first so that they don't get skipped
     // due to the "parent" not having its handle alive.
     for (auto& [label, labeled] : loaded_asset.labeled_assets) {
@@ -199,7 +199,7 @@ void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
     auto rec_dep_load_state = [&]() -> RecursiveDependencyLoadState {
         if (failed_rec_deps.empty()) {
             if (loading_rec_deps.empty()) {
-                sender.send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{loaded_asset_id}});
+                sender.try_send(InternalAssetEvent{internal_asset_event::LoadedWithDeps{loaded_asset_id}});
                 return LoadStateOK::Loaded;
             } else {
                 return LoadStateOK::Loading;

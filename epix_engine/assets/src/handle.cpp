@@ -6,6 +6,7 @@
 namespace meta = epix::meta;
 using namespace epix::assets;
 using namespace epix::core;
+using namespace epix::async_channel;
 
 StrongHandle::StrongHandle(const UntypedAssetId& id,
                            const Sender<DestructionEvent>& event_sender,
@@ -20,11 +21,11 @@ StrongHandle::StrongHandle(const UntypedAssetId& id,
 
 StrongHandle::~StrongHandle() {
     spdlog::trace("[assets] StrongHandle destroyed: {}.", id);
-    event_sender.send(DestructionEvent{id, asset_server_managed});
+    event_sender.try_send(DestructionEvent{id, asset_server_managed});
 }
 
 HandleProvider::HandleProvider(const meta::type_index& type) : type(type) {
-    std::tie(event_sender, event_receiver) = make_channel<DestructionEvent>();
+    std::tie(event_sender, event_receiver) = unbounded<DestructionEvent>();
 }
 
 UntypedHandle HandleProvider::reserve() const {

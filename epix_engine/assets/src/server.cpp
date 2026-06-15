@@ -11,13 +11,14 @@ using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->loaders              = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
@@ -26,15 +27,16 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
                          bool watching_for_changes,
                          UnapprovedPathMode unapproved_path_mode)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->meta_check                                               = meta_check;
-    data->unapproved_path_mode                                     = unapproved_path_mode;
-    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->meta_check           = meta_check;
+    data->unapproved_path_mode = unapproved_path_mode;
+    data->loaders              = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
@@ -44,15 +46,16 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
                          bool watching_for_changes,
                          UnapprovedPathMode unapproved_path_mode)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->meta_check                                               = meta_check;
-    data->unapproved_path_mode                                     = unapproved_path_mode;
-    data->loaders                                                  = std::move(loaders);
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->meta_check           = meta_check;
+    data->unapproved_path_mode = unapproved_path_mode;
+    data->loaders              = std::move(loaders);
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 bool ::epix::assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
@@ -147,7 +150,7 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
             std::vector<UntypedHandle> handles;
             co_await load_folder_recursive(asset_path.source, asset_path.path, *reader_ptr, server, handles);
 
-            server.data->asset_event_sender.send(internal_asset_event::Loaded{
+            co_await server.data->asset_event_sender.send(internal_asset_event::Loaded{
                 asset_id, ErasedLoadedAsset::from_asset(LoadedFolder{std::move(handles)})});
         }(server, asset_id, asset_path))
         .detach();
@@ -164,7 +167,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
     {
         auto guard = server->data->infos.write();
 
-        while (auto event = receiver.try_receive()) {
+        while (auto event = receiver.try_recv()) {
             std::visit(utils::visitor{
                            [&](internal_asset_event::Loaded& loaded) {
                                guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
@@ -458,7 +461,7 @@ asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> in
     if (!mlr_result) {
         // If we had an input handle, propagate failure so the handle's state is updated
         if (input_handle) {
-            send_asset_event(
+            co_await send_asset_event(
                 InternalAssetEvent{internal_asset_event::Failed{input_handle->id(), path, mlr_result.error()}});
         }
         co_return;
@@ -500,7 +503,7 @@ asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> in
     if (asset_id->type != loader->asset_type()) {
         auto err = AssetLoadError{load_error::RequestHandleMismatch{path, asset_id->type, loader->asset_type(),
                                                                     loader->loader_type().short_name()}};
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
         co_return;
     }
 
@@ -510,15 +513,16 @@ asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> in
         auto err = AssetLoadError{load_error::AssetLoaderException{
             std::make_exception_ptr(std::runtime_error("Asset meta has no loader settings")), path,
             loader->loader_type().short_name()}};
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
         co_return;
     }
 
     auto load_result = co_await load_with_settings_loader_and_reader(path, *settings_ptr, *loader, *reader);
     if (load_result) {
-        send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{*asset_id, std::move(*load_result)}});
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{*asset_id, std::move(*load_result)}});
     } else {
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, load_result.error()}});
+        co_await send_asset_event(
+            InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, load_result.error()}});
     }
 }
 
@@ -618,7 +622,7 @@ UntypedHandle AssetServer::load_asset_untyped(std::optional<AssetPath> path, Era
             return guard->create_loading_handle_untyped(asset.asset_type_id());
         }
     }();
-    send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{handle.id(), std::move(asset)}});
+    data->asset_event_sender.try_send(InternalAssetEvent{internal_asset_event::Loaded{handle.id(), std::move(asset)}});
     return handle;
 }
 

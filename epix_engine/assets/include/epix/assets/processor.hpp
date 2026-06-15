@@ -22,17 +22,13 @@
 #endif
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/async_broadcast.hpp>
+#include <epix/async_channel.hpp>
+#include <epix/core.hpp>
 #include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
 #endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
 
-#include <epix/assets/async_broadcast.hpp>
-#include <epix/assets/async_channel.hpp>
 #include <epix/assets/io/reader.hpp>
 #include <epix/assets/io/source.hpp>
 #include <epix/assets/meta.hpp>

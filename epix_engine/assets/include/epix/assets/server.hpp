@@ -48,8 +48,8 @@ EPIX_EXPORT enum class AssetServerMode {
 struct AssetServerData {
     utils::RwLock<AssetInfos> infos;
     std::shared_ptr<utils::RwLock<AssetLoaders>> loaders;
-    utils::Sender<InternalAssetEvent> asset_event_sender;
-    utils::Receiver<InternalAssetEvent> asset_event_receiver;
+    epix::async_channel::Sender<InternalAssetEvent> asset_event_sender;
+    epix::async_channel::Receiver<InternalAssetEvent> asset_event_receiver;
     std::shared_ptr<AssetSources> sources;
     AssetServerMode mode                    = AssetServerMode::Unprocessed;
     bool watching_for_changes               = false;
@@ -287,11 +287,11 @@ EPIX_EXPORT struct AssetServer {
         auto server       = *this;
         auto owned_handle = handle;
         tasks::IoTaskPool::get()
-            .spawn([server, owned_handle, future = std::move(future)]() mutable {
+            .spawn([server, owned_handle, future = std::move(future)]() mutable -> asio::awaitable<void> {
                 auto result = future();
                 if (result) {
                     auto erased = ErasedLoadedAsset::from_asset(std::move(*result));
-                    server.send_asset_event(
+                   co_await server.send_asset_event(
                         InternalAssetEvent{internal_asset_event::Loaded{owned_handle.id(), std::move(erased)}});
                 } else {
                     auto err_ptr = [&]() -> std::exception_ptr {
@@ -306,7 +306,7 @@ EPIX_EXPORT struct AssetServer {
                             }
                         }
                     }();
-                    server.send_asset_event(InternalAssetEvent{internal_asset_event::Failed{
+                    co_await server.send_asset_event(InternalAssetEvent{internal_asset_event::Failed{
                         owned_handle.id(), AssetPath{},
                         AssetLoadError{load_error::AssetLoaderException{err_ptr, AssetPath{}, "add_async"}}}});
                 }
@@ -522,7 +522,7 @@ EPIX_EXPORT struct AssetServer {
     void reload_internal(const AssetPath& path, bool log) const;
 
     /** @brief Send an internal asset event. */
-    void send_asset_event(InternalAssetEvent event) const { data->asset_event_sender.send(std::move(event)); }
+    asio::awaitable<void> send_asset_event(InternalAssetEvent event) const { co_await data->asset_event_sender.send(std::move(event)); }
 
     /** @brief Helper to create a LoadContext. Defined here in the module interface
      *  where AssetServer is complete, working around MSVC C++20 modules bug

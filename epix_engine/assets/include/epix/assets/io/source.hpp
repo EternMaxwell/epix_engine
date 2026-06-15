@@ -19,7 +19,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
 #endif
-#include <epix/assets/async_channel.hpp>
 #include <epix/assets/io/file/asset.hpp>
 #include <epix/assets/io/file/watcher.hpp>
 #include <epix/assets/io/reader.hpp>

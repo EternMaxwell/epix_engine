@@ -36,8 +36,8 @@
 
 namespace epix::assets {
 struct PendingAssetLoader {
-    utils::BroadcastSender<std::shared_ptr<ErasedAssetLoader>> sender;
-    utils::BroadcastReceiver<std::shared_ptr<ErasedAssetLoader>> receiver;
+    epix::async_broadcast::Sender<std::shared_ptr<ErasedAssetLoader>> sender;
+    epix::async_broadcast::Receiver<std::shared_ptr<ErasedAssetLoader>> receiver;
 };
 struct MaybeAssetLoader : std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader> {
     using variant::variant;
@@ -102,7 +102,7 @@ struct AssetLoaders {
                                        std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
                                    auto sender = std::move(pending.sender);
                                    tasks::IoTaskPool::get()
-                                       .spawn([sender = std::move(sender), loader]() mutable { sender.send(loader); })
+                                       .spawn([sender = std::move(sender), loader]() mutable { sender.broadcast(loader); })
                                        .detach();
                                }},
                 maybe_loader.as_base());
@@ -133,7 +133,8 @@ struct AssetLoaders {
         }
 
         type_to_loaders[loader_asset_type].push_back(loader_index);
-        auto&& [sender, receiver] = utils::make_broadcast_channel<std::shared_ptr<ErasedAssetLoader>>();
+        auto&& [sender, receiver] = epix::async_broadcast::broadcast<std::shared_ptr<ErasedAssetLoader>>(1);
+        sender.set_overflow(true);
         loaders.push_back(PendingAssetLoader{std::move(sender), std::move(receiver)});
     }
     std::optional<MaybeAssetLoader> get_by_name(std::string_view loader_type_name) const;

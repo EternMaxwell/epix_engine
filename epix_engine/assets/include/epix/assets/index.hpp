@@ -11,6 +11,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
+#include <epix/async_channel.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 
@@ -20,9 +21,6 @@ EPIX_EXPORT struct StrongHandle;
 EPIX_EXPORT template <typename T>
 struct Handle;
 struct AssetIndexAllocator;
-
-using core::Receiver;
-using core::Sender;
 
 /** @brief Generational index into an asset storage.
  *  Pairs a slot index with a generation counter so stale references
@@ -61,10 +59,10 @@ EPIX_EXPORT struct AssetIndex {
 struct AssetIndexAllocator {
    private:
     mutable std::atomic<std::uint32_t> m_next = 0;
-    Sender<AssetIndex> m_free_indices_sender;
-    Receiver<AssetIndex> m_free_indices_receiver;
-    Receiver<AssetIndex> m_reserved;
-    Sender<AssetIndex> m_reserved_sender;
+    epix::async_channel::Sender<AssetIndex> m_free_indices_sender;
+    epix::async_channel::Receiver<AssetIndex> m_free_indices_receiver;
+    epix::async_channel::Receiver<AssetIndex> m_reserved;
+    epix::async_channel::Sender<AssetIndex> m_reserved_sender;
 
    public:
     AssetIndexAllocator();
@@ -75,7 +73,7 @@ struct AssetIndexAllocator {
 
     AssetIndex reserve() const;
     void release(const AssetIndex& index) const;
-    Receiver<AssetIndex> reserved_receiver() const noexcept;
+    epix::async_channel::Receiver<AssetIndex> reserved_receiver() const noexcept;
 };
 }  // namespace epix::assets
 

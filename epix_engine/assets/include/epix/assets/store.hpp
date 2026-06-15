@@ -394,7 +394,7 @@ struct Assets {
         requires std::constructible_from<T, Args...>
     std::expected<bool, AssetError> insert_index(const AssetIndex& index, Args&&... args) {
         std::uint32_t storage_size = static_cast<std::uint32_t>(m_references.size());
-        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
+        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_recv()) {
             storage_size = std::max(storage_size, opt->index() + 1);
         }
         if (storage_size > m_references.size()) {
@@ -677,7 +677,7 @@ struct Assets {
         // Ensure storage is large enough
         auto index                 = std::get<AssetIndex>(handle.id());
         std::uint32_t storage_size = static_cast<std::uint32_t>(m_references.size());
-        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
+        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_recv()) {
             storage_size = std::max(storage_size, opt->index() + 1);
         }
         if (storage_size > m_references.size()) {
@@ -805,10 +805,10 @@ struct Assets {
     /** @brief Process pending handle destruction events manually. */
     void handle_events_manual(const AssetServer* asset_server = nullptr) {
         spdlog::trace("[{}] Handling events", meta::type_id<T>::short_name());
-        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_receive()) {
+        while (auto&& opt = m_handle_provider->index_allocator.reserved_receiver().try_recv()) {
             m_assets.resize_slots(opt->index() + 1);
         }
-        while (auto&& opt = m_handle_provider->event_receiver.try_receive()) {
+        while (auto&& opt = m_handle_provider->event_receiver.try_recv()) {
             auto id = (*opt).id.template typed<T>();
             if ((*opt).asset_server_managed && asset_server) {
                 if (!asset_server_process_handle_destruction(*asset_server, id)) {

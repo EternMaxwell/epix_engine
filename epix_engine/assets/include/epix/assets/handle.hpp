@@ -18,6 +18,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
+#include <epix/async_channel.hpp>
 #endif
 
 #include <epix/assets/id.hpp>
@@ -25,8 +26,6 @@
 #include <epix/assets/path.hpp>
 
 namespace epix::assets {
-using core::Receiver;
-using core::Sender;
 struct DestructionEvent {
     InternalAssetId id;
     bool asset_server_managed;
@@ -40,7 +39,7 @@ struct NonCopyNonMove {
 };
 struct StrongHandle : NonCopyNonMove {
     UntypedAssetId id;
-    Sender<DestructionEvent> event_sender;
+    epix::async_channel::Sender<DestructionEvent> event_sender;
     std::optional<AssetPath> path;
     bool asset_server_managed;
     /// Modifies asset meta. Stored on the handle because it is:
@@ -49,7 +48,7 @@ struct StrongHandle : NonCopyNonMove {
     std::optional<MetaTransform> meta_transform;
 
     StrongHandle(const UntypedAssetId& id,
-                 const Sender<DestructionEvent>& event_sender,
+                 const epix::async_channel::Sender<DestructionEvent>& event_sender,
                  bool asset_server_managed                   = false,
                  const std::optional<AssetPath>& path        = std::nullopt,
                  std::optional<MetaTransform> meta_transform = std::nullopt);
@@ -308,8 +307,8 @@ Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
 EPIX_EXPORT struct HandleProvider {
    private:
     AssetIndexAllocator index_allocator;
-    Sender<DestructionEvent> event_sender;
-    Receiver<DestructionEvent> event_receiver;
+    epix::async_channel::Sender<DestructionEvent> event_sender;
+    epix::async_channel::Receiver<DestructionEvent> event_receiver;
     meta::type_index type;
 
     friend struct AssetInfos;
