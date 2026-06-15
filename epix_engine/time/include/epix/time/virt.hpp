@@ -1,21 +1,20 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #endif
 
-export module epix.time:virt;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :time_clock;
-import :real;
+#include <epix/time/real.hpp>
+#include <epix/time/time_clock.hpp>
 
 namespace epix::time {
 
 /** @brief Context for `Time<Virtual>`. Stores speed, pause state, and max delta clamp. */
-export struct Virtual {
+EPIX_EXPORT struct Virtual {
     /** @brief Maximum delta to accept per update (clamped). Prevents spiral-of-death. */
     std::chrono::nanoseconds max_delta = std::chrono::milliseconds(250);
     /** @brief Whether virtual time is paused (effective speed becomes 0). */
@@ -134,7 +133,7 @@ struct Time<Virtual> : private Time<> {
 
 /** @brief Update virtual time from real time. Feeds real delta into virtual advance,
  *  then copies virtual time into the generic `Time<>` current clock. */
-export inline void update_virtual_time(Time<>& current, Time<Virtual>& virt, const Time<Real>& real) noexcept {
+EPIX_EXPORT inline void update_virtual_time(Time<>& current, Time<Virtual>& virt, const Time<Real>& real) noexcept {
     auto raw_delta = real.delta();
     virt.advance_with_raw_delta(raw_delta);
     current = virt.as_generic();

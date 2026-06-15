@@ -1,22 +1,21 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
 #endif
 
-export module epix.time:fixed;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :time_clock;
-import :virt;
+#include <epix/time/time_clock.hpp>
+#include <epix/time/virt.hpp>
 
 namespace epix::time {
 
 /** @brief Context for `Time<Fixed>`. Stores the fixed timestep duration
  *  and the accumulated overstep from real/virtual time. */
-export struct Fixed {
+EPIX_EXPORT struct Fixed {
     /** @brief Duration of each fixed timestep (default 64 Hz, ~15.625 ms). */
     std::chrono::nanoseconds timestep = std::chrono::microseconds(15625);  // 64 Hz
     /** @brief Accumulated real time not yet consumed by a fixed step. */

@@ -1,8 +1,6 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.input;
+#include <epix/input.hpp>
 
 using namespace epix::core;
 namespace epix::input {

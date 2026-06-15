@@ -1,20 +1,19 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <optional>
 #endif
 
-export module epix.time:real;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :time_clock;
+#include <epix/time/time_clock.hpp>
 
 namespace epix::time {
 
 /** @brief Context for `Time<Real>`. Tracks wall-clock time points for startup,
  *  first update, and last update. */
-export struct Real {
+EPIX_EXPORT struct Real {
     /** @brief The steady_clock time point when the app started. */
     std::chrono::steady_clock::time_point startup = std::chrono::steady_clock::now();
     /** @brief Time point of the first update call, if any. */

@@ -1,16 +1,15 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <chrono>
 #endif
 
-export module epix.time:stopwatch;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::time {
 
 /** @brief A pausable stopwatch that accumulates elapsed time from explicit ticks. */
-export struct Stopwatch {
+EPIX_EXPORT struct Stopwatch {
     Stopwatch() = default;
 
     /** @brief Get total elapsed time (only accumulated while unpaused). */

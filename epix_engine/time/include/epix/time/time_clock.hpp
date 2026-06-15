@@ -1,14 +1,13 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cstdlib>
 #include <utility>
 #endif
 
-export module epix.time:time_clock;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::time {
 
 inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend,
@@ -17,12 +16,12 @@ inline std::chrono::nanoseconds duration_rem(std::chrono::nanoseconds dividend,
 }
 
 /** @brief Default context tag for the generic `Time<>` clock. */
-export struct GenericTag {};
+EPIX_EXPORT struct GenericTag {};
 
 /** @brief Core clock type tracking delta time, total elapsed time, and wrapped elapsed time.
  *  @tparam T Context tag type. Specialize with `Real`, `Virtual`, `Fixed`, or use the
  *           default `GenericTag` for a context-free clock (`Time<>`). */
-export template <typename T = GenericTag>
+EPIX_EXPORT template <typename T = GenericTag>
 struct Time {
     /** @brief Default wrap period (1 hour). Elapsed time wraps around this period. */
     static constexpr std::chrono::nanoseconds DEFAULT_WRAP_PERIOD = std::chrono::hours(1);

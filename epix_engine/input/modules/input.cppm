@@ -1,21 +1,20 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <functional>
+#include <ranges>
+#include <string_view>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#endif
+
 export module epix.input;
-
-export import :enums;
-export import :events;
-export import :button;
-
-import epix.core;
-
-using namespace epix::core;
-
-export namespace epix::input {
-/** @brief Plugin that registers input event handling systems. */
-struct InputPlugin {
-    void attach(App& app);
-};
-/** @brief Debug system that logs all received input events to the console. */
-void log_inputs(EventReader<KeyInput> key_reader,
-                EventReader<MouseButtonInput> mouse_reader,
-                EventReader<MouseMove> mouse_move_reader,
-                EventReader<MouseScroll> mouse_scroll_reader);
-}  // namespace epix::input
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+export import epix.core;
+extern "C++" {
+#include <epix/input.hpp>
+}

@@ -1,13 +1,5 @@
-module;
-#ifndef EPIX_IMPORT_STD
-#include <string_view>
-#endif
-
-module epix.input;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :enums;
+#include <epix/input.hpp>
+#include <epix/input/enums.hpp>
 
 namespace epix::input {
 

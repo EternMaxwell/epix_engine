@@ -1,28 +1,27 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <limits>
 #endif
 
-export module epix.time:timer;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :stopwatch;
+#include <epix/time/stopwatch.hpp>
 
 namespace epix::time {
 
 /** @brief Whether a timer fires once or repeats. */
-export enum class TimerMode {
+EPIX_EXPORT enum class TimerMode {
     Once,      /**< Fire once; once finished, no further ticks have effect. */
     Repeating, /**< Automatically reset and re-fire when elapsed exceeds duration. */
 };
 
 /** @brief A countdown timer built on a Stopwatch. Supports one-shot and repeating modes.
  *  Call `tick()` each frame with the delta time to advance the timer. */
-export struct Timer {
+EPIX_EXPORT struct Timer {
     Timer() = default;
 
     /** @brief Construct with a duration and mode. */
