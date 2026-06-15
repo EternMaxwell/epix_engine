@@ -1,27 +1,5 @@
-module;
-#ifndef EPIX_IMPORT_STD
-#include <cstddef>
-#include <cstdint>
-#include <deque>
-#include <exception>
-#include <expected>
-#include <filesystem>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <span>
-#include <string>
-#include <system_error>
-#include <tuple>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets::memory {
 

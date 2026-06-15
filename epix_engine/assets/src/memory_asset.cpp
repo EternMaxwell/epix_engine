@@ -1,29 +1,6 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <exception>
-#include <expected>
-#include <filesystem>
-#include <functional>
-#include <memory>
-#include <span>
-#include <system_error>
-#include <tuple>
-#include <type_traits>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
 #include <asio/awaitable.hpp>
-
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 

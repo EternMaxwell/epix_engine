@@ -1,16 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
-#include <format>
-#include <string>
-#include <variant>
-#endif
 #include <uuid.h>
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.utils;
+
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace uuids {
 

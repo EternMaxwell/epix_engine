@@ -1,8 +1,6 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
+#include <epix/assets.hpp>
 
 namespace epix::assets {
 

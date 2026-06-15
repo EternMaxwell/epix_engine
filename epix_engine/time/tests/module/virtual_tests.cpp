@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
-#ifdef EPIX_IMPORT_STD
+#ifndef EPIX_IMPORT_STD
+#include <chrono>
+#else
 import std;
 #endif
 import epix.time;

@@ -85,10 +85,10 @@ struct QueryState {
                 new_archetype_internal(archetype);
             }
         } else {
-            auto rng =
-                _component_access.required().iter_ones() |
-                std::views::filter([&](TypeId id) { return world_archetypes(world).by_component.contains(id); }) |
-                std::views::transform([&](TypeId id) {
+            auto rng = std::views::transform(
+                std::views::filter(_component_access.required().iter_ones(),
+                                   [&](TypeId id) { return world_archetypes(world).by_component.contains(id); }),
+                [&](TypeId id) {
                     return std::make_pair(id, std::addressof(world_archetypes(world).by_component.at(id)));
                 });
             auto iter_min = std::ranges::min_element(rng, {}, [](auto&& pair) { return pair.second->size(); });

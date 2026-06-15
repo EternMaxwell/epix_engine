@@ -1,26 +1,8 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <exception>
-#include <format>
-#include <functional>
-#include <iterator>
-#include <numeric>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(

@@ -1,35 +1,11 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <cstddef>
-#include <exception>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <stdexcept>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <unordered_set>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/io_context.hpp>
-
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.tasks;
+#include <epix/assets.hpp>
+#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 

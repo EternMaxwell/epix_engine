@@ -1,28 +1,23 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <expected>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <ranges>
-#include <stdexcept>
-#include <string>
-#include <unordered_set>
-#include <utility>
-#include <variant>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.meta;
-import epix.utils;
-import epix.core;
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 namespace epix::assets {
+auto AssetInfos::get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
+    -> std::optional<UntypedHandle> {
+    auto it = path_to_ids.find(path);
+    if (it != path_to_ids.end()) {
+        auto& type_map = it->second;
+        auto type_it   = type_map.find(type);
+        if (type_it != type_map.end()) {
+            auto id = type_it->second;
+            return get_handle_by_id(id);
+        }
+    }
+    return std::nullopt;
+}
 void AssetInfos::propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                         UntypedAssetId waiting_id,
                                         const epix::utils::Sender<InternalAssetEvent>& sender) {
