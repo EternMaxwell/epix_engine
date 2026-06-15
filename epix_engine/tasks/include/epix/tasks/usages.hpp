@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -8,11 +10,8 @@ module;
 #include <utility>
 #include <vector>
 #endif
-export module epix.tasks:usages;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :task_pool;
+
+#include <epix/tasks/task_pool.hpp>
 
 namespace epix::tasks {
 
@@ -24,7 +23,7 @@ namespace epix::tasks {
  */
 
 #define EPIX_DEFINE_TASK_POOL(Name)                                                       \
-    export struct Name {                                                                  \
+    EPIX_EXPORT struct Name {                                                                  \
        private:                                                                           \
         TaskPool m_pool;                                                                  \
         explicit Name(TaskPool p) : m_pool(std::move(p)) {}                               \

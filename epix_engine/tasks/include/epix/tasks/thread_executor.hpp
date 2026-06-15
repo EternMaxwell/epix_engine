@@ -1,34 +1,32 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <exception>
 #include <optional>
 #include <thread>
 #include <type_traits>
 #include <utility>
-#endif
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
 #include <asio/detached.hpp>
 #include <asio/thread_pool.hpp>
-
-export module epix.tasks:thread_executor;
-#ifdef EPIX_IMPORT_STD
-import std;
 #endif
-import :task;
+
+#include <epix/tasks/task.hpp>
 
 namespace epix::tasks {
 
-export struct ThreadExecutorTicker;
+EPIX_EXPORT struct ThreadExecutorTicker;
 
 /**
  * @brief An executor that can only be ticked on the thread it was created on.
  * Tasks can be spawned from any thread, but ticking must happen on the owning thread.
  * Matches `bevy_tasks::ThreadExecutor`.
  */
-export struct ThreadExecutor {
+EPIX_EXPORT struct ThreadExecutor {
    private:
     asio::thread_pool m_ctx{1};
     std::thread::id m_thread_id;
@@ -100,7 +98,7 @@ export struct ThreadExecutor {
  * @brief Used to tick a ThreadExecutor.
  * Matches `bevy_tasks::ThreadExecutorTicker`.
  */
-export struct ThreadExecutorTicker {
+EPIX_EXPORT struct ThreadExecutorTicker {
    private:
     ThreadExecutor* m_executor;
 

@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
@@ -10,11 +13,7 @@ module;
 #include <vector>
 #endif
 
-export module epix.tasks:slice;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :task_pool;
+#include <epix/tasks/task_pool.hpp>
 
 namespace epix::tasks {
 
@@ -22,7 +21,7 @@ namespace epix::tasks {
  * @brief Map a read-only slice in parallel chunks.
  * Matches `ParallelSlice::par_chunk_map`.
  */
-export template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<const T>>>
+EPIX_EXPORT template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<const T>>>
     requires std::invocable<F, std::size_t, std::span<const T>>
 std::vector<R> par_chunk_map(std::span<const T> slice, TaskPool& pool, std::size_t chunk_size, F&& f) {
     std::vector<Task<R>> tasks;
@@ -45,7 +44,7 @@ std::vector<R> par_chunk_map(std::span<const T> slice, TaskPool& pool, std::size
  * @brief Map a read-only slice in parallel with automatic chunk sizing.
  * Matches `ParallelSlice::par_splat_map`.
  */
-export template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<const T>>>
+EPIX_EXPORT template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<const T>>>
     requires std::invocable<F, std::size_t, std::span<const T>>
 std::vector<R> par_splat_map(std::span<const T> slice, TaskPool& pool, std::optional<std::size_t> max_tasks, F&& f) {
     std::size_t n = max_tasks.value_or(pool.thread_num());
@@ -59,7 +58,7 @@ std::vector<R> par_splat_map(std::span<const T> slice, TaskPool& pool, std::opti
  * @brief Map a mutable slice in parallel chunks.
  * Matches `ParallelSliceMut::par_chunk_map_mut`.
  */
-export template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<T>>>
+EPIX_EXPORT template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<T>>>
     requires std::invocable<F, std::size_t, std::span<T>>
 std::vector<R> par_chunk_map_mut(std::span<T> slice, TaskPool& pool, std::size_t chunk_size, F&& f) {
     std::vector<Task<R>> tasks;
@@ -82,7 +81,7 @@ std::vector<R> par_chunk_map_mut(std::span<T> slice, TaskPool& pool, std::size_t
  * @brief Map a mutable slice in parallel with automatic chunk sizing.
  * Matches `ParallelSliceMut::par_splat_map_mut`.
  */
-export template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<T>>>
+EPIX_EXPORT template <typename T, typename F, typename R = std::invoke_result_t<F, std::size_t, std::span<T>>>
     requires std::invocable<F, std::size_t, std::span<T>>
 std::vector<R> par_splat_map_mut(std::span<T> slice, TaskPool& pool, std::optional<std::size_t> max_tasks, F&& f) {
     std::size_t n = max_tasks.value_or(pool.thread_num());

@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <exception>
@@ -12,7 +14,6 @@ module;
 #include <type_traits>
 #include <utility>
 #include <vector>
-#endif
 #include <asio/any_io_executor.hpp>
 #include <asio/awaitable.hpp>
 #include <asio/co_spawn.hpp>
@@ -22,13 +23,12 @@ module;
 #include <asio/post.hpp>
 #include <asio/thread_pool.hpp>
 #include <asio/use_awaitable.hpp>
-
-export module epix.tasks:task_pool;
-#ifdef EPIX_IMPORT_STD
-import std;
 #endif
-import BS.thread_pool;
-import :task;
+
+#ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
+#endif
+#include <epix/tasks/task.hpp>
 
 namespace epix::tasks {
 
@@ -38,13 +38,13 @@ namespace epix::tasks {
  * return a default value of 1 if it returns 0.
  * Matches `bevy_tasks::available_parallelism`.
  */
-export inline std::size_t available_parallelism() noexcept {
+EPIX_EXPORT inline std::size_t available_parallelism() noexcept {
     auto n = std::thread::hardware_concurrency();
     return n > 0 ? n : 1;
 }
 
-export struct TaskPool;
-export struct TaskPoolBuilder;
+EPIX_EXPORT struct TaskPool;
+EPIX_EXPORT struct TaskPoolBuilder;
 
 /**
  * @brief Selects the internal threading backend for TaskPool.
@@ -52,7 +52,7 @@ export struct TaskPoolBuilder;
  *  - IoContext  : wraps asio::io_context with manually managed threads —
  *                 supports thread names and spawn/destroy callbacks.
  */
-export enum class TaskPoolBackend { ThreadPool, IoContext };
+EPIX_EXPORT enum class TaskPoolBackend { ThreadPool, IoContext };
 
 // ─── Submit helpers ───────────────────────────────────────────────────────────
 
@@ -134,7 +134,7 @@ struct IoBundle {
  * All tasks spawned in the scope are awaited before scope() returns.
  * Matches `bevy_tasks::Scope`.
  */
-export template <typename T>
+EPIX_EXPORT template <typename T>
 struct Scope {
    private:
     asio::any_io_executor m_executor;
@@ -186,7 +186,7 @@ struct Scope {
  * @brief Builder for TaskPool — configure threads, name, callbacks, and backend.
  * Matches `bevy_tasks::TaskPoolBuilder`.
  */
-export struct TaskPoolBuilder {
+EPIX_EXPORT struct TaskPoolBuilder {
     std::optional<std::size_t> m_num_threads;
     std::optional<std::size_t> m_stack_size;
     std::optional<std::string> m_thread_name;
@@ -247,7 +247,7 @@ export struct TaskPoolBuilder {
  *
  * Matches `bevy_tasks::TaskPool`.
  */
-export struct TaskPool {
+EPIX_EXPORT struct TaskPool {
    private:
     // m_backend owns the lifetime of the underlying thread_pool or IoBundle.
     // any_io_executor does NOT extend that lifetime — it is merely a cached

@@ -20,10 +20,6 @@ option(EPIX_IMPORT_STD "Enable C++ import std" ON)
 option(EPIX_ENABLE_INSTALL "Enable install rules (for packaging/distribution)" OFF)
 option(EPIX_EXAMPLE_USE_MIMALLOC "Link mimalloc (static) into all examples" ON)
 
-if (NOT EPIX_CXX_MODULE)
-  message(FATAL_ERROR "EPIX_CXX_MODULE option is mandatory for this project and must be enabled.")
-endif()
-
 include(cmake/module-std.cmake)
 
 project ("epix_engine.cmake" LANGUAGES CXX C)

@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <atomic>
 #include <condition_variable>
 #include <exception>
@@ -10,16 +12,12 @@ module;
 #include <optional>
 #include <utility>
 #include <vector>
-#endif
 #include <asio/associated_executor.hpp>
 #include <asio/async_result.hpp>
 #include <asio/post.hpp>
 #include <coroutine>
-
-export module epix.tasks:task;
-#ifdef EPIX_IMPORT_STD
-import std;
 #endif
+
 namespace epix::tasks {
 
 // ─── Internal shared state ────────────────────────────────────────────────────
@@ -115,7 +113,7 @@ struct TaskState<void> {
  *
  * API matches `bevy_tasks::Task<T>` (`impl Future for Task<T>`).
  */
-export template <typename T>
+EPIX_EXPORT template <typename T>
 struct Task {
    private:
     std::shared_ptr<detail::TaskState<T>> m_state;
