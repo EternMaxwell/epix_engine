@@ -1,4 +1,5 @@
 ﻿epix_add_module(epix_core)
+target_link_libraries(epix_core PUBLIC epix_common)
 target_link_libraries(epix_core PUBLIC BSThreadPool)
 target_link_libraries(epix_core PUBLIC spdlog::spdlog)
 target_link_libraries(epix_core PUBLIC epix_tasks)

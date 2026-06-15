@@ -13,7 +13,7 @@ endif()
 add_subdirectory(common)
 add_subdirectory(tasks)
 # TODO: re-enable as each module is converted
-# add_subdirectory(core)
+add_subdirectory(core)
 # add_subdirectory(time)
 # add_subdirectory(input)
 # add_subdirectory(assets)

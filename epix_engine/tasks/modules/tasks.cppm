@@ -4,6 +4,7 @@ module;
 #include <atomic>
 #include <concepts>
 #include <condition_variable>
+#include <coroutine>
 #include <cstddef>
 #include <exception>
 #include <functional>
@@ -28,11 +29,12 @@ module;
 #include <asio/post.hpp>
 #include <asio/thread_pool.hpp>
 #include <asio/use_awaitable.hpp>
-#include <coroutine>
 
 export module epix.tasks;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
 import BS.thread_pool;
+extern "C++" {
 #include <epix/tasks.hpp>
+}

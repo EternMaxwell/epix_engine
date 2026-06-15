@@ -1,22 +1,7 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <atomic>
-#include <cassert>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
-#include <optional>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :entities;
+#include <epix/core/entities.hpp>
 
 namespace epix::core {
 void Entities::verify_flush() noexcept {

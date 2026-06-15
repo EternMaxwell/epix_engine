@@ -2,14 +2,12 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <asio/awaitable.hpp>
 #include <asio/use_awaitable.hpp>
-
-#include <epix/tasks.hpp>
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
 #include <atomic>
 #include <cstddef>
+#include <epix/tasks.hpp>
 #include <numeric>
 #include <optional>
 #include <span>
@@ -18,10 +16,6 @@
 #include <thread>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::tasks;
 
 // ─── Task<T> — basic lifecycle ───────────────────────────────────────────────

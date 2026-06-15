@@ -1,23 +1,7 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <cassert>
-#include <cstddef>
-#include <optional>
-#include <ranges>
-#include <utility>
-#include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :archetype;
+#include <epix/core/archetype.hpp>
 
 namespace epix::core {
 Archetype Archetype::create(ComponentIndex& component_index,

@@ -1,32 +1,8 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <exception>
-#include <format>
-#include <memory>
-#include <optional>
-#include <stdexcept>
-#include <thread>
-#include <tuple>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
 #include <taskflow/taskflow.hpp>
-
-module epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :schedule;
-import :labels;
 
 namespace epix::core {
 

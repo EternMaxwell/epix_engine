@@ -1,10 +1,34 @@
-﻿export module epix.utils;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <bit>
+#include <cmath>
+#include <concepts>
+#include <condition_variable>
+#include <cstddef>
+#include <cstdint>
+#include <deque>
+#include <expected>
+#include <functional>
+#include <iterator>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <ranges>
+#include <shared_mutex>
+#include <stdexcept>
+#include <thread>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+#include <BS_thread_pool.hpp>
 
-export import :async;
-export import :bit_vector;
-export import :int_wrapper;
-export import :variant_visitor;
-export import :function;
-export import :input_iterable;
-export import :fixed_point;
-export import :singleton_taskpool;
+export module epix.utils;
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+extern "C++" {
+#include <epix/utils.hpp>
+}

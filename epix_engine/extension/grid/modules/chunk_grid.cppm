@@ -246,8 +246,8 @@ class Chunk : public ChunkLayer<Dim> {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->try_iter_type(type);
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
-        meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    try_iter_type_mut(meta::type_index type) override {
         if (!m_type_to_layer.contains(type)) return std::unexpected(LayerError::UnsupportedType);
         return m_layers.at(m_type_to_layer.at(type))->try_iter_type_mut(type);
     }
@@ -1152,8 +1152,8 @@ class PackedLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
-        meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    try_iter_type_mut(meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1228,8 +1228,8 @@ class TreeLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
-        meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    try_iter_type_mut(meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1304,8 +1304,8 @@ class DenseLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
-        meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    try_iter_type_mut(meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;
@@ -1380,8 +1380,8 @@ class SparseLayer : public ChunkLayer<Dim> {
             return std::make_pair(std::move(pos), static_cast<const void*>(std::addressof(value)));
         });
     }
-    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError> try_iter_type_mut(
-        meta::type_index type) override {
+    std::expected<utils::input_iterable<std::pair<std::array<std::uint32_t, Dim>, void*>>, LayerError>
+    try_iter_type_mut(meta::type_index type) override {
         if (type != meta::type_id<T>()) return std::unexpected(LayerError::UnsupportedType);
         return std::views::transform(m_grid.iter(), [](auto&& pair) {
             auto&& [pos, value] = pair;

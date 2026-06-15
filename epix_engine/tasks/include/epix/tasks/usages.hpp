@@ -23,7 +23,7 @@ namespace epix::tasks {
  */
 
 #define EPIX_DEFINE_TASK_POOL(Name)                                                       \
-    EPIX_EXPORT struct Name {                                                                  \
+    EPIX_EXPORT struct Name {                                                             \
        private:                                                                           \
         TaskPool m_pool;                                                                  \
         explicit Name(TaskPool p) : m_pool(std::move(p)) {}                               \

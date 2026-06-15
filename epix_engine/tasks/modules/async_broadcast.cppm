@@ -15,4 +15,6 @@ export module epix.async_broadcast;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
+extern "C++" {
 #include <epix/async_broadcast.hpp>
+}

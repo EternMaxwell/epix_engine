@@ -3,8 +3,12 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <asio/associated_executor.hpp>
+#include <asio/async_result.hpp>
+#include <asio/post.hpp>
 #include <atomic>
 #include <condition_variable>
+#include <coroutine>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -12,10 +16,6 @@
 #include <optional>
 #include <utility>
 #include <vector>
-#include <asio/associated_executor.hpp>
-#include <asio/async_result.hpp>
-#include <asio/post.hpp>
-#include <coroutine>
 #endif
 
 namespace epix::tasks {

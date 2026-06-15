@@ -3,16 +3,16 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/thread_pool.hpp>
 #include <concepts>
 #include <exception>
 #include <optional>
 #include <thread>
 #include <type_traits>
 #include <utility>
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/thread_pool.hpp>
 #endif
 
 #include <epix/tasks/task.hpp>

@@ -23,7 +23,7 @@ std::optional<T> now_or_never(Task<T>& task) {
     return std::nullopt;
 }
 
-EPIX_EXPORT bool now_or_never(Task<void>& task) {
+EPIX_EXPORT inline bool now_or_never(Task<void>& task) {
     if (task.is_finished()) {
         task.block();
         return true;
@@ -39,6 +39,6 @@ std::optional<T> check_ready(Task<T>& task) {
     return now_or_never(task);
 }
 
-EPIX_EXPORT bool check_ready(Task<void>& task) { return now_or_never(task); }
+EPIX_EXPORT inline bool check_ready(Task<void>& task) { return now_or_never(task); }
 
 }  // namespace epix::tasks

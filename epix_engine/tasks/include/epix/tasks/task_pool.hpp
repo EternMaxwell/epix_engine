@@ -3,6 +3,16 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
+#include <asio/any_io_executor.hpp>
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/post.hpp>
+#include <asio/thread_pool.hpp>
+#include <asio/use_awaitable.hpp>
 #include <concepts>
 #include <cstddef>
 #include <exception>
@@ -14,20 +24,8 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <asio/any_io_executor.hpp>
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/executor_work_guard.hpp>
-#include <asio/io_context.hpp>
-#include <asio/post.hpp>
-#include <asio/thread_pool.hpp>
-#include <asio/use_awaitable.hpp>
 #endif
 
-#ifndef EPIX_CXX_MODULE
-#include <BS_thread_pool.hpp>
-#endif
 #include <epix/tasks/task.hpp>
 
 namespace epix::tasks {
