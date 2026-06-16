@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -15,11 +18,9 @@ module;
 #include <vector>
 #endif
 
-export module epix.extension.grid_gpu:brickmap;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/extension/grid.hpp>
 #endif
-import epix.extension.grid;
 
 using std::int32_t;
 using std::int64_t;
@@ -80,7 +81,7 @@ namespace epix::ext::grid_gpu {
 // -------------------------------------------------------
 
 /// Decoded header fields from a BrickmapBuffer.
-export struct BrickmapHeader {
+EPIX_EXPORT struct BrickmapHeader {
     uint32_t dim;
     uint32_t brick_size;
     uint32_t data_count;
@@ -94,7 +95,7 @@ export struct BrickmapHeader {
  * Produced by brickmap_upload() from any grid.  Upload words.data()
  * (byte_size() bytes) to a GPU StructuredBuffer<uint>.
  */
-export struct BrickmapBuffer {
+EPIX_EXPORT struct BrickmapBuffer {
     std::vector<uint32_t> words;
 
     BrickmapHeader header() const noexcept {
@@ -121,7 +122,7 @@ export struct BrickmapBuffer {
 // -------------------------------------------------------
 // Embedded Slang shader source
 // -------------------------------------------------------
-export constexpr std::string_view kBrickmapGridSlangSource = R"slang(
+EPIX_EXPORT constexpr std::string_view kBrickmapGridSlangSource = R"slang(
 module epix.ext.grid.brickmap;
 
 namespace epix::ext::grid {
@@ -393,11 +394,11 @@ uint32_t flat_grid_index(const std::array<uint32_t, Dim>& bp, const std::array<u
 // Configuration and error types
 // -------------------------------------------------------
 
-export struct BrickmapConfig {
+EPIX_EXPORT struct BrickmapConfig {
     std::size_t brick_size = 8;  // per-axis (2, 4, 8, or 16)
 };
 
-export struct BrickmapUploadError {
+EPIX_EXPORT struct BrickmapUploadError {
     struct InvalidBrickSize {
         std::size_t provided;
         std::size_t dim;
@@ -605,7 +606,7 @@ BrickmapBuffer brickmap_upload_cc(const G& grid) {
 // Public upload API
 // -------------------------------------------------------
 
-export template <epix::ext::grid::viewable_grid G>
+EPIX_EXPORT template <epix::ext::grid::viewable_grid G>
     requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<BrickmapBuffer, BrickmapUploadError> brickmap_upload(const G& grid, const BrickmapConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;

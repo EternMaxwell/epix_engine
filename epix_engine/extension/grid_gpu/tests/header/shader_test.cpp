@@ -1,31 +1,9 @@
 #include <gtest/gtest.h>
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <expected>
-#include <map>
-#include <memory>
-#include <optional>
-#include <random>
-#include <span>
-#include <string>
-#include <string_view>
-#include <tuple>
-#include <utility>
-#include <variant>
-#include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
-import epix.assets;
-import epix.shader;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
+#include <webgpu/webgpu.hpp>
+#include <epix/assets.hpp>
+#include <epix/shader.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

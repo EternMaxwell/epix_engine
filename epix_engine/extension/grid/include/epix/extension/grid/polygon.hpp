@@ -1,5 +1,8 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -10,14 +13,12 @@
 #include <vector>
 #endif
 
-export module epix.extension.grid:polygon;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <glm/glm.hpp>
 #endif
-import glm;
-import :concepts;
-import :bit_grid;
-import :grid_view;
+#include <epix/extension/grid/concepts.hpp>
+#include <epix/extension/grid/bit_grid.hpp>
+#include <epix/extension/grid/grid_view.hpp>
 
 namespace epix::ext::grid {
 
@@ -49,7 +50,7 @@ concept poly_grid = requires(G g) {
  * @brief A closed ring of integer-grid vertices, in CW order for outer rings
  *        and CCW order for hole rings (consistent with mapbox::earcut input).
  */
-export struct Ring {
+EPIX_EXPORT struct Ring {
     std::vector<glm::ivec2> points;
 
     bool empty() const noexcept { return points.empty(); }
@@ -59,7 +60,7 @@ export struct Ring {
 /**
  * @brief A simple polygon (one outer ring + zero or more holes).
  */
-export struct Polygon {
+EPIX_EXPORT struct Polygon {
     Ring outer;
     std::vector<Ring> holes;
 
@@ -197,10 +198,10 @@ inline std::vector<bit_grid<2>> split(const bit_grid<2>& g, bool include_diagona
 
 /// @brief Public alias for the rasterised binary bitmap.
 /// Useful for storing/comparing snapshots of any grid.
-export using BinaryGrid = bit_grid<2>;
+EPIX_EXPORT using BinaryGrid = bit_grid<2>;
 
 /// @brief Rasterise any 2-D any_grid into a BinaryGrid snapshot.
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 BinaryGrid rasterise(G&& g) {
     return detail::rasterise(std::forward<G>(g));
 }
@@ -216,7 +217,7 @@ BinaryGrid rasterise(G&& g) {
  * @param include_diagonal  If true, diagonally-adjacent occupied cells are connected.
  * @return Outline as a Ring of integer vertex coordinates.  Empty if grid is empty.
  */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 Ring find_outline(G&& grid, bool include_diagonal = false) {
     using coord_type = typename grid_pos_type<G>::value_type;
     using dim_type   = typename grid_dimensions_type<G>::value_type;
@@ -262,7 +263,7 @@ Ring find_outline(G&& grid, bool include_diagonal = false) {
  * @brief Find holes (interior void regions enclosed by occupied cells) of @p grid.
  * Each ring is in CCW order (mapbox::earcut-friendly).
  */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 std::vector<Ring> find_holes(G&& grid, bool include_diagonal = false) {
     auto bg      = detail::rasterise(grid);
     auto dims    = bg.dimensions();
@@ -328,7 +329,7 @@ inline void dp_recurse(
  *                 deviate from the simplified line.  Set to 0 to keep all points.
  * @return Simplified ring.
  */
-export inline Ring douglas_peucker(std::span<const glm::ivec2> pts, float epsilon) {
+EPIX_EXPORT inline Ring douglas_peucker(std::span<const glm::ivec2> pts, float epsilon) {
     Ring out;
     const std::size_t n = pts.size();
     if (n < 3 || epsilon <= 0.0f) {
@@ -355,7 +356,7 @@ export inline Ring douglas_peucker(std::span<const glm::ivec2> pts, float epsilo
  * If the grid has multiple components only the first is returned;
  * use @ref get_polygons_multi for multi-component grids.
  */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 Polygon get_polygon(G&& grid, bool include_diagonal = false) {
     Polygon p;
     p.outer = find_outline(grid, include_diagonal);
@@ -365,7 +366,7 @@ Polygon get_polygon(G&& grid, bool include_diagonal = false) {
 }
 
 /** @brief Like @ref get_polygon but simplifies all rings via Douglas–Peucker. */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 Polygon get_polygon_simplified(G&& grid, float epsilon = 1.0f, bool include_diagonal = false) {
     Polygon p = get_polygon(grid, include_diagonal);
     if (p.empty()) return p;
@@ -375,7 +376,7 @@ Polygon get_polygon_simplified(G&& grid, float epsilon = 1.0f, bool include_diag
 }
 
 /** @brief Extract one polygon per connected component of @p grid. */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 std::vector<Polygon> get_polygons_multi(G&& grid, bool include_diagonal = false) {
     auto bg    = detail::rasterise(grid);
     auto comps = detail::split(bg, include_diagonal);
@@ -386,7 +387,7 @@ std::vector<Polygon> get_polygons_multi(G&& grid, bool include_diagonal = false)
 }
 
 /** @brief Extract one simplified polygon per connected component of @p grid. */
-export template <poly_grid G>
+EPIX_EXPORT template <poly_grid G>
 std::vector<Polygon> get_polygons_simplified_multi(G&& grid, float epsilon = 1.0f, bool include_diagonal = false) {
     auto bg    = detail::rasterise(grid);
     auto comps = detail::split(bg, include_diagonal);

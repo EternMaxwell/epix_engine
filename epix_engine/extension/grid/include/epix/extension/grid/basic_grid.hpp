@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -15,11 +18,7 @@ module;
 #include <vector>
 #endif
 
-export module epix.extension.grid:basic_grid;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :concepts;
+#include <epix/extension/grid/concepts.hpp>
 
 namespace epix::ext::grid {
 constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
@@ -31,7 +30,7 @@ constexpr std::size_t npos = std::numeric_limits<std::size_t>::max();
  * @tparam Dim Number of dimensions.
  * @tparam T   Cell value type (must be default-constructible, movable, and copyable).
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::constructible_from<T> && std::movable<T> && std::copyable<T>
 struct packed_grid {
     using pos_type  = std::array<std::uint32_t, Dim>;
@@ -82,8 +81,8 @@ struct packed_grid {
     void clear() { m_cells.assign(m_cells.size(), m_default_value); }
     /** @brief Iterate over the positions of  cells. */
     auto iter_pos() const {
-        return std::views::iota(std::size_t{0}, count()) |
-               std::views::transform([this](std::size_t index) { return index_to_pos(index); });
+        return std::views::transform(std::views::iota(std::size_t{0}, count()),
+                                     [this](std::size_t index) { return index_to_pos(index); });
     }
     /** @brief Iterate over the values of all cells (const). */
     auto iter_cells() const { return std::views::all(m_cells); }
@@ -187,7 +186,7 @@ struct packed_grid {
  * @tparam Dim Number of dimensions.
  * @tparam T   Cell value type (must be movable).
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_grid {
     using pos_type  = std::array<std::uint32_t, Dim>;
@@ -312,7 +311,7 @@ struct dense_grid {
  * @tparam Dim Number of dimensions.
  * @tparam T   Cell value type (must be movable).
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct sparse_grid {
     using pos_type  = std::array<std::uint32_t, Dim>;
@@ -370,28 +369,28 @@ struct sparse_grid {
     }
     /** @brief Iterate over the positions of all occupied cells. */
     auto iter_pos() const {
-        return iter_valid_indices() |
-               std::views::transform([this](std::size_t index) -> auto& { return m_positions[index]; });
+        return std::views::transform(iter_valid_indices(),
+                                     [this](std::size_t index) -> auto& { return m_positions[index]; });
     }
     /** @brief Iterate over the values of all occupied cells (const). */
     auto iter_cells() const {
-        return iter_valid_indices() |
-               std::views::transform([this](std::size_t index) -> auto& { return m_data[index]; });
+        return std::views::transform(iter_valid_indices(),
+                                     [this](std::size_t index) -> auto& { return m_data[index]; });
     }
     /** @brief Iterate over the values of all occupied cells (mutable). */
     auto iter_cells() {
-        return iter_valid_indices() |
-               std::views::transform([this](std::size_t index) -> auto& { return m_data[index]; });
+        return std::views::transform(iter_valid_indices(),
+                                     [this](std::size_t index) -> auto& { return m_data[index]; });
     }
     /** @brief Iterate over (position, value) pairs for all occupied cells (const). */
     auto iter() const {
-        return iter_valid_indices() |
-               std::views::transform([this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
+        return std::views::transform(iter_valid_indices(),
+                                     [this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
     }
     /** @brief Iterate over (position, value) pairs for all occupied cells (mutable). */
     auto iter() {
-        return iter_valid_indices() |
-               std::views::transform([this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
+        return std::views::transform(iter_valid_indices(),
+                                     [this](std::size_t index) { return std::tie(m_positions[index], m_data[index]); });
     }
     /**
      * @brief Get a mutable reference to the cell at the given position.
@@ -456,7 +455,7 @@ struct sparse_grid {
  * @tparam Dim Number of dimensions.
  * @tparam T   Cell value type (must be movable).
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 struct dense_extendible_grid {
     using pos_type  = std::array<std::int32_t, Dim>;
@@ -588,7 +587,7 @@ struct dense_extendible_grid {
  * @tparam T          Cell value type (must be movable).
  * @tparam ChildCount Number of children per axis at each tree level (>= 2).
  */
-export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
+EPIX_EXPORT template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
     requires std::movable<T>
 struct tree_extendible_grid {
     using pos_type  = std::array<std::int32_t, Dim>;
@@ -740,7 +739,7 @@ struct tree_extendible_grid {
  * at construction time. Coordinates are unsigned and positions outside the
  * configured coverage return OutOfBounds.
  */
-export template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
+EPIX_EXPORT template <std::size_t Dim, typename T, std::size_t ChildCount = 2>
     requires std::movable<T>
 struct tree_grid {
     using pos_type  = std::array<std::uint32_t, Dim>;

@@ -1,40 +1,31 @@
-﻿module;
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <string>
+#include <unordered_map>
+#include <variant>
+#include <vector>
+#endif
 
 export module epix.extension.fallingsand;
-
-export import :elements;
-export import :temperature;
-export import :structs;
-export import :helpers;
-export import :ops;
-export import :systems;
-
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
 import epix.core;
-
-namespace epix::ext::fallingsand {
-
-/**
- * @brief Plugin that automates simulation and rendering of SandWorld entities.
- *
- * Entities are picked up automatically based on their components:
- *  - `SandWorld + Transform + SimulatedByPlugin`  → simulated each FixedUpdate.
- *  - `SandWorld + Transform + MeshBuildByPlugin`  → chunk content meshes are built.
- *  - `SandWorld + Transform` (+ show_chunk_outlines) → chunk outlines are managed.
- *
- * Child entities with `grid::Chunk<2> + SandChunkPos` are treated as chunks.
- * Conflicting chunk positions (two chunks at the same SandChunkPos) are logged as errors
- * and the affected world is skipped for that tick.
- */
-export struct FallingSandPlugin {
-    void attach(epix::core::App& app);
-};
-
-/** @brief Optional plugin that renders a debug overlay for Body-type sentinel
- *  cells placed by the pixel-body plugin.  Add it to your App in addition to
- *  FallingSandPlugin; toggle the overlay at runtime via
- *  SandWorld::set_show_body_debug(). */
-export struct BodyDebugPlugin {
-    void attach(epix::core::App& app);
-};
-
-}  // namespace epix::ext::fallingsand
+import epix.mesh;
+import epix.time;
+import epix.transform;
+import epix.core_graph;
+import epix.render;
+import epix.extension.grid;
+import epix.tasks;
+extern "C++" {
+#include <epix/extension/fallingsand.hpp>
+}

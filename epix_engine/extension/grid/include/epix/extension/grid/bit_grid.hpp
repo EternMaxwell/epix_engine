@@ -1,6 +1,8 @@
-﻿module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -14,13 +16,7 @@
 #include <vector>
 #endif
 
-export module epix.extension.grid:bit_grid;
-
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-
-import :basic_grid;
+#include <epix/extension/grid/basic_grid.hpp>
 
 namespace epix::ext::grid {
 /**
@@ -28,7 +24,7 @@ namespace epix::ext::grid {
  * Note that this is not a basic brid or extendible grid, this is similar to bit_vector in epix.utils but with
  * N-dimensional indexing and grid semantics.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 struct bit_grid {
     using pos_type = std::array<std::uint32_t, Dim>;
 
@@ -297,29 +293,34 @@ struct bit_grid {
     auto iter_set() const noexcept {
         std::size_t total = 1;
         for (auto d : m_dimensions) total *= d;
-        return std::views::iota(std::size_t(0), total) |
-               std::views::filter([this](std::size_t idx) { return contains(index_to_pos(idx)); }) |
-               std::views::transform([this](std::size_t idx) { return index_to_pos(idx); });
+        return
+
+            std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                     [this](std::size_t idx) { return contains(index_to_pos(idx)); }),
+                                  [this](std::size_t idx) { return index_to_pos(idx); });
     }
 
     /** @brief Return a lazy view of positions where bits are unset. */
     auto iter_unset() const noexcept {
         std::size_t total = 1;
         for (auto d : m_dimensions) total *= d;
-        return std::views::iota(std::size_t(0), total) |
-               std::views::filter([this](std::size_t idx) { return !contains(index_to_pos(idx)); }) |
-               std::views::transform([this](std::size_t idx) { return index_to_pos(idx); });
+        return
+
+            std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                     [this](std::size_t idx) { return !contains(index_to_pos(idx)); }),
+                                  [this](std::size_t idx) { return index_to_pos(idx); });
     }
 
     /** @brief Return a lazy view of positions set in both this and @p other. */
     auto intersection(const bit_grid& other) const noexcept {
         std::size_t total = 1;
         for (auto d : m_dimensions) total *= d;
-        return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other](std::size_t idx) {
-                   auto pos = index_to_pos(idx);
-                   return contains(pos) && other.contains(pos);
-               }) |
-               std::views::transform([this](std::size_t idx) { return index_to_pos(idx); });
+        return std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                        [this, &other](std::size_t idx) {
+                                                            auto pos = index_to_pos(idx);
+                                                            return contains(pos) && other.contains(pos);
+                                                        }),
+                                     [this](std::size_t idx) { return index_to_pos(idx); });
     }
 
     /** @brief Return a lazy view of positions set in either this or @p other.
@@ -329,35 +330,37 @@ struct bit_grid {
         for (std::size_t i = 0; i < Dim; ++i) max_dims[i] = std::max(m_dimensions[i], other.m_dimensions[i]);
         std::size_t total = 1;
         for (auto d : max_dims) total *= d;
-        return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other, max_dims](std::size_t idx) {
-                   std::array<std::uint32_t, Dim> pos{};
-                   std::size_t tmp = idx;
-                   for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
-                       tmp /= max_dims[i];
-                   }
-                   return contains(pos) || other.contains(pos);
-               }) |
-               std::views::transform([max_dims](std::size_t idx) {
-                   std::array<std::uint32_t, Dim> pos{};
-                   std::size_t tmp = idx;
-                   for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
-                       tmp /= max_dims[i];
-                   }
-                   return pos;
-               });
+        return std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                        [this, &other, max_dims](std::size_t idx) {
+                                                            std::array<std::uint32_t, Dim> pos{};
+                                                            std::size_t tmp = idx;
+                                                            for (std::size_t i = 0; i < Dim; ++i) {
+                                                                pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
+                                                                tmp /= max_dims[i];
+                                                            }
+                                                            return contains(pos) || other.contains(pos);
+                                                        }),
+                                     [max_dims](std::size_t idx) {
+                                         std::array<std::uint32_t, Dim> pos{};
+                                         std::size_t tmp = idx;
+                                         for (std::size_t i = 0; i < Dim; ++i) {
+                                             pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
+                                             tmp /= max_dims[i];
+                                         }
+                                         return pos;
+                                     });
     }
 
     /** @brief Return a lazy view of positions set in this but not in @p other. */
     auto difference(const bit_grid& other) const noexcept {
         std::size_t total = 1;
         for (auto d : m_dimensions) total *= d;
-        return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other](std::size_t idx) {
-                   auto pos = index_to_pos(idx);
-                   return contains(pos) && !other.contains(pos);
-               }) |
-               std::views::transform([this](std::size_t idx) { return index_to_pos(idx); });
+        return std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                        [this, &other](std::size_t idx) {
+                                                            auto pos = index_to_pos(idx);
+                                                            return contains(pos) && !other.contains(pos);
+                                                        }),
+                                     [this](std::size_t idx) { return index_to_pos(idx); });
     }
 
     /** @brief Return a lazy view of positions set in exactly one of the two grids.
@@ -367,24 +370,25 @@ struct bit_grid {
         for (std::size_t i = 0; i < Dim; ++i) max_dims[i] = std::max(m_dimensions[i], other.m_dimensions[i]);
         std::size_t total = 1;
         for (auto d : max_dims) total *= d;
-        return std::views::iota(std::size_t(0), total) | std::views::filter([this, &other, max_dims](std::size_t idx) {
-                   std::array<std::uint32_t, Dim> pos{};
-                   std::size_t tmp = idx;
-                   for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
-                       tmp /= max_dims[i];
-                   }
-                   return contains(pos) != other.contains(pos);
-               }) |
-               std::views::transform([max_dims](std::size_t idx) {
-                   std::array<std::uint32_t, Dim> pos{};
-                   std::size_t tmp = idx;
-                   for (std::size_t i = 0; i < Dim; ++i) {
-                       pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
-                       tmp /= max_dims[i];
-                   }
-                   return pos;
-               });
+        return std::views::transform(std::views::filter(std::views::iota(std::size_t(0), total),
+                                                        [this, &other, max_dims](std::size_t idx) {
+                                                            std::array<std::uint32_t, Dim> pos{};
+                                                            std::size_t tmp = idx;
+                                                            for (std::size_t i = 0; i < Dim; ++i) {
+                                                                pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
+                                                                tmp /= max_dims[i];
+                                                            }
+                                                            return contains(pos) != other.contains(pos);
+                                                        }),
+                                     [max_dims](std::size_t idx) {
+                                         std::array<std::uint32_t, Dim> pos{};
+                                         std::size_t tmp = idx;
+                                         for (std::size_t i = 0; i < Dim; ++i) {
+                                             pos[i] = static_cast<std::uint32_t>(tmp % max_dims[i]);
+                                             tmp /= max_dims[i];
+                                         }
+                                         return pos;
+                                     });
     }
 
     /** @brief Return a new grid that is the bitwise AND of this and @p other.

@@ -1,6 +1,4 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
-#include <array>
+﻿#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -9,14 +7,13 @@
 #include <ranges>
 #include <variant>
 #include <vector>
-#endif
+
 #include <spdlog/spdlog.h>
 
-module epix.extension.fallingsand;
-#ifdef EPIX_IMPORT_STD
-import std;
+#include <epix/extension/fallingsand.hpp>
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
 #endif
-import webgpu;
 
 using namespace epix::core;
 

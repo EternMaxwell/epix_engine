@@ -1,24 +1,39 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
 #endif
 
-export module epix.extension.fallingsand:systems;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
-import epix.core;
-import epix.assets;
-import epix.mesh;
-import epix.transform;
-import epix.render;
-import epix.time;
-import epix.core_graph;
-import epix.extension.grid;
-import :elements;
-import :structs;
-import :helpers;
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/mesh.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/transform.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/render.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/time.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/core_graph.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/extension/grid.hpp>
+#endif
+#include <epix/extension/fallingsand/elements.hpp>
+#include <epix/extension/fallingsand/structs.hpp>
+#include <epix/extension/fallingsand/helpers.hpp>
 
 namespace epix::ext::fallingsand {
 

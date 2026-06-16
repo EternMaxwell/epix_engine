@@ -1,5 +1,8 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <expected>
 #include <functional>
@@ -10,12 +13,8 @@
 #include <utility>
 #endif
 
-export module epix.extension.grid:grid_view;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 
-import :concepts;
+#include <epix/extension/grid/concepts.hpp>
 
 namespace epix::ext::grid::views {
 
@@ -35,7 +34,7 @@ namespace epix::ext::grid::views {
  * Structural mutation (`set`, `set_new`, `remove`, `take` and their unsafe
  * variants) is intentionally omitted — views should not change topology.
  */
-export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
+EPIX_EXPORT template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
 struct filter_view {
     using pos_type  = grid_trait<G>::pos_type;
     using cell_type = grid_trait<G>::cell_type;
@@ -106,7 +105,7 @@ struct filter_view {
  * G is deduced as `decltype(g)` — a reference type for named lvalue variables,
  * or a value type when an rvalue is passed.
  */
-export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
+EPIX_EXPORT template <viewable_grid G, std::invocable<const typename std::decay_t<G>::cell_type&> Pred>
 filter_view<G, std::decay_t<Pred>> filter(G&& g, Pred&& pred) noexcept(
     std::is_nothrow_constructible_v<filter_view<G, std::decay_t<Pred>>, G, Pred>) {
     return {std::forward<G>(g), std::forward<Pred>(pred)};
@@ -123,7 +122,7 @@ filter_view<G, std::decay_t<Pred>> filter(G&& g, Pred&& pred) noexcept(
  * the callable returns a stable lvalue reference; otherwise it returns the
  * projected value by value.
  */
-export template <viewable_grid G, typename Func>
+EPIX_EXPORT template <viewable_grid G, typename Func>
     requires std::invocable<Func&, typename grid_trait<G>::get_type>
 struct transform_view {
     using pos_type         = grid_trait<G>::pos_type;
@@ -180,7 +179,7 @@ struct transform_view {
 /**
  * @brief Construct a @ref transform_view wrapping @p g with @p func.
  */
-export template <viewable_grid G, typename Func>
+EPIX_EXPORT template <viewable_grid G, typename Func>
     requires std::invocable<const std::decay_t<Func>&, const typename std::decay_t<G>::cell_type&>
 transform_view<G, std::decay_t<Func>> transform(G&& g, Func&& func) noexcept(
     std::is_nothrow_constructible_v<transform_view<G, std::decay_t<Func>>, G, Func>) {
@@ -196,7 +195,7 @@ transform_view<G, std::decay_t<Func>> transform(G&& g, Func&& func) noexcept(
  * wrapped grid. View position `{0, 0, ...}` maps to `new_origin`; iteration
  * yields positions relative to that origin.
  */
-export template <viewable_grid G>
+EPIX_EXPORT template <viewable_grid G>
 struct offset_view {
     using trait           = grid_trait<G>;
     using pos_type        = trait::pos_type;
@@ -375,7 +374,7 @@ struct offset_view {
 /**
  * @brief Construct an @ref offset_view wrapping @p g with a new origin and dimensions.
  */
-export template <viewable_grid G>
+EPIX_EXPORT template <viewable_grid G>
 offset_view<G> offset(
     G&& g,
     typename std::decay_t<G>::pos_type new_origin,
@@ -408,7 +407,7 @@ offset_view<G> offset(
  * Structural mutation (`set`, `set_new`, `remove`, `take` and their unsafe
  * variants) is intentionally omitted — views should not change topology.
  */
-export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
+EPIX_EXPORT template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
 struct shadow_view {
     using pos_type  = grid_trait<G>::pos_type;
     using cell_type = grid_trait<G>::cell_type;
@@ -466,7 +465,7 @@ struct shadow_view {
  * G is deduced as `decltype(g)` — a reference type for named lvalue variables,
  * or a value type when an rvalue is passed.
  */
-export template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
+EPIX_EXPORT template <viewable_grid G, std::invocable<const typename std::decay_t<G>::pos_type&> Pred>
 shadow_view<G, std::decay_t<Pred>> shadow(G&& g, Pred&& pred) noexcept(
     std::is_nothrow_constructible_v<shadow_view<G, std::decay_t<Pred>>, G, Pred>) {
     return {std::forward<G>(g), std::forward<Pred>(pred)};

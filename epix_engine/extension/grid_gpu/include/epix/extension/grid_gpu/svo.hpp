@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -17,11 +20,9 @@ module;
 #include <vector>
 #endif
 
-export module epix.extension.grid_gpu:svo;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/extension/grid.hpp>
 #endif
-import epix.extension.grid;
 
 // Bring fixed-width integer types into scope (MSVC only exports them under std::)
 using std::int32_t;
@@ -82,7 +83,7 @@ namespace epix::ext::grid_gpu {
 // -------------------------------------------------------
 
 /// Decoded header fields from an SvoBuffer.
-export struct SvoHeader {
+EPIX_EXPORT struct SvoHeader {
     uint32_t dim;
     uint32_t depth;
     uint32_t child_per_node;
@@ -98,7 +99,7 @@ export struct SvoHeader {
  * The DATA INDEX in leaf slots is the 0-based ordinal of that cell in the
  * grid's iter_pos() / iter_cells() sequence (matches m_data[index] on CPU).
  */
-export struct SvoBuffer {
+EPIX_EXPORT struct SvoBuffer {
     std::vector<uint32_t> words;
 
     SvoHeader header() const noexcept {
@@ -118,7 +119,7 @@ export struct SvoBuffer {
 };
 
 /// Decoded header fields from an SvoBuffer64.
-export struct SvoHeader64 {
+EPIX_EXPORT struct SvoHeader64 {
     uint64_t dim;
     uint64_t depth;
     uint64_t child_per_node;
@@ -159,7 +160,7 @@ export struct SvoHeader64 {
  * No shaderInt64 required -- each word is read as a little-endian uint32 pair.
  * The GPU shader further restricts cpn <= 16 so masks fit in the low uint32.
  */
-export struct SvoBuffer64 {
+EPIX_EXPORT struct SvoBuffer64 {
     std::vector<uint64_t> words;
 
     SvoHeader64 header() const noexcept {
@@ -192,7 +193,7 @@ export struct SvoBuffer64 {
  * Register with the shader cache via:
  *   Shader::from_slang(std::string(kSvoGridSlangSource), "embedded://epix/shaders/grid/svo.slang")
  */
-export constexpr std::string_view kSvoGridSlangSource = R"slang(
+EPIX_EXPORT constexpr std::string_view kSvoGridSlangSource = R"slang(
 // epix.ext.grid.svo - GPU-side SVO traversal for sparse voxel trees
 // Companion to epix.extension.grid_gpu (C++ module).
 //
@@ -551,7 +552,7 @@ public typealias SvoGrid3D = SvoGrid<3, 2>;
  * and CC=4 for Dim 1–2.  The C++ SvoBuffer64 may be built with larger cpn values
  * but those cannot be traversed with this shader.
  */
-export constexpr std::string_view kSvoGridSlangSource64 = R"slang(
+EPIX_EXPORT constexpr std::string_view kSvoGridSlangSource64 = R"slang(
 // epix.ext.grid.svo64 - GPU-side SVO traversal for sparse voxel trees (64-bit word buffer).
 // Companion to epix.extension.grid_gpu (C++ module), 64-bit buffer variant.
 //
@@ -1368,7 +1369,7 @@ SvoBuffer64 svo_upload_flat_cc64(const G& grid) {
  *   if (auto e = err.get<SvoUploadError::InvalidChildCount>())
  *       std::println("bad child_count: {}", e->provided);
  */
-export struct SvoUploadError {
+EPIX_EXPORT struct SvoUploadError {
     // ---- error sub-types ------------------------------------------------
 
     /** @brief child_count was unsupported or incompatible with the grid dimension. */
@@ -1435,7 +1436,7 @@ export struct SvoUploadError {
  * any branching factor regardless of how data is organised on the CPU.
  * Supported child_count values: 2, 4, 8.
  */
-export struct SvoConfig {
+EPIX_EXPORT struct SvoConfig {
     /** @brief Per-axis branching factor for the GPU tree (default: 2 = binary tree). */
     std::size_t child_count = 2;
 };
@@ -1458,7 +1459,7 @@ export struct SvoConfig {
  *
  * DATA INDEX in each leaf = 0-based ordinal of that cell in grid.iter_pos().
  */
-export template <epix::ext::grid::viewable_grid G>
+EPIX_EXPORT template <epix::ext::grid::viewable_grid G>
     requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConfig& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;
@@ -1490,7 +1491,7 @@ std::expected<SvoBuffer, SvoUploadError> svo_upload(const G& grid, const SvoConf
  * Same structure as SvoUploadError, but the constraint is cpn <= 32
  * (valid_mask + leaf_mask must fit in a 64-bit word).
  */
-export struct SvoUploadError64 {
+EPIX_EXPORT struct SvoUploadError64 {
     /** @brief child_count was unsupported or incompatible with the grid dimension. */
     struct InvalidChildCount {
         std::size_t provided;
@@ -1541,7 +1542,7 @@ export struct SvoUploadError64 {
  * Supports the same child_count values as SvoConfig (2, 4, 8) but the
  * relaxed constraint allows larger grids: cpn = ChildCount^Dim <= 32.
  */
-export struct SvoConfig64 {
+EPIX_EXPORT struct SvoConfig64 {
     /** @brief Per-axis branching factor for the GPU tree (default: 2). */
     std::size_t child_count = 2;
 };
@@ -1557,7 +1558,7 @@ export struct SvoConfig64 {
  * @param  config GPU tree configuration (default: binary tree with child_count=2).
  * @return SvoBuffer64 on success, or SvoUploadError64 on invalid child_count.
  */
-export template <epix::ext::grid::viewable_grid G>
+EPIX_EXPORT template <epix::ext::grid::viewable_grid G>
     requires(epix::ext::grid::grid_trait<G>::dim >= 1)
 std::expected<SvoBuffer64, SvoUploadError64> svo_upload64(const G& grid, const SvoConfig64& config = {}) {
     using Trait               = epix::ext::grid::grid_trait<G>;

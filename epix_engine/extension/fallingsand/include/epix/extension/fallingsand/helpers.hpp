@@ -1,15 +1,20 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #endif
 
-export module epix.extension.fallingsand:helpers;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <glm/glm.hpp>
 #endif
-import glm;
-import epix.render;
-import epix.transform;
+#ifndef EPIX_CXX_MODULE
+#include <epix/render.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/transform.hpp>
+#endif
 
 namespace epix::ext::fallingsand {
 
@@ -21,7 +26,7 @@ namespace epix::ext::fallingsand {
  * @param camera        Camera component holding the computed projection matrix.
  * @param cam_transform Transform of the camera entity.
  */
-export inline glm::vec2 relative_to_world(glm::vec2 relative_pos,
+EPIX_EXPORT inline glm::vec2 relative_to_world(glm::vec2 relative_pos,
                                           const render::camera::Camera& camera,
                                           const transform::Transform& cam_transform) {
     float ndc_x = relative_pos.x * 2.0f;

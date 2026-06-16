@@ -1,5 +1,8 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -15,21 +18,25 @@
 #include <variant>
 #endif
 
-export module epix.extension.fallingsand:structs;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <glm/glm.hpp>
 #endif
-import glm;
-import epix.core;
-import epix.extension.grid;
-import epix.meta;
-import :elements;
-import :temperature;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/extension/grid.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/meta.hpp>
+#endif
+#include <epix/extension/fallingsand/elements.hpp>
+#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {
 
 /** @brief Chunk coordinate component — placed on child entities of a SandWorld entity. */
-export struct SandChunkPos {
+EPIX_EXPORT struct SandChunkPos {
     std::array<std::int32_t, kDim> value;
 };
 
@@ -41,26 +48,26 @@ export struct SandChunkPos {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /** @brief Sparse element grid stored on a chunk entity (one per chunk). */
-export using ChunkElementGrid = grid::tree_grid<kDim, Element>;
+EPIX_EXPORT using ChunkElementGrid = grid::tree_grid<kDim, Element>;
 /** @brief Dense air grid stored on a chunk entity (one per chunk). */
-export using ChunkAirGrid = grid::packed_grid<kDim, AirCell>;
+EPIX_EXPORT using ChunkAirGrid = grid::packed_grid<kDim, AirCell>;
 /** @brief Dense thermal grid stored on a chunk entity (one per chunk). */
-export using ChunkThermalGrid = grid::tree_grid<kDim, ThermalCell>;
+EPIX_EXPORT using ChunkThermalGrid = grid::tree_grid<kDim, ThermalCell>;
 
 /** @brief Marker: entity is simulated automatically by FallingSandPlugin. */
-export struct SimulatedByPlugin {};
+EPIX_EXPORT struct SimulatedByPlugin {};
 
 /** @brief Marker: entity's chunk content meshes are built by FallingSandPlugin. */
-export struct MeshBuildByPlugin {};
+EPIX_EXPORT struct MeshBuildByPlugin {};
 
 /** @brief Tag for the chunk content mesh child entity. */
-export struct SandChunkMesh {};
+EPIX_EXPORT struct SandChunkMesh {};
 
 /** @brief Tag for the chunk outline mesh child entity. */
-export struct SandChunkOutline {};
+EPIX_EXPORT struct SandChunkOutline {};
 
 /** @brief Tag for the body-cell debug mesh child entity. */
-export struct SandChunkBodyDebug {};
+EPIX_EXPORT struct SandChunkBodyDebug {};
 
 /**
  * @brief Tracks render-child entities for a chunk entity.
@@ -68,7 +75,7 @@ export struct SandChunkBodyDebug {};
  * `mesh_entity`    — present when the parent world has MeshBuildByPlugin.
  * `outline_entity` — present when show_chunk_outlines is true.
  */
-export struct SandChunkRenderChildren {
+EPIX_EXPORT struct SandChunkRenderChildren {
     std::optional<core::Entity> mesh_entity;
     std::optional<core::Entity> outline_entity;
     std::optional<core::Entity> body_debug_entity;  ///< Separate mesh for Body-type elements (debug).
@@ -81,7 +88,7 @@ export struct SandChunkRenderChildren {
  * The element registry and thread pool live elsewhere — pass them explicitly to
  * SandSimulation::create at step time.
  */
-export struct SandWorld {
+EPIX_EXPORT struct SandWorld {
    private:
     std::size_t m_chunk_shift = 5;
     float m_cell_size         = 4.0f;
@@ -104,7 +111,7 @@ export struct SandWorld {
     void set_missing_chunk_as_solid(bool v) noexcept { m_missing_chunk_as_solid = v; }
 };
 
-export struct SandWorldDebug {
+EPIX_EXPORT struct SandWorldDebug {
     bool show_body_debug     = false;  ///< Whether to build/render the body debug mesh.
     bool show_chunk_outlines = false;  ///< Whether to build/render chunk outline meshes.
     bool show_heat_map       = false;  ///< Colour elements by temperature instead of their own colour.
@@ -122,7 +129,7 @@ export struct SandWorldDebug {
  *   - touch(x, y): updates both buffers.  If current is not active it is first
  *     expanded to the full chunk so the step loop covers everything.
  */
-export struct SandChunkDirtyRect {
+EPIX_EXPORT struct SandChunkDirtyRect {
    private:
     // Current active area (empty = xmin > xmax)
     std::int32_t xmin = 0;
@@ -240,7 +247,7 @@ export struct SandChunkDirtyRect {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /** @brief Error variants returned by SandSimulation::create. */
-export namespace sand_sim_error {
+EPIX_EXPORT namespace sand_sim_error {
 /** @brief Two chunks share the same SandChunkPos under the same world. */
 struct DuplicateChunkPos {
     std::array<std::int32_t, kDim> pos;
@@ -253,7 +260,7 @@ struct MissingRequiredLayer {
 }  // namespace sand_sim_error
 
 /** @brief Error type returned by SandSimulation::create. */
-export using SandSimCreateError =
+EPIX_EXPORT using SandSimCreateError =
     std::variant<sand_sim_error::DuplicateChunkPos, sand_sim_error::MissingRequiredLayer, grid::ChunkGridError>;
 
 /**
@@ -277,7 +284,7 @@ export using SandSimCreateError =
  * into `create`, and SandSimulation holds them for the duration of the tick via
  * its `grid::ExtendibleChunkGrid<kDim>` base.
  */
-export struct SandSimulation : grid::ExtendibleChunkGrid<kDim> {
+EPIX_EXPORT struct SandSimulation : grid::ExtendibleChunkGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;

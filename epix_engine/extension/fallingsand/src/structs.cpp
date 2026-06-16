@@ -1,26 +1,21 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+﻿#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/tasks.hpp>
 #include <functional>
 #include <limits>
+#include <numbers>
 #include <optional>
 #include <random>
 #include <ranges>
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-#include <spdlog/spdlog.h>
-
-module epix.extension.fallingsand;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.tasks;
 
 namespace epix::ext::fallingsand {
 

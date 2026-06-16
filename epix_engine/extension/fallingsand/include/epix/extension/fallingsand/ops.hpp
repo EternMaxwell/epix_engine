@@ -1,5 +1,8 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -9,15 +12,15 @@
 #include <variant>
 #endif
 
-export module epix.extension.fallingsand:ops;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <glm/glm.hpp>
 #endif
-import glm;
-import epix.core;
-import :elements;
-import :structs;
-import :temperature;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#include <epix/extension/fallingsand/elements.hpp>
+#include <epix/extension/fallingsand/structs.hpp>
+#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand::ops {
 
@@ -35,7 +38,7 @@ namespace epix::ext::fallingsand::ops {
  *   sim.apply(ops::Spawn::rect_centered({0, 0}, water_id, {8, 8}));
  * @endcode
  */
-export struct Spawn {
+EPIX_EXPORT struct Spawn {
    private:
     struct Circle {
         glm::ivec2 center;
@@ -130,7 +133,7 @@ export struct Spawn {
  *   sim.apply(ops::Remove::rect_centered({0, 0}, {8, 8}));
  * @endcode
  */
-export struct Remove {
+EPIX_EXPORT struct Remove {
    private:
     struct Circle {
         glm::ivec2 center;
@@ -195,7 +198,7 @@ export struct Remove {
  *   sim.apply(ops::Heat::circle({0, 0}, -10000.0f, 5));  // cool
  * @endcode
  */
-export struct Heat {
+EPIX_EXPORT struct Heat {
    private:
     static void apply_energy(SandSimulation& sim, std::int64_t x, std::int64_t y, float energy) {
         float cs        = sim.world().cell_size();
@@ -293,7 +296,7 @@ export struct Heat {
  * - **push_radius**: cells in the ring [blast_radius, push_radius] receive an outward
  *   velocity impulse = `intensity * (1 - dist/push_radius)`.
  */
-export struct Explode {
+EPIX_EXPORT struct Explode {
     glm::ivec2 center = {};
     float intensity   = 500.0f;
     int blast_radius  = 5;

@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -18,23 +21,25 @@ module;
 #include <vector>
 #endif
 
-export module epix.extension.grid:chunk_grid;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/meta.hpp>
 #endif
-import epix.meta;
-import epix.utils;
-import epix.core;
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
 
-import :concepts;
-import :basic_grid;
-import :bit_grid;
-import :grid_view;
-import :polygon;
+#include <epix/extension/grid/concepts.hpp>
+#include <epix/extension/grid/basic_grid.hpp>
+#include <epix/extension/grid/bit_grid.hpp>
+#include <epix/extension/grid/grid_view.hpp>
+#include <epix/extension/grid/polygon.hpp>
 
 namespace epix::ext::grid {
 /** @brief Error codes for chunk layer operations. */
-export enum LayerError {
+EPIX_EXPORT enum LayerError {
     /** Requested value type is not supported by the target layer. */
     UnsupportedType,
     /** Requested position is outside the valid chunk bounds. */
@@ -50,7 +55,7 @@ export enum LayerError {
  * one or more value types identified by meta::type_index.
  * @tparam Dim Number of spatial dimensions.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 class ChunkLayer {
    public:
     /** Virtual destructor for polymorphic chunk layers. */
@@ -195,7 +200,7 @@ class ChunkLayer {
     }
 };
 /** @brief Error codes for chunk-level layer management. */
-export enum class ChunkLayerError {
+EPIX_EXPORT enum class ChunkLayerError {
     /** One or more type identifiers already exist in this chunk. */
     TypeAlreadyExists,
     /** Layer width does not match chunk width. */
@@ -209,7 +214,7 @@ export enum class ChunkLayerError {
  * to the appropriate layer based on value type.
  * @tparam Dim Number of spatial dimensions.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 class Chunk : public ChunkLayer<Dim> {
    private:
     std::size_t m_width_shift;
@@ -322,7 +327,7 @@ class Chunk : public ChunkLayer<Dim> {
 };
 
 /** @brief Unified error type for chunk-grid level operations. */
-export using ChunkGridError = std::variant<ChunkLayerError, LayerError, grid_error>;
+EPIX_EXPORT using ChunkGridError = std::variant<ChunkLayerError, LayerError, grid_error>;
 
 // this won't work if using function instead of lambda, don't know why
 constexpr auto map_err = [](auto&& error) noexcept -> ChunkGridError {
@@ -333,7 +338,7 @@ constexpr auto map_err = [](auto&& error) noexcept -> ChunkGridError {
  *
  * Chunks are allocated and owned by this structure and addressed by int32 chunk coordinates.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleChunkGrid {
    private:
     tree_extendible_grid<Dim, Chunk<Dim>> m_chunk_grid;
@@ -498,7 +503,7 @@ struct ExtendibleChunkGrid {
  *
  * Stores references to external chunks rather than owning chunk instances.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleChunkRefGrid {
    private:
     struct ChunkRef {
@@ -683,7 +688,7 @@ struct ExtendibleChunkRefGrid {
  * `Mut<Chunk<Dim>>` from a `Query<Item<Mut<Chunk<Dim>>, ...>>` and forward it
  * directly into the grid.
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleMutChunkRefGrid {
    private:
     struct ChunkRef {
@@ -843,7 +848,7 @@ struct ExtendibleMutChunkRefGrid {
  * needs to read chunk data but still wants `Ref::is_modified()` change-detection
  * propagation (e.g. mesh rebuild deciding whether to skip a chunk).
  */
-export template <std::size_t Dim>
+EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleRefChunkRefGrid {
    private:
     struct ChunkRef {
@@ -947,7 +952,7 @@ inline grid_error map_layer_to_grid(LayerError e) noexcept {
  *
  * Satisfies any_grid_view and iterable_grid_view.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
 struct chunk_element_const_view {
     using pos_type  = std::array<std::int32_t, Dim>;
     using cell_type = T;
@@ -986,7 +991,7 @@ struct chunk_element_const_view {
  *
  * Satisfies any_grid (read + write) and iterable_grid.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
 struct chunk_element_view {
     using pos_type  = std::array<std::uint32_t, Dim>;
     using cell_type = T;
@@ -1054,7 +1059,7 @@ struct chunk_element_view {
 /**
  * @brief Wrap a const Chunk as a read-only typed grid view.
  */
-export template <typename T, std::size_t Dim>
+EPIX_EXPORT template <typename T, std::size_t Dim>
 chunk_element_const_view<Dim, T> chunk_element(const Chunk<Dim>& c) {
     return {c};
 }
@@ -1062,7 +1067,7 @@ chunk_element_const_view<Dim, T> chunk_element(const Chunk<Dim>& c) {
 /**
  * @brief Wrap a mutable Chunk as a mutable typed grid view.
  */
-export template <typename T, std::size_t Dim>
+EPIX_EXPORT template <typename T, std::size_t Dim>
 chunk_element_view<Dim, T> chunk_element(Chunk<Dim>& c) {
     return {c};
 }
@@ -1070,7 +1075,7 @@ chunk_element_view<Dim, T> chunk_element(Chunk<Dim>& c) {
 }  // namespace epix::ext::grid
 
 namespace epix::ext::grid::layers {
-auto map_err(grid_error err) noexcept -> LayerError {
+inline auto map_err(grid_error err) noexcept -> LayerError {
     switch (err) {
         case grid_error::OutOfBounds:
             return LayerError::OutOfBounds;
@@ -1086,7 +1091,7 @@ auto map_err(grid_error err) noexcept -> LayerError {
  * @tparam Dim Number of spatial dimensions.
  * @tparam T Stored value type.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 class PackedLayer : public ChunkLayer<Dim> {
    private:
@@ -1165,7 +1170,7 @@ class PackedLayer : public ChunkLayer<Dim> {
  * @tparam Dim Number of spatial dimensions.
  * @tparam T Stored value type.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 class TreeLayer : public ChunkLayer<Dim> {
    private:
@@ -1241,7 +1246,7 @@ class TreeLayer : public ChunkLayer<Dim> {
  * @tparam Dim Number of spatial dimensions.
  * @tparam T Stored value type.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 class DenseLayer : public ChunkLayer<Dim> {
    private:
@@ -1317,7 +1322,7 @@ class DenseLayer : public ChunkLayer<Dim> {
  * @tparam Dim Number of spatial dimensions.
  * @tparam T Stored value type.
  */
-export template <std::size_t Dim, typename T>
+EPIX_EXPORT template <std::size_t Dim, typename T>
     requires std::movable<T>
 class SparseLayer : public ChunkLayer<Dim> {
    private:
@@ -1394,7 +1399,7 @@ class SparseLayer : public ChunkLayer<Dim> {
  * @brief ChunkLayer wrapper around a basic_grid to expose it as a chunk layer.
  * Note that the Grid can be either value or reference type.
  */
-export template <basic_grid Grid>
+EPIX_EXPORT template <basic_grid Grid>
 class BasicGridLayer : public ChunkLayer<grid_trait<Grid>::dim> {
    private:
     Grid m_grid;
@@ -1475,7 +1480,7 @@ class BasicGridLayer : public ChunkLayer<grid_trait<Grid>::dim> {
  * @brief ChunkLayer wrapper around a Mut ref of a basic_grid to expose it as a change detected chunk layer.
  * Note that the Grid can be either value or reference type.
  */
-export template <basic_grid Grid>
+EPIX_EXPORT template <basic_grid Grid>
 class BasicGridRefLayer : public ChunkLayer<grid_trait<Grid>::dim> {
    private:
     epix::core::Mut<Grid> m_grid_ref;

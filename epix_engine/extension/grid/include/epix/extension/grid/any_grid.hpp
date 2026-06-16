@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -14,13 +16,11 @@ module;
 #include <utility>
 #endif
 
-export module epix.extension.grid:any_grid;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 
-import :concepts;
-import epix.utils;
+#include <epix/extension/grid/concepts.hpp>
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
 
 namespace epix::ext::grid {
 
@@ -33,7 +33,7 @@ namespace epix::ext::grid {
  * `viewable_grid` is always required and not part of the category.
  * Other capabilities are opt-in via bitwise OR.
  */
-export enum class grid_category : unsigned {
+EPIX_EXPORT enum class grid_category : unsigned {
     none             = 0,
     iterable         = 1 << 0,  // 0b000001 → iterable_grid
     container        = 1 << 1,  // 0b000010 → grid_container
@@ -46,13 +46,13 @@ export enum class grid_category : unsigned {
     copyable         = 1 << 8,  // 0b100000000 → copy_constructible + copy_assignable
 };
 
-export constexpr auto operator|(grid_category a, grid_category b) -> grid_category {
+EPIX_EXPORT constexpr auto operator|(grid_category a, grid_category b) -> grid_category {
     return static_cast<grid_category>(static_cast<unsigned>(a) | static_cast<unsigned>(b));
 }
-export constexpr auto operator&(grid_category a, grid_category b) -> grid_category {
+EPIX_EXPORT constexpr auto operator&(grid_category a, grid_category b) -> grid_category {
     return static_cast<grid_category>(static_cast<unsigned>(a) & static_cast<unsigned>(b));
 }
-export constexpr auto has_category(grid_category val, grid_category flag) -> bool {
+EPIX_EXPORT constexpr auto has_category(grid_category val, grid_category flag) -> bool {
     return (static_cast<unsigned>(val & flag)) == static_cast<unsigned>(flag);
 }
 
@@ -129,18 +129,18 @@ constexpr auto default_category_for() -> grid_category {
 }  // namespace detail
 
 /** @brief Check that G satisfies all concepts required by Cat, including const variants. */
-export template <typename G, grid_category Cat>
+EPIX_EXPORT template <typename G, grid_category Cat>
 concept satisfies_category =
     detail::satisfies_category_base<G, Cat> && detail::satisfies_category_const<detail::add_const_t<G>, Cat>;
 
-export template <typename G>
+EPIX_EXPORT template <typename G>
 constexpr auto get_category() -> grid_category {
     return detail::default_category_for<G>();
 }
 
-export template <std::size_t, typename, grid_category, typename, typename>
+EPIX_EXPORT template <std::size_t, typename, grid_category, typename, typename>
 class any_grid;
-export template <std::size_t, typename, grid_category, typename, typename>
+EPIX_EXPORT template <std::size_t, typename, grid_category, typename, typename>
 class any_grid_view;
 
 namespace detail {
@@ -205,7 +205,7 @@ struct untyped_concept {
 // any_grid — type-erased owning grid
 // ============================================================
 
-export template <std::size_t Dim,
+EPIX_EXPORT template <std::size_t Dim,
                  typename GetType,
                  grid_category Cat = grid_category::iterable | grid_category::container |
                                      grid_category::unsafe_viewable | grid_category::unsafe_container |
@@ -496,7 +496,7 @@ class any_grid {
     }
 };
 
-export template <viewable_grid G>
+EPIX_EXPORT template <viewable_grid G>
 any_grid(G&&) -> any_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
                           detail::grid_get_type<std::remove_cvref_t<G>>,
                           detail::default_category_for<std::remove_cvref_t<G>>(),
@@ -507,7 +507,7 @@ any_grid(G&&) -> any_grid<std::tuple_size_v<typename std::decay_t<G>::pos_type>,
 // any_grid_view — type-erased non-owning grid view
 // ============================================================
 
-export template <std::size_t Dim,
+EPIX_EXPORT template <std::size_t Dim,
                  typename GetType,
                  grid_category Cat = grid_category::none,
                  typename DimT     = std::uint32_t,
@@ -803,7 +803,7 @@ class any_grid_view {
     }
 };
 
-export template <viewable_grid G>
+EPIX_EXPORT template <viewable_grid G>
 any_grid_view(G&&) -> any_grid_view<std::tuple_size_v<detail::grid_pos_type<std::remove_cvref_t<G>>>,
                                     detail::grid_get_type<std::remove_cvref_t<G>>,
                                     detail::default_category_for<std::remove_cvref_t<G>>(),

@@ -1,5 +1,8 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -12,19 +15,17 @@
 #include <vector>
 #endif
 
-export module epix.extension.fallingsand:elements;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <glm/glm.hpp>
 #endif
-import glm;
-import :temperature;
+#include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {
 
 /** @brief Spatial dimension constant for all falling-sand grids. */
-export constexpr std::size_t kDim = 2;
+EPIX_EXPORT constexpr std::size_t kDim = 2;
 
-export enum class ElementType {
+EPIX_EXPORT enum class ElementType {
     Solid,
     Powder,
     Liquid,
@@ -37,7 +38,7 @@ export enum class ElementType {
  * Thermal state (temperature, staging_heat, heat_emitted) lives in a
  * separate ThermalCell layer at the same world position; see ThermalCell.
  */
-export struct Element {
+EPIX_EXPORT struct Element {
     std::size_t base_id          = 0;
     glm::vec4 color              = {1.0f, 1.0f, 1.0f, 1.0f};
     glm::vec2 velocity           = {0.0f, 0.0f};  ///< Velocity in cells/s.
@@ -67,7 +68,7 @@ export struct Element {
 /** @brief Element temperature >= target.
  *  If clamp=true, temperature is pinned at target and excess energy goes
  *  to staging_heat for phase transitions.  Default false (pure condition). */
-export struct TemperatureAbove {
+EPIX_EXPORT struct TemperatureAbove {
     float target;
     bool clamp = false;
 };
@@ -75,48 +76,48 @@ export struct TemperatureAbove {
 /** @brief Element temperature <= target.
  *  If clamp=true, temperature is pinned at target and deficit energy goes
  *  to staging_heat for phase transitions.  Default false (pure condition). */
-export struct TemperatureBelow {
+EPIX_EXPORT struct TemperatureBelow {
     float target;
     bool clamp = false;
 };
 
 /** @brief Element has kBurning flag set. */
-export struct IsBurning {};
+EPIX_EXPORT struct IsBurning {};
 
 /** @brief Element's transition_tag matches the given value. */
-export struct HasTag {
+EPIX_EXPORT struct HasTag {
     std::uint8_t tag;
 };
 
 /** @brief Any cardinal neighbour has the given element base_id. */
-export struct ContactWith {
+EPIX_EXPORT struct ContactWith {
     std::size_t element_id;
 };
 
 /** @brief Staging heat is sufficient: staging >= latent_heat * density * cell_area
  *         (for TemperatureAbove) or staging <= -latent_heat * density * cell_area
  *         (for TemperatureBelow).  Used for phase transitions. */
-export struct StagingHeat {
+EPIX_EXPORT struct StagingHeat {
     float latent_heat_j_per_kg;
 };
 
 /** @brief Probabilistic condition evaluated during random tick.
  *         If probability > 0 it is used directly; otherwise compute_prob is called
  *         with the current Element to get the probability. */
-export struct RandomTick {
+EPIX_EXPORT struct RandomTick {
     float probability = 0.0f;
     std::function<float(const Element&)> compute_prob;
     /** @brief Random-tick intensity for this action.  Higher = fewer cells picked. */
     int intensity = 1;
 };
 
-export using Condition =
+EPIX_EXPORT using Condition =
     std::variant<TemperatureAbove, TemperatureBelow, IsBurning, HasTag, ContactWith, StagingHeat, RandomTick>;
 
 // ── Actions ──────────────────────────────────────────────────────────────────
 
 /** @brief Spawn particles of a given element in adjacent empty cells. */
-export struct SpawnNearby {
+EPIX_EXPORT struct SpawnNearby {
     std::string element_name;  ///< Resolved to element_id at registration.
     std::size_t element_id = 0;
     int count_min          = 1;
@@ -125,24 +126,24 @@ export struct SpawnNearby {
 };
 
 /** @brief Transform into another element type. */
-export struct TransformTo {
+EPIX_EXPORT struct TransformTo {
     std::string target_name;  ///< Resolved to target_id at registration.
     std::size_t target_id = 0;
 };
 
 /** @brief Clear the cell (element disappears). */
-export struct Despawn {};
+EPIX_EXPORT struct Despawn {};
 
 /** @brief Set kBurning flag (start exothermic reaction). */
-export struct Ignite {};
+EPIX_EXPORT struct Ignite {};
 
 /** @brief Clear kBurning flag (stop burning). */
-export struct Extinguish {};
+EPIX_EXPORT struct Extinguish {};
 
-export using Action = std::variant<SpawnNearby, TransformTo, Despawn, Ignite, Extinguish>;
+EPIX_EXPORT using Action = std::variant<SpawnNearby, TransformTo, Despawn, Ignite, Extinguish>;
 
 /** @brief A named behaviour: when all conditions are met, execute the action. */
-export struct ElementAction {
+EPIX_EXPORT struct ElementAction {
     std::vector<Condition> conditions;
     Action action;
 };
@@ -157,7 +158,7 @@ export struct ElementAction {
  * Each unique element type is registered once in an ElementRegistry.
  * Individual cells reference a base element by its registry id.
  */
-export struct ElementBase {
+EPIX_EXPORT struct ElementBase {
     std::string name;
     float density     = 1.0f;
     ElementType type  = ElementType::Solid;
@@ -212,7 +213,7 @@ export struct ElementBase {
 // ElementBaseBuilder — fluent API for constructing ElementBase
 // ──────────────────────────────────────────────────────────────────────────────
 
-export class ElementBaseBuilder {
+EPIX_EXPORT class ElementBaseBuilder {
    public:
     class ActionBuilder {
        public:
@@ -334,14 +335,14 @@ export class ElementBaseBuilder {
     ElementBase m_base;
 };
 
-export enum class ElementRegistryError {
+EPIX_EXPORT enum class ElementRegistryError {
     NameAlreadyExists,
     NameNotFound,
     InvalidBaseId,
     UnresolvedTransitionTarget,
 };
 
-export struct ElementRegistry {
+EPIX_EXPORT struct ElementRegistry {
    private:
     std::vector<ElementBase> m_elements;
     std::unordered_map<std::string, std::size_t> m_name_to_id;

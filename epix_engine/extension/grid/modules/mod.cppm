@@ -1,9 +1,32 @@
-﻿export module epix.extension.grid;
+module;
 
-export import :concepts;
-export import :basic_grid;
-export import :bit_grid;
-export import :chunk_grid;
-export import :grid_view;
-export import :polygon;
-export import :any_grid;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <limits>
+#include <ranges>
+#include <stack>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+#include <glm/glm.hpp>
+
+export module epix.extension.grid;
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+import epix.core;
+import epix.meta;
+import epix.utils;
+import glm;
+extern "C++" {
+#include <epix/extension/grid.hpp>
+}

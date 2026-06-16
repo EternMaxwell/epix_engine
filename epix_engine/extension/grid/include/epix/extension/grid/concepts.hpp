@@ -1,6 +1,8 @@
-﻿module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -10,15 +12,13 @@
 #include <utility>
 #endif
 
-export module epix.extension.grid:concepts;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/traits.hpp>
 #endif
-import epix.traits;
 
 namespace epix::ext::grid {
 /** @brief Error codes returned by grid operations. */
-export enum class grid_error {
+EPIX_EXPORT enum class grid_error {
     OutOfBounds,           /**< Position is outside the grid bounds. */
     InvalidPos,            /**< Position is invalid. */
     EmptyCell,             /**< The cell at the given position is empty. */
@@ -125,10 +125,10 @@ using add_const_t = typename add_const<T>::type;
 // Public type helpers
 // ============================================================
 
-export template <typename G>
+EPIX_EXPORT template <typename G>
 using grid_pos_type = detail::grid_pos_type<G>;
 
-export template <typename G>
+EPIX_EXPORT template <typename G>
 using grid_dimensions_type = detail::grid_dimensions_type<G>;
 
 /**
@@ -143,7 +143,7 @@ using grid_dimensions_type = detail::grid_dimensions_type<G>;
  *  - `get(pos)`      → expected<reference_wrapper<const cell_type>, grid_error>
  *                       OR expected<cell_type, grid_error>
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept viewable_grid = requires(std::remove_reference_t<G>& g, const std::remove_reference_t<G>& cg) {
     requires std::tuple_size_v<detail::grid_dimensions_type<G>> == std::tuple_size_v<detail::grid_pos_type<G>>;
     { cg.dimensions() } -> std::same_as<detail::grid_dimensions_type<G>>;
@@ -161,7 +161,7 @@ concept viewable_grid = requires(std::remove_reference_t<G>& g, const std::remov
  *  - `take(pos)`           → expected<cell_type, grid_error>
  *  - `clear()`             → void
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept grid_container = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     {
         g.set(std::declval<const detail::grid_pos_type<G>&>(), std::declval<detail::grid_cell_type<G>>())
@@ -179,7 +179,7 @@ concept grid_container = viewable_grid<G> && requires(std::remove_reference_t<G>
 /**
  * @brief Unsafe bounds-unchecked access.
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept unsafe_viewable_grid = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     { g.get_unsafe(std::declval<const detail::grid_pos_type<G>&>()) } -> std::convertible_to<detail::grid_get_type<G>>;
 };
@@ -187,7 +187,7 @@ concept unsafe_viewable_grid = viewable_grid<G> && requires(std::remove_referenc
 /**
  * @brief Full unsafe container: unchecked set/remove/take.
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept unsafe_grid_container = unsafe_viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     {
         g.set_unsafe(std::declval<const detail::grid_pos_type<G>&>(), std::declval<detail::grid_cell_type<G>>())
@@ -203,7 +203,7 @@ concept unsafe_grid_container = unsafe_viewable_grid<G> && requires(std::remove_
  *  - `iter_cells()` → input_range of cell_type& or const cell_type&
  *  - `iter()`       → input_range of (pos_type, cell_type&) or (pos_type, const cell_type&)
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept iterable_grid = viewable_grid<G> && requires(std::remove_reference_t<G>& g) {
     { g.iter_pos() } -> std::ranges::input_range;
     { g.iter_cells() } -> std::ranges::input_range;
@@ -222,7 +222,7 @@ concept iterable_grid = viewable_grid<G> && requires(std::remove_reference_t<G>&
  * `count()` returns the current number of stored/occupied cells as a
  * type convertible to `std::size_t`.
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept counted_grid = viewable_grid<G> && requires(const std::remove_reference_t<G>& g) {
     { g.count() } -> std::convertible_to<std::size_t>;
 };
@@ -233,7 +233,7 @@ concept counted_grid = viewable_grid<G> && requires(const std::remove_reference_
  * Satisfied by any type that is simultaneously:
  *   `viewable_grid` + `grid_container` + `iterable_grid` + `counted_grid`.
  */
-export template <typename G>
+EPIX_EXPORT template <typename G>
 concept basic_grid = viewable_grid<G> && grid_container<G> && iterable_grid<G> && counted_grid<G> &&
                      viewable_grid<detail::add_const_t<G>> && iterable_grid<detail::add_const_t<G>>;
 
@@ -265,7 +265,7 @@ concept basic_grid = viewable_grid<G> && grid_container<G> && iterable_grid<G> &
  *   - `set_unsafe` / `remove_unsafe` / `take_unsafe`                  — unsafe_grid_container
  *   - `iter_pos` / `iter_cells` / `iter`           — always: const → const iter, non-const → mutable iter
  */
-export template <viewable_grid G>
+EPIX_EXPORT template <viewable_grid G>
 struct grid_trait {
     using pos_type   = detail::grid_pos_type<G>;
     using coord_type = typename pos_type::value_type;
@@ -361,6 +361,6 @@ inline constexpr bool is_recursive_grid_v = []() -> bool {
  *   `recursive_grid<packed_grid<2, packed_grid<2, int>>>`    // true  (cell_type is a grid)
  *   `recursive_grid<packed_grid<2, int>>`                     // false (cell_type is int, not a grid)
  */
-export template <typename G, std::size_t Depth = 1>
+EPIX_EXPORT template <typename G, std::size_t Depth = 1>
 concept recursive_grid = detail::is_recursive_grid_v<G, Depth>;
 }  // namespace epix::ext::grid
