@@ -10,6 +10,7 @@
 #include <asio/awaitable.hpp>
 #include <cstdint>
 #include <cstring>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
 #include <istream>
@@ -21,10 +22,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
 #endif
 #include <epix/assets/io/reader.hpp>
 #include <epix/assets/path.hpp>

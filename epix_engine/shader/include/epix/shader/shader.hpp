@@ -3,9 +3,14 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <zpp_bits.h>
+
+#include <asio/awaitable.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -22,24 +27,9 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <zpp_bits.h>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif
+
 namespace epix::shader {
 
 inline std::string canonical_asset_path_string(const assets::AssetPath& path) {

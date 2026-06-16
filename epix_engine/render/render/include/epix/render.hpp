@@ -3,17 +3,10 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <functional>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <webgpu/webgpu.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/shader.hpp>
+#include <functional>
+#include <webgpu/webgpu.hpp>
 #endif
 
 #include <epix/render/assets.hpp>

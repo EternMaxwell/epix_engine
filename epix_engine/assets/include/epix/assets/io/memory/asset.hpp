@@ -5,18 +5,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <asio/awaitable.hpp>
 #include <cstdint>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/io/memory.hpp>

@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -14,9 +15,6 @@
 
 #include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/slot.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
 
 namespace epix::render::graph {
 /** @brief Base class for render graph nodes.

@@ -4,6 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <asio/awaitable.hpp>
+#include <epix/meta.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -12,10 +13,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/server/loader.hpp>

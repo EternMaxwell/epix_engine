@@ -8,9 +8,6 @@
 #include <span>
 #include <utility>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif
 

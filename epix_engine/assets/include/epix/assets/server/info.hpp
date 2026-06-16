@@ -7,6 +7,9 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <future>
@@ -20,17 +23,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 
 #include <epix/assets/meta.hpp>

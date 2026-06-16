@@ -3,11 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
+#include <utility>
 #endif
 #include <epix/input/enums.hpp>
 

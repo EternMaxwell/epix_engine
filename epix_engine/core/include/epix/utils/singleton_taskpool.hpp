@@ -3,12 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <thread>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <BS_thread_pool.hpp>
 #endif
 
 namespace epix::utils {

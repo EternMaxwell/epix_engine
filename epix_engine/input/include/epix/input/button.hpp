@@ -4,13 +4,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
+#include <epix/core.hpp>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 
 #include <epix/input/enums.hpp>

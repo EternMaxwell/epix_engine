@@ -4,6 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -16,9 +17,6 @@
 #include <epix/core/tick.hpp>
 #include <epix/core/ticks.hpp>
 #include <epix/core/world.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 /** @brief Wrapper that redirects a system parameter's data source to the extracted (main) world.

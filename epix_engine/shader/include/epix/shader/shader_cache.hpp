@@ -4,6 +4,8 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -17,13 +19,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 #include <epix/shader/shader.hpp>
 #include <epix/shader/shader_composer.hpp>

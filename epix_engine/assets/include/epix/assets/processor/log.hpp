@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -15,10 +16,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/path.hpp>

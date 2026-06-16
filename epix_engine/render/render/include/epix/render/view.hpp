@@ -7,6 +7,9 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/transform.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <optional>
 #include <ranges>
@@ -15,18 +18,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/transform.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif
 

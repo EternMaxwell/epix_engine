@@ -9,6 +9,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -23,12 +24,8 @@
 #include <variant>
 #include <vector>
 #endif
-
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/handle.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
 
 namespace epix::assets {
 /** @brief Forward declaration of AssetServer. */

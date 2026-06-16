@@ -5,6 +5,8 @@
 #ifndef EPIX_CXX_MODULE
 #include <cassert>
 #include <concepts>
+#include <epix/async_channel.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <memory>
@@ -14,11 +16,6 @@
 #include <string_view>
 #include <utility>
 #include <variant>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/async_channel.hpp>
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/id.hpp>

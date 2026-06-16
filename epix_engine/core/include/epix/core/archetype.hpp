@@ -8,6 +8,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/traits.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -24,9 +25,6 @@
 #include <epix/core/type_registry.hpp>
 #include <epix/core/utils.hpp>
 #include <epix/core/world/decl.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/traits.hpp>
-#endif
 
 namespace epix::core {
 template <typename R>

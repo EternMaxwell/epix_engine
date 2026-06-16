@@ -3,12 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #include <optional>
 #include <unordered_set>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 
 #include <epix/window/events.hpp>

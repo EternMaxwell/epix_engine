@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -16,9 +17,6 @@
 #endif
 
 #include <epix/core/utils.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 enum class StorageType : std::uint8_t {

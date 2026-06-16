@@ -5,6 +5,9 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -13,18 +16,6 @@
 #include <string_view>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif
 

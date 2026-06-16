@@ -5,9 +5,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -19,15 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#include <epix/core.hpp>
 #endif
 
 namespace epix::image {

@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
+#include <epix/meta.hpp>
 #include <optional>
 #include <tuple>
 #include <type_traits>
@@ -16,9 +17,6 @@
 #include <epix/core/storage.hpp>
 #include <epix/core/system/param.hpp>
 #include <epix/core/world/commands.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 template <>

@@ -4,20 +4,13 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <optional>
 #include <string>
 #include <utility>
 #include <variant>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/image.hpp>
 #endif
 EPIX_EXPORT namespace epix::window {
     /** @brief Controls how the window position is interpreted. */

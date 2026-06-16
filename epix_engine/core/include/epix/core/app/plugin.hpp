@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/meta.hpp>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -20,9 +21,6 @@
 #endif
 
 #include <epix/core/app/decl.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 template <typename T>

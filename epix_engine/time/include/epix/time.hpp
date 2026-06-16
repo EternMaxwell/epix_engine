@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cstdint>
+#include <epix/core.hpp>
 #endif
 
 #include <epix/time/common_conditions.hpp>
@@ -14,10 +15,6 @@
 #include <epix/time/time_clock.hpp>
 #include <epix/time/timer.hpp>
 #include <epix/time/virt.hpp>
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
 
 namespace epix::time {
 

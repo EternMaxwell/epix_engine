@@ -6,14 +6,11 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
 #include <format>
 #include <functional>
 #include <string>
 #include <type_traits>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
 #endif
 
 namespace epix::core {

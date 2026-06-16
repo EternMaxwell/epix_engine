@@ -7,6 +7,9 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <epix/meta.hpp>
+#include <epix/tasks.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -19,16 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/tasks.hpp>
 #endif
 
 #include <epix/assets/server/info.hpp>

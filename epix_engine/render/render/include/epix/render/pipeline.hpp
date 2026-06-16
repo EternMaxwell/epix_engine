@@ -8,12 +8,16 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/shader.hpp>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
 #include <vector>
+#include <webgpu/webgpu.hpp>
 #endif
+
 #define make_atomic_id(name)                                                                            \
     struct name {                                                                                       \
         inline static std::atomic<std::uint64_t> counter{1};                                            \
@@ -21,16 +25,6 @@
         operator std::uint64_t() const noexcept { return id; }                                          \
         std::uint64_t id{0};                                                                            \
     };
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/shader.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <webgpu/webgpu.hpp>
-#endif
 namespace epix::render {
 make_atomic_id(RenderPipelineId);
 make_atomic_id(ComputePipelineId);

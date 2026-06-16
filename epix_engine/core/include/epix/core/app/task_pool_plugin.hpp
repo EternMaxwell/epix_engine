@@ -7,15 +7,13 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <epix/tasks.hpp>
 #include <functional>
 #include <optional>
 #include <thread>
 #endif
 
 #include <epix/core/app/decl.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/tasks.hpp>
-#endif
 
 namespace epix::core {
 

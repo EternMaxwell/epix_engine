@@ -6,6 +6,8 @@
 #include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -18,13 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 namespace epix::assets {

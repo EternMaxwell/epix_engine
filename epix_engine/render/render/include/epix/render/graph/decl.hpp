@@ -5,12 +5,9 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
+#include <epix/core.hpp>
 #include <functional>
 #include <type_traits>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \

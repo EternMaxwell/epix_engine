@@ -9,6 +9,10 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/traits.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -28,21 +32,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
 #endif
 
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/traits.hpp>
-#endif
 #include <epix/render/graph.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>

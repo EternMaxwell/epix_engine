@@ -7,6 +7,8 @@
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <epix/traits.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -23,12 +25,6 @@
 #include <epix/core/storage.hpp>
 #include <epix/core/type_registry.hpp>
 #include <epix/core/utils.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/traits.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
 
 namespace epix::core {
 EPIX_EXPORT template <typename T>

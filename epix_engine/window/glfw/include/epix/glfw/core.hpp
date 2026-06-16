@@ -3,6 +3,13 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <GLFW/glfw3.h>
+
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/window.hpp>
 #include <future>
 #include <memory>
 #include <optional>
@@ -11,23 +18,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
-#include <GLFW/glfw3.h>
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/input.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/window.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/image.hpp>
 #endif
 
 namespace epix::glfw {

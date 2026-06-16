@@ -3,13 +3,10 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #include <string>
 #include <utility>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 
 EPIX_EXPORT namespace epix::window {

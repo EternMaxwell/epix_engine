@@ -5,6 +5,8 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
 #include <exception>
 #include <format>
 #include <memory>
@@ -17,13 +19,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #endif
 #include <epix/render/extract.hpp>
 

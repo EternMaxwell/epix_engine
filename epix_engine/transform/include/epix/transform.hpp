@@ -3,14 +3,12 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <utility>
 #endif
 
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
 EPIX_EXPORT namespace epix::transform {
     /** @brief Generic transform component with translation, rotation, and scale.
      *

@@ -3,9 +3,11 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -22,16 +24,10 @@
 #include <vector>
 #endif
 
-#ifndef EPIX_CXX_MODULE
-#include <BS_thread_pool.hpp>
-#endif
 #include <epix/core/label.hpp>
 #include <epix/core/labels.hpp>
 #include <epix/core/schedule/queue.hpp>
 #include <epix/core/storage.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 struct Node;

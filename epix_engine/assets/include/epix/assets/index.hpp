@@ -6,12 +6,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/async_channel.hpp>
 #include <epix/core.hpp>
+#include <functional>
 #endif
 #include <epix/assets/concepts.hpp>
 

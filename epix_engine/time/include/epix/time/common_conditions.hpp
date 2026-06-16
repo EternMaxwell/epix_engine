@@ -4,16 +4,13 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
+#include <epix/core.hpp>
 #endif
 
 #include <epix/time/real.hpp>
 #include <epix/time/time_clock.hpp>
 #include <epix/time/timer.hpp>
 #include <epix/time/virt.hpp>
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
 
 namespace epix::time {
 

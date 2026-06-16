@@ -10,6 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/traits.hpp>
 #include <expected>
 #include <functional>
 #include <list>
@@ -37,9 +38,6 @@
 #include <epix/core/app/task_pool_plugin.hpp>
 #include <epix/core/label.hpp>
 #include <epix/core/labels.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/traits.hpp>
-#endif
 
 EPIX_EXPORT namespace epix::core {
     /** @brief Error returned when the app's world has been moved to a system dispatcher. */

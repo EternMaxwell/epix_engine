@@ -7,6 +7,9 @@
 
 #include <asio/awaitable.hpp>
 #include <concepts>
+#include <epix/meta.hpp>
+#include <epix/tasks.hpp>
+#include <epix/utils.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -19,16 +22,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/tasks.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

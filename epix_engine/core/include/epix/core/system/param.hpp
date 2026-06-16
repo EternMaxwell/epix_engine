@@ -6,6 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -22,9 +23,6 @@
 #include <epix/core/query.hpp>
 #include <epix/core/world/entity_ref.hpp>
 #include <epix/core/world/interface.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
 
 namespace epix::core {
 /** @brief Trait class defining how a type is used as a system parameter.

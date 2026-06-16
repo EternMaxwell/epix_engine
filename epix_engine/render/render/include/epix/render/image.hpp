@@ -3,20 +3,13 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
 #include <tuple>
+#include <webgpu/webgpu.hpp>
 #endif
 
 #include <epix/render/assets.hpp>
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/image.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <webgpu/webgpu.hpp>
-#endif
 
 namespace epix::render {
 /** @brief Resource holding the default sampler used for image textures. */

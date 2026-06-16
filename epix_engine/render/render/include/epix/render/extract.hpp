@@ -4,15 +4,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <format>
 #include <optional>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
 #endif
 #include <epix/render/schedule.hpp>
 

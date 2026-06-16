@@ -6,6 +6,11 @@
 #include <spdlog/spdlog.h>
 
 #include <asio/awaitable.hpp>
+#include <epix/async_broadcast.hpp>
+#include <epix/async_channel.hpp>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <functional>
@@ -19,14 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/async_broadcast.hpp>
-#include <epix/async_channel.hpp>
-#include <epix/core.hpp>
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

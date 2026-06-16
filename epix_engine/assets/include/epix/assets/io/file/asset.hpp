@@ -4,19 +4,14 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <asio/awaitable.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
 #include <system_error>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

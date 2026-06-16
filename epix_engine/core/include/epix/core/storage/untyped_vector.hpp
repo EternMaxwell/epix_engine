@@ -6,6 +6,7 @@
 #include <cassert>
 #include <cstddef>
 #include <cstring>
+#include <epix/meta.hpp>
 #include <limits>
 #include <memory>
 #include <ranges>
@@ -13,10 +14,6 @@
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
 #endif
 
 namespace epix::core {

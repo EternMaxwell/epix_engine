@@ -7,6 +7,8 @@
 
 #include <concepts>
 #include <cstddef>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <format>
 #include <functional>
 #include <optional>
@@ -14,13 +16,6 @@
 #include <tuple>
 #include <utility>
 #include <variant>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/concepts.hpp>

@@ -3,20 +3,15 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
 #include <algorithm>
 #include <condition_variable>
 #include <cstddef>
+#include <epix/traits.hpp>
 #include <mutex>
 #include <ranges>
 #include <thread>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/traits.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
-#include <BS_thread_pool.hpp>
 #endif
 
 #include <epix/core/query.hpp>

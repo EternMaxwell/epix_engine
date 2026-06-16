@@ -4,13 +4,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/utils.hpp>
 #include <filesystem>
 #include <span>
 #include <string_view>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/assets/io/memory.hpp>

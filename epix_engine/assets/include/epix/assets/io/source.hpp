@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
+#include <epix/utils.hpp>
 #include <filesystem>
 #include <functional>
 #include <memory>
@@ -14,10 +15,6 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
 #endif
 #include <epix/assets/io/file/asset.hpp>
 #include <epix/assets/io/file/watcher.hpp>
