@@ -92,7 +92,7 @@ class FileWatcherTest : public ::testing::Test {
         rx           = std::move(r);
         watcher      = std::make_unique<FileAssetWatcher>(dir.path, std::move(tx));
         // Give efsw time to start watching before we touch the directory.
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 };
 
