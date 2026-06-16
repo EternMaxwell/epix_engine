@@ -2,7 +2,6 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/image.hpp>
 
 namespace epix::render {

@@ -12,14 +12,11 @@
 #include <vector>
 #endif
 
-
 #include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/slot.hpp>
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
 #endif
-
-using namespace epix::core;
 
 namespace epix::render::graph {
 /** @brief Base class for render graph nodes.
@@ -33,9 +30,9 @@ EPIX_EXPORT struct Node {
     /** @brief Declare the output slots this node produces. */
     virtual std::vector<SlotInfo> outputs() { return {}; }
     /** @brief Called once per frame to update internal state before rendering. */
-    virtual void update(const World&) {}
+    virtual void update(const epix::core::World&) {}
     /** @brief Execute this node's GPU commands during the render pass. */
-    virtual void run(GraphContext&, RenderContext&, const World&) {}
+    virtual void run(GraphContext&, RenderContext&, const epix::core::World&) {}
 };
 /**
  * @brief An edge in the render graph.
@@ -154,10 +151,10 @@ EPIX_EXPORT struct GraphInputNode : public Node {
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
     std::vector<SlotInfo> inputs() override { return m_inputs; }
     std::vector<SlotInfo> outputs() override { return m_inputs; }
-    void run(GraphContext& graph, RenderContext&, const World&) override;
+    void run(GraphContext& graph, RenderContext&, const epix::core::World&) override;
 };
 /** @brief A no-op node that does nothing when run. */
 EPIX_EXPORT struct EmptyNode : public Node {
-    void run(GraphContext&, RenderContext&, const World&) override {}
+    void run(GraphContext&, RenderContext&, const epix::core::World&) override {}
 };
 }  // namespace epix::render::graph

@@ -6,7 +6,6 @@
 #include <tuple>
 #endif
 
-
 #include <epix/render/assets.hpp>
 
 #ifndef EPIX_CXX_MODULE
@@ -39,7 +38,9 @@ EPIX_EXPORT struct GPUImage {
 
 template <>
 struct epix::render::RenderAsset<epix::image::Image> {
-    using Param          = std::tuple<Res<wgpu::Device>, Res<wgpu::Queue>, Res<render::DefaultImageSampler>>;
+    using Param          = std::tuple<epix::core::Res<wgpu::Device>,
+                                      epix::core::Res<wgpu::Queue>,
+                                      epix::core::Res<render::DefaultImageSampler>>;
     using ProcessedAsset = GPUImage;
 
     ProcessedAsset process(image::Image&& asset, Param param);

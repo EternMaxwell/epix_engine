@@ -1,7 +1,6 @@
 
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph/error.hpp>
 
 namespace epix::render::graph {

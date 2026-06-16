@@ -14,9 +14,6 @@
 #include <webgpu/webgpu.hpp>
 #endif
 
-using namespace epix::core;
-using namespace epix::render;
-
 namespace epix::core_graph::core_2d {
 
 /** @brief Node labels for the 2D render graph passes. */
@@ -41,25 +38,25 @@ EPIX_EXPORT enum class Core2dNodes {
  */
 EPIX_EXPORT struct Transparent2D {
     /** @brief Entity this phase item refers to. */
-    Entity id;
+    core::Entity id;
     /** @brief Depth value for sorting (inverted for back-to-front). */
     float depth;
     /** @brief Cached render pipeline ID. */
-    CachedPipelineId pipeline_id;
+    render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
-    phase::DrawFunctionId draw_func;
+    render::phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
     std::size_t batch_count;
 
-    Entity entity() const noexcept { return id; }
+    core::Entity entity() const noexcept { return id; }
     float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
-    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
-    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
 
     std::size_t batch_size() const noexcept { return batch_count; }
 };
-static_assert(phase::BatchedPhaseItem<Transparent2D>);
-static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
+static_assert(render::phase::BatchedPhaseItem<Transparent2D>);
+static_assert(render::phase::CachedRenderPipelinePhaseItem<Transparent2D>);
 
 /** @brief An opaque 2D render phase item.
  *
@@ -67,24 +64,24 @@ static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
  */
 EPIX_EXPORT struct Opaque2D {
     /** @brief Entity this phase item refers to. */
-    Entity id;
+    core::Entity id;
     /** @brief Cached render pipeline ID. */
-    CachedPipelineId pipeline_id;
+    render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
-    phase::DrawFunctionId draw_func;
+    render::phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
     std::size_t batch_count;
     /** @brief Sort key for front-to-back opaque ordering. */
-    phase::OpaqueSortKey batch_key;
+    render::phase::OpaqueSortKey batch_key;
 
-    Entity entity() const noexcept { return id; }
-    const phase::OpaqueSortKey& sort_key() const noexcept { return batch_key; }
-    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
-    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    core::Entity entity() const noexcept { return id; }
+    const render::phase::OpaqueSortKey& sort_key() const noexcept { return batch_key; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
     std::size_t batch_size() const noexcept { return batch_count; }
 };
-static_assert(phase::BatchedPhaseItem<Opaque2D>);
-static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
+static_assert(render::phase::BatchedPhaseItem<Opaque2D>);
+static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
 /** @brief A UI 2D render phase item.
  *
@@ -92,38 +89,42 @@ static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
  */
 EPIX_EXPORT struct UI2DItem {
     /** @brief Entity this phase item refers to. */
-    Entity id;
+    core::Entity id;
     /** @brief Z-order for UI stacking (higher = on top). */
     int order;
     /** @brief Cached render pipeline ID. */
-    CachedPipelineId pipeline_id;
+    render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
-    phase::DrawFunctionId draw_func;
+    render::phase::DrawFunctionId draw_func;
     /** @brief Number of instances in this batch. */
     std::size_t batch_count;
 
-    Entity entity() const noexcept { return id; }
+    core::Entity entity() const noexcept { return id; }
     int sort_key() const noexcept { return order; }
-    phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
-    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
+    render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
     std::size_t batch_size() const noexcept { return batch_count; }
 };
 
 template <typename P>
-struct Node2D : graph::Node {
-    std::optional<QueryState<
-        Item<const view::ExtractedView&, const view::ViewTarget&, const view::ViewDepth&, const phase::RenderPhase<P>&>,
-        Filter<>>>
+struct Node2D : render::graph::Node {
+    std::optional<core::QueryState<core::Item<const render::view::ExtractedView&,
+                                              const render::view::ViewTarget&,
+                                              const render::view::ViewDepth&,
+                                              const render::phase::RenderPhase<P>&>,
+                                   core::Filter<>>>
         views;
-    void update(const World& world) override {
+    void update(const core::World& world) override {
         if (!views) {
-            views = world.try_query<Item<const view::ExtractedView&, const view::ViewTarget&, const view::ViewDepth&,
-                                         const phase::RenderPhase<P>&>>();
+            views = world.try_query<core::Item<const render::view::ExtractedView&, const render::view::ViewTarget&,
+                                               const render::view::ViewDepth&, const render::phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }
     }
-    void run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) override {
+    void run(render::graph::GraphContext& ctx,
+             render::graph::RenderContext& render_ctx,
+             const core::World& world) override {
         if (!views) return;  // likely be components of the query not all got registered, just skip running for now
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
@@ -149,13 +150,13 @@ struct Node2D : graph::Node {
 /** @brief Singleton struct for initializing the core 2D render graph. */
 EPIX_EXPORT inline struct Core2dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
-    void add_to(graph::RenderGraph& g);
+    void add_to(render::graph::RenderGraph& g);
 } Core2d;
 
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */
 EPIX_EXPORT struct Core2dPlugin {
-    void attach(App& app);
+    void attach(core::App& app);
 };
 
 /** @brief Marker component for 2D camera entities. */
@@ -170,7 +171,7 @@ EPIX_EXPORT struct Camera2DBundle {
     render::camera::Projection projection;
     render::camera::CameraRenderGraph render_graph = Core2d;
     transform::Transform transform;
-    view::VisibleEntities visible_entities;
+    render::view::VisibleEntities visible_entities;
     Camera2D camera_2d;
     /** @brief Which layers this camera renders. Default: all layers. */
     render::camera::RenderLayer render_layer = render::camera::RenderLayer::all();
@@ -179,7 +180,7 @@ EPIX_EXPORT struct Camera2DBundle {
 
 template <>
 struct epix::core::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
-    static void get_components(epix::core_graph::core_2d::Camera2DBundle& bundle,
+    static void get_components(core_graph::core_2d::Camera2DBundle& bundle,
                                utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
         write_component([&](void* ptr) { new (ptr) render::camera::Projection(std::move(bundle.projection)); });

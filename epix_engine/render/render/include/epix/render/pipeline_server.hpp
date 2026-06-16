@@ -25,8 +25,6 @@
 
 #include <epix/render/pipeline.hpp>
 
-using namespace epix::core;
-
 namespace epix::render {
 /** @brief Key type used to cache pipeline layouts by their bind group
  * layout IDs. */
@@ -180,10 +178,11 @@ EPIX_EXPORT struct PipelineServer {
     void process_queue();
     void process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id);
 
-    static void process_pipeline_system(ResMut<PipelineServer> pipeline_server);
-    static void extract_shaders(ResMut<PipelineServer> pipeline_server,
-                                Extract<Res<assets::Assets<shader::Shader>>> shaders,
-                                Extract<EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
+    static void process_pipeline_system(epix::core::ResMut<PipelineServer> pipeline_server);
+    static void extract_shaders(
+        epix::core::ResMut<PipelineServer> pipeline_server,
+        epix::core::Extract<epix::core::Res<assets::Assets<shader::Shader>>> shaders,
+        epix::core::Extract<epix::core::EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
 
     std::shared_ptr<PipelineServerData> m_data;
 };

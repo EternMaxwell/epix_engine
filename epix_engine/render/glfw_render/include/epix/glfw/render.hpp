@@ -6,7 +6,6 @@
 #include <GLFW/glfw3.h>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
 #endif

@@ -15,7 +15,6 @@
 #include <vector>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
 #endif
@@ -28,7 +27,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif
-using namespace epix::core;
 
 namespace epix::render::graph {
 /** @brief Type of data that can flow through a render graph slot. */
@@ -55,13 +53,13 @@ EPIX_EXPORT struct SlotInfo {
  * wgpu::Sampler. Clones GPU handles on copy. */
 EPIX_EXPORT struct SlotValue {
    private:
-    using variant_t = std::variant<Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler>;
+    using variant_t = std::variant<epix::core::Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler>;
     variant_t value;
 
    public:
     SlotValue(const SlotValue& other) {
         value = std::visit(utils::visitor{
-                               [](const Entity& e) -> variant_t { return Entity(e); },
+                               [](const epix::core::Entity& e) -> variant_t { return epix::core::Entity(e); },
                                [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
                                [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
                                [](const wgpu::Sampler& s) -> variant_t { return s.clone(); },
@@ -70,7 +68,7 @@ EPIX_EXPORT struct SlotValue {
     }
     SlotValue& operator=(const SlotValue& other) {
         value = std::visit(utils::visitor{
-                               [](const Entity& e) -> variant_t { return Entity(e); },
+                               [](const epix::core::Entity& e) -> variant_t { return epix::core::Entity(e); },
                                [](const wgpu::Buffer& b) -> variant_t { return b.clone(); },
                                [](const wgpu::TextureView& t) -> variant_t { return t.clone(); },
                                [](const wgpu::Sampler& s) -> variant_t { return s.clone(); },
@@ -80,7 +78,7 @@ EPIX_EXPORT struct SlotValue {
     }
     SlotValue(SlotValue&&)            = default;
     SlotValue& operator=(SlotValue&&) = default;
-    SlotValue(const Entity& entity) : value(entity) {}
+    SlotValue(const epix::core::Entity& entity) : value(entity) {}
     SlotValue(const wgpu::Buffer& buffer) : value(buffer.clone()) {}
     SlotValue(const wgpu::TextureView& texture) : value(texture.clone()) {}
     SlotValue(const wgpu::Sampler& sampler) : value(sampler.clone()) {}
@@ -88,7 +86,7 @@ EPIX_EXPORT struct SlotValue {
      *  @return The SlotType enum value. */
     SlotType type() const noexcept {
         return std::visit(utils::visitor{
-                              [](const Entity&) { return SlotType::Entity; },
+                              [](const epix::core::Entity&) { return SlotType::Entity; },
                               [](const wgpu::Buffer&) { return SlotType::Buffer; },
                               [](const wgpu::TextureView&) { return SlotType::Texture; },
                               [](const wgpu::Sampler&) { return SlotType::Sampler; },
@@ -96,7 +94,7 @@ EPIX_EXPORT struct SlotValue {
                           value);
     }
     /** @brief Check if the slot holds an Entity. */
-    bool is_entity() const noexcept { return std::holds_alternative<Entity>(value); }
+    bool is_entity() const noexcept { return std::holds_alternative<epix::core::Entity>(value); }
     /** @brief Check if the slot holds a wgpu::Buffer. */
     bool is_buffer() const noexcept { return std::holds_alternative<wgpu::Buffer>(value); }
     /** @brief Check if the slot holds a wgpu::TextureView. */
@@ -105,8 +103,10 @@ EPIX_EXPORT struct SlotValue {
     bool is_sampler() const noexcept { return std::holds_alternative<wgpu::Sampler>(value); }
     /** @brief Get the stored Entity, if present.
      *  @return The Entity, or std::nullopt. */
-    std::optional<Entity> entity() const {
-        return std::get_if<Entity>(&value) ? std::optional<Entity>{*std::get_if<Entity>(&value)} : std::nullopt;
+    std::optional<epix::core::Entity> entity() const {
+        return std::get_if<epix::core::Entity>(&value)
+                   ? std::optional<epix::core::Entity>{*std::get_if<epix::core::Entity>(&value)}
+                   : std::nullopt;
     }
     /** @brief Get a clone of the stored wgpu::Buffer, if present.
      *  @return The cloned buffer, or std::nullopt. */

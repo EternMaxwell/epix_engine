@@ -1,7 +1,6 @@
 
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph/slot.hpp>
 
 using namespace epix::render;

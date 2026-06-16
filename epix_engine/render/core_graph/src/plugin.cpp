@@ -3,6 +3,8 @@
 
 #include <epix/core_graph.hpp>
 
+using namespace epix::core;
+
 namespace epix::core_graph {
 void CoreGraphPlugin::attach(App& app) {
     spdlog::debug("[core_graph] Attaching CoreGraphPlugin.");

@@ -19,7 +19,6 @@
 #include <vector>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
 #endif
@@ -27,9 +26,6 @@
 #include <epix/core.hpp>
 #endif
 #include <epix/render/extract.hpp>
-
-using namespace epix::core;
-using namespace epix::assets;
 
 namespace epix::render {
 
@@ -141,9 +137,9 @@ struct CachedExtractedAssets {
 };
 
 template <RenderAssetImpl T>
-void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
-                    Extract<ResMut<assets::Assets<T>>> assets,
-                    Extract<EventReader<assets::AssetEvent<T>>> events) {
+void extract_assets(core::ResMut<CachedExtractedAssets<T>> cache,
+                    core::Extract<core::ResMut<assets::Assets<T>>> assets,
+                    core::Extract<core::EventReader<assets::AssetEvent<T>>> events) {
     std::unordered_set<assets::AssetId<T>> changed_ids;
     std::unordered_set<assets::AssetId<T>> removed;
     for (const auto& event : events.read()) {
@@ -191,8 +187,8 @@ void extract_assets(ResMut<CachedExtractedAssets<T>> cache,
 
 template <RenderAssetImpl T>
 void process_render_assets(typename RenderAsset<T>::Param param,
-                           ResMut<RenderAssets<T>> render_assets,
-                           ResMut<CachedExtractedAssets<T>> extracted_assets) {
+                           core::ResMut<RenderAssets<T>> render_assets,
+                           core::ResMut<CachedExtractedAssets<T>> extracted_assets) {
     RenderAsset<T> render_asset_impl;
     std::vector<std::pair<assets::AssetId<T>, std::exception_ptr>> exceptions;
     for (const auto& id : extracted_assets->removed) {
@@ -238,16 +234,16 @@ EPIX_EXPORT enum class ExtractAssetSet {
  * specialization). */
 EPIX_EXPORT template <RenderAssetImpl T>
 struct ExtractAssetPlugin {
-    void attach(App& app) {
+    void attach(core::App& app) {
         if (auto render_app = app.get_sub_app_mut(Render)) {
             render_app->get().world_mut().init_resource<RenderAssets<T>>();
             render_app->get().world_mut().init_resource<CachedExtractedAssets<T>>();
-            render_app->get().configure_sets(sets(ExtractAssetSet::Extract, ExtractAssetSet::Process).chain());
-            render_app->get().add_systems(ExtractSchedule, into(extract_assets<T>)
+            render_app->get().configure_sets(core::sets(ExtractAssetSet::Extract, ExtractAssetSet::Process).chain());
+            render_app->get().add_systems(ExtractSchedule, core::into(extract_assets<T>)
                                                                .in_set(ExtractAssetSet::Extract)
                                                                .set_name(std::format("extract render asset<{}>",
                                                                                      meta::type_id<T>().short_name())));
-            render_app->get().add_systems(ExtractSchedule, into(process_render_assets<T>)
+            render_app->get().add_systems(ExtractSchedule, core::into(process_render_assets<T>)
                                                                .in_set(ExtractAssetSet::Process)
                                                                .set_name(std::format("process render asset<{}>",
                                                                                      meta::type_id<T>().short_name())));

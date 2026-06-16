@@ -2,10 +2,10 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph.hpp>
 
 using namespace epix::render::graph;
+using namespace epix::core;
 
 bool GraphContext::run_sub_graph(const GraphLabel& graph,
                                  std::span<const SlotValue> inputs,

@@ -9,7 +9,6 @@
 #include <epix/tasks.hpp>
 #include <webgpu/webgpu.hpp>
 
-
 using namespace epix::render::screenshot;
 using namespace epix::core;
 using namespace epix::assets;

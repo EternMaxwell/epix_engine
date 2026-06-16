@@ -2,8 +2,9 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph.hpp>
+
+using namespace epix::core;
 
 namespace epix::render::graph {
 

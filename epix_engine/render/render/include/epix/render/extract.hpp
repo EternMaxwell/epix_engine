@@ -8,7 +8,6 @@
 #include <optional>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
 #endif
@@ -18,13 +17,14 @@
 #include <epix/render/schedule.hpp>
 
 namespace epix::render {
-using namespace epix::core;
 /** @brief Schedule sentinel for the extract phase that copies data from
  * the main world into the render world. */
 EPIX_EXPORT inline struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
-void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<T>>> resources) {
+void extract_fn(
+    epix::core::Commands cmd,
+    epix::core::ParamSet<std::optional<epix::core::ResMut<T>>, epix::core::Extract<epix::core::ResMut<T>>> resources) {
     auto&& [res, extract] = resources.get();
     if (!res) {
         cmd.insert_resource(extract.get());
@@ -37,7 +37,7 @@ void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<
  * @tparam T A copyable resource type. */
 EPIX_EXPORT template <std::copyable T>
 struct ExtractResourcePlugin {
-    void attach(App& app) {
+    void attach(epix::core::App& app) {
         app.sub_app_mut(Render).add_systems(
             ExtractSchedule,
             into(extract_fn<T>).set_name(std::format("extract resource '{}'", meta::type_id<T>().short_name())));

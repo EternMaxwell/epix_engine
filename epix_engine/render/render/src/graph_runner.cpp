@@ -2,10 +2,10 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph.hpp>
 
 using namespace epix::render::graph;
+using namespace epix::core;
 
 bool RenderGraphRunner::run(const RenderGraph& graph,
                             const wgpu::Device& device,

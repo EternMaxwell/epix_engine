@@ -2,10 +2,10 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/pipeline_server.hpp>
 
 using namespace epix::shader;
+using namespace epix::core;
 
 namespace epix::render {
 namespace {

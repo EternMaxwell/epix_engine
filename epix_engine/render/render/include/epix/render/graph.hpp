@@ -15,12 +15,11 @@
 #include <utility>
 #endif
 
-
-#include <epix/render/graph/decl.hpp>
-#include <epix/render/graph/slot.hpp>
-#include <epix/render/graph/node.hpp>
 #include <epix/render/graph/context.hpp>
+#include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/error.hpp>
+#include <epix/render/graph/node.hpp>
+#include <epix/render/graph/slot.hpp>
 namespace epix::render::graph {
 /** @brief Directed acyclic graph of render nodes.
  *
@@ -39,7 +38,7 @@ EPIX_EXPORT struct RenderGraph {
     RenderGraph& operator=(RenderGraph&&)      = default;
 
     /** @brief Update all nodes in the graph with the given world. */
-    void update(World& world);
+    void update(epix::core::World& world);
     /** @brief Set the graph's input slot layout. Returns true if the input node was created. */
     bool set_input(std::span<const SlotInfo> inputs);
     /** @brief Get the input node state, if any. */
@@ -128,20 +127,20 @@ struct RenderGraphRunner {
     static bool run(const RenderGraph& graph,
                     const wgpu::Device& device,
                     const wgpu::Queue& queue,
-                    World& world,
+                    epix::core::World& world,
                     std::function<void(const wgpu::CommandEncoder&)> finalizer);
 
     static bool run_graph(const RenderGraph& graph,
                           std::optional<GraphLabel> sub_graph,
                           RenderContext& render_context,
-                          World& world,
+                          epix::core::World& world,
                           std::span<const SlotValue> inputs,
-                          std::optional<Entity> view_entity);
+                          std::optional<epix::core::Entity> view_entity);
 };
 }  // namespace epix::render::graph
 
 EPIX_EXPORT namespace epix::render {
-using graph::GraphContext;
-using graph::RenderContext;
-using graph::RenderGraph;
+    using graph::GraphContext;
+    using graph::RenderContext;
+    using graph::RenderGraph;
 }  // namespace epix::render

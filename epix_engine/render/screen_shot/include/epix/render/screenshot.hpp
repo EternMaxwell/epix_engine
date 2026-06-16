@@ -15,12 +15,6 @@
 #endif
 
 namespace epix::render::screenshot {
-using namespace epix::core;
-using namespace epix::assets;
-using namespace epix::image;
-using namespace epix::render;
-namespace assets = epix::assets;
-namespace image  = epix::image;
 
 /** @brief Event sent by the user to request a frame capture.
  *
@@ -36,15 +30,15 @@ EPIX_EXPORT struct ScreenCaptureResult {
 };
 
 /** @brief Resource for storing & configuring the hotkey that triggers a screenshot capture when pressed. */
-struct ScreenshotHotkey {
-    epix::input::KeyCode key;
+EPIX_EXPORT struct ScreenshotHotkey {
+    input::KeyCode key;
 };
 
 /** @brief Plugin that adds screenshot capture support.
  *
  * Usage: send a @c ScreenCapture event via EventWriter<ScreenCapture> from any
  * main-world system. On the next frame the swapchain is copied to an
- * epix::image::Image and a ScreenCaptureResult event is fired with a strong
+ * image::Image and a ScreenCaptureResult event is fired with a strong
  * Handle<image::Image> for the captured frame.
  *
  * If @c save_path is set (as a directory), each captured image is written to
@@ -59,9 +53,9 @@ EPIX_EXPORT struct ScreenshotPlugin {
     /** @brief Optional output directory for auto-saving captures to disk. */
     std::optional<std::filesystem::path> save_path = "screenshots";
     /** @brief Key that triggers an automatic capture. nullopt disables the hotkey. */
-    std::optional<epix::input::KeyCode> capture_key = epix::input::KeyCode::KeyF12;
+    std::optional<input::KeyCode> capture_key = input::KeyCode::KeyF12;
 
-    void attach(epix::core::App& app);
+    void attach(core::App& app);
 };
 
 }  // namespace epix::render::screenshot

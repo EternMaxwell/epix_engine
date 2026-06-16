@@ -1,14 +1,13 @@
 #include <spdlog/spdlog.h>
 
-#include <stacktrace>
-
 #include <epix/core.hpp>
-#include <epix/input.hpp>
-#include <epix/window.hpp>
-#include <epix/transform.hpp>
-#include <epix/render.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <stacktrace>
 using namespace epix;
 using namespace epix::core;
 

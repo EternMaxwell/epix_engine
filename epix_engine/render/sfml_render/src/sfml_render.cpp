@@ -51,7 +51,6 @@ std::shared_ptr<Display> openDisplay();
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
 
-
 WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::WindowBase* window) {
 #if WGPU_TARGET == WGPU_TARGET_WINDOWS
     {

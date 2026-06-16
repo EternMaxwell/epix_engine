@@ -22,7 +22,6 @@
         std::uint64_t id{0};                                                                            \
     };
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/shader.hpp>
 #endif

@@ -2,10 +2,10 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
-
 #include <epix/render/graph.hpp>
 
 using namespace epix::render::graph;
+using namespace epix::core;
 
 void RenderGraph::update(World& world) {
     spdlog::trace("[render.graph] Updating render graph ({} nodes, {} sub-graphs).", nodes.size(), sub_graphs.size());

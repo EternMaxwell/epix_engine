@@ -29,7 +29,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
 #endif
-using epix::utils::visitor;
 
 namespace epix::assets {
 /** @brief Forward declaration of AssetServer. */
@@ -457,8 +456,8 @@ struct Assets {
         return false;
     }
     bool release(const AssetId<T>& id) {
-        return std::visit(visitor{[this](const AssetIndex& index) { return release_index(index); },
-                                  [this](const uuids::uuid& id) { return release_uuid(id); }},
+        return std::visit(utils::visitor{[this](const AssetIndex& index) { return release_index(index); },
+                                         [this](const uuids::uuid& id) { return release_uuid(id); }},
                           id);
     }
 
@@ -504,12 +503,12 @@ struct Assets {
     template <typename... Args>
         requires std::constructible_from<T, Args...>
     std::expected<bool, AssetError> insert(const AssetId<T>& id, Args&&... args) {
-        return std::visit(visitor{[this, &args...](const AssetIndex& index) mutable {
-                                      return insert_index(index, std::forward<Args>(args)...);
-                                  },
-                                  [this, &args...](const uuids::uuid& id) mutable {
-                                      return insert_uuid(id, std::forward<Args>(args)...);
-                                  }},
+        return std::visit(utils::visitor{[this, &args...](const AssetIndex& index) mutable {
+                                             return insert_index(index, std::forward<Args>(args)...);
+                                         },
+                                         [this, &args...](const uuids::uuid& id) mutable {
+                                             return insert_uuid(id, std::forward<Args>(args)...);
+                                         }},
                           id)
             .and_then([this, &id](bool replace) -> std::expected<bool, AssetError> {
                 if (replace) {
@@ -527,10 +526,10 @@ struct Assets {
      * This is used internally.
      */
     bool contains(const AssetId<T>& id) const noexcept {
-        return std::visit(visitor{[this](const AssetIndex& index) { return m_assets.contains(index); },
-                                  [this](const uuids::uuid& id) {
-                                      return m_mapped_assets.contains(id) && m_mapped_assets_ref.contains(id);
-                                  }},
+        return std::visit(utils::visitor{[this](const AssetIndex& index) { return m_assets.contains(index); },
+                                         [this](const uuids::uuid& id) {
+                                             return m_mapped_assets.contains(id) && m_mapped_assets_ref.contains(id);
+                                         }},
                           id);
     }
 
@@ -545,8 +544,8 @@ struct Assets {
      */
     std::expected<Handle<T>, AssetError> get_strong_handle(const AssetId<T>& id) {
         return try_get(id).and_then([this, &id](const T& asset) -> std::expected<Handle<T>, AssetError> {
-            std::visit(visitor{[this](const AssetIndex& index) { m_references[index.index()]++; },
-                               [this](const uuids::uuid& id) { m_mapped_assets_ref.at(id)++; }},
+            std::visit(utils::visitor{[this](const AssetIndex& index) { m_references[index.index()]++; },
+                                      [this](const uuids::uuid& id) { m_mapped_assets_ref.at(id)++; }},
                        id);
             return m_handle_provider->get_handle(id, false, std::nullopt);
         });
@@ -568,14 +567,14 @@ struct Assets {
     /** @brief Try to get a const reference to the asset, returning an error on failure. */
     std::expected<std::reference_wrapper<const T>, AssetError> try_get(const AssetId<T>& id) const noexcept {
         return std::visit(
-            visitor{[this](const AssetIndex& index) { return m_assets.try_get(index); },
-                    [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<const T>, AssetError> {
-                        if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
-                            return std::cref(it->second);
-                        } else {
-                            return std::unexpected(AssetNotPresent(id));
-                        }
-                    }},
+            utils::visitor{[this](const AssetIndex& index) { return m_assets.try_get(index); },
+                           [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<const T>, AssetError> {
+                               if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
+                                   return std::cref(it->second);
+                               } else {
+                                   return std::unexpected(AssetNotPresent(id));
+                               }
+                           }},
             id);
     }
 
@@ -594,16 +593,16 @@ struct Assets {
     }
     /** @brief Try to get a mutable reference to the asset, returning an error on failure. */
     std::expected<std::reference_wrapper<T>, AssetError> try_get_mut(const AssetId<T>& id) {
-        return std::visit(
-                   visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
-                           [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
-                               if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
-                                   return std::ref(it->second);
-                               } else {
-                                   return std::unexpected(AssetNotPresent(id));
-                               }
-                           }},
-                   id)
+        return std::visit(utils::visitor{
+                              [this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
+                              [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
+                                  if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
+                                      return std::ref(it->second);
+                                  } else {
+                                      return std::unexpected(AssetNotPresent(id));
+                                  }
+                              }},
+                          id)
             .transform([this, &id](std::reference_wrapper<T> asset) {
                 m_cached_events.emplace_back(AssetEvent<T>::modified(id));
                 return asset;
@@ -618,15 +617,15 @@ struct Assets {
      * @return void on success, or an error if the asset was not found.
      */
     std::expected<void, AssetError> remove(const AssetId<T>& id) {
-        return std::visit(visitor{[this, &id](const AssetIndex& index) { return m_assets.remove(index); },
-                                  [this, &id](const uuids::uuid& uuid) -> std::expected<void, AssetError> {
-                                      if (contains(id)) {
-                                          m_mapped_assets.erase(uuid);
-                                          return {};
-                                      } else {
-                                          return std::unexpected(AssetNotPresent(uuid));
-                                      }
-                                  }},
+        return std::visit(utils::visitor{[this, &id](const AssetIndex& index) { return m_assets.remove(index); },
+                                         [this, &id](const uuids::uuid& uuid) -> std::expected<void, AssetError> {
+                                             if (contains(id)) {
+                                                 m_mapped_assets.erase(uuid);
+                                                 return {};
+                                             } else {
+                                                 return std::unexpected(AssetNotPresent(uuid));
+                                             }
+                                         }},
                           id)
             .transform([this, &id]() { m_cached_events.emplace_back(AssetEvent<T>::removed(id)); });
     }
@@ -639,17 +638,17 @@ struct Assets {
      * @return The taken asset on success, or an error if not found.
      */
     std::expected<T, AssetError> take(const AssetId<T>& id) {
-        return std::visit(visitor{[this](const AssetIndex& index) { return m_assets.pop(index); },
-                                  [this](const uuids::uuid& id) -> std::expected<T, AssetError> {
-                                      if (contains(id)) {
-                                          auto asset = std::move(m_mapped_assets.at(id));
-                                          m_mapped_assets.erase(id);
-                                          m_mapped_assets_ref.erase(id);
-                                          return std::move(asset);
-                                      } else {
-                                          return std::unexpected(AssetNotPresent(id));
-                                      }
-                                  }},
+        return std::visit(utils::visitor{[this](const AssetIndex& index) { return m_assets.pop(index); },
+                                         [this](const uuids::uuid& id) -> std::expected<T, AssetError> {
+                                             if (contains(id)) {
+                                                 auto asset = std::move(m_mapped_assets.at(id));
+                                                 m_mapped_assets.erase(id);
+                                                 m_mapped_assets_ref.erase(id);
+                                                 return std::move(asset);
+                                             } else {
+                                                 return std::unexpected(AssetNotPresent(id));
+                                             }
+                                         }},
                           id)
             .and_then([this, &id](T&& asset) -> std::expected<T, AssetError> {
                 m_cached_events.emplace_back(AssetEvent<T>::removed(id));
@@ -713,16 +712,16 @@ struct Assets {
      * @return A mutable reference, or std::nullopt if not found.
      */
     std::optional<std::reference_wrapper<T>> get_mut_untracked(const AssetId<T>& id) noexcept {
-        auto res =
-            std::visit(visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
-                               [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
-                                   if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
-                                       return std::ref(it->second);
-                                   } else {
-                                       return std::unexpected(AssetNotPresent(id));
-                                   }
-                               }},
-                       id);
+        auto res = std::visit(
+            utils::visitor{[this](const AssetIndex& index) { return m_assets.try_get_mut(index); },
+                           [this](const uuids::uuid& id) -> std::expected<std::reference_wrapper<T>, AssetError> {
+                               if (auto&& it = m_mapped_assets.find(id); it != m_mapped_assets.end()) {
+                                   return std::ref(it->second);
+                               } else {
+                                   return std::unexpected(AssetNotPresent(id));
+                               }
+                           }},
+            id);
         return res.has_value() ? std::make_optional<std::reference_wrapper<T>>(res.value()) : std::nullopt;
     }
 
@@ -733,17 +732,17 @@ struct Assets {
      * @return The removed asset, or std::nullopt if not found.
      */
     std::optional<T> remove_untracked(const AssetId<T>& id) {
-        auto res = std::visit(visitor{[this](const AssetIndex& index) { return m_assets.pop(index); },
-                                      [this, &id](const uuids::uuid& uuid) -> std::expected<T, AssetError> {
-                                          if (m_mapped_assets.contains(uuid)) {
-                                              auto asset = std::move(m_mapped_assets.at(uuid));
-                                              m_mapped_assets.erase(uuid);
-                                              m_mapped_assets_ref.erase(uuid);
-                                              return std::move(asset);
-                                          } else {
-                                              return std::unexpected(AssetNotPresent(uuid));
-                                          }
-                                      }},
+        auto res = std::visit(utils::visitor{[this](const AssetIndex& index) { return m_assets.pop(index); },
+                                             [this, &id](const uuids::uuid& uuid) -> std::expected<T, AssetError> {
+                                                 if (m_mapped_assets.contains(uuid)) {
+                                                     auto asset = std::move(m_mapped_assets.at(uuid));
+                                                     m_mapped_assets.erase(uuid);
+                                                     m_mapped_assets_ref.erase(uuid);
+                                                     return std::move(asset);
+                                                 } else {
+                                                     return std::unexpected(AssetNotPresent(uuid));
+                                                 }
+                                             }},
                               id);
         return res.has_value() ? std::make_optional(std::move(res.value())) : std::nullopt;
     }

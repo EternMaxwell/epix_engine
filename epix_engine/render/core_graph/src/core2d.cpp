@@ -4,6 +4,7 @@
 #include <epix/core_graph.hpp>
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
+using namespace epix::core;
 
 void Camera2D::register_required_components(epix::core::Components& components) {
     components.register_required<Camera2D>([] { return camera::Camera{}; });

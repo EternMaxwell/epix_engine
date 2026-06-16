@@ -9,7 +9,6 @@
 #include <type_traits>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
 #endif
@@ -25,8 +24,6 @@
             : Label(t) {}                                                             \
     };
 #endif
-
-using namespace epix::core;
 
 namespace epix::render::graph {
 /** @brief Label type identifying a node within a render graph. */
