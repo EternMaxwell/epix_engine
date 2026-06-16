@@ -1,6 +1,3 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <exception>
@@ -10,15 +7,12 @@ module;
 #include <ranges>
 #include <utility>
 #include <variant>
-#endif
+
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/WindowBase.hpp>
 
-module epix.sfml.core;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/sfml/core.hpp>
 using namespace epix::core;
 using namespace epix::sfml;
 using namespace epix::window;
@@ -66,11 +60,6 @@ SFMLRunner::SFMLRunner(App& app) {
         [&](World& world) { std::ranges::for_each(sfml_systems, [&](auto& sys) { sys->initialize(world); }); });
 }
 
-template <typename... Ts>
-struct visitor : Ts... {
-    using Ts::operator()...;
-};
-
 bool SFMLRunner::step(App& app) {
     auto sfml_systems = std::array{
         destroy_windows_system.get(),    toggle_window_mode_system.get(), update_size_system.get(),
@@ -80,7 +69,7 @@ bool SFMLRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : sfml_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(visitor{[&](const ValidateParamError& validate_error) {
+                std::visit(epix::utils::visitor{[&](const ValidateParamError& validate_error) {
                                        spdlog::error("SFML System [{}] parameter validation error: type: {}, msg: {}",
                                                      sys->name(), validate_error.param_type.short_name(),
                                                      validate_error.message);
@@ -103,7 +92,7 @@ bool SFMLRunner::step(App& app) {
             if (!sys->initialized()) sys->initialize(world);
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
                 std::visit(
-                    visitor{
+                    epix::utils::visitor{
                         [&](const ValidateParamError& validate_error) {
                             spdlog::error("SFML extra system [{}] parameter validation error: type: {}, msg: {}",
                                           sys->name(), validate_error.param_type.short_name(), validate_error.message);

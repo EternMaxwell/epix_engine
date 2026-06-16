@@ -1,11 +1,9 @@
-module;
+#include <cstdlib>
 
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
-#include <cstdlib>
-
-module epix.glfw.core;
+#include <epix/glfw/core.hpp>
 
 using namespace epix::glfw;
 using namespace epix::core;

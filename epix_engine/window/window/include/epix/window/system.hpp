@@ -1,16 +1,18 @@
-﻿module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <optional>
 #include <unordered_set>
 #endif
 
-export module epix.window:system;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
 
-import epix.core;
-
-import :structs;
-import :events;
+#include <epix/window/structs.hpp>
+#include <epix/window/events.hpp>
 
 namespace epix::window {
 void exit_on_all_closed(core::EventWriter<core::AppExit> exit_writer,

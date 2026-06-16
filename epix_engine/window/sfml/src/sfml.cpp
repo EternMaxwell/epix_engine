@@ -1,10 +1,7 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
 #include <ranges>
 #include <unordered_set>
 #include <variant>
-#endif
+
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/Clipboard.hpp>
@@ -31,9 +28,7 @@ std::shared_ptr<Display> openDisplay();
 }
 #endif
 
-module epix.sfml.core;
-
-import epix.utils;
+#include <epix/sfml/core.hpp>
 
 using namespace epix::sfml;
 using namespace epix::window;

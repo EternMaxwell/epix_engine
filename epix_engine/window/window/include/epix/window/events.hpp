@@ -1,17 +1,18 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <string>
 #include <utility>
 #include <vector>
 #endif
 
-export module epix.window:events;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
-import epix.core;
 
-export namespace epix::window {
+EPIX_EXPORT namespace epix::window {
 /**
  * @brief This event is sent when the window is resized.
  */

@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -7,15 +10,16 @@ module;
 #include <variant>
 #endif
 
-export module epix.window:structs;
-
-import epix.core;
-import epix.assets;
-import epix.image;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
-export namespace epix::window {
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/image.hpp>
+#endif
+EPIX_EXPORT namespace epix::window {
 /** @brief Controls how the window position is interpreted. */
 enum PosType {
     /** @brief Position is relative to the top-left corner of the current
@@ -244,5 +248,5 @@ struct CachedWindowMut : Window {};  // component for caching window state.
  * Users can only access CachedWindow as `const` to detect state changes
  * between frames.
  */
-export using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
+EPIX_EXPORT using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
 }  // namespace epix::window

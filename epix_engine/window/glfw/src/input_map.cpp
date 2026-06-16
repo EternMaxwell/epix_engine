@@ -1,8 +1,6 @@
-module;
-
 #include <GLFW/glfw3.h>
 
-module epix.glfw.core;
+#include <epix/glfw/core.hpp>
 
 namespace epix::glfw {
 
