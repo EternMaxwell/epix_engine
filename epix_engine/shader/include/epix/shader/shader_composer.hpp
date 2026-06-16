@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <expected>
 #include <span>
 #include <string>
@@ -9,16 +12,12 @@ module;
 #include <vector>
 #endif
 
-export module epix.shader:shader_composer;
 
-import :shader;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/shader/shader.hpp>
 namespace epix::shader {
 
 /** @brief Error returned while composing WGSL source. */
-export struct ComposeError {
+EPIX_EXPORT struct ComposeError {
     /** @brief A `#import ...` name was used but no module with that name was registered. */
     struct ImportNotFound {
         std::string import_name;
@@ -48,7 +47,7 @@ export struct ComposeError {
  *
  * This is only for WGSL. Slang uses its own import system.
  */
-export struct ShaderComposer {
+EPIX_EXPORT struct ShaderComposer {
     /** @brief Register one WGSL module.
      *
      * `module_name` must match what appears in source, for example

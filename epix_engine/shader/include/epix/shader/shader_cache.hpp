@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <expected>
 #include <format>
@@ -17,17 +19,20 @@ module;
 #include <vector>
 #endif
 
-export module epix.shader:shader_cache;
 
-import epix.core;
-import epix.utils;
-import :shader;
-import :shader_composer;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
+#include <epix/shader/shader.hpp>
+#include <epix/shader/shader_composer.hpp>
 
 namespace epix::shader {
 
 /** @brief Id used by `ShaderCache` to track which pipeline owns cached shader variants. */
-export struct CachedPipelineId : utils::int_base<std::uint64_t> {
+EPIX_EXPORT struct CachedPipelineId : utils::int_base<std::uint64_t> {
     using utils::int_base<std::uint64_t>::int_base;
 };
 
@@ -48,7 +53,7 @@ namespace epix::shader {
  * pipelines use a shader, which compiled variants already exist, and which
  * imports have been resolved.
  */
-export struct ShaderData {
+EPIX_EXPORT struct ShaderData {
     /** @brief Pipelines currently using this shader. */
     std::unordered_set<CachedPipelineId> pipelines;
     /** @brief Cached compiled modules keyed by definition set. */
@@ -60,7 +65,7 @@ export struct ShaderData {
 };
 
 /** @brief Source payload passed to the backend shader-module loader. */
-export struct ShaderCacheSource {
+EPIX_EXPORT struct ShaderCacheSource {
     /** @brief SPIR-V bytes ready for backend module creation. */
     struct SpirV {
         std::span<const std::uint8_t> bytes;
@@ -84,7 +89,7 @@ export struct ShaderCacheSource {
  * - Slang compilation failed,
  * - backend shader-module creation failed.
  */
-export struct ShaderCacheError {
+EPIX_EXPORT struct ShaderCacheError {
     /** @brief The requested shader asset is missing from the cache. */
     struct ShaderNotLoaded {
         assets::AssetId<Shader> id;
@@ -188,7 +193,7 @@ export struct ShaderCacheError {
  * caches compiled modules by definition set, and tells you which pipelines need
  * to rebuild when something changes.
  */
-export struct ShaderCache {
+EPIX_EXPORT struct ShaderCache {
     /** @brief Callback that turns final WGSL or SPIR-V into a backend shader module. */
     using LoadModuleFn = std::function<std::expected<wgpu::ShaderModule, ShaderCacheError>(
         const wgpu::Device&, const ShaderCacheSource&, ValidateShader)>;

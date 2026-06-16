@@ -39,7 +39,11 @@ add_library(slang SHARED IMPORTED GLOBAL)
 
 # Build library filename
 build_lib_filename(SLANG_LIB "slang" TRUE)
-set(SLANG_RUNTIME_LIB "${SLANG_DIR}/lib/${SLANG_LIB}")
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    set(SLANG_RUNTIME_LIB "${SLANG_DIR}/bin/${SLANG_LIB}")
+else()
+    set(SLANG_RUNTIME_LIB "${SLANG_DIR}/lib/${SLANG_LIB}")
+endif()
 
 set_target_properties(slang PROPERTIES
     IMPORTED_LOCATION "${SLANG_RUNTIME_LIB}"
@@ -72,6 +76,24 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(SLANGC_EXECUTABLE "${SLANG_DIR}/bin/slangc.exe" CACHE FILEPATH "Path to slangc compiler")
 else()
     set(SLANGC_EXECUTABLE "${SLANG_DIR}/bin/slangc" CACHE FILEPATH "Path to slangc compiler")
+endif()
+
+# Register auxiliary slang DLLs (slang.dll depends on these at runtime on Windows)
+if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  file(GLOB SLANG_AUX_DLLS "${SLANG_DIR}/bin/slang-*.dll")
+  foreach(AUX_DLL IN LISTS SLANG_AUX_DLLS)
+    get_filename_component(DLL_NAME "${AUX_DLL}" NAME_WE)
+    set(DLL_TARGET "slang_${DLL_NAME}")
+    if(NOT TARGET ${DLL_TARGET})
+      add_library(${DLL_TARGET} SHARED IMPORTED GLOBAL)
+      set_target_properties(${DLL_TARGET} PROPERTIES
+        IMPORTED_LOCATION "${AUX_DLL}"
+        IMPORTED_IMPLIB "${SLANG_IMPLIB}"
+      )
+      # Add as link dependency so _epix_collect_shared_deps finds it
+      target_link_libraries(slang INTERFACE ${DLL_TARGET})
+    endif()
+  endforeach()
 endif()
 
 set(EPIX_RUNTIME_SHARED_LIBS "${EPIX_RUNTIME_SHARED_LIBS};slang" CACHE INTERNAL "Shared libs the engine needs at runtime")

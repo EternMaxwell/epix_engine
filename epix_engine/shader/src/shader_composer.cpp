@@ -1,7 +1,4 @@
-﻿module;
-
-#ifndef EPIX_IMPORT_STD
-#include <array>
+﻿#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
@@ -15,12 +12,10 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
+
 #include <spdlog/spdlog.h>
 
-module epix.shader;
-
-import :shader_composer;
+#include <epix/shader.hpp>
 
 using namespace epix::shader;
 

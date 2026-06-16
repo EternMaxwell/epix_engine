@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -21,17 +23,23 @@ module;
 #include <variant>
 #include <vector>
 #endif
+#ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
+#endif
 
+#ifndef EPIX_CXX_MODULE
 #include <asio/awaitable.hpp>
+#endif
 
-export module epix.shader:shader;
 
-import epix.assets;
-import epix.core;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
 #endif
 namespace epix::shader {
 
@@ -62,7 +70,7 @@ inline std::string canonical_asset_path_string(const assets::AssetPath& path) {
  * `MSAA_SAMPLES`. The stored value is later turned into text like `true`, `4`,
  * or `16` when the shader is composed or compiled.
  */
-export struct ShaderDefVal {
+EPIX_EXPORT struct ShaderDefVal {
    private:
     friend zpp::bits::access;
     using serialize = zpp::bits::members<2>;
@@ -114,7 +122,7 @@ export struct ShaderDefVal {
 };
 
 /** @brief Controls whether backend shader validation is requested. */
-export enum class ValidateShader : std::uint8_t {
+EPIX_EXPORT enum class ValidateShader : std::uint8_t {
     Disabled = 0,
     Enabled  = 1,
 };
@@ -123,7 +131,7 @@ export enum class ValidateShader : std::uint8_t {
  *
  * A shader can start from WGSL text, Slang text, or SPIR-V bytes.
  */
-export struct Source {
+EPIX_EXPORT struct Source {
     /** @brief WGSL source text. */
     struct Wgsl {
         std::string code;
@@ -210,7 +218,7 @@ export struct Source {
  * asset-path imports are resolved as concrete files with the correct source and
  * path semantics preserved.
  */
-export struct ShaderImport {
+EPIX_EXPORT struct ShaderImport {
     /** @brief Stored import value.
      *
      * `assets::AssetPath` means "load this file".
@@ -260,7 +268,7 @@ export struct ShaderImport {
 };
 
 // ─── Forward-declare Shader so Handle<Shader> can be used in fields ────────
-export struct Shader;
+EPIX_EXPORT struct Shader;
 
 /** @brief Parsed shader asset.
  *
@@ -275,7 +283,7 @@ export struct Shader;
  *  - Shaders added manually can also have assigned `path`, and will be resolved by the composer and compiler
  *    but will not be visible in loader and asset server, so cannot be imported by asset path, only custom name
  */
-export struct Shader {
+EPIX_EXPORT struct Shader {
     /** @brief The shader asset path. */
     assets::AssetPath path;
     /** @brief Original source or bytecode. */
@@ -352,13 +360,13 @@ export struct Shader {
 };
 
 /** @brief Loader settings for shader assets. */
-export struct ShaderSettings {
+EPIX_EXPORT struct ShaderSettings {
     /** @brief Definitions attached to the loaded shader. */
     std::vector<ShaderDefVal> shader_defs;
 };
 
 /** @brief Error returned while loading a shader asset. */
-export struct ShaderLoaderError {
+EPIX_EXPORT struct ShaderLoaderError {
     /** @brief File read error. */
     struct Io {
         std::error_code code;
@@ -381,7 +389,7 @@ export struct ShaderLoaderError {
 };
 
 /** @brief Convert `ShaderLoaderError` into `std::exception_ptr`. */
-export inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& err) noexcept {
+EPIX_EXPORT inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& err) noexcept {
     return std::visit(
         [](const auto& e) -> std::exception_ptr {
             using T = std::decay_t<decltype(e)>;
@@ -397,7 +405,7 @@ export inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& err) 
 }
 
 /** @brief Asset loader for shader files. */
-export struct ShaderLoader {
+EPIX_EXPORT struct ShaderLoader {
     using Asset    = Shader;
     using Settings = ShaderSettings;
     using Error    = ShaderLoaderError;
@@ -415,7 +423,7 @@ export struct ShaderLoader {
 };
 
 /** @brief Processing settings used before shader loading. */
-export struct ShaderProcessorSettings {
+EPIX_EXPORT struct ShaderProcessorSettings {
     /** @brief Settings forwarded to `ShaderLoader`. */
     ShaderSettings loader_settings;
     /** @brief When `true`, WGSL preprocessing is enabled. */
@@ -434,7 +442,7 @@ export struct ShaderProcessorSettings {
 };
 
 /** @brief Asset processor for shader sources. */
-export struct ShaderProcessor {
+EPIX_EXPORT struct ShaderProcessor {
     using Settings     = ShaderProcessorSettings;
     using OutputLoader = ShaderLoader;
 
@@ -455,7 +463,7 @@ export struct ShaderProcessor {
  * Use this when a system can accept either the default shader, a concrete
  * loaded handle, or a filesystem path that will be resolved later.
  */
-export struct ShaderRef {
+EPIX_EXPORT struct ShaderRef {
     /** @brief Use the built-in default shader. */
     struct Default {};
     /** @brief Reference a shader by loaded handle. */
@@ -493,7 +501,7 @@ export struct ShaderRef {
 };
 
 /** @brief App plugin that registers shader loading and processing. */
-export struct ShaderPlugin {
+EPIX_EXPORT struct ShaderPlugin {
     /** @brief Register shader systems and asset support into the app. */
     void attach(core::App& app);
 };
