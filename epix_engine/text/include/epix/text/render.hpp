@@ -1,24 +1,23 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/transform.hpp>
+#include <glm/glm.hpp>
 #include <span>
 #include <utility>
 #endif
-export module epix.text:render;
 
-import :font;
-import :text;
-import epix.assets;
-import epix.core;
-import epix.image;
-import epix.mesh;
-import epix.transform;
-import glm;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/text/font.hpp>
+#include <epix/text/text.hpp>
+
 namespace epix::text {
 /** @brief Component holding a generated mesh and bounding metrics for
  * rendered text.
@@ -27,7 +26,7 @@ namespace epix::text {
  * access to the mesh handle and the text's bounding box and baseline
  * metrics.
  */
-export struct TextMesh {
+EPIX_EXPORT struct TextMesh {
    public:
     /** @brief Get the handle to the generated mesh asset. */
     const assets::Handle<mesh::Mesh>& mesh() const noexcept { return mesh_handle_; }
@@ -86,14 +85,14 @@ export struct TextMesh {
 
 /** @brief Component linking a text entity to its font atlas image asset.
  */
-export struct TextImage {
+EPIX_EXPORT struct TextImage {
     /** @brief Asset ID of the atlas image used for this text's glyphs. */
     assets::AssetId<image::Image> image;
 };
 
 /** @brief Component marking an entity for 2D text rendering with an
  * optional pixel offset. */
-export struct Text2d {
+EPIX_EXPORT struct Text2d {
     /** @brief Pixel offset from the entity's transform position. */
     glm::vec2 offset = glm::vec2(0.0f);
 
@@ -102,7 +101,7 @@ export struct Text2d {
 
 /** @brief Bundle for spawning a 2D text rendering entity with transform
  * and color. */
-export struct Text2dBundle {
+EPIX_EXPORT struct Text2dBundle {
     /** @brief 2D text rendering component. */
     Text2d text2d;
     /** @brief World-space transform for the text. */
@@ -113,7 +112,7 @@ export struct Text2dBundle {
 
 /** @brief Plugin that registers text mesh generation, texture extraction,
  * and 2D text draw systems. */
-export struct TextRenderPlugin {
+EPIX_EXPORT struct TextRenderPlugin {
     void attach(core::App& app);
     void ready(core::App& app);
 };

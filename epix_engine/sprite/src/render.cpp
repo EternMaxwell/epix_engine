@@ -1,11 +1,16 @@
-module;
+#include <spdlog/spdlog.h>
 
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/image.hpp>
+#include <epix/render.hpp>
+#include <epix/sprite.hpp>
+#include <epix/transform.hpp>
 #include <format>
 #include <limits>
 #include <optional>
@@ -14,19 +19,7 @@ module;
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
-#include <spdlog/spdlog.h>
 
-module epix.sprite;
-
-import epix.assets;
-import epix.core_graph;
-import epix.image;
-import epix.render;
-import epix.transform;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix;
 using namespace epix::core;
 using namespace epix::sprite;

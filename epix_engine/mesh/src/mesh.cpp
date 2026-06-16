@@ -1,16 +1,7 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <cstddef>
-#include <expected>
-#include <functional>
-#include <string>
-#include <utility>
-#endif
 
-module epix.mesh;
-
-import epix.assets;
+#include <epix/assets.hpp>
+#include <epix/mesh.hpp>
 
 using namespace epix::mesh;
 

@@ -1,12 +1,19 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <map>
 #include <optional>
 #include <print>
@@ -16,17 +23,8 @@ module;
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <webgpu/webgpu.hpp>
 #endif
-#include <spdlog/spdlog.h>
-
-export module epix.mesh:mesh;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
-import epix.core;
-import epix.meta;
-import glm;
 
 namespace epix::mesh {
 constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
@@ -44,7 +42,7 @@ constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
     }
 }
 /** @brief Error codes for mesh attribute operations. */
-export enum class MeshError {
+EPIX_EXPORT enum class MeshError {
     /** @brief No attribute at given slot. */
     SlotNotFound,
     /** @brief Attribute name does not match the current one at given slot. */
@@ -55,7 +53,7 @@ export enum class MeshError {
     TypeMismatch,
 };
 /** @brief Describes a single vertex attribute in a mesh (name, slot, format). */
-export struct MeshAttribute {
+EPIX_EXPORT struct MeshAttribute {
     std::string name;
     std::uint32_t slot;
     wgpu::VertexFormat format;
@@ -65,7 +63,7 @@ export struct MeshAttribute {
     }
 };
 /** @brief Ordered map of slot->MeshAttribute describing the complete vertex layout. */
-export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
+EPIX_EXPORT struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
     wgpu::PrimitiveTopology primitive_type = wgpu::PrimitiveTopology::eTriangleList;
 
     bool operator==(const MeshAttributeLayout& other) const noexcept {
@@ -125,7 +123,7 @@ export struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
     }
 };
 /** @brief Pairs a MeshAttribute descriptor with its raw vertex data buffer. */
-export struct MeshAttributeData {
+EPIX_EXPORT struct MeshAttributeData {
     MeshAttribute attribute;
     core::untyped_vector data;
 
@@ -133,7 +131,7 @@ export struct MeshAttributeData {
     bool empty() const noexcept { return data.empty(); }
 };
 /** @brief Index buffer data, stored as either uint16 or uint32 values. */
-export struct MeshIndices {
+EPIX_EXPORT struct MeshIndices {
    public:
     MeshIndices(const meta::type_info& desc) noexcept : data(desc) {}
     MeshIndices(core::untyped_vector&& vec) noexcept : data(std::move(vec)) {}
@@ -160,13 +158,13 @@ export struct MeshIndices {
  * and insert_indices/with_indices to add index data. Standard attribute constants
  * (ATTRIBUTE_POSITION, etc.) are provided.
  */
-export struct Mesh {
+EPIX_EXPORT struct Mesh {
    public:
-    static const MeshAttribute ATTRIBUTE_POSITION;
-    static const MeshAttribute ATTRIBUTE_COLOR;
-    static const MeshAttribute ATTRIBUTE_NORMAL;
-    static const MeshAttribute ATTRIBUTE_UV0;
-    static const MeshAttribute ATTRIBUTE_UV1;
+    static inline const MeshAttribute ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
+    static inline const MeshAttribute ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
+    static inline const MeshAttribute ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
+    static inline const MeshAttribute ATTRIBUTE_UV0{"uv0", 3, wgpu::VertexFormat::eFloat32x2};
+    static inline const MeshAttribute ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
 
    public:
     Mesh() noexcept : primitive_type(wgpu::PrimitiveTopology::eTriangleList) {}
@@ -339,28 +337,22 @@ export struct Mesh {
     std::map<std::size_t, MeshAttributeData> _attributes;
     std::optional<MeshIndices> _indices;
 };
-const MeshAttribute Mesh::ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
-const MeshAttribute Mesh::ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
-const MeshAttribute Mesh::ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
-const MeshAttribute Mesh::ATTRIBUTE_UV0{"uv0", 3, wgpu::VertexFormat::eFloat32x2};
-const MeshAttribute Mesh::ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
-
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.
  */
-export Mesh make_circle(float radius,
-                        std::optional<glm::vec4> color             = std::nullopt,
-                        std::optional<std::uint32_t> segment_count = std::nullopt);
+EPIX_EXPORT Mesh make_circle(float radius,
+                             std::optional<glm::vec4> color             = std::nullopt,
+                             std::optional<std::uint32_t> segment_count = std::nullopt);
 /** @brief Create a box mesh on the XY plane. */
-export Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
+EPIX_EXPORT Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
 /** @brief Create a box mesh on the XY plane with UV coordinates. */
-export Mesh make_box2d_uv(float width,
-                          float height,
-                          glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
-                          std::optional<glm::vec4> vertex_color = std::nullopt);
+EPIX_EXPORT Mesh make_box2d_uv(float width,
+                               float height,
+                               glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                               std::optional<glm::vec4> vertex_color = std::nullopt);
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
-export struct MeshPlugin {
+EPIX_EXPORT struct MeshPlugin {
     void attach(core::App& app);
 };
 }  // namespace epix::mesh

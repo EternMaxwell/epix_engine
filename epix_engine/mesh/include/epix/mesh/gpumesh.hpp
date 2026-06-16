@@ -1,31 +1,28 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/render.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <variant>
 #include <vector>
+#include <webgpu/webgpu.hpp>
 #endif
-export module epix.mesh:gpumesh;
 
-import :mesh;
-
-import epix.render;
-import epix.assets;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
+#include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
  *
  * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
  */
-export struct GPUMesh {
+EPIX_EXPORT struct GPUMesh {
    public:
     /** @brief Create a GPUMesh from a CPU Mesh, using default device limits.
      *  @param mesh The source mesh.
@@ -103,11 +100,11 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     }
 };
 
-export namespace std {
-template <>
-struct hash<epix::assets::AssetId<epix::mesh::Mesh>> {
-    std::size_t operator()(const epix::assets::AssetId<epix::mesh::Mesh>& id) const {
-        return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
-    }
-};
+EPIX_EXPORT namespace std {
+    template <>
+    struct hash<epix::assets::AssetId<epix::mesh::Mesh>> {
+        std::size_t operator()(const epix::assets::AssetId<epix::mesh::Mesh>& id) const {
+            return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
+        }
+    };
 }  // namespace std

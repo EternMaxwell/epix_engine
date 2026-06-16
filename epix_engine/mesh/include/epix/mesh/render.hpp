@@ -1,42 +1,39 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/render.hpp>
 #include <expected>
 #include <format>
+#include <glm/glm.hpp>
 #include <optional>
 #include <span>
 #include <vector>
+#include <webgpu/webgpu.hpp>
 #endif
-export module epix.mesh:render;
-
-import glm;
-import webgpu;
-import epix.assets;
-import epix.core;
-import epix.image;
-import epix.render;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import :mesh;
-import :gpumesh;
+#include <epix/mesh/gpumesh.hpp>
+#include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
 /** @brief Alpha blending mode for 2D mesh rendering. */
-export enum class MeshAlphaMode2d {
+EPIX_EXPORT enum class MeshAlphaMode2d {
     Opaque,
     Blend,
 };
 
 /** @brief Component that associates an entity with a mesh asset for 2D rendering. */
-export struct Mesh2d {
+EPIX_EXPORT struct Mesh2d {
     assets::Handle<Mesh> handle;
 };
 
 /** @brief Flat-color material for 2D mesh rendering. */
-export struct MeshMaterial2d {
+EPIX_EXPORT struct MeshMaterial2d {
     /** @brief Base color. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Alpha blending mode. */
@@ -44,7 +41,7 @@ export struct MeshMaterial2d {
 };
 
 /** @brief Textured material for 2D mesh rendering. */
-export struct MeshTextureMaterial2d {
+EPIX_EXPORT struct MeshTextureMaterial2d {
     /** @brief Handle to the texture image asset. */
     assets::Handle<image::Image> image;
     /** @brief Color tint multiplied with the texture. */
@@ -54,7 +51,7 @@ export struct MeshTextureMaterial2d {
 };
 
 /** @brief Extracted mesh data ready for the render world. */
-export struct ExtractedMesh2d {
+EPIX_EXPORT struct ExtractedMesh2d {
     /** @brief Entity in the main world this was extracted from. */
     core::Entity source_entity;
     /** @brief Asset ID of the mesh. */
@@ -74,7 +71,7 @@ export struct ExtractedMesh2d {
 };
 
 /** @brief Batching key for 2D mesh draw commands (groups by texture). */
-export struct MeshBatch {
+EPIX_EXPORT struct MeshBatch {
     /** @brief Optional texture bind group for this batch. */
     std::optional<wgpu::BindGroup> texture_bind_group;
     /** @brief Starting instance index within the instance buffer. */
@@ -82,7 +79,7 @@ export struct MeshBatch {
 };
 
 /** @brief Per-instance data for 2D mesh GPU instancing. */
-export struct MeshInstanceData {
+EPIX_EXPORT struct MeshInstanceData {
     /** @brief Model transform matrix for this instance. */
     glm::mat4 model;
     /** @brief Tint color for this instance. */
@@ -90,7 +87,7 @@ export struct MeshInstanceData {
 };
 
 /** @brief GPU buffer and bind group for mesh 2D instance data. */
-export struct MeshInstanceBuffer {
+EPIX_EXPORT struct MeshInstanceBuffer {
     /** @brief GPU buffer holding instance data. */
     wgpu::Buffer buffer;
     /** @brief Bind group for the instance buffer. */
@@ -102,7 +99,7 @@ export struct MeshInstanceBuffer {
 /** @brief Render command that binds the mesh instance buffer to a given slot.
  * @tparam Slot Bind group slot index.
  */
-export template <std::size_t Slot>
+EPIX_EXPORT template <std::size_t Slot>
 struct BindMesh2dInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
@@ -131,7 +128,7 @@ struct BindMesh2dInstances {
 
 /** @brief Render command that binds a mesh 2D texture at a given slot.
  * @tparam Slot Bind group slot index. */
-export template <std::size_t Slot>
+EPIX_EXPORT template <std::size_t Slot>
 struct BindMesh2dTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
@@ -173,7 +170,7 @@ struct BindMesh2dTexture {
 
 /** @brief Render command that draws a batched 2D mesh.
  * @tparam PhaseItem The phase item type providing entity/batch info. */
-export template <render::phase::PhaseItem PhaseItem>
+EPIX_EXPORT template <render::phase::PhaseItem PhaseItem>
 struct DrawMesh2dBatch {
     void prepare(const core::World&) noexcept {}
 
@@ -221,7 +218,7 @@ struct DrawMesh2dBatch {
 };
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
-export struct MeshRenderPlugin {
+EPIX_EXPORT struct MeshRenderPlugin {
     void attach(core::App& app);
     void ready(core::App& app);
 };

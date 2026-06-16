@@ -1,9 +1,15 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
@@ -18,19 +24,10 @@ module;
 #include <variant>
 #include <vector>
 #endif
-#include <asio/awaitable.hpp>
 
-export module epix.text:font;
-
-import epix.assets;
-import epix.core;
-import epix.image;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::text::font {
 /** @brief Font resource holding raw font file data (e.g. TTF/OTF) in memory. */
-export struct Font {
+EPIX_EXPORT struct Font {
     /** @brief Raw font file bytes. */
     std::unique_ptr<std::byte[]> data;
     /** @brief Size of the font data in bytes. */
@@ -40,7 +37,7 @@ export struct Font {
 /** @brief Rectangle region within a font atlas image, optionally spanning
  * multiple layers.
  */
-export struct AtlasRect {
+EPIX_EXPORT struct AtlasRect {
     /** @brief X offset in pixels within the atlas layer. */
     std::uint32_t x = 0;
     /** @brief Y offset in pixels within the atlas layer. */
@@ -100,7 +97,7 @@ struct FontLibrary {
 };
 
 /** @brief Metrics for a single rendered glyph from a font face. */
-export struct Glyph {
+EPIX_EXPORT struct Glyph {
     /** @brief Glyph bitmap width in pixels. */
     float width;
     /** @brief Glyph bitmap height in pixels. */
@@ -128,7 +125,7 @@ export struct Glyph {
  * atlas. Call `apply_pending()` to upload newly rasterized glyphs to the
  * image asset.
  */
-export struct FontAtlas {
+EPIX_EXPORT struct FontAtlas {
     friend struct FontAtlasSet;
 
    public:
@@ -231,7 +228,7 @@ export struct FontAtlas {
 
 /** @brief Key identifying a specific atlas configuration (size +
  * anti-aliasing). */
-export struct FontAtlasKey {
+EPIX_EXPORT struct FontAtlasKey {
     /** @brief Font size in pixels used for rasterization. */
     float size;
     /** @brief Whether anti-aliased rendering is enabled. */
@@ -243,7 +240,7 @@ export struct FontAtlasKey {
 
 /** @brief Hash functor for FontAtlasKey, suitable for unordered
  * containers. */
-export struct FontAtlasKeyHash {
+EPIX_EXPORT struct FontAtlasKeyHash {
     std::size_t operator()(const FontAtlasKey& key) const noexcept {
         std::size_t seed = std::hash<float>{}(key.size);
         seed ^= std::hash<bool>{}(key.anti_aliased) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
@@ -254,7 +251,7 @@ export struct FontAtlasKeyHash {
 /** @brief Collection of FontAtlas instances for a single font face,
  * keyed by size and anti-aliasing settings.
  */
-export struct FontAtlasSet {
+EPIX_EXPORT struct FontAtlasSet {
     friend struct FontAtlasSets;
 
    public:
@@ -293,7 +290,7 @@ export struct FontAtlasSet {
  * Indexed by font asset ID. Automatically creates atlas sets when new
  * fonts are loaded and removes them when fonts are unloaded.
  */
-export struct FontAtlasSets {
+EPIX_EXPORT struct FontAtlasSets {
     FontAtlasSets(core::World& world);
     FontAtlasSets(const FontAtlasSets&)            = delete;
     FontAtlasSets(FontAtlasSets&&)                 = default;
@@ -327,7 +324,7 @@ export struct FontAtlasSets {
 };
 
 /** @brief System labels for font-related systems. */
-export enum class FontSystems {
+EPIX_EXPORT enum class FontSystems {
     /** @brief System that creates a FontAtlasSet for newly loaded fonts. */
     AddFontAtlasSet,
     /** @brief System that uploads pending glyph data to atlas images. */
@@ -336,7 +333,7 @@ export enum class FontSystems {
 
 /** @brief Plugin that registers font loading, atlas management, and glyph
  * update systems. */
-export struct FontPlugin {
+EPIX_EXPORT struct FontPlugin {
     void attach(core::App& app);
     void ready(core::App& app);
 };

@@ -1,28 +1,21 @@
-module;
-
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
-#include <ranges>
-#include <string>
-#include <utility>
-#include <vector>
-#endif
 #include <freetype/freetype.h>
 #include <hb-ft.h>
 #include <hb.h>
 #include <spdlog/spdlog.h>
 
-module epix.text;
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/text.hpp>
+#include <limits>
+#include <ranges>
+#include <string>
+#include <utility>
+#include <vector>
 
-import epix.image;
-import epix.mesh;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix;
 using namespace epix::core;
 using namespace epix::text;

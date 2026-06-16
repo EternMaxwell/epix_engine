@@ -1,10 +1,12 @@
-module;
+#include <spdlog/spdlog.h>
 
-#ifndef EPIX_IMPORT_STD
 #include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core_graph.hpp>
+#include <epix/render.hpp>
+#include <epix/text.hpp>
 #include <expected>
 #include <format>
 #include <optional>
@@ -15,17 +17,8 @@ module;
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#endif
-#include <spdlog/spdlog.h>
+#include <webgpu/webgpu.hpp>
 
-module epix.text;
-
-import epix.core_graph;
-import epix.render;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::core;
 using namespace epix::text;
 using namespace epix;

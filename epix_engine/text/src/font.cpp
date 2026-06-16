@@ -1,15 +1,23 @@
-module;
+#include <freetype/freetype.h>
+#include <freetype/ftglyph.h>
+#include <spdlog/spdlog.h>
 
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/meta.hpp>
+#include <epix/text.hpp>
 #include <exception>
 #include <expected>
+#include <fstream>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -20,26 +28,10 @@ module;
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#endif
-#include <freetype/freetype.h>
-#include <freetype/ftglyph.h>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-#include <fstream>
+#include <webgpu/webgpu.hpp>
 
 #include "font_array.hpp"
 
-module epix.text;
-
-import epix.assets;
-import epix.image;
-import epix.mesh;
-import epix.meta;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix;
 using namespace epix::text::font;
 

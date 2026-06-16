@@ -1,9 +1,14 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
 #include <optional>
 #include <span>
 #include <string>
@@ -11,18 +16,12 @@ module;
 #include <utility>
 #include <vector>
 #endif
-export module epix.text:text;
 
-import :font;
-import epix.assets;
-import epix.core;
-import epix.image;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/text/font.hpp>
+
 namespace epix::text {
 /** @brief Re-export of font::Font for convenience. */
-export using font::Font;
+EPIX_EXPORT using font::Font;
 
 /** @brief Component specifying the font, size, and rendering options for
  * text.
@@ -30,7 +29,7 @@ export using font::Font;
  * Implicitly converts to FontAtlasKey for atlas lookups. When
  * `relative_height` is true, `line_height` is multiplied by `size`.
  */
-export struct TextFont {
+EPIX_EXPORT struct TextFont {
     /** @brief Handle to the font asset to use. */
     assets::Handle<Font> font;
     /** @brief Font size in pixels. */
@@ -48,7 +47,7 @@ export struct TextFont {
 };
 
 /** @brief Component holding the text content string to render. */
-export struct Text {
+EPIX_EXPORT struct Text {
     /** @brief The UTF-8 text string. */
     std::string content;
     /** @brief Create a Text with the given string view.
@@ -59,7 +58,7 @@ export struct Text {
 };
 
 /** @brief Information about a single shaped glyph within a text layout. */
-export struct GlyphInfo {
+EPIX_EXPORT struct GlyphInfo {
     /** @brief Index of the glyph in the font. */
     std::uint32_t glyph_index;
     /** @brief Character cluster this glyph belongs to. */
@@ -75,9 +74,9 @@ export struct GlyphInfo {
 };
 
 /** @brief Forward declaration for text layout parameters. */
-export struct TextLayout;
+EPIX_EXPORT struct TextLayout;
 /** @brief Forward declaration for text bounding constraints. */
-export struct TextBounds;
+EPIX_EXPORT struct TextBounds;
 
 /** @brief Result of text shaping: positioned glyphs with computed bounding
  * box and metrics.
@@ -86,7 +85,7 @@ export struct TextBounds;
  * line metrics, and the glyph sequence. Internal fields are only
  * writable by `shape_text()`.
  */
-export struct ShapedText {
+EPIX_EXPORT struct ShapedText {
     /** @brief Get the line height (ascent minus descent). */
     float line_height() const noexcept { return ascent_ - descent_; }
     /** @brief Get the total width of the shaped text bounding box. */
@@ -133,11 +132,11 @@ export struct ShapedText {
  * @param atlas Font atlas used for glyph rasterization.
  * @return A ShapedText containing the final glyph positions and metrics.
  */
-export ShapedText shape_text(
+EPIX_EXPORT ShapedText shape_text(
     const Text& text, const TextFont& font, const TextLayout& layout, const TextBounds& bounds, font::FontAtlas& atlas);
 
 /** @brief Text horizontal justification mode. */
-export enum class Justify {
+EPIX_EXPORT enum class Justify {
     /** @brief Align text to the left edge. */
     Left,
     /** @brief Center text horizontally. */
@@ -149,14 +148,14 @@ export enum class Justify {
 };
 
 /** @brief RGBA text color component. Defaults to opaque white. */
-export struct TextColor {
+EPIX_EXPORT struct TextColor {
     float r = 1.0f;
     float g = 1.0f;
     float b = 1.0f;
     float a = 1.0f;
 };
 
-export enum class TextWrap {
+EPIX_EXPORT enum class TextWrap {
     /**
      * @brief Break lines at word boundaries (whitespace).
      *
@@ -187,7 +186,7 @@ export enum class TextWrap {
 
 /** @brief Component controlling text layout: justification and wrapping
  * behaviour. */
-export struct TextLayout {
+EPIX_EXPORT struct TextLayout {
     /** @brief Horizontal text justification. */
     Justify justify = Justify::Left;
     /** @brief Line wrapping mode. */
@@ -196,7 +195,7 @@ export struct TextLayout {
 
 /** @brief Optional width and height constraints for text layout. When unset,
  * the corresponding dimension is unbounded. */
-export struct TextBounds {
+EPIX_EXPORT struct TextBounds {
     /** @brief Maximum text width before wrapping. */
     std::optional<float> width;
     /** @brief Maximum text height (excess is clipped or ignored). */
@@ -204,7 +203,7 @@ export struct TextBounds {
 };
 
 /** @brief Computed text measurement result. */
-export struct TextMeasure {
+EPIX_EXPORT struct TextMeasure {
     /** @brief Measured width of the laid-out text. */
     float width = 0.0f;
     /** @brief Measured height of the laid-out text. */
@@ -213,7 +212,7 @@ export struct TextMeasure {
 
 /** @brief Bundle for spawning a text entity with content, font, layout, and
  * bounds components. */
-export struct TextBundle {
+EPIX_EXPORT struct TextBundle {
     /** @brief The text content. */
     Text text;
     /** @brief Font and size configuration. */
@@ -226,7 +225,7 @@ export struct TextBundle {
 
 /** @brief Plugin that registers text shaping, layout, and measurement
  * systems. */
-export struct TextPlugin {
+EPIX_EXPORT struct TextPlugin {
     void attach(core::App& app);
 };
 }  // namespace epix::text
