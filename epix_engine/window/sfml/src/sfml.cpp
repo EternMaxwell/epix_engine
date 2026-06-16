@@ -1,7 +1,3 @@
-#include <ranges>
-#include <unordered_set>
-#include <variant>
-
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/Clipboard.hpp>
@@ -14,6 +10,9 @@
 #include <SFML/Window/WindowEnums.hpp>
 #include <SFML/Window/WindowHandle.hpp>
 #include <memory>
+#include <ranges>
+#include <unordered_set>
+#include <variant>
 
 #if defined(__linux__) && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
@@ -32,6 +31,7 @@ std::shared_ptr<Display> openDisplay();
 
 using namespace epix::sfml;
 using namespace epix::window;
+using namespace epix::core;
 using WindowDesc = ::epix::window::Window;
 
 namespace {

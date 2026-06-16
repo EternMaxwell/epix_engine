@@ -26,8 +26,8 @@
 #endif
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #include <epix/assets.hpp>
+#include <epix/core.hpp>
 #endif
 
 namespace epix::image {

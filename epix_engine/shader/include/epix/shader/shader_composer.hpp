@@ -12,7 +12,6 @@
 #include <vector>
 #endif
 
-
 #include <epix/shader/shader.hpp>
 namespace epix::shader {
 

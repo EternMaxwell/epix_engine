@@ -1,6 +1,12 @@
+#include <slang-com-ptr.h>
+#include <slang.h>
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
+#include <asio/awaitable.hpp>
 #include <cstdint>
+#include <epix/shader.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -18,14 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include <slang-com-ptr.h>
-#include <slang.h>
-#include <spdlog/spdlog.h>
-
-#include <asio/awaitable.hpp>
-
-#include <epix/shader.hpp>
 
 using namespace epix::shader;
 

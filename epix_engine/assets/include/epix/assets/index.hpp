@@ -10,8 +10,8 @@
 #endif
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
 #include <epix/async_channel.hpp>
+#include <epix/core.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 

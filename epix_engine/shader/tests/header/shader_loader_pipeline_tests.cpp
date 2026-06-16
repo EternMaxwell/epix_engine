@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <slang-com-ptr.h>
 #include <slang.h>
+
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/shader.hpp>

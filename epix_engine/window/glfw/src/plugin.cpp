@@ -1,8 +1,7 @@
-#include <cstdlib>
-
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
+#include <cstdlib>
 #include <epix/glfw/core.hpp>
 
 using namespace epix::glfw;

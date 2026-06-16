@@ -31,7 +31,6 @@
 #include <asio/awaitable.hpp>
 #endif
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
 #endif

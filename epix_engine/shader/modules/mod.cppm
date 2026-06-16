@@ -29,8 +29,8 @@ export module epix.shader;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-export import epix.core;
-export import epix.assets;
+import epix.core;
+import epix.assets;
 import webgpu;
 extern "C++" {
 #include <epix/shader.hpp>

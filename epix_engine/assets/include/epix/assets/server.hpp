@@ -291,7 +291,7 @@ EPIX_EXPORT struct AssetServer {
                 auto result = future();
                 if (result) {
                     auto erased = ErasedLoadedAsset::from_asset(std::move(*result));
-                   co_await server.send_asset_event(
+                    co_await server.send_asset_event(
                         InternalAssetEvent{internal_asset_event::Loaded{owned_handle.id(), std::move(erased)}});
                 } else {
                     auto err_ptr = [&]() -> std::exception_ptr {
@@ -522,7 +522,9 @@ EPIX_EXPORT struct AssetServer {
     void reload_internal(const AssetPath& path, bool log) const;
 
     /** @brief Send an internal asset event. */
-    asio::awaitable<void> send_asset_event(InternalAssetEvent event) const { co_await data->asset_event_sender.send(std::move(event)); }
+    asio::awaitable<void> send_asset_event(InternalAssetEvent event) const {
+        co_await data->asset_event_sender.send(std::move(event));
+    }
 
     /** @brief Helper to create a LoadContext. Defined here in the module interface
      *  where AssetServer is complete, working around MSVC C++20 modules bug

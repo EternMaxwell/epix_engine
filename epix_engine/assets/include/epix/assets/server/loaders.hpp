@@ -95,17 +95,17 @@ struct AssetLoaders {
         } else {
             MaybeAssetLoader maybe_loader = std::move(loaders[loader_index]);
             loaders[loader_index]         = std::move(erased_loader);
-            std::visit(
-                utils::visitor{[&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
-                               [&](PendingAssetLoader& pending) {
-                                   auto loader =
-                                       std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
-                                   auto sender = std::move(pending.sender);
-                                   tasks::IoTaskPool::get()
-                                       .spawn([sender = std::move(sender), loader]() mutable { sender.broadcast(loader); })
-                                       .detach();
-                               }},
-                maybe_loader.as_base());
+            std::visit(utils::visitor{
+                           [&](std::shared_ptr<ErasedAssetLoader>&) { std::unreachable(); },
+                           [&](PendingAssetLoader& pending) {
+                               auto loader =
+                                   std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
+                               auto sender = std::move(pending.sender);
+                               tasks::IoTaskPool::get()
+                                   .spawn([sender = std::move(sender), loader]() mutable { sender.broadcast(loader); })
+                                   .detach();
+                           }},
+                       maybe_loader.as_base());
         }
     }
     template <AssetLoader loader_type>

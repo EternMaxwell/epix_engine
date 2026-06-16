@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <epix/assets.hpp>
 #include <epix/core.hpp>
 #include <epix/shader.hpp>

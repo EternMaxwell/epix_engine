@@ -13,10 +13,10 @@ export module epix.window;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-export import epix.core;
-export import epix.input;
-export import epix.assets;
-export import epix.image;
+import epix.core;
+import epix.input;
+import epix.assets;
+import epix.image;
 extern "C++" {
 #include <epix/window.hpp>
 }

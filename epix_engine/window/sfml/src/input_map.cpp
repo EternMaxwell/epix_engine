@@ -1,6 +1,5 @@
 #include <SFML/Window/Keyboard.hpp>
 #include <SFML/Window/Mouse.hpp>
-
 #include <epix/sfml/core.hpp>
 
 namespace epix::sfml {

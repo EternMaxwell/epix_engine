@@ -1,7 +1,10 @@
-﻿#include <array>
+﻿#include <spdlog/spdlog.h>
+
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cstdint>
+#include <epix/shader.hpp>
 #include <expected>
 #include <filesystem>
 #include <optional>
@@ -12,10 +15,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
-#include <spdlog/spdlog.h>
-
-#include <epix/shader.hpp>
 
 using namespace epix::shader;
 

@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <epix/shader.hpp>
 
 using namespace epix::shader;

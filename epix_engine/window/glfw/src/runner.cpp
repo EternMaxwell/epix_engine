@@ -1,5 +1,9 @@
+#include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
+#include <epix/glfw/core.hpp>
 #include <exception>
 #include <future>
 #include <memory>
@@ -7,11 +11,6 @@
 #include <ranges>
 #include <utility>
 #include <variant>
-
-#include <GLFW/glfw3.h>
-#include <spdlog/spdlog.h>
-
-#include <epix/glfw/core.hpp>
 using namespace epix::core;
 using namespace epix::glfw;
 using namespace epix::window;
@@ -68,22 +67,22 @@ bool GLFWRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : glfw_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(epix::utils::visitor{[&](const ValidateParamError& validate_error) {
-                                       spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}",
-                                                     sys->name(), validate_error.param_type.short_name(),
-                                                     validate_error.message);
-                                   },
-                                   [&](const SystemException& sys_exception) {
-                                       try {
-                                           if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
-                                       } catch (const std::exception& e) {
-                                           spdlog::error("GLFW System [{}] exception during run: {}", sys->name(),
-                                                         e.what());
-                                       } catch (...) {
-                                           spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
-                                       }
-                                   }},
-                           error);
+                std::visit(
+                    epix::utils::visitor{
+                        [&](const ValidateParamError& validate_error) {
+                            spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}", sys->name(),
+                                          validate_error.param_type.short_name(), validate_error.message);
+                        },
+                        [&](const SystemException& sys_exception) {
+                            try {
+                                if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                            } catch (const std::exception& e) {
+                                spdlog::error("GLFW System [{}] exception during run: {}", sys->name(), e.what());
+                            } catch (...) {
+                                spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
+                            }
+                        }},
+                    error);
                 return error;
             });
         }

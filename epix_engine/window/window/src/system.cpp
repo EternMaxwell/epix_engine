@@ -1,10 +1,9 @@
-#include <optional>
-#include <unordered_set>
-
 #include <spdlog/spdlog.h>
 
 #include <epix/window.hpp>
 #include <epix/window/system.hpp>
+#include <optional>
+#include <unordered_set>
 
 using namespace epix::core;
 

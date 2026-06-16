@@ -101,15 +101,18 @@ epix::core::App& app_register_asset(epix::core::App& app) {
                     into(Assets<T>::asset_events)
                         .in_set(AssetSystems::WriteEvents)
                         .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::First, into(Assets<T>::asset_events)
-                               .in_set(AssetSystems::WriteEvents)
-                               .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::Last, into(Assets<T>::asset_events)
-                              .in_set(AssetSystems::WriteEvents)
-                              .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::PostUpdate, into(Assets<T>::handle_events)
-                                    .in_set(AssetSystems::HandleEvents)
-                                    .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
+    app.add_systems(epix::core::First,
+                    into(Assets<T>::asset_events)
+                        .in_set(AssetSystems::WriteEvents)
+                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(epix::core::Last,
+                    into(Assets<T>::asset_events)
+                        .in_set(AssetSystems::WriteEvents)
+                        .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
+    app.add_systems(epix::core::PostUpdate,
+                    into(Assets<T>::handle_events)
+                        .in_set(AssetSystems::HandleEvents)
+                        .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
     return app;
 }
 
