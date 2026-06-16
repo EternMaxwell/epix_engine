@@ -62,40 +62,35 @@ function(generate_webgpu_wrapper)
     message(STATUS "  Output header: ${OUTPUT_HEADER}")
     message(STATUS "  Output source: ${OUTPUT_SOURCE}")
 
-    # Generate the header at configure time (always needed, header-only library)
-    execute_process(
+    # Generate all three files at build time (only when dependencies change)
+    add_custom_command(
+        OUTPUT ${OUTPUT_HEADER}
         COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
             ${HEADER_ARGS}
             -t "${WEBGPU_CPP_HEADER_TEMPLATE}"
             -o "${OUTPUT_HEADER}"
             --use-raii
             --indexed-handle BindGroupLayout
+        DEPENDS ${WEBGPU_CPP_HEADER_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
-        RESULT_VARIABLE GEN_RESULT
-        OUTPUT_VARIABLE GEN_OUTPUT
-        ERROR_VARIABLE GEN_ERROR
+        COMMENT "Generating WebGPU C++ header..."
+        VERBATIM
     )
-    if (NOT GEN_RESULT EQUAL 0)
-        message(WARNING "WebGPU header generation failed: ${GEN_ERROR}")
-    endif()
 
-    # Generate the source file (out-of-class definitions) at configure time
-    execute_process(
+    add_custom_command(
+        OUTPUT ${OUTPUT_SOURCE}
         COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
             ${HEADER_ARGS}
             -t "${WEBGPU_CPP_SOURCE_TEMPLATE}"
             -o "${OUTPUT_SOURCE}"
             --use-raii
             --indexed-handle BindGroupLayout
+        DEPENDS ${WEBGPU_CPP_SOURCE_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
-        RESULT_VARIABLE GEN_SRC_RESULT
-        ERROR_VARIABLE GEN_SRC_ERROR
+        COMMENT "Generating WebGPU C++ source..."
+        VERBATIM
     )
-    if (NOT GEN_SRC_RESULT EQUAL 0)
-        message(WARNING "WebGPU source generation failed: ${GEN_SRC_ERROR}")
-    endif()
 
-    # Generate the module wrapper at build time (depends on header template)
     add_custom_command(
         OUTPUT ${OUTPUT_MODULE}
         COMMAND ${Python3_EXECUTABLE} ${WEBGPU_CPP_GENERATOR_SCRIPT}
@@ -104,7 +99,7 @@ function(generate_webgpu_wrapper)
             -o "${OUTPUT_MODULE}"
             --use-raii
             --indexed-handle BindGroupLayout
-        DEPENDS ${WEBGPU_CPP_MODULE_TEMPLATE}
+        DEPENDS ${WEBGPU_CPP_MODULE_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         COMMENT "Generating WebGPU module wrapper..."
         VERBATIM
