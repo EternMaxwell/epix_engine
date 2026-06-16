@@ -1,25 +1,23 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <memory>
 #include <stdexcept>
 #include <vector>
 #endif
-export module epix.render.imgui:state;
 
-import epix.core;
-import epix.meta;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 namespace epix::imgui {
 
 /** @brief Thread-safe snapshot of ImDrawData for pipelined rendering.
  *  Owns cloned draw lists so the render sub-app can use them even after
  *  the main world has started a new ImGui frame. */
-export struct DrawDataSnapshot {
+EPIX_EXPORT struct DrawDataSnapshot {
     struct DrawListClone {
         std::vector<char> cmd_buffer;
         std::vector<char> idx_buffer;
@@ -37,7 +35,7 @@ export struct DrawDataSnapshot {
     std::vector<DrawListClone> draw_lists;
 };
 
-export struct ViewportDrawDataSnapshot : DrawDataSnapshot {
+EPIX_EXPORT struct ViewportDrawDataSnapshot : DrawDataSnapshot {
     unsigned int viewport_id = 0;
     void* platform_handle    = nullptr;
     bool minimized           = false;
@@ -47,7 +45,7 @@ export struct ViewportDrawDataSnapshot : DrawDataSnapshot {
 
 /** @brief Resource holding the ImGui context and frame state.
  *  Stored as a resource in the main world and extracted to the render world. */
-export struct ImGuiState {
+EPIX_EXPORT struct ImGuiState {
     void* ctx             = nullptr;
     bool initialized      = false;
     bool frame_active     = false;
@@ -67,7 +65,7 @@ export struct ImGuiState {
  *  - Sets the ImGui context on the worker thread before the system runs
  *
  *  After this, ImGui:: functions can be called directly. */
-export struct Ctx {};
+EPIX_EXPORT struct Ctx {};
 }  // namespace epix::imgui
 
 namespace epix::core {

@@ -1,6 +1,11 @@
-export module epix.render:schedule;
+#pragma once
 
-import epix.core;
+#include <epix/common.hpp>
+
+
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
 
 namespace epix::render {
 struct RenderT {
@@ -8,7 +13,7 @@ struct RenderT {
 };
 /** @brief Schedule sentinel for the render sub-app. Use `Render` to refer
  * to the render sub-app and its schedule. */
-export constexpr RenderT Render;
+EPIX_EXPORT inline constexpr RenderT Render;
 
 /**
  * @brief Render schedule system sets.
@@ -17,7 +22,7 @@ export constexpr RenderT Render;
  * PostExtract -> PrepareAssets -> Prepare
  * Prepare: (PrepareResources -> PrepareFlush -> PrepareSets)
  */
-export enum class RenderSet {
+EPIX_EXPORT enum class RenderSet {
     /** @brief Runs immediately after extraction from the main world. */
     PostExtract,
     /** @brief Prepare render assets (meshes, textures, etc.). */

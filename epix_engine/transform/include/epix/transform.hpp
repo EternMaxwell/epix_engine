@@ -8,12 +8,6 @@
 #include <utility>
 #endif
 
-#ifdef EPIX_CXX_MODULE
-#define GLM_GTC_NS gtc::
-#else
-#define GLM_GTC_NS
-#endif
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/core.hpp>
 #endif

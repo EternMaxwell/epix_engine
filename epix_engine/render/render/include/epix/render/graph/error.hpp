@@ -1,18 +1,17 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <string>
 #include <variant>
 #endif
 
-export module epix.render:graph.error;
 
-import :graph.decl;
-import :graph.slot;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-export namespace epix::render::graph {
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/slot.hpp>
+EPIX_EXPORT namespace epix::render::graph {
 /** @brief Error indicating a node was not found in the graph. */
 struct NodeNotPresent {
     /** @brief Label of the missing node. */

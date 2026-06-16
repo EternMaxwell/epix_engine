@@ -1,17 +1,18 @@
-module;
+#pragma once
 
-export module epix.render.imgui:plugin;
+#include <epix/common.hpp>
 
-import :state;
-import epix.core;
-import epix.input;
-import epix.render;
-import epix.window;
-import epix.glfw.core;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/window.hpp>
+#include <webgpu/webgpu.hpp>
 #endif
+
+#include <epix/render/imgui/state.hpp>
+
 using namespace epix::core;
 
 namespace epix::imgui {
@@ -32,7 +33,7 @@ namespace epix::imgui {
  *          ImGui::End();
  *      }
  */
-export struct ImGuiPlugin {
+EPIX_EXPORT struct ImGuiPlugin {
     bool enable_docking   = false;
     bool enable_viewports = false;
 
@@ -43,7 +44,7 @@ export struct ImGuiPlugin {
     void detach(App& app);
 };
 
-export inline struct BeginFrameSetT {
+EPIX_EXPORT inline struct BeginFrameSetT {
 } BeginFrameSet;
 
 // Frame lifecycle systems (main world)

@@ -1,6 +1,9 @@
-﻿#include <cassert>
+#include <cassert>
+#include <epix/core.hpp>
+#include <epix/render.hpp>
 #include <iostream>
 #include <vector>
+#include <webgpu/webgpu.hpp>
 
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX_X11 2
@@ -133,11 +136,6 @@ WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 #error "Unsupported WGPU_TARGET"
 #endif
 }
-
-import epix.core;
-import epix.render;
-
-import webgpu;
 
 wgpu::Surface glfwGetWGPUSurface(const wgpu::Instance& instance, GLFWwindow* window) {
     auto res = glfwGetWGPUSurfaceRaw(instance, window);
@@ -285,8 +283,8 @@ bool Application::Initialize() {
 
     // And we do not need any particular view format:
     config.device      = device;
-    config.presentMode = PresentMode::eMailbox;
-    config.alphaMode   = CompositeAlphaMode::eAuto;
+    config.presentMode = wgpu::PresentMode::eMailbox;
+    config.alphaMode   = wgpu::CompositeAlphaMode::eAuto;
 
     surface.configure(config);
 

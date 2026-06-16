@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -8,13 +10,14 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:graph.context;
 
-import webgpu;
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
+#endif
 
-import :graph.decl;
-import :graph.slot;
-import :graph.node;
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/slot.hpp>
+#include <epix/render/graph/node.hpp>
 
 using namespace epix::core;
 
@@ -28,7 +31,7 @@ struct RunSubGraph {
  * @brief GraphContext provides the context for a node to run in the render graph.
  * It is used to set outputs and get inputs, and to run sub-graphs.
  */
-export struct GraphContext {
+EPIX_EXPORT struct GraphContext {
    private:
     const RenderGraph& m_graph;
     const NodeState& m_node_state;
@@ -119,7 +122,7 @@ export struct GraphContext {
 /**
  * @brief RenderContext, stores the wgpu device and command encoder.
  */
-export struct RenderContext {
+EPIX_EXPORT struct RenderContext {
    private:
     wgpu::Device m_device;
     std::optional<wgpu::CommandEncoder> m_command_encoder;

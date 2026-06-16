@@ -1,26 +1,33 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <tuple>
 #endif
 
-export module epix.render:image;
 
-import :assets;
+#include <epix/render/assets.hpp>
 
-import epix.image;
-import epix.assets;
-import webgpu;
+#ifndef EPIX_CXX_MODULE
+#include <epix/image.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
+#endif
 
 namespace epix::render {
 /** @brief Resource holding the default sampler used for image textures. */
-export struct DefaultImageSampler {
+EPIX_EXPORT struct DefaultImageSampler {
     /** @brief The default GPU sampler. */
     wgpu::Sampler sampler;
 };
 /** @brief GPU-side representation of an image: texture, view, and
  * sampler. */
-export struct GPUImage {
+EPIX_EXPORT struct GPUImage {
     /** @brief The GPU texture backing this image. */
     wgpu::Texture texture;
     /** @brief A texture view for binding this image in shaders. */

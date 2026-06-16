@@ -1,16 +1,9 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <ranges>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.render;
+#include <epix/render.hpp>
 
-import :graph;
+#include <epix/render/graph.hpp>
 
 namespace epix::render::graph {
 

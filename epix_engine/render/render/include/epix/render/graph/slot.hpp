@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -12,20 +15,24 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:graph.slot;
 
-import epix.assets;
-import epix.core;
-import epix.utils;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
 #endif
 using namespace epix::core;
 
 namespace epix::render::graph {
 /** @brief Type of data that can flow through a render graph slot. */
-export enum class SlotType {
+EPIX_EXPORT enum class SlotType {
     Buffer,  /**< @brief A GPU buffer. */
     Texture, /**< @brief A texture view. */
     Sampler, /**< @brief A texture sampler. */
@@ -34,9 +41,9 @@ export enum class SlotType {
 /** @brief Get a human-readable name for a SlotType.
  * @param type The slot type.
  * @return String view of the type name. */
-export std::string_view type_name(SlotType type) noexcept;
+EPIX_EXPORT std::string_view type_name(SlotType type) noexcept;
 /** @brief Describes a named slot with its data type. */
-export struct SlotInfo {
+EPIX_EXPORT struct SlotInfo {
     /** @brief Name of the slot. */
     std::string name;
     /** @brief Data type of the slot. */
@@ -46,7 +53,7 @@ export struct SlotInfo {
  *
  * Can contain an Entity, wgpu::Buffer, wgpu::TextureView, or
  * wgpu::Sampler. Clones GPU handles on copy. */
-export struct SlotValue {
+EPIX_EXPORT struct SlotValue {
    private:
     using variant_t = std::variant<Entity, wgpu::Buffer, wgpu::TextureView, wgpu::Sampler>;
     variant_t value;
@@ -124,7 +131,7 @@ export struct SlotValue {
     }
 };
 /** @brief Label identifying a slot by index or name. */
-export struct SlotLabel {
+EPIX_EXPORT struct SlotLabel {
     std::variant<std::uint32_t, std::string> label;
     SlotLabel(std::uint32_t l) noexcept : label(l) {}
     SlotLabel(const std::string& l) : label(l) {}

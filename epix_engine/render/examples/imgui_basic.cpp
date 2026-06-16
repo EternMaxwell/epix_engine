@@ -1,21 +1,16 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-import epix.core;
-import epix.input;
-import epix.window;
-import epix.transform;
-import epix.render;
-import epix.core_graph;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.render.imgui;
-#ifndef EPIX_IMPORT_STD
-#include <array>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/core.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+
 using namespace epix;
 using namespace epix::core;
 
@@ -35,14 +30,14 @@ void hello_system(imgui::Ctx imgui) {
 int main() {
     App app = App::create();
 
-    window::Window primary_window;
+    epix::window::Window primary_window;
     primary_window.title = "ImGui Integration Test";
     primary_window.size  = {1280, 720};
 
     app.add_plugins(TaskPoolPlugin{})
-        .add_plugins(window::WindowPlugin{
+        .add_plugins(epix::window::WindowPlugin{
             .primary_window = primary_window,
-            .exit_condition = window::ExitCondition::OnPrimaryClosed,
+            .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,
         })
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})

@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <expected>
@@ -12,16 +15,12 @@ module;
 #include <utility>
 #endif
 
-export module epix.render:graph;
 
-export import :graph.decl;
-export import :graph.slot;
-export import :graph.node;
-export import :graph.context;
-export import :graph.error;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/slot.hpp>
+#include <epix/render/graph/node.hpp>
+#include <epix/render/graph/context.hpp>
+#include <epix/render/graph/error.hpp>
 namespace epix::render::graph {
 /** @brief Directed acyclic graph of render nodes.
  *
@@ -29,7 +28,7 @@ namespace epix::render::graph {
  * (data flow). Sub-graphs can be added and invoked by nodes during
  * execution.
  */
-export struct RenderGraph {
+EPIX_EXPORT struct RenderGraph {
     std::unordered_map<NodeLabel, NodeState> nodes;
     std::unordered_map<GraphLabel, RenderGraph> sub_graphs;
 
@@ -141,7 +140,7 @@ struct RenderGraphRunner {
 };
 }  // namespace epix::render::graph
 
-export namespace epix::render {
+EPIX_EXPORT namespace epix::render {
 using graph::GraphContext;
 using graph::RenderContext;
 using graph::RenderGraph;

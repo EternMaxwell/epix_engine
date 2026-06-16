@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstdint>
 #include <exception>
@@ -16,14 +19,14 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:assets;
 
-import epix.assets;
-import epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
 #endif
-import :extract;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#include <epix/render/extract.hpp>
 
 using namespace epix::core;
 using namespace epix::assets;
@@ -36,18 +39,18 @@ namespace epix::render {
  * `process()`, and `usage()` to make type T extractable and processable
  * as a GPU-side render asset.
  * @tparam T The source asset type. */
-export template <typename T>
+EPIX_EXPORT template <typename T>
 struct RenderAsset;
 
 /** @brief Bit flags controlling where a render asset is used. */
-export enum RenderAssetUsageBits : std::uint8_t {
+EPIX_EXPORT enum RenderAssetUsageBits : std::uint8_t {
     /** @brief Asset is used in the main world (e.g. CPU access). */
     MainWorld = 1 << 0,
     /** @brief Asset is used in the render world (e.g. GPU access). */
     RenderWorld = 1 << 1,
 };
 /** @brief Combined usage flags for a render asset. */
-export using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
+EPIX_EXPORT using RenderAssetUsage = std::underlying_type_t<RenderAssetUsageBits>;
 
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
@@ -66,7 +69,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
  * ID.
  * @tparam T The source asset type (must have a RenderAsset<T>
  * specialization). */
-export template <RenderAssetImpl T>
+EPIX_EXPORT template <RenderAssetImpl T>
 struct RenderAssets {
     using Type = typename RenderAsset<T>::ProcessedAsset;
 
@@ -222,7 +225,7 @@ void process_render_assets(typename RenderAsset<T>::Param param,
 }
 
 /** @brief System set labels for the asset extract/process pipeline. */
-export enum class ExtractAssetSet {
+EPIX_EXPORT enum class ExtractAssetSet {
     /** @brief Phase that extracts changed assets from the main world. */
     Extract,
     /** @brief Phase that processes extracted assets into GPU resources. */
@@ -233,7 +236,7 @@ export enum class ExtractAssetSet {
  * for type T.
  * @tparam T The source asset type (must have a RenderAsset<T>
  * specialization). */
-export template <RenderAssetImpl T>
+EPIX_EXPORT template <RenderAssetImpl T>
 struct ExtractAssetPlugin {
     void attach(App& app) {
         if (auto render_app = app.get_sub_app_mut(Render)) {

@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <atomic>
 #include <concepts>
@@ -20,19 +22,21 @@ module;
         std::uint64_t id{0};                                                                            \
     };
 
-export module epix.render:pipeline;
 
-import epix.shader;
-import epix.assets;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/shader.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
 #endif
 namespace epix::render {
 make_atomic_id(RenderPipelineId);
 make_atomic_id(ComputePipelineId);
 /** @brief A created render pipeline with a unique auto-incremented ID. */
-export struct RenderPipeline {
+EPIX_EXPORT struct RenderPipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
     RenderPipelineId id() const noexcept { return _id; }
@@ -45,7 +49,7 @@ export struct RenderPipeline {
     wgpu::RenderPipeline _pipeline;
 };
 /** @brief A created compute pipeline with a unique auto-incremented ID. */
-export struct ComputePipeline {
+EPIX_EXPORT struct ComputePipeline {
     friend struct PipelineServer;  // Only PipelineServer can create pipelines
    public:
     ComputePipelineId id() const noexcept { return _id; }
@@ -61,7 +65,7 @@ export struct ComputePipeline {
 
 /** @brief Vertex stage configuration: shader, entry point, and vertex
  * buffer layouts. */
-export struct VertexState {
+EPIX_EXPORT struct VertexState {
     /** @brief Handle to the vertex shader. */
     assets::Handle<shader::Shader> shader;
     /** @brief Optional entry-point function name (defaults to "vs_main"). */
@@ -95,7 +99,7 @@ export struct VertexState {
 };
 /** @brief Fragment stage configuration: shader, entry point, and color
  * targets. */
-export struct FragmentState {
+EPIX_EXPORT struct FragmentState {
     assets::Handle<shader::Shader> shader;
     std::optional<std::string> entry_point;
     std::vector<wgpu::ColorTargetState> targets;
@@ -118,7 +122,7 @@ export struct FragmentState {
 /** @brief Full descriptor for creating a render pipeline, including
  * layout, vertex/fragment stages, primitive state, depth-stencil, and
  * multisampling. Uses a builder pattern with `set_*` methods. */
-export struct RenderPipelineDescriptor {
+EPIX_EXPORT struct RenderPipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
     VertexState vertex;
@@ -164,7 +168,7 @@ export struct RenderPipelineDescriptor {
 };
 /** @brief Full descriptor for creating a compute pipeline, including
  * layout, shader, and entry point. Uses a builder pattern. */
-export struct ComputePipelineDescriptor {
+EPIX_EXPORT struct ComputePipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
     assets::Handle<shader::Shader> shader;

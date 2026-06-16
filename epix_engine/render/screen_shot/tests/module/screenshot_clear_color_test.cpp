@@ -4,6 +4,8 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include <ranges>
+
 import epix.core;
 import epix.render;
 import epix.render.screenshot;

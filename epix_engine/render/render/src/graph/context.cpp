@@ -1,10 +1,9 @@
-module;
 
 #include <spdlog/spdlog.h>
 
-module epix.render;
+#include <epix/render.hpp>
 
-import :graph;
+#include <epix/render/graph.hpp>
 
 using namespace epix::render::graph;
 

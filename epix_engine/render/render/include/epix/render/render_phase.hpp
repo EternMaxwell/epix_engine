@@ -1,6 +1,10 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
@@ -24,25 +28,28 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-#include <spdlog/spdlog.h>
 
-export module epix.render:render_phase;
-
-import epix.core;
-import epix.meta;
-import epix.utils;
-import epix.traits;
-#ifdef EPIX_IMPORT_STD
-import std;
 #endif
-import :graph;
-import :pipeline;
-import :pipeline_server;
+
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/meta.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/traits.hpp>
+#endif
+#include <epix/render/graph.hpp>
+#include <epix/render/pipeline.hpp>
+#include <epix/render/pipeline_server.hpp>
 
 namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
-export struct DrawFunctionId : core::int_base<uint32_t> {
+EPIX_EXPORT struct DrawFunctionId : core::int_base<uint32_t> {
     using core::int_base<uint32_t>::int_base;
     auto operator<=>(const DrawFunctionId&) const noexcept = default;
     bool operator==(const DrawFunctionId&) const noexcept  = default;
@@ -57,7 +64,7 @@ export struct DrawFunctionId : core::int_base<uint32_t> {
  * This allows different render subsystems to attach custom batch keys to Opaque2D items.
  * Move-only (backed by unique_ptr).
  */
-export struct OpaqueSortKey {
+EPIX_EXPORT struct OpaqueSortKey {
    private:
     struct Concept {
         virtual std::strong_ordering compare(const Concept& other) const = 0;
@@ -92,8 +99,10 @@ export struct OpaqueSortKey {
         if (!other.impl) return std::strong_ordering::greater;
 
         // typeid on the polymorphic object gives the concrete Model<T> type — no extra virtual needed
-        const std::type_info& ta = typeid(*impl);
-        const std::type_info& tb = typeid(*other.impl);
+        Concept& a               = *impl;
+        Concept& b               = *other.impl;
+        const std::type_info& ta = typeid(a);
+        const std::type_info& tb = typeid(b);
         if (ta != tb) {
             return ta.before(tb) ? std::strong_ordering::less : std::strong_ordering::greater;
         }
@@ -104,7 +113,7 @@ export struct OpaqueSortKey {
 
 /** @brief Concept for a render phase item that provides entity, sort key,
  * and draw function identifiers. */
-export template <typename T>
+EPIX_EXPORT template <typename T>
 concept PhaseItem = requires(const T item) {
     // the entity associated with this item
     { item.entity() } -> std::same_as<Entity>;
@@ -116,7 +125,7 @@ concept PhaseItem = requires(const T item) {
 
 /** @brief Concept extending PhaseItem with batch size support for
  * instanced draws. */
-export template <typename P>
+EPIX_EXPORT template <typename P>
 concept BatchedPhaseItem = PhaseItem<P> && requires(const P item) {
     // batch size/count for this item
     { item.batch_size() } -> std::convertible_to<size_t>;
@@ -124,7 +133,7 @@ concept BatchedPhaseItem = PhaseItem<P> && requires(const P item) {
 
 /** @brief Concept extending PhaseItem with a cached pipeline ID for
  * pipeline state management. */
-export template <typename P>
+EPIX_EXPORT template <typename P>
 concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
     // the pipeline cache key for this item
     { item.pipeline() } -> std::convertible_to<CachedPipelineId>;
@@ -132,7 +141,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 
 /** @brief Error returned by draw functions, with type indicating whether
  * to skip or report failure. */
-export struct DrawError {
+EPIX_EXPORT struct DrawError {
     enum class ErrorType {
         Skip,
         RenderCommandFailure,
@@ -159,7 +168,7 @@ export struct DrawError {
     }
 };
 
-std::string_view to_str(DrawError error) noexcept {
+inline std::string_view to_str(DrawError error) noexcept {
     switch (error.type) {
         case DrawError::ErrorType::Skip:
             return "Skipped";
@@ -180,7 +189,7 @@ std::string_view to_str(DrawError error) noexcept {
  * items.
  * @tparam FuncT The draw function type.
  * @tparam P The phase item type. */
-export template <typename FuncT, typename P>
+EPIX_EXPORT template <typename FuncT, typename P>
 concept Draw =
     PhaseItem<P> &&
     requires(FuncT func, const World& world, const wgpu::RenderPassEncoder& ctx, Entity view, const P& item) {
@@ -191,7 +200,7 @@ concept Draw =
 /** @brief Abstract base class for type-erased draw functions for a
  * specific phase item type.
  * @tparam P The phase item type. */
-export template <PhaseItem P>
+EPIX_EXPORT template <PhaseItem P>
 struct DrawFunction {
     virtual void prepare(const World& world) {}
     virtual std::expected<void, DrawError> draw(const World& world,
@@ -222,7 +231,7 @@ struct DrawFunctionImpl : DrawFunction<P> {
 };
 
 /** @brief A draw function that does nothing — useful as a placeholder. */
-export template <PhaseItem P>
+EPIX_EXPORT template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
     std::expected<void, DrawError> draw(const World&,
                                         const wgpu::RenderPassEncoder&,
@@ -288,7 +297,7 @@ struct DrawFunctionsInternal {
  *
  * TODO: change the backend to cpp26 <rcu> after switching to cpp26, for better read performance.
  */
-export template <PhaseItem P>
+EPIX_EXPORT template <PhaseItem P>
 struct DrawFunctions {
     void prepare(const World& world) const {
         auto&& [m_mutex, m_functions] = *m_data;
@@ -330,7 +339,7 @@ struct DrawFunctions {
 /** @brief Component holding sorted phase items and executing their draw
  * functions during rendering.
  * @tparam T The phase item type. */
-export template <PhaseItem T>
+EPIX_EXPORT template <PhaseItem T>
 struct RenderPhase {
    public:
     RenderPhase()                              = default;
@@ -404,7 +413,7 @@ struct RenderPhase {
 };
 /** @brief Error returned by individual render commands within a draw
  * function chain. */
-export struct RenderCommandError {
+EPIX_EXPORT struct RenderCommandError {
     enum class Type {
         Skip,
         Failure,
@@ -419,7 +428,7 @@ using render_command_traits = function_traits<decltype(&R<P>::render)>;
  * within a draw function sequence.
  * @tparam R The command template (parameterized on PhaseItem).
  * @tparam P The phase item type. */
-export template <template <typename> typename R, typename P>
+EPIX_EXPORT template <template <typename> typename R, typename P>
 concept RenderCommand = requires {
     requires PhaseItem<P>;
     requires std::is_member_function_pointer_v<decltype(&R<P>::render)>;
@@ -505,7 +514,7 @@ struct RenderCommandState {
 /** @brief Render command that sets the cached render pipeline on the
  * encoder for a CachedRenderPipelinePhaseItem.
  * @tparam P The phase item type. */
-export template <CachedRenderPipelinePhaseItem P>
+EPIX_EXPORT template <CachedRenderPipelinePhaseItem P>
 struct SetItemPipeline {
     void prepare(const World&) noexcept {}
 
@@ -600,7 +609,7 @@ struct RenderCommandSequence {
  * @tparam P The phase item type.
  * @tparam R Render command templates to chain.
  * @return The DrawFunctionId of the registered sequence. */
-export template <PhaseItem P, template <typename> typename... R>
+EPIX_EXPORT template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 DrawFunctionId app_add_render_commands(core::App& app) {
     auto& world          = app.world_mut();
@@ -610,7 +619,7 @@ DrawFunctionId app_add_render_commands(core::App& app) {
 
 /** @brief System that sorts all RenderPhase<P> components by their sort
  * keys. */
-export template <PhaseItem P>
+EPIX_EXPORT template <PhaseItem P>
 void sort_phase_items(Query<Item<RenderPhase<P>&>> phases) {
     for (auto&& [phase] : phases.iter()) {
         phase.sort();

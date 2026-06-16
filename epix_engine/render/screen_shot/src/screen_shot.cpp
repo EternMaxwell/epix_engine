@@ -1,28 +1,14 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
-#include <chrono>
-#include <cstdint>
-#include <cstring>
-#include <filesystem>
-#include <format>
-#include <optional>
-#include <variant>
-#include <vector>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.render.screenshot;
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/image.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/screenshot.hpp>
+#include <epix/tasks.hpp>
+#include <webgpu/webgpu.hpp>
 
-import epix.core;
-import epix.render;
-import epix.image;
-import epix.assets;
-import epix.tasks;
-import epix.input;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 
 using namespace epix::render::screenshot;
 using namespace epix::core;

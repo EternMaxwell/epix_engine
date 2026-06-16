@@ -38,7 +38,8 @@ set(URL_OS)
 set(URL_COMPILER)
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set(URL_OS "windows")
-    if (MSVC)
+    # MSVC ABI can come from MSVC itself, clang-cl, or clang targeting x86_64-windows-msvc
+    if (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
         set(URL_COMPILER "msvc")
     else()
         set(URL_COMPILER "gnu")
@@ -112,7 +113,7 @@ target_include_directories(wgpu_native INTERFACE
 # Platform-specific settings
 if (USE_SHARED_LIB)
     if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
-        if (MSVC)
+        if (MSVC OR CMAKE_CXX_SIMULATE_ID STREQUAL "MSVC" OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
             set(STATIC_LIB_EXT "lib")
             set(STATIC_LIB_PREFIX "")
         else()

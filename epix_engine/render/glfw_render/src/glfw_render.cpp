@@ -1,9 +1,4 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <stdexcept>
-#include <utility>
-#endif
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX 2
 #define WGPU_TARGET_WINDOWS 3
@@ -23,8 +18,15 @@ module;
 #include <Foundation/Foundation.h>
 #include <QuartzCore/CAMetalLayer.h>
 #endif
-
 #include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
+#include <webgpu/webgpu.h>
+
+#include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
+#include <epix/window.hpp>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -40,20 +42,9 @@ module;
 #endif
 
 #if !defined(__EMSCRIPTEN__)
+#define NOMINMAX
 #include <GLFW/glfw3native.h>
 #endif
-#include <spdlog/spdlog.h>
-#include <webgpu/webgpu.h>
-
-module epix.glfw.render;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.render;
-import epix.glfw.core;
-import epix.window;
-import webgpu;
 
 WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 #if WGPU_TARGET == WGPU_TARGET_MACOS

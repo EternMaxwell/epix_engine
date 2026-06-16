@@ -1,20 +1,18 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#include <epix/window.hpp>
 #include <functional>
 #include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <webgpu/webgpu.hpp>
 #endif
 
-export module epix.render:window;
-
-import epix.core;
-import epix.window;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix::core;
 using namespace epix::window;
 
@@ -22,10 +20,10 @@ namespace epix::render::window {
 /**
  * @brief A component for window entity, to tell how its surface should be created, cause the backend is unknown.
  */
-export using SurfaceCreation = std::function<wgpu::Surface(const wgpu::Instance&)>;
+EPIX_EXPORT using SurfaceCreation = std::function<wgpu::Surface(const wgpu::Instance&)>;
 /** @brief Snapshot of a window's rendering parameters extracted into the
  * render world each frame. */
-export struct ExtractedWindow {
+EPIX_EXPORT struct ExtractedWindow {
     /** @brief Entity ID of the source window. */
     Entity entity;
     /** @brief Functor to create a surface from a wgpu::Instance. */
@@ -53,7 +51,7 @@ export struct ExtractedWindow {
 };
 /** @brief Resource collecting all extracted windows for the current
  * frame. */
-export struct ExtractedWindows {
+EPIX_EXPORT struct ExtractedWindows {
     ExtractedWindows()                                   = default;
     ExtractedWindows(const ExtractedWindows&)            = delete;
     ExtractedWindows& operator=(const ExtractedWindows&) = delete;
@@ -90,7 +88,7 @@ struct WindowSurfaces {
 /**
  * @brief System for extracting windows.
  */
-export void extract_windows(
+EPIX_EXPORT void extract_windows(
     ResMut<ExtractedWindows> extracted_windows,
     Extract<Query<Item<Entity, const Window&, const SurfaceCreation&, Has<PrimaryWindow>>>> windows,
     ResMut<WindowSurfaces> window_surfaces,
@@ -98,10 +96,10 @@ export void extract_windows(
 /**
  * @brief System for making swapchain texture and texture view available.
  */
-export void prepare_windows(ResMut<ExtractedWindows> windows,
-                            ResMut<WindowSurfaces> window_surfaces,
-                            Res<wgpu::Device> device,
-                            Res<wgpu::Instance> instance);
+EPIX_EXPORT void prepare_windows(ResMut<ExtractedWindows> windows,
+                                 ResMut<WindowSurfaces> window_surfaces,
+                                 Res<wgpu::Device> device,
+                                 Res<wgpu::Instance> instance);
 void create_surfaces(Res<ExtractedWindows> windows,
                      ResMut<WindowSurfaces> window_surfaces,
                      Res<wgpu::Instance> instance,
@@ -112,7 +110,7 @@ void present_windows(ResMut<WindowSurfaces> window_surfaces, ResMut<ExtractedWin
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */
-export struct WindowRenderPlugin {
+EPIX_EXPORT struct WindowRenderPlugin {
     /** @brief Whether this plugin handles presenting the swapchain
      * (default true). */
     bool handle_present = true;

@@ -1,24 +1,27 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <format>
 #include <optional>
 #endif
 
-export module epix.render:extract;
 
-import epix.core;
-import epix.meta;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
-import :schedule;
+#ifndef EPIX_CXX_MODULE
+#include <epix/meta.hpp>
+#endif
+#include <epix/render/schedule.hpp>
 
 namespace epix::render {
 using namespace epix::core;
 /** @brief Schedule sentinel for the extract phase that copies data from
  * the main world into the render world. */
-export struct ExtractScheduleT {
+EPIX_EXPORT inline struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
 void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<T>>> resources) {
@@ -32,7 +35,7 @@ void extract_fn(Commands cmd, ParamSet<std::optional<ResMut<T>>, Extract<ResMut<
 /** @brief Plugin that extracts a copyable resource from the main world
  * into the render world each frame.
  * @tparam T A copyable resource type. */
-export template <std::copyable T>
+EPIX_EXPORT template <std::copyable T>
 struct ExtractResourcePlugin {
     void attach(App& app) {
         app.sub_app_mut(Render).add_systems(
@@ -42,5 +45,5 @@ struct ExtractResourcePlugin {
 };
 /** @brief Marker component indicating an entity has a custom rendering
  * process and should be skipped by standard render pipelines. */
-export struct CustomRendered {};
+EPIX_EXPORT struct CustomRendered {};
 }  // namespace epix::render

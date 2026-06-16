@@ -1,6 +1,8 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -15,22 +17,28 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:view;
+#ifndef EPIX_CXX_MODULE
+#include <epix/transform.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <epix/utils.hpp>
+#endif
+#ifndef EPIX_CXX_MODULE
+#include <webgpu/webgpu.hpp>
+#endif
 
-import epix.transform;
-import epix.core;
-import epix.utils;
-import webgpu;
-
-import :window;
-import :graph;
-import :render_phase;
+#include <epix/render/graph.hpp>
+#include <epix/render/render_phase.hpp>
+#include <epix/render/window.hpp>
 
 using namespace epix::core;
 
 namespace epix::render::camera {
 /** @brief Defines a sub-region of the render target for camera output. */
-export struct Viewport {
+EPIX_EXPORT struct Viewport {
     /** @brief Top-left position of the viewport in pixels. */
     glm::uvec2 pos;
     /** @brief Size of the viewport in pixels. */
@@ -42,7 +50,7 @@ export struct Viewport {
  *
  * When `primary` is true, the primary window is used regardless of
  * `window_entity`. */
-export struct WindowRef {
+EPIX_EXPORT struct WindowRef {
     /** @brief Whether to target the primary window. */
     bool primary = true;
     /** @brief Window entity to target when primary is false. */
@@ -50,7 +58,7 @@ export struct WindowRef {
 };
 /** @brief A render target that is either a GPU texture or a window
  * reference. */
-export struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
+EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
     static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
@@ -65,13 +73,13 @@ struct ComputedCameraValues {
     std::optional<glm::uvec2> old_viewport_size;
 };
 /** @brief RGBA clear color for render targets. */
-export struct ClearColor : public glm::vec4 {
+EPIX_EXPORT struct ClearColor : public glm::vec4 {
     using glm::vec4::vec4;
     ClearColor(const glm::vec4& v) noexcept : glm::vec4(v) {}
     glm::vec4 to_vec4() const noexcept { return glm::vec4(*this); }
 };
 /** @brief Controls how the render target is cleared before rendering. */
-export struct ClearColorConfig {
+EPIX_EXPORT struct ClearColorConfig {
     enum class Type {
         None,    // don't clear
         Global,  // use world's clear color resource
@@ -99,7 +107,7 @@ export struct ClearColorConfig {
  *
  * Default construction yields layer 0 (`bits = {0}`, `inverted = false`).
  */
-export struct RenderLayer {
+EPIX_EXPORT struct RenderLayer {
     utils::bit_vector bits;
     bool inverted = false;
 
@@ -178,7 +186,7 @@ export struct RenderLayer {
  * The computed projection and target size are updated automatically by
  * camera systems.
  */
-export struct Camera {
+EPIX_EXPORT struct Camera {
     /** @brief The camera's viewport within the render target. */
     std::optional<Viewport> viewport;
     /** @brief Cameras with higher order are rendered on top of cameras with
@@ -213,7 +221,7 @@ export struct Camera {
  * Constructed via static factory methods (e.g. `fixed()`, `window_size()`,
  * `auto_min()`).
  */
-export struct ScalingMode {
+EPIX_EXPORT struct ScalingMode {
    private:
     enum class Mode {
         Fixed,
@@ -334,7 +342,7 @@ export struct ScalingMode {
 };
 /** @brief Orthographic camera projection with configurable scaling, near/far
  * planes, and viewport origin. */
-export struct OrthographicProjection {
+EPIX_EXPORT struct OrthographicProjection {
     float near_plane          = -1000.0f;  // Near clipping plane
     float far_plane           = 1000.0f;   // Far clipping plane
     ScalingMode scaling_mode  = ScalingMode::window_size(1.0f);
@@ -359,7 +367,7 @@ export struct OrthographicProjection {
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute the orthographic projection matrix. */
     glm::mat4 get_projection_matrix() const {
-        return glm::gtc::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
+        return glm::GLM_GTC_NS orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
     }
     /** @brief Compute the 8 corners of the view frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
@@ -371,7 +379,7 @@ export struct OrthographicProjection {
 };
 /** @brief Perspective camera projection with field of view, aspect ratio,
  * and near/far planes. */
-export struct PerspectiveProjection {
+EPIX_EXPORT struct PerspectiveProjection {
     float fov          = glm::radians(45.0f);  // Field of view in radians
     float aspect_ratio = 1.0f;                 // Aspect ratio (width / height)
     float near_plane   = 0.1f;                 // Near clipping plane
@@ -389,7 +397,7 @@ export struct PerspectiveProjection {
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute the perspective projection matrix. */
     glm::mat4 get_projection_matrix() const {
-        return glm::gtc::perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
+        return glm::GLM_GTC_NS perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
     }
     /** @brief Compute the 8 corners of the perspective frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
@@ -417,7 +425,7 @@ concept CameraProjection = requires(T t) {
 };
 
 /** @brief Variant projection type wrapping orthographic or perspective. */
-export struct Projection {
+EPIX_EXPORT struct Projection {
     std::variant<OrthographicProjection, PerspectiveProjection> projection;
 
     Projection() : projection(OrthographicProjection{}) {}
@@ -499,7 +507,7 @@ static_assert(CameraProjection<Projection>);
 // --- Camera Systems --- //
 
 /** @brief System labels for camera update systems. */
-export enum class CameraUpdateSystems {
+EPIX_EXPORT enum class CameraUpdateSystems {
     CameraUpdateSystem = 0,
 };
 
@@ -588,7 +596,7 @@ void camera_system(Query<Item<Mut<Camera>, Mut<ProjType>>> query,               
 /** @brief Plugin that registers the camera update system for a specific
  * projection type.
  * @tparam ProjType Camera projection type satisfying CameraProjection. */
-export template <CameraProjection ProjType>
+EPIX_EXPORT template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
     void attach(App& app) {
         app.add_systems(PostUpdate, into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
@@ -596,11 +604,11 @@ struct CameraProjectionPlugin {
 };
 
 /** @brief Label identifying the render graph assigned to a camera. */
-export struct CameraRenderGraph : public graph::GraphLabel {
+EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
 };
 
-export struct ExtractedCamera {
+EPIX_EXPORT struct ExtractedCamera {
     // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
     // point to the actual primary window entity.
     RenderTarget render_target;
@@ -617,33 +625,33 @@ export struct ExtractedCamera {
 namespace epix::render::view {
 /** @brief Extracted view data: projection, transform, and viewport
  * dimensions for a single camera. */
-export struct ExtractedView {
+EPIX_EXPORT struct ExtractedView {
     glm::mat4 projection;
     transform::GlobalTransform transform;
     glm::uvec2 viewport_size;
     glm::uvec2 viewport_origin;
 };
 /** @brief Component listing entities visible to a camera view. */
-export struct VisibleEntities {
+EPIX_EXPORT struct VisibleEntities {
     /** @brief Visible entity IDs. */
     std::vector<Entity> entities;
 };
 /** @brief Component holding the render target texture view and format for
  * a camera view. */
-export struct ViewTarget {
+EPIX_EXPORT struct ViewTarget {
     /** @brief Texture view for the render target. */
     wgpu::TextureView texture_view;
     /** @brief Format of the render target texture. */
     wgpu::TextureFormat format;
 };
 /** @brief Component holding the depth texture and view for a camera. */
-export struct ViewDepth {
+EPIX_EXPORT struct ViewDepth {
     /** @brief The depth texture. */
     wgpu::Texture texture;
     /** @brief Depth texture view for depth testing. */
     wgpu::TextureView depth_view;
 };
-export struct UVec2Hash {
+EPIX_EXPORT struct UVec2Hash {
     std::size_t operator()(const glm::uvec2& v) const noexcept {
         std::size_t h = (static_cast<std::size_t>(v.x) << 32) | v.y;
         h ^= h >> 33;
@@ -656,14 +664,14 @@ export struct UVec2Hash {
 };
 /** @brief Cache of depth textures keyed by viewport size to avoid
  * re-creation each frame. */
-export struct ViewDepthCache {
+EPIX_EXPORT struct ViewDepthCache {
     /** @brief Map from viewport dimensions to cached depth textures. */
     std::unordered_map<glm::uvec2, wgpu::Texture, UVec2Hash> cache;
 };
 
 /** @brief Plugin that registers view extraction, target preparation, and
  * depth buffer creation systems. */
-export struct ViewPlugin {
+EPIX_EXPORT struct ViewPlugin {
     void attach(App& app);
 };
 
@@ -677,7 +685,7 @@ void create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
                        Commands cmd);
 
 /** @brief Uniform buffer data for a view: projection and view matrices. */
-export struct ViewUniform {
+EPIX_EXPORT struct ViewUniform {
     /** @brief Projection matrix. */
     glm::mat4 projection;
     /** @brief View (inverse camera transform) matrix. */
@@ -687,13 +695,13 @@ struct UniformBuffer {
     wgpu::Buffer buffer;
 };
 /** @brief Component holding the bind group for the view uniform buffer. */
-export struct ViewBindGroup {
+EPIX_EXPORT struct ViewBindGroup {
     /** @brief Bind group exposing the ViewUniform to shaders. */
     wgpu::BindGroup bind_group;
 };
 /** @brief Resource holding the bind group layout for view uniform
  * binding. */
-export struct ViewUniformBindingLayout {
+EPIX_EXPORT struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
     ViewUniformBindingLayout(World& world)
         : layout(world.resource<wgpu::Device>().createBindGroupLayout(
@@ -710,7 +718,7 @@ export struct ViewUniformBindingLayout {
 /** @brief Render command template that binds the view uniform buffer at
  * the specified bind group slot.
  * @tparam Slot Bind group index. */
-export template <std::size_t Slot>
+EPIX_EXPORT template <std::size_t Slot>
 struct BindViewUniform {
     template <render::phase::PhaseItem P>
     struct Command {
@@ -729,7 +737,7 @@ struct BindViewUniform {
 }  // namespace epix::render::view
 namespace epix::render::camera {
 /** @brief System that extracts camera data into the render world. */
-export void extract_cameras(
+EPIX_EXPORT void extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
     Extract<Query<Item<const Camera&,
@@ -740,7 +748,7 @@ export void extract_cameras(
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window);
 
 /** @brief Label for the camera driver node in the render graph. */
-export inline constexpr struct CameraDriverNodeLabelT {
+EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
 struct CameraPlugin {
@@ -749,7 +757,7 @@ struct CameraPlugin {
 /** @brief Bundle for spawning a camera entity with all required
  * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).
  */
-export struct CameraBundle {
+EPIX_EXPORT struct CameraBundle {
     Camera camera;
     Projection projection;
     CameraRenderGraph render_graph;

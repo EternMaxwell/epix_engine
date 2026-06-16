@@ -1,14 +1,9 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <optional>
-#include <ranges>
-#endif
 #include <spdlog/spdlog.h>
 
-module epix.render;
+#include <epix/render.hpp>
 
-import :window;
+#include <epix/render/window.hpp>
 
 using namespace epix::render::window;
 using namespace epix::window;

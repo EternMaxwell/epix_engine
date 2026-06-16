@@ -1,9 +1,15 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
 #include <chrono>
 #include <concepts>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/shader.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <future>
@@ -17,22 +23,15 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:pipeline_server;
-
-import epix.core;
-import epix.utils;
-import epix.shader;
-import BS.thread_pool;
-
-import :pipeline;
+#include <epix/render/pipeline.hpp>
 
 using namespace epix::core;
 
 namespace epix::render {
 /** @brief Key type used to cache pipeline layouts by their bind group
  * layout IDs. */
-export using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
-export using CachedPipelineId = shader::CachedPipelineId;
+EPIX_EXPORT using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
+EPIX_EXPORT using CachedPipelineId = shader::CachedPipelineId;
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const noexcept {
         std::size_t hash = 0;
@@ -45,7 +44,7 @@ struct LayoutKeyHash {
 /** @brief Cache of pipeline layouts to avoid redundant creation.
  *
  * Deduplicates layouts by their constituent bind group layout IDs. */
-export struct LayoutCache {
+EPIX_EXPORT struct LayoutCache {
    public:
     LayoutCache()                              = default;
     LayoutCache(const LayoutCache&)            = delete;
@@ -77,26 +76,26 @@ std::expected<wgpu::ShaderModule, shader::ShaderCacheError> load_module(const wg
 
 /** @brief Variant describing either a render or compute pipeline
  * descriptor. */
-export using PipelineDescriptor = std::variant<RenderPipelineDescriptor, ComputePipelineDescriptor>;
+EPIX_EXPORT using PipelineDescriptor = std::variant<RenderPipelineDescriptor, ComputePipelineDescriptor>;
 /** @brief Variant holding a created render or compute pipeline. */
-export using Pipeline = std::variant<RenderPipeline, ComputePipeline>;
+EPIX_EXPORT using Pipeline = std::variant<RenderPipeline, ComputePipeline>;
 /** @brief Error code for pipeline creation failure. */
-export enum PipelineError {
+EPIX_EXPORT enum PipelineError {
     CreationFailure,
 };
 /** @brief Variant of errors that can occur during pipeline server
  * operations. */
-export using PipelineServerError = std::variant<PipelineError, shader::ShaderCacheError>;
+EPIX_EXPORT using PipelineServerError = std::variant<PipelineError, shader::ShaderCacheError>;
 /** @brief Returned when a queried pipeline is still queued or being
  * compiled. */
-export struct GetPipelineNotReady {};
+EPIX_EXPORT struct GetPipelineNotReady {};
 /** @brief Returned when a pipeline ID is out of range. */
-export struct GetPipelineInvalidId {};
+EPIX_EXPORT struct GetPipelineInvalidId {};
 /** @brief Error variant returned by pipeline retrieval methods. */
-export using GetPipelineError = std::variant<GetPipelineNotReady, GetPipelineInvalidId, PipelineServerError>;
-export struct PipelineStateQueued {};
-export using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
-export struct PipelineStateRecoverableShaderError {
+EPIX_EXPORT using GetPipelineError = std::variant<GetPipelineNotReady, GetPipelineInvalidId, PipelineServerError>;
+EPIX_EXPORT struct PipelineStateQueued {};
+EPIX_EXPORT using PipelineStateCreating = std::future<std::expected<Pipeline, PipelineServerError>>;
+EPIX_EXPORT struct PipelineStateRecoverableShaderError {
     shader::ShaderCacheError error;
     std::string signature;
     std::chrono::steady_clock::time_point first_seen;
@@ -104,11 +103,11 @@ export struct PipelineStateRecoverableShaderError {
     bool logged              = false;
 };
 /** @brief Current state of a cached pipeline in its lifecycle. */
-export using CachedPipelineState = std::variant<PipelineStateQueued,
-                                                PipelineStateCreating,
-                                                PipelineStateRecoverableShaderError,
-                                                Pipeline,
-                                                PipelineServerError>;
+EPIX_EXPORT using CachedPipelineState = std::variant<PipelineStateQueued,
+                                                     PipelineStateCreating,
+                                                     PipelineStateRecoverableShaderError,
+                                                     Pipeline,
+                                                     PipelineServerError>;
 struct CachedPipeline {
     PipelineDescriptor descriptor;
     CachedPipelineState state;
@@ -144,7 +143,7 @@ struct PipelineServerData {
  * Mutation methods are private and driven by RenderPlugin systems in
  * ExtractSchedule.
  */
-export struct PipelineServer {
+EPIX_EXPORT struct PipelineServer {
    public:
     PipelineServer(const PipelineServer&)            = default;
     PipelineServer& operator=(const PipelineServer&) = default;

@@ -1,34 +1,19 @@
-module;
 
-#ifndef EPIX_IMPORT_STD
-#include <array>
-#include <cstddef>
-#include <cstring>
-#include <memory>
-#include <optional>
-#include <unordered_map>
-#include <unordered_set>
-#include <utility>
-#include <vector>
-#endif
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_wgpu.h>
 #include <spdlog/spdlog.h>
 
-module epix.render.imgui;
+#include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/window.hpp>
+#include <webgpu/webgpu.hpp>
 
-import epix.core;
-import epix.input;
-import epix.render;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import webgpu;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
 using namespace epix;
 using namespace epix::core;
 

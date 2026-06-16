@@ -1,21 +1,18 @@
-module;
+#pragma once
 
-#ifndef EPIX_IMPORT_STD
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
 #include <optional>
 #include <span>
 #include <utility>
+#include <webgpu/webgpu.hpp>
 #endif
-export module epix.core_graph:core2d;
-
-import epix.core;
-import epix.render;
-import epix.transform;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import webgpu;
 
 using namespace epix::core;
 using namespace epix::render;
@@ -23,7 +20,7 @@ using namespace epix::render;
 namespace epix::core_graph::core_2d {
 
 /** @brief Node labels for the 2D render graph passes. */
-export enum class Core2dNodes {
+EPIX_EXPORT enum class Core2dNodes {
     /** @brief Node that begins the main render pass. */
     StartMainPass,
     /** @brief Node for rendering transparent 2D items. */
@@ -42,7 +39,7 @@ export enum class Core2dNodes {
  * Sorted by inverse depth for back-to-front rendering. Supports instanced
  * batching.
  */
-export struct Transparent2D {
+EPIX_EXPORT struct Transparent2D {
     /** @brief Entity this phase item refers to. */
     Entity id;
     /** @brief Depth value for sorting (inverted for back-to-front). */
@@ -68,7 +65,7 @@ static_assert(phase::CachedRenderPipelinePhaseItem<Transparent2D>);
  *
  * Sorted by OpaqueSortKey for front-to-back rendering and batching.
  */
-export struct Opaque2D {
+EPIX_EXPORT struct Opaque2D {
     /** @brief Entity this phase item refers to. */
     Entity id;
     /** @brief Cached render pipeline ID. */
@@ -93,7 +90,7 @@ static_assert(phase::CachedRenderPipelinePhaseItem<Opaque2D>);
  *
  * Sorted by `order` for z-ordering of UI elements.
  */
-export struct UI2DItem {
+EPIX_EXPORT struct UI2DItem {
     /** @brief Entity this phase item refers to. */
     Entity id;
     /** @brief Z-order for UI stacking (higher = on top). */
@@ -150,25 +147,25 @@ struct Node2D : graph::Node {
 };
 
 /** @brief Singleton struct for initializing the core 2D render graph. */
-export inline struct Core2dGraph {
+EPIX_EXPORT inline struct Core2dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
     void add_to(graph::RenderGraph& g);
 } Core2d;
 
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */
-export struct Core2dPlugin {
+EPIX_EXPORT struct Core2dPlugin {
     void attach(App& app);
 };
 
 /** @brief Marker component for 2D camera entities. */
-export struct Camera2D {
+EPIX_EXPORT struct Camera2D {
     static void register_required_components(core::Components& components);
 };
 
 /** @brief Bundle for spawning a complete 2D camera entity configured with
  * the core 2D render graph. */
-export struct Camera2DBundle {
+EPIX_EXPORT struct Camera2DBundle {
     render::camera::Camera camera;
     render::camera::Projection projection;
     render::camera::CameraRenderGraph render_graph = Core2d;

@@ -1,16 +1,17 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <functional>
 #include <type_traits>
 #endif
 
-export module epix.render:graph.decl;
 
-import epix.core;
-#ifdef EPIX_IMPORT_STD
-import std;
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
@@ -29,22 +30,22 @@ using namespace epix::core;
 
 namespace epix::render::graph {
 /** @brief Label type identifying a node within a render graph. */
-export EPIX_MAKE_LABEL(NodeLabel);
+EPIX_EXPORT EPIX_MAKE_LABEL(NodeLabel);
 /** @brief Label type identifying a sub-graph within a render graph. */
-export EPIX_MAKE_LABEL(GraphLabel);
+EPIX_EXPORT EPIX_MAKE_LABEL(GraphLabel);
 /** @brief Base class for render graph nodes. Override to implement custom
  * rendering logic. */
-export struct Node;
-export struct NodeState;
+EPIX_EXPORT struct Node;
+EPIX_EXPORT struct NodeState;
 /** @brief Directed acyclic graph of render nodes that drives the rendering
  * pipeline. */
-export struct RenderGraph;
+EPIX_EXPORT struct RenderGraph;
 /** @brief Context passed to a Node during graph execution, providing input/output slot access and sub-graph
  * invocation. */
-export struct GraphContext;
+EPIX_EXPORT struct GraphContext;
 /** @brief Context providing GPU device access, command encoding, and render
  * pass creation during graph execution. */
-export struct RenderContext;
+EPIX_EXPORT struct RenderContext;
 struct RunSubGraph;
 }  // namespace epix::render::graph
 

@@ -1,5 +1,8 @@
-module;
-#ifndef EPIX_IMPORT_STD
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -9,14 +12,12 @@ module;
 #include <vector>
 #endif
 
-export module epix.render:graph.node;
 
-import :graph.decl;
-import :graph.slot;
-#ifdef EPIX_IMPORT_STD
-import std;
+#include <epix/render/graph/decl.hpp>
+#include <epix/render/graph/slot.hpp>
+#ifndef EPIX_CXX_MODULE
+#include <epix/core.hpp>
 #endif
-import epix.core;
 
 using namespace epix::core;
 
@@ -26,7 +27,7 @@ namespace epix::render::graph {
  * Override `inputs()` / `outputs()` to declare slots, `update()` for
  * per-frame state updates, and `run()` to issue GPU commands.
  */
-export struct Node {
+EPIX_EXPORT struct Node {
     /** @brief Declare the input slots this node accepts. */
     virtual std::vector<SlotInfo> inputs() { return {}; }
     /** @brief Declare the output slots this node produces. */
@@ -90,7 +91,7 @@ struct Edges {
 };
 /** @brief Runtime state tracking a node in the graph, including its slot
  * metadata, edges, and the polymorphic Node instance. */
-export struct NodeState {
+EPIX_EXPORT struct NodeState {
     /** @brief Label identifying this node in the graph. */
     NodeLabel label;
     /** @brief Slot metadata for the node's inputs. */
@@ -144,10 +145,10 @@ export struct NodeState {
 
 struct GraphInputT {};
 /** @brief Singleton label used to identify the graph input node. */
-export GraphInputT GraphInput;
+EPIX_EXPORT inline GraphInputT GraphInput;
 /** @brief Special node that forwards graph-level inputs to its outputs,
  * acting as the entry point for slot data. */
-export struct GraphInputNode : public Node {
+EPIX_EXPORT struct GraphInputNode : public Node {
     std::vector<SlotInfo> m_inputs;
     GraphInputNode() = default;
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
@@ -156,7 +157,7 @@ export struct GraphInputNode : public Node {
     void run(GraphContext& graph, RenderContext&, const World&) override;
 };
 /** @brief A no-op node that does nothing when run. */
-export struct EmptyNode : public Node {
+EPIX_EXPORT struct EmptyNode : public Node {
     void run(GraphContext&, RenderContext&, const World&) override {}
 };
 }  // namespace epix::render::graph
