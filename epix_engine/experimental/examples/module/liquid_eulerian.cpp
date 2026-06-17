@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <print>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string>

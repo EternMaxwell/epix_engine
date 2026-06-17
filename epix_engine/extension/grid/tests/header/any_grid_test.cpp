@@ -1,4 +1,5 @@
 ﻿#include <gtest/gtest.h>
+
 #include <epix/extension/grid.hpp>
 
 #if defined(_MSC_VER)

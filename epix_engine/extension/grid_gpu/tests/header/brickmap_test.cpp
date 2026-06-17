@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
 

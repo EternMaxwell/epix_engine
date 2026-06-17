@@ -1,4 +1,5 @@
 ﻿#include <gtest/gtest.h>
+
 #include <epix/extension/grid.hpp>
 
 using namespace epix::ext::grid;

@@ -1,9 +1,10 @@
 #include <gtest/gtest.h>
-#include <webgpu/webgpu.hpp>
+
 #include <epix/assets.hpp>
-#include <epix/shader.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
+#include <epix/shader.hpp>
+#include <webgpu/webgpu.hpp>
 
 #if defined(_MSC_VER)
 #pragma warning(disable : 4834)

@@ -4,38 +4,34 @@
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-#ifndef EPIX_IMPORT_STD
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/shader.hpp>
+#include <epix/time.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <glm/glm.hpp>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.core;
-import epix.render;
-import epix.core_graph;
-import epix.transform;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
-import epix.assets;
-import epix.shader;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.input;
-import epix.time;
-import epix.render.imgui;
+#include <webgpu/webgpu.hpp>
 
 #if defined(__clang__)
 #pragma clang diagnostic ignored "-Wunused-value"
@@ -867,8 +863,8 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
             float new_pitch = glm::clamp(cur_pitch - float(dy) * sens, -glm::radians(89.0f), glm::radians(89.0f));
 
             // Rebuild: positive pitch = look up → negative rotation around world X
-            auto yaw_q   = glm::gtc::angleAxis(new_yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-            auto pitch_q = glm::gtc::angleAxis(-new_pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+            auto yaw_q   = glm::angleAxis(new_yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            auto pitch_q = glm::angleAxis(-new_pitch, glm::vec3(1.0f, 0.0f, 0.0f));
             tr.rotation  = glm::normalize(yaw_q * pitch_q);
         }
     }

@@ -5,38 +5,34 @@
 
 #include <imgui.h>
 #include <spdlog/spdlog.h>
-#ifndef EPIX_IMPORT_STD
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/extension/grid_gpu.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/input.hpp>
+#include <epix/render.hpp>
+#include <epix/render/imgui.hpp>
+#include <epix/shader.hpp>
+#include <epix/time.hpp>
+#include <epix/transform.hpp>
+#include <epix/window.hpp>
+#include <glm/glm.hpp>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
-#endif
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import glm;
-import webgpu;
-import epix.core;
-import epix.render;
-import epix.core_graph;
-import epix.transform;
-import epix.extension.grid;
-import epix.extension.grid_gpu;
-import epix.assets;
-import epix.shader;
-import epix.window;
-import epix.glfw.core;
-import epix.glfw.render;
-import epix.input;
-import epix.time;
-import epix.render.imgui;
+#include <webgpu/webgpu.hpp>
 
 using namespace epix;
 using namespace epix::core;

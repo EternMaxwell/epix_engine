@@ -31,9 +31,9 @@
 #include <epix/core.hpp>
 #endif
 
-#include <epix/extension/grid/concepts.hpp>
 #include <epix/extension/grid/basic_grid.hpp>
 #include <epix/extension/grid/bit_grid.hpp>
+#include <epix/extension/grid/concepts.hpp>
 #include <epix/extension/grid/grid_view.hpp>
 #include <epix/extension/grid/polygon.hpp>
 

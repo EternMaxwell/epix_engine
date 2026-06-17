@@ -16,8 +16,8 @@
 #ifndef EPIX_CXX_MODULE
 #include <glm/glm.hpp>
 #endif
-#include <epix/extension/grid/concepts.hpp>
 #include <epix/extension/grid/bit_grid.hpp>
+#include <epix/extension/grid/concepts.hpp>
 #include <epix/extension/grid/grid_view.hpp>
 
 namespace epix::ext::grid {

@@ -1,16 +1,15 @@
-﻿#include <array>
+﻿#include <spdlog/spdlog.h>
+
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/fallingsand.hpp>
 #include <future>
 #include <optional>
 #include <ranges>
 #include <variant>
 #include <vector>
-
-#include <spdlog/spdlog.h>
-
-#include <epix/extension/fallingsand.hpp>
 #ifndef EPIX_CXX_MODULE
 #include <webgpu/webgpu.hpp>
 #endif

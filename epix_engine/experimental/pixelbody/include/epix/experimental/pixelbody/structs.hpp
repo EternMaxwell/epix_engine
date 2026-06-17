@@ -1,25 +1,23 @@
-﻿module;
-#ifndef EPIX_IMPORT_STD
-#include <array>
-#include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <unordered_set>
-#include <vector>
-#endif
+﻿#pragma once
 
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
 #include <box2d/box2d.h>
 #include <box2d/id.h>
 #include <box2d/types.h>
 
-export module epix.experimental.pixelbody:structs;
-#ifdef EPIX_IMPORT_STD
-import std;
+#include <array>
+#include <cstddef>
+#include <cstdint>
+#include <epix/core.hpp>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/extension/grid.hpp>
+#include <glm/glm.hpp>
+#include <optional>
+#include <unordered_set>
+#include <vector>
 #endif
-import glm;
-import epix.core;
-import epix.extension.grid;
-import epix.extension.fallingsand;
 
 namespace epix::experimental::pixelbody {
 
@@ -45,7 +43,7 @@ namespace grid = epix::ext::grid;
  * b2 world, and dynamic `PixelBody` children of the same entity push sand
  * cells out of the way during interaction.
  */
-export struct PixelBodyWorld {
+EPIX_EXPORT struct PixelBodyWorld {
     b2WorldId b2_world      = b2_nullWorldId;
     float cell_size         = 4.0f;
     glm::vec2 gravity_cells = {0.0f, -300.0f};
@@ -75,7 +73,7 @@ export struct PixelBodyWorld {
  *   - `mesh_dirty`     → render mesh asset
  *   - `physics_dirty`  → mass/density properties (recomputed in shape rebuild)
  */
-export struct PixelBody {
+EPIX_EXPORT struct PixelBody {
     b2BodyId b2_body = b2_nullBodyId;
     std::vector<b2ShapeId> shapes;
     grid::dense_grid<2, fs::Element> cells{{1u, 1u}};
@@ -105,7 +103,7 @@ export struct PixelBody {
 // Velocity — basic linear/angular kinematic state synced to/from Box2D.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export struct Velocity {
+EPIX_EXPORT struct Velocity {
     glm::vec2 linear = {0.0f, 0.0f};
     float angular    = 0.0f;
 };
@@ -116,7 +114,7 @@ export struct Velocity {
 // cells in the chunk.  `dirty` marks chunks needing rebuild.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export struct SandStaticBody {
+EPIX_EXPORT struct SandStaticBody {
     b2BodyId b2_body = b2_nullBodyId;
     std::vector<b2ChainId> chains;
     bool dirty = true;
@@ -131,7 +129,7 @@ export struct SandStaticBody {
 // Avoids walking the Parent hierarchy in hot loops.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export struct PixelBodyOf {
+EPIX_EXPORT struct PixelBodyOf {
     core::Entity world;
 };
 
@@ -140,7 +138,7 @@ export struct PixelBodyOf {
  * blocker last frame.  Used by sync_pixel_body_to_sand to detect vacated cells
  * (body moved away) and touch them so that settled sand starts falling again.
  */
-export struct PixelBodySandBlockers {
+EPIX_EXPORT struct PixelBodySandBlockers {
     std::unordered_set<std::int64_t> cells;  ///< encoded (x,y) in sand-cell coords
 };
 

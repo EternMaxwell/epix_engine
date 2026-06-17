@@ -1,42 +1,30 @@
-﻿// Implementation of all PixelBodyPlugin systems and the plugin itself.
-// See modules/systems.cppm for declarations.
-
-module;
-
-#include <box2d/box2d.h>
+﻿#include <box2d/box2d.h>
 #include <box2d/collision.h>
 #include <box2d/id.h>
 #include <box2d/types.h>
 
-#include <mapbox/earcut.hpp>
-
-#ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core.hpp>
+#include <epix/experimental/pixelbody.hpp>
+#include <epix/extension/fallingsand.hpp>
+#include <epix/extension/grid.hpp>
+#include <epix/mesh.hpp>
+#include <epix/render.hpp>
+#include <epix/time.hpp>
+#include <epix/transform.hpp>
+#include <glm/glm.hpp>
+#include <mapbox/earcut.hpp>
 #include <optional>
 #include <ranges>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#endif
-
-module epix.experimental.pixelbody;
-#ifdef EPIX_IMPORT_STD
-import std;
-#endif
-import epix.core;
-import epix.assets;
-import epix.mesh;
-import epix.transform;
-import epix.render;
-import epix.time;
-import epix.extension.grid;
-import epix.extension.fallingsand;
-import glm;
-import webgpu;
+#include <webgpu/webgpu.hpp>
 
 namespace epix::experimental::pixelbody {
 

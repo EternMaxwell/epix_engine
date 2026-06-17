@@ -248,15 +248,15 @@ EPIX_EXPORT struct SandChunkDirtyRect {
 
 /** @brief Error variants returned by SandSimulation::create. */
 EPIX_EXPORT namespace sand_sim_error {
-/** @brief Two chunks share the same SandChunkPos under the same world. */
-struct DuplicateChunkPos {
-    std::array<std::int32_t, kDim> pos;
-};
-/** @brief A chunk is missing a required layer (Element or AirCell). */
-struct MissingRequiredLayer {
-    std::array<std::int32_t, kDim> pos;
-    meta::type_index missing_type;
-};
+    /** @brief Two chunks share the same SandChunkPos under the same world. */
+    struct DuplicateChunkPos {
+        std::array<std::int32_t, kDim> pos;
+    };
+    /** @brief A chunk is missing a required layer (Element or AirCell). */
+    struct MissingRequiredLayer {
+        std::array<std::int32_t, kDim> pos;
+        meta::type_index missing_type;
+    };
 }  // namespace sand_sim_error
 
 /** @brief Error type returned by SandSimulation::create. */

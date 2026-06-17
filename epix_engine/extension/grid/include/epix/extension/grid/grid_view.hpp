@@ -13,7 +13,6 @@
 #include <utility>
 #endif
 
-
 #include <epix/extension/grid/concepts.hpp>
 
 namespace epix::ext::grid::views {

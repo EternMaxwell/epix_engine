@@ -2,7 +2,6 @@
 
 #include <epix/common.hpp>
 
-
 #ifndef EPIX_CXX_MODULE
 #include <glm/glm.hpp>
 #endif

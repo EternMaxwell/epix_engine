@@ -32,8 +32,8 @@
 #include <epix/extension/grid.hpp>
 #endif
 #include <epix/extension/fallingsand/elements.hpp>
-#include <epix/extension/fallingsand/structs.hpp>
 #include <epix/extension/fallingsand/helpers.hpp>
+#include <epix/extension/fallingsand/structs.hpp>
 
 namespace epix::ext::fallingsand {
 
