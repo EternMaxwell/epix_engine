@@ -50,7 +50,8 @@ EPIX_EXPORT struct ImGuiState {
     bool initialized      = false;
     bool frame_active     = false;
     bool enable_docking   = false;
-    bool enable_viewports = false;
+    bool enable_viewports       = false;
+    bool platform_update_needed = false;  // deferred to next frame's main thread
     std::shared_ptr<DrawDataSnapshot> draw_snapshot;
     std::shared_ptr<std::vector<ViewportDrawDataSnapshot>> viewport_snapshots;
 

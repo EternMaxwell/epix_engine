@@ -258,7 +258,25 @@ void imgui::ImGuiPlugin::attach(App& app) {
     app.configure_sets(PreUpdate, sets(BeginFrameSet));
 
     // Main world frame systems
-    app.add_systems(PreUpdate, into(imgui_begin_frame).set_name("imgui begin frame").in_set(BeginFrameSet));
+    //
+    // imgui_begin_frame must run on the main thread because it calls
+    // ImGui_ImplGlfw_NewFrame() which on Windows reaches SetWindowLongW(),
+    // a Win32 API that deadlocks when called from a worker thread.
+    // We register it as an extra system on the GLFWRunner which executes
+    // before the schedule pipeline on the caller (main) thread.
+    app.runner_scope([&](glfw::GLFWRunner& runner) {
+        auto sys = make_system_unique(imgui_begin_frame);
+        sys->set_name("imgui begin frame");
+        runner.append_system(std::move(sys));
+    }).transform_error([](App::RunnerError error) {
+        if (error == App::RunnerError::RunnerNotSet) {
+            throw std::runtime_error("ImGuiPlugin requires an AppRunner to be set before building");
+        } else {
+            throw std::runtime_error("ImGuiPlugin requires a GLFWRunner as the AppRunner");
+        }
+        return error;
+    });
+
     app.add_systems(Last, into(imgui_end_frame).set_name("imgui end frame"));
 
     // Consume input events that ImGui handled after every schedule.
@@ -324,6 +342,38 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
         spdlog::debug("[imgui] Initialized GLFW backend.");
     }
 
+    // Process deferred platform window updates from the previous frame.
+    // ImGui::UpdatePlatformWindows() calls GLFW window operations (create,
+    // destroy, move, resize) which on Windows must run on the main thread.
+    // We defer this here so it runs on the main thread before NewFrame().
+    if (state->platform_update_needed) {
+        ImGui::UpdatePlatformWindows();
+        ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+        auto viewport_snaps = std::make_shared<std::vector<ViewportDrawDataSnapshot>>();
+        viewport_snaps->reserve(platform_io.Viewports.Size > 1 ? platform_io.Viewports.Size - 1 : 0);
+        for (int i = 1; i < platform_io.Viewports.Size; i++) {
+            ImGuiViewport* viewport = platform_io.Viewports[i];
+            if (!viewport->DrawData) continue;
+            ViewportDrawDataSnapshot viewport_snap;
+            viewport_snap.viewport_id     = viewport->ID;
+            viewport_snap.platform_handle = viewport->PlatformHandle;
+            viewport_snap.minimized       = (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0;
+            if (viewport->PlatformHandle) {
+                GLFWwindow* win = static_cast<GLFWwindow*>(viewport->PlatformHandle);
+                glfwGetFramebufferSize(win, &viewport_snap.fb_width, &viewport_snap.fb_height);
+            }
+            clone_draw_data(viewport->DrawData, viewport_snap);
+            if (viewport_snap.fb_width > 0 && viewport_snap.fb_height > 0 && viewport_snap.fb_scale_x > 0.0f &&
+                viewport_snap.fb_scale_y > 0.0f) {
+                viewport_snap.display_size_x = static_cast<float>(viewport_snap.fb_width) / viewport_snap.fb_scale_x;
+                viewport_snap.display_size_y = static_cast<float>(viewport_snap.fb_height) / viewport_snap.fb_scale_y;
+            }
+            viewport_snaps->push_back(std::move(viewport_snap));
+        }
+        state->viewport_snapshots = std::move(viewport_snaps);
+        state->platform_update_needed = false;
+    }
+
     if (state->initialized) {
         // Find the primary GLFW window to check if it's still valid
         std::optional<Entity> primary_entity;
@@ -360,38 +410,10 @@ void imgui::imgui_end_frame(ResMut<ImGuiState> state) {
 
     ImGuiIO& io = ImGui::GetIO();
     if (state->enable_viewports && can_use_platform_viewports(io)) {
-        ImGui::UpdatePlatformWindows();
-        ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-        auto viewport_snaps          = std::make_shared<std::vector<ViewportDrawDataSnapshot>>();
-        viewport_snaps->reserve(platform_io.Viewports.Size > 1 ? platform_io.Viewports.Size - 1 : 0);
-        for (int i = 1; i < platform_io.Viewports.Size; i++) {
-            ImGuiViewport* viewport = platform_io.Viewports[i];
-            if (!viewport->DrawData) continue;
-            ViewportDrawDataSnapshot viewport_snap;
-            viewport_snap.viewport_id     = viewport->ID;
-            viewport_snap.platform_handle = viewport->PlatformHandle;
-            viewport_snap.minimized       = (viewport->Flags & ImGuiViewportFlags_IsMinimized) != 0;
-            // Capture framebuffer size here on the main thread — GLFW must not
-            // be called from the render thread (thread-safety).
-            if (viewport->PlatformHandle) {
-                GLFWwindow* win = static_cast<GLFWwindow*>(viewport->PlatformHandle);
-                glfwGetFramebufferSize(win, &viewport_snap.fb_width, &viewport_snap.fb_height);
-            }
-            clone_draw_data(viewport->DrawData, viewport_snap);
-            // Override display_size with the framebuffer-derived value so that
-            // display_size * fb_scale equals exactly the integer pixel size.
-            // ImDrawData::DisplaySize can be fractionally off from the actual
-            // framebuffer during resize, causing wgpu SetViewport to reject it.
-            if (viewport_snap.fb_width > 0 && viewport_snap.fb_height > 0 && viewport_snap.fb_scale_x > 0.0f &&
-                viewport_snap.fb_scale_y > 0.0f) {
-                viewport_snap.display_size_x = static_cast<float>(viewport_snap.fb_width) / viewport_snap.fb_scale_x;
-                viewport_snap.display_size_y = static_cast<float>(viewport_snap.fb_height) / viewport_snap.fb_scale_y;
-            }
-            viewport_snaps->push_back(std::move(viewport_snap));
-        }
-        state->viewport_snapshots = std::move(viewport_snaps);
-    } else {
-        state->viewport_snapshots.reset();
+        // Defer UpdatePlatformWindows() to the main thread at the start of the
+        // next frame in imgui_begin_frame. It calls GLFW window operations
+        // (create/destroy/move) which on Windows must run on the main thread.
+        state->platform_update_needed = true;
     }
 
     state->frame_active = false;
