@@ -15,6 +15,9 @@ module;
 #endif
 #include <spdlog/spdlog.h>
 
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
+
 export module epix.render;
 #ifdef EPIX_IMPORT_STD
 import std;
@@ -27,7 +30,6 @@ import epix.window;
 import epix.transform;
 import BS.thread_pool;
 import webgpu;
-import glm;
 extern "C++" {
 #include <epix/render.hpp>
 }

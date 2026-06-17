@@ -265,17 +265,18 @@ void imgui::ImGuiPlugin::attach(App& app) {
     // We register it as an extra system on the GLFWRunner which executes
     // before the schedule pipeline on the caller (main) thread.
     app.runner_scope([&](glfw::GLFWRunner& runner) {
-        auto sys = make_system_unique(imgui_begin_frame);
-        sys->set_name("imgui begin frame");
-        runner.append_system(std::move(sys));
-    }).transform_error([](App::RunnerError error) {
-        if (error == App::RunnerError::RunnerNotSet) {
-            throw std::runtime_error("ImGuiPlugin requires an AppRunner to be set before building");
-        } else {
-            throw std::runtime_error("ImGuiPlugin requires a GLFWRunner as the AppRunner");
-        }
-        return error;
-    });
+           auto sys = make_system_unique(imgui_begin_frame);
+           sys->set_name("imgui begin frame");
+           runner.append_system(std::move(sys));
+       })
+        .transform_error([](App::RunnerError error) {
+            if (error == App::RunnerError::RunnerNotSet) {
+                throw std::runtime_error("ImGuiPlugin requires an AppRunner to be set before building");
+            } else {
+                throw std::runtime_error("ImGuiPlugin requires a GLFWRunner as the AppRunner");
+            }
+            return error;
+        });
 
     app.add_systems(Last, into(imgui_end_frame).set_name("imgui end frame"));
 
@@ -349,7 +350,7 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
     if (state->platform_update_needed) {
         ImGui::UpdatePlatformWindows();
         ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
-        auto viewport_snaps = std::make_shared<std::vector<ViewportDrawDataSnapshot>>();
+        auto viewport_snaps          = std::make_shared<std::vector<ViewportDrawDataSnapshot>>();
         viewport_snaps->reserve(platform_io.Viewports.Size > 1 ? platform_io.Viewports.Size - 1 : 0);
         for (int i = 1; i < platform_io.Viewports.Size; i++) {
             ImGuiViewport* viewport = platform_io.Viewports[i];
@@ -370,7 +371,7 @@ void imgui::imgui_begin_frame(ResMut<ImGuiState> state,
             }
             viewport_snaps->push_back(std::move(viewport_snap));
         }
-        state->viewport_snapshots = std::move(viewport_snaps);
+        state->viewport_snapshots     = std::move(viewport_snaps);
         state->platform_update_needed = false;
     }
 

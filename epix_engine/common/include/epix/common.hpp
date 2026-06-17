@@ -9,9 +9,3 @@
 #else
 #define EPIX_EXPORT
 #endif
-
-#ifdef EPIX_CXX_MODULE
-#define GLM_GTC_NS gtc::
-#else
-#define GLM_GTC_NS
-#endif

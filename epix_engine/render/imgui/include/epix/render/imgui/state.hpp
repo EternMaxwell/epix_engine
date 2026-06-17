@@ -46,10 +46,10 @@ EPIX_EXPORT struct ViewportDrawDataSnapshot : DrawDataSnapshot {
 /** @brief Resource holding the ImGui context and frame state.
  *  Stored as a resource in the main world and extracted to the render world. */
 EPIX_EXPORT struct ImGuiState {
-    void* ctx             = nullptr;
-    bool initialized      = false;
-    bool frame_active     = false;
-    bool enable_docking   = false;
+    void* ctx                   = nullptr;
+    bool initialized            = false;
+    bool frame_active           = false;
+    bool enable_docking         = false;
     bool enable_viewports       = false;
     bool platform_update_needed = false;  // deferred to next frame's main thread
     std::shared_ptr<DrawDataSnapshot> draw_snapshot;

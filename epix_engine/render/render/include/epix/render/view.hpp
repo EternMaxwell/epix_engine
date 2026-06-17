@@ -356,7 +356,7 @@ EPIX_EXPORT struct OrthographicProjection {
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute the orthographic projection matrix. */
     glm::mat4 get_projection_matrix() const {
-        return glm::GLM_GTC_NS orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
+        return glm::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
     }
     /** @brief Compute the 8 corners of the view frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
@@ -385,9 +385,7 @@ EPIX_EXPORT struct PerspectiveProjection {
     /** @brief Set the near clipping plane distance. */
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute the perspective projection matrix. */
-    glm::mat4 get_projection_matrix() const {
-        return glm::GLM_GTC_NS perspectiveLH(fov, aspect_ratio, near_plane, far_plane);
-    }
+    glm::mat4 get_projection_matrix() const { return glm::perspectiveLH(fov, aspect_ratio, near_plane, far_plane); }
     /** @brief Compute the 8 corners of the perspective frustum. */
     std::array<glm::vec3, 8> get_frustum_corners() const {
         float tan_half_fov = glm::tan(fov / 2.0f);

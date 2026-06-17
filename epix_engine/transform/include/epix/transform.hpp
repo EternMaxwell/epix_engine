@@ -35,7 +35,7 @@ EPIX_EXPORT namespace epix::transform {
             rotationMatrix[0] /= t.scaler.x;
             rotationMatrix[1] /= t.scaler.y;
             rotationMatrix[2] /= t.scaler.z;
-            t.rotation = glm::GLM_GTC_NS quat_cast(rotationMatrix);
+            t.rotation = glm::quat_cast(rotationMatrix);
             return t;
         }
         /** @brief Create a transform with only translation set. */
@@ -62,18 +62,18 @@ EPIX_EXPORT namespace epix::transform {
         /** @brief Orient toward a target position. */
         auto&& look_at(this auto&& t, const glm::vec3& target, const glm::vec3& up) noexcept {
             glm::vec3 direction = glm::normalize(target - t.translation);
-            t.rotation          = glm::GLM_GTC_NS quatLookAt(direction, up);
+            t.rotation          = glm::quatLookAt(direction, up);
             return std::forward<decltype(t)>(t);
         }
         /** @brief Orient along a direction vector. */
         auto&& look_to(this auto&& t, const glm::vec3& direction, const glm::vec3& up) noexcept {
-            t.rotation = glm::GLM_GTC_NS quatLookAt(direction, up);
+            t.rotation = glm::quatLookAt(direction, up);
             return std::forward<decltype(t)>(t);
         }
 
         /** @brief Compute the 4x4 model matrix (translation * rotation * scale). */
         glm::mat4 to_matrix(this const TransformT& t) noexcept {
-            glm::mat3 rotate = glm::GLM_GTC_NS mat3_cast(t.rotation);
+            glm::mat3 rotate = glm::mat3_cast(t.rotation);
             glm::mat4 matrix(glm::vec4(rotate[0] * t.scaler.x, 0.0f), glm::vec4(rotate[1] * t.scaler.y, 0.0f),
                              glm::vec4(rotate[2] * t.scaler.z, 0.0f), glm::vec4(t.translation, 1.0f));
             return matrix;
@@ -99,19 +99,19 @@ EPIX_EXPORT namespace epix::transform {
         }
         /** @brief Apply a rotation around an axis by an angle (parent space). */
         auto&& rotate(this auto&& t, const glm::vec3& axis, float angle) noexcept {
-            return t.rotate(glm::GLM_GTC_NS angleAxis(angle, axis));
+            return t.rotate(glm::angleAxis(angle, axis));
         }
         /** @brief Rotate around the X axis in parent space. */
         auto&& rotate_x(this auto&& t, float angle) noexcept {
-            return t.rotate(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(1.0f, 0.0f, 0.0f)));
+            return t.rotate(glm::angleAxis(angle, glm::vec3(1.0f, 0.0f, 0.0f)));
         }
         /** @brief Rotate around the Y axis in parent space. */
         auto&& rotate_y(this auto&& t, float angle) noexcept {
-            return t.rotate(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(0.0f, 1.0f, 0.0f)));
+            return t.rotate(glm::angleAxis(angle, glm::vec3(0.0f, 1.0f, 0.0f)));
         }
         /** @brief Rotate around the Z axis in parent space. */
         auto&& rotate_z(this auto&& t, float angle) noexcept {
-            return t.rotate(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f)));
+            return t.rotate(glm::angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f)));
         }
         /** @brief Apply a rotation in the local (object) space. */
         auto&& rotate_local(this auto&& t, const glm::quat& rotation) noexcept {
@@ -120,19 +120,19 @@ EPIX_EXPORT namespace epix::transform {
         }
         /** @brief Rotate around an axis by an angle in local space. */
         auto&& rotate_local(this auto&& t, const glm::vec3& axis, float angle) noexcept {
-            return t.rotate_local(glm::GLM_GTC_NS angleAxis(angle, axis));
+            return t.rotate_local(glm::angleAxis(angle, axis));
         }
         /** @brief Rotate around the local X axis. */
         auto&& rotate_local_x(this auto&& t, float angle) noexcept {
-            return t.rotate_local(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(1.0f, 0.0f, 0.0f)));
+            return t.rotate_local(glm::angleAxis(angle, glm::vec3(1.0f, 0.0f, 0.0f)));
         }
         /** @brief Rotate around the local Y axis. */
         auto&& rotate_local_y(this auto&& t, float angle) noexcept {
-            return t.rotate_local(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(0.0f, 1.0f, 0.0f)));
+            return t.rotate_local(glm::angleAxis(angle, glm::vec3(0.0f, 1.0f, 0.0f)));
         }
         /** @brief Rotate around the local Z axis. */
         auto&& rotate_local_z(this auto&& t, float angle) noexcept {
-            return t.rotate_local(glm::GLM_GTC_NS angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f)));
+            return t.rotate_local(glm::angleAxis(angle, glm::vec3(0.0f, 0.0f, 1.0f)));
         }
         /** @brief Add a translation vector. */
         auto&& translate(this auto&& t, const glm::vec3& translation) noexcept {
