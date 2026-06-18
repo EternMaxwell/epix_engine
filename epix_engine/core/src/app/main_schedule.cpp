@@ -23,7 +23,7 @@ void MainSchedulePlugin::attach(App& app) {
         Schedule(Exit).with_schedule_config({.run_once = true}),
         Schedule(PostExit).with_schedule_config({.run_once = true}),
         Schedule(StateTransition).then([](Schedule& sche) {
-            sche.configure_sets(make_sets(StateTransitionSet::Transit, StateTransitionSet::Callback).chain());
+            sche.configure_sets(sets(StateTransitionSet::Transit, StateTransitionSet::Callback).chain());
         }),
     };
     auto order = std::array{

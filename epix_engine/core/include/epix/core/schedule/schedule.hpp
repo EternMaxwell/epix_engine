@@ -93,6 +93,10 @@ EPIX_EXPORT struct SchedulePrepareError {
         ParentsWithDeps,
     } type;
 };
+template <typename T>
+concept valid_system = valid_function_system<T> && 
+                        std::same_as<typename function_system_traits<T>::Input, std::tuple<>> && 
+                        std::same_as<typename function_system_traits<T>::Output, void>;
 /** @brief Configuration for a set of systems, including ordering constraints,
  *  conditions, and sub-configs. Built via `into()` or `sets()` helpers. */
 EPIX_EXPORT struct SetConfig {
@@ -198,28 +202,15 @@ EPIX_EXPORT struct SetConfig {
     friend struct Schedule;
     template <bool require_system, typename F>
     friend SetConfig single_set(F&& func)
-        requires(!require_system || requires {
-            requires valid_function_system<F>;
-            requires std::same_as<typename function_system_traits<F>::Input, std::tuple<>>;
-            requires std::same_as<typename function_system_traits<F>::Output, void>;
-        } || std::same_as<std::decay_t<F>, SetConfig>);
+        requires(!require_system || valid_system<F> || std::same_as<std::decay_t<F>, SetConfig>);
     template <bool require_system, typename... Ts>
     friend SetConfig make_sets(Ts&&... ts)
         requires(sizeof...(Ts) >= 1) &&
-                (... && (!require_system || requires {
-                     requires valid_function_system<Ts>;
-                     requires std::same_as<typename function_system_traits<Ts>::Input, std::tuple<>>;
-                     requires std::same_as<typename function_system_traits<Ts>::Output, void>;
-                 } || std::same_as<std::decay_t<Ts>, SetConfig>));
+                (... && (!require_system || valid_system<Ts> || std::same_as<std::decay_t<Ts>, SetConfig>));
 };
 template <bool require_system, typename F>
 SetConfig single_set(F&& func)
-    requires(!require_system ||
-             requires {
-                 requires valid_function_system<F>;
-                 requires std::same_as<typename function_system_traits<F>::Input, std::tuple<>>;
-                 requires std::same_as<typename function_system_traits<F>::Output, void>;
-             } || std::same_as<std::decay_t<F>, SetConfig>)
+    requires(!require_system || valid_system<F> || std::same_as<std::decay_t<F>, SetConfig>)
 {
     if constexpr (std::same_as<std::decay_t<F>, SetConfig>) {
         return std::forward<F>(func);
@@ -237,15 +228,10 @@ SetConfig single_set(F&& func)
     }
     return config;
 }
-template <bool require_system = false, typename... Ts>
+template <bool require_system, typename... Ts>
 SetConfig make_sets(Ts&&... ts)
     requires(sizeof...(Ts) >= 1) &&
-            (... && (!require_system ||
-                     requires {
-                         requires valid_function_system<Ts>;
-                         requires std::same_as<typename function_system_traits<Ts>::Input, std::tuple<>>;
-                         requires std::same_as<typename function_system_traits<Ts>::Output, void>;
-                     } || std::same_as<std::decay_t<Ts>, SetConfig>))
+            (... && (!require_system || valid_system<Ts> || std::same_as<std::decay_t<Ts>, SetConfig>))
 {
     if constexpr (sizeof...(Ts) == 1) {
         return single_set<require_system>(std::get<0>(std::forward_as_tuple(std::forward<Ts>(ts)...)));
@@ -438,11 +424,7 @@ static_assert(std::constructible_from<Schedule, Schedule&&>);
 EPIX_EXPORT template <typename... Ts>
 SetConfig into(Ts&&... ts)
     requires(sizeof...(Ts) >= 1) &&
-            (... && (requires {
-                 requires valid_function_system<Ts>;
-                 requires std::same_as<typename function_system_traits<Ts>::Input, std::tuple<>>;
-                 requires std::same_as<typename function_system_traits<Ts>::Output, void>;
-             } || std::same_as<std::decay_t<Ts>, SetConfig>))
+            (... && (valid_system<Ts> || std::same_as<std::decay_t<Ts>, SetConfig>))
 {
     return make_sets<true, Ts...>(std::forward<Ts>(ts)...);
 }
