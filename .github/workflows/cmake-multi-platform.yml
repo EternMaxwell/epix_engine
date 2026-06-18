@@ -25,23 +25,25 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
-        c_compiler: [gcc-16, clang-23, clang]
+        c_compiler: [clang-23, clang] # gcc-16 temporarily disabled: ICE with C++ modules
         include:
           - os: windows-latest
             c_compiler: clang
             cpp_compiler: clang++
             cmake_generator: Ninja
-          - os: ubuntu-latest
-            c_compiler: gcc-16
-            cpp_compiler: g++-16
-            cmake_generator: Ninja
+          # gcc-16 temporarily disabled: ICE with C++ modules
+          # - os: ubuntu-latest
+          #   c_compiler: gcc-16
+          #   cpp_compiler: g++-16
+          #   cmake_generator: Ninja
           - os: ubuntu-latest
             c_compiler: clang-23
             cpp_compiler: clang++-23
             cmake_generator: Ninja
         exclude:
-          - os: windows-latest
-            c_compiler: gcc-16
+          # gcc-16 temporarily disabled
+          # - os: windows-latest
+          #   c_compiler: gcc-16
           - os: windows-latest
             c_compiler: clang-23
           - os: ubuntu-latest
@@ -140,6 +142,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DEPIX_IMPORT_STD=OFF
         -S ${{ github.workspace }}
 
     - name: Build
