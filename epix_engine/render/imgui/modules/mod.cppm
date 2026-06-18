@@ -5,6 +5,7 @@ module;
 #include <format>
 #include <stdexcept>
 #include <vector>
+#include <memory>
 #endif
 
 export module epix.render.imgui;

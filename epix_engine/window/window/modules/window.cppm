@@ -1,4 +1,5 @@
 module;
+
 #ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <memory>
@@ -7,6 +8,7 @@ module;
 #include <unordered_set>
 #include <utility>
 #include <variant>
+#include <vector>
 #endif
 
 export module epix.window;

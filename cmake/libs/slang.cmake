@@ -33,14 +33,20 @@ FetchContent_Declare(${FC_NAME}
 message(STATUS "Fetching Slang prebuilt binaries from '${SLANG_URL}'")
 FetchContent_MakeAvailable(${FC_NAME})
 
-# Slang ships only Release binaries — map other configs so find_package works
-# for Debug / RelWithDebInfo / MinSizeRel builds
-set(CMAKE_MAP_IMPORTED_CONFIG_DEBUG Release)
-set(CMAKE_MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release)
-set(CMAKE_MAP_IMPORTED_CONFIG_MINSIZEREL Release)
-
-# Use Slang's own CMake package config
-set(slang_DIR "${${FC_NAME}_SOURCE_DIR}/cmake")
+# Use Slang's own CMake package config — location varies by platform
+set(SLANG_SOURCE_DIR "${${FC_NAME}_SOURCE_DIR}")
+set(SLANG_CONFIG_FILE "" CACHE INTERNAL "Path to slangConfig.cmake file")
+if (NOT SLANG_CONFIG_FILE)
+  file(GLOB_RECURSE SLANG_CONFIG_FILE
+    LIST_DIRECTORIES false
+    CONFIGURE_DEPENDS
+    "${SLANG_SOURCE_DIR}/slangConfig.cmake"
+  )
+endif()
+if (NOT SLANG_CONFIG_FILE)
+  message(FATAL_ERROR "slangConfig.cmake not found under ${SLANG_SOURCE_DIR}")
+endif()
+get_filename_component(slang_DIR "${SLANG_CONFIG_FILE}" DIRECTORY)
 find_package(slang REQUIRED)
 
 # Register shared libs for runtime deployment

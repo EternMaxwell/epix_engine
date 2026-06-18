@@ -1,5 +1,4 @@
-﻿#ifndef EPIX_IMPORT_STD
-#include <algorithm>
+﻿#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstddef>
@@ -12,7 +11,6 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#endif
 #ifdef _MSC_VER
 #include <intrin.h>
 #endif

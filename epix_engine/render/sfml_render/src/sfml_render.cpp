@@ -37,6 +37,19 @@
 #if WGPU_TARGET == WGPU_TARGET_LINUX && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
 
+#ifdef None
+#undef None
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+
 namespace sf::priv {
 std::shared_ptr<Display> openDisplay();
 }

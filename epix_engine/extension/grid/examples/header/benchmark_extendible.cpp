@@ -1,5 +1,4 @@
-﻿#ifndef EPIX_IMPORT_STD
-#include <array>
+﻿#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -8,7 +7,6 @@
 #include <print>
 #include <string>
 #include <vector>
-#endif
 #include <epix/extension/grid.hpp>
 
 using namespace epix::ext::grid;

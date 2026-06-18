@@ -16,6 +16,7 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
+#include <memory>
 #endif
 #include <glm/glm.hpp>
 
