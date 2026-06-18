@@ -1,19 +1,29 @@
-module;
-
 #include <freetype/freetype.h>
 #include <hb-ft.h>
 #include <hb.h>
 #include <spdlog/spdlog.h>
 
-module epix.text;
-
-import epix.image;
-import epix.mesh;
-import std;
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/text.hpp>
+#include <limits>
+#include <ranges>
+#include <string>
+#include <utility>
+#include <vector>
 
 using namespace epix;
 using namespace epix::core;
 using namespace epix::text;
+
+void Text::register_required_components(Components& components) {
+    components.register_required<Text>([] { return TextLayout{}; });
+    components.register_required<Text>([] { return TextBounds{}; });
+}
 
 namespace {
 void shape_changed_text(
@@ -434,7 +444,7 @@ ShapedText epix::text::shape_text(const Text& text,
     return out;
 }
 
-void TextPlugin::build(App& app) {
+void TextPlugin::attach(App& app) {
     app.add_plugins(font::FontPlugin{});
     app.add_plugins(mesh::MeshPlugin{});
     app.add_systems(PostUpdate, into(shape_changed_text)

@@ -29,10 +29,10 @@ using namespace epix::core;
 using namespace epix::assets;
 using namespace epix::shader;
 
-// 1. Build the app with asset and shader support.
+// 1. Attach asset and shader support.
 App app = App::create();
-AssetPlugin{}.build(app);
-ShaderPlugin{}.build(app);
+AssetPlugin{}.attach(app);
+ShaderPlugin{}.attach(app);
 
 // 2. Insert a ShaderCache resource with a backend loader callback.
 app.world_mut().insert_resource(ShaderCache{

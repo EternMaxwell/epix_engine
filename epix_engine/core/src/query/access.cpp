@@ -1,10 +1,4 @@
-module;
-
-module epix.core;
-
-import std;
-
-import :query.access;
+#include <epix/core/query/access.hpp>
 
 namespace epix::core {
 void Access::merge(const Access& other) {
@@ -198,4 +192,4 @@ AccessConflicts FilteredAccessSet::get_conflicts(const FilteredAccess& other) co
     }
     return conflicts;
 }
-}  // namespace core
+}  // namespace epix::core

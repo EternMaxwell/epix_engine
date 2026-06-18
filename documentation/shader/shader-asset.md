@@ -14,11 +14,11 @@ resource bound to the render device so that pipelines can query compiled shader 
 
 ```cpp
 App app = App::create();
-AssetPlugin{}.build(app);   // must come first
-ShaderPlugin{}.build(app);
+AssetPlugin{}.attach(app);   // must come first
+ShaderPlugin{}.attach(app);
 ```
 
-After `build()`, the app can load `.wgsl`, `.slang`, and `.slang-module` files via
+After `attach()`, the app can load `.wgsl`, `.slang`, and `.slang-module` files via
 `AssetServer::load<Shader>()`.
 
 ---

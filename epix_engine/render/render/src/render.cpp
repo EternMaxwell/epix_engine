@@ -1,20 +1,16 @@
-module;
 
 #include <spdlog/spdlog.h>
 
 // include header to deal with partial specialization problem in MSVC
+#include <epix/render.hpp>
 #include <format>
 #include <stacktrace>
-
-module epix.render;
-
-import webgpu;
-import std;
+#include <webgpu/webgpu.hpp>
 
 using namespace epix::render;
 using namespace epix::core;
 
-RenderPlugin& RenderPlugin::set_validation(int level) {
+RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
     validation = level;
     return *this;
 }
@@ -27,8 +23,8 @@ void epix::render::render_system(World& world) {
     graph::RenderGraphRunner::run(graph, device, queue, world, {});
 }
 
-void RenderPlugin::build(App& app) {
-    spdlog::debug("[render] Building RenderPlugin.");
+void RenderPlugin::attach(App& app) {
+    spdlog::debug("[render] Attaching RenderPlugin.");
     app.add_sub_app(Render);
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app
@@ -50,6 +46,20 @@ void RenderPlugin::build(App& app) {
                                     return anonymous_surface.create_surface(instance);
                                 })
                                 .value_or(wgpu::Surface{});
+    if (auto print_adapters = std::getenv("EPIX_PRINT_WEBGPU_ADAPTERS"); print_adapters && print_adapters[0] != '0') {
+        // enumerate all adapters
+        std::size_t count = instance.enumerateAdapters(nullptr);
+        std::vector<wgpu::Adapter> adapters(count);
+        instance.enumerateAdapters(&adapters[0]);
+        spdlog::info("[render] Available WebGPU adapters:");
+        for (const auto& adapter : adapters) {
+            wgpu::AdapterInfo adapterInfo;
+            adapter.getInfo(&adapterInfo);
+            spdlog::info("  vender={}, architecture={}, device={}, description={}",
+                         std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
+                         std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
+        }
+    }
     wgpu::Adapter adapter = instance.requestAdapter(wgpu::RequestAdapterOptions()
                                                         .setCompatibleSurface(surface)
                                                         .setPowerPreference(wgpu::PowerPreference::eHighPerformance)
@@ -152,4 +162,4 @@ void RenderPlugin::build(App& app) {
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
 }
-void RenderPlugin::finalize(App& app) {}
+void RenderPlugin::detach(App& app) noexcept {}

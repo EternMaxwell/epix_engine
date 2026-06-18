@@ -1,14 +1,12 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
+#include <epix/assets.hpp>
 
 using namespace epix::assets;
 using namespace epix::core;
 
-void AssetPlugin::build(App& app) {
-    spdlog::debug("[assets] Building AssetPlugin (mode={}).", static_cast<int>(mode));
+void AssetPlugin::attach(App& app) {
+    spdlog::debug("[assets] Attaching AssetPlugin (mode={}).", static_cast<int>(mode));
     auto& world = app.world_mut();
 
     EmbeddedAssetRegistry embedded;
@@ -103,7 +101,7 @@ void AssetPlugin::build(App& app) {
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }
 
-void AssetPlugin::finish(App& app) { (void)app; }
+void AssetPlugin::ready(App& app) { (void)app; }
 
 AssetPlugin& AssetPlugin::register_asset_source(AssetSourceId id, AssetSourceBuilder source) {
     m_source_builders.emplace_back(std::move(id), std::move(source));

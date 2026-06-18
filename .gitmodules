@@ -55,3 +55,6 @@
 [submodule "libs/zpp_bits"]
 	path = libs/zpp_bits
 	url = https://github.com/eyalz800/zpp_bits.git
+[submodule "libs/stdexec"]
+	path = libs/stdexec
+	url = https://github.com/NVIDIA/stdexec.git

@@ -1,13 +1,12 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.window;
+#include <epix/window.hpp>
+#include <ranges>
 
 using namespace epix::window;
 using namespace epix::core;
 
-void WindowPlugin::build(App& app) {
+void WindowPlugin::attach(App& app) {
     app.add_events<WindowResized>()
         .add_events<WindowMoved>()
         .add_events<WindowCreated>()
@@ -20,7 +19,7 @@ void WindowPlugin::build(App& app) {
         .add_events<WindowFocused>()
         .add_events<FileDrop>();
 }
-void WindowPlugin::finish(App& app) {
+void WindowPlugin::ready(App& app) {
     if (primary_window) {
         auto window = app.world_mut().spawn(primary_window.value(), PrimaryWindow{});
     }
@@ -37,17 +36,17 @@ void WindowPlugin::finish(App& app) {
 }
 
 void epix::window::log_events(EventReader<WindowResized> resized,
-                        EventReader<WindowMoved> moved,
-                        EventReader<WindowCreated> created,
-                        EventReader<WindowClosed> closed,
-                        EventReader<WindowCloseRequested> close_requested,
-                        EventReader<WindowDestroyed> destroyed,
-                        EventReader<CursorMoved> cursor_moved,
-                        EventReader<CursorEntered> cursor_entered,
-                        EventReader<FileDrop> file_drop,
-                        EventReader<ReceivedCharacter> received_character,
-                        EventReader<WindowFocused> window_focused,
-                        Query<Item<const Window&>> windows) {
+                              EventReader<WindowMoved> moved,
+                              EventReader<WindowCreated> created,
+                              EventReader<WindowClosed> closed,
+                              EventReader<WindowCloseRequested> close_requested,
+                              EventReader<WindowDestroyed> destroyed,
+                              EventReader<CursorMoved> cursor_moved,
+                              EventReader<CursorEntered> cursor_entered,
+                              EventReader<FileDrop> file_drop,
+                              EventReader<ReceivedCharacter> received_character,
+                              EventReader<WindowFocused> window_focused,
+                              Query<Item<const Window&>> windows) {
     for (auto&& [id, width, height] : resized.read()) {
         auto&& window_t = windows.get(id);
         if (window_t) {

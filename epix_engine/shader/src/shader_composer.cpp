@@ -1,10 +1,20 @@
-﻿module;
+﻿#include <spdlog/spdlog.h>
 
-#include <spdlog/spdlog.h>
-
-module epix.shader;
-
-import :shader_composer;
+#include <array>
+#include <cctype>
+#include <charconv>
+#include <cstdint>
+#include <epix/shader.hpp>
+#include <expected>
+#include <filesystem>
+#include <optional>
+#include <span>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 using namespace epix::shader;
 

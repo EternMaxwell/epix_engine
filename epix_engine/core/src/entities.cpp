@@ -1,18 +1,10 @@
-module;
-
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-
-
-module epix.core;
-
-import std;
-
-import :entities;
+#include <epix/core/entities.hpp>
 
 namespace epix::core {
-void Entities::verify_flush() {
+void Entities::verify_flush() noexcept {
     assert(!needs_flush() && "Entities need to be flushed before accessing meta or pending!");
 }
 
@@ -65,20 +57,20 @@ void Entities::reserve(std::uint32_t count) {
     }
 }
 
-bool Entities::contains(Entity entity) const {
+bool Entities::contains(Entity entity) const noexcept {
     return resolve_index(entity.index)
         .transform([this, &entity](Entity e) { return e.generation == entity.generation; })
         .value_or(false);
 }
 
-void Entities::clear() {
+void Entities::clear() noexcept {
     spdlog::debug("[entities] Clearing all entities (count={}).", meta.size());
     meta.clear();
     pending.clear();
     free_cursor->store(0, std::memory_order_relaxed);
 }
 
-std::optional<EntityLocation> Entities::get(Entity entity) const {
+std::optional<EntityLocation> Entities::get(Entity entity) const noexcept {
     if (entity.index >= meta.size()) return std::nullopt;
     auto& meta = this->meta[entity.index];
     if (meta.generation != entity.generation ||
@@ -88,9 +80,17 @@ std::optional<EntityLocation> Entities::get(Entity entity) const {
     return meta.location;
 }
 
-void Entities::set(std::uint32_t index, EntityLocation location) { meta[index].location = location; }
+EntityLocation Entities::unsafe_get(Entity entity) const noexcept {
+    assert(entity.index < meta.size());
+    auto& meta = this->meta[entity.index];
+    assert(meta.generation == entity.generation);
+    assert(meta.location.archetype_id.get() != std::numeric_limits<std::uint32_t>::max());
+    return meta.location;
+}
 
-bool Entities::reserve_generations(std::uint32_t index, std::uint32_t generations) {
+void Entities::set(std::uint32_t index, EntityLocation location) noexcept { meta[index].location = location; }
+
+bool Entities::reserve_generations(std::uint32_t index, std::uint32_t generations) noexcept {
     if (index >= meta.size()) {
         return false;
     }
@@ -101,7 +101,7 @@ bool Entities::reserve_generations(std::uint32_t index, std::uint32_t generation
     return false;
 }
 
-std::optional<Entity> Entities::resolve_index(std::uint32_t index) const {
+std::optional<Entity> Entities::resolve_index(std::uint32_t index) const noexcept {
     if (index < meta.size()) {
         return Entity::from_parts(index, meta[index].generation);
     } else {
@@ -115,7 +115,7 @@ std::optional<Entity> Entities::resolve_index(std::uint32_t index) const {
     }
 }
 
-bool Entities::needs_flush() const {
+bool Entities::needs_flush() const noexcept {
     return free_cursor->load(std::memory_order_relaxed) != static_cast<std::int64_t>(pending.size());
 }
 

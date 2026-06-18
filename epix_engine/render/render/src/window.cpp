@@ -1,10 +1,8 @@
-module;
 
 #include <spdlog/spdlog.h>
 
-module epix.render;
-
-import :window;
+#include <epix/render.hpp>
+#include <epix/render/window.hpp>
 
 using namespace epix::render::window;
 using namespace epix::window;
@@ -15,7 +13,7 @@ void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     configured_windows.erase(entity);
 }
 
-void WindowRenderPlugin::build(App& app) {
+void WindowRenderPlugin::attach(App& app) {
     auto& render_app = app.sub_app_mut(epix::render::Render);
     render_app.world_mut().insert_resource(ExtractedWindows{});
     render_app.world_mut().insert_resource(WindowSurfaces{});
@@ -62,6 +60,9 @@ void epix::render::window::extract_windows(
                                                            .present_mode    = window.present_mode,
                                                            .alpha_mode      = window.composite_alpha_mode,
                                                        });
+        }
+        if (primary) {
+            extracted_windows->primary = entity;
         }
     }
 
@@ -169,7 +170,8 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
             }
             auto config = wgpu::SurfaceConfiguration()
                               .setDevice(*device)
-                              .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                              .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
+                                        wgpu::TextureUsage::eCopyDst)
                               .setFormat(format)
                               .setWidth(window.physical_width)
                               .setHeight(window.physical_height)

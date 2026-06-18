@@ -28,7 +28,7 @@ Use the **epix-module-research** skill (`epix-module-research`) to investigate `
 
 ### Plugin System
 
-- Features are added via plugins (`build(App&)` / `finish(App&)` / `finalize(App&)` lifecycle). See `epix_engine/core/modules/app/plugin.cppm`.
+- Features are added via plugins (`attach(App&)` / `ready(App&)` / `detach(App&)` lifecycle). See `epix_engine/core/modules/app/plugin.cppm`.
 
 ---
 

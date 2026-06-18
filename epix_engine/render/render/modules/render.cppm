@@ -1,47 +1,35 @@
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <expected>
+#include <functional>
+#include <future>
+#include <memory>
+#include <ranges>
+#include <shared_mutex>
+#include <span>
+#include <unordered_map>
+#include <unordered_set>
+#include <variant>
+#include <vector>
+#endif
+#include <spdlog/spdlog.h>
+
+#include <glm/ext.hpp>
+#include <glm/glm.hpp>
+
 export module epix.render;
-
-import epix.core;
-import webgpu;
+#ifdef EPIX_IMPORT_STD
 import std;
-
-export import epix.shader;
-
-export import :schedule;
-export import :extract;
-export import :assets;
-export import :graph;
-export import :image;
-export import :window;
-export import :pipeline;
-export import :pipeline_server;
-export import :render_phase;
-export import :view;
-
-namespace epix::render {
-/**
- * @brief Resource for anonymous surface that is used for requesting adapter/device.
- * Since webgpu requires a surface to request an adapter, we provide this resource to let window implementations to
- * give a functor that creates a surface from the instance. It is recommanded that the functor will destruct the
- * temporary window after we are done with requesting the adapter/device and releasing this resource.
- */
-export struct AnonymousSurface {
-    std::function<wgpu::Surface(const wgpu::Instance&)> create_surface;
-};
-/** @brief Plugin that initializes the WebGPU rendering subsystem. */
-export struct RenderPlugin {
-    /** @brief Validation level (0 = none, 1 = nvrhi, 2 = Vulkan validation
-     * layers). */
-    int validation = 0;
-    /**
-     * @brief Set the validation level for the render plugin.
-     * 0 - No validation
-     * 1 - Nvrhi validation
-     * 2 - Vulkan validation layers
-     * @param level the validation level to set
-     */
-    RenderPlugin& set_validation(int level = 0);
-    void build(core::App&);
-    void finalize(core::App&);
-};
-void render_system(core::World& world);
-}  // namespace render
+#endif
+import epix.core;
+import epix.assets;
+import epix.shader;
+import epix.image;
+import epix.window;
+import epix.transform;
+import BS.thread_pool;
+import webgpu;
+extern "C++" {
+#include <epix/render.hpp>
+}

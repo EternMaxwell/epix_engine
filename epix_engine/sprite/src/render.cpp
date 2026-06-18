@@ -1,15 +1,24 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.sprite;
-
-import epix.assets;
-import epix.core_graph;
-import epix.image;
-import epix.render;
-import epix.transform;
-import std;
+#include <array>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/image.hpp>
+#include <epix/render.hpp>
+#include <epix/sprite.hpp>
+#include <epix/transform.hpp>
+#include <format>
+#include <limits>
+#include <optional>
+#include <span>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 using namespace epix;
 using namespace epix::core;
@@ -297,12 +306,15 @@ bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::Ex
     return !(outside_left || outside_right || outside_bottom || outside_top || outside_near || outside_far);
 }
 
-void extract_sprites(
-    Commands cmd,
-    Extract<Query<Item<Entity, const Sprite&, const transform::GlobalTransform&, const assets::Handle<image::Image>&>,
-                  Without<render::CustomRendered>>> sprites,
-    Extract<Res<assets::Assets<image::Image>>> images) {
-    for (auto&& [entity, sprite, global_transform, texture] : sprites.iter()) {
+void extract_sprites(Commands cmd,
+                     Extract<Query<Item<Entity,
+                                        const Sprite&,
+                                        const transform::GlobalTransform&,
+                                        const assets::Handle<image::Image>&,
+                                        Opt<const render::camera::RenderLayer&>>,
+                                   Without<render::CustomRendered>>> sprites,
+                     Extract<Res<assets::Assets<image::Image>>> images) {
+    for (auto&& [entity, sprite, global_transform, texture, opt_layer] : sprites.iter()) {
         glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
         if (auto image = images->get(texture.id()); image) {
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
@@ -316,6 +328,7 @@ void extract_sprites(
                 .depth         = global_transform.matrix[3][2],
                 .texture       = texture.id(),
                 .image_size    = image_size,
+                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
             },
             SpriteBatch{});
     }
@@ -323,14 +336,14 @@ void extract_sprites(
 
 void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                  const render::view::ExtractedView&,
-                                 const render::view::ViewTarget&>,
-                            With<render::camera::ExtractedCamera>> views,
+                                 const render::view::ViewTarget&,
+                                 const render::camera::ExtractedCamera&>> views,
                       Query<Item<Entity, const ExtractedSprite&>> sprites,
                       Res<render::RenderAssets<image::Image>> images,
                       Res<TransparentSpriteDrawFunction> draw_function_id,
                       ResMut<SpritePipelineCache> pipeline_cache,
                       ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target] : views.iter()) {
+    for (auto&& [phase, view, target, cam] : views.iter()) {
         auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format);
         if (!pipeline_id) {
             spdlog::warn("[sprite] Failed to specialize sprite pipeline for target format {}.",
@@ -343,6 +356,9 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
                 continue;
             }
             if (!sprite_may_be_visible(sprite, view)) {
+                continue;
+            }
+            if (!cam.render_layer.intersects(sprite.render_layer)) {
                 continue;
             }
 
@@ -422,8 +438,8 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 }
 }  // namespace
 
-void SpritePlugin::build(core::App& app) {
-    spdlog::debug("[sprite] Building SpritePlugin.");
+void SpritePlugin::attach(core::App& app) {
+    spdlog::debug("[sprite] Attaching SpritePlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
@@ -433,8 +449,8 @@ void SpritePlugin::build(core::App& app) {
     }
 }
 
-void SpritePlugin::finish(core::App& app) {
-    spdlog::debug("[sprite] Finishing SpritePlugin.");
+void SpritePlugin::ready(core::App& app) {
+    spdlog::debug("[sprite] Readying SpritePlugin.");
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

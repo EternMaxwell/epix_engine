@@ -1,20 +1,16 @@
-﻿module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-
-import std;
-import epix.meta;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::shared_ptr<ErasedAssetLoader> MaybeAssetLoader::get() const {
     if (std::holds_alternative<std::shared_ptr<ErasedAssetLoader>>(*this)) {
         return std::get<std::shared_ptr<ErasedAssetLoader>>(*this);
     } else {
-        auto& pending = std::get<PendingAssetLoader>(*this);
-        return pending.receiver.receive().value();
+        auto receiver = std::get<PendingAssetLoader>(*this).receiver;
+        return receiver.try_recv().value();
     }
 }
 std::optional<MaybeAssetLoader> AssetLoaders::get_by_index(std::size_t index) const {

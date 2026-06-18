@@ -1,14 +1,8 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
-
-import :entities;
-import :world.entity_ref;
-import :world.interface;
+#include <epix/core/entities.hpp>
+#include <epix/core/world/entity_ref.hpp>
+#include <epix/core/world/interface.hpp>
 
 namespace epix::core {
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {
@@ -72,13 +66,13 @@ void EntityWorldMut::despawn() {
 }
 
 // impl for World::entity and entity_mut, get_entity and get_entity_mut
-std::optional<EntityRef> World::get_entity(Entity entity) const {
+std::optional<EntityRef> World::get_entity(Entity entity) const noexcept {
     if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
         return EntityRef(entity, this);
     }
     return std::nullopt;
 }
-std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) {
+std::optional<EntityWorldMut> World::get_entity_mut(Entity entity) noexcept {
     if (auto loc = _entities.get(entity); loc.has_value() && loc.value() != EntityLocation::invalid()) {
         return EntityWorldMut(entity, this);
     }

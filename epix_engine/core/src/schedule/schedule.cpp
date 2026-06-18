@@ -1,13 +1,7 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
-
-import :schedule;
-import :labels;
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
 
 namespace epix::core {
 void Schedule::add_config(SetConfig config, bool accept_system) {
@@ -28,9 +22,8 @@ void Schedule::add_config(SetConfig config, bool accept_system) {
                 std::swap(node, _data.nodes.at(*config.label));
             }
             node->edges.merge(_data.nodes.at(*config.label)->edges);
-            node->conditions.insert_range(node->conditions.end(), std::views::as_rvalue(
-                                                                     std::move(_data.nodes.at(*config.label)
-                                                                                   ->conditions)));
+            node->conditions.insert_range(node->conditions.end(),
+                                          std::views::as_rvalue(std::move(_data.nodes.at(*config.label)->conditions)));
             _data.nodes.at(*config.label) = node;
         } else {
             _data.nodes.emplace(*config.label, node);
@@ -109,18 +102,18 @@ std::expected<void, SchedulePrepareError> Schedule::prepare(bool check_error) {
         cached_node.node        = node;
     }
     for (auto&& [index, cached_node] : std::views::enumerate(schedule_cache.nodes)) {
-        cached_node.depends = std::ranges::to<std::vector<size_t>>(std::views::transform(
-            cached_node.node->validated_edges.depends,
-            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
-        cached_node.successors = std::ranges::to<std::vector<size_t>>(std::views::transform(
-            cached_node.node->validated_edges.successors,
-            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
-        cached_node.parents = std::ranges::to<std::vector<size_t>>(std::views::transform(
-            cached_node.node->validated_edges.parents,
-            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
-        cached_node.children = std::ranges::to<std::vector<size_t>>(std::views::transform(
-            cached_node.node->validated_edges.children,
-            [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.depends = std::ranges::to<std::vector<size_t>>(
+            std::views::transform(cached_node.node->validated_edges.depends,
+                                  [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.successors = std::ranges::to<std::vector<size_t>>(
+            std::views::transform(cached_node.node->validated_edges.successors,
+                                  [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.parents = std::ranges::to<std::vector<size_t>>(
+            std::views::transform(cached_node.node->validated_edges.parents,
+                                  [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
+        cached_node.children = std::ranges::to<std::vector<size_t>>(
+            std::views::transform(cached_node.node->validated_edges.children,
+                                  [&](const SystemSetLabel& label) { return schedule_cache.node_map.at(label); }));
     }
     if (!check_error) {
         return {};
@@ -298,9 +291,7 @@ void Schedule::check_change_tick(Tick change_tick) {
     }
 }
 
-std::unique_ptr<ScheduleExecutor> Schedule::default_executor() {
-    return std::make_unique<executors::AutoExecutor>();
-}
+std::unique_ptr<ScheduleExecutor> Schedule::default_executor() { return std::make_unique<executors::AutoExecutor>(); }
 
 void Schedule::execute(World& world, const ScheduleConfig& config) {
     spdlog::trace("[schedule] Executing schedule '{}'.", label().to_string());

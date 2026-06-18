@@ -1,4 +1,3 @@
-module;
 
 #include <spdlog/spdlog.h>
 
@@ -38,6 +37,19 @@ module;
 #if WGPU_TARGET == WGPU_TARGET_LINUX && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
 
+#ifdef None
+#undef None
+#endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
+
 namespace sf::priv {
 std::shared_ptr<Display> openDisplay();
 }
@@ -45,14 +57,12 @@ std::shared_ptr<Display> openDisplay();
 
 #include <webgpu/webgpu.h>
 
-module epix.sfml.render;
-
-import std;
-import epix.core;
-import epix.render;
-import epix.sfml.core;
-import epix.window;
-import webgpu;
+#include <epix/core.hpp>
+#include <epix/render.hpp>
+#include <epix/sfml/core.hpp>
+#include <epix/sfml/render.hpp>
+#include <epix/window.hpp>
+#include <webgpu/webgpu.hpp>
 
 WGPUSurface sfmlGetWGPUSurfaceRaw(WGPUInstance instance, sf::WindowBase* window) {
 #if WGPU_TARGET == WGPU_TARGET_WINDOWS
@@ -141,8 +151,8 @@ using namespace epix::core;
 
 using epix::render::window::SurfaceCreation;
 
-void epix::sfml::render::SFMLRenderPlugin::build(App& app) {
-    spdlog::debug("[sfml.render] Building SFMLRenderPlugin.");
+void epix::sfml::render::SFMLRenderPlugin::attach(App& app) {
+    spdlog::debug("[sfml.render] Attaching SFMLRenderPlugin.");
     auto system = make_system_unique(
         [](Commands commands, Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<SFMLwindows> sfml_windows) {

@@ -1,8 +1,4 @@
-﻿module;
-module epix.assets;
-
-import std;
-
+#include <epix/assets.hpp>
 namespace epix::assets {
 
 void EmbeddedAssetRegistry::insert_asset(const std::filesystem::path& asset_path, std::span<const std::byte> data) {

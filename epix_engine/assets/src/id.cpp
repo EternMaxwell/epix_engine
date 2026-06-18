@@ -1,10 +1,8 @@
-﻿module;
 #include <uuid.h>
-module epix.assets;
 
-import std;
-import epix.meta;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace uuids {
 

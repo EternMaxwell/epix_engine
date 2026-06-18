@@ -1,0 +1,33 @@
+module;
+
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <array>
+#include <concepts>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
+#include <limits>
+#include <ranges>
+#include <stack>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#include <memory>
+#endif
+#include <glm/glm.hpp>
+
+export module epix.extension.grid;
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+import epix.core;
+import epix.meta;
+import epix.utils;
+import glm;
+extern "C++" {
+#include <epix/extension/grid.hpp>
+}

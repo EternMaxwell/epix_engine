@@ -1,11 +1,7 @@
-﻿module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-
-import std;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::expected<void, ValidateLogError> validate_transaction_log(const ProcessorTransactionLogFactory& log_factory) {

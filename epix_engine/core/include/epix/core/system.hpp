@@ -1,0 +1,277 @@
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <concepts>
+#include <cstddef>
+#include <exception>
+#include <expected>
+#include <memory>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+#include <variant>
+#include <vector>
+#endif
+
+#include <epix/core/label.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/system/commands.hpp>
+#include <epix/core/system/from_param.hpp>
+#include <epix/core/system/input.hpp>
+#include <epix/core/system/param.hpp>
+
+namespace epix::core {
+/** @brief Wrapper around an exception caught during system execution. */
+EPIX_EXPORT struct SystemException {
+    /** @brief The captured exception. */
+    std::exception_ptr exception;
+};
+/** @brief Error type for system execution: either a parameter validation error or exception. */
+EPIX_EXPORT using RunSystemError = std::variant<ValidateParamError, SystemException>;
+/** @brief Abstract base class for all systems.
+ *  Owns parameter state and provides run/apply/validate interface.
+ *  @tparam In System input type (default: empty tuple).
+ *  @tparam Out System output type (default: void). */
+EPIX_EXPORT template <typename In, typename Out>
+struct System {
+    /** @brief Get the system's human-readable name. */
+    virtual std::string_view name() const = 0;
+    /** @brief Set the system's display name. */
+    virtual void set_name(std::string_view) {}
+    /** @brief Get the system's type index for identity/debugging. */
+    virtual meta::type_index type_index() const = 0;
+    /** @brief Get the system's flag bits (exclusive, deferred, etc.). */
+    virtual SystemFlagBits flags() const = 0;
+    /** @brief Check if this system requires exclusive world access. */
+    bool is_exclusive() const noexcept { return (flags() & SystemFlagBits::EXCLUSIVE) != 0; }
+    /** @brief Check if this system produces deferred commands. */
+    bool is_deferred() const noexcept { return (flags() & SystemFlagBits::DEFERRED) != 0; }
+    /** @brief Execute the system logic without parameter validation. */
+    virtual std::expected<Out, RunSystemError> run_internal(typename SystemInput<In>::Input input, World& world) = 0;
+    /** @brief Validate that all required parameters can be fetched from the world. */
+    virtual std::expected<void, ValidateParamError> validate_param(World& world) = 0;
+    /** @brief Apply all deferred commands queued by this system. */
+    virtual void apply_deferred(World& world) = 0;
+    /** @brief Queue deferred commands into the world's command queue. */
+    virtual void queue_deferred(DeferredWorld deferred_world) = 0;
+    /** @brief Validate parameters, run the system, and apply deferred commands. */
+    std::expected<Out, RunSystemError> run(typename SystemInput<In>::Input input, World& world) {
+        auto res = validate_param(world)
+                       .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
+                       .and_then([&] { return run_internal(std::move(input), world); });
+        if (res.has_value()) apply_deferred(world);
+        return std::move(res);
+    }
+    /** @brief Run the system without applying deferred commands afterward. */
+    std::expected<Out, RunSystemError> run_no_apply(typename SystemInput<In>::Input input, World& world) {
+        return validate_param(world)
+            .transform_error([](ValidateParamError&& err) -> RunSystemError { return std::move(err); })
+            .and_then([&] { return run_internal(std::move(input), world); });
+    }
+    /** @brief Initialize the system, registering component accesses with the world.
+     *  @return The set of filtered accesses this system requires. */
+    virtual FilteredAccessSet initialize(World& world) = 0;
+    /** @brief Check if the system has been initialized. */
+    virtual bool initialized() const noexcept = 0;
+    /** @brief Clamp stale change-detection ticks. */
+    virtual void check_change_tick(Tick tick) = 0;
+    /** @brief Get the tick when this system last ran. */
+    virtual Tick get_last_run() const = 0;
+    /** @brief Get the default system sets this system belongs to. */
+    virtual std::vector<SystemSetLabel> default_sets() const { return {}; }
+    /** @brief Clone this system (deep copy). */
+    virtual System* clone() const = 0;
+    virtual ~System()             = default;
+};
+template <typename In = std::tuple<>, typename Out = void>
+using SystemUnique = std::unique_ptr<System<In, Out>>;
+
+template <typename F>
+    requires requires {
+        typename function_traits<F>;
+        typename function_traits<F>::return_type;
+        typename function_traits<F>::args_tuple;
+    }
+struct function_system_traits {
+    using Traits                       = function_traits<F>;
+    static constexpr std::size_t arity = Traits::arity;
+    using Output                       = typename Traits::return_type;
+    // Input is the first argument of the function if it modules valid_system_input, otherwise it's std::tuple<>.
+    using Input                     = std::remove_reference_t<decltype(*([] {
+        if constexpr (arity == 0) {
+            // no arguments -> input is an empty tuple
+            return static_cast<std::tuple<>*>(nullptr);
+        } else {
+            using FirstArg = std::tuple_element_t<0, typename Traits::args_tuple>;
+            if constexpr (system_input<FirstArg>) {
+                return static_cast<FirstArg*>(nullptr);
+            } else {
+                return static_cast<std::tuple<>*>(nullptr);
+            }
+        }
+    }()))>;
+    static constexpr bool has_input = [] {
+        // we are not just checking Input != std::tuple<>, because the input type may be just std::tuple<>.
+        if constexpr (arity == 0) {
+            return false;
+        } else {
+            using FirstArg = std::tuple_element_t<0, typename Traits::args_tuple>;
+            if constexpr (system_input<FirstArg>) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }();
+    using ParamTuple = std::remove_reference_t<decltype(*([] {
+        if constexpr (has_input) {
+            // has input, so params are from second argument to the last argument.
+            return []<std::size_t... I>(std::index_sequence<I...>) {
+                return static_cast<std::tuple<std::tuple_element_t<I + 1, typename Traits::args_tuple>...>*>(nullptr);
+            }(std::make_index_sequence<arity - 1>{});
+        } else {
+            return static_cast<typename Traits::args_tuple*>(nullptr);
+        }
+    }()))>;
+    // The storage type to store the function. function will be stored in pointers,
+    // lambdas or other callables will be stored in their own type.
+    using Storage = std::decay_t<F>;
+};
+
+template <typename F>
+concept valid_function_system = requires {
+    typename function_traits<F>;
+    typename function_system_traits<F>::Storage;
+    typename function_system_traits<F>::Input;
+    typename function_system_traits<F>::Output;
+    // no input will have Input = std::tuple<>, which is a valid_system_input.
+    requires system_input<typename function_system_traits<F>::Input>;
+    requires system_param<typename function_system_traits<F>::ParamTuple>;
+    { function_system_traits<F>::has_input } -> std::convertible_to<bool>;
+};
+
+template <valid_function_system F>
+struct FunctionSystem
+    : public System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output> {
+   public:
+    // Storage type to store the orginal function. This is to handle function pointers and lambdas uniformly.
+    using Base    = System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>;
+    using Storage = typename function_system_traits<F>::Storage;
+    using State   = typename SystemParam<typename function_system_traits<F>::ParamTuple>::State;
+    using SInput  = SystemInput<typename function_system_traits<F>::Input>;
+    using SParam  = SystemParam<typename function_system_traits<F>::ParamTuple>;
+
+    std::string_view name() const noexcept override { return meta_.name; }
+    void set_name(std::string_view new_name) noexcept override { meta_.name = new_name; }
+    meta::type_index type_index() const noexcept override { return type_index_; }
+    SystemFlagBits flags() const noexcept override { return meta_.flags; }
+    std::expected<void, ValidateParamError> validate_param(World& world) override {
+        return SParam::validate_param(state_.value(), meta_, world);
+    }
+    void apply_deferred(World& world) override {
+        state_.and_then([&](State& state) -> std::optional<bool> {
+            SParam::apply(state, meta_, world);
+            return std::optional<bool>(true);
+        });
+    }
+    void queue_deferred(DeferredWorld deferred_world) override {
+        state_.and_then([&](State& state) -> std::optional<bool> {
+            SParam::queue(state, meta_, deferred_world);
+            return std::optional<bool>(true);
+        });
+    }
+    FilteredAccessSet initialize(World& world) override {
+        FilteredAccessSet access;
+        state_         = SParam::init_state(world);
+        meta_.last_run = world.change_tick().relative_to(Tick::max());
+        SParam::init_access(*state_, meta_, access, world);
+        return access;
+    }
+    bool initialized() const noexcept override { return state_.has_value(); }
+    void check_change_tick(Tick tick) override { meta_.last_run.check_tick(tick); }
+    Tick get_last_run() const noexcept override { return meta_.last_run; }
+    std::vector<SystemSetLabel> default_sets() const override {
+        if constexpr (std::constructible_from<SystemSetLabel, Storage>) {
+            return {SystemSetLabel(func_)};
+        } else {  // in this branch for lambdas and other callables
+            SystemSetLabel label;
+            label = Label::from_type<Storage>();
+            return {label};
+        }
+    }
+
+    std::expected<typename function_system_traits<F>::Output, RunSystemError> run_internal(typename SInput::Input input,
+                                                                                           World& world) override {
+        struct TickSpan {
+            Tick* tick;
+            World* world;
+            ~TickSpan() { *tick = world->change_tick(); }
+        };
+        auto call = [](auto&& f,
+                       auto&& t) -> std::expected<typename function_system_traits<F>::Output, RunSystemError> {
+            try {
+                if constexpr (std::same_as<void, typename function_system_traits<F>::Output>) {
+                    std::apply(f, std::move(t));
+                    return {};
+                } else {
+                    return std::apply(f, std::move(t));
+                }
+            } catch (...) {
+                return std::unexpected(SystemException{
+                    .exception = std::current_exception(),
+                });
+            }
+        };
+        TickSpan span{
+            .tick  = &meta_.last_run,
+            .world = &world,
+        };
+        if constexpr (function_system_traits<F>::has_input) {
+            return call(func_, std::tuple_cat(std::forward_as_tuple(SInput::wrap_input(std::move(input))),
+                                              SParam::get_param(*state_, meta_, world, world.increment_change_tick())));
+        } else {
+            return call(func_, SParam::get_param(*state_, meta_, world, world.increment_change_tick()));
+        }
+    }
+
+    Base* clone() const override { return new FunctionSystem<F>(func_); }
+
+    template <typename U>
+        requires std::constructible_from<Storage, U>
+    explicit FunctionSystem(U&& func) : func_(std::forward<U>(func)), type_index_(meta::type_id<Storage>()) {
+        meta_.name = type_index_.short_name();
+    }
+
+   private:
+    Storage func_;
+    std::optional<State> state_;
+    SystemMeta meta_;
+    meta::type_index type_index_;
+};
+
+template <valid_function_system F>
+System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>* make_system(F&& func) {
+    return new FunctionSystem<F>(std::forward<F>(func));
+}
+/** @brief Create a system from a function and return it as a unique_ptr. */
+EPIX_EXPORT template <valid_function_system F>
+std::unique_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
+make_system_unique(F&& func) {
+    return std::unique_ptr<
+        System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
+        make_system(std::forward<F>(func)));
+}
+/** @brief Create a system from a function and return it as a shared_ptr. */
+EPIX_EXPORT template <valid_function_system F>
+std::shared_ptr<System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>
+make_system_shared(F&& func) {
+    return std::shared_ptr<
+        System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>>(
+        make_system(std::forward<F>(func)));
+}
+}  // namespace epix::core

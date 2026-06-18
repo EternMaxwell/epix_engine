@@ -1,15 +1,20 @@
-module;
 
 #include <spdlog/spdlog.h>
 
-module epix.render;
-
-import :view;
+#include <epix/render.hpp>
+#include <epix/render/view.hpp>
 
 using namespace epix::core;
 using namespace epix::render;
 using namespace epix::render::view;
 using namespace epix::render::camera;
+
+void Camera::register_required_components(Components& components) {
+    components.register_required<Camera>([] { return Projection{}; });
+    components.register_required<Camera>([] { return transform::Transform{}; });
+    components.register_required<Camera>([] { return view::VisibleEntities{}; });
+    components.register_required<Camera>([] { return RenderLayer::all(); });
+}
 
 namespace {
 constexpr std::string_view kViewShaderWgsl = R"(
@@ -188,8 +193,8 @@ void create_uniform_for_view(Commands cmd,
     queue->writeBuffer(buffer, 0, view_vec->data(), view_vec->size());
 }
 
-void view::ViewPlugin::build(App& app) {
-    spdlog::debug("[render.view] Building ViewPlugin.");
+void view::ViewPlugin::attach(App& app) {
+    spdlog::debug("[render.view] Attaching ViewPlugin.");
 
     // Register view shader libraries into the embedded asset registry
     {
@@ -303,16 +308,18 @@ void OrthographicProjection::update(float width, float height) {
 void camera::extract_cameras(
     Commands cmd,
     Res<ClearColor> global_clear_color,
-    Extract<Query<
-        Item<const Camera&, const CameraRenderGraph&, const transform::GlobalTransform&, const view::VisibleEntities&>>>
-        cameras,
+    Extract<Query<Item<const Camera&,
+                       const CameraRenderGraph&,
+                       const transform::GlobalTransform&,
+                       const view::VisibleEntities&,
+                       Opt<const RenderLayer&>>>> cameras,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
     // entity with ExtractedCamera, ExtractedView and other components.
 
     auto primary = primary_window.single();
 
-    for (auto&& [camera, graph, gtransform, visible_entities] : cameras.iter()) {
+    for (auto&& [camera, graph, gtransform, visible_entities, opt_render_layer] : cameras.iter()) {
         if (!camera.active) continue;
         auto target_size = camera.get_target_size();
         if (target_size.x == 0 || target_size.y == 0) continue;
@@ -341,6 +348,7 @@ void camera::extract_cameras(
                         return std::nullopt;
                     }
                 }(),
+                .render_layer = opt_render_layer ? *opt_render_layer : RenderLayer::all(),
             },
             view::ExtractedView{
                 .projection      = camera.computed.projection,
@@ -380,7 +388,7 @@ void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& ren
     }
 }
 
-void CameraPlugin::build(App& app) {
+void CameraPlugin::attach(App& app) {
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});

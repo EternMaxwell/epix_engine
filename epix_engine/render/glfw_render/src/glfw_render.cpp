@@ -1,4 +1,3 @@
-module;
 
 #define WGPU_TARGET_MACOS 1
 #define WGPU_TARGET_LINUX 2
@@ -19,8 +18,15 @@ module;
 #include <Foundation/Foundation.h>
 #include <QuartzCore/CAMetalLayer.h>
 #endif
-
 #include <GLFW/glfw3.h>
+#include <spdlog/spdlog.h>
+#include <webgpu/webgpu.h>
+
+#include <epix/core.hpp>
+#include <epix/glfw/core.hpp>
+#include <epix/glfw/render.hpp>
+#include <epix/render.hpp>
+#include <epix/window.hpp>
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
@@ -36,19 +42,9 @@ module;
 #endif
 
 #if !defined(__EMSCRIPTEN__)
+#define NOMINMAX
 #include <GLFW/glfw3native.h>
 #endif
-#include <spdlog/spdlog.h>
-#include <webgpu/webgpu.h>
-
-module epix.glfw.render;
-
-import std;
-import epix.core;
-import epix.render;
-import epix.glfw.core;
-import epix.window;
-import webgpu;
 
 WGPUSurface glfwGetWGPUSurfaceRaw(WGPUInstance instance, GLFWwindow* window) {
 #if WGPU_TARGET == WGPU_TARGET_MACOS
@@ -155,12 +151,16 @@ wgpu::Surface glfwGetWGPUSurface(const wgpu::Instance& instance, GLFWwindow* win
     return std::move(*reinterpret_cast<wgpu::Surface*>(&res));
 }
 
+wgpu::Surface epix::glfw::render::get_wgpu_surface(const wgpu::Instance& instance, GLFWwindow* window) {
+    return glfwGetWGPUSurface(instance, window);
+}
+
 using namespace epix::core;
 
 using epix::render::window::SurfaceCreation;
 
-void epix::glfw::render::GLFWRenderPlugin::build(App& app) {
-    spdlog::debug("[glfw.render] Building GLFWRenderPlugin.");
+void epix::glfw::render::GLFWRenderPlugin::attach(App& app) {
+    spdlog::debug("[glfw.render] Attaching GLFWRenderPlugin.");
     auto system = make_system_unique(
         [](Commands commands, Query<Item<Entity>, Filter<With<epix::window::Window>, Without<SurfaceCreation>>> windows,
            ResMut<GLFWwindows> glfw_windows) {

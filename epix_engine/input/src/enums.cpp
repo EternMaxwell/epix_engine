@@ -1,7 +1,5 @@
-module epix.input;
-
-import std;
-import :enums;
+#include <epix/input.hpp>
+#include <epix/input/enums.hpp>
 
 namespace epix::input {
 

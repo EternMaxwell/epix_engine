@@ -1,14 +1,12 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-
-import epix.meta;
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
 
 namespace meta = epix::meta;
 using namespace epix::assets;
 using namespace epix::core;
+using namespace epix::async_channel;
 
 StrongHandle::StrongHandle(const UntypedAssetId& id,
                            const Sender<DestructionEvent>& event_sender,
@@ -23,11 +21,11 @@ StrongHandle::StrongHandle(const UntypedAssetId& id,
 
 StrongHandle::~StrongHandle() {
     spdlog::trace("[assets] StrongHandle destroyed: {}.", id);
-    event_sender.send(DestructionEvent{id, asset_server_managed});
+    event_sender.try_send(DestructionEvent{id, asset_server_managed});
 }
 
 HandleProvider::HandleProvider(const meta::type_index& type) : type(type) {
-    std::tie(event_sender, event_receiver) = make_channel<DestructionEvent>();
+    std::tie(event_sender, event_receiver) = unbounded<DestructionEvent>();
 }
 
 UntypedHandle HandleProvider::reserve() const {
@@ -61,13 +59,13 @@ UntypedHandle& UntypedHandle::operator=(const std::shared_ptr<StrongHandle>& han
     return *this;
 }
 
-meta::type_index UntypedHandle::type_id() const {
+meta::type_index UntypedHandle::type_id() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id.type; },
                                      [](const UntypedAssetId& id) { return id.type; }},
                       ref);
 }
 
-UntypedAssetId UntypedHandle::id() const {
+UntypedAssetId UntypedHandle::id() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) { return handle->id; },
                                      [](const UntypedAssetId& id) { return id; }},
                       ref);
@@ -79,7 +77,7 @@ std::optional<AssetPath> UntypedHandle::path() const {
                       ref);
 }
 
-const MetaTransform* UntypedHandle::meta_transform() const {
+const MetaTransform* UntypedHandle::meta_transform() const noexcept {
     return std::visit(utils::visitor{[](const std::shared_ptr<StrongHandle>& handle) -> const MetaTransform* {
                                          return handle->meta_transform ? &*handle->meta_transform : nullptr;
                                      },

@@ -1,6 +1,7 @@
-module epix.render;
 
-import :graph.error;
+
+#include <epix/render.hpp>
+#include <epix/render/graph/error.hpp>
 
 namespace epix::render::graph {
 
@@ -60,4 +61,4 @@ std::string GraphError::to_string() const {
         *this);
 }
 
-    }  // namespace epix::render::graph
+}  // namespace epix::render::graph

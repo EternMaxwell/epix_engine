@@ -1,11 +1,8 @@
-module;
-
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
 #include <cstdlib>
-
-module epix.glfw.core;
+#include <epix/glfw/core.hpp>
 
 using namespace epix::glfw;
 using namespace epix::core;
@@ -36,7 +33,7 @@ bool should_prefer_x11_on_wslg() {
 }
 }  // namespace
 
-void GLFWPlugin::build(App& app) {
+void GLFWPlugin::attach(App& app) {
     spdlog::debug("[glfw] Initializing GLFW.");
     if (should_prefer_x11_on_wslg()) {
         spdlog::debug("[glfw] WSLg mixed session detected; preferring X11 for decorated GLFW windows.");
@@ -51,3 +48,5 @@ void GLFWPlugin::build(App& app) {
     app.world_mut().init_resource<GLFWwindows>();
     app.add_events<SetClipboardString>().set_runner(std::make_unique<GLFWRunner>(app));
 }
+
+void GLFWPlugin::detach(App& app) { glfwTerminate(); }

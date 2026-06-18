@@ -1,8 +1,4 @@
-﻿module;
-
-module epix.assets;
-
-import std;
+#include <epix/assets.hpp>
 
 using namespace epix::assets;
 
@@ -16,21 +12,39 @@ UntypedHandle AssetServer::load_untyped(const AssetPath& path) const {
             if (loader) loader_type = loader->asset_type();
         }
     }
-    auto guard                 = data->infos.write();
-    auto [handle, should_load] = guard->get_or_create_handle_untyped(path, loader_type, HandleLoadingMode::Request);
+    std::optional<UntypedHandle> handle_opt;
+    bool should_load = false;
+    {
+        auto guard   = data->infos.write();
+        auto [h, sl] = guard->get_or_create_handle_untyped(path, loader_type, HandleLoadingMode::Request);
+        handle_opt   = std::move(h);
+        should_load  = sl;
+        if (should_load) {
+            guard->stats.started_load_tasks++;
+        }
+    }  // infos write lock released here
     if (should_load) {
-        spawn_load_task(handle, path, *guard);
+        spawn_load_task_unlocked(*handle_opt, path);
     }
-    return handle;
+    return std::move(*handle_opt);
 }
 
 UntypedHandle AssetServer::load_erased(meta::type_index type_id, const AssetPath& path) const {
-    auto guard                 = data->infos.write();
-    auto [handle, should_load] = guard->get_or_create_handle_untyped(path, type_id, HandleLoadingMode::Request);
+    std::optional<UntypedHandle> handle_opt;
+    bool should_load = false;
+    {
+        auto guard   = data->infos.write();
+        auto [h, sl] = guard->get_or_create_handle_untyped(path, type_id, HandleLoadingMode::Request);
+        handle_opt   = std::move(h);
+        should_load  = sl;
+        if (should_load) {
+            guard->stats.started_load_tasks++;
+        }
+    }  // infos write lock released here
     if (should_load) {
-        spawn_load_task(handle, path, *guard);
+        spawn_load_task_unlocked(*handle_opt, path);
     }
-    return handle;
+    return std::move(*handle_opt);
 }
 
 Handle<LoadedFolder> AssetServer::load_folder(const AssetPath& path) const {
@@ -223,11 +237,12 @@ bool AssetServer::is_managed(const UntypedAssetId& id) const {
     return guard->contains_key(id);
 }
 
-AssetServerMode AssetServer::mode() const { return data->mode; }
+AssetServerMode AssetServer::mode() const noexcept { return data->mode; }
 
-bool AssetServer::watching_for_changes() const { return data->watching_for_changes; }
+bool AssetServer::watching_for_changes() const noexcept { return data->watching_for_changes; }
 
-std::optional<std::reference_wrapper<const AssetSource>> AssetServer::get_source(const AssetSourceId& source_id) const {
+std::optional<std::reference_wrapper<const AssetSource>> AssetServer::get_source(
+    const AssetSourceId& source_id) const noexcept {
     if (!data->sources) return std::nullopt;
     return data->sources->get(source_id);
 }

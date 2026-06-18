@@ -1,0 +1,3 @@
+set (HARFBUZZ_HAVE_FREETYPE ON CACHE BOOL "" FORCE)
+set (HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+add_subdirectory (libs/harfbuzz)

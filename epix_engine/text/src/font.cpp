@@ -1,21 +1,36 @@
-module;
-
 #include <freetype/freetype.h>
 #include <freetype/ftglyph.h>
 #include <spdlog/spdlog.h>
 
+#include <algorithm>
+#include <array>
+#include <asio/awaitable.hpp>
+#include <bit>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+#include <epix/assets.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/meta.hpp>
+#include <epix/text.hpp>
+#include <exception>
+#include <expected>
 #include <fstream>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <span>
+#include <stdexcept>
+#include <string_view>
+#include <tuple>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+#include <webgpu/webgpu.hpp>
 
 #include "font_array.hpp"
-
-module epix.text;
-
-import epix.assets;
-import epix.image;
-import epix.mesh;
-import epix.meta;
-import webgpu;
-import std;
 
 using namespace epix;
 using namespace epix::text::font;
@@ -36,22 +51,25 @@ Font make_default_embedded_font() {
 }
 }  // namespace
 
-std::span<std::string_view> FontLoader::extensions() {
+std::span<std::string_view> FontLoader::extensions() noexcept {
     static auto exts = std::array{std::string_view{"ttf"}, std::string_view{"otf"}, std::string_view{"woff"},
                                   std::string_view{"woff2"}};
     return std::span<std::string_view>(exts.data(), exts.size());
 }
 
-std::expected<Font, FontLoader::Error> FontLoader::load(std::istream& reader, const Settings&, assets::LoadContext&) {
+asio::awaitable<std::expected<Font, FontLoader::Error>> FontLoader::load(assets::Reader& reader,
+                                                                         const Settings&,
+                                                                         assets::LoadContext&) {
     try {
-        std::vector<char> bytes =
-            std::ranges::subrange(std::istreambuf_iterator<char>(reader), std::istreambuf_iterator<char>()) |
-            std::ranges::to<std::vector<char>>();
+        std::vector<uint8_t> bytes;
+        auto read_result = co_await reader.read_to_end(bytes);
+        if (!read_result)
+            co_return std::unexpected(std::make_exception_ptr(std::runtime_error("Failed to read font data")));
         auto buffer = std::make_unique<std::byte[]>(bytes.size());
         std::memcpy(buffer.get(), bytes.data(), bytes.size());
-        return Font{std::move(buffer), bytes.size()};
+        co_return Font{std::move(buffer), bytes.size()};
     } catch (...) {
-        return std::unexpected(std::current_exception());
+        co_return std::unexpected(std::current_exception());
     }
 }
 
@@ -402,8 +420,8 @@ void register_default_embedded_font(core::App& app) {
 }
 }  // namespace
 
-void FontPlugin::build(core::App& app) {
-    spdlog::debug("[text] Building FontPlugin.");
+void FontPlugin::attach(core::App& app) {
+    spdlog::debug("[text] Attaching FontPlugin.");
     app.add_plugins(image::ImagePlugin{});
     assets::app_register_asset<Font>(app);
     assets::app_register_loader<FontLoader>(app);
@@ -420,7 +438,7 @@ void FontPlugin::build(core::App& app) {
                                           .set_name("apply pending font atlas updates"));
 }
 
-void FontPlugin::finish(core::App& app) {
+void FontPlugin::ready(core::App& app) {
     spdlog::debug("[text] Registering default embedded font.");
     register_default_embedded_font(app);
 }

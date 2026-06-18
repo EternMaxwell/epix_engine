@@ -1,6 +1,17 @@
-﻿module;
+module;
+#ifndef EPIX_IMPORT_STD
+#include <algorithm>
+#include <concepts>
+#include <cstddef>
+#include <ranges>
+#include <tuple>
+#include <type_traits>
+#endif
 
 export module epix.traits;
-
-export import :templates;
-export import :function;
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+extern "C++" {
+#include <epix/traits.hpp>
+}

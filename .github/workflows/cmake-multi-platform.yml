@@ -17,21 +17,21 @@ jobs:
       fail-fast: false
 
       # Set up a matrix to run the following 3 configurations:
-      # 1. <Windows, Release, latest MSVC compiler toolchain on the default runner image, default generator>
-      # 2. <Linux, Release, latest GCC compiler toolchain on the default runner image, default generator>
-      # 3. <Linux, Release, latest Clang compiler toolchain on the default runner image, default generator>
+      # 1. <Windows, Release, Clang (LLVM shipped with VS) + Ninja>
+      # 2. <Linux, Release, latest GCC compiler toolchain + Ninja>
+      # 3. <Linux, Release, latest Clang compiler toolchain + Ninja>
       #
       # To add more build types (Release, Debug, RelWithDebInfo, etc.) customize the build_type list.
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
-        c_compiler: [gcc-16, clang-23, cl]
+        c_compiler: [clang-23, clang] # gcc-16 temporarily disabled: ICE with C++ modules
         include:
           - os: windows-latest
-            c_compiler: cl
-            cpp_compiler: cl
+            c_compiler: clang
+            cpp_compiler: clang++
             cmake_generator: Ninja
-          # Temporarily disable GCC 16, which is currently not stable, and may encounter internal compiler errors.
+          # gcc-16 temporarily disabled: ICE with C++ modules
           # - os: ubuntu-latest
           #   c_compiler: gcc-16
           #   cpp_compiler: g++-16
@@ -41,12 +41,13 @@ jobs:
             cpp_compiler: clang++-23
             cmake_generator: Ninja
         exclude:
-          - os: windows-latest
-            c_compiler: gcc-16
+          # gcc-16 temporarily disabled
+          # - os: windows-latest
+          #   c_compiler: gcc-16
           - os: windows-latest
             c_compiler: clang-23
           - os: ubuntu-latest
-            c_compiler: cl
+            c_compiler: clang
 
     steps:
     - uses: actions/checkout@v4
@@ -94,7 +95,7 @@ jobs:
       if: runner.os == 'Linux'
       uses: lukka/get-cmake@latest
 
-    - name: Install Visual Studio 2026 Build Tools
+    - name: Install Visual Studio Build Tools (MSVC + Clang)
       if: runner.os == 'Windows'
       shell: cmd
       run: >
@@ -103,9 +104,11 @@ jobs:
         --override "--quiet --wait --norestart
         --add Microsoft.VisualStudio.Workload.VCTools
         --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64
+        --add Microsoft.VisualStudio.Component.VC.Llvm.Clang
+        --add Microsoft.VisualStudio.Component.VC.Llvm.ClangToolset
         --includeRecommended"
 
-    - name: Set up MSVC developer environment
+    - name: Set up MSVC/Clang developer environment (vcvarsall)
       if: runner.os == 'Windows'
       shell: powershell
       run: |
@@ -139,6 +142,7 @@ jobs:
         -DCMAKE_CXX_COMPILER=${{ matrix.cpp_compiler }}
         -DCMAKE_C_COMPILER=${{ matrix.c_compiler }}
         -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+        -DEPIX_IMPORT_STD=OFF
         -S ${{ github.workspace }}
 
     - name: Build

@@ -1,40 +1,38 @@
-﻿module;
-module epix.assets;
-
-import std;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 
 // ---- AssetSource --------------------------------------------------------
 
-std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::writer() const {
+std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::writer() const noexcept {
     if (m_writer) return *m_writer;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetReader>> AssetSource::processed_reader() const {
+std::optional<std::reference_wrapper<const AssetReader>> AssetSource::processed_reader() const noexcept {
     if (m_processed_reader) return *m_processed_reader;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetReader>> AssetSource::ungated_processed_reader() const {
+std::optional<std::reference_wrapper<const AssetReader>> AssetSource::ungated_processed_reader() const noexcept {
     if (m_ungated_processed_reader) return *m_ungated_processed_reader;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::processed_writer() const {
+std::optional<std::reference_wrapper<const AssetWriter>> AssetSource::processed_writer() const noexcept {
     if (m_processed_writer) return *m_processed_writer;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> AssetSource::event_receiver() const {
+std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>> AssetSource::event_receiver()
+    const noexcept {
     if (m_event_receiver) return *m_event_receiver;
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const utils::Receiver<AssetSourceEvent>>> AssetSource::processed_event_receiver()
-    const {
+std::optional<std::reference_wrapper<const async_channel::Receiver<AssetSourceEvent>>>
+AssetSource::processed_event_receiver() const noexcept {
     if (m_processed_event_receiver) return *m_processed_event_receiver;
     return std::nullopt;
 }
@@ -57,9 +55,9 @@ std::function<std::unique_ptr<AssetWriter>()> AssetSource::get_default_writer(st
         [path = std::move(path)]() -> std::unique_ptr<AssetWriter> { return std::make_unique<FileAssetWriter>(path); };
 }
 
-std::function<std::unique_ptr<AssetWatcher>(utils::Sender<AssetSourceEvent>)> AssetSource::get_default_watcher(
+std::function<std::unique_ptr<AssetWatcher>(async_channel::Sender<AssetSourceEvent>)> AssetSource::get_default_watcher(
     std::filesystem::path path) {
-    return [path = std::move(path)](utils::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
+    return [path = std::move(path)](async_channel::Sender<AssetSourceEvent> sender) -> std::unique_ptr<AssetWatcher> {
         return std::make_unique<FileAssetWatcher>(path, std::move(sender));
     };
 }
@@ -83,12 +81,12 @@ AssetSource AssetSourceBuilder::build(AssetSourceId id, bool watch, bool watch_p
         source.m_processed_writer = (*processed_writer_factory)();
     }
     if (watch && watcher_factory) {
-        auto [sender, receiver] = utils::make_channel<AssetSourceEvent>();
+        auto [sender, receiver] = async_channel::unbounded<AssetSourceEvent>();
         source.m_watcher        = (*watcher_factory)(std::move(sender));
         source.m_event_receiver = std::move(receiver);
     }
     if (watch_processed && processed_watcher_factory) {
-        auto [sender, receiver]           = utils::make_channel<AssetSourceEvent>();
+        auto [sender, receiver]           = async_channel::unbounded<AssetSourceEvent>();
         source.m_processed_watcher        = (*processed_watcher_factory)(std::move(sender));
         source.m_processed_event_receiver = std::move(receiver);
     }
@@ -110,7 +108,7 @@ AssetSourceBuilder AssetSourceBuilder::platform_default(std::filesystem::path pa
 
 // ---- AssetSources -------------------------------------------------------
 
-std::optional<std::reference_wrapper<const AssetSource>> AssetSources::get(AssetSourceId name) const {
+std::optional<std::reference_wrapper<const AssetSource>> AssetSources::get(AssetSourceId name) const noexcept {
     if (name.is_default()) return m_default;
     if (auto it = m_sources.find(name.value()); it != m_sources.end()) {
         return it->second;
@@ -135,7 +133,7 @@ void AssetSourceBuilders::insert(AssetSourceId id, AssetSourceBuilder builder) {
     }
 }
 
-std::optional<std::reference_wrapper<AssetSourceBuilder>> AssetSourceBuilders::get(const AssetSourceId& id) {
+std::optional<std::reference_wrapper<AssetSourceBuilder>> AssetSourceBuilders::get(const AssetSourceId& id) noexcept {
     if (!id.has_value()) {
         if (m_default) return *m_default;
         return std::nullopt;

@@ -5,7 +5,7 @@ target_link_libraries(epix_render PUBLIC epix_assets)
 target_link_libraries(epix_render PUBLIC epix_image)
 target_link_libraries(epix_render PUBLIC epix_transform)
 target_link_libraries(epix_render PUBLIC epix_shader)
-target_link_libraries(epix_render PUBLIC Vulkan-Headers)
+# target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_glfw_render glfw_render)
@@ -33,60 +33,41 @@ target_link_libraries(epix_imgui PUBLIC epix_core)
 target_link_libraries(epix_imgui PUBLIC epix_render)
 target_link_libraries(epix_imgui PUBLIC epix_window)
 target_link_libraries(epix_imgui PUBLIC epix_glfw)
+target_link_libraries(epix_imgui PUBLIC epix_glfw_render)
 target_link_libraries(epix_imgui PUBLIC epix_input)
 target_link_libraries(epix_imgui PUBLIC webgpu)
 target_link_libraries(epix_imgui PUBLIC imgui)
 
-# --- examples: auto-discover ---
-# GLFW render examples (top-level .cpp files in examples/, excluding imgui*)
-file(GLOB GLFW_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/*.cpp")
-list(FILTER GLFW_EXAMPLE_SOURCES EXCLUDE REGEX "imgui")
-foreach(EXAMPLE_SRC IN LISTS GLFW_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_render_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
+epix_add_module_subdir(epix_screenshot screen_shot)
+target_link_libraries(epix_screenshot PUBLIC epix_render)
+target_link_libraries(epix_screenshot PUBLIC epix_image)
+target_link_libraries(epix_screenshot PUBLIC epix_assets)
+target_link_libraries(epix_screenshot PUBLIC epix_core)
+target_link_libraries(epix_screenshot PUBLIC epix_tasks)
+target_link_libraries(epix_screenshot PUBLIC epix_input)
+target_link_libraries(epix_screenshot PUBLIC webgpu)
 
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_render epix_glfw_render epix_core_graph)
-endforeach()
+epix_add_tests(screenshot
+  TESTS_DIR screen_shot/tests
+  LINK_LIBS epix_screenshot epix_render epix_core epix_image epix_assets epix_tasks
+)
+
+if(EPIX_ENABLE_EXAMPLE)
+# GLFW render examples (top-level .cpp files, excluding imgui*)
+epix_add_examples(render_glfw
+	EXCLUDE_REGEX "imgui"
+	LINK_LIBS epix_render epix_glfw_render epix_core_graph
+)
 
 # SFML render examples
-file(GLOB_RECURSE SFML_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/sfml/*.cpp")
-foreach(EXAMPLE_SRC IN LISTS SFML_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_render_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
-
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_render epix_sfml_render epix_core_graph)
-endforeach()
+epix_add_examples(render_sfml
+	EXAMPLES_DIR examples/sfml
+	LINK_LIBS epix_render epix_sfml_render epix_core_graph
+)
 
 # ImGui render examples
-file(GLOB IMGUI_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/imgui*.cpp")
-foreach(EXAMPLE_SRC IN LISTS IMGUI_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_render_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
-
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_render epix_glfw_render epix_core_graph epix_imgui)
-endforeach()
-
-# WebGPU render examples
-file(GLOB_RECURSE WEBGPU_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/webgpu/*.cpp")
-foreach(EXAMPLE_SRC IN LISTS WEBGPU_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_render_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
-
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_render epix_glfw_render webgpu glfw)
-endforeach()
+epix_add_examples(render_imgui
+	GLOB_TYPE GLOB
+	LINK_LIBS epix_render epix_glfw_render epix_core_graph epix_imgui
+)
+endif()

@@ -1,16 +1,16 @@
-module;
-
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
-module epix.glfw.core;
-
-import epix.utils;
+#include <epix/glfw/core.hpp>
+#include <ranges>
+#include <unordered_set>
+#include <variant>
 
 using namespace epix::glfw;
 using namespace epix::window;
+using namespace epix::core;
 
-const std::string& Clipboard::get_text() const { return text; }
+const std::string& Clipboard::get_text() const noexcept { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {
     const char* str = glfwGetClipboardString(nullptr);
     if (str == nullptr) {

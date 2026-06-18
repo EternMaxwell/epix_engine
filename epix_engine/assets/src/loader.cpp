@@ -1,12 +1,8 @@
-﻿module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-
-import std;
-import epix.meta;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets {
 std::optional<std::reference_wrapper<const ErasedLoadedAsset>> ErasedLoadedAsset::get_labeled(

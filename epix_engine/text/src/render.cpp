@@ -1,17 +1,32 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.text;
-
-import epix.core_graph;
-import epix.render;
-import webgpu;
-import std;
+#include <array>
+#include <bit>
+#include <cstddef>
+#include <cstdint>
+#include <epix/core_graph.hpp>
+#include <epix/render.hpp>
+#include <epix/text.hpp>
+#include <expected>
+#include <format>
+#include <optional>
+#include <ranges>
+#include <span>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+#include <utility>
+#include <vector>
+#include <webgpu/webgpu.hpp>
 
 using namespace epix::core;
 using namespace epix::text;
 using namespace epix;
+
+void Text2d::register_required_components(Components& components) {
+    components.register_required<Text2d>([] { return transform::Transform{}; });
+    components.register_required<Text2d>([] { return TextColor{}; });
+}
 
 namespace {
 constexpr std::string_view kTextVertexShader = R"(
@@ -103,6 +118,7 @@ struct ExtractedText2d {
     glm::vec4 color;
     float depth;
     assets::AssetId<image::Image> font_image;
+    render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
 };
 
 struct TextBatch {
@@ -388,9 +404,10 @@ void extract_texts_2d(Commands cmd,
                                          const Text2d&,
                                          Opt<const TextColor&>,
                                          const TextImage&,
-                                         const transform::GlobalTransform&>,
+                                         const transform::GlobalTransform&,
+                                         Opt<const render::camera::RenderLayer&>>,
                                     Without<render::CustomRendered>>> texts) {
-    for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform] : texts.iter()) {
+    for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, opt_layer] : texts.iter()) {
         glm::vec4 color{1.0f};
         if (text_color) {
             auto&& value = text_color->get();
@@ -407,6 +424,7 @@ void extract_texts_2d(Commands cmd,
                 .color         = color,
                 .depth         = model[3][2],
                 .font_image    = text_image.image,
+                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
             },
             TextBatch{});
     }
@@ -414,14 +432,14 @@ void extract_texts_2d(Commands cmd,
 
 void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                const render::view::ExtractedView&,
-                               const render::view::ViewTarget&>,
-                          With<render::camera::ExtractedCamera>> views,
+                               const render::view::ViewTarget&,
+                               const render::camera::ExtractedCamera&>> views,
                     Query<Item<Entity, const ExtractedText2d&>> texts,
                     Res<render::RenderAssets<image::Image>> images,
                     Res<TransparentTextDrawFunction> draw_function_id,
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target] : views.iter()) {
+    for (auto&& [phase, view, target, cam] : views.iter()) {
         auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format);
         if (!pipeline_id) {
             spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
@@ -431,6 +449,9 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
 
         for (auto&& [entity, text] : texts.iter()) {
             if (!images->try_get(text.font_image)) {
+                continue;
+            }
+            if (!cam.render_layer.intersects(text.render_layer)) {
                 continue;
             }
 
@@ -539,8 +560,8 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                     shaped.descent());
 }
 
-void TextRenderPlugin::build(App& app) {
-    spdlog::debug("[text] Building TextRenderPlugin.");
+void TextRenderPlugin::attach(App& app) {
+    spdlog::debug("[text] Attaching TextRenderPlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<TextShaderHandles>()) {
@@ -550,8 +571,8 @@ void TextRenderPlugin::build(App& app) {
     }
 }
 
-void TextRenderPlugin::finish(App& app) {
-    spdlog::debug("[text] Finishing TextRenderPlugin.");
+void TextRenderPlugin::ready(App& app) {
+    spdlog::debug("[text] Readying TextRenderPlugin.");
     if (!app.world_mut().get_resource<TextShaderHandles>()) {
         if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

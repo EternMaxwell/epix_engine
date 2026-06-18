@@ -1,49 +1,17 @@
-﻿cmake_minimum_required(VERSION 3.21)
+# Output directory defaults — only set if not already configured by a parent project.
+# Set here (not in root) to avoid affecting third-party FetchContent builds.
+if (NOT DEFINED CMAKE_ARCHIVE_OUTPUT_DIRECTORY)
+  set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+endif()
+if (NOT DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+endif()
+if (NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
+  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
+endif()
 
-function(epix_parse_options)
-  if(EPIX_ENABLE_TRACY)
-    target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TRACY)
-  endif()
-  if(EPIX_USE_VOLK)
-    target_compile_definitions(${ARGN} PUBLIC EPIX_USE_VOLK)
-  endif()
-  if (EPIX_IMPORT_STD AND EPIX_CXX_MODULE)
-    target_compile_definitions(${ARGN} PUBLIC EPIX_IMPORT_STD)
-  endif()
-  if(EPIX_ENABLE_TEST)
-    target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TEST)
-    target_link_libraries(${ARGN} PRIVATE GTest::gtest_main)
-  endif()
-endfunction()
-
-function(epix_add_module MODULE_NAME)
-  add_library(${MODULE_NAME} STATIC)
-  epix_parse_options(${MODULE_NAME})
-  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "modules/*.ixx" "modules/*.cppm")
-  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.c" "src/*.cpp")
-  target_include_directories(${MODULE_NAME} PUBLIC "include")
-  if (EPIX_CXX_MODULE)
-    target_sources(${MODULE_NAME} 
-      PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
-      PRIVATE ${SOURCES}
-    )
-  endif()
-endfunction()
-
-function(epix_add_module_subdir MODULE_NAME SUBDIR)
-  add_library(${MODULE_NAME} STATIC)
-  epix_parse_options(${MODULE_NAME})
-  file(GLOB_RECURSE MODULES CONFIGURE_DEPENDS "${SUBDIR}/modules/*.ixx" "${SUBDIR}/modules/*.cppm")
-  file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "${SUBDIR}/src/*.c" "${SUBDIR}/src/*.cpp")
-  target_include_directories(${MODULE_NAME} PUBLIC "include")
-  if (EPIX_CXX_MODULE)
-    target_sources(${MODULE_NAME} 
-      PUBLIC FILE_SET cxx_modules TYPE CXX_MODULES FILES ${MODULES}
-      PRIVATE ${SOURCES}
-    )
-  endif()
-endfunction()
-
+add_subdirectory(common)
+add_subdirectory(tasks)
 add_subdirectory(core)
 add_subdirectory(time)
 add_subdirectory(input)

@@ -1,21 +1,18 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import :app.schedules;
-import :labels;
+#include <epix/core/app/schedules.hpp>
+#include <epix/core/labels.hpp>
 
 namespace epix::core {
-std::optional<std::reference_wrapper<const Schedule>> Schedules::get_schedule(const ScheduleLabel& label) const {
+std::optional<std::reference_wrapper<const Schedule>> Schedules::get_schedule(
+    const ScheduleLabel& label) const noexcept {
     auto it = _schedules.find(label);
     if (it != _schedules.end()) {
         return it->second;
     }
     return std::nullopt;
 }
-std::optional<std::reference_wrapper<Schedule>> Schedules::get_schedule_mut(const ScheduleLabel& label) {
+std::optional<std::reference_wrapper<Schedule>> Schedules::get_schedule_mut(const ScheduleLabel& label) noexcept {
     auto it = _schedules.find(label);
     if (it != _schedules.end()) {
         return it->second;

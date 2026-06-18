@@ -1,5 +1,3 @@
-module;
-
 #ifdef EPIX_ENABLE_TRACY
 #include <tracy/Tracy.hpp>
 #endif
@@ -8,16 +6,11 @@ module;
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/spdlog.h>
 
+#include <epix/core/app.hpp>
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
+#include <epix/meta.hpp>
 #include <stacktrace>
-
-module epix.core;
-
-import std;
-import epix.meta;
-
-import :app;
-import :labels;
-import :schedule;
 
 namespace epix::core {
 
@@ -189,8 +182,9 @@ bool App::run_schedule(const ScheduleLabel& label) {
 
 void App::update() {
     spdlog::trace("[app] Update tick for '{}'.", _label.to_string());
-    _world.check_change_tick(
-        [&](Tick tick) { _world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); }); });
+    _world.check_change_tick([&](Tick tick) {
+        (void)_world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); });
+    });
     auto order_opt = _world.take_resource<ScheduleOrder>();
     if (order_opt) {
         for (const auto& label : order_opt->iter()) {
@@ -244,10 +238,10 @@ void App::run() {
     auto prev_terminate = std::set_terminate(handle_terminate);
     auto file_sink      = std::make_shared<spdlog::sinks::basic_file_sink_mt>("epix.log", true);
     spdlog::default_logger()->sinks().push_back(file_sink);
-    spdlog::info("[app] App building. - {}", _label.to_string());
+    spdlog::info("[app] App attaching. - {}", _label.to_string());
     resource_scope([&](Plugins& plugins) {
-        spdlog::debug("[app] Finishing all plugins for '{}'.", _label.to_string());
-        plugins.finish_all(*this);
+        spdlog::debug("[app] Readying all plugins for '{}'.", _label.to_string());
+        plugins.ready_all(*this);
     });
     resource_scope([&](World& world, Schedules& schedules) {
         spdlog::debug("[app] Preparing and initializing schedules for '{}'.", _label.to_string());
@@ -266,7 +260,7 @@ void App::run() {
     }
     spdlog::info("[app] App exiting. - {}", _label.to_string());
     runner->exit(*this);
-    resource_scope([&](Plugins& plugins) { plugins.finalize_all(*this); });
+    resource_scope([&](Plugins& plugins) { plugins.detach_all(*this); });
     spdlog::info("[app] App terminated. - {}", _label.to_string());
     std::set_terminate(prev_terminate);
     auto& sinks = spdlog::default_logger()->sinks();

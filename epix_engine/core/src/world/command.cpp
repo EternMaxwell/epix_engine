@@ -1,10 +1,6 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
+#include <epix/core/world/commands.hpp>
 
 namespace epix::core {
 void CommandQueue::append(CommandQueue& other) {

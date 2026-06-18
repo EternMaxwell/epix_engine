@@ -1,5 +1,3 @@
-module;
-
 #include <spdlog/spdlog.h>
 
 #include <SFML/Window/Clipboard.hpp>
@@ -12,6 +10,9 @@ module;
 #include <SFML/Window/WindowEnums.hpp>
 #include <SFML/Window/WindowHandle.hpp>
 #include <memory>
+#include <ranges>
+#include <unordered_set>
+#include <variant>
 
 #if defined(__linux__) && !defined(SFML_USE_DRM)
 #include <X11/Xlib.h>
@@ -20,18 +21,26 @@ module;
 #ifdef None
 #undef None
 #endif
+#ifdef Always
+#undef Always
+#endif
+#ifdef Bool
+#undef Bool
+#endif
+#ifdef Status
+#undef Status
+#endif
 
 namespace sf::priv {
 std::shared_ptr<Display> openDisplay();
 }
 #endif
 
-module epix.sfml.core;
-
-import epix.utils;
+#include <epix/sfml/core.hpp>
 
 using namespace epix::sfml;
 using namespace epix::window;
+using namespace epix::core;
 using WindowDesc = ::epix::window::Window;
 
 namespace {
@@ -126,7 +135,7 @@ PendingWindowPosition make_pending_window_position(const std::pair<int, int>& ta
 
 }  // namespace
 
-const std::string& Clipboard::get_text() const { return text; }
+const std::string& Clipboard::get_text() const noexcept { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {
     sf::String str  = sf::Clipboard::getString();
     clipboard->text = str.toAnsiString();

@@ -1,16 +1,14 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.input;
+#include <epix/input.hpp>
 
 using namespace epix::core;
 namespace epix::input {
 
 void log_inputs(EventReader<KeyInput> key_reader,
-                       EventReader<MouseButtonInput> mouse_reader,
-                       EventReader<MouseMove> mouse_move_reader,
-                       EventReader<MouseScroll> mouse_scroll_reader) {
+                EventReader<MouseButtonInput> mouse_reader,
+                EventReader<MouseMove> mouse_move_reader,
+                EventReader<MouseScroll> mouse_scroll_reader) {
     for (auto&& [key, scancode, pressed, repeat, window] : key_reader.read()) {
         spdlog::info("Key: {}, Scancode: {}, Pressed: {}, Repeat: {}", key_name(key), scancode, pressed, repeat);
     }
@@ -25,7 +23,7 @@ void log_inputs(EventReader<KeyInput> key_reader,
     }
 }
 
-void InputPlugin::build(App& app) {
+void InputPlugin::attach(App& app) {
     app.add_events<KeyInput>().add_events<MouseButtonInput>().add_events<MouseMove>().add_events<MouseScroll>();
 
     app.world_mut().init_resource<ButtonInput<KeyCode>>();

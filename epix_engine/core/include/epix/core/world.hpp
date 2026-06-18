@@ -1,0 +1,7 @@
+#pragma once
+
+#include <epix/common.hpp>
+#include <epix/core/world/commands.hpp>
+#include <epix/core/world/decl.hpp>
+#include <epix/core/world/entity_ref.hpp>
+#include <epix/core/world/interface.hpp>

@@ -1,8 +1,5 @@
-﻿module;
-module epix.assets;
-
-import std;
-import epix.utils;
+#include <epix/assets.hpp>
+#include <epix/utils.hpp>
 
 namespace epix::assets::memory {
 
@@ -529,7 +526,7 @@ void Directory::remove_callback(std::uint64_t id) const {
     remove_subscriber(w.ref, id);
 }
 
-void Directory::poll_events() const { (void)this; }
+void Directory::poll_events() const noexcept { (void)this; }
 
 std::filesystem::path Directory::get_path() const { return internal_->read().ref.path; }
 

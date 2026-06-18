@@ -1,8 +1,4 @@
-﻿module;
-module epix.assets;
-
-import std;
-
+#include <epix/assets.hpp>
 namespace epix::assets {
 
 std::string AssetPath::string() const {
@@ -13,7 +9,7 @@ std::string AssetPath::string() const {
     return ss.str();
 }
 
-std::optional<std::string> AssetPath::take_label() {
+std::optional<std::string> AssetPath::take_label() noexcept {
     auto l = std::move(label);
     label.reset();
     return l;
@@ -45,7 +41,7 @@ AssetPath AssetPath::resolve_embed(const AssetPath& relative) const {
     return AssetPath(relative.source.is_default() ? source : relative.source, std::move(resolved), relative.label);
 }
 
-bool AssetPath::is_unapproved() const {
+bool AssetPath::is_unapproved() const noexcept {
     namespace fs = std::filesystem;
     fs::path simplified;
     for (auto component : path) {

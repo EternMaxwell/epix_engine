@@ -1,15 +1,8 @@
-module;
-
 #include <spdlog/spdlog.h>
 
+#include <epix/core/labels.hpp>
+#include <epix/core/schedule.hpp>
 #include <taskflow/taskflow.hpp>
-
-module epix.core;
-
-import std;
-
-import :schedule;
-import :labels;
 
 namespace epix::core {
 

@@ -1,22 +1,24 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.assets;
-
-import std;
+#include <asio/awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+#include <epix/assets.hpp>
+#include <epix/tasks.hpp>
 
 using namespace epix::assets;
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources, AssetServerMode mode, bool watching_for_changes)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->loaders              = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
@@ -25,15 +27,16 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
                          bool watching_for_changes,
                          UnapprovedPathMode unapproved_path_mode)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->meta_check                                               = meta_check;
-    data->unapproved_path_mode                                     = unapproved_path_mode;
-    data->loaders                                                  = std::make_shared<utils::RwLock<AssetLoaders>>();
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->meta_check           = meta_check;
+    data->unapproved_path_mode = unapproved_path_mode;
+    data->loaders              = std::make_shared<utils::RwLock<AssetLoaders>>();
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
@@ -43,15 +46,16 @@ AssetServer::AssetServer(std::shared_ptr<AssetSources> sources,
                          bool watching_for_changes,
                          UnapprovedPathMode unapproved_path_mode)
     : data(std::make_shared<AssetServerData>()) {
-    data->sources                                                  = std::move(sources);
-    data->mode                                                     = mode;
-    data->watching_for_changes                                     = watching_for_changes;
-    data->meta_check                                               = meta_check;
-    data->unapproved_path_mode                                     = unapproved_path_mode;
-    data->loaders                                                  = std::move(loaders);
-    std::tie(data->asset_event_sender, data->asset_event_receiver) = utils::make_channel<InternalAssetEvent>();
-    auto guard                                                     = data->infos.write();
-    guard->watching_for_changes                                    = watching_for_changes;
+    data->sources              = std::move(sources);
+    data->mode                 = mode;
+    data->watching_for_changes = watching_for_changes;
+    data->meta_check           = meta_check;
+    data->unapproved_path_mode = unapproved_path_mode;
+    data->loaders              = std::move(loaders);
+    std::tie(data->asset_event_sender, data->asset_event_receiver) =
+        epix::async_channel::unbounded<InternalAssetEvent>();
+    auto guard                  = data->infos.write();
+    guard->watching_for_changes = watching_for_changes;
 }
 
 bool ::epix::assets::asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id) {
@@ -90,21 +94,21 @@ void ::epix::assets::log_asset_error(const AssetError& error,
                error);
 }
 
-static void load_folder_recursive(const AssetSourceId& source,
-                                  const std::filesystem::path& dir_path,
-                                  const AssetReader& reader,
-                                  const AssetServer& server,
-                                  std::vector<UntypedHandle>& handles) {
-    auto is_dir = reader.is_directory(dir_path);
-    if (!is_dir || !*is_dir) return;
+static asio::awaitable<void> load_folder_recursive(const AssetSourceId& source,
+                                                   const std::filesystem::path& dir_path,
+                                                   const AssetReader& reader,
+                                                   const AssetServer& server,
+                                                   std::vector<UntypedHandle>& handles) {
+    auto is_dir = co_await reader.is_directory(dir_path);
+    if (!is_dir || !*is_dir) co_return;
 
-    auto dir_result = reader.read_directory(dir_path);
-    if (!dir_result) return;
+    auto dir_result = co_await reader.read_directory(dir_path);
+    if (!dir_result) co_return;
 
     for (auto child_path : *dir_result) {
-        auto child_is_dir = reader.is_directory(child_path);
+        auto child_is_dir = co_await reader.is_directory(child_path);
         if (child_is_dir && *child_is_dir) {
-            load_folder_recursive(source, child_path, reader, server, handles);
+            co_await load_folder_recursive(source, child_path, reader, server, handles);
         } else {
             auto asset_path = AssetPath(source, child_path);
             // Only load files that have a registered loader
@@ -123,31 +127,33 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
     auto asset_id   = id;
     auto asset_path = path;
 
-    utils::IOTaskPool::instance().detach_task([server, asset_id, asset_path]() {
-        auto source = server.data->sources->get(asset_path.source);
-        if (!source) {
-            spdlog::error("Failed to load folder {}. AssetSource does not exist", asset_path.string());
-            return;
-        }
-
-        const AssetReader* reader_ptr = nullptr;
-        if (server.data->mode == AssetServerMode::Processed) {
-            auto processed_reader_opt = source->get().processed_reader();
-            if (!processed_reader_opt) {
-                spdlog::error("Failed to load folder {}. No processed reader available", asset_path.string());
-                return;
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedAssetId asset_id, AssetPath asset_path) -> asio::awaitable<void> {
+            auto source = server.data->sources->get(asset_path.source);
+            if (!source) {
+                spdlog::error("Failed to load folder {}. AssetSource does not exist", asset_path.string());
+                co_return;
             }
-            reader_ptr = &processed_reader_opt->get();
-        } else {
-            reader_ptr = &source->get().reader();
-        }
 
-        std::vector<UntypedHandle> handles;
-        load_folder_recursive(asset_path.source, asset_path.path, *reader_ptr, server, handles);
+            const AssetReader* reader_ptr = nullptr;
+            if (server.data->mode == AssetServerMode::Processed) {
+                auto processed_reader_opt = source->get().processed_reader();
+                if (!processed_reader_opt) {
+                    spdlog::error("Failed to load folder {}. No processed reader available", asset_path.string());
+                    co_return;
+                }
+                reader_ptr = &processed_reader_opt->get();
+            } else {
+                reader_ptr = &source->get().reader();
+            }
 
-        server.data->asset_event_sender.send(
-            internal_asset_event::Loaded{asset_id, ErasedLoadedAsset::from_asset(LoadedFolder{std::move(handles)})});
-    });
+            std::vector<UntypedHandle> handles;
+            co_await load_folder_recursive(asset_path.source, asset_path.path, *reader_ptr, server, handles);
+
+            co_await server.data->asset_event_sender.send(internal_asset_event::Loaded{
+                asset_id, ErasedLoadedAsset::from_asset(LoadedFolder{std::move(handles)})});
+        }(server, asset_id, asset_path))
+        .detach();
 }
 
 void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params) {
@@ -161,7 +167,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
     {
         auto guard = server->data->infos.write();
 
-        while (auto event = receiver.try_receive()) {
+        while (auto event = receiver.try_recv()) {
             std::visit(utils::visitor{
                            [&](internal_asset_event::Loaded& loaded) {
                                guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
@@ -269,7 +275,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                 switch (server->data->mode) {
                     case AssetServerMode::Unprocessed: {
                         if (auto receiver_opt = source.event_receiver()) {
-                            while (auto ev = receiver_opt->get().try_receive()) {
+                            while (auto ev = receiver_opt->get().try_recv()) {
                                 handle_source_event(source.id(), *ev);
                             }
                         }
@@ -277,7 +283,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                     }
                     case AssetServerMode::Processed: {
                         if (auto receiver_opt = source.processed_event_receiver()) {
-                            while (auto ev = receiver_opt->get().try_receive()) {
+                            while (auto ev = receiver_opt->get().try_recv()) {
                                 handle_source_event(source.id(), *ev);
                             }
                         }
@@ -290,7 +296,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
 
     // Reload paths outside the lock to avoid deadlock
     for (auto& path : paths_to_reload) {
-        server->reload(path);
+        (void)server->reload(path);
     }
 }
 
@@ -299,21 +305,18 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
 // Matches bevy_asset's AssetServer::load_with_settings_loader_and_reader.
 // Calls the loader, wrapping any thrown exception into an AssetLoadError.
 // ---------------------------------------------------------------------------
-std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_with_settings_loader_and_reader(
-    const AssetPath& asset_path,
-    const Settings& settings,
-    const ErasedAssetLoader& loader,
-    std::istream& reader) const {
+asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_with_settings_loader_and_reader(
+    const AssetPath& asset_path, const Settings& settings, const ErasedAssetLoader& loader, Reader& reader) const {
     try {
         auto context     = AssetServer::make_load_context(*this, asset_path);
-        auto load_result = loader.load(reader, settings, context);
+        auto load_result = co_await loader.load(reader, settings, context);
         if (!load_result) {
-            return std::unexpected(AssetLoadError{
+            co_return std::unexpected(AssetLoadError{
                 load_error::AssetLoaderException{load_result.error(), asset_path, loader.loader_type().short_name()}});
         }
-        return std::move(*load_result);
+        co_return std::move(*load_result);
     } catch (...) {
-        return std::unexpected(AssetLoadError{
+        co_return std::unexpected(AssetLoadError{
             load_error::AssetLoaderException{std::current_exception(), asset_path, loader.loader_type().short_name()}});
     }
 }
@@ -325,18 +328,13 @@ std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_with_settings
 // and picks a loader. If a .meta file is found its loader_name field is used
 // (via binary zpp::bits deserialization of AssetMetaMinimal); otherwise the
 // extension-based loader is used and default_meta() is returned.
-// NOTE: full .meta deserialization (settings override from file) still requires
-// the caller to deserialize the full AssetMeta<LS,PS> with desialize_asset_meta().
 // ---------------------------------------------------------------------------
-std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_reader(
-    const AssetPath& asset_path,
-    std::optional<meta::type_index> asset_type_id,
-    std::optional<AssetLoadError>& out_error) const {
+asio::awaitable<std::expected<AssetServer::MetaLoaderReader, AssetLoadError>> AssetServer::get_meta_loader_and_reader(
+    const AssetPath& asset_path, std::optional<meta::type_index> asset_type_id) const {
     // 1. Resolve the source
     auto source_opt = get_source(asset_path.source);
     if (!source_opt) {
-        out_error = AssetLoadError{load_error::MissingAssetSourceError{asset_path.source}};
-        return std::nullopt;
+        co_return std::unexpected(AssetLoadError{load_error::MissingAssetSourceError{asset_path.source}});
     }
     const AssetSource& source = source_opt->get();
 
@@ -344,9 +342,6 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     const AssetReader* reader_ptr = nullptr;
     std::optional<std::reference_wrapper<const AssetReader>> processed_reader_opt;
     if (data->mode == AssetServerMode::Processed) {
-        // When a processor-extension check is installed, extensions without a registered
-        // processor are not copied to the processed output directory, so we read them
-        // directly from the source reader.
         bool use_source = data->has_processor_for_ext &&
                           !data->has_processor_for_ext(asset_path.get_full_extension().value_or(std::string{}));
         if (use_source) {
@@ -354,8 +349,8 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
         } else {
             processed_reader_opt = source.processed_reader();
             if (!processed_reader_opt) {
-                out_error = AssetLoadError{load_error::MissingProcessedAssetReaderError{asset_path.source}};
-                return std::nullopt;
+                co_return std::unexpected(
+                    AssetLoadError{load_error::MissingProcessedAssetReaderError{asset_path.source}});
             }
             reader_ptr = &processed_reader_opt->get();
         }
@@ -364,7 +359,6 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     }
 
     // 3. Determine whether to check for a .meta file
-    // Matches bevy_asset's AssetMetaCheck logic.
     bool read_meta =
         std::visit(utils::visitor{
                        [](const asset_meta_check::Always&) { return true; },
@@ -373,17 +367,14 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
                    },
                    data->meta_check);
 
-    // 4. Try to find a loader.  When read_meta is enabled we peek at the .meta
-    //    file to get the loader_name.  We keep the bytes so we can deserialize
-    //    the full settings after selecting the loader (step 5 below).
+    // 4. Try to find a loader.
     std::shared_ptr<ErasedAssetLoader> loader;
     std::optional<std::vector<std::byte>> stored_meta_bytes;
     if (read_meta) {
-        auto meta_bytes = reader_ptr->read_meta_bytes(asset_path.path);
+        auto meta_bytes = co_await reader_ptr->read_meta_bytes(asset_path.path);
         if (meta_bytes) {
             stored_meta_bytes = std::move(meta_bytes.value());
-            // .meta file found — deserialize the minimal meta to look up the loader by name.
-            auto minimal = deserialize_meta_minimal(*stored_meta_bytes);
+            auto minimal      = deserialize_meta_minimal(*stored_meta_bytes);
             if (minimal && !minimal->asset.loader.empty()) {
                 loader = [&]() -> std::shared_ptr<ErasedAssetLoader> {
                     auto guard = data->loaders->read();
@@ -393,11 +384,9 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
                 }();
             }
         }
-        // fall through to extension-based lookup if no loader found from .meta
     }
 
     if (!loader) {
-        // Use find() which correctly intersects type+extension (matches Bevy precedence).
         auto maybe = [&]() -> std::optional<MaybeAssetLoader> {
             auto guard = data->loaders->read();
             return guard->find(std::nullopt, asset_type_id, std::nullopt,
@@ -407,24 +396,19 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
         if (!maybe) {
             std::vector<std::string> exts;
             if (auto e = asset_path.get_extension()) exts.push_back(std::string(*e));
-            out_error = AssetLoadError{
-                load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, std::move(exts)}};
-            return std::nullopt;
+            co_return std::unexpected(AssetLoadError{
+                load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, std::move(exts)}});
         }
         loader = maybe->get();
         if (!loader) {
             std::vector<std::string> exts;
             if (auto e = asset_path.get_extension()) exts.push_back(std::string(*e));
-            out_error = AssetLoadError{
-                load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, std::move(exts)}};
-            return std::nullopt;
+            co_return std::unexpected(AssetLoadError{
+                load_error::MissingAssetLoader{std::nullopt, asset_type_id, asset_path, std::move(exts)}});
         }
     }
 
-    // 5. Build meta from the loader.  Prefer the stored .meta file bytes so that
-    //    user-customised loader settings are respected (matches Bevy's
-    //    ErasedAssetLoader::deserialize_meta path).  Return a DeserializeMeta error
-    //    if the full meta bytes fail to deserialize (matches Bevy's load_internal).
+    // 5. Build meta from the loader.
     auto meta = [&]() -> std::expected<std::unique_ptr<AssetMetaDyn>, AssetLoadError> {
         if (stored_meta_bytes) {
             auto dm = loader->deserialize_meta(*stored_meta_bytes);
@@ -434,20 +418,16 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
         return loader->default_meta();
     }();
     if (!meta) {
-        out_error = meta.error();
-        return std::nullopt;
+        co_return std::unexpected(meta.error());
     }
 
-    // 5b. Check meta action type: Ignore and Process are not loadable directly.
-    //     Matches bevy_asset AssetLoadError::CannotLoadIgnoredAsset / CannotLoadProcessedAsset.
+    // 5b. Check meta action type
     switch ((*meta)->action_type()) {
         case AssetActionType::Ignore:
-            out_error = AssetLoadError{load_error::CannotLoadIgnoredAsset{asset_path}};
-            return std::nullopt;
+            co_return std::unexpected(AssetLoadError{load_error::CannotLoadIgnoredAsset{asset_path}});
         case AssetActionType::Process:
             if (data->mode != AssetServerMode::Processed) {
-                out_error = AssetLoadError{load_error::CannotLoadProcessedAsset{asset_path}};
-                return std::nullopt;
+                co_return std::unexpected(AssetLoadError{load_error::CannotLoadProcessedAsset{asset_path}});
             }
             break;
         case AssetActionType::Load:
@@ -455,13 +435,12 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
     }
 
     // 6. Open the asset file for reading
-    auto read_result = reader_ptr->read(asset_path.path);
+    auto read_result = co_await reader_ptr->read(asset_path.path);
     if (!read_result) {
-        out_error = AssetLoadError{load_error::AssetReaderError{read_result.error()}};
-        return std::nullopt;
+        co_return std::unexpected(AssetLoadError{load_error::AssetReaderError{read_result.error()}});
     }
 
-    return MetaLoaderReader{std::move(*meta), std::move(loader), std::move(*read_result)};
+    co_return MetaLoaderReader{std::move(*meta), std::move(loader), std::move(*read_result)};
 }
 
 // ---------------------------------------------------------------------------
@@ -469,28 +448,25 @@ std::optional<AssetServer::MetaLoaderReader> AssetServer::get_meta_loader_and_re
 // Matches bevy_asset's AssetServer::load_internal.
 // Called from inside a task spawned by spawn_load_task.
 // ---------------------------------------------------------------------------
-void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
-                                AssetPath path,
-                                bool force,
-                                std::optional<MetaTransform> meta_transform) const {
+asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
+                                                 AssetPath path,
+                                                 bool force,
+                                                 std::optional<MetaTransform> meta_transform) const {
     // Determine asset_type_id hint from input handle (if typed)
     std::optional<meta::type_index> input_type_id;
     if (input_handle) input_type_id = input_handle->type();
 
     // --- Get meta, loader and reader ---------------------------------
-    std::optional<AssetLoadError> get_error;
-    auto mlr = get_meta_loader_and_reader(path, input_type_id, get_error);
-    if (!mlr) {
+    auto mlr_result = co_await get_meta_loader_and_reader(path, input_type_id);
+    if (!mlr_result) {
         // If we had an input handle, propagate failure so the handle's state is updated
         if (input_handle) {
-            send_asset_event(InternalAssetEvent{internal_asset_event::Failed{
-                input_handle->id(), path,
-                get_error.value_or(
-                    AssetLoadError{load_error::MissingAssetLoader{std::nullopt, input_type_id, path, {}}})}});
+            co_await send_asset_event(
+                InternalAssetEvent{internal_asset_event::Failed{input_handle->id(), path, mlr_result.error()}});
         }
-        return;
+        co_return;
     }
-    auto& [meta, loader, reader] = *mlr;
+    auto& [meta, loader, reader] = *mlr_result;
 
     // Apply the meta_transform carried by the handle (settings override)
     // Priority: meta_transform argument > handle's built-in meta_transform
@@ -503,7 +479,6 @@ void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
     }
 
     // --- Resolve asset ID and should_load flag -----------------------
-    // Use a lambda to guarantee asset_id is always initialized before use.
     std::optional<UntypedHandle> fetched_handle;
     bool should_load               = true;
     auto [asset_id, _fetched_pair] = [&]() -> std::pair<std::optional<UntypedAssetId>, std::optional<UntypedHandle>> {
@@ -517,19 +492,19 @@ void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
         return {handle.id(), handle};
     }();
     fetched_handle = _fetched_pair;
-    if (!asset_id) return;  // no provider
+    if (!asset_id) co_return;  // no provider
 
     // --- Early-out if already loaded ---------------------------------
     if (!should_load && !force) {
-        return;
+        co_return;
     }
 
     // --- Verify type matches loader ----------------------------------
     if (asset_id->type != loader->asset_type()) {
         auto err = AssetLoadError{load_error::RequestHandleMismatch{path, asset_id->type, loader->asset_type(),
                                                                     loader->loader_type().short_name()}};
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
-        return;
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
+        co_return;
     }
 
     // --- Load --------------------------------------------------------
@@ -538,16 +513,16 @@ void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
         auto err = AssetLoadError{load_error::AssetLoaderException{
             std::make_exception_ptr(std::runtime_error("Asset meta has no loader settings")), path,
             loader->loader_type().short_name()}};
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
-        return;
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, err}});
+        co_return;
     }
 
-    auto load_result = load_with_settings_loader_and_reader(path, *settings_ptr, *loader, *reader);
+    auto load_result = co_await load_with_settings_loader_and_reader(path, *settings_ptr, *loader, *reader);
     if (load_result) {
-        send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{*asset_id, std::move(*load_result)}});
+        co_await send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{*asset_id, std::move(*load_result)}});
     } else {
-        // Detailed error is logged later in handle_internal_events when the Failed event is processed.
-        send_asset_event(InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, load_result.error()}});
+        co_await send_asset_event(
+            InternalAssetEvent{internal_asset_event::Failed{*asset_id, path, load_result.error()}});
     }
 }
 
@@ -556,20 +531,31 @@ void AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
 // Matches bevy_asset's AssetServer::spawn_load_task.
 // ---------------------------------------------------------------------------
 void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& path, AssetInfos& infos) const {
+    // Increment counter while caller holds the lock, but the actual spawn happens without the lock.
+    // Callers MUST drop the infos guard before invoking this function, OR call spawn_load_task_unlocked
+    // directly after releasing the guard.
     infos.stats.started_load_tasks++;
+}
 
+void AssetServer::spawn_load_task_unlocked(const UntypedHandle& handle, const AssetPath& path) const {
+    // Spawn the load coroutine. Must be called WITHOUT holding any infos lock.
     auto server       = *this;
     auto owned_handle = handle;
     auto asset_path   = path;
 
-    utils::IOTaskPool::instance().detach_task([server, owned_handle, asset_path]() mutable {
-        server.load_internal(std::move(owned_handle), std::move(asset_path), false, std::nullopt);
-    });
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedHandle owned_handle, AssetPath asset_path) -> asio::awaitable<void> {
+            co_await server.load_internal(std::move(owned_handle), std::move(asset_path), false, std::nullopt);
+        }(server, std::move(owned_handle), asset_path))
+        .detach();
 }
 
 void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& path) const {
-    auto guard = data->infos.write();
-    spawn_load_task(handle, path, *guard);
+    {
+        auto guard = data->infos.write();
+        guard->stats.started_load_tasks++;
+    }
+    spawn_load_task_unlocked(handle, path);
 }
 
 // ---------------------------------------------------------------------------
@@ -577,26 +563,24 @@ void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& 
 // Matches bevy_asset's AssetServer::load_direct / load_direct_with_reader.
 // Runs the full loader pipeline synchronously without caching the result.
 // ---------------------------------------------------------------------------
-std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_direct_untyped(const AssetPath& path) const {
-    std::optional<AssetLoadError> err;
-    auto mlr = get_meta_loader_and_reader(path, std::nullopt, err);
+asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_untyped(
+    const AssetPath& path) const {
+    auto mlr = co_await get_meta_loader_and_reader(path, std::nullopt);
     if (!mlr) {
-        return std::unexpected(
-            err.value_or(AssetLoadError{load_error::MissingAssetLoader{std::nullopt, std::nullopt, path, {}}}));
+        co_return std::unexpected(mlr.error());
     }
     auto settings = mlr->meta->loader_settings();
     if (!settings) {
         auto def = mlr->loader->default_settings();
-        return load_with_settings_loader_and_reader(path, *def, *mlr->loader, *mlr->reader);
+        co_return co_await load_with_settings_loader_and_reader(path, *def, *mlr->loader, *mlr->reader);
     }
-    return load_with_settings_loader_and_reader(path, *settings, *mlr->loader, *mlr->reader);
+    co_return co_await load_with_settings_loader_and_reader(path, *settings, *mlr->loader, *mlr->reader);
 }
 
-std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_direct_with_reader_untyped(
-    const AssetPath& path, std::istream& reader) const {
+asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_with_reader_untyped(
+    const AssetPath& path, Reader& reader) const {
     // Use type-id-only lookup to get the right loader
-    std::optional<AssetLoadError> err;
-    auto mlr = get_meta_loader_and_reader(path, std::nullopt, err);
+    auto mlr = co_await get_meta_loader_and_reader(path, std::nullopt);
     if (!mlr) {
         // Fall back: just try extension-based lookup, use the provided reader directly
         auto maybe = [&]() -> std::optional<MaybeAssetLoader> {
@@ -604,24 +588,23 @@ std::expected<ErasedLoadedAsset, AssetLoadError> AssetServer::load_direct_with_r
             return guard->get_by_path(path);
         }();
         if (!maybe) {
-            return std::unexpected(
-                err.value_or(AssetLoadError{load_error::MissingAssetLoader{std::nullopt, std::nullopt, path, {}}}));
+            co_return std::unexpected(mlr.error());
         }
         auto loader = maybe->get();
         if (!loader) {
-            return std::unexpected(
+            co_return std::unexpected(
                 AssetLoadError{load_error::MissingAssetLoader{std::nullopt, std::nullopt, path, {}}});
         }
         auto def = loader->default_settings();
-        return load_with_settings_loader_and_reader(path, *def, *loader, reader);
+        co_return co_await load_with_settings_loader_and_reader(path, *def, *loader, reader);
     }
     // We have meta+loader but use the caller-provided reader instead of mlr's reader
     auto settings = mlr->meta->loader_settings();
     if (!settings) {
         auto def = mlr->loader->default_settings();
-        return load_with_settings_loader_and_reader(path, *def, *mlr->loader, reader);
+        co_return co_await load_with_settings_loader_and_reader(path, *def, *mlr->loader, reader);
     }
-    return load_with_settings_loader_and_reader(path, *settings, *mlr->loader, reader);
+    co_return co_await load_with_settings_loader_and_reader(path, *settings, *mlr->loader, reader);
 }
 
 // ---------------------------------------------------------------------------
@@ -639,7 +622,7 @@ UntypedHandle AssetServer::load_asset_untyped(std::optional<AssetPath> path, Era
             return guard->create_loading_handle_untyped(asset.asset_type_id());
         }
     }();
-    send_asset_event(InternalAssetEvent{internal_asset_event::Loaded{handle.id(), std::move(asset)}});
+    data->asset_event_sender.try_send(InternalAssetEvent{internal_asset_event::Loaded{handle.id(), std::move(asset)}});
     return handle;
 }
 
@@ -666,36 +649,38 @@ void AssetServer::reload_internal(const AssetPath& path, bool log) const {
         }
     }
 
-    utils::IOTaskPool::instance().detach_task([server, asset_path, log]() {
-        bool reloaded = false;
+    tasks::IoTaskPool::get()
+        .spawn([](AssetServer server, AssetPath asset_path, bool log) -> asio::awaitable<void> {
+            bool reloaded = false;
 
-        // Collect handles while holding the lock, then release before calling load_internal
-        std::vector<UntypedHandle> handles;
-        {
-            auto guard = server.data->infos.write();
-            for (auto h : guard->get_handles_by_path(asset_path)) {
-                guard->stats.started_load_tasks++;
-                handles.push_back(h);
+            // Collect handles while holding the lock, then release before calling load_internal
+            std::vector<UntypedHandle> handles;
+            {
+                auto guard = server.data->infos.write();
+                for (auto h : guard->get_handles_by_path(asset_path)) {
+                    guard->stats.started_load_tasks++;
+                    handles.push_back(h);
+                }
             }
-        }
 
-        for (auto& h : handles) {
-            server.load_internal(h, asset_path, true, std::nullopt);
-            reloaded = true;
-        }
-
-        // If no handles were alive but the path still has living subassets, do an untyped reload
-        if (!reloaded) {
-            bool should = server.data->infos.read()->should_reload(asset_path);
-            if (should) {
-                server.data->infos.write()->stats.started_load_tasks++;
-                server.load_internal(std::nullopt, asset_path, true, std::nullopt);
+            for (auto& h : handles) {
+                co_await server.load_internal(h, asset_path, true, std::nullopt);
                 reloaded = true;
             }
-        }
 
-        if (log && reloaded) {
-            spdlog::info("Reloaded {}", asset_path.string());
-        }
-    });
+            // If no handles were alive but the path still has living subassets, do an untyped reload
+            if (!reloaded) {
+                bool should = server.data->infos.read()->should_reload(asset_path);
+                if (should) {
+                    server.data->infos.write()->stats.started_load_tasks++;
+                    co_await server.load_internal(std::nullopt, asset_path, true, std::nullopt);
+                    reloaded = true;
+                }
+            }
+
+            if (log && reloaded) {
+                spdlog::info("Reloaded {}", asset_path.string());
+            }
+        }(server, asset_path, log))
+        .detach();
 }

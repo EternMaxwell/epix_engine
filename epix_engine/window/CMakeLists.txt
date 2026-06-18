@@ -27,31 +27,5 @@ if(UNIX AND NOT APPLE)
 	target_link_libraries(epix_sfml PRIVATE X11::X11 X11::Xrandr)
 endif()
 
-## --- examples: auto-discover ---
-# GLFW examples
-file(GLOB_RECURSE GLFW_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/glfw/*.cpp")
-foreach(EXAMPLE_SRC IN LISTS GLFW_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_window_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
-
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_window)
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_glfw)
-endforeach()
-
-# SFML examples
-file(GLOB_RECURSE SFML_EXAMPLE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/examples/sfml/*.cpp")
-foreach(EXAMPLE_SRC IN LISTS SFML_EXAMPLE_SOURCES)
-	file(RELATIVE_PATH EXAMPLE_REL "${CMAKE_CURRENT_SOURCE_DIR}/examples" "${EXAMPLE_SRC}")
-	string(CONCAT EXAMPLE_NAME "example_window_" "${EXAMPLE_REL}")
-	string(REPLACE "/" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE "\\" "_" EXAMPLE_NAME "${EXAMPLE_NAME}")
-	string(REPLACE ".cpp" "" EXAMPLE_NAME "${EXAMPLE_NAME}")
-
-	add_executable(${EXAMPLE_NAME} "${EXAMPLE_SRC}")
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_window)
-	target_link_libraries(${EXAMPLE_NAME} PRIVATE epix_sfml)
-endforeach()
+epix_add_examples(window_glfw EXAMPLES_DIR examples/glfw LINK_LIBS epix_window epix_glfw)
+epix_add_examples(window_sfml EXAMPLES_DIR examples/sfml LINK_LIBS epix_window epix_sfml)

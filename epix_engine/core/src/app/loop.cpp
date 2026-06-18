@@ -1,15 +1,10 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
-
-import :app.loop;
-import :app.main_schedule;
-import :system;
-import :query;
+#include <epix/core/app.hpp>
+#include <epix/core/app/loop.hpp>
+#include <epix/core/app/main_schedule.hpp>
+#include <epix/core/query.hpp>
+#include <epix/core/system.hpp>
 
 namespace epix::core {
 struct LoopRunner : public AppRunner {
@@ -39,8 +34,8 @@ struct LoopRunner : public AppRunner {
         app.run_schedules(PreExit, Exit, PostExit);
     }
 };
-void LoopPlugin::build(App& app) {
-    spdlog::debug("[app] Building LoopPlugin.");
+void LoopPlugin::attach(App& app) {
+    spdlog::debug("[app] Attaching LoopPlugin.");
     app.add_event<AppExit>();
     auto check_exit = make_system_unique([](EventReader<AppExit> exits) {
         if (!exits.empty()) {

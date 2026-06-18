@@ -1,6 +1,7 @@
-module epix.mesh;
 
-import epix.assets;
+
+#include <epix/assets.hpp>
+#include <epix/mesh.hpp>
 
 using namespace epix::mesh;
 
@@ -75,4 +76,4 @@ std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(std::size_t s
     return std::unexpected(MeshError::SlotNotFound);
 }
 
-void MeshPlugin::build(core::App& app) { assets::app_register_asset<Mesh>(app); }
+void MeshPlugin::attach(core::App& app) { assets::app_register_asset<Mesh>(app); }

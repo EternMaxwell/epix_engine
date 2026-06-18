@@ -1,8 +1,8 @@
-module;
+
 
 #include <spdlog/spdlog.h>
 
-module epix.mesh;
+#include <epix/mesh.hpp>
 
 using namespace epix;
 using namespace epix::mesh;

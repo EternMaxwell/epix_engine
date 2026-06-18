@@ -1,8 +1,10 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.transform;
+#include <epix/transform.hpp>
+#include <functional>
+#include <ranges>
+#include <stack>
+#include <unordered_map>
 
 using namespace epix::transform;
 using namespace epix::core;
@@ -39,9 +41,8 @@ void calculate_global_transform(
         }
     }
     std::unordered_map<Entity, GlobalTransform> not_added_globals;
-    for (auto entity : std::views::keys(std::views::filter(change_root, [&](const auto& pair) {
-             return pair.first == pair.second;
-         }))) {
+    for (auto entity : std::views::keys(
+             std::views::filter(change_root, [&](const auto& pair) { return pair.first == pair.second; }))) {
         auto [_, transform, children, parent, globalTransform] = query.get(entity).value();
 
         auto calculate_global = [&](this auto&& self, Entity ent, const GlobalTransform& parent_matrix) -> void {
@@ -90,8 +91,8 @@ void calculate_global_transform(
     }
 }
 
-void TransformPlugin::build(App& app) {
-    spdlog::debug("[transform] Building TransformPlugin.");
+void TransformPlugin::attach(App& app) {
+    spdlog::debug("[transform] Attaching TransformPlugin.");
     app.configure_sets(sets(TransformSets::CalculateGlobalTransform));
     app.add_systems(Last, into(calculate_global_transform)
                               .in_set(TransformSets::CalculateGlobalTransform)

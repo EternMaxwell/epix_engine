@@ -1,0 +1,75 @@
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <algorithm>
+#include <cstdint>
+#include <limits>
+#endif
+
+namespace epix::core {
+constexpr std::uint32_t CHECK_TICK_THRESHOLD = 518400000;
+constexpr std::uint32_t MAX_CHANGE_AGE = std::numeric_limits<std::uint32_t>::max() - (2 * CHECK_TICK_THRESHOLD - 1);
+/** @brief Monotonic change-detection counter.
+ *  Tracks when components or resources were last added or modified.
+ *  Uses wrapping arithmetic: `newer_than()` compares relative ages
+ *  and correctly handles wrap-around up to MAX_CHANGE_AGE ticks apart. */
+EPIX_EXPORT struct Tick {
+   private:
+    std::uint32_t tick;
+
+   public:
+    /** @brief Construct a Tick with the given value (default 0). */
+    constexpr Tick(std::uint32_t tick = 0) noexcept : tick(tick) {}
+
+    /** @brief Return the maximum representable change age. */
+    static constexpr Tick max() noexcept { return Tick(MAX_CHANGE_AGE); }
+
+    /** @brief Get the raw tick value. */
+    constexpr std::uint32_t get(this Tick self) noexcept { return self.tick; }
+    /** @brief Set the raw tick value. */
+    constexpr void set(this Tick& self, std::uint32_t t) noexcept { self.tick = t; }
+    /** @brief Check whether this tick is newer than last_run relative to this_run.
+     *  Returns true if the component/resource was changed since the system
+     *  last ran. */
+    constexpr bool newer_than(this Tick self, Tick last_run, Tick this_run) noexcept {
+        auto ticks_since_insert = std::min(this_run.relative_to(self).tick, MAX_CHANGE_AGE);
+        auto ticks_since_system = std::min(this_run.relative_to(last_run).tick, MAX_CHANGE_AGE);
+        return ticks_since_system > ticks_since_insert;
+    }
+    /** @brief Compute the tick difference (self - other) as a new Tick. */
+    constexpr Tick relative_to(this Tick self, Tick other) noexcept {
+        std::uint32_t diff = self.tick - other.tick;
+        return Tick(diff);
+    }
+    /** @brief Clamp this tick if it is older than MAX_CHANGE_AGE relative to `tick`.
+     *  @return true if the tick was clamped. */
+    constexpr bool check_tick(this Tick& self, Tick tick) noexcept {
+        auto age = tick.relative_to(self);
+        if (age.tick > MAX_CHANGE_AGE) {
+            self = tick.relative_to(Tick(MAX_CHANGE_AGE));
+            return true;
+        }
+        return false;
+    }
+};
+struct ComponentTicks {
+    Tick added;
+    Tick modified;
+
+    ComponentTicks() noexcept : added(0), modified(0) {}
+    ComponentTicks(Tick tick) noexcept : added(tick), modified(tick) {}
+    ComponentTicks(Tick added, Tick modified) noexcept : added(added), modified(modified) {}
+};
+struct TickRefs {
+   public:
+    explicit TickRefs(Tick* added, Tick* modified) noexcept : _added(added), _modified(modified) {}
+    Tick& added(this const TickRefs& self) noexcept { return *self._added; }
+    Tick& modified(this const TickRefs& self) noexcept { return *self._modified; }
+
+   private:
+    Tick* _added;
+    Tick* _modified;
+};
+}  // namespace epix::core

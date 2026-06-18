@@ -1,10 +1,7 @@
-﻿module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
+#include <epix/core/schedule/executors.hpp>
+#include <random>
 
 namespace epix::core::executors {
 struct AutoExecutor::Impl {

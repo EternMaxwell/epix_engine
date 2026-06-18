@@ -1,13 +1,7 @@
-module;
-
 #include <spdlog/spdlog.h>
 
-module epix.core;
-
-import std;
-
-import :bundle;
-import :entities;
+#include <epix/core/bundle.hpp>
+#include <epix/core/entities.hpp>
 
 namespace epix::core {
 BundleInfo BundleInfo::create(std::string_view bundle_type_name,

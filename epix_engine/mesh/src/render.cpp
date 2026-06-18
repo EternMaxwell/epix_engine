@@ -1,15 +1,11 @@
-module;
 
 #include <spdlog/spdlog.h>
 
-module epix.mesh;
-
-import epix.core_graph;
-import epix.image;
-import epix.render;
-import epix.transform;
-import std;
-
+#include <epix/core_graph.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
 using namespace epix;
 using namespace epix::core;
 using namespace epix::mesh;
@@ -364,18 +360,15 @@ struct Mesh2dPipelineCache {
             return it->second;
         }
 
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers = std::ranges::to<std::vector>(
-            std::views::transform(std::views::values(layout), [](const MeshAttribute& attribute) {
-                return wgpu::VertexBufferLayout()
-                    .setArrayStride(vertex_format_size(attribute.format))
-                    .setStepMode(wgpu::VertexStepMode::eVertex)
-                    .setAttributes(std::array{
-                        wgpu::VertexAttribute()
-                            .setShaderLocation(attribute.slot)
-                            .setFormat(attribute.format)
-                            .setOffset(0),
-                    });
-            }));
+        std::vector<wgpu::VertexBufferLayout> vertex_buffers = std::ranges::to<
+            std::vector>(std::views::transform(std::views::values(layout), [](const MeshAttribute& attribute) {
+            return wgpu::VertexBufferLayout()
+                .setArrayStride(vertex_format_size(attribute.format))
+                .setStepMode(wgpu::VertexStepMode::eVertex)
+                .setAttributes(std::array{
+                    wgpu::VertexAttribute().setShaderLocation(attribute.slot).setFormat(attribute.format).setOffset(0),
+                });
+        }));
 
         render::VertexState vertex_state{
             .shader = [&]() -> assets::Handle<shader::Shader> {
@@ -465,9 +458,10 @@ void extract_meshes_2d(Commands cmd,
                                           const Mesh2d&,
                                           const transform::GlobalTransform&,
                                           Opt<const MeshMaterial2d&>,
-                                          Opt<const MeshTextureMaterial2d&>>,
+                                          Opt<const MeshTextureMaterial2d&>,
+                                          Opt<const render::camera::RenderLayer&>>,
                                      Without<render::CustomRendered>>> meshes) {
-    for (auto&& [entity, mesh_handle, transform, material, texture_material] : meshes.iter()) {
+    for (auto&& [entity, mesh_handle, transform, material, texture_material, opt_layer] : meshes.iter()) {
         glm::vec4 color = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.color; })
                               .value_or(material.transform([](const MeshMaterial2d& value) { return value.color; })
                                             .value_or(glm::vec4(1.0f)));
@@ -486,6 +480,7 @@ void extract_meshes_2d(Commands cmd,
                 .alpha_mode    = alpha_mode,
                 .texture =
                     texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
+                .render_layer = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
             },
             MeshBatch{});
     }
@@ -611,18 +606,21 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
     }
 }
 
-void queue_meshes_2d_opaque(
-    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&, const render::view::ViewTarget&>,
-          With<render::camera::ExtractedCamera>> views,
-    Query<Item<Entity, const ExtractedMesh2d&>> meshes,
-    Res<render::RenderAssets<Mesh>> gpu_meshes,
-    Res<render::RenderAssets<image::Image>> images,
-    Res<OpaqueMesh2dDrawFunction> draw_function_id,
-    ResMut<Mesh2dPipelineCache> pipeline_cache,
-    ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target] : views.iter()) {
+void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&,
+                                       const render::view::ViewTarget&,
+                                       const render::camera::ExtractedCamera&>> views,
+                            Query<Item<Entity, const ExtractedMesh2d&>> meshes,
+                            Res<render::RenderAssets<Mesh>> gpu_meshes,
+                            Res<render::RenderAssets<image::Image>> images,
+                            Res<OpaqueMesh2dDrawFunction> draw_function_id,
+                            ResMut<Mesh2dPipelineCache> pipeline_cache,
+                            ResMut<render::PipelineServer> pipeline_server) {
+    for (auto&& [phase, target, cam] : views.iter()) {
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
+                continue;
+            }
+            if (!cam.render_layer.intersects(extracted_mesh.render_layer)) {
                 continue;
             }
 
@@ -667,18 +665,21 @@ void queue_meshes_2d_opaque(
     }
 }
 
-void queue_meshes_2d_transparent(
-    Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&, const render::view::ViewTarget&>,
-          With<render::camera::ExtractedCamera>> views,
-    Query<Item<Entity, const ExtractedMesh2d&>> meshes,
-    Res<render::RenderAssets<Mesh>> gpu_meshes,
-    Res<render::RenderAssets<image::Image>> images,
-    Res<TransparentMesh2dDrawFunction> draw_function_id,
-    ResMut<Mesh2dPipelineCache> pipeline_cache,
-    ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target] : views.iter()) {
+void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
+                                            const render::view::ViewTarget&,
+                                            const render::camera::ExtractedCamera&>> views,
+                                 Query<Item<Entity, const ExtractedMesh2d&>> meshes,
+                                 Res<render::RenderAssets<Mesh>> gpu_meshes,
+                                 Res<render::RenderAssets<image::Image>> images,
+                                 Res<TransparentMesh2dDrawFunction> draw_function_id,
+                                 ResMut<Mesh2dPipelineCache> pipeline_cache,
+                                 ResMut<render::PipelineServer> pipeline_server) {
+    for (auto&& [phase, target, cam] : views.iter()) {
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Blend) {
+                continue;
+            }
+            if (!cam.render_layer.intersects(extracted_mesh.render_layer)) {
                 continue;
             }
 
@@ -720,8 +721,8 @@ void queue_meshes_2d_transparent(
 }
 }  // namespace
 
-void MeshRenderPlugin::build(core::App& app) {
-    spdlog::debug("[mesh] Building MeshRenderPlugin.");
+void MeshRenderPlugin::attach(core::App& app) {
+    spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::ExtractAssetPlugin<Mesh>{});
@@ -733,8 +734,8 @@ void MeshRenderPlugin::build(core::App& app) {
     }
 }
 
-void MeshRenderPlugin::finish(core::App& app) {
-    spdlog::debug("[mesh] Finishing MeshRenderPlugin.");
+void MeshRenderPlugin::ready(core::App& app) {
+    spdlog::debug("[mesh] Readying MeshRenderPlugin.");
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));

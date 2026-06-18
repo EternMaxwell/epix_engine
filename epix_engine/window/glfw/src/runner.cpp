@@ -1,12 +1,16 @@
-module;
-
 #include <GLFW/glfw3.h>
 #include <spdlog/spdlog.h>
 
-module epix.glfw.core;
-
-import std;
-
+#include <algorithm>
+#include <array>
+#include <epix/glfw/core.hpp>
+#include <exception>
+#include <future>
+#include <memory>
+#include <optional>
+#include <ranges>
+#include <utility>
+#include <variant>
 using namespace epix::core;
 using namespace epix::glfw;
 using namespace epix::window;
@@ -53,10 +57,6 @@ GLFWRunner::GLFWRunner(App& app) {
     app.world_scope(
         [&](World& world) { std::ranges::for_each(glfw_systems, [&](auto& sys) { sys->initialize(world); }); });
 }
-template <typename... Ts>
-struct visitor : Ts... {
-    using Ts::operator()...;
-};
 bool GLFWRunner::step(App& app) {
     auto glfw_systems = std::array{
         toggle_window_mode_system.get(), update_size_system.get(),        update_pos_system.get(),
@@ -67,22 +67,22 @@ bool GLFWRunner::step(App& app) {
     app.world_scope([&](World& world) {
         for (auto&& sys : glfw_systems) {
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
-                std::visit(visitor{[&](const ValidateParamError& validate_error) {
-                                       spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}",
-                                                     sys->name(), validate_error.param_type.short_name(),
-                                                     validate_error.message);
-                                   },
-                                   [&](const SystemException& sys_exception) {
-                                       try {
-                                           if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
-                                       } catch (const std::exception& e) {
-                                           spdlog::error("GLFW System [{}] exception during run: {}", sys->name(),
-                                                         e.what());
-                                       } catch (...) {
-                                           spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
-                                       }
-                                   }},
-                           error);
+                std::visit(
+                    epix::utils::visitor{
+                        [&](const ValidateParamError& validate_error) {
+                            spdlog::error("GLFW System [{}] parameter validation error: type: {}, msg: {}", sys->name(),
+                                          validate_error.param_type.short_name(), validate_error.message);
+                        },
+                        [&](const SystemException& sys_exception) {
+                            try {
+                                if (sys_exception.exception) std::rethrow_exception(sys_exception.exception);
+                            } catch (const std::exception& e) {
+                                spdlog::error("GLFW System [{}] exception during run: {}", sys->name(), e.what());
+                            } catch (...) {
+                                spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
+                            }
+                        }},
+                    error);
                 return error;
             });
         }
@@ -90,7 +90,7 @@ bool GLFWRunner::step(App& app) {
             if (!sys->initialized()) sys->initialize(world);
             auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {
                 std::visit(
-                    visitor{
+                    epix::utils::visitor{
                         [&](const ValidateParamError& validate_error) {
                             spdlog::error("GLFW extra system [{}] parameter validation error: type: {}, msg: {}",
                                           sys->name(), validate_error.param_type.short_name(), validate_error.message);
@@ -149,6 +149,5 @@ void GLFWRunner::exit(App& app) {
         auto res = remove_window->run({}, world);
         res      = destroy_windows_system->run({}, world);
     });
-    glfwTerminate();
     app.run_schedules(PreExit, Exit, PostExit);
 }

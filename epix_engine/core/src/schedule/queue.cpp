@@ -1,14 +1,8 @@
-module;
-
-module epix.core;
-
-import std;
-
-import :schedule.queue;
+#include <epix/core/schedule/queue.hpp>
 
 namespace epix::core {
 // smallvec
-smallvec::smallvec() {}
+smallvec::smallvec() noexcept {}
 smallvec::smallvec(const smallvec& other) : size_(other.size_) {
     if (other.is_small()) {
         std::copy(other.small_array, other.small_array + other.size_, small_array);
@@ -25,7 +19,7 @@ smallvec::smallvec(smallvec&& other) noexcept : size_(other.size_) {
     }
     other.size_ = 0;
 }
-smallvec& smallvec::operator=(const smallvec& other) noexcept {
+smallvec& smallvec::operator=(const smallvec& other) {
     if (this != &other) {
         if (is_small() && other.is_small()) {
             std::copy(other.small_array, other.small_array + other.size_, small_array);
@@ -83,7 +77,7 @@ void smallvec::push_back(std::size_t value) {
         size_++;
     }
 }
-std::size_t smallvec::pop_back() {
+std::size_t smallvec::pop_back() noexcept {
     if (is_small()) {
         return small_array[--size_];
     } else {
@@ -129,4 +123,4 @@ bool async_queue::empty() const {
     return queue.empty();
 }
 
-}  // namespace core
+}  // namespace epix::core

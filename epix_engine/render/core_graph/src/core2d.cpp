@@ -1,13 +1,15 @@
-module;
 
 #include <spdlog/spdlog.h>
 
-module epix.core_graph;
-
-import std;
-
+#include <epix/core_graph.hpp>
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
+using namespace epix::core;
+
+void Camera2D::register_required_components(epix::core::Components& components) {
+    components.register_required<Camera2D>([] { return camera::Camera{}; });
+    components.register_required<Camera2D>([] { return camera::CameraRenderGraph{Core2d}; });
+}
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
     spdlog::debug("[render.core_graph] Adding Core2D sub-graph to render graph.");
@@ -25,7 +27,7 @@ void Core2dGraph::add_to(graph::RenderGraph& g) {
     });
 }
 
-void Core2dPlugin::build(App& app) {
+void Core2dPlugin::attach(App& app) {
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {
         render_app.world_mut().insert_resource(phase::DrawFunctions<Transparent2D>{});
         render_app.world_mut().insert_resource(phase::DrawFunctions<Opaque2D>{});

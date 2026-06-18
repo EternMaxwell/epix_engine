@@ -1,16 +1,8 @@
-module;
-
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-
-
-module epix.core;
-
-import std;
-import epix.meta;
-
-import :storage.table;
+#include <epix/core/storage/table.hpp>
+#include <epix/meta.hpp>
 
 namespace epix::core {
 std::optional<Entity> Table::swap_remove(this Table& self, size_t dense_index) {
