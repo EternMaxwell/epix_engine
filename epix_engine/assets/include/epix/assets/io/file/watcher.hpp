@@ -15,8 +15,8 @@
 namespace epix::assets {
 EPIX_EXPORT struct FileAssetWatcher : public AssetWatcher {
    private:
-    std::unique_ptr<efsw::FileWatcher> m_watcher;
     std::unique_ptr<efsw::FileWatchListener> m_listener;
+    std::unique_ptr<efsw::FileWatcher> m_watcher;
 
    public:
     FileAssetWatcher(std::filesystem::path root, epix::async_channel::Sender<AssetSourceEvent> event_sender);
