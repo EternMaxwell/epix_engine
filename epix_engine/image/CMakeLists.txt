@@ -1,4 +1,0 @@
-﻿epix_add_module(epix_image)
-target_link_libraries(epix_image PUBLIC epix_core)
-target_link_libraries(epix_image PUBLIC epix_assets)
-target_link_libraries(epix_image PRIVATE stbimage)
