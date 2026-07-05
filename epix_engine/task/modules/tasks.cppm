@@ -33,5 +33,5 @@ import std;
 import epix.async_task;
 
 extern "C++" {
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 }

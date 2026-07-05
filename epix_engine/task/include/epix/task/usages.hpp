@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 #endif
-#include <epix/tasks/task_pool.hpp>
+#include <epix/task/task_pool.hpp>
 
 namespace epix::tasks {
 
