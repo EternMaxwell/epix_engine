@@ -410,12 +410,13 @@ struct [[nodiscard]] Task {
     [[nodiscard]] asio::awaitable<std::optional<T>> cancel() && {
         if (!m_state) co_return std::nullopt;
         set_canceled();
-        while (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+        auto state = std::move(m_state);
+        while (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
             co_await asio::post(asio::use_awaitable);
         }
-        auto f = m_state->flags.load(std::memory_order_acquire);
-        if ((f & internal::COMPLETED) != 0 && !m_state->exception) {
-            co_return std::move(m_state->value);
+        auto f = state->flags.load(std::memory_order_acquire);
+        if ((f & internal::COMPLETED) != 0 && !state->exception) {
+            co_return std::move(state->value);
         }
         co_return std::nullopt;
     }
@@ -577,11 +578,12 @@ struct [[nodiscard]] Task<void> {
     [[nodiscard]] asio::awaitable<bool> cancel() && {
         if (!m_state) co_return false;
         set_canceled();
-        while (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+        auto state = std::move(m_state);
+        while (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
             co_await asio::post(asio::use_awaitable);
         }
-        auto f = m_state->flags.load(std::memory_order_acquire);
-        if ((f & internal::COMPLETED) != 0 && !m_state->exception) {
+        auto f = state->flags.load(std::memory_order_acquire);
+        if ((f & internal::COMPLETED) != 0 && !state->exception) {
             co_return true;
         }
         co_return false;

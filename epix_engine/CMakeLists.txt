@@ -12,7 +12,7 @@ endif()
 
 add_subdirectory(common)
 add_subdirectory(utils)
-# add_subdirectory(tasks)
+add_subdirectory(tasks)
 # add_subdirectory(core)
 # add_subdirectory(time)
 # add_subdirectory(input)
