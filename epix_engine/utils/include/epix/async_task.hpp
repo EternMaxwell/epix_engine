@@ -22,6 +22,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -29,7 +30,6 @@
 #include <optional>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::async_task {
@@ -51,8 +51,8 @@ struct [[nodiscard]] FallibleTask;
  *        from re-wake. Matches `async_task::ScheduleInfo`.
  */
 EPIX_EXPORT enum class ScheduleInfo : uint8_t {
-    New,   // `Runnable::schedule()` was called
-    Wake   // Waker was invoked (task yielded and is ready again)
+    New,  // `Runnable::schedule()` was called
+    Wake  // Waker was invoked (task yielded and is ready again)
 };
 
 // ── Internal state ────────────────────────────────────────────────────────
@@ -98,8 +98,7 @@ struct TaskHeader {
 
     TaskHeader() noexcept = default;
 
-    TaskHeader(std::move_only_function<void(Runnable, ScheduleInfo)> sf,
-               std::move_only_function<void()> w) noexcept
+    TaskHeader(std::move_only_function<void(Runnable, ScheduleInfo)> sf, std::move_only_function<void()> w) noexcept
         : schedule_fn(std::move(sf)), work(std::move(w)) {}
 
     void notify_waiters() {
@@ -175,11 +174,10 @@ EPIX_EXPORT struct Runnable {
         // ── CAS: clear SCHEDULED, set RUNNING ──
         uint8_t cur = m_header->flags.load(std::memory_order_acquire);
         while (true) {
-            if ((cur & internal::SCHEDULED) == 0) return false;          // nothing to run
+            if ((cur & internal::SCHEDULED) == 0) return false;                       // nothing to run
             if ((cur & (internal::COMPLETED | internal::CLOSED)) != 0) return false;  // terminal
             uint8_t next = (cur & ~internal::SCHEDULED) | internal::RUNNING;
-            if (m_header->flags.compare_exchange_weak(cur, next, std::memory_order_acq_rel))
-                break;
+            if (m_header->flags.compare_exchange_weak(cur, next, std::memory_order_acq_rel)) break;
         }
 
         // ── Execute ──
@@ -197,7 +195,7 @@ EPIX_EXPORT struct Runnable {
         // Note: all decisions recomputed each CAS iteration because `cur`
         // is updated by compare_exchange_weak on failure.
         bool was_re_woken = false;
-        cur                = m_header->flags.load(std::memory_order_acquire);
+        cur               = m_header->flags.load(std::memory_order_acquire);
         while (true) {
             uint8_t next   = cur & ~internal::RUNNING;  // always clear RUNNING
             bool is_closed = (cur & internal::CLOSED) != 0;
@@ -210,8 +208,7 @@ EPIX_EXPORT struct Runnable {
                 // SCHEDULED persists in `next` (preserved from `cur` above).
                 // The executor will see it and call schedule() → no-op (terminal).
             }
-            if (m_header->flags.compare_exchange_weak(cur, next, std::memory_order_acq_rel))
-                break;
+            if (m_header->flags.compare_exchange_weak(cur, next, std::memory_order_acq_rel)) break;
         }
 
         if (internal::is_terminal(m_header->flags.load(std::memory_order_acquire))) {
@@ -230,8 +227,7 @@ EPIX_EXPORT struct Runnable {
      * Matches `async_task::Runnable::schedule()`.
      */
     void schedule() {
-        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire)))
-            return;
+        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire))) return;
         m_header->flags.fetch_or(internal::SCHEDULED, std::memory_order_acq_rel);
         m_header->schedule_fn(*this, ScheduleInfo::New);
     }
@@ -271,7 +267,7 @@ EPIX_EXPORT struct Waker {
     explicit Waker(std::shared_ptr<internal::TaskHeader> h) noexcept : m_header(std::move(h)) {}
 
    public:
-    Waker() noexcept = default;
+    Waker() noexcept               = default;
     Waker(const Waker&)            = default;
     Waker& operator=(const Waker&) = default;
     Waker(Waker&&)                 = default;
@@ -286,8 +282,7 @@ EPIX_EXPORT struct Waker {
      * Matches `Wake::wake(self)` in Rust.
      */
     void wake() && {
-        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire)))
-            return;
+        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire))) return;
         m_header->flags.fetch_or(internal::SCHEDULED, std::memory_order_acq_rel);
         auto h = std::move(m_header);
         h->schedule_fn(Runnable(std::move(h)), ScheduleInfo::Wake);
@@ -301,8 +296,7 @@ EPIX_EXPORT struct Waker {
      * Matches `Wake::wake_by_ref(&self)` in Rust.
      */
     void wake_by_ref() const {
-        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire)))
-            return;
+        if (!m_header || internal::is_terminal(m_header->flags.load(std::memory_order_acquire))) return;
         m_header->flags.fetch_or(internal::SCHEDULED, std::memory_order_acq_rel);
         m_header->schedule_fn(Runnable(m_header), ScheduleInfo::Wake);
     }
@@ -838,7 +832,7 @@ struct [[nodiscard]] FallibleTask<void> {
                 auto ex = asio::get_associated_executor(handler);
 
                 auto invoke = [state, h = std::move(handler)]() mutable {
-                    auto f = state->flags.load(std::memory_order_acquire);
+                    auto f  = state->flags.load(std::memory_order_acquire);
                     bool ok = (f & internal::COMPLETED) != 0 && !state->exception;
                     h(nullptr, ok);
                 };
@@ -864,9 +858,7 @@ FallibleTask<T> Task<T>::fallible() && {
     return FallibleTask<T>(std::move(m_state));
 }
 
-inline FallibleTask<void> Task<void>::fallible() && {
-    return FallibleTask<void>(std::move(m_state));
-}
+inline FallibleTask<void> Task<void>::fallible() && { return FallibleTask<void>(std::move(m_state)); }
 
 // ── spawn() ───────────────────────────────────────────────────────────────
 
@@ -875,7 +867,7 @@ inline FallibleTask<void> Task<void>::fallible() && {
  *
  * The `schedule` callable receives `(Runnable, ScheduleInfo)` and
  * should post the Runnable to an executor:
- * 
+ *
  * ```cpp
  * auto [runnable, task] = epix::async_task::spawn(
  *     [] { return heavy_compute(); },
@@ -896,21 +888,18 @@ EPIX_EXPORT template <typename F, typename S>
 
     // Store schedule function.
     state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
-        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable {
-            std::invoke(s, std::move(r), info);
-        });
+        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable { std::invoke(s, std::move(r), info); });
 
     // Store type-erased work.
     if constexpr (std::is_void_v<T>) {
-        state->work = std::move_only_function<void()>(
-            [f = std::forward<F>(work)]() mutable { std::invoke(std::move(f)); });
+        state->work =
+            std::move_only_function<void()>([f = std::forward<F>(work)]() mutable { std::invoke(std::move(f)); });
     } else {
         // Capture raw pointer — avoid shared_ptr cycle (work is a member of
         // the TaskState, so raw outlives this lambda).
-        auto* raw = state.get();
-        state->work = std::move_only_function<void()>([f = std::forward<F>(work), raw]() mutable {
-            raw->value = std::invoke(std::move(f));
-        });
+        auto* raw   = state.get();
+        state->work = std::move_only_function<void()>(
+            [f = std::forward<F>(work), raw]() mutable { raw->value = std::invoke(std::move(f)); });
     }
 
     // Both pointers share the same allocation and control block.
