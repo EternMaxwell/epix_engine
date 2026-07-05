@@ -26,7 +26,7 @@
 #include <asio/thread_pool.hpp>
 #include <epix/common.hpp>
 
-export module epix.tasks;
+export module epix.task;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif

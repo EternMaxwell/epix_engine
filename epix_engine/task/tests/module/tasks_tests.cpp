@@ -12,7 +12,7 @@
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.tasks;
+import epix.task;
 
 using namespace epix::tasks;
 using namespace std::chrono_literals;
