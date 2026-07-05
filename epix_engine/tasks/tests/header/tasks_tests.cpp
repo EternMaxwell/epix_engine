@@ -4,7 +4,7 @@
 
 #include <atomic>
 #include <chrono>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <numeric>
 #include <thread>
 #include <vector>

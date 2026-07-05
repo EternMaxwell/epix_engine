@@ -23,7 +23,7 @@
 #include <utility>
 #include <vector>
 #endif
-#include <epix/tasks/thread_executor.hpp>
+#include <epix/task/thread_executor.hpp>
 
 namespace epix::tasks {
 

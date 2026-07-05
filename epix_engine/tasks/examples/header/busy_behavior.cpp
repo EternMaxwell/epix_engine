@@ -3,7 +3,7 @@
 
 #include <chrono>
 #include <cstddef>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <iostream>
 #include <thread>
 

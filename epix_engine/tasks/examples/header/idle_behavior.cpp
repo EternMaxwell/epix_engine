@@ -1,7 +1,7 @@
 ﻿// Idle behavior — pool with HW concurrency, single task spinning 10s.
 
 #include <chrono>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <iostream>
 #include <thread>
 
