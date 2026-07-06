@@ -13,4 +13,4 @@ if (EPIX_ENABLE_TRACY)
   target_link_libraries(epix_ecs PRIVATE TracyClient)
 endif()
 
-epix_add_tests(core LINK_LIBS epix_ecs)
+epix_add_tests(ecs LINK_LIBS epix_ecs)

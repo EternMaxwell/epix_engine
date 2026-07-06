@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <epix/common.hpp>
 #include <epix/utils.hpp>
+#include <utility>
 #endif
 
 #define EPIX_MAKE_INT_WRAPPER(name, type)       \
@@ -37,3 +38,8 @@ EPIX_EXPORT struct Entity {
     }
 };
 }  // namespace epix::ecs
+
+template <>
+struct std::hash<::epix::ecs::Entity> {
+    std::size_t operator()(::epix::ecs::Entity e) const noexcept { return std::hash<std::uint64_t>()(e.uid); }
+};

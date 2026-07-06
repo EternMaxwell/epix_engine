@@ -52,7 +52,7 @@ struct Dense {
     template <typename T, typename... Args>
     void replace(this Dense& self, std::uint32_t index, Tick tick, Args&&... args) {
         assert(index < self.values.size());
-        self.values.replace_emplace<T>(index, std::forward<Args>(args)...);
+        self.values.emplace_at<T>(index, std::forward<Args>(args)...);
         self.modified_ticks[index].set(self.added_ticks[index].get());
     }
     void replace_copy(this Dense& self, std::uint32_t index, Tick tick, const void* src) {
@@ -63,6 +63,12 @@ struct Dense {
     void replace_move(this Dense& self, std::uint32_t index, Tick tick, void* src) {
         assert(index < self.values.size());
         self.values.replace_from_move(index, src);
+        self.modified_ticks[index].set(self.added_ticks[index].get());
+    }
+    template <std::invocable<void*> F>
+    void replace_construct(this Dense& self, std::uint32_t index, Tick tick, F&& constructor) {
+        assert(index < self.values.size());
+        self.values.construct_at(index, std::forward<F>(constructor));
         self.modified_ticks[index].set(self.added_ticks[index].get());
     }
     template <typename T, typename... Args>
@@ -78,6 +84,12 @@ struct Dense {
     }
     void push_move(this Dense& self, internal::ComponentTicks ticks, void* src) {
         self.values.push_back_from_move(src);
+        self.added_ticks.emplace_back(ticks.added);
+        self.modified_ticks.emplace_back(ticks.modified);
+    }
+    template <std::invocable<void*> F>
+    void push_construct(this Dense& self, internal::ComponentTicks ticks, F&& constructor) {
+        self.values.construct_back(std::forward<F>(constructor));
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
     }

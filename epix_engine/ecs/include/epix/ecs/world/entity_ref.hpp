@@ -1,0 +1,372 @@
+#pragma once
+
+#include <epix/common.hpp>
+
+#ifndef EPIX_CXX_MODULE
+#include <algorithm>
+#include <cassert>
+#include <concepts>
+#include <functional>
+#include <optional>
+#include <ranges>
+#include <type_traits>
+#include <utility>
+#include <vector>
+#endif
+
+#include <epix/ecs/bundle.hpp>
+#include <epix/ecs/entities.hpp>
+#include <epix/ecs/hierarchy.hpp>
+#include <epix/ecs/query/access.hpp>
+#include <epix/ecs/query/decl.hpp>
+#include <epix/ecs/refs.hpp>
+#include <epix/ecs/storage.hpp>
+#include <epix/ecs/tick.hpp>
+#include <epix/ecs/world/decl.hpp>
+
+namespace epix::ecs {
+/**
+ * @brief Read only reference to an entity in a World. Can get mutable components, but cannot do structural changes.
+ */
+EPIX_EXPORT struct EntityRef {
+   protected:
+    Entity entity_;
+    EntityLocation location_;
+    const World* world_;
+
+    friend struct World;
+
+   public:
+    /** @brief Construct an EntityRef from an entity handle and a const world pointer. */
+    EntityRef(Entity entity, const World* world) noexcept
+        : entity_(entity),
+          world_(world),
+          location_(internal::world_entities(*world).get(entity).value_or(EntityLocation::invalid())) {}
+    /** @brief Refresh the cached entity location from the world. */
+    void update_location() noexcept {
+        location_ = internal::world_entities(*world_).get(entity_).value_or(EntityLocation::invalid());
+    }
+    /** @brief Assert that the entity has not been despawned. */
+    void assert_not_despawned() const noexcept {
+        assert(location_.archetype_id != EntityLocation::invalid().archetype_id && "Entity has been despawned");
+    }
+    /** @brief Get the Entity handle. */
+    Entity id() const noexcept { return entity_; }
+    /** @brief Get the cached entity location. */
+    EntityLocation location() const noexcept { return location_; }
+    /** @brief Get a reference to the archetype this entity belongs to. */
+    const Archetype& archetype() const {
+        return internal::world_archetypes(*world_).get(location_.archetype_id).value().get();
+    }
+    /** @brief Check whether this entity has a component with the given type id. */
+    bool contains_id(TypeId component_id) const { return archetype().contains(component_id); }
+    /** @brief Check whether this entity has a component of type T. */
+    template <typename T>
+    bool contains() const {
+        return contains_id(internal::world_type_registry(*world_).type_id<T>());
+    }
+    /** @brief Get an immutable reference to the component of type T, if present. */
+    template <typename T>
+    std::optional<std::reference_wrapper<const T>> get() const {
+        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
+        return internal::world_components(*world_).get(type_id).and_then(
+            [&](const internal::ComponentInfo& info) -> std::optional<std::reference_wrapper<const T>> {
+                auto storage_type = info.storage_type();
+                if (storage_type == StorageType::Table) {
+                    return internal::world_storage(*world_)
+                        .tables.get(location_.table_id)
+                        .and_then([&](const internal::Table& table) {
+                            return table.get_dense(type_id).and_then(
+                                [&](const internal::Dense& dense) { return dense.get_as<T>(location_.table_idx); });
+                        });
+                } else {
+                    return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
+                        [&](const internal::ComponentSparseSet& cs) { return cs.get_as<T>(entity_); });
+                }
+            });
+    }
+    /** @brief Get an immutable Ref<T> (with change-detection ticks) for the component. */
+    template <typename T>
+    std::optional<Ref<T>> get_ref() const {
+        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
+        return internal::world_components(*world_).get(type_id).and_then([&](const internal::ComponentInfo& info) {
+            auto storage_type = info.storage_type();
+            if (storage_type == StorageType::Table) {
+                return internal::world_storage(*world_)
+                    .tables.get(location_.table_id)
+                    .and_then([&](const internal::Table& table) {
+                        return table.get_dense(type_id).and_then([&](const internal::Dense& dense) {
+                            return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
+                                return Ref<T>(
+                                    &value, internal::Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                                                       internal::world_last_change_tick(*world_),
+                                                                       internal::world_change_tick(*world_)));
+                            });
+                        });
+                    });
+            } else {
+                return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
+                    [&](const internal::ComponentSparseSet& cs) {
+                        return cs.get_as<T>(entity_).transform([&](const T& value) {
+                            return Ref<T>(&value, internal::Ticks::from_refs(cs.get_tick_refs(entity_).value(),
+                                                                             internal::world_last_change_tick(*world_),
+                                                                             internal::world_change_tick(*world_)));
+                        });
+                    });
+            }
+        });
+    }
+    /** @brief Get the ComponentTicks for a component identified by TypeId. */
+    std::optional<internal::ComponentTicks> get_ticks_by_id(TypeId type_id) const {
+        return internal::world_components(*world_).get(type_id).and_then(
+            [&](const internal::ComponentInfo& info) -> std::optional<internal::ComponentTicks> {
+                auto storage_type = info.storage_type();
+                if (storage_type == StorageType::Table) {
+                    return internal::world_storage(*world_)
+                        .tables.get(location_.table_id)
+                        .and_then([&](const internal::Table& table) {
+                            return table.get_dense(type_id).and_then(
+                                [&](const internal::Dense& dense) { return dense.get_ticks(location_.table_idx); });
+                        });
+                } else {
+                    return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
+                        [&](const internal::ComponentSparseSet& cs) { return cs.get_ticks(entity_); });
+                }
+            });
+    }
+    /** @brief Get the ComponentTicks for a component of type T. */
+    template <typename T>
+    std::optional<internal::ComponentTicks> get_ticks() const {
+        return get_ticks_by_id(internal::world_type_registry(*world_).type_id<T>());
+    }
+};
+/** @brief Mutable entity reference that extends EntityRef with mutable component access.
+ *
+ * Can read and write components but cannot perform structural changes
+ * (adding/removing components, despawning).
+ */
+EPIX_EXPORT struct EntityRefMut : public EntityRef {
+   protected:
+    friend struct World;
+    World* world_;
+
+   public:
+    /** @brief Construct an EntityRefMut from an entity handle and a mutable world pointer. */
+    EntityRefMut(Entity entity, World* world) noexcept : EntityRef(entity, world), world_(world) {}
+    /** @brief Get a mutable Mut<T> (with change-detection ticks) for the component. */
+    template <typename T>
+    std::optional<Mut<T>> get_mut() {
+        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
+        return internal::world_components(*world_).get(type_id).and_then([&](const internal::ComponentInfo& info) {
+            auto storage_type = info.storage_type();
+            if (storage_type == StorageType::Table) {
+                return internal::world_storage_mut(*world_)
+                    .tables.get_mut(location_.table_id)
+                    .and_then([&](internal::Table& table) {
+                        return table.get_dense_mut(type_id).and_then([&](internal::Dense& dense) {
+                            return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
+                                return Mut<T>(&value, internal::TicksMut::from_refs(
+                                                          dense.get_tick_refs(location_.table_idx).value(),
+                                                          internal::world_last_change_tick(*world_),
+                                                          internal::world_change_tick(*world_)));
+                            });
+                        });
+                    });
+            } else {
+                return internal::world_storage_mut(*world_).sparse_sets.get_mut(type_id).and_then(
+                    [&](internal::ComponentSparseSet& cs) {
+                        return cs.get_as_mut<T>(entity_).transform([&](T& value) {
+                            return Mut<T>(&value,
+                                          internal::TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
+                                                                        internal::world_last_change_tick(*world_),
+                                                                        internal::world_change_tick(*world_)));
+                        });
+                    });
+            }
+        });
+    }
+};
+
+/** @brief Full entity reference that can perform structural modifications.
+ *
+ * Extends EntityRefMut with the ability to insert/remove components,
+ * insert bundles, despawn the entity, and spawn child entities.
+ */
+EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
+   public:
+    using EntityRefMut::EntityRefMut;
+
+    /** @brief Internal method to insert a bundle with the requested insertion mode. */
+    template <typename T>
+    void insert_internal(T&& bundle, InsertMode insert_mode)
+        requires(is_bundle<std::decay_t<T>>)
+    {
+        assert_not_despawned();
+        auto inserter = internal::BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id,
+                                                                          internal::world_change_tick(*world_));
+        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), insert_mode);
+        internal::world_flush(*world_);
+        update_location();
+    }
+    /** @brief Emplace components by type, constructing each from the given arguments. */
+    template <typename... Ts, typename... Args>
+    void emplace(Args&&... args)
+        requires(sizeof...(Args) == sizeof...(Ts))
+    {
+        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), InsertMode::Replace);
+    }
+    /** @brief Emplace components only if they are not already present. */
+    template <typename... Ts, typename... Args>
+    void emplace_if_new(Args&&... args)
+        requires(sizeof...(Args) == sizeof...(Ts))
+    {
+        insert_internal(make_bundle<Ts...>(std::forward<Args>(args)...), InsertMode::Keep);
+    }
+    /** @brief Insert one or more components, replacing existing ones. */
+    template <typename... Ts>
+    void insert(Ts&&... components) {
+        insert_internal(make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+                        InsertMode::Replace);
+    }
+    /** @brief Insert components only if they are not already present. */
+    template <typename... Ts>
+    void insert_if_new(Ts&&... components) {
+        insert_internal(make_bundle<std::decay_t<Ts>...>(std::forward_as_tuple(std::forward<Ts>(components))...),
+                        InsertMode::Keep);
+    }
+    /** @brief Insert a bundle, replacing existing components. */
+    template <typename B>
+    void insert_bundle(B&& bundle)
+        requires(is_bundle<std::decay_t<B>>)
+    {
+        insert_internal(std::forward<B>(bundle), InsertMode::Replace);
+    }
+    /** @brief Insert a bundle only if its components are not already present. */
+    template <typename B>
+    void insert_bundle_if_new(B&& bundle)
+        requires(is_bundle<std::decay_t<B>>)
+    {
+        insert_internal(std::forward<B>(bundle), InsertMode::Keep);
+    }
+    /** @brief Remove components of the given types from this entity. */
+    template <typename... Ts>
+    void remove() {
+        internal::BundleId id = internal::world_bundles_mut(*world_).register_info<internal::RemoveBundle<Ts...>>(
+            internal::world_type_registry(*world_), internal::world_components_mut(*world_),
+            internal::world_storage_mut(*world_));
+        remove_bundle(id);
+    }
+    /** @brief Remove the bundle identified by its BundleId from this entity. */
+    void remove_bundle(internal::BundleId bundle_id);
+    /** @brief Remove a single component by TypeId. Returns true if it was present. */
+    bool remove_by_id(TypeId type_id);
+    /** @brief Remove components identified by a range of TypeIds. */
+    void remove_by_ids(internal::type_id_view auto&& type_ids) {
+        try {
+            auto bundle_id = internal::world_bundles_mut(*world_).init_dynamic_info(
+                internal::world_storage_mut(*world_), internal::world_components(*world_),
+                std::ranges::to<std::vector<TypeId>>(type_ids));
+            remove_bundle(bundle_id);
+        } catch (const std::bad_optional_access&) {
+            return;  // some component not found, do nothing
+        }
+    }
+    /** @brief Remove all components from this entity without despawning it. */
+    void clear();
+    /** @brief Despawn this entity, removing it from the world entirely. */
+    void despawn();
+    /** @brief Spawn a new entity as a child of this entity and return a mutable reference to it. */
+    template <typename... Args>
+    EntityWorldMut spawn(Args&&... args)
+        requires((std::constructible_from<std::decay_t<Args>, Args> || is_bundle<Args>) && ...)
+    {
+        auto spawn_bundle = [&]<typename T>(T&& bundle) {
+            internal::world_flush(*world_);  // needed for Entities::alloc.
+            auto e       = internal::world_entities_mut(*world_).alloc();
+            auto spawner = internal::BundleSpawner::create<T&&>(*world_, internal::world_change_tick(*world_));
+            spawner.spawn_non_exist(e, std::forward<T>(bundle));
+            internal::world_flush(*world_);  // flush to ensure no delayed operations.
+            return EntityWorldMut(e, world_);
+        };
+        auto mut = [&] {
+            if constexpr (sizeof...(Args) == 1 && (is_bundle<Args> && ...)) {
+                return spawn_bundle(std::forward<Args>(args)...);
+            }
+            return spawn_bundle(make_bundle<std::decay_t<Args>...>(std::forward_as_tuple(std::forward<Args>(args))...));
+        }();
+        mut.insert(Parent{entity_});
+        update_location();
+        return mut;
+    }
+    /** @brief Chain a callable that receives this EntityWorldMut for fluent building. */
+    EntityWorldMut& then(std::invocable<EntityWorldMut&> auto&& func) {
+        func(*this);
+        update_location();
+        return *this;
+    }
+};
+
+// implements for EntityRef
+template <>
+struct WorldQuery<EntityRef> {
+    using Fetch = World*;
+    using State = std::tuple<>;
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess& access) noexcept {
+        assert(!access.access().has_any_component_write() &&
+               "EntityRef conflicts with a previous access in this query. Shared access cannot coincide with exclusive "
+               "access.");
+        access.access_mut().read_all_components();
+    }
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+        return true;
+    }
+};
+static_assert(internal::world_query<EntityRef>);
+template <>
+struct QueryData<EntityRef> {
+    using Item                            = EntityRef;
+    using ReadOnly                        = EntityRef;
+    static inline constexpr bool readonly = true;
+    static Item fetch(WorldQuery<EntityRef>::Fetch& fetch, Entity entity, TableRow) { return EntityRef(entity, fetch); }
+};
+static_assert(query_data<EntityRef>);
+
+// implements for EntityRefMut
+template <>
+struct WorldQuery<EntityRefMut> {
+    using Fetch = World*;
+    using State = std::tuple<>;
+    static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
+    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_access(State&, const FilteredAccess&) noexcept {}
+    static void update_access(const State&, FilteredAccess& access) noexcept {
+        assert(!access.access().has_any_component_read() &&
+               "EntityRefMut conflicts with a previous access in this query. Exclusive access cannot coincide with "
+               "shared access.");
+        access.access_mut().write_all_components();
+    }
+    static State init_state(World&) noexcept { return State{}; }
+    static std::optional<State> get_state(const Components&) noexcept { return State{}; }
+    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+        return true;
+    }
+};
+static_assert(internal::world_query<EntityRefMut>);
+template <>
+struct QueryData<EntityRefMut> {
+    using Item                            = EntityRefMut;
+    using ReadOnly                        = EntityRef;
+    static inline constexpr bool readonly = false;
+    static Item fetch(WorldQuery<EntityRefMut>::Fetch& fetch, Entity entity, TableRow) {
+        return EntityRefMut(entity, fetch);
+    }
+};
+static_assert(query_data<EntityRefMut>);
+}  // namespace epix::ecs

@@ -1,0 +1,37 @@
+#include <epix/ecs/world.hpp>
+
+namespace epix::ecs::internal {
+
+WorldId world_id(const World& world) noexcept { return world.id(); }
+const TypeRegistry& world_type_registry(const World& world) noexcept { return world.type_registry(); }
+std::shared_ptr<TypeRegistry> world_type_registry_ptr(const World& world) noexcept { return world.type_registry_ptr(); }
+const Components& world_components(const World& world) noexcept { return world.components(); }
+Components& world_components_mut(World& world) noexcept { return world.components_mut(); }
+const Entities& world_entities(const World& world) noexcept { return world.entities(); }
+Entities& world_entities_mut(World& world) noexcept { return world.entities_mut(); }
+const Storage& world_storage(const World& world) noexcept { return world.storage(); }
+Storage& world_storage_mut(World& world) noexcept { return world.storage_mut(); }
+const Archetypes& world_archetypes(const World& world) noexcept { return world.archetypes(); }
+Archetypes& world_archetypes_mut(World& world) noexcept { return world.archetypes_mut(); }
+const Bundles& world_bundles(const World& world) noexcept { return world.bundles(); }
+Bundles& world_bundles_mut(World& world) noexcept { return world.bundles_mut(); }
+CommandQueue& world_command_queue(World& world) noexcept { return world.command_queue(); }
+Tick world_change_tick(const World& world) noexcept { return world.change_tick(); }
+Tick world_increment_change_tick(World& world) noexcept { return world.increment_change_tick(); }
+Tick world_last_change_tick(const World& world) noexcept { return world.last_change_tick(); }
+void world_flush_entities(World& world) { world.flush_entities(); }
+void world_flush_commands(World& world) { world.flush_commands(); }
+void world_flush(World& world) { world.flush(); }
+
+WorldId world_id(const DeferredWorld& world) noexcept { return world.id(); }
+const TypeRegistry& world_type_registry(const DeferredWorld& world) noexcept { return world.type_registry(); }
+const Entities& world_entities(const DeferredWorld& world) noexcept { return world.entities(); }
+const Storage& world_storage(const DeferredWorld& world) noexcept { return world.storage(); }
+const Components& world_components(const DeferredWorld& world) noexcept { return world.components(); }
+const Archetypes& world_archetypes(const DeferredWorld& world) noexcept { return world.archetypes(); }
+const Bundles& world_bundles(const DeferredWorld& world) noexcept { return world.bundles(); }
+CommandQueue& world_command_queue(DeferredWorld& world) noexcept { return world.command_queue(); }
+Tick world_change_tick(const DeferredWorld& world) noexcept { return world.change_tick(); }
+Tick world_last_change_tick(const DeferredWorld& world) noexcept { return world.last_change_tick(); }
+
+}  // namespace epix::ecs::internal

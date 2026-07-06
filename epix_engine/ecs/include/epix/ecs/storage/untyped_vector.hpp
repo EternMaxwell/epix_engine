@@ -216,6 +216,14 @@ class basic_untyped_vector {
         ++size_;
     }
 
+    template <std::invocable<void*> F>
+    void construct_back(F&& constructor) {
+        ensure_capacity_for_one();
+        void* dest = static_cast<char*>(data_) + size_ * desc_->size;
+        constructor(dest);
+        ++size_;
+    }
+
     /** @brief Get a typed pointer to the data.
      *  @tparam T Element type. */
     template <typename T>
@@ -294,27 +302,41 @@ class basic_untyped_vector {
     /** @brief Replace the element at idx with a copy of src.
      *  @tparam T Element type. */
     template <typename T>
-    void replace(std::size_t idx, const T& src) {
-        replace_from(idx, static_cast<const void*>(std::addressof(src)));
+    void emplace_at(std::size_t idx, const T& src) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        desc_->destruct(dst);
+        new (dst) T(src);
     }
 
     /** @brief Replace the element at idx by moving from src.
      *  @tparam T Element type. */
     template <typename T>
-    void replace_move(std::size_t idx, T&& src) {
-        replace_from_move(idx, static_cast<void*>(std::addressof(src)));
+    void emplace_at(std::size_t idx, T&& src) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        desc_->destruct(dst);
+        new (dst) T(std::forward<T>(src));
     }
 
     /** @brief Replace the element at idx by constructing in-place.
      *  @tparam T Element type.
      *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
-    void replace_emplace(std::size_t idx, Args&&... args) {
+    void emplace_at(std::size_t idx, Args&&... args) {
         assert(idx < size_);
         void* dst = static_cast<char*>(data_) + idx * desc_->size;
         desc_->destruct(dst);
         // placement-new the new object
         new (dst) T(std::forward<Args>(args)...);
+    }
+
+    template <std::invocable<void*> F>
+    void construct_at(std::size_t idx, F&& constructor) {
+        assert(idx < size_);
+        void* dst = static_cast<char*>(data_) + idx * desc_->size;
+        desc_->destruct(dst);
+        constructor(dst);
     }
 
     /** @brief Append an element by copying from a raw pointer. */

@@ -13,13 +13,21 @@ struct BundleId : epix::utils::int_base<std::uint64_t> {};
 }  // namespace internal
 
 /** @brief Strongly-typed archetype identifier. */
-EPIX_EXPORT struct ArchetypeId : epix::utils::int_base<std::uint32_t> {};
+EPIX_EXPORT struct ArchetypeId : epix::utils::int_base<std::uint32_t> {
+    using int_base::int_base;
+};
 /** @brief Strongly-typed table identifier. */
-EPIX_EXPORT struct TableId : epix::utils::int_base<std::uint32_t> {};
+EPIX_EXPORT struct TableId : epix::utils::int_base<std::uint32_t> {
+    using int_base::int_base;
+};
 /** @brief Strongly-typed row index within an archetype's entity list. */
-EPIX_EXPORT struct ArchetypeRow : epix::utils::int_base<std::uint32_t> {};
+EPIX_EXPORT struct ArchetypeRow : epix::utils::int_base<std::uint32_t> {
+    using int_base::int_base;
+};
 /** @brief Strongly-typed row index within a table. */
-EPIX_EXPORT struct TableRow : epix::utils::int_base<std::uint32_t> {};
+EPIX_EXPORT struct TableRow : epix::utils::int_base<std::uint32_t> {
+    using int_base::int_base;
+};
 
 /** @brief Location of an entity within the ECS storage.
  *  Tracks which archetype and table an entity belongs to. */

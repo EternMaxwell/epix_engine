@@ -40,7 +40,7 @@
 
 #include <BS_thread_pool.hpp>
 
-export module epix.core;
+export module epix.ecs;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif

@@ -1,0 +1,35 @@
+#include <gtest/gtest.h>
+
+import epix.ecs;
+#ifndef EPIX_IMPORT_STD
+#include <memory>
+#include <tuple>
+#include <utility>
+#endif
+#ifdef EPIX_IMPORT_STD
+import std;
+#endif
+namespace {
+struct X {
+    int v = 0;
+};
+}  // namespace
+
+TEST(ecs, query_state) {
+    using namespace epix::ecs;
+
+    auto registry = std::make_shared<TypeRegistry>();
+    World wc(WorldId(1), std::move(registry));
+
+    // QueryState::create_uninit should work even when no components are registered
+    auto qs_uninit = QueryState<std::tuple<>>::create_uninit(wc);
+
+    // create should also work and not throw
+    auto qs = QueryState<std::tuple<>>::create(wc);
+
+    // create_from_const_uninit and create_from_const should return value when no components referenced
+    auto qs_const_uninit = QueryState<std::tuple<>>::create_from_const_uninit(wc);
+    EXPECT_TRUE(qs_const_uninit.has_value());
+    auto qs_const = QueryState<std::tuple<>>::create_from_const(wc);
+    EXPECT_TRUE(qs_const.has_value());
+}

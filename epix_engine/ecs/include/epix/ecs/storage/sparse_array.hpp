@@ -11,7 +11,7 @@
 #include <vector>
 #endif
 
-namespace epix::core {
+namespace epix::ecs::internal {
 template <typename I, typename V>
     requires std::convertible_to<I, std::size_t> || std::same_as<I, std::size_t>
 struct SparseArray {

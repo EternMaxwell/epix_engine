@@ -14,7 +14,6 @@
 #include <type_traits>
 #include <unordered_map>
 #include <vector>
-
 #endif
 
 #include <epix/ecs/storage/storage_type.hpp>
