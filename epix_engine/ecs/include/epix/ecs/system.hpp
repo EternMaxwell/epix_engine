@@ -259,6 +259,8 @@ System<typename function_system_traits<F>::Input, typename function_system_trait
     return new FunctionSystem<F>(std::forward<F>(func));
 }
 }  // namespace internal
+EPIX_EXPORT using internal::valid_function_system;
+EPIX_EXPORT using internal::function_system_traits;
 /** @brief Create a system from a function and return it as a unique_ptr. */
 EPIX_EXPORT template <internal::valid_function_system F>
 std::unique_ptr<

@@ -1,0 +1,70 @@
+#pragma once
+
+#ifndef EPIX_CXX_MODULE
+#include <BS_thread_pool.hpp>
+#include <algorithm>
+#include <condition_variable>
+#include <cstddef>
+#include <epix/common.hpp>
+#include <epix/traits.hpp>
+#include <mutex>
+#include <ranges>
+#include <thread>
+#include <vector>
+#endif
+
+#include <epix/ecs/query.hpp>
+#include <epix/ecs/system.hpp>
+#include <epix/ecs/tick.hpp>
+#include <epix/ecs/world.hpp>
+
+namespace epix::ecs::internal {
+struct smallvec : std::ranges::view_interface<smallvec> {
+   public:
+    smallvec() noexcept;
+    smallvec(const smallvec& other);
+    smallvec(smallvec&& other) noexcept;
+    smallvec& operator=(const smallvec& other);
+    smallvec& operator=(smallvec&& other) noexcept;
+    ~smallvec();
+
+    void push_back(std::size_t value);
+    std::size_t pop_back() noexcept;
+
+    bool empty() const noexcept { return size_ == 0; }
+    std::size_t size() const noexcept { return size_; }
+    std::size_t* begin() noexcept {
+        if (is_small()) {
+            return &small_array[0];
+        } else {
+            return large_array.data();
+        }
+    }
+    std::size_t* end() noexcept {
+        if (is_small()) {
+            return &small_array[size_];
+        } else {
+            return large_array.data() + large_array.size();
+        }
+    }
+
+   private:
+    union {
+        std::size_t small_array[4];
+        std::vector<std::size_t> large_array;
+    };
+    std::size_t size_ = 0;
+
+    bool is_small() const noexcept { return size_ <= 4; }
+};
+struct async_queue {
+    mutable std::mutex mutex;
+    std::condition_variable condition;
+    smallvec queue;
+    void push(std::size_t index);
+    smallvec pop();
+    smallvec try_pop();
+    std::size_t size() const;
+    bool empty() const;
+};
+}  // namespace epix::ecs::internal

@@ -1,0 +1,13 @@
+﻿epix_add_module(epix_app)
+target_link_libraries(epix_app PUBLIC epix_common)
+target_link_libraries(epix_app PUBLIC BSThreadPool)
+target_link_libraries(epix_app PUBLIC spdlog::spdlog)
+target_link_libraries(epix_app PUBLIC epix_tasks)
+target_link_libraries(epix_app PUBLIC epix_ecs)
+target_link_libraries(epix_app PRIVATE Taskflow)
+if (EPIX_ENABLE_TRACY)
+  target_compile_definitions(epix_app PRIVATE EPIX_ENABLE_TRACY)
+  target_link_libraries(epix_app PRIVATE TracyClient)
+endif()
+
+epix_add_tests(app LINK_LIBS epix_app)

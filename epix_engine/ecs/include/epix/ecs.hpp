@@ -4,12 +4,14 @@
 #include <epix/ecs/bundle.hpp>
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/entities.hpp>
+#include <epix/ecs/event.hpp>
 #include <epix/ecs/hierarchy.hpp>
 #include <epix/ecs/label.hpp>
 #include <epix/ecs/labels.hpp>
 #include <epix/ecs/local.hpp>
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/refs.hpp>
+#include <epix/ecs/schedule.hpp>
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/system.hpp>
 #include <epix/ecs/tick.hpp>

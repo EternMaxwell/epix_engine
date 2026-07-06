@@ -138,11 +138,9 @@ EPIX_EXPORT struct World {
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args&&...>
     void emplace_resource(Args&&... args) {
-        _storage.resources.initialize(_type_registry->type_id<T>());
-        _storage.resources.get_mut(_type_registry->type_id<T>())
-            .value()
-            .get()
-            .template emplace<T>(change_tick(), std::forward<Args>(args)...);
+        auto id = _type_registry->type_id<T>();
+        _storage.resources.initialize(id);
+        _storage.resources.get_mut(id).value().get().template emplace<T>(change_tick(), std::forward<Args>(args)...);
     }
     /** @brief Insert a resource by moving or copying the given value.
      *  @tparam T Resource type (deduced). */
@@ -156,26 +154,25 @@ EPIX_EXPORT struct World {
      *  @tparam T Resource type satisfying is_from_world.
      *  @note If construction throws, the resource slot is cleaned up and an error is logged. */
     template <typename T>
-    void init_resource()
+    TypeId init_resource()
         requires internal::is_from_world<T>
     {
-        _storage.resources.initialize(_type_registry->type_id<T>());
-        _storage.resources.get_mut(_type_registry->type_id<T>())
-            .value()
-            .get()
-            .construct(change_tick(), [this](void* dest) {
-                try {
-                    internal::FromWorld<T>::emplace(dest, *this);
-                } catch (const std::exception& e) {
-                    spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
-                                  e.what());
-                    _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
-                } catch (...) {
-                    spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
-                                  meta::type_id<T>::short_name());
-                    _storage.resources.get_mut(_type_registry->type_id<T>()).value().get().remove();
-                }
-            });
+        auto id = _type_registry->type_id<T>();
+        _storage.resources.initialize(id);
+        _storage.resources.get_mut(id).value().get().construct(change_tick(), [this, id](void* dest) {
+            try {
+                internal::FromWorld<T>::emplace(dest, *this);
+            } catch (const std::exception& e) {
+                spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
+                              e.what());
+                _storage.resources.get_mut(id).value().get().remove();
+            } catch (...) {
+                spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
+                              meta::type_id<T>::short_name());
+                _storage.resources.get_mut(id).value().get().remove();
+            }
+        });
+        return id;
     }
     /** @brief Remove a resource by its TypeId. Returns true if removed. */
     bool remove_resource(TypeId type_id) {
