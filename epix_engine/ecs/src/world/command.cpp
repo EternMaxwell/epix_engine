@@ -71,4 +71,4 @@ void CommandQueue::assure_size(std::size_t new_size) {
         reallocate(new_capacity);
     }
 }
-}  // namespace epix::core
+}  // namespace epix::ecs::internal

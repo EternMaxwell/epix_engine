@@ -275,7 +275,8 @@ struct WorldQuery<Added<T>> {
         access.add_component_read(state.component_id);
     }
     static State init_state(World& world) {
-        return State{.component_id = internal::world_type_registry(world).type_id<T>(), .storage_type = storage_for<T>()};
+        return State{.component_id = internal::world_type_registry(world).type_id<T>(),
+                     .storage_type = storage_type_of<T>()};
     }
     static std::optional<State> get_state(const Components& components) {
         auto type_id = components.registry().type_id<T>();

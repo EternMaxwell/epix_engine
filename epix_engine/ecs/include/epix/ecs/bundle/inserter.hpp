@@ -150,4 +150,4 @@ struct BundleInserter {
     Table* table_;
     Tick change_tick_;
 };
-}  // namespace epix::core
+}  // namespace epix::ecs::internal

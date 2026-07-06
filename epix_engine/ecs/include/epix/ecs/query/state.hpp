@@ -32,7 +32,8 @@ struct QueryState {
    public:
     /** @brief Create an uninitialized QueryState (no archetype matching yet). */
     static QueryState create_uninit(World& world) {
-        return QueryState(internal::world_id(world), WorldQuery<D>::init_state(world), WorldQuery<F>::init_state(world));
+        return QueryState(internal::world_id(world), WorldQuery<D>::init_state(world),
+                          WorldQuery<F>::init_state(world));
     }
     /** @brief Try to create an uninitialized QueryState from a const world. */
     static std::optional<QueryState> create_from_const_uninit(const World& world) {
@@ -86,8 +87,9 @@ struct QueryState {
             }
         } else {
             auto rng = std::views::transform(
-                std::views::filter(_component_access.required().iter_ones(),
-                                   [&](TypeId id) { return internal::world_archetypes(world).by_component.contains(id); }),
+                std::views::filter(
+                    _component_access.required().iter_ones(),
+                    [&](TypeId id) { return internal::world_archetypes(world).by_component.contains(id); }),
                 [&](TypeId id) {
                     return std::make_pair(id, std::addressof(internal::world_archetypes(world).by_component.at(id)));
                 });
@@ -143,7 +145,8 @@ struct QueryState {
     }
     /** @brief Create a Query handle without updating archetypes, using the world's ticks. */
     Query<D, F> query_manual(World& world) {
-        return query_manual_with_ticks(world, internal::world_last_change_tick(world), internal::world_change_tick(world));
+        return query_manual_with_ticks(world, internal::world_last_change_tick(world),
+                                       internal::world_change_tick(world));
     }
     /** @brief Create a QueryIter, updating archetypes first. */
     QueryIter<D, F> iter_with_ticks(World& world, Tick last_run, Tick this_run) {
@@ -194,12 +197,14 @@ struct QueryState {
     }
     /** @brief Fetch query data for a specific entity using the world's ticks. */
     typename internal::AddOptional<typename QueryData<D>::Item>::type get_manual(World& world, Entity entity) {
-        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world), internal::world_change_tick(world));
+        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world),
+                                     internal::world_change_tick(world));
     }
     /** @brief Fetch query data for a specific entity (updates archetypes, uses world ticks). */
     typename internal::AddOptional<typename QueryData<D>::Item>::type get(World& world, Entity entity) {
         update_archetypes(world);
-        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world), internal::world_change_tick(world));
+        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world),
+                                     internal::world_change_tick(world));
     }
     /** @brief Const-world overload of query_with_ticks. */
     Query<D, F> query_with_ticks(const World& world, Tick last_run, Tick this_run)
@@ -272,14 +277,16 @@ struct QueryState {
     typename internal::AddOptional<typename QueryData<D>::Item>::type get_manual(const World& world, Entity entity)
         requires readonly_query_data<D>
     {
-        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world), internal::world_change_tick(world));
+        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world),
+                                     internal::world_change_tick(world));
     }
     /** @brief Const-world overload of get. */
     typename internal::AddOptional<typename QueryData<D>::Item>::type get(const World& world, Entity entity)
         requires readonly_query_data<D>
     {
         update_archetypes(world);
-        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world), internal::world_change_tick(world));
+        return get_manual_with_ticks(world, entity, internal::world_last_change_tick(world),
+                                     internal::world_change_tick(world));
     }
 
    private:

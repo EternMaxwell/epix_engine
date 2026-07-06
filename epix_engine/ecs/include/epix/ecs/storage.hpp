@@ -9,7 +9,6 @@
 #include <epix/ecs/storage/table.hpp>
 #include <epix/ecs/storage/untyped_vector.hpp>
 
-
 namespace epix::ecs::internal {
 struct Storage {
     SparseSets sparse_sets;

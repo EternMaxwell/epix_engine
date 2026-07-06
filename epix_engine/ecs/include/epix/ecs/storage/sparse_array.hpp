@@ -72,4 +72,4 @@ struct SparseArray {
         return val;
     }
 };
-}  // namespace epix::core
+}  // namespace epix::ecs::internal

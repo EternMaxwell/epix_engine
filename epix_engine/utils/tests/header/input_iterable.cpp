@@ -6,7 +6,7 @@
 #include <sstream>
 #include <vector>
 
-TEST(ecs, input_iterable) {
+TEST(utils, input_iterable) {
     using namespace epix::utils;
 
     std::vector<int> v{1, 2, 3};
@@ -30,7 +30,7 @@ TEST(ecs, input_iterable) {
     EXPECT_EQ(s2, 6);
 }
 
-TEST(ecs, input_iterable_views_transform_filter) {
+TEST(utils, input_iterable_views_transform_filter) {
     using namespace epix::utils;
 
     std::vector<int> v{1, 2, 3, 4, 5};
@@ -56,7 +56,7 @@ TEST(ecs, input_iterable_views_transform_filter) {
     EXPECT_EQ(osum, 7 + 8 + 9);
 }
 
-TEST(ecs, input_iterable_istream_view_single_pass) {
+TEST(utils, input_iterable_istream_view_single_pass) {
     using namespace epix::utils;
 
     std::istringstream iss("10 20 30");

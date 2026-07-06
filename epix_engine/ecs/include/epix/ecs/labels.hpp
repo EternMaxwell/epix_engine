@@ -12,7 +12,7 @@
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::epix::ecs::Label {                                        \
+    struct type : public ::epix::ecs::Label {                                         \
        public:                                                                        \
         type() noexcept = default;                                                    \
         template <typename T>                                                         \
@@ -28,4 +28,4 @@ namespace epix::ecs {
 EPIX_EXPORT EPIX_MAKE_LABEL(SystemSetLabel);
 /** @brief Label type for identifying schedules. */
 EPIX_EXPORT EPIX_MAKE_LABEL(ScheduleLabel);
-}  // namespace epix::core
+}  // namespace epix::ecs
