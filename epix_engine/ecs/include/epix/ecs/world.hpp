@@ -121,7 +121,7 @@ EPIX_EXPORT struct World {
             flush();  // needed for Entities::alloc.
             auto e       = _entities.alloc();
             auto spawner = internal::BundleSpawner::create<T&&>(*this, change_tick());
-            spawner.spawn_non_exist(e, std::forward<T>(bundle));
+            spawner.spawn_non_exist(e, bundle);
             flush();  // flush to ensure no delayed operations.
             return EntityWorldMut(e, this);
         };

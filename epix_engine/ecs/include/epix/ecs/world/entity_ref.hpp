@@ -203,7 +203,7 @@ EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
         assert_not_despawned();
         auto inserter = internal::BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id,
                                                                           internal::world_change_tick(*world_));
-        location_     = inserter.insert(entity_, location_, std::forward<T>(bundle), insert_mode);
+        location_     = inserter.insert(entity_, location_, bundle, insert_mode);
         internal::world_flush(*world_);
         update_location();
     }
@@ -283,7 +283,7 @@ EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
             internal::world_flush(*world_);  // needed for Entities::alloc.
             auto e       = internal::world_entities_mut(*world_).alloc();
             auto spawner = internal::BundleSpawner::create<T&&>(*world_, internal::world_change_tick(*world_));
-            spawner.spawn_non_exist(e, std::forward<T>(bundle));
+            spawner.spawn_non_exist(e, bundle);
             internal::world_flush(*world_);  // flush to ensure no delayed operations.
             return EntityWorldMut(e, world_);
         };
@@ -322,7 +322,8 @@ struct WorldQuery<EntityRef> {
     }
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
+    static bool matches_component_set(const State&,
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -353,7 +354,8 @@ struct WorldQuery<EntityRefMut> {
     }
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
+    static bool matches_component_set(const State&,
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
