@@ -23,13 +23,14 @@
 #include <chrono>
 #include <epix/async_task.hpp>
 #include <epix/common.hpp>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <thread>
 #include <utility>
 #endif
 
-namespace epix::tasks {
+namespace epix::task {
 
 // ── Forward declarations ──────────────────────────────────────────────────
 
@@ -74,7 +75,7 @@ EPIX_EXPORT struct ThreadExecutor {
     /** @brief Spawn work onto this executor. Callable from any thread. */
     template <typename F>
         requires std::invocable<F> && std::move_constructible<F>
-    [[nodiscard]] auto spawn(F&& work) -> async_task::Task<std::invoke_result_t<F>>;
+    [[nodiscard]] auto spawn(F&& work);
 
     /** @brief Get a ticker. Returns nullopt if called from a different thread. */
     [[nodiscard]] std::optional<ThreadExecutorTicker> ticker();
@@ -107,12 +108,15 @@ inline ThreadExecutor::~ThreadExecutor() {
 
 template <typename F>
     requires std::invocable<F> && std::move_constructible<F>
-inline auto ThreadExecutor::spawn(F&& work) -> async_task::Task<std::invoke_result_t<F>> {
-    using T = std::invoke_result_t<F>;
-
+inline auto ThreadExecutor::spawn(F&& work) {
     auto [runnable, task] = async_task::spawn(std::forward<F>(work),
                                               [ctx = &m_impl->ctx](async_task::Runnable r, async_task::ScheduleInfo) {
-                                                  asio::post(*ctx, [r = std::move(r)]() mutable { r.run(); });
+                                                  auto runner = std::make_shared<async_task::Runnable>(std::move(r));
+                                                  std::function<void()> poll;
+                                                  poll = [runner, ctx, &poll]() {
+                                                      if (runner->run()) asio::post(*ctx, poll);
+                                                  };
+                                                  asio::post(*ctx, poll);
                                               });
 
     runnable.schedule();
@@ -130,4 +134,4 @@ inline void ThreadExecutorTicker::tick() { m_exec->m_impl->ctx.poll_one(); }
 
 inline bool ThreadExecutorTicker::try_tick() { return m_exec->m_impl->ctx.poll_one() > 0; }
 
-}  // namespace epix::tasks
+}  // namespace epix::task

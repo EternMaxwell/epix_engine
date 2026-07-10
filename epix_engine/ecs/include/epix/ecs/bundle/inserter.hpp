@@ -1,12 +1,11 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -75,7 +74,7 @@ struct BundleInserter {
                 bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             std::views::all(archetype_after_insert_->required_components), entity,
+                                             archetype_after_insert_->required_components, entity,
                                              location.table_idx, change_tick_, bundle, insert_mode);
                 // location not changed
                 return location;
@@ -94,7 +93,7 @@ struct BundleInserter {
                 bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             std::views::all(archetype_after_insert_->required_components), entity,
+                                             archetype_after_insert_->required_components, entity,
                                              result.table_row, change_tick_, bundle, insert_mode);
                 return new_location;
             } else {
@@ -124,7 +123,7 @@ struct BundleInserter {
                 bundle_info.write_components(new_table, world_storage_mut(*world_).sparse_sets,
                                              world_type_registry(*world_), world_components(*world_),
                                              archetype_after_insert_->iter_status(),
-                                             std::views::all(archetype_after_insert_->required_components), entity,
+                                             archetype_after_insert_->required_components, entity,
                                              move_result.new_index, change_tick_, bundle, insert_mode);
                 return new_location;
             }

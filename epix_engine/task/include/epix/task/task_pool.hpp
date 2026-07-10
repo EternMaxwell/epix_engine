@@ -25,7 +25,7 @@
 #endif
 #include <epix/task/thread_executor.hpp>
 
-namespace epix::tasks {
+namespace epix::task {
 
 EPIX_EXPORT struct TaskPool;
 EPIX_EXPORT struct TaskPoolBuilder;
@@ -78,6 +78,14 @@ inline size_t available_parallelism() noexcept {
     return n > 0 ? n : 1;
 }
 
+/**
+ * @brief Selects the internal threading backend for TaskPool.
+ *  - ThreadPool : wraps asio::thread_pool — simplest, no thread customisation.
+ *  - IoContext  : wraps asio::io_context with manually managed threads —
+ *                 supports thread names and spawn/destroy callbacks.
+ */
+EPIX_EXPORT enum class TaskPoolBackend { ThreadPool, IoContext };
+
 // ── TaskPoolBuilder ────────────────────────────────────────────────────────
 
 EPIX_EXPORT struct TaskPoolBuilder {
@@ -85,26 +93,41 @@ EPIX_EXPORT struct TaskPoolBuilder {
     std::optional<std::string> m_thread_name;
     std::function<void()> m_on_thread_spawn;
     std::function<void()> m_on_thread_destroy;
+    std::optional<TaskPoolBackend> m_backend;
 
     TaskPoolBuilder() noexcept = default;
 
+    /** @brief Override the thread count. */
     TaskPoolBuilder& num_threads(size_t n) noexcept {
         m_num_threads = n;
         return *this;
     }
+
+    /** @brief Set a prefix for worker thread names (forces IoContext backend). */
     TaskPoolBuilder& thread_name(std::string name) {
         m_thread_name = std::move(name);
         return *this;
     }
+
+    /** @brief Callback invoked on each spawned worker thread (forces IoContext backend). */
     TaskPoolBuilder& on_thread_spawn(std::function<void()> f) {
         m_on_thread_spawn = std::move(f);
         return *this;
     }
+
+    /** @brief Callback invoked when a worker thread exits (forces IoContext backend). */
     TaskPoolBuilder& on_thread_destroy(std::function<void()> f) {
         m_on_thread_destroy = std::move(f);
         return *this;
     }
 
+    /** @brief Explicitly select the backend (overrides auto-detection). */
+    TaskPoolBuilder& backend(TaskPoolBackend b) noexcept {
+        m_backend = b;
+        return *this;
+    }
+
+    /** @brief Build the TaskPool. */
     TaskPool build();
 };
 
@@ -126,11 +149,16 @@ EPIX_EXPORT struct TaskPool {
 
     template <typename F>
         requires std::invocable<F> && std::move_constructible<F>
-    [[nodiscard]] auto spawn(F&& work) -> async_task::Task<std::invoke_result_t<F>> {
-        auto [runnable, task] = async_task::spawn(std::forward<F>(work),
-                                                  [ex = m_executor](async_task::Runnable r, async_task::ScheduleInfo) {
-                                                      asio::post(ex, [r = std::move(r)]() mutable { r.run(); });
-                                                  });
+    [[nodiscard]] auto spawn(F&& work) {
+        auto [runnable, task] = async_task::spawn(
+            std::forward<F>(work), [ex = m_executor](async_task::Runnable r, async_task::ScheduleInfo) {
+                auto runner = std::make_shared<async_task::Runnable>(std::move(r));
+                std::function<void()> poll;
+                poll = [runner, ex, &poll]() {
+                    if (runner->run()) asio::post(ex, poll);
+                };
+                asio::post(ex, poll);
+            });
         runnable.schedule();
         return std::move(task);
     }
@@ -139,14 +167,19 @@ EPIX_EXPORT struct TaskPool {
 
     template <typename F>
         requires std::invocable<F> && std::move_constructible<F>
-    [[nodiscard]] auto spawn_local(F&& work) -> async_task::Task<std::invoke_result_t<F>> {
+    [[nodiscard]] auto spawn_local(F&& work) {
         if (!t_local_ctx) {
             t_local_ctx = std::make_unique<asio::io_context>();
             t_local_work.emplace(asio::make_work_guard(*t_local_ctx));
         }
         auto [runnable, task] = async_task::spawn(
             std::forward<F>(work), [ctx = t_local_ctx.get()](async_task::Runnable r, async_task::ScheduleInfo) {
-                asio::post(*ctx, [r = std::move(r)]() mutable { r.run(); });
+                auto runner = std::make_shared<async_task::Runnable>(std::move(r));
+                std::function<void()> poll;
+                poll = [runner, ctx, &poll]() {
+                    if (runner->run()) asio::post(*ctx, poll);
+                };
+                asio::post(*ctx, poll);
             });
         runnable.schedule();
         return std::move(task);
@@ -230,7 +263,9 @@ EPIX_EXPORT struct TaskPool {
         size_t n      = b.m_num_threads.value_or(available_parallelism());
         bool need_ioc = b.m_thread_name.has_value() || static_cast<bool>(b.m_on_thread_spawn) ||
                         static_cast<bool>(b.m_on_thread_destroy);
-        if (need_ioc)
+        auto chosen   = b.m_backend.value_or(need_ioc ? TaskPoolBackend::IoContext : TaskPoolBackend::ThreadPool);
+
+        if (chosen == TaskPoolBackend::IoContext)
             return make_io_context(n, b.m_thread_name, b.m_on_thread_spawn, b.m_on_thread_destroy);
         else
             return make_thread_pool(n);
@@ -299,4 +334,4 @@ inline TaskPool::TaskPool() : TaskPool(make_thread_pool(available_parallelism())
 
 inline TaskPool::TaskPool(TaskPoolBuilder builder) : TaskPool(from_builder(builder)) {}
 
-}  // namespace epix::tasks
+}  // namespace epix::task

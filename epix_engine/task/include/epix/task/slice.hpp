@@ -20,7 +20,7 @@
 
 #include <epix/task/task_pool.hpp>
 
-namespace epix::tasks {
+namespace epix::task {
 
 // ── par_chunk_map ─────────────────────────────────────────────────────────
 
@@ -95,4 +95,4 @@ EPIX_EXPORT template <typename T, typename F, typename R = std::invoke_result_t<
     return par_chunk_map(pool, data, chunk_size, std::move(fn));
 }
 
-}  // namespace epix::tasks
+}  // namespace epix::task

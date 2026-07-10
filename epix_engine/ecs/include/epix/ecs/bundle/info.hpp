@@ -44,6 +44,39 @@ EPIX_EXPORT enum class InsertMode {
 };
 
 namespace internal {
+struct BundleRef {
+   public:
+    BundleRef(is_bundle auto& bundle) {
+        using type     = std::decay_t<decltype(bundle)>;
+        using bundle_t = Bundle<type>;
+        ref            = static_cast<void*>(std::addressof(bundle));
+        static VTable vt{
+            .get_components =
+                [](void* ref, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) {
+                    type* b = static_cast<type*>(ref);
+                    bundle_t::get_components(*b, write_component);
+                },
+            .type_ids =
+                [](const TypeRegistry& reg) { return std::ranges::to<std::vector<TypeId>>(bundle_t::type_ids(reg)); },
+            .register_components = [](const TypeRegistry& reg,
+                                      Components& comp) { bundle_t::register_components(reg, comp); }};
+        vtable = &vt;
+    }
+    void get_components(utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) {
+        vtable->get_components(ref, write_component);
+    }
+    std::vector<TypeId> type_ids(const TypeRegistry& reg) { return vtable->type_ids(reg); }
+    void register_components(const TypeRegistry& reg, Components& comp) { vtable->register_components(reg, comp); }
+
+   private:
+    struct VTable {
+        void (*get_components)(void*, utils::function_ref<void(utils::function_ref<void(void*)>)>);
+        std::vector<TypeId> (*type_ids)(const TypeRegistry&);  // when calling this function, we always need a
+                                                               // vector, so this won't affect performance
+        void (*register_components)(const TypeRegistry&, Components&);
+    }* vtable;
+    void* ref;
+};
 struct BundleInfo {
    private:
     BundleId _id;
@@ -75,34 +108,22 @@ struct BundleInfo {
     auto all_components() const noexcept { return std::views::all(_component_ids); }
     auto required_component_constructors() const noexcept { return std::views::all(_required_components); }
 
-    template <typename T1, typename T2, is_bundle T3>
     void write_components(
         Table& table,  // The table at row should be previously allocated, either existing or uninitialized
         SparseSets& sparse_sets,
         const TypeRegistry& type_registry,
         const Components& components,
-        T1&& component_statuses,   // status of each explicit component
-        T2&& required_components,  // the required component constructors for required components needed to be added
+        std::span<const ComponentStatus> component_statuses,  // status of each explicit component
+        std::span<const RequiredComponentConstructor>
+            required_components,  // the required component constructors for required components needed to be added
         Entity entity,
         TableRow row,
         Tick tick,
-        T3&& bundle,
-        InsertMode insert_mode = InsertMode::Replace) const
-        requires std::ranges::view<std::decay_t<T2>> &&
-                 std::same_as<std::ranges::range_value_t<T2>, RequiredComponentConstructor> &&
-                 std::ranges::view<std::decay_t<T1>> && std::same_as<std::ranges::range_value_t<T1>, ComponentStatus>
-    {
-        using BundleType = Bundle<std::decay_t<T3>>;
-        // debug assert check whether bundle types match explicit component ids
-        assert(std::ranges::all_of(std::views::zip(BundleType::type_ids(type_registry), explicit_components()),
-                                   [](auto&& pair) {
-                                       auto&& [bundle_id, explicit_id] = pair;
-                                       return bundle_id == explicit_id;
-                                   }) &&
-               std::ranges::size(BundleType::type_ids(type_registry)) == std::ranges::size(explicit_components()));
+        BundleRef bundle,
+        InsertMode insert_mode = InsertMode::Replace) const {
         auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
         auto component_iter           = component_id_status_view.begin();
-        BundleType::get_components(std::forward<T3>(bundle), [&](std::invocable<void*> auto&& write_component) {
+        bundle.get_components([&](std::invocable<void*> auto&& write_component) {
             auto&& [type_id, status] = *component_iter;
             auto storage_type        = components.unsafe_get(type_id).storage_type();
             if (storage_type == StorageType::Table) {

@@ -36,14 +36,14 @@ struct Query {
 
     /** @brief Fetch query data for a specific entity, if it matches. */
     typename internal::AddOptional<typename QueryData<D>::Item>::type get(Entity entity) {
-        return world_entities(*world_).get(entity).and_then(
+        return internal::world_entities(*world_).get(entity).and_then(
             [this, entity](EntityLocation location) ->
             typename internal::AddOptional<typename QueryData<D>::Item>::type {
                 if (!state_->contains_archetype(location.archetype_id)) return std::nullopt;
-                auto& archetype = world_archetypes(*world_).get(location.archetype_id).value().get();
+                auto& archetype = internal::world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto fetch      = WorldQuery<D>::init_fetch(*world_, state_->fetch_state(), last_run_, this_run_);
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
+                auto& table     = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<D>::set_archetype(fetch, state_->fetch_state(), archetype, table);
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
@@ -71,13 +71,13 @@ struct Query {
 
     /** @brief Check if a specific entity matches this query's filters. */
     bool contains(Entity entity) const {
-        return world_entities(*world_)
+        return internal::world_entities(*world_)
             .get(entity)
             .transform([this, entity](EntityLocation location) -> bool {
                 if (!state_->contains_archetype(location.archetype_id)) return false;
-                auto& archetype = world_archetypes(*world_).get(location.archetype_id).value().get();
+                auto& archetype = internal::world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
+                auto& table     = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
                 return QueryFilter<F>::filter_fetch(filter, entity, location.table_idx);
@@ -142,7 +142,7 @@ struct SystemParam<Single<D, F>> : SystemParam<Query<D, F>> {
     static std::expected<void, ValidateParamError> validate_param(const State& state,
                                                                   const SystemMeta& meta,
                                                                   World& world) {
-        Query<D, F> query = Base::get_param(const_cast<State&>(state), meta, world, world_change_tick(world));
+        Query<D, F> query = Base::get_param(const_cast<State&>(state), meta, world, internal::world_change_tick(world));
         if (!query.single().has_value()) {
             return std::unexpected(ValidateParamError{
                 .param_type = meta::type_id<Single<D, F>>(),

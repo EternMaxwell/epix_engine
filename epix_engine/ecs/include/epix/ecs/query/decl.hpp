@@ -1,9 +1,9 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/common.hpp>
+#include <epix/utils.hpp>
 #include <functional>
 #include <optional>
 #include <type_traits>
@@ -42,7 +42,7 @@ concept world_query = requires(WorldQuery<Q> q) {
     requires requires(const WorldQuery<Q>::State& state, WorldQuery<Q>::State& state_mut, WorldQuery<Q>::Fetch& fetch,
                       World& world, Tick tick, const Archetype& archetype, Table& table, const FilteredAccess& access,
                       FilteredAccess& access_mut, const Components& components,
-                      const std::function<bool(TypeId)>& contains_component) {
+                      utils::function_ref<bool(TypeId)> contains_component) {
         { WorldQuery<Q>::init_fetch(world, state, tick, tick) } -> std::same_as<typename WorldQuery<Q>::Fetch>;
         { WorldQuery<Q>::set_archetype(fetch, state, archetype, table) } -> std::same_as<void>;
         // { Q::set_table(fetch, state, table) } -> std::same_as<void>;
@@ -55,6 +55,9 @@ concept world_query = requires(WorldQuery<Q> q) {
         { WorldQuery<Q>::matches_component_set(state, contains_component) } -> std::same_as<bool>;
     };
 };
+template <typename T>
+concept contains_component_fn = std::invocable<T, TypeId> && std::same_as<bool, std::invoke_result_t<T, TypeId>>;
+static_assert(contains_component_fn<utils::function_ref<bool(TypeId)>>);
 
 template <typename T>
 struct AddOptional {

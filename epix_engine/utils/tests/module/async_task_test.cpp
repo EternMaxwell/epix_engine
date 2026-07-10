@@ -1,5 +1,4 @@
-// ── Module version: unit tests for epix.async_task ───────────────────────
-
+// ── Module version: unit tests for epix.async_task ──────────────────────
 #include <gtest/gtest.h>
 
 #include <asio/co_spawn.hpp>
@@ -9,7 +8,9 @@
 #include <asio/use_awaitable.hpp>
 #include <atomic>
 #include <chrono>
+#include <coroutine>
 #include <exception>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -19,435 +20,449 @@ import epix.async_task;
 
 using namespace epix::async_task;
 
-// ── Test helpers ─────────────────────────────────────────────────────────
+// ── Custom coroutine for native co_await tests ────────────────────────────
+struct tp;
+struct tc {
+    using promise_type = tp;
+    std::coroutine_handle<tp> h;
+    tc() : h(nullptr) {}
+    explicit tc(std::coroutine_handle<tp> h_) : h(h_) {}
+    tc(tc&& o) : h(std::exchange(o.h, nullptr)) {}
+    ~tc() {
+        if (h) h.destroy();
+    }
+};
+struct tp {
+    std::exception_ptr e;
+    tc get_return_object() { return tc{std::coroutine_handle<tp>::from_promise(*this)}; }
+    std::suspend_never initial_suspend() noexcept { return {}; }
+    std::suspend_always final_suspend() noexcept { return {}; }
+    void return_void() noexcept {}
+    void unhandled_exception() noexcept { e = std::current_exception(); }
+};
 
-/// Simple executor: posts Runnable via asio::io_context.
+// ── Test executor ────────────────────────────────────────────────────────
 class TestExecutor {
    public:
     TestExecutor() : m_ioc(), m_work(asio::make_work_guard(m_ioc)) {}
-
-    void schedule(Runnable r, ScheduleInfo info) {
-        m_schedule_count++;
-        m_last_info = info;
+    void schedule(Runnable r, ScheduleInfo i) {
+        m_sc++;
+        m_li = i;
         asio::post(m_ioc, [r = std::move(r)]() mutable { r.run(); });
     }
-
     void run_one() { m_ioc.poll_one(); }
-
-    void run_for(std::chrono::milliseconds timeout = std::chrono::milliseconds(500)) { m_ioc.run_for(timeout); }
-
     void run() { m_ioc.run(); }
-
     void stop() { m_work.reset(); }
-
-    int schedule_count() const { return m_schedule_count; }
-    ScheduleInfo last_info() const { return m_last_info; }
+    int schedule_count() const { return m_sc; }
+    ScheduleInfo last_info() const { return m_li; }
 
    private:
     asio::io_context m_ioc;
     asio::executor_work_guard<asio::io_context::executor_type> m_work;
-    int m_schedule_count     = 0;
-    ScheduleInfo m_last_info = ScheduleInfo::New;
+    int m_sc          = 0;
+    ScheduleInfo m_li = ScheduleInfo::New;
 };
 
-// ── spawn() basics ───────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, SpawnReturnsRunnableAndTask) {
+// ── spawn basics ─────────────────────────────────────────────────────────
+TEST(AsyncTaskTest, SpawnReturnsRunnableAndTask) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 42; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    EXPECT_FALSE(task.is_finished());
-    EXPECT_FALSE(runnable.is_done());
+    auto [r, t] = spawn([] { return 42; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    EXPECT_FALSE(t.is_finished());
+    EXPECT_FALSE(r.is_done());
 }
-
-TEST(AsyncTaskModuleTest, SpawnVoidWork) {
+TEST(AsyncTaskTest, SpawnVoidWork) {
     TestExecutor ex;
-    bool called = false;
-    auto [runnable, task] =
-        spawn([&called] { called = true; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    runnable.schedule();
+    bool c      = false;
+    auto [r, t] = spawn([&c] { c = true; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
     ex.run_one();
-
-    EXPECT_TRUE(task.is_finished());
-    EXPECT_TRUE(called);
+    EXPECT_TRUE(t.is_finished());
+    EXPECT_TRUE(c);
 }
-
-// ── Basic execution flow ─────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, ScheduleAndRunReturnsCorrectValue) {
+TEST(AsyncTaskTest, ScheduleAndRunReturnsCorrectValue) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 99; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    runnable.schedule();
+    auto [r, t] = spawn([] { return 99; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
     ex.run_one();
-
-    EXPECT_TRUE(task.is_finished());
-    EXPECT_TRUE(runnable.is_done());
-}
-
-TEST(AsyncTaskModuleTest, CoAwaitTaskWithAsio) {
-    asio::io_context ioc;
-    int result = 0;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([] { return 7; },
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            result = co_await std::move(task);
-        },
-        asio::detached);
-
-    ioc.run();
-
-    EXPECT_EQ(result, 7);
-}
-
-TEST(AsyncTaskModuleTest, CoAwaitFallibleTask) {
-    asio::io_context ioc;
-    std::optional<int> result;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([] { return 42; },
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            auto ft = std::move(task).fallible();
-            result  = co_await std::move(ft);
-        },
-        asio::detached);
-
-    ioc.run();
-
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, 42);
+    EXPECT_TRUE(t.is_finished());
+    EXPECT_TRUE(r.is_done());
 }
 
 // ── Cancellation ─────────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, CancelBeforeScheduleReturnsNullopt) {
+TEST(AsyncTaskTest, CancelBeforeScheduleReturnsNullopt) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 10; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    asio::io_context ioc;
-    std::optional<int> result;
-    asio::co_spawn(ioc, [&]() -> asio::awaitable<void> { result = co_await std::move(task).cancel(); }, asio::detached);
-    ioc.run();
-
-    EXPECT_FALSE(result.has_value());
-    EXPECT_TRUE(runnable.is_done());
+    auto [r, t] = spawn([] { return 10; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(t).cancel(); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_FALSE(v.has_value());
 }
-
-TEST(AsyncTaskModuleTest, CancelVoidTaskReturnsFalse) {
-    TestExecutor ex;
-    auto [runnable, task] = spawn([] {}, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    asio::io_context ioc;
-    bool result = true;
-    asio::co_spawn(ioc, [&]() -> asio::awaitable<void> { result = co_await std::move(task).cancel(); }, asio::detached);
-    ioc.run();
-
-    EXPECT_FALSE(result);
+TEST(AsyncTaskTest, CancelVoidTaskReturnsFalse) {
+    auto [r, t] = spawn([] {}, [](Runnable, ScheduleInfo) {});
+    bool ok     = true;
+    auto c      = [&]() -> tc { ok = co_await std::move(t).cancel(); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_FALSE(ok);
 }
-
-TEST(AsyncTaskModuleTest, CancelCompletedTaskReturnsValue) {
+TEST(AsyncTaskTest, CancelCompletedTaskReturnsValue) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 100; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    runnable.schedule();
+    auto [r, t] = spawn([] { return 100; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
     ex.run_one();
-    EXPECT_TRUE(task.is_finished());
-
-    asio::io_context ioc;
-    std::optional<int> result;
-    asio::co_spawn(ioc, [&]() -> asio::awaitable<void> { result = co_await std::move(task).cancel(); }, asio::detached);
-    ioc.run();
-
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, 100);
+    EXPECT_TRUE(t.is_finished());
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(t).cancel(); }();
+    while (!c.h.done()) c.h.resume();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 100);
 }
 
 // ── Detach ───────────────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, DetachDoesNotCancel) {
+TEST(AsyncTaskTest, DetachDoesNotCancel) {
     TestExecutor ex;
-    std::atomic<bool> executed{false};
-
+    std::atomic<bool> e{false};
     {
-        auto [runnable, task] = spawn(
-            [&executed] {
-                executed.store(true);
+        auto [r, t] = spawn(
+            [&e] {
+                e.store(true);
                 return 0;
             },
-            [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-        runnable.schedule();
-        task.detach();
+            [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+        r.schedule();
+        t.detach();
     }
-
     ex.run_one();
-    EXPECT_TRUE(executed.load());
+    EXPECT_TRUE(e.load());
 }
-
-// ── Destructor behaviour ─────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, DestructorCancelsTask) {
+TEST(AsyncTaskTest, DestructorCancelsTask) {
     TestExecutor ex;
-    bool executed = false;
-
+    bool e = false;
     {
-        auto [runnable, task] = spawn(
-            [&executed] {
-                executed = true;
+        auto [r, t] = spawn(
+            [&e] {
+                e = true;
                 return 0;
             },
-            [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
+            [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
     }
-
-    EXPECT_FALSE(executed);
+    EXPECT_FALSE(e);
 }
-
-// ── is_finished() ────────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, IsFinishedReportsCorrectly) {
+TEST(AsyncTaskTest, AlreadyDetachedTaskDtorIsSafe) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 5; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    EXPECT_FALSE(task.is_finished());
-    runnable.schedule();
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    t.detach();
+}
+TEST(AsyncTaskTest, IsFinishedReportsCorrectly) {
+    TestExecutor ex;
+    auto [r, t] = spawn([] { return 5; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    EXPECT_FALSE(t.is_finished());
+    r.schedule();
     ex.run_one();
-    EXPECT_TRUE(task.is_finished());
+    EXPECT_TRUE(t.is_finished());
+    EXPECT_TRUE(r.is_done());
+}
+TEST(AsyncTaskTest, DefaultConstructedTaskIsFinished) {
+    Task<int> t;
+    EXPECT_TRUE(t.is_finished());
 }
 
-// ── FallibleTask ─────────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, FallibleTaskCoAwaitOnSuccess) {
-    asio::io_context ioc;
-    std::optional<std::string> result;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([] -> std::string { return "hello"; },
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            auto ft = std::move(task).fallible();
-            result  = co_await std::move(ft);
-        },
-        asio::detached);
-
-    ioc.run();
-
-    ASSERT_TRUE(result.has_value());
-    EXPECT_EQ(*result, "hello");
-}
-
-TEST(AsyncTaskModuleTest, FallibleTaskCancelReturnsNullopt) {
+// ── Waker ────────────────────────────────────────────────────────────────
+TEST(AsyncTaskTest, WakerWakesWithScheduleInfoWake) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 5; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    auto ft = std::move(task).fallible();
-
-    asio::io_context ioc;
-    std::optional<int> result;
-    asio::co_spawn(ioc, [&]() -> asio::awaitable<void> { result = co_await std::move(ft).cancel(); }, asio::detached);
-    ioc.run();
-
-    EXPECT_FALSE(result.has_value());
-}
-
-TEST(AsyncTaskModuleTest, FallibleVoidCoAwait) {
-    asio::io_context ioc;
-    bool success = false;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([] {},
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            auto ft = std::move(task).fallible();
-            success = co_await std::move(ft);
-        },
-        asio::detached);
-
-    ioc.run();
-
-    EXPECT_TRUE(success);
-}
-
-// ── Waker behaviour ──────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, WakerWakesWithScheduleInfoWake) {
-    TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    auto w = runnable.waker();
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    auto w      = r.waker();
     std::move(w).wake();
-
     EXPECT_EQ(ex.last_info(), ScheduleInfo::Wake);
     EXPECT_GE(ex.schedule_count(), 1);
 }
-
-TEST(AsyncTaskModuleTest, WakerWakeByRef) {
+TEST(AsyncTaskTest, WakerWakeByRef) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    auto w = runnable.waker();
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    auto w      = r.waker();
     w.wake_by_ref();
-
     EXPECT_EQ(ex.last_info(), ScheduleInfo::Wake);
     EXPECT_TRUE(static_cast<bool>(w));
     ex.run_one();
-    EXPECT_TRUE(task.is_finished());
+    EXPECT_TRUE(t.is_finished());
 }
-
-// ── ScheduleInfo ─────────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, ScheduleInfoNewOnRunnableSchedule) {
+TEST(AsyncTaskTest, WakerIsCopyable) {
     TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    runnable.schedule();
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    auto w1     = r.waker();
+    Waker w2    = w1;
+    Waker w3(w1);
+    w2 = w1;
+    EXPECT_TRUE(static_cast<bool>(w1));
+    EXPECT_TRUE(static_cast<bool>(w2));
+    EXPECT_TRUE(static_cast<bool>(w3));
+    EXPECT_EQ(w1, w2);
+    std::move(w1).wake();
+    EXPECT_EQ(ex.schedule_count(), 1);
+}
+TEST(AsyncTaskTest, WakeOnCompletedTaskIsNoOp) {
+    TestExecutor ex;
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
+    ex.run_one();
+    EXPECT_TRUE(t.is_finished());
+    int b  = ex.schedule_count();
+    auto w = r.waker();
+    std::move(w).wake();
+    EXPECT_EQ(ex.schedule_count(), b);
+}
+TEST(AsyncTaskTest, ScheduleInfoNewOnRunnableSchedule) {
+    TestExecutor ex;
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
     EXPECT_EQ(ex.last_info(), ScheduleInfo::New);
 }
 
-// ── Exception handling ───────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, FallibleTaskCatchesException) {
-    asio::io_context ioc;
-    std::optional<int> result;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([]() -> int { throw std::runtime_error("fail"); },
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            auto ft = std::move(task).fallible();
-            result  = co_await std::move(ft);
-        },
-        asio::detached);
-
-    ioc.run();
-    EXPECT_FALSE(result.has_value());
+// ── Exception ────────────────────────────────────────────────────────────
+TEST(AsyncTaskTest, ExceptionInWorkIsPropagated) {
+    auto [r, t] = spawn([]() -> int { throw std::runtime_error("boom"); }, [](Runnable r, ScheduleInfo) { r.run(); });
+    r.schedule();
+    EXPECT_TRUE(t.is_finished());
+}
+TEST(AsyncTaskTest, FallibleTaskCatchesException) {
+    auto [r, t] = spawn([]() -> int { throw std::runtime_error("fail"); }, [](Runnable r, ScheduleInfo) { r.run(); });
+    r.schedule();
+    auto ft = std::move(t).fallible();
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(ft); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_FALSE(v.has_value());
 }
 
-// ── Default-constructed handles ──────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, DefaultHandlesAreSafe) {
-    Task<int> t;
-    EXPECT_TRUE(t.is_finished());
-    t.detach();
-
-    Task<void> tv;
-    EXPECT_TRUE(tv.is_finished());
-    tv.detach();
-
-    Runnable r;
-    EXPECT_TRUE(r.is_done());
-    EXPECT_FALSE(r.run());
+// ── run() ────────────────────────────────────────────────────────────────
+TEST(AsyncTaskTest, RunReturnsFalseWhenWorkCompletes) {
+    auto [r, t] = spawn([] { return 1; }, [](Runnable, ScheduleInfo) {});
     r.schedule();
+    EXPECT_FALSE(r.run());
+}
+TEST(AsyncTaskTest, RunReturnsFalseWhenNotScheduled) {
+    auto [r, t] = spawn([] { return 1; }, [](Runnable, ScheduleInfo) {});
+    EXPECT_FALSE(r.run());
+}
+TEST(AsyncTaskTest, RunReturnsFalseWhenAlreadyCompleted) {
+    auto [r, t] = spawn([] { return 1; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    r.run();
+    EXPECT_FALSE(r.run());
+}
+TEST(AsyncTaskTest, DuplicateScheduleIsSafe) {
+    TestExecutor ex;
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
+    r.schedule();
+    ex.run_one();
+    EXPECT_TRUE(t.is_finished());
+}
+TEST(AsyncTaskTest, ScheduleAfterCompletionIsNoOp) {
+    TestExecutor ex;
+    auto [r, t] = spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo i) { ex.schedule(std::move(r), i); });
+    r.schedule();
+    ex.run_one();
+    int b = ex.schedule_count();
+    r.schedule();
+    EXPECT_EQ(ex.schedule_count(), b);
+}
 
-    FallibleTask<int> ft;
-    EXPECT_TRUE(ft.is_finished());
-    ft.detach();
-
-    FallibleTask<void> ftv;
-    EXPECT_TRUE(ftv.is_finished());
-    ftv.detach();
-
+// ── Default safety ───────────────────────────────────────────────────────
+TEST(AsyncTaskTest, DefaultTaskIsSafe) {
+    Task<int> t;
+    EXPECT_FALSE(static_cast<bool>(t));
+}
+TEST(AsyncTaskTest, DefaultRunnableIsSafe) {
+    Runnable r;
+    EXPECT_FALSE(static_cast<bool>(r));
+    EXPECT_FALSE(r.run());
+}
+TEST(AsyncTaskTest, DefaultWakerIsSafe) {
     Waker w;
-    std::move(w).wake();
-    w.wake_by_ref();
+    EXPECT_FALSE(static_cast<bool>(w));
+}
+TEST(AsyncTaskTest, DefaultFallibleTaskIsSafe) {
+    FallibleTask<int> ft;
+    EXPECT_FALSE(static_cast<bool>(ft));
 }
 
 // ── Move semantics ───────────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, TaskMoveSemantics) {
-    TestExecutor ex;
-    auto [runnable, task1] =
-        spawn([] { return 42; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    Task<int> task2 = std::move(task1);
-    EXPECT_FALSE(task2.is_finished());
-
-    runnable.schedule();
-    ex.run_one();
-    EXPECT_TRUE(task2.is_finished());
+TEST(AsyncTaskTest, TaskMoveSemantics) {
+    auto [r, t1] = spawn([] { return 42; }, [](Runnable, ScheduleInfo) {});
+    Task<int> t2 = std::move(t1);
+    EXPECT_FALSE(static_cast<bool>(t1));
+    EXPECT_TRUE(static_cast<bool>(t2));
+    r.schedule();
+    r.run();
+    EXPECT_TRUE(t2.is_finished());
 }
-
-// ── Co-await Task<void> ───────────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, CoAwaitVoidTask) {
-    asio::io_context ioc;
-    bool completed = false;
-
-    asio::co_spawn(
-        ioc,
-        [&]() -> asio::awaitable<void> {
-            auto [runnable, task] =
-                spawn([&completed] { completed = true; },
-                      [&ioc](Runnable r, ScheduleInfo) { asio::post(ioc, [r = std::move(r)]() mutable { r.run(); }); });
-            runnable.schedule();
-            co_await std::move(task);
-        },
-        asio::detached);
-
-    ioc.run();
-
-    EXPECT_TRUE(completed);
+TEST(AsyncTaskTest, RunnableMoveAndCopySemantics) {
+    auto [r1, t] = spawn([] { return 1; }, [](Runnable, ScheduleInfo) {});
+    Runnable r2  = std::move(r1);
+    Runnable r3  = r2;
+    EXPECT_TRUE(static_cast<bool>(r2));
+    EXPECT_TRUE(static_cast<bool>(r3));
 }
-
-// ── Schedule after completion ────────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, ScheduleAfterCompletionIsNoOp) {
-    TestExecutor ex;
-    auto [runnable, task] =
-        spawn([] { return 1; }, [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
-
-    runnable.schedule();
-    ex.run_one();
-    EXPECT_TRUE(task.is_finished());
-
-    int before = ex.schedule_count();
-    runnable.schedule();
-    EXPECT_EQ(ex.schedule_count(), before);
+TEST(AsyncTaskTest, FallibleFallibleIsIdentity) {
+    auto [r, t] = spawn([] { return 1; }, [](Runnable, ScheduleInfo) {});
+    auto ft     = std::move(t).fallible();
+    auto ft2    = std::move(ft).fallible();
+    EXPECT_FALSE(ft2.is_finished());
 }
-
-// ── Duplicate schedule is safe ───────────────────────────────────────────
-
-TEST(AsyncTaskModuleTest, DuplicateScheduleIsSafe) {
-    TestExecutor ex;
-    std::atomic<int> count{0};
-    auto [runnable, task] = spawn(
-        [&count] {
-            count.fetch_add(1);
+TEST(AsyncTaskTest, ScheduleFunctionCalledWithCorrectInfo) {
+    ScheduleInfo c = ScheduleInfo::Wake;
+    auto [r, t]    = spawn([] { return 1; }, [&c](Runnable r, ScheduleInfo i) { c = i; });
+    r.schedule();
+    EXPECT_EQ(c, ScheduleInfo::New);
+    auto w = r.waker();
+    std::move(w).wake();
+    EXPECT_EQ(c, ScheduleInfo::Wake);
+}
+TEST(AsyncTaskTest, ConcurrentScheduleAndAwait) {
+    std::atomic<bool> d{false};
+    auto [r, t] = spawn(
+        [&d] {
+            d.store(true);
             return 1;
         },
-        [&ex](Runnable r, ScheduleInfo info) { ex.schedule(std::move(r), info); });
+        [](Runnable r, ScheduleInfo) { std::thread([r = std::move(r)]() mutable { r.run(); }).detach(); });
+    r.schedule();
+    while (!d.load()) std::this_thread::yield();
+    while (!t.is_finished()) std::this_thread::yield();
+    EXPECT_TRUE(t.is_finished());
+}
+TEST(AsyncTaskTest, DetachedTaskStillRuns) {
+    std::atomic<bool> ran{false};
+    {
+        auto [r, t] = spawn([&ran] { ran.store(true); }, [](Runnable r, ScheduleInfo) { r.run(); });
+        r.schedule();
+        t.detach();
+    }
+    EXPECT_TRUE(ran.load());
+}
 
-    runnable.schedule();
-    runnable.schedule();
-    ex.run_one();
-    ex.run_one();
+// ── Integration: schedule via io_context, drive via event loop ───────────
+//
+// The schedule function posts to asio::io_context.  When run() returns
+// true, the handler re-posts itself for another poll.
 
-    EXPECT_EQ(count.load(), 1);
-    EXPECT_TRUE(task.is_finished());
+TEST(AsyncTaskCoroutine, ScheduleOnIoContext) {
+    asio::io_context ioc;
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 42; },
+                        [&ioc](Runnable r, ScheduleInfo) {
+                            auto runner = std::make_shared<Runnable>(std::move(r));
+                            std::function<void()> poll;
+                            poll = [runner, &ioc, &poll]() {
+                                if (runner->run()) asio::post(ioc, poll);
+                            };
+                            asio::post(ioc, poll);
+                        });
+    r.schedule();
+    ioc.run();
+    EXPECT_TRUE(t.is_finished());
+}
+
+TEST(AsyncTaskCoroutine, ScheduleOnIoContextAndCoAwait) {
+    asio::io_context ioc;
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 99; },
+                        [&ioc](Runnable r, ScheduleInfo) {
+                            auto runner = std::make_shared<Runnable>(std::move(r));
+                            std::function<void()> poll;
+                            poll = [runner, &ioc, &poll]() {
+                                if (runner->run()) asio::post(ioc, poll);
+                            };
+                            asio::post(ioc, poll);
+                        });
+    r.schedule();
+    ioc.run();
+    ASSERT_TRUE(t.is_finished());
+    int v  = 0;
+    auto c = [&]() -> tc { v = co_await std::move(t); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_EQ(v, 99);
+}
+
+TEST(AsyncTaskCoroutine, ScheduleVoidOnIoContext) {
+    asio::io_context ioc;
+    auto [r, t] = spawn([]() -> asio::awaitable<void> { co_return; },
+                        [&ioc](Runnable r, ScheduleInfo) {
+                            auto runner = std::make_shared<Runnable>(std::move(r));
+                            std::function<void()> poll;
+                            poll = [runner, &ioc, &poll]() {
+                                if (runner->run()) asio::post(ioc, poll);
+                            };
+                            asio::post(ioc, poll);
+                        });
+    r.schedule();
+    ioc.run();
+    EXPECT_TRUE(t.is_finished());
+}
+
+// ── One-step advancement ──────────────────────────────────────────────────
+
+void drive(Runnable& r) {
+    while (r.run()) r.schedule();
+}
+
+TEST(AsyncTaskCoroutine, SpawnCoroutineAndDrive) {
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 42; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    EXPECT_TRUE(t.is_finished());
+}
+
+TEST(AsyncTaskCoroutine, SpawnCoroutineAndCoAwait) {
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 99; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    int v  = 0;
+    auto c = [&]() -> tc { v = co_await std::move(t); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_EQ(v, 99);
+}
+
+TEST(AsyncTaskCoroutine, SpawnCoroutineException) {
+    auto [r, t] = spawn(
+        []() -> asio::awaitable<int> {
+            throw std::runtime_error("fail");
+            co_return 0;
+        },
+        [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    EXPECT_TRUE(t.is_finished());
+    auto ft = std::move(t).fallible();
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(ft); }();
+    while (!c.h.done()) c.h.resume();
+    EXPECT_FALSE(v.has_value());
+}
+
+TEST(AsyncTaskCoroutine, SpawnVoidCoroutine) {
+    auto [r, t] = spawn([]() -> asio::awaitable<void> { co_return; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    EXPECT_TRUE(t.is_finished());
+}
+
+TEST(AsyncTaskCoroutine, CancelCoroutine) {
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 42; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(t).cancel(); }();
+    while (!c.h.done()) c.h.resume();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 42);
+}
+
+TEST(AsyncTaskCoroutine, CoAwaitFallibleCoroutine) {
+    auto [r, t] = spawn([]() -> asio::awaitable<int> { co_return 77; }, [](Runnable, ScheduleInfo) {});
+    r.schedule();
+    drive(r);
+    std::optional<int> v;
+    auto c = [&]() -> tc { v = co_await std::move(t).fallible(); }();
+    while (!c.h.done()) c.h.resume();
+    ASSERT_TRUE(v.has_value());
+    EXPECT_EQ(*v, 77);
 }

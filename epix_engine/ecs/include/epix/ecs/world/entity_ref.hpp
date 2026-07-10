@@ -1,11 +1,10 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cassert>
 #include <concepts>
+#include <epix/common.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -323,7 +322,7 @@ struct WorldQuery<EntityRef> {
     }
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -354,7 +353,7 @@ struct WorldQuery<EntityRefMut> {
     }
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };

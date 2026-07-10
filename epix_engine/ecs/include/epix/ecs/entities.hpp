@@ -1,13 +1,12 @@
 ﻿#pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/utils.hpp>
 #include <functional>
 #include <limits>

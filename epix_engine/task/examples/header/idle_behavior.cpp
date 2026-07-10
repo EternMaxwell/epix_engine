@@ -5,7 +5,7 @@
 #include <iostream>
 #include <thread>
 
-using namespace epix::tasks;
+using namespace epix::task;
 using namespace std::chrono;
 
 int main() {

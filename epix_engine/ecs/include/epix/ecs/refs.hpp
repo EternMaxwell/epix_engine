@@ -140,7 +140,7 @@ struct WorldQuery<Ref<T>> {
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
     static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state);
     }
 };
@@ -216,7 +216,7 @@ struct WorldQuery<Mut<T>> {
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
     static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state);
     }
 };

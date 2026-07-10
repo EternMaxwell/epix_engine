@@ -1,12 +1,11 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cassert>
 #include <concepts>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -69,8 +68,8 @@ struct BundleSpawner {
         TableRow row      = table.allocate(entity);
         auto location     = archetype.allocate(entity, row);
         world_entities_mut(*world_).set(entity.index, location);
-        auto spawn_bundle_status = std::views::take(std::views::repeat(ComponentStatus::Added),
-                                                    std::ranges::size(bundle_info.explicit_components()));
+        auto spawn_bundle_status = std::ranges::to<std::vector>(std::views::take(
+            std::views::repeat(ComponentStatus::Added), std::ranges::size(bundle_info.explicit_components())));
         bundle_info.write_components(table, world_storage_mut(*world_).sparse_sets, world_type_registry(*world_),
                                      world_components(*world_), spawn_bundle_status,
                                      bundle_info.required_component_constructors(), entity, row, change_tick_, bundle,

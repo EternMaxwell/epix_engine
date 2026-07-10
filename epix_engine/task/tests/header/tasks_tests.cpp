@@ -2,6 +2,11 @@
 
 #include <gtest/gtest.h>
 
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
+#include <asio/post.hpp>
+#include <asio/use_awaitable.hpp>
 #include <atomic>
 #include <chrono>
 #include <epix/task.hpp>
@@ -9,7 +14,7 @@
 #include <thread>
 #include <vector>
 
-using namespace epix::tasks;
+using namespace epix::task;
 using namespace std::chrono_literals;
 
 // ── TaskPool ────────────────────────────────────────────────────────────────
@@ -32,7 +37,7 @@ TEST(TaskPool, BuilderThreadName) {
 TEST(TaskPool, SpawnReturnsTask) {
     TaskPool pool;
     auto task = pool.spawn([]() { return 42; });
-    EXPECT_FALSE(task.is_finished());
+    EXPECT_TRUE(static_cast<bool>(task));
 }
 
 TEST(TaskPool, SpawnAndCheckFinished) {
@@ -276,4 +281,47 @@ TEST(Behavior, IdleSingleTask) {
         });
     });
     // Single task should complete fine
+}
+
+// ── Coroutine-based tasks via TaskPool ─────────────────────────────────────
+//
+// TaskPool::spawn() now handles asio::awaitable<T> natively via
+// async_task::spawn's bridge.  The schedule function re-queues when
+// run() returns true for proper one-step coroutine advancement.
+
+TEST(CoroutineTask, TaskPoolSpawnCoroutine) {
+    TaskPool pool;
+    auto task = pool.spawn([]() -> asio::awaitable<int> { co_return 42; });
+    while (!task.is_finished()) std::this_thread::sleep_for(1ms);
+    EXPECT_TRUE(task.is_finished());
+}
+
+TEST(CoroutineTask, TaskPoolSpawnCoroutineWithSuspend) {
+    TaskPool pool;
+    auto task = pool.spawn([]() -> asio::awaitable<int> {
+        co_await asio::post(asio::use_awaitable);
+        co_return 99;
+    });
+    while (!task.is_finished()) std::this_thread::sleep_for(1ms);
+    EXPECT_TRUE(task.is_finished());
+}
+
+TEST(CoroutineTask, TaskPoolSpawnVoidCoroutine) {
+    std::atomic<bool> ran{false};
+    TaskPool pool;
+    auto task = pool.spawn([&ran]() -> asio::awaitable<void> {
+        ran.store(true);
+        co_return;
+    });
+    while (!task.is_finished()) std::this_thread::sleep_for(1ms);
+    EXPECT_TRUE(ran.load());
+}
+
+TEST(CoroutineTask, ThreadExecutorSpawnCoroutine) {
+    ThreadExecutor exec;
+    auto task = exec.spawn([]() -> asio::awaitable<int> { co_return 55; });
+    while (!task.is_finished()) {
+        if (auto t = exec.ticker()) t->try_tick();
+    }
+    EXPECT_TRUE(task.is_finished());
 }

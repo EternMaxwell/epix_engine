@@ -1,11 +1,10 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -323,7 +322,7 @@ struct QueryState {
         }
         return false;
     }
-    bool matches_component_set(const std::function<bool(TypeId)>& contains_component) const {
+    bool matches_component_set(internal::contains_component_fn auto&& contains_component) const {
         return _component_access.filters().empty() ||
                std::ranges::any_of(_component_access.filters(), [&](const AccessFilters& filter) {
                    return std::ranges::all_of(filter.with.iter_ones(), contains_component) &&

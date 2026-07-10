@@ -1,12 +1,11 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <cassert>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -66,7 +65,7 @@ struct WorldQuery<With<Ts...>> {
     static std::optional<State> get_state(const Components& components) {
         return State{components.registry().type_id<Ts>()...};
     }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return std::ranges::all_of(state, contains_component);
     }
 };
@@ -100,7 +99,7 @@ struct WorldQuery<Without<Ts...>> {
     static std::optional<State> get_state(const Components& components) {
         return State{components.registry().type_id<Ts>()...};
     }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return std::ranges::none_of(state, contains_component);
     }
 };
@@ -197,7 +196,7 @@ struct WorldQuery<Or<Fs...>> {
             }
         }(std::index_sequence_for<Fs...>{});
     }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             return false || (WorldQuery<Fs>::matches_component_set(std::get<Is>(state), contains_component) || ...);
         }(std::index_sequence_for<Fs...>{});
@@ -284,7 +283,7 @@ struct WorldQuery<Added<T>> {
             return State{.component_id = type_id, .storage_type = info.storage_type()};
         });
     }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state.component_id);
     }
 };

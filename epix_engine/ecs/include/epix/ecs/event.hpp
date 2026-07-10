@@ -245,7 +245,7 @@ EPIX_EXPORT struct EventRegistry {
     static void register_event(World& world) {
         auto id         = world.init_resource<Events<T>>();
         auto&& registry = world.resource_or_init<EventRegistry>();
-        registry.events.emplace(id, RegisteredEvent{.updated = false, .update = [](void* queue) {
+        registry.events.emplace(id, RegisteredEvent{.previously_updated = false, .update = [](void* queue) {
                                                         Events<T>* events = static_cast<Events<T>*>(queue);
                                                         events->update();
                                                     }});

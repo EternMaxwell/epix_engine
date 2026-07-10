@@ -32,7 +32,7 @@
 
 #include <epix/task/task_pool.hpp>
 
-namespace epix::tasks {
+namespace epix::task {
 
 // ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -292,4 +292,4 @@ EPIX_EXPORT template <std::ranges::contiguous_range R>
     return par_range<std::ranges::range_value_t<R>>(rng);
 }
 
-}  // namespace epix::tasks
+}  // namespace epix::task

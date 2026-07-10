@@ -8,7 +8,7 @@
 #endif
 #include <epix/task/task_pool.hpp>
 
-namespace epix::tasks {
+namespace epix::task {
 
 #define EPIX_DEFINE_TASK_POOL(Name)                                                       \
     EPIX_EXPORT struct Name {                                                             \
@@ -54,4 +54,4 @@ EPIX_DEFINE_TASK_POOL(IoTaskPool);
 
 #undef EPIX_DEFINE_TASK_POOL
 
-}  // namespace epix::tasks
+}  // namespace epix::task

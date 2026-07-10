@@ -39,6 +39,7 @@
 #include <spdlog/spdlog.h>
 
 #include <BS_thread_pool.hpp>
+#include <epix/common.hpp>
 
 export module epix.ecs;
 #ifdef EPIX_IMPORT_STD

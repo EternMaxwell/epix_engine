@@ -18,10 +18,10 @@
 #include <vector>
 #endif
 
-namespace epix::tasks {
+namespace epix::task {
 EPIX_EXPORT using async_task::Task;
 EPIX_EXPORT using async_task::FallibleTask;
 EPIX_EXPORT using async_task::Runnable;
 EPIX_EXPORT using async_task::Waker;
 EPIX_EXPORT using async_task::ScheduleInfo;
-}  // namespace epix::tasks
+}  // namespace epix::task

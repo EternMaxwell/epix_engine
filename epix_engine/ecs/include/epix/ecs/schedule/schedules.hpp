@@ -1,8 +1,7 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>

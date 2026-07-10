@@ -8,7 +8,6 @@
 #include <tuple>
 #include <utility>
 #include <variant>
-
 #endif
 
 namespace epix::ecs {

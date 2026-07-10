@@ -14,13 +14,13 @@
 //   ScheduleInfo       { New, Wake } — passed to schedule function
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/associated_executor.hpp>
-#include <asio/async_result.hpp>
 #include <asio/awaitable.hpp>
-#include <asio/post.hpp>
-#include <asio/use_awaitable.hpp>
+#include <asio/co_spawn.hpp>
+#include <asio/detached.hpp>
+#include <asio/io_context.hpp>
 #include <atomic>
 #include <condition_variable>
+#include <coroutine>
 #include <cstdint>
 #include <epix/common.hpp>
 #include <exception>
@@ -28,6 +28,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <thread>
 #include <utility>
 #include <vector>
 #endif
@@ -85,7 +86,10 @@ struct TaskHeader {
     // User-provided: called whenever the task needs to be queued.
     std::move_only_function<void(Runnable, ScheduleInfo)> schedule_fn;
 
-    // Type-erased work. Executed once by Runnable::run().
+    // Type-erased work.  Re-entrant: may be called multiple times for
+    // coroutine-based tasks.  MUST set the COMPLETED flag (via fetch_or)
+    // when the work has genuinely finished.  Plain callables always set
+    // COMPLETED on the first invocation.
     std::move_only_function<void()> work;
 
     // Error slot. Set if work throws.
@@ -124,6 +128,37 @@ struct TaskState : TaskHeader {
 template <>
 struct TaskState<void> : TaskHeader {
     using TaskHeader::TaskHeader;
+};
+
+// ── Awaitable detection traits (type-level, no runtime dependency) ──
+
+template <typename T, typename = void>
+struct is_awaitable_impl : std::false_type {};
+template <typename T>
+struct is_awaitable_impl<T, std::void_t<decltype(std::declval<T&>().await_ready())>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_awaitable_v = is_awaitable_impl<T>::value;
+
+template <typename T, typename = void>
+struct awaitable_result_impl {};
+template <typename T>
+struct awaitable_result_impl<T, std::void_t<decltype(std::declval<T&>().await_resume())>> {
+    using type = decltype(std::declval<T&>().await_resume());
+};
+template <typename T>
+using awaitable_result_t = typename awaitable_result_impl<T>::type;
+
+template <typename T>
+struct is_asio_awaitable_impl : std::false_type {};
+template <typename T>
+struct is_asio_awaitable_impl<asio::awaitable<T>> : std::true_type {};
+template <typename T>
+inline constexpr bool is_asio_awaitable_v = is_asio_awaitable_impl<T>::value;
+template <typename T>
+struct asio_awaitable_value_type {};
+template <typename T>
+struct asio_awaitable_value_type<asio::awaitable<T>> {
+    using type = T;
 };
 
 }  // namespace internal
@@ -185,28 +220,22 @@ EPIX_EXPORT struct Runnable {
             m_header->work();
         } catch (...) {
             m_header->exception = std::current_exception();
+            // Work threw — mark COMPLETED so the exception is observable.
+            m_header->flags.fetch_or(internal::COMPLETED, std::memory_order_release);
         }
 
-        // ── Post-execution state transition ──
+        // ── Post-execution: just clear RUNNING ──
         //
-        // Clear RUNNING.  If !CLOSED → set COMPLETED.
-        // If SCHEDULED was re-set during execution → return true.
-        //
-        // Note: all decisions recomputed each CAS iteration because `cur`
-        // is updated by compare_exchange_weak on failure.
+        // COMPLETED is set by the work function itself when it finishes
+        // (or by the catch block above on exception).  Coroutine work
+        // may return without setting COMPLETED — the task stays alive
+        // for the next run() invocation.
         bool was_re_woken = false;
         cur               = m_header->flags.load(std::memory_order_acquire);
         while (true) {
-            uint8_t next   = cur & ~internal::RUNNING;  // always clear RUNNING
-            bool is_closed = (cur & internal::CLOSED) != 0;
-
-            if (!is_closed) {
-                next |= internal::COMPLETED;  // done (success or exception)
-            }
+            uint8_t next = cur & ~internal::RUNNING;
             if ((cur & internal::SCHEDULED) != 0) {
                 was_re_woken = true;
-                // SCHEDULED persists in `next` (preserved from `cur` above).
-                // The executor will see it and call schedule() → no-op (terminal).
             }
             if (m_header->flags.compare_exchange_weak(cur, next, std::memory_order_acq_rel)) break;
         }
@@ -387,32 +416,34 @@ struct [[nodiscard]] Task {
 
     // ── Rust: pub async fn cancel(self) -> Option<T> ──────────────────
     //
-    //   pub async fn cancel(self) -> Option<T> {
-    //       let mut this = self;
-    //       this.set_canceled();
-    //       this.fallible().await
-    //   }
-    /**
-     * @brief Cancel the task and await its completion.
-     *
-     * Sets CLOSED.  If the task hasn't started running, schedules it
-     * one last time for cleanup.  Then awaits the terminal state.
-     *
-     * Returns Some(value) if the task completed just before being
-     * cancelled, nullopt otherwise.
-     */
-    [[nodiscard]] asio::awaitable<std::optional<T>> cancel() && {
-        if (!m_state) co_return std::nullopt;
+    // Returns an awaitable that suspends the caller until the task is
+    // terminal, then returns Some(value) if completed successfully or
+    // nullopt if cancelled/failed.
+    [[nodiscard]] auto cancel() && {
         set_canceled();
-        auto state = std::move(m_state);
-        while (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
-            co_await asio::post(asio::use_awaitable);
-        }
-        auto f = state->flags.load(std::memory_order_acquire);
-        if ((f & internal::COMPLETED) != 0 && !state->exception) {
-            co_return std::move(state->value);
-        }
-        co_return std::nullopt;
+        struct cancel_awaiter {
+            std::shared_ptr<internal::TaskState<T>> state;
+            bool await_ready() const noexcept {
+                return !state || internal::is_terminal(state->flags.load(std::memory_order_acquire));
+            }
+            void await_suspend(std::coroutine_handle<> h) {
+                if (!state) return (void)h.resume();
+                std::unique_lock lock(state->mtx);
+                if (!internal::is_terminal(state->flags.load(std::memory_order_acquire)))
+                    state->waiters.push_back([h]() mutable { h.resume(); });
+                else {
+                    lock.unlock();
+                    h.resume();
+                }
+            }
+            std::optional<T> await_resume() {
+                if (!state) return std::nullopt;
+                auto f = state->flags.load(std::memory_order_acquire);
+                if ((f & internal::COMPLETED) != 0 && !state->exception) return std::move(state->value);
+                return std::nullopt;
+            }
+        };
+        return cancel_awaiter{std::move(m_state)};
     }
 
     // ── Rust: pub fn fallible(self) -> FallibleTask<T> ────────────────
@@ -456,52 +487,51 @@ struct [[nodiscard]] Task {
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
 
-    // ── Rust: impl Future<Output = T> for Task<T> ─────────────────────
-    //
-    //   fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<T> {
-    //       match self.poll_task(cx) {
-    //           Poll::Ready(t) => Poll::Ready(t.expect("...")),
-    //           Poll::Pending => Poll::Pending,
-    //       }
-    //   }
-    //
-    // poll_task behaviour:
-    //   1. If CLOSED → wait until !RUNNING && !SCHEDULED, notify, return None
-    //   2. If !COMPLETED → register waker, return Pending
-    //   3. If COMPLETED → CAS to add CLOSED, grab output, propagate panic if any
-    /**
-     * @brief `co_await task` inside asio coroutines.
-     *
-     * Consumes the Task.  If the task was cancelled, the completion
-     * handler receives an exception_ptr set to a runtime_error.
-     * Requires T to be default-constructible.
-     */
+    // ── C++20 awaitable protocol (Rust Future<Output = T> equivalent) ──
+
+    Task& operator co_await() & noexcept { return *this; }
+    Task&& operator co_await() && noexcept { return std::move(*this); }
+
+    [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
+
+    template <typename H>
+    void await_suspend(H h) {
+        std::unique_lock lock(m_state->mtx);
+        if (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+            m_state->waiters.push_back([h]() mutable { h.resume(); });
+            return;
+        }
+        lock.unlock();
+        h.resume();
+    }
+
+    T await_resume() {
+        if (m_state->exception) std::rethrow_exception(m_state->exception);
+        return std::move(*m_state->value);
+    }
+
     template <ASIO_COMPLETION_TOKEN_FOR(void(std::exception_ptr, T)) CompletionToken>
     auto operator()(CompletionToken&& token) && {
         return asio::async_initiate<CompletionToken, void(std::exception_ptr, T)>(
             [state = std::move(m_state)](auto handler) mutable {
-                auto ex = asio::get_associated_executor(handler);
-
+                auto ex     = asio::get_associated_executor(handler);
                 auto invoke = [state, h = std::move(handler)]() mutable {
                     auto f = state->flags.load(std::memory_order_acquire);
                     if ((f & (internal::COMPLETED | internal::CLOSED)) == 0) {
-                        // Shouldn't happen — waiter is only invoked at terminal.
                         h(std::make_exception_ptr(std::runtime_error("task polled before completion")), T{});
                         return;
                     }
                     if ((f & internal::COMPLETED) != 0 && !state->exception) {
-                        if constexpr (!std::is_void_v<T>) {
+                        if constexpr (!std::is_void_v<T>)
                             h(nullptr, std::move(*state->value));
-                        } else {
+                        else
                             h(nullptr);
-                        }
                     } else {
                         h(state->exception ? state->exception
                                            : std::make_exception_ptr(std::runtime_error("task cancelled")),
                           T{});
                     }
                 };
-
                 {
                     std::unique_lock lock(state->mtx);
                     if (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
@@ -523,7 +553,7 @@ struct [[nodiscard]] Task {
 
 // ── Task<void> ────────────────────────────────────────────────────────────
 
-EPIX_EXPORT template <>
+template <>
 struct [[nodiscard]] Task<void> {
    private:
     std::shared_ptr<internal::TaskState<void>> m_state;
@@ -569,18 +599,30 @@ struct [[nodiscard]] Task<void> {
         set_detached();
     }
 
-    [[nodiscard]] asio::awaitable<bool> cancel() && {
-        if (!m_state) co_return false;
+    [[nodiscard]] auto cancel() && {
         set_canceled();
-        auto state = std::move(m_state);
-        while (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
-            co_await asio::post(asio::use_awaitable);
-        }
-        auto f = state->flags.load(std::memory_order_acquire);
-        if ((f & internal::COMPLETED) != 0 && !state->exception) {
-            co_return true;
-        }
-        co_return false;
+        struct cancel_awaiter {
+            std::shared_ptr<internal::TaskState<void>> state;
+            bool await_ready() const noexcept {
+                return !state || internal::is_terminal(state->flags.load(std::memory_order_acquire));
+            }
+            void await_suspend(std::coroutine_handle<> h) {
+                if (!state) return (void)h.resume();
+                std::unique_lock lock(state->mtx);
+                if (!internal::is_terminal(state->flags.load(std::memory_order_acquire)))
+                    state->waiters.push_back([h]() mutable { h.resume(); });
+                else {
+                    lock.unlock();
+                    h.resume();
+                }
+            }
+            bool await_resume() {
+                if (!state) return false;
+                auto f = state->flags.load(std::memory_order_acquire);
+                return (f & internal::COMPLETED) != 0 && !state->exception;
+            }
+        };
+        return cancel_awaiter{std::move(m_state)};
     }
 
     // Defined out-of-line after FallibleTask<void> is complete.
@@ -600,12 +642,32 @@ struct [[nodiscard]] Task<void> {
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
 
+    // ── C++20 awaitable protocol ──────────────────────────────────
+
+    Task& operator co_await() & noexcept { return *this; }
+    Task&& operator co_await() && noexcept { return std::move(*this); }
+
+    [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
+
+    void await_suspend(std::coroutine_handle<> h) {
+        std::unique_lock lock(m_state->mtx);
+        if (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+            m_state->waiters.push_back([h]() mutable { h.resume(); });
+            return;
+        }
+        lock.unlock();
+        h.resume();
+    }
+
+    void await_resume() {
+        if (m_state->exception) std::rethrow_exception(m_state->exception);
+    }
+
     template <ASIO_COMPLETION_TOKEN_FOR(void(std::exception_ptr)) CompletionToken>
     auto operator()(CompletionToken&& token) && {
         return asio::async_initiate<CompletionToken, void(std::exception_ptr)>(
             [state = std::move(m_state)](auto handler) mutable {
-                auto ex = asio::get_associated_executor(handler);
-
+                auto ex     = asio::get_associated_executor(handler);
                 auto invoke = [state, h = std::move(handler)]() mutable {
                     auto f = state->flags.load(std::memory_order_acquire);
                     if ((f & (internal::COMPLETED | internal::CLOSED)) == 0) {
@@ -619,8 +681,7 @@ struct [[nodiscard]] Task<void> {
                                            : std::make_exception_ptr(std::runtime_error("task cancelled")));
                     }
                 };
-
-                if (state) {
+                {
                     std::unique_lock lock(state->mtx);
                     if (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
                         state->waiters.push_back(
@@ -690,17 +751,31 @@ struct [[nodiscard]] FallibleTask {
         set_detached();
     }
 
-    [[nodiscard]] asio::awaitable<std::optional<T>> cancel() && {
-        if (!m_state) co_return std::nullopt;
+    [[nodiscard]] auto cancel() && {
         set_canceled();
-        while (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
-            co_await asio::post(asio::use_awaitable);
-        }
-        auto f = m_state->flags.load(std::memory_order_acquire);
-        if ((f & internal::COMPLETED) != 0 && !m_state->exception) {
-            co_return std::move(m_state->value);
-        }
-        co_return std::nullopt;
+        struct cancel_awaiter {
+            std::shared_ptr<internal::TaskState<T>> state;
+            bool await_ready() const noexcept {
+                return !state || internal::is_terminal(state->flags.load(std::memory_order_acquire));
+            }
+            void await_suspend(std::coroutine_handle<> h) {
+                if (!state) return (void)h.resume();
+                std::unique_lock lock(state->mtx);
+                if (!internal::is_terminal(state->flags.load(std::memory_order_acquire)))
+                    state->waiters.push_back([h]() mutable { h.resume(); });
+                else {
+                    lock.unlock();
+                    h.resume();
+                }
+            }
+            std::optional<T> await_resume() {
+                if (!state) return std::nullopt;
+                auto f = state->flags.load(std::memory_order_acquire);
+                if ((f & internal::COMPLETED) != 0 && !state->exception) return std::move(state->value);
+                return std::nullopt;
+            }
+        };
+        return cancel_awaiter{std::move(m_state)};
     }
 
     [[nodiscard]] FallibleTask fallible() && { return std::move(*this); }
@@ -719,26 +794,41 @@ struct [[nodiscard]] FallibleTask {
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
 
-    /**
-     * @brief `co_await fallible_task` → `std::optional<T>`.
-     *
-     * Returns Some(value) on success, nullopt on cancel/fail.
-     */
+    // ── C++20 awaitable protocol → std::optional<T> ──────────────
+
+    FallibleTask& operator co_await() & noexcept { return *this; }
+    FallibleTask&& operator co_await() && noexcept { return std::move(*this); }
+
+    [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
+
+    void await_suspend(std::coroutine_handle<> h) {
+        std::unique_lock lock(m_state->mtx);
+        if (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+            m_state->waiters.push_back([h]() mutable { h.resume(); });
+            return;
+        }
+        lock.unlock();
+        h.resume();
+    }
+
+    std::optional<T> await_resume() {
+        auto f = m_state->flags.load(std::memory_order_acquire);
+        if ((f & internal::COMPLETED) != 0 && !m_state->exception) return std::move(m_state->value);
+        return std::nullopt;
+    }
+
     template <ASIO_COMPLETION_TOKEN_FOR(void(std::exception_ptr, std::optional<T>)) CompletionToken>
     auto operator()(CompletionToken&& token) && {
         return asio::async_initiate<CompletionToken, void(std::exception_ptr, std::optional<T>)>(
             [state = std::move(m_state)](auto handler) mutable {
-                auto ex = asio::get_associated_executor(handler);
-
+                auto ex     = asio::get_associated_executor(handler);
                 auto invoke = [state, h = std::move(handler)]() mutable {
                     auto f = state->flags.load(std::memory_order_acquire);
-                    if ((f & internal::COMPLETED) != 0 && !state->exception) {
+                    if ((f & internal::COMPLETED) != 0 && !state->exception)
                         h(nullptr, std::move(state->value));
-                    } else {
+                    else
                         h(nullptr, std::nullopt);
-                    }
                 };
-
                 {
                     std::unique_lock lock(state->mtx);
                     if (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
@@ -755,7 +845,7 @@ struct [[nodiscard]] FallibleTask {
 
 // ── FallibleTask<void> ────────────────────────────────────────────────────
 
-EPIX_EXPORT template <>
+template <>
 struct [[nodiscard]] FallibleTask<void> {
    private:
     std::shared_ptr<internal::TaskState<void>> m_state;
@@ -799,14 +889,30 @@ struct [[nodiscard]] FallibleTask<void> {
         set_detached();
     }
 
-    [[nodiscard]] asio::awaitable<bool> cancel() && {
-        if (!m_state) co_return false;
+    [[nodiscard]] auto cancel() && {
         set_canceled();
-        while (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
-            co_await asio::post(asio::use_awaitable);
-        }
-        auto f = m_state->flags.load(std::memory_order_acquire);
-        co_return (f & internal::COMPLETED) != 0 && !m_state->exception;
+        struct cancel_awaiter {
+            std::shared_ptr<internal::TaskState<void>> state;
+            bool await_ready() const noexcept {
+                return !state || internal::is_terminal(state->flags.load(std::memory_order_acquire));
+            }
+            void await_suspend(std::coroutine_handle<> h) {
+                if (!state) return (void)h.resume();
+                std::unique_lock lock(state->mtx);
+                if (!internal::is_terminal(state->flags.load(std::memory_order_acquire)))
+                    state->waiters.push_back([h]() mutable { h.resume(); });
+                else {
+                    lock.unlock();
+                    h.resume();
+                }
+            }
+            bool await_resume() {
+                if (!state) return false;
+                auto f = state->flags.load(std::memory_order_acquire);
+                return (f & internal::COMPLETED) != 0 && !state->exception;
+            }
+        };
+        return cancel_awaiter{std::move(m_state)};
     }
 
     [[nodiscard]] FallibleTask fallible() && { return std::move(*this); }
@@ -825,18 +931,38 @@ struct [[nodiscard]] FallibleTask<void> {
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
 
+    // ── C++20 awaitable protocol → bool ───────────────────────────
+
+    FallibleTask& operator co_await() & noexcept { return *this; }
+    FallibleTask&& operator co_await() && noexcept { return std::move(*this); }
+
+    [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
+
+    void await_suspend(std::coroutine_handle<> h) {
+        std::unique_lock lock(m_state->mtx);
+        if (!internal::is_terminal(m_state->flags.load(std::memory_order_acquire))) {
+            m_state->waiters.push_back([h]() mutable { h.resume(); });
+            return;
+        }
+        lock.unlock();
+        h.resume();
+    }
+
+    bool await_resume() {
+        auto f = m_state->flags.load(std::memory_order_acquire);
+        return (f & internal::COMPLETED) != 0 && !m_state->exception;
+    }
+
     template <ASIO_COMPLETION_TOKEN_FOR(void(std::exception_ptr, bool)) CompletionToken>
     auto operator()(CompletionToken&& token) && {
         return asio::async_initiate<CompletionToken, void(std::exception_ptr, bool)>(
             [state = std::move(m_state)](auto handler) mutable {
-                auto ex = asio::get_associated_executor(handler);
-
+                auto ex     = asio::get_associated_executor(handler);
                 auto invoke = [state, h = std::move(handler)]() mutable {
                     auto f  = state->flags.load(std::memory_order_acquire);
                     bool ok = (f & internal::COMPLETED) != 0 && !state->exception;
                     h(nullptr, ok);
                 };
-
                 {
                     std::unique_lock lock(state->mtx);
                     if (!internal::is_terminal(state->flags.load(std::memory_order_acquire))) {
@@ -865,46 +991,119 @@ inline FallibleTask<void> Task<void>::fallible() && { return FallibleTask<void>(
 /**
  * @brief Spawn work as a task, returning `(Runnable, Task<T>)`.
  *
- * The `schedule` callable receives `(Runnable, ScheduleInfo)` and
- * should post the Runnable to an executor:
+ * Two paths, selected from F's return type:
+ *   - Plain `F() -> T`: one-shot, COMPLETED on first run().
+ *   - Awaitable `F() -> A` (has await_ready/await_resume):
+ *       Each run() → work() is one poll.  The awaitable is created once;
+ *       on each call await_ready() is checked.  If ready the value is
+ *       obtained via await_resume() and COMPLETED is set.  Otherwise
+ *       SCHEDULED is set so run() returns true and the executor re-queues.
+ *       Between polls the runtime completes async ops, making the
+ *       awaitable ready.  Matches Rust Future::poll.
  *
- * ```cpp
- * auto [runnable, task] = epix::async_task::spawn(
- *     [] { return heavy_compute(); },
- *     [](Runnable r, ScheduleInfo info) {
- *         my_executor.post([r = std::move(r)]() mutable { r.run(); });
- *     }
- * );
- * runnable.schedule();
- * int result = co_await std::move(task);
- * ```
+ * Note: await_suspend is NOT called — it must have been invoked internally
+ * by the coroutine body during the initial f() call.  Awaitable types whose
+ * final_suspend requires an external await_suspend (e.g. asio) need a
+ * runtime-specific bridge provided by a higher-level module.
  */
 EPIX_EXPORT template <typename F, typename S>
     requires std::invocable<F> && std::invocable<S, Runnable, ScheduleInfo>
 [[nodiscard]] auto spawn(F&& work, S&& schedule) {
-    using T = std::invoke_result_t<F>;
+    using Ret = std::invoke_result_t<F>;
 
-    auto state = std::make_shared<internal::TaskState<T>>();
+    if constexpr (internal::is_asio_awaitable_v<Ret>) {
+        using U    = typename internal::asio_awaitable_value_type<Ret>::type;
+        auto state = std::make_shared<internal::TaskState<U>>();
+        auto* raw  = state.get();
 
-    // Store schedule function.
-    state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
-        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable { std::invoke(s, std::move(r), info); });
+        state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
+            [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable {
+                std::invoke(s, std::move(r), info);
+            });
 
-    // Store type-erased work.
-    if constexpr (std::is_void_v<T>) {
-        state->work =
-            std::move_only_function<void()>([f = std::forward<F>(work)]() mutable { std::invoke(std::move(f)); });
-    } else {
-        // Capture raw pointer — avoid shared_ptr cycle (work is a member of
-        // the TaskState, so raw outlives this lambda).
-        auto* raw   = state.get();
         state->work = std::move_only_function<void()>(
-            [f = std::forward<F>(work), raw]() mutable { raw->value = std::invoke(std::move(f)); });
-    }
+            [f = std::forward<F>(work), raw, ioc = std::make_shared<asio::io_context>(),
+             done = std::make_shared<std::atomic<bool>>(false), spawned = false]() mutable {
+                if (!spawned) {
+                    spawned = true;
+                    asio::co_spawn(
+                        *ioc,
+                        [raw, done, f = std::move(f)]() -> asio::awaitable<void> {
+                            try {
+                                if constexpr (!std::is_void_v<U>)
+                                    raw->value = co_await std::invoke(std::move(f));
+                                else
+                                    co_await std::invoke(std::move(f));
+                            } catch (...) {
+                                raw->exception = std::current_exception();
+                            }
+                            done->store(true, std::memory_order_release);
+                        },
+                        asio::detached);
+                }
+                ioc->poll_one();
+                if (done->load(std::memory_order_acquire))
+                    raw->flags.fetch_or(internal::COMPLETED, std::memory_order_release);
+                else
+                    raw->flags.fetch_or(internal::SCHEDULED, std::memory_order_release);
+            });
 
-    // Both pointers share the same allocation and control block.
-    std::shared_ptr<internal::TaskHeader> base = state;
-    return std::pair<Runnable, Task<T>>(Runnable(std::move(base)), Task<T>(std::move(state)));
+        std::shared_ptr<internal::TaskHeader> base = state;
+        return std::pair<Runnable, Task<U>>(Runnable(std::move(base)), Task<U>(std::move(state)));
+    } else if constexpr (internal::is_awaitable_v<Ret>) {
+        using T    = internal::awaitable_result_t<Ret>;
+        auto state = std::make_shared<internal::TaskState<T>>();
+        auto* raw  = state.get();
+
+        state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
+            [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable {
+                std::invoke(s, std::move(r), info);
+            });
+
+        state->work = std::move_only_function<void()>(
+            [f = std::forward<F>(work), raw, state_ptr = std::shared_ptr<Ret>(nullptr), started = false]() mutable {
+                if (!started) {
+                    started   = true;
+                    state_ptr = std::make_shared<Ret>(std::invoke(std::move(f)));
+                }
+                if (state_ptr->await_ready()) {
+                    if constexpr (!std::is_void_v<T>)
+                        raw->value = state_ptr->await_resume();
+                    else
+                        state_ptr->await_resume();
+                    raw->flags.fetch_or(internal::COMPLETED, std::memory_order_release);
+                } else {
+                    raw->flags.fetch_or(internal::SCHEDULED, std::memory_order_release);
+                }
+            });
+
+        std::shared_ptr<internal::TaskHeader> base = state;
+        return std::pair<Runnable, Task<T>>(Runnable(std::move(base)), Task<T>(std::move(state)));
+    } else {
+        using T    = Ret;
+        auto state = std::make_shared<internal::TaskState<T>>();
+
+        state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
+            [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable {
+                std::invoke(s, std::move(r), info);
+            });
+
+        if constexpr (std::is_void_v<T>) {
+            state->work = std::move_only_function<void()>([f = std::forward<F>(work), raw = state.get()]() mutable {
+                std::invoke(std::move(f));
+                raw->flags.fetch_or(internal::COMPLETED, std::memory_order_release);
+            });
+        } else {
+            auto* raw   = state.get();
+            state->work = std::move_only_function<void()>([f = std::forward<F>(work), raw]() mutable {
+                raw->value = std::invoke(std::move(f));
+                raw->flags.fetch_or(internal::COMPLETED, std::memory_order_release);
+            });
+        }
+
+        std::shared_ptr<internal::TaskHeader> base = state;
+        return std::pair<Runnable, Task<T>>(Runnable(std::move(base)), Task<T>(std::move(state)));
+    }
 }
 
 }  // namespace epix::async_task

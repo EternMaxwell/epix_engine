@@ -1,10 +1,9 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <cassert>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <functional>
 #include <optional>
 #include <tuple>
@@ -84,11 +83,11 @@ struct WorldQuery<std::tuple<Ts...>> {
             }
         }(std::index_sequence_for<Ts...>{}, components);
     }
-    static bool matches_component_set(const State& state, const std::function<bool(TypeId)>& contains_component) {
+    static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return []<std::size_t... Is>(std::index_sequence<Is...>, const State& state,
-                                     const std::function<bool(TypeId)>& contains_component) {
+                                     internal::contains_component_fn auto&& contains_component) {
             return true && (WorldQuery<Ts>::matches_component_set(std::get<Is>(state), contains_component) && ...);
-        }(std::index_sequence_for<Ts...>{}, state, contains_component);
+        }(std::index_sequence_for<Ts...>{}, state, std::forward<decltype(contains_component)>(contains_component));
     }
 };
 template <internal::world_query... Ts>
@@ -126,7 +125,7 @@ struct WorldQuery<Entity> {
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -154,7 +153,7 @@ struct WorldQuery<EntityLocation> {
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -185,7 +184,7 @@ struct WorldQuery<const Archetype&> {
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, const std::function<bool(TypeId)>& contains_component) noexcept {
+    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -240,7 +239,7 @@ struct WorldQuery<Opt<T>> {
     static State init_state(World& world) { return WorldQuery<T>::init_state(world); }
     static std::optional<State> get_state(const Components& components) { return WorldQuery<T>::get_state(components); }
     static bool matches_component_set(const State& state,
-                                      const std::function<bool(TypeId)>& contains_component) noexcept {
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;  // always true, because it is optional
     }
 };
@@ -280,10 +279,10 @@ struct WorldQuery<Has<T>> {
     // }
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
-    static State init_state(World& world) { return world_type_registry(world).type_id<T>(); }
+    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
     static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
     static bool matches_component_set(const State& state,
-                                      const std::function<bool(TypeId)>& contains_component) noexcept {
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;  // always true, because it is just a marker
     }
 };
