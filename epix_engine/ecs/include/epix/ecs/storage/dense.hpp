@@ -16,8 +16,8 @@
 #include <epix/ecs/storage/untyped_vector.hpp>
 #include <epix/ecs/tick.hpp>
 
-namespace epix::ecs::internal {
-struct Dense {
+namespace epix::ecs {
+EPIX_EXPORT struct Dense {
    public:
     explicit Dense(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0) : values(desc, reserve_cnt) {
         if (reserve_cnt) {
@@ -72,23 +72,23 @@ struct Dense {
         self.modified_ticks[index].set(self.added_ticks[index].get());
     }
     template <typename T, typename... Args>
-    void push(this Dense& self, internal::ComponentTicks ticks, Args&&... args) {
+    void push(this Dense& self, ComponentTicks ticks, Args&&... args) {
         self.values.emplace_back<T>(std::forward<Args>(args)...);
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
     }
-    void push_copy(this Dense& self, internal::ComponentTicks ticks, const void* src) {
+    void push_copy(this Dense& self, ComponentTicks ticks, const void* src) {
         self.values.push_back_from(src);
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
     }
-    void push_move(this Dense& self, internal::ComponentTicks ticks, void* src) {
+    void push_move(this Dense& self, ComponentTicks ticks, void* src) {
         self.values.push_back_from_move(src);
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
     }
     template <std::invocable<void*> F>
-    void push_construct(this Dense& self, internal::ComponentTicks ticks, F&& constructor) {
+    void push_construct(this Dense& self, ComponentTicks ticks, F&& constructor) {
         self.values.construct_back(std::forward<F>(constructor));
         self.added_ticks.emplace_back(ticks.added);
         self.modified_ticks.emplace_back(ticks.modified);
@@ -109,7 +109,7 @@ struct Dense {
     }
 
     // Initialize a previously-uninitialized slot from raw pointer with ticks
-    void initialize_from(this Dense& self, std::uint32_t index, internal::ComponentTicks ticks, const void* src) {
+    void initialize_from(this Dense& self, std::uint32_t index, ComponentTicks ticks, const void* src) {
         assert(index < self.values.size());
         self.values.initialize_from(index, src);
         self.added_ticks[index]    = ticks.added;
@@ -117,7 +117,7 @@ struct Dense {
     }
 
     // Initialize by move from raw pointer with ticks
-    void initialize_from_move(this Dense& self, std::uint32_t index, internal::ComponentTicks ticks, void* src) {
+    void initialize_from_move(this Dense& self, std::uint32_t index, ComponentTicks ticks, void* src) {
         assert(index < self.values.size());
         self.values.initialize_from_move(index, src);
         self.added_ticks[index]    = ticks.added;
@@ -126,7 +126,7 @@ struct Dense {
 
     // Initialize templated emplace with ticks
     template <typename T, typename... Args>
-    void initialize_emplace(this Dense& self, std::uint32_t index, internal::ComponentTicks ticks, Args&&... args) {
+    void initialize_emplace(this Dense& self, std::uint32_t index, ComponentTicks ticks, Args&&... args) {
         assert(index < self.values.size());
         self.values.initialize_emplace<T>(index, std::forward<Args>(args)...);
         self.added_ticks[index]    = ticks.added;
@@ -195,15 +195,15 @@ struct Dense {
         assert(index < self.modified_ticks.size());
         return self.modified_ticks[index];
     }
-    std::optional<internal::ComponentTicks> get_ticks(this const Dense& self, std::uint32_t index) noexcept {
+    std::optional<ComponentTicks> get_ticks(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
-            return internal::ComponentTicks{self.added_ticks[index], self.modified_ticks[index]};
+            return ComponentTicks{self.added_ticks[index], self.modified_ticks[index]};
         }
         return std::nullopt;
     }
-    std::optional<internal::TickRefs> get_tick_refs(this const Dense& self, std::uint32_t index) noexcept {
+    std::optional<TickRefs> get_tick_refs(this const Dense& self, std::uint32_t index) noexcept {
         if (index < self.modified_ticks.size()) {
-            return internal::TickRefs{&self.added_ticks[index], &self.modified_ticks[index]};
+            return TickRefs{&self.added_ticks[index], &self.modified_ticks[index]};
         }
         return std::nullopt;
     }
@@ -219,4 +219,4 @@ struct Dense {
     mutable std::vector<Tick> added_ticks;
     mutable std::vector<Tick> modified_ticks;
 };
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

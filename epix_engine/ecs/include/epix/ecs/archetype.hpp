@@ -255,7 +255,7 @@ EPIX_EXPORT struct Archetype {
     TableId _table_id;
     internal::ArchetypeEdges _edges;
     std::vector<internal::ArchetypeEntity> _entities;
-    internal::SparseSet<TypeId, StorageType> _components;
+    SparseSet<TypeId, StorageType> _components;
 };
 /** @brief Container holding all archetypes and a component-to-archetype index.
  *  Always contains an empty archetype at index 0. */

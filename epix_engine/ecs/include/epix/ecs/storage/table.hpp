@@ -19,8 +19,8 @@
 #include <epix/ecs/storage/dense.hpp>
 #include <epix/ecs/storage/sparse_set.hpp>
 
-namespace epix::ecs::internal {
-struct Table {
+namespace epix::ecs {
+EPIX_EXPORT struct Table {
    private:
     SparseSet<TypeId, Dense> _denses;
     std::vector<Entity> _entities;
@@ -115,6 +115,7 @@ struct Table {
     }
 };
 
+namespace internal {
 struct VecHash {
     std::size_t operator()(const std::vector<TypeId>& vec) const {
         std::size_t hash = 0;
@@ -124,11 +125,12 @@ struct VecHash {
         return hash;
     }
 };
+}  // namespace internal
 
-struct Tables {
+EPIX_EXPORT struct Tables {
    private:
     std::shared_ptr<TypeRegistry> _type_registry;
-    std::unordered_map<std::vector<TypeId>, TableId, VecHash> _table_id_registry;
+    std::unordered_map<std::vector<TypeId>, TableId, internal::VecHash> _table_id_registry;
     std::vector<Table> _tables;
 
    public:
@@ -180,4 +182,4 @@ struct Tables {
     }
     TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids);
 };
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

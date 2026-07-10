@@ -55,7 +55,7 @@ struct WorldQuery<With<Ts...>> {
     struct Fetch {};
     using State = std::array<TypeId, sizeof...(Ts)>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
@@ -89,7 +89,7 @@ struct WorldQuery<Without<Ts...>> {
     struct Fetch {};
     using State = std::array<TypeId, sizeof...(Ts)>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
     // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) {
@@ -134,7 +134,7 @@ struct WorldQuery<Or<Fs...>> {
                             .matches = false}...);
         }(std::index_sequence_for<Fs...>{});
     }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             (
                 [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
@@ -148,7 +148,7 @@ struct WorldQuery<Or<Fs...>> {
                 ...);
         }(std::index_sequence_for<Fs...>{});
     }
-    // static void set_table(Fetch& fetch, State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, State& state, const Table& table) {
     //     [&]<std::size_t... Is>(std::index_sequence<Is...>) {
     //         (
     //             [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
@@ -228,8 +228,8 @@ template <typename T>
 struct WorldQuery<Added<T>> {
     struct Fetch {
         union {
-            const internal::Dense* table_dense = nullptr;
-            const internal::ComponentSparseSet* sparse_set;
+            const Dense* table_dense = nullptr;
+            const ComponentSparseSet* sparse_set;
         };
         TypeId component_id;
         bool is_sparse_set = false;
@@ -254,7 +254,7 @@ struct WorldQuery<Added<T>> {
         }
         return fetch;
     }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         if (state.storage_type == StorageType::Table) {
             fetch.table_dense   = &table.get_dense(state.component_id).value().get();
             fetch.is_sparse_set = false;

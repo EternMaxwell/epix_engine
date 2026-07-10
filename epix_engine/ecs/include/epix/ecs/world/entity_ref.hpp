@@ -74,13 +74,13 @@ EPIX_EXPORT struct EntityRef {
                 if (storage_type == StorageType::Table) {
                     return internal::world_storage(*world_)
                         .tables.get(location_.table_id)
-                        .and_then([&](const internal::Table& table) {
+                        .and_then([&](const Table& table) {
                             return table.get_dense(type_id).and_then(
-                                [&](const internal::Dense& dense) { return dense.get_as<T>(location_.table_idx); });
+                                [&](const Dense& dense) { return dense.get_as<T>(location_.table_idx); });
                         });
                 } else {
                     return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
-                        [&](const internal::ComponentSparseSet& cs) { return cs.get_as<T>(entity_); });
+                        [&](const ComponentSparseSet& cs) { return cs.get_as<T>(entity_); });
                 }
             });
     }
@@ -93,11 +93,10 @@ EPIX_EXPORT struct EntityRef {
             if (storage_type == StorageType::Table) {
                 return internal::world_storage(*world_)
                     .tables.get(location_.table_id)
-                    .and_then([&](const internal::Table& table) {
-                        return table.get_dense(type_id).and_then([&](const internal::Dense& dense) {
+                    .and_then([&](const Table& table) {
+                        return table.get_dense(type_id).and_then([&](const Dense& dense) {
                             return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
-                                return Ref<T>(
-                                    &value, internal::Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                return Ref<T>(&value, Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
                                                                        internal::world_last_change_tick(*world_),
                                                                        internal::world_change_tick(*world_)));
                             });
@@ -105,37 +104,37 @@ EPIX_EXPORT struct EntityRef {
                     });
             } else {
                 return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
-                    [&](const internal::ComponentSparseSet& cs) {
+                    [&](const ComponentSparseSet& cs) {
                         return cs.get_as<T>(entity_).transform([&](const T& value) {
-                            return Ref<T>(&value, internal::Ticks::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                             internal::world_last_change_tick(*world_),
-                                                                             internal::world_change_tick(*world_)));
+                            return Ref<T>(&value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
+                                                                   internal::world_last_change_tick(*world_),
+                                                                   internal::world_change_tick(*world_)));
                         });
                     });
             }
         });
     }
     /** @brief Get the ComponentTicks for a component identified by TypeId. */
-    std::optional<internal::ComponentTicks> get_ticks_by_id(TypeId type_id) const {
+    std::optional<ComponentTicks> get_ticks_by_id(TypeId type_id) const {
         return internal::world_components(*world_).get(type_id).and_then(
-            [&](const internal::ComponentInfo& info) -> std::optional<internal::ComponentTicks> {
+            [&](const internal::ComponentInfo& info) -> std::optional<ComponentTicks> {
                 auto storage_type = info.storage_type();
                 if (storage_type == StorageType::Table) {
                     return internal::world_storage(*world_)
                         .tables.get(location_.table_id)
-                        .and_then([&](const internal::Table& table) {
+                        .and_then([&](const Table& table) {
                             return table.get_dense(type_id).and_then(
-                                [&](const internal::Dense& dense) { return dense.get_ticks(location_.table_idx); });
+                                [&](const Dense& dense) { return dense.get_ticks(location_.table_idx); });
                         });
                 } else {
                     return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
-                        [&](const internal::ComponentSparseSet& cs) { return cs.get_ticks(entity_); });
+                        [&](const ComponentSparseSet& cs) { return cs.get_ticks(entity_); });
                 }
             });
     }
     /** @brief Get the ComponentTicks for a component of type T. */
     template <typename T>
-    std::optional<internal::ComponentTicks> get_ticks() const {
+    std::optional<ComponentTicks> get_ticks() const {
         return get_ticks_by_id(internal::world_type_registry(*world_).type_id<T>());
     }
 };
@@ -161,24 +160,23 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
             if (storage_type == StorageType::Table) {
                 return internal::world_storage_mut(*world_)
                     .tables.get_mut(location_.table_id)
-                    .and_then([&](internal::Table& table) {
-                        return table.get_dense_mut(type_id).and_then([&](internal::Dense& dense) {
+                    .and_then([&](Table& table) {
+                        return table.get_dense_mut(type_id).and_then([&](Dense& dense) {
                             return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
-                                return Mut<T>(&value, internal::TicksMut::from_refs(
-                                                          dense.get_tick_refs(location_.table_idx).value(),
-                                                          internal::world_last_change_tick(*world_),
-                                                          internal::world_change_tick(*world_)));
+                                return Mut<T>(&value,
+                                              TicksMut::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                                                  internal::world_last_change_tick(*world_),
+                                                                  internal::world_change_tick(*world_)));
                             });
                         });
                     });
             } else {
                 return internal::world_storage_mut(*world_).sparse_sets.get_mut(type_id).and_then(
-                    [&](internal::ComponentSparseSet& cs) {
+                    [&](ComponentSparseSet& cs) {
                         return cs.get_as_mut<T>(entity_).transform([&](T& value) {
-                            return Mut<T>(&value,
-                                          internal::TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                        internal::world_last_change_tick(*world_),
-                                                                        internal::world_change_tick(*world_)));
+                            return Mut<T>(&value, TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
+                                                                      internal::world_last_change_tick(*world_),
+                                                                      internal::world_change_tick(*world_)));
                         });
                     });
             }
@@ -311,8 +309,8 @@ struct WorldQuery<EntityRef> {
     using Fetch = World*;
     using State = std::tuple<>;
     static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
-    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State&, FilteredAccess& access) noexcept {
         assert(!access.access().has_any_component_write() &&
@@ -343,8 +341,8 @@ struct WorldQuery<EntityRefMut> {
     using Fetch = World*;
     using State = std::tuple<>;
     static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept { return &world; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
-    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State&, FilteredAccess& access) noexcept {
         assert(!access.access().has_any_component_read() &&

@@ -62,7 +62,7 @@ struct QueryIterCursor {
     bool current() const noexcept { return current_idx < archetype_entities.size(); }
     /** @brief Advance to the next matching entity.
      *  @return True if a valid element was found, false if exhausted. */
-    bool next(internal::Tables& tables, const Archetypes& archetypes, const QueryState<D, F>& state) {
+    bool next(Tables& tables, const Archetypes& archetypes, const QueryState<D, F>& state) {
         while (true) {
             if (!archetype_ids.empty() && archetype_entities.data() == nullptr) {
                 // first time initialization
@@ -211,7 +211,7 @@ struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
           state(state),
           cursor(std::move(cursor)) {}
     World* world;
-    internal::Tables* tables;
+    Tables* tables;
     const Archetypes* archetypes;
     const QueryState<D, F>* state;
     std::optional<QueryIterCursor<D, F>> cursor;  // use optional to allow default construction

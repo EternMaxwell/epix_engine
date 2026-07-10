@@ -23,10 +23,10 @@ EPIX_EXPORT template <internal::refable T>
 struct Ref {
    private:
     const T* value;
-    internal::Ticks ticks;
+    Ticks ticks;
 
    public:
-    Ref(const T* value, internal::Ticks ticks) noexcept : value(value), ticks(ticks) {}
+    Ref(const T* value, Ticks ticks) noexcept : value(value), ticks(ticks) {}
 
     const T* ptr() const noexcept { return value; }
     const T& get() const noexcept { return *value; }
@@ -43,10 +43,10 @@ EPIX_EXPORT template <internal::refable T>
 struct Mut {
    private:
     T* value;
-    internal::TicksMut ticks;
+    TicksMut ticks;
 
    public:
-    Mut(T* value, internal::TicksMut ticks) noexcept : value(value), ticks(ticks) {}
+    Mut(T* value, TicksMut ticks) noexcept : value(value), ticks(ticks) {}
 
     const T* ptr() const noexcept { return value; }
     T* ptr_mut() noexcept {
@@ -99,8 +99,8 @@ template <typename T>
 struct WorldQuery<Ref<T>> {
     struct Fetch {
         union {
-            const internal::Dense* table_dense = nullptr;
-            const internal::ComponentSparseSet* sparse_set;
+            const Dense* table_dense = nullptr;
+            const ComponentSparseSet* sparse_set;
         };
         TypeId component_id;
         bool is_sparse_set = false;
@@ -117,21 +117,18 @@ struct WorldQuery<Ref<T>> {
         if (result.is_sparse_set) {
             result.sparse_set = internal::world_storage(world)
                                     .sparse_sets.get(state)
-                                    .transform([](const internal::ComponentSparseSet& ref) { return &ref; })
+                                    .transform([](const ComponentSparseSet& ref) { return &ref; })
                                     .value_or(nullptr);
         }
         return result;
     }
-    static void set_archetype(Fetch& fetch,
-                              const State& state,
-                              const Archetype& archetype,
-                              const internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, const Table& table) {
         if (storage_type_of<T>() == StorageType::Table) {
             fetch.table_dense   = &table.get_dense(state).value().get();
             fetch.is_sparse_set = false;
         }
     }
-    // static void set_table(Fetch& fetch, State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, State& state, const Table& table) {
     //     if (state.storage_type == StorageType::Table) {
     //         fetch.table_dense = &table.get_dense(state.component_id).value().get();
     //     }
@@ -155,15 +152,15 @@ struct QueryData<Ref<T>> {
         if (fetch.is_sparse_set) {
             return fetch.sparse_set->template get_as<T>(entity)
                 .transform([&](const T& value) {
-                    return Ref<T>(&value, internal::Ticks::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
-                                                                     fetch.last_run, fetch.this_run));
+                    return Ref<T>(&value, Ticks::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
+                                                           fetch.last_run, fetch.this_run));
                 })
                 .value();
         } else {
             return fetch.table_dense->template get_as<T>(row)
                 .transform([&](const T& value) {
-                    return Ref<T>(&value, internal::Ticks::from_refs(fetch.table_dense->get_tick_refs(row).value(),
-                                                                     fetch.last_run, fetch.this_run));
+                    return Ref<T>(&value, Ticks::from_refs(fetch.table_dense->get_tick_refs(row).value(),
+                                                           fetch.last_run, fetch.this_run));
                 })
                 .value();
         }
@@ -177,8 +174,8 @@ template <typename T>
 struct WorldQuery<Mut<T>> {
     struct Fetch {
         union {
-            internal::Dense* table_dense = nullptr;
-            internal::ComponentSparseSet* sparse_set;
+            Dense* table_dense = nullptr;
+            ComponentSparseSet* sparse_set;
         };
         TypeId component_id;
         bool is_sparse_set = false;
@@ -195,18 +192,18 @@ struct WorldQuery<Mut<T>> {
         if (result.is_sparse_set) {
             result.sparse_set = internal::world_storage_mut(world)
                                     .sparse_sets.get_mut(state)
-                                    .transform([](internal::ComponentSparseSet& ref) { return &ref; })
+                                    .transform([](ComponentSparseSet& ref) { return &ref; })
                                     .value_or(nullptr);
         }
         return result;
     }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         if (storage_type_of<T>() == StorageType::Table) {
             fetch.table_dense   = &table.get_dense_mut(state).value().get();
             fetch.is_sparse_set = false;
         }
     }
-    // static void set_table(Fetch& fetch, State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, State& state, const Table& table) {
     //     if (state.storage_type == StorageType::Table) {
     //         fetch.table_dense   = &table.get_dense_mut(state.component_id).value().get();
     //         fetch.is_sparse_set = false;
@@ -231,15 +228,15 @@ struct QueryData<Mut<T>> {
         if (fetch.is_sparse_set) {
             return fetch.sparse_set->template get_as_mut<T>(entity)
                 .transform([&](T& value) {
-                    return Mut<T>(&value, internal::TicksMut::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
-                                                                        fetch.last_run, fetch.this_run));
+                    return Mut<T>(&value, TicksMut::from_refs(fetch.sparse_set->get_tick_refs(entity).value(),
+                                                              fetch.last_run, fetch.this_run));
                 })
                 .value();
         } else {
             return fetch.table_dense->template get_as_mut<T>(row)
                 .transform([&](T& value) {
-                    return Mut<T>(&value, internal::TicksMut::from_refs(fetch.table_dense->get_tick_refs(row).value(),
-                                                                        fetch.last_run, fetch.this_run));
+                    return Mut<T>(&value, TicksMut::from_refs(fetch.table_dense->get_tick_refs(row).value(),
+                                                              fetch.last_run, fetch.this_run));
                 })
                 .value();
         }
@@ -302,7 +299,7 @@ struct SystemParam<Res<T>> : ParamBase {
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return internal::world_storage(world)
             .resources.get(state)
-            .transform([](const internal::ResourceData& res) -> std::expected<void, ValidateParamError> {
+            .transform([](const ResourceData& res) -> std::expected<void, ValidateParamError> {
                 if (res.is_present()) return {};
                 return std::unexpected(ValidateParamError{
                     .param_type = meta::type_id<Res<T>>(),
@@ -317,10 +314,10 @@ struct SystemParam<Res<T>> : ParamBase {
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return internal::world_storage(world)
             .resources.get(state)
-            .and_then([&](const internal::ResourceData& res) {
+            .and_then([&](const ResourceData& res) {
                 return res.get_as<T>().transform([&](const T& value) {
                     return Res<T>(std::addressof(value),
-                                  internal::Ticks::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
+                                  Ticks::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
                 });
             })
             .value();
@@ -347,7 +344,7 @@ struct SystemParam<ResMut<T>> : ParamBase {
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
         return internal::world_storage(world)
             .resources.get(state)
-            .transform([](const internal::ResourceData& res) -> std::expected<void, ValidateParamError> {
+            .transform([](const ResourceData& res) -> std::expected<void, ValidateParamError> {
                 if (res.is_present()) return {};
                 return std::unexpected(ValidateParamError{
                     .param_type = meta::type_id<Res<T>>(),
@@ -362,10 +359,10 @@ struct SystemParam<ResMut<T>> : ParamBase {
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         return internal::world_storage_mut(world)
             .resources.get_mut(state)
-            .and_then([&](internal::ResourceData& res) {
+            .and_then([&](ResourceData& res) {
                 return res.get_as_mut<T>().transform([&](T& value) {
                     return ResMut<T>(std::addressof(value),
-                                     internal::TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
+                                     TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
                 });
             })
             .value();

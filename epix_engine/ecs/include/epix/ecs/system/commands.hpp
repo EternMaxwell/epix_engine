@@ -92,12 +92,10 @@ EPIX_EXPORT struct Commands {
     Commands& remove_resource() {
         command_queue->push([](World& world) {
             auto resource_id = world.type_registry().type_id<T>();
-            world.storage_mut()
-                .resources.get_mut(resource_id)
-                .and_then([](internal::ResourceData& data) -> std::optional<bool> {
-                    data.remove();
-                    return true;
-                });
+            world.storage_mut().resources.get_mut(resource_id).and_then([](ResourceData& data) -> std::optional<bool> {
+                data.remove();
+                return true;
+            });
         });
         return *this;
     }
@@ -110,12 +108,10 @@ EPIX_EXPORT struct Commands {
             if (!world.storage_mut().resources.initialize(resource_id) && !replace_existing) {
                 return;
             }
-            world.storage_mut()
-                .resources.get_mut(resource_id)
-                .and_then([&](internal::ResourceData& dest) -> std::optional<bool> {
-                    dest.replace(world.change_tick(), std::move(data));
-                    return true;
-                });
+            world.storage_mut().resources.get_mut(resource_id).and_then([&](ResourceData& dest) -> std::optional<bool> {
+                dest.replace(world.change_tick(), std::move(data));
+                return true;
+            });
         });
     }
 

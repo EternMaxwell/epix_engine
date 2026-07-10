@@ -65,9 +65,9 @@ EPIX_EXPORT struct World {
     /** @brief Get a mutable reference to the entity allocator. */
     Entities& entities_mut() noexcept { return _entities; }
     /** @brief Get a const reference to the storage (tables, sparse sets, resources). */
-    const internal::Storage& storage() const noexcept { return _storage; }
+    const Storage& storage() const noexcept { return _storage; }
     /** @brief Get a mutable reference to the storage. */
-    internal::Storage& storage_mut() noexcept { return _storage; }
+    Storage& storage_mut() noexcept { return _storage; }
     /** @brief Get a const reference to all archetypes. */
     const Archetypes& archetypes() const noexcept { return _archetypes; }
     /** @brief Get a mutable reference to all archetypes. */
@@ -177,7 +177,7 @@ EPIX_EXPORT struct World {
     /** @brief Remove a resource by its TypeId. Returns true if removed. */
     bool remove_resource(TypeId type_id) {
         return _storage.resources.get_mut(type_id)
-            .and_then([](internal::ResourceData& res) {
+            .and_then([](ResourceData& res) {
                 res.remove();
                 return std::optional<bool>(true);
             })
@@ -197,7 +197,7 @@ EPIX_EXPORT struct World {
         requires std::movable<T>
     {
         return _storage.resources.get_mut(_type_registry->type_id<T>())
-            .and_then([](internal::ResourceData& res) -> std::optional<T> { return res.take<T>(); });
+            .and_then([](ResourceData& res) -> std::optional<T> { return res.take<T>(); });
     }
     /** @brief Get a const reference to a resource, if it exists.
      *  @tparam T Resource type.
@@ -205,7 +205,7 @@ EPIX_EXPORT struct World {
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
         return _storage.resources.get(_type_registry->type_id<T>())
-            .and_then([&](const internal::ResourceData& res) -> std::optional<std::reference_wrapper<const T>> {
+            .and_then([&](const ResourceData& res) -> std::optional<std::reference_wrapper<const T>> {
                 return res.get_as<T>();
             });
     }
@@ -215,9 +215,8 @@ EPIX_EXPORT struct World {
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
         return _storage.resources.get_mut(_type_registry->type_id<T>())
-            .and_then([&](internal::ResourceData& res) -> std::optional<std::reference_wrapper<T>> {
-                return res.get_as_mut<T>();
-            });
+            .and_then(
+                [&](ResourceData& res) -> std::optional<std::reference_wrapper<T>> { return res.get_as_mut<T>(); });
     }
     /** @brief Get a const reference to a resource. Throws if not present.
      *  @tparam T Resource type. */
@@ -417,7 +416,7 @@ EPIX_EXPORT struct World {
     std::shared_ptr<TypeRegistry> _type_registry;
     Components _components;
     Entities _entities;
-    internal::Storage _storage;
+    Storage _storage;
     Archetypes _archetypes;
     internal::Bundles _bundles;
     internal::CommandQueue _command_queue;
@@ -438,7 +437,7 @@ struct DeferredWorld {
     /** @brief Get a const reference to the entity allocator. */
     const Entities& entities() const noexcept { return world_->entities(); }
     /** @brief Get a const reference to the storage. */
-    const internal::Storage& storage() const noexcept { return world_->storage(); }
+    const Storage& storage() const noexcept { return world_->storage(); }
     /** @brief Get a const reference to all archetypes. */
     const Archetypes& archetypes() const noexcept { return world_->archetypes(); }
     /** @brief Get a const reference to the bundle registry. */

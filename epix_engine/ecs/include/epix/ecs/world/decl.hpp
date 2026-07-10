@@ -26,9 +26,9 @@ EPIX_EXPORT struct WorldId : ::epix::utils::int_base<std::uint64_t> {
 
 EPIX_EXPORT struct Components;
 EPIX_EXPORT struct Archetypes;
+EPIX_EXPORT struct Storage;
 
 namespace internal {
-struct Storage;
 struct Bundles;
 struct CommandQueue;
 WorldId world_id(const World& world) noexcept;

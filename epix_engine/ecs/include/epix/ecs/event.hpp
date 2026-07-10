@@ -252,10 +252,9 @@ EPIX_EXPORT struct EventRegistry {
     }
     void run_updates(World& world, Tick last_change_tick) {
         for (auto&& [id, e] : events) {
-            internal::Resources& resources = world.storage_mut().resources;
-            auto& data                     = resources.get_mut(id).value().get();
-            internal::TicksMut ticks =
-                internal::TicksMut::from_refs(data.get_tick_refs().value(), last_change_tick, world.change_tick());
+            Resources& resources = world.storage_mut().resources;
+            auto& data           = resources.get_mut(id).value().get();
+            TicksMut ticks   = TicksMut::from_refs(data.get_tick_refs().value(), last_change_tick, world.change_tick());
             bool has_changed = ticks.is_modified();
             if (e.previously_updated || has_changed) {
                 auto* ptr = data.get_mut().value();

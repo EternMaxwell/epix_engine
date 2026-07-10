@@ -4,7 +4,7 @@
 #include <epix/ecs/storage/table.hpp>
 #include <epix/meta.hpp>
 
-namespace epix::ecs::internal {
+namespace epix::ecs {
 std::optional<Entity> Table::swap_remove(this Table& self, size_t dense_index) {
     assert(dense_index < self._entities.size());
     bool is_last = dense_index == self._entities.size() - 1;
@@ -67,4 +67,4 @@ TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& t
     return table_id;
 }
 
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

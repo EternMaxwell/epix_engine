@@ -12,12 +12,12 @@
 
 #include <epix/ecs/storage/sparse_set.hpp>
 
-namespace epix::ecs::internal {
+namespace epix::ecs {
 /**
  * @brief Storage for single resource data. Use untyped_vector for underlying storage.
  * Note that the data is reserved when the struct is constructed, so the reference is stable.
  */
-struct ResourceData {
+EPIX_EXPORT struct ResourceData {
    public:
     ResourceData(const ::epix::meta::type_info& desc) : data(desc, 1), added_tick(0), modified_tick(0) {}
 
@@ -160,7 +160,7 @@ struct ResourceData {
     mutable Tick modified_tick;
 };
 
-struct Resources {
+EPIX_EXPORT struct Resources {
    public:
     Resources(std::shared_ptr<TypeRegistry> registry) : registry(std::move(registry)) {}
 
@@ -196,4 +196,4 @@ struct Resources {
     std::shared_ptr<TypeRegistry> registry;
     SparseSet<std::size_t, ResourceData> resources;
 };
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

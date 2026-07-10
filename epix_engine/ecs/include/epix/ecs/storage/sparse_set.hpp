@@ -20,12 +20,12 @@
 #include <epix/ecs/tick.hpp>
 #include <epix/ecs/type_registry.hpp>
 
-namespace epix::ecs::internal {
-struct ComponentSparseSet {
+namespace epix::ecs {
+EPIX_EXPORT struct ComponentSparseSet {
    private:
-    Dense dense;                                       // Dense storage for the actual data
-    std::vector<std::uint32_t> entities;               // from dense index to entity index
-    SparseArray<std::uint32_t, std::uint32_t> sparse;  // from entity index to dense index
+    Dense dense;                                                 // Dense storage for the actual data
+    std::vector<std::uint32_t> entities;                         // from dense index to entity index
+    internal::SparseArray<std::uint32_t, std::uint32_t> sparse;  // from entity index to dense index
    public:
     ComponentSparseSet(const ::epix::meta::type_info& desc, std::size_t reserve_cnt = 0) : dense(desc, reserve_cnt) {}
 
@@ -162,12 +162,12 @@ struct ComponentSparseSet {
     }
     void check_change_ticks(this ComponentSparseSet& self, Tick tick) noexcept { self.dense.check_change_ticks(tick); }
 };
-template <typename I, typename V>
+EPIX_EXPORT template <typename I, typename V>
 struct SparseSet {
    private:
-    std::vector<V> _dense;                // actual data
-    std::vector<I> _indices;              // from dense index to index
-    SparseArray<I, std::size_t> _sparse;  // from index to dense index
+    std::vector<V> _dense;                          // actual data
+    std::vector<I> _indices;                        // from dense index to index
+    internal::SparseArray<I, std::size_t> _sparse;  // from index to dense index
 
    public:
     SparseSet(std::size_t reserve_cnt = 0) {
@@ -255,7 +255,7 @@ struct SparseSet {
     auto iter_mut(this SparseSet& self) { return std::views::zip(self._indices, self._dense); }
 };
 
-struct SparseSets {
+EPIX_EXPORT struct SparseSets {
    private:
     std::shared_ptr<TypeRegistry> registry;
     SparseSet<std::size_t, ComponentSparseSet> sets;
@@ -309,4 +309,4 @@ struct SparseSets {
         }
     }
 };
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

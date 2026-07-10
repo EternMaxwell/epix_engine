@@ -9,8 +9,8 @@
 #include <epix/ecs/storage/table.hpp>
 #include <epix/ecs/storage/untyped_vector.hpp>
 
-namespace epix::ecs::internal {
-struct Storage {
+namespace epix::ecs {
+EPIX_EXPORT struct Storage {
     SparseSets sparse_sets;
     Tables tables;
     Resources resources;
@@ -18,10 +18,10 @@ struct Storage {
     Storage(const std::shared_ptr<TypeRegistry>& registry)
         : sparse_sets(registry), tables(registry), resources(registry) {}
 
-    void prepare_component(const ComponentInfo& info) {
+    void prepare_component(const internal::ComponentInfo& info) {
         if (info.storage_type() == StorageType::SparseSet) {
             sparse_sets.get_or_insert(info.type_id());
         }
     }
 };
-}  // namespace epix::ecs::internal
+}  // namespace epix::ecs

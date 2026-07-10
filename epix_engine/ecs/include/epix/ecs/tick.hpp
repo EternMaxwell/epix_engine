@@ -58,8 +58,7 @@ EPIX_EXPORT struct Tick {
         return false;
     }
 };
-namespace internal {
-struct ComponentTicks {
+EPIX_EXPORT struct ComponentTicks {
     Tick added;
     Tick modified;
 
@@ -67,7 +66,7 @@ struct ComponentTicks {
     ComponentTicks(Tick tick) noexcept : added(tick), modified(tick) {}
     ComponentTicks(Tick added, Tick modified) noexcept : added(added), modified(modified) {}
 };
-struct TickRefs {
+EPIX_EXPORT struct TickRefs {
    public:
     explicit TickRefs(Tick* added, Tick* modified) noexcept : _added(added), _modified(modified) {}
     Tick& added(this const TickRefs& self) noexcept { return *self._added; }
@@ -78,7 +77,7 @@ struct TickRefs {
     Tick* _modified;
 };
 
-struct Ticks {
+EPIX_EXPORT struct Ticks {
     static Ticks from_ticks(const Tick& added, const Tick& modified, Tick last_run, Tick this_run) noexcept {
         return Ticks{&added, &modified, last_run, this_run};
     }
@@ -102,7 +101,7 @@ struct Ticks {
 
     friend struct TicksMut;
 };
-struct TicksMut {
+EPIX_EXPORT struct TicksMut {
     static TicksMut from_ticks(Tick& added, Tick& modified, Tick last_run, Tick this_run) noexcept {
         return TicksMut{&added, &modified, last_run, this_run};
     }
@@ -131,6 +130,7 @@ struct TicksMut {
     TicksMut(Tick* added, Tick* modified, Tick last_run, Tick this_run) noexcept
         : added(added), modified(modified), last_run(last_run), this_run(this_run) {}
 };
+namespace internal {
 template <typename T>
 concept refable = !std::is_reference_v<T> && !std::is_const_v<T>;
 }  // namespace internal

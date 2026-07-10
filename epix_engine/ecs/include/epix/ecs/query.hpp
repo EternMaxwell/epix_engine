@@ -43,7 +43,7 @@ struct Query {
                 auto& archetype = internal::world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto fetch      = WorldQuery<D>::init_fetch(*world_, state_->fetch_state(), last_run_, this_run_);
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
+                auto& table = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<D>::set_archetype(fetch, state_->fetch_state(), archetype, table);
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
@@ -77,7 +77,7 @@ struct Query {
                 if (!state_->contains_archetype(location.archetype_id)) return false;
                 auto& archetype = internal::world_archetypes(*world_).get(location.archetype_id).value().get();
                 auto filter     = WorldQuery<F>::init_fetch(*world_, state_->filter_state(), last_run_, this_run_);
-                auto& table     = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
+                auto& table = internal::world_storage_mut(*world_).tables.get_mut(archetype.table_id()).value().get();
 
                 WorldQuery<F>::set_archetype(filter, state_->filter_state(), archetype, table);
                 return QueryFilter<F>::filter_fetch(filter, entity, location.table_idx);

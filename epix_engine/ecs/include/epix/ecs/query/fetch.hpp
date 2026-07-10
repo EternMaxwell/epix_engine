@@ -45,14 +45,14 @@ struct WorldQuery<std::tuple<Ts...>> {
             return std::make_tuple(WorldQuery<Ts>::init_fetch(world, std::get<Is>(state), last_run, this_run)...);
         }(std::index_sequence_for<Ts...>{}, world, state, last_run, this_run);
     }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, const State& state, const Archetype& archetype,
-                              internal::Table& table) {
+                              Table& table) {
             (WorldQuery<Ts>::set_archetype(std::get<Is>(fetch), std::get<Is>(state), archetype, table), ...);
         }(std::index_sequence_for<Ts...>{}, fetch, state, archetype, table);
     }
-    // static void set_table(Fetch& fetch, State& state, const internal::Table& table) {
-    //     []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, State& state, const Table& table) {
+    //     []<std::size_t... Is>(std::index_sequence<Is...>, Fetch& fetch, State& state, const Table& table) {
     //         (WorldQuery<Ts>::set_table(std::get<Is>(fetch), std::get<Is>(state), table), ...);
     //     }(std::index_sequence_for<Ts...>{}, fetch, state, table);
     // }
@@ -119,13 +119,14 @@ struct WorldQuery<Entity> {
     struct Fetch {};
     using State = std::tuple<>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
-    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
+    static bool matches_component_set(const State&,
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -147,13 +148,14 @@ struct WorldQuery<EntityLocation> {
     static Fetch init_fetch(World& world, const State&, Tick, Tick) noexcept {
         return &internal::world_entities(world);
     }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
-    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
+    static bool matches_component_set(const State&,
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -178,13 +180,14 @@ struct WorldQuery<const Archetype&> {
     };
     using State = std::tuple<>;
     static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return Fetch{}; }
-    static void set_archetype(Fetch&, const State&, const Archetype&, internal::Table&) noexcept {}
-    // static void set_table(Fetch&, State&, const internal::Table&) {}
+    static void set_archetype(Fetch&, const State&, const Archetype&, Table&) noexcept {}
+    // static void set_table(Fetch&, State&, const Table&) {}
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State&, FilteredAccess&) noexcept {}
     static State init_state(World&) noexcept { return State{}; }
     static std::optional<State> get_state(const Components&) noexcept { return State{}; }
-    static bool matches_component_set(const State&, internal::contains_component_fn auto&& contains_component) noexcept {
+    static bool matches_component_set(const State&,
+                                      internal::contains_component_fn auto&& contains_component) noexcept {
         return true;
     }
 };
@@ -217,13 +220,13 @@ struct WorldQuery<Opt<T>> {
     static Fetch init_fetch(World& world, const State& state, Tick last_run, Tick this_run) {
         return Fetch{.fetch = WorldQuery<T>::init_fetch(world, state, last_run, this_run), .matches = false};
     }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table& table) {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table& table) {
         fetch.matches = WorldQuery<T>::matches_component_set(state, [&](TypeId id) { return archetype.contains(id); });
         if (fetch.matches) {
             WorldQuery<T>::set_archetype(fetch.fetch, state, archetype, table);
         }
     }
-    // static void set_table(Fetch& fetch, State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, State& state, const Table& table) {
     //     if (fetch.matches) {
     //         WorldQuery<T>::set_table(fetch.fetch, state, table);
     //     }
@@ -271,10 +274,10 @@ struct WorldQuery<Has<T>> {
     using Fetch = bool;
     using State = TypeId;
     static Fetch init_fetch(World&, const State&, Tick, Tick) noexcept { return false; }
-    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, internal::Table&) noexcept {
+    static void set_archetype(Fetch& fetch, const State& state, const Archetype& archetype, Table&) noexcept {
         fetch = archetype.contains(state);
     }
-    // static void set_table(Fetch& fetch, const State& state, const internal::Table& table) {
+    // static void set_table(Fetch& fetch, const State& state, const Table& table) {
     //     fetch = table.has_dense(state);
     // }
     static void set_access(State&, const FilteredAccess&) noexcept {}

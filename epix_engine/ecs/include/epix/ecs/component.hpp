@@ -199,7 +199,7 @@ struct ComponentInfo {
 }  // namespace internal
 /** @brief Central component registry that also manages required-component relationships.
  *  Inherits from SparseSet<TypeId, ComponentInfo>. */
-EPIX_EXPORT struct Components : public internal::SparseSet<TypeId, internal::ComponentInfo> {
+EPIX_EXPORT struct Components : public SparseSet<TypeId, internal::ComponentInfo> {
    private:
     std::shared_ptr<TypeRegistry> type_registry;
 
