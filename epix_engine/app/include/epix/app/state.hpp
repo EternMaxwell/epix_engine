@@ -1,0 +1,82 @@
+#pragma once
+
+#ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
+#include <type_traits>
+#endif
+
+namespace epix::app {
+EPIX_EXPORT struct App;
+/** @brief Read-only state resource wrapping an enum value.
+ *  Only the App can modify the underlying value; systems read it via Res<State<T>>.
+ *  @tparam T An enum type representing application states. */
+EPIX_EXPORT template <typename T>
+    requires std::is_enum_v<T>
+struct State {
+   protected:
+    /** @brief The current state value. */
+    T m_state;
+    State& operator=(T state) noexcept {
+        m_state = state;
+        return *this;
+    }
+
+    friend struct App;
+
+   public:
+    State() noexcept : m_state() {}
+    State(T state) noexcept : m_state(state) {}
+    State(const State&)            = delete;
+    State(State&&)                 = default;
+    State& operator=(const State&) = delete;
+    State& operator=(State&&)      = default;
+    ~State()                       = default;
+    /** @brief Implicitly convert to the underlying enum value. */
+    operator T() const noexcept { return m_state; }
+    /** @brief Check equality with a state value. */
+    bool operator==(T state) const noexcept { return m_state == state; }
+    /** @brief Check inequality with a state value. */
+    bool operator!=(T state) const noexcept { return m_state != state; }
+
+    /** @brief Check if the current state equals the given value. */
+    bool is_state(T state) const noexcept { return m_state == state; }
+};
+/** @brief Mutable state resource that allows systems to request state transitions.
+ *  Write to this via ResMut<NextState<T>> to trigger a transition.
+ *  @tparam T An enum type representing application states. */
+EPIX_EXPORT template <typename T>
+    requires std::is_enum_v<T>
+struct NextState : public State<T> {
+   public:
+    using State<T>::State;
+
+    /** @brief Implicitly convert to the underlying enum value. */
+    operator T() const noexcept { return State<T>::m_state; }
+    /** @brief Check equality with a state value. */
+    bool operator==(T state) const noexcept { return State<T>::m_state == state; }
+    /** @brief Check inequality with a state value. */
+    bool operator!=(T state) const noexcept { return State<T>::m_state != state; }
+    /** @brief Assign a new state value directly. */
+    NextState& operator=(T state) noexcept {
+        State<T>::m_state = state;
+        return *this;
+    }
+
+    /** @brief Request a state transition to the given value. */
+    void set_state(T state) noexcept { State<T>::m_state = state; }
+};
+/** @brief A predicate for checking if the application is in a specific state.
+ *  Used for system run conditions, e.g. `run_if(in_state(AppState::Playing))`. */
+EPIX_EXPORT template <typename T>
+    requires std::is_enum_v<T>
+struct in_state {
+   private:
+    T m_state;
+
+   public:
+    in_state(T state) noexcept : m_state(state) {}
+    /** @brief Evaluate whether the current state matches the target. */
+    bool operator()(ecs::Res<State<T>> state) const noexcept { return *state == m_state; }
+};
+}  // namespace epix::app
