@@ -1,166 +1,62 @@
 #include <epix/ecs/component/components.hpp>
-#include <epix/ecs/component/components_impl.hpp>
-
-#include <algorithm>
-#include <format>
-#include <stdexcept>
 
 namespace epix::ecs {
-namespace {
 
-auto find_required(RequiredComponents::Container& components, TypeId id) {
-    return std::ranges::find(components, id, &RequiredComponents::Entry::first);
+std::size_t Components::num_queued() const {
+    std::shared_lock lock(*m_mutex);
+    return m_queued.components.size();
 }
 
-auto find_required(const RequiredComponents::Container& components, TypeId id) {
-    return std::ranges::find(components, id, &RequiredComponents::Entry::first);
+std::size_t Components::num_registered() const { return m_infos.size(); }
+
+std::size_t Components::length() const { return num_queued() + num_registered(); }
+
+std::optional<std::reference_wrapper<const internal::ComponentInfo>> Components::get_info(TypeId id) const {
+    if (id.get() >= m_infos.size()) return std::nullopt;
+    return m_infos[id.get()].transform([](auto&& ref) { return std::cref(ref); });
 }
 
-bool contains(const std::vector<TypeId>& ids, TypeId id) {
-    return std::ranges::find(ids, id) != ids.end();
+std::optional<std::reference_wrapper<internal::ComponentInfo>> Components::get_info_mut(TypeId id) {
+    if (id.get() >= m_infos.size()) return std::nullopt;
+    return m_infos[id.get()].transform([](auto&& ref) { return std::ref(ref); });
 }
 
-void insert_unique(std::vector<TypeId>& ids, TypeId id) {
-    if (!contains(ids, id)) ids.push_back(id);
+std::optional<meta::type_index> Components::get_index(TypeId id) const {
+    return get_info(id)
+        .transform([](const internal::ComponentInfo& info) { return info.type_index(); })
+        .or_else([this, id] -> std::optional<meta::type_index> {
+            std::shared_lock lock(*m_mutex);
+            auto it = std::ranges::find_if(m_queued.components, [id](auto&& item) { return item.second.id == id; });
+            if (it != m_queued.components.end()) return it->second.type_index;
+            return std::nullopt;
+        });
 }
 
-std::string component_name(const Components& components, TypeId id) {
-    return components.get_index(id).transform([](const meta::type_index& index) {
-        return std::string(index.short_name());
-    }).value_or(std::format("component#{}", id.get()));
+bool Components::is_valid(TypeId id) const { return get_info(id).has_value(); }
+
+void Components::register_component_inner(TypeId id, meta::type_index type, StorageType storage_type) {
+    std::size_t cap = id.get() + 1;
+    if (cap > m_infos.size()) m_infos.resize(cap);
+    assert(!m_infos[id.get()].has_value());
+    m_infos[id.get()].emplace(id, type, storage_type);
 }
 
-}  // namespace
-
-bool RequiredComponents::directly_requires(TypeId id) const noexcept {
-    return find_required(direct, id) != direct.end();
+std::optional<std::reference_wrapper<const RequiredComponents>> Components::get_required_components(TypeId id) const {
+    return get_info(id).transform(
+        [](const internal::ComponentInfo& info) { return std::cref(info.required_components()); });
 }
 
-void RequiredComponentConstructor::initialize(Table& table,
-                                              SparseSets& sparse_sets,
-                                              Tick tick,
-                                              TableRow row,
-                                              Entity entity) const {
-    (*function_)(table, sparse_sets, tick, row, entity);
+std::optional<std::reference_wrapper<RequiredComponents>> Components::get_required_components_mut(TypeId id) {
+    return get_info_mut(id).transform(
+        [](internal::ComponentInfo& info) { return std::ref(info.required_components_mut()); });
 }
 
-bool RequiredComponents::contains(TypeId id) const noexcept { return find_required(all, id) != all.end(); }
-
-const RequiredComponent* RequiredComponents::get(TypeId id) const noexcept {
-    if (auto it = find_required(all, id); it != all.end()) return &it->second;
-    return nullptr;
+std::optional<std::reference_wrapper<const std::vector<TypeId>>> Components::get_required_by(TypeId id) const {
+    return get_info(id).transform([](const internal::ComponentInfo& info) { return std::cref(info.required_by()); });
 }
 
-void RequiredComponents::register_dynamic(TypeId component_id,
-                                          const Components& components,
-                                          RequiredComponentConstructor constructor) {
-    if (directly_requires(component_id)) {
-        throw std::logic_error(std::format("component {} is already directly required", component_id.get()));
-    }
-
-    RequiredComponent required_component{.constructor = std::move(constructor)};
-    direct.emplace_back(component_id, required_component);
-    register_inherited_required_components(all, component_id, std::move(required_component), components);
-}
-
-void RequiredComponents::rebuild_inherited_required_components(const Components& components) {
-    all.clear();
-    for (const auto& [required_id, required_component] : direct) {
-        register_inherited_required_components(all, required_id, required_component, components);
-    }
-}
-
-void RequiredComponents::register_inherited_required_components(Container& all,
-                                                                 TypeId required_id,
-                                                                 RequiredComponent required_component,
-                                                                 const Components& components) {
-    const auto required_info = components.get_required_components(required_id);
-    if (!required_info) throw std::logic_error("required component has not been registered");
-
-    if (find_required(all, required_id) == all.end()) {
-        for (const auto& [inherited_id, inherited_required] : required_info->get().all) {
-            if (find_required(all, inherited_id) == all.end()) all.emplace_back(inherited_id, inherited_required);
-        }
-    }
-
-    if (auto existing = find_required(all, required_id); existing != all.end()) {
-        existing->second = std::move(required_component);
-    } else {
-        all.emplace_back(required_id, std::move(required_component));
-    }
-}
-
-std::string RequiredComponentsError::message(const Components& components) const {
-    switch (kind) {
-        case RequiredComponentsErrorKind::DuplicateRegistration:
-            return std::format("{} already directly requires {}", component_name(components, requiree),
-                               component_name(components, required));
-        case RequiredComponentsErrorKind::CyclicRequirement:
-            return std::format("{} cannot require {} because it would create a cycle", component_name(components, requiree),
-                               component_name(components, required));
-        case RequiredComponentsErrorKind::ArchetypeExists:
-            return std::format("{} already exists in an archetype", component_name(components, requiree));
-    }
-    std::unreachable();
-}
-
-void RequiredComponentsRegistrator::register_required_dynamic(TypeId component_id,
-                                                               RequiredComponentConstructor constructor) {
-    if (!static_cast<const Components&>(*components_).is_valid(component_id)) {
-        throw std::logic_error("required component has not been registered");
-    }
-    required_components_->register_dynamic(component_id, static_cast<const Components&>(*components_),
-                                           std::move(constructor));
-}
-
-void Components::register_required_by(TypeId requiree, const RequiredComponents& required_components) {
-    for (TypeId required : required_components.iter_ids()) {
-        auto required_by = get_required_by_mut(required);
-        if (!required_by) throw std::logic_error("required component has not been registered");
-        insert_unique(required_by->get(), requiree);
-    }
-}
-
-std::expected<void, RequiredComponentsError> Components::register_required_components(
-    TypeId requiree, TypeId required, RequiredComponentConstructor constructor) {
-    if (!is_valid(requiree) || !is_valid(required)) {
-        throw std::logic_error("both components must be registered before adding a required-component relationship");
-    }
-
-    const auto required_required_components = get_required_components(required)->get();
-    if (required_required_components.contains(requiree)) {
-        return std::unexpected(
-            RequiredComponentsError{RequiredComponentsErrorKind::CyclicRequirement, requiree, required});
-    }
-
-    auto& requiree_required_components = get_required_components_mut(requiree)->get();
-    if (requiree_required_components.directly_requires(required)) {
-        return std::unexpected(
-            RequiredComponentsError{RequiredComponentsErrorKind::DuplicateRegistration, requiree, required});
-    }
-
-    const std::size_t old_required_count = requiree_required_components.all.size();
-    requiree_required_components.register_dynamic(required, *this, std::move(constructor));
-
-    std::vector<TypeId> newly_required;
-    for (const auto& [id, _] : std::views::drop(requiree_required_components.all, old_required_count)) {
-        newly_required.push_back(id);
-    }
-
-    std::vector<TypeId> affected_requirees{requiree};
-    for (TypeId id : get_required_by(requiree)->get()) insert_unique(affected_requirees, id);
-
-    for (TypeId indirect_requiree : std::views::drop(affected_requirees, 1)) {
-        get_required_components_mut(indirect_requiree)->get().rebuild_inherited_required_components(*this);
-    }
-
-    for (TypeId indirect_required : newly_required) {
-        auto& required_by = get_required_by_mut(indirect_required)->get();
-        std::erase_if(required_by, [&](TypeId id) { return contains(affected_requirees, id); });
-        for (TypeId id : affected_requirees) required_by.push_back(id);
-    }
-
-    return {};
+std::optional<std::reference_wrapper<std::vector<TypeId>>> Components::get_required_by_mut(TypeId id) {
+    return get_info_mut(id).transform([](internal::ComponentInfo& info) { return std::ref(info.required_by_mut()); });
 }
 
 }  // namespace epix::ecs

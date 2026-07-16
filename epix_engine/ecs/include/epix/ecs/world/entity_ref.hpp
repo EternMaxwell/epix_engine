@@ -21,7 +21,7 @@
 #include <epix/ecs/query/refs.hpp>
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/core/tick.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 /**

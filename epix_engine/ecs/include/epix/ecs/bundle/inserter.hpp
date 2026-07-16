@@ -18,7 +18,7 @@
 #endif
 
 #include <epix/ecs/bundle/info.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs::internal {
 struct BundleInserter {

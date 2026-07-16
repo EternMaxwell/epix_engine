@@ -14,7 +14,6 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/component/info.hpp>
 #include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/storage/dense.hpp>
 #include <epix/ecs/storage/sparse_array.hpp>
@@ -22,6 +21,10 @@
 
 
 namespace epix::ecs {
+namespace internal {
+struct ComponentInfo;
+}  // namespace internal
+
 EPIX_EXPORT struct ComponentSparseSet {
    private:
     Dense dense;                                                 // Dense storage for the actual data
@@ -268,14 +271,7 @@ EPIX_EXPORT struct SparseSets {
         return sets.get_mut(type_id);
     }
     ComponentSparseSet& unsafe_get_mut(std::size_t type_id) noexcept { return sets.unsafe_get_mut(type_id); }
-    ComponentSparseSet& get_or_insert(const internal::ComponentInfo& info) {
-        return sets.get_mut(info.type_id())
-            .or_else([this, &info] -> std::optional<std::reference_wrapper<ComponentSparseSet>> {
-                sets.emplace(info.type_id().get(), info.type_index().type_info());
-                return std::ref(sets.unsafe_get_mut(info.type_id()));
-            })
-            .value();
-    }
+    ComponentSparseSet& get_or_insert(const internal::ComponentInfo& info);
     void insert(std::size_t type_id, ComponentSparseSet set) { sets.emplace(type_id, std::move(set)); }
     void clear_entities() {
         for (auto&& [_, set] : sets.iter_mut()) set.clear();

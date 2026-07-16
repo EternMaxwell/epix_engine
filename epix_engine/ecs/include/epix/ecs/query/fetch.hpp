@@ -16,7 +16,7 @@
 #include <epix/ecs/query/access.hpp>
 #include <epix/ecs/query/decl.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 /** @brief Represents the items (components) in a query result as a tuple.

@@ -12,7 +12,7 @@
 #include <epix/ecs/archetype/archetype.hpp>
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/core/tick.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 /** @brief Trait class for types usable as query data elements (e.g. template arguments of Item).

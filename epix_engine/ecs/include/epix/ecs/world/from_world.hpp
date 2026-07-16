@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -10,7 +10,7 @@
 #include <type_traits>
 #endif
 
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 

@@ -27,7 +27,7 @@
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/world/commands.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
 #include <epix/ecs/world/from_world.hpp>
 
@@ -439,20 +439,11 @@ EPIX_EXPORT struct World {
     std::optional<EntityWorldMut> get_entity_mut(Entity entity) noexcept;
 
     /** @brief Flush pending reserved entities into the empty archetype. */
-    void flush_entities() {
-        auto& empty_archetype = _archetypes.get_empty_mut();
-        auto& empty_table     = _storage.tables.get_mut(empty_archetype.table_id()).value().get();
-        _entities.flush([&](Entity entity, EntityLocation& location) {
-            location = empty_archetype.allocate(entity, empty_table.allocate(entity));
-        });
-    }
+    void flush_entities();
     /** @brief Apply all deferred commands in the command queue. */
-    void flush_commands() { _command_queue.apply(*reinterpret_cast<World*>(this)); }
+    void flush_commands();
     /** @brief Flush entities and apply deferred commands. */
-    void flush() {
-        flush_entities();
-        flush_commands();
-    }
+    void flush();
 
    protected:
     WorldId _id;

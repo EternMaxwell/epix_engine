@@ -21,7 +21,7 @@
 
 #include <epix/ecs/archetype/archetype.hpp>
 #include <epix/ecs/query/access.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 #include <epix/ecs/world/from_world.hpp>
 
 // #include <epix/ecs/world/entity_ref.hpp>

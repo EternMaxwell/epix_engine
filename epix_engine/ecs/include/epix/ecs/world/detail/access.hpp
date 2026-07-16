@@ -9,8 +9,6 @@
 
 #include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/core/tick.hpp>
-#include <epix/ecs/component.hpp>
-
 namespace epix::ecs {
 /** @brief Forward declaration of the ECS world. */
 EPIX_EXPORT struct World;
@@ -25,6 +23,8 @@ EPIX_EXPORT struct WorldId : ::epix::utils::int_base<std::uint64_t> {
 };
 
 EPIX_EXPORT struct Components;
+EPIX_EXPORT struct ComponentsRegistrator;
+EPIX_EXPORT struct ComponentsQueuedRegistrator;
 EPIX_EXPORT struct Archetypes;
 EPIX_EXPORT struct Storage;
 

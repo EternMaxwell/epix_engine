@@ -9,8 +9,8 @@
 #include <epix/common.hpp>
 #include <epix/ecs/component/hooks.hpp>
 #include <epix/ecs/component/required_component.hpp>
-#include <epix/ecs/storage/storage_type.hpp>
 #include <epix/ecs/core/type_id.hpp>
+#include <epix/ecs/storage/storage_type.hpp>
 
 namespace epix::ecs {
 
@@ -36,6 +36,7 @@ struct ComponentInfo {
     void update_hooks() noexcept {
         _hooks.update_from_component<T>();
     }
+
     friend struct epix::ecs::Components;
     friend struct epix::ecs::ComponentsRegistrator;
 

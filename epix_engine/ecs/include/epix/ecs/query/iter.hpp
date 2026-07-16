@@ -19,7 +19,7 @@
 #include <epix/ecs/query/filter.hpp>
 #include <epix/ecs/query/state.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 /** @brief Low-level cursor for iterating over query results across archetypes.

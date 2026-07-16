@@ -23,7 +23,7 @@
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/core/type_id.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 namespace internal {

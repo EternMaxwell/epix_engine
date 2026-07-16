@@ -1,6 +1,23 @@
 #include <epix/ecs/world.hpp>
 
-namespace epix::ecs::internal {
+namespace epix::ecs {
+
+void World::flush_entities() {
+    auto& empty_archetype = _archetypes.get_empty_mut();
+    auto& empty_table     = _storage.tables.get_mut(empty_archetype.table_id()).value().get();
+    _entities.flush([&](Entity entity, EntityLocation& location) {
+        location = empty_archetype.allocate(entity, empty_table.allocate(entity));
+    });
+}
+
+void World::flush_commands() { _command_queue.apply(*this); }
+
+void World::flush() {
+    flush_entities();
+    flush_commands();
+}
+
+namespace internal {
 
 WorldId world_id(const World& world) noexcept { return world.id(); }
 const Components& world_components(const World& world) noexcept { return world.components(); }
@@ -36,4 +53,5 @@ CommandQueue& world_command_queue(DeferredWorld& world) noexcept { return world.
 Tick world_change_tick(const DeferredWorld& world) noexcept { return world.change_tick(); }
 Tick world_last_change_tick(const DeferredWorld& world) noexcept { return world.last_change_tick(); }
 
-}  // namespace epix::ecs::internal
+}  // namespace internal
+}  // namespace epix::ecs

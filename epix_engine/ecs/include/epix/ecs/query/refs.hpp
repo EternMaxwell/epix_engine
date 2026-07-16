@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -14,7 +14,7 @@
 #include <epix/ecs/storage/resource.hpp>
 #include <epix/ecs/system/param.hpp>
 #include <epix/ecs/core/tick.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 

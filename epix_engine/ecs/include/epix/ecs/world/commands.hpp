@@ -10,7 +10,7 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs::internal {
 template <typename T>

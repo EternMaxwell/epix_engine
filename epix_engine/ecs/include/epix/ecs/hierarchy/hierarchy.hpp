@@ -7,7 +7,7 @@
 
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/entity/entities.hpp>
-#include <epix/ecs/detail/world_access.hpp>
+#include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
 /** @brief Component that marks an entity as a child of another entity.
