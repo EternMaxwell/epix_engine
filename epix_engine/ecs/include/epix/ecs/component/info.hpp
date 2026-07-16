@@ -3,7 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <epix/meta.hpp>
-#include <unordered_set>
+#include <vector>
 #endif
 
 #include <epix/common.hpp>
@@ -29,8 +29,8 @@ struct ComponentInfo {
     ComponentHooks& hooks_mut() noexcept { return _hooks; }
     const RequiredComponents& required_components() const noexcept { return _required_components; }
     RequiredComponents& required_components_mut() noexcept { return _required_components; }
-    const std::unordered_set<TypeId>& required_by() const noexcept { return _required_by; }
-    std::unordered_set<TypeId>& required_by_mut() noexcept { return _required_by; }
+    const std::vector<TypeId>& required_by() const noexcept { return _required_by; }
+    std::vector<TypeId>& required_by_mut() noexcept { return _required_by; }
 
     template <typename T>
     void update_hooks() noexcept {
@@ -45,7 +45,7 @@ struct ComponentInfo {
     StorageType _storage_type;
     ComponentHooks _hooks;
     RequiredComponents _required_components;
-    std::unordered_set<TypeId> _required_by;
+    std::vector<TypeId> _required_by;
 };
 }  // namespace internal
 }  // namespace epix::ecs

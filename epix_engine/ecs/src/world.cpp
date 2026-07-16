@@ -5,6 +5,8 @@ namespace epix::ecs::internal {
 WorldId world_id(const World& world) noexcept { return world.id(); }
 const Components& world_components(const World& world) noexcept { return world.components(); }
 Components& world_components_mut(World& world) noexcept { return world.components_mut(); }
+ComponentsRegistrator world_registrator(World& world) noexcept { return world.registrator(); }
+ComponentsQueuedRegistrator world_queued_registrator(World& world) noexcept { return world.queued_registrator(); }
 const Entities& world_entities(const World& world) noexcept { return world.entities(); }
 Entities& world_entities_mut(World& world) noexcept { return world.entities_mut(); }
 const Storage& world_storage(const World& world) noexcept { return world.storage(); }
@@ -25,6 +27,9 @@ WorldId world_id(const DeferredWorld& world) noexcept { return world.id(); }
 const Entities& world_entities(const DeferredWorld& world) noexcept { return world.entities(); }
 const Storage& world_storage(const DeferredWorld& world) noexcept { return world.storage(); }
 const Components& world_components(const DeferredWorld& world) noexcept { return world.components(); }
+ComponentsQueuedRegistrator world_queued_registrator(const DeferredWorld& world) noexcept {
+    return world.queued_registrator();
+}
 const Archetypes& world_archetypes(const DeferredWorld& world) noexcept { return world.archetypes(); }
 const Bundles& world_bundles(const DeferredWorld& world) noexcept { return world.bundles(); }
 CommandQueue& world_command_queue(DeferredWorld& world) noexcept { return world.command_queue(); }

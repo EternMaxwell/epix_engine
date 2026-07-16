@@ -115,9 +115,9 @@ void ComponentsRegistrator::register_component_unchecked(
 
     // recursive register for required components
     m_recurse_stack.push_back(id);
-    internal::RequiredComponents required_components{};
-    RequiredComponentsRegistrator required_comoponents_registrator(*this, required_components);
-    register_required_components(id, required_comoponents_registrator);
+    RequiredComponents required_components{};
+    RequiredComponentsRegistrator required_components_registrator(*this, required_components);
+    register_required_components(id, required_components_registrator);
     m_components->register_required_by(id, required_components);
     m_recurse_stack.pop_back();
 

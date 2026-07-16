@@ -61,13 +61,27 @@ EPIX_EXPORT struct Components {
         });
     }
 
-    std::optional<std::reference_wrapper<const internal::RequiredComponents>> get_required_components(TypeId id) const;
-    std::optional<std::reference_wrapper<internal::RequiredComponents>> get_required_components_mut(TypeId id);
-    std::optional<std::reference_wrapper<const std::unordered_set<TypeId>>> get_required_by(TypeId id) const;
-    std::optional<std::reference_wrapper<std::unordered_set<TypeId>>> get_required_by(TypeId id);
+    std::optional<std::reference_wrapper<const RequiredComponents>> get_required_components(TypeId id) const;
+    std::optional<std::reference_wrapper<RequiredComponents>> get_required_components_mut(TypeId id);
+    std::optional<std::reference_wrapper<const std::vector<TypeId>>> get_required_by(TypeId id) const;
+    std::optional<std::reference_wrapper<std::vector<TypeId>>> get_required_by_mut(TypeId id);
     bool is_valid(TypeId id) const { return get_info(id).has_value(); }
 
-    void register_required_by(TypeId, internal::RequiredComponents&);
+    /**
+     * Register a runtime required-component relationship and propagate its metadata
+     * to every component that transitively requires `requiree`.
+     */
+    std::expected<void, RequiredComponentsError> register_required_components(
+        TypeId requiree, TypeId required, RequiredComponentConstructor constructor);
+
+    /** Typed convenience overload for runtime required-component registration. */
+    template <typename R, typename F>
+    std::expected<void, RequiredComponentsError> register_required_components(TypeId requiree,
+                                                                               TypeId required,
+                                                                               F&& constructor)
+        requires std::invocable<F> && std::same_as<R, std::invoke_result_t<F>>;
+
+    void register_required_by(TypeId requiree, const RequiredComponents& required_components);
 
     friend struct ComponentsRegistrator;
     friend struct ComponentsQueuedRegistrator;
@@ -90,21 +104,19 @@ EPIX_EXPORT struct Components {
     std::unique_ptr<std::shared_mutex> m_mutex = std::make_unique<std::shared_mutex>();
 };
 
-inline std::optional<std::reference_wrapper<const internal::RequiredComponents>> Components::get_required_components(
-    TypeId id) const {
+inline std::optional<std::reference_wrapper<const RequiredComponents>> Components::get_required_components(TypeId id)
+    const {
     return get_info(id).transform(
         [](const internal::ComponentInfo& info) { return std::cref(info.required_components()); });
 }
-inline std::optional<std::reference_wrapper<internal::RequiredComponents>> Components::get_required_components_mut(
-    TypeId id) {
+inline std::optional<std::reference_wrapper<RequiredComponents>> Components::get_required_components_mut(TypeId id) {
     return get_info_mut(id).transform(
         [](internal::ComponentInfo& info) { return std::ref(info.required_components_mut()); });
 }
-inline std::optional<std::reference_wrapper<const std::unordered_set<TypeId>>> Components::get_required_by(
-    TypeId id) const {
+inline std::optional<std::reference_wrapper<const std::vector<TypeId>>> Components::get_required_by(TypeId id) const {
     return get_info(id).transform([](const internal::ComponentInfo& info) { return std::cref(info.required_by()); });
 }
-inline std::optional<std::reference_wrapper<std::unordered_set<TypeId>>> Components::get_required_by(TypeId id) {
+inline std::optional<std::reference_wrapper<std::vector<TypeId>>> Components::get_required_by_mut(TypeId id) {
     return get_info_mut(id).transform([](internal::ComponentInfo& info) { return std::ref(info.required_by_mut()); });
 }
 }  // namespace epix::ecs

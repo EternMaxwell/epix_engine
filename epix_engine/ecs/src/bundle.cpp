@@ -1,5 +1,7 @@
 #include <spdlog/spdlog.h>
 
+#include <unordered_set>
+
 #include <epix/ecs/bundle.hpp>
 #include <epix/ecs/entities.hpp>
 
@@ -11,8 +13,8 @@ internal::BundleInfo internal::BundleInfo::create(std::string_view bundle_type_n
                                                   BundleId id) {
     spdlog::trace("[bundle] Creating BundleInfo '{}' id={} with {} components.", bundle_type_name, id.get(),
                   component_ids.size());
-    auto deduped = std::ranges::to<std::unordered_set<TypeId>>(component_ids);
-    if (deduped.size() != std::ranges::size(component_ids)) {
+    const auto explicit_components = std::ranges::to<std::unordered_set<TypeId>>(component_ids);
+    if (explicit_components.size() != std::ranges::size(component_ids)) {
         auto seen  = std::unordered_set<TypeId>{};
         auto duped = std::views::filter(component_ids, [&](TypeId tid) {
             if (seen.contains(tid)) {
@@ -29,24 +31,24 @@ internal::BundleInfo internal::BundleInfo::create(std::string_view bundle_type_n
     }
 
     size_t explicit_count = std::ranges::size(component_ids);
-    RequiredComponents required_components;
-    for (auto&& id : deduped) {
+    RequiredComponents::Container required_components;
+    for (TypeId id : component_ids) {
         const ComponentInfo& info = components.get_info(id).value().get();
-        required_components.merge(info.required_components());
+        for (const auto& [required_id, required_component] : info.required_components().all) {
+            if (std::ranges::find(required_components, required_id, &RequiredComponents::Entry::first) ==
+                required_components.end()) {
+                required_components.emplace_back(required_id, required_component);
+            }
+        }
         storage.prepare_component(info);
     }
-    auto required_constructors = std::ranges::to<std::vector<RequiredComponentConstructor>>(
-        std::views::transform(std::views::filter(required_components.components,
-                                                 [&](auto&& v) {
-                                                     auto&& [type_id, rc] = v;
-                                                     return !deduped.contains(type_id);
-                                                 }),
-                              [&](auto&& v) {
-                                  auto&& [type_id, rc] = v;
-                                  storage.prepare_component(components.get_info(type_id).value().get());
-                                  component_ids.push_back(type_id);
-                                  return rc.constructor;
-                              }));
+    std::vector<RequiredComponentConstructor> required_constructors;
+    for (const auto& [type_id, required_component] : required_components) {
+        if (explicit_components.contains(type_id)) continue;
+        storage.prepare_component(components.get_info(type_id).value().get());
+        component_ids.push_back(type_id);
+        required_constructors.push_back(required_component.constructor);
+    }
 
     return BundleInfo(id, std::move(component_ids), required_constructors, explicit_count);
 }

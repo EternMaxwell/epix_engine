@@ -59,6 +59,50 @@ EPIX_EXPORT struct World {
     const Components& components() const noexcept { return _components; }
     /** @brief Get a mutable reference to the component metadata store. */
     Components& components_mut() noexcept { return _components; }
+
+    /** Register a default-constructed component R as required by T. */
+    template <typename T, typename R>
+        requires std::default_initializable<R>
+    void register_required_components() {
+        auto result = try_register_required_components<T, R>();
+        if (!result) throw std::logic_error(result.error().message(_components));
+    }
+
+    /** Register R as required by T, using the supplied constructor. */
+    template <typename T, typename F>
+        requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
+    void register_required_components_with(F&& constructor) {
+        auto result = try_register_required_components_with<T>(std::forward<F>(constructor));
+        if (!result) throw std::logic_error(result.error().message(_components));
+    }
+
+    /** Fallible form of register_required_components. */
+    template <typename T, typename R>
+        requires std::default_initializable<R>
+    std::expected<void, RequiredComponentsError> try_register_required_components() {
+        return try_register_required_components_with<T>([] { return R{}; });
+    }
+
+    /**
+     * Fallible runtime registration for a required component.
+     *
+     * The requiree must not have appeared in an archetype yet, because bundle and
+     * archetype edges cache required-component metadata.
+     */
+    template <typename T, typename F>
+        requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
+    std::expected<void, RequiredComponentsError> try_register_required_components_with(F&& constructor) {
+        using R = std::invoke_result_t<F>;
+        auto component_registrator = registrator();
+        TypeId requiree            = component_registrator.template register_component<T>();
+        if (_archetypes.by_component.contains(requiree)) {
+            return std::unexpected(
+                RequiredComponentsError{RequiredComponentsErrorKind::ArchetypeExists, requiree, requiree});
+        }
+        TypeId required = component_registrator.template register_component<R>();
+        return _components.template register_required_components<R>(requiree, required,
+                                                                    std::forward<F>(constructor));
+    }
     /** @brief Get a const reference to the entity allocator. */
     const Entities& entities() const noexcept { return _entities; }
     /** @brief Get a mutable reference to the entity allocator. */

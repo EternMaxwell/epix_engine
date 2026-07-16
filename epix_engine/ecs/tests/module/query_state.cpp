@@ -18,8 +18,7 @@ struct X {
 TEST(ecs, query_state) {
     using namespace epix::ecs;
 
-    auto registry = std::make_shared<TypeRegistry>();
-    World wc(WorldId(1), std::move(registry));
+    World wc(WorldId(1));
 
     // QueryState::create_uninit should work even when no components are registered
     auto qs_uninit = QueryState<std::tuple<>>::create_uninit(wc);

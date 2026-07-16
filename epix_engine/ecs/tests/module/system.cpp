@@ -63,8 +63,7 @@ void func2(Query<Item<Entity, Opt<const C1&>, Opt<const C2&>, Opt<const C3&>>> q
 }  // namespace
 
 TEST(ecs, system) {
-    auto registry = std::make_shared<TypeRegistry>();
-    World world(WorldId(1), registry);
+    World world(WorldId(1));
 
     int counter  = 0;
     auto lambda1 = [&](World& world) {
@@ -95,8 +94,10 @@ TEST(ecs, system) {
     auto access2 = sys2->initialize(world);
     // std::println(std::cout, "Access conflicts: {}", access.get_conflicts(access2).to_string());
     auto conflict_ids = std::ranges::to<std::vector<TypeId>>(access.get_conflicts(access2).ids.iter_ones());
-    auto expected_ids = std::vector<TypeId>{registry->type_id<C1>(), registry->type_id<C2>(), registry->type_id<C3>(),
-                                            registry->type_id<resource1>()};
+    auto registrator  = world.registrator();
+    auto expected_ids =
+        std::vector<TypeId>{registrator.register_component<C1>(), registrator.register_component<C2>(),
+                            registrator.register_component<C3>(), registrator.register_resource<resource1>()};
     std::ranges::sort(expected_ids);
     EXPECT_EQ(conflict_ids, expected_ids);
 

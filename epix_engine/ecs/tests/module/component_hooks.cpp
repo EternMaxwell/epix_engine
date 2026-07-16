@@ -48,8 +48,7 @@ struct C2 {
 }  // namespace
 
 TEST(ecs, component_hooks) {
-    auto registry = std::make_shared<TypeRegistry>();
-    World world(WorldId(1), std::move(registry));
+    World world(WorldId(1));
 
     // We'll use the same random engine as existing randomized tests.
     std::mt19937_64 rng(std::chrono::steady_clock::now().time_since_epoch().count());

@@ -120,7 +120,7 @@ struct BundleInfo {
         });
 
         for (auto&& rc : required_components) {
-            (*rc)(table, sparse_sets, tick, row, entity);
+            rc.initialize(table, sparse_sets, tick, row, entity);
         }
     }
 

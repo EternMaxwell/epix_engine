@@ -49,8 +49,7 @@ struct epix::ecs::sparse_component<S2> : std::true_type {};
 TEST(ecs, random_spawn) {
     using namespace epix::ecs;
 
-    auto registry = std::make_shared<TypeRegistry>();
-    World world(0, registry);
+    World world(0);
     std::ios::sync_with_stdio(false);
 
     // bundles will be registered automatically by BundleSpawner::create<T>(world, tick)
