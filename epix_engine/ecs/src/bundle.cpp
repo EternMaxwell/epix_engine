@@ -24,14 +24,14 @@ internal::BundleInfo internal::BundleInfo::create(std::string_view bundle_type_n
         });
         throw std::logic_error(std::format("bundle \"{}\" has duplicate component types {}", bundle_type_name,
                                            std::views::transform(duped, [&](TypeId tid) {
-                                               return components.get(tid).value().get().type_index().name();
+                                               return components.get_info(tid).value().get().type_index().name();
                                            })));
     }
 
     size_t explicit_count = std::ranges::size(component_ids);
     RequiredComponents required_components;
     for (auto&& id : deduped) {
-        const ComponentInfo& info = components.get(id).value().get();
+        const ComponentInfo& info = components.get_info(id).value().get();
         required_components.merge(info.required_components());
         storage.prepare_component(info);
     }
@@ -43,62 +43,12 @@ internal::BundleInfo internal::BundleInfo::create(std::string_view bundle_type_n
                                                  }),
                               [&](auto&& v) {
                                   auto&& [type_id, rc] = v;
-                                  storage.prepare_component(components.get(type_id).value().get());
+                                  storage.prepare_component(components.get_info(type_id).value().get());
                                   component_ids.push_back(type_id);
                                   return rc.constructor;
                               }));
 
     return BundleInfo(id, std::move(component_ids), required_constructors, explicit_count);
-}
-
-void internal::BundleInfo::write_components(
-    Table& table,  // The table at row should be previously allocated, either existing or uninitialized
-    SparseSets& sparse_sets,
-    const TypeRegistry& type_registry,
-    const Components& components,
-    std::span<const ComponentStatus> component_statuses,  // status of each explicit component
-    std::span<const RequiredComponentConstructor>
-        required_components,  // the required component constructors for required components needed to be added
-    Entity entity,
-    TableRow row,
-    Tick tick,
-    BundleRef bundle,
-    InsertMode insert_mode) const {
-    auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
-    auto component_iter           = component_id_status_view.begin();
-    bundle.get_components([&](std::invocable<void*> auto&& write_component) {
-        auto&& [type_id, status] = *component_iter;
-        auto storage_type        = components.unsafe_get(type_id).storage_type();
-        if (storage_type == StorageType::Table) {
-            Dense& dense = table.unsafe_dense_mut(type_id);
-            void* ptr    = dense.unsafe_get_mut(row);  // resize uninitialized already called
-            if (status == ComponentStatus::Added) {
-                write_component(ptr);
-                dense.unsafe_added_tick_mut(row)    = tick;
-                dense.unsafe_modified_tick_mut(row) = tick;
-            } else if (insert_mode == InsertMode::Replace) {
-                // manually destroy existing component before replacing
-                dense.type_info().destruct(ptr);
-                write_component(ptr);
-                dense.unsafe_modified_tick_mut(row) = tick;
-            } else {
-                // keep existing, do nothing
-            }
-        } else {
-            ComponentSparseSet& sparse_set = sparse_sets.unsafe_get_mut(type_id);
-            assert(((status == ComponentStatus::Added) == !sparse_set.contains(entity)));
-            if (status == ComponentStatus::Added || insert_mode == InsertMode::Replace) {
-                sparse_set.construct(entity, tick, [&](void* ptr) { write_component(ptr); });
-            } else {
-                // keep existing, do nothing
-            }
-        }
-        ++component_iter;
-    });
-
-    for (auto&& rc : required_components) {
-        (*rc)(table, sparse_sets, tick, row, entity);
-    }
 }
 
 ArchetypeId internal::BundleInfo::insert_bundle_into_archetype(Archetypes& archetypes,
@@ -128,7 +78,7 @@ ArchetypeId internal::BundleInfo::insert_bundle_into_archetype(Archetypes& arche
         } else {
             added_components.push_back(type_id);
             component_status.push_back(ComponentStatus::Added);
-            auto storage_type = components.get(type_id).value().get().storage_type();
+            auto storage_type = components.get_info(type_id).value().get().storage_type();
             if (storage_type == StorageType::Table) {
                 new_table_components.push_back(type_id);
             } else {
@@ -144,7 +94,7 @@ ArchetypeId internal::BundleInfo::insert_bundle_into_archetype(Archetypes& arche
         }
         added_required_components.push_back(_required_components[index]);
         added_components.push_back(type_id);
-        auto storage_type = components.get(type_id).value().get().storage_type();
+        auto storage_type = components.get_info(type_id).value().get().storage_type();
         if (storage_type == StorageType::Table) {
             new_table_components.push_back(type_id);
         } else {
@@ -168,7 +118,7 @@ ArchetypeId internal::BundleInfo::insert_bundle_into_archetype(Archetypes& arche
         } else {
             new_table_components.insert_range(new_table_components.end(), archetype.table_components());
             std::sort(new_table_components.begin(), new_table_components.end());
-            new_table_id     = storage.tables.get_id_or_insert(new_table_components);
+            new_table_id     = storage.tables.get_id_or_insert(new_table_components, components);
             table_components = std::move(new_table_components);
         }
         std::vector<TypeId> sparse_components = std::move(new_sparse_components);
@@ -212,7 +162,7 @@ std::optional<ArchetypeId> internal::BundleInfo::remove_bundle_from_archetype(Ar
         for (auto&& type_id : explicit_components()) {
             if (archetype.contains(type_id)) {
                 // only remove if it exists in the archetype
-                auto storage_type = components.get(type_id).value().get().storage_type();
+                auto storage_type = components.get_info(type_id).value().get().storage_type();
                 if (storage_type == StorageType::Table) {
                     table_components_set.erase(type_id);
                     table_changed = true;
@@ -231,7 +181,7 @@ std::optional<ArchetypeId> internal::BundleInfo::remove_bundle_from_archetype(Ar
         if (!table_changed) {
             next_table_id = archetype.table_id();
         } else {
-            next_table_id = storage.tables.get_id_or_insert(next_table_components);
+            next_table_id = storage.tables.get_id_or_insert(next_table_components, components);
         }
     }
     ArchetypeId next_archetype_id =
@@ -256,7 +206,7 @@ internal::BundleId internal::Bundles::init_dynamic_info(Storage& storage,
     } else {
         BundleId new_id                   = static_cast<BundleId>(_bundle_infos.size());
         std::vector<StorageType> storages = std::ranges::to<std::vector<StorageType>>(std::views::transform(
-            ids, [&](TypeId type_id) { return components.get(type_id).value().get().storage_type(); }));
+            ids, [&](TypeId type_id) { return components.get_info(type_id).value().get().storage_type(); }));
         BundleInfo info                   = BundleInfo::create("dynamic bundle", storage, components, ids, new_id);
         _bundle_infos.emplace_back(std::move(info));
         _dynamic_bundle_storages.emplace(new_id, std::move(storages));
@@ -274,7 +224,7 @@ internal::BundleId internal::Bundles::init_component_info(Storage& storage,
         BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
         BundleInfo info = BundleInfo::create("component bundle", storage, components, {type_id}, new_id);
         _bundle_infos.emplace_back(std::move(info));
-        StorageType storage_type = components.get(type_id).value().get().storage_type();
+        StorageType storage_type = components.get_info(type_id).value().get().storage_type();
         _dynamic_component_storages.emplace(new_id, storage_type);
         _dynamic_component_ids.emplace(type_id, new_id);
         return new_id;
@@ -356,11 +306,11 @@ EntityLocation internal::BundleRemover::remove(Entity entity, EntityLocation loc
         location = dest_archetype.allocate(entity, result.table_row);
     }
     for (auto&& type_id : bundle_info.explicit_components()) {
-        world_components(*world_).get(type_id).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(*world_).get_info(type_id).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             // Not registered component will be ignored
             auto storage_type = info.storage_type();
             if (storage_type == StorageType::SparseSet) {
-                auto& sparse_set = world_storage_mut(*world_).sparse_sets.get_mut(type_id).value().get();
+                auto& sparse_set = world_storage_mut(*world_).sparse_sets.get_mut(type_id.get()).value().get();
                 if (sparse_set.contains(entity)) sparse_set.remove(entity);
             }
             return true;
@@ -392,94 +342,6 @@ internal::BundleInserter internal::BundleInserter::create_with_id(World& world,
     return inserter;
 }
 
-EntityLocation internal::BundleInserter::insert(Entity entity,
-                                                EntityLocation location,
-                                                BundleRef bundle,
-                                                InsertMode insert_mode) const {
-    assert(location.archetype_id == archetype_->id());
-    auto& bundle_info         = *bundle_info_;
-    auto& dest_archetype      = world_archetypes_mut(*world_).unsafe_get_mut(archetype_after_insert_->archetype_id);
-    const bool same_archetype = (archetype_->id() == dest_archetype.id());
-    const bool same_table     = (archetype_->table_id() == dest_archetype.table_id());
-    const bool should_replace = insert_mode == InsertMode::Replace;
-
-    // trigger on_replace if replacing existing components in the bundle
-    if (should_replace) {
-        world_trigger_on_replace(*world_, *archetype_, entity, archetype_after_insert_->existing());
-        world_trigger_on_remove(*world_, *archetype_, entity, archetype_after_insert_->existing());
-    }
-    location = world_entities(*world_).unsafe_get(entity);  // in case it may be changed by on_replace
-
-    location = [&] {
-        if (same_archetype) {
-            // same archetype, just write components in place
-            bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets, world_type_registry(*world_),
-                                         world_components(*world_), archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components, entity, location.table_idx,
-                                         change_tick_, bundle, insert_mode);
-            // location not changed
-            return location;
-        } else if (same_table) {
-            // table not changed, but archetype changed due to sparse components
-            auto result = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = world_entities(*world_).unsafe_get(swapped_entity);
-                swapped_location.archetype_idx = location.archetype_idx;
-                world_entities_mut(*world_).set(swapped_entity.index, swapped_location);
-            }
-            auto new_location = dest_archetype.allocate(entity, result.table_row);
-            world_entities_mut(*world_).set(entity.index, new_location);
-            bundle_info.write_components(*table_, world_storage_mut(*world_).sparse_sets, world_type_registry(*world_),
-                                         world_components(*world_), archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components, entity, result.table_row,
-                                         change_tick_, bundle, insert_mode);
-            return new_location;
-        } else {
-            auto& new_table = world_storage_mut(*world_).tables.unsafe_get_mut(dest_archetype.table_id());
-            auto& table     = *table_;
-            auto result     = archetype_->swap_remove(location.archetype_idx);
-            if (result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity            = result.swapped_entity.value();
-                auto swapped_location          = world_entities(*world_).unsafe_get(swapped_entity);
-                swapped_location.archetype_idx = location.archetype_idx;
-                world_entities_mut(*world_).set(swapped_entity.index, swapped_location);
-            }
-            auto move_result  = table.move_to(result.table_row, new_table);
-            auto new_location = dest_archetype.allocate(entity, move_result.new_index);
-            world_entities_mut(*world_).set(entity.index, new_location);
-            if (move_result.swapped_entity) {
-                // swapped entity should update its location
-                auto swapped_entity        = move_result.swapped_entity.value();
-                auto swapped_location      = world_entities(*world_).unsafe_get(swapped_entity);
-                swapped_location.table_idx = result.table_row;
-                world_entities_mut(*world_).set(swapped_entity.index, swapped_location);
-                auto& swapped_archetype = world_archetypes_mut(*world_).unsafe_get_mut(swapped_location.archetype_id);
-                swapped_archetype.set_entity_table_row(swapped_location.archetype_idx, swapped_location.table_idx);
-            }
-            bundle_info.write_components(new_table, world_storage_mut(*world_).sparse_sets,
-                                         world_type_registry(*world_), world_components(*world_),
-                                         archetype_after_insert_->iter_status(),
-                                         archetype_after_insert_->required_components, entity, move_result.new_index,
-                                         change_tick_, bundle, insert_mode);
-            return new_location;
-        }
-    }();
-    // trigger on_add for newly added components in the bundle
-    world_trigger_on_add(*world_, dest_archetype, entity, archetype_after_insert_->added());
-    // trigger on_insert for newly added components in the bundle and existing components if replaced
-    if (should_replace) {
-        world_trigger_on_insert(*world_, dest_archetype, entity, archetype_after_insert_->inserted());
-    } else {
-        world_trigger_on_insert(*world_, dest_archetype, entity, archetype_after_insert_->added());
-    }
-    location = world_entities(*world_).unsafe_get(entity);  // in case it may be changed by on_add or on_insert
-
-    return location;
-}
-
 internal::BundleSpawner internal::BundleSpawner::create_with_id(World& world, BundleId bundle_id, Tick tick) {
     auto& bundles      = world_bundles_mut(world);
     auto& components   = world_components_mut(world);
@@ -505,26 +367,4 @@ void internal::BundleSpawner::reserve_storage(std::size_t additional) {
     table.reserve(table.size() + additional);
     archetype.reserve(archetype.size() + additional);
 }
-EntityLocation internal::BundleSpawner::spawn_non_exist(Entity entity, BundleRef bundle) {
-    auto& bundle_info = *bundle_info_;
-    auto& archetype   = *archetype_;
-    auto& table       = *table_;
-    TableRow row      = table.allocate(entity);
-    auto location     = archetype.allocate(entity, row);
-    world_entities_mut(*world_).set(entity.index, location);
-    auto spawn_bundle_status = std::ranges::to<std::vector>(std::views::take(
-        std::views::repeat(ComponentStatus::Added), std::ranges::size(bundle_info.explicit_components())));
-    bundle_info.write_components(table, world_storage_mut(*world_).sparse_sets, world_type_registry(*world_),
-                                 world_components(*world_), spawn_bundle_status,
-                                 bundle_info.required_component_constructors(), entity, row, change_tick_, bundle,
-                                 InsertMode::Replace);
-    // trigger on_add for newly added components in the bundle
-    world_trigger_on_add(*world_, archetype, entity, archetype.components());
-    // trigger on_insert for newly added components in the bundle
-    world_trigger_on_insert(*world_, archetype, entity, archetype.components());
-
-    location = world_entities(*world_).unsafe_get(entity);  // in case it may be changed by on_add or on_insert
-    return location;
-}
-
 }  // namespace epix::ecs

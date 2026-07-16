@@ -10,6 +10,7 @@
 #include <utility>
 #endif
 
+#include <epix/ecs/component/components.hpp>
 #include <epix/ecs/storage/sparse_set.hpp>
 
 namespace epix::ecs {
@@ -161,39 +162,33 @@ EPIX_EXPORT struct ResourceData {
 };
 
 EPIX_EXPORT struct Resources {
-   public:
-    Resources(std::shared_ptr<TypeRegistry> registry) : registry(std::move(registry)) {}
-
-    std::size_t resource_count(this const Resources& self) noexcept { return self.resources.size(); }
-    bool empty(this const Resources& self) noexcept { return self.resources.empty(); }
-    auto iter(this Resources& self) { return self.resources.iter(); }
-    void clear(this Resources& self) { self.resources.clear(); }
-
-    std::optional<std::reference_wrapper<const ResourceData>> get(this const Resources& self,
-                                                                  TypeId resource_id) noexcept {
-        return self.resources.get(resource_id);
+    std::size_t resource_count() const noexcept { return resources.size(); }
+    bool empty() const noexcept { return resources.empty(); }
+    auto iter() { return resources.iter(); }
+    void clear() { resources.clear(); }
+    std::optional<std::reference_wrapper<const ResourceData>> get(TypeId resource_id) const noexcept {
+        return resources.get(resource_id);
     }
-    std::optional<std::reference_wrapper<ResourceData>> get_mut(this Resources& self, TypeId resource_id) noexcept {
-        return self.resources.get_mut(resource_id);
+    std::optional<std::reference_wrapper<ResourceData>> get_mut(TypeId resource_id) noexcept {
+        return resources.get_mut(resource_id);
     }
-
-    bool initialize(this Resources& self, TypeId resource_id) {
-        if (!self.resources.contains(resource_id)) {
-            const ::epix::meta::type_info& type_info = self.registry->type_index(resource_id).type_info();
-            self.resources.emplace(resource_id, ResourceData(type_info));
-            return true;
-        }
-        return false;
-    }
-
-    void check_change_ticks(this Resources& self, Tick tick) {
-        for (auto&& [_, resource] : self.resources.iter_mut()) {
-            resource.check_change_ticks(tick);
-        }
-    }
+    ResourceData& initialize(TypeId resource_id, const Components& components);
+    void check_change_ticks(Tick tick);
 
    private:
-    std::shared_ptr<TypeRegistry> registry;
     SparseSet<std::size_t, ResourceData> resources;
 };
+
+inline void Resources::check_change_ticks(Tick tick) {
+    for (auto&& [_, resource] : resources.iter_mut()) resource.check_change_ticks(tick);
+}
+inline ResourceData& Resources::initialize(TypeId id, const Components& components) {
+    const auto& info = components.get_info(id).value().get();
+    return resources.get_mut(id)
+        .or_else([&] -> std::optional<std::reference_wrapper<ResourceData>> {
+            resources.emplace(id, info.type_index().type_info());
+            return std::ref(resources.unsafe_get_mut(id));
+        })
+        .value();
+}
 }  // namespace epix::ecs

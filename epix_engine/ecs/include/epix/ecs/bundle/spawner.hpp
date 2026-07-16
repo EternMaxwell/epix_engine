@@ -29,14 +29,33 @@ struct BundleSpawner {
     static BundleSpawner create_with_id(World& world, BundleId bundle_id, Tick tick);
     template <is_bundle T>
     static BundleSpawner create(World& world, Tick tick) {
-        auto& bundles = world_bundles_mut(world);
-        BundleId bundle_id =
-            bundles.register_info<T>(world_type_registry(world), world_components_mut(world), world_storage_mut(world));
+        auto& bundles      = world_bundles_mut(world);
+        auto registrator   = world_registrator(world);
+        BundleId bundle_id = bundles.register_info<T>(registrator, world_storage_mut(world));
         return create_with_id(world, bundle_id, tick);
     }
 
     void reserve_storage(std::size_t additional);
-    EntityLocation spawn_non_exist(Entity entity, BundleRef bundle);
+    EntityLocation spawn_non_exist(Entity entity, is_bundle auto&& bundle) {
+        auto& bundle_info = *bundle_info_;
+        auto& archetype   = *archetype_;
+        auto& table       = *table_;
+        TableRow row      = table.allocate(entity);
+        auto location     = archetype.allocate(entity, row);
+        world_entities_mut(*world_).set(entity.index, location);
+        auto spawn_bundle_status = std::views::take(std::views::repeat(ComponentStatus::Added),
+                                                    std::ranges::size(bundle_info.explicit_components()));
+        bundle_info.write_components(table, world_storage_mut(*world_).sparse_sets, world_components(*world_),
+                                     spawn_bundle_status, bundle_info.required_component_constructors(), entity, row,
+                                     change_tick_, bundle, InsertMode::Replace);
+        // trigger on_add for newly added components in the bundle
+        world_trigger_on_add(*world_, archetype, entity, archetype.components());
+        // trigger on_insert for newly added components in the bundle
+        world_trigger_on_insert(*world_, archetype, entity, archetype.components());
+
+        location = world_entities(*world_).unsafe_get(entity);  // in case it may be changed by on_add or on_insert
+        return location;
+    }
 
    private:
     World* world_ = nullptr;

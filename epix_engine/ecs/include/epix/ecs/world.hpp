@@ -25,7 +25,7 @@
 #include <epix/ecs/entities.hpp>
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/type_id.hpp>
 #include <epix/ecs/world/commands.hpp>
 #include <epix/ecs/world/decl.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
@@ -38,11 +38,10 @@ namespace epix::ecs {
  *  and querying components. Supports change detection via ticks. */
 EPIX_EXPORT struct World {
    public:
-    World(WorldId id, std::shared_ptr<TypeRegistry> type_registry = std::make_shared<TypeRegistry>())
+    World(WorldId id)
         : _id(id),
-          _type_registry(type_registry),
-          _components(type_registry),
-          _storage(type_registry),
+          _components(),
+          _storage(),
           _change_tick(std::make_unique<std::atomic<std::uint32_t>>(1)),
           _last_change_tick(0) {}
     World(const World&)            = delete;
@@ -52,10 +51,10 @@ EPIX_EXPORT struct World {
 
     /** @brief Get the world's unique identifier. */
     WorldId id() const noexcept { return _id; }
-    /** @brief Get a const reference to the type registry. */
-    const TypeRegistry& type_registry() const noexcept { return *_type_registry; }
-    /** @brief Get a shared pointer to the type registry. */
-    std::shared_ptr<TypeRegistry> type_registry_ptr() const noexcept { return _type_registry; }
+    ComponentsRegistrator registrator() { return ComponentsRegistrator(_components, _component_ids); }
+    ComponentsQueuedRegistrator queued_registrator() const {
+        return ComponentsQueuedRegistrator(_components, _component_ids);
+    }
     /** @brief Get a const reference to the component metadata store. */
     const Components& components() const noexcept { return _components; }
     /** @brief Get a mutable reference to the component metadata store. */
@@ -138,8 +137,8 @@ EPIX_EXPORT struct World {
     template <typename T, typename... Args>
         requires std::constructible_from<T, Args&&...>
     void emplace_resource(Args&&... args) {
-        auto id = _type_registry->type_id<T>();
-        _storage.resources.initialize(id);
+        auto id = registrator().register_resource<T>();
+        _storage.resources.initialize(id, _components);
         _storage.resources.get_mut(id).value().get().template emplace<T>(change_tick(), std::forward<Args>(args)...);
     }
     /** @brief Insert a resource by moving or copying the given value.
@@ -157,8 +156,8 @@ EPIX_EXPORT struct World {
     TypeId init_resource()
         requires internal::is_from_world<T>
     {
-        auto id = _type_registry->type_id<T>();
-        _storage.resources.initialize(id);
+        auto id = registrator().register_resource<T>();
+        _storage.resources.initialize(id, _components);
         _storage.resources.get_mut(id).value().get().construct(change_tick(), [this, id](void* dest) {
             try {
                 internal::FromWorld<T>::emplace(dest, *this);
@@ -187,7 +186,7 @@ EPIX_EXPORT struct World {
      *  @tparam T Resource type. */
     template <typename T>
     bool remove_resource() {
-        return remove_resource(_type_registry->type_id<T>());
+        return _components.get_valid_id<T>().and_then(std::bind_front(&World::remove_resource, this)).value_or(false);
     }
     /** @brief Remove and return a resource by type, if it exists.
      *  @tparam T Movable resource type.
@@ -196,27 +195,27 @@ EPIX_EXPORT struct World {
     std::optional<T> take_resource()
         requires std::movable<T>
     {
-        return _storage.resources.get_mut(_type_registry->type_id<T>())
-            .and_then([](ResourceData& res) -> std::optional<T> { return res.take<T>(); });
+        return _components.get_valid_id<T>()
+            .and_then(std::bind_front(&Resources::get_mut, std::ref(_storage.resources)))
+            .and_then(&ResourceData::take<T>);
     }
     /** @brief Get a const reference to a resource, if it exists.
      *  @tparam T Resource type.
      *  @return Optional const reference wrapper. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
-        return _storage.resources.get(_type_registry->type_id<T>())
-            .and_then([&](const ResourceData& res) -> std::optional<std::reference_wrapper<const T>> {
-                return res.get_as<T>();
-            });
+        return _components.get_valid_id<T>()
+            .and_then(std::bind_front(&Resources::get, std::ref(_storage.resources)))
+            .and_then(&ResourceData::get_as<T>);
     }
     /** @brief Get a mutable reference to a resource, if it exists.
      *  @tparam T Resource type.
      *  @return Optional mutable reference wrapper. */
     template <typename T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
-        return _storage.resources.get_mut(_type_registry->type_id<T>())
-            .and_then(
-                [&](ResourceData& res) -> std::optional<std::reference_wrapper<T>> { return res.get_as_mut<T>(); });
+        return _components.get_valid_id<T>()
+            .and_then(std::bind_front(&Resources::get_mut, std::ref(_storage.resources)))
+            .and_then(&ResourceData::get_as_mut<T>);
     }
     /** @brief Get a const reference to a resource. Throws if not present.
      *  @tparam T Resource type. */
@@ -310,7 +309,7 @@ EPIX_EXPORT struct World {
 
     void trigger_on_add(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
         for (auto&& target : targets) {
-            _components.get(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
+            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_add) {
                     info.hooks().on_add(*this, HookContext{.entity = entity, .component_id = target});
                 }
@@ -320,7 +319,7 @@ EPIX_EXPORT struct World {
     }
     void trigger_on_insert(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
         for (auto&& target : targets) {
-            _components.get(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
+            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_insert) {
                     info.hooks().on_insert(*this, HookContext{.entity = entity, .component_id = target});
                 }
@@ -330,7 +329,7 @@ EPIX_EXPORT struct World {
     }
     void trigger_on_replace(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
         for (auto&& target : targets) {
-            _components.get(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
+            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_replace) {
                     info.hooks().on_replace(*this, HookContext{.entity = entity, .component_id = target});
                 }
@@ -340,7 +339,7 @@ EPIX_EXPORT struct World {
     }
     void trigger_on_remove(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
         for (auto&& target : targets) {
-            _components.get(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
+            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_remove) {
                     info.hooks().on_remove(*this, HookContext{.entity = entity, .component_id = target});
                 }
@@ -350,7 +349,7 @@ EPIX_EXPORT struct World {
     }
     void trigger_on_despawn(const Archetype& archetype, Entity entity, internal::type_id_view auto&& targets) {
         for (auto&& target : targets) {
-            _components.get(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
+            _components.get_info(target).and_then([&](const internal::ComponentInfo& info) -> std::optional<bool> {
                 if (info.hooks().on_despawn) {
                     info.hooks().on_despawn(*this, HookContext{.entity = entity, .component_id = target});
                 }
@@ -413,8 +412,8 @@ EPIX_EXPORT struct World {
 
    protected:
     WorldId _id;
-    std::shared_ptr<TypeRegistry> _type_registry;
     Components _components;
+    ComponentIds _component_ids;
     Entities _entities;
     Storage _storage;
     Archetypes _archetypes;
@@ -430,8 +429,7 @@ struct DeferredWorld {
     DeferredWorld(World& world) noexcept : world_(&world) {}
     /** @brief Get the world's unique identifier. */
     WorldId id() const noexcept { return world_->id(); }
-    /** @brief Get a const reference to the type registry. */
-    const TypeRegistry& type_registry() const noexcept { return world_->type_registry(); }
+    ComponentsQueuedRegistrator queued_registrator() const noexcept { return world_->queued_registrator(); }
     /** @brief Get a const reference to the component metadata store. */
     const Components& components() const noexcept { return world_->components(); }
     /** @brief Get a const reference to the entity allocator. */

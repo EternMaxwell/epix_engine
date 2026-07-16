@@ -61,9 +61,15 @@ struct WorldQuery<With<Ts...>> {
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_with(id); });
     }
-    static State init_state(World& world) { return State{internal::world_type_registry(world).type_id<Ts>()...}; }
+    static State init_state(World& world) {
+        return State{internal::world_registrator(world).register_component<Ts>()...};
+    }
     static std::optional<State> get_state(const Components& components) {
-        return State{components.registry().type_id<Ts>()...};
+        auto ids = std::array{components.get_id<Ts>()...};
+        if (!std::ranges::all_of(ids, &std::optional<TypeId>::has_value)) return std::nullopt;
+        return [&]<std::size_t... I>(std::index_sequence<I...>) {
+            return std::array{*std::get<I>(ids)...};
+        }(std::index_sequence_for<Ts...>{});
     }
     static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return std::ranges::all_of(state, contains_component);
@@ -95,9 +101,15 @@ struct WorldQuery<Without<Ts...>> {
     static void update_access(const State& state, FilteredAccess& access) {
         std::ranges::for_each(state, [&](TypeId id) { access.add_without(id); });
     }
-    static State init_state(World& world) { return State{internal::world_type_registry(world).type_id<Ts>()...}; }
+    static State init_state(World& world) {
+        return State{internal::world_registrator(world).register_component<Ts>()...};
+    }
     static std::optional<State> get_state(const Components& components) {
-        return State{components.registry().type_id<Ts>()...};
+        auto ids = std::array{components.get_id<Ts>()...};
+        if (!std::ranges::all_of(ids, &std::optional<TypeId>::has_value)) return std::nullopt;
+        return [&]<std::size_t... I>(std::index_sequence<I...>) {
+            return std::array{*std::get<I>(ids)...};
+        }(std::index_sequence_for<Ts...>{});
     }
     static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return std::ranges::none_of(state, contains_component);
@@ -274,14 +286,15 @@ struct WorldQuery<Added<T>> {
         access.add_component_read(state.component_id);
     }
     static State init_state(World& world) {
-        return State{.component_id = internal::world_type_registry(world).type_id<T>(),
+        return State{.component_id = internal::world_registrator(world).register_component<T>(),
                      .storage_type = storage_type_of<T>()};
     }
     static std::optional<State> get_state(const Components& components) {
-        auto type_id = components.registry().type_id<T>();
-        return components.get(type_id).transform([type_id](const internal::ComponentInfo& info) {
-            return State{.component_id = type_id, .storage_type = info.storage_type()};
-        });
+        return components.get_id<T>()
+            .and_then(&Components::get_info)
+            .transform([](const internal::ComponentInfo& info) {
+                return State{.component_id = info.type_id(), .storage_type = info.storage_type()};
+            });
     }
     static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state.component_id);

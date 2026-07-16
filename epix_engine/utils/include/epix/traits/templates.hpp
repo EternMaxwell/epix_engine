@@ -27,5 +27,5 @@ EPIX_EXPORT template <typename V, typename T>
 concept constructible_from_tuple = is_constructible_from_tuple<V, T>::value;
 /** @brief Concept that checks whether T is a viewable range whose value type is V. */
 EPIX_EXPORT template <typename T, typename V>
-concept view_of_value = std::ranges::viewable_range<T> && std::same_as<std::ranges::range_value_t<T>, V>;
+concept view_of_value = std::ranges::viewable_range<T> && std::convertible_to<std::ranges::range_reference_t<T>, V>;
 }  // namespace epix::traits

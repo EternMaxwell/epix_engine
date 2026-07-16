@@ -15,5 +15,5 @@
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/system.hpp>
 #include <epix/ecs/tick.hpp>
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/type_id.hpp>
 #include <epix/ecs/world.hpp>

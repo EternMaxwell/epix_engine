@@ -282,8 +282,8 @@ struct WorldQuery<Has<T>> {
     // }
     static void set_access(State&, const FilteredAccess&) noexcept {}
     static void update_access(const State& state, FilteredAccess& access) { access.access_mut().add_archetypal(state); }
-    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static State init_state(World& world) { return internal::world_registrator(world).register_component<T>(); }
+    static std::optional<State> get_state(const Components& components) { return components.get_id<T>(); }
     static bool matches_component_set(const State& state,
                                       internal::contains_component_fn auto&& contains_component) noexcept {
         return true;  // always true, because it is just a marker

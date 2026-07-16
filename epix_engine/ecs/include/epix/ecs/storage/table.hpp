@@ -129,12 +129,11 @@ struct VecHash {
 
 EPIX_EXPORT struct Tables {
    private:
-    std::shared_ptr<TypeRegistry> _type_registry;
     std::unordered_map<std::vector<TypeId>, TableId, internal::VecHash> _table_id_registry;
     std::vector<Table> _tables;
 
    public:
-    explicit Tables(const std::shared_ptr<TypeRegistry>& registry) : _type_registry(registry) {
+    explicit Tables() {
         // empty table is always at index 0
         _tables.emplace_back();
         _table_id_registry.insert({{}, {0}});
@@ -172,14 +171,14 @@ EPIX_EXPORT struct Tables {
                                                          const std::vector<TypeId>& type_ids) noexcept {
         return self.get_id(type_ids).transform([&](std::size_t table_id) { return std::ref(self._tables[table_id]); });
     }
-    Table& get_or_insert(this Tables& self, const std::vector<TypeId>& type_ids) {
-        TableId table_id = self.get_id_or_insert(type_ids);
+    Table& get_or_insert(this Tables& self, const std::vector<TypeId>& type_ids, const Components& components) {
+        TableId table_id = self.get_id_or_insert(type_ids, components);
         return self._tables[table_id];
     }
     std::optional<TableId> get_id(this const Tables& self, const std::vector<TypeId>& type_ids) noexcept {
         return self._table_id_registry.contains(type_ids) ? std::optional(self._table_id_registry.at(type_ids))
                                                           : std::nullopt;
     }
-    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids);
+    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids, const Components& components);
 };
 }  // namespace epix::ecs

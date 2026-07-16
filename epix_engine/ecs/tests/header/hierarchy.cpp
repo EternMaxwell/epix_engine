@@ -8,8 +8,7 @@
 TEST(ecs, hierarchy) {
     using namespace epix::ecs;
 
-    auto registry = std::make_shared<TypeRegistry>();
-    World world(WorldId(1), std::move(registry));
+    World world(WorldId(1));
 
     // spawn a parent entity
     auto parent_mut = world.spawn();

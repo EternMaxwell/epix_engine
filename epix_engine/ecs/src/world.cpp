@@ -3,8 +3,6 @@
 namespace epix::ecs::internal {
 
 WorldId world_id(const World& world) noexcept { return world.id(); }
-const TypeRegistry& world_type_registry(const World& world) noexcept { return world.type_registry(); }
-std::shared_ptr<TypeRegistry> world_type_registry_ptr(const World& world) noexcept { return world.type_registry_ptr(); }
 const Components& world_components(const World& world) noexcept { return world.components(); }
 Components& world_components_mut(World& world) noexcept { return world.components_mut(); }
 const Entities& world_entities(const World& world) noexcept { return world.entities(); }
@@ -24,7 +22,6 @@ void world_flush_commands(World& world) { world.flush_commands(); }
 void world_flush(World& world) { world.flush(); }
 
 WorldId world_id(const DeferredWorld& world) noexcept { return world.id(); }
-const TypeRegistry& world_type_registry(const DeferredWorld& world) noexcept { return world.type_registry(); }
 const Entities& world_entities(const DeferredWorld& world) noexcept { return world.entities(); }
 const Storage& world_storage(const DeferredWorld& world) noexcept { return world.storage(); }
 const Components& world_components(const DeferredWorld& world) noexcept { return world.components(); }

@@ -22,9 +22,10 @@
 #include <epix/ecs/archetype.hpp>
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/type_id.hpp>
 
 namespace epix::ecs {
+
 EPIX_EXPORT template <typename T>
 struct Bundle {};
 
@@ -34,49 +35,17 @@ concept is_bundle = requires(std::decay_t<B>& b) {
         Bundle<std::decay_t<B>>::get_components(
             b, std::declval<utils::function_ref<void(utils::function_ref<void(void*)>)>>())
     } -> std::same_as<void>;
-    { Bundle<std::decay_t<B>>::type_ids(std::declval<const TypeRegistry&>()) } -> internal::type_id_view;
-    { Bundle<std::decay_t<B>>::register_components(std::declval<const TypeRegistry&>(), std::declval<Components&>()) };
+    {
+        Bundle<std::decay_t<B>>::type_ids(std::declval<const Components&>())
+    } -> traits::view_of_value<std::optional<TypeId>>;
+    {
+        Bundle<std::decay_t<B>>::register_components(std::declval<ComponentsRegistrator&>())
+    } -> traits::view_of_value<TypeId>;
 };
 
-EPIX_EXPORT enum class InsertMode {
-    Replace,
-    Keep,
-};
+EPIX_EXPORT enum class InsertMode { Replace, Keep };
 
 namespace internal {
-struct BundleRef {
-   public:
-    BundleRef(is_bundle auto& bundle) {
-        using type     = std::decay_t<decltype(bundle)>;
-        using bundle_t = Bundle<type>;
-        ref            = static_cast<void*>(std::addressof(bundle));
-        static VTable vt{
-            .get_components =
-                [](void* ref, utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) {
-                    type* b = static_cast<type*>(ref);
-                    bundle_t::get_components(*b, write_component);
-                },
-            .type_ids =
-                [](const TypeRegistry& reg) { return std::ranges::to<std::vector<TypeId>>(bundle_t::type_ids(reg)); },
-            .register_components = [](const TypeRegistry& reg,
-                                      Components& comp) { bundle_t::register_components(reg, comp); }};
-        vtable = &vt;
-    }
-    void get_components(utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) {
-        vtable->get_components(ref, write_component);
-    }
-    std::vector<TypeId> type_ids(const TypeRegistry& reg) { return vtable->type_ids(reg); }
-    void register_components(const TypeRegistry& reg, Components& comp) { vtable->register_components(reg, comp); }
-
-   private:
-    struct VTable {
-        void (*get_components)(void*, utils::function_ref<void(utils::function_ref<void(void*)>)>);
-        std::vector<TypeId> (*type_ids)(const TypeRegistry&);  // when calling this function, we always need a
-                                                               // vector, so this won't affect performance
-        void (*register_components)(const TypeRegistry&, Components&);
-    }* vtable;
-    void* ref;
-};
 struct BundleInfo {
    private:
     BundleId _id;
@@ -108,19 +77,52 @@ struct BundleInfo {
     auto all_components() const noexcept { return std::views::all(_component_ids); }
     auto required_component_constructors() const noexcept { return std::views::all(_required_components); }
 
-    void write_components(
-        Table& table,  // The table at row should be previously allocated, either existing or uninitialized
-        SparseSets& sparse_sets,
-        const TypeRegistry& type_registry,
-        const Components& components,
-        std::span<const ComponentStatus> component_statuses,  // status of each explicit component
-        std::span<const RequiredComponentConstructor>
-            required_components,  // the required component constructors for required components needed to be added
-        Entity entity,
-        TableRow row,
-        Tick tick,
-        BundleRef bundle,
-        InsertMode insert_mode = InsertMode::Replace) const;
+    void write_components(Table& table,
+                          SparseSets& sparse_sets,
+                          const Components& components,
+                          traits::view_of_value<ComponentStatus> auto&& component_statuses,
+                          traits::view_of_value<const RequiredComponentConstructor&> auto&& required_components,
+                          Entity entity,
+                          TableRow row,
+                          Tick tick,
+                          is_bundle auto&& bundle,
+                          InsertMode insert_mode = InsertMode::Replace) const {
+        auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
+        auto component_iter           = component_id_status_view.begin();
+        bundle.get_components([&](std::invocable<void*> auto&& write_component) {
+            auto&& [type_id, status] = *component_iter;
+            auto storage_type        = components.get_info(type_id)->get().storage_type();
+            if (storage_type == StorageType::Table) {
+                Dense& dense = table.unsafe_dense_mut(type_id);
+                void* ptr    = dense.unsafe_get_mut(row);  // resize uninitialized already called
+                if (status == ComponentStatus::Added) {
+                    write_component(ptr);
+                    dense.unsafe_added_tick_mut(row)    = tick;
+                    dense.unsafe_modified_tick_mut(row) = tick;
+                } else if (insert_mode == InsertMode::Replace) {
+                    // manually destroy existing component before replacing
+                    dense.type_info().destruct(ptr);
+                    write_component(ptr);
+                    dense.unsafe_modified_tick_mut(row) = tick;
+                } else {
+                    // keep existing, do nothing
+                }
+            } else {
+                ComponentSparseSet& sparse_set = sparse_sets.unsafe_get_mut(type_id);
+                assert(((status == ComponentStatus::Added) == !sparse_set.contains(entity)));
+                if (status == ComponentStatus::Added || insert_mode == InsertMode::Replace) {
+                    sparse_set.construct(entity, tick, [&](void* ptr) { write_component(ptr); });
+                } else {
+                    // keep existing, do nothing
+                }
+            }
+            ++component_iter;
+        });
+
+        for (auto&& rc : required_components) {
+            (*rc)(table, sparse_sets, tick, row, entity);
+        }
+    }
 
     ArchetypeId insert_bundle_into_archetype(Archetypes& archetypes,
                                              Storage& storage,
@@ -154,31 +156,30 @@ struct Bundles {
         return std::nullopt;
     }
     template <is_bundle T>
-    BundleId register_info(const TypeRegistry& type_registry, Components& components, Storage& storage) {
+    BundleId register_info(ComponentsRegistrator& components, Storage& storage) {
         using type   = std::decay_t<T>;
-        auto type_id = type_registry.type_id<type>();
+        auto type_id = components.register_component<type>();
         if (auto it = _bundle_ids.find(type_id); it != _bundle_ids.end()) {
             // already registered
             return it->second;
         }
-        Bundle<type>::register_components(type_registry, components);
+        auto ids = std::ranges::to<std::vector>(Bundle<type>::register_components(components));
         BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
         auto info =
-            BundleInfo::create(meta::type_id<type>().name(), storage, components,
-                               std::ranges::to<std::vector<TypeId>>(Bundle<type>::type_ids(type_registry)), new_id);
+            BundleInfo::create(meta::type_id<type>().name(), storage, components, ids, new_id);
         _bundle_infos.emplace_back(std::move(info));
         _bundle_ids.emplace(type_id, new_id);
         return new_id;
     }
     template <is_bundle T>
-    BundleId register_contributed_info(const TypeRegistry& type_registry, Components& components, Storage& storage) {
+    BundleId register_contributed_info(ComponentsRegistrator& components, Storage& storage) {
         using type   = std::decay_t<T>;
-        auto type_id = type_registry.type_id<type>();
+        auto type_id = components.register_component<type>();
         if (auto it = _contributed_bundle_ids.find(type_id); it != _contributed_bundle_ids.end()) {
             // already registered
             return it->second;
         }
-        BundleId explicit_id = register_info<type>(type_registry, components, storage);
+        BundleId explicit_id = register_info<type>(components, storage);
         BundleId dyn_id      = init_dynamic_info(
             storage, components, std::ranges::to<std::vector<TypeId>>(_bundle_infos[explicit_id].all_components()));
         _contributed_bundle_ids.emplace(type_id, dyn_id);

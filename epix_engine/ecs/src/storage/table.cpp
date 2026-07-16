@@ -1,6 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cassert>
+#include <epix/ecs/component/components.hpp>
 #include <epix/ecs/storage/table.hpp>
 #include <epix/meta.hpp>
 
@@ -48,7 +49,7 @@ Table::MoveReturn Table::move_to(this Table& self, size_t dense_index, Table& ta
     }
 }
 
-TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids) {
+TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids, const Components& components) {
     TableId table_id;
     if (auto it = self._table_id_registry.find(type_ids); it != self._table_id_registry.end()) {
         table_id = it->second;
@@ -58,8 +59,8 @@ TableId Tables::get_id_or_insert(this Tables& self, const std::vector<TypeId>& t
                       type_ids.size());
         self._tables.emplace_back();
         Table& table = self._tables.back();
-        for (size_t type_id : type_ids) {
-            const meta::type_info& type_info = self._type_registry->type_index(type_id).type_info();
+        for (auto type_id : type_ids) {
+            const meta::type_info& type_info = components.get_info(type_id).value().get().type_index().type_info();
             table._denses.emplace(type_id, Dense(type_info));
         }
         self._table_id_registry.insert({type_ids, table_id});

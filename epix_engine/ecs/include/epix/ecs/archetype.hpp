@@ -22,7 +22,7 @@
 
 #include <epix/ecs/component.hpp>
 #include <epix/ecs/entities.hpp>
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/type_id.hpp>
 #include <epix/ecs/world/decl.hpp>
 
 namespace epix::ecs {
@@ -324,7 +324,7 @@ concept type_id_view = std::ranges::sized_range<R> && std::same_as<std::ranges::
                        std::ranges::viewable_range<R>;
 void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
-        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             if (info.hooks().on_add) {
                 info.hooks().on_add(world, HookContext{.entity = entity, .component_id = target});
             }
@@ -334,7 +334,7 @@ void world_trigger_on_add(World& world, const Archetype& archetype, Entity entit
 }
 void world_trigger_on_insert(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
-        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             if (info.hooks().on_insert) {
                 info.hooks().on_insert(world, HookContext{.entity = entity, .component_id = target});
             }
@@ -344,7 +344,7 @@ void world_trigger_on_insert(World& world, const Archetype& archetype, Entity en
 }
 void world_trigger_on_replace(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
-        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             if (info.hooks().on_replace) {
                 info.hooks().on_replace(world, HookContext{.entity = entity, .component_id = target});
             }
@@ -354,7 +354,7 @@ void world_trigger_on_replace(World& world, const Archetype& archetype, Entity e
 }
 void world_trigger_on_remove(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
-        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             if (info.hooks().on_remove) {
                 info.hooks().on_remove(world, HookContext{.entity = entity, .component_id = target});
             }
@@ -364,7 +364,7 @@ void world_trigger_on_remove(World& world, const Archetype& archetype, Entity en
 }
 void world_trigger_on_despawn(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
-        world_components(world).get(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
+        world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             if (info.hooks().on_despawn) {
                 info.hooks().on_despawn(world, HookContext{.entity = entity, .component_id = target});
             }

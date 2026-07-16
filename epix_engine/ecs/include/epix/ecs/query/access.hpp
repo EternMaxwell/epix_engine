@@ -11,7 +11,7 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/type_id.hpp>
 
 namespace epix::ecs {
 /** @brief Tracks which component/resource accesses conflict between systems. */

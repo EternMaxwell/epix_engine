@@ -135,7 +135,6 @@ TEST(ecs, schedule) {
     EXPECT_TRUE(pres.has_value());
 
     // Create world and execute
-    auto registry2 = std::make_shared<TypeRegistry>();
     exec_sched.initialize_systems(world);
     std::println(std::cout, "First execution:");
     exec_sched.execute(world);

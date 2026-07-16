@@ -81,7 +81,29 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
         }(std::make_index_sequence<sizeof...(Ts)>());
     }
 
-    static auto type_ids(const TypeRegistry& registry) {
+    static std::vector<std::optional<TypeId>> type_ids(const Components& components) {
+        std::vector<std::optional<TypeId>> ids;
+        ids.reserve(sizeof...(Ts));
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
+                    using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    using ATuple = std::tuple_element_t<I, storage_type>;
+                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
+                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
+                                  is_bundle<std::tuple_element_t<0, ATuple>>) {
+                        // bundle type
+                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
+                        ids.append_range(BundleType::type_ids(components));
+                    } else {
+                        ids.push_back(components.get_id<T>());
+                    }
+                }(std::integral_constant<std::size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
+        return std::move(ids);
+    }
+    static std::vector<TypeId> register_components(ComponentsRegistrator& components) {
         std::vector<TypeId> ids;
         ids.reserve(sizeof...(Ts));
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
@@ -94,40 +116,39 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                                   is_bundle<std::tuple_element_t<0, ATuple>>) {
                         // bundle type
                         using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
-                        ids.insert_range(ids.end(), BundleType::type_ids(registry));
+                        ids.append_range(BundleType::register_components(components));
                     } else {
-                        ids.push_back(registry.type_id<T>());
+                        ids.push_back(components.register_component<T>());
                     }
                 }(std::integral_constant<std::size_t, Is>{}),
                 ...);
         }(std::make_index_sequence<sizeof...(Ts)>());
-        return std::move(ids);
-    }
-    static void register_components(const TypeRegistry& registry, Components& components) {
-        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            (
-                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
-                    using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
-                    using ATuple = std::tuple_element_t<I, storage_type>;
-                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
-                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
-                                  is_bundle<std::tuple_element_t<0, ATuple>>) {
-                        // bundle type
-                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
-                        BundleType::register_components(registry, components);
-                    } else {
-                        components.register_info<T>();
-                    }
-                }(std::integral_constant<std::size_t, Is>{}),
-                ...);
-        }(std::make_index_sequence<sizeof...(Ts)>());
+        return ids;
     }
 };
 
 template <typename... Ts>
 struct RemoveBundle {
     void get_components(utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) const noexcept {}
-    static auto type_ids(const TypeRegistry& registry) {
+    static std::vector<std::optional<TypeId>> type_ids(const Components& components) {
+        std::vector<std::optional<TypeId>> ids;
+        ids.reserve(sizeof...(Ts));
+        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+            (
+                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
+                    using T = std::tuple_element_t<I, std::tuple<Ts...>>;
+                    if constexpr (is_bundle<T>) {
+                        using BundleType = Bundle<T>;
+                        ids.append_range(BundleType::type_ids(components));
+                    } else {
+                        ids.push_back(components.get_id<T>());
+                    }
+                }(std::integral_constant<std::size_t, Is>{}),
+                ...);
+        }(std::make_index_sequence<sizeof...(Ts)>());
+        return std::move(ids);
+    }
+    static std::vector<TypeId> register_components(ComponentsRegistrator& components) {
         std::vector<TypeId> ids;
         ids.reserve(sizeof...(Ts));
         [&]<std::size_t... Is>(std::index_sequence<Is...>) {
@@ -136,29 +157,14 @@ struct RemoveBundle {
                     using T = std::tuple_element_t<I, std::tuple<Ts...>>;
                     if constexpr (is_bundle<T>) {
                         using BundleType = Bundle<T>;
-                        ids.insert_range(ids.end(), BundleType::type_ids(registry));
+                        ids.append_range(BundleType::register_components(components));
                     } else {
-                        ids.push_back(registry.type_id<T>());
+                        ids.push_back(components.register_component<T>());
                     }
                 }(std::integral_constant<std::size_t, Is>{}),
                 ...);
         }(std::make_index_sequence<sizeof...(Ts)>());
-        return std::move(ids);
-    }
-    static void register_components(const TypeRegistry& registry, Components& components) {
-        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-            (
-                [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
-                    using T = std::tuple_element_t<I, std::tuple<Ts...>>;
-                    if constexpr (is_bundle<T>) {
-                        using BundleType = Bundle<T>;
-                        BundleType::register_components(registry, components);
-                    } else {
-                        components.register_info<T>();
-                    }
-                }(std::integral_constant<std::size_t, Is>{}),
-                ...);
-        }(std::make_index_sequence<sizeof...(Ts)>());
+        return ids;
     }
 };
 }  // namespace internal
@@ -169,10 +175,8 @@ struct Bundle<T> {
                                std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         bundle.get_components(write_component);
     }
-    static auto type_ids(const TypeRegistry& registry) { return T::type_ids(registry); }
-    static void register_components(const TypeRegistry& registry, Components& components) {
-        T::register_components(registry, components);
-    }
+    static auto type_ids(const Components& components) { return T::type_ids(components); }
+    static auto register_components(ComponentsRegistrator& components) { return T::register_components(components); }
 };
 template <typename T>
     requires(traits::specialization_of<T, internal::RemoveBundle>)
@@ -181,10 +185,8 @@ struct Bundle<T> {
                                std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         bundle.get_components(write_component);
     }
-    static auto type_ids(const TypeRegistry& registry) { return T::type_ids(registry); }
-    static void register_components(const TypeRegistry& registry, Components& components) {
-        T::register_components(registry, components);
-    }
+    static auto type_ids(const Components& components) { return T::type_ids(components); }
+    static auto register_components(ComponentsRegistrator& components) { return T::register_components(components); }
 };
 EPIX_EXPORT template <typename... Ts, typename... ArgTuples>
     requires((traits::specialization_of<ArgTuples, std::tuple> && ...) && (sizeof...(Ts) == sizeof...(ArgTuples)) &&

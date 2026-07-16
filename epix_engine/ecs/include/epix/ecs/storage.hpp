@@ -15,12 +15,11 @@ EPIX_EXPORT struct Storage {
     Tables tables;
     Resources resources;
 
-    Storage(const std::shared_ptr<TypeRegistry>& registry)
-        : sparse_sets(registry), tables(registry), resources(registry) {}
+    Storage() : sparse_sets(), tables(), resources() {}
 
     void prepare_component(const internal::ComponentInfo& info) {
         if (info.storage_type() == StorageType::SparseSet) {
-            sparse_sets.get_or_insert(info.type_id());
+            sparse_sets.get_or_insert(info);
         }
     }
 };

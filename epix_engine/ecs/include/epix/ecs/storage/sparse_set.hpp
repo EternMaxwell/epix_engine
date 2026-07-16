@@ -14,11 +14,12 @@
 #include <vector>
 #endif
 
+#include <epix/ecs/component/info.hpp>
 #include <epix/ecs/entities.hpp>
 #include <epix/ecs/storage/dense.hpp>
 #include <epix/ecs/storage/sparse_array.hpp>
 #include <epix/ecs/tick.hpp>
-#include <epix/ecs/type_registry.hpp>
+
 
 namespace epix::ecs {
 EPIX_EXPORT struct ComponentSparseSet {
@@ -256,57 +257,36 @@ struct SparseSet {
 };
 
 EPIX_EXPORT struct SparseSets {
-   private:
-    std::shared_ptr<TypeRegistry> registry;
-    SparseSet<std::size_t, ComponentSparseSet> sets;
-
-   public:
-    SparseSets(const std::shared_ptr<TypeRegistry>& registry) : registry(registry) {}
-
-    std::size_t size(this const SparseSets& self) noexcept { return self.sets.size(); }
-    bool empty(this const SparseSets& self) noexcept { return self.sets.empty(); }
-
-    auto iter(this const SparseSets& self) { return self.sets.iter(); }
-    auto iter_mut(this SparseSets& self) { return self.sets.iter_mut(); }
-
-    std::optional<std::reference_wrapper<const ComponentSparseSet>> get(this const SparseSets& self,
-                                                                        std::size_t type_id) noexcept {
-        return self.sets.get(type_id);
+    std::size_t size() const noexcept { return sets.size(); }
+    bool empty() const noexcept { return sets.empty(); }
+    auto iter() const { return sets.iter(); }
+    auto iter_mut() { return sets.iter_mut(); }
+    std::optional<std::reference_wrapper<const ComponentSparseSet>> get(std::size_t type_id) const noexcept {
+        return sets.get(type_id);
     }
-    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(this SparseSets& self,
-                                                                      std::size_t type_id) noexcept {
-        return self.sets.get_mut(type_id);
+    std::optional<std::reference_wrapper<ComponentSparseSet>> get_mut(std::size_t type_id) noexcept {
+        return sets.get_mut(type_id);
     }
-    ComponentSparseSet& unsafe_get_mut(this SparseSets& self, std::size_t type_id) noexcept {
-        return self.sets.unsafe_get_mut(type_id);
-    }
-    void insert(this SparseSets& self, std::size_t type_id, ComponentSparseSet set) {
-        self.sets.emplace(type_id, std::move(set));
-    }
-    void insert(this SparseSets& self, std::size_t type_id) {
-        self.sets.emplace(type_id, ComponentSparseSet(self.registry->type_index(type_id).type_info()));
-    }
-
-    ComponentSparseSet& get_or_insert(this SparseSets& self, std::size_t type_id) {
-        // This function will not throw since the type id is get from the registry, so it should have been registered.
-        return self.sets.get_mut(type_id)
-            .or_else([&]() -> std::optional<std::reference_wrapper<ComponentSparseSet>> {
-                self.insert(type_id, ComponentSparseSet(self.registry->type_index(type_id).type_info()));
-                return self.sets.get_mut(type_id);
+    ComponentSparseSet& unsafe_get_mut(std::size_t type_id) noexcept { return sets.unsafe_get_mut(type_id); }
+    ComponentSparseSet& get_or_insert(const internal::ComponentInfo& info) {
+        return sets.get_mut(info.type_id())
+            .or_else([this, &info] -> std::optional<std::reference_wrapper<ComponentSparseSet>> {
+                sets.emplace(info.type_id().get(), info.type_index().type_info());
+                return std::ref(sets.unsafe_get_mut(info.type_id()));
             })
-            .value()
-            .get();
+            .value();
     }
+    void insert(std::size_t type_id, ComponentSparseSet set) { sets.emplace(type_id, std::move(set)); }
+    void clear_entities() {
+        for (auto&& [_, set] : sets.iter_mut()) set.clear();
+    }
+    void check_change_ticks(Tick tick) noexcept;
 
-    void clear_entities(this SparseSets& self) {
-        for (auto&& [_, set] : self.sets.iter_mut()) {
-            set.clear();
-        }
-    }
-    void check_change_ticks(this SparseSets& self, Tick tick) noexcept {
-        for (auto&& [_, set] : self.sets.iter_mut()) {
-            set.check_change_ticks(tick);
-        }
-    }
+   private:
+    SparseSet<std::size_t, ComponentSparseSet> sets;
 };
+
+inline void SparseSets::check_change_ticks(Tick tick) noexcept {
+    for (auto&& [_, set] : sets.iter_mut()) set.check_change_ticks(tick);
+}
 }  // namespace epix::ecs

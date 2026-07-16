@@ -9,7 +9,7 @@
 
 #include <epix/ecs/entities.hpp>
 #include <epix/ecs/tick.hpp>
-#include <epix/ecs/type_registry.hpp>
+#include <epix/ecs/component.hpp>
 
 namespace epix::ecs {
 /** @brief Forward declaration of the ECS world. */
@@ -32,14 +32,14 @@ namespace internal {
 struct Bundles;
 struct CommandQueue;
 WorldId world_id(const World& world) noexcept;
-const TypeRegistry& world_type_registry(const World& world) noexcept;
-std::shared_ptr<TypeRegistry> world_type_registry_ptr(const World& world) noexcept;
 const Entities& world_entities(const World& world) noexcept;
 Entities& world_entities_mut(World& world) noexcept;
 const Storage& world_storage(const World& world) noexcept;
 Storage& world_storage_mut(World& world) noexcept;
 const Components& world_components(const World& world) noexcept;
 Components& world_components_mut(World& world) noexcept;
+ComponentsRegistrator world_registrator(World& world) noexcept;
+ComponentsQueuedRegistrator world_queued_registrator(World& world) noexcept;
 const Archetypes& world_archetypes(const World& world) noexcept;
 Archetypes& world_archetypes_mut(World& world) noexcept;
 const Bundles& world_bundles(const World& world) noexcept;
@@ -53,10 +53,10 @@ void world_flush_commands(World& world);
 void world_flush(World& world);
 
 WorldId world_id(const DeferredWorld& world) noexcept;
-const TypeRegistry& world_type_registry(const DeferredWorld& world) noexcept;
 const Entities& world_entities(const DeferredWorld& world) noexcept;
 const Storage& world_storage(const DeferredWorld& world) noexcept;
 const Components& world_components(const DeferredWorld& world) noexcept;
+ComponentsQueuedRegistrator world_queued_registrator(const DeferredWorld& world) noexcept;
 const Archetypes& world_archetypes(const DeferredWorld& world) noexcept;
 const Bundles& world_bundles(const DeferredWorld& world) noexcept;
 CommandQueue& world_command_queue(DeferredWorld& world) noexcept;

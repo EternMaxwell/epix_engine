@@ -31,8 +31,7 @@ struct epix::ecs::sparse_component<D> : std::true_type {};
 using namespace epix::ecs;
 
 TEST(ecs, entity_ref) {
-    auto registry = std::make_shared<TypeRegistry>();
-    World world(0, registry);
+    World world(0);
 
     // register components
     // TypeId ta = registry->type_id<A>();

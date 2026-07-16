@@ -62,15 +62,20 @@ EPIX_EXPORT struct EntityRef {
     /** @brief Check whether this entity has a component of type T. */
     template <typename T>
     bool contains() const {
-        return contains_id(internal::world_type_registry(*world_).type_id<T>());
+        return internal::world_components(*world_)
+            .get_id<T>()
+            .transform(std::bind_front(&EntityRef::contains_id, this))
+            .value_or(false);
     }
     /** @brief Get an immutable reference to the component of type T, if present. */
     template <typename T>
     std::optional<std::reference_wrapper<const T>> get() const {
-        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
-        return internal::world_components(*world_).get(type_id).and_then(
-            [&](const internal::ComponentInfo& info) -> std::optional<std::reference_wrapper<const T>> {
+        const Components& components = internal::world_components(*world_);
+        return components.get_valid_id<T>()
+            .and_then(std::bind_front(&Components::get_info, std::ref(components)))
+            .and_then([&](const internal::ComponentInfo& info) -> std::optional<std::reference_wrapper<const T>> {
                 auto storage_type = info.storage_type();
+                auto type_id      = info.type_id();
                 if (storage_type == StorageType::Table) {
                     return internal::world_storage(*world_)
                         .tables.get(location_.table_id)
@@ -87,36 +92,40 @@ EPIX_EXPORT struct EntityRef {
     /** @brief Get an immutable Ref<T> (with change-detection ticks) for the component. */
     template <typename T>
     std::optional<Ref<T>> get_ref() const {
-        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
-        return internal::world_components(*world_).get(type_id).and_then([&](const internal::ComponentInfo& info) {
-            auto storage_type = info.storage_type();
-            if (storage_type == StorageType::Table) {
-                return internal::world_storage(*world_)
-                    .tables.get(location_.table_id)
-                    .and_then([&](const Table& table) {
-                        return table.get_dense(type_id).and_then([&](const Dense& dense) {
-                            return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
-                                return Ref<T>(&value, Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+        const Components& components = internal::world_components(*world_);
+        return components.get_valid_id<T>()
+            .and_then(std::bind_front(&Components::get_info, std::ref(components)))
+            .and_then([&](const internal::ComponentInfo& info) {
+                auto storage_type = info.storage_type();
+                auto type_id      = info.type_id();
+                if (storage_type == StorageType::Table) {
+                    return internal::world_storage(*world_)
+                        .tables.get(location_.table_id)
+                        .and_then([&](const Table& table) {
+                            return table.get_dense(type_id).and_then([&](const Dense& dense) {
+                                return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
+                                    return Ref<T>(&value,
+                                                  Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
+                                                                   internal::world_last_change_tick(*world_),
+                                                                   internal::world_change_tick(*world_)));
+                                });
+                            });
+                        });
+                } else {
+                    return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
+                        [&](const ComponentSparseSet& cs) {
+                            return cs.get_as<T>(entity_).transform([&](const T& value) {
+                                return Ref<T>(&value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
                                                                        internal::world_last_change_tick(*world_),
                                                                        internal::world_change_tick(*world_)));
                             });
                         });
-                    });
-            } else {
-                return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
-                    [&](const ComponentSparseSet& cs) {
-                        return cs.get_as<T>(entity_).transform([&](const T& value) {
-                            return Ref<T>(&value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                   internal::world_last_change_tick(*world_),
-                                                                   internal::world_change_tick(*world_)));
-                        });
-                    });
-            }
-        });
+                }
+            });
     }
     /** @brief Get the ComponentTicks for a component identified by TypeId. */
     std::optional<ComponentTicks> get_ticks_by_id(TypeId type_id) const {
-        return internal::world_components(*world_).get(type_id).and_then(
+        return internal::world_components(*world_).get_info(type_id).and_then(
             [&](const internal::ComponentInfo& info) -> std::optional<ComponentTicks> {
                 auto storage_type = info.storage_type();
                 if (storage_type == StorageType::Table) {
@@ -135,7 +144,8 @@ EPIX_EXPORT struct EntityRef {
     /** @brief Get the ComponentTicks for a component of type T. */
     template <typename T>
     std::optional<ComponentTicks> get_ticks() const {
-        return get_ticks_by_id(internal::world_type_registry(*world_).type_id<T>());
+        return internal::world_components(*world_).get_id<T>().and_then(
+            std::bind_front(&EntityRef::get_ticks_by_id, this));
     }
 };
 /** @brief Mutable entity reference that extends EntityRef with mutable component access.
@@ -154,33 +164,36 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
     /** @brief Get a mutable Mut<T> (with change-detection ticks) for the component. */
     template <typename T>
     std::optional<Mut<T>> get_mut() {
-        TypeId type_id = internal::world_type_registry(*world_).type_id<T>();
-        return internal::world_components(*world_).get(type_id).and_then([&](const internal::ComponentInfo& info) {
-            auto storage_type = info.storage_type();
-            if (storage_type == StorageType::Table) {
-                return internal::world_storage_mut(*world_)
-                    .tables.get_mut(location_.table_id)
-                    .and_then([&](Table& table) {
-                        return table.get_dense_mut(type_id).and_then([&](Dense& dense) {
-                            return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
-                                return Mut<T>(&value,
-                                              TicksMut::from_refs(dense.get_tick_refs(location_.table_idx).value(),
-                                                                  internal::world_last_change_tick(*world_),
-                                                                  internal::world_change_tick(*world_)));
-                            });
-                        });
-                    });
-            } else {
-                return internal::world_storage_mut(*world_).sparse_sets.get_mut(type_id).and_then(
-                    [&](ComponentSparseSet& cs) {
-                        return cs.get_as_mut<T>(entity_).transform([&](T& value) {
-                            return Mut<T>(&value, TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
+        const Components& components = internal::world_components(*world_);
+        return components.get_valid_id<T>()
+            .and_then(std::bind_front(&Components::get_info, std::ref(components)))
+            .and_then([&](const internal::ComponentInfo& info) {
+                auto storage_type = info.storage_type();
+                auto type_id      = info.type_id();
+                if (storage_type == StorageType::Table) {
+                    return internal::world_storage_mut(*world_)
+                        .tables.get_mut(location_.table_id)
+                        .and_then([&](Table& table) {
+                            return table.get_dense_mut(type_id).and_then([&](Dense& dense) {
+                                return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
+                                    return Mut<T>(&value,
+                                                  TicksMut::from_refs(dense.get_tick_refs(location_.table_idx).value(),
                                                                       internal::world_last_change_tick(*world_),
                                                                       internal::world_change_tick(*world_)));
+                                });
+                            });
                         });
-                    });
-            }
-        });
+                } else {
+                    return internal::world_storage_mut(*world_).sparse_sets.get_mut(type_id).and_then(
+                        [&](ComponentSparseSet& cs) {
+                            return cs.get_as_mut<T>(entity_).transform([&](T& value) {
+                                return Mut<T>(&value, TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
+                                                                          internal::world_last_change_tick(*world_),
+                                                                          internal::world_change_tick(*world_)));
+                            });
+                        });
+                }
+            });
     }
 };
 
@@ -248,9 +261,9 @@ EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
     /** @brief Remove components of the given types from this entity. */
     template <typename... Ts>
     void remove() {
+        auto registrator      = internal::world_registrator(*world_);
         internal::BundleId id = internal::world_bundles_mut(*world_).register_info<internal::RemoveBundle<Ts...>>(
-            internal::world_type_registry(*world_), internal::world_components_mut(*world_),
-            internal::world_storage_mut(*world_));
+            registrator, internal::world_storage_mut(*world_));
         remove_bundle(id);
     }
     /** @brief Remove the bundle identified by its BundleId from this entity. */

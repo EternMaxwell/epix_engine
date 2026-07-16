@@ -135,8 +135,8 @@ struct WorldQuery<Ref<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_read(state); }
-    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static State init_state(World& world) { return internal::world_registrator(world).register_component<T>(); }
+    static std::optional<State> get_state(const Components& components) { return components.get_id<T>(); }
     static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state);
     }
@@ -211,8 +211,8 @@ struct WorldQuery<Mut<T>> {
     // }
     static void set_access(State& state, const FilteredAccess& access) {}
     static void update_access(const State& state, FilteredAccess& access) { access.add_component_write(state); }
-    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
-    static std::optional<State> get_state(const Components& components) { return components.registry().type_id<T>(); }
+    static State init_state(World& world) { return internal::world_registrator(world).register_component<T>(); }
+    static std::optional<State> get_state(const Components& components) { return components.get_id<T>(); }
     static bool matches_component_set(const State& state, internal::contains_component_fn auto&& contains_component) {
         return contains_component(state);
     }
@@ -286,7 +286,7 @@ struct SystemParam<Res<T>> : ParamBase {
     using State                    = TypeId;
     using Item                     = Res<T>;
     static constexpr bool readonly = true;
-    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
+    static State init_state(World& world) { return internal::world_registrator(world).register_resource<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_write(state)) {
             throw std::runtime_error(
@@ -331,7 +331,7 @@ struct SystemParam<ResMut<T>> : ParamBase {
     using State                    = TypeId;
     using Item                     = ResMut<T>;
     static constexpr bool readonly = false;
-    static State init_state(World& world) { return internal::world_type_registry(world).type_id<T>(); }
+    static State init_state(World& world) { return internal::world_registrator(world).register_resource<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_read(state)) {
             throw std::runtime_error(std::format(

@@ -91,8 +91,9 @@ EPIX_EXPORT struct Commands {
     template <typename T>
     Commands& remove_resource() {
         command_queue->push([](World& world) {
-            auto resource_id = world.type_registry().type_id<T>();
-            world.storage_mut().resources.get_mut(resource_id).and_then([](ResourceData& data) -> std::optional<bool> {
+            auto resource_id = world.components().get_valid_id<T>();
+            if (!resource_id.has_value()) return;
+            world.storage_mut().resources.get_mut(*resource_id).and_then([](ResourceData& data) -> std::optional<bool> {
                 data.remove();
                 return true;
             });
@@ -104,14 +105,17 @@ EPIX_EXPORT struct Commands {
     template <typename T>
     void replace_resource(untyped_vector data, bool replace_existing = true) {
         command_queue->push([data = std::move(data), replace_existing](World& world) mutable {
-            auto resource_id = world.type_registry().type_id<T>();
-            if (!world.storage_mut().resources.initialize(resource_id) && !replace_existing) {
+            auto resource_id = world.components().get_valid_id<T>();
+            if (!resource_id.has_value()) return;
+            if (!world.storage_mut().resources.initialize(*resource_id) && !replace_existing) {
                 return;
             }
-            world.storage_mut().resources.get_mut(resource_id).and_then([&](ResourceData& dest) -> std::optional<bool> {
-                dest.replace(world.change_tick(), std::move(data));
-                return true;
-            });
+            world.storage_mut()
+                .resources.get_mut(*resource_id)
+                .and_then([&](ResourceData& dest) -> std::optional<bool> {
+                    dest.replace(world.change_tick(), std::move(data));
+                    return true;
+                });
         });
     }
 
