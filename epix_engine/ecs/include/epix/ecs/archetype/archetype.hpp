@@ -21,9 +21,9 @@
 #endif
 
 #include <epix/ecs/component.hpp>
-#include <epix/ecs/entities.hpp>
-#include <epix/ecs/type_id.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/entity/entities.hpp>
+#include <epix/ecs/core/type_id.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 namespace internal {

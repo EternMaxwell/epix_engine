@@ -2,7 +2,7 @@
 
 #include <epix/app.hpp>
 #include <epix/app/main_schedule.hpp>
-#include <epix/ecs/labels.hpp>
+#include <epix/ecs/core/labels.hpp>
 
 namespace epix::app {
 using namespace ecs;

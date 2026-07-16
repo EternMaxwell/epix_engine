@@ -9,10 +9,10 @@
 #include <type_traits>
 #endif
 
-#include <epix/ecs/archetype.hpp>
+#include <epix/ecs/archetype/archetype.hpp>
 #include <epix/ecs/component.hpp>
-#include <epix/ecs/tick.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 /** @brief Trait class for types usable as query data elements (e.g. template arguments of Item).

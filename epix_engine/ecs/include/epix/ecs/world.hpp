@@ -22,12 +22,12 @@
 
 #include <epix/ecs/bundle.hpp>
 #include <epix/ecs/component.hpp>
-#include <epix/ecs/entities.hpp>
+#include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/type_id.hpp>
+#include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/world/commands.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
 #include <epix/ecs/world/from_world.hpp>
 

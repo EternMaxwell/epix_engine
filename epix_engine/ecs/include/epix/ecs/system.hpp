@@ -17,7 +17,7 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/labels.hpp>
+#include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/system/commands.hpp>
 #include <epix/ecs/system/from_param.hpp>
 #include <epix/ecs/system/input.hpp>

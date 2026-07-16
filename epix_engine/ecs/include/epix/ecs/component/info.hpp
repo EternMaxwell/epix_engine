@@ -10,7 +10,7 @@
 #include <epix/ecs/component/hooks.hpp>
 #include <epix/ecs/component/required_component.hpp>
 #include <epix/ecs/storage/storage_type.hpp>
-#include <epix/ecs/type_id.hpp>
+#include <epix/ecs/core/type_id.hpp>
 
 namespace epix::ecs {
 

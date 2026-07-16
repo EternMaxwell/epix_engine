@@ -15,7 +15,7 @@
 
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/system.hpp>
-#include <epix/ecs/tick.hpp>
+#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/world.hpp>
 
 namespace epix::ecs::internal {

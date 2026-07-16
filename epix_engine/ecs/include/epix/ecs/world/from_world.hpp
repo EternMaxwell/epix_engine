@@ -10,7 +10,7 @@
 #include <type_traits>
 #endif
 
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 

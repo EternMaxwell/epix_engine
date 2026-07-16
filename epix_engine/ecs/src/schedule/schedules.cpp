@@ -1,6 +1,6 @@
 #include <spdlog/spdlog.h>
 
-#include <epix/ecs/labels.hpp>
+#include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/schedule/schedules.hpp>
 
 namespace epix::ecs {

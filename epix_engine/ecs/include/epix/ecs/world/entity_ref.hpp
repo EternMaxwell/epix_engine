@@ -14,14 +14,14 @@
 #endif
 
 #include <epix/ecs/bundle.hpp>
-#include <epix/ecs/entities.hpp>
-#include <epix/ecs/hierarchy.hpp>
+#include <epix/ecs/entity/entities.hpp>
+#include <epix/ecs/hierarchy/hierarchy.hpp>
 #include <epix/ecs/query/access.hpp>
 #include <epix/ecs/query/decl.hpp>
-#include <epix/ecs/refs.hpp>
+#include <epix/ecs/query/refs.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/tick.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 /**

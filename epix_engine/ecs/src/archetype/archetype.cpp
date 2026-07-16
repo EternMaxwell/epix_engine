@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-#include <epix/ecs/archetype.hpp>
+#include <epix/ecs/archetype/archetype.hpp>
 
 namespace epix::ecs {
 Archetype Archetype::create(internal::ComponentIndex& component_index,

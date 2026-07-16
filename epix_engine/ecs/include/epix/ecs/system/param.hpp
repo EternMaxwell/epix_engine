@@ -19,9 +19,9 @@
 #include <variant>
 #endif
 
-#include <epix/ecs/archetype.hpp>
+#include <epix/ecs/archetype/archetype.hpp>
 #include <epix/ecs/query/access.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 #include <epix/ecs/world/from_world.hpp>
 
 // #include <epix/ecs/world/entity_ref.hpp>

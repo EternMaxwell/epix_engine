@@ -1,6 +1,6 @@
 #include <spdlog/spdlog.h>
 
-#include <epix/ecs/hierarchy.hpp>
+#include <epix/ecs/hierarchy/hierarchy.hpp>
 #include <epix/ecs/world.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
 

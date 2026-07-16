@@ -13,7 +13,7 @@
 #include <epix/ecs/query/iter.hpp>
 #include <epix/ecs/query/state.hpp>
 #include <epix/ecs/system/param.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 /** @brief High-level query handle providing iteration, single-entity lookup, and existence checks.

@@ -15,7 +15,7 @@
 #endif
 
 #include <epix/ecs/component/ids.hpp>
-#include <epix/ecs/type_id.hpp>
+#include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/storage/storage_type.hpp>
 
 namespace epix::ecs {

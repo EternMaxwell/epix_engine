@@ -3,7 +3,7 @@
 #include <unordered_set>
 
 #include <epix/ecs/bundle.hpp>
-#include <epix/ecs/entities.hpp>
+#include <epix/ecs/entity/entities.hpp>
 
 namespace epix::ecs {
 internal::BundleInfo internal::BundleInfo::create(std::string_view bundle_type_name,

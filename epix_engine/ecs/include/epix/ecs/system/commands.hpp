@@ -12,7 +12,7 @@
 #include <variant>
 #endif
 
-#include <epix/ecs/hierarchy.hpp>
+#include <epix/ecs/hierarchy/hierarchy.hpp>
 #include <epix/ecs/storage.hpp>
 #include <epix/ecs/system/param.hpp>
 #include <epix/ecs/world.hpp>

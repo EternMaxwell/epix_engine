@@ -18,7 +18,7 @@
 #include <epix/ecs/component/ids.hpp>
 #include <epix/ecs/component/info.hpp>
 #include <epix/ecs/component/queued.hpp>
-#include <epix/ecs/type_id.hpp>
+#include <epix/ecs/core/type_id.hpp>
 
 namespace epix::ecs {
 EPIX_EXPORT struct ComponentsRegistrator;

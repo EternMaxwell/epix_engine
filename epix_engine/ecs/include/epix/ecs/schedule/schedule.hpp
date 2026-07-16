@@ -22,8 +22,8 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/label.hpp>
-#include <epix/ecs/labels.hpp>
+#include <epix/ecs/core/label.hpp>
+#include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/schedule/queue.hpp>
 #include <epix/ecs/storage.hpp>
 

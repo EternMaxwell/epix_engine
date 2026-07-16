@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <cassert>
-#include <epix/ecs/entities.hpp>
+#include <epix/ecs/entity/entities.hpp>
 
 namespace epix::ecs {
 void Entities::verify_flush() noexcept {

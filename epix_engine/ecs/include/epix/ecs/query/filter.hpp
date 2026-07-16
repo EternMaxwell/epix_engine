@@ -19,7 +19,7 @@
 #include <epix/ecs/query/access.hpp>
 #include <epix/ecs/query/decl.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 template <query_filter... Fs>

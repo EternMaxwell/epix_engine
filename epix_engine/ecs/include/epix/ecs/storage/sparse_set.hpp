@@ -15,10 +15,10 @@
 #endif
 
 #include <epix/ecs/component/info.hpp>
-#include <epix/ecs/entities.hpp>
+#include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/storage/dense.hpp>
 #include <epix/ecs/storage/sparse_array.hpp>
-#include <epix/ecs/tick.hpp>
+#include <epix/ecs/core/tick.hpp>
 
 
 namespace epix::ecs {

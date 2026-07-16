@@ -1,6 +1,6 @@
 #include <spdlog/spdlog.h>
 
-#include <epix/ecs/entities.hpp>
+#include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/world.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
 

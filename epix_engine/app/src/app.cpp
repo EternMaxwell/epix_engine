@@ -7,7 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/app.hpp>
-#include <epix/ecs/labels.hpp>
+#include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/schedule.hpp>
 #include <epix/meta.hpp>
 #include <stacktrace>

@@ -7,8 +7,8 @@
 #include <memory>
 #endif
 
-#include <epix/ecs/entities.hpp>
-#include <epix/ecs/tick.hpp>
+#include <epix/ecs/entity/entities.hpp>
+#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/component.hpp>
 
 namespace epix::ecs {

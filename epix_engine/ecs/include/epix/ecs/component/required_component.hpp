@@ -13,7 +13,7 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/type_id.hpp>
+#include <epix/ecs/core/type_id.hpp>
 
 namespace epix::ecs {
 

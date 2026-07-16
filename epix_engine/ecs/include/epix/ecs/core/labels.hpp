@@ -8,7 +8,7 @@
 #include <type_traits>
 #endif
 
-#include <epix/ecs/label.hpp>
+#include <epix/ecs/core/label.hpp>
 
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \

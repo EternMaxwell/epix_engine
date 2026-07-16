@@ -13,8 +13,8 @@
 #include <epix/ecs/query/fetch.hpp>
 #include <epix/ecs/storage/resource.hpp>
 #include <epix/ecs/system/param.hpp>
-#include <epix/ecs/tick.hpp>
-#include <epix/ecs/world/decl.hpp>
+#include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/detail/world_access.hpp>
 
 namespace epix::ecs {
 

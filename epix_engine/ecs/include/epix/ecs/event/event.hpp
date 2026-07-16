@@ -14,9 +14,9 @@
 #include <utility>
 #endif
 
-#include <epix/ecs/local.hpp>
+#include <epix/ecs/system/local.hpp>
 #include <epix/ecs/system.hpp>
-#include <epix/ecs/tick.hpp>
+#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/world.hpp>
 
 namespace epix::ecs {
