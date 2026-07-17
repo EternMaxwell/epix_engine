@@ -21,8 +21,8 @@
 
 #include <epix/ecs/archetype/archetype.hpp>
 #include <epix/ecs/component.hpp>
-#include <epix/ecs/storage.hpp>
 #include <epix/ecs/core/type_id.hpp>
+#include <epix/ecs/storage.hpp>
 
 namespace epix::ecs {
 
@@ -163,10 +163,9 @@ struct Bundles {
             // already registered
             return it->second;
         }
-        auto ids = std::ranges::to<std::vector>(Bundle<type>::register_components(components));
+        auto ids        = std::ranges::to<std::vector>(Bundle<type>::register_components(components));
         BundleId new_id = static_cast<BundleId>(_bundle_infos.size());
-        auto info =
-            BundleInfo::create(meta::type_id<type>().name(), storage, components, ids, new_id);
+        auto info       = BundleInfo::create(meta::type_id<type>().name(), storage, components, ids, new_id);
         _bundle_infos.emplace_back(std::move(info));
         _bundle_ids.emplace(type_id, new_id);
         return new_id;

@@ -9,8 +9,8 @@
 #endif
 
 #include <epix/ecs/event/events.hpp>
-#include <epix/ecs/system/local.hpp>
 #include <epix/ecs/system.hpp>
+#include <epix/ecs/system/local.hpp>
 
 namespace epix::ecs {
 

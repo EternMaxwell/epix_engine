@@ -14,11 +14,11 @@
 #include <vector>
 #endif
 
+#include <epix/ecs/component/detail/queued_registration.hpp>
+#include <epix/ecs/component/detail/registry_state.hpp>
 #include <epix/ecs/component/hooks.hpp>
 #include <epix/ecs/component/ids.hpp>
 #include <epix/ecs/core/type_id.hpp>
-#include <epix/ecs/component/detail/registry_state.hpp>
-#include <epix/ecs/component/detail/queued_registration.hpp>
 
 namespace epix::ecs {
 EPIX_EXPORT struct ComponentsRegistrator;
@@ -56,14 +56,15 @@ EPIX_EXPORT struct Components {
      * Register a runtime required-component relationship and propagate its metadata
      * to every component that transitively requires `requiree`.
      */
-    std::expected<void, RequiredComponentsError> register_required_components(
-        TypeId requiree, TypeId required, RequiredComponentConstructor constructor);
+    std::expected<void, RequiredComponentsError> register_required_components(TypeId requiree,
+                                                                              TypeId required,
+                                                                              RequiredComponentConstructor constructor);
 
     /** Typed convenience overload for runtime required-component registration. */
     template <typename R, typename F>
     std::expected<void, RequiredComponentsError> register_required_components(TypeId requiree,
-                                                                               TypeId required,
-                                                                               F&& constructor)
+                                                                              TypeId required,
+                                                                              F&& constructor)
         requires std::invocable<F> && std::same_as<R, std::invoke_result_t<F>>;
 
     void register_required_by(TypeId requiree, const RequiredComponents& required_components);

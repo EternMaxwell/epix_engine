@@ -13,8 +13,8 @@
 #include <vector>
 #endif
 
-#include <epix/ecs/storage/untyped_vector.hpp>
 #include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/storage/untyped_vector.hpp>
 
 namespace epix::ecs {
 EPIX_EXPORT struct Dense {

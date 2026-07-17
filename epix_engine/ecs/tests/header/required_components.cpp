@@ -155,9 +155,8 @@ TEST(ecs, components_register_required_components_typed_api) {
     auto registrator = world.registrator();
     TypeId root      = registrator.register_component<Root>();
     TypeId required  = registrator.register_component<Required>();
-    ASSERT_TRUE(world.components_mut().register_required_components<Required>(root, required, [] {
-        return Required{13};
-    }));
+    ASSERT_TRUE(
+        world.components_mut().register_required_components<Required>(root, required, [] { return Required{13}; }));
 
     auto entity = world.spawn(Root{}).id();
     EXPECT_EQ(world.entity(entity).get<Required>()->get().value, 13);

@@ -7,8 +7,8 @@
 #include <memory>
 #endif
 
-#include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/entity/entities.hpp>
 namespace epix::ecs {
 /** @brief Forward declaration of the ECS world. */
 EPIX_EXPORT struct World;

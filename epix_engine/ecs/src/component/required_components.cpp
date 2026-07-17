@@ -1,7 +1,6 @@
+#include <algorithm>
 #include <epix/ecs/component/components.hpp>
 #include <epix/ecs/component/components_impl.hpp>
-
-#include <algorithm>
 #include <format>
 #include <stdexcept>
 
@@ -16,18 +15,16 @@ auto find_required(const RequiredComponents::Container& components, TypeId id) {
     return std::ranges::find(components, id, &RequiredComponents::Entry::first);
 }
 
-bool contains(const std::vector<TypeId>& ids, TypeId id) {
-    return std::ranges::find(ids, id) != ids.end();
-}
+bool contains(const std::vector<TypeId>& ids, TypeId id) { return std::ranges::find(ids, id) != ids.end(); }
 
 void insert_unique(std::vector<TypeId>& ids, TypeId id) {
     if (!contains(ids, id)) ids.push_back(id);
 }
 
 std::string component_name(const Components& components, TypeId id) {
-    return components.get_index(id).transform([](const meta::type_index& index) {
-        return std::string(index.short_name());
-    }).value_or(std::format("component#{}", id.get()));
+    return components.get_index(id)
+        .transform([](const meta::type_index& index) { return std::string(index.short_name()); })
+        .value_or(std::format("component#{}", id.get()));
 }
 
 }  // namespace
@@ -36,11 +33,8 @@ bool RequiredComponents::directly_requires(TypeId id) const noexcept {
     return find_required(direct, id) != direct.end();
 }
 
-void RequiredComponentConstructor::initialize(Table& table,
-                                              SparseSets& sparse_sets,
-                                              Tick tick,
-                                              TableRow row,
-                                              Entity entity) const {
+void RequiredComponentConstructor::initialize(
+    Table& table, SparseSets& sparse_sets, Tick tick, TableRow row, Entity entity) const {
     (*function_)(table, sparse_sets, tick, row, entity);
 }
 
@@ -71,9 +65,9 @@ void RequiredComponents::rebuild_inherited_required_components(const Components&
 }
 
 void RequiredComponents::register_inherited_required_components(Container& all,
-                                                                 TypeId required_id,
-                                                                 RequiredComponent required_component,
-                                                                 const Components& components) {
+                                                                TypeId required_id,
+                                                                RequiredComponent required_component,
+                                                                const Components& components) {
     const auto required_info = components.get_required_components(required_id);
     if (!required_info) throw std::logic_error("required component has not been registered");
 
@@ -96,8 +90,8 @@ std::string RequiredComponentsError::message(const Components& components) const
             return std::format("{} already directly requires {}", component_name(components, requiree),
                                component_name(components, required));
         case RequiredComponentsErrorKind::CyclicRequirement:
-            return std::format("{} cannot require {} because it would create a cycle", component_name(components, requiree),
-                               component_name(components, required));
+            return std::format("{} cannot require {} because it would create a cycle",
+                               component_name(components, requiree), component_name(components, required));
         case RequiredComponentsErrorKind::ArchetypeExists:
             return std::format("{} already exists in an archetype", component_name(components, requiree));
     }
@@ -105,7 +99,7 @@ std::string RequiredComponentsError::message(const Components& components) const
 }
 
 void RequiredComponentsRegistrator::register_required_dynamic(TypeId component_id,
-                                                               RequiredComponentConstructor constructor) {
+                                                              RequiredComponentConstructor constructor) {
     if (!static_cast<const Components&>(*components_).is_valid(component_id)) {
         throw std::logic_error("required component has not been registered");
     }

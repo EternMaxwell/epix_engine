@@ -1,6 +1,5 @@
-#include <epix/ecs/storage/storage.hpp>
-
 #include <epix/ecs/component/detail/registry_state.hpp>
+#include <epix/ecs/storage/storage.hpp>
 
 namespace epix::ecs {
 

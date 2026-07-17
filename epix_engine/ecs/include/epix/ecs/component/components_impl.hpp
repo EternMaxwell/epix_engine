@@ -41,8 +41,8 @@ std::expected<void, RequiredComponentsError> Components::register_required_compo
     if (!registered_type || *registered_type != meta::type_id<R>{}) {
         throw std::logic_error("required component id does not match its constructor result type");
     }
-    return register_required_components(requiree, required,
-                                        RequiredComponentConstructor::create<R>(required, std::forward<F>(constructor)));
+    return register_required_components(
+        requiree, required, RequiredComponentConstructor::create<R>(required, std::forward<F>(constructor)));
 }
 
 template <typename C, typename F>
@@ -60,8 +60,8 @@ void RequiredComponentsRegistrator::register_required_by_id(TypeId component_id,
     if (!registered_type || *registered_type != meta::type_id<C>{}) {
         throw std::logic_error("required component id does not match its constructor result type");
     }
-    register_required_dynamic(component_id, RequiredComponentConstructor::create<C>(component_id,
-                                                                                    std::forward<F>(constructor)));
+    register_required_dynamic(component_id,
+                              RequiredComponentConstructor::create<C>(component_id, std::forward<F>(constructor)));
 }
 
 }  // namespace epix::ecs

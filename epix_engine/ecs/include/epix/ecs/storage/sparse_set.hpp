@@ -14,11 +14,10 @@
 #include <vector>
 #endif
 
+#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/storage/dense.hpp>
 #include <epix/ecs/storage/sparse_array.hpp>
-#include <epix/ecs/core/tick.hpp>
-
 
 namespace epix::ecs {
 namespace internal {

@@ -7,8 +7,8 @@
 #include <type_traits>
 #endif
 
-#include <epix/ecs/entity/entity.hpp>
 #include <epix/ecs/core/type_id.hpp>
+#include <epix/ecs/entity/entity.hpp>
 
 namespace epix::ecs {
 

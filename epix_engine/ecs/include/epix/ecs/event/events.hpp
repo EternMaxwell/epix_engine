@@ -31,10 +31,10 @@ struct Events {
     }
     Events& operator=(const Events&) = delete;
     Events& operator=(Events&& other) {
-        m_events    = std::move(other.m_events);
-        m_lifetimes = std::move(other.m_lifetimes);
-        m_head      = other.m_head;
-        m_tail      = other.m_tail;
+        m_events     = std::move(other.m_events);
+        m_lifetimes  = std::move(other.m_lifetimes);
+        m_head       = other.m_head;
+        m_tail       = other.m_tail;
         other.m_head = other.m_tail;
         return *this;
     }

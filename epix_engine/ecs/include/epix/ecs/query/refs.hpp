@@ -10,10 +10,10 @@
 #include <type_traits>
 #endif
 
+#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/query/fetch.hpp>
 #include <epix/ecs/storage/resource.hpp>
 #include <epix/ecs/system/param.hpp>
-#include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {

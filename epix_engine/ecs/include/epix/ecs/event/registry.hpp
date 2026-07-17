@@ -8,8 +8,8 @@
 
 #include <epix/ecs/core/tick.hpp>
 #include <epix/ecs/event/events.hpp>
-#include <epix/ecs/system/local.hpp>
 #include <epix/ecs/system.hpp>
+#include <epix/ecs/system/local.hpp>
 #include <epix/ecs/world.hpp>
 
 namespace epix::ecs {
@@ -35,8 +35,8 @@ EPIX_EXPORT struct EventRegistry {
     }
     void run_updates(World& world, Tick last_change_tick) {
         for (auto&& [id, event] : events) {
-            auto& data = world.storage_mut().resources.get_mut(id).value().get();
-            TicksMut ticks = TicksMut::from_refs(data.get_tick_refs().value(), last_change_tick, world.change_tick());
+            auto& data       = world.storage_mut().resources.get_mut(id).value().get();
+            TicksMut ticks   = TicksMut::from_refs(data.get_tick_refs().value(), last_change_tick, world.change_tick());
             bool has_changed = ticks.is_modified();
             if (event.previously_updated || has_changed) {
                 event.update(data.get_mut().value());

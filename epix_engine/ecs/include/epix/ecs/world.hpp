@@ -22,10 +22,10 @@
 
 #include <epix/ecs/bundle.hpp>
 #include <epix/ecs/component.hpp>
+#include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/entity/entities.hpp>
 #include <epix/ecs/query.hpp>
 #include <epix/ecs/storage.hpp>
-#include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/world/commands.hpp>
 #include <epix/ecs/world/detail/access.hpp>
 #include <epix/ecs/world/entity_ref.hpp>
@@ -92,7 +92,7 @@ EPIX_EXPORT struct World {
     template <typename T, typename F>
         requires std::invocable<F> && std::is_object_v<std::invoke_result_t<F>>
     std::expected<void, RequiredComponentsError> try_register_required_components_with(F&& constructor) {
-        using R = std::invoke_result_t<F>;
+        using R                    = std::invoke_result_t<F>;
         auto component_registrator = registrator();
         TypeId requiree            = component_registrator.template register_component<T>();
         if (_archetypes.by_component.contains(requiree)) {
@@ -100,8 +100,7 @@ EPIX_EXPORT struct World {
                 RequiredComponentsError{RequiredComponentsErrorKind::ArchetypeExists, requiree, requiree});
         }
         TypeId required = component_registrator.template register_component<R>();
-        return _components.template register_required_components<R>(requiree, required,
-                                                                    std::forward<F>(constructor));
+        return _components.template register_required_components<R>(requiree, required, std::forward<F>(constructor));
     }
     /** @brief Get a const reference to the entity allocator. */
     const Entities& entities() const noexcept { return _entities; }

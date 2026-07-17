@@ -2,7 +2,6 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/common.hpp>
-
 #include <expected>
 #include <functional>
 #include <memory>
@@ -57,7 +56,7 @@ EPIX_EXPORT struct RequiredComponent {
  * always appear before the component that requires them.
  */
 EPIX_EXPORT struct RequiredComponents {
-    using Entry = std::pair<TypeId, RequiredComponent>;
+    using Entry     = std::pair<TypeId, RequiredComponent>;
     using Container = std::vector<Entry>;
 
     Container direct;
@@ -69,14 +68,12 @@ EPIX_EXPORT struct RequiredComponents {
     auto iter_ids() const noexcept { return std::views::keys(all); }
 
    private:
-    void register_dynamic(TypeId component_id,
-                          const Components& components,
-                          RequiredComponentConstructor constructor);
+    void register_dynamic(TypeId component_id, const Components& components, RequiredComponentConstructor constructor);
     void rebuild_inherited_required_components(const Components& components);
     static void register_inherited_required_components(Container& all,
-                                                        TypeId required_id,
-                                                        RequiredComponent required_component,
-                                                        const Components& components);
+                                                       TypeId required_id,
+                                                       RequiredComponent required_component,
+                                                       const Components& components);
 
     friend struct Components;
     friend struct ComponentsRegistrator;
