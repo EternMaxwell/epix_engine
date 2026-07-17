@@ -29,11 +29,8 @@ App App::create() {
     return App(DefaultCreateTag{});
 }
 
-App::App(DefaultCreateTag,
-         const AppLabel& label,
-         std::shared_ptr<ecs::TypeRegistry> type_registry,
-         std::shared_ptr<std::atomic<uint32_t>> world_ids)
-    : App(label, std::move(type_registry), std::move(world_ids)) {
+App::App(DefaultCreateTag, const AppLabel& label, std::shared_ptr<std::atomic<uint32_t>> world_ids)
+    : App(label, std::move(world_ids)) {
     add_plugins(MainSchedulePlugin{});
     set_runner(std::make_unique<DefaultRunner>());
     add_event<AppExit>();
@@ -43,7 +40,7 @@ App& App::sub_app_or_insert(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
         spdlog::debug("[app] Created sub-app '{}' for parent '{}'.", label.to_string(), _label.to_string());
-        it->second = std::make_unique<App>(label, world().type_registry_ptr(), _world_ids);
+        it->second = std::make_unique<App>(label, _world_ids);
     }
     return *it->second;
 }
@@ -51,7 +48,7 @@ App& App::sub_app_or_insert(const AppLabel& label) {
 App& App::add_sub_app(const AppLabel& label) {
     auto&& [it, inserted] = _sub_apps.emplace(label, nullptr);
     if (inserted) {
-        it->second = std::make_unique<App>(label, world().type_registry_ptr(), _world_ids);
+        it->second = std::make_unique<App>(label, _world_ids);
     }
     return *this;
 }

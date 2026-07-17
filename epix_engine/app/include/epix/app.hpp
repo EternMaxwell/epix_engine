@@ -128,9 +128,8 @@ EPIX_EXPORT namespace epix::app {
     struct App {
        public:
         App(const AppLabel& label                                 = AppLabel::from_type<App>(),
-            std::shared_ptr<ecs::TypeRegistry> type_registry      = std::make_shared<ecs::TypeRegistry>(),
             std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0))
-            : _label(label), _world(world_ids->fetch_add(1), type_registry), _world_ids(world_ids) {}
+            : _label(label), _world(world_ids->fetch_add(1)), _world_ids(world_ids) {}
         App(const App&)            = delete;
         App(App&&)                 = default;
         App& operator=(const App&) = delete;
@@ -476,7 +475,6 @@ EPIX_EXPORT namespace epix::app {
         explicit App(
             DefaultCreateTag tag,
             const AppLabel& label                                 = AppLabel::from_type<App>(),
-            std::shared_ptr<ecs::TypeRegistry> type_registry      = std::make_shared<ecs::TypeRegistry>(),
             std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0));
     };
     static_assert(std::movable<App>);

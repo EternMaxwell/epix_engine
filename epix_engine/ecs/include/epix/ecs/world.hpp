@@ -217,7 +217,7 @@ EPIX_EXPORT struct World {
         return id;
     }
     /** @brief Remove a resource by its TypeId. Returns true if removed. */
-    bool remove_resource(TypeId type_id) {
+    bool remove_resource_by_id(TypeId type_id) {
         return _storage.resources.get_mut(type_id)
             .and_then([](ResourceData& res) {
                 res.remove();
@@ -225,11 +225,15 @@ EPIX_EXPORT struct World {
             })
             .value_or(false);
     }
+    /** @brief Remove a resource by its TypeId. Returns true if removed. */
+    bool remove_resource(TypeId type_id) { return remove_resource_by_id(type_id); }
     /** @brief Remove a resource by type. Returns true if removed.
      *  @tparam T Resource type. */
     template <typename T>
     bool remove_resource() {
-        return _components.get_valid_id<T>().and_then(std::bind_front(&World::remove_resource, this)).value_or(false);
+        return _components.get_valid_id<T>()
+            .transform(std::bind_front(&World::remove_resource_by_id, this))
+            .value_or(false);
     }
     /** @brief Remove and return a resource by type, if it exists.
      *  @tparam T Movable resource type.
