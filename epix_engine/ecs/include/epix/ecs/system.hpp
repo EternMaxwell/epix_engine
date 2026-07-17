@@ -101,43 +101,17 @@ struct function_system_traits {
     using Traits                       = traits::function_traits<F>;
     static constexpr std::size_t arity = Traits::arity;
     using Output                       = typename Traits::return_type;
-    // Input is the first argument of the function if it modules valid_system_input, otherwise it's std::tuple<>.
-    using Input                     = std::remove_reference_t<decltype(*([] {
-        if constexpr (arity == 0) {
-            // no arguments -> input is an empty tuple
-            return static_cast<std::tuple<>*>(nullptr);
-        } else {
-            using FirstArg = std::tuple_element_t<0, typename Traits::args_tuple>;
-            if constexpr (internal::system_input<FirstArg>) {
-                return static_cast<FirstArg*>(nullptr);
-            } else {
-                return static_cast<std::tuple<>*>(nullptr);
-            }
-        }
-    }()))>;
-    static constexpr bool has_input = [] {
-        // we are not just checking Input != std::tuple<>, because the input type may be just std::tuple<>.
-        if constexpr (arity == 0) {
-            return false;
-        } else {
-            using FirstArg = std::tuple_element_t<0, typename Traits::args_tuple>;
-            if constexpr (internal::system_input<FirstArg>) {
-                return true;
-            } else {
-                return false;
-            }
-        }
-    }();
-    using ParamTuple = std::remove_reference_t<decltype(*([] {
-        if constexpr (has_input) {
-            // has input, so params are from second argument to the last argument.
-            return []<std::size_t... I>(std::index_sequence<I...>) {
-                return static_cast<std::tuple<std::tuple_element_t<I + 1, typename Traits::args_tuple>...>*>(nullptr);
-            }(std::make_index_sequence<arity - 1>{});
-        } else {
-            return static_cast<typename Traits::args_tuple*>(nullptr);
-        }
-    }()))>;
+    using ArgsTuple                    = typename Traits::args_tuple;
+    using PaddedArgsTuple =
+        decltype(std::tuple_cat(std::declval<ArgsTuple>(), std::declval<std::tuple<std::tuple<>>>()));
+    using FirstArg                     = std::tuple_element_t<0, PaddedArgsTuple>;
+    // Input is the first argument of the function if it models system_input, otherwise it's std::tuple<>.
+    static constexpr bool has_input    = arity != 0 && internal::system_input<FirstArg>;
+    using Input                        = std::conditional_t<has_input, FirstArg, std::tuple<>>;
+    using ParamTuple =
+        std::remove_pointer_t<decltype([]<std::size_t... I>(std::index_sequence<I...>) {
+            return static_cast<std::tuple<std::tuple_element_t<I + (has_input ? 1 : 0), ArgsTuple>...>*>(nullptr);
+        }(std::make_index_sequence<arity - (has_input ? 1 : 0)>{}))>;
     // The storage type to store the function. function will be stored in pointers,
     // lambdas or other callables will be stored in their own type.
     using Storage = std::decay_t<F>;
