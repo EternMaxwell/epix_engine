@@ -27,9 +27,9 @@ struct BundleRemover {
 
     template <is_bundle T>
     static BundleRemover create(World& world, ArchetypeId archetype_id, Tick tick) {
-        auto& bundles = world_bundles_mut(world);
-        BundleId bundle_id =
-            bundles.register_info<T>(world_type_registry(world), world_components_mut(world), world_storage_mut(world));
+        auto& bundles      = world_bundles_mut(world);
+        auto registrator   = world_registrator(world);
+        BundleId bundle_id = bundles.register_info<T>(registrator, world_storage_mut(world));
         return create_with_id(world, archetype_id, bundle_id, tick);
     }
     static BundleRemover create_with_type_id(World& world, ArchetypeId archetype_id, TypeId type_id, Tick tick);
