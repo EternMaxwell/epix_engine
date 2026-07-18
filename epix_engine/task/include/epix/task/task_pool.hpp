@@ -153,11 +153,14 @@ EPIX_EXPORT struct TaskPool {
         auto [runnable, task] = async_task::spawn(
             std::forward<F>(work), [ex = m_executor](async_task::Runnable r, async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
-                std::function<void()> poll;
-                poll = [runner, ex, &poll]() {
-                    if (runner->run()) asio::post(ex, poll);
+                auto poll  = std::make_shared<std::function<void()>>();
+                *poll      = [runner, ex, poll]() {
+                    if (runner->run())
+                        asio::post(ex, *poll);
+                    else
+                        *poll = nullptr;
                 };
-                asio::post(ex, poll);
+                asio::post(ex, *poll);
             });
         runnable.schedule();
         return std::move(task);
@@ -175,11 +178,14 @@ EPIX_EXPORT struct TaskPool {
         auto [runnable, task] = async_task::spawn(
             std::forward<F>(work), [ctx = t_local_ctx.get()](async_task::Runnable r, async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
-                std::function<void()> poll;
-                poll = [runner, ctx, &poll]() {
-                    if (runner->run()) asio::post(*ctx, poll);
+                auto poll  = std::make_shared<std::function<void()>>();
+                *poll      = [runner, ctx, poll]() {
+                    if (runner->run())
+                        asio::post(*ctx, *poll);
+                    else
+                        *poll = nullptr;
                 };
-                asio::post(*ctx, poll);
+                asio::post(*ctx, *poll);
             });
         runnable.schedule();
         return std::move(task);
