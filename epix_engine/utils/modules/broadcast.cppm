@@ -8,10 +8,8 @@
 #include <mutex>
 #include <optional>
 #endif
-#include <asio/awaitable.hpp>
-#include <asio/post.hpp>
-#include <asio/use_awaitable.hpp>
 #include <epix/common.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.async_broadcast;
 #ifdef EPIX_IMPORT_STD

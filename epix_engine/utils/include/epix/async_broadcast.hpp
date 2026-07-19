@@ -1,9 +1,6 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
-#include <asio/post.hpp>
-#include <asio/use_awaitable.hpp>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -11,6 +8,7 @@
 #include <expected>
 #include <mutex>
 #include <optional>
+#include <stdexec/execution.hpp>
 #endif
 
 namespace epix::async_broadcast {
@@ -19,6 +17,7 @@ namespace internal {
 template <typename T>
 struct BroadcastState {
     mutable std::mutex mtx;
+    mutable std::condition_variable cv;
     std::deque<T> queue;
     std::size_t head_index     = 0;
     std::size_t capacity       = 0;
@@ -82,6 +81,7 @@ struct Sender {
         if (!m_st) return;
         std::lock_guard lk(m_st->mtx);
         if (m_st->sender_count > 0) --m_st->sender_count;
+        m_st->cv.notify_all();
     }
 
    public:
@@ -129,27 +129,53 @@ struct Sender {
             }
         }
         m_st->queue.push_back(std::move(msg));
+        m_st->cv.notify_all();
         return {};
     }
 
-    asio::awaitable<std::expected<void, SendError<T>>> broadcast(T msg) const {
+    STDEXEC::task<std::expected<void, SendError<T>>> broadcast(T msg) const {
         if (!m_st) co_return std::unexpected(SendError<T>{std::move(msg)});
         while (true) {
+            bool sent   = false;
+            bool closed = false;
             {
                 std::lock_guard lk(m_st->mtx);
-                if (m_st->closed) co_return std::unexpected(SendError<T>{std::move(msg)});
+                closed         = m_st->closed;
                 bool has_space = m_st->queue.size() < m_st->capacity || m_st->overflow;
-                if (has_space) {
+                if (!closed && has_space) {
                     if (m_st->queue.size() >= m_st->capacity && m_st->overflow) {
                         m_st->queue.pop_front();
                         m_st->head_index++;
                     }
                     m_st->queue.push_back(std::move(msg));
-                    co_return std::expected<void, SendError<T>>{};
+                    sent = true;
                 }
             }
-            co_await asio::post(asio::use_awaitable);
+            if (closed) co_return std::unexpected(SendError<T>{std::move(msg)});
+            if (sent) {
+                m_st->cv.notify_all();
+                co_return std::expected<void, SendError<T>>{};
+            }
+            auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
+            co_await STDEXEC::schedule(scheduler);
         }
+    }
+
+    std::expected<void, SendError<T>> broadcast_blocking(T msg) const {
+        if (!m_st) return std::unexpected(SendError<T>{std::move(msg)});
+        std::unique_lock lk(m_st->mtx);
+        m_st->cv.wait(lk, [&] {
+            if (m_st->closed) return true;
+            return m_st->queue.size() < m_st->capacity || m_st->overflow;
+        });
+        if (m_st->closed) return std::unexpected(SendError<T>{std::move(msg)});
+        if (m_st->queue.size() >= m_st->capacity && m_st->overflow) {
+            m_st->queue.pop_front();
+            m_st->head_index++;
+        }
+        m_st->queue.push_back(std::move(msg));
+        m_st->cv.notify_all();
+        return {};
     }
 
     bool close() const {
@@ -157,6 +183,7 @@ struct Sender {
         std::lock_guard lk(m_st->mtx);
         if (m_st->closed) return false;
         m_st->closed = true;
+        m_st->cv.notify_all();
         return true;
     }
 
@@ -227,6 +254,7 @@ struct Receiver {
         if (!m_st) return;
         std::lock_guard lk(m_st->mtx);
         if (m_st->receiver_count > 0) --m_st->receiver_count;
+        m_st->cv.notify_all();
     }
 
    public:
@@ -275,23 +303,48 @@ struct Receiver {
         return std::unexpected(TryRecvError::Empty);
     }
 
-    asio::awaitable<std::expected<T, RecvError>> recv() {
+    STDEXEC::task<std::expected<T, RecvError>> recv() {
         if (!m_st) co_return std::unexpected(RecvError::Closed);
         while (true) {
+            std::optional<T> value;
+            bool closed = false;
             {
                 std::lock_guard lk(m_st->mtx);
                 std::size_t tail = m_st->head_index + m_st->queue.size();
                 if (m_cursor < m_st->head_index) m_cursor = m_st->head_index;
                 if (m_cursor < tail) {
                     std::size_t offset = m_cursor - m_st->head_index;
-                    T val              = m_st->queue[offset];
+                    value              = m_st->queue[offset];
                     ++m_cursor;
-                    co_return val;
+                } else {
+                    closed = m_st->closed || m_st->sender_count == 0;
                 }
-                if (m_st->closed || m_st->sender_count == 0) co_return std::unexpected(RecvError::Closed);
             }
-            co_await asio::post(asio::use_awaitable);
+            if (value) co_return std::move(*value);
+            if (closed) co_return std::unexpected(RecvError::Closed);
+            auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
+            co_await STDEXEC::schedule(scheduler);
         }
+    }
+
+    std::expected<T, RecvError> recv_blocking() {
+        if (!m_st) return std::unexpected(RecvError::Closed);
+        std::unique_lock lk(m_st->mtx);
+        m_st->cv.wait(lk, [&] {
+            std::size_t tail = m_st->head_index + m_st->queue.size();
+            std::size_t cur  = m_cursor < m_st->head_index ? m_st->head_index : m_cursor;
+            return cur < tail || m_st->closed || m_st->sender_count == 0;
+        });
+        std::size_t tail = m_st->head_index + m_st->queue.size();
+        if (m_cursor < m_st->head_index) m_cursor = m_st->head_index;
+        if (m_cursor < tail) {
+            std::size_t offset = m_cursor - m_st->head_index;
+            T val              = m_st->queue[offset];
+            ++m_cursor;
+            m_st->cv.notify_all();
+            return val;
+        }
+        return std::unexpected(RecvError::Closed);
     }
 
     bool close() const {
@@ -299,6 +352,7 @@ struct Receiver {
         std::lock_guard lk(m_st->mtx);
         if (m_st->closed) return false;
         m_st->closed = true;
+        m_st->cv.notify_all();
         return true;
     }
 
@@ -386,8 +440,11 @@ struct InactiveReceiver {
 template <typename T>
 Receiver<T> Sender<T>::new_receiver() const {
     if (!m_st) return {};
-    std::lock_guard lk(m_st->mtx);
-    std::size_t cursor = m_st->head_index + m_st->queue.size();
+    std::size_t cursor = 0;
+    {
+        std::lock_guard lk(m_st->mtx);
+        cursor = m_st->head_index + m_st->queue.size();
+    }
     return Receiver<T>(m_st, cursor);
 }
 

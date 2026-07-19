@@ -7,11 +7,10 @@
 #include <expected>
 #include <mutex>
 #include <optional>
+#include <utility>
 #endif
-#include <asio/awaitable.hpp>
-#include <asio/post.hpp>
-#include <asio/use_awaitable.hpp>
 #include <epix/common.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.async_channel;
 #ifdef EPIX_IMPORT_STD

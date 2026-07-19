@@ -6,6 +6,7 @@
 #include <cassert>
 #include <condition_variable>
 #include <coroutine>
+#include <cstdint>
 #include <exception>
 #include <functional>
 #include <memory>
@@ -17,16 +18,21 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <utility>
 #include <vector>
 #endif
 #include <asio/executor_work_guard.hpp>
 #include <asio/io_context.hpp>
 #include <asio/post.hpp>
-#include <asio/thread_pool.hpp>
 #include <epix/common.hpp>
+#include <exec/asio/asio_thread_pool.hpp>
+#include <exec/start_detached.hpp>
+#include <exec/static_thread_pool.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.task;
+
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif

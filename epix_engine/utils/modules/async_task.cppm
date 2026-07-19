@@ -2,6 +2,7 @@ module;
 
 #ifndef EPIX_IMPORT_STD
 #include <atomic>
+#include <concepts>
 #include <condition_variable>
 #include <coroutine>
 #include <cstdint>
@@ -10,15 +11,15 @@ module;
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <thread>
+#include <stdexcept>
+#include <tuple>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #endif
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
+#include <exec/start_detached.hpp>
 #include <epix/common.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.async_task;
 #ifdef EPIX_IMPORT_STD

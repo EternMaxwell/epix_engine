@@ -9,8 +9,11 @@
 #include <functional>
 #include <iterator>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <ranges>
+#include <shared_mutex>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <variant>

@@ -112,11 +112,14 @@ inline auto ThreadExecutor::spawn(F&& work) {
     auto [runnable, task] = async_task::spawn(std::forward<F>(work),
                                               [ctx = &m_impl->ctx](async_task::Runnable r, async_task::ScheduleInfo) {
                                                   auto runner = std::make_shared<async_task::Runnable>(std::move(r));
-                                                  std::function<void()> poll;
-                                                  poll = [runner, ctx, &poll]() {
-                                                      if (runner->run()) asio::post(*ctx, poll);
+                                                  auto poll   = std::make_shared<std::function<void()>>();
+                                                  *poll       = [runner, ctx, poll]() {
+                                                      if (runner->run())
+                                                          asio::post(*ctx, *poll);
+                                                      else
+                                                          *poll = nullptr;
                                                   };
-                                                  asio::post(*ctx, poll);
+                                                  asio::post(*ctx, *poll);
                                               });
 
     runnable.schedule();

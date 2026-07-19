@@ -9,15 +9,20 @@
 #include <asio/executor_work_guard.hpp>
 #include <asio/io_context.hpp>
 #include <asio/post.hpp>
-#include <asio/thread_pool.hpp>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <epix/async_task.hpp>
 #include <epix/common.hpp>
+#include <exec/asio/asio_thread_pool.hpp>
+#include <exec/static_thread_pool.hpp>
+#include <exec/start_detached.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexec/execution.hpp>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -36,27 +41,38 @@ struct Scope;
 
 namespace internal {
 
-struct ThreadPoolBundle {
-    asio::thread_pool pool;
-    explicit ThreadPoolBundle(size_t n) : pool(n) {}
-    ~ThreadPoolBundle() { pool.wait(); }
-    ThreadPoolBundle(const ThreadPoolBundle&)            = delete;
-    ThreadPoolBundle& operator=(const ThreadPoolBundle&) = delete;
+struct StaticThreadPoolBackend {
+    exec::static_thread_pool pool;
+    size_t n;
+
+    explicit StaticThreadPoolBackend(size_t thread_count)
+        : pool(static_cast<std::uint32_t>(thread_count)),
+          n(thread_count) {}
+
+    [[nodiscard]] size_t thread_count() const noexcept { return n; }
+
+    void enqueue(std::function<void()> fn) {
+        exec::start_detached(STDEXEC::schedule(pool.get_scheduler()) |
+                             STDEXEC::then([fn = std::move(fn)]() mutable { fn(); }));
+    }
 };
 
-struct IoBundle {
-    asio::io_context ioc;
-    asio::executor_work_guard<asio::io_context::executor_type> work{asio::make_work_guard(ioc)};
-    std::vector<std::thread> threads;
+struct AsioThreadPoolBackend {
+    exec::asio::asio_thread_pool pool;
+    size_t n;
 
-    IoBundle() = default;
-    ~IoBundle() {
-        work.reset();
-        for (auto& t : threads)
-            if (t.joinable()) t.join();
+    explicit AsioThreadPoolBackend(size_t thread_count) : pool(static_cast<std::uint32_t>(thread_count)), n(thread_count) {}
+
+    [[nodiscard]] size_t thread_count() const noexcept { return n; }
+
+    void enqueue(std::function<void()> fn) {
+        exec::start_detached(STDEXEC::schedule(pool.get_scheduler()) |
+                             STDEXEC::then([fn = std::move(fn)]() mutable { fn(); }));
     }
-    IoBundle(const IoBundle&)            = delete;
-    IoBundle& operator=(const IoBundle&) = delete;
+
+    [[nodiscard]] std::optional<asio::any_io_executor> asio_executor() const {
+        return asio::any_io_executor(pool.get_executor());
+    }
 };
 
 struct CallOnDrop {
@@ -69,6 +85,44 @@ struct CallOnDrop {
     CallOnDrop& operator=(const CallOnDrop&) = delete;
 };
 
+template <typename T>
+struct always_false : std::false_type {};
+
+template <typename T>
+struct task_value_from_tuple;
+
+template <>
+struct task_value_from_tuple<std::tuple<>> {
+    using type = void;
+};
+
+template <typename T>
+struct task_value_from_tuple<std::tuple<T>> {
+    using type = T;
+};
+
+template <typename T, typename U, typename... Rest>
+struct task_value_from_tuple<std::tuple<T, U, Rest...>> {
+    static_assert(always_false<T>::value, "epix::task::TaskPool::spawn supports senders with zero or one value");
+};
+
+template <typename... Ts>
+using decayed_tuple = std::tuple<std::decay_t<Ts>...>;
+
+template <typename Sender>
+struct sender_task_value {
+    using type = typename task_value_from_tuple<
+        STDEXEC::value_types_of_t<Sender, STDEXEC::env<>, decayed_tuple, std::type_identity_t>>::type;
+};
+
+template <typename T, typename Env>
+struct sender_task_value<STDEXEC::task<T, Env>> {
+    using type = T;
+};
+
+template <typename Sender>
+using sender_task_value_t = typename sender_task_value<std::remove_cvref_t<Sender>>::type;
+
 }  // namespace internal
 
 // ── available_parallelism ──────────────────────────────────────────────────
@@ -80,11 +134,17 @@ inline size_t available_parallelism() noexcept {
 
 /**
  * @brief Selects the internal threading backend for TaskPool.
- *  - ThreadPool : wraps asio::thread_pool — simplest, no thread customisation.
- *  - IoContext  : wraps asio::io_context with manually managed threads —
- *                 supports thread names and spawn/destroy callbacks.
+ *  - StaticThreadPool : stdexec static thread pool for CPU work.
+ *  - AsioThreadPool   : stdexec Asio thread pool for I/O-capable sender work.
+ *
+ * ThreadPool and IoContext are kept as source-compatible aliases.
  */
-EPIX_EXPORT enum class TaskPoolBackend { ThreadPool, IoContext };
+EPIX_EXPORT enum class TaskPoolBackend {
+    StaticThreadPool,
+    AsioThreadPool,
+    ThreadPool = StaticThreadPool,
+    IoContext  = AsioThreadPool,
+};
 
 // ── TaskPoolBuilder ────────────────────────────────────────────────────────
 
@@ -103,19 +163,19 @@ EPIX_EXPORT struct TaskPoolBuilder {
         return *this;
     }
 
-    /** @brief Set a prefix for worker thread names (forces IoContext backend). */
+    /** @brief Source-compatible no-op with stdexec-backed pools. */
     TaskPoolBuilder& thread_name(std::string name) {
         m_thread_name = std::move(name);
         return *this;
     }
 
-    /** @brief Callback invoked on each spawned worker thread (forces IoContext backend). */
+    /** @brief Source-compatible no-op with stdexec-backed pools. */
     TaskPoolBuilder& on_thread_spawn(std::function<void()> f) {
         m_on_thread_spawn = std::move(f);
         return *this;
     }
 
-    /** @brief Callback invoked when a worker thread exits (forces IoContext backend). */
+    /** @brief Source-compatible no-op with stdexec-backed pools. */
     TaskPoolBuilder& on_thread_destroy(std::function<void()> f) {
         m_on_thread_destroy = std::move(f);
         return *this;
@@ -136,7 +196,7 @@ EPIX_EXPORT struct TaskPoolBuilder {
 EPIX_EXPORT struct TaskPool {
     TaskPool();
     explicit TaskPool(TaskPoolBuilder builder);
-    ~TaskPool() = default;
+    ~TaskPool();
 
     TaskPool(TaskPool&&) noexcept        = default;
     TaskPool& operator=(TaskPool&&)      = default;
@@ -145,22 +205,59 @@ EPIX_EXPORT struct TaskPool {
 
     [[nodiscard]] size_t thread_num() const noexcept { return m_thread_count; }
 
-    // ── spawn ─────────────────────────────────────────────────────────
+    [[nodiscard]] std::optional<asio::any_io_executor> try_get_asio_executor() const;
+
+    [[nodiscard]] asio::any_io_executor get_asio_executor() const;
 
     template <typename F>
-        requires std::invocable<F> && std::move_constructible<F>
+    decltype(auto) with_scheduler(F&& f) {
+        if (m_backend_kind == TaskPoolBackend::StaticThreadPool) {
+            auto backend = std::static_pointer_cast<internal::StaticThreadPoolBackend>(m_backend);
+            return std::invoke(std::forward<F>(f), backend->pool.get_scheduler());
+        }
+        if (m_backend_kind == TaskPoolBackend::AsioThreadPool) {
+            auto backend = std::static_pointer_cast<internal::AsioThreadPoolBackend>(m_backend);
+            return std::invoke(std::forward<F>(f), backend->pool.get_scheduler());
+        }
+        throw std::logic_error("TaskPool has no scheduler backend");
+    }
+
+    // ── spawn ─────────────────────────────────────────────────────────
+
+    template <typename S>
+        requires STDEXEC::sender<std::decay_t<S>> && (!std::invocable<std::decay_t<S>&>)
+    [[nodiscard]] auto spawn(S&& sender) {
+        using Sender = std::decay_t<S>;
+        using T      = internal::sender_task_value_t<Sender>;
+        Sender snd(std::forward<S>(sender));
+
+        if (m_backend_kind == TaskPoolBackend::StaticThreadPool) {
+            auto backend = std::static_pointer_cast<internal::StaticThreadPoolBackend>(m_backend);
+            return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
+        }
+        if (m_backend_kind == TaskPoolBackend::AsioThreadPool) {
+            auto backend = std::static_pointer_cast<internal::AsioThreadPoolBackend>(m_backend);
+            return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
+        }
+        return async_task::Task<T>{};
+    }
+
+    template <typename F>
+        requires std::invocable<F> && std::move_constructible<F> && (!STDEXEC::sender<std::decay_t<F>>)
     [[nodiscard]] auto spawn(F&& work) {
         auto [runnable, task] = async_task::spawn(
-            std::forward<F>(work), [ex = m_executor](async_task::Runnable r, async_task::ScheduleInfo) {
+            std::forward<F>(work),
+            [backend = std::weak_ptr<void>(m_backend), kind = m_backend_kind](async_task::Runnable r,
+                                                                              async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
                 auto poll  = std::make_shared<std::function<void()>>();
-                *poll      = [runner, ex, poll]() {
+                *poll      = [runner, backend, kind, poll]() {
                     if (runner->run())
-                        asio::post(ex, *poll);
+                        TaskPool::enqueue_on(backend, kind, *poll);
                     else
                         *poll = nullptr;
                 };
-                asio::post(ex, *poll);
+                TaskPool::enqueue_on(backend, kind, *poll);
             });
         runnable.schedule();
         return std::move(task);
@@ -205,7 +302,7 @@ EPIX_EXPORT struct TaskPool {
     template <typename T, typename F>
         requires std::invocable<F, Scope<T>&>
     [[nodiscard]] std::vector<T> scope(F&& f) {
-        Scope<T> s{m_executor};
+        Scope<T> s{m_backend, m_backend_kind};
         std::forward<F>(f)(s);
         return s.collect_results();
     }
@@ -230,52 +327,24 @@ EPIX_EXPORT struct TaskPool {
     friend struct Scope;
 
     std::shared_ptr<void> m_backend;
-    asio::any_io_executor m_executor;
+    TaskPoolBackend m_backend_kind = TaskPoolBackend::StaticThreadPool;
     size_t m_thread_count = 0;
 
     static thread_local inline std::unique_ptr<asio::io_context> t_local_ctx;
     static thread_local inline std::optional<asio::executor_work_guard<asio::io_context::executor_type>> t_local_work;
 
-    TaskPool(std::shared_ptr<void> backend, asio::any_io_executor ex, size_t n)
-        : m_backend(std::move(backend)), m_executor(std::move(ex)), m_thread_count(n) {}
+    TaskPool(std::shared_ptr<void> backend, TaskPoolBackend kind, size_t n)
+        : m_backend(std::move(backend)), m_backend_kind(kind), m_thread_count(n) {}
 
-    static TaskPool make_thread_pool(size_t n) {
-        auto bundle = std::make_shared<internal::ThreadPoolBundle>(n);
-        auto ex     = bundle->pool.get_executor();
-        return {std::move(bundle), std::move(ex), n};
-    }
+    void enqueue(std::function<void()> fn) const { enqueue_on(m_backend, m_backend_kind, std::move(fn)); }
 
-    static TaskPool make_io_context(size_t n,
-                                    std::optional<std::string> thread_name,
-                                    std::function<void()> on_spawn,
-                                    std::function<void()> on_destroy) {
-        auto bundle = std::make_shared<internal::IoBundle>();
-        bundle->threads.reserve(n);
-        for (size_t i = 0; i < n; ++i) {
-            bundle->threads.emplace_back([b = bundle.get(), thread_name, on_spawn, on_destroy, i] {
-                auto name = thread_name ? *thread_name + " (" + std::to_string(i) + ")"
-                                        : std::string("TaskPool (") + std::to_string(i) + ")";
-                // Thread naming is platform-specific; best-effort via standard means.
-                if (on_spawn) on_spawn();
-                internal::CallOnDrop _destructor{on_destroy};
-                b->ioc.run();
-            });
-        }
-        auto ex = bundle->ioc.get_executor();
-        return {std::move(bundle), std::move(ex), n};
-    }
+    static void enqueue_on(std::weak_ptr<void> backend, TaskPoolBackend kind, std::function<void()> fn);
 
-    static TaskPool from_builder(const TaskPoolBuilder& b) {
-        size_t n      = b.m_num_threads.value_or(available_parallelism());
-        bool need_ioc = b.m_thread_name.has_value() || static_cast<bool>(b.m_on_thread_spawn) ||
-                        static_cast<bool>(b.m_on_thread_destroy);
-        auto chosen   = b.m_backend.value_or(need_ioc ? TaskPoolBackend::IoContext : TaskPoolBackend::ThreadPool);
+    static TaskPool make_static_thread_pool(size_t n);
 
-        if (chosen == TaskPoolBackend::IoContext)
-            return make_io_context(n, b.m_thread_name, b.m_on_thread_spawn, b.m_on_thread_destroy);
-        else
-            return make_thread_pool(n);
-    }
+    static TaskPool make_asio_thread_pool(size_t n);
+
+    static TaskPool from_builder(const TaskPoolBuilder& b);
 };
 
 // ── Scope ──────────────────────────────────────────────────────────────────
@@ -301,8 +370,9 @@ struct Scope {
                 cv->notify_one();
                 return val;
             },
-            [ex = m_executor](async_task::Runnable r, async_task::ScheduleInfo) {
-                asio::post(ex, [r = std::move(r)]() mutable { r.run(); });
+            [backend = std::weak_ptr<void>(m_backend), kind = m_backend_kind](async_task::Runnable r,
+                                                                              async_task::ScheduleInfo) {
+                TaskPool::enqueue_on(backend, kind, [r = std::move(r)]() mutable { r.run(); });
             });
         runnable.schedule();
         task.detach();
@@ -317,14 +387,16 @@ struct Scope {
    private:
     friend struct TaskPool;
 
-    explicit Scope(asio::any_io_executor ex)
-        : m_executor(std::move(ex)),
+    explicit Scope(std::shared_ptr<void> backend, TaskPoolBackend kind)
+        : m_backend(std::move(backend)),
+          m_backend_kind(kind),
           m_results(std::make_shared<std::vector<T>>()),
           m_pending(std::make_shared<std::atomic<size_t>>(0)),
           m_mtx(std::make_shared<std::mutex>()),
           m_cv(std::make_shared<std::condition_variable>()) {}
 
-    asio::any_io_executor m_executor;
+    std::shared_ptr<void> m_backend;
+    TaskPoolBackend m_backend_kind = TaskPoolBackend::StaticThreadPool;
     std::shared_ptr<std::vector<T>> m_results;
     std::shared_ptr<std::atomic<size_t>> m_pending;
     std::shared_ptr<std::mutex> m_mtx;
@@ -333,11 +405,5 @@ struct Scope {
 };
 
 // ── TaskPoolBuilder::build() and constructors ──────────────────────────────
-
-inline TaskPool TaskPoolBuilder::build() { return TaskPool::from_builder(*this); }
-
-inline TaskPool::TaskPool() : TaskPool(make_thread_pool(available_parallelism())) {}
-
-inline TaskPool::TaskPool(TaskPoolBuilder builder) : TaskPool(from_builder(builder)) {}
 
 }  // namespace epix::task

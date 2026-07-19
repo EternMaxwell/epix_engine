@@ -1,5 +1,6 @@
 ﻿#pragma once
 
+#include <epix/utils/async.hpp>
 #include <epix/utils/bit_vector.hpp>
 #include <epix/utils/function.hpp>
 #include <epix/utils/input_iterable.hpp>

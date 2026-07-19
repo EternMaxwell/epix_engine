@@ -1,9 +1,6 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
-#include <asio/post.hpp>
-#include <asio/use_awaitable.hpp>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
@@ -11,6 +8,8 @@
 #include <expected>
 #include <mutex>
 #include <optional>
+#include <stdexec/execution.hpp>
+#include <utility>
 #endif
 
 namespace epix::async_channel {
@@ -45,12 +44,16 @@ EPIX_EXPORT enum class TryRecvError {
 
 EPIX_EXPORT template <typename T>
 struct TrySendError {
-   private:
-    enum Kind { Full, Closed };
-    Kind kind;
-
    public:
+    enum Kind { Full, Closed };
+
+    Kind kind;
     T msg;
+
+    TrySendError(Kind kind, T msg) : kind(kind), msg(std::move(msg)) {}
+    static TrySendError full(T msg) { return TrySendError(Full, std::move(msg)); }
+    static TrySendError closed(T msg) { return TrySendError(Closed, std::move(msg)); }
+
     bool is_full() const noexcept { return kind == Full; }
     bool is_closed() const noexcept { return kind == Closed; }
 };
@@ -110,31 +113,38 @@ struct Sender {
     explicit operator bool() const noexcept { return m_ch != nullptr; }
 
     std::expected<void, TrySendError<T>> try_send(T msg) const {
-        if (!m_ch) return std::unexpected(TrySendError<T>{TrySendError<T>::Closed, std::move(msg)});
+        if (!m_ch) return std::unexpected(TrySendError<T>::closed(std::move(msg)));
         std::lock_guard lk(m_ch->mtx);
         if (m_ch->closed || m_ch->receiver_count == 0)
-            return std::unexpected(TrySendError<T>{TrySendError<T>::Closed, std::move(msg)});
+            return std::unexpected(TrySendError<T>::closed(std::move(msg)));
         if (m_ch->cap && m_ch->queue.size() >= *m_ch->cap)
-            return std::unexpected(TrySendError<T>{TrySendError<T>::Full, std::move(msg)});
+            return std::unexpected(TrySendError<T>::full(std::move(msg)));
         m_ch->queue.push_back(std::move(msg));
         m_ch->cv.notify_one();
         return {};
     }
 
-    asio::awaitable<std::expected<void, SendError<T>>> send(T msg) const {
+    STDEXEC::task<std::expected<void, SendError<T>>> send(T msg) const {
         if (!m_ch) co_return std::unexpected(SendError<T>{std::move(msg)});
         while (true) {
+            bool sent   = false;
+            bool closed = false;
             {
                 std::lock_guard lk(m_ch->mtx);
-                if (m_ch->closed || m_ch->receiver_count == 0) co_return std::unexpected(SendError<T>{std::move(msg)});
+                closed         = m_ch->closed || m_ch->receiver_count == 0;
                 bool has_space = !m_ch->cap || m_ch->queue.size() < *m_ch->cap;
-                if (has_space) {
+                if (!closed && has_space) {
                     m_ch->queue.push_back(std::move(msg));
-                    m_ch->cv.notify_one();
-                    co_return std::expected<void, SendError<T>>{};
+                    sent = true;
                 }
             }
-            co_await asio::post(asio::use_awaitable);
+            if (closed) co_return std::unexpected(SendError<T>{std::move(msg)});
+            if (sent) {
+                m_ch->cv.notify_one();
+                co_return std::expected<void, SendError<T>>{};
+            }
+            auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
+            co_await STDEXEC::schedule(scheduler);
         }
     }
 
@@ -268,20 +278,27 @@ struct Receiver {
         return std::unexpected(TryRecvError::Empty);
     }
 
-    asio::awaitable<std::expected<T, RecvError>> recv() const {
+    STDEXEC::task<std::expected<T, RecvError>> recv() const {
         if (!m_ch) co_return std::unexpected(RecvError{});
         while (true) {
+            std::optional<T> value;
+            bool closed = false;
             {
                 std::lock_guard lk(m_ch->mtx);
                 if (!m_ch->queue.empty()) {
-                    T val = std::move(m_ch->queue.front());
+                    value = std::move(m_ch->queue.front());
                     m_ch->queue.pop_front();
-                    m_ch->cv.notify_one();
-                    co_return val;
+                } else {
+                    closed = m_ch->closed || m_ch->sender_count == 0;
                 }
-                if (m_ch->closed || m_ch->sender_count == 0) co_return std::unexpected(RecvError{});
             }
-            co_await asio::post(asio::use_awaitable);
+            if (value) {
+                m_ch->cv.notify_one();
+                co_return std::move(*value);
+            }
+            if (closed) co_return std::unexpected(RecvError{});
+            auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
+            co_await STDEXEC::schedule(scheduler);
         }
     }
 
