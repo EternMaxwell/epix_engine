@@ -107,7 +107,7 @@ EPIX_EXPORT struct Commands {
         command_queue->push([data = std::move(data), replace_existing](World& world) mutable {
             auto resource_id = world.components().get_valid_id<T>();
             if (!resource_id.has_value()) return;
-            if (!world.storage_mut().resources.initialize(*resource_id) && !replace_existing) {
+            if (auto& res = world.storage_mut().resources.initialize(*resource_id, world.components()); !replace_existing) {
                 return;
             }
             world.storage_mut()
