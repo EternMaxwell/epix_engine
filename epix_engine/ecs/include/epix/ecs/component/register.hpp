@@ -91,30 +91,22 @@ EPIX_EXPORT struct ComponentsRegistrator {
 
 template <typename T>
 TypeId ComponentsQueuedRegistrator::queue_register_component() const {
-    m_components->get_id<T>()
-        .or_else([this] -> std::optional<TypeId> {
-            return register_arbitrary_component(meta::type_id<T>{}, storage_type_of<T>(),
-                                                [](ComponentsRegistrator& registrator, TypeId id,
-                                                   meta::type_index type_index, StorageType storage_type) {
-                                                    registrator.register_component_unchecked(
-                                                        type_index, id, storage_type,
-                                                        Component<T>::register_required_components,
-                                                        &ComponentHooks::update_from_component<T>);
-                                                });
-        })
-        .value();
+    if (auto id = m_components->get_id<T>()) return *id;
+    return register_arbitrary_component(meta::type_id<T>{}, storage_type_of<T>(),
+                                        [](ComponentsRegistrator& registrator, TypeId id,
+                                           meta::type_index type_index, StorageType storage_type) {
+                                            registrator.register_component_unchecked(
+                                                type_index, id, storage_type, Component<T>::register_required_components,
+                                                &ComponentHooks::update_from_component<T>);
+                                        });
 }
 template <typename T>
 TypeId ComponentsQueuedRegistrator::queue_register_resource() const {
-    m_components->get_id<T>()
-        .or_else([this] -> std::optional<TypeId> {
-            return register_arbitrary_component(meta::type_id<T>{}, storage_type_of<T>(),
-                                                [](ComponentsRegistrator& registrator, TypeId id,
-                                                   meta::type_index type_index, StorageType storage_type) {
-                                                    registrator.register_resource_unchecked(type_index, id,
-                                                                                            storage_type);
-                                                });
-        })
-        .value();
+    if (auto id = m_components->get_id<T>()) return *id;
+    return register_arbitrary_component(meta::type_id<T>{}, storage_type_of<T>(),
+                                        [](ComponentsRegistrator& registrator, TypeId id,
+                                           meta::type_index type_index, StorageType storage_type) {
+                                            registrator.register_resource_unchecked(type_index, id, storage_type);
+                                        });
 }
 }  // namespace epix::ecs

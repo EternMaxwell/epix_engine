@@ -73,6 +73,14 @@ struct RecursiveRootRequired {
         components.register_required<RecursiveSharedRequired>([] { return RecursiveSharedRequired{33}; });
     }
 };
+struct QueuedFlushRequired {
+    int value;
+};
+struct QueuedFlushRoot {
+    static void register_required_components(RequiredComponentsRegistrator& components) {
+        components.register_required<QueuedFlushRequired>([] { return QueuedFlushRequired{19}; });
+    }
+};
 }  // namespace
 
 template <>
@@ -215,4 +223,21 @@ TEST(ecs, runtime_required_components_reject_duplicate_cycle_and_existing_archet
     world.spawn(C{});
     EXPECT_EQ(world.try_register_required_components_with<C>([] { return B{}; }).error().kind,
               RequiredComponentsErrorKind::ArchetypeExists);
+}
+
+TEST(ecs, flush_applies_queued_component_registrations) {
+    World world(WorldId(0));
+
+    TypeId root = world.queued_registrator().queue_register_component<QueuedFlushRoot>();
+    ASSERT_EQ(world.components().num_queued(), 1);
+    EXPECT_FALSE(world.components().get_info(root).has_value());
+
+    world.flush();
+
+    EXPECT_EQ(world.components().num_queued(), 0);
+    ASSERT_TRUE(world.components().get_info(root).has_value());
+    auto required = world.components().get_id<QueuedFlushRequired>();
+    ASSERT_TRUE(required.has_value());
+    ASSERT_TRUE(world.components().get_required_components(root).has_value());
+    EXPECT_TRUE(world.components().get_required_components(root)->get().contains(*required));
 }

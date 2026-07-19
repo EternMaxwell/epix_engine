@@ -2,6 +2,8 @@
 
 namespace epix::ecs {
 
+void World::flush_components() { registrator().apply_queued_registrations(); }
+
 void World::flush_entities() {
     auto& empty_archetype = _archetypes.get_empty_mut();
     auto& empty_table     = _storage.tables.get_mut(empty_archetype.table_id()).value().get();
@@ -13,6 +15,7 @@ void World::flush_entities() {
 void World::flush_commands() { _command_queue.apply(*this); }
 
 void World::flush() {
+    flush_components();
     flush_entities();
     flush_commands();
 }
@@ -36,6 +39,7 @@ CommandQueue& world_command_queue(World& world) noexcept { return world.command_
 Tick world_change_tick(const World& world) noexcept { return world.change_tick(); }
 Tick world_increment_change_tick(World& world) noexcept { return world.increment_change_tick(); }
 Tick world_last_change_tick(const World& world) noexcept { return world.last_change_tick(); }
+void world_flush_components(World& world) { world.flush_components(); }
 void world_flush_entities(World& world) { world.flush_entities(); }
 void world_flush_commands(World& world) { world.flush_commands(); }
 void world_flush(World& world) { world.flush(); }

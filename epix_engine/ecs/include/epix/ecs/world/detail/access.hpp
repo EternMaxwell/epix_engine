@@ -48,6 +48,7 @@ CommandQueue& world_command_queue(World& world) noexcept;
 Tick world_change_tick(const World& world) noexcept;
 Tick world_increment_change_tick(World& world) noexcept;
 Tick world_last_change_tick(const World& world) noexcept;
+void world_flush_components(World& world);
 void world_flush_entities(World& world);
 void world_flush_commands(World& world);
 void world_flush(World& world);

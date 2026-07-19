@@ -441,11 +441,13 @@ EPIX_EXPORT struct World {
     /** @brief Try to get a mutable reference to an entity. Returns std::nullopt if invalid. */
     std::optional<EntityWorldMut> get_entity_mut(Entity entity) noexcept;
 
+    /** @brief Apply all queued component registrations. */
+    void flush_components();
     /** @brief Flush pending reserved entities into the empty archetype. */
     void flush_entities();
     /** @brief Apply all deferred commands in the command queue. */
     void flush_commands();
-    /** @brief Flush entities and apply deferred commands. */
+    /** @brief Flush queued components, entities, and deferred commands. */
     void flush();
 
    protected:
