@@ -2,7 +2,7 @@
 target_link_libraries(epix_app PUBLIC epix_common)
 target_link_libraries(epix_app PUBLIC BSThreadPool)
 target_link_libraries(epix_app PUBLIC spdlog::spdlog)
-target_link_libraries(epix_app PUBLIC epix_tasks)
+target_link_libraries(epix_app PUBLIC epix_task)
 target_link_libraries(epix_app PUBLIC epix_ecs)
 target_link_libraries(epix_app PRIVATE Taskflow)
 if (EPIX_ENABLE_TRACY)
