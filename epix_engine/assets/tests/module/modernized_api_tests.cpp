@@ -115,7 +115,7 @@ TEST(ProcessContext, ReaderAccess) {
     ProcessContext ctx(processor, path, data, info);
 
     std::vector<uint8_t> buf;
-    (void)STDEXEC::sync_wait([](const ProcessContext* ctx, std::vector<uint8_t>* buf) -> STDEXEC::task<void> {
+    (void)STDEXEC::sync_wait([](ProcessContext* ctx, std::vector<uint8_t>* buf) -> STDEXEC::task<void> {
         co_await ctx->asset_reader().read_to_end(*buf);
     }(&ctx, &buf));
     EXPECT_EQ(std::string(buf.begin(), buf.end()), "Hello, World!");

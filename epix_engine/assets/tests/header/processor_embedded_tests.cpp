@@ -165,7 +165,7 @@ TEST(ProcessContext, Construction) {
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
     std::vector<uint8_t> buf;
-    (void)STDEXEC::sync_wait([](const ProcessContext* ctx, std::vector<uint8_t>* buf) -> STDEXEC::task<void> {
+    (void)STDEXEC::sync_wait([](ProcessContext* ctx, std::vector<uint8_t>* buf) -> STDEXEC::task<void> {
         co_await ctx->asset_reader().read_to_end(*buf);
     }(&ctx, &buf));
     EXPECT_EQ(buf.size(), 2u);
