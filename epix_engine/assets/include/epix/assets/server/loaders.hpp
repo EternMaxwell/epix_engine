@@ -94,7 +94,12 @@ struct AssetLoaders {
                                auto loader =
                                    std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
                                auto sender = std::move(pending.sender);
-                               task::IoTaskPool::get().spawn(sender.broadcast(loader)).detach();
+                               task::IoTaskPool::get().spawn(
+                                   [](epix::async_broadcast::Sender<std::shared_ptr<ErasedAssetLoader>> sender,
+                                      std::shared_ptr<ErasedAssetLoader> loader) -> STDEXEC::task<void> {
+                                       (void)co_await sender.broadcast(std::move(loader));
+                                   }(std::move(sender), std::move(loader)))
+                                   .detach();
                            }},
                        maybe_loader.as_base());
         }
