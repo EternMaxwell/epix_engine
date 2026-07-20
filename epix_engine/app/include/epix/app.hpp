@@ -363,7 +363,7 @@ EPIX_EXPORT namespace epix::app {
                         if (updater.registered_states.contains(type_idx)) return false;
                         updater.registered_states.insert(type_idx);
                         auto update_system =
-                            make_system_unique([](ecs::Res<NextState<T>> next_state, ecs::ResMut<State<T>> state) {
+                            ecs::make_system_unique([](ecs::Res<NextState<T>> next_state, ecs::ResMut<State<T>> state) {
                                 if (state.get() == (T)next_state.get()) return;
                                 state.get_mut() = (T)next_state.get();
                             });
