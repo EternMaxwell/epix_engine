@@ -97,9 +97,9 @@ struct TestTextSaver {
     using Error = std::exception_ptr;
 
     STDEXEC::task<std::expected<OutputLoader::Settings, Error>> save(Writer& writer,
-                                                                       SavedAsset<std::string> asset,
-                                                                       const Settings&,
-                                                                       const AssetPath&) const {
+                                                                     SavedAsset<std::string> asset,
+                                                                     const Settings&,
+                                                                     const AssetPath&) const {
         auto& str = asset.get();
         std::span<const uint8_t> data(reinterpret_cast<const uint8_t*>(str.data()), str.size());
         co_await writer.write(data);
@@ -118,7 +118,7 @@ struct AddTextTransformer {
     std::string suffix;
 
     STDEXEC::task<std::expected<TransformedAsset<std::string>, Error>> transform(TransformedAsset<std::string> asset,
-                                                                                   const Settings&) const {
+                                                                                 const Settings&) const {
         asset.get_mut() += suffix;
         co_return asset;
     }
@@ -135,8 +135,8 @@ struct TestIdentityProcessor {
     using OutputLoader = TestTextLoader;
 
     STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext& ctx,
-                                                                                       const Settings&,
-                                                                                       Writer& writer) const {
+                                                                                     const Settings&,
+                                                                                     Writer& writer) const {
         std::vector<uint8_t> buf;
         co_await ctx.asset_reader().read_to_end(buf);
         co_await writer.write(std::span<const uint8_t>(buf));
@@ -336,8 +336,8 @@ struct TemplatedProcessor {
     using OutputLoader = TestTextLoader;
 
     STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
-                                                                                       const Settings&,
-                                                                                       Writer& writer) const {
+                                                                                     const Settings&,
+                                                                                     Writer& writer) const {
         std::string_view hello = "hello";
         co_await writer.write(std::span<const uint8_t>(reinterpret_cast<const uint8_t*>(hello.data()), hello.size()));
         co_return OutputLoader::Settings{};
@@ -583,5 +583,3 @@ TEST(ValidateLogError, EntryErrors) {
     ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(err));
     EXPECT_EQ(std::get<validate_log_errors::EntryErrors>(err).errors.size(), 1u);
 }
-
-

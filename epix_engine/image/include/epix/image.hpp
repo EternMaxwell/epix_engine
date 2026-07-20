@@ -9,8 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <epix/assets.hpp>
 #include <epix/app.hpp>
+#include <epix/assets.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -316,8 +316,8 @@ EPIX_EXPORT struct ImageLoader {
     /** @brief Load an image asset from a reader.
      * @param context Asset loading context. */
     static STDEXEC::task<std::expected<Image, ImageLoadError>> load(assets::Reader& reader,
-                                                                      const Settings& settings,
-                                                                      assets::LoadContext& context);
+                                                                    const Settings& settings,
+                                                                    assets::LoadContext& context);
 };
 /** @brief Plugin that registers the image asset loader and related
  * systems. */

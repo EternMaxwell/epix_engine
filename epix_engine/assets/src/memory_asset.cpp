@@ -1,6 +1,6 @@
-#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 #include <epix/utils.hpp>
+#include <stdexec/execution.hpp>
 
 namespace epix::assets {
 
@@ -253,5 +253,3 @@ assets::AssetSourceEvent MemoryAssetWatcher::convert(const assets::memory::DirEv
 }
 
 }  // namespace epix::assets
-
-

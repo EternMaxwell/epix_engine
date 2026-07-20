@@ -3,7 +3,6 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <epix/meta.hpp>
@@ -14,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -43,7 +43,7 @@ EPIX_EXPORT struct Reader {
     /** @brief Read all remaining bytes into buf, returning the number of bytes read.
      *  Matches bevy's Reader::read_to_end. */
     virtual STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) = 0;
-    virtual ~Reader()                                                                                      = default;
+    virtual ~Reader()                                                                                    = default;
 };
 
 /** @brief Abstract async byte writer. Matches bevy's Writer (dyn AsyncWrite + Unpin + Send + Sync). */
@@ -52,7 +52,7 @@ EPIX_EXPORT struct Writer {
     virtual STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) = 0;
     /** @brief Flush any buffered output. */
     virtual STDEXEC::task<std::expected<void, std::error_code>> flush() = 0;
-    virtual ~Writer()                                                     = default;
+    virtual ~Writer()                                                   = default;
 };
 
 EPIX_EXPORT struct AssetReader {
@@ -108,9 +108,9 @@ EPIX_EXPORT struct AssetWriter {
     virtual STDEXEC::task<std::expected<void, AssetWriterError>> clear_directory(
         const std::filesystem::path& path) const = 0;
     STDEXEC::task<std::expected<void, AssetWriterError>> write_bytes(const std::filesystem::path& path,
-                                                                       std::span<const std::byte> bytes) const;
+                                                                     std::span<const std::byte> bytes) const;
     STDEXEC::task<std::expected<void, AssetWriterError>> write_meta_bytes(const std::filesystem::path& path,
-                                                                            std::span<const std::byte> bytes) const;
+                                                                          std::span<const std::byte> bytes) const;
     virtual ~AssetWriter() = default;
 };
 
@@ -222,4 +222,3 @@ EPIX_EXPORT struct VecWriter : Writer {
 };
 
 }  // namespace epix::assets
-

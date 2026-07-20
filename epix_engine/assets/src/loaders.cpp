@@ -109,5 +109,3 @@ std::optional<MaybeAssetLoader> AssetLoaders::find(
     return std::nullopt;
 }
 }  // namespace epix::assets
-
-

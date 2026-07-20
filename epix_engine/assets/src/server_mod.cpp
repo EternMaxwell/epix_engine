@@ -285,5 +285,3 @@ UntypedHandle NestedLoader::load_untyped(const AssetPath& path) {
     m_context.track_dependency(handle.id());
     return handle;
 }
-
-

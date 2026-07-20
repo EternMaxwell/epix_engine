@@ -92,10 +92,10 @@ void ::epix::assets::log_asset_error(const AssetError& error,
 }
 
 static STDEXEC::task<void> load_folder_recursive(const AssetSourceId& source,
-                                                   const std::filesystem::path& dir_path,
-                                                   const AssetReader& reader,
-                                                   const AssetServer& server,
-                                                   std::vector<UntypedHandle>& handles) {
+                                                 const std::filesystem::path& dir_path,
+                                                 const AssetReader& reader,
+                                                 const AssetServer& server,
+                                                 std::vector<UntypedHandle>& handles) {
     auto is_dir = co_await reader.is_directory(dir_path);
     if (!is_dir || !*is_dir) co_return;
 
@@ -446,9 +446,9 @@ STDEXEC::task<std::expected<AssetServer::MetaLoaderReader, AssetLoadError>> Asse
 // Called from inside a task spawned by spawn_load_task.
 // ---------------------------------------------------------------------------
 STDEXEC::task<void> AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
-                                                 AssetPath path,
-                                                 bool force,
-                                                 std::optional<MetaTransform> meta_transform) const {
+                                               AssetPath path,
+                                               bool force,
+                                               std::optional<MetaTransform> meta_transform) const {
     // Determine asset_type_id hint from input handle (if typed)
     std::optional<meta::type_index> input_type_id;
     if (input_handle) input_type_id = input_handle->type();
@@ -681,6 +681,3 @@ void AssetServer::reload_internal(const AssetPath& path, bool log) const {
         }(server, asset_path, log))
         .detach();
 }
-
-
-

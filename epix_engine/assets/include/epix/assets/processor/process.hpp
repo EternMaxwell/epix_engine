@@ -5,7 +5,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
-#include <stdexec/execution.hpp>
 #include <concepts>
 #include <cstddef>
 #include <epix/meta.hpp>
@@ -16,6 +15,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -152,8 +152,9 @@ EPIX_EXPORT enum class ProcessStatus {
 EPIX_EXPORT struct ErasedProcessor {
     virtual ~ErasedProcessor() = default;
     /** @brief Process the asset described by context, writing results to writer. */
-    virtual STDEXEC::task<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(
-        ProcessContext& context, const Settings& settings, Writer& writer) const = 0;
+    virtual STDEXEC::task<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(ProcessContext& context,
+                                                                                              const Settings& settings,
+                                                                                              Writer& writer) const = 0;
     /** @brief Deserialize metadata bytes into type-erased AssetMetaDyn. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
         std::span<const std::byte> meta_bytes) const = 0;
@@ -178,8 +179,8 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
     P& as_concrete_mut() { return static_cast<P&>(*this); }
 
     STDEXEC::task<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(ProcessContext& context,
-                                                                                        const Settings& settings,
-                                                                                        Writer& writer) const override {
+                                                                                      const Settings& settings,
+                                                                                      Writer& writer) const override {
         auto* typed_settings = dynamic_cast<const SettingsImpl<typename P::Settings>*>(&settings);
         if (!typed_settings) {
             co_return std::unexpected(ProcessError{process_errors::WrongMetaType{}});
@@ -251,8 +252,9 @@ struct LoadTransformAndSave {
         requires std::same_as<T, IdentityAssetTransformer<typename L::Asset>>
         : transformer(), saver(std::move(saver)) {}
 
-    STDEXEC::task<std::expected<typename OutputLoader::Settings, std::exception_ptr>> process(
-        ProcessContext& context, const Settings& settings, Writer& writer);
+    STDEXEC::task<std::expected<typename OutputLoader::Settings, std::exception_ptr>> process(ProcessContext& context,
+                                                                                              const Settings& settings,
+                                                                                              Writer& writer);
 };
 
 // ---- GetProcessorError ----
@@ -342,5 +344,3 @@ LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& 
 }
 
 }  // namespace epix::assets
-
-

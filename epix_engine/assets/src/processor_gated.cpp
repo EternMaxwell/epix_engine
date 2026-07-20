@@ -1,6 +1,6 @@
-#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 #include <epix/utils.hpp>
+#include <stdexec/execution.hpp>
 
 namespace epix::assets {
 
@@ -66,5 +66,3 @@ STDEXEC::task<std::expected<bool, AssetReaderError>> ProcessorGatedReader::is_di
 }
 
 }  // namespace epix::assets
-
-

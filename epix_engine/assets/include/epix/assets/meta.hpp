@@ -7,7 +7,6 @@
 #include <zpp_bits.h>
 
 #include <array>
-#include <stdexec/execution.hpp>
 #include <cstdint>
 #include <cstring>
 #include <epix/meta.hpp>
@@ -17,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -147,7 +147,7 @@ EPIX_EXPORT struct EmptySettings {};
 
 /** @brief Concept satisfied by any type that zpp::bits can serialize:
  *  - types with an explicit serialize hook (has_serialize)
- *  - containers (std::vector, std::string, std::map, - 
+ *  - containers (std::vector, std::string, std::map, -
  *  - tuple-like types
  *  - std::variant, std::optional
  *  - empty types (std::is_empty_v - includes EmptySettings)
@@ -399,5 +399,3 @@ STDEXEC::task<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, R
 AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes);
 
 }  // namespace epix::assets
-
-

@@ -90,5 +90,3 @@ std::optional<AssetPath> AssetPath::try_parse(std::string_view str) {
 }
 
 }  // namespace epix::assets
-
-

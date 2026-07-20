@@ -178,9 +178,9 @@ TEST(IdentityAssetTransformer, Roundtrip) {
     typename IdentityAssetTransformer<std::string>::Settings s;
     std::expected<TransformedAsset<std::string>, IdentityAssetTransformer<std::string>::Error> result =
         std::unexpected(IdentityAssetTransformer<std::string>::Error{});
-    auto completed = STDEXEC::sync_wait(
-        [](const IdentityAssetTransformer<std::string>* t,
-           IdentityAssetTransformer<std::string>::Settings s) -> STDEXEC::task<decltype(result)> {
+    auto completed =
+        STDEXEC::sync_wait([](const IdentityAssetTransformer<std::string>* t,
+                              IdentityAssetTransformer<std::string>::Settings s) -> STDEXEC::task<decltype(result)> {
             co_return co_await t->transform(TransformedAsset<std::string>(std::string("data")), s);
         }(&t, s));
     if (completed) result = std::move(std::get<0>(*completed));

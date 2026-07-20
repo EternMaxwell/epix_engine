@@ -85,5 +85,3 @@ const MetaTransform* UntypedHandle::meta_transform() const noexcept {
                                      [](const UntypedAssetId&) -> const MetaTransform* { return nullptr; }},
                       ref);
 }
-
-

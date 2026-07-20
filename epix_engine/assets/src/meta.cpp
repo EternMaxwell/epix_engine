@@ -1,8 +1,8 @@
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
-#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
+#include <stdexec/execution.hpp>
 
 namespace epix::assets {
 
@@ -98,5 +98,3 @@ AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>
 }
 
 }  // namespace epix::assets
-
-

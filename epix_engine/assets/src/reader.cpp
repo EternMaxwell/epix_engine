@@ -1,5 +1,5 @@
-#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
+#include <stdexec/execution.hpp>
 
 namespace epix::assets {
 
@@ -24,8 +24,8 @@ STDEXEC::task<std::expected<std::vector<std::byte>, AssetReaderError>> AssetRead
     }
 }
 
-STDEXEC::task<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(
-    const std::filesystem::path& path, std::span<const std::byte> bytes) const {
+STDEXEC::task<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(const std::filesystem::path& path,
+                                                                              std::span<const std::byte> bytes) const {
     auto writer_result = co_await write(path);
     if (!writer_result) {
         co_return std::unexpected(writer_result.error());
@@ -95,5 +95,3 @@ STDEXEC::task<std::expected<void, std::error_code>> VecWriter::flush() {
 }
 
 }  // namespace epix::assets
-
-

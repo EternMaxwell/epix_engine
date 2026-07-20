@@ -198,5 +198,3 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& pat
         .value();
 }
 }  // namespace epix::assets
-
-

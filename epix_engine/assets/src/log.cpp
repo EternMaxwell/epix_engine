@@ -115,5 +115,3 @@ std::expected<void, std::string> FileProcessorTransactionLog::unrecoverable() {
     return write_line(std::string(UNRECOVERABLE_ERR));
 }
 }  // namespace epix::assets
-
-

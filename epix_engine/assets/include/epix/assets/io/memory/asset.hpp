@@ -3,7 +3,6 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <cstdint>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
@@ -11,6 +10,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <stdexec/execution.hpp>
 #include <utility>
 #endif
 
@@ -37,8 +37,8 @@ EPIX_EXPORT struct MemoryAssetReader : public assets::AssetReader {
     STDEXEC::task<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read_meta(
         const std::filesystem::path& path) const override;
 
-    STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
-    read_directory(const std::filesystem::path& path) const override;
+    STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>> read_directory(
+        const std::filesystem::path& path) const override;
 
     STDEXEC::task<std::expected<bool, assets::AssetReaderError>> is_directory(
         const std::filesystem::path& path) const override;
@@ -97,4 +97,3 @@ EPIX_EXPORT struct MemoryAssetWatcher : public assets::AssetWatcher {
 };
 
 }  // namespace epix::assets
-

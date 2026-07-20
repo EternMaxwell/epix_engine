@@ -212,5 +212,3 @@ TEST(UntypedHandle, MetaTransform_StrongHandle_WithoutTransform_ReturnsNull) {
     EXPECT_TRUE(uh.is_strong());
     EXPECT_EQ(uh.meta_transform(), nullptr);
 }
-
-

@@ -22,4 +22,3 @@ EPIX_EXPORT struct FileAssetWatcher : public AssetWatcher {
     FileAssetWatcher(std::filesystem::path root, epix::async_channel::Sender<AssetSourceEvent> event_sender);
 };
 }  // namespace epix::assets
-

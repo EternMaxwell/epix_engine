@@ -17,8 +17,8 @@ module;
 #include <utility>
 #include <vector>
 #endif
-#include <exec/start_detached.hpp>
 #include <epix/common.hpp>
+#include <exec/start_detached.hpp>
 #include <stdexec/execution.hpp>
 
 export module epix.async_task;

@@ -370,5 +370,3 @@ TEST(Assets, RemoveUntracked) {
     EXPECT_EQ(res.value(), "bye");
     EXPECT_FALSE(assets.contains(h.id()));
 }
-
-

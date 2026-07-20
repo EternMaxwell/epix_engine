@@ -214,9 +214,9 @@ STDEXEC::task<std::filesystem::path> AssetProcessor::validate_transaction_log_an
 // ---- initialize ----
 
 static STDEXEC::task<void> get_asset_paths(const AssetReader& reader,
-                                             const std::filesystem::path& path,
-                                             std::vector<std::filesystem::path>& paths,
-                                             std::vector<std::filesystem::path>* empty_dirs) {
+                                           const std::filesystem::path& path,
+                                           std::vector<std::filesystem::path>& paths,
+                                           std::vector<std::filesystem::path>* empty_dirs) {
     auto is_dir = co_await reader.is_directory(path);
     if (is_dir && *is_dir) {
         auto dir_result = co_await reader.read_directory(path);
@@ -716,7 +716,7 @@ STDEXEC::task<void> AssetProcessor::handle_removed_meta(
 }
 
 STDEXEC::task<void> AssetProcessor::handle_removed_asset(const AssetSource& source,
-                                                           const std::filesystem::path& path) const {
+                                                         const std::filesystem::path& path) const {
     auto asset_path = AssetPath(source.id(), path);
     spdlog::debug("Removing processed {} because source was removed", asset_path.string());
     // remove() is async; same-as above note: unbounded send + overflow broadcast never suspend
@@ -727,7 +727,7 @@ STDEXEC::task<void> AssetProcessor::handle_removed_asset(const AssetSource& sour
 }
 
 STDEXEC::task<void> AssetProcessor::handle_removed_folder(const AssetSource& source,
-                                                            const std::filesystem::path& path) const {
+                                                          const std::filesystem::path& path) const {
     spdlog::debug("Removing folder {} because source was removed", path.string());
     auto ungated_opt = source.ungated_processed_reader();
     if (!ungated_opt) co_return;
@@ -930,7 +930,7 @@ STDEXEC::task<void> AssetProcessor::execute_processing_tasks(
 // ---- File system helpers ----
 
 STDEXEC::task<void> AssetProcessor::remove_processed_asset_and_meta(const AssetSource& source,
-                                                                      const std::filesystem::path& path) const {
+                                                                    const std::filesystem::path& path) const {
     auto writer_opt = source.processed_writer();
     if (!writer_opt) co_return;
     auto& writer = writer_opt->get();
@@ -947,7 +947,7 @@ STDEXEC::task<void> AssetProcessor::remove_processed_asset_and_meta(const AssetS
 }
 
 STDEXEC::task<void> AssetProcessor::clean_empty_processed_ancestor_folders(const AssetSource& source,
-                                                                             const std::filesystem::path& path) const {
+                                                                           const std::filesystem::path& path) const {
     if (path.is_absolute()) {
         spdlog::error("Attempted to clean up ancestor folders of an absolute path. Skipping.");
         co_return;
@@ -965,7 +965,7 @@ STDEXEC::task<void> AssetProcessor::clean_empty_processed_ancestor_folders(const
 }
 
 STDEXEC::task<void> AssetProcessor::write_default_meta_file_for_path(const AssetSource& source,
-                                                                       const AssetPath& asset_path) const {
+                                                                     const AssetPath& asset_path) const {
     auto ext = asset_path.get_full_extension();
     if (!ext) co_return;
 
@@ -984,6 +984,3 @@ STDEXEC::task<void> AssetProcessor::write_default_meta_file_for_path(const Asset
     if (!writer_opt) co_return;
     (void)co_await writer_opt->get().write_meta_bytes(asset_path.path, meta_bytes);
 }
-
-
-

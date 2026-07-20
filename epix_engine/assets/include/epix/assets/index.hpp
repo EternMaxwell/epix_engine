@@ -83,4 +83,3 @@ struct hash<epix::assets::AssetIndex> {
     }
 };
 }  // namespace std
-

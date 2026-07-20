@@ -108,5 +108,3 @@ AssetPlugin& AssetPlugin::register_asset_source(AssetSourceId id, AssetSourceBui
     m_source_builders.emplace_back(std::move(id), std::move(source));
     return *this;
 }
-
-

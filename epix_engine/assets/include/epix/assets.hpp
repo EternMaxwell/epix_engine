@@ -153,5 +153,3 @@ epix::app::App& app_set_default_asset_processor(epix::app::App& app, const std::
 }
 
 }  // namespace epix::assets
-
-

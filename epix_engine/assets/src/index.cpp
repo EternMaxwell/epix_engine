@@ -27,5 +27,3 @@ void AssetIndexAllocator::release(const AssetIndex& index) const {
     m_free_indices_sender.try_send(index);
 }
 }  // namespace epix::assets
-
-

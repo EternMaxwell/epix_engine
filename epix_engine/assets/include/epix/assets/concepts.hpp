@@ -13,4 +13,3 @@ namespace epix::assets {
 EPIX_EXPORT template <typename T>
 concept Asset = std::movable<T>;
 }  // namespace epix::assets
-

@@ -321,5 +321,3 @@ TEST(AssetPath, Hash_DifferentPathLikelyDifferent) {
     // Not guaranteed but highly likely
     EXPECT_NE(std::hash<AssetPath>{}(a), std::hash<AssetPath>{}(b));
 }
-
-

@@ -105,9 +105,9 @@ TEST(IdentityAssetTransformer, PassesThrough) {
     IdentityAssetTransformer<std::string> t;
     typename IdentityAssetTransformer<std::string>::Settings s;
     std::expected<TransformedAsset<std::string>, std::exception_ptr> result = std::unexpected(std::exception_ptr{});
-    auto completed = STDEXEC::sync_wait(
-        [](const IdentityAssetTransformer<std::string>* t,
-           IdentityAssetTransformer<std::string>::Settings s) -> STDEXEC::task<decltype(result)> {
+    auto completed =
+        STDEXEC::sync_wait([](const IdentityAssetTransformer<std::string>* t,
+                              IdentityAssetTransformer<std::string>::Settings s) -> STDEXEC::task<decltype(result)> {
             co_return co_await t->transform(TransformedAsset<std::string>(std::string("unchanged")), s);
         }(&t, s));
     if (completed) result = std::move(std::get<0>(*completed));
@@ -130,8 +130,8 @@ struct SimpleLoader {
         return exts;
     }
     STDEXEC::task<std::expected<std::string, std::string>> load(Reader& reader,
-                                                                  const EmptySettings&,
-                                                                  LoadContext& ctx) const {
+                                                                const EmptySettings&,
+                                                                LoadContext& ctx) const {
         co_return std::string("loaded");
     }
 };
@@ -215,5 +215,3 @@ TEST(ErasedLoadedAsset, GetLabeledById_NotFound) {
 // SavedAsset requires LabeledAsset which is not exported from the module.
 // SavedAsset is tested indirectly through the asset saver infrastructure.
 // Skipping direct SavedAsset tests here.
-
-

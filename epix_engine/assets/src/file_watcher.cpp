@@ -78,5 +78,3 @@ FileAssetWatcher::FileAssetWatcher(std::filesystem::path root, async_channel::Se
 }
 
 }  // namespace epix::assets
-
-

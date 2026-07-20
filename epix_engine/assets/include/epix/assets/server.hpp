@@ -5,7 +5,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
-#include <stdexec/execution.hpp>
 #include <concepts>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
@@ -19,6 +18,7 @@
 #include <optional>
 #include <span>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string_view>
 #include <tuple>
 #include <utility>
@@ -281,8 +281,7 @@ EPIX_EXPORT struct AssetServer {
         auto server       = *this;
         auto owned_handle = handle;
         task::IoTaskPool::get()
-            .spawn([](AssetServer server,
-                      UntypedHandle owned_handle,
+            .spawn([](AssetServer server, UntypedHandle owned_handle,
                       std::function<std::expected<A, E>()> future) mutable -> STDEXEC::task<void> {
                 auto result = future();
                 if (result) {
@@ -494,9 +493,9 @@ EPIX_EXPORT struct AssetServer {
     /** @brief Core loading pipeline: read meta, pick loader, load asset, send event.
      *  Matches bevy_asset's AssetServer::load_internal (async). */
     STDEXEC::task<void> load_internal(std::optional<UntypedHandle> input_handle,
-                                        AssetPath path,
-                                        bool force,
-                                        std::optional<MetaTransform> meta_transform) const;
+                                      AssetPath path,
+                                      bool force,
+                                      std::optional<MetaTransform> meta_transform) const;
 
     /** @brief Get the meta, loader, and a Reader for an asset path.
      *  Matches bevy_asset's AssetServer::get_meta_loader_and_reader (async). */
@@ -576,6 +575,3 @@ STDEXEC::task<std::expected<LoadedAsset<A>, AssetLoadError>> LoadContext::load_d
 }
 
 }  // namespace epix::assets
-
-
-

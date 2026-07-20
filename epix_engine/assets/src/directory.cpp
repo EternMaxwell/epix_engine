@@ -531,5 +531,3 @@ void Directory::poll_events() const noexcept { (void)this; }
 std::filesystem::path Directory::get_path() const { return internal_->read().ref.path; }
 
 }  // namespace epix::assets::memory
-
-

@@ -13,8 +13,8 @@
 #include <future>
 #include <memory>
 #include <mutex>
-#include <queue>
 #include <optional>
+#include <queue>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -159,9 +159,9 @@ EPIX_EXPORT struct GLFWRunner : public epix::app::AppRunner {
     std::unique_ptr<epix::ecs::System<std::tuple<>, void>> remove_window;
     epix::ecs::FilteredAccessSet exit_access;
     epix::ecs::FilteredAccessSet remove_access;
-    std::unique_ptr<epix::ecs::System<std::tuple<>, void>> create_windows_system, update_size_system,
-        update_pos_system, toggle_window_mode_system, update_window_states_system, destroy_windows_system,
-        send_cached_events_system, clipboard_set_text_system, clipboard_update_system;
+    std::unique_ptr<epix::ecs::System<std::tuple<>, void>> create_windows_system, update_size_system, update_pos_system,
+        toggle_window_mode_system, update_window_states_system, destroy_windows_system, send_cached_events_system,
+        clipboard_set_text_system, clipboard_update_system;
     std::vector<std::unique_ptr<epix::ecs::System<std::tuple<>, void>>> extra_systems;
     std::optional<std::future<std::unique_ptr<epix::app::App>>> render_app_future;
     std::optional<epix::app::AppLabel> render_app_label;
@@ -181,18 +181,18 @@ EPIX_EXPORT struct GLFWPlugin {
     static void update_pos(
         epix::ecs::Commands commands,
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                           epix::ecs::Mut<window::Window>,
-                                           epix::ecs::Opt<const window::CachedWindow&>,
-                                           epix::ecs::Opt<const epix::ecs::Parent&>>> windows,
+                                         epix::ecs::Mut<window::Window>,
+                                         epix::ecs::Opt<const window::CachedWindow&>,
+                                         epix::ecs::Opt<const epix::ecs::Parent&>>> windows,
         epix::ecs::ResMut<GLFWwindows> glfw_windows,
         epix::ecs::Local<std::unordered_map<epix::ecs::Entity, std::pair<int, int>>> pending_window_positions);
     /** @brief System that creates native GLFW windows for new Window entities. */
     static void create_windows(
         epix::ecs::Commands cmd,
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                           epix::ecs::Mut<window::Window>,
-                                           epix::ecs::Opt<epix::ecs::Ref<epix::ecs::Parent>>,
-                                           epix::ecs::Opt<epix::ecs::Ref<epix::ecs::Children>>>> windows,
+                                         epix::ecs::Mut<window::Window>,
+                                         epix::ecs::Opt<epix::ecs::Ref<epix::ecs::Parent>>,
+                                         epix::ecs::Opt<epix::ecs::Ref<epix::ecs::Children>>>> windows,
         epix::ecs::ResMut<GLFWwindows> glfw_windows,
         epix::ecs::EventWriter<window::WindowCreated> window_created);
     /** @brief System that applies window state changes (title, cursor, icon, etc.). */

@@ -5,7 +5,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
-#include <stdexec/execution.hpp>
 #include <epix/async_broadcast.hpp>
 #include <epix/async_channel.hpp>
 #include <epix/ecs.hpp>
@@ -17,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <shared_mutex>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -225,8 +225,8 @@ EPIX_EXPORT struct AssetProcessor {
         const AssetSourceId& source,
         const std::filesystem::path& path,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
-    STDEXEC::task<std::expected<ProcessResult, ProcessError>> process_asset_internal(
-        const AssetSource& source, const AssetPath& asset_path) const;
+    STDEXEC::task<std::expected<ProcessResult, ProcessError>> process_asset_internal(const AssetSource& source,
+                                                                                     const AssetPath& asset_path) const;
     STDEXEC::task<void> handle_asset_source_event(
         const AssetSource& source,
         const AssetSourceEvent& event,
@@ -262,11 +262,10 @@ EPIX_EXPORT struct AssetProcessor {
     void log_unrecoverable() const;
     STDEXEC::task<std::filesystem::path> validate_transaction_log_and_recover() const;
     STDEXEC::task<void> remove_processed_asset_and_meta(const AssetSource& source,
-                                                          const std::filesystem::path& path) const;
+                                                        const std::filesystem::path& path) const;
     STDEXEC::task<void> clean_empty_processed_ancestor_folders(const AssetSource& source,
-                                                                 const std::filesystem::path& path) const;
-    STDEXEC::task<void> write_default_meta_file_for_path(const AssetSource& source,
-                                                           const AssetPath& asset_path) const;
+                                                               const std::filesystem::path& path) const;
+    STDEXEC::task<void> write_default_meta_file_for_path(const AssetSource& source, const AssetPath& asset_path) const;
 
    public:
     AssetProcessor(const AssetProcessor& other);
@@ -359,4 +358,3 @@ EPIX_EXPORT struct AssetProcessor {
 inline const AssetServer& ProcessContext::asset_server() const noexcept { return m_processor->get_server(); }
 
 }  // namespace epix::assets
-

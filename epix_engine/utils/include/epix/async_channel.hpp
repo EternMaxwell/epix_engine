@@ -115,8 +115,7 @@ struct Sender {
     std::expected<void, TrySendError<T>> try_send(T msg) const {
         if (!m_ch) return std::unexpected(TrySendError<T>::closed(std::move(msg)));
         std::lock_guard lk(m_ch->mtx);
-        if (m_ch->closed || m_ch->receiver_count == 0)
-            return std::unexpected(TrySendError<T>::closed(std::move(msg)));
+        if (m_ch->closed || m_ch->receiver_count == 0) return std::unexpected(TrySendError<T>::closed(std::move(msg)));
         if (m_ch->cap && m_ch->queue.size() >= *m_ch->cap)
             return std::unexpected(TrySendError<T>::full(std::move(msg)));
         m_ch->queue.push_back(std::move(msg));

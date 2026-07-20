@@ -15,7 +15,7 @@ EPIX_EXPORT namespace epix::input {
         void attach(epix::app::App& app);
     };
     /** @brief Debug system that logs all received input events to the console. */
-    void log_inputs(
-        epix::ecs::EventReader<KeyInput> key_reader, epix::ecs::EventReader<MouseButtonInput> mouse_reader,
-        epix::ecs::EventReader<MouseMove> mouse_move_reader, epix::ecs::EventReader<MouseScroll> mouse_scroll_reader);
+    void log_inputs(epix::ecs::EventReader<KeyInput> key_reader, epix::ecs::EventReader<MouseButtonInput> mouse_reader,
+                    epix::ecs::EventReader<MouseMove> mouse_move_reader,
+                    epix::ecs::EventReader<MouseScroll> mouse_scroll_reader);
 }  // namespace epix::input

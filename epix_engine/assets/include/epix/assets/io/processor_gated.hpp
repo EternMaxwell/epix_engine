@@ -3,11 +3,11 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <memory>
+#include <stdexec/execution.hpp>
 #include <utility>
 #endif
 
@@ -41,10 +41,7 @@ struct ProcessorGatedReader : public AssetReader {
     STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>> read_directory(
         const std::filesystem::path& path) const override;
 
-    STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(
-        const std::filesystem::path& path) const override;
+    STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(const std::filesystem::path& path) const override;
 };
 
 }  // namespace epix::assets
-
-

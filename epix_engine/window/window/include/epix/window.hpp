@@ -39,11 +39,11 @@ EPIX_EXPORT namespace epix::window {
     };
 
     /** @brief Debug system that logs all window events to the logger. */
-    void log_events(epix::ecs::EventReader<WindowResized> resized, epix::ecs::EventReader<WindowMoved> moved,
-                    epix::ecs::EventReader<WindowCreated> created, epix::ecs::EventReader<WindowClosed> closed,
-                    epix::ecs::EventReader<WindowCloseRequested> close_requested,
-                    epix::ecs::EventReader<WindowDestroyed> destroyed, epix::ecs::EventReader<CursorMoved> cursor_moved,
-                    epix::ecs::EventReader<CursorEntered> cursor_entered, epix::ecs::EventReader<FileDrop> file_drop,
-                    epix::ecs::EventReader<ReceivedCharacter> received_character,
-                    epix::ecs::EventReader<WindowFocused> window_focused, epix::ecs::Query<epix::ecs::Item<const Window&>> windows);
+    void log_events(
+        epix::ecs::EventReader<WindowResized> resized, epix::ecs::EventReader<WindowMoved> moved,
+        epix::ecs::EventReader<WindowCreated> created, epix::ecs::EventReader<WindowClosed> closed,
+        epix::ecs::EventReader<WindowCloseRequested> close_requested, epix::ecs::EventReader<WindowDestroyed> destroyed,
+        epix::ecs::EventReader<CursorMoved> cursor_moved, epix::ecs::EventReader<CursorEntered> cursor_entered,
+        epix::ecs::EventReader<FileDrop> file_drop, epix::ecs::EventReader<ReceivedCharacter> received_character,
+        epix::ecs::EventReader<WindowFocused> window_focused, epix::ecs::Query<epix::ecs::Item<const Window&>> windows);
 }  // namespace epix::window

@@ -36,5 +36,3 @@ std::string UntypedAssetId::to_string_short() const {
 }
 
 }  // namespace epix::assets
-
-

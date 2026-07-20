@@ -281,7 +281,6 @@ TEST(Behavior, IdleSingleTask) {
     // Single task should complete fine
 }
 
-
 // ── Sender-based tasks via TaskPool ────────────────────────────────────────
 
 TEST(SenderTask, TaskPoolSpawnSender) {

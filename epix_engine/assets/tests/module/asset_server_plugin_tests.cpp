@@ -53,7 +53,8 @@ namespace meta = epix::meta;
 namespace {
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).backend(epix::task::TaskPoolBackend::IoContext).build());
+        epix::task::IoTaskPool::get_or_init(
+            epix::task::TaskPoolBuilder{}.num_threads(4).backend(epix::task::TaskPoolBackend::IoContext).build());
     }
 } g_io_task_pool_init;
 }  // namespace
@@ -133,8 +134,8 @@ struct TestTextLoader {
     }
 
     static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
-                                                                   const Settings&,
-                                                                   epix::assets::LoadContext&) {
+                                                                 const Settings&,
+                                                                 epix::assets::LoadContext&) {
         load_count.fetch_add(1);
         std::vector<uint8_t> buf;
         co_await reader.read_to_end(buf);
@@ -147,8 +148,8 @@ struct TestProcess {
     using OutputLoader = TestTextLoader;
 
     STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
-                                                                                       const Settings&,
-                                                                                       Writer&) const {
+                                                                                     const Settings&,
+                                                                                     Writer&) const {
         co_return OutputLoader::Settings{};
     }
 };
@@ -169,8 +170,8 @@ struct DependencyManifestLoader {
     }
 
     static STDEXEC::task<std::expected<DependencyManifestAsset, Error>> load(Reader& reader,
-                                                                               const Settings&,
-                                                                               epix::assets::LoadContext& context) {
+                                                                             const Settings&,
+                                                                             epix::assets::LoadContext& context) {
         std::vector<uint8_t> buf;
         co_await reader.read_to_end(buf);
         auto dependency_path = std::string(buf.begin(), buf.end());
@@ -252,8 +253,8 @@ struct AltTextLoader {
     }
 
     static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
-                                                                   const Settings&,
-                                                                   epix::assets::LoadContext&) {
+                                                                 const Settings&,
+                                                                 epix::assets::LoadContext&) {
         load_count.fetch_add(1);
         std::vector<uint8_t> buf;
         co_await reader.read_to_end(buf);
@@ -280,8 +281,8 @@ struct SettingsCapturingLoader {
     }
 
     static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
-                                                                   const Settings& s,
-                                                                   epix::assets::LoadContext&) {
+                                                                 const Settings& s,
+                                                                 epix::assets::LoadContext&) {
         last_quality.store(s.quality);
         std::vector<uint8_t> buf;
         co_await reader.read_to_end(buf);
@@ -1175,9 +1176,7 @@ struct FailingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static STDEXEC::task<std::expected<std::string, Error>> load(Reader&,
-                                                                   const Settings&,
-                                                                   epix::assets::LoadContext&) {
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader&, const Settings&, epix::assets::LoadContext&) {
         co_return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
     }
 };
@@ -2074,5 +2073,3 @@ TEST(DeserializeMetaIntegration, DifferentQualities_LoadSamePathWithMetaTransfor
     EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 77)
         << "MetaTransform override should win over .meta file settings";
 }
-
-

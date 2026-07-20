@@ -494,4 +494,3 @@ UntypedHandle AssetInfos::create_loading_handle_untyped(epix::meta::type_index t
     return result->first;
 }
 }  // namespace epix::assets
-

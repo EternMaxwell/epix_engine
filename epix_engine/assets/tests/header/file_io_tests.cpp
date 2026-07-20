@@ -1,6 +1,5 @@
 #include <gtest/gtest.h>
 
-#include <stdexec/execution.hpp>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <expected>
@@ -8,6 +7,7 @@
 #include <fstream>
 #include <memory>
 #include <optional>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <vector>
 
@@ -142,5 +142,3 @@ TEST(FileAssetWriter, RemoveExistingFile) {
     EXPECT_TRUE(ok);
     EXPECT_FALSE(std::filesystem::exists(kRoot / "remove_test.bin"));
 }
-
-

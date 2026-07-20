@@ -3,7 +3,6 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <concepts>
 #include <epix/meta.hpp>
 #include <exception>
@@ -12,6 +11,7 @@
 #include <optional>
 #include <ranges>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -122,9 +122,9 @@ EPIX_EXPORT struct ErasedAssetSaver {
     virtual ~ErasedAssetSaver() = default;
     /** @brief Save a type-erased loaded asset to an async Writer. */
     virtual STDEXEC::task<std::expected<void, std::exception_ptr>> save(Writer& writer,
-                                                                          const ErasedLoadedAsset& asset,
-                                                                          const Settings& settings,
-                                                                          const AssetPath& asset_path) const = 0;
+                                                                        const ErasedLoadedAsset& asset,
+                                                                        const Settings& settings,
+                                                                        const AssetPath& asset_path) const = 0;
     /** @brief Get the type name of this saver. */
     virtual std::string_view type_name() const noexcept = 0;
 };
@@ -139,9 +139,9 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
     const T& as_concrete() const noexcept { return static_cast<const T&>(*this); }
 
     STDEXEC::task<std::expected<void, std::exception_ptr>> save(Writer& writer,
-                                                                  const ErasedLoadedAsset& asset,
-                                                                  const Settings& settings,
-                                                                  const AssetPath& asset_path) const override {
+                                                                const ErasedLoadedAsset& asset,
+                                                                const Settings& settings,
+                                                                const AssetPath& asset_path) const override {
         try {
             auto* typed_settings = dynamic_cast<const typename T::Settings*>(&settings);
             if (!typed_settings) {
@@ -162,5 +162,3 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
 };
 
 }  // namespace epix::assets
-
-

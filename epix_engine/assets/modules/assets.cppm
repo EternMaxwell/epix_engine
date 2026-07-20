@@ -39,8 +39,8 @@ module;
 #include <uuid.h>
 #include <zpp_bits.h>
 
-#include <stdexec/execution.hpp>
 #include <efsw/efsw.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.assets;
 #ifdef EPIX_IMPORT_STD
@@ -54,5 +54,3 @@ import epix.async_channel;
 extern "C++" {
 #include <epix/assets.hpp>
 }
-
-

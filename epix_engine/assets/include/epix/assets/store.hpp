@@ -842,4 +842,3 @@ void Handle<T>::make_strong(Assets<T>& assets) {
     if (result) ref = std::move(result->ref);
 }
 }  // namespace epix::assets
-

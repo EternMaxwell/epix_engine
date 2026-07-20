@@ -176,5 +176,3 @@ EPIX_EXPORT class Directory {
 
 }  // namespace memory
 }  // namespace epix::assets
-
-

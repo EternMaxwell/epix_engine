@@ -196,5 +196,3 @@ void log_asset_load_error(const AssetLoadError& error, const AssetPath& path) {
         error);
 }
 }  // namespace epix::assets
-
-

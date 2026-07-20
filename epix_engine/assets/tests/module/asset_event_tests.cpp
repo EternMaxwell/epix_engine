@@ -105,5 +105,3 @@ TEST(AssetEvent, IsRemoved_ButActuallyAdded) {
     EXPECT_FALSE(ev.is_unused(id));
     EXPECT_FALSE(ev.is_loaded_with_dependencies(id));
 }
-
-

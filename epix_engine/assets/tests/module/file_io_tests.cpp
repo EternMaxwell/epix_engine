@@ -138,5 +138,3 @@ TEST(FileAssetWriter, RemoveExistingFile) {
     EXPECT_TRUE(ok);
     EXPECT_FALSE(std::filesystem::exists(kRoot / "remove_test.bin"));
 }
-
-

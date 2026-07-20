@@ -601,8 +601,8 @@ std::span<std::string_view> ImageLoader::extensions() noexcept {
     return std::span<std::string_view>(exts.data(), exts.size());
 }
 STDEXEC::task<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Reader& reader,
-                                                                        const Settings&,
-                                                                        assets::LoadContext& context) {
+                                                                      const Settings&,
+                                                                      assets::LoadContext& context) {
     spdlog::trace("[image] Loading image from '{}'.", context.path().path.string());
     std::vector<uint8_t> bytes;
     auto read_result = co_await reader.read_to_end(bytes);

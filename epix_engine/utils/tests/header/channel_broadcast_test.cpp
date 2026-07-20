@@ -57,7 +57,7 @@ TEST(AsyncBroadcastStdexecTask, BroadcastRecv) {
 TEST(AsyncBroadcastStdexecTask, BroadcastAllowsInactiveReceivers) {
     auto [tx, rx] = epix::async_broadcast::broadcast<int>(1);
     auto inactive = rx.deactivate();
-    (void) inactive;
+    (void)inactive;
 
     auto sent = STDEXEC::sync_wait(tx.broadcast(11));
     ASSERT_TRUE(sent.has_value());

@@ -19,7 +19,7 @@ int main() {
     using namespace epix::window;
     using namespace epix::glfw;
     using namespace epix::ecs;
-using namespace epix::app;
+    using namespace epix::app;
 
     Window window_desc;
     Window window_desc2;

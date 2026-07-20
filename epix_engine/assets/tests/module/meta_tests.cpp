@@ -793,5 +793,3 @@ TEST(DeserializeProcessedInfo, EmptyBytes_Fails) {
 // These are pub(crate) equivalents; tested indirectly through the processor
 // pipeline in processor_embedded_tests. No direct unit tests here.
 // ===========================================================================
-
-

@@ -3,10 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <concepts>
-#include <epix/ecs.hpp>
 #include <cstddef>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <exception>
@@ -17,6 +16,7 @@
 #include <ranges>
 #include <span>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -67,8 +67,8 @@ template <typename T>
 struct ErasedAssetLoaderImpl;
 
 EPIX_EXPORT struct AssetContainer {
-    virtual ~AssetContainer()                                         = default;
-    virtual meta::type_index type() const                             = 0;
+    virtual ~AssetContainer()                                        = default;
+    virtual meta::type_index type() const                            = 0;
     virtual void insert(const UntypedAssetId& id, ecs::World& world) = 0;
     /** @brief Visit all asset handle dependencies within this container.
      *  Matches bevy_asset's VisitAssetDependencies::visit_dependencies. */
@@ -497,7 +497,7 @@ EPIX_EXPORT struct LoadContext {
      *  Matches bevy_asset's LoadContext::load_direct_with_reader. */
     template <Asset A>
     STDEXEC::task<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct_with_reader(const AssetPath& path,
-                                                                                           Reader& reader) const;
+                                                                                         Reader& reader) const;
 
     /** @brief Begin a labeled asset scope, returning a new LoadContext
      *  whose path includes the given label. The caller is responsible for
@@ -600,10 +600,10 @@ EPIX_EXPORT struct ErasedAssetLoader {
      *  Returns an error string on failure; use default_meta() when bytes are unavailable.
      *  Matches bevy_asset's ErasedAssetLoader::deserialize_meta. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
-        std::span<const std::byte> bytes) const                                                                    = 0;
+        std::span<const std::byte> bytes) const                                                                  = 0;
     virtual STDEXEC::task<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
-                                                                                       const Settings& settings,
-                                                                                       LoadContext& context) const = 0;
+                                                                                     const Settings& settings,
+                                                                                     LoadContext& context) const = 0;
 };
 template <typename T>
 struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
@@ -634,8 +634,8 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
         return std::make_unique<AssetMeta<typename T::Settings, EmptySettings>>(std::move(*result));
     }
     STDEXEC::task<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
-                                                                               const Settings& settings,
-                                                                               LoadContext& context) const override {
+                                                                             const Settings& settings,
+                                                                             LoadContext& context) const override {
         try {
             auto* settings_ptr = dynamic_cast<const SettingsImpl<typename T::Settings>*>(&settings);
             if (!settings_ptr) {
@@ -703,4 +703,3 @@ Handle<A> LoadContext::labeled_asset_scope(const std::string& label, F&& fn) {
 }
 
 }  // namespace epix::assets
-

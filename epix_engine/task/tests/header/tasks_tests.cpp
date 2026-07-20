@@ -299,8 +299,8 @@ TEST(SenderTask, TaskPoolSpawnVoidSender) {
 TEST(SenderTask, TaskPoolSpawnStdexecTask) {
     std::atomic<bool> ran_on_pool{false};
     const auto caller = std::this_thread::get_id();
-    auto pool = TaskPoolBuilder{}.num_threads(2).backend(TaskPoolBackend::IoContext).build();
-    auto task = pool.spawn([](std::atomic<bool>* ran_on_pool, std::thread::id caller) -> STDEXEC::task<void> {
+    auto pool         = TaskPoolBuilder{}.num_threads(2).backend(TaskPoolBackend::IoContext).build();
+    auto task         = pool.spawn([](std::atomic<bool>* ran_on_pool, std::thread::id caller) -> STDEXEC::task<void> {
         ran_on_pool->store(std::this_thread::get_id() != caller);
         co_await STDEXEC::just();
     }(&ran_on_pool, caller));

@@ -352,4 +352,3 @@ Handle<T> uuid_handle(std::string_view uuid_str) {
 }
 
 }  // namespace epix::assets
-

@@ -7,8 +7,8 @@
 #include <coroutine>
 #include <cstdint>
 #include <epix/common.hpp>
-#include <exec/start_detached.hpp>
 #include <exception>
+#include <exec/start_detached.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -317,10 +317,14 @@ struct [[nodiscard]] Task {
         if (state) state->mark_closed();
         struct awaiter {
             std::shared_ptr<internal::TaskState<T>> state;
-            bool await_ready() const noexcept { return !state || internal::terminal(state->flags.load(std::memory_order_acquire)); }
+            bool await_ready() const noexcept {
+                return !state || internal::terminal(state->flags.load(std::memory_order_acquire));
+            }
             void await_suspend(std::coroutine_handle<> h) {
-                if (state) state->wait_or_resume(h);
-                else h.resume();
+                if (state)
+                    state->wait_or_resume(h);
+                else
+                    h.resume();
             }
             std::optional<T> await_resume() {
                 if (!state || state->exception) return std::nullopt;
@@ -347,8 +351,10 @@ struct [[nodiscard]] Task {
 
     [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
     void await_suspend(std::coroutine_handle<> h) {
-        if (m_state) m_state->wait_or_resume(h);
-        else h.resume();
+        if (m_state)
+            m_state->wait_or_resume(h);
+        else
+            h.resume();
     }
     T await_resume() {
         if (!m_state) throw std::runtime_error("co_await on empty task");
@@ -390,10 +396,14 @@ struct [[nodiscard]] Task<void> {
         if (state) state->mark_closed();
         struct awaiter {
             std::shared_ptr<internal::TaskState<void>> state;
-            bool await_ready() const noexcept { return !state || internal::terminal(state->flags.load(std::memory_order_acquire)); }
+            bool await_ready() const noexcept {
+                return !state || internal::terminal(state->flags.load(std::memory_order_acquire));
+            }
             void await_suspend(std::coroutine_handle<> h) {
-                if (state) state->wait_or_resume(h);
-                else h.resume();
+                if (state)
+                    state->wait_or_resume(h);
+                else
+                    h.resume();
             }
             bool await_resume() {
                 if (!state || state->exception) return false;
@@ -419,8 +429,10 @@ struct [[nodiscard]] Task<void> {
 
     [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
     void await_suspend(std::coroutine_handle<> h) {
-        if (m_state) m_state->wait_or_resume(h);
-        else h.resume();
+        if (m_state)
+            m_state->wait_or_resume(h);
+        else
+            h.resume();
     }
     void await_resume() {
         if (!m_state) throw std::runtime_error("co_await on empty task");
@@ -460,10 +472,14 @@ struct [[nodiscard]] FallibleTask {
         if (state) state->mark_closed();
         struct awaiter {
             std::shared_ptr<internal::TaskState<T>> state;
-            bool await_ready() const noexcept { return !state || internal::terminal(state->flags.load(std::memory_order_acquire)); }
+            bool await_ready() const noexcept {
+                return !state || internal::terminal(state->flags.load(std::memory_order_acquire));
+            }
             void await_suspend(std::coroutine_handle<> h) {
-                if (state) state->wait_or_resume(h);
-                else h.resume();
+                if (state)
+                    state->wait_or_resume(h);
+                else
+                    h.resume();
             }
             std::optional<T> await_resume() {
                 if (!state || state->exception) return std::nullopt;
@@ -490,8 +506,10 @@ struct [[nodiscard]] FallibleTask {
 
     [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
     void await_suspend(std::coroutine_handle<> h) {
-        if (m_state) m_state->wait_or_resume(h);
-        else h.resume();
+        if (m_state)
+            m_state->wait_or_resume(h);
+        else
+            h.resume();
     }
     std::optional<T> await_resume() {
         if (!m_state || m_state->exception) return std::nullopt;
@@ -526,10 +544,14 @@ struct [[nodiscard]] FallibleTask<void> {
         if (state) state->mark_closed();
         struct awaiter {
             std::shared_ptr<internal::TaskState<void>> state;
-            bool await_ready() const noexcept { return !state || internal::terminal(state->flags.load(std::memory_order_acquire)); }
+            bool await_ready() const noexcept {
+                return !state || internal::terminal(state->flags.load(std::memory_order_acquire));
+            }
             void await_suspend(std::coroutine_handle<> h) {
-                if (state) state->wait_or_resume(h);
-                else h.resume();
+                if (state)
+                    state->wait_or_resume(h);
+                else
+                    h.resume();
             }
             bool await_resume() {
                 if (!state || state->exception) return false;
@@ -555,8 +577,10 @@ struct [[nodiscard]] FallibleTask<void> {
 
     [[nodiscard]] bool await_ready() const noexcept { return is_finished(); }
     void await_suspend(std::coroutine_handle<> h) {
-        if (m_state) m_state->wait_or_resume(h);
-        else h.resume();
+        if (m_state)
+            m_state->wait_or_resume(h);
+        else
+            h.resume();
     }
     bool await_resume() {
         if (!m_state || m_state->exception) return false;
@@ -575,8 +599,8 @@ inline FallibleTask<void> Task<void>::fallible() && { return FallibleTask<void>(
 EPIX_EXPORT template <typename S>
     requires STDEXEC::sender<std::decay_t<S>> && (!std::invocable<std::decay_t<S>&>)
 [[nodiscard]] auto spawn(S&& sender) {
-    using Sender = std::decay_t<S>;
-    using T      = internal::sender_task_value_t<Sender>;
+    using Sender       = std::decay_t<S>;
+    using T            = internal::sender_task_value_t<Sender>;
     auto [task, state] = Task<T>::make();
 
     auto mark_error = [state](auto&& error) noexcept {
@@ -586,10 +610,8 @@ EPIX_EXPORT template <typename S>
     auto mark_stopped = [state]() noexcept { state->mark_closed(); };
 
     if constexpr (std::is_void_v<T>) {
-        auto monitored = std::forward<S>(sender) |
-                         STDEXEC::then([state]() mutable { state->complete(); }) |
-                         STDEXEC::upon_error(std::move(mark_error)) |
-                         STDEXEC::upon_stopped(std::move(mark_stopped));
+        auto monitored = std::forward<S>(sender) | STDEXEC::then([state]() mutable { state->complete(); }) |
+                         STDEXEC::upon_error(std::move(mark_error)) | STDEXEC::upon_stopped(std::move(mark_stopped));
         if constexpr (internal::is_stdexec_task_v<Sender>)
             exec::start_detached(std::move(monitored),
                                  STDEXEC::prop{STDEXEC::get_start_scheduler, STDEXEC::inline_scheduler{}});
@@ -598,8 +620,7 @@ EPIX_EXPORT template <typename S>
     } else {
         auto monitored = std::forward<S>(sender) |
                          STDEXEC::then([state](T value) mutable { state->complete(std::move(value)); }) |
-                         STDEXEC::upon_error(std::move(mark_error)) |
-                         STDEXEC::upon_stopped(std::move(mark_stopped));
+                         STDEXEC::upon_error(std::move(mark_error)) | STDEXEC::upon_stopped(std::move(mark_stopped));
         if constexpr (internal::is_stdexec_task_v<Sender>)
             exec::start_detached(std::move(monitored),
                                  STDEXEC::prop{STDEXEC::get_start_scheduler, STDEXEC::inline_scheduler{}});
@@ -610,25 +631,20 @@ EPIX_EXPORT template <typename S>
 }
 
 EPIX_EXPORT template <typename F, typename S>
-    requires std::invocable<F> && std::invocable<S, Runnable, ScheduleInfo> &&
-             (!STDEXEC::sender<std::decay_t<F>>)
+    requires std::invocable<F> && std::invocable<S, Runnable, ScheduleInfo> && (!STDEXEC::sender<std::decay_t<F>>)
 [[nodiscard]] auto spawn(F&& work, S&& schedule) {
-    using T = std::invoke_result_t<F>;
+    using T    = std::invoke_result_t<F>;
     auto state = std::make_shared<internal::TaskState<T>>();
 
     state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
-        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable {
-            std::invoke(s, std::move(r), info);
-        });
+        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable { std::invoke(s, std::move(r), info); });
 
     if constexpr (std::is_void_v<T>) {
-        state->work = std::move_only_function<void()>([f = std::forward<F>(work)]() mutable {
-            std::invoke(std::move(f));
-        });
+        state->work =
+            std::move_only_function<void()>([f = std::forward<F>(work)]() mutable { std::invoke(std::move(f)); });
     } else {
-        state->work = std::move_only_function<T()>([f = std::forward<F>(work)]() mutable -> T {
-            return std::invoke(std::move(f));
-        });
+        state->work = std::move_only_function<T()>(
+            [f = std::forward<F>(work)]() mutable -> T { return std::invoke(std::move(f)); });
     }
 
     std::shared_ptr<internal::TaskHeader> base = state;

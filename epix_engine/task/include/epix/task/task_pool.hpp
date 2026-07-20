@@ -14,14 +14,14 @@
 #include <epix/async_task.hpp>
 #include <epix/common.hpp>
 #include <exec/asio/asio_thread_pool.hpp>
-#include <exec/static_thread_pool.hpp>
 #include <exec/start_detached.hpp>
+#include <exec/static_thread_pool.hpp>
 #include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <stdexec/execution.hpp>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <thread>
 #include <utility>
@@ -36,8 +36,7 @@ EPIX_EXPORT struct TaskPoolBuilder;
 EPIX_EXPORT template <typename T>
 struct Scope;
 
-EPIX_EXPORT using AsioExecutor =
-    decltype(std::declval<exec::asio::asio_thread_pool const&>().get_executor());
+EPIX_EXPORT using AsioExecutor = decltype(std::declval<exec::asio::asio_thread_pool const&>().get_executor());
 
 // ── Internal: backend bundles ──────────────────────────────────────────────
 
@@ -48,8 +47,7 @@ struct StaticThreadPoolBackend {
     size_t n;
 
     explicit StaticThreadPoolBackend(size_t thread_count)
-        : pool(static_cast<std::uint32_t>(thread_count)),
-          n(thread_count) {}
+        : pool(static_cast<std::uint32_t>(thread_count)), n(thread_count) {}
 
     [[nodiscard]] size_t thread_count() const noexcept { return n; }
 
@@ -63,7 +61,8 @@ struct AsioThreadPoolBackend {
     exec::asio::asio_thread_pool pool;
     size_t n;
 
-    explicit AsioThreadPoolBackend(size_t thread_count) : pool(static_cast<std::uint32_t>(thread_count)), n(thread_count) {}
+    explicit AsioThreadPoolBackend(size_t thread_count)
+        : pool(static_cast<std::uint32_t>(thread_count)), n(thread_count) {}
 
     [[nodiscard]] size_t thread_count() const noexcept { return n; }
 
@@ -72,9 +71,7 @@ struct AsioThreadPoolBackend {
                              STDEXEC::then([fn = std::move(fn)]() mutable { fn(); }));
     }
 
-    [[nodiscard]] std::optional<AsioExecutor> asio_executor() const {
-        return pool.get_executor();
-    }
+    [[nodiscard]] std::optional<AsioExecutor> asio_executor() const { return pool.get_executor(); }
 };
 
 struct CallOnDrop {
@@ -266,13 +263,12 @@ EPIX_EXPORT struct TaskPool {
     template <typename F>
         requires std::invocable<F> && std::move_constructible<F> && (!STDEXEC::sender<std::decay_t<F>>)
     [[nodiscard]] auto spawn(F&& work) {
-        auto [runnable, task] = async_task::spawn(
-            std::forward<F>(work),
-            [backend = std::weak_ptr<void>(m_backend), kind = m_backend_kind](async_task::Runnable r,
-                                                                              async_task::ScheduleInfo) {
+        auto [runnable, task] =
+            async_task::spawn(std::forward<F>(work), [backend = std::weak_ptr<void>(m_backend), kind = m_backend_kind](
+                                                         async_task::Runnable r, async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
-                auto poll  = std::make_shared<std::function<void()>>();
-                *poll      = [runner, backend, kind, poll]() {
+                auto poll   = std::make_shared<std::function<void()>>();
+                *poll       = [runner, backend, kind, poll]() {
                     if (runner->run())
                         TaskPool::enqueue_on(backend, kind, *poll);
                     else
@@ -296,8 +292,8 @@ EPIX_EXPORT struct TaskPool {
         auto [runnable, task] = async_task::spawn(
             std::forward<F>(work), [ctx = t_local_ctx.get()](async_task::Runnable r, async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
-                auto poll  = std::make_shared<std::function<void()>>();
-                *poll      = [runner, ctx, poll]() {
+                auto poll   = std::make_shared<std::function<void()>>();
+                *poll       = [runner, ctx, poll]() {
                     if (runner->run())
                         asio::post(*ctx, *poll);
                     else
@@ -349,7 +345,7 @@ EPIX_EXPORT struct TaskPool {
 
     std::shared_ptr<void> m_backend;
     TaskPoolBackend m_backend_kind = TaskPoolBackend::StaticThreadPool;
-    size_t m_thread_count = 0;
+    size_t m_thread_count          = 0;
 
     static thread_local inline std::unique_ptr<asio::io_context> t_local_ctx;
     static thread_local inline std::optional<asio::executor_work_guard<asio::io_context::executor_type>> t_local_work;

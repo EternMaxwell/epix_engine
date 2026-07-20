@@ -3,13 +3,13 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <stdexec/execution.hpp>
 #include <system_error>
 #include <utility>
 #endif
@@ -29,8 +29,7 @@ EPIX_EXPORT struct FileAssetReader : public AssetReader {
         const std::filesystem::path& path) const override;
     STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>> read_directory(
         const std::filesystem::path& path) const override;
-    STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(
-        const std::filesystem::path& path) const override;
+    STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(const std::filesystem::path& path) const override;
     std::optional<std::filesystem::file_time_type> last_modified(const std::filesystem::path& path) const override {
         std::error_code ec;
         auto t = std::filesystem::last_write_time(m_root / path, ec);
@@ -51,10 +50,9 @@ EPIX_EXPORT struct FileAssetWriter : public AssetWriter {
     STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write_meta(
         const std::filesystem::path& path) const override;
     STDEXEC::task<std::expected<void, AssetWriterError>> remove(const std::filesystem::path& path) const override;
-    STDEXEC::task<std::expected<void, AssetWriterError>> remove_meta(
-        const std::filesystem::path& path) const override;
+    STDEXEC::task<std::expected<void, AssetWriterError>> remove_meta(const std::filesystem::path& path) const override;
     STDEXEC::task<std::expected<void, AssetWriterError>> rename(const std::filesystem::path& old_path,
-                                                                  const std::filesystem::path& new_path) const override;
+                                                                const std::filesystem::path& new_path) const override;
     STDEXEC::task<std::expected<void, AssetWriterError>> rename_meta(
         const std::filesystem::path& old_path, const std::filesystem::path& new_path) const override;
     STDEXEC::task<std::expected<void, AssetWriterError>> create_directory(
@@ -66,4 +64,3 @@ EPIX_EXPORT struct FileAssetWriter : public AssetWriter {
 };
 static_assert(!std::is_abstract_v<FileAssetWriter>);
 }  // namespace epix::assets
-

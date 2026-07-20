@@ -154,5 +154,3 @@ EPIX_EXPORT struct FileTransactionLogFactory : ProcessorTransactionLogFactory {
 };
 
 }  // namespace epix::assets
-
-

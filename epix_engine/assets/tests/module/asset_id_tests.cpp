@@ -161,5 +161,3 @@ TEST(UntypedAssetIdHash, DifferentType_DifferentHash) {
     UntypedAssetId ub(ii);
     EXPECT_NE(std::hash<UntypedAssetId>{}(ua), std::hash<UntypedAssetId>{}(ub));
 }
-
-

@@ -346,7 +346,6 @@ TEST(AsyncTaskTest, DetachedTaskStillRuns) {
 
 // ── One-step advancement ──────────────────────────────────────────────────
 
-
 TEST(AsyncTaskSender, SpawnJustValue) {
     auto t = spawn(STDEXEC::just(42));
     while (!t.is_finished()) std::this_thread::yield();

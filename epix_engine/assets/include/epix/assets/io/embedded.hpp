@@ -62,5 +62,3 @@ EPIX_EXPORT struct EmbeddedAssetRegistry {
 };
 
 }  // namespace epix::assets
-
-

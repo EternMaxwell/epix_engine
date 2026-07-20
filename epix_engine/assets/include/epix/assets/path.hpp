@@ -114,4 +114,3 @@ struct hash<epix::assets::AssetPath> {
     }
 };
 }  // namespace std
-

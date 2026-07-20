@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
-#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
+#include <stdexec/execution.hpp>
 
 using namespace epix::assets;
 
@@ -362,6 +362,3 @@ ProcessingState::get_transaction_lock(const AssetPath& path) const {
     }
     co_return info->file_transaction_lock;
 }
-
-
-

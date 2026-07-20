@@ -3,13 +3,13 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <stdexec/execution.hpp>
 #include <epix/meta.hpp>
 #include <exception>
 #include <expected>
 #include <functional>
 #include <optional>
 #include <ranges>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -245,11 +245,9 @@ struct IdentityAssetTransformer {
     using Error = std::exception_ptr;
 
     STDEXEC::task<std::expected<TransformedAsset<A>, Error>> transform(TransformedAsset<A> asset,
-                                                                         const Settings&) const {
+                                                                       const Settings&) const {
         co_return asset;
     }
 };
 
 }  // namespace epix::assets
-
-
