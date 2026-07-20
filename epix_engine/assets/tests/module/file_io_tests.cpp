@@ -42,12 +42,12 @@ TEST(FileAssetReader, ReadExistingFile) {
     FileAssetReader reader(kRoot);
 
     std::vector<uint8_t> buf;
-    auto result = run([&]() -> STDEXEC::task<bool> {
-        auto r = co_await reader.read("hello.txt");
+    auto result = run([](const FileAssetReader* reader, std::vector<uint8_t>* buf) -> STDEXEC::task<bool> {
+        auto r = co_await reader->read("hello.txt");
         if (!r) co_return false;
-        auto res = co_await (*r)->read_to_end(buf);
+        auto res = co_await (*r)->read_to_end(*buf);
         co_return res.has_value();
-    }());
+    }(&reader, &buf));
 
     ASSERT_TRUE(result);
     ASSERT_FALSE(buf.empty());
@@ -58,11 +58,11 @@ TEST(FileAssetReader, ReadExistingFile) {
 TEST(FileAssetReader, ReadMissingFileReturnsNotFound) {
     FileAssetReader reader(kRoot);
 
-    auto result = run([&]() -> STDEXEC::task<bool> {
-        auto r = co_await reader.read("no_such_file.txt");
+    auto result = run([](const FileAssetReader* reader) -> STDEXEC::task<bool> {
+        auto r = co_await reader->read("no_such_file.txt");
         if (r) co_return false;
         co_return std::holds_alternative<reader_errors::NotFound>(r.error());
-    }());
+    }(&reader));
 
     EXPECT_TRUE(result);
 }
@@ -102,21 +102,21 @@ TEST(FileAssetWriter, WriteAndReadBack) {
 
     const std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0xFF};
 
-    bool write_ok = run([&]() -> STDEXEC::task<bool> {
-        auto w = co_await writer.write("write_test.bin");
+    bool write_ok = run([](const FileAssetWriter* writer, std::span<const uint8_t> data) -> STDEXEC::task<bool> {
+        auto w = co_await writer->write("write_test.bin");
         if (!w) co_return false;
-        auto res = co_await (*w)->write(std::span<const uint8_t>(data));
+        auto res = co_await (*w)->write(data);
         co_return res.has_value() && *res == data.size();
-    }());
+    }(&writer, std::span<const uint8_t>(data)));
     ASSERT_TRUE(write_ok);
 
     std::vector<uint8_t> buf;
-    bool read_ok = run([&]() -> STDEXEC::task<bool> {
-        auto r = co_await reader.read("write_test.bin");
+    bool read_ok = run([](const FileAssetReader* reader, std::vector<uint8_t>* buf) -> STDEXEC::task<bool> {
+        auto r = co_await reader->read("write_test.bin");
         if (!r) co_return false;
-        auto res = co_await (*r)->read_to_end(buf);
+        auto res = co_await (*r)->read_to_end(*buf);
         co_return res.has_value();
-    }());
+    }(&reader, &buf));
     ASSERT_TRUE(read_ok);
     EXPECT_EQ(buf, data);
 }
@@ -131,10 +131,10 @@ TEST(FileAssetWriter, RemoveExistingFile) {
     }
     ASSERT_TRUE(std::filesystem::exists(kRoot / "remove_test.bin"));
 
-    bool ok = run([&]() -> STDEXEC::task<bool> {
-        auto res = co_await writer.remove("remove_test.bin");
+    bool ok = run([](const FileAssetWriter* writer) -> STDEXEC::task<bool> {
+        auto res = co_await writer->remove("remove_test.bin");
         co_return res.has_value();
-    }());
+    }(&writer));
     EXPECT_TRUE(ok);
     EXPECT_FALSE(std::filesystem::exists(kRoot / "remove_test.bin"));
 }

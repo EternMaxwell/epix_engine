@@ -281,7 +281,9 @@ EPIX_EXPORT struct AssetServer {
         auto server       = *this;
         auto owned_handle = handle;
         task::IoTaskPool::get()
-            .spawn([server, owned_handle, future = std::move(future)]() mutable -> STDEXEC::task<void> {
+            .spawn([](AssetServer server,
+                      UntypedHandle owned_handle,
+                      std::function<std::expected<A, E>()> future) mutable -> STDEXEC::task<void> {
                 auto result = future();
                 if (result) {
                     auto erased = ErasedLoadedAsset::from_asset(std::move(*result));
@@ -304,7 +306,7 @@ EPIX_EXPORT struct AssetServer {
                         owned_handle.id(), AssetPath{},
                         AssetLoadError{load_error::AssetLoaderException{err_ptr, AssetPath{}, "add_async"}}}});
                 }
-            })
+            }(server, std::move(owned_handle), std::move(future)))
             .detach();
         return typed_handle;
     }
