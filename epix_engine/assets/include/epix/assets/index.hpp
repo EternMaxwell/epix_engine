@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/async_channel.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <functional>
 #endif
 #include <epix/assets/concepts.hpp>
@@ -83,3 +83,4 @@ struct hash<epix::assets::AssetIndex> {
     }
 };
 }  // namespace std
+

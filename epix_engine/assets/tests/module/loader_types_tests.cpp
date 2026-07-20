@@ -1,9 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
+#include <stdexec/execution.hpp>
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
 #include <array>
@@ -107,15 +104,11 @@ TEST(TransformedAsset, GetErasedLabeled_NotFound) {
 TEST(IdentityAssetTransformer, PassesThrough) {
     IdentityAssetTransformer<std::string> t;
     typename IdentityAssetTransformer<std::string>::Settings s;
-    asio::io_context io;
     std::expected<TransformedAsset<std::string>, std::exception_ptr> result = std::unexpected(std::exception_ptr{});
-    asio::co_spawn(
-        io,
-        [&]() -> asio::awaitable<void> {
-            result = co_await t.transform(TransformedAsset<std::string>(std::string("unchanged")), s);
-        },
-        asio::detached);
-    io.run();
+    auto completed = STDEXEC::sync_wait([&]() -> STDEXEC::task<decltype(result)> {
+        co_return co_await t.transform(TransformedAsset<std::string>(std::string("unchanged")), s);
+    }());
+    if (completed) result = std::move(std::get<0>(*completed));
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->get(), "unchanged");
 }
@@ -134,7 +127,7 @@ struct SimpleLoader {
         static std::array<std::string_view, 1> exts = {"txt"};
         return exts;
     }
-    asio::awaitable<std::expected<std::string, std::string>> load(Reader& reader,
+    STDEXEC::task<std::expected<std::string, std::string>> load(Reader& reader,
                                                                   const EmptySettings&,
                                                                   LoadContext& ctx) const {
         co_return std::string("loaded");
@@ -220,3 +213,5 @@ TEST(ErasedLoadedAsset, GetLabeledById_NotFound) {
 // SavedAsset requires LabeledAsset which is not exported from the module.
 // SavedAsset is tested indirectly through the asset saver infrastructure.
 // Skipping direct SavedAsset tests here.
+
+

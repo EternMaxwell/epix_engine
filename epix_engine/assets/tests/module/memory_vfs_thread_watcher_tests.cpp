@@ -35,7 +35,7 @@ static Value make_val(std::string_view s) {
 }
 
 // ---------------------------------------------------------------------------
-// Thread safety — concurrent inserts to separate dirs
+// Thread safety - concurrent inserts to separate dirs
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsThread, ConcurrentInserts_SeparateDirs_NoRace) {
@@ -73,7 +73,7 @@ TEST(MemoryVfsThread, ConcurrentInserts_SeparateDirs_NoRace) {
 }
 
 // ---------------------------------------------------------------------------
-// Thread safety — concurrent inserts to the same dir
+// Thread safety - concurrent inserts to the same dir
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsThread, ConcurrentInserts_SameDir_NoRace) {
@@ -106,7 +106,7 @@ TEST(MemoryVfsThread, ConcurrentInserts_SameDir_NoRace) {
 }
 
 // ---------------------------------------------------------------------------
-// Thread safety — concurrent mixed ops (insert / remove / move)
+// Thread safety - concurrent mixed ops (insert / remove / move)
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsThread, ConcurrentMixedOps_NoRace) {
@@ -207,7 +207,7 @@ TEST(MemoryVfsWatcher, SubdirWatcher_DoesNotSeeRootOps) {
     std::atomic<int> sub_count{0};
     auto sub_id = sub.add_callback([&](const DirEvent&) { sub_count.fetch_add(1); });
 
-    // Insert files at root level — sub watcher must NOT see these
+    // Insert files at root level - sub watcher must NOT see these
     for (int i = 0; i < 20; ++i) d.insert_file("root_f" + std::to_string(i) + ".txt", make_val("r"));
 
     sub.remove_callback(sub_id);
@@ -234,14 +234,14 @@ TEST(MemoryVfsWatcher, SubdirWatcher_SeesOwnEvents) {
 }
 
 // ---------------------------------------------------------------------------
-// Multiple watchers at different levels — counts are correct
+// Multiple watchers at different levels - counts are correct
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsWatcher, MultipleWatchersAtDifferentLevels) {
     //  root
     //   └── mid
     //         └── leaf
-    //               └── deep.txt  ← insert happens here
+    //               └── deep.txt  �?insert happens here
     //
     // Callbacks at root, mid, leaf must ALL fire for the leaf insert.
     // Callback at root must NOT double-fire (no duplicates).
@@ -448,8 +448,8 @@ TEST(MemoryVfsWatcher, AllEventTypes_ConcurrentMultiThread) {
 }
 
 // ---------------------------------------------------------------------------
-// Callback at multiple levels — concurrent inserts
-// — root watcher fires N times, mid watcher fires N times, leaf watcher fires N times
+// Callback at multiple levels - concurrent inserts
+// - root watcher fires N times, mid watcher fires N times, leaf watcher fires N times
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsWatcher, MultiLevelWatchers_ConcurrentInserts) {
@@ -495,8 +495,8 @@ TEST(MemoryVfsWatcher, MultiLevelWatchers_ConcurrentInserts) {
 }
 
 // ---------------------------------------------------------------------------
-// Root watcher added AFTER subdirs exist — propagated to existing subdirs
-// — concurrent inserts into pre-existing subdir
+// Root watcher added AFTER subdirs exist - propagated to existing subdirs
+// - concurrent inserts into pre-existing subdir
 // ---------------------------------------------------------------------------
 
 TEST(MemoryVfsWatcher, WatcherAddedAfterSubdir_PropagatedToExistingSubdir_Concurrent) {
@@ -521,3 +521,5 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+

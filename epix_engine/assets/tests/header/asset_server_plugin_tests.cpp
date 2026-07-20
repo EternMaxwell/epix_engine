@@ -2,15 +2,15 @@
 
 #include <algorithm>
 #include <array>
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/async_channel.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -38,7 +38,8 @@
 #endif
 
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::app;
+using namespace epix::ecs;
 namespace meta = epix::meta;
 
 // Initialize task pools before any test runs (required by loaders.cppm and server.cpp which call
@@ -46,7 +47,7 @@ namespace meta = epix::meta;
 namespace {
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).backend(epix::task::TaskPoolBackend::IoContext).build());
     }
 } g_io_task_pool_init;
 }  // namespace
@@ -125,7 +126,7 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
                                                                    const Settings&,
                                                                    epix::assets::LoadContext&) {
         load_count.fetch_add(1);
@@ -139,7 +140,7 @@ struct TestProcess {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
+    STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
                                                                                        const Settings&,
                                                                                        Writer&) const {
         co_return OutputLoader::Settings{};
@@ -161,7 +162,7 @@ struct DependencyManifestLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<DependencyManifestAsset, Error>> load(Reader& reader,
+    static STDEXEC::task<std::expected<DependencyManifestAsset, Error>> load(Reader& reader,
                                                                                const Settings&,
                                                                                epix::assets::LoadContext& context) {
         std::vector<uint8_t> buf;
@@ -244,7 +245,7 @@ struct AltTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
                                                                    const Settings&,
                                                                    epix::assets::LoadContext&) {
         load_count.fetch_add(1);
@@ -272,7 +273,7 @@ struct SettingsCapturingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader,
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader,
                                                                    const Settings& s,
                                                                    epix::assets::LoadContext&) {
         last_quality.store(s.quality);
@@ -671,7 +672,7 @@ TEST(AssetPlugin, BuildWithoutWatching_InProcessedModeKeepsSourceReceiverButNotP
 }
 
 // When use_asset_processor=false, the server is built with build_sources(false, watch=false),
-// so neither source nor processed watcher is wired ï¿½?even if watcher factories are present.
+// so neither source nor processed watcher is wired ï¿?even if watcher factories are present.
 TEST(AssetPlugin, BuildWithoutWatching_WithoutProcessor_DoesNotWireAnyReceivers) {
     App app = App::create();
 
@@ -810,7 +811,7 @@ void flush_load_tasks(App& app) {
 }  // namespace
 
 // -------------------------------------------------------------------------------------
-// HotReload test suite ï¿½?end-to-end with AssetPlugin
+// HotReload test suite ï¿?end-to-end with AssetPlugin
 // -------------------------------------------------------------------------------------
 
 TEST(HotReload, InitialLoad_ReachesAssetsStorage) {
@@ -895,7 +896,7 @@ TEST(HotReload, Reload_NonExistentPath_DoesNotAffectExistingAssets) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Reload a path that was never loaded ï¿½?must not crash or affect the real asset.
+    // Reload a path that was never loaded ï¿?must not crash or affect the real asset.
     server.reload(AssetPath("nonexistent.txt"));
     flush_load_tasks(app);
 
@@ -979,7 +980,7 @@ TEST(HotReload, WatcherProducesSourceEvent_ManualReloadUpdatesStorage) {
     flush_load_tasks(app);
     ASSERT_TRUE(server.is_loaded(handle.id()));
 
-    // Modify the file ï¿½?the watcher should emit AssetSourceEvent::ModifiedAsset.
+    // Modify the file ï¿?the watcher should emit AssetSourceEvent::ModifiedAsset.
     auto mod_bytes = make_bytes("mod");
     ASSERT_TRUE(dir.insert_file("hello.txt", memory::Value::from_shared(mod_bytes)).has_value());
 
@@ -1153,7 +1154,7 @@ TEST(HotReload, ProcessedMode_LoadsFromProcessedReader) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests ï¿½?load failure scenarios
+// Bevy lib.rs integrated tests ï¿?load failure scenarios
 // Ported from bevy_asset::tests::load_failure
 // -------------------------------------------------------------------------------------
 
@@ -1168,14 +1169,14 @@ struct FailingLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<std::string, Error>> load(Reader&,
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader&,
                                                                    const Settings&,
                                                                    epix::assets::LoadContext&) {
         co_return std::unexpected(std::make_exception_ptr(std::runtime_error("simulated parse error")));
     }
 };
 
-// Ported from bevy_asset::tests::load_failure ï¿½?"root asset has no loader"
+// Ported from bevy_asset::tests::load_failure ï¿?"root asset has no loader"
 // Tests that loading a file with no registered loader produces a MissingAssetLoader error.
 TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     auto [app, dir] = make_plugin_env(/*watching=*/false);
@@ -1205,7 +1206,7 @@ TEST(LoadFailure, MissingLoader_FailsWithMissingAssetLoaderError) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure ï¿½?"malformed root asset"
+// Ported from bevy_asset::tests::load_failure ï¿?"malformed root asset"
 // Tests that a loader returning an error produces AssetLoaderException.
 TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     auto dir = make_memory_dir_with_text("malformed content");
@@ -1237,7 +1238,7 @@ TEST(LoadFailure, LoaderError_FailsWithAssetLoaderException) {
     }
 }
 
-// Ported from bevy_asset::tests::load_failure ï¿½?combined scenario
+// Ported from bevy_asset::tests::load_failure ï¿?combined scenario
 // Verifies that a successful load produces Loaded, while missing file and loader error produce distinct failures.
 TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
     auto dir = make_memory_dir_with_text("good content");
@@ -1293,7 +1294,7 @@ TEST(LoadFailure, MixedScenarios_CorrectStateForEach) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests ï¿½?asset lifecycle
+// Bevy lib.rs integrated tests ï¿?asset lifecycle
 // Ported from bevy_asset::tests::keep_gotten_strong_handles
 // -------------------------------------------------------------------------------------
 
@@ -1310,7 +1311,7 @@ TEST(AssetLifecycle, GetStrongHandle_KeepsAssetAlive) {
     auto strong = assets.get_strong_handle(id);
     ASSERT_TRUE(strong.has_value());
 
-    // Drop the original handle ï¿½?asset should still be reachable.
+    // Drop the original handle ï¿?asset should still be reachable.
     handle = id;  // convert to weak handle, releasing the strong reference
 
     // Process handle destruction events.
@@ -1344,7 +1345,7 @@ TEST(AssetLifecycle, AllHandlesDropped_AssetRemoved) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests ï¿½?manual asset management
+// Bevy lib.rs integrated tests ï¿?manual asset management
 // Ported from bevy_asset::tests::manual_asset_management
 // -------------------------------------------------------------------------------------
 
@@ -1393,8 +1394,8 @@ TEST(ManualAssetManagement, AddAndDrop_GeneratesCorrectEvents) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests ï¿½?failure_load_states
-// Ported from bevy_asset::tests::failure_load_states (simplified ï¿½?no dep chain)
+// Bevy lib.rs integrated tests ï¿?failure_load_states
+// Ported from bevy_asset::tests::failure_load_states (simplified ï¿?no dep chain)
 // -------------------------------------------------------------------------------------
 
 // Tests that consecutive loads of the same path return the same handle (Bevy guarantee).
@@ -1421,7 +1422,7 @@ TEST(LoadFailure, ConsecutiveLoads_ReturnSameHandleAndSingleLoadTask) {
 }
 
 // -------------------------------------------------------------------------------------
-// Bevy lib.rs integrated tests ï¿½?failure_load_states
+// Bevy lib.rs integrated tests ï¿?failure_load_states
 // Ported from bevy_asset::tests::failure_load_states
 // Tests load state transitions: loaded, dep_loaded, rec_dep_loaded for a single-asset load.
 // -------------------------------------------------------------------------------------
@@ -1853,7 +1854,7 @@ TEST(MetaTransformLoad, HandleWithoutMetaTransform_ReturnsNull) {
 }
 
 // -------------------------------------------------------------------------------------
-// MetaFile integration tests â€” .meta file drives loader selection
+// MetaFile integration tests - .meta file drives loader selection
 // -------------------------------------------------------------------------------------
 
 TEST(MetaFileIntegration, MetaFile_SelectsLoaderByName) {
@@ -1939,7 +1940,7 @@ TEST(MetaFileIntegration, MetaFile_RoundTrip_SerializeDeserializeMinimal) {
 }
 
 // -------------------------------------------------------------------------------------
-// DeserializeMeta integration â€” server restores loader settings from .meta bytes
+// DeserializeMeta integration - server restores loader settings from .meta bytes
 // -------------------------------------------------------------------------------------
 
 // Helper: build a serialized AssetMeta for SettingsCapturingLoader with custom quality.
@@ -1981,7 +1982,7 @@ TEST(DeserializeMetaIntegration, CustomQuality_RestoredFromMetaFile) {
 }
 
 TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenNoMetaFile) {
-    // No .meta file present â€” loader should receive the default quality=5.
+    // No .meta file present - loader should receive the default quality=5.
     auto dir = memory::Directory::create({});
     ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
 
@@ -2005,7 +2006,7 @@ TEST(DeserializeMetaIntegration, DefaultQuality_UsedWhenNoMetaFile) {
 }
 
 TEST(DeserializeMetaIntegration, FailsWithDeserializeMeta_WhenMetaFileBytesAreGarbage) {
-    // .meta file exists but contains unparseable garbage â€” server should produce DeserializeMeta error (Bevy parity).
+    // .meta file exists but contains unparseable garbage - server should produce DeserializeMeta error (Bevy parity).
     auto dir = memory::Directory::create({});
     ASSERT_TRUE(dir.insert_file("asset.qtxt", memory::Value::from_shared(make_bytes("data"))).has_value());
 
@@ -2027,7 +2028,7 @@ TEST(DeserializeMetaIntegration, FailsWithDeserializeMeta_WhenMetaFileBytesAreGa
     auto handle  = server.load<std::string>(AssetPath("asset.qtxt"));
     flush_load_tasks(app);
 
-    // Asset should fail to load â€” meta bytes are unparseable (matches Bevy's DeserializeMeta error).
+    // Asset should fail to load - meta bytes are unparseable (matches Bevy's DeserializeMeta error).
     auto state = server.get_load_state(handle.id());
     ASSERT_TRUE(state.has_value());
     EXPECT_TRUE(std::holds_alternative<std::shared_ptr<AssetLoadError>>(*state))
@@ -2067,3 +2068,5 @@ TEST(DeserializeMetaIntegration, DifferentQualities_LoadSamePathWithMetaTransfor
     EXPECT_EQ(SettingsCapturingLoader::last_quality.load(), 77)
         << "MetaTransform override should win over .meta file settings";
 }
+
+

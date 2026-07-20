@@ -3,7 +3,8 @@
 #include <epix/assets.hpp>
 
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::app;
+using namespace epix::ecs;
 
 void AssetPlugin::attach(App& app) {
     spdlog::debug("[assets] Attaching AssetPlugin (mode={}).", static_cast<int>(mode));
@@ -97,7 +98,7 @@ void AssetPlugin::attach(App& app) {
 
     app.add_events<UntypedAssetLoadFailedEvent>();
 
-    app.add_systems(Last, into(AssetServer::handle_internal_events));
+    app.add_systems(ScheduleInfo(Last), into(AssetServer::handle_internal_events).in_set(AssetSystems::HandleEvents));
     app.configure_sets(sets(AssetSystems::HandleEvents, AssetSystems::WriteEvents).chain());
 }
 
@@ -107,3 +108,5 @@ AssetPlugin& AssetPlugin::register_asset_source(AssetSourceId id, AssetSourceBui
     m_source_builders.emplace_back(std::move(id), std::move(source));
     return *this;
 }
+
+

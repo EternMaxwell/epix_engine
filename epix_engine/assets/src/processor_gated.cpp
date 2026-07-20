@@ -1,4 +1,4 @@
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 #include <epix/utils.hpp>
 
@@ -16,12 +16,12 @@ struct TransactionLockedReader : Reader {
                             std::shared_lock<std::shared_mutex> l) noexcept
         : m_reader(std::move(r)), m_mutex(std::move(m)), m_lock(std::move(l)) {}
 
-    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
         co_return co_await m_reader->read_to_end(buf);
     }
 };
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read(
     const std::filesystem::path& path) const {
     auto asset_path = AssetPath(m_source, path);
     auto status     = co_await m_processing_state->wait_until_processed(asset_path);
@@ -37,7 +37,7 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> Proces
     co_return std::make_unique<TransactionLockedReader>(std::move(*read_result), std::move(mutex), std::move(lock));
 }
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read_meta(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> ProcessorGatedReader::read_meta(
     const std::filesystem::path& path) const {
     auto asset_path = AssetPath(m_source, path);
     auto status     = co_await m_processing_state->wait_until_processed(asset_path);
@@ -53,16 +53,18 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> Proces
     co_return std::make_unique<TransactionLockedReader>(std::move(*read_result), std::move(mutex), std::move(lock));
 }
 
-asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>>
+STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>>
 ProcessorGatedReader::read_directory(const std::filesystem::path& path) const {
     co_await m_processing_state->wait_until_finished();
     co_return co_await m_reader->read_directory(path);
 }
 
-asio::awaitable<std::expected<bool, AssetReaderError>> ProcessorGatedReader::is_directory(
+STDEXEC::task<std::expected<bool, AssetReaderError>> ProcessorGatedReader::is_directory(
     const std::filesystem::path& path) const {
     co_await m_processing_state->wait_until_finished();
     co_return co_await m_reader->is_directory(path);
 }
 
 }  // namespace epix::assets
+
+

@@ -31,3 +31,5 @@ void EmbeddedAssetRegistry::register_source(AssetSourceBuilders& sources) {
 }
 
 }  // namespace epix::assets
+
+

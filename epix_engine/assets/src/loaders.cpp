@@ -94,7 +94,7 @@ std::optional<MaybeAssetLoader> AssetLoaders::find(
         }
     }
 
-    // Step 5: fallback — only when path has no extension (avoids silently using wrong loader)
+    // Step 5: fallback - only when path has no extension (avoids silently using wrong loader)
     bool path_has_ext = (extension.has_value()) || (asset_path && asset_path->get().get_full_extension().has_value());
     if (!path_has_ext && candidates && !candidates->empty()) {
         if (candidates->size() > 1) {
@@ -109,3 +109,5 @@ std::optional<MaybeAssetLoader> AssetLoaders::find(
     return std::nullopt;
 }
 }  // namespace epix::assets
+
+

@@ -237,3 +237,5 @@ TEST_F(FileWatcherTest, DetectsAddedSubdirectory) {
         return a && a->path.filename() == sub.filename();
     }));
 }
+
+

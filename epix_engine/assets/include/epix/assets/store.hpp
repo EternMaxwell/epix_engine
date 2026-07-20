@@ -9,6 +9,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <epix/utils.hpp>
 #include <exception>
 #include <expected>
@@ -819,12 +820,12 @@ struct Assets {
     /**
      * @brief Handle strong handle destruction events.
      */
-    static void handle_events(core::ResMut<Assets<T>> assets, core::Res<AssetServer> asset_server) {
+    static void handle_events(ecs::ResMut<Assets<T>> assets, ecs::Res<AssetServer> asset_server) {
         assets->handle_events_manual(asset_server.ptr());
     }
 
     /** @brief System that flushes cached asset events to the event writer. */
-    static void asset_events(core::ResMut<Assets<T>> assets, core::EventWriter<AssetEvent<T>> writer) {
+    static void asset_events(ecs::ResMut<Assets<T>> assets, ecs::EventWriter<AssetEvent<T>> writer) {
         for (auto&& event : assets->m_cached_events) {
             writer.write(event);
         }
@@ -841,3 +842,4 @@ void Handle<T>::make_strong(Assets<T>& assets) {
     if (result) ref = std::move(result->ref);
 }
 }  // namespace epix::assets
+

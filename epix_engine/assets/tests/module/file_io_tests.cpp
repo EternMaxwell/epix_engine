@@ -1,9 +1,6 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
+#include <stdexec/execution.hpp>
 #ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <expected>
@@ -25,17 +22,11 @@ using namespace epix::assets;
 // Helpers
 // ---------------------------------------------------------------------------
 
-// Run an awaitable on a fresh io_context and return its result.
+// Run a sender task synchronously and return its result.
 template <typename T>
-static T run(asio::awaitable<T> coro) {
-    std::optional<T> result;
-    asio::io_context ctx;
-    asio::co_spawn(
-        ctx,
-        [coro = std::move(coro), &result]() mutable -> asio::awaitable<void> { result = co_await std::move(coro); },
-        asio::detached);
-    ctx.run();
-    return std::move(*result);
+static T run(STDEXEC::task<T> coro) {
+    auto result = STDEXEC::sync_wait(std::move(coro));
+    return std::move(std::get<0>(*result));
 }
 
 // Root used by all FileAssetReader/Writer under test.
@@ -51,7 +42,7 @@ TEST(FileAssetReader, ReadExistingFile) {
     FileAssetReader reader(kRoot);
 
     std::vector<uint8_t> buf;
-    auto result = run([&]() -> asio::awaitable<bool> {
+    auto result = run([&]() -> STDEXEC::task<bool> {
         auto r = co_await reader.read("hello.txt");
         if (!r) co_return false;
         auto res = co_await (*r)->read_to_end(buf);
@@ -67,7 +58,7 @@ TEST(FileAssetReader, ReadExistingFile) {
 TEST(FileAssetReader, ReadMissingFileReturnsNotFound) {
     FileAssetReader reader(kRoot);
 
-    auto result = run([&]() -> asio::awaitable<bool> {
+    auto result = run([&]() -> STDEXEC::task<bool> {
         auto r = co_await reader.read("no_such_file.txt");
         if (r) co_return false;
         co_return std::holds_alternative<reader_errors::NotFound>(r.error());
@@ -111,7 +102,7 @@ TEST(FileAssetWriter, WriteAndReadBack) {
 
     const std::vector<uint8_t> data = {0x01, 0x02, 0x03, 0x04, 0xFF};
 
-    bool write_ok = run([&]() -> asio::awaitable<bool> {
+    bool write_ok = run([&]() -> STDEXEC::task<bool> {
         auto w = co_await writer.write("write_test.bin");
         if (!w) co_return false;
         auto res = co_await (*w)->write(std::span<const uint8_t>(data));
@@ -120,7 +111,7 @@ TEST(FileAssetWriter, WriteAndReadBack) {
     ASSERT_TRUE(write_ok);
 
     std::vector<uint8_t> buf;
-    bool read_ok = run([&]() -> asio::awaitable<bool> {
+    bool read_ok = run([&]() -> STDEXEC::task<bool> {
         auto r = co_await reader.read("write_test.bin");
         if (!r) co_return false;
         auto res = co_await (*r)->read_to_end(buf);
@@ -140,10 +131,12 @@ TEST(FileAssetWriter, RemoveExistingFile) {
     }
     ASSERT_TRUE(std::filesystem::exists(kRoot / "remove_test.bin"));
 
-    bool ok = run([&]() -> asio::awaitable<bool> {
+    bool ok = run([&]() -> STDEXEC::task<bool> {
         auto res = co_await writer.remove("remove_test.bin");
         co_return res.has_value();
     }());
     EXPECT_TRUE(ok);
     EXPECT_FALSE(std::filesystem::exists(kRoot / "remove_test.bin"));
 }
+
+

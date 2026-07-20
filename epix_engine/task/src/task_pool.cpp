@@ -2,12 +2,12 @@
 
 namespace epix::task {
 
-std::optional<asio::any_io_executor> TaskPool::try_get_asio_executor() const {
+std::optional<AsioExecutor> TaskPool::try_get_asio_executor() const {
     if (m_backend_kind != TaskPoolBackend::AsioThreadPool || !m_backend) return std::nullopt;
     return std::static_pointer_cast<internal::AsioThreadPoolBackend>(m_backend)->asio_executor();
 }
 
-asio::any_io_executor TaskPool::get_asio_executor() const {
+AsioExecutor TaskPool::get_asio_executor() const {
     auto ex = try_get_asio_executor();
     if (!ex) throw std::logic_error("TaskPool backend does not provide an Asio executor");
     return *ex;

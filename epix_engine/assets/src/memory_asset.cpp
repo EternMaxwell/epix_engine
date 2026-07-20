@@ -1,4 +1,4 @@
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 #include <epix/utils.hpp>
 
@@ -43,7 +43,7 @@ static AssetWriterError dir_error_to_writer_error(const memory::DirectoryError& 
 
 // ---- MemoryAssetReader --------------------------------------------------
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read(
     const std::filesystem::path& path) const {
     auto res = dir_.get_file(path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
@@ -64,19 +64,19 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>
     co_return std::unique_ptr<Reader>(std::make_unique<VecReader>(std::move(bytes)));
 }
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read_meta(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> MemoryAssetReader::read_meta(
     const std::filesystem::path& path) const {
     co_return co_await read(assets::get_meta_path(path));
 }
 
-asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
+STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
 MemoryAssetReader::read_directory(const std::filesystem::path& path) const {
     auto res = dir_.list_directory(path, false);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
     co_return res.value();
 }
 
-asio::awaitable<std::expected<bool, assets::AssetReaderError>> MemoryAssetReader::is_directory(
+STDEXEC::task<std::expected<bool, assets::AssetReaderError>> MemoryAssetReader::is_directory(
     const std::filesystem::path& path) const {
     auto res = dir_.is_directory(path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_reader_error(res.error(), path));
@@ -103,65 +103,65 @@ struct MemoryCommitWriter : assets::Writer {
         } catch (...) {}
     }
 
-    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
         m_data.insert(m_data.end(), data.begin(), data.end());
         co_return data.size();
     }
 
-    asio::awaitable<std::expected<void, std::error_code>> flush() override {
+    STDEXEC::task<std::expected<void, std::error_code>> flush() override {
         co_return std::expected<void, std::error_code>{};
     }
 };
 
-asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write(
+STDEXEC::task<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write(
     const std::filesystem::path& path) const {
     co_return std::unique_ptr<Writer>(std::make_unique<MemoryCommitWriter>(dir_, path));
 }
 
-asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write_meta(
+STDEXEC::task<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> MemoryAssetWriter::write_meta(
     const std::filesystem::path& path) const {
     co_return co_await write(assets::get_meta_path(path));
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove(
     const std::filesystem::path& path) const {
     auto res = dir_.remove_file(path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
     co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_meta(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_meta(
     const std::filesystem::path& path) const {
     co_return co_await remove(assets::get_meta_path(path));
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename(
     const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
     auto res = dir_.move(old_path, new_path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
     co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename_meta(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::rename_meta(
     const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
     co_return co_await rename(assets::get_meta_path(old_path), assets::get_meta_path(new_path));
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::create_directory(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::create_directory(
     const std::filesystem::path& path) const {
     auto res = dir_.create_directory(path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
     co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_directory(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::remove_directory(
     const std::filesystem::path& path) const {
     auto res = dir_.remove_directory(path);
     if (!res.has_value()) co_return std::unexpected(dir_error_to_writer_error(res.error()));
     co_return std::expected<void, assets::AssetWriterError>{};
 }
 
-asio::awaitable<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::clear_directory(
+STDEXEC::task<std::expected<void, assets::AssetWriterError>> MemoryAssetWriter::clear_directory(
     const std::filesystem::path& path) const {
     // clear contents without removing the directory node itself to avoid DirRemoved/DirAdded on the parent
     auto list_res = dir_.list_directory(path, false);
@@ -253,3 +253,5 @@ assets::AssetSourceEvent MemoryAssetWatcher::convert(const assets::memory::DirEv
 }
 
 }  // namespace epix::assets
+
+

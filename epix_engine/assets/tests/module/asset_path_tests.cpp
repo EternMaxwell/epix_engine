@@ -40,7 +40,7 @@ TEST(AssetSourceId, Equality) {
 }
 
 // ===========================================================================
-// AssetPath — Construction
+// AssetPath - Construction
 // ===========================================================================
 
 TEST(AssetPath, DefaultConstruction) {
@@ -89,7 +89,7 @@ TEST(AssetPath, ComponentConstruction) {
 }
 
 // ===========================================================================
-// AssetPath — string()
+// AssetPath - string()
 // ===========================================================================
 
 TEST(AssetPath, ToString_Simple) {
@@ -115,7 +115,7 @@ TEST(AssetPath, ToString_WithLabel) {
 }
 
 // ===========================================================================
-// AssetPath — with_* / without_* / remove_label / take_label
+// AssetPath - with_* / without_* / remove_label / take_label
 // ===========================================================================
 
 TEST(AssetPath, WithLabel) {
@@ -164,7 +164,7 @@ TEST(AssetPath, TakeLabel_NoLabel) {
 }
 
 // ===========================================================================
-// AssetPath — parent / resolve
+// AssetPath - parent / resolve
 // ===========================================================================
 
 TEST(AssetPath, Parent_ReturnsParentDir) {
@@ -195,7 +195,7 @@ TEST(AssetPath, Resolve_StringView) {
 }
 
 // ===========================================================================
-// AssetPath — extensions
+// AssetPath - extensions
 // ===========================================================================
 
 TEST(AssetPath, GetExtension_Simple) {
@@ -266,7 +266,7 @@ TEST(AssetPath, IterSecondaryExtensions_None) {
 }
 
 // ===========================================================================
-// AssetPath — try_parse
+// AssetPath - try_parse
 // ===========================================================================
 
 TEST(AssetPath, TryParse_Valid) {
@@ -288,7 +288,7 @@ TEST(AssetPath, TryParse_WithSourceAndLabel) {
 }
 
 // ===========================================================================
-// AssetPath — equality & ordering
+// AssetPath - equality & ordering
 // ===========================================================================
 
 TEST(AssetPath, Equality) {
@@ -310,7 +310,7 @@ TEST(AssetPath, Inequality_DifferentSource) {
 }
 
 // ===========================================================================
-// AssetPath — hashing
+// AssetPath - hashing
 // ===========================================================================
 
 TEST(AssetPath, Hash_SamePathSameHash) {

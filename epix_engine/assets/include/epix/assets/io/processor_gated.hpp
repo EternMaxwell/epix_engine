@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/utils.hpp>
 #include <expected>
 #include <filesystem>
@@ -19,7 +19,7 @@ namespace epix::assets {
 
 /// An AssetReader that will prevent asset (and asset metadata) reads from returning
 /// for a given path until that path has been processed by AssetProcessor.
-/// The inner reader is borrowed (not owned) — the caller must ensure it outlives this object.
+/// The inner reader is borrowed (not owned) - the caller must ensure it outlives this object.
 struct ProcessorGatedReader : public AssetReader {
    private:
     const AssetReader* m_reader;  // borrowed, must outlive this
@@ -32,17 +32,19 @@ struct ProcessorGatedReader : public AssetReader {
                          std::shared_ptr<ProcessingState> processing_state) noexcept
         : m_source(std::move(source)), m_reader(&reader), m_processing_state(std::move(processing_state)) {}
 
-    asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
+    STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read_meta(
+    STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read_meta(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>> read_directory(
+    STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>> read_directory(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<bool, AssetReaderError>> is_directory(
+    STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(
         const std::filesystem::path& path) const override;
 };
 
 }  // namespace epix::assets
+
+

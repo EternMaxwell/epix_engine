@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/meta.hpp>
 #include <exception>
 #include <expected>
@@ -244,10 +244,12 @@ struct IdentityAssetTransformer {
     struct Settings {};
     using Error = std::exception_ptr;
 
-    asio::awaitable<std::expected<TransformedAsset<A>, Error>> transform(TransformedAsset<A> asset,
+    STDEXEC::task<std::expected<TransformedAsset<A>, Error>> transform(TransformedAsset<A> asset,
                                                                          const Settings&) const {
         co_return asset;
     }
 };
 
 }  // namespace epix::assets
+
+

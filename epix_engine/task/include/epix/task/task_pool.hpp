@@ -5,7 +5,6 @@
 // Reference: https://github.com/bevyengine/bevy/blob/main/crates/bevy_tasks/src/task_pool.rs
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/any_io_executor.hpp>
 #include <asio/executor_work_guard.hpp>
 #include <asio/io_context.hpp>
 #include <asio/post.hpp>
@@ -36,6 +35,9 @@ EPIX_EXPORT struct TaskPool;
 EPIX_EXPORT struct TaskPoolBuilder;
 EPIX_EXPORT template <typename T>
 struct Scope;
+
+EPIX_EXPORT using AsioExecutor =
+    decltype(std::declval<exec::asio::asio_thread_pool const&>().get_executor());
 
 // ── Internal: backend bundles ──────────────────────────────────────────────
 
@@ -70,8 +72,8 @@ struct AsioThreadPoolBackend {
                              STDEXEC::then([fn = std::move(fn)]() mutable { fn(); }));
     }
 
-    [[nodiscard]] std::optional<asio::any_io_executor> asio_executor() const {
-        return asio::any_io_executor(pool.get_executor());
+    [[nodiscard]] std::optional<AsioExecutor> asio_executor() const {
+        return pool.get_executor();
     }
 };
 
@@ -119,6 +121,15 @@ template <typename T, typename Env>
 struct sender_task_value<STDEXEC::task<T, Env>> {
     using type = T;
 };
+
+template <typename T>
+struct is_stdexec_task : std::false_type {};
+
+template <typename T, typename Env>
+struct is_stdexec_task<STDEXEC::task<T, Env>> : std::true_type {};
+
+template <typename T>
+inline constexpr bool is_stdexec_task_v = is_stdexec_task<std::remove_cvref_t<T>>::value;
 
 template <typename Sender>
 using sender_task_value_t = typename sender_task_value<std::remove_cvref_t<Sender>>::type;
@@ -205,9 +216,9 @@ EPIX_EXPORT struct TaskPool {
 
     [[nodiscard]] size_t thread_num() const noexcept { return m_thread_count; }
 
-    [[nodiscard]] std::optional<asio::any_io_executor> try_get_asio_executor() const;
+    [[nodiscard]] std::optional<AsioExecutor> try_get_asio_executor() const;
 
-    [[nodiscard]] asio::any_io_executor get_asio_executor() const;
+    [[nodiscard]] AsioExecutor get_asio_executor() const;
 
     template <typename F>
     decltype(auto) with_scheduler(F&& f) {
@@ -233,11 +244,21 @@ EPIX_EXPORT struct TaskPool {
 
         if (m_backend_kind == TaskPoolBackend::StaticThreadPool) {
             auto backend = std::static_pointer_cast<internal::StaticThreadPoolBackend>(m_backend);
-            return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
+            if constexpr (internal::is_stdexec_task_v<Sender>)
+                return async_task::spawn(
+                    STDEXEC::starts_on(backend->pool.get_scheduler(), STDEXEC::just()) |
+                    STDEXEC::let_value([snd = std::move(snd)]() mutable { return std::move(snd); }));
+            else
+                return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
         }
         if (m_backend_kind == TaskPoolBackend::AsioThreadPool) {
             auto backend = std::static_pointer_cast<internal::AsioThreadPoolBackend>(m_backend);
-            return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
+            if constexpr (internal::is_stdexec_task_v<Sender>)
+                return async_task::spawn(
+                    STDEXEC::starts_on(backend->pool.get_scheduler(), STDEXEC::just()) |
+                    STDEXEC::let_value([snd = std::move(snd)]() mutable { return std::move(snd); }));
+            else
+                return async_task::spawn(STDEXEC::starts_on(backend->pool.get_scheduler(), std::move(snd)));
         }
         return async_task::Task<T>{};
     }

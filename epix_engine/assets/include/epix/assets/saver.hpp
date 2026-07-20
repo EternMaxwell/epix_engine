@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <concepts>
 #include <epix/meta.hpp>
 #include <exception>
@@ -121,7 +121,7 @@ struct SavedAsset {
 EPIX_EXPORT struct ErasedAssetSaver {
     virtual ~ErasedAssetSaver() = default;
     /** @brief Save a type-erased loaded asset to an async Writer. */
-    virtual asio::awaitable<std::expected<void, std::exception_ptr>> save(Writer& writer,
+    virtual STDEXEC::task<std::expected<void, std::exception_ptr>> save(Writer& writer,
                                                                           const ErasedLoadedAsset& asset,
                                                                           const Settings& settings,
                                                                           const AssetPath& asset_path) const = 0;
@@ -138,7 +138,7 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
 
     const T& as_concrete() const noexcept { return static_cast<const T&>(*this); }
 
-    asio::awaitable<std::expected<void, std::exception_ptr>> save(Writer& writer,
+    STDEXEC::task<std::expected<void, std::exception_ptr>> save(Writer& writer,
                                                                   const ErasedLoadedAsset& asset,
                                                                   const Settings& settings,
                                                                   const AssetPath& asset_path) const override {
@@ -162,3 +162,5 @@ struct ErasedAssetSaverImpl : T, ErasedAssetSaver {
 };
 
 }  // namespace epix::assets
+
+

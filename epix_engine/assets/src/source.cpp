@@ -157,3 +157,5 @@ AssetSources AssetSourceBuilders::build_sources(bool watch, bool watch_processed
 }
 
 }  // namespace epix::assets
+
+

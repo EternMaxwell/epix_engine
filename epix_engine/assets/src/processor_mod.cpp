@@ -1,6 +1,6 @@
 #include <spdlog/spdlog.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 
 using namespace epix::assets;
@@ -14,7 +14,7 @@ ProcessorAssetInfo::ProcessorAssetInfo() {
     status_receiver = std::move(receiver);
 }
 
-asio::awaitable<void> ProcessorAssetInfo::update_status(ProcessStatus new_status) {
+STDEXEC::task<void> ProcessorAssetInfo::update_status(ProcessStatus new_status) {
     if (status != new_status) {
         status = new_status;
         (void)co_await status_sender.broadcast(new_status);
@@ -52,7 +52,7 @@ void ProcessorAssetInfos::add_dependent(const AssetPath& asset_path, AssetPath d
     }
 }
 
-asio::awaitable<std::shared_ptr<std::shared_mutex>> ProcessorAssetInfos::remove(const AssetPath& asset_path) {
+STDEXEC::task<std::shared_ptr<std::shared_mutex>> ProcessorAssetInfos::remove(const AssetPath& asset_path) {
     auto it = infos.find(asset_path);
     if (it == infos.end()) co_return nullptr;
     auto info = std::move(it->second);
@@ -68,7 +68,7 @@ asio::awaitable<std::shared_ptr<std::shared_mutex>> ProcessorAssetInfos::remove(
     co_return info.file_transaction_lock;
 }
 
-asio::awaitable<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
+STDEXEC::task<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
 ProcessorAssetInfos::rename(const AssetPath& old_path,
                             const AssetPath& new_path,
                             async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
@@ -118,7 +118,7 @@ ProcessorAssetInfos::rename(const AssetPath& old_path,
     co_return std::pair{std::move(old_lock), new_info.file_transaction_lock};
 }
 
-asio::awaitable<void> ProcessorAssetInfos::finish_processing(
+STDEXEC::task<void> ProcessorAssetInfos::finish_processing(
     const AssetPath& asset_path,
     std::expected<ProcessResult, ProcessError>& result,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender) {
@@ -235,19 +235,19 @@ std::expected<void, SetTransactionLogFactoryError> AssetProcessorData::set_log_f
     return {};
 }
 
-asio::awaitable<ProcessStatus> AssetProcessorData::wait_until_processed(const AssetPath& path) const {
+STDEXEC::task<ProcessStatus> AssetProcessorData::wait_until_processed(const AssetPath& path) const {
     co_return co_await processing_state->wait_until_processed(path);
 }
 
-asio::awaitable<void> AssetProcessorData::wait_until_initialized() const {
+STDEXEC::task<void> AssetProcessorData::wait_until_initialized() const {
     co_await processing_state->wait_until_initialized();
 }
 
-asio::awaitable<void> AssetProcessorData::wait_until_finished() const {
+STDEXEC::task<void> AssetProcessorData::wait_until_finished() const {
     co_await processing_state->wait_until_finished();
 }
 
-asio::awaitable<ProcessorState> AssetProcessorData::state() const { co_return co_await processing_state->get_state(); }
+STDEXEC::task<ProcessorState> AssetProcessorData::state() const { co_return co_await processing_state->get_state(); }
 
 // ---- ProcessingState ----
 
@@ -262,7 +262,7 @@ ProcessingState::ProcessingState() {
     m_finished_receiver    = std::move(fr);
 }
 
-asio::awaitable<void> ProcessingState::set_state(ProcessorState state) {
+STDEXEC::task<void> ProcessingState::set_state(ProcessorState state) {
     ProcessorState last_state;
     {
         auto guard = m_state.write();
@@ -276,12 +276,12 @@ asio::awaitable<void> ProcessingState::set_state(ProcessorState state) {
     }
 }
 
-asio::awaitable<ProcessorState> ProcessingState::get_state() const {
+STDEXEC::task<ProcessorState> ProcessingState::get_state() const {
     auto guard = m_state.read();
     co_return *guard;
 }
 
-asio::awaitable<ProcessStatus> ProcessingState::wait_until_processed(const AssetPath& path) const {
+STDEXEC::task<ProcessStatus> ProcessingState::wait_until_processed(const AssetPath& path) const {
     // Fast path: asset already tracked and has a final status.
     {
         auto guard = m_asset_infos.read();
@@ -318,7 +318,7 @@ asio::awaitable<ProcessStatus> ProcessingState::wait_until_processed(const Asset
     co_return ProcessStatus::NonExistent;
 }
 
-asio::awaitable<void> ProcessingState::wait_until_initialized() const {
+STDEXEC::task<void> ProcessingState::wait_until_initialized() const {
     std::optional<async_broadcast::Receiver<bool>> receiver;
     {
         auto guard = m_state.read();
@@ -331,7 +331,7 @@ asio::awaitable<void> ProcessingState::wait_until_initialized() const {
     }
 }
 
-asio::awaitable<void> ProcessingState::wait_until_finished() const {
+STDEXEC::task<void> ProcessingState::wait_until_finished() const {
     std::optional<async_broadcast::Receiver<bool>> receiver;
     {
         auto guard = m_state.read();
@@ -353,7 +353,7 @@ void ProcessingState::shutdown() {
     }
 }
 
-asio::awaitable<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>>
+STDEXEC::task<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>>
 ProcessingState::get_transaction_lock(const AssetPath& path) const {
     auto guard = m_asset_infos.read();
     auto* info = guard->get(path);
@@ -362,3 +362,6 @@ ProcessingState::get_transaction_lock(const AssetPath& path) const {
     }
     co_return info->file_transaction_lock;
 }
+
+
+

@@ -295,3 +295,15 @@ TEST(SenderTask, TaskPoolSpawnVoidSender) {
     while (!task.is_finished()) std::this_thread::sleep_for(1ms);
     EXPECT_TRUE(ran.load());
 }
+
+TEST(SenderTask, TaskPoolSpawnStdexecTask) {
+    std::atomic<bool> ran_on_pool{false};
+    const auto caller = std::this_thread::get_id();
+    auto pool = TaskPoolBuilder{}.num_threads(2).backend(TaskPoolBackend::IoContext).build();
+    auto task = pool.spawn([&]() -> STDEXEC::task<void> {
+        ran_on_pool.store(std::this_thread::get_id() != caller);
+        co_await STDEXEC::just();
+    }());
+    while (!task.is_finished()) std::this_thread::sleep_for(1ms);
+    EXPECT_TRUE(ran_on_pool.load());
+}

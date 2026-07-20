@@ -94,7 +94,7 @@ TEST(ProcessedInfo, WithDependencies) {
 }
 
 // ===========================================================================
-// AssetAction — Load variant
+// AssetAction - Load variant
 // ===========================================================================
 
 struct TestLoaderSettings {
@@ -136,7 +136,7 @@ TEST(AssetAction, IgnoreVariant) {
 }
 
 // ===========================================================================
-// AssetMeta — concrete metadata
+// AssetMeta - concrete metadata
 // ===========================================================================
 
 TEST(AssetMeta, DefaultValues) {
@@ -202,7 +202,7 @@ TEST(AssetMeta, ActionType) {
 }
 
 // ===========================================================================
-// AssetMetaDyn — virtual interface
+// AssetMetaDyn - virtual interface
 // ===========================================================================
 
 TEST(AssetMetaDyn, PolymorphicAccess) {
@@ -251,7 +251,7 @@ TEST(SettingsBase, TryCast_WrongType_ReturnsNullopt) {
 }
 
 // ===========================================================================
-// AssetMeta::loader_settings() — Settings-derived LoaderSettings
+// AssetMeta::loader_settings() - Settings-derived LoaderSettings
 // ===========================================================================
 
 struct DerivedLoaderSettings {
@@ -340,12 +340,12 @@ TEST(MetaTransform, IsCallable) {
 }
 
 // ===========================================================================
-// loader_settings_meta_transform — internal helper; tested via
+// loader_settings_meta_transform - internal helper; tested via
 // AssetServer::load_with_settings integration tests in asset_server_plugin_tests.
 // ===========================================================================
 
 // ===========================================================================
-// serialize_meta_minimal / deserialize_meta_minimal — round-trip tests
+// serialize_meta_minimal / deserialize_meta_minimal - round-trip tests
 // ===========================================================================
 
 TEST(SerializeMetaMinimal, RoundTrip_LoadAction) {
@@ -439,7 +439,7 @@ TEST(SerializeMetaMinimal, TruncatedBytes_ReturnsError) {
 }
 
 // ===========================================================================
-// serialize_asset_meta / deserialize_asset_meta — round-trip tests
+// serialize_asset_meta / deserialize_asset_meta - round-trip tests
 // ===========================================================================
 
 struct SerLoadSettings {
@@ -560,7 +560,7 @@ TEST(SettingsCast, WrongType_Const_ThrowsBadCast) {
 }
 
 // ===========================================================================
-// AssetMetaDyn::processed_info_mut — new mutable accessor
+// AssetMetaDyn::processed_info_mut - new mutable accessor
 // ===========================================================================
 
 TEST(AssetMetaDyn, ProcessedInfoMut_SetViaRef) {
@@ -595,7 +595,7 @@ TEST(AssetMetaDyn, ProcessedInfoMut_SameObjectAsField) {
 }
 
 // ===========================================================================
-// AssetMetaDyn::process_settings — const and non-const
+// AssetMetaDyn::process_settings - const and non-const
 // ===========================================================================
 
 TEST(AssetMetaDyn, ProcessSettings_WhenProcess_ReturnsNonNull) {
@@ -651,7 +651,7 @@ TEST(AssetMetaDyn, ProcessSettings_VirtualDispatch) {
 }
 
 // ===========================================================================
-// AssetMetaDyn::serialize_bytes — virtual round-trip
+// AssetMetaDyn::serialize_bytes - virtual round-trip
 // ===========================================================================
 
 TEST(AssetMetaDyn, SerializeBytes_ProducesNonEmptyVector) {
@@ -712,7 +712,7 @@ TEST(AssetMetaDyn, SerializeBytes_ProcessedInfoPreserved) {
 }
 
 // ===========================================================================
-// deserialize_processed_info — partial-read utility
+// deserialize_processed_info - partial-read utility
 // ===========================================================================
 
 TEST(DeserializeProcessedInfo, NoPresentInfo_ReturnsNullopt) {
@@ -789,7 +789,9 @@ TEST(DeserializeProcessedInfo, EmptyBytes_Fails) {
 }
 
 // ===========================================================================
-// AssetHasher / get_asset_hash / get_full_asset_hash — internal hashing helpers
+// AssetHasher / get_asset_hash / get_full_asset_hash - internal hashing helpers
 // These are pub(crate) equivalents; tested indirectly through the processor
 // pipeline in processor_embedded_tests. No direct unit tests here.
 // ===========================================================================
+
+

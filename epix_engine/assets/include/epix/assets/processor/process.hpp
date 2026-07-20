@@ -5,7 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <concepts>
 #include <cstddef>
 #include <epix/meta.hpp>
@@ -51,7 +51,7 @@ concept Process = requires(P& p, ProcessContext& ctx, const typename P::Settings
     requires AssetLoader<typename P::OutputLoader>;
     {
         p.process(ctx, settings, writer)
-    } -> std::same_as<asio::awaitable<std::expected<typename P::OutputLoader::Settings, std::exception_ptr>>>;
+    } -> std::same_as<STDEXEC::task<std::expected<typename P::OutputLoader::Settings, std::exception_ptr>>>;
 };
 
 // ---- ProcessError ----
@@ -152,7 +152,7 @@ EPIX_EXPORT enum class ProcessStatus {
 EPIX_EXPORT struct ErasedProcessor {
     virtual ~ErasedProcessor() = default;
     /** @brief Process the asset described by context, writing results to writer. */
-    virtual asio::awaitable<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(
+    virtual STDEXEC::task<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(
         ProcessContext& context, const Settings& settings, Writer& writer) const = 0;
     /** @brief Deserialize metadata bytes into type-erased AssetMetaDyn. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
@@ -177,7 +177,7 @@ struct ErasedProcessorImpl : P, ErasedProcessor {
     const P& as_concrete() const { return static_cast<const P&>(*this); }
     P& as_concrete_mut() { return static_cast<P&>(*this); }
 
-    asio::awaitable<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(ProcessContext& context,
+    STDEXEC::task<std::expected<std::unique_ptr<AssetMetaDyn>, ProcessError>> process(ProcessContext& context,
                                                                                         const Settings& settings,
                                                                                         Writer& writer) const override {
         auto* typed_settings = dynamic_cast<const SettingsImpl<typename P::Settings>*>(&settings);
@@ -251,7 +251,7 @@ struct LoadTransformAndSave {
         requires std::same_as<T, IdentityAssetTransformer<typename L::Asset>>
         : transformer(), saver(std::move(saver)) {}
 
-    asio::awaitable<std::expected<typename OutputLoader::Settings, std::exception_ptr>> process(
+    STDEXEC::task<std::expected<typename OutputLoader::Settings, std::exception_ptr>> process(
         ProcessContext& context, const Settings& settings, Writer& writer);
 };
 
@@ -309,7 +309,7 @@ EPIX_EXPORT struct ProcessContext {
 template <AssetLoader L, AssetTransformer T, AssetSaver S>
     requires std::same_as<typename L::Asset, typename T::AssetInput> &&
              std::same_as<typename T::AssetOutput, typename S::Asset>
-asio::awaitable<std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, std::exception_ptr>>
+STDEXEC::task<std::expected<typename LoadTransformAndSave<L, T, S>::OutputLoader::Settings, std::exception_ptr>>
 LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& settings, Writer& writer) {
     try {
         // Load the source asset
@@ -342,3 +342,5 @@ LoadTransformAndSave<L, T, S>::process(ProcessContext& context, const Settings& 
 }
 
 }  // namespace epix::assets
+
+

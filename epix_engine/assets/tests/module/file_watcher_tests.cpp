@@ -1,4 +1,4 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 #ifndef EPIX_IMPORT_STD
 #include <chrono>
 #include <filesystem>
@@ -240,3 +240,5 @@ TEST_F(FileWatcherTest, DetectsAddedSubdirectory) {
         return a && a->path.filename() == sub.filename();
     }));
 }
+
+

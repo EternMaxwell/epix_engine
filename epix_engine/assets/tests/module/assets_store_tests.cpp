@@ -15,7 +15,7 @@ import epix.assets;
 using namespace epix::assets;
 
 // ===========================================================================
-// Assets<T> — basic lifecycle
+// Assets<T> - basic lifecycle
 // ===========================================================================
 
 TEST(Assets, Emplace_ReturnsStrongHandle) {
@@ -73,7 +73,7 @@ TEST(Assets, Contains_False) {
 }
 
 // ===========================================================================
-// Assets<T> — insert / replace
+// Assets<T> - insert / replace
 // ===========================================================================
 
 TEST(Assets, Insert_NewAsset) {
@@ -99,7 +99,7 @@ TEST(Assets, Insert_Replace) {
 }
 
 // ===========================================================================
-// Assets<T> — remove / take
+// Assets<T> - remove / take
 // ===========================================================================
 
 TEST(Assets, Remove_Existing) {
@@ -133,7 +133,7 @@ TEST(Assets, Take_Missing) {
 }
 
 // ===========================================================================
-// Assets<T> — strong handle / weak handle
+// Assets<T> - strong handle / weak handle
 // ===========================================================================
 
 TEST(Assets, GetStrongHandle) {
@@ -159,7 +159,7 @@ TEST(Assets, WeakHandle) {
 }
 
 // ===========================================================================
-// Assets<T> — handle auto-destruction (strong handle drop)
+// Assets<T> - handle auto-destruction (strong handle drop)
 // ===========================================================================
 
 TEST(Assets, StrongHandleDrop_CausesRelease) {
@@ -198,7 +198,7 @@ TEST(Assets, MultipleStrongHandles_DroppingOneRetainsAsset) {
 }
 
 // ===========================================================================
-// Assets<T> — index recycling
+// Assets<T> - index recycling
 // ===========================================================================
 
 TEST(Assets, IndexRecycling) {
@@ -237,7 +237,7 @@ TEST(Assets, IndexRecycling_AfterHandleDestruction_ReusesIndexAndBumpsGeneration
 }
 
 // ===========================================================================
-// Assets<T> — reserve_handle
+// Assets<T> - reserve_handle
 // ===========================================================================
 
 TEST(Assets, ReserveHandle_ThenInsert) {
@@ -279,7 +279,7 @@ TEST(Assets, ReserveHandle_PreservesReservedIndexForInsert) {
 }
 
 // ===========================================================================
-// Assets<T> — iteration
+// Assets<T> - iteration
 // ===========================================================================
 
 TEST(Assets, Ids) {
@@ -320,7 +320,7 @@ TEST(Assets, IterMut) {
 }
 
 // ===========================================================================
-// Assets<T> — len / is_empty
+// Assets<T> - len / is_empty
 // ===========================================================================
 
 TEST(Assets, LenAndIsEmpty) {
@@ -334,7 +334,7 @@ TEST(Assets, LenAndIsEmpty) {
 }
 
 // ===========================================================================
-// Assets<T> — get_or_insert_with
+// Assets<T> - get_or_insert_with
 // ===========================================================================
 
 TEST(Assets, GetOrInsertWith_Existing) {
@@ -354,7 +354,7 @@ TEST(Assets, GetOrInsertWith_New) {
 }
 
 // ===========================================================================
-// Assets<T> — get_mut_untracked / remove_untracked
+// Assets<T> - get_mut_untracked / remove_untracked
 // ===========================================================================
 
 TEST(Assets, GetMutUntracked) {
@@ -374,3 +374,5 @@ TEST(Assets, RemoveUntracked) {
     EXPECT_EQ(res.value(), "bye");
     EXPECT_FALSE(assets.contains(h.id()));
 }
+
+

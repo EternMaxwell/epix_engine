@@ -7,7 +7,7 @@
 #include <zpp_bits.h>
 
 #include <array>
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <cstdint>
 #include <cstring>
 #include <epix/meta.hpp>
@@ -147,10 +147,10 @@ EPIX_EXPORT struct EmptySettings {};
 
 /** @brief Concept satisfied by any type that zpp::bits can serialize:
  *  - types with an explicit serialize hook (has_serialize)
- *  - containers (std::vector, std::string, std::map, …)
+ *  - containers (std::vector, std::string, std::map, - 
  *  - tuple-like types
  *  - std::variant, std::optional
- *  - empty types (std::is_empty_v — includes EmptySettings)
+ *  - empty types (std::is_empty_v - includes EmptySettings)
  *  - byte-serializable fundamentals/enums
  *  - unspecialized aggregates (struct with only serializable members)
  *  All must also be default-constructible. */
@@ -343,7 +343,7 @@ EPIX_EXPORT inline std::expected<AssetMetaMinimal, std::errc> deserialize_meta_m
 
 /** @brief Serialize a full AssetMeta<LS,PS> to a byte vector using zpp::bits.
  *  Fields are passed individually to avoid zpp_bits trying to reflect on
- *  AssetMeta (which has virtual methods — MSVC cannot handle that via pfr).
+ *  AssetMeta (which has virtual methods - MSVC cannot handle that via pfr).
  *  Uses explicit vector+out construction to avoid the data_out() local-struct
  *  duplicate-COMDAT MSVC issue. */
 EPIX_EXPORT template <typename LS, typename PS>
@@ -392,10 +392,12 @@ EPIX_EXPORT inline std::expected<std::optional<ProcessedInfo>, std::errc> deseri
 /** @brief Compute a 32-byte asset hash from meta bytes + asset reader contents.
  *  NOTE: changing the hashing algorithm requires a META_FORMAT_VERSION bump.
  *  Matches bevy_asset's get_asset_hash. */
-asio::awaitable<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader);
+STDEXEC::task<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader);
 
 /** @brief Compute the full_hash by chaining an asset hash with all dependency full_hashes.
  *  Matches bevy_asset's get_full_asset_hash. */
 AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes);
 
 }  // namespace epix::assets
+
+

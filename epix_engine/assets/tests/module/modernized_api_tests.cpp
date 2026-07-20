@@ -1,9 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
+#include <stdexec/execution.hpp>
 #ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <exception>
@@ -32,7 +29,7 @@ import epix.assets;
 using namespace epix::assets;
 
 // ===========================================================================
-// LoadedAsset — labels() range
+// LoadedAsset - labels() range
 // ===========================================================================
 
 TEST(LoadedAsset_Labels, Empty) {
@@ -46,7 +43,7 @@ TEST(LoadedAsset_Labels, Empty) {
 }
 
 // ===========================================================================
-// TransformedAsset — labels() range
+// TransformedAsset - labels() range
 // ===========================================================================
 
 TEST(TransformedAsset_Labels, Empty) {
@@ -60,7 +57,7 @@ TEST(TransformedAsset_Labels, Empty) {
 }
 
 // ===========================================================================
-// SavedAsset — labels() range + from_transformed
+// SavedAsset - labels() range + from_transformed
 // Note: SavedAsset direct constructor requires LabeledAsset (not exported).
 // Testing via from_transformed which is constructible from test code.
 // ===========================================================================
@@ -90,7 +87,7 @@ TEST(SavedAsset_FromTransformed, Dereference) {
 }
 
 // ===========================================================================
-// ProcessContext — Reader& + ProcessedInfo
+// ProcessContext - Reader& + ProcessedInfo
 // ===========================================================================
 
 // Helper for creating a minimal AssetProcessor for ProcessContext tests
@@ -118,10 +115,9 @@ TEST(ProcessContext, ReaderAccess) {
     ProcessContext ctx(processor, path, data, info);
 
     std::vector<uint8_t> buf;
-    asio::io_context io;
-    asio::co_spawn(
-        io, [&]() -> asio::awaitable<void> { co_await ctx.asset_reader().read_to_end(buf); }, asio::detached);
-    io.run();
+    (void)STDEXEC::sync_wait([&]() -> STDEXEC::task<void> {
+        co_await ctx.asset_reader().read_to_end(buf);
+    }());
     EXPECT_EQ(std::string(buf.begin(), buf.end()), "Hello, World!");
 }
 
@@ -148,7 +144,7 @@ TEST(ProcessContext, PathAccess) {
 }
 
 // ===========================================================================
-// ProcessError — new variants
+// ProcessError - new variants
 // ===========================================================================
 
 TEST(ProcessError, MissingProcessor) {
@@ -185,15 +181,13 @@ TEST(ProcessError, DeserializeMetaError) {
 TEST(IdentityAssetTransformer, Roundtrip) {
     IdentityAssetTransformer<std::string> t;
     typename IdentityAssetTransformer<std::string>::Settings s;
-    asio::io_context io;
     std::expected<TransformedAsset<std::string>, std::exception_ptr> result = std::unexpected(std::exception_ptr{});
-    asio::co_spawn(
-        io,
-        [&]() -> asio::awaitable<void> {
-            result = co_await t.transform(TransformedAsset<std::string>(std::string("data")), s);
-        },
-        asio::detached);
-    io.run();
+    auto completed = STDEXEC::sync_wait([&]() -> STDEXEC::task<decltype(result)> {
+        co_return co_await t.transform(TransformedAsset<std::string>(std::string("data")), s);
+    }());
+    if (completed) result = std::move(std::get<0>(*completed));
     ASSERT_TRUE(result.has_value());
     EXPECT_EQ(result->get(), "data");
 }
+
+

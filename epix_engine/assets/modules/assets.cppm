@@ -39,17 +39,20 @@ module;
 #include <uuid.h>
 #include <zpp_bits.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <efsw/efsw.hpp>
 
 export module epix.assets;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
-import epix.tasks;
+import epix.app;
+import epix.ecs;
+import epix.task;
 import epix.async_broadcast;
 import epix.async_channel;
 extern "C++" {
 #include <epix/assets.hpp>
 }
+
+

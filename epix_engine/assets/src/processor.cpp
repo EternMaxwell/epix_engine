@@ -1,11 +1,8 @@
 #include <spdlog/spdlog.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
 #include <epix/assets.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
+#include <stdexec/execution.hpp>
 
 using namespace epix::assets;
 
@@ -21,10 +18,10 @@ std::optional<std::int64_t> to_persisted_mtime_ns(std::optional<std::filesystem:
 
 // ---- start ----
 
-void AssetProcessor::start(core::Res<AssetProcessor> processor) {
+void AssetProcessor::start(ecs::Res<AssetProcessor> processor) {
     auto proc = *processor;
-    tasks::IoTaskPool::get()
-        .spawn([](AssetProcessor proc) mutable -> asio::awaitable<void> {
+    task::IoTaskPool::get()
+        .spawn([](AssetProcessor proc) mutable -> STDEXEC::task<void> {
             auto start_time = std::chrono::steady_clock::now();
             spdlog::debug("Processing Assets");
 
@@ -41,11 +38,11 @@ void AssetProcessor::start(core::Res<AssetProcessor> processor) {
                 auto p = proc;
                 auto s = new_task_sender;
                 auto r = new_task_receiver;
-                tasks::IoTaskPool::get()
+                task::IoTaskPool::get()
                     .spawn([](AssetProcessor p,
                               async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> s,
                               async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> r)
-                               -> asio::awaitable<void> {
+                               -> STDEXEC::task<void> {
                         co_await p.execute_processing_tasks(std::move(s), std::move(r));
                     }(std::move(p), std::move(s), std::move(r)))
                     .detach();
@@ -94,7 +91,7 @@ void AssetProcessor::log_unrecoverable() const {
 
 // ---- validate_transaction_log_and_recover ----
 
-asio::awaitable<std::filesystem::path> AssetProcessor::validate_transaction_log_and_recover() const {
+STDEXEC::task<std::filesystem::path> AssetProcessor::validate_transaction_log_and_recover() const {
     std::unique_ptr<ProcessorTransactionLogFactory> log_factory;
     {
         auto guarded_log_factory = data->log_factory.lock();
@@ -115,7 +112,7 @@ asio::awaitable<std::filesystem::path> AssetProcessor::validate_transaction_log_
     if (!result) {
         auto& err        = result.error();
         bool state_valid = true;
-        // Collect paths that need cleanup — can't co_await inside std::visit lambdas
+        // Collect paths that need cleanup - can't co_await inside std::visit lambdas
         std::vector<AssetPath> unfinished_paths;
         std::visit(utils::visitor{
                        [&](const validate_log_errors::ReadLogError& e) {
@@ -216,7 +213,7 @@ asio::awaitable<std::filesystem::path> AssetProcessor::validate_transaction_log_
 
 // ---- initialize ----
 
-static asio::awaitable<void> get_asset_paths(const AssetReader& reader,
+static STDEXEC::task<void> get_asset_paths(const AssetReader& reader,
                                              const std::filesystem::path& path,
                                              std::vector<std::filesystem::path>& paths,
                                              std::vector<std::filesystem::path>* empty_dirs) {
@@ -335,7 +332,7 @@ std::expected<std::shared_ptr<ErasedProcessor>, GetProcessorError> AssetProcesso
     return std::unexpected(GetProcessorError{get_processor_errors::Missing{std::string(type_name)}});
 }
 
-asio::awaitable<void> AssetProcessor::initialize() const {
+STDEXEC::task<void> AssetProcessor::initialize() const {
     auto log_path    = co_await validate_transaction_log_and_recover();
     auto infos_guard = data->processing_state->m_asset_infos.write();
 
@@ -403,7 +400,7 @@ asio::awaitable<void> AssetProcessor::initialize() const {
 
 // ---- process_asset ----
 
-asio::awaitable<void> AssetProcessor::process_asset(
+STDEXEC::task<void> AssetProcessor::process_asset(
     const AssetSourceId& source_id,
     const std::filesystem::path& path,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const {
@@ -424,7 +421,7 @@ asio::awaitable<void> AssetProcessor::process_asset(
 
 // ---- process_asset_internal ----
 
-asio::awaitable<std::expected<ProcessResult, ProcessError>> AssetProcessor::process_asset_internal(
+STDEXEC::task<std::expected<ProcessResult, ProcessError>> AssetProcessor::process_asset_internal(
     const AssetSource& source, const AssetPath& asset_path) const {
     spdlog::debug("Processing {}", asset_path.string());
     auto path    = asset_path.path;
@@ -645,7 +642,7 @@ asio::awaitable<std::expected<ProcessResult, ProcessError>> AssetProcessor::proc
 
 // ---- Event handling ----
 
-asio::awaitable<void> AssetProcessor::handle_asset_source_event(
+STDEXEC::task<void> AssetProcessor::handle_asset_source_event(
     const AssetSource& source,
     const AssetSourceEvent& event,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
@@ -702,7 +699,7 @@ asio::awaitable<void> AssetProcessor::handle_asset_source_event(
     }
 }
 
-asio::awaitable<void> AssetProcessor::handle_added_folder(
+STDEXEC::task<void> AssetProcessor::handle_added_folder(
     const AssetSource& source,
     const std::filesystem::path& path,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
@@ -710,7 +707,7 @@ asio::awaitable<void> AssetProcessor::handle_added_folder(
     co_await queue_processing_tasks_for_folder(source, path, sender);
 }
 
-asio::awaitable<void> AssetProcessor::handle_removed_meta(
+STDEXEC::task<void> AssetProcessor::handle_removed_meta(
     const AssetSource& source,
     const std::filesystem::path& path,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
@@ -718,7 +715,7 @@ asio::awaitable<void> AssetProcessor::handle_removed_meta(
     (void)co_await sender.send(std::pair{source.id(), path});
 }
 
-asio::awaitable<void> AssetProcessor::handle_removed_asset(const AssetSource& source,
+STDEXEC::task<void> AssetProcessor::handle_removed_asset(const AssetSource& source,
                                                            const std::filesystem::path& path) const {
     auto asset_path = AssetPath(source.id(), path);
     spdlog::debug("Removing processed {} because source was removed", asset_path.string());
@@ -729,7 +726,7 @@ asio::awaitable<void> AssetProcessor::handle_removed_asset(const AssetSource& so
     co_await remove_processed_asset_and_meta(source, path);
 }
 
-asio::awaitable<void> AssetProcessor::handle_removed_folder(const AssetSource& source,
+STDEXEC::task<void> AssetProcessor::handle_removed_folder(const AssetSource& source,
                                                             const std::filesystem::path& path) const {
     spdlog::debug("Removing folder {} because source was removed", path.string());
     auto ungated_opt = source.ungated_processed_reader();
@@ -756,7 +753,7 @@ asio::awaitable<void> AssetProcessor::handle_removed_folder(const AssetSource& s
     }
 }
 
-asio::awaitable<void> AssetProcessor::handle_renamed_asset(
+STDEXEC::task<void> AssetProcessor::handle_renamed_asset(
     const AssetSource& source,
     const std::filesystem::path& old_path,
     const std::filesystem::path& new_path,
@@ -780,7 +777,7 @@ asio::awaitable<void> AssetProcessor::handle_renamed_asset(
 
 // ---- Task dispatching ----
 
-asio::awaitable<void> AssetProcessor::queue_processing_tasks_for_folder(
+STDEXEC::task<void> AssetProcessor::queue_processing_tasks_for_folder(
     const AssetSource& source,
     const std::filesystem::path& folder,
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
@@ -798,7 +795,7 @@ asio::awaitable<void> AssetProcessor::queue_processing_tasks_for_folder(
     }
 }
 
-asio::awaitable<void> AssetProcessor::queue_initial_processing_tasks(
+STDEXEC::task<void> AssetProcessor::queue_initial_processing_tasks(
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const {
     for (auto& source : sources()->iter_processed()) {
         co_await queue_processing_tasks_for_folder(source, std::filesystem::path(""), sender);
@@ -814,10 +811,10 @@ void AssetProcessor::spawn_source_change_event_listeners(
         auto proc        = *this;
         auto task_sender = sender;
         auto r           = receiver_opt->get();
-        tasks::IoTaskPool::get()
+        task::IoTaskPool::get()
             .spawn([](AssetProcessor proc, AssetSourceId source_id,
                       async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> task_sender,
-                      async_channel::Receiver<AssetSourceEvent> r) mutable -> asio::awaitable<void> {
+                      async_channel::Receiver<AssetSourceEvent> r) mutable -> STDEXEC::task<void> {
                 while (true) {
                     auto event = co_await r.recv();
                     if (!event) {
@@ -833,7 +830,7 @@ void AssetProcessor::spawn_source_change_event_listeners(
     }
 }
 
-asio::awaitable<void> AssetProcessor::execute_processing_tasks(
+STDEXEC::task<void> AssetProcessor::execute_processing_tasks(
     async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
     async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> receiver) const {
     // Convert the Sender into a WeakSender so that once all task producers terminate (and drop
@@ -865,17 +862,17 @@ asio::awaitable<void> AssetProcessor::execute_processing_tasks(
     {
         auto fwd_recv   = receiver;
         auto fwd_sender = event_sender;
-        tasks::IoTaskPool::get()
+        task::IoTaskPool::get()
             .spawn([](async_channel::Receiver<Task> fwd_recv,
-                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> asio::awaitable<void> {
+                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> STDEXEC::task<void> {
                 while (true) {
-                    auto task = co_await fwd_recv.recv();
-                    if (!task) {
+                    auto next_task = co_await fwd_recv.recv();
+                    if (!next_task) {
                         fwd_sender.close();
                         co_return;
                     }
                     if (!(co_await fwd_sender.send(
-                            ProcessorTaskEvent{ProcessorTaskEventKind::Start, std::move(*task)}))) {
+                            ProcessorTaskEvent{ProcessorTaskEventKind::Start, std::move(*next_task)}))) {
                         co_return;
                     }
                 }
@@ -886,9 +883,9 @@ asio::awaitable<void> AssetProcessor::execute_processing_tasks(
     {
         auto fin_recv   = task_finished_receiver;
         auto fwd_sender = event_sender;
-        tasks::IoTaskPool::get()
+        task::IoTaskPool::get()
             .spawn([](async_channel::Receiver<std::monostate> fin_recv,
-                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> asio::awaitable<void> {
+                      async_channel::Sender<ProcessorTaskEvent> fwd_sender) -> STDEXEC::task<void> {
                 while (true) {
                     auto fin = co_await fin_recv.recv();
                     if (!fin) co_return;
@@ -912,9 +909,9 @@ asio::awaitable<void> AssetProcessor::execute_processing_tasks(
             auto es = task_finished_sender;
             auto t  = std::move(*event->task);
             pending_tasks++;
-            tasks::IoTaskPool::get()
+            task::IoTaskPool::get()
                 .spawn([](AssetProcessor p, async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> s,
-                          async_channel::Sender<std::monostate> es, Task t) -> asio::awaitable<void> {
+                          async_channel::Sender<std::monostate> es, Task t) -> STDEXEC::task<void> {
                     co_await p.process_asset(t.first, t.second, std::move(s));
                     (void)co_await es.send(std::monostate{});
                 }(std::move(p), std::move(s), es, std::move(t)))
@@ -932,7 +929,7 @@ asio::awaitable<void> AssetProcessor::execute_processing_tasks(
 
 // ---- File system helpers ----
 
-asio::awaitable<void> AssetProcessor::remove_processed_asset_and_meta(const AssetSource& source,
+STDEXEC::task<void> AssetProcessor::remove_processed_asset_and_meta(const AssetSource& source,
                                                                       const std::filesystem::path& path) const {
     auto writer_opt = source.processed_writer();
     if (!writer_opt) co_return;
@@ -949,7 +946,7 @@ asio::awaitable<void> AssetProcessor::remove_processed_asset_and_meta(const Asse
     co_await clean_empty_processed_ancestor_folders(source, path);
 }
 
-asio::awaitable<void> AssetProcessor::clean_empty_processed_ancestor_folders(const AssetSource& source,
+STDEXEC::task<void> AssetProcessor::clean_empty_processed_ancestor_folders(const AssetSource& source,
                                                                              const std::filesystem::path& path) const {
     if (path.is_absolute()) {
         spdlog::error("Attempted to clean up ancestor folders of an absolute path. Skipping.");
@@ -967,7 +964,7 @@ asio::awaitable<void> AssetProcessor::clean_empty_processed_ancestor_folders(con
     }
 }
 
-asio::awaitable<void> AssetProcessor::write_default_meta_file_for_path(const AssetSource& source,
+STDEXEC::task<void> AssetProcessor::write_default_meta_file_for_path(const AssetSource& source,
                                                                        const AssetPath& asset_path) const {
     auto ext = asset_path.get_full_extension();
     if (!ext) co_return;
@@ -987,3 +984,6 @@ asio::awaitable<void> AssetProcessor::write_default_meta_file_for_path(const Ass
     if (!writer_opt) co_return;
     (void)co_await writer_opt->get().write_meta_bytes(asset_path.path, meta_bytes);
 }
+
+
+

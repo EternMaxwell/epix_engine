@@ -1,9 +1,9 @@
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 
 namespace epix::assets {
 
-asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> AssetReader::read_meta_bytes(
+STDEXEC::task<std::expected<std::vector<std::byte>, AssetReaderError>> AssetReader::read_meta_bytes(
     const std::filesystem::path& path) const {
     auto reader_result = co_await read_meta(path);
     if (!reader_result) {
@@ -24,7 +24,7 @@ asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> AssetRe
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(
+STDEXEC::task<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(
     const std::filesystem::path& path, std::span<const std::byte> bytes) const {
     auto writer_result = co_await write(path);
     if (!writer_result) {
@@ -47,7 +47,7 @@ asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_bytes(
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_meta_bytes(
+STDEXEC::task<std::expected<void, AssetWriterError>> AssetWriter::write_meta_bytes(
     const std::filesystem::path& path, std::span<const std::byte> bytes) const {
     auto writer_result = co_await write_meta(path);
     if (!writer_result) {
@@ -72,7 +72,7 @@ asio::awaitable<std::expected<void, AssetWriterError>> AssetWriter::write_meta_b
 
 // --- VecReader implementation ---
 
-asio::awaitable<std::expected<size_t, std::error_code>> VecReader::read_to_end(std::vector<uint8_t>& buf) {
+STDEXEC::task<std::expected<size_t, std::error_code>> VecReader::read_to_end(std::vector<uint8_t>& buf) {
     if (m_bytes_read >= m_bytes.size()) {
         co_return size_t{0};
     }
@@ -85,13 +85,15 @@ asio::awaitable<std::expected<size_t, std::error_code>> VecReader::read_to_end(s
 
 // --- VecWriter implementation ---
 
-asio::awaitable<std::expected<size_t, std::error_code>> VecWriter::write(std::span<const uint8_t> data) {
+STDEXEC::task<std::expected<size_t, std::error_code>> VecWriter::write(std::span<const uint8_t> data) {
     m_data.insert(m_data.end(), data.begin(), data.end());
     co_return data.size();
 }
 
-asio::awaitable<std::expected<void, std::error_code>> VecWriter::flush() {
+STDEXEC::task<std::expected<void, std::error_code>> VecWriter::flush() {
     co_return std::expected<void, std::error_code>{};
 }
 
 }  // namespace epix::assets
+
+

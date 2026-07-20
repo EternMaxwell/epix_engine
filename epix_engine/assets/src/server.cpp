@@ -1,11 +1,8 @@
 #include <spdlog/spdlog.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
 #include <epix/assets.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
+#include <stdexec/execution.hpp>
 
 using namespace epix::assets;
 
@@ -94,7 +91,7 @@ void ::epix::assets::log_asset_error(const AssetError& error,
                error);
 }
 
-static asio::awaitable<void> load_folder_recursive(const AssetSourceId& source,
+static STDEXEC::task<void> load_folder_recursive(const AssetSourceId& source,
                                                    const std::filesystem::path& dir_path,
                                                    const AssetReader& reader,
                                                    const AssetServer& server,
@@ -127,8 +124,8 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
     auto asset_id   = id;
     auto asset_path = path;
 
-    tasks::IoTaskPool::get()
-        .spawn([](AssetServer server, UntypedAssetId asset_id, AssetPath asset_path) -> asio::awaitable<void> {
+    task::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedAssetId asset_id, AssetPath asset_path) -> STDEXEC::task<void> {
             auto source = server.data->sources->get(asset_path.source);
             if (!source) {
                 spdlog::error("Failed to load folder {}. AssetSource does not exist", asset_path.string());
@@ -156,7 +153,7 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
         .detach();
 }
 
-void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<AssetServer>> params) {
+void AssetServer::handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<AssetServer>> params) {
     auto&& [world, server] = params.get();
     auto receiver          = server->data->asset_event_receiver;
 
@@ -181,7 +178,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
                                    auto index = std::get<AssetIndex>(loaded_with_deps.id.id);
                                    it->second(world, index);
                                }
-                               // Resolve all promises waiting on this asset — full load complete
+                               // Resolve all promises waiting on this asset - full load complete
                                if (auto info = guard->get_info_mut(loaded_with_deps.id)) {
                                    for (auto& task : info->get().waiting_tasks) {
                                        if (task) task->set_value({});
@@ -211,7 +208,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
         }
 
         if (!untyped_failures.empty()) {
-            auto events_opt = world.get_resource_mut<core::Events<UntypedAssetLoadFailedEvent>>();
+            auto events_opt = world.get_resource_mut<ecs::Events<UntypedAssetLoadFailedEvent>>();
             if (events_opt) {
                 for (auto& failure : untyped_failures) {
                     events_opt->get().push(std::move(failure));
@@ -305,7 +302,7 @@ void AssetServer::handle_internal_events(core::ParamSet<core::World&, core::Res<
 // Matches bevy_asset's AssetServer::load_with_settings_loader_and_reader.
 // Calls the loader, wrapping any thrown exception into an AssetLoadError.
 // ---------------------------------------------------------------------------
-asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_with_settings_loader_and_reader(
+STDEXEC::task<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_with_settings_loader_and_reader(
     const AssetPath& asset_path, const Settings& settings, const ErasedAssetLoader& loader, Reader& reader) const {
     try {
         auto context     = AssetServer::make_load_context(*this, asset_path);
@@ -329,7 +326,7 @@ asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::l
 // (via binary zpp::bits deserialization of AssetMetaMinimal); otherwise the
 // extension-based loader is used and default_meta() is returned.
 // ---------------------------------------------------------------------------
-asio::awaitable<std::expected<AssetServer::MetaLoaderReader, AssetLoadError>> AssetServer::get_meta_loader_and_reader(
+STDEXEC::task<std::expected<AssetServer::MetaLoaderReader, AssetLoadError>> AssetServer::get_meta_loader_and_reader(
     const AssetPath& asset_path, std::optional<meta::type_index> asset_type_id) const {
     // 1. Resolve the source
     auto source_opt = get_source(asset_path.source);
@@ -448,7 +445,7 @@ asio::awaitable<std::expected<AssetServer::MetaLoaderReader, AssetLoadError>> As
 // Matches bevy_asset's AssetServer::load_internal.
 // Called from inside a task spawned by spawn_load_task.
 // ---------------------------------------------------------------------------
-asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
+STDEXEC::task<void> AssetServer::load_internal(std::optional<UntypedHandle> input_handle,
                                                  AssetPath path,
                                                  bool force,
                                                  std::optional<MetaTransform> meta_transform) const {
@@ -527,7 +524,7 @@ asio::awaitable<void> AssetServer::load_internal(std::optional<UntypedHandle> in
 }
 
 // ---------------------------------------------------------------------------
-// spawn_load_task — now a thin wrapper that calls load_internal.
+// spawn_load_task - now a thin wrapper that calls load_internal.
 // Matches bevy_asset's AssetServer::spawn_load_task.
 // ---------------------------------------------------------------------------
 void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& path, AssetInfos& infos) const {
@@ -543,8 +540,8 @@ void AssetServer::spawn_load_task_unlocked(const UntypedHandle& handle, const As
     auto owned_handle = handle;
     auto asset_path   = path;
 
-    tasks::IoTaskPool::get()
-        .spawn([](AssetServer server, UntypedHandle owned_handle, AssetPath asset_path) -> asio::awaitable<void> {
+    task::IoTaskPool::get()
+        .spawn([](AssetServer server, UntypedHandle owned_handle, AssetPath asset_path) -> STDEXEC::task<void> {
             co_await server.load_internal(std::move(owned_handle), std::move(asset_path), false, std::nullopt);
         }(server, std::move(owned_handle), asset_path))
         .detach();
@@ -563,7 +560,7 @@ void AssetServer::spawn_load_task(const UntypedHandle& handle, const AssetPath& 
 // Matches bevy_asset's AssetServer::load_direct / load_direct_with_reader.
 // Runs the full loader pipeline synchronously without caching the result.
 // ---------------------------------------------------------------------------
-asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_untyped(
+STDEXEC::task<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_untyped(
     const AssetPath& path) const {
     auto mlr = co_await get_meta_loader_and_reader(path, std::nullopt);
     if (!mlr) {
@@ -577,7 +574,7 @@ asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::l
     co_return co_await load_with_settings_loader_and_reader(path, *settings, *mlr->loader, *mlr->reader);
 }
 
-asio::awaitable<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_with_reader_untyped(
+STDEXEC::task<std::expected<ErasedLoadedAsset, AssetLoadError>> AssetServer::load_direct_with_reader_untyped(
     const AssetPath& path, Reader& reader) const {
     // Use type-id-only lookup to get the right loader
     auto mlr = co_await get_meta_loader_and_reader(path, std::nullopt);
@@ -649,8 +646,8 @@ void AssetServer::reload_internal(const AssetPath& path, bool log) const {
         }
     }
 
-    tasks::IoTaskPool::get()
-        .spawn([](AssetServer server, AssetPath asset_path, bool log) -> asio::awaitable<void> {
+    task::IoTaskPool::get()
+        .spawn([](AssetServer server, AssetPath asset_path, bool log) -> STDEXEC::task<void> {
             bool reloaded = false;
 
             // Collect handles while holding the lock, then release before calling load_internal
@@ -684,3 +681,6 @@ void AssetServer::reload_internal(const AssetPath& path, bool log) const {
         }(server, asset_path, log))
         .detach();
 }
+
+
+

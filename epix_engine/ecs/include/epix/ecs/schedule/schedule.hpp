@@ -206,9 +206,9 @@ SetConfig single_set(F&& func)
         config.label = SystemSetLabel::from_type<std::decay_t<F>>();
     }
     if constexpr (requires {
-                      { make_system(std::forward<F>(func)) } -> std::same_as<System<std::tuple<>, void>*>;
+                      { internal::make_system(std::forward<F>(func)) } -> std::same_as<System<std::tuple<>, void>*>;
                   }) {
-        config.system.reset(make_system(std::forward<F>(func)));
+        config.system.reset(internal::make_system(std::forward<F>(func)));
     }
     return config;
 }

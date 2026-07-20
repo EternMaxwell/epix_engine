@@ -1,12 +1,13 @@
-#include <asio/awaitable.hpp>
 #include <asio/detail/config.hpp>
+#include <stdexec/execution.hpp>
+
 #ifdef ASIO_HAS_FILE
 #include <asio/buffer.hpp>
 #include <asio/read.hpp>
 #include <asio/stream_file.hpp>
-#include <asio/this_coro.hpp>
-#include <asio/use_awaitable.hpp>
 #include <asio/write.hpp>
+#include <exec/asio/use_sender.hpp>
+
 #endif  // ASIO_HAS_FILE
 // Linux: io_uring headers available at build time; library loaded at runtime via dlopen.
 // ASIO_HAS_FILE is NOT set on Linux (we do not use ASIO's io_uring integration).
@@ -20,6 +21,7 @@
 #endif
 
 #include <epix/assets.hpp>
+#include <epix/task.hpp>
 #include <epix/utils.hpp>
 
 namespace epix::assets {
@@ -28,15 +30,17 @@ namespace epix::assets {
 
 // ---- io_uring path: true async file I/O, zero intermediate copies ----
 
+using FileStream = asio::basic_stream_file<task::AsioExecutor>;
+
 struct FileReader : Reader {
-    asio::stream_file m_file;
+    FileStream m_file;
 
-    explicit FileReader(asio::stream_file file) : m_file(std::move(file)) {}
+    explicit FileReader(FileStream file) : m_file(std::move(file)) {}
 
-    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
         const auto initial_size = buf.size();
         try {
-            co_await asio::async_read(m_file, asio::dynamic_buffer(buf), asio::use_awaitable);
+            co_await asio::async_read(m_file, asio::dynamic_buffer(buf), exec::asio::use_sender);
         } catch (const std::system_error& e) {
             if (e.code() != asio::error::eof) {
                 co_return std::unexpected(e.code());
@@ -47,21 +51,21 @@ struct FileReader : Reader {
 };
 
 struct FileWriter : Writer {
-    asio::stream_file m_file;
+    FileStream m_file;
 
-    explicit FileWriter(asio::stream_file file) : m_file(std::move(file)) {}
+    explicit FileWriter(FileStream file) : m_file(std::move(file)) {}
 
-    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
         try {
             std::size_t n =
-                co_await asio::async_write(m_file, asio::buffer(data.data(), data.size()), asio::use_awaitable);
+                co_await asio::async_write(m_file, asio::buffer(data.data(), data.size()), exec::asio::use_sender);
             co_return n;
         } catch (const std::system_error& e) {
             co_return std::unexpected(e.code());
         }
     }
 
-    asio::awaitable<std::expected<void, std::error_code>> flush() override {
+    STDEXEC::task<std::expected<void, std::error_code>> flush() override {
         // stream_file bypasses userspace buffering; writes go directly to the OS.
         co_return std::expected<void, std::error_code>{};
     }
@@ -71,7 +75,7 @@ struct FileWriter : Writer {
 
 // ---- io_uring path: dlopen-based lazy loading of liburing -------------------
 // liburing.so is opened at runtime; if unavailable, pread/pwrite are used as
-// the synchronous fallback.  No hard link to liburing — binary runs on any
+// the synchronous fallback.  No hard link to liburing - binary runs on any
 // Linux machine regardless of whether liburing is installed.
 
 struct UringApi {
@@ -117,7 +121,7 @@ struct FileReader : Reader {
         if (m_fd >= 0) ::close(m_fd);
     }
 
-    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
         const auto& api   = UringApi::get();
         const auto offset = buf.size();
         buf.resize(offset + m_file_size);
@@ -168,7 +172,7 @@ struct FileWriter : Writer {
         if (m_fd >= 0) ::close(m_fd);
     }
 
-    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
         const auto& api = UringApi::get();
 
         if (api.available && !data.empty()) {
@@ -203,7 +207,7 @@ struct FileWriter : Writer {
         co_return static_cast<std::size_t>(res);
     }
 
-    asio::awaitable<std::expected<void, std::error_code>> flush() override {
+    STDEXEC::task<std::expected<void, std::error_code>> flush() override {
         co_return std::expected<void, std::error_code>{};
     }
 };
@@ -211,7 +215,7 @@ struct FileWriter : Writer {
 #else  // Synchronous fallback (no async or lazy-io_uring file I/O available)
 
 // ---- Fallback: synchronous reads/writes directly into the caller's buffer ----
-// Single copy (file → buf) for reads; no intermediate vector.
+// Single copy (file - buf) for reads; no intermediate vector.
 
 struct FileReader : Reader {
     std::ifstream m_stream;
@@ -220,7 +224,7 @@ struct FileReader : Reader {
     explicit FileReader(std::ifstream stream, std::size_t file_size)
         : m_stream(std::move(stream)), m_file_size(file_size) {}
 
-    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override {
         const auto offset = buf.size();
         buf.resize(offset + m_file_size);
         if (!m_stream.read(reinterpret_cast<char*>(buf.data() + offset), static_cast<std::streamsize>(m_file_size))) {
@@ -236,13 +240,13 @@ struct FileWriter : Writer {
 
     explicit FileWriter(std::ofstream stream) : m_stream(std::move(stream)) {}
 
-    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
+    STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
         m_stream.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
         if (!m_stream) co_return std::unexpected(std::make_error_code(std::io_errc::stream));
         co_return data.size();
     }
 
-    asio::awaitable<std::expected<void, std::error_code>> flush() override {
+    STDEXEC::task<std::expected<void, std::error_code>> flush() override {
         m_stream.flush();
         if (!m_stream) co_return std::unexpected(std::make_error_code(std::io_errc::stream));
         co_return std::expected<void, std::error_code>{};
@@ -253,7 +257,7 @@ struct FileWriter : Writer {
 
 // ---- FileAssetReader ----------------------------------------------------
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAssetReader::read(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAssetReader::read(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
@@ -261,8 +265,8 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAs
             co_return std::unexpected(AssetReaderError(reader_errors::NotFound{full_path}));
         }
 #ifdef ASIO_HAS_FILE
-        auto executor = co_await asio::this_coro::executor;
-        asio::stream_file file(executor, full_path.string(), asio::stream_file::read_only);
+        auto executor = task::IoTaskPool::get().get_asio_executor();
+        FileStream file(executor, full_path.string(), FileStream::read_only);
         co_return std::unique_ptr<Reader>(std::make_unique<FileReader>(std::move(file)));
 #elif defined(EPIX_HAS_URING_HEADERS)
         int fd = ::open(full_path.c_str(), O_RDONLY | O_CLOEXEC);
@@ -294,12 +298,12 @@ asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAs
     }
 }
 
-asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAssetReader::read_meta(
+STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> FileAssetReader::read_meta(
     const std::filesystem::path& path) const {
     co_return co_await read(get_meta_path(path));
 }
 
-asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>>
+STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, AssetReaderError>>
 FileAssetReader::read_directory(const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
@@ -317,7 +321,7 @@ FileAssetReader::read_directory(const std::filesystem::path& path) const {
     }
 }
 
-asio::awaitable<std::expected<bool, AssetReaderError>> FileAssetReader::is_directory(
+STDEXEC::task<std::expected<bool, AssetReaderError>> FileAssetReader::is_directory(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
@@ -334,15 +338,15 @@ asio::awaitable<std::expected<bool, AssetReaderError>> FileAssetReader::is_direc
 
 // ---- FileAssetWriter ----------------------------------------------------
 
-asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> FileAssetWriter::write(
+STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> FileAssetWriter::write(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
         std::filesystem::create_directories(full_path.parent_path());
 #ifdef ASIO_HAS_FILE
-        auto executor = co_await asio::this_coro::executor;
-        asio::stream_file file(executor, full_path.string(),
-                               asio::stream_file::write_only | asio::stream_file::create | asio::stream_file::truncate);
+        auto executor = task::IoTaskPool::get().get_asio_executor();
+        FileStream file(executor, full_path.string(),
+                        FileStream::write_only | FileStream::create | FileStream::truncate);
         co_return std::unique_ptr<Writer>(std::make_unique<FileWriter>(std::move(file)));
 #elif defined(EPIX_HAS_URING_HEADERS)
         int fd = ::open(full_path.c_str(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, static_cast<mode_t>(0644));
@@ -366,13 +370,12 @@ asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> FileAs
     }
 }
 
-asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> FileAssetWriter::write_meta(
+STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> FileAssetWriter::write_meta(
     const std::filesystem::path& path) const {
     co_return co_await write(get_meta_path(path));
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::remove(
-    const std::filesystem::path& path) const {
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::remove(const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
         if (std::filesystem::exists(full_path) && std::filesystem::is_regular_file(full_path)) {
@@ -386,12 +389,12 @@ asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::remove(
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::remove_meta(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::remove_meta(
     const std::filesystem::path& path) const {
     co_return co_await remove(get_meta_path(path));
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::rename(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::rename(
     const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
     try {
         auto full_old_path = m_root / old_path;
@@ -408,12 +411,12 @@ asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::rename(
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::rename_meta(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::rename_meta(
     const std::filesystem::path& old_path, const std::filesystem::path& new_path) const {
     co_return co_await rename(get_meta_path(old_path), get_meta_path(new_path));
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::create_directory(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::create_directory(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
@@ -426,7 +429,7 @@ asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::create_d
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::remove_directory(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::remove_directory(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;
@@ -441,7 +444,7 @@ asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::remove_d
     }
 }
 
-asio::awaitable<std::expected<void, AssetWriterError>> FileAssetWriter::clear_directory(
+STDEXEC::task<std::expected<void, AssetWriterError>> FileAssetWriter::clear_directory(
     const std::filesystem::path& path) const {
     try {
         auto full_path = m_root / path;

@@ -107,7 +107,7 @@ void log_asset_load_error(const AssetLoadError& error, const AssetPath& path) {
         utils::visitor{
             [&](const load_error::RequestHandleMismatch& e) {
                 spdlog::error(
-                    "[asset_server] Asset load failed for '{}': type mismatch — requested '{}' "
+                    "[asset_server] Asset load failed for '{}': type mismatch - requested '{}' "
                     "but loader '{}' produces '{}'",
                     path.string(), e.requested_type.short_name(), e.loader_name, e.actual_type.short_name());
             },
@@ -196,3 +196,5 @@ void log_asset_load_error(const AssetLoadError& error, const AssetPath& path) {
         error);
 }
 }  // namespace epix::assets
+
+

@@ -1,13 +1,13 @@
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/assets.hpp>
 
 namespace epix::assets {
 
 // ---------------------------------------------------------------------------
-// AssetHasher (internal — not exported)
+// AssetHasher (internal - not exported)
 // ---------------------------------------------------------------------------
 
 struct AssetHasher {
@@ -79,7 +79,7 @@ std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_inf
 // Asset hashing utilities
 // ---------------------------------------------------------------------------
 
-asio::awaitable<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader) {
+STDEXEC::task<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader) {
     AssetHasher hasher;
     hasher.update(meta_bytes);
     std::vector<uint8_t> bytes;
@@ -98,3 +98,5 @@ AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>
 }
 
 }  // namespace epix::assets
+
+

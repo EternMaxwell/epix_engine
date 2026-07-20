@@ -5,10 +5,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <epix/async_broadcast.hpp>
 #include <epix/async_channel.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -86,7 +86,7 @@ struct ProcessorAssetInfo {
 
     ProcessorAssetInfo();
 
-    asio::awaitable<void> update_status(ProcessStatus new_status);
+    STDEXEC::task<void> update_status(ProcessStatus new_status);
 };
 
 // ---- ProcessorAssetInfos ----
@@ -106,17 +106,17 @@ struct ProcessorAssetInfos {
     void add_dependent(const AssetPath& asset_path, AssetPath dependent);
 
     /** @brief Remove an asset from tracking. Returns the transaction lock if it existed. */
-    asio::awaitable<std::shared_ptr<std::shared_mutex>> remove(const AssetPath& asset_path);
+    STDEXEC::task<std::shared_ptr<std::shared_mutex>> remove(const AssetPath& asset_path);
 
     /** @brief Rename an asset in tracking, preserving status and requeueing affected work.
      *  Matches bevy_asset's ProcessorAssetInfos::rename. */
-    asio::awaitable<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
+    STDEXEC::task<std::optional<std::pair<std::shared_ptr<std::shared_mutex>, std::shared_ptr<std::shared_mutex>>>>
     rename(const AssetPath& old_path,
            const AssetPath& new_path,
            async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
 
     /** @brief Finalize processing for an asset, incorporating the result. */
-    asio::awaitable<void> finish_processing(
+    STDEXEC::task<void> finish_processing(
         const AssetPath& asset_path,
         std::expected<ProcessResult, ProcessError>& result,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& reprocess_sender);
@@ -146,20 +146,20 @@ struct ProcessingState {
     ProcessingState();
 
     /** @brief Set the overall state of processing and broadcast appropriate events. */
-    asio::awaitable<void> set_state(ProcessorState state);
+    STDEXEC::task<void> set_state(ProcessorState state);
     /** @brief Retrieve the current ProcessorState. */
-    asio::awaitable<ProcessorState> get_state() const;
+    STDEXEC::task<ProcessorState> get_state() const;
 
     /** @brief Await until the path has been processed. Returns the ProcessStatus. */
-    asio::awaitable<ProcessStatus> wait_until_processed(const AssetPath& path) const;
+    STDEXEC::task<ProcessStatus> wait_until_processed(const AssetPath& path) const;
     /** @brief Get a transaction lock for the given asset path (shared read lock).
      *  Used by ProcessorGatedReader to hold the lock while reading. */
-    asio::awaitable<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>> get_transaction_lock(
+    STDEXEC::task<std::expected<std::shared_ptr<std::shared_mutex>, AssetReaderError>> get_transaction_lock(
         const AssetPath& path) const;
     /** @brief Await until the processor has been initialized. */
-    asio::awaitable<void> wait_until_initialized() const;
+    STDEXEC::task<void> wait_until_initialized() const;
     /** @brief Await until processing has finished. */
-    asio::awaitable<void> wait_until_finished() const;
+    STDEXEC::task<void> wait_until_finished() const;
     /** @brief Close all wait channels so blocked receivers wake and exit. */
     void shutdown();
 };
@@ -202,10 +202,10 @@ EPIX_EXPORT struct AssetProcessorData {
    public:
     std::expected<void, SetTransactionLogFactoryError> set_log_factory(
         std::unique_ptr<ProcessorTransactionLogFactory> factory) const;
-    asio::awaitable<ProcessStatus> wait_until_processed(const AssetPath& path) const;
-    asio::awaitable<void> wait_until_initialized() const;
-    asio::awaitable<void> wait_until_finished() const;
-    asio::awaitable<ProcessorState> state() const;
+    STDEXEC::task<ProcessStatus> wait_until_processed(const AssetPath& path) const;
+    STDEXEC::task<void> wait_until_initialized() const;
+    STDEXEC::task<void> wait_until_finished() const;
+    STDEXEC::task<ProcessorState> state() const;
 };
 
 // ---- AssetProcessor ----
@@ -220,52 +220,52 @@ EPIX_EXPORT struct AssetProcessor {
 
     AssetProcessor(AssetServer srv, std::shared_ptr<AssetProcessorData> proc_data);
 
-    asio::awaitable<void> initialize() const;
-    asio::awaitable<void> process_asset(
+    STDEXEC::task<void> initialize() const;
+    STDEXEC::task<void> process_asset(
         const AssetSourceId& source,
         const std::filesystem::path& path,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> reprocess_sender) const;
-    asio::awaitable<std::expected<ProcessResult, ProcessError>> process_asset_internal(
+    STDEXEC::task<std::expected<ProcessResult, ProcessError>> process_asset_internal(
         const AssetSource& source, const AssetPath& asset_path) const;
-    asio::awaitable<void> handle_asset_source_event(
+    STDEXEC::task<void> handle_asset_source_event(
         const AssetSource& source,
         const AssetSourceEvent& event,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> handle_added_folder(
+    STDEXEC::task<void> handle_added_folder(
         const AssetSource& source,
         const std::filesystem::path& path,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> handle_removed_meta(
+    STDEXEC::task<void> handle_removed_meta(
         const AssetSource& source,
         const std::filesystem::path& path,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
-    asio::awaitable<void> handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
-    asio::awaitable<void> handle_renamed_asset(
+    STDEXEC::task<void> handle_removed_asset(const AssetSource& source, const std::filesystem::path& path) const;
+    STDEXEC::task<void> handle_removed_folder(const AssetSource& source, const std::filesystem::path& path) const;
+    STDEXEC::task<void> handle_renamed_asset(
         const AssetSource& source,
         const std::filesystem::path& old_path,
         const std::filesystem::path& new_path,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> queue_processing_tasks_for_folder(
+    STDEXEC::task<void> queue_processing_tasks_for_folder(
         const AssetSource& source,
         const std::filesystem::path& folder,
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> queue_initial_processing_tasks(
+    STDEXEC::task<void> queue_initial_processing_tasks(
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
     void spawn_source_change_event_listeners(
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>>& sender) const;
-    asio::awaitable<void> execute_processing_tasks(
+    STDEXEC::task<void> execute_processing_tasks(
         async_channel::Sender<std::pair<AssetSourceId, std::filesystem::path>> new_task_sender,
         async_channel::Receiver<std::pair<AssetSourceId, std::filesystem::path>> receiver) const;
     void log_begin_processing(const AssetPath& path) const;
     void log_end_processing(const AssetPath& path) const;
     void log_unrecoverable() const;
-    asio::awaitable<std::filesystem::path> validate_transaction_log_and_recover() const;
-    asio::awaitable<void> remove_processed_asset_and_meta(const AssetSource& source,
+    STDEXEC::task<std::filesystem::path> validate_transaction_log_and_recover() const;
+    STDEXEC::task<void> remove_processed_asset_and_meta(const AssetSource& source,
                                                           const std::filesystem::path& path) const;
-    asio::awaitable<void> clean_empty_processed_ancestor_folders(const AssetSource& source,
+    STDEXEC::task<void> clean_empty_processed_ancestor_folders(const AssetSource& source,
                                                                  const std::filesystem::path& path) const;
-    asio::awaitable<void> write_default_meta_file_for_path(const AssetSource& source,
+    STDEXEC::task<void> write_default_meta_file_for_path(const AssetSource& source,
                                                            const AssetPath& asset_path) const;
 
    public:
@@ -353,9 +353,10 @@ EPIX_EXPORT struct AssetProcessor {
     /** @brief Start the processor. This is the main entry point, typically called as a system.
      *  Spawns background tasks to initialize and process assets.
      *  Matches bevy_asset's AssetProcessor::start. */
-    static void start(core::Res<AssetProcessor> processor);
+    static void start(ecs::Res<AssetProcessor> processor);
 };
 
 inline const AssetServer& ProcessContext::asset_server() const noexcept { return m_processor->get_server(); }
 
 }  // namespace epix::assets
+

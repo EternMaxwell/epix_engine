@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 namespace epix::assets {
@@ -51,7 +51,7 @@ void AssetInfos::propagate_failed_state(UntypedAssetId loaded_asset_id,
             info.failed_rec_deps.insert(loaded_asset_id);
             info.loading_rec_deps.erase(loaded_asset_id);
             info.rec_dep_state = error_ptr;
-            // Resolve promises on parent assets waiting on this — a recursive dependency failed
+            // Resolve promises on parent assets waiting on this - a recursive dependency failed
             for (auto& task : info.waiting_tasks) {
                 if (task)
                     task->set_value(
@@ -107,7 +107,7 @@ void AssetInfos::process_asset_fail(const UntypedAssetId& failed_id, const Asset
 }
 void AssetInfos::process_asset_load(const UntypedAssetId& loaded_asset_id,
                                     ErasedLoadedAsset loaded_asset,
-                                    epix::core::World& world,
+                                    epix::ecs::World& world,
                                     const epix::async_channel::Sender<InternalAssetEvent>& sender) {
     // Process all the labeled assets first so that they don't get skipped
     // due to the "parent" not having its handle alive.
@@ -494,3 +494,4 @@ UntypedHandle AssetInfos::create_loading_handle_untyped(epix::meta::type_index t
     return result->first;
 }
 }  // namespace epix::assets
+

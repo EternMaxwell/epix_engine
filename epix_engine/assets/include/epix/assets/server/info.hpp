@@ -7,7 +7,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -94,8 +94,8 @@ struct AssetInfos {
     std::unordered_map<UntypedAssetId, AssetInfo> infos;
     std::unordered_map<epix::meta::type_index, std::shared_ptr<HandleProvider>> handle_providers;
 
-    std::unordered_map<epix::meta::type_index, void (*)(epix::core::World&, AssetIndex)> dependency_loaded_event_sender;
-    std::unordered_map<epix::meta::type_index, void (*)(epix::core::World&, AssetIndex, AssetPath, AssetLoadError)>
+    std::unordered_map<epix::meta::type_index, void (*)(epix::ecs::World&, AssetIndex)> dependency_loaded_event_sender;
+    std::unordered_map<epix::meta::type_index, void (*)(epix::ecs::World&, AssetIndex, AssetPath, AssetLoadError)>
         dependency_failed_event_sender;
 
     std::unordered_map<UntypedAssetId, std::variant<std::packaged_task<void()>, std::shared_future<void>>>
@@ -165,7 +165,7 @@ struct AssetInfos {
     bool process_handle_destruction(const UntypedAssetId& id);
     void process_asset_load(const UntypedAssetId& loaded_asset_id,
                             ErasedLoadedAsset loaded_asset,
-                            epix::core::World& world,
+                            epix::ecs::World& world,
                             const epix::async_channel::Sender<InternalAssetEvent>& event_sender);
     void propagate_loaded_state(UntypedAssetId loaded_asset_id,
                                 UntypedAssetId waiting_id,
@@ -198,3 +198,5 @@ std::pair<Handle<T>, bool> AssetInfos::get_or_create_handle(const AssetPath& pat
         .value();
 }
 }  // namespace epix::assets
+
+

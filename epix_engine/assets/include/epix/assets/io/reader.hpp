@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <epix/meta.hpp>
@@ -42,38 +42,38 @@ EPIX_EXPORT using AssetReaderError =
 EPIX_EXPORT struct Reader {
     /** @brief Read all remaining bytes into buf, returning the number of bytes read.
      *  Matches bevy's Reader::read_to_end. */
-    virtual asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) = 0;
+    virtual STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) = 0;
     virtual ~Reader()                                                                                      = default;
 };
 
 /** @brief Abstract async byte writer. Matches bevy's Writer (dyn AsyncWrite + Unpin + Send + Sync). */
 EPIX_EXPORT struct Writer {
     /** @brief Write the given data, returning the number of bytes written. */
-    virtual asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) = 0;
+    virtual STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) = 0;
     /** @brief Flush any buffered output. */
-    virtual asio::awaitable<std::expected<void, std::error_code>> flush() = 0;
+    virtual STDEXEC::task<std::expected<void, std::error_code>> flush() = 0;
     virtual ~Writer()                                                     = default;
 };
 
 EPIX_EXPORT struct AssetReader {
     /** @brief Get an async reader for an asset. Matches bevy's AssetReader::read. */
-    virtual asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
+    virtual STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
         const std::filesystem::path& path) const = 0;
     /** @brief Get an async reader for meta data of an asset. Matches bevy's AssetReader::read_meta. */
-    virtual asio::awaitable<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read_meta(
+    virtual STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read_meta(
         const std::filesystem::path& path) const = 0;
     /** @brief Get an iterator of directory entries. Matches bevy's AssetReader::read_directory. */
-    virtual asio::awaitable<std::expected<epix::utils::input_iterable<std::filesystem::path>, AssetReaderError>>
+    virtual STDEXEC::task<std::expected<epix::utils::input_iterable<std::filesystem::path>, AssetReaderError>>
     read_directory(const std::filesystem::path& path) const = 0;
     /** @brief Check if a path is a directory. Matches bevy's AssetReader::is_directory. */
-    virtual asio::awaitable<std::expected<bool, AssetReaderError>> is_directory(
+    virtual STDEXEC::task<std::expected<bool, AssetReaderError>> is_directory(
         const std::filesystem::path& path) const = 0;
     /** @brief Return the last-modified time of an asset, or nullopt if unsupported by this reader. */
     virtual std::optional<std::filesystem::file_time_type> last_modified(const std::filesystem::path& path) const {
         return std::nullopt;
     }
     /** @brief Read metadata bytes of an asset. Matches bevy's AssetReader::read_meta_bytes. */
-    asio::awaitable<std::expected<std::vector<std::byte>, AssetReaderError>> read_meta_bytes(
+    STDEXEC::task<std::expected<std::vector<std::byte>, AssetReaderError>> read_meta_bytes(
         const std::filesystem::path& path) const;
     virtual ~AssetReader() = default;
 };
@@ -85,31 +85,31 @@ EPIX_EXPORT namespace writer_errors {
 EPIX_EXPORT using AssetWriterError = std::variant<writer_errors::IoError, std::exception_ptr>;
 EPIX_EXPORT struct AssetWriter {
     /** @brief Get an async writer for an asset. Matches bevy's AssetWriter::write. */
-    virtual asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write(
+    virtual STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write(
         const std::filesystem::path& path) const = 0;
     /** @brief Get an async writer for meta data of an asset. Matches bevy's AssetWriter::write_meta. */
-    virtual asio::awaitable<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write_meta(
+    virtual STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write_meta(
         const std::filesystem::path& path) const = 0;
     /** @brief Removes the asset stored at the specified path. */
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove(const std::filesystem::path& path) const = 0;
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> remove(const std::filesystem::path& path) const = 0;
     /** @brief Removes the meta data stored at the specified path. */
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove_meta(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> remove_meta(
         const std::filesystem::path& path) const = 0;
     /** @brief Renames the asset stored at `old_path` to `new_path`. */
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> rename(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> rename(
         const std::filesystem::path& old_path, const std::filesystem::path& new_path) const = 0;
     /** @brief Renames the meta data stored at `old_path` to `new_path`. */
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> rename_meta(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> rename_meta(
         const std::filesystem::path& old_path, const std::filesystem::path& new_path) const = 0;
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> create_directory(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> create_directory(
         const std::filesystem::path& path) const = 0;
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> remove_directory(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> remove_directory(
         const std::filesystem::path& path) const = 0;
-    virtual asio::awaitable<std::expected<void, AssetWriterError>> clear_directory(
+    virtual STDEXEC::task<std::expected<void, AssetWriterError>> clear_directory(
         const std::filesystem::path& path) const = 0;
-    asio::awaitable<std::expected<void, AssetWriterError>> write_bytes(const std::filesystem::path& path,
+    STDEXEC::task<std::expected<void, AssetWriterError>> write_bytes(const std::filesystem::path& path,
                                                                        std::span<const std::byte> bytes) const;
-    asio::awaitable<std::expected<void, AssetWriterError>> write_meta_bytes(const std::filesystem::path& path,
+    STDEXEC::task<std::expected<void, AssetWriterError>> write_meta_bytes(const std::filesystem::path& path,
                                                                             std::span<const std::byte> bytes) const;
     virtual ~AssetWriter() = default;
 };
@@ -199,7 +199,7 @@ EPIX_EXPORT struct VecReader : Reader {
     VecReader(VecReader&&)                 = default;
     VecReader& operator=(VecReader&&)      = default;
 
-    asio::awaitable<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override;
+    STDEXEC::task<std::expected<size_t, std::error_code>> read_to_end(std::vector<uint8_t>& buf) override;
 
     /** @brief Get a view of the underlying bytes. */
     std::span<const uint8_t> bytes() const noexcept { return m_bytes; }
@@ -213,8 +213,8 @@ EPIX_EXPORT struct VecWriter : Writer {
     std::vector<uint8_t> m_data;
 
    public:
-    asio::awaitable<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override;
-    asio::awaitable<std::expected<void, std::error_code>> flush() override;
+    STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override;
+    STDEXEC::task<std::expected<void, std::error_code>> flush() override;
 
     /** @brief Get the written bytes. */
     std::vector<uint8_t>& bytes() noexcept { return m_data; }
@@ -222,3 +222,4 @@ EPIX_EXPORT struct VecWriter : Writer {
 };
 
 }  // namespace epix::assets
+

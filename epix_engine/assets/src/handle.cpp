@@ -5,7 +5,8 @@
 
 namespace meta = epix::meta;
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::app;
+using namespace epix::ecs;
 using namespace epix::async_channel;
 
 StrongHandle::StrongHandle(const UntypedAssetId& id,
@@ -84,3 +85,5 @@ const MetaTransform* UntypedHandle::meta_transform() const noexcept {
                                      [](const UntypedAssetId&) -> const MetaTransform* { return nullptr; }},
                       ref);
 }
+
+

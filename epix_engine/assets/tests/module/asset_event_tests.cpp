@@ -10,7 +10,7 @@ import epix.assets;
 using namespace epix::assets;
 
 // ===========================================================================
-// AssetEvent<T> — construction and predicates
+// AssetEvent<T> - construction and predicates
 // ===========================================================================
 
 TEST(AssetEvent, Added) {
@@ -50,7 +50,7 @@ TEST(AssetEvent, LoadedWithDependencies) {
 }
 
 // ===========================================================================
-// AssetEvent<T> — predicates with specific id
+// AssetEvent<T> - predicates with specific id
 // ===========================================================================
 
 TEST(AssetEvent, IsAddedWithId_Match) {
@@ -94,7 +94,7 @@ TEST(AssetEvent, IsLoadedWithDependenciesWithId) {
 }
 
 // ===========================================================================
-// AssetEvent<T> — wrong event type with id
+// AssetEvent<T> - wrong event type with id
 // ===========================================================================
 
 TEST(AssetEvent, IsRemoved_ButActuallyAdded) {
@@ -105,3 +105,5 @@ TEST(AssetEvent, IsRemoved_ButActuallyAdded) {
     EXPECT_FALSE(ev.is_unused(id));
     EXPECT_FALSE(ev.is_loaded_with_dependencies(id));
 }
+
+

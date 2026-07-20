@@ -41,6 +41,9 @@ namespace epix::task {
         auto spawn(F&& f) {                                                               \
             return m_pool.spawn(std::forward<F>(f));                                      \
         }                                                                                 \
+        [[nodiscard]] AsioExecutor get_asio_executor() const {                            \
+            return m_pool.get_asio_executor();                                            \
+        }                                                                                 \
         template <typename T, typename Fn>                                                \
         std::vector<T> scope(Fn&& fn) {                                                   \
             return m_pool.scope<T>(std::forward<Fn>(fn));                                 \

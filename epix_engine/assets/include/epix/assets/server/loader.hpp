@@ -3,8 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <concepts>
+#include <epix/ecs.hpp>
 #include <cstddef>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
@@ -68,7 +69,7 @@ struct ErasedAssetLoaderImpl;
 EPIX_EXPORT struct AssetContainer {
     virtual ~AssetContainer()                                         = default;
     virtual meta::type_index type() const                             = 0;
-    virtual void insert(const UntypedAssetId& id, core::World& world) = 0;
+    virtual void insert(const UntypedAssetId& id, ecs::World& world) = 0;
     /** @brief Visit all asset handle dependencies within this container.
      *  Matches bevy_asset's VisitAssetDependencies::visit_dependencies. */
     virtual void visit_dependencies(utils::function_ref<void(UntypedAssetId)> visit) const {}
@@ -151,7 +152,7 @@ struct AssetContainerImpl : AssetContainer {
     AssetContainerImpl(T&& asset) : asset(std::move(asset)) {}
     ~AssetContainerImpl() override = default;
     meta::type_index type() const override { return meta::type_id<T>{}; }
-    void insert(const UntypedAssetId& id, core::World& world) override {
+    void insert(const UntypedAssetId& id, ecs::World& world) override {
         auto&& assets                       = world.resource_mut<Assets<T>>();
         [[maybe_unused]] auto insert_result = assets.insert(id.typed<T>(), std::move(asset));
     }
@@ -489,13 +490,13 @@ EPIX_EXPORT struct LoadContext {
      *  @tparam A The expected asset type.
      *  Matches bevy_asset's LoadContext::load_direct (async). */
     template <Asset A>
-    asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct(const AssetPath& path) const;
+    STDEXEC::task<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct(const AssetPath& path) const;
 
     /** @brief Load an asset directly using an already-open reader.
      *  @tparam A The expected asset type.
      *  Matches bevy_asset's LoadContext::load_direct_with_reader. */
     template <Asset A>
-    asio::awaitable<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct_with_reader(const AssetPath& path,
+    STDEXEC::task<std::expected<LoadedAsset<A>, AssetLoadError>> load_direct_with_reader(const AssetPath& path,
                                                                                            Reader& reader) const;
 
     /** @brief Begin a labeled asset scope, returning a new LoadContext
@@ -574,7 +575,7 @@ concept AssetLoader = requires(const T& t, Reader& reader, LoadContext& context)
     { t.extensions() } -> std::same_as<std::span<std::string_view>>;
     {
         t.load(reader, std::declval<const typename T::Settings&>(), context)
-    } -> std::same_as<asio::awaitable<std::expected<typename T::Asset, typename T::Error>>>;
+    } -> std::same_as<STDEXEC::task<std::expected<typename T::Asset, typename T::Error>>>;
     { asset_loader_error_to_exception(std::declval<const typename T::Error&>()) } -> std::same_as<std::exception_ptr>;
 };
 EPIX_EXPORT struct ErasedAssetLoader {
@@ -600,7 +601,7 @@ EPIX_EXPORT struct ErasedAssetLoader {
      *  Matches bevy_asset's ErasedAssetLoader::deserialize_meta. */
     virtual std::expected<std::unique_ptr<AssetMetaDyn>, std::string> deserialize_meta(
         std::span<const std::byte> bytes) const                                                                    = 0;
-    virtual asio::awaitable<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
+    virtual STDEXEC::task<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
                                                                                        const Settings& settings,
                                                                                        LoadContext& context) const = 0;
 };
@@ -632,7 +633,7 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
         }
         return std::make_unique<AssetMeta<typename T::Settings, EmptySettings>>(std::move(*result));
     }
-    asio::awaitable<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
+    STDEXEC::task<std::expected<ErasedLoadedAsset, std::exception_ptr>> load(Reader& reader,
                                                                                const Settings& settings,
                                                                                LoadContext& context) const override {
         try {
@@ -655,7 +656,7 @@ struct ErasedAssetLoaderImpl : T, ErasedAssetLoader {
 
 /** @brief Concept for an asset saver. Savers write assets to a Writer.
  *  Implementations must provide: Asset, Settings, save().
- *  Matches bevy_asset's AssetSaver trait — associated type is named `Asset`. */
+ *  Matches bevy_asset's AssetSaver trait - associated type is named `Asset`. */
 EPIX_EXPORT template <typename T>
 concept AssetSaver = requires(const T& t, Writer& writer, const typename T::Settings& settings) {
     typename T::Asset;
@@ -666,7 +667,7 @@ concept AssetSaver = requires(const T& t, Writer& writer, const typename T::Sett
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.save(writer, std::declval<SavedAsset<typename T::Asset>>(), settings, std::declval<const AssetPath&>())
-    } -> std::same_as<asio::awaitable<std::expected<typename T::OutputLoader::Settings, typename T::Error>>>;
+    } -> std::same_as<STDEXEC::task<std::expected<typename T::OutputLoader::Settings, typename T::Error>>>;
 };
 
 /** @brief Concept for an asset transformer. Transforms one asset type to another.
@@ -683,7 +684,7 @@ concept AssetTransformer = requires(const T& t, const typename T::Settings& sett
     requires std::is_default_constructible_v<typename T::Settings>;
     {
         t.transform(std::declval<TransformedAsset<typename T::AssetInput>>(), settings)
-    } -> std::same_as<asio::awaitable<std::expected<TransformedAsset<typename T::AssetOutput>, typename T::Error>>>;
+    } -> std::same_as<STDEXEC::task<std::expected<TransformedAsset<typename T::AssetOutput>, typename T::Error>>>;
 };
 
 // --- Template implementations for LoadContext / NestedLoader ---
@@ -702,3 +703,4 @@ Handle<A> LoadContext::labeled_asset_scope(const std::string& label, F&& fn) {
 }
 
 }  // namespace epix::assets
+

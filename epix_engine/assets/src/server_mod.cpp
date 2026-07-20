@@ -102,7 +102,7 @@ std::expected<void, WaitForAssetError> AssetServer::wait_for_asset_id(const Unty
             return std::unexpected(WaitForAssetError{wait_for_asset_error::Failed{*ep}});
         if (auto ep = info.rec_dep_state.error())
             return std::unexpected(WaitForAssetError{wait_for_asset_error::DependencyFailed{ep}});
-        // Asset is still loading — register the promise; event handler will resolve it
+        // Asset is still loading - register the promise; event handler will resolve it
         info.waiting_tasks.push_back(std::move(promise));
     }
     return future.get();
@@ -285,3 +285,5 @@ UntypedHandle NestedLoader::load_untyped(const AssetPath& path) {
     m_context.track_dependency(handle.id());
     return handle;
 }
+
+

@@ -5,6 +5,8 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <filesystem>
 #include <format>
 #include <optional>
@@ -78,39 +80,39 @@ EPIX_EXPORT struct AssetPlugin {
     /** @brief Register a named asset source builder. */
     AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder source);
     /** @brief Build the plugin, inserting asset resources into the app. */
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
     /** @brief Finalize the plugin after all other plugins have built. */
-    void ready(epix::core::App& app);
+    void ready(epix::app::App& app);
 };
 
 /** @brief AssetApp-style helper: register an asset type directly on an App with an existing AssetServer. */
 EPIX_EXPORT template <std::movable T>
-epix::core::App& app_register_asset(epix::core::App& app) {
+epix::app::App& app_register_asset(epix::app::App& app) {
     if (app.world_mut().get_resource<Assets<T>>().has_value()) return app;
     app.world_mut().init_resource<Assets<T>>();
     app.resource_mut<AssetServer>().register_asset(app.resource<Assets<T>>());
     app.add_events<AssetEvent<T>>();
     app.add_events<AssetLoadFailedEvent<T>>();
-    app.add_systems(epix::core::PostStartup,
-                    into(into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
-                         into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
+    app.add_systems(epix::app::PostStartup,
+                    ecs::into(ecs::into(Assets<T>::handle_events).in_set(AssetSystems::HandleEvents),
+                              ecs::into(Assets<T>::asset_events).in_set(AssetSystems::WriteEvents))
                         .chain()
                         .set_names(std::array{std::format("handle {} asset events", meta::type_id<T>::name()),
                                               std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::PreStartup,
-                    into(Assets<T>::asset_events)
+    app.add_systems(epix::app::PreStartup,
+                    ecs::into(Assets<T>::asset_events)
                         .in_set(AssetSystems::WriteEvents)
                         .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::First,
-                    into(Assets<T>::asset_events)
+    app.add_systems(epix::app::First,
+                    ecs::into(Assets<T>::asset_events)
                         .in_set(AssetSystems::WriteEvents)
                         .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::Last,
-                    into(Assets<T>::asset_events)
+    app.add_systems(epix::app::Last,
+                    ecs::into(Assets<T>::asset_events)
                         .in_set(AssetSystems::WriteEvents)
                         .set_names(std::array{std::format("send {} asset events", meta::type_id<T>::name())}));
-    app.add_systems(epix::core::PostUpdate,
-                    into(Assets<T>::handle_events)
+    app.add_systems(epix::app::PostUpdate,
+                    ecs::into(Assets<T>::handle_events)
                         .in_set(AssetSystems::HandleEvents)
                         .set_name(std::format("handle {} asset events", meta::type_id<T>::name())));
     return app;
@@ -118,21 +120,21 @@ epix::core::App& app_register_asset(epix::core::App& app) {
 
 /** @brief AssetApp-style helper: register a loader directly on an App with an existing AssetServer. */
 EPIX_EXPORT template <AssetLoader T>
-epix::core::App& app_register_loader(epix::core::App& app, const T& t = T()) {
+epix::app::App& app_register_loader(epix::app::App& app, const T& t = T()) {
     app.resource_mut<AssetServer>().register_loader(t);
     return app;
 }
 
 /** @brief AssetApp-style helper: preregister a loader extension mapping directly on an App. */
 EPIX_EXPORT template <AssetLoader T>
-epix::core::App& app_preregister_loader(epix::core::App& app, std::span<std::string_view> extensions) {
+epix::app::App& app_preregister_loader(epix::app::App& app, std::span<std::string_view> extensions) {
     app.resource_mut<AssetServer>().template preregister_loader<T>(extensions);
     return app;
 }
 
 /** @brief AssetApp-style helper: register an asset processor directly on an App. */
 EPIX_EXPORT template <Process P>
-epix::core::App& app_register_asset_processor(epix::core::App& app, P processor) {
+epix::app::App& app_register_asset_processor(epix::app::App& app, P processor) {
     if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
         throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
     }
@@ -142,7 +144,7 @@ epix::core::App& app_register_asset_processor(epix::core::App& app, P processor)
 
 /** @brief AssetApp-style helper: set the default asset processor for an extension directly on an App. */
 EPIX_EXPORT template <Process P>
-epix::core::App& app_set_default_asset_processor(epix::core::App& app, const std::string& extension) {
+epix::app::App& app_set_default_asset_processor(epix::app::App& app, const std::string& extension) {
     if (!app.world_mut().get_resource<AssetProcessor>().has_value()) {
         throw std::runtime_error("AssetProcessor resource not found. Build AssetPlugin in Processed mode first.");
     }
@@ -151,3 +153,5 @@ epix::core::App& app_set_default_asset_processor(epix::core::App& app, const std
 }
 
 }  // namespace epix::assets
+
+

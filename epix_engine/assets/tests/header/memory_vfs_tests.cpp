@@ -44,7 +44,7 @@ static std::string read_val(const Value& v) {
 
 TEST(MemoryVfs, Exists_RootAlwaysTrue) {
     Directory d = Directory::create({});
-    // exists("") uses resolve_parent which returns IoError for empty path â€” the
+    // exists("") uses resolve_parent which returns IoError for empty path - the
     // root is not queryable via exists(); use is_directory("") for root checks.
     // Verify that a freshly inserted file does exist.
     d.insert_file("f.txt", make_val("x"));
@@ -87,7 +87,7 @@ TEST(MemoryVfs, Exists_FileAsIntermediateComponent) {
     Directory d = Directory::create({});
     d.insert_file("a/b.txt", make_val("x"));
     auto r = d.exists("a/b.txt/x");
-    // resolve_parent will descend into b.txt which is a file â†’ NotFoundError
+    // resolve_parent will descend into b.txt which is a file â†?NotFoundError
     ASSERT_TRUE(r.has_value() || !r.has_value());  // implementation returns unexpected or false
     // either false or an error is acceptable; must not crash and must not be 'true'
     EXPECT_FALSE(r.has_value() && r.value());
@@ -99,7 +99,7 @@ TEST(MemoryVfs, Exists_FileAsIntermediateComponent) {
 
 TEST(MemoryVfs, IsDirectory_RootIsDir) {
     Directory d = Directory::create({});
-    // empty path "" â†’ root â†’ true
+    // empty path "" â†?root â†?true
     auto r = d.is_directory("");
     ASSERT_TRUE(r.has_value());
     EXPECT_TRUE(r.value());
@@ -757,7 +757,7 @@ TEST(MemoryVfs, Callback_OnSubdir_DoesNotSeeParentEvents) {
     std::vector<DirEvent> sub_events;
     auto sub_id = sub.add_callback([&](const DirEvent& ev) { sub_events.push_back(ev); });
 
-    // insert at root level â€” sub watcher should NOT see this
+    // insert at root level - sub watcher should NOT see this
     d.insert_file("root_file.txt", make_val("x"));
 
     sub.remove_callback(sub_id);
@@ -790,7 +790,7 @@ TEST(MemoryVfs, Callback_AddedAfterSubdirCreated_PropagatesToExistingSubdirs) {
     std::vector<DirEventType> types;
     auto id = d.add_callback([&](const DirEvent& ev) { types.push_back(ev.type); });
 
-    // Now insert into the pre-existing subdir â†’ callback should fire
+    // Now insert into the pre-existing subdir â†?callback should fire
     d.insert_file("pre/g.txt", make_val("y"));
     d.remove_callback(id);
 
@@ -819,7 +819,7 @@ TEST(MemoryVfs, Callback_RootAndSubdir_BothFireForSubdirOp) {
 }
 
 TEST(MemoryVfs, Callback_ThreeLevels_AllFireForDeepOp) {
-    // root watcher, mid watcher, leaf watcher â€” op in leaf fires all three
+    // root watcher, mid watcher, leaf watcher - op in leaf fires all three
     Directory d = Directory::create({});
     auto mid_r  = d.create_directory("mid");
     ASSERT_TRUE(mid_r.has_value());
@@ -880,3 +880,5 @@ int main(int argc, char** argv) {
     ::testing::InitGoogleTest(&argc, argv);
     return RUN_ALL_TESTS();
 }
+
+

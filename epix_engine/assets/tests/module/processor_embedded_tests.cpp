@@ -1,9 +1,6 @@
 #include <gtest/gtest.h>
 
-#include <asio/awaitable.hpp>
-#include <asio/co_spawn.hpp>
-#include <asio/detached.hpp>
-#include <asio/io_context.hpp>
+#include <stdexec/execution.hpp>
 #ifndef EPIX_IMPORT_STD
 #include <array>
 #include <cstddef>
@@ -26,7 +23,8 @@
 import std;
 #endif
 import epix.assets;
-import epix.core;
+import epix.app;
+import epix.ecs;
 import epix.utils;
 import epix.meta;
 
@@ -83,7 +81,7 @@ struct TestTextLoader {
         return std::span<std::string_view>(exts.data(), exts.size());
     }
 
-    static asio::awaitable<std::expected<std::string, Error>> load(Reader& reader, const Settings&, LoadContext&) {
+    static STDEXEC::task<std::expected<std::string, Error>> load(Reader& reader, const Settings&, LoadContext&) {
         std::vector<uint8_t> buf;
         co_await reader.read_to_end(buf);
         co_return std::string(buf.begin(), buf.end());
@@ -98,7 +96,7 @@ struct TestTextSaver {
     struct Settings {};
     using Error = std::exception_ptr;
 
-    asio::awaitable<std::expected<OutputLoader::Settings, Error>> save(Writer& writer,
+    STDEXEC::task<std::expected<OutputLoader::Settings, Error>> save(Writer& writer,
                                                                        SavedAsset<std::string> asset,
                                                                        const Settings&,
                                                                        const AssetPath&) const {
@@ -119,7 +117,7 @@ struct AddTextTransformer {
 
     std::string suffix;
 
-    asio::awaitable<std::expected<TransformedAsset<std::string>, Error>> transform(TransformedAsset<std::string> asset,
+    STDEXEC::task<std::expected<TransformedAsset<std::string>, Error>> transform(TransformedAsset<std::string> asset,
                                                                                    const Settings&) const {
         asset.get_mut() += suffix;
         co_return asset;
@@ -136,7 +134,7 @@ struct TestIdentityProcessor {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext& ctx,
+    STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext& ctx,
                                                                                        const Settings&,
                                                                                        Writer& writer) const {
         std::vector<uint8_t> buf;
@@ -149,7 +147,7 @@ struct TestIdentityProcessor {
 // ---- Helper: create an AssetProcessor with in-memory sources ----
 
 AssetProcessor create_empty_asset_processor() {
-    auto app = epix::core::App::create();
+    auto app = epix::app::App::create();
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
     plugin.attach(app);
@@ -173,10 +171,9 @@ TEST(ProcessContext, Construction) {
     ProcessContext ctx(processor, path, data, info);
     EXPECT_EQ(ctx.path(), path);
     std::vector<uint8_t> buf;
-    asio::io_context io;
-    asio::co_spawn(
-        io, [&]() -> asio::awaitable<void> { co_await ctx.asset_reader().read_to_end(buf); }, asio::detached);
-    io.run();
+    (void)STDEXEC::sync_wait([&]() -> STDEXEC::task<void> {
+        co_await ctx.asset_reader().read_to_end(buf);
+    }());
     EXPECT_EQ(buf.size(), 2u);
     EXPECT_EQ(buf[0], 'A');
     EXPECT_EQ(buf[1], 'B');
@@ -338,7 +335,7 @@ struct TemplatedProcessor {
     struct Settings {};
     using OutputLoader = TestTextLoader;
 
-    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
+    STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(ProcessContext&,
                                                                                        const Settings&,
                                                                                        Writer& writer) const {
         std::string_view hello = "hello";
@@ -586,3 +583,5 @@ TEST(ValidateLogError, EntryErrors) {
     ASSERT_TRUE(std::holds_alternative<validate_log_errors::EntryErrors>(err));
     EXPECT_EQ(std::get<validate_log_errors::EntryErrors>(err).errors.size(), 1u);
 }
+
+

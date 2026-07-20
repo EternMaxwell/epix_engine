@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <cstdint>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
@@ -31,16 +31,16 @@ EPIX_EXPORT struct MemoryAssetReader : public assets::AssetReader {
    public:
     explicit MemoryAssetReader(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
-    asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read(
+    STDEXEC::task<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read_meta(
+    STDEXEC::task<std::expected<std::unique_ptr<Reader>, assets::AssetReaderError>> read_meta(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
+    STDEXEC::task<std::expected<utils::input_iterable<std::filesystem::path>, assets::AssetReaderError>>
     read_directory(const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<bool, assets::AssetReaderError>> is_directory(
+    STDEXEC::task<std::expected<bool, assets::AssetReaderError>> is_directory(
         const std::filesystem::path& path) const override;
 
    private:
@@ -51,31 +51,31 @@ EPIX_EXPORT struct MemoryAssetWriter : public assets::AssetWriter {
    public:
     explicit MemoryAssetWriter(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
-    asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> write(
+    STDEXEC::task<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> write(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> write_meta(
+    STDEXEC::task<std::expected<std::unique_ptr<Writer>, assets::AssetWriterError>> write_meta(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> remove(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> remove(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> remove_meta(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> remove_meta(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> rename(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> rename(
         const std::filesystem::path& old_path, const std::filesystem::path& new_path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> rename_meta(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> rename_meta(
         const std::filesystem::path& old_path, const std::filesystem::path& new_path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> create_directory(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> create_directory(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> remove_directory(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> remove_directory(
         const std::filesystem::path& path) const override;
 
-    asio::awaitable<std::expected<void, assets::AssetWriterError>> clear_directory(
+    STDEXEC::task<std::expected<void, assets::AssetWriterError>> clear_directory(
         const std::filesystem::path& path) const override;
 
    private:
@@ -97,3 +97,4 @@ EPIX_EXPORT struct MemoryAssetWatcher : public assets::AssetWatcher {
 };
 
 }  // namespace epix::assets
+

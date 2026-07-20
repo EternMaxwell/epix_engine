@@ -12,13 +12,13 @@ import epix.assets;
 using namespace epix::assets;
 
 // ===========================================================================
-// AssetIndex — basic properties
+// AssetIndex - basic properties
 // ===========================================================================
 
 // AssetIndex constructor is protected so we test via AssetIndexAllocator.
 
 // ===========================================================================
-// AssetId<T> — construction, queries, comparison
+// AssetId<T> - construction, queries, comparison
 // ===========================================================================
 
 TEST(AssetId, Invalid_IsUuid) {
@@ -161,3 +161,5 @@ TEST(UntypedAssetIdHash, DifferentType_DifferentHash) {
     UntypedAssetId ub(ii);
     EXPECT_NE(std::hash<UntypedAssetId>{}(ua), std::hash<UntypedAssetId>{}(ub));
 }
+
+

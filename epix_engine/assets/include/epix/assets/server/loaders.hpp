@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <epix/meta.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <epix/utils.hpp>
 #include <functional>
 #include <memory>
@@ -94,9 +94,7 @@ struct AssetLoaders {
                                auto loader =
                                    std::get<std::shared_ptr<ErasedAssetLoader>>(loaders[loader_index].as_base());
                                auto sender = std::move(pending.sender);
-                               tasks::IoTaskPool::get()
-                                   .spawn([sender = std::move(sender), loader]() mutable { sender.broadcast(loader); })
-                                   .detach();
+                               task::IoTaskPool::get().spawn(sender.broadcast(loader)).detach();
                            }},
                        maybe_loader.as_base());
         }
@@ -150,3 +148,4 @@ struct AssetLoaders {
                                          std::optional<std::reference_wrapper<const AssetPath>> asset_path) const;
 };
 }  // namespace epix::assets
+
