@@ -5,7 +5,8 @@
 #include <optional>
 #include <unordered_set>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::window {
 

@@ -34,16 +34,16 @@ EPIX_EXPORT namespace epix::window {
         ExitCondition exit_condition = ExitCondition::OnPrimaryClosed;
         /** @brief Whether to despawn window entities on close request. */
         bool close_when_requested = true;
-        void attach(core::App& app);
-        void ready(core::App& app);
+        void attach(epix::app::App& app);
+        void ready(epix::app::App& app);
     };
 
     /** @brief Debug system that logs all window events to the logger. */
-    void log_events(core::EventReader<WindowResized> resized, core::EventReader<WindowMoved> moved,
-                    core::EventReader<WindowCreated> created, core::EventReader<WindowClosed> closed,
-                    core::EventReader<WindowCloseRequested> close_requested,
-                    core::EventReader<WindowDestroyed> destroyed, core::EventReader<CursorMoved> cursor_moved,
-                    core::EventReader<CursorEntered> cursor_entered, core::EventReader<FileDrop> file_drop,
-                    core::EventReader<ReceivedCharacter> received_character,
-                    core::EventReader<WindowFocused> window_focused, core::Query<core::Item<const Window&>> windows);
+    void log_events(epix::ecs::EventReader<WindowResized> resized, epix::ecs::EventReader<WindowMoved> moved,
+                    epix::ecs::EventReader<WindowCreated> created, epix::ecs::EventReader<WindowClosed> closed,
+                    epix::ecs::EventReader<WindowCloseRequested> close_requested,
+                    epix::ecs::EventReader<WindowDestroyed> destroyed, epix::ecs::EventReader<CursorMoved> cursor_moved,
+                    epix::ecs::EventReader<CursorEntered> cursor_entered, epix::ecs::EventReader<FileDrop> file_drop,
+                    epix::ecs::EventReader<ReceivedCharacter> received_character,
+                    epix::ecs::EventReader<WindowFocused> window_focused, epix::ecs::Query<epix::ecs::Item<const Window&>> windows);
 }  // namespace epix::window

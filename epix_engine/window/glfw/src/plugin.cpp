@@ -5,7 +5,8 @@
 #include <epix/glfw/core.hpp>
 
 using namespace epix::glfw;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace {
 const char* glfw_platform_name(int platform) {

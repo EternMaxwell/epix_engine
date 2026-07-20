@@ -4,7 +4,8 @@
 #include <ranges>
 
 using namespace epix::window;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void WindowPlugin::attach(App& app) {
     app.add_events<WindowResized>()

@@ -5,7 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <optional>
 #include <string>

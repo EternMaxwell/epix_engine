@@ -7,7 +7,8 @@
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.sfml.core;
 import epix.input;
@@ -22,7 +23,8 @@ enum class TestFuncState {
 int main() {
     using namespace epix::window;
     using namespace epix::sfml;
-    using namespace epix::core;
+    using namespace epix::ecs;
+using namespace epix::app;
 
     Window window_desc;
     Window window_desc2;

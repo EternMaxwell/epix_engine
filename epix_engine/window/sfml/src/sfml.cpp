@@ -40,7 +40,8 @@ std::shared_ptr<Display> openDisplay();
 
 using namespace epix::sfml;
 using namespace epix::window;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using WindowDesc = ::epix::window::Window;
 
 namespace {

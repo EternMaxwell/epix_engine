@@ -8,7 +8,8 @@
 
 using namespace epix::glfw;
 using namespace epix::window;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 const std::string& Clipboard::get_text() const noexcept { return text; }
 void Clipboard::update(ResMut<Clipboard> clipboard) {

@@ -4,7 +4,8 @@
 #include <epix/sfml/core.hpp>
 
 using namespace epix::sfml;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void SFMLPlugin::attach(App& app) {
     spdlog::debug("[sfml] Attaching SFMLPlugin.");

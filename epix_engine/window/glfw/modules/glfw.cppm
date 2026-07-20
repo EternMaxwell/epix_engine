@@ -15,7 +15,8 @@ export module epix.glfw.core;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.input;
 import epix.window;
 import epix.assets;

@@ -11,7 +11,8 @@
 #include <ranges>
 #include <utility>
 #include <variant>
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::glfw;
 using namespace epix::window;
 

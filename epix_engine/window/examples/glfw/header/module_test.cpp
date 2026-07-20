@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
 #include <epix/window.hpp>
@@ -18,7 +18,8 @@ enum class TestFuncState {
 int main() {
     using namespace epix::window;
     using namespace epix::glfw;
-    using namespace epix::core;
+    using namespace epix::ecs;
+using namespace epix::app;
 
     Window window_desc;
     Window window_desc2;
