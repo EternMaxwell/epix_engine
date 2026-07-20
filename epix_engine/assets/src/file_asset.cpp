@@ -12,21 +12,22 @@
 // Linux: io_uring headers available at build time; library loaded at runtime via dlopen.
 // ASIO_HAS_FILE is NOT set on Linux (we do not use ASIO's io_uring integration).
 #if defined(EPIX_HAS_URING_HEADERS) && !defined(ASIO_HAS_FILE)
-#include <asio/posix/stream_descriptor.hpp>
-#include <exec/asio/use_sender.hpp>
-#include <coroutine>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <liburing.h>
+#include <sys/eventfd.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+#include <asio/posix/stream_descriptor.hpp>
+#include <coroutine>
 #include <cstdint>
 #include <deque>
+#include <exec/asio/use_sender.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <sys/stat.h>
-#include <sys/eventfd.h>
-#include <unistd.h>
 #endif
 
 #include <epix/assets.hpp>
@@ -88,9 +89,9 @@ struct FileWriter : Writer {
 // Linux machine regardless of whether liburing is installed.
 
 struct UringApi {
-    using fn_queue_init = int (*)(unsigned, struct io_uring*, unsigned);
-    using fn_queue_exit = void (*)(struct io_uring*);
-    using fn_submit     = int (*)(struct io_uring*);
+    using fn_queue_init       = int (*)(unsigned, struct io_uring*, unsigned);
+    using fn_queue_exit       = void (*)(struct io_uring*);
+    using fn_submit           = int (*)(struct io_uring*);
     using fn_register_eventfd = int (*)(struct io_uring*, int);
 
     fn_queue_init queue_init             = nullptr;
@@ -110,12 +111,12 @@ struct UringApi {
         void* h = ::dlopen("liburing.so.2", RTLD_LAZY);
         if (!h) h = ::dlopen("liburing.so", RTLD_LAZY);
         if (!h) return api;
-        auto sym        = [h](const char* n) noexcept { return ::dlsym(h, n); };
-        api.queue_init  = reinterpret_cast<fn_queue_init>(sym("io_uring_queue_init"));
-        api.queue_exit  = reinterpret_cast<fn_queue_exit>(sym("io_uring_queue_exit"));
-        api.submit      = reinterpret_cast<fn_submit>(sym("io_uring_submit"));
+        auto sym             = [h](const char* n) noexcept { return ::dlsym(h, n); };
+        api.queue_init       = reinterpret_cast<fn_queue_init>(sym("io_uring_queue_init"));
+        api.queue_exit       = reinterpret_cast<fn_queue_exit>(sym("io_uring_queue_exit"));
+        api.submit           = reinterpret_cast<fn_submit>(sym("io_uring_submit"));
         api.register_eventfd = reinterpret_cast<fn_register_eventfd>(sym("io_uring_register_eventfd"));
-        api.available   = api.queue_init && api.queue_exit && api.submit && api.register_eventfd;
+        api.available        = api.queue_init && api.queue_exit && api.submit && api.register_eventfd;
         return api;
     }
 };
@@ -124,13 +125,13 @@ struct UringService;
 
 struct UringOperation {
     std::shared_ptr<UringService> service;
-    int fd = -1;
-    void* data = nullptr;
-    std::size_t size = 0;
+    int fd               = -1;
+    void* data           = nullptr;
+    std::size_t size     = 0;
     std::uint64_t offset = 0;
-    bool write = false;
-    bool prepared = false;
-    int result = -EINTR;
+    bool write           = false;
+    bool prepared        = false;
+    int result           = -EINTR;
     std::coroutine_handle<> continuation;
 
     bool await_ready() const noexcept { return false; }
@@ -146,9 +147,9 @@ struct UringService : std::enable_shared_from_this<UringService> {
     std::mutex mutex;
     std::deque<UringOperation*> pending;
     std::optional<asio::posix::stream_descriptor> event;
-    int event_fd = -1;
+    int event_fd          = -1;
     bool ring_initialized = false;
-    bool ready = false;
+    bool ready            = false;
 
     explicit UringService(const UringApi& uring_api) : api(uring_api) {
         if (!api.available || api.queue_init(1024, &ring, 0) < 0) return;
@@ -213,8 +214,7 @@ struct UringService : std::enable_shared_from_this<UringService> {
     STDEXEC::task<void> run() {
         while (ready) {
             try {
-                co_await event->async_wait(asio::posix::stream_descriptor::wait_read,
-                                           exec::asio::use_sender);
+                co_await event->async_wait(asio::posix::stream_descriptor::wait_read, exec::asio::use_sender);
             } catch (...) {
                 co_return;
             }
@@ -244,11 +244,11 @@ struct UringService : std::enable_shared_from_this<UringService> {
                 }
 
                 if (operation->write) {
-                    io_uring_prep_write(sqe, operation->fd, operation->data,
-                                        static_cast<unsigned>(operation->size), operation->offset);
+                    io_uring_prep_write(sqe, operation->fd, operation->data, static_cast<unsigned>(operation->size),
+                                        operation->offset);
                 } else {
-                    io_uring_prep_read(sqe, operation->fd, operation->data,
-                                       static_cast<unsigned>(operation->size), operation->offset);
+                    io_uring_prep_read(sqe, operation->fd, operation->data, static_cast<unsigned>(operation->size),
+                                       operation->offset);
                 }
                 io_uring_sqe_set_data(sqe, operation);
                 operation->prepared = true;
@@ -301,8 +301,8 @@ struct FileReader : Reader {
 
         if (m_file_size > 0) {
             if (auto service = UringService::get()) {
-                const int res = co_await UringOperation{std::move(service), m_fd, buf.data() + offset,
-                                                        m_file_size, 0, false};
+                const int res =
+                    co_await UringOperation{std::move(service), m_fd, buf.data() + offset, m_file_size, 0, false};
                 if (res < 0) {
                     buf.resize(offset);
                     co_return std::unexpected(std::error_code(-res, std::system_category()));
@@ -337,8 +337,9 @@ struct FileWriter : Writer {
     STDEXEC::task<std::expected<size_t, std::error_code>> write(std::span<const uint8_t> data) override {
         if (!data.empty()) {
             if (auto service = UringService::get()) {
-                const int res = co_await UringOperation{std::move(service), m_fd,
-                                                        const_cast<uint8_t*>(data.data()), data.size(), m_pos, true};
+                const int res = co_await UringOperation{
+                    std::move(service), m_fd, const_cast<uint8_t*>(data.data()), data.size(), m_pos, true,
+                };
                 if (res < 0) {
                     co_return std::unexpected(std::error_code(-res, std::system_category()));
                 }

@@ -5,7 +5,6 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
-#include <stdexec/execution.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -17,6 +16,7 @@
 #include <functional>
 #include <optional>
 #include <span>
+#include <stdexec/execution.hpp>
 #include <string_view>
 #include <type_traits>
 #include <utility>
