@@ -5,7 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>

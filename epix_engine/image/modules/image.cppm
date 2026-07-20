@@ -17,7 +17,7 @@ module;
 #include <variant>
 #include <vector>
 #endif
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.image;
 #ifdef EPIX_IMPORT_STD

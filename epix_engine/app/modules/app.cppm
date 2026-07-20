@@ -7,6 +7,7 @@ module;
 #include <expected>
 #include <format>
 #include <functional>
+#include <list>
 #include <memory>
 #include <optional>
 #include <ranges>

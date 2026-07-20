@@ -50,7 +50,7 @@ inline bool terminal(std::uint8_t flags) noexcept { return (flags & (Completed |
 
 struct TaskHeader {
     std::atomic<std::uint8_t> flags{0};
-    std::move_only_function<void(Runnable, ScheduleInfo)> schedule_fn;
+    std::move_only_function<void(std::shared_ptr<TaskHeader>, ScheduleInfo)> schedule_fn;
     std::exception_ptr exception;
     std::mutex mtx;
     std::condition_variable cv;
@@ -83,7 +83,7 @@ struct TaskHeader {
 
     void fail(std::exception_ptr ex) noexcept {
         exception = ex;
-        mark_completed();
+        this->mark_completed();
     }
 
     void notify_waiters() {
@@ -116,13 +116,13 @@ struct TaskState final : TaskHeader {
 
     void poll() override {
         value.emplace(work());
-        mark_completed();
+        this->mark_completed();
     }
 
     template <typename U>
     void complete(U&& v) {
         value.emplace(std::forward<U>(v));
-        mark_completed();
+        this->mark_completed();
     }
 };
 
@@ -132,10 +132,10 @@ struct TaskState<void> final : TaskHeader {
 
     void poll() override {
         work();
-        mark_completed();
+        this->mark_completed();
     }
 
-    void complete() { mark_completed(); }
+    void complete() { this->mark_completed(); }
 };
 
 template <typename T>
@@ -245,7 +245,7 @@ EPIX_EXPORT struct Runnable {
     void schedule() {
         if (!m_state || internal::terminal(m_state->flags.load(std::memory_order_acquire))) return;
         m_state->flags.fetch_or(internal::Scheduled, std::memory_order_acq_rel);
-        if (m_state->schedule_fn) m_state->schedule_fn(*this, ScheduleInfo::New);
+        if (m_state->schedule_fn) m_state->schedule_fn(m_state, ScheduleInfo::New);
     }
 
     [[nodiscard]] Waker waker() const;
@@ -275,13 +275,17 @@ EPIX_EXPORT struct Waker {
         auto state = std::move(m_state);
         if (!state || internal::terminal(state->flags.load(std::memory_order_acquire))) return;
         state->flags.fetch_or(internal::Scheduled, std::memory_order_acq_rel);
-        if (state->schedule_fn) state->schedule_fn(Runnable(state), ScheduleInfo::Wake);
+        if (state->schedule_fn) {
+            state->schedule_fn(state, ScheduleInfo::Wake);
+        }
     }
 
     void wake_by_ref() const {
         if (!m_state || internal::terminal(m_state->flags.load(std::memory_order_acquire))) return;
         m_state->flags.fetch_or(internal::Scheduled, std::memory_order_acq_rel);
-        if (m_state->schedule_fn) m_state->schedule_fn(Runnable(m_state), ScheduleInfo::Wake);
+        if (m_state->schedule_fn) {
+            m_state->schedule_fn(m_state, ScheduleInfo::Wake);
+        }
     }
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
@@ -636,8 +640,10 @@ EPIX_EXPORT template <typename F, typename S>
     using T    = std::invoke_result_t<F>;
     auto state = std::make_shared<internal::TaskState<T>>();
 
-    state->schedule_fn = std::move_only_function<void(Runnable, ScheduleInfo)>(
-        [s = std::forward<S>(schedule)](Runnable r, ScheduleInfo info) mutable { std::invoke(s, std::move(r), info); });
+    state->schedule_fn = std::move_only_function<void(std::shared_ptr<internal::TaskHeader>, ScheduleInfo)>(
+        [s = std::forward<S>(schedule)](std::shared_ptr<internal::TaskHeader> state, ScheduleInfo info) mutable {
+            std::invoke(s, Runnable(std::move(state)), info);
+        });
 
     if constexpr (std::is_void_v<T>) {
         state->work =
