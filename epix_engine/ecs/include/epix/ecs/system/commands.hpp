@@ -105,15 +105,12 @@ EPIX_EXPORT struct Commands {
     template <typename T>
     void replace_resource(untyped_vector data, bool replace_existing = true) {
         command_queue->push([data = std::move(data), replace_existing](World& world) mutable {
-            auto resource_id = world.components().get_valid_id<T>();
-            if (!resource_id.has_value()) return;
-            if (auto& res = world.storage_mut().resources.initialize(*resource_id, world.components()); !replace_existing) {
-                return;
-            }
-            world.storage_mut()
-                .resources.get_mut(*resource_id)
+            world.components()
+                .get_valid_id<T>()
+                .transform(
+                    [&](auto id) { return std::ref(world.storage_mut().resources.initialize(id, world.components())); })
                 .and_then([&](ResourceData& dest) -> std::optional<bool> {
-                    dest.replace(world.change_tick(), std::move(data));
+                    if (replace_existing || !dest.is_present()) dest.replace(world.change_tick(), std::move(data));
                     return true;
                 });
         });
