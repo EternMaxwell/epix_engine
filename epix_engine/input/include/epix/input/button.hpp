@@ -4,7 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <ranges>
 #include <unordered_set>
 #include <vector>
@@ -78,8 +78,8 @@ EPIX_EXPORT namespace epix::input {
         void clear_bypass() noexcept { m_bypass_pressed = m_bypass_just_pressed = m_bypass_just_released = false; }
 
         /** @brief System that reads KeyInput events and updates button state. */
-        static void collect_events(epix::core::ResMut<ButtonInput<KeyCode>> input,
-                                   epix::core::EventReader<KeyInput> reader);
+        static void collect_events(epix::ecs::ResMut<ButtonInput<KeyCode>> input,
+                                   epix::ecs::EventReader<KeyInput> reader);
 
        private:
         std::unordered_set<KeyCode> m_just_pressed;
@@ -153,8 +153,8 @@ EPIX_EXPORT namespace epix::input {
 
         /** @brief System that reads MouseButtonInput events and updates button
          * state. */
-        static void collect_events(epix::core::ResMut<ButtonInput<MouseButton>> input,
-                                   epix::core::EventReader<MouseButtonInput> reader);
+        static void collect_events(epix::ecs::ResMut<ButtonInput<MouseButton>> input,
+                                   epix::ecs::EventReader<MouseButtonInput> reader);
 
        private:
         std::unordered_set<MouseButton> m_just_pressed;

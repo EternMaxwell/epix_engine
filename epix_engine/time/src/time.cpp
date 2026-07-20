@@ -1,9 +1,11 @@
 #include <spdlog/spdlog.h>
 
-#include <epix/core.hpp>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/time.hpp>
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 namespace epix::time {
 
 /** @brief Custom executor for FixedMain that runs the fixed sub-schedules

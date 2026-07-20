@@ -1,5 +1,6 @@
 ﻿epix_add_module(epix_time)
 target_link_libraries(epix_time PUBLIC epix_common)
-target_link_libraries(epix_time PUBLIC epix_core)
+target_link_libraries(epix_time PUBLIC epix_ecs)
+target_link_libraries(epix_time PUBLIC epix_app)
 
 epix_add_tests(time LINK_LIBS epix_time)

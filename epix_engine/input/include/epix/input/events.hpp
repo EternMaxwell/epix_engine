@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <utility>
 #endif
 #include <epix/input/enums.hpp>
@@ -20,7 +20,7 @@ EPIX_EXPORT namespace epix::input {
         /** @brief True if this is a key repeat event. */
         bool repeat;
         /** @brief Entity of the window that received the event. */
-        epix::core::Entity window;
+        epix::ecs::Entity window;
     };
     /** @brief Event fired on mouse button press or release. */
     struct MouseButtonInput {
@@ -29,7 +29,7 @@ EPIX_EXPORT namespace epix::input {
         /** @brief True if the button was pressed, false if released. */
         bool pressed;
         /** @brief Entity of the window that received the event. */
-        epix::core::Entity window;
+        epix::ecs::Entity window;
     };
     /** @brief Event fired when the mouse moves, containing the position delta. */
     struct MouseMove {
@@ -43,6 +43,6 @@ EPIX_EXPORT namespace epix::input {
         /** @brief Vertical scroll offset. */
         double yoffset;
         /** @brief Entity of the window that received the event. */
-        epix::core::Entity window;
+        epix::ecs::Entity window;
     };
 }  // namespace epix::input

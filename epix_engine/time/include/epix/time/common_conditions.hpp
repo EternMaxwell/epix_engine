@@ -4,7 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 #include <epix/time/real.hpp>
@@ -18,7 +18,7 @@ namespace epix::time {
  *  Returns a system-compatible lambda that ticks an internal repeating timer
  *  and returns true each time the timer completes a cycle. */
 EPIX_EXPORT inline auto on_timer(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Repeating)](epix::core::Res<Time<>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Repeating)](epix::ecs::Res<Time<>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.just_finished();
     };
@@ -27,7 +27,7 @@ EPIX_EXPORT inline auto on_timer(std::chrono::nanoseconds duration) noexcept {
 /** @brief Run condition that fires periodically based on real (`Time<Real>`) time.
  *  Unaffected by pause or speed changes. */
 EPIX_EXPORT inline auto on_real_timer(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Repeating)](epix::core::Res<Time<Real>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Repeating)](epix::ecs::Res<Time<Real>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.just_finished();
     };
@@ -36,7 +36,7 @@ EPIX_EXPORT inline auto on_real_timer(std::chrono::nanoseconds duration) noexcep
 /** @brief Run condition that fires exactly once after a delay in virtual time.
  *  Returns true on the tick when the delay elapses, then never again. */
 EPIX_EXPORT inline auto once_after_delay(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Once)](epix::core::Res<Time<>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Once)](epix::ecs::Res<Time<>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.just_finished();
     };
@@ -45,7 +45,7 @@ EPIX_EXPORT inline auto once_after_delay(std::chrono::nanoseconds duration) noex
 /** @brief Run condition that fires exactly once after a delay in real time.
  *  Returns true on the tick when the delay elapses, then never again. */
 EPIX_EXPORT inline auto once_after_real_delay(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Once)](epix::core::Res<Time<Real>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Once)](epix::ecs::Res<Time<Real>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.just_finished();
     };
@@ -54,7 +54,7 @@ EPIX_EXPORT inline auto once_after_real_delay(std::chrono::nanoseconds duration)
 /** @brief Run condition that returns false until a delay elapses in virtual time,
  *  then returns true every tick thereafter. */
 EPIX_EXPORT inline auto repeating_after_delay(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Once)](epix::core::Res<Time<>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Once)](epix::ecs::Res<Time<>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.is_finished();
     };
@@ -63,13 +63,13 @@ EPIX_EXPORT inline auto repeating_after_delay(std::chrono::nanoseconds duration)
 /** @brief Run condition that returns false until a delay elapses in real time,
  *  then returns true every tick thereafter. */
 EPIX_EXPORT inline auto repeating_after_real_delay(std::chrono::nanoseconds duration) noexcept {
-    return [timer = Timer(duration, TimerMode::Once)](epix::core::Res<Time<Real>> time) mutable -> bool {
+    return [timer = Timer(duration, TimerMode::Once)](epix::ecs::Res<Time<Real>> time) mutable -> bool {
         timer.tick(time->delta());
         return timer.is_finished();
     };
 }
 
 /** @brief Run condition that returns true when virtual time is paused. */
-EPIX_EXPORT inline bool paused(epix::core::Res<Time<Virtual>> time) noexcept { return time->is_paused(); }
+EPIX_EXPORT inline bool paused(epix::ecs::Res<Time<Virtual>> time) noexcept { return time->is_paused(); }
 
 }  // namespace epix::time

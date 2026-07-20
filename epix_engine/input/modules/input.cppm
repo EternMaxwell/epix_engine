@@ -14,7 +14,8 @@ export module epix.input;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-export import epix.core;
+import epix.ecs;
+import epix.app;
 extern "C++" {
 #include <epix/input.hpp>
 }

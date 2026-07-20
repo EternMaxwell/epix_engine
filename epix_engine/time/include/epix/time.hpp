@@ -5,7 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/app.hpp>
 #endif
 
 #include <epix/time/common_conditions.hpp>
@@ -63,7 +63,7 @@ EPIX_EXPORT inline struct FixedLastT {
  *  the real-time update system in First, and the FixedMain schedule with its sub-schedules. */
 EPIX_EXPORT struct TimePlugin {
     /** @brief Build the plugin into the app. */
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
 };
 
 }  // namespace epix::time

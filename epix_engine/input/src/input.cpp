@@ -2,7 +2,8 @@
 
 #include <epix/input.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 namespace epix::input {
 
 void log_inputs(EventReader<KeyInput> key_reader,
