@@ -1,10 +1,10 @@
 ﻿# TaskPool
 
-A multi-threaded work pool for executing plain callables and `asio` coroutines.
+A multi-threaded work pool for executing plain callables and `stdexec` tasks.
 
 ## Overview
 
-`TaskPool` owns a set of worker threads and dispatches work via an `asio::any_io_executor`. It is the primary way to obtain `Task<T>` handles in `epix.tasks`. The default backend is `asio::thread_pool`; an `asio::io_context` backend with manual thread management is also available and required when thread names or lifecycle callbacks are needed.
+`TaskPool` owns a set of worker threads and dispatches work through its concrete `AsioExecutor` when the Asio-backed pool is selected. It is the primary way to obtain `Task<T>` handles in `epix.task`.
 
 `available_parallelism()` returns `std::thread::hardware_concurrency()` clamped to a minimum of 1; use it as the default thread count.
 
@@ -12,7 +12,7 @@ A multi-threaded work pool for executing plain callables and `asio` coroutines.
 
 ```cpp
 import epix.tasks;
-using namespace epix::tasks;
+using namespace epix::task;
 
 // Default: hardware concurrency threads
 TaskPool pool;
@@ -38,19 +38,19 @@ std::atomic<int> x{0};
 pool.spawn([&]() { x.store(99); }).block();
 ```
 
-## Spawn an asio Coroutine
+## Spawn a stdexec Task
 
 ```cpp
 TaskPool pool{4};
 
-// awaitable<T>
-Task<int> t = pool.spawn([]() -> asio::awaitable<int> {
+// task<T>
+Task<int> t = pool.spawn([]() -> STDEXEC::task<int> {
     co_return 10;
 }());
 auto v = t.block();  // *v == 10
 
-// awaitable<void> — fire-and-forget
-pool.spawn_detached([]() -> asio::awaitable<void> {
+// task<void> — fire-and-forget
+pool.spawn_detached([]() -> STDEXEC::task<void> {
     co_return;
 }());
 ```
