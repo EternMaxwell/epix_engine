@@ -23,7 +23,7 @@ export module epix.image;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.app;
 import epix.assets;
 extern "C++" {
 #include <epix/image.hpp>

@@ -600,7 +600,7 @@ std::span<std::string_view> ImageLoader::extensions() noexcept {
                    std::string_view{"gif"}, std::string_view{"ppm"}, std::string_view{"pgm"},  std::string_view{"pnm"}};
     return std::span<std::string_view>(exts.data(), exts.size());
 }
-asio::awaitable<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Reader& reader,
+STDEXEC::task<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Reader& reader,
                                                                         const Settings&,
                                                                         assets::LoadContext& context) {
     spdlog::trace("[image] Loading image from '{}'.", context.path().path.string());
@@ -630,7 +630,7 @@ asio::awaitable<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::
     co_return result;
 }
 
-void ImagePlugin::attach(core::App& app) {
+void ImagePlugin::attach(epix::app::App& app) {
     spdlog::debug("[image] Attaching ImagePlugin.");
     app.add_plugins(assets::AssetPlugin{});
     assets::app_register_asset<Image>(app);
