@@ -19,6 +19,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <expected>
 #endif
 
 namespace epix::async_task {
@@ -348,6 +349,18 @@ struct [[nodiscard]] Task {
         return !m_state || internal::terminal(m_state->flags.load(std::memory_order_acquire));
     }
 
+    /** @brief Block the calling thread until the task completes. */
+    std::expected<T, std::exception_ptr> block() {
+        if (!m_state) return std::unexpected(std::make_exception_ptr(std::runtime_error("block on empty task")));
+        {
+            std::unique_lock lock(m_state->mtx);
+            m_state->cv.wait(lock, [this] { return is_finished(); });
+        }
+        if (m_state->exception) return std::unexpected(m_state->exception);
+        if (!m_state->value) return std::unexpected(std::make_exception_ptr(std::runtime_error("task cancelled")));
+        return std::move(*m_state->value);
+    }
+
     explicit operator bool() const noexcept { return m_state != nullptr; }
 
     Task& operator co_await() & noexcept { return *this; }
@@ -424,6 +437,17 @@ struct [[nodiscard]] Task<void> {
 
     [[nodiscard]] bool is_finished() const noexcept {
         return !m_state || internal::terminal(m_state->flags.load(std::memory_order_acquire));
+    }
+
+    /** @brief Block the calling thread until the task completes. */
+    std::expected<void, std::exception_ptr> block() {
+        if (!m_state) return std::unexpected(std::make_exception_ptr(std::runtime_error("block on empty task")));
+        {
+            std::unique_lock lock(m_state->mtx);
+            m_state->cv.wait(lock, [this] { return is_finished(); });
+        }
+        if (m_state->exception) return std::unexpected(m_state->exception);
+        return {};
     }
 
     explicit operator bool() const noexcept { return m_state != nullptr; }
