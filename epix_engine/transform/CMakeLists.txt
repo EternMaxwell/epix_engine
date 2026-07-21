@@ -1,0 +1,4 @@
+epix_add_module(epix_transform)
+target_link_libraries(epix_transform PUBLIC epix_common)
+target_link_libraries(epix_transform PUBLIC epix_core)
+target_link_libraries(epix_transform PUBLIC glm::glm)
