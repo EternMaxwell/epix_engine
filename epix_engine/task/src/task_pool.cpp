@@ -37,7 +37,7 @@ TaskPool TaskPool::make_asio_thread_pool(size_t n) {
 
 TaskPool TaskPool::from_builder(const TaskPoolBuilder& b) {
     size_t n    = b.m_num_threads.value_or(available_parallelism());
-    auto chosen = b.m_backend.value_or(TaskPoolBackend::StaticThreadPool);
+    auto chosen = b.m_backend.value_or(TaskPoolBackend::AsioThreadPool);
 
     if (chosen == TaskPoolBackend::AsioThreadPool)
         return make_asio_thread_pool(n);

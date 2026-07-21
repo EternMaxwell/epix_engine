@@ -606,7 +606,7 @@ static std::string processor_preprocess_slang_source(std::string_view source,
 
 // Recursively populate the VFS with all transitive source deps of `current_path`.
 // Reads directly from the asset source (not processed) so this works during processing.
-static asio::awaitable<void> populate_processor_vfs(ProcessorSlangVFS& vfs,
+static STDEXEC::task<void> populate_processor_vfs(ProcessorSlangVFS& vfs,
                                                     const epix::assets::AssetPath& current_path,
                                                     std::string_view source_text,
                                                     const epix::assets::AssetProcessor& processor,
@@ -664,7 +664,7 @@ static asio::awaitable<void> populate_processor_vfs(ProcessorSlangVFS& vfs,
 
 // Try to compile a Slang module to a serialized IR blob.
 // Returns the blob bytes on success, nullopt on any failure.
-static asio::awaitable<std::optional<std::vector<std::uint8_t>>> try_compile_slang_to_ir(
+static STDEXEC::task<std::optional<std::vector<std::uint8_t>>> try_compile_slang_to_ir(
     const std::string& source_text,
     const epix::assets::AssetPath& path,
     const epix::assets::AssetProcessor& processor,
@@ -910,7 +910,7 @@ std::span<std::string_view> ShaderLoader::extensions() {
     return exts;
 }
 
-asio::awaitable<std::expected<Shader, ShaderLoaderError>> ShaderLoader::load(assets::Reader& reader,
+STDEXEC::task<std::expected<Shader, ShaderLoaderError>> ShaderLoader::load(assets::Reader& reader,
                                                                              const Settings& settings,
                                                                              assets::LoadContext& context) {
     const auto& asset_path = context.path();
@@ -997,7 +997,7 @@ asio::awaitable<std::expected<Shader, ShaderLoaderError>> ShaderLoader::load(ass
     co_return std::unexpected(ShaderLoaderError::parse(raw_path, 0));
 }
 
-asio::awaitable<std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr>> ShaderProcessor::process(
+STDEXEC::task<std::expected<ShaderProcessor::OutputLoader::Settings, std::exception_ptr>> ShaderProcessor::process(
     assets::ProcessContext& context, const Settings& settings, assets::Writer& writer) const {
     try {
         const auto& raw_path = context.path().path;
@@ -1021,7 +1021,7 @@ asio::awaitable<std::expected<ShaderProcessor::OutputLoader::Settings, std::exce
             }
         };
 
-        auto write_serialized = [&](const Shader& shader) -> asio::awaitable<bool> {
+        auto write_serialized = [&](const Shader& shader) -> STDEXEC::task<bool> {
             auto encoded = serialize_processed_shader(shader);
             auto result  = co_await writer.write(std::span<const uint8_t>(encoded.data(), encoded.size()));
             co_return result.has_value();
@@ -1117,18 +1117,18 @@ asio::awaitable<std::expected<ShaderProcessor::OutputLoader::Settings, std::exce
 }
 
 // ─── ShaderPlugin ──────────────────────────────────────────────────────────
-void ShaderPlugin::attach(core::App& app) {
+void ShaderPlugin::attach(epix::app::App& app) {
     spdlog::debug("[shader] Attaching ShaderPlugin, registering shader asset loader.");
     assets::app_register_asset<Shader>(app);
     assets::app_register_loader<ShaderLoader>(app);
 
     // Sync dependency-ready shader assets to ShaderCache (skipped if no ShaderCache resource).
     app.add_systems(
-        core::Last,
-        core::into([](core::ResMut<ShaderCache> cache, core::ResMut<assets::Assets<Shader>> shaders,
-                      core::EventReader<assets::AssetEvent<Shader>> events) { cache->sync(events.read(), *shaders); })
+        app::Last,
+        ecs::into([](ecs::ResMut<ShaderCache> cache, ecs::ResMut<assets::Assets<Shader>> shaders,
+                      ecs::EventReader<assets::AssetEvent<Shader>> events) { cache->sync(events.read(), *shaders); })
             .after(assets::AssetSystems::WriteEvents)
-            .run_if([](std::optional<core::Res<ShaderCache>> opt) { return opt.has_value(); })
+            .run_if([](std::optional<ecs::Res<ShaderCache>> opt) { return opt.has_value(); })
             .set_name("sync shader cache"));
 
     if (app.world_mut().get_resource<assets::AssetProcessor>().has_value()) {
@@ -1141,10 +1141,10 @@ void ShaderPlugin::attach(core::App& app) {
         // Keep a processor-visible registry of manually added shader modules so
         // preprocess_slang_to_ir can resolve custom imports that are not
         // discoverable via file-based dependency traversal.
-        app.add_systems(core::Last,
-                        core::into([processor_registry](core::ResMut<assets::Assets<Shader>> shaders,
-                                                        core::Res<assets::AssetServer> server,
-                                                        core::EventReader<assets::AssetEvent<Shader>> events) {
+        app.add_systems(app::Last,
+                        ecs::into([processor_registry](ecs::ResMut<assets::Assets<Shader>> shaders,
+                                                        ecs::Res<assets::AssetServer> server,
+                                                        ecs::EventReader<assets::AssetEvent<Shader>> events) {
                             std::vector<assets::AssetPath> reload_paths;
                             for (const auto& event : events.read()) {
                                 if (event.is_loaded_with_dependencies() || event.is_modified()) {

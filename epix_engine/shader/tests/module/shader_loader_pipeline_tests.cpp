@@ -21,20 +21,22 @@
 import std;
 #endif
 import epix.assets;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.shader;
-import epix.tasks;
+import epix.task;
 import webgpu;
 
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::shader;
 
 namespace {
 
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build());
     }
 } g_io_task_pool_init;
 

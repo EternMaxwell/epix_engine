@@ -344,7 +344,7 @@ EPIX_EXPORT struct TaskPool {
     friend struct Scope;
 
     std::shared_ptr<void> m_backend;
-    TaskPoolBackend m_backend_kind = TaskPoolBackend::StaticThreadPool;
+    TaskPoolBackend m_backend_kind = TaskPoolBackend::AsioThreadPool;
     size_t m_thread_count          = 0;
 
     static thread_local inline std::unique_ptr<asio::io_context> t_local_ctx;
@@ -413,7 +413,7 @@ struct Scope {
           m_cv(std::make_shared<std::condition_variable>()) {}
 
     std::shared_ptr<void> m_backend;
-    TaskPoolBackend m_backend_kind = TaskPoolBackend::StaticThreadPool;
+    TaskPoolBackend m_backend_kind = TaskPoolBackend::AsioThreadPool;
     std::shared_ptr<std::vector<T>> m_results;
     std::shared_ptr<std::atomic<size_t>> m_pending;
     std::shared_ptr<std::mutex> m_mtx;

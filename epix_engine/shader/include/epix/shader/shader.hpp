@@ -5,12 +5,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
 
-#include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/app.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -406,7 +406,7 @@ EPIX_EXPORT struct ShaderLoader {
      * File-backed imports are resolved through `context` and added to
      * `file_dependencies`. Custom-name imports stay as logical imports.
      */
-    static asio::awaitable<std::expected<Shader, Error>> load(assets::Reader& reader,
+    static STDEXEC::task<std::expected<Shader, Error>> load(assets::Reader& reader,
                                                               const Settings& settings,
                                                               assets::LoadContext& context);
 };
@@ -439,7 +439,7 @@ EPIX_EXPORT struct ShaderProcessor {
     explicit ShaderProcessor(std::shared_ptr<void> custom_registry) : custom_registry_(std::move(custom_registry)) {}
 
     /** @brief Process one shader asset before it is loaded. */
-    asio::awaitable<std::expected<OutputLoader::Settings, std::exception_ptr>> process(assets::ProcessContext& context,
+    STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(assets::ProcessContext& context,
                                                                                        const Settings& settings,
                                                                                        assets::Writer& writer) const;
 
@@ -492,7 +492,7 @@ EPIX_EXPORT struct ShaderRef {
 /** @brief App plugin that registers shader loading and processing. */
 EPIX_EXPORT struct ShaderPlugin {
     /** @brief Register shader systems and asset support into the app. */
-    void attach(core::App& app);
+    void attach(epix::app::App& app);
 };
 
 }  // namespace epix::shader

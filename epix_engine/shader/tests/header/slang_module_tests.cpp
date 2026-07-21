@@ -1,19 +1,20 @@
 #include <gtest/gtest.h>
 
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/shader.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::shader;
 
 namespace {
 
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build());
     }
 } g_io_task_pool_init;
 

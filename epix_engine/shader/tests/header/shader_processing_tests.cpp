@@ -5,14 +5,15 @@
 #include <asio/io_context.hpp>
 #include <epix/assets.hpp>
 #include <epix/async_channel.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/shader.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <webgpu/webgpu.hpp>
 
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::shader;
 namespace meta = epix::meta;
 
@@ -20,7 +21,7 @@ namespace meta = epix::meta;
 namespace {
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build());
     }
 } g_io_task_pool_init;
 }  // namespace
@@ -92,16 +93,16 @@ bool preprocess_shader_assets(ProcessedShaderEnv& env, std::initializer_list<std
     auto processor = env.app.get_resource<AssetProcessor>();
     if (!processor.has_value()) return false;
 
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
     for (auto path : paths) {
-        auto result = epix::tasks::IoTaskPool::get()
+        auto result = epix::task::IoTaskPool::get()
                           .spawn(processor->get().get_data()->wait_until_processed(AssetPath(std::string(path))))
                           .block();
         if (!result || *result != ProcessStatus::Processed) {
             return false;
         }
     }
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
     return true;
 }
 
@@ -177,20 +178,13 @@ bool wait_until_not_loaded_with_dependencies(App& app, const AssetServer& server
 
 std::vector<std::uint8_t> read_bytes(const memory::Directory& dir, const std::filesystem::path& path) {
     MemoryAssetReader reader(dir);
-    std::vector<std::uint8_t> result;
-    asio::io_context io;
-    asio::co_spawn(
-        io,
-        [&]() -> asio::awaitable<void> {
-            auto reader_result = co_await reader.read(path);
-            if (!reader_result.has_value()) co_return;
-            std::vector<uint8_t> buf;
-            (void)co_await (*reader_result)->read_to_end(buf);
-            result = std::move(buf);
-        },
-        asio::detached);
-    io.run();
-    return result;
+    auto reader_result = STDEXEC::sync_wait(reader.read(path));
+    if (!reader_result) return {};
+    auto&& [rdr] = *reader_result;
+    if (!rdr.has_value()) return {};
+    std::vector<uint8_t> buf;
+    (void)STDEXEC::sync_wait(rdr.value()->read_to_end(buf));
+    return buf;
 }
 
 bool starts_with_processed_magic(const std::vector<std::uint8_t>& bytes) {
@@ -360,19 +354,8 @@ TEST(ShaderProcessingSlangModule, WritesSlangIrWhenPreprocessToIrIsEnabled) {
     settings.preprocess_slang_to_ir = true;
 
     VecWriter out;
-    asio::io_context io;
-    bool has_output = false;
-    asio::co_spawn(
-        io,
-        [&]() -> asio::awaitable<void> {
-            auto result = co_await processor.process(ctx, settings, out);
-            if (result.has_value()) {
-                has_output = !out.bytes().empty();
-            }
-        },
-        asio::detached);
-    io.run();
-
+    auto result = STDEXEC::sync_wait(processor.process(ctx, settings, out));
+    bool has_output = result.has_value() && !out.bytes().empty();
     if (has_output) {
         EXPECT_TRUE(has_output);
     }
@@ -397,15 +380,7 @@ TEST(ShaderProcessingSlangModule, FallsBackToSlangTextWhenIrCompilationFails) {
     settings.preprocess_slang_to_ir = true;
 
     VecWriter out;
-    asio::io_context io;
-    asio::co_spawn(
-        io,
-        [&]() -> asio::awaitable<void> {
-            auto result = co_await processor.process(ctx, settings, out);
-            (void)result;
-        },
-        asio::detached);
-    io.run();
+    (void)STDEXEC::sync_wait(processor.process(ctx, settings, out));
     SUCCEED();
 }
 
@@ -450,12 +425,12 @@ TEST(ShaderProcessingSlangModule, ProcessEnabledManualCustomDepIsVisibleAndCompi
     env.app.run_schedule(Startup);
     auto processor = env.app.get_resource<AssetProcessor>();
     ASSERT_TRUE(processor.has_value());
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
-    ASSERT_EQ(*epix::tasks::IoTaskPool::get()
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
+    ASSERT_EQ(*epix::task::IoTaskPool::get()
                    .spawn(processor->get().get_data()->wait_until_processed(AssetPath("main.slang")))
                    .block(),
               ProcessStatus::Processed);
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
 
     // Load processed root and verify it became SlangIr.
     auto& assets = env.app.resource<Assets<Shader>>();
@@ -508,7 +483,7 @@ TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemai
 
     auto processor = env.app.get_resource<AssetProcessor>();
     ASSERT_TRUE(processor.has_value());
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_initialized()).block();
 
     // Repeated provider updates while processor jobs are active should not race.
     for (int i = 0; i < 32; ++i) {
@@ -525,10 +500,10 @@ TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemai
     for (int i = 0; i < k_root_count; ++i) {
         auto path = AssetPath(std::format("main_{}.slang", i));
         ASSERT_EQ(
-            *epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_processed(path)).block(),
+            *epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_processed(path)).block(),
             ProcessStatus::Processed);
     }
-    epix::tasks::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
+    (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
 
     // Spot-check that processed roots load as Slang IR after concurrent activity.
     auto handles = std::vector<Handle<Shader>>{};

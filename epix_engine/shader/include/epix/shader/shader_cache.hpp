@@ -4,7 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/utils.hpp>
 #include <expected>
 #include <format>

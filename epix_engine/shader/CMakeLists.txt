@@ -1,5 +1,6 @@
 ﻿epix_add_module(epix_shader)
-target_link_libraries(epix_shader PUBLIC epix_core)
+target_link_libraries(epix_shader PUBLIC epix_ecs)
+target_link_libraries(epix_shader PUBLIC epix_app)
 target_link_libraries(epix_shader PUBLIC epix_assets)
 target_link_libraries(epix_shader PUBLIC webgpu)
 target_link_libraries(epix_shader PUBLIC slang::slang)

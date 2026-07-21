@@ -143,7 +143,8 @@ struct Sender {
                 co_return std::expected<void, SendError<T>>{};
             }
             auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
-            co_await STDEXEC::schedule(scheduler);
+            co_await (STDEXEC::just(scheduler)
+                      | STDEXEC::let_value([](auto sch) { return STDEXEC::schedule(sch); }));
         }
     }
 
@@ -297,7 +298,8 @@ struct Receiver {
             }
             if (closed) co_return std::unexpected(RecvError{});
             auto scheduler = co_await STDEXEC::read_env(STDEXEC::get_scheduler);
-            co_await STDEXEC::schedule(scheduler);
+            co_await (STDEXEC::just(scheduler)
+                      | STDEXEC::let_value([](auto sch) { return STDEXEC::schedule(sch); }));
         }
     }
 
