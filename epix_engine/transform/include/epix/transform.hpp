@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/app.hpp>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <utility>
@@ -191,6 +191,6 @@ EPIX_EXPORT namespace epix::transform {
     };
     /** @brief Plugin that registers transform propagation systems. */
     struct TransformPlugin {
-        void attach(core::App& app);
+        void attach(epix::app::App& app);
     };
 }  // namespace epix::transform

@@ -1,5 +1,6 @@
 #include <spdlog/spdlog.h>
 
+#include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <functional>
 #include <ranges>
@@ -7,7 +8,8 @@
 #include <unordered_map>
 
 using namespace epix::transform;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void calculate_global_transform(
     Commands cmd,

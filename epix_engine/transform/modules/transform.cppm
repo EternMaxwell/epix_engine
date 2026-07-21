@@ -10,7 +10,7 @@ export module epix.transform:code;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.app;
 extern "C++" {
 #include <epix/transform.hpp>
 }
