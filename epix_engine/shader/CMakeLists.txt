@@ -1,0 +1,8 @@
+﻿epix_add_module(epix_shader)
+target_link_libraries(epix_shader PUBLIC epix_core)
+target_link_libraries(epix_shader PUBLIC epix_assets)
+target_link_libraries(epix_shader PUBLIC webgpu)
+target_link_libraries(epix_shader PUBLIC slang::slang)
+
+epix_add_tests(shader LINK_LIBS epix_shader)
+epix_add_examples(shader LINK_LIBS epix_shader)
