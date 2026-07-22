@@ -89,7 +89,7 @@ struct BundleInfo {
                           InsertMode insert_mode = InsertMode::Replace) const {
         auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
         auto component_iter           = component_id_status_view.begin();
-        bundle.get_components([&](std::invocable<void*> auto&& write_component) {
+        Bundle<std::decay_t<decltype(bundle)>>::get_components(bundle, [&](std::invocable<void*> auto&& write_component) {
             auto&& [type_id, status] = *component_iter;
             auto storage_type        = components.get_info(type_id)->get().storage_type();
             if (storage_type == StorageType::Table) {
