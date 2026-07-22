@@ -1,0 +1,878 @@
+#include <gtest/gtest.h>
+
+#include <epix/extension/grid.hpp>
+
+#if defined(_MSC_VER)
+#pragma warning(disable : 4834)
+#elif defined(__clang__)
+#pragma clang diagnostic ignored "-Wunused-value"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic ignored "-Wunused-result"
+#pragma GCC diagnostic ignored "-Wunused-value"
+#endif
+
+using namespace epix::ext::grid;
+
+// ============================================================
+// packed_grid tests
+// ============================================================
+
+TEST(PackedGrid, ConstructionAndDimensions) {
+    packed_grid<2, int> g({3, 4}, 0);
+    EXPECT_EQ(g.dimension(0), 3);
+    EXPECT_EQ(g.dimension(1), 4);
+    auto dims = g.dimensions();
+    EXPECT_EQ(dims[0], 3);
+    EXPECT_EQ(dims[1], 4);
+}
+
+TEST(PackedGrid, DefaultValueInit) {
+    packed_grid<2, int> g({2, 2}, 42);
+    auto val = g.get({0, 0});
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val->get(), 42);
+}
+
+TEST(PackedGrid, SetAndGet) {
+    packed_grid<2, int> g({3, 3}, 0);
+    EXPECT_TRUE(g.set({1, 2}, 99).has_value());
+    auto val = g.get({1, 2});
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val->get(), 99);
+}
+
+TEST(PackedGrid, GetMut) {
+    packed_grid<2, int> g({2, 2}, 0);
+    auto ref = g.get({0, 1});
+    ASSERT_TRUE(ref.has_value());
+    ref->get() = 7;
+    EXPECT_EQ(g.get({0, 1})->get(), 7);
+}
+
+TEST(PackedGrid, UnsafeAccessors) {
+    packed_grid<2, int> g({3, 3}, 0);
+
+    EXPECT_EQ(g.set_unsafe({1, 2}, 11), 11);
+    EXPECT_EQ(g.get_unsafe({1, 2}), 11);
+
+    g.get_unsafe({1, 2}) = 23;
+    EXPECT_EQ(g.get_unsafe({1, 2}), 23);
+}
+
+TEST(PackedGrid, Reset) {
+    packed_grid<2, int> g({2, 2}, 5);
+    g.set({0, 0}, 100);
+    EXPECT_EQ(g.get({0, 0})->get(), 100);
+    EXPECT_TRUE(g.reset({0, 0}).has_value());
+    EXPECT_EQ(g.get({0, 0})->get(), 5);
+}
+
+TEST(PackedGrid, SetDefault) {
+    packed_grid<2, int> g({2, 2}, 0);
+    g.set({0, 0}, 10);
+    g.set_default(99);
+    g.reset({0, 0});
+    EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(PackedGrid, ClearResetsToDefault) {
+    packed_grid<2, int> g({2, 3}, 7);
+    g.set({0, 0}, 1);
+    g.set({1, 2}, 2);
+
+    g.clear();
+
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
+            auto cell = g.get({i, j});
+            ASSERT_TRUE(cell.has_value());
+            EXPECT_EQ(cell->get(), 7);
+        }
+    }
+}
+
+TEST(PackedGrid, OutOfBounds) {
+    packed_grid<2, int> g({2, 3}, 0);
+    EXPECT_EQ(g.get({2, 0}).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.get({0, 3}).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.set({5, 5}, 1).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.reset({5, 0}).error(), grid_error::OutOfBounds);
+}
+
+TEST(PackedGrid, HigherDimensional) {
+    packed_grid<3, int> g({2, 3, 4}, 0);
+    auto ref = g.get({1, 2, 3});
+    ASSERT_TRUE(ref.has_value());
+    ref->get() = 42;
+    EXPECT_EQ(g.get({1, 2, 3})->get(), 42);
+    EXPECT_EQ(g.get({0, 0, 0})->get(), 0);
+}
+
+TEST(PackedGrid, Iterators) {
+    packed_grid<2, int> g({2, 3}, 0);
+    for (std::uint32_t i = 0; i < 2; i++) {
+        for (std::uint32_t j = 0; j < 3; j++) {
+            g.set({i, j}, static_cast<int>(i * 10 + j));
+        }
+    }
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 36);
+
+    std::size_t pos_count = 0;
+    std::set<std::pair<std::int32_t, std::int32_t>> visited;
+    for (auto&& [p, value] : g.iter()) {
+        pos_count++;
+        visited.emplace(p[0], p[1]);
+        EXPECT_EQ(value, static_cast<int>(p[0] * 10 + p[1]));
+    }
+
+    EXPECT_EQ(pos_count, 6u);
+    EXPECT_EQ(visited.size(), 6u);
+    for (std::int32_t i = 0; i < 2; i++) {
+        for (std::int32_t j = 0; j < 3; j++) {
+            EXPECT_TRUE(visited.contains({i, j}));
+        }
+    }
+}
+
+// ============================================================
+// dense_grid tests
+// ============================================================
+
+TEST(DenseGrid, ConstructionEmpty) {
+    dense_grid<2, int> g({4, 4});
+    EXPECT_EQ(g.dimension(0), 4);
+    EXPECT_EQ(g.dimension(1), 4);
+    EXPECT_FALSE(g.contains({0, 0}));
+}
+
+TEST(DenseGrid, SetAndGet) {
+    dense_grid<2, int> g({3, 3});
+    EXPECT_TRUE(g.set({1, 1}, 42).has_value());
+    EXPECT_TRUE(g.contains({1, 1}));
+    auto val = g.get({1, 1});
+    ASSERT_TRUE(val.has_value());
+    EXPECT_EQ(val->get(), 42);
+}
+
+TEST(DenseGrid, SetOverwrites) {
+    dense_grid<2, int> g({3, 3});
+    g.set({0, 0}, 1);
+    g.set({0, 0}, 2);
+    EXPECT_EQ(g.get({0, 0})->get(), 2);
+}
+
+TEST(DenseGrid, SetNew) {
+    dense_grid<2, int> g({3, 3});
+    EXPECT_TRUE(g.set_new({1, 0}, 10).has_value());
+    EXPECT_EQ(g.set_new({1, 0}, 20).error(), grid_error::AlreadyOccupied);
+    EXPECT_EQ(g.get({1, 0})->get(), 10);
+}
+
+TEST(DenseGrid, GetEmpty) {
+    dense_grid<2, int> g({3, 3});
+    auto val = g.get({0, 0});
+    EXPECT_FALSE(val.has_value());
+    EXPECT_EQ(val.error(), grid_error::EmptyCell);
+}
+
+TEST(DenseGrid, GetMut) {
+    dense_grid<2, int> g({3, 3});
+    g.set({0, 0}, 5);
+    auto ref = g.get({0, 0});
+    ASSERT_TRUE(ref.has_value());
+    ref->get() = 99;
+    EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(DenseGrid, UnsafeAccessors) {
+    dense_grid<2, int> g({3, 3});
+
+    EXPECT_EQ(g.set_unsafe({1, 1}, 7), 7);
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_EQ(g.get_unsafe({1, 1}), 7);
+
+    g.get_unsafe({1, 1}) = 19;
+    EXPECT_EQ(g.get_unsafe({1, 1}), 19);
+
+    EXPECT_EQ(g.set_unsafe({1, 1}, 31), 31);
+    EXPECT_EQ(g.get_unsafe({1, 1}), 31);
+}
+
+TEST(DenseGrid, Remove) {
+    dense_grid<2, int> g({3, 3});
+    g.set({1, 1}, 42);
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_TRUE(g.remove({1, 1}).has_value());
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
+}
+
+TEST(DenseGrid, Take) {
+    dense_grid<2, int> g({3, 3});
+    g.set({2, 2}, 77);
+    auto taken = g.take({2, 2});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({2, 2}));
+}
+
+TEST(DenseGrid, OutOfBounds) {
+    dense_grid<2, int> g({2, 2});
+    EXPECT_EQ(g.set({3, 0}, 1).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.get({0, 5}).error(), grid_error::OutOfBounds);
+}
+
+TEST(DenseGrid, Iterators) {
+    dense_grid<2, int> g({3, 3});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    std::vector<int> values;
+    for (auto& v : g.iter_cells()) {
+        values.push_back(v);
+    }
+    EXPECT_EQ(values.size(), 3u);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 6);
+
+    std::size_t pos_count = 0;
+    for ([[maybe_unused]] auto& p : g.iter_pos()) {
+        pos_count++;
+    }
+    EXPECT_EQ(pos_count, 3u);
+}
+
+TEST(DenseGrid, MultipleSetRemove) {
+    dense_grid<2, int> g({4, 4});
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
+            g.set({i, j}, static_cast<int>(i * 4 + j));
+        }
+    }
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
+            EXPECT_TRUE(g.contains({i, j}));
+            EXPECT_EQ(g.get({i, j})->get(), static_cast<int>(i * 4 + j));
+        }
+    }
+    g.remove({0, 0});
+    g.remove({3, 3});
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({3, 3}));
+    EXPECT_TRUE(g.contains({1, 1}));
+}
+
+TEST(DenseGrid, ClearRemovesAllCells) {
+    dense_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_FALSE(g.contains({2, 2}));
+    EXPECT_EQ(g.get({1, 1}).error(), grid_error::EmptyCell);
+    EXPECT_EQ(g.dimension(0), 4u);
+    EXPECT_EQ(g.dimension(1), 4u);
+}
+
+// ============================================================
+// sparse_grid tests
+// ============================================================
+
+TEST(SparseGrid, ConstructionEmpty) {
+    sparse_grid<2, int> g({4, 4});
+    EXPECT_EQ(g.dimension(0), 4);
+    EXPECT_FALSE(g.contains({0, 0}));
+}
+
+TEST(SparseGrid, SetAndGet) {
+    sparse_grid<2, int> g({3, 3});
+    EXPECT_TRUE(g.set({1, 2}, 55).has_value());
+    EXPECT_TRUE(g.contains({1, 2}));
+    EXPECT_EQ(g.get({1, 2})->get(), 55);
+}
+
+TEST(SparseGrid, SetOverwrites) {
+    sparse_grid<2, int> g({3, 3});
+    g.set({0, 0}, 1);
+    g.set({0, 0}, 2);
+    EXPECT_EQ(g.get({0, 0})->get(), 2);
+}
+
+TEST(SparseGrid, SetNew) {
+    sparse_grid<2, int> g({3, 3});
+    EXPECT_TRUE(g.set_new({1, 0}, 10).has_value());
+    EXPECT_EQ(g.set_new({1, 0}, 20).error(), grid_error::AlreadyOccupied);
+    EXPECT_EQ(g.get({1, 0})->get(), 10);
+}
+
+TEST(SparseGrid, GetEmpty) {
+    sparse_grid<2, int> g({3, 3});
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+}
+
+TEST(SparseGrid, GetMut) {
+    sparse_grid<2, int> g({3, 3});
+    g.set({0, 0}, 5);
+    g.get({0, 0})->get() = 99;
+    EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(SparseGrid, UnsafeAccessors) {
+    sparse_grid<2, int> g({4, 4});
+
+    EXPECT_EQ(g.set_unsafe({2, 1}, 13), 13);
+    EXPECT_TRUE(g.contains({2, 1}));
+    EXPECT_EQ(g.get_unsafe({2, 1}), 13);
+
+    g.get_unsafe({2, 1}) = 29;
+    EXPECT_EQ(g.get_unsafe({2, 1}), 29);
+
+    EXPECT_TRUE(g.remove({2, 1}).has_value());
+    EXPECT_EQ(g.set_unsafe({3, 3}, 41), 41);
+    EXPECT_EQ(g.get_unsafe({3, 3}), 41);
+}
+
+TEST(SparseGrid, Remove) {
+    sparse_grid<2, int> g({3, 3});
+    g.set({1, 1}, 42);
+    EXPECT_TRUE(g.remove({1, 1}).has_value());
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
+}
+
+TEST(SparseGrid, Take) {
+    sparse_grid<2, int> g({3, 3});
+    g.set({2, 2}, 77);
+    auto taken = g.take({2, 2});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({2, 2}));
+}
+
+TEST(SparseGrid, IndexRecycling) {
+    sparse_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+    g.remove({1, 1});
+    // After removal and re-insertion, the recycled slot should be reused
+    g.set({3, 3}, 4);
+    EXPECT_TRUE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_TRUE(g.contains({2, 2}));
+    EXPECT_TRUE(g.contains({3, 3}));
+    EXPECT_EQ(g.get({3, 3})->get(), 4);
+}
+
+TEST(SparseGrid, OutOfBounds) {
+    sparse_grid<2, int> g({2, 2});
+    EXPECT_EQ(g.set({3, 0}, 1).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.get({0, 5}).error(), grid_error::OutOfBounds);
+}
+
+TEST(SparseGrid, Iterators) {
+    sparse_grid<2, int> g({3, 3});
+    g.set({0, 0}, 10);
+    g.set({1, 1}, 20);
+    g.set({2, 2}, 30);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 60);
+
+    g.remove({1, 1});
+    sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 40);
+}
+
+TEST(SparseGrid, ClearRemovesAllCellsAndRecycledIndices) {
+    sparse_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.remove({0, 0});
+    g.set({2, 2}, 3);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_FALSE(g.contains({2, 2}));
+    EXPECT_EQ(g.get({1, 1}).error(), grid_error::EmptyCell);
+
+    EXPECT_TRUE(g.set({3, 3}, 9).has_value());
+    EXPECT_TRUE(g.contains({3, 3}));
+    EXPECT_EQ(g.get({3, 3})->get(), 9);
+}
+
+TEST(SparseGrid, IterAfterRecycle) {
+    sparse_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.remove({0, 0});
+    g.set({2, 2}, 3);
+    g.set({0, 0}, 4);
+
+    std::vector<int> values;
+    for (auto& v : g.iter_cells()) {
+        values.push_back(v);
+    }
+    EXPECT_EQ(values.size(), 3u);
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 1) == values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 2) != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 3) != values.end());
+    EXPECT_TRUE(std::find(values.begin(), values.end(), 4) != values.end());
+}
+
+// ============================================================
+// dense_extendible_grid tests
+// ============================================================
+
+TEST(DenseExtendibleGrid, ConstructionAndDimensions) {
+    dense_extendible_grid<2, int> g;
+    EXPECT_EQ(g.dimension(0), 1);
+    EXPECT_EQ(g.dimension(1), 1);
+    EXPECT_FALSE(g.contains({0, 0}));
+}
+
+TEST(DenseExtendibleGrid, SetAndGet) {
+    dense_extendible_grid<2, int> g;
+    EXPECT_TRUE(g.set({1, 1}, 42).has_value());
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_EQ(g.get({1, 1})->get(), 42);
+}
+
+TEST(DenseExtendibleGrid, SetNew) {
+    dense_extendible_grid<2, int> g;
+    EXPECT_TRUE(g.set_new({0, 0}, 10).has_value());
+    EXPECT_EQ(g.set_new({0, 0}, 20).error(), grid_error::AlreadyOccupied);
+    EXPECT_EQ(g.get({0, 0})->get(), 10);
+}
+
+TEST(DenseExtendibleGrid, GetMut) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 5);
+    g.get({0, 0})->get() = 99;
+    EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(DenseExtendibleGrid, UnsafeAccessors) {
+    dense_extendible_grid<2, int> g;
+
+    EXPECT_EQ(g.set_unsafe({-2, 3}, 17), 17);
+    EXPECT_TRUE(g.contains({-2, 3}));
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 17);
+
+    g.get_unsafe({-2, 3}) = 35;
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 35);
+
+    EXPECT_EQ(g.set_unsafe({-2, 3}, 49), 49);
+    EXPECT_EQ(g.get_unsafe({-2, 3}), 49);
+}
+
+TEST(DenseExtendibleGrid, NegativeCoordinates) {
+    dense_extendible_grid<2, int> g;
+    // Extend to cover negative range
+    g.extend({-2, -2}, {4, 4});
+    EXPECT_TRUE(g.set({-1, -1}, 77).has_value());
+    EXPECT_TRUE(g.contains({-1, -1}));
+    EXPECT_EQ(g.get({-1, -1})->get(), 77);
+}
+
+TEST(DenseExtendibleGrid, ExtendAndAccess) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.extend({-3, -3}, {5, 5});
+    // Old data should still be accessible
+    EXPECT_EQ(g.get({0, 0})->get(), 1);
+    // New range should be accessible
+    EXPECT_TRUE(g.set({4, 4}, 99).has_value());
+    EXPECT_EQ(g.get({4, 4})->get(), 99);
+    EXPECT_TRUE(g.set({-2, -2}, 50).has_value());
+    EXPECT_EQ(g.get({-2, -2})->get(), 50);
+}
+
+TEST(DenseExtendibleGrid, Iterators) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 6);
+
+    std::size_t count = 0;
+    for ([[maybe_unused]] auto& p : g.iter_pos()) {
+        count++;
+    }
+    EXPECT_EQ(count, 3u);
+}
+
+TEST(DenseExtendibleGrid, Remove) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 11);
+    g.set({1, 1}, 22);
+
+    EXPECT_TRUE(g.remove({0, 0}).has_value());
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_TRUE(g.contains({1, 1}));
+    EXPECT_EQ(g.get({1, 1})->get(), 22);
+
+    EXPECT_EQ(g.remove({0, 0}).error(), grid_error::EmptyCell);
+}
+
+TEST(DenseExtendibleGrid, Take) {
+    dense_extendible_grid<2, int> g;
+    g.set({-1, -1}, 77);
+
+    auto taken = g.take({-1, -1});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({-1, -1}));
+
+    EXPECT_EQ(g.take({-1, -1}).error(), grid_error::EmptyCell);
+}
+
+TEST(DenseExtendibleGrid, RemoveAndTakeOutOfBounds) {
+    dense_extendible_grid<2, int> g;
+    EXPECT_EQ(g.remove({100, 100}).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.take({100, 100}).error(), grid_error::OutOfBounds);
+}
+
+TEST(DenseExtendibleGrid, ClearRemovesAllCellsButKeepsCoverage) {
+    dense_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.set({5, 5}, 2);
+    const auto before_dims = g.dimensions();
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_FALSE(g.contains({0, 0}));
+    EXPECT_FALSE(g.contains({5, 5}));
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+    EXPECT_EQ(g.dimensions(), before_dims);
+}
+
+// ============================================================
+// tree_extendible_grid tests
+// ============================================================
+
+TEST(TreeExtendibleGrid, DefaultConstruction) {
+    tree_extendible_grid<2, int> g;
+    EXPECT_EQ(g.count(), 0u);
+}
+
+TEST(TreeExtendibleGrid, SetAndGet) {
+    tree_extendible_grid<2, int> g;
+    EXPECT_TRUE(g.set({0, 0}, 42).has_value());
+    EXPECT_TRUE(g.contains({0, 0}));
+    EXPECT_EQ(g.get({0, 0})->get(), 42);
+    EXPECT_EQ(g.count(), 1u);
+}
+
+TEST(TreeExtendibleGrid, SetOverwrites) {
+    tree_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.set({0, 0}, 2);
+    EXPECT_EQ(g.get({0, 0})->get(), 2);
+    EXPECT_EQ(g.count(), 1u);
+}
+
+TEST(TreeExtendibleGrid, SetNew) {
+    tree_extendible_grid<2, int> g;
+    EXPECT_TRUE(g.set_new({1, 1}, 10).has_value());
+    EXPECT_EQ(g.set_new({1, 1}, 20).error(), grid_error::AlreadyOccupied);
+    EXPECT_EQ(g.get({1, 1})->get(), 10);
+}
+
+TEST(TreeExtendibleGrid, GetEmpty) {
+    tree_extendible_grid<2, int> g;
+    auto result = g.get({0, 0});
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(TreeExtendibleGrid, GetMut) {
+    tree_extendible_grid<2, int> g;
+    g.set({0, 0}, 5);
+    g.get({0, 0})->get() = 99;
+    EXPECT_EQ(g.get({0, 0})->get(), 99);
+}
+
+TEST(TreeExtendibleGrid, UnsafeAccessors) {
+    tree_extendible_grid<2, int> g;
+
+    EXPECT_EQ(g.set_unsafe({12, 9}, 21), 21);
+    EXPECT_TRUE(g.contains({12, 9}));
+    EXPECT_EQ(g.get_unsafe({12, 9}), 21);
+
+    g.get_unsafe({12, 9}) = 43;
+    EXPECT_EQ(g.get_unsafe({12, 9}), 43);
+
+    EXPECT_EQ(g.set_unsafe({12, 9}, 57), 57);
+    EXPECT_EQ(g.get_unsafe({12, 9}), 57);
+}
+
+TEST(TreeExtendibleGrid, Remove) {
+    tree_extendible_grid<2, int> g;
+    g.set({1, 1}, 42);
+    EXPECT_TRUE(g.remove({1, 1}).has_value());
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
+}
+
+TEST(TreeExtendibleGrid, Take) {
+    tree_extendible_grid<2, int> g;
+    g.set({2, 3}, 77);
+    auto taken = g.take({2, 3});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({2, 3}));
+    EXPECT_EQ(g.count(), 0u);
+}
+
+TEST(TreeExtendibleGrid, AutoExtend) {
+    tree_extendible_grid<2, int> g;
+    // Insert at a large coordinate; tree should extend automatically
+    EXPECT_TRUE(g.set({100, 200}, 55).has_value());
+    EXPECT_TRUE(g.contains({100, 200}));
+    EXPECT_EQ(g.get({100, 200})->get(), 55);
+    EXPECT_GE(g.coverage(), 201u);
+}
+
+TEST(TreeExtendibleGrid, MultipleInserts) {
+    tree_extendible_grid<2, int> g;
+    for (std::int32_t i = 0; i < 10; i++) {
+        for (std::int32_t j = 0; j < 10; j++) {
+            g.set({i, j}, i * 10 + j);
+        }
+    }
+    EXPECT_EQ(g.count(), 100u);
+    for (std::int32_t i = 0; i < 10; i++) {
+        for (std::int32_t j = 0; j < 10; j++) {
+            EXPECT_EQ(g.get({i, j})->get(), i * 10 + j);
+        }
+    }
+}
+
+TEST(TreeExtendibleGrid, Iterators) {
+    tree_extendible_grid<2, int> g;
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) {
+        sum += v;
+    }
+    EXPECT_EQ(sum, 6);
+
+    std::size_t count = 0;
+    for ([[maybe_unused]] auto& p : g.iter_pos()) {
+        count++;
+    }
+    EXPECT_EQ(count, 3u);
+}
+
+TEST(TreeExtendibleGrid, ManualShrinkAfterRemovals) {
+    tree_extendible_grid<2, int> g;
+    g.set(std::array<std::int32_t, 2>{100, 200}, 1);
+    g.set(std::array<std::int32_t, 2>{101, 200}, 2);
+    EXPECT_GE(g.coverage(), 201u);
+
+    EXPECT_TRUE(g.remove(std::array<std::int32_t, 2>{100, 200}).has_value());
+    EXPECT_TRUE(g.contains(std::array<std::int32_t, 2>{101, 200}));
+
+    g.shrink();
+    EXPECT_EQ(g.coverage(), 2u);
+    EXPECT_EQ(g.get(std::array<std::int32_t, 2>{101, 200})->get(), 2);
+}
+
+TEST(TreeExtendibleGrid, CustomChildCount) {
+    tree_extendible_grid<2, int, 4> g;
+    g.set({0, 0}, 1);
+    g.set({15, 15}, 2);
+    EXPECT_EQ(g.count(), 2u);
+    EXPECT_EQ(g.get({0, 0})->get(), 1);
+    EXPECT_EQ(g.get({15, 15})->get(), 2);
+}
+
+TEST(TreeExtendibleGrid, HigherDimensional) {
+    tree_extendible_grid<3, int> g;
+    auto ref = g.get({1, 2, 3});
+    EXPECT_FALSE(ref.has_value());
+}
+
+TEST(TreeExtendibleGrid, ClearResetsDataAndTreeState) {
+    tree_extendible_grid<2, int> g;
+    g.set({100, 200}, 1);
+    g.set({101, 200}, 2);
+    ASSERT_GT(g.coverage(), 2u);
+
+    g.clear();
+
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_EQ(g.coverage(), 2u);
+    EXPECT_FALSE(g.contains({100, 200}));
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+
+    EXPECT_TRUE(g.set({0, 0}, 42).has_value());
+    EXPECT_EQ(g.get({0, 0})->get(), 42);
+}
+
+// ============================================================
+// tree_grid (fixed) tests
+// ============================================================
+
+TEST(TreeGrid, ConstructionAndCoverage) {
+    tree_grid<2, int> g({3, 5});
+    EXPECT_GE(g.coverage(), 5u);
+    auto dims = g.dimensions();
+    EXPECT_EQ(dims[0], g.coverage());
+    EXPECT_EQ(dims[1], g.coverage());
+}
+
+TEST(TreeGrid, SetAndGet) {
+    tree_grid<2, int> g({4, 4});
+    EXPECT_TRUE(g.set({1, 2}, 42).has_value());
+    EXPECT_TRUE(g.contains({1, 2}));
+    EXPECT_EQ(g.get({1, 2})->get(), 42);
+}
+
+TEST(TreeGrid, SetOverwritesAndSetNew) {
+    tree_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({0, 0}, 2);
+    EXPECT_EQ(g.get({0, 0})->get(), 2);
+    EXPECT_TRUE(g.set_new({1, 1}, 10).has_value());
+    EXPECT_EQ(g.set_new({1, 1}, 20).error(), grid_error::AlreadyOccupied);
+}
+
+TEST(TreeGrid, GetEmptyAndGetMut) {
+    tree_grid<2, int> g({4, 4});
+    EXPECT_EQ(g.get({0, 0}).error(), grid_error::EmptyCell);
+    g.set({2, 2}, 5);
+    g.get({2, 2})->get() = 99;
+    EXPECT_EQ(g.get({2, 2})->get(), 99);
+}
+
+TEST(TreeGrid, UnsafeAccessors) {
+    tree_grid<2, int> g({8, 8});
+
+    EXPECT_EQ(g.set_unsafe({5, 6}, 15), 15);
+    EXPECT_TRUE(g.contains({5, 6}));
+    EXPECT_EQ(g.get_unsafe({5, 6}), 15);
+
+    g.get_unsafe({5, 6}) = 27;
+    EXPECT_EQ(g.get_unsafe({5, 6}), 27);
+
+    EXPECT_EQ(g.set_unsafe({5, 6}, 39), 39);
+    EXPECT_EQ(g.get_unsafe({5, 6}), 39);
+}
+
+TEST(TreeGrid, RemoveAndTake) {
+    tree_grid<2, int> g({4, 4});
+    g.set({1, 1}, 42);
+    EXPECT_TRUE(g.remove({1, 1}).has_value());
+    EXPECT_FALSE(g.contains({1, 1}));
+    EXPECT_EQ(g.remove({1, 1}).error(), grid_error::EmptyCell);
+
+    g.set({3, 3}, 77);
+    auto taken = g.take({3, 3});
+    ASSERT_TRUE(taken.has_value());
+    EXPECT_EQ(taken.value(), 77);
+    EXPECT_FALSE(g.contains({3, 3}));
+}
+
+TEST(TreeGrid, OutOfBoundsAndOrigin) {
+    // default origin = 0
+    tree_grid<2, int> g({2, 2});
+    EXPECT_EQ(g.set({100, 0}, 1).error(), grid_error::OutOfBounds);
+    EXPECT_EQ(g.get({0, 100}).error(), grid_error::OutOfBounds);
+
+    // custom origin
+    tree_grid<2, int> g2({4, 4}, std::array<std::uint32_t, 2>{10, 10});
+    EXPECT_TRUE(g2.set({10, 10}, 5).has_value());
+    EXPECT_EQ(g2.get({9, 9}).error(), grid_error::OutOfBounds);
+}
+
+TEST(TreeGrid, IteratorsAndMultipleInserts) {
+    tree_grid<2, int> g({8, 8});
+    g.set({0, 0}, 1);
+    g.set({1, 1}, 2);
+    g.set({2, 2}, 3);
+
+    int sum = 0;
+    for (auto& v : g.iter_cells()) sum += v;
+    EXPECT_EQ(sum, 6);
+
+    // multiple inserts
+    for (std::uint32_t i = 0; i < 4; i++) {
+        for (std::uint32_t j = 0; j < 4; j++) {
+            g.set({i, j}, static_cast<int>(i * 4 + j));
+        }
+    }
+    EXPECT_EQ(g.count(), 16u);
+}
+
+TEST(TreeGrid, ClearAndShrinkPreserveCoverage) {
+    tree_grid<2, int> g({4, 4});
+    g.set({0, 0}, 1);
+    g.set({3, 3}, 2);
+    auto cov = g.coverage();
+    g.clear();
+    EXPECT_EQ(g.count(), 0u);
+    EXPECT_EQ(g.coverage(), cov);
+    // shrink should rebuild the node table but keep coverage
+    g.shrink();
+    EXPECT_EQ(g.coverage(), cov);
+}
+
+TEST(TreeGrid, HigherDimensional) {
+    tree_grid<3, int> g({4, 4, 4});
+    auto ref = g.get({1, 2, 3});
+    EXPECT_FALSE(ref.has_value());
+}
+
+TEST(TreeGrid, CustomChildCount) {
+    tree_grid<2, int, 4> g({16, 16});
+    g.set({0, 0}, 1);
+    g.set({15, 15}, 2);
+    EXPECT_EQ(g.count(), 2u);
+    EXPECT_EQ(g.get({0, 0})->get(), 1);
+    EXPECT_EQ(g.get({15, 15})->get(), 2);
+}
+
+TEST(TreeGrid, IterPosExplicitCount) {
+    tree_grid<2, int> g({8, 8});
+    g.set({0, 0}, 1);
+    g.set({1, 2}, 2);
+    g.set({3, 4}, 3);
+
+    std::size_t pos_count = 0;
+    for (auto&& p : g.iter_pos()) pos_count++;
+    EXPECT_EQ(pos_count, g.count());
+}
