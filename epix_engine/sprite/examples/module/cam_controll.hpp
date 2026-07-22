@@ -5,13 +5,13 @@
 #endif
 
 struct CamControllPlugin {
-    void attach(core::App& app) {
+    void attach(app::App& app) {
         app.add_systems(
-            core::Update,
-            core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
+            app::Update,
+            ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
                                                  transform::Transform&>> camera,
-                          core::EventReader<input::MouseScroll> scroll_input,
-                          core::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                          ecs::EventReader<input::MouseScroll> scroll_input,
+                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {

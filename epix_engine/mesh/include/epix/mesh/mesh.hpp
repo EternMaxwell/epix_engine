@@ -9,7 +9,8 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <functional>
@@ -125,7 +126,7 @@ EPIX_EXPORT struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> 
 /** @brief Pairs a MeshAttribute descriptor with its raw vertex data buffer. */
 EPIX_EXPORT struct MeshAttributeData {
     MeshAttribute attribute;
-    core::untyped_vector data;
+    ecs::untyped_vector data;
 
     std::size_t size() const noexcept { return data.size(); }
     bool empty() const noexcept { return data.empty(); }
@@ -134,7 +135,7 @@ EPIX_EXPORT struct MeshAttributeData {
 EPIX_EXPORT struct MeshIndices {
    public:
     MeshIndices(const meta::type_info& desc) noexcept : data(desc) {}
-    MeshIndices(core::untyped_vector&& vec) noexcept : data(std::move(vec)) {}
+    MeshIndices(ecs::untyped_vector&& vec) noexcept : data(std::move(vec)) {}
 
     /** @brief Check if this is a uint16 index buffer. */
     bool is_u16() const noexcept { return data.type_info() == meta::type_info::of<std::uint16_t>(); }
@@ -150,7 +151,7 @@ EPIX_EXPORT struct MeshIndices {
     bool empty() const noexcept { return data.empty(); }
 
    public:
-    core::untyped_vector data;
+    ecs::untyped_vector data;
 };
 /** @brief CPU-side mesh asset storing vertex attributes and optional index data.
  *
@@ -203,7 +204,7 @@ EPIX_EXPORT struct Mesh {
         }
         MeshAttributeData attribute_data{
             .attribute = attribute,
-            .data = std::ranges::to<core::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
+            .data = std::ranges::to<ecs::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
         };
         auto [it, inserted] = _attributes.insert_or_assign(attribute.slot, std::move(attribute_data));
         return {};
@@ -353,6 +354,6 @@ EPIX_EXPORT Mesh make_box2d_uv(float width,
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
 EPIX_EXPORT struct MeshPlugin {
-    void attach(core::App& app);
+    void attach(app::App& app);
 };
 }  // namespace epix::mesh

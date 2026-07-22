@@ -5,8 +5,9 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <expected>
@@ -53,7 +54,7 @@ EPIX_EXPORT struct MeshTextureMaterial2d {
 /** @brief Extracted mesh data ready for the render world. */
 EPIX_EXPORT struct ExtractedMesh2d {
     /** @brief Entity in the main world this was extracted from. */
-    core::Entity source_entity;
+    ecs::Entity source_entity;
     /** @brief Asset ID of the mesh. */
     assets::AssetId<Mesh> mesh;
     /** @brief Model (world) transform matrix. */
@@ -103,13 +104,13 @@ EPIX_EXPORT template <std::size_t Slot>
 struct BindMesh2dInstances {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) noexcept {}
+        void prepare(const ecs::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            core::Item<const render::view::ViewBindGroup&>,
-            std::optional<core::Item<const MeshBatch&, const ExtractedMesh2d&>>,
-            core::ParamSet<core::Res<MeshInstanceBuffer>> params,
+            ecs::Item<const render::view::ViewBindGroup&>,
+            std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>>,
+            ecs::ParamSet<ecs::Res<MeshInstanceBuffer>> params,
             const wgpu::RenderPassEncoder& encoder) {
             auto&& [instances] = params.get();
             if (!instances->bind_group) {
@@ -132,13 +133,13 @@ EPIX_EXPORT template <std::size_t Slot>
 struct BindMesh2dTexture {
     template <render::phase::PhaseItem PhaseItem>
     struct Command {
-        void prepare(const core::World&) noexcept {}
+        void prepare(const ecs::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            core::Item<const render::view::ViewBindGroup&>,
-            std::optional<core::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
-            core::ParamSet<>,
+            ecs::Item<const render::view::ViewBindGroup&>,
+            std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
+            ecs::ParamSet<>,
             const wgpu::RenderPassEncoder& encoder) {
             if (!entity_item) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -172,13 +173,13 @@ struct BindMesh2dTexture {
  * @tparam PhaseItem The phase item type providing entity/batch info. */
 EPIX_EXPORT template <render::phase::PhaseItem PhaseItem>
 struct DrawMesh2dBatch {
-    void prepare(const core::World&) noexcept {}
+    void prepare(const ecs::World&) noexcept {}
 
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,
-        core::Item<const render::view::ViewBindGroup&>,
-        std::optional<core::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
-        core::ParamSet<core::Res<render::RenderAssets<Mesh>>> params,
+        ecs::Item<const render::view::ViewBindGroup&>,
+        std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
+        ecs::ParamSet<ecs::Res<render::RenderAssets<Mesh>>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -219,7 +220,7 @@ struct DrawMesh2dBatch {
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
 EPIX_EXPORT struct MeshRenderPlugin {
-    void attach(core::App& app);
-    void ready(core::App& app);
+    void attach(app::App& app);
+    void ready(app::App& app);
 };
 }  // namespace epix::mesh

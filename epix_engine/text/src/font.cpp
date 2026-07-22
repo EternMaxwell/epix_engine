@@ -36,13 +36,13 @@ using namespace epix;
 using namespace epix::text::font;
 
 namespace {
-void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
-                                      core::ResMut<assets::Assets<image::Image>> images);
-void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
-                        core::Res<FontLibrary> font_lib,
-                        core::EventReader<assets::AssetEvent<Font>> reader,
-                        core::Res<assets::Assets<Font>> fonts);
-void register_default_embedded_font(core::App& app);
+void apply_pending_font_atlas_updates(ecs::ResMut<FontAtlasSets> atlas_sets,
+                                      ecs::ResMut<assets::Assets<image::Image>> images);
+void add_font_atlas_set(ecs::ResMut<FontAtlasSets> atlas_sets,
+                        ecs::Res<FontLibrary> font_lib,
+                        ecs::EventReader<assets::AssetEvent<Font>> reader,
+                        ecs::Res<assets::Assets<Font>> fonts);
+void register_default_embedded_font(app::App& app);
 
 Font make_default_embedded_font() {
     Font font{std::make_unique<std::byte[]>(font_data_array_size), static_cast<std::size_t>(font_data_array_size)};
@@ -57,7 +57,7 @@ std::span<std::string_view> FontLoader::extensions() noexcept {
     return std::span<std::string_view>(exts.data(), exts.size());
 }
 
-asio::awaitable<std::expected<Font, FontLoader::Error>> FontLoader::load(assets::Reader& reader,
+STDEXEC::task<std::expected<Font, FontLoader::Error>> FontLoader::load(assets::Reader& reader,
                                                                          const Settings&,
                                                                          assets::LoadContext&) {
     try {
@@ -347,7 +347,7 @@ void FontAtlasSets::add(const assets::AssetId<Font>& font_id, void* face) {
     storage.emplace(font_id, FontAtlasSet(face, max_texture_dimension_2d, max_texture_array_layers));
 }
 
-FontAtlasSets::FontAtlasSets(core::World& world) {
+FontAtlasSets::FontAtlasSets(ecs::World& world) {
     if (auto limits = world.get_resource<wgpu::Limits>(); limits) {
         max_texture_dimension_2d = limits->get().maxTextureDimension2D;
         max_texture_array_layers = limits->get().maxTextureArrayLayers;
@@ -361,8 +361,8 @@ struct DefaultFontHandle {
 }  // namespace epix::text::font
 
 namespace {
-void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
-                                      core::ResMut<assets::Assets<image::Image>> images) {
+void apply_pending_font_atlas_updates(ecs::ResMut<FontAtlasSets> atlas_sets,
+                                      ecs::ResMut<assets::Assets<image::Image>> images) {
     for (auto& [font_id, atlas_set] : atlas_sets->iter_mut()) {
         for (auto& [key, atlas] : atlas_set.iter_mut()) {
             atlas.apply_pending(*images);
@@ -370,10 +370,10 @@ void apply_pending_font_atlas_updates(core::ResMut<FontAtlasSets> atlas_sets,
     }
 }
 
-void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
-                        core::Res<FontLibrary> font_lib,
-                        core::EventReader<assets::AssetEvent<Font>> reader,
-                        core::Res<assets::Assets<Font>> fonts) {
+void add_font_atlas_set(ecs::ResMut<FontAtlasSets> atlas_sets,
+                        ecs::Res<FontLibrary> font_lib,
+                        ecs::EventReader<assets::AssetEvent<Font>> reader,
+                        ecs::Res<assets::Assets<Font>> fonts) {
     std::unordered_set<assets::AssetId<Font>> removed;
     std::unordered_set<assets::AssetId<Font>> modified;
     for (auto&& event : reader.read()) {
@@ -413,32 +413,32 @@ void add_font_atlas_set(core::ResMut<FontAtlasSets> atlas_sets,
     }
 }
 
-void register_default_embedded_font(core::App& app) {
+void register_default_embedded_font(app::App& app) {
     app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static(
         "fonts/default.ttf",
         std::span<const std::byte>(reinterpret_cast<const std::byte*>(font_data_array), font_data_array_size));
 }
 }  // namespace
 
-void FontPlugin::attach(core::App& app) {
+void FontPlugin::attach(app::App& app) {
     spdlog::debug("[text] Attaching FontPlugin.");
     app.add_plugins(image::ImagePlugin{});
     assets::app_register_asset<Font>(app);
     assets::app_register_loader<FontLoader>(app);
     app.world_mut().init_resource<FontLibrary>();
     app.world_mut().init_resource<FontAtlasSets>();
-    app.configure_sets(core::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
-    app.add_systems(core::First, core::into(add_font_atlas_set)
+    app.configure_sets(ecs::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
+    app.add_systems(app::First, ecs::into(add_font_atlas_set)
                                      .in_set(FontSystems::AddFontAtlasSet)
                                      .after(assets::AssetSystems::WriteEvents)
                                      .set_name("add font atlas set"));
-    app.add_systems(core::PostUpdate, core::into(apply_pending_font_atlas_updates)
+    app.add_systems(app::PostUpdate, ecs::into(apply_pending_font_atlas_updates)
                                           .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
                                           .before(assets::AssetSystems::WriteEvents)
                                           .set_name("apply pending font atlas updates"));
 }
 
-void FontPlugin::ready(core::App& app) {
+void FontPlugin::ready(app::App& app) {
     spdlog::debug("[text] Registering default embedded font.");
     register_default_embedded_font(app);
 }

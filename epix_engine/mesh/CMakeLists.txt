@@ -1,5 +1,7 @@
 ﻿epix_add_module(epix_mesh)
-target_link_libraries(epix_mesh PUBLIC epix_core)
+target_link_libraries(epix_mesh PUBLIC epix_common)
+target_link_libraries(epix_mesh PUBLIC epix_ecs)
+target_link_libraries(epix_mesh PUBLIC epix_app)
 target_link_libraries(epix_mesh PUBLIC epix_render)
 target_link_libraries(epix_mesh PUBLIC epix_core_graph)
 target_link_libraries(epix_mesh PUBLIC webgpu)

@@ -1,5 +1,6 @@
 ﻿epix_add_module(epix_sprite)
-target_link_libraries(epix_sprite PUBLIC epix_core)
+target_link_libraries(epix_sprite PUBLIC epix_ecs)
+target_link_libraries(epix_sprite PUBLIC epix_app)
 target_link_libraries(epix_sprite PUBLIC epix_assets)
 target_link_libraries(epix_sprite PUBLIC epix_image)
 target_link_libraries(epix_sprite PUBLIC epix_transform)

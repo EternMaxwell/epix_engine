@@ -76,4 +76,4 @@ std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(std::size_t s
     return std::unexpected(MeshError::SlotNotFound);
 }
 
-void MeshPlugin::attach(core::App& app) { assets::app_register_asset<Mesh>(app); }
+void MeshPlugin::attach(app::App& app) { assets::app_register_asset<Mesh>(app); }

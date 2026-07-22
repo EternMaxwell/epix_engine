@@ -17,12 +17,13 @@
 #include <vector>
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::text;
 
-void Text::register_required_components(Components& components) {
-    components.register_required<Text>([] { return TextLayout{}; });
-    components.register_required<Text>([] { return TextBounds{}; });
+void Text::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
+    registrator.register_required<TextLayout>([] { return TextLayout{}; });
+    registrator.register_required<TextBounds>([] { return TextBounds{}; });
 }
 
 namespace {

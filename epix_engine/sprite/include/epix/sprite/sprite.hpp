@@ -6,13 +6,14 @@
 #include <array>
 #include <cstddef>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <span>
 #include <utility>
+#include <vector>
 #endif
 
 EPIX_EXPORT namespace epix::sprite {
@@ -54,24 +55,30 @@ EPIX_EXPORT namespace epix::sprite {
 }  // namespace epix::sprite
 
 template <>
-struct epix::core::Bundle<epix::sprite::SpriteBundle> {
-    static void get_components(sprite::SpriteBundle& bundle,
-                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+struct epix::ecs::Bundle<epix::sprite::SpriteBundle> {
+    static void get_components(
+        sprite::SpriteBundle& bundle,
+        std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) sprite::Sprite(std::move(bundle.sprite)); });
         write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
         write_component([&](void* ptr) { new (ptr) assets::Handle<image::Image>(std::move(bundle.texture)); });
     }
 
-    static std::array<TypeId, 3> type_ids(const TypeRegistry& registry) {
-        return std::array{registry.type_id<sprite::Sprite>(), registry.type_id<transform::Transform>(),
-                          registry.type_id<assets::Handle<image::Image>>()};
+    static std::array<std::optional<TypeId>, 3> type_ids(const ecs::Components& components) {
+        return std::array{
+            components.get_id<sprite::Sprite>(),
+            components.get_id<transform::Transform>(),
+            components.get_id<assets::Handle<image::Image>>(),
+        };
     }
 
-    static void register_components(const TypeRegistry&, Components& components) {
-        components.register_info<sprite::Sprite>();
-        components.register_info<transform::Transform>();
-        components.register_info<assets::Handle<image::Image>>();
+    static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
+        std::vector<TypeId> ids;
+        ids.push_back(components.template register_component<sprite::Sprite>());
+        ids.push_back(components.template register_component<transform::Transform>());
+        ids.push_back(components.template register_component<assets::Handle<image::Image>>());
+        return ids;
     }
 };
 
-static_assert(epix::core::is_bundle<epix::sprite::SpriteBundle>);
+static_assert(epix::ecs::is_bundle<epix::sprite::SpriteBundle>);

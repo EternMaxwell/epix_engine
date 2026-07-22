@@ -7,7 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <optional>
 #include <span>
@@ -54,7 +54,7 @@ EPIX_EXPORT struct Text {
      * @param s String view to copy into content. */
     static Text with_str(std::string_view s) { return Text{std::string(s)}; }
 
-    static void register_required_components(core::Components& components);
+    static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
 
 /** @brief Information about a single shaped glyph within a text layout. */
@@ -226,35 +226,37 @@ EPIX_EXPORT struct TextBundle {
 /** @brief Plugin that registers text shaping, layout, and measurement
  * systems. */
 EPIX_EXPORT struct TextPlugin {
-    void attach(core::App& app);
+    void attach(app::App& app);
 };
 }  // namespace epix::text
 
 template <>
-struct epix::core::Bundle<epix::text::TextBundle> {
+struct epix::ecs::Bundle<epix::text::TextBundle> {
     static void get_components(text::TextBundle& bundle,
-                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) text::Text(std::move(bundle.text)); });
         write_component([&](void* ptr) { new (ptr) text::TextFont(std::move(bundle.font)); });
         write_component([&](void* ptr) { new (ptr) text::TextLayout(std::move(bundle.layout)); });
         write_component([&](void* ptr) { new (ptr) text::TextBounds(std::move(bundle.bounds)); });
     }
 
-    static std::array<TypeId, 4> type_ids(const TypeRegistry& registry) {
+    static std::array<std::optional<TypeId>, 4> type_ids(const ecs::Components& components) {
         return std::array{
-            registry.type_id<text::Text>(),
-            registry.type_id<text::TextFont>(),
-            registry.type_id<text::TextLayout>(),
-            registry.type_id<text::TextBounds>(),
+            components.get_id<text::Text>(),
+            components.get_id<text::TextFont>(),
+            components.get_id<text::TextLayout>(),
+            components.get_id<text::TextBounds>(),
         };
     }
 
-    static void register_components(const TypeRegistry&, Components& components) {
-        components.register_info<text::Text>();
-        components.register_info<text::TextFont>();
-        components.register_info<text::TextLayout>();
-        components.register_info<text::TextBounds>();
+    static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
+        std::vector<TypeId> ids;
+        ids.push_back(components.template register_component<text::Text>());
+        ids.push_back(components.template register_component<text::TextFont>());
+        ids.push_back(components.template register_component<text::TextLayout>());
+        ids.push_back(components.template register_component<text::TextBounds>());
+        return ids;
     }
 };
 
-static_assert(epix::core::is_bundle<epix::text::TextBundle>);
+static_assert(epix::ecs::is_bundle<epix::text::TextBundle>);

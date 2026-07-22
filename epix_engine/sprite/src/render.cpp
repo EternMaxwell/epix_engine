@@ -21,7 +21,8 @@
 #include <vector>
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::sprite;
 
 namespace {
@@ -438,7 +439,7 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 }
 }  // namespace
 
-void SpritePlugin::attach(core::App& app) {
+void SpritePlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpritePlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
@@ -449,7 +450,7 @@ void SpritePlugin::attach(core::App& app) {
     }
 }
 
-void SpritePlugin::ready(core::App& app) {
+void SpritePlugin::ready(app::App& app) {
     spdlog::debug("[sprite] Readying SpritePlugin.");
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {

@@ -19,13 +19,14 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::text;
 using namespace epix;
 
-void Text2d::register_required_components(Components& components) {
-    components.register_required<Text2d>([] { return transform::Transform{}; });
-    components.register_required<Text2d>([] { return TextColor{}; });
+void Text2d::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
+    registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
+    registrator.register_required<TextColor>([] { return TextColor{}; });
 }
 
 namespace {
@@ -252,9 +253,9 @@ struct BindTextInstances {
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            core::Item<const render::view::ViewBindGroup&>,
-            std::optional<core::Item<const TextBatch&, const ExtractedText2d&>>,
-            core::ParamSet<core::Res<TextInstanceBuffer>> params,
+            ecs::Item<const render::view::ViewBindGroup&>,
+            std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>>,
+            ecs::ParamSet<ecs::Res<TextInstanceBuffer>> params,
             const wgpu::RenderPassEncoder& encoder) {
             auto&& [instances] = params.get();
             if (!instances->bind_group) {
@@ -279,9 +280,9 @@ struct BindTextTexture {
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            core::Item<const render::view::ViewBindGroup&>,
-            std::optional<core::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-            core::ParamSet<>,
+            ecs::Item<const render::view::ViewBindGroup&>,
+            std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
+            ecs::ParamSet<>,
             const wgpu::RenderPassEncoder& encoder) {
             if (!entity_item) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -314,9 +315,9 @@ struct DrawTextBatch {
 
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,
-        core::Item<const render::view::ViewBindGroup&>,
-        std::optional<core::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        core::ParamSet<core::Res<render::RenderAssets<mesh::Mesh>>> params,
+        ecs::Item<const render::view::ViewBindGroup&>,
+        std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
+        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{

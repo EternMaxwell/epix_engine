@@ -8,7 +8,8 @@
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
@@ -26,7 +27,7 @@ using namespace epix;
 
 namespace {
 struct SpritePressureVisualTestPlugin {
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         auto& world  = app.world_mut();
         auto& images = world.resource_mut<assets::Assets<image::Image>>();
 
@@ -58,13 +59,13 @@ struct SpritePressureVisualTestPlugin {
 }  // namespace
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title = "Sprite Pressure Visual Test";
     primary_window.size  = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{
             .primary_window = primary_window,
             .exit_condition = window::ExitCondition::OnPrimaryClosed,

@@ -6,8 +6,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <expected>
@@ -29,7 +30,7 @@ EPIX_EXPORT namespace epix::sprite {
      */
     struct ExtractedSprite {
         /** @brief Entity in the main world this sprite was extracted from. */
-        core::Entity source_entity;
+        ecs::Entity source_entity;
         /** @brief Copy of the sprite's visual properties. */
         Sprite sprite;
         /** @brief Model matrix representing the sprite's world transform. */
@@ -90,7 +91,7 @@ EPIX_EXPORT namespace epix::sprite {
         /** @brief Constructs the quad geometry buffers on the GPU.
          * @param world World providing the `wgpu::Device` and `wgpu::Queue`
          * resources. */
-        explicit SpriteGeometryBuffers(core::World& world) {
+        explicit SpriteGeometryBuffers(ecs::World& world) {
             auto& device = world.resource<wgpu::Device>();
             auto& queue  = world.resource<wgpu::Queue>();
 
@@ -149,13 +150,13 @@ EPIX_EXPORT namespace epix::sprite {
     struct BindSpriteInstances {
         template <render::phase::PhaseItem PhaseItem>
         struct Command {
-            void prepare(const core::World&) noexcept {}
+            void prepare(const ecs::World&) noexcept {}
 
             std::expected<void, render::phase::RenderCommandError> render(
                 const PhaseItem& item,
-                core::Item<const render::view::ViewBindGroup&>,
-                std::optional<core::Item<const SpriteBatch&>>,
-                core::ParamSet<core::Res<SpriteInstanceBuffer>> params,
+                ecs::Item<const render::view::ViewBindGroup&>,
+                std::optional<ecs::Item<const SpriteBatch&>>,
+                ecs::ParamSet<ecs::Res<SpriteInstanceBuffer>> params,
                 const wgpu::RenderPassEncoder& encoder) {
                 auto&& [instances] = params.get();
                 if (!instances->bind_group) {
@@ -179,13 +180,13 @@ EPIX_EXPORT namespace epix::sprite {
     struct BindSpriteTexture {
         template <render::phase::PhaseItem PhaseItem>
         struct Command {
-            void prepare(const core::World&) noexcept {}
+            void prepare(const ecs::World&) noexcept {}
 
             std::expected<void, render::phase::RenderCommandError> render(
                 const PhaseItem& item,
-                core::Item<const render::view::ViewBindGroup&>,
-                std::optional<core::Item<const SpriteBatch&>> entity_item,
-                core::ParamSet<>,
+                ecs::Item<const render::view::ViewBindGroup&>,
+                std::optional<ecs::Item<const SpriteBatch&>> entity_item,
+                ecs::ParamSet<>,
                 const wgpu::RenderPassEncoder& encoder) {
                 if (!entity_item) {
                     return std::unexpected(render::phase::RenderCommandError{
@@ -215,13 +216,13 @@ EPIX_EXPORT namespace epix::sprite {
      * @tparam PhaseItem The render phase item type driving draw ordering. */
     template <render::phase::PhaseItem PhaseItem>
     struct DrawSpriteBatch {
-        void prepare(const core::World&) noexcept {}
+        void prepare(const ecs::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            core::Item<const render::view::ViewBindGroup&>,
-            std::optional<core::Item<const SpriteBatch&>> entity_item,
-            core::ParamSet<core::Res<SpriteGeometryBuffers>> params,
+            ecs::Item<const render::view::ViewBindGroup&>,
+            std::optional<ecs::Item<const SpriteBatch&>> entity_item,
+            ecs::ParamSet<ecs::Res<SpriteGeometryBuffers>> params,
             const wgpu::RenderPassEncoder& encoder) {
             if (!entity_item) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -246,7 +247,7 @@ EPIX_EXPORT namespace epix::sprite {
     /** @brief Plugin that registers the sprite rendering pipeline, including
      * extraction, batching, and draw commands. */
     struct SpritePlugin {
-        void attach(core::App& app);
-        void ready(core::App& app);
+        void attach(app::App& app);
+        void ready(app::App& app);
     };
 }  // namespace epix::sprite

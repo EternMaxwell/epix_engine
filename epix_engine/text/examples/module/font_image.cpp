@@ -9,7 +9,8 @@
 import std;
 #endif
 import epix.assets;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.core_graph;
 import epix.input;
 import epix.mesh;
@@ -33,13 +34,13 @@ auto run_once = [run = false]() mutable {
 };
 
 struct CamControllPlugin {
-    void attach(core::App& app) {
+    void attach(app::App& app) {
         app.add_systems(
-            core::Update,
-            core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
+            app::Update,
+            ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
                                                  transform::Transform&>> camera,
-                          core::EventReader<input::MouseScroll> scroll_input,
-                          core::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                          ecs::EventReader<input::MouseScroll> scroll_input,
+                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
@@ -92,8 +93,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    core::App app = core::App::create();
-    app.add_plugins(core::TaskPoolPlugin{})
+    app::App app = app::App::create();
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
@@ -106,14 +107,14 @@ int main(int argc, char** argv) {
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
-    app.add_systems(core::Update, core::into(input::log_inputs, window::log_events));
+    app.add_systems(app::Update, ecs::into(input::log_inputs, window::log_events));
     app.world_mut().spawn(core_graph::core_2d::Camera2DBundle{});
 
     std::optional<assets::Handle<text::font::Font>> font_handle;
 
     app.add_systems(
-        core::PreStartup,
-        core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server) {
+        app::PreStartup,
+        ecs::into([&](ecs::Commands cmd, ecs::Res<assets::AssetServer> asset_server) {
             font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
             cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!"},
                                        .font{
@@ -179,8 +180,8 @@ int main(int argc, char** argv) {
         })
             .before(text::font::FontSystems::AddFontAtlasSet)
             .before(assets::AssetSystems::WriteEvents));
-    app.add_systems(core::Update, core::into([](core::EventReader<window::WindowResized> resize_events,
-                                                core::Query<core::Mut<text::TextBounds>> text_bounds) {
+    app.add_systems(app::Update, ecs::into([](ecs::EventReader<window::WindowResized> resize_events,
+                                                ecs::Query<ecs::Mut<text::TextBounds>> text_bounds) {
                         for (auto&& e : resize_events.read()) {
                             for (auto&& tb : text_bounds.iter()) {
                                 tb.get_mut().width = static_cast<float>(e.width) - 50.0f;

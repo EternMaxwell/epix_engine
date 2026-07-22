@@ -1,5 +1,6 @@
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -17,12 +18,12 @@ using namespace epix;
 // Camera controls: WASD to pan, scroll to zoom, Space to reset
 namespace {
 struct CamControlPlugin {
-    void attach(core::App& app) {
-        app.add_systems(core::Update,
-                        core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
+    void attach(app::App& app) {
+        app.add_systems(app::Update,
+                        ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
                                                              transform::Transform&>> camera,
-                                      core::EventReader<input::MouseScroll> scroll_input,
-                                      core::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                                      ecs::EventReader<input::MouseScroll> scroll_input,
+                                      ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                             auto opt = camera.single();
                             if (!opt) return;
                             auto&& [cam, proj, trans] = *opt;
@@ -55,7 +56,7 @@ struct CamControlPlugin {
 // Spawns a grid of N x N mesh instances sharing the same mesh handles,
 // so the batching system can merge them into fewer draw calls.
 struct MeshBatchingTestPlugin {
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
@@ -105,14 +106,14 @@ struct MeshBatchingTestPlugin {
 }  // namespace
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title =
         "Mesh Batching Pressure Test (3000 opaque + 300 transparent) | WASD pan, scroll zoom, Space reset";
     primary_window.size = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{
             .primary_window = primary_window,
             .exit_condition = window::ExitCondition::OnPrimaryClosed,

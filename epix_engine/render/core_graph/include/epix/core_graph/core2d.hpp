@@ -11,6 +11,7 @@
 #include <optional>
 #include <span>
 #include <utility>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -181,7 +182,7 @@ EPIX_EXPORT struct Camera2DBundle {
 template <>
 struct epix::ecs::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
     static void get_components(core_graph::core_2d::Camera2DBundle& bundle,
-                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
         write_component([&](void* ptr) { new (ptr) render::camera::Projection(std::move(bundle.projection)); });
         write_component(

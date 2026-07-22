@@ -5,8 +5,9 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/transform.hpp>
@@ -96,7 +97,7 @@ EPIX_EXPORT struct Text2d {
     /** @brief Pixel offset from the entity's transform position. */
     glm::vec2 offset = glm::vec2(0.0f);
 
-    static void register_required_components(core::Components& components);
+    static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
 
 /** @brief Bundle for spawning a 2D text rendering entity with transform
@@ -113,33 +114,35 @@ EPIX_EXPORT struct Text2dBundle {
 /** @brief Plugin that registers text mesh generation, texture extraction,
  * and 2D text draw systems. */
 EPIX_EXPORT struct TextRenderPlugin {
-    void attach(core::App& app);
-    void ready(core::App& app);
+    void attach(app::App& app);
+    void ready(app::App& app);
 };
 }  // namespace epix::text
 
 template <>
-struct epix::core::Bundle<epix::text::Text2dBundle> {
+struct epix::ecs::Bundle<epix::text::Text2dBundle> {
     static void get_components(text::Text2dBundle& bundle,
-                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
+                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) text::Text2d(std::move(bundle.text2d)); });
         write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
         write_component([&](void* ptr) { new (ptr) text::TextColor(std::move(bundle.color)); });
     }
 
-    static std::array<TypeId, 3> type_ids(const TypeRegistry& registry) {
+    static std::array<std::optional<TypeId>, 3> type_ids(const ecs::Components& components) {
         return std::array{
-            registry.type_id<text::Text2d>(),
-            registry.type_id<transform::Transform>(),
-            registry.type_id<text::TextColor>(),
+            components.get_id<text::Text2d>(),
+            components.get_id<transform::Transform>(),
+            components.get_id<text::TextColor>(),
         };
     }
 
-    static void register_components(const TypeRegistry&, Components& components) {
-        components.register_info<text::Text2d>();
-        components.register_info<transform::Transform>();
-        components.register_info<text::TextColor>();
+    static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
+        std::vector<TypeId> ids;
+        ids.push_back(components.template register_component<text::Text2d>());
+        ids.push_back(components.template register_component<transform::Transform>());
+        ids.push_back(components.template register_component<text::TextColor>());
+        return ids;
     }
 };
 
-static_assert(epix::core::is_bundle<epix::text::Text2dBundle>);
+static_assert(epix::ecs::is_bundle<epix::text::Text2dBundle>);

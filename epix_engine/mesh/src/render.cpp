@@ -7,7 +7,8 @@
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::mesh;
 
 namespace {
@@ -721,7 +722,7 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
 }
 }  // namespace
 
-void MeshRenderPlugin::attach(core::App& app) {
+void MeshRenderPlugin::attach(app::App& app) {
     spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
@@ -734,7 +735,7 @@ void MeshRenderPlugin::attach(core::App& app) {
     }
 }
 
-void MeshRenderPlugin::ready(core::App& app) {
+void MeshRenderPlugin::ready(app::App& app) {
     spdlog::debug("[mesh] Readying MeshRenderPlugin.");
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {

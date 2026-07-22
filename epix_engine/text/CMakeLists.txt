@@ -1,5 +1,7 @@
 ﻿epix_add_module(epix_text)
-target_link_libraries(epix_text PUBLIC epix_core)
+target_link_libraries(epix_text PUBLIC epix_common)
+target_link_libraries(epix_text PUBLIC epix_ecs)
+target_link_libraries(epix_text PUBLIC epix_app)
 target_link_libraries(epix_text PUBLIC epix_assets)
 target_link_libraries(epix_text PUBLIC epix_image)
 target_link_libraries(epix_text PUBLIC epix_transform)

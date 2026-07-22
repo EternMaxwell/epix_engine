@@ -4,11 +4,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
-#include <asio/awaitable.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/image.hpp>
 #include <exception>
 #include <expected>
@@ -84,7 +84,7 @@ struct FontLoader {
     using Error = std::exception_ptr;
 
     static std::span<std::string_view> extensions() noexcept;
-    static asio::awaitable<std::expected<Font, Error>> load(assets::Reader& reader,
+    static STDEXEC::task<std::expected<Font, Error>> load(assets::Reader& reader,
                                                             const Settings& settings,
                                                             assets::LoadContext& context);
 };
@@ -291,7 +291,7 @@ EPIX_EXPORT struct FontAtlasSet {
  * fonts are loaded and removes them when fonts are unloaded.
  */
 EPIX_EXPORT struct FontAtlasSets {
-    FontAtlasSets(core::World& world);
+    FontAtlasSets(ecs::World& world);
     FontAtlasSets(const FontAtlasSets&)            = delete;
     FontAtlasSets(FontAtlasSets&&)                 = default;
     FontAtlasSets& operator=(const FontAtlasSets&) = delete;
@@ -334,7 +334,7 @@ EPIX_EXPORT enum class FontSystems {
 /** @brief Plugin that registers font loading, atlas management, and glyph
  * update systems. */
 EPIX_EXPORT struct FontPlugin {
-    void attach(core::App& app);
-    void ready(core::App& app);
+    void attach(app::App& app);
+    void ready(app::App& app);
 };
 }  // namespace epix::text::font

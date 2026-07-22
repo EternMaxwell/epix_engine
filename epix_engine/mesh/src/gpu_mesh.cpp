@@ -19,7 +19,7 @@ std::size_t align_up(std::size_t value, std::size_t alignment) {
 }
 
 struct UploadBufferView {
-    std::optional<core::untyped_vector> owned;
+    std::optional<ecs::untyped_vector> owned;
     const void* data = nullptr;
     std::size_t size = 0;
 };
@@ -37,7 +37,7 @@ bool should_recreate_buffer(std::size_t required_size, std::size_t current_size)
     return required_size < (current_size / 2);
 }
 
-UploadBufferView make_upload_buffer_view(const core::untyped_vector& data) {
+UploadBufferView make_upload_buffer_view(const ecs::untyped_vector& data) {
     UploadBufferView view;
     auto element_size   = data.type_info().size;
     auto used_bytes     = element_size * data.size();

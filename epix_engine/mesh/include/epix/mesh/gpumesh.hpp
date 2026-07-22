@@ -88,7 +88,7 @@ EPIX_EXPORT struct GPUMesh {
 template <>
 struct epix::render::RenderAsset<epix::mesh::Mesh> {
     using ProcessedAsset = epix::mesh::GPUMesh;
-    using Param          = epix::core::ParamSet<epix::core::Res<wgpu::Device>, epix::core::Res<wgpu::Limits>>;
+    using Param          = epix::ecs::ParamSet<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Limits>>;
 
     ProcessedAsset process(const epix::mesh::Mesh& mesh, Param params) {
         auto&& [device, limits] = params.get();

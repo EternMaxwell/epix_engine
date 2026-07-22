@@ -10,7 +10,8 @@ import std;
 import glm;
 import webgpu;
 import epix.assets;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
@@ -50,7 +51,7 @@ mesh::Mesh make_gradient_quad(float width, float height) {
 }
 
 struct MeshRenderingVisualTestPlugin {
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         auto& world        = app.world_mut();
         auto& mesh_assets  = world.resource_mut<assets::Assets<mesh::Mesh>>();
         auto& image_assets = world.resource_mut<assets::Assets<image::Image>>();
@@ -111,13 +112,13 @@ struct MeshRenderingVisualTestPlugin {
 }  // namespace
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title = "Mesh Rendering Visual Test";
     primary_window.size  = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{
             .primary_window = primary_window,
             .exit_condition = window::ExitCondition::OnPrimaryClosed,

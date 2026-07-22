@@ -1,5 +1,6 @@
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -35,23 +36,23 @@ struct DragState {
     DragMode mode = DragMode::None;
     glm::vec2 drag_offset{0.0f};
     // Store entity IDs
-    core::Entity text_entity;
-    core::Entity bounds_outline_entity;
-    core::Entity text_outline_entity;
-    core::Entity info_entity;
+    ecs::Entity text_entity;
+    ecs::Entity bounds_outline_entity;
+    ecs::Entity text_outline_entity;
+    ecs::Entity info_entity;
     // Mesh handles
     std::optional<assets::Handle<mesh::Mesh>> bounds_mesh;
     std::optional<assets::Handle<mesh::Mesh>> text_outline_mesh;
 };
 
 struct CamControllPlugin {
-    void attach(core::App& app) {
+    void attach(app::App& app) {
         app.add_systems(
-            core::Update,
-            core::into([](core::Query<core::Item<const render::camera::Camera&, render::camera::Projection&,
+            app::Update,
+            ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
                                                  transform::Transform&>> camera,
-                          core::EventReader<input::MouseScroll> scroll_input,
-                          core::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                          ecs::EventReader<input::MouseScroll> scroll_input,
+                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
@@ -133,8 +134,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    core::App app = core::App::create();
-    app.add_plugins(core::TaskPoolPlugin{})
+    app::App app = app::App::create();
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
         .add_plugins(glfw::GLFWPlugin{})
@@ -152,9 +153,9 @@ int main(int argc, char** argv) {
 
     // Setup: spawn text entity, outline meshes, info text
     app.add_systems(
-        core::PreStartup,
-        core::into([&](core::Commands cmd, core::Res<assets::AssetServer> asset_server,
-                       core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+        app::PreStartup,
+        ecs::into([&](ecs::Commands cmd, ecs::Res<assets::AssetServer> asset_server,
+                       ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
             // Load font
             auto font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
 
@@ -216,16 +217,16 @@ int main(int argc, char** argv) {
 
     // Interaction system: handle mouse drag for text and bounds
     app.add_systems(
-        core::Update,
-        core::into(
-            [](core::ResMut<DragState> drag_state, core::Res<input::ButtonInput<input::MouseButton>> mouse_input,
-               core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>> window_query,
-               core::ParamSet<core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
+        app::Update,
+        ecs::into(
+            [](ecs::ResMut<DragState> drag_state, ecs::Res<input::ButtonInput<input::MouseButton>> mouse_input,
+               ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>> window_query,
+               ecs::ParamSet<ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
                                                      const transform::Transform&>>,
-                              core::Query<core::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
-                                          core::With<MainText>>> conflicting_queries,
-               core::ResMut<assets::Assets<mesh::Mesh>> meshes,
-               core::Query<core::Item<core::Mut<text::Text>>, core::With<InfoText>> info_query) {
+                              ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
+                                          ecs::With<MainText>>> conflicting_queries,
+               ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
+               ecs::Query<ecs::Item<ecs::Mut<text::Text>>, ecs::With<InfoText>> info_query) {
                 // Get queries from ParamSet (allows access conflict between camera and text transforms)
                 auto&& [camera_query, text_query] = conflicting_queries.get();
 
@@ -399,11 +400,11 @@ int main(int argc, char** argv) {
 
     // Sync outline transforms to text position
     app.add_systems(
-        core::Update,
-        core::into([](core::Res<DragState> drag_state,
-                      core::ParamSet<core::Query<core::Item<const transform::Transform&>, core::With<MainText>>,
-                                     core::Query<core::Item<transform::Transform&>, core::With<BoundsOutline>>,
-                                     core::Query<core::Item<transform::Transform&>, core::With<TextOutline>>>
+        app::Update,
+        ecs::into([](ecs::Res<DragState> drag_state,
+                      ecs::ParamSet<ecs::Query<ecs::Item<const transform::Transform&>, ecs::With<MainText>>,
+                                     ecs::Query<ecs::Item<transform::Transform&>, ecs::With<BoundsOutline>>,
+                                     ecs::Query<ecs::Item<transform::Transform&>, ecs::With<TextOutline>>>
                           transform_queries) {
             auto&& [text_pos_query, bounds_outline_query, text_outline_query] = transform_queries.get();
 
