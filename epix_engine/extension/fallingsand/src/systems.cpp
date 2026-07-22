@@ -14,7 +14,8 @@
 #include <webgpu/webgpu.hpp>
 #endif
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::ext::fallingsand {
 
@@ -445,8 +446,8 @@ void update_chunk_outlines(
 // FallingSandPlugin::attach
 // ──────────────────────────────────────────────────────────────────────────────
 
-void FallingSandPlugin::attach(core::App& app) {
-    app.add_systems(core::Update,
+void FallingSandPlugin::attach(app::App& app) {
+    app.add_systems(app::Update,
                     into(setup_chunk_dirty_rects, setup_chunk_render_children)
                         .set_names(std::array{"fallingsand setup_dirty_rects", "fallingsand setup_render_children"}));
 
@@ -458,7 +459,7 @@ void FallingSandPlugin::attach(core::App& app) {
                                               "fallingsand update_outlines"}));
 }
 
-void BodyDebugPlugin::attach(core::App& app) {
+void BodyDebugPlugin::attach(app::App& app) {
     app.add_systems(time::FixedPostUpdate, into(build_body_debug_meshes).set_name("fallingsand body_debug_meshes"));
 }
 

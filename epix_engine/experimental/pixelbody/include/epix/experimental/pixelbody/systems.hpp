@@ -6,7 +6,8 @@
 #include <array>
 #include <cstddef>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
@@ -27,45 +28,45 @@ namespace grid = epix::ext::grid;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** @brief Create a Box2D world for any new PixelBodyWorld with a null id. */
-void init_pixel_body_worlds(core::Query<core::Item<core::Mut<PixelBodyWorld>>> worlds);
+void init_pixel_body_worlds(ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds);
 
 /** @brief For each PixelBody with a null b2 body id, build the b2 body + shapes
  *  from its cell grid (outline + earcut + b2MakePolygon).  Looks up the parent
  *  PixelBodyWorld via the Parent component. */
 void init_pixel_bodies(
-    core::Query<core::Item<core::Entity, core::Mut<PixelBody>, const transform::Transform&, const core::Parent&>>
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const transform::Transform&, const ecs::Parent&>>
         bodies,
-    core::Query<core::Item<core::Mut<PixelBodyWorld>>> worlds,
-    core::Res<fs::ElementRegistry> registry);
+    ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds,
+    ecs::Res<fs::ElementRegistry> registry);
 
 /** @brief Rebuild b2 polygon shapes for any existing PixelBody with shapes_dirty. */
-void rebuild_pixel_body_shapes(core::Query<core::Item<core::Mut<PixelBody>, const core::Parent&>> bodies,
-                               core::Query<core::Item<const PixelBodyWorld&>> worlds,
-                               core::Res<fs::ElementRegistry> registry);
+void rebuild_pixel_body_shapes(ecs::Query<ecs::Item<ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
+                               ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds,
+                               ecs::Res<fs::ElementRegistry> registry);
 
 /** @brief Push ECS Transform/Velocity into the b2 body each frame. */
 void sync_transforms_to_b2(
-    core::Query<core::Item<const PixelBody&, const transform::Transform&, const Velocity&>> bodies);
+    ecs::Query<ecs::Item<const PixelBody&, const transform::Transform&, const Velocity&>> bodies);
 
 /** @brief Walk every chunk of every PixelBodyWorld+SandWorld entity and (re)build
  *  per-chunk static b2 bodies of stone (Solid-typed cells). */
 void update_sand_static_bodies(
-    core::Commands cmd,
-    core::Res<fs::ElementRegistry> registry,
-    core::Query<core::Item<core::Entity, const PixelBodyWorld&, const fs::SandWorld&, core::Opt<const core::Children&>>>
+    ecs::Commands cmd,
+    ecs::Res<fs::ElementRegistry> registry,
+    ecs::Query<ecs::Item<ecs::Entity, const PixelBodyWorld&, const fs::SandWorld&, ecs::Opt<const ecs::Children&>>>
         worlds,
-    core::Query<core::Item<core::Entity,
-                           core::Ref<fs::ChunkElementGrid>,
+    ecs::Query<ecs::Item<ecs::Entity,
+                           ecs::Ref<fs::ChunkElementGrid>,
                            const fs::SandChunkPos&,
-                           core::Opt<core::Mut<fs::SandChunkDirtyRect>>,
-                           core::Opt<core::Mut<SandStaticBody>>>> chunks);
+                           ecs::Opt<ecs::Mut<fs::SandChunkDirtyRect>>,
+                           ecs::Opt<ecs::Mut<SandStaticBody>>>> chunks);
 
 /** @brief Step the Box2D world via fixed-timestep accumulator. */
-void step_pixel_body_worlds(core::Res<time::Time<>> time, core::Query<core::Item<core::Mut<PixelBodyWorld>>> worlds);
+void step_pixel_body_worlds(ecs::Res<time::Time<>> time, ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds);
 
 /** @brief Pull the new b2 transform back into the ECS Transform/Velocity. */
 void sync_b2_to_transforms(
-    core::Query<core::Item<const PixelBody&, core::Mut<transform::Transform>, core::Mut<Velocity>>> bodies);
+    ecs::Query<ecs::Item<const PixelBody&, ecs::Mut<transform::Transform>, ecs::Mut<Velocity>>> bodies);
 
 /** @brief For each occupied body cell, push the underlying sand cell up the
  *  anti-gravity column until an empty cell is found.  Stone cells block.
@@ -78,24 +79,24 @@ void sync_b2_to_transforms(
  *    without constantly re-waking settled sand.
  *
  *  Runs in FixedPreUpdate, immediately before the fallingsand simulate step. */
-void sync_pixel_body_to_sand(core::Commands cmd,
-                             core::ResMut<fs::ElementRegistry> registry,
-                             core::Query<core::Item<core::Entity,
+void sync_pixel_body_to_sand(ecs::Commands cmd,
+                             ecs::ResMut<fs::ElementRegistry> registry,
+                             ecs::Query<ecs::Item<ecs::Entity,
                                                     const PixelBodyWorld&,
-                                                    core::Mut<fs::SandWorld>,
-                                                    core::Opt<const core::Children&>,
-                                                    core::Opt<core::Mut<PixelBodySandBlockers>>>> worlds,
-                             core::Query<core::Item<const PixelBody&, const transform::Transform&>> bodies,
-                             core::Query<core::Item<core::Mut<fs::ChunkElementGrid>,
-                                                    core::Mut<fs::ChunkAirGrid>,
-                                                    core::Mut<fs::ChunkThermalGrid>,
+                                                    ecs::Mut<fs::SandWorld>,
+                                                    ecs::Opt<const ecs::Children&>,
+                                                    ecs::Opt<ecs::Mut<PixelBodySandBlockers>>>> worlds,
+                             ecs::Query<ecs::Item<const PixelBody&, const transform::Transform&>> bodies,
+                             ecs::Query<ecs::Item<ecs::Mut<fs::ChunkElementGrid>,
+                                                    ecs::Mut<fs::ChunkAirGrid>,
+                                                    ecs::Mut<fs::ChunkThermalGrid>,
                                                     const fs::SandChunkPos&,
-                                                    core::Mut<fs::SandChunkDirtyRect>>> chunks);
+                                                    ecs::Mut<fs::SandChunkDirtyRect>>> chunks);
 
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
-void build_pixel_body_meshes(core::Commands cmd,
-                             core::ResMut<assets::Assets<mesh::Mesh>> meshes,
-                             core::Query<core::Item<core::Entity, core::Mut<PixelBody>, const core::Parent&>> bodies,
-                             core::Query<core::Item<const PixelBodyWorld&>> worlds);
+void build_pixel_body_meshes(ecs::Commands cmd,
+                             ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
+                             ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
+                             ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds);
 
 }  // namespace epix::experimental::pixelbody

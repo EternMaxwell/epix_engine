@@ -24,7 +24,8 @@ import std;
 #endif
 import glm;
 import webgpu;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.render;
 import epix.core_graph;
 import epix.transform;
@@ -44,7 +45,8 @@ import epix.render.imgui;
 #endif
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
 using namespace epix::render;
@@ -876,7 +878,7 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
     }
 }
 
-void voxel_imgui_ui(imgui::Ctx /*imgui_ctx*/, core::ResMut<VoxelConfig> config) {
+void voxel_imgui_ui(imgui::Ctx /*imgui_ctx*/, ecs::ResMut<VoxelConfig> config) {
     ImGui::Begin("BrickMap Path Tracer");
 
     ImGui::SeparatorText("TAA");
@@ -1443,14 +1445,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
 // ===========================================================================
 
 struct BrickmapPathTracerPlugin {
-    void attach(core::App& app) {
+    void attach(app::App& app) {
         app.world_mut().insert_resource(VoxelConfig{});
-        app.add_systems(core::Startup, into(setup_voxel_scene).set_name("setup brickmap scene"));
-        app.add_systems(core::Update, into(camera_control).set_name("camera control"));
-        app.add_systems(core::Update, into(voxel_imgui_ui).set_name("brickmap imgui ui"));
+        app.add_systems(app::Startup, into(setup_voxel_scene).set_name("setup brickmap scene"));
+        app.add_systems(app::Update, into(camera_control).set_name("camera control"));
+        app.add_systems(app::Update, into(voxel_imgui_ui).set_name("brickmap imgui ui"));
     }
 
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         // Register embedded shader assets.
         auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>();
@@ -1504,13 +1506,13 @@ struct BrickmapPathTracerPlugin {
 // ===========================================================================
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     epix::window::Window win;
     win.title = "BrickMap Path Tracer";
     win.size  = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(epix::window::WindowPlugin{
             .primary_window = win,
             .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,

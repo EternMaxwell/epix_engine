@@ -28,7 +28,8 @@
 #include <epix/utils.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 
 #include <epix/extension/grid/basic_grid.hpp>
@@ -677,7 +678,7 @@ struct ExtendibleChunkRefGrid {
 
 /** @brief Non-owning chunk-ref grid wrapping each chunk in a `Mut<Chunk<Dim>>`.
  *
- * Behaves like `ExtendibleChunkRefGrid` but stores `epix::core::Mut<Chunk<Dim>>`
+ * Behaves like `ExtendibleChunkRefGrid` but stores `epix::ecs::Mut<Chunk<Dim>>`
  * per chunk so that change-detection ticks travel with the reference. Cell-level
  * mutating helpers (`insert_cell`, `get_cell_mut`, `remove_cell`,
  * `remove_cell_all`) go through `Mut::get_mut()` and therefore automatically
@@ -692,7 +693,7 @@ EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleMutChunkRefGrid {
    private:
     struct ChunkRef {
-        epix::core::Mut<Chunk<Dim>> value;
+        epix::ecs::Mut<Chunk<Dim>> value;
     };
 
     tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
@@ -713,10 +714,10 @@ struct ExtendibleMutChunkRefGrid {
         return result;
     }
     constexpr static auto deref =
-        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> epix::core::Ref<Chunk<Dim>> {
+        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> epix::ecs::Ref<Chunk<Dim>> {
         return ref.get().value;
     };
-    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) noexcept -> epix::core::Mut<Chunk<Dim>> {
+    constexpr static auto deref_mut = [](std::reference_wrapper<ChunkRef> ref) noexcept -> epix::ecs::Mut<Chunk<Dim>> {
         return ref.get().value;
     };
 
@@ -737,12 +738,12 @@ struct ExtendibleMutChunkRefGrid {
      *  or `result->is_modified()` to query change detection.
      */
     auto get_chunk(std::array<std::int32_t, Dim> pos) const
-        -> std::expected<epix::core::Ref<Chunk<Dim>>, ChunkGridError> {
+        -> std::expected<epix::ecs::Ref<Chunk<Dim>>, ChunkGridError> {
         return m_chunk_grid.get(pos).transform(deref);
     }
     /** @brief Mutable access to the `Mut<Chunk>` wrapper at chunk coordinates. */
     auto get_chunk_mut(std::array<std::int32_t, Dim> pos)
-        -> std::expected<epix::core::Mut<Chunk<Dim>>, ChunkGridError> {
+        -> std::expected<epix::ecs::Mut<Chunk<Dim>>, ChunkGridError> {
         return m_chunk_grid.get(pos).transform(deref_mut);
     }
 
@@ -750,7 +751,7 @@ struct ExtendibleMutChunkRefGrid {
     void clear_grid() { m_chunk_grid.clear(); }
 
     /** @brief Inserts a `Mut<Chunk>` reference at chunk coordinates (takes ownership of the wrapper). */
-    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::core::Mut<Chunk<Dim>> chunk)
+    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::ecs::Mut<Chunk<Dim>> chunk)
         -> std::expected<void, ChunkGridError> {
         if (chunk.get().width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
         auto result = m_chunk_grid.set_new(pos, ChunkRef{std::move(chunk)});
@@ -852,7 +853,7 @@ EPIX_EXPORT template <std::size_t Dim>
 struct ExtendibleRefChunkRefGrid {
    private:
     struct ChunkRef {
-        epix::core::Ref<Chunk<Dim>> value;
+        epix::ecs::Ref<Chunk<Dim>> value;
     };
 
     tree_extendible_grid<Dim, ChunkRef> m_chunk_grid;
@@ -873,7 +874,7 @@ struct ExtendibleRefChunkRefGrid {
         return result;
     }
     constexpr static auto deref =
-        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> const epix::core::Ref<Chunk<Dim>> {
+        [](std::reference_wrapper<const ChunkRef> ref) noexcept -> const epix::ecs::Ref<Chunk<Dim>> {
         return ref.get().value;
     };
 
@@ -888,14 +889,14 @@ struct ExtendibleRefChunkRefGrid {
     std::size_t chunk_width() const noexcept { return static_cast<std::size_t>(1) << m_chunk_width_shift; }
 
     auto get_chunk(std::array<std::int32_t, Dim> pos) const
-        -> std::expected<epix::core::Ref<Chunk<Dim>>, ChunkGridError> {
+        -> std::expected<epix::ecs::Ref<Chunk<Dim>>, ChunkGridError> {
         return m_chunk_grid.get(pos).transform(deref);
     }
 
     void shrink_grid() { m_chunk_grid.shrink(); }
     void clear_grid() { m_chunk_grid.clear(); }
 
-    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::core::Ref<Chunk<Dim>> chunk)
+    auto insert_chunk(std::array<std::int32_t, Dim> pos, epix::ecs::Ref<Chunk<Dim>> chunk)
         -> std::expected<void, ChunkGridError> {
         if (chunk.get().width_shift() != m_chunk_width_shift) return std::unexpected(ChunkLayerError::WidthMismatch);
         auto result = m_chunk_grid.set_new(pos, ChunkRef{std::move(chunk)});
@@ -1483,11 +1484,11 @@ class BasicGridLayer : public ChunkLayer<grid_trait<Grid>::dim> {
 EPIX_EXPORT template <basic_grid Grid>
 class BasicGridRefLayer : public ChunkLayer<grid_trait<Grid>::dim> {
    private:
-    epix::core::Mut<Grid> m_grid_ref;
+    epix::ecs::Mut<Grid> m_grid_ref;
     std::size_t m_width_shift;
 
    public:
-    explicit BasicGridRefLayer(std::size_t width_shift, epix::core::Mut<Grid> grid_ref)
+    explicit BasicGridRefLayer(std::size_t width_shift, epix::ecs::Mut<Grid> grid_ref)
         : m_grid_ref(std::move(grid_ref)), m_width_shift(width_shift) {}
 
     std::size_t width_shift() const override { return m_width_shift; }

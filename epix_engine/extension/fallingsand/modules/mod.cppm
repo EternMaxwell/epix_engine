@@ -19,14 +19,15 @@ export module epix.extension.fallingsand;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.mesh;
 import epix.time;
 import epix.transform;
 import epix.core_graph;
 import epix.render;
 import epix.extension.grid;
-import epix.tasks;
+import epix.task;
 import glm;
 extern "C++" {
 #include <epix/extension/fallingsand.hpp>

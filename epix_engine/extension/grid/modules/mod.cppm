@@ -24,7 +24,8 @@ export module epix.extension.grid;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.meta;
 import epix.utils;
 import glm;

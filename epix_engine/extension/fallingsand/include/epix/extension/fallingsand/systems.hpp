@@ -8,7 +8,8 @@
 #endif
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
@@ -37,7 +38,8 @@
 
 namespace epix::ext::fallingsand {
 
-// using namespace epix::core;
+// using namespace epix::ecs;
+using namespace epix::app;
 
 // // ──────────────────────────────────────────────────────────────────────────────
 // // System declarations (not exported, so decl is not needed here)

@@ -22,7 +22,8 @@ import std;
 #endif
 import glm;
 import webgpu;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.assets;
 import epix.window;
 import epix.glfw.core;
@@ -39,7 +40,8 @@ import epix.experimental.pixelbody;
 import epix.time;
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 namespace fs = epix::ext::fallingsand;
 namespace pb = epix::experimental::pixelbody;
 
@@ -770,7 +772,7 @@ void body_outline_overlay_system(
 }
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title = "Pixel Body + Falling Sand demo";

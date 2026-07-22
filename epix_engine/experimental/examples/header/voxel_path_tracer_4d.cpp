@@ -12,7 +12,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
@@ -39,7 +40,8 @@
 #endif
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::ext::grid;
 using namespace epix::ext::grid_gpu;
 using namespace epix::render;
@@ -808,7 +810,7 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
                        Local<std::optional<glm::dvec2>> last_mouse_pos,
                        Query<Item<const epix::window::Window&>, With<epix::window::PrimaryWindow>> windows,
                        Res<time::Time<>> game_time,
-                       core::ResMut<Voxel4DCameraState> cam) {
+                       ecs::ResMut<Voxel4DCameraState> cam) {
     const float dt    = game_time->delta_secs();
     const float spd   = cam->move_speed;
     const float sens  = 0.002f;
@@ -898,7 +900,7 @@ void camera_control_4d(Res<input::ButtonInput<input::KeyCode>> keys,
     ortho4(f, r, u, o);
 }
 
-void v4d_imgui_ui(imgui::Ctx /*ctx*/, core::ResMut<Voxel4DConfig> cfg, core::ResMut<Voxel4DCameraState> cam) {
+void v4d_imgui_ui(imgui::Ctx /*ctx*/, ecs::ResMut<Voxel4DConfig> cfg, ecs::ResMut<Voxel4DCameraState> cam) {
     // ---- Settings window ----
     ImGui::Begin("4D Voxel Path Tracer");
     ImGui::SeparatorText("TAA");
@@ -1521,15 +1523,15 @@ void prepare_v4d_render(Res<wgpu::Device> device,
 // ===========================================================================
 
 struct Voxel4DPathTracerPlugin {
-    void attach(core::App& app) {
+    void attach(app::App& app) {
         app.world_mut().insert_resource(Voxel4DConfig{});
         app.world_mut().insert_resource(Voxel4DCameraState{});
-        app.add_systems(core::Startup, into(setup_v4d_scene).set_name("setup 4d scene"));
-        app.add_systems(core::Update, into(camera_control_4d).set_name("camera control 4d"));
-        app.add_systems(core::Update, into(v4d_imgui_ui).set_name("4d imgui ui"));
+        app.add_systems(app::Startup, into(setup_v4d_scene).set_name("setup 4d scene"));
+        app.add_systems(app::Update, into(camera_control_4d).set_name("camera control 4d"));
+        app.add_systems(app::Update, into(v4d_imgui_ui).set_name("4d imgui ui"));
     }
 
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>();
         if (!registry || !server) {
@@ -1576,13 +1578,13 @@ struct Voxel4DPathTracerPlugin {
 };
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     epix::window::Window win;
     win.title = "4D Voxel Path Tracer";
     win.size  = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(epix::window::WindowPlugin{
             .primary_window = win,
             .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,

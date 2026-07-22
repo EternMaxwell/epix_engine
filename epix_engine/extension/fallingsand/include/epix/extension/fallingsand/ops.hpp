@@ -16,7 +16,8 @@
 #include <glm/glm.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/structs.hpp>

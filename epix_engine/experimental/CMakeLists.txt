@@ -1,3 +1,3 @@
-epix_add_examples(ext LINK_LIBS epix_glfw epix_glfw_render epix_input epix_render epix_window epix_imgui epix_core_graph epix_core epix_transform epix_time epix_mesh epix_ext_grid_gpu epix_sprite epix_text)
+epix_add_examples(ext LINK_LIBS epix_glfw epix_glfw_render epix_input epix_render epix_window epix_imgui epix_core_graph epix_ecs epix_app epix_transform epix_time epix_mesh epix_ext_grid_gpu epix_sprite epix_text)
 
 add_subdirectory(pixelbody)

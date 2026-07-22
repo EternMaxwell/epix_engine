@@ -24,7 +24,8 @@ import std;
 import glm;
 import webgpu;
 import epix.assets;
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
@@ -44,7 +45,8 @@ using std::uint32_t;
 
 namespace {
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using epix::ext::grid::packed_grid;
 using epix::ext::grid_gpu::kSvoGridSlangSource;
 using epix::ext::grid_gpu::svo_upload;
@@ -1234,7 +1236,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 
     // Registers compute shaders and queues GPU pipelines via the embedded asset system.
     // Call once from Plugin::ready() before inserting FluidState into the world.
-    void register_pipelines(core::World& world) {
+    void register_pipelines(ecs::World& world) {
         if (queued_) return;
 
         auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
@@ -2563,7 +2565,7 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
         .with_indices<std::uint32_t>(indices);
 }
 
-void liquid_imgui_ui(imgui::Ctx imgui_ctx, core::ResMut<FluidState> state) {
+void liquid_imgui_ui(imgui::Ctx imgui_ctx, ecs::ResMut<FluidState> state) {
     ImGui::Begin("Liquid Sim Feedback");
 
     ImGui::SeparatorText("Stats");
@@ -2608,7 +2610,7 @@ void liquid_imgui_ui(imgui::Ctx imgui_ctx, core::ResMut<FluidState> state) {
 }
 
 struct Plugin {
-    void ready(core::App& app) {
+    void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
@@ -2632,16 +2634,16 @@ struct Plugin {
                                          .gpu_pressure = std::move(gpu_pressure)});
 
         app.add_systems(
-            core::Update,
-            core::into([](core::ResMut<FluidState> state, core::Res<wgpu::Device> device, core::Res<wgpu::Queue> queue,
-                          core::ResMut<render::PipelineServer> pipeline_server,
-                          core::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                          core::Res<input::ButtonInput<input::KeyCode>> keys,
-                          core::Query<core::Item<const window::CachedWindow&>, core::With<window::PrimaryWindow>>
+            app::Update,
+            ecs::into([](ecs::ResMut<FluidState> state, ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue,
+                          ecs::ResMut<render::PipelineServer> pipeline_server,
+                          ecs::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                          ecs::Res<input::ButtonInput<input::KeyCode>> keys,
+                          ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>>
                               window_query,
-                          core::Query<core::Item<const render::camera::Camera&, const render::camera::Projection&,
+                          ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
                                                  const transform::Transform&>> camera_query,
-                          core::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                          ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
                 if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
                 if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
 
@@ -2717,20 +2719,20 @@ struct Plugin {
                 }
             }).set_name("liquid html-port update"));
 
-        app.add_systems(core::PreUpdate, core::into(liquid_imgui_ui).after(imgui::BeginFrameSet));
+        app.add_systems(app::PreUpdate, ecs::into(liquid_imgui_ui).after(imgui::BeginFrameSet));
     }
 };
 }  // namespace
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title =
         "Liquid HTML Port | 1/2/3 tool | [ ] pen | -/= dt | ,/. stick | 0 no-lat | 9 one-frame | Space pause | R reset";
     primary_window.size = {1280, 800};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{
             .primary_window = primary_window,
             .exit_condition = window::ExitCondition::OnPrimaryClosed,

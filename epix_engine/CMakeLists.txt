@@ -27,5 +27,5 @@ add_subdirectory(mesh)
 add_subdirectory(sprite)
 add_subdirectory(text)
 
-# add_subdirectory(extension)
-# add_subdirectory(experimental)
+add_subdirectory(extension)
+add_subdirectory(experimental)

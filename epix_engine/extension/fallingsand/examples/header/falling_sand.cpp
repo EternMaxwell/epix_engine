@@ -1,7 +1,8 @@
 #include <imgui.h>
 
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
@@ -18,7 +19,8 @@
 #include <webgpu/webgpu.hpp>
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 namespace fs = epix::ext::fallingsand;
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -1182,9 +1184,9 @@ void element_hover_info(
                         [&](const auto& cv) {
                             using T = std::decay_t<decltype(cv)>;
                             if constexpr (std::is_same_v<T, fs::TemperatureAbove>)
-                                desc += " [T≥" + std::to_string((int)cv.target) + "K]";
+                                desc += " [T>=" + std::to_string((int)cv.target) + "K]";
                             else if constexpr (std::is_same_v<T, fs::TemperatureBelow>)
-                                desc += " [T≤" + std::to_string((int)cv.target) + "K]";
+                                desc += " [T<=" + std::to_string((int)cv.target) + "K]";
                             else if constexpr (std::is_same_v<T, fs::RandomTick>)
                                 desc += " [RT]";
                             else if constexpr (std::is_same_v<T, fs::IsBurning>)
@@ -1218,13 +1220,13 @@ void element_hover_info(
 // ──────────────────────────────────────────────────────────────────────────────
 
 int main() {
-    core::App app = core::App::create();
+    app::App app = app::App::create();
 
     window::Window primary_window;
     primary_window.title = "Falling Sand  |  LMB paint/op  RMB erase  Tab cycle  Space pause";
     primary_window.size  = {1280, 720};
 
-    app.add_plugins(core::TaskPoolPlugin{})
+    app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{
             .primary_window = primary_window,
             .exit_condition = window::ExitCondition::OnPrimaryClosed,

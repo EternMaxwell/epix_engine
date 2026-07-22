@@ -10,7 +10,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <glm/glm.hpp>
@@ -83,7 +84,7 @@ EPIX_EXPORT struct PixelBody {
     bool physics_dirty = true;
     /// Cached optional asset handle for the render mesh — populated by
     /// `build_pixel_body_meshes` on the first dirty rebuild.
-    std::optional<core::Entity> mesh_child_entity;
+    std::optional<ecs::Entity> mesh_child_entity;
 
     /// Build a uniform rectangular body of size (w × h) filled with the given
     /// element (looked up in the shared `fs::ElementRegistry`).  The colour
@@ -130,7 +131,7 @@ EPIX_EXPORT struct SandStaticBody {
 // ─────────────────────────────────────────────────────────────────────────────
 
 EPIX_EXPORT struct PixelBodyOf {
-    core::Entity world;
+    ecs::Entity world;
 };
 
 /**

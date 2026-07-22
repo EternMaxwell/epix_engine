@@ -9,7 +9,8 @@
 #include <epix/extension/fallingsand/temperature.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 
 namespace epix::ext::fallingsand {
@@ -27,7 +28,7 @@ namespace epix::ext::fallingsand {
  * and the affected world is skipped for that tick.
  */
 EPIX_EXPORT struct FallingSandPlugin {
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
 };
 
 /** @brief Optional plugin that renders a debug overlay for Body-type sentinel
@@ -35,7 +36,7 @@ EPIX_EXPORT struct FallingSandPlugin {
  *  FallingSandPlugin; toggle the overlay at runtime via
  *  SandWorld::set_show_body_debug(). */
 EPIX_EXPORT struct BodyDebugPlugin {
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
 };
 
 }  // namespace epix::ext::fallingsand

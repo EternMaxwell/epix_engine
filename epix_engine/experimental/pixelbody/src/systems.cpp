@@ -9,7 +9,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/experimental/pixelbody.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
@@ -28,7 +29,8 @@
 
 namespace epix::experimental::pixelbody {
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 namespace fs   = epix::ext::fallingsand;
 namespace grid = epix::ext::grid;
 
@@ -716,8 +718,9 @@ void build_pixel_body_meshes(Commands cmd,
     }
 }
 
-void PixelBodyPlugin::attach(epix::core::App& app) {
-    using namespace epix::core;
+void PixelBodyPlugin::attach(epix::app::App& app) {
+    using namespace epix::ecs;
+using namespace epix::app;
     app.add_systems(PreUpdate,
                     into(init_pixel_body_worlds, init_pixel_bodies, rebuild_pixel_body_shapes, sync_transforms_to_b2)
                         .set_names(std::array{

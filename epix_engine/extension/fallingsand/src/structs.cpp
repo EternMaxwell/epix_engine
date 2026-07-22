@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/extension/fallingsand.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <functional>
 #include <limits>
 #include <numbers>
@@ -1362,11 +1362,11 @@ void SandSimulation::step_cells() {
     static auto rng = std::mt19937{std::random_device{}()};
     std::shuffle(offset_coords.begin(), offset_coords.end(), rng);
 
-    auto& pool = tasks::ComputeTaskPool::get();
+    auto& pool = task::ComputeTaskPool::get();
 
     // ── 2. Process ALL chunks in 3×3 modulo groups ────────────────────────────
     for (auto&& [rx, ry] : offset_coords) {
-        thread_local static std::vector<tasks::Task<void>> group_tasks;
+        thread_local static std::vector<task::Task<void>> group_tasks;
         for (auto&& cpos : std::views::filter(iter_chunk_pos(), [rx, ry](auto&& cpos) {
                  return ((cpos[0] % 3 + 3) % 3 == rx && (cpos[1] % 3 + 3) % 3 == ry);
              })) {

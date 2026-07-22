@@ -22,7 +22,8 @@
 #include <glm/glm.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
 #include <epix/extension/grid.hpp>
@@ -76,9 +77,9 @@ EPIX_EXPORT struct SandChunkBodyDebug {};
  * `outline_entity` — present when show_chunk_outlines is true.
  */
 EPIX_EXPORT struct SandChunkRenderChildren {
-    std::optional<core::Entity> mesh_entity;
-    std::optional<core::Entity> outline_entity;
-    std::optional<core::Entity> body_debug_entity;  ///< Separate mesh for Body-type elements (debug).
+    std::optional<ecs::Entity> mesh_entity;
+    std::optional<ecs::Entity> outline_entity;
+    std::optional<ecs::Entity> body_debug_entity;  ///< Separate mesh for Body-type elements (debug).
 };
 
 /**
