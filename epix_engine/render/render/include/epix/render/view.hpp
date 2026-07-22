@@ -7,7 +7,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -43,7 +43,7 @@ EPIX_EXPORT struct WindowRef {
     /** @brief Whether to target the primary window. */
     bool primary = true;
     /** @brief Window entity to target when primary is false. */
-    epix::core::Entity window_entity;
+    epix::ecs::Entity window_entity;
 };
 /** @brief A render target that is either a GPU texture or a window
  * reference. */
@@ -51,10 +51,10 @@ EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
     static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
-    static RenderTarget from_window(epix::core::Entity window_entity) noexcept {
+    static RenderTarget from_window(epix::ecs::Entity window_entity) noexcept {
         return RenderTarget(WindowRef{false, window_entity});
     }
-    std::optional<RenderTarget> normalize(std::optional<epix::core::Entity> primary) const;
+    std::optional<RenderTarget> normalize(std::optional<epix::ecs::Entity> primary) const;
 };
 struct ComputedCameraValues {
     glm::mat4 projection;
@@ -191,7 +191,7 @@ EPIX_EXPORT struct Camera {
     /** @brief Clear color configuration for this camera. */
     ClearColorConfig clear_color = ClearColorConfig::global();
 
-    static void register_required_components(epix::core::Components& components);
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator);
 
     /** @brief Get the effective viewport size, falling back to target size. */
     glm::uvec2 get_viewport_size() const noexcept {
@@ -500,11 +500,11 @@ EPIX_EXPORT enum class CameraUpdateSystems {
 
 template <CameraProjection ProjType>
 void camera_system(
-    epix::core::Query<epix::core::Item<epix::core::Mut<Camera>, epix::core::Mut<ProjType>>>
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>>>
         query,  // camera and projection query
-    epix::core::Query<epix::core::Item<const ::epix::window::CachedWindow&>> window_query,  // window query
-    epix::core::Query<epix::core::Item<const ::epix::window::CachedWindow&>,
-                      epix::core::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
+    epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>> window_query,  // window query
+    epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>,
+                      epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
         // in the body we want to update the stored target size,
@@ -587,8 +587,8 @@ void camera_system(
  * @tparam ProjType Camera projection type satisfying CameraProjection. */
 EPIX_EXPORT template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
-    void attach(epix::core::App& app) {
-        app.add_systems(epix::core::PostUpdate,
+    void attach(epix::app::App& app) {
+        app.add_systems(epix::app::PostUpdate,
                         into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
     }
 };
@@ -624,7 +624,7 @@ EPIX_EXPORT struct ExtractedView {
 /** @brief Component listing entities visible to a camera view. */
 EPIX_EXPORT struct VisibleEntities {
     /** @brief Visible entity IDs. */
-    std::vector<epix::core::Entity> entities;
+    std::vector<epix::ecs::Entity> entities;
 };
 /** @brief Component holding the render target texture view and format for
  * a camera view. */
@@ -662,18 +662,18 @@ EPIX_EXPORT struct ViewDepthCache {
 /** @brief Plugin that registers view extraction, target preparation, and
  * depth buffer creation systems. */
 EPIX_EXPORT struct ViewPlugin {
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
 };
 
 void prepare_view_target(
-    epix::core::Query<epix::core::Item<epix::core::Entity, const camera::ExtractedCamera&, const ExtractedView&>> views,
-    epix::core::Commands cmd,
-    epix::core::Res<window::ExtractedWindows> extracted_windows);
-void create_view_depth(epix::core::Query<epix::core::Item<epix::core::Entity, const ExtractedView&>> views,
-                       epix::core::Res<wgpu::Device> device,
-                       epix::core::Res<wgpu::Queue> queue,
-                       epix::core::ResMut<ViewDepthCache> depth_cache,
-                       epix::core::Commands cmd);
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&, const ExtractedView&>> views,
+    epix::ecs::Commands cmd,
+    epix::ecs::Res<window::ExtractedWindows> extracted_windows);
+void create_view_depth(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ExtractedView&>> views,
+                       epix::ecs::Res<wgpu::Device> device,
+                       epix::ecs::Res<wgpu::Queue> queue,
+                       epix::ecs::ResMut<ViewDepthCache> depth_cache,
+                       epix::ecs::Commands cmd);
 
 /** @brief Uniform buffer data for a view: projection and view matrices. */
 EPIX_EXPORT struct ViewUniform {
@@ -694,7 +694,7 @@ EPIX_EXPORT struct ViewBindGroup {
  * binding. */
 EPIX_EXPORT struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
-    ViewUniformBindingLayout(epix::core::World& world)
+    ViewUniformBindingLayout(epix::ecs::World& world)
         : layout(world.resource<wgpu::Device>().createBindGroupLayout(
               wgpu::BindGroupLayoutDescriptor().setEntries(std::array{
                   wgpu::BindGroupLayoutEntry()
@@ -713,13 +713,13 @@ EPIX_EXPORT template <std::size_t Slot>
 struct BindViewUniform {
     template <render::phase::PhaseItem P>
     struct Command {
-        void prepare(const epix::core::World&) {}
+        void prepare(const epix::ecs::World&) {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const P&,
-            epix::core::Item<const ViewBindGroup&> view_bind_group,
-            std::optional<epix::core::Item<>> entity_item,
-            epix::core::ParamSet<>,
+            epix::ecs::Item<const ViewBindGroup&> view_bind_group,
+            std::optional<epix::ecs::Item<>> entity_item,
+            epix::ecs::ParamSet<>,
             const wgpu::RenderPassEncoder& encoder) {
             encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).bind_group, std::span<const std::uint32_t>{});
             return {};
@@ -730,15 +730,15 @@ struct BindViewUniform {
 namespace epix::render::camera {
 /** @brief System that extracts camera data into the render world. */
 EPIX_EXPORT void extract_cameras(
-    epix::core::Commands cmd,
-    epix::core::Res<ClearColor> global_clear_color,
-    epix::core::Extract<epix::core::Query<epix::core::Item<const Camera&,
+    epix::ecs::Commands cmd,
+    epix::ecs::Res<ClearColor> global_clear_color,
+    epix::app::Extract<epix::ecs::Query<epix::ecs::Item<const Camera&,
                                                            const CameraRenderGraph&,
                                                            const transform::GlobalTransform&,
                                                            const view::VisibleEntities&,
-                                                           epix::core::Opt<const RenderLayer&>>>> cameras,
-    epix::core::Extract<
-        epix::core::Query<epix::core::Entity, epix::core::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
+                                                           epix::ecs::Opt<const RenderLayer&>>>> cameras,
+    epix::app::Extract<
+        epix::ecs::Query<epix::ecs::Entity, epix::ecs::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
         primary_window);
 
 /** @brief Label for the camera driver node in the render graph. */
@@ -746,7 +746,7 @@ EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
 struct CameraPlugin {
-    void attach(epix::core::App& app);
+    void attach(epix::app::App& app);
 };
 /** @brief Bundle for spawning a camera entity with all required
  * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).
@@ -770,7 +770,7 @@ EPIX_EXPORT struct CameraBundle {
 }  // namespace epix::render::camera
 
 template <>
-struct epix::core::Bundle<epix::render::camera::CameraBundle> {
+struct epix::ecs::Bundle<epix::render::camera::CameraBundle> {
     static void get_components(render::camera::CameraBundle& bundle,
                                utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
@@ -781,23 +781,25 @@ struct epix::core::Bundle<epix::render::camera::CameraBundle> {
         write_component([&](void* ptr) { new (ptr) render::view::VisibleEntities(std::move(bundle.visible)); });
         write_component([&](void* ptr) { new (ptr) render::camera::RenderLayer(std::move(bundle.render_layer)); });
     }
-    static auto type_ids(const epix::core::TypeRegistry& registry) {
-        return std::array{
-            registry.type_id<render::camera::Camera>(),
-            registry.type_id<render::camera::Projection>(),
-            registry.type_id<render::camera::CameraRenderGraph>(),
-            registry.type_id<transform::Transform>(),
-            registry.type_id<render::view::VisibleEntities>(),
-            registry.type_id<render::camera::RenderLayer>(),
+    static auto type_ids(const epix::ecs::Components& components) {
+        return std::array<std::optional<epix::ecs::TypeId>, 6>{
+            components.get_id<render::camera::Camera>(),
+            components.get_id<render::camera::Projection>(),
+            components.get_id<render::camera::CameraRenderGraph>(),
+            components.get_id<transform::Transform>(),
+            components.get_id<render::view::VisibleEntities>(),
+            components.get_id<render::camera::RenderLayer>(),
         };
     }
-    static void register_components(const epix::core::TypeRegistry& registry, epix::core::Components& components) {
-        components.register_info<render::camera::Camera>();
-        components.register_info<render::camera::Projection>();
-        components.register_info<render::camera::CameraRenderGraph>();
-        components.register_info<transform::Transform>();
-        components.register_info<render::view::VisibleEntities>();
-        components.register_info<render::camera::RenderLayer>();
+    static auto register_components(epix::ecs::ComponentsRegistrator& components) {
+        std::vector<epix::ecs::TypeId> ids;
+        ids.push_back(components.register_component<render::camera::Camera>());
+        ids.push_back(components.register_component<render::camera::Projection>());
+        ids.push_back(components.register_component<render::camera::CameraRenderGraph>());
+        ids.push_back(components.register_component<transform::Transform>());
+        ids.push_back(components.register_component<render::view::VisibleEntities>());
+        ids.push_back(components.register_component<render::camera::RenderLayer>());
+        return ids;
     }
 };
-static_assert(epix::core::is_bundle<epix::render::camera::CameraBundle>);
+static_assert(epix::ecs::is_bundle<epix::render::camera::CameraBundle>);

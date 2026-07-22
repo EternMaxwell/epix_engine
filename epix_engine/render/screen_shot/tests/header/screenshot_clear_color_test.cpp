@@ -2,14 +2,15 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <webgpu/webgpu.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::render;
 using namespace epix::render::screenshot;
 using namespace epix::image;
@@ -19,7 +20,7 @@ namespace {
 
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4).build()});
     }
 } g_io_task_pool_init;
 

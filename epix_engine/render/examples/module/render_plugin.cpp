@@ -2,7 +2,7 @@
 
 #include <stacktrace>
 
-import epix.core;
+import epix.ecs;
 import epix.input;
 import epix.window;
 import epix.transform;
@@ -13,7 +13,8 @@ import epix.glfw.render;
 import std;
 #endif
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 constexpr struct Test {
 } test_graph;

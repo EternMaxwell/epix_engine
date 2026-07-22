@@ -3,7 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/shader.hpp>
 #include <functional>
 #include <webgpu/webgpu.hpp>
@@ -43,8 +44,8 @@ EPIX_EXPORT struct RenderPlugin {
      * @param level the validation level to set
      */
     RenderPlugin& set_validation(int level = 0) noexcept;
-    void attach(core::App&);
-    void detach(core::App&) noexcept;
+    void attach(app::App&);
+    void detach(app::App&) noexcept;
 };
-void render_system(core::World& world);
+void render_system(ecs::World& world);
 }  // namespace epix::render

@@ -6,7 +6,8 @@
 
 using namespace epix::render::window;
 using namespace epix::window;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);

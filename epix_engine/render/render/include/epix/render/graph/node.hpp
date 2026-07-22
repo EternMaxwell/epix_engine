@@ -6,7 +6,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -28,9 +28,9 @@ EPIX_EXPORT struct Node {
     /** @brief Declare the output slots this node produces. */
     virtual std::vector<SlotInfo> outputs() { return {}; }
     /** @brief Called once per frame to update internal state before rendering. */
-    virtual void update(const epix::core::World&) {}
+    virtual void update(const epix::ecs::World&) {}
     /** @brief Execute this node's GPU commands during the render pass. */
-    virtual void run(GraphContext&, RenderContext&, const epix::core::World&) {}
+    virtual void run(GraphContext&, RenderContext&, const epix::ecs::World&) {}
 };
 /**
  * @brief An edge in the render graph.
@@ -149,10 +149,10 @@ EPIX_EXPORT struct GraphInputNode : public Node {
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
     std::vector<SlotInfo> inputs() override { return m_inputs; }
     std::vector<SlotInfo> outputs() override { return m_inputs; }
-    void run(GraphContext& graph, RenderContext&, const epix::core::World&) override;
+    void run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override;
 };
 /** @brief A no-op node that does nothing when run. */
 EPIX_EXPORT struct EmptyNode : public Node {
-    void run(GraphContext&, RenderContext&, const epix::core::World&) override {}
+    void run(GraphContext&, RenderContext&, const epix::ecs::World&) override {}
 };
 }  // namespace epix::render::graph

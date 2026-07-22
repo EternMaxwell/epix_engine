@@ -9,7 +9,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/traits.hpp>
 #include <epix/utils.hpp>
@@ -40,8 +40,8 @@
 
 namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
-EPIX_EXPORT struct DrawFunctionId : core::int_base<uint32_t> {
-    using core::int_base<uint32_t>::int_base;
+EPIX_EXPORT struct DrawFunctionId : utils::int_base<uint32_t> {
+    using utils::int_base<uint32_t>::int_base;
     auto operator<=>(const DrawFunctionId&) const noexcept = default;
     bool operator==(const DrawFunctionId&) const noexcept  = default;
 };
@@ -107,7 +107,7 @@ EPIX_EXPORT struct OpaqueSortKey {
 EPIX_EXPORT template <typename T>
 concept PhaseItem = requires(const T item) {
     // the entity associated with this item
-    { item.entity() } -> std::same_as<epix::core::Entity>;
+    { item.entity() } -> std::same_as<epix::ecs::Entity>;
     // the sort key for this item, the smaller the key, the earlier it is rendered
     { item.sort_key() } -> std::three_way_comparable;
     // the draw function index for this item
@@ -182,9 +182,9 @@ inline std::string_view to_str(DrawError error) noexcept {
  * @tparam P The phase item type. */
 EPIX_EXPORT template <typename FuncT, typename P>
 concept Draw = PhaseItem<P> && requires(FuncT func,
-                                        const epix::core::World& world,
+                                        const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& ctx,
-                                        epix::core::Entity view,
+                                        epix::ecs::Entity view,
                                         const P& item) {
     { func.prepare(world) };
     { func.draw(world, ctx, view, item) } -> std::same_as<std::expected<void, DrawError>>;
@@ -195,10 +195,10 @@ concept Draw = PhaseItem<P> && requires(FuncT func,
  * @tparam P The phase item type. */
 EPIX_EXPORT template <PhaseItem P>
 struct DrawFunction {
-    virtual void prepare(const epix::core::World& world) {}
-    virtual std::expected<void, DrawError> draw(const epix::core::World& world,
+    virtual void prepare(const epix::ecs::World& world) {}
+    virtual std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                                 const wgpu::RenderPassEncoder& ctx,
-                                                epix::core::Entity view,
+                                                epix::ecs::Entity view,
                                                 const P& item) = 0;
 
     virtual ~DrawFunction() = default;
@@ -210,11 +210,11 @@ struct DrawFunctionImpl : DrawFunction<P> {
     template <typename... Args>
     DrawFunctionImpl(Args&&... args) : m_func(std::forward<Args>(args)...) {}
 
-    void prepare(const epix::core::World& world) override { m_func.prepare(world); }
+    void prepare(const epix::ecs::World& world) override { m_func.prepare(world); }
 
-    std::expected<void, DrawError> draw(const epix::core::World& world,
+    std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& ctx,
-                                        epix::core::Entity view,
+                                        epix::ecs::Entity view,
                                         const P& item) override {
         return m_func.draw(world, ctx, view, item);
     }
@@ -226,9 +226,9 @@ struct DrawFunctionImpl : DrawFunction<P> {
 /** @brief A draw function that does nothing — useful as a placeholder. */
 EPIX_EXPORT template <PhaseItem P>
 struct EmptyDrawFunction : DrawFunction<P> {
-    std::expected<void, DrawError> draw(const epix::core::World&,
+    std::expected<void, DrawError> draw(const epix::ecs::World&,
                                         const wgpu::RenderPassEncoder&,
-                                        epix::core::Entity,
+                                        epix::ecs::Entity,
                                         const P&) noexcept override {
         return {};
     }
@@ -241,7 +241,7 @@ struct DrawFunctionsInternal {
     std::unordered_map<meta::type_index, uint32_t> m_indices;
 
    public:
-    void prepare(const epix::core::World& world) {
+    void prepare(const epix::ecs::World& world) {
         for (auto&& func : m_functions) {
             func->prepare(world);
         }
@@ -292,7 +292,7 @@ struct DrawFunctionsInternal {
  */
 EPIX_EXPORT template <PhaseItem P>
 struct DrawFunctions {
-    void prepare(const epix::core::World& world) const {
+    void prepare(const epix::ecs::World& world) const {
         auto&& [m_mutex, m_functions] = *m_data;
         std::unique_lock lock(m_mutex);
         m_functions.prepare(world);
@@ -365,12 +365,12 @@ struct RenderPhase {
         }
     }
     auto iter_entities() const { return std::views::transform(items, T::entity); }
-    void render(const wgpu::RenderPassEncoder& cmd, const epix::core::World& world, epix::core::Entity view) const {
+    void render(const wgpu::RenderPassEncoder& cmd, const epix::ecs::World& world, epix::ecs::Entity view) const {
         render_range(cmd, world, view, 0, items.size());
     }
     void render_range(const wgpu::RenderPassEncoder& cmd,
-                      const epix::core::World& world,
-                      epix::core::Entity view,
+                      const epix::ecs::World& world,
+                      epix::ecs::Entity view,
                       std::size_t start = 0,
                       std::size_t end   = std::numeric_limits<std::size_t>::max()) const {
         end = std::min(end, items.size());
@@ -415,7 +415,7 @@ EPIX_EXPORT struct RenderCommandError {
 };
 
 template <template <typename> typename R, typename P>
-using render_command_traits = function_traits<decltype(&R<P>::render)>;
+using render_command_traits = traits::function_traits<decltype(&R<P>::render)>;
 
 /** @brief Concept for a struct template that forms a render command
  * within a draw function sequence.
@@ -425,7 +425,7 @@ EPIX_EXPORT template <template <typename> typename R, typename P>
 concept RenderCommand = requires {
     requires PhaseItem<P>;
     requires std::is_member_function_pointer_v<decltype(&R<P>::render)>;
-    requires requires(R<P>& command, const epix::core::World& world) {
+    requires requires(R<P>& command, const epix::ecs::World& world) {
         { command.prepare(world) };
     };
     requires std::constructible_from<R<P>>;
@@ -433,12 +433,12 @@ concept RenderCommand = requires {
     requires render_command_traits<R, P>::arity == 5;
     requires std::same_as<std::expected<void, RenderCommandError>, typename render_command_traits<R, P>::return_type>;
     requires std::same_as<const P&, std::tuple_element_t<0, typename render_command_traits<R, P>::args_tuple>>;
-    requires core::query_data<std::tuple_element_t<1, typename render_command_traits<R, P>::args_tuple>>;
-    requires specialization_of<std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>,
+    requires ecs::query_data<std::tuple_element_t<1, typename render_command_traits<R, P>::args_tuple>>;
+    requires traits::specialization_of<std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>,
                                std::optional>;
-    requires core::query_data<
+    requires ecs::query_data<
         typename std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>::value_type>;
-    requires core::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;
+    requires ecs::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;
     requires std::convertible_to<const wgpu::RenderPassEncoder&,
                                  std::tuple_element_t<4, typename render_command_traits<R, P>::args_tuple>>;
 };
@@ -450,29 +450,29 @@ struct RenderCommandState {
     using func_traits        = render_command_traits<R, P>;
     using view_query_data    = std::tuple_element_t<1, typename func_traits::args_tuple>;
     using entity_query_data  = typename std::tuple_element_t<2, typename func_traits::args_tuple>::value_type;
-    using view_query_param   = epix::core::Query<view_query_data>;
-    using entity_query_param = epix::core::Query<entity_query_data>;
+    using view_query_param   = epix::ecs::Query<view_query_data>;
+    using entity_query_param = epix::ecs::Query<entity_query_data>;
     using system_param       = std::tuple_element_t<3, typename func_traits::args_tuple>;
 
    private:
     using combined_param =
-        epix::core::ROSystemParam<epix::core::ParamSet<view_query_param, entity_query_param, system_param>>;
+        epix::ecs::ROSystemParam<epix::ecs::ParamSet<view_query_param, entity_query_param, system_param>>;
     using combined_state = typename combined_param::State;
     using combined_item  = typename combined_param::Item;
 
    public:
-    explicit RenderCommandState(epix::core::World& world) {
+    explicit RenderCommandState(epix::ecs::World& world) {
         param_state = combined_param::init_state(world);
         combined_param::init_access(*param_state, meta, access, world);
     }
 
-    void prepare(const epix::core::World& world) {
+    void prepare(const epix::ecs::World& world) {
         params = combined_param::get_param(*param_state, meta, world, world.change_tick());
         command.prepare(world);
     }
-    std::expected<void, DrawError> draw(const epix::core::World& world,
+    std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& ctx,
-                                        epix::core::Entity view,
+                                        epix::ecs::Entity view,
                                         const P& item) {
         if (!params) {
             throw std::runtime_error("Failed to get system parameters for render command.");
@@ -498,8 +498,8 @@ struct RenderCommandState {
     }
 
    private:
-    core::SystemMeta meta;
-    core::FilteredAccessSet access;
+    ecs::SystemMeta meta;
+    ecs::FilteredAccessSet access;
     std::optional<combined_state> param_state;
     std::optional<combined_item> params;
     command_type command;
@@ -510,12 +510,12 @@ struct RenderCommandState {
  * @tparam P The phase item type. */
 EPIX_EXPORT template <CachedRenderPipelinePhaseItem P>
 struct SetItemPipeline {
-    void prepare(const epix::core::World&) noexcept {}
+    void prepare(const epix::ecs::World&) noexcept {}
 
     std::expected<void, RenderCommandError> render(const P& item,
-                                                   epix::core::Item<>,
-                                                   std::optional<epix::core::Item<>>,
-                                                   epix::core::ParamSet<epix::core::Res<PipelineServer>> params,
+                                                   epix::ecs::Item<>,
+                                                   std::optional<epix::ecs::Item<>>,
+                                                   epix::ecs::ParamSet<epix::ecs::Res<PipelineServer>> params,
                                                    const wgpu::RenderPassEncoder& encoder) {
         auto&& [pipeline_server] = params.get();
         auto pipeline            = pipeline_server->get_render_pipeline(item.pipeline());
@@ -568,20 +568,20 @@ template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
 struct RenderCommandSequence {
    public:
-    explicit RenderCommandSequence(epix::core::World& world)
+    explicit RenderCommandSequence(epix::ecs::World& world)
         : m_commands([&]<size_t... I>(std::index_sequence<I...>) {
               return std::tuple<RenderCommandState<R, P>...>{((void)I, RenderCommandState<R, P>(world))...};
           }(std::index_sequence_for<R<P>...>{})) {}
 
-    void prepare(const epix::core::World& world) {
+    void prepare(const epix::ecs::World& world) {
         [&]<size_t... I>(std::index_sequence<I...>) {
             (std::get<I>(m_commands).prepare(world), ...);
         }(std::index_sequence_for<R<P>...>{});
     }
 
-    std::expected<void, DrawError> draw(const epix::core::World& world,
+    std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& cmd,
-                                        epix::core::Entity view,
+                                        epix::ecs::Entity view,
                                         const P& item) {
         return [&]<size_t I>(this auto&& self, std::integral_constant<size_t, I>) {
             auto res = std::get<I>(m_commands).draw(world, cmd, view, item);
@@ -605,7 +605,7 @@ struct RenderCommandSequence {
  * @return The DrawFunctionId of the registered sequence. */
 EPIX_EXPORT template <PhaseItem P, template <typename> typename... R>
     requires(RenderCommand<R, P> && ...)
-DrawFunctionId app_add_render_commands(core::App& app) {
+DrawFunctionId app_add_render_commands(app::App& app) {
     auto& world          = app.world_mut();
     auto& draw_functions = world.resource_mut<DrawFunctions<P>>();
     return draw_functions.template add<RenderCommandSequence<P, R...>>(world);
@@ -614,7 +614,7 @@ DrawFunctionId app_add_render_commands(core::App& app) {
 /** @brief System that sorts all RenderPhase<P> components by their sort
  * keys. */
 EPIX_EXPORT template <PhaseItem P>
-void sort_phase_items(epix::core::Query<epix::core::Item<RenderPhase<P>&>> phases) {
+void sort_phase_items(epix::ecs::Query<epix::ecs::Item<RenderPhase<P>&>> phases) {
     for (auto&& [phase] : phases.iter()) {
         phase.sort();
     }

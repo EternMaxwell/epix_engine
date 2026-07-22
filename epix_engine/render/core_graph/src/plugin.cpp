@@ -3,11 +3,12 @@
 
 #include <epix/core_graph.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::core_graph {
 void CoreGraphPlugin::attach(App& app) {
     spdlog::debug("[core_graph] Attaching CoreGraphPlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 }
-}  // namespace epix::core_graph
+}  // namespace epix::ecs_graph

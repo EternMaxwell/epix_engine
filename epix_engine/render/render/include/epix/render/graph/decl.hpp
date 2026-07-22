@@ -1,17 +1,16 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
-#include <epix/core.hpp>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #include <functional>
 #include <type_traits>
 #endif
 #ifndef EPIX_MAKE_LABEL
 #define EPIX_MAKE_LABEL(type)                                                         \
-    struct type : public ::epix::core::Label {                                        \
+    struct type : public ::epix::ecs::Label {                                         \
        public:                                                                        \
         type() noexcept = default;                                                    \
         template <typename T>                                                         \
@@ -46,12 +45,12 @@ struct RunSubGraph;
 template <>
 struct std::hash<epix::render::graph::NodeLabel> {
     std::size_t operator()(const epix::render::graph::NodeLabel& label) const noexcept {
-        return std::hash<epix::core::Label>()(label);
+        return std::hash<epix::ecs::Label>()(label);
     }
 };
 template <>
 struct std::hash<epix::render::graph::GraphLabel> {
     std::size_t operator()(const epix::render::graph::GraphLabel& label) const noexcept {
-        return std::hash<epix::core::Label>()(label);
+        return std::hash<epix::ecs::Label>()(label);
     }
 };

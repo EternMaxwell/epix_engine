@@ -5,7 +5,8 @@
 #include <epix/render/pipeline_server.hpp>
 
 using namespace epix::shader;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::render {
 namespace {

@@ -1,7 +1,8 @@
 #include <epix/render.hpp>
 #include <epix/render/schedule.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::render {
 Schedule RenderT::render_schedule() {

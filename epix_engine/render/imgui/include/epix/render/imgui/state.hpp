@@ -3,7 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <format>
@@ -69,14 +69,14 @@ EPIX_EXPORT struct ImGuiState {
 EPIX_EXPORT struct Ctx {};
 }  // namespace epix::imgui
 
-namespace epix::core {
+namespace epix::ecs {
 template <>
 struct SystemParam<imgui::Ctx> : ParamBase {
     using State                    = TypeId;
     using Item                     = imgui::Ctx;
     static constexpr bool readonly = false;
 
-    static State init_state(World& world) { return world.type_registry().type_id<imgui::ImGuiState>(); }
+    static State init_state(World& world) { return world.components().get_id<imgui::ImGuiState>().value(); }
 
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
         if (access.combined_access().has_resource_read(state)) {
@@ -100,4 +100,4 @@ struct SystemParam<imgui::Ctx> : ParamBase {
         return imgui::Ctx{};
     }
 };
-}  // namespace epix::core
+}  // namespace epix::ecs

@@ -1,7 +1,7 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-import epix.core;
+import epix.ecs;
 import epix.input;
 import epix.window;
 import epix.transform;
@@ -17,7 +17,8 @@ import epix.render.imgui;
 import std;
 #endif
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void demo_system(imgui::Ctx imgui) { ImGui::ShowDemoWindow(); }
 

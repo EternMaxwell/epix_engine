@@ -1,7 +1,7 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -12,7 +12,8 @@
 #include <epix/window.hpp>
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 void demo_system(imgui::Ctx imgui) { ImGui::ShowDemoWindow(); }
 

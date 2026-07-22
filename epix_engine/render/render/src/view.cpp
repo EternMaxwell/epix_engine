@@ -4,16 +4,17 @@
 #include <epix/render.hpp>
 #include <epix/render/view.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::render;
 using namespace epix::render::view;
 using namespace epix::render::camera;
 
-void Camera::register_required_components(Components& components) {
-    components.register_required<Camera>([] { return Projection{}; });
-    components.register_required<Camera>([] { return transform::Transform{}; });
-    components.register_required<Camera>([] { return view::VisibleEntities{}; });
-    components.register_required<Camera>([] { return RenderLayer::all(); });
+void Camera::register_required_components(RequiredComponentsRegistrator& registrator) {
+    registrator.register_required<Projection>([] { return Projection{}; });
+    registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
+    registrator.register_required<view::VisibleEntities>([] { return view::VisibleEntities{}; });
+    registrator.register_required<RenderLayer>([] { return RenderLayer::all(); });
 }
 
 namespace {

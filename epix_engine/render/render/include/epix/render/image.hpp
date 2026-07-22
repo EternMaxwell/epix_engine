@@ -31,9 +31,9 @@ EPIX_EXPORT struct GPUImage {
 
 template <>
 struct epix::render::RenderAsset<epix::image::Image> {
-    using Param          = std::tuple<epix::core::Res<wgpu::Device>,
-                                      epix::core::Res<wgpu::Queue>,
-                                      epix::core::Res<render::DefaultImageSampler>>;
+    using Param          = std::tuple<epix::ecs::Res<wgpu::Device>,
+                                      epix::ecs::Res<wgpu::Queue>,
+                                      epix::ecs::Res<render::DefaultImageSampler>>;
     using ProcessedAsset = GPUImage;
 
     ProcessedAsset process(image::Image&& asset, Param param);

@@ -1,6 +1,6 @@
 #include <spdlog/spdlog.h>
 
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
@@ -9,7 +9,8 @@
 #include <epix/window.hpp>
 #include <stacktrace>
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 constexpr struct Test {
 } test_graph;

@@ -3,12 +3,12 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render {
 struct RenderT {
-    static core::Schedule render_schedule();
+    static ecs::Schedule render_schedule();
 };
 /** @brief Schedule sentinel for the render sub-app. Use `Render` to refer
  * to the render sub-app and its schedule. */

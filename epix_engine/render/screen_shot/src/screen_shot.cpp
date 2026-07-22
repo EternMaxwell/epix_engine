@@ -1,16 +1,17 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
-#include <epix/tasks.hpp>
+#include <epix/task.hpp>
 #include <webgpu/webgpu.hpp>
 
 using namespace epix::render::screenshot;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::assets;
 using namespace epix::image;
 using namespace epix::render;
@@ -48,7 +49,7 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                              ec.message());
             }
 
-            auto* io_pool = epix::tasks::IoTaskPool::try_get();
+            auto* io_pool = epix::task::IoTaskPool::try_get();
             if (io_pool) {
                 io_pool->spawn([img_copy = img, abs]() mutable {
                     auto result = image::Image::save(abs, img_copy);
@@ -286,7 +287,7 @@ static void screenshot_capture_on_key(Res<ScreenshotHotkey> hotkey,
     }
 }
 
-void ScreenshotPlugin::attach(epix::core::App& app) {
+void ScreenshotPlugin::attach(epix::app::App& app) {
     app.add_event<ScreenCapture>();
     app.add_event<ScreenCaptureResult>();
 

@@ -10,7 +10,7 @@ export module epix.core_graph;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
 import epix.transform;
 import epix.render;
 import webgpu;

@@ -3,14 +3,15 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #endif
 
 namespace epix::sfml::render {
 /** @brief Plugin that registers SFML-specific render target (surface)
  * creation for the render pipeline. */
 EPIX_EXPORT struct SFMLRenderPlugin {
-    void attach(core::App& app);
+    void attach(app::App& app);
 };
 }  // namespace epix::sfml::render
 

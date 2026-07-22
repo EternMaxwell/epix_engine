@@ -3,8 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
@@ -55,7 +56,7 @@ EPIX_EXPORT struct ScreenshotPlugin {
     /** @brief Key that triggers an automatic capture. nullopt disables the hotkey. */
     std::optional<input::KeyCode> capture_key = input::KeyCode::KeyF12;
 
-    void attach(core::App& app);
+    void attach(app::App& app);
 };
 
 }  // namespace epix::render::screenshot

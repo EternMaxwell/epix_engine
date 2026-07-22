@@ -4,7 +4,8 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/meta.hpp>
 #include <format>
 #include <optional>
@@ -18,8 +19,8 @@ EPIX_EXPORT inline struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
 void extract_fn(
-    epix::core::Commands cmd,
-    epix::core::ParamSet<std::optional<epix::core::ResMut<T>>, epix::core::Extract<epix::core::ResMut<T>>> resources) {
+    epix::ecs::Commands cmd,
+    epix::ecs::ParamSet<std::optional<epix::ecs::ResMut<T>>, epix::app::Extract<epix::ecs::ResMut<T>>> resources) {
     auto&& [res, extract] = resources.get();
     if (!res) {
         cmd.insert_resource(extract.get());
@@ -32,7 +33,7 @@ void extract_fn(
  * @tparam T A copyable resource type. */
 EPIX_EXPORT template <std::copyable T>
 struct ExtractResourcePlugin {
-    void attach(epix::core::App& app) {
+    void attach(epix::app::App& app) {
         app.sub_app_mut(Render).add_systems(
             ExtractSchedule,
             into(extract_fn<T>).set_name(std::format("extract resource '{}'", meta::type_id<T>().short_name())));

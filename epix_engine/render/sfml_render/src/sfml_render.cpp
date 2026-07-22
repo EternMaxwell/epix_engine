@@ -57,7 +57,8 @@ std::shared_ptr<Display> openDisplay();
 
 #include <webgpu/webgpu.h>
 
-#include <epix/core.hpp>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/sfml/core.hpp>
 #include <epix/sfml/render.hpp>
@@ -147,7 +148,8 @@ wgpu::Surface sfmlGetWGPUSurface(const wgpu::Instance& instance, sf::WindowBase*
     return std::move(*reinterpret_cast<wgpu::Surface*>(&res));
 }
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 using epix::render::window::SurfaceCreation;
 

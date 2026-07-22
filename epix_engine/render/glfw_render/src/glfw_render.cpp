@@ -22,7 +22,7 @@
 #include <spdlog/spdlog.h>
 #include <webgpu/webgpu.h>
 
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/render.hpp>
@@ -155,7 +155,8 @@ wgpu::Surface epix::glfw::render::get_wgpu_surface(const wgpu::Instance& instanc
     return glfwGetWGPUSurface(instance, window);
 }
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 using epix::render::window::SurfaceCreation;
 

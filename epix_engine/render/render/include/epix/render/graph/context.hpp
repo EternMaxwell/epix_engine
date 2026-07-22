@@ -1,9 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #include <optional>
 #include <span>
 #include <utility>
@@ -19,7 +18,7 @@ namespace epix::render::graph {
 struct RunSubGraph {
     GraphLabel id;
     std::vector<SlotValue> inputs;
-    std::optional<epix::core::Entity> view_entity;
+    std::optional<epix::ecs::Entity> view_entity;
 };
 /**
  * @brief GraphContext provides the context for a node to run in the render graph.
@@ -32,7 +31,7 @@ EPIX_EXPORT struct GraphContext {
     const std::vector<SlotValue>& m_inputs;
     std::vector<std::optional<SlotValue>>& m_outputs;
     std::vector<RunSubGraph> m_sub_graphs;
-    std::optional<epix::core::Entity> m_view_entity;
+    std::optional<epix::ecs::Entity> m_view_entity;
 
    public:
     /** @brief Construct the context for a node execution.
@@ -59,7 +58,7 @@ EPIX_EXPORT struct GraphContext {
             .value_or(nullptr);
     }
     /** @brief Get an Entity-typed input by label. */
-    std::optional<epix::core::Entity> get_input_entity(const SlotLabel& label) const {
+    std::optional<epix::ecs::Entity> get_input_entity(const SlotLabel& label) const {
         auto value = get_input(label);
         return value ? value->entity() : std::nullopt;
     }
@@ -95,11 +94,11 @@ EPIX_EXPORT struct GraphContext {
 
     /** @brief Get the view entity assigned to this context.
      * @note Throws if no view entity is set. */
-    epix::core::Entity view_entity() const { return m_view_entity.value(); }
+    epix::ecs::Entity view_entity() const { return m_view_entity.value(); }
     /** @brief Get the view entity, or std::nullopt if none is set. */
-    std::optional<epix::core::Entity> get_view_entity() const noexcept { return m_view_entity; }
+    std::optional<epix::ecs::Entity> get_view_entity() const noexcept { return m_view_entity; }
     /** @brief Assign a view entity to this context. */
-    void set_view_entity(epix::core::Entity entity) noexcept { m_view_entity = entity; }
+    void set_view_entity(epix::ecs::Entity entity) noexcept { m_view_entity = entity; }
 
     /** @brief Schedule a sub-graph to run after this node finishes.
      * @param label The sub-graph label.
@@ -108,7 +107,7 @@ EPIX_EXPORT struct GraphContext {
      * @return True if the sub-graph was found in the render graph. */
     bool run_sub_graph(const GraphLabel& label,
                        std::span<const SlotValue> inputs,
-                       std::optional<epix::core::Entity> view_entity = std::nullopt);
+                       std::optional<epix::ecs::Entity> view_entity = std::nullopt);
 
     /** @brief Consume and return all queued sub-graph runs. */
     std::vector<RunSubGraph> finish() noexcept { return std::move(m_sub_graphs); }

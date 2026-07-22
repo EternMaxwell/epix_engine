@@ -9,7 +9,8 @@ export module epix.render.screenshot;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.render;
 import epix.image;
 import epix.assets;

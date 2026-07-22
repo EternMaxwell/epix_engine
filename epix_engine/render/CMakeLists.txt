@@ -1,5 +1,5 @@
 ﻿epix_add_module_subdir(epix_render render)
-target_link_libraries(epix_render PUBLIC epix_core)
+target_link_libraries(epix_render PUBLIC epix_ecs)
 target_link_libraries(epix_render PUBLIC epix_window)
 target_link_libraries(epix_render PUBLIC epix_assets)
 target_link_libraries(epix_render PUBLIC epix_image)
@@ -9,14 +9,14 @@ target_link_libraries(epix_render PUBLIC epix_shader)
 target_link_libraries(epix_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_glfw_render glfw_render)
-target_link_libraries(epix_glfw_render PUBLIC epix_core)
+target_link_libraries(epix_glfw_render PUBLIC epix_ecs)
 target_link_libraries(epix_glfw_render PUBLIC epix_window)
 target_link_libraries(epix_glfw_render PUBLIC epix_glfw)
 target_link_libraries(epix_glfw_render PUBLIC epix_render)
 target_link_libraries(epix_glfw_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_sfml_render sfml_render)
-target_link_libraries(epix_sfml_render PUBLIC epix_core)
+target_link_libraries(epix_sfml_render PUBLIC epix_ecs)
 target_link_libraries(epix_sfml_render PUBLIC epix_window)
 target_link_libraries(epix_sfml_render PUBLIC epix_sfml)
 target_link_libraries(epix_sfml_render PUBLIC epix_render)
@@ -24,12 +24,12 @@ target_link_libraries(epix_sfml_render PUBLIC SFML::Window)
 target_link_libraries(epix_sfml_render PUBLIC webgpu)
 
 epix_add_module_subdir(epix_core_graph core_graph)
-target_link_libraries(epix_core_graph PUBLIC epix_core)
+target_link_libraries(epix_core_graph PUBLIC epix_ecs)
 target_link_libraries(epix_core_graph PUBLIC epix_transform)
 target_link_libraries(epix_core_graph PUBLIC epix_render)
 
 epix_add_module_subdir(epix_imgui imgui)
-target_link_libraries(epix_imgui PUBLIC epix_core)
+target_link_libraries(epix_imgui PUBLIC epix_ecs)
 target_link_libraries(epix_imgui PUBLIC epix_render)
 target_link_libraries(epix_imgui PUBLIC epix_window)
 target_link_libraries(epix_imgui PUBLIC epix_glfw)
@@ -42,14 +42,14 @@ epix_add_module_subdir(epix_screenshot screen_shot)
 target_link_libraries(epix_screenshot PUBLIC epix_render)
 target_link_libraries(epix_screenshot PUBLIC epix_image)
 target_link_libraries(epix_screenshot PUBLIC epix_assets)
-target_link_libraries(epix_screenshot PUBLIC epix_core)
-target_link_libraries(epix_screenshot PUBLIC epix_tasks)
+target_link_libraries(epix_screenshot PUBLIC epix_ecs)
+target_link_libraries(epix_screenshot PUBLIC epix_task)
 target_link_libraries(epix_screenshot PUBLIC epix_input)
 target_link_libraries(epix_screenshot PUBLIC webgpu)
 
 epix_add_tests(screenshot
   TESTS_DIR screen_shot/tests
-  LINK_LIBS epix_screenshot epix_render epix_core epix_image epix_assets epix_tasks
+  LINK_LIBS epix_screenshot epix_render epix_ecs epix_image epix_assets epix_task
 )
 
 if(EPIX_ENABLE_EXAMPLE)

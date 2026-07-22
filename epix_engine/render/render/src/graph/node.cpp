@@ -4,7 +4,8 @@
 #include <epix/render.hpp>
 #include <epix/render/graph.hpp>
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace epix::render::graph {
 

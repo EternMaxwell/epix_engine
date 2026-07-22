@@ -3,7 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
@@ -38,8 +39,8 @@ EPIX_EXPORT struct ImGuiPlugin {
     ImGuiPlugin& set_docking(bool enabled = true) noexcept;
     ImGuiPlugin& set_viewports(bool enabled = true) noexcept;
 
-    void attach(core::App& app);
-    void detach(core::App& app);
+    void attach(app::App& app);
+    void detach(app::App& app);
 };
 
 EPIX_EXPORT inline struct BeginFrameSetT {
@@ -47,26 +48,26 @@ EPIX_EXPORT inline struct BeginFrameSetT {
 
 // Frame lifecycle systems (main world)
 void imgui_begin_frame(
-    core::ResMut<ImGuiState> state,
-    core::Res<glfw::GLFWwindows> windows,
-    core::Query<core::Item<core::Entity>, core::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
-void imgui_end_frame(core::ResMut<ImGuiState> state);
+    ecs::ResMut<ImGuiState> state,
+    ecs::Res<glfw::GLFWwindows> windows,
+    ecs::Query<ecs::Item<ecs::Entity>, ecs::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
+void imgui_end_frame(ecs::ResMut<ImGuiState> state);
 
 // Post-PreUpdate system that consumes input events handled by ImGui.
 // Checks ImGui::GetIO().WantCapture* flags and advances the event head
 // so later schedules do not see consumed events.
-void imgui_consume_input(core::Res<ImGuiState> state,
-                         core::ResMut<core::Events<input::KeyInput>> key_events,
-                         core::ResMut<core::Events<input::MouseButtonInput>> mouse_events,
-                         core::ResMut<core::Events<input::MouseScroll>> scroll_events,
-                         core::ResMut<input::ButtonInput<input::KeyCode>> key_input,
-                         core::ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
+void imgui_consume_input(ecs::Res<ImGuiState> state,
+                         ecs::ResMut<ecs::Events<input::KeyInput>> key_events,
+                         ecs::ResMut<ecs::Events<input::MouseButtonInput>> mouse_events,
+                         ecs::ResMut<ecs::Events<input::MouseScroll>> scroll_events,
+                         ecs::ResMut<input::ButtonInput<input::KeyCode>> key_input,
+                         ecs::ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
 
 // Render system (render sub-app)
-void imgui_render(core::Res<ImGuiState> state,
-                  core::Res<render::window::ExtractedWindows> windows,
-                  core::Res<wgpu::Instance> instance,
-                  core::Res<wgpu::Adapter> adapter,
-                  core::Res<wgpu::Device> device,
-                  core::Res<wgpu::Queue> queue);
+void imgui_render(ecs::Res<ImGuiState> state,
+                  ecs::Res<render::window::ExtractedWindows> windows,
+                  ecs::Res<wgpu::Instance> instance,
+                  ecs::Res<wgpu::Adapter> adapter,
+                  ecs::Res<wgpu::Device> device,
+                  ecs::Res<wgpu::Queue> queue);
 }  // namespace epix::imgui

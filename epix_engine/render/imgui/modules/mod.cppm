@@ -12,7 +12,8 @@ export module epix.render.imgui;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.render;
 import epix.window;
 import epix.glfw.core;

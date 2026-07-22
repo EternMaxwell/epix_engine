@@ -5,7 +5,8 @@
 #include <epix/render/graph.hpp>
 
 using namespace epix::render::graph;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 bool RenderGraphRunner::run(const RenderGraph& graph,
                             const wgpu::Device& device,

@@ -7,7 +7,7 @@
 #include <chrono>
 #include <concepts>
 #include <cstddef>
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
 #include <epix/shader.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -178,11 +178,11 @@ EPIX_EXPORT struct PipelineServer {
     void process_queue();
     void process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id);
 
-    static void process_pipeline_system(epix::core::ResMut<PipelineServer> pipeline_server);
+    static void process_pipeline_system(epix::ecs::ResMut<PipelineServer> pipeline_server);
     static void extract_shaders(
-        epix::core::ResMut<PipelineServer> pipeline_server,
-        epix::core::Extract<epix::core::Res<assets::Assets<shader::Shader>>> shaders,
-        epix::core::Extract<epix::core::EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
+        epix::ecs::ResMut<PipelineServer> pipeline_server,
+        epix::app::Extract<epix::ecs::Res<assets::Assets<shader::Shader>>> shaders,
+        epix::app::Extract<epix::ecs::EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
 
     std::shared_ptr<PipelineServerData> m_data;
 };

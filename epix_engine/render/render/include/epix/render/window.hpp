@@ -3,7 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/window.hpp>
 #include <functional>
 #include <optional>
@@ -22,7 +23,7 @@ EPIX_EXPORT using SurfaceCreation = std::function<wgpu::Surface(const wgpu::Inst
  * render world each frame. */
 EPIX_EXPORT struct ExtractedWindow {
     /** @brief Entity ID of the source window. */
-    core::Entity entity;
+    ecs::Entity entity;
     /** @brief Functor to create a surface from a wgpu::Instance. */
     SurfaceCreation create_surface;
     /** @brief Window width in physical pixels. */
@@ -55,8 +56,8 @@ EPIX_EXPORT struct ExtractedWindows {
     ExtractedWindows(ExtractedWindows&&)                 = default;
     ExtractedWindows& operator=(ExtractedWindows&&)      = default;
 
-    std::optional<core::Entity> primary;
-    std::unordered_map<core::Entity, ExtractedWindow> windows;
+    std::optional<ecs::Entity> primary;
+    std::unordered_map<ecs::Entity, ExtractedWindow> windows;
 };
 struct SurfaceData {
     SurfaceData(wgpu::Surface surface, wgpu::SurfaceConfiguration config)
@@ -76,36 +77,36 @@ struct WindowSurfaces {
     WindowSurfaces(WindowSurfaces&&)                 = default;
     WindowSurfaces& operator=(WindowSurfaces&&)      = default;
 
-    std::unordered_map<core::Entity, SurfaceData> surfaces;
-    std::unordered_set<core::Entity> configured_windows;
+    std::unordered_map<ecs::Entity, SurfaceData> surfaces;
+    std::unordered_set<ecs::Entity> configured_windows;
 
-    void remove(const core::Entity& entity);
+    void remove(const ecs::Entity& entity);
 };
 
 /**
  * @brief System for extracting windows.
  */
-EPIX_EXPORT void extract_windows(core::ResMut<ExtractedWindows> extracted_windows,
-                                 core::Extract<core::Query<core::Item<core::Entity,
+EPIX_EXPORT void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows,
+                                 app::Extract<ecs::Query<ecs::Item<ecs::Entity,
                                                                       const epix::window::Window&,
                                                                       const SurfaceCreation&,
-                                                                      core::Has<epix::window::PrimaryWindow>>>> windows,
-                                 core::ResMut<WindowSurfaces> window_surfaces,
-                                 core::Extract<core::EventReader<epix::window::WindowClosed>> closed);
+                                                                      ecs::Has<epix::window::PrimaryWindow>>>> windows,
+                                 ecs::ResMut<WindowSurfaces> window_surfaces,
+                                 app::Extract<ecs::EventReader<epix::window::WindowClosed>> closed);
 /**
  * @brief System for making swapchain texture and texture view available.
  */
-EPIX_EXPORT void prepare_windows(core::ResMut<ExtractedWindows> windows,
-                                 core::ResMut<WindowSurfaces> window_surfaces,
-                                 core::Res<wgpu::Device> device,
-                                 core::Res<wgpu::Instance> instance);
-void create_surfaces(core::Res<ExtractedWindows> windows,
-                     core::ResMut<WindowSurfaces> window_surfaces,
-                     core::Res<wgpu::Instance> instance,
-                     core::Res<wgpu::Adapter> adapter,
-                     core::Res<wgpu::Device> device);
+EPIX_EXPORT void prepare_windows(ecs::ResMut<ExtractedWindows> windows,
+                                 ecs::ResMut<WindowSurfaces> window_surfaces,
+                                 ecs::Res<wgpu::Device> device,
+                                 ecs::Res<wgpu::Instance> instance);
+void create_surfaces(ecs::Res<ExtractedWindows> windows,
+                     ecs::ResMut<WindowSurfaces> window_surfaces,
+                     ecs::Res<wgpu::Instance> instance,
+                     ecs::Res<wgpu::Adapter> adapter,
+                     ecs::Res<wgpu::Device> device);
 
-void present_windows(core::ResMut<WindowSurfaces> window_surfaces, core::ResMut<ExtractedWindows> windows);
+void present_windows(ecs::ResMut<WindowSurfaces> window_surfaces, ecs::ResMut<ExtractedWindows> windows);
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */
@@ -113,6 +114,6 @@ EPIX_EXPORT struct WindowRenderPlugin {
     /** @brief Whether this plugin handles presenting the swapchain
      * (default true). */
     bool handle_present = true;
-    void attach(core::App&);
+    void attach(app::App&);
 };
 }  // namespace epix::render::window

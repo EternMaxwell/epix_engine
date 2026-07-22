@@ -4,11 +4,12 @@
 #include <epix/core_graph.hpp>
 using namespace epix::render;
 using namespace epix::core_graph::core_2d;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
-void Camera2D::register_required_components(epix::core::Components& components) {
-    components.register_required<Camera2D>([] { return camera::Camera{}; });
-    components.register_required<Camera2D>([] { return camera::CameraRenderGraph{Core2d}; });
+void Camera2D::register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+    registrator.template register_required<camera::Camera>([] { return camera::Camera{}; });
+    registrator.template register_required<camera::CameraRenderGraph>([] { return camera::CameraRenderGraph{Core2d}; });
 }
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {

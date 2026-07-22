@@ -5,7 +5,8 @@
 #include <imgui_impl_wgpu.h>
 #include <spdlog/spdlog.h>
 
-#include <epix/core.hpp>
+#include <epix/ecs.hpp>
+#include <epix/app.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
@@ -15,7 +16,8 @@
 #include <webgpu/webgpu.hpp>
 
 using namespace epix;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 namespace win  = ::epix::window;
 namespace rwin = epix::render::window;

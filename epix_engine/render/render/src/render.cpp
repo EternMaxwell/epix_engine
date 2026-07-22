@@ -8,7 +8,8 @@
 #include <webgpu/webgpu.hpp>
 
 using namespace epix::render;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
     validation = level;
@@ -29,8 +30,8 @@ void RenderPlugin::attach(App& app) {
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app
             .add_schedule(Schedule(render::ExtractSchedule)
-                              .with_schedule_config(core::ScheduleConfig{
-                                  .executor_config = {.deferred = core::DeferredApply::Ignore},
+                              .with_schedule_config(ecs::ScheduleConfig{
+                                  .executor_config = {.deferred = ecs::DeferredApply::Ignore},
                               }))
             .add_schedule(render::Render.render_schedule())
             .set_extract_fn([](App& render_app, World& main_world) { render_app.run_schedule(ExtractSchedule); });
@@ -147,7 +148,7 @@ void RenderPlugin::attach(App& app) {
                                      .after(RenderSet::Cleanup))
             .add_systems(Render, into(render_system).in_set(RenderSet::Render).set_name("render system"))
             .add_systems(Render,
-                         into([](ParamSet<World&, ResMut<core::Schedules>> params) {
+                         into([](ParamSet<World&, ResMut<ecs::Schedules>> params) {
                              auto&& [world, schedules] = params.get();
                              schedules.get_mut().get_schedule_mut(ExtractSchedule).value().get().apply_deferred(world);
                          })

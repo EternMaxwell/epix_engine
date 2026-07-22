@@ -38,7 +38,7 @@ EPIX_EXPORT struct RenderGraph {
     RenderGraph& operator=(RenderGraph&&)      = default;
 
     /** @brief Update all nodes in the graph with the given world. */
-    void update(epix::core::World& world);
+    void update(epix::ecs::World& world);
     /** @brief Set the graph's input slot layout. Returns true if the input node was created. */
     bool set_input(std::span<const SlotInfo> inputs);
     /** @brief Get the input node state, if any. */
@@ -127,15 +127,15 @@ struct RenderGraphRunner {
     static bool run(const RenderGraph& graph,
                     const wgpu::Device& device,
                     const wgpu::Queue& queue,
-                    epix::core::World& world,
+                    epix::ecs::World& world,
                     std::function<void(const wgpu::CommandEncoder&)> finalizer);
 
     static bool run_graph(const RenderGraph& graph,
                           std::optional<GraphLabel> sub_graph,
                           RenderContext& render_context,
-                          epix::core::World& world,
+                          epix::ecs::World& world,
                           std::span<const SlotValue> inputs,
-                          std::optional<epix::core::Entity> view_entity);
+                          std::optional<epix::ecs::Entity> view_entity);
 };
 }  // namespace epix::render::graph
 

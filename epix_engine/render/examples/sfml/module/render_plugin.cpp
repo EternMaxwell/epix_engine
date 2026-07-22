@@ -2,7 +2,7 @@
 
 #include <stacktrace>
 
-import epix.core;
+import epix.ecs;
 import epix.input;
 import epix.window;
 import epix.transform;
@@ -12,7 +12,8 @@ import epix.sfml.render;
 #ifdef EPIX_IMPORT_STD
 import std;
 #endif
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix;
 
 constexpr struct Test {

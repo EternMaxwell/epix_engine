@@ -6,7 +6,7 @@
 
 #include <ranges>
 
-import epix.core;
+import epix.ecs;
 import epix.render;
 import epix.render.screenshot;
 import epix.image;
@@ -14,7 +14,8 @@ import epix.assets;
 import epix.tasks;
 import webgpu;
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 using namespace epix::render;
 using namespace epix::render::screenshot;
 using namespace epix::image;
@@ -25,7 +26,7 @@ namespace {
 // Ensure an IO task pool exists (required by AssetPlugin / ShaderPlugin).
 struct IoTaskPoolInit {
     IoTaskPoolInit() {
-        epix::tasks::IoTaskPool::get_or_init([] { return epix::tasks::TaskPool{4}; });
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4).build()});
     }
 } g_io_task_pool_init;
 
