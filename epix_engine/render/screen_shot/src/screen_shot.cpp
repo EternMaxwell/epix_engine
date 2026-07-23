@@ -59,7 +59,7 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                         spdlog::info("[render.screenshot] Screenshot saved to '{}' through `ScreenshotPlugin`",
                                      abs.string());
                     }
-                });
+                }).detach();
             } else {
                 // IoTaskPool not initialised — fall back to synchronous save
                 auto result = image::Image::save(abs, img);
