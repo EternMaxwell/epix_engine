@@ -61,13 +61,6 @@ EPIX_EXPORT struct World {
     template <typename T>
         requires std::movable<T>
     TypeId register_resource() {
-        if (auto id = _components.template get_valid_id<T>();
-            id && !internal::is_resource_component(_components, *id) && _archetypes.by_component.contains(*id)) {
-            throw std::logic_error(
-                std::format("Cannot register component {} as a resource after it has already been inserted on an "
-                            "entity.",
-                            meta::type_id<T>().name()));
-        }
         return registrator().template register_resource<T>();
     }
     /** @brief Get a const reference to the component metadata store. */

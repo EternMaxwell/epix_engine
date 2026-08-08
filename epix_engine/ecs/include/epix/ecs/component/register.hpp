@@ -76,7 +76,12 @@ EPIX_EXPORT struct ComponentsRegistrator {
         auto id = register_component_checked(meta::type_id<T>{}, storage_type_of<T>(),
                                              internal::ResourceComponentRegistration<T>::register_required_components,
                                              &ComponentHooks::update_from_component<T>);
-        configure_resource_component(id);
+        if (!internal::is_resource_component(*m_components, id)) {
+            throw std::logic_error(
+                std::format("Cannot register component {} as a resource because it was already registered as a "
+                            "normal component.",
+                            meta::type_id<T>().name()));
+        }
         return id;
     }
 
@@ -86,7 +91,6 @@ EPIX_EXPORT struct ComponentsRegistrator {
     friend struct ComponentsQueuedRegistrator;
 
    private:
-    void configure_resource_component(TypeId resource_id);
     TypeId register_component_checked(meta::type_index type_index,
                                       StorageType storage_type,
                                       void (*register_required_components)(TypeId, RequiredComponentsRegistrator&),

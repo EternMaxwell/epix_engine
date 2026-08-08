@@ -35,17 +35,6 @@ bool is_resource_component(const Components& components, TypeId component_id) {
 }
 }  // namespace internal
 
-void ComponentsRegistrator::configure_resource_component(TypeId resource_id) {
-    if (internal::is_resource_component(*m_components, resource_id)) return;
-
-    TypeId marker_id = register_component<IsResource>();
-    auto result      = m_components->register_required_components<IsResource>(
-        resource_id, marker_id, [resource_id] { return IsResource(resource_id); });
-    if (!result && result.error().kind != RequiredComponentsErrorKind::DuplicateRegistration) {
-        throw std::logic_error(result.error().message(*m_components));
-    }
-}
-
 TypeId ComponentsRegistrator::register_component_checked(
     meta::type_index type_index,
     StorageType storage_type,

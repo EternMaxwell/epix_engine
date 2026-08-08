@@ -164,10 +164,11 @@ TEST(ecs, is_resource_enforces_singleton_and_removal_invariants) {
     EXPECT_FALSE(world.get_resource<TestResource>());
 }
 
-TEST(ecs, component_cannot_become_a_resource_after_entity_use) {
+TEST(ecs, registrator_rejects_normal_component_as_resource) {
     World world(WorldId(8));
-    world.spawn(TestResource{1});
-    EXPECT_THROW(world.register_resource<TestResource>(), std::logic_error);
+    auto registrator = world.registrator();
+    registrator.register_component<TestResource>();
+    EXPECT_THROW(registrator.register_resource<TestResource>(), std::logic_error);
 }
 
 TEST(ecs, invalid_is_resource_marker_is_removed_through_entity_access) {
@@ -275,6 +276,7 @@ TEST(ecs, clear_entities_preserves_resources) {
 
 TEST(ecs, resource_access_conflicts_with_component_access) {
     World world(WorldId(4));
+    world.register_resource<TestResource>();
     // Entity-backed resources and ordinary queries address the same component storage.
     auto system = make_system_unique(conflicting_resource_access);
     EXPECT_THROW(system->initialize(world), std::runtime_error);
