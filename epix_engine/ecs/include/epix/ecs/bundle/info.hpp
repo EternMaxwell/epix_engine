@@ -89,35 +89,36 @@ struct BundleInfo {
                           InsertMode insert_mode = InsertMode::Replace) const {
         auto component_id_status_view = std::views::zip(explicit_components(), component_statuses);
         auto component_iter           = component_id_status_view.begin();
-        Bundle<std::decay_t<decltype(bundle)>>::get_components(bundle, [&](std::invocable<void*> auto&& write_component) {
-            auto&& [type_id, status] = *component_iter;
-            auto storage_type        = components.get_info(type_id)->get().storage_type();
-            if (storage_type == StorageType::Table) {
-                Dense& dense = table.unsafe_dense_mut(type_id);
-                void* ptr    = dense.unsafe_get_mut(row);  // resize uninitialized already called
-                if (status == ComponentStatus::Added) {
-                    write_component(ptr);
-                    dense.unsafe_added_tick_mut(row)    = tick;
-                    dense.unsafe_modified_tick_mut(row) = tick;
-                } else if (insert_mode == InsertMode::Replace) {
-                    // manually destroy existing component before replacing
-                    dense.type_info().destruct(ptr);
-                    write_component(ptr);
-                    dense.unsafe_modified_tick_mut(row) = tick;
+        Bundle<std::decay_t<decltype(bundle)>>::get_components(
+            bundle, [&](std::invocable<void*> auto&& write_component) {
+                auto&& [type_id, status] = *component_iter;
+                auto storage_type        = components.get_info(type_id)->get().storage_type();
+                if (storage_type == StorageType::Table) {
+                    Dense& dense = table.unsafe_dense_mut(type_id);
+                    void* ptr    = dense.unsafe_get_mut(row);  // resize uninitialized already called
+                    if (status == ComponentStatus::Added) {
+                        write_component(ptr);
+                        dense.unsafe_added_tick_mut(row)    = tick;
+                        dense.unsafe_modified_tick_mut(row) = tick;
+                    } else if (insert_mode == InsertMode::Replace) {
+                        // manually destroy existing component before replacing
+                        dense.type_info().destruct(ptr);
+                        write_component(ptr);
+                        dense.unsafe_modified_tick_mut(row) = tick;
+                    } else {
+                        // keep existing, do nothing
+                    }
                 } else {
-                    // keep existing, do nothing
+                    ComponentSparseSet& sparse_set = sparse_sets.unsafe_get_mut(type_id);
+                    assert(((status == ComponentStatus::Added) == !sparse_set.contains(entity)));
+                    if (status == ComponentStatus::Added || insert_mode == InsertMode::Replace) {
+                        sparse_set.construct(entity, tick, [&](void* ptr) { write_component(ptr); });
+                    } else {
+                        // keep existing, do nothing
+                    }
                 }
-            } else {
-                ComponentSparseSet& sparse_set = sparse_sets.unsafe_get_mut(type_id);
-                assert(((status == ComponentStatus::Added) == !sparse_set.contains(entity)));
-                if (status == ComponentStatus::Added || insert_mode == InsertMode::Replace) {
-                    sparse_set.construct(entity, tick, [&](void* ptr) { write_component(ptr); });
-                } else {
-                    // keep existing, do nothing
-                }
-            }
-            ++component_iter;
-        });
+                ++component_iter;
+            });
 
         for (auto&& rc : required_components) {
             rc.initialize(table, sparse_sets, tick, row, entity);

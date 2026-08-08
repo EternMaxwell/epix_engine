@@ -9,8 +9,15 @@ using namespace internal;
 void EntityWorldMut::remove_bundle(BundleId bundle_id) {
     assert_not_despawned();
     spdlog::trace("[entity] Removing bundle {} from entity {}.", bundle_id.get(), entity_.index);
+    auto old_resource_id =
+        get<IsResource>().transform([](const IsResource& marker) { return marker.resource_component_id(); });
     auto remover = BundleRemover::create_with_id(*world_, location_.archetype_id, bundle_id, world_->change_tick());
     location_    = remover.remove(entity_, location_);
+    auto new_resource_id =
+        get<IsResource>().transform([](const IsResource& marker) { return marker.resource_component_id(); });
+    if (old_resource_id && old_resource_id != new_resource_id && contains_id(*old_resource_id)) {
+        remove_by_id(*old_resource_id);
+    }
     world_->flush();
     update_location();
 }

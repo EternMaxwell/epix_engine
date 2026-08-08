@@ -1,6 +1,8 @@
-﻿#include <epix/ecs/component/components.hpp>
+﻿#include <epix/ecs/archetype/archetype.hpp>
+#include <epix/ecs/component/components.hpp>
 #include <epix/ecs/component/register.hpp>
 #include <epix/ecs/component/required_component.hpp>
+#include <epix/ecs/storage/resource.hpp>
 
 namespace {
 using namespace epix::ecs;
@@ -23,6 +25,30 @@ void enforce_no_required_components_recursion(Components& components, std::span<
 }  // namespace
 
 namespace epix::ecs {
+void ComponentsRegistrator::configure_resource_component(TypeId resource_id) {
+    TypeId marker_id = register_component<IsResource>();
+    if (resource_id == marker_id) return;
+
+    bool has_marker = m_components->get_required_components(resource_id)
+                          .transform([&](const RequiredComponents& required) { return required.contains(marker_id); })
+                          .value_or(false);
+    if (has_marker) return;
+
+    if (m_archetypes->by_component.contains(resource_id)) {
+        throw std::logic_error(
+            std::format("Cannot register component {} as a resource after it has already been inserted on an entity.",
+                        m_components->get_index(resource_id)
+                            .transform([](meta::type_index type) { return type.name(); })
+                            .value_or("<unknown>")));
+    }
+
+    auto result = m_components->register_required_components<IsResource>(
+        resource_id, marker_id, [resource_id] { return IsResource(resource_id); });
+    if (!result && result.error().kind != RequiredComponentsErrorKind::DuplicateRegistration) {
+        throw std::logic_error(result.error().message(*m_components));
+    }
+}
+
 TypeId ComponentsRegistrator::register_resource_checked(meta::type_index type_index, StorageType storage_type) {
     if (auto id = m_components->get_id(type_index)) {
         return *id;

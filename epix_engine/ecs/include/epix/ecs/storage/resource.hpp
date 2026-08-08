@@ -14,9 +14,44 @@
 #include <epix/ecs/storage/sparse_set.hpp>
 
 namespace epix::ecs {
+EPIX_EXPORT struct World;
+
+/** Marks the canonical entity that owns a movable resource component. */
+EPIX_EXPORT struct IsResource {
+   public:
+    explicit IsResource(TypeId resource_component_id) noexcept : resource_component_id_(resource_component_id) {}
+
+    TypeId resource_component_id() const noexcept { return resource_component_id_; }
+
+    static void on_insert(World& world, HookContext context);
+    static void on_remove(World& world, HookContext context);
+    static void on_despawn(World& world, HookContext context);
+
+   private:
+    TypeId resource_component_id_;
+};
+
+/** Cache from a movable resource's component id to its canonical entity. */
+EPIX_EXPORT struct ResourceEntities {
+    std::size_t size() const noexcept { return entities.size(); }
+    bool empty() const noexcept { return entities.empty(); }
+    auto iter() const noexcept { return entities.iter(); }
+    void clear() { entities.clear(); }
+    bool contains(TypeId resource_id) const noexcept { return entities.contains(resource_id.get()); }
+    std::optional<Entity> get(TypeId resource_id) const noexcept {
+        return entities.get(resource_id.get()).transform([](const Entity& entity) { return entity; });
+    }
+    void insert(TypeId resource_id, Entity entity) { entities.emplace(resource_id.get(), entity); }
+    bool remove(TypeId resource_id) { return entities.remove(resource_id.get()); }
+
+   private:
+    SparseSet<std::size_t, Entity> entities;
+};
+
 /**
- * @brief Storage for single resource data. Use untyped_vector for underlying storage.
- * Note that the data is reserved when the struct is constructed, so the reference is stable.
+ * @brief Explicit storage for one non-movable resource. Uses untyped_vector for underlying storage.
+ * Note that
+ * the data is reserved when the struct is constructed, so the reference is stable.
  */
 EPIX_EXPORT struct ResourceData {
    public:
@@ -161,6 +196,7 @@ EPIX_EXPORT struct ResourceData {
     mutable Tick modified_tick;
 };
 
+/** Explicit storage used only for resources that cannot move through entity component storage. */
 EPIX_EXPORT struct Resources {
     std::size_t resource_count() const noexcept { return resources.size(); }
     bool empty() const noexcept { return resources.empty(); }

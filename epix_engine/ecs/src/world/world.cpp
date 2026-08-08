@@ -1,6 +1,134 @@
+#include <spdlog/spdlog.h>
+
 #include <epix/ecs/world.hpp>
+#include <vector>
 
 namespace epix::ecs {
+namespace {
+bool is_entity_resource_component(const World& world, TypeId resource_id) {
+    auto marker_id = world.components().get_valid_id<IsResource>();
+    return marker_id &&
+           world.components()
+               .get_required_components(resource_id)
+               .transform([&](const RequiredComponents& required) { return required.contains(*marker_id); })
+               .value_or(false);
+}
+}  // namespace
+
+void IsResource::on_insert(World& world, HookContext context) {
+    auto marker = world.entity(context.entity).get<IsResource>();
+    if (!marker) return;
+    TypeId resource_id = marker->get().resource_component_id();
+    if (!is_entity_resource_component(world, resource_id)) {
+        spdlog::warn("[ecs] IsResource on entity {} references component {}, which is not a movable resource.",
+                     context.entity.index, resource_id.get());
+        return;
+    }
+    auto existing = world.resource_entities().get(resource_id);
+    if (!existing) {
+        world._resource_entities.insert(resource_id, context.entity);
+    } else if (*existing != context.entity) {
+        spdlog::warn("[ecs] Tried to insert resource component {} on entity {} while canonical entity {} exists.",
+                     resource_id.get(), context.entity.index, existing->index);
+    }
+}
+
+void IsResource::on_remove(World& world, HookContext context) {
+    auto marker = world.entity(context.entity).get<IsResource>();
+    if (!marker) return;
+    TypeId resource_id = marker->get().resource_component_id();
+    if (world.resource_entities().get(resource_id) == context.entity) {
+        world._resource_entities.remove(resource_id);
+    }
+}
+
+void IsResource::on_despawn(World&, HookContext context) {
+    spdlog::warn("[ecs] Resource entity {} was despawned; resource entities are intended to remain stable.",
+                 context.entity.index);
+}
+
+void World::reconcile_resource_entity(Entity entity) {
+    auto entity_ref = get_entity(entity);
+    if (!entity_ref) return;
+    auto marker = entity_ref->get<IsResource>();
+    if (!marker) return;
+
+    TypeId resource_id = marker->get().resource_component_id();
+    if (!is_entity_resource_component(*this, resource_id)) {
+        auto marker_id = _components.get_valid_id<IsResource>();
+        auto invalid   = get_entity_mut(entity);
+        if (marker_id && invalid && invalid->contains_id(*marker_id)) invalid->remove_by_id(*marker_id);
+        return;
+    }
+    auto canonical = _resource_entities.get(resource_id);
+    if (!canonical) {
+        _resource_entities.insert(resource_id, entity);
+        return;
+    }
+    if (*canonical == entity) return;
+
+    if (!get_entity(*canonical)) {
+        _resource_entities.remove(resource_id);
+        _resource_entities.insert(resource_id, entity);
+        return;
+    }
+
+    spdlog::warn("[ecs] Removing duplicate resource component {} and IsResource marker from entity {}.",
+                 resource_id.get(), entity.index);
+    auto duplicate = get_entity_mut(entity);
+    if (!duplicate) return;
+    if (duplicate->contains_id(resource_id)) duplicate->remove_by_id(resource_id);
+    auto marker_id = _components.get_valid_id<IsResource>();
+    if (marker_id && duplicate->contains_id(*marker_id)) duplicate->remove_by_id(*marker_id);
+}
+
+bool World::remove_resource_by_id(TypeId type_id) {
+    if (auto entity = _resource_entities.get(type_id)) {
+        auto entity_mut = get_entity_mut(*entity);
+        if (entity_mut && entity_mut->contains_id(type_id)) {
+            entity_mut->remove_by_id(type_id);
+            return true;
+        }
+        return false;
+    }
+    return _storage.resources.get_mut(type_id)
+        .transform([](ResourceData& resource) {
+            if (!resource.is_present()) return false;
+            resource.remove();
+            return true;
+        })
+        .value_or(false);
+}
+
+void World::clear_resources() {
+    std::vector<std::pair<TypeId, Entity>> movable_resources;
+    movable_resources.reserve(_resource_entities.size());
+    for (auto&& [id, entity] : _resource_entities.iter()) {
+        movable_resources.emplace_back(TypeId(id), entity);
+    }
+    for (auto [id, entity] : movable_resources) {
+        auto entity_mut = get_entity_mut(entity);
+        if (entity_mut && entity_mut->contains_id(id)) entity_mut->remove_by_id(id);
+    }
+    _storage.resources.clear();
+}
+
+void World::clear_entities() {
+    flush();
+
+    std::vector<Entity> ordinary_entities;
+    ordinary_entities.reserve(_entities.used_count());
+    for (std::uint32_t index = 0; index < _entities.total_count(); ++index) {
+        auto entity = _entities.resolve_index(index);
+        if (!entity || !_entities.contains(*entity)) continue;
+        auto entity_ref = get_entity(*entity);
+        if (entity_ref && !entity_ref->contains<IsResource>()) ordinary_entities.push_back(*entity);
+    }
+
+    for (Entity entity : ordinary_entities) {
+        if (auto entity_mut = get_entity_mut(entity)) entity_mut->despawn();
+    }
+}
 
 void World::flush_components() { registrator().apply_queued_registrations(); }
 
@@ -31,6 +159,10 @@ const Entities& world_entities(const World& world) noexcept { return world.entit
 Entities& world_entities_mut(World& world) noexcept { return world.entities_mut(); }
 const Storage& world_storage(const World& world) noexcept { return world.storage(); }
 Storage& world_storage_mut(World& world) noexcept { return world.storage_mut(); }
+std::optional<Entity> world_resource_entity(const World& world, TypeId resource_id) noexcept {
+    return world.resource_entity_by_id(resource_id);
+}
+void world_reconcile_resource_entity(World& world, Entity entity) { world.reconcile_resource_entity(entity); }
 const Archetypes& world_archetypes(const World& world) noexcept { return world.archetypes(); }
 Archetypes& world_archetypes_mut(World& world) noexcept { return world.archetypes_mut(); }
 const Bundles& world_bundles(const World& world) noexcept { return world.bundles(); }

@@ -59,13 +59,23 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                     using ATuple = std::tuple_element_t<I, storage_type>;
                     // if ATuple has only one element and that element is same as T after decay, and element is
                     // bundle, then write as a bundle
-                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
-                                  (std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> ||
-                                   std::same_as<T, std::monostate>) &&
-                                  is_bundle<std::tuple_element_t<0, ATuple>>) {
-                        // write as a bundle
-                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
-                        BundleType::get_components(std::get<0>(std::get<I>(args)), write_component);
+                    if constexpr (std::tuple_size_v<ATuple> == 1) {
+                        using A = std::tuple_element_t<0, ATuple>;
+                        if constexpr ((std::same_as<T, std::decay_t<A>> || std::same_as<T, std::monostate>) &&
+                                      is_bundle<A>) {
+                            // write as a bundle
+                            using BundleType = Bundle<std::decay_t<A>>;
+                            BundleType::get_components(std::get<0>(std::get<I>(args)), write_component);
+                        } else {
+                            // write as a single component
+                            write_component([&](void* ptr) {
+                                std::apply(
+                                    [ptr](auto&&... unpacked_args) {
+                                        new (ptr) T(std::forward<decltype(unpacked_args)>(unpacked_args)...);
+                                    },
+                                    std::forward<ATuple>(std::get<I>(args)));
+                            });
+                        }
                     } else {
                         // write as a single component
                         write_component([&](void* ptr) {
@@ -89,12 +99,15 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                 [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
                     using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
                     using ATuple = std::tuple_element_t<I, storage_type>;
-                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
-                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
-                                  is_bundle<std::tuple_element_t<0, ATuple>>) {
-                        // bundle type
-                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
-                        ids.append_range(BundleType::type_ids(components));
+                    if constexpr (std::tuple_size_v<ATuple> == 1) {
+                        using A = std::tuple_element_t<0, ATuple>;
+                        if constexpr (std::same_as<T, std::decay_t<A>> && is_bundle<A>) {
+                            // bundle type
+                            using BundleType = Bundle<std::decay_t<A>>;
+                            ids.append_range(BundleType::type_ids(components));
+                        } else {
+                            ids.push_back(components.get_id<T>());
+                        }
                     } else {
                         ids.push_back(components.get_id<T>());
                     }
@@ -111,12 +124,15 @@ struct InitializeBundle<std::tuple<Ts...>, std::tuple<ArgTuples...>> {
                 [&]<std::size_t I>(std::integral_constant<std::size_t, I>) {
                     using T      = std::tuple_element_t<I, std::tuple<Ts...>>;
                     using ATuple = std::tuple_element_t<I, storage_type>;
-                    if constexpr (std::tuple_size_v<ATuple> == 1 &&
-                                  std::same_as<T, std::decay_t<std::tuple_element_t<0, ATuple>>> &&
-                                  is_bundle<std::tuple_element_t<0, ATuple>>) {
-                        // bundle type
-                        using BundleType = Bundle<std::decay_t<std::tuple_element_t<0, ATuple>>>;
-                        ids.append_range(BundleType::register_components(components));
+                    if constexpr (std::tuple_size_v<ATuple> == 1) {
+                        using A = std::tuple_element_t<0, ATuple>;
+                        if constexpr (std::same_as<T, std::decay_t<A>> && is_bundle<A>) {
+                            // bundle type
+                            using BundleType = Bundle<std::decay_t<A>>;
+                            ids.append_range(BundleType::register_components(components));
+                        } else {
+                            ids.push_back(components.register_component<T>());
+                        }
                     } else {
                         ids.push_back(components.register_component<T>());
                     }

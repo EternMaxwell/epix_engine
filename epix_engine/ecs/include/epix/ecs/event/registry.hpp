@@ -16,7 +16,7 @@ namespace epix::ecs {
 
 EPIX_EXPORT struct RegisteredEvent {
     bool previously_updated;
-    void (*update)(void*);
+    bool (*update)(World&, Tick, bool);
 };
 
 EPIX_EXPORT enum class UpdateState { Always, Waiting, Ready };
@@ -29,19 +29,25 @@ EPIX_EXPORT struct EventRegistry {
     static void register_event(World& world) {
         auto id         = world.init_resource<Events<T>>();
         auto&& registry = world.resource_or_init<EventRegistry>();
-        registry.events.emplace(id, RegisteredEvent{.previously_updated = false, .update = [](void* queue) {
-                                                        static_cast<Events<T>*>(queue)->update();
-                                                    }});
+        registry.events.emplace(
+            id, RegisteredEvent{.previously_updated = false,
+                                .update             = [](World& world, Tick last_change_tick, bool previously_updated) {
+                                    auto entity = world.resource_entity<Events<T>>();
+                                    if (!entity) return false;
+                                    auto resource_ref = world.entity(*entity).template get_ref<Events<T>>(
+                                        last_change_tick, world.change_tick());
+                                    if (!resource_ref) return false;
+                                    bool has_changed = resource_ref->is_modified();
+                                    if (previously_updated || has_changed) {
+                                        world.entity_mut(*entity).template get_mut<Events<T>>()->get_mut().update();
+                                        return has_changed || !previously_updated;
+                                    }
+                                    return false;
+                                }});
     }
     void run_updates(World& world, Tick last_change_tick) {
-        for (auto&& [id, event] : events) {
-            auto& data       = world.storage_mut().resources.get_mut(id).value().get();
-            TicksMut ticks   = TicksMut::from_refs(data.get_tick_refs().value(), last_change_tick, world.change_tick());
-            bool has_changed = ticks.is_modified();
-            if (event.previously_updated || has_changed) {
-                event.update(data.get_mut().value());
-                event.previously_updated = has_changed || !event.previously_updated;
-            }
+        for (auto&& [_, event] : events) {
+            event.previously_updated = event.update(world, last_change_tick, event.previously_updated);
         }
     }
     template <std::movable T>

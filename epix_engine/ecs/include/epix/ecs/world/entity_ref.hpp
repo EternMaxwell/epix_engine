@@ -91,7 +91,7 @@ EPIX_EXPORT struct EntityRef {
     }
     /** @brief Get an immutable Ref<T> (with change-detection ticks) for the component. */
     template <typename T>
-    std::optional<Ref<T>> get_ref() const {
+    std::optional<Ref<T>> get_ref(Tick last_run, Tick this_run) const {
         const Components& components = internal::world_components(*world_);
         return components.get_valid_id<T>()
             .and_then(std::bind_front(&Components::get_info, std::ref(components)))
@@ -106,8 +106,7 @@ EPIX_EXPORT struct EntityRef {
                                 return dense.get_as<T>(location_.table_idx).transform([&](const T& value) {
                                     return Ref<T>(&value,
                                                   Ticks::from_refs(dense.get_tick_refs(location_.table_idx).value(),
-                                                                   internal::world_last_change_tick(*world_),
-                                                                   internal::world_change_tick(*world_)));
+                                                                   last_run, this_run));
                                 });
                             });
                         });
@@ -115,13 +114,16 @@ EPIX_EXPORT struct EntityRef {
                     return internal::world_storage(*world_).sparse_sets.get(type_id).and_then(
                         [&](const ComponentSparseSet& cs) {
                             return cs.get_as<T>(entity_).transform([&](const T& value) {
-                                return Ref<T>(&value, Ticks::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                       internal::world_last_change_tick(*world_),
-                                                                       internal::world_change_tick(*world_)));
+                                return Ref<T>(&value,
+                                              Ticks::from_refs(cs.get_tick_refs(entity_).value(), last_run, this_run));
                             });
                         });
                 }
             });
+    }
+    template <typename T>
+    std::optional<Ref<T>> get_ref() const {
+        return get_ref<T>(internal::world_last_change_tick(*world_), internal::world_change_tick(*world_));
     }
     /** @brief Get the ComponentTicks for a component identified by TypeId. */
     std::optional<ComponentTicks> get_ticks_by_id(TypeId type_id) const {
@@ -163,7 +165,7 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
     EntityRefMut(Entity entity, World* world) noexcept : EntityRef(entity, world), world_(world) {}
     /** @brief Get a mutable Mut<T> (with change-detection ticks) for the component. */
     template <typename T>
-    std::optional<Mut<T>> get_mut() {
+    std::optional<Mut<T>> get_mut(Tick last_run, Tick this_run) {
         const Components& components = internal::world_components(*world_);
         return components.get_valid_id<T>()
             .and_then(std::bind_front(&Components::get_info, std::ref(components)))
@@ -178,8 +180,7 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
                                 return dense.get_as_mut<T>(location_.table_idx).transform([&](T& value) {
                                     return Mut<T>(&value,
                                                   TicksMut::from_refs(dense.get_tick_refs(location_.table_idx).value(),
-                                                                      internal::world_last_change_tick(*world_),
-                                                                      internal::world_change_tick(*world_)));
+                                                                      last_run, this_run));
                                 });
                             });
                         });
@@ -187,13 +188,16 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
                     return internal::world_storage_mut(*world_).sparse_sets.get_mut(type_id).and_then(
                         [&](ComponentSparseSet& cs) {
                             return cs.get_as_mut<T>(entity_).transform([&](T& value) {
-                                return Mut<T>(&value, TicksMut::from_refs(cs.get_tick_refs(entity_).value(),
-                                                                          internal::world_last_change_tick(*world_),
-                                                                          internal::world_change_tick(*world_)));
+                                return Mut<T>(
+                                    &value, TicksMut::from_refs(cs.get_tick_refs(entity_).value(), last_run, this_run));
                             });
                         });
                 }
             });
+    }
+    template <typename T>
+    std::optional<Mut<T>> get_mut() {
+        return get_mut<T>(internal::world_last_change_tick(*world_), internal::world_change_tick(*world_));
     }
 };
 
@@ -212,9 +216,17 @@ EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
         requires(is_bundle<std::decay_t<T>>)
     {
         assert_not_despawned();
+        auto old_resource_id =
+            get<IsResource>().transform([](const IsResource& marker) { return marker.resource_component_id(); });
         auto inserter = internal::BundleInserter::create<std::decay_t<T>>(*world_, location_.archetype_id,
                                                                           internal::world_change_tick(*world_));
         location_     = inserter.insert(entity_, location_, bundle, insert_mode);
+        auto new_resource_id =
+            get<IsResource>().transform([](const IsResource& marker) { return marker.resource_component_id(); });
+        if (old_resource_id && old_resource_id != new_resource_id && contains_id(*old_resource_id)) {
+            remove_by_id(*old_resource_id);
+        }
+        internal::world_reconcile_resource_entity(*world_, entity_);
         internal::world_flush(*world_);
         update_location();
     }

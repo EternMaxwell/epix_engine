@@ -24,6 +24,7 @@ namespace epix::ecs {
 EPIX_EXPORT struct Components;
 EPIX_EXPORT struct ComponentIds;
 EPIX_EXPORT struct ComponentsRegistrator;
+EPIX_EXPORT struct Archetypes;
 
 EPIX_EXPORT struct ComponentsQueuedRegistrator {
    public:
@@ -46,7 +47,8 @@ EPIX_EXPORT struct ComponentsQueuedRegistrator {
 };
 
 EPIX_EXPORT struct ComponentsRegistrator {
-    ComponentsRegistrator(Components& components, ComponentIds& ids) : m_components(&components), m_ids(&ids) {}
+    ComponentsRegistrator(Components& components, ComponentIds& ids, Archetypes& archetypes)
+        : m_components(&components), m_ids(&ids), m_archetypes(&archetypes) {}
     ComponentsQueuedRegistrator as_queued() const { return ComponentsQueuedRegistrator(*m_components, *m_ids); }
 
     void apply_queued_registrations();
@@ -58,12 +60,18 @@ EPIX_EXPORT struct ComponentsRegistrator {
                                           &ComponentHooks::update_from_component<T>);
     }
 
-    /**
-     * @brief This is same as `register_component`, but won't add required components and component hooks.
-     */
+    /** Register movable resources as components requiring IsResource; register immovable resources as metadata only. */
     template <typename T>
     TypeId register_resource() {
-        return register_resource_checked(meta::type_id<T>{}, storage_type_of<T>());
+        if constexpr (std::movable<T>) {
+            // Movable resources are ordinary components on a canonical entity.
+            auto id = register_component<T>();
+            configure_resource_component(id);
+            return id;
+        } else {
+            // Non-movable resources cannot participate in archetype moves.
+            return register_resource_checked(meta::type_id<T>{}, storage_type_of<T>());
+        }
     }
 
     operator Components&() { return *m_components; }
@@ -74,6 +82,7 @@ EPIX_EXPORT struct ComponentsRegistrator {
    private:
     TypeId register_resource_checked(meta::type_index type_index, StorageType storage_type);
     void register_resource_unchecked(meta::type_index type_index, TypeId id, StorageType storage_type);
+    void configure_resource_component(TypeId resource_id);
     TypeId register_component_checked(meta::type_index type_index,
                                       StorageType storage_type,
                                       void (*register_required_components)(TypeId, RequiredComponentsRegistrator&),
@@ -86,6 +95,7 @@ EPIX_EXPORT struct ComponentsRegistrator {
 
     Components* m_components;
     ComponentIds* m_ids;
+    Archetypes* m_archetypes;
     std::vector<TypeId> m_recurse_stack;
 };
 
@@ -102,6 +112,17 @@ TypeId ComponentsQueuedRegistrator::queue_register_component() const {
 }
 template <typename T>
 TypeId ComponentsQueuedRegistrator::queue_register_resource() const {
+    if constexpr (std::movable<T>) {
+        if (auto id = m_components->get_id<T>()) return *id;
+        return register_arbitrary_component(
+            meta::type_id<T>{}, storage_type_of<T>(),
+            [](ComponentsRegistrator& registrator, TypeId id, meta::type_index type_index, StorageType storage_type) {
+                registrator.register_component_unchecked(type_index, id, storage_type,
+                                                         Component<T>::register_required_components,
+                                                         &ComponentHooks::update_from_component<T>);
+                registrator.configure_resource_component(id);
+            });
+    }
     if (auto id = m_components->get_id<T>()) return *id;
     return register_arbitrary_component(
         meta::type_id<T>{}, storage_type_of<T>(),

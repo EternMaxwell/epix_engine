@@ -337,6 +337,18 @@ EPIX_EXPORT struct FilteredAccessSet {
         fa.add_resource_write(type_id);
         add(std::move(fa));
     }
+    /** Add an unfiltered component read, used by entity-backed resources. */
+    void add_unfiltered_component_read(TypeId type_id) {
+        FilteredAccess fa = FilteredAccess::matches_everything();
+        fa.access_mut().add_component_read(type_id);
+        add(std::move(fa));
+    }
+    /** Add an unfiltered component write, used by entity-backed resources. */
+    void add_unfiltered_component_write(TypeId type_id) {
+        FilteredAccess fa = FilteredAccess::matches_everything();
+        fa.access_mut().add_component_write(type_id);
+        add(std::move(fa));
+    }
     /** @brief Add an entry that reads all resources. */
     void add_unfiltered_read_all_resources() {
         FilteredAccess fa;

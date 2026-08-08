@@ -1,13 +1,15 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/common.hpp>
 #include <epix/utils.hpp>
 #include <memory>
+#include <optional>
 #endif
 
 #include <epix/ecs/core/tick.hpp>
+#include <epix/ecs/core/type_id.hpp>
 #include <epix/ecs/entity/entities.hpp>
 namespace epix::ecs {
 /** @brief Forward declaration of the ECS world. */
@@ -36,6 +38,8 @@ const Entities& world_entities(const World& world) noexcept;
 Entities& world_entities_mut(World& world) noexcept;
 const Storage& world_storage(const World& world) noexcept;
 Storage& world_storage_mut(World& world) noexcept;
+std::optional<Entity> world_resource_entity(const World& world, TypeId resource_id) noexcept;
+void world_reconcile_resource_entity(World& world, Entity entity);
 const Components& world_components(const World& world) noexcept;
 Components& world_components_mut(World& world) noexcept;
 ComponentsRegistrator world_registrator(World& world) noexcept;
