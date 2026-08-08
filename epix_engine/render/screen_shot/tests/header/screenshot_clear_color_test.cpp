@@ -36,6 +36,7 @@ constexpr uint32_t TEX_H = 4u;
 
 TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
 
     try {
         RenderPlugin{}.attach(app);

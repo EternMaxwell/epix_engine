@@ -435,7 +435,7 @@ concept RenderCommand = requires {
     requires std::same_as<const P&, std::tuple_element_t<0, typename render_command_traits<R, P>::args_tuple>>;
     requires ecs::query_data<std::tuple_element_t<1, typename render_command_traits<R, P>::args_tuple>>;
     requires traits::specialization_of<std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>,
-                               std::optional>;
+                                       std::optional>;
     requires ecs::query_data<
         typename std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>::value_type>;
     requires ecs::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;

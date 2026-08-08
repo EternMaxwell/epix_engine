@@ -2,9 +2,9 @@ module;
 
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cmath>
 #include <expected>
 #include <functional>
 #include <optional>

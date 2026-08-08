@@ -5,9 +5,9 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
-#include <epix/app.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
@@ -34,8 +34,7 @@ void init_pixel_body_worlds(ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worl
  *  from its cell grid (outline + earcut + b2MakePolygon).  Looks up the parent
  *  PixelBodyWorld via the Parent component. */
 void init_pixel_bodies(
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const transform::Transform&, const ecs::Parent&>>
-        bodies,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const transform::Transform&, const ecs::Parent&>> bodies,
     ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds,
     ecs::Res<fs::ElementRegistry> registry);
 
@@ -56,10 +55,10 @@ void update_sand_static_bodies(
     ecs::Query<ecs::Item<ecs::Entity, const PixelBodyWorld&, const fs::SandWorld&, ecs::Opt<const ecs::Children&>>>
         worlds,
     ecs::Query<ecs::Item<ecs::Entity,
-                           ecs::Ref<fs::ChunkElementGrid>,
-                           const fs::SandChunkPos&,
-                           ecs::Opt<ecs::Mut<fs::SandChunkDirtyRect>>,
-                           ecs::Opt<ecs::Mut<SandStaticBody>>>> chunks);
+                         ecs::Ref<fs::ChunkElementGrid>,
+                         const fs::SandChunkPos&,
+                         ecs::Opt<ecs::Mut<fs::SandChunkDirtyRect>>,
+                         ecs::Opt<ecs::Mut<SandStaticBody>>>> chunks);
 
 /** @brief Step the Box2D world via fixed-timestep accumulator. */
 void step_pixel_body_worlds(ecs::Res<time::Time<>> time, ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds);
@@ -82,16 +81,16 @@ void sync_b2_to_transforms(
 void sync_pixel_body_to_sand(ecs::Commands cmd,
                              ecs::ResMut<fs::ElementRegistry> registry,
                              ecs::Query<ecs::Item<ecs::Entity,
-                                                    const PixelBodyWorld&,
-                                                    ecs::Mut<fs::SandWorld>,
-                                                    ecs::Opt<const ecs::Children&>,
-                                                    ecs::Opt<ecs::Mut<PixelBodySandBlockers>>>> worlds,
+                                                  const PixelBodyWorld&,
+                                                  ecs::Mut<fs::SandWorld>,
+                                                  ecs::Opt<const ecs::Children&>,
+                                                  ecs::Opt<ecs::Mut<PixelBodySandBlockers>>>> worlds,
                              ecs::Query<ecs::Item<const PixelBody&, const transform::Transform&>> bodies,
                              ecs::Query<ecs::Item<ecs::Mut<fs::ChunkElementGrid>,
-                                                    ecs::Mut<fs::ChunkAirGrid>,
-                                                    ecs::Mut<fs::ChunkThermalGrid>,
-                                                    const fs::SandChunkPos&,
-                                                    ecs::Mut<fs::SandChunkDirtyRect>>> chunks);
+                                                  ecs::Mut<fs::ChunkAirGrid>,
+                                                  ecs::Mut<fs::ChunkThermalGrid>,
+                                                  const fs::SandChunkPos&,
+                                                  ecs::Mut<fs::SandChunkDirtyRect>>> chunks);
 
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
 void build_pixel_body_meshes(ecs::Commands cmd,

@@ -56,9 +56,8 @@ EPIX_EXPORT namespace epix::sprite {
 
 template <>
 struct epix::ecs::Bundle<epix::sprite::SpriteBundle> {
-    static void get_components(
-        sprite::SpriteBundle& bundle,
-        std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
+    static void get_components(sprite::SpriteBundle& bundle,
+                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
         write_component([&](void* ptr) { new (ptr) sprite::Sprite(std::move(bundle.sprite)); });
         write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
         write_component([&](void* ptr) { new (ptr) assets::Handle<image::Image>(std::move(bundle.texture)); });

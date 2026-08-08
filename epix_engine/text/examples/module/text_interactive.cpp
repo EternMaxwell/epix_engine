@@ -62,9 +62,9 @@ struct CamControllPlugin {
         app.add_systems(
             app::Update,
             ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
-                                                 transform::Transform&>> camera,
-                          ecs::EventReader<input::MouseScroll> scroll_input,
-                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                                              transform::Transform&>> camera,
+                         ecs::EventReader<input::MouseScroll> scroll_input,
+                         ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
@@ -167,7 +167,7 @@ int main(int argc, char** argv) {
     app.add_systems(
         app::PreStartup,
         ecs::into([&](ecs::Commands cmd, ecs::Res<assets::AssetServer> asset_server,
-                       ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                      ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
             // Load font
             auto font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
 
@@ -234,9 +234,9 @@ int main(int argc, char** argv) {
             [](ecs::ResMut<DragState> drag_state, ecs::Res<input::ButtonInput<input::MouseButton>> mouse_input,
                ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>> window_query,
                ecs::ParamSet<ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
-                                                     const transform::Transform&>>,
-                              ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
-                                          ecs::With<MainText>>> conflicting_queries,
+                                                  const transform::Transform&>>,
+                             ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
+                                        ecs::With<MainText>>> conflicting_queries,
                ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
                ecs::Query<ecs::Item<ecs::Mut<text::Text>>, ecs::With<InfoText>> info_query) {
                 // Get queries from ParamSet (allows access conflict between camera and text transforms)
@@ -411,28 +411,27 @@ int main(int argc, char** argv) {
             .set_name("text interaction"));
 
     // Sync outline transforms to text position
-    app.add_systems(
-        app::Update,
-        ecs::into([](ecs::Res<DragState> drag_state,
-                      ecs::ParamSet<ecs::Query<ecs::Item<const transform::Transform&>, ecs::With<MainText>>,
-                                     ecs::Query<ecs::Item<transform::Transform&>, ecs::With<BoundsOutline>>,
-                                     ecs::Query<ecs::Item<transform::Transform&>, ecs::With<TextOutline>>>
-                          transform_queries) {
-            auto&& [text_pos_query, bounds_outline_query, text_outline_query] = transform_queries.get();
+    app.add_systems(app::Update,
+                    ecs::into([](ecs::Res<DragState> drag_state,
+                                 ecs::ParamSet<ecs::Query<ecs::Item<const transform::Transform&>, ecs::With<MainText>>,
+                                               ecs::Query<ecs::Item<transform::Transform&>, ecs::With<BoundsOutline>>,
+                                               ecs::Query<ecs::Item<transform::Transform&>, ecs::With<TextOutline>>>
+                                     transform_queries) {
+                        auto&& [text_pos_query, bounds_outline_query, text_outline_query] = transform_queries.get();
 
-            auto text_opt = text_pos_query.single();
-            if (!text_opt) return;
-            auto&& [text_transform] = *text_opt;
+                        auto text_opt = text_pos_query.single();
+                        if (!text_opt) return;
+                        auto&& [text_transform] = *text_opt;
 
-            if (auto opt = bounds_outline_query.single(); opt) {
-                auto&& [t]    = *opt;
-                t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
-            }
-            if (auto opt = text_outline_query.single(); opt) {
-                auto&& [t]    = *opt;
-                t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
-            }
-        }).set_name("sync outline transforms"));
+                        if (auto opt = bounds_outline_query.single(); opt) {
+                            auto&& [t]    = *opt;
+                            t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
+                        }
+                        if (auto opt = text_outline_query.single(); opt) {
+                            auto&& [t]    = *opt;
+                            t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
+                        }
+                    }).set_name("sync outline transforms"));
 
     app.run();
 }

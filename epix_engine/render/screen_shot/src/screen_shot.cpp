@@ -51,15 +51,17 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
 
             auto* io_pool = epix::task::IoTaskPool::try_get();
             if (io_pool) {
-                io_pool->spawn([img_copy = img, abs]() mutable {
-                    auto result = image::Image::save(abs, img_copy);
-                    if (!result) {
-                        spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", abs.string());
-                    } else {
-                        spdlog::info("[render.screenshot] Screenshot saved to '{}' through `ScreenshotPlugin`",
-                                     abs.string());
-                    }
-                }).detach();
+                io_pool
+                    ->spawn([img_copy = img, abs]() mutable {
+                        auto result = image::Image::save(abs, img_copy);
+                        if (!result) {
+                            spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", abs.string());
+                        } else {
+                            spdlog::info("[render.screenshot] Screenshot saved to '{}' through `ScreenshotPlugin`",
+                                         abs.string());
+                        }
+                    })
+                    .detach();
             } else {
                 // IoTaskPool not initialised — fall back to synchronous save
                 auto result = image::Image::save(abs, img);

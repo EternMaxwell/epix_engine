@@ -28,8 +28,8 @@
 #include <epix/utils.hpp>
 #endif
 #ifndef EPIX_CXX_MODULE
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 #include <epix/extension/grid/basic_grid.hpp>
@@ -742,8 +742,7 @@ struct ExtendibleMutChunkRefGrid {
         return m_chunk_grid.get(pos).transform(deref);
     }
     /** @brief Mutable access to the `Mut<Chunk>` wrapper at chunk coordinates. */
-    auto get_chunk_mut(std::array<std::int32_t, Dim> pos)
-        -> std::expected<epix::ecs::Mut<Chunk<Dim>>, ChunkGridError> {
+    auto get_chunk_mut(std::array<std::int32_t, Dim> pos) -> std::expected<epix::ecs::Mut<Chunk<Dim>>, ChunkGridError> {
         return m_chunk_grid.get(pos).transform(deref_mut);
     }
 

@@ -2,12 +2,12 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <epix/extension/grid.hpp>
 #include <format>
 #include <limits>
 #include <print>
 #include <string>
 #include <vector>
-#include <epix/extension/grid.hpp>
 
 using namespace epix::ext::grid;
 

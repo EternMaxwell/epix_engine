@@ -58,8 +58,8 @@ std::span<std::string_view> FontLoader::extensions() noexcept {
 }
 
 STDEXEC::task<std::expected<Font, FontLoader::Error>> FontLoader::load(assets::Reader& reader,
-                                                                         const Settings&,
-                                                                         assets::LoadContext&) {
+                                                                       const Settings&,
+                                                                       assets::LoadContext&) {
     try {
         std::vector<uint8_t> bytes;
         auto read_result = co_await reader.read_to_end(bytes);
@@ -429,13 +429,13 @@ void FontPlugin::attach(app::App& app) {
     app.world_mut().init_resource<FontAtlasSets>();
     app.configure_sets(ecs::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
     app.add_systems(app::First, ecs::into(add_font_atlas_set)
-                                     .in_set(FontSystems::AddFontAtlasSet)
-                                     .after(assets::AssetSystems::WriteEvents)
-                                     .set_name("add font atlas set"));
+                                    .in_set(FontSystems::AddFontAtlasSet)
+                                    .after(assets::AssetSystems::WriteEvents)
+                                    .set_name("add font atlas set"));
     app.add_systems(app::PostUpdate, ecs::into(apply_pending_font_atlas_updates)
-                                          .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
-                                          .before(assets::AssetSystems::WriteEvents)
-                                          .set_name("apply pending font atlas updates"));
+                                         .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
+                                         .before(assets::AssetSystems::WriteEvents)
+                                         .set_name("apply pending font atlas updates"));
 }
 
 void FontPlugin::ready(app::App& app) {

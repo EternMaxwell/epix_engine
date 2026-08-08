@@ -9,8 +9,8 @@
 #include <epix/extension/fallingsand/temperature.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 namespace epix::ext::fallingsand {

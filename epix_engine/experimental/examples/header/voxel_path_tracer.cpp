@@ -10,10 +10,10 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/extension/grid_gpu.hpp>
 #include <epix/glfw/core.hpp>

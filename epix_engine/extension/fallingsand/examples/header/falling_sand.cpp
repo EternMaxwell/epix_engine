@@ -1,9 +1,9 @@
 #include <imgui.h>
 
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/glfw/core.hpp>

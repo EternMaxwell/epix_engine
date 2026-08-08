@@ -6,9 +6,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
-#include <epix/app.hpp>
 #include <epix/image.hpp>
 #include <exception>
 #include <expected>
@@ -85,8 +85,8 @@ struct FontLoader {
 
     static std::span<std::string_view> extensions() noexcept;
     static STDEXEC::task<std::expected<Font, Error>> load(assets::Reader& reader,
-                                                            const Settings& settings,
-                                                            assets::LoadContext& context);
+                                                          const Settings& settings,
+                                                          assets::LoadContext& context);
 };
 
 struct FontLibrary {

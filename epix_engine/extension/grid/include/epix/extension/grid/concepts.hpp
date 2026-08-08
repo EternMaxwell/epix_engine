@@ -49,7 +49,8 @@ template <typename G, typename = void>
 struct _grid_pos_type {
     // Fallback: extract from contains()'s argument using function_traits
     using type = std::remove_cvref_t<
-        std::tuple_element_t<0, typename epix::traits::function_traits<decltype(&std::decay_t<G>::contains)>::args_tuple>>;
+        std::tuple_element_t<0,
+                             typename epix::traits::function_traits<decltype(&std::decay_t<G>::contains)>::args_tuple>>;
 };
 template <typename G>
 struct _grid_pos_type<G, std::void_t<typename std::decay_t<G>::pos_type>> {

@@ -1,8 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
-#include <epix/app.hpp>
 #include <epix/mesh.hpp>
 #include <epix/shader.hpp>
 #include <epix/sprite.hpp>

@@ -9,6 +9,7 @@ module;
 #include <expected>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <ranges>
 #include <stack>
 #include <tuple>
@@ -16,7 +17,6 @@ module;
 #include <utility>
 #include <variant>
 #include <vector>
-#include <memory>
 #endif
 #include <glm/glm.hpp>
 

@@ -8,9 +8,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
-#include <epix/app.hpp>
 #include <epix/experimental/pixelbody.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
@@ -720,7 +720,7 @@ void build_pixel_body_meshes(Commands cmd,
 
 void PixelBodyPlugin::attach(epix::app::App& app) {
     using namespace epix::ecs;
-using namespace epix::app;
+    using namespace epix::app;
     app.add_systems(PreUpdate,
                     into(init_pixel_body_worlds, init_pixel_bodies, rebuild_pixel_body_shapes, sync_transforms_to_b2)
                         .set_names(std::array{

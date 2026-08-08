@@ -1,7 +1,7 @@
-#include <epix/assets.hpp>
 #include <epix/app.hpp>
-#include <epix/ecs.hpp>
+#include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/image.hpp>

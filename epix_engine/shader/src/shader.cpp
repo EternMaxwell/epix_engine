@@ -607,11 +607,11 @@ static std::string processor_preprocess_slang_source(std::string_view source,
 // Recursively populate the VFS with all transitive source deps of `current_path`.
 // Reads directly from the asset source (not processed) so this works during processing.
 static STDEXEC::task<void> populate_processor_vfs(ProcessorSlangVFS& vfs,
-                                                    const epix::assets::AssetPath& current_path,
-                                                    std::string_view source_text,
-                                                    const epix::assets::AssetProcessor& processor,
-                                                    const std::shared_ptr<ProcessorCustomShaderRegistry>& registry,
-                                                    std::unordered_set<std::string>& visited) {
+                                                  const epix::assets::AssetPath& current_path,
+                                                  std::string_view source_text,
+                                                  const epix::assets::AssetProcessor& processor,
+                                                  const std::shared_ptr<ProcessorCustomShaderRegistry>& registry,
+                                                  std::unordered_set<std::string>& visited) {
     auto identity = normalize_asset_path_string(current_path);
     if (!visited.insert(identity).second) co_return;
 
@@ -911,8 +911,8 @@ std::span<std::string_view> ShaderLoader::extensions() {
 }
 
 STDEXEC::task<std::expected<Shader, ShaderLoaderError>> ShaderLoader::load(assets::Reader& reader,
-                                                                             const Settings& settings,
-                                                                             assets::LoadContext& context) {
+                                                                           const Settings& settings,
+                                                                           assets::LoadContext& context) {
     const auto& asset_path = context.path();
     const auto& raw_path   = asset_path.path;
 
@@ -1123,13 +1123,13 @@ void ShaderPlugin::attach(epix::app::App& app) {
     assets::app_register_loader<ShaderLoader>(app);
 
     // Sync dependency-ready shader assets to ShaderCache (skipped if no ShaderCache resource).
-    app.add_systems(
-        app::Last,
-        ecs::into([](ecs::ResMut<ShaderCache> cache, ecs::ResMut<assets::Assets<Shader>> shaders,
-                      ecs::EventReader<assets::AssetEvent<Shader>> events) { cache->sync(events.read(), *shaders); })
-            .after(assets::AssetSystems::WriteEvents)
-            .run_if([](std::optional<ecs::Res<ShaderCache>> opt) { return opt.has_value(); })
-            .set_name("sync shader cache"));
+    app.add_systems(app::Last, ecs::into([](ecs::ResMut<ShaderCache> cache, ecs::ResMut<assets::Assets<Shader>> shaders,
+                                            ecs::EventReader<assets::AssetEvent<Shader>> events) {
+                                   cache->sync(events.read(), *shaders);
+                               })
+                                   .after(assets::AssetSystems::WriteEvents)
+                                   .run_if([](std::optional<ecs::Res<ShaderCache>> opt) { return opt.has_value(); })
+                                   .set_name("sync shader cache"));
 
     if (app.world_mut().get_resource<assets::AssetProcessor>().has_value()) {
         auto processor_registry = std::make_shared<ProcessorCustomShaderRegistry>();
@@ -1141,39 +1141,38 @@ void ShaderPlugin::attach(epix::app::App& app) {
         // Keep a processor-visible registry of manually added shader modules so
         // preprocess_slang_to_ir can resolve custom imports that are not
         // discoverable via file-based dependency traversal.
-        app.add_systems(app::Last,
-                        ecs::into([processor_registry](ecs::ResMut<assets::Assets<Shader>> shaders,
-                                                        ecs::Res<assets::AssetServer> server,
-                                                        ecs::EventReader<assets::AssetEvent<Shader>> events) {
-                            std::vector<assets::AssetPath> reload_paths;
-                            for (const auto& event : events.read()) {
-                                if (event.is_loaded_with_dependencies() || event.is_modified()) {
-                                    auto shader = shaders->get(event.id);
-                                    if (shader.has_value()) {
-                                        auto affected = processor_registry->upsert(event.id, shader->get());
-                                        for (auto dep_id : affected) {
-                                            auto dep_shader = shaders->get(dep_id);
-                                            if (dep_shader.has_value()) {
-                                                reload_paths.push_back(dep_shader->get().path);
-                                            }
-                                        }
-                                    }
-                                } else if (event.is_unused()) {
-                                    auto affected = processor_registry->remove_id(event.id);
-                                    for (auto dep_id : affected) {
-                                        auto dep_shader = shaders->get(dep_id);
-                                        if (dep_shader.has_value()) {
-                                            reload_paths.push_back(dep_shader->get().path);
-                                        }
-                                    }
-                                }
-                            }
+        app.add_systems(app::Last, ecs::into([processor_registry](ecs::ResMut<assets::Assets<Shader>> shaders,
+                                                                  ecs::Res<assets::AssetServer> server,
+                                                                  ecs::EventReader<assets::AssetEvent<Shader>> events) {
+                                       std::vector<assets::AssetPath> reload_paths;
+                                       for (const auto& event : events.read()) {
+                                           if (event.is_loaded_with_dependencies() || event.is_modified()) {
+                                               auto shader = shaders->get(event.id);
+                                               if (shader.has_value()) {
+                                                   auto affected = processor_registry->upsert(event.id, shader->get());
+                                                   for (auto dep_id : affected) {
+                                                       auto dep_shader = shaders->get(dep_id);
+                                                       if (dep_shader.has_value()) {
+                                                           reload_paths.push_back(dep_shader->get().path);
+                                                       }
+                                                   }
+                                               }
+                                           } else if (event.is_unused()) {
+                                               auto affected = processor_registry->remove_id(event.id);
+                                               for (auto dep_id : affected) {
+                                                   auto dep_shader = shaders->get(dep_id);
+                                                   if (dep_shader.has_value()) {
+                                                       reload_paths.push_back(dep_shader->get().path);
+                                                   }
+                                               }
+                                           }
+                                       }
 
-                            for (const auto& path : reload_paths) {
-                                (void)server->reload(path);
-                            }
-                        })
-                            .after(assets::AssetSystems::WriteEvents)
-                            .set_name("sync processor custom shader registry"));
+                                       for (const auto& path : reload_paths) {
+                                           (void)server->reload(path);
+                                       }
+                                   })
+                                       .after(assets::AssetSystems::WriteEvents)
+                                       .set_name("sync processor custom shader registry"));
     }
 }

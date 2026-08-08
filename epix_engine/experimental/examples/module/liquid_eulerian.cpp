@@ -2636,14 +2636,14 @@ struct Plugin {
         app.add_systems(
             app::Update,
             ecs::into([](ecs::ResMut<FluidState> state, ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue,
-                          ecs::ResMut<render::PipelineServer> pipeline_server,
-                          ecs::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                          ecs::Res<input::ButtonInput<input::KeyCode>> keys,
-                          ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>>
-                              window_query,
-                          ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
-                                                 const transform::Transform&>> camera_query,
-                          ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                         ecs::ResMut<render::PipelineServer> pipeline_server,
+                         ecs::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                         ecs::Res<input::ButtonInput<input::KeyCode>> keys,
+                         ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>>
+                             window_query,
+                         ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
+                                              const transform::Transform&>> camera_query,
+                         ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
                 if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
                 if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
 

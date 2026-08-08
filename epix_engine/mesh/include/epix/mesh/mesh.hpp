@@ -9,8 +9,8 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <functional>
@@ -204,7 +204,7 @@ EPIX_EXPORT struct Mesh {
         }
         MeshAttributeData attribute_data{
             .attribute = attribute,
-            .data = std::ranges::to<ecs::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
+            .data      = std::ranges::to<ecs::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
         };
         auto [it, inserted] = _attributes.insert_or_assign(attribute.slot, std::move(attribute_data));
         return {};

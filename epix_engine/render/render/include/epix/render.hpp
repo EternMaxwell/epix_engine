@@ -3,8 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/shader.hpp>
 #include <functional>
 #include <webgpu/webgpu.hpp>

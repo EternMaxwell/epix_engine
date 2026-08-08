@@ -3,8 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/window.hpp>
 #include <functional>
 #include <optional>
@@ -88,9 +88,9 @@ struct WindowSurfaces {
  */
 EPIX_EXPORT void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows,
                                  app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                                                      const epix::window::Window&,
-                                                                      const SurfaceCreation&,
-                                                                      ecs::Has<epix::window::PrimaryWindow>>>> windows,
+                                                                   const epix::window::Window&,
+                                                                   const SurfaceCreation&,
+                                                                   ecs::Has<epix::window::PrimaryWindow>>>> windows,
                                  ecs::ResMut<WindowSurfaces> window_surfaces,
                                  app::Extract<ecs::EventReader<epix::window::WindowClosed>> closed);
 /**

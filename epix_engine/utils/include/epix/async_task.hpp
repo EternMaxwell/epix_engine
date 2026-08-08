@@ -9,6 +9,7 @@
 #include <epix/common.hpp>
 #include <exception>
 #include <exec/start_detached.hpp>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -19,7 +20,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <expected>
 #endif
 
 namespace epix::async_task {

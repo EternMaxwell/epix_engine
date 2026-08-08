@@ -9,9 +9,9 @@ struct CamControllPlugin {
         app.add_systems(
             app::Update,
             ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
-                                                 transform::Transform&>> camera,
-                          ecs::EventReader<input::MouseScroll> scroll_input,
-                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                                              transform::Transform&>> camera,
+                         ecs::EventReader<input::MouseScroll> scroll_input,
+                         ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {

@@ -501,10 +501,10 @@ EPIX_EXPORT enum class CameraUpdateSystems {
 template <CameraProjection ProjType>
 void camera_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>>>
-        query,  // camera and projection query
+        query,                                                                            // camera and projection query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>> window_query,  // window query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>,
-                      epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
+                     epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
 ) {
     for (auto&& [camera, proj] : query.iter()) {
         // in the body we want to update the stored target size,
@@ -733,10 +733,10 @@ EPIX_EXPORT void extract_cameras(
     epix::ecs::Commands cmd,
     epix::ecs::Res<ClearColor> global_clear_color,
     epix::app::Extract<epix::ecs::Query<epix::ecs::Item<const Camera&,
-                                                           const CameraRenderGraph&,
-                                                           const transform::GlobalTransform&,
-                                                           const view::VisibleEntities&,
-                                                           epix::ecs::Opt<const RenderLayer&>>>> cameras,
+                                                        const CameraRenderGraph&,
+                                                        const transform::GlobalTransform&,
+                                                        const view::VisibleEntities&,
+                                                        epix::ecs::Opt<const RenderLayer&>>>> cameras,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Entity, epix::ecs::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
         primary_window);

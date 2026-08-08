@@ -10,8 +10,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <glm/glm.hpp>

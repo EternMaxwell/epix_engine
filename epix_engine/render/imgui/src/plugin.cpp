@@ -5,8 +5,8 @@
 #include <imgui_impl_wgpu.h>
 #include <spdlog/spdlog.h>
 
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>

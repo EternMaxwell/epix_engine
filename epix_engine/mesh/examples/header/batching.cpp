@@ -1,7 +1,7 @@
-#include <epix/assets.hpp>
 #include <epix/app.hpp>
-#include <epix/ecs.hpp>
+#include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/image.hpp>
@@ -21,9 +21,9 @@ struct CamControlPlugin {
     void attach(app::App& app) {
         app.add_systems(app::Update,
                         ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
-                                                             transform::Transform&>> camera,
-                                      ecs::EventReader<input::MouseScroll> scroll_input,
-                                      ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                                                          transform::Transform&>> camera,
+                                     ecs::EventReader<input::MouseScroll> scroll_input,
+                                     ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                             auto opt = camera.single();
                             if (!opt) return;
                             auto&& [cam, proj, trans] = *opt;

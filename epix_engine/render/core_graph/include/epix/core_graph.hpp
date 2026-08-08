@@ -9,4 +9,4 @@ namespace epix::core_graph {
 EPIX_EXPORT struct CoreGraphPlugin {
     void attach(app::App& app);
 };
-}  // namespace epix::ecs_graph
+}  // namespace epix::core_graph

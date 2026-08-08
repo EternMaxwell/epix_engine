@@ -20,9 +20,7 @@ namespace meta = epix::meta;
 // Initialize task pools before any test runs.
 namespace {
 struct IoTaskPoolInit {
-    IoTaskPoolInit() {
-        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build());
-    }
+    IoTaskPoolInit() { epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build()); }
 } g_io_task_pool_init;
 }  // namespace
 
@@ -354,7 +352,7 @@ TEST(ShaderProcessingSlangModule, WritesSlangIrWhenPreprocessToIrIsEnabled) {
     settings.preprocess_slang_to_ir = true;
 
     VecWriter out;
-    auto result = STDEXEC::sync_wait(processor.process(ctx, settings, out));
+    auto result     = STDEXEC::sync_wait(processor.process(ctx, settings, out));
     bool has_output = result.has_value() && !out.bytes().empty();
     if (has_output) {
         EXPECT_TRUE(has_output);
@@ -499,9 +497,8 @@ TEST(ShaderProcessingSlangModule, ConcurrentIrProcessingWithRegistryUpdatesRemai
 
     for (int i = 0; i < k_root_count; ++i) {
         auto path = AssetPath(std::format("main_{}.slang", i));
-        ASSERT_EQ(
-            *epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_processed(path)).block(),
-            ProcessStatus::Processed);
+        ASSERT_EQ(*epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_processed(path)).block(),
+                  ProcessStatus::Processed);
     }
     (void)epix::task::IoTaskPool::get().spawn(processor->get().get_data()->wait_until_finished()).block();
 

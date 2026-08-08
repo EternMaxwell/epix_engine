@@ -110,15 +110,15 @@ EPIX_EXPORT struct UI2DItem {
 template <typename P>
 struct Node2D : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::view::ExtractedView&,
-                                              const render::view::ViewTarget&,
-                                              const render::view::ViewDepth&,
-                                              const render::phase::RenderPhase<P>&>,
-                                   ecs::Filter<>>>
+                                            const render::view::ViewTarget&,
+                                            const render::view::ViewDepth&,
+                                            const render::phase::RenderPhase<P>&>,
+                                  ecs::Filter<>>>
         views;
     void update(const ecs::World& world) override {
         if (!views) {
             views = world.try_query<ecs::Item<const render::view::ExtractedView&, const render::view::ViewTarget&,
-                                               const render::view::ViewDepth&, const render::phase::RenderPhase<P>&>>();
+                                              const render::view::ViewDepth&, const render::phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }

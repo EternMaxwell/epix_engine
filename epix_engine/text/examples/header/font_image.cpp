@@ -1,7 +1,7 @@
-#include <epix/assets.hpp>
 #include <epix/app.hpp>
-#include <epix/ecs.hpp>
+#include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
@@ -28,9 +28,9 @@ struct CamControllPlugin {
         app.add_systems(
             app::Update,
             ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
-                                                 transform::Transform&>> camera,
-                          ecs::EventReader<input::MouseScroll> scroll_input,
-                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                                              transform::Transform&>> camera,
+                         ecs::EventReader<input::MouseScroll> scroll_input,
+                         ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
@@ -171,7 +171,7 @@ int main(int argc, char** argv) {
             .before(text::font::FontSystems::AddFontAtlasSet)
             .before(assets::AssetSystems::WriteEvents));
     app.add_systems(app::Update, ecs::into([](ecs::EventReader<window::WindowResized> resize_events,
-                                                ecs::Query<ecs::Mut<text::TextBounds>> text_bounds) {
+                                              ecs::Query<ecs::Mut<text::TextBounds>> text_bounds) {
                         for (auto&& e : resize_events.read()) {
                             for (auto&& tb : text_bounds.iter()) {
                                 tb.get_mut().width = static_cast<float>(e.width) - 50.0f;

@@ -1,8 +1,8 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-#include <epix/ecs.hpp>
 #include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>

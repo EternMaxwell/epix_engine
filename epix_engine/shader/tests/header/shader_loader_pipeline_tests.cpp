@@ -16,9 +16,7 @@ using namespace epix::shader;
 namespace {
 
 struct IoTaskPoolInit {
-    IoTaskPoolInit() {
-        epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build());
-    }
+    IoTaskPoolInit() { epix::task::IoTaskPool::get_or_init(epix::task::TaskPoolBuilder{}.num_threads(4).build()); }
 } g_io_task_pool_init;
 
 static auto make_bytes(std::string_view text) {

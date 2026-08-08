@@ -4,8 +4,8 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
-#include <epix/ecs.hpp>
 #include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <format>
 #include <optional>

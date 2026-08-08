@@ -5,12 +5,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
 
-#include <stdexec/execution.hpp>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
-#include <epix/assets.hpp>
 #include <epix/app.hpp>
+#include <epix/assets.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -19,6 +18,7 @@
 #include <memory>
 #include <span>
 #include <stdexcept>
+#include <stdexec/execution.hpp>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -407,8 +407,8 @@ EPIX_EXPORT struct ShaderLoader {
      * `file_dependencies`. Custom-name imports stay as logical imports.
      */
     static STDEXEC::task<std::expected<Shader, Error>> load(assets::Reader& reader,
-                                                              const Settings& settings,
-                                                              assets::LoadContext& context);
+                                                            const Settings& settings,
+                                                            assets::LoadContext& context);
 };
 
 /** @brief Processing settings used before shader loading. */
@@ -440,8 +440,8 @@ EPIX_EXPORT struct ShaderProcessor {
 
     /** @brief Process one shader asset before it is loaded. */
     STDEXEC::task<std::expected<OutputLoader::Settings, std::exception_ptr>> process(assets::ProcessContext& context,
-                                                                                       const Settings& settings,
-                                                                                       assets::Writer& writer) const;
+                                                                                     const Settings& settings,
+                                                                                     assets::Writer& writer) const;
 
    private:
     std::shared_ptr<void> custom_registry_;
