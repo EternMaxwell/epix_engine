@@ -14,9 +14,10 @@ namespace epix::ecs::executors {
 namespace internal {
 /** @brief Thread pool resource stored in World for parallel schedule execution. */
 struct ScheduleThreadPool {
-    BS::thread_pool<BS::tp::none> pool;
+    std::unique_ptr<BS::thread_pool<BS::tp::none>> pool;
     ScheduleThreadPool()
-        : pool(std::thread::hardware_concurrency(), []() { BS::this_thread::set_os_thread_name("system"); }) {}
+        : pool(std::make_unique<BS::thread_pool<BS::tp::none>>(
+              std::thread::hardware_concurrency(), []() { BS::this_thread::set_os_thread_name("system"); })) {}
 };
 }  // namespace internal
 /** @brief Default executor using thread-pool-based parallel dispatch. */

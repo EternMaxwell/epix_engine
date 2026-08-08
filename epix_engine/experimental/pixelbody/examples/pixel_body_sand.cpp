@@ -1,4 +1,4 @@
-﻿// Pixel body + falling-sand demo.
+// Pixel body + falling-sand demo.
 
 #include <box2d/box2d.h>
 #include <box2d/collision.h>

@@ -77,9 +77,9 @@ struct AssetStorage {
    public:
     AssetStorage() noexcept : m_size(0) {}
     AssetStorage(const AssetStorage&)            = delete;
-    AssetStorage(AssetStorage&&)                 = delete;
+    AssetStorage(AssetStorage&&)                 = default;
     AssetStorage& operator=(const AssetStorage&) = delete;
-    AssetStorage& operator=(AssetStorage&&)      = delete;
+    AssetStorage& operator=(AssetStorage&&)      = default;
 
     std::uint32_t size() const noexcept { return m_size; }
     bool empty() const noexcept { return m_size == 0; }
@@ -463,9 +463,9 @@ struct Assets {
     /** @brief Construct a new Assets collection with its own HandleProvider. */
     Assets() : m_handle_provider(std::make_shared<HandleProvider>(meta::type_id<T>{})) {}
     Assets(const Assets&)            = delete;
-    Assets(Assets&&)                 = delete;
+    Assets(Assets&&)                 = default;
     Assets& operator=(const Assets&) = delete;
-    Assets& operator=(Assets&&)      = delete;
+    Assets& operator=(Assets&&)      = default;
 
     /**
      * @brief Get the handle provider for this assets collection.

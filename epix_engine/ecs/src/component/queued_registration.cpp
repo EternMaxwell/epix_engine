@@ -8,9 +8,12 @@ TypeId ComponentsQueuedRegistrator::register_arbitrary_component(
     StorageType storage_type,
     void (*func)(ComponentsRegistrator&, TypeId, meta::type_index, StorageType)) const {
     std::unique_lock lock(*m_components->m_mutex);
+    if (auto it = m_components->m_queued.components.find(type_index); it != m_components->m_queued.components.end()) {
+        return it->second.id;
+    }
+
     auto id = m_ids->next();
-    m_components->m_queued.components.insert_or_assign(type_index,
-                                                       QueuedRegistration(id, type_index, storage_type, func));
+    m_components->m_queued.components.emplace(type_index, QueuedRegistration(id, type_index, storage_type, func));
     return id;
 }
 

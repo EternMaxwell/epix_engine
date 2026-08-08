@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
@@ -264,7 +264,7 @@ EPIX_EXPORT namespace epix::app {
         /** @brief Try get a const reference to a plugin of type T. */
         template <typename T>
         std::optional<std::reference_wrapper<const T>> get_plugin() const {
-            return get_resource<const internal::Plugins>().and_then(
+            return get_resource<internal::Plugins>().and_then(
                 [](const internal::Plugins& plugins) { return plugins.get_plugin<T>(); });
         }
         /** @brief Get a const reference to a plugin. Throws if not found.
@@ -328,9 +328,11 @@ EPIX_EXPORT namespace epix::app {
 
         struct StateUpdater {
             struct Updates {
-                Updates()               = default;
-                Updates(const Updates&) = delete;
-                Updates(Updates&&)      = default;
+                Updates()                          = default;
+                Updates(const Updates&)            = delete;
+                Updates(Updates&&)                 = default;
+                Updates& operator=(const Updates&) = delete;
+                Updates& operator=(Updates&&)      = default;
                 std::vector<std::unique_ptr<ecs::System<std::tuple<>, void>>> update_system;
             };
             std::unordered_set<meta::type_index> registered_states;

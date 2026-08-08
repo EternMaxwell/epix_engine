@@ -10,9 +10,25 @@
 
 using namespace epix::assets;
 
+static_assert(std::movable<Assets<std::string>>);
+
 // ===========================================================================
 // Assets<T> - basic lifecycle
 // ===========================================================================
+
+TEST(Assets, Move_PreservesStoredAssetsAndHandles) {
+    Assets<std::string> source;
+    auto handle = source.emplace("hello");
+
+    Assets<std::string> moved(std::move(source));
+    ASSERT_TRUE(moved.get(handle.id()));
+    EXPECT_EQ(moved.get(handle.id())->get(), "hello");
+
+    Assets<std::string> assigned;
+    assigned = std::move(moved);
+    ASSERT_TRUE(assigned.get(handle.id()));
+    EXPECT_EQ(assigned.get(handle.id())->get(), "hello");
+}
 
 TEST(Assets, Emplace_ReturnsStrongHandle) {
     Assets<std::string> assets;

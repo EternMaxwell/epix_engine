@@ -60,8 +60,10 @@ EPIX_EXPORT struct Commands {
         requires(std::movable<std::decay_t<Ts>> && ...);
 
     /** @brief Construct and insert a resource via deferred command.
-     *  Replaces existing resource of the same type. */
+     *  Replaces existing resource of the same
+     * type. */
     template <typename T, typename... Args>
+        requires std::movable<T> && std::constructible_from<T, Args&&...>
     Commands& emplace_resource(Args&&... args) {
         untyped_vector vec(meta::type_info::of<T>(), 1);
         vec.emplace_back<T>(std::forward<Args>(args)...);
@@ -70,12 +72,14 @@ EPIX_EXPORT struct Commands {
     }
     /** @brief Insert a resource by value via deferred command. */
     template <typename T>
+        requires std::movable<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>
     Commands& insert_resource(T&& value) {
         emplace_resource<std::decay_t<T>>(std::forward<T>(value));
         return *this;
     }
     /** @brief Construct and insert a resource only if it doesn't already exist. */
     template <typename T, typename... Args>
+        requires std::movable<T> && std::constructible_from<T, Args&&...>
     Commands& try_emplace_resource(Args&&... args) {
         untyped_vector vec(meta::type_info::of<T>(), 1);
         vec.emplace_back<T>(std::forward<Args>(args)...);
@@ -84,11 +88,13 @@ EPIX_EXPORT struct Commands {
     }
     /** @brief Insert a resource by value only if it doesn't already exist. */
     template <typename T>
+        requires std::movable<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>
     Commands& try_insert_resource(T&& value) {
         return try_emplace_resource<std::decay_t<T>>(std::forward<T>(value));
     }
     /** @brief Remove a resource by type via deferred command. */
     template <typename T>
+        requires std::movable<T>
     Commands& remove_resource() {
         command_queue->push([](World& world) { world.template remove_resource<T>(); });
         return *this;
@@ -96,16 +102,11 @@ EPIX_EXPORT struct Commands {
 
    private:
     template <typename T>
+        requires std::movable<T>
     void replace_resource(untyped_vector data, bool replace_existing = true) {
         command_queue->push([data = std::move(data), replace_existing](World& world) mutable {
             if (!replace_existing && world.template get_resource<T>()) return;
-            if constexpr (std::movable<T>) {
-                world.insert_resource(std::move(data.template get_as<T>(0)));
-            } else {
-                auto id    = world.template register_resource<T>();
-                auto& dest = world.storage_mut().resources.initialize(id, world.components());
-                dest.replace(world.change_tick(), std::move(data));
-            }
+            world.insert_resource(std::move(data.template get_as<T>(0)));
         });
     }
 

@@ -4,23 +4,12 @@
 #include <vector>
 
 namespace epix::ecs {
-namespace {
-bool is_entity_resource_component(const World& world, TypeId resource_id) {
-    auto marker_id = world.components().get_valid_id<IsResource>();
-    return marker_id &&
-           world.components()
-               .get_required_components(resource_id)
-               .transform([&](const RequiredComponents& required) { return required.contains(*marker_id); })
-               .value_or(false);
-}
-}  // namespace
-
 void IsResource::on_insert(World& world, HookContext context) {
     auto marker = world.entity(context.entity).get<IsResource>();
     if (!marker) return;
     TypeId resource_id = marker->get().resource_component_id();
-    if (!is_entity_resource_component(world, resource_id)) {
-        spdlog::warn("[ecs] IsResource on entity {} references component {}, which is not a movable resource.",
+    if (!internal::is_resource_component(world.components(), resource_id)) {
+        spdlog::warn("[ecs] IsResource on entity {} references component {}, which is not a resource.",
                      context.entity.index, resource_id.get());
         return;
     }
@@ -54,7 +43,7 @@ void World::reconcile_resource_entity(Entity entity) {
     if (!marker) return;
 
     TypeId resource_id = marker->get().resource_component_id();
-    if (!is_entity_resource_component(*this, resource_id)) {
+    if (!internal::is_resource_component(_components, resource_id)) {
         auto marker_id = _components.get_valid_id<IsResource>();
         auto invalid   = get_entity_mut(entity);
         if (marker_id && invalid && invalid->contains_id(*marker_id)) invalid->remove_by_id(*marker_id);
@@ -83,34 +72,24 @@ void World::reconcile_resource_entity(Entity entity) {
 }
 
 bool World::remove_resource_by_id(TypeId type_id) {
-    if (auto entity = _resource_entities.get(type_id)) {
-        auto entity_mut = get_entity_mut(*entity);
-        if (entity_mut && entity_mut->contains_id(type_id)) {
-            entity_mut->remove_by_id(type_id);
-            return true;
-        }
-        return false;
-    }
-    return _storage.resources.get_mut(type_id)
-        .transform([](ResourceData& resource) {
-            if (!resource.is_present()) return false;
-            resource.remove();
-            return true;
-        })
-        .value_or(false);
+    auto entity = _resource_entities.get(type_id);
+    if (!entity) return false;
+    auto entity_mut = get_entity_mut(*entity);
+    if (!entity_mut || !entity_mut->contains_id(type_id)) return false;
+    entity_mut->remove_by_id(type_id);
+    return true;
 }
 
 void World::clear_resources() {
-    std::vector<std::pair<TypeId, Entity>> movable_resources;
-    movable_resources.reserve(_resource_entities.size());
+    std::vector<std::pair<TypeId, Entity>> resources;
+    resources.reserve(_resource_entities.size());
     for (auto&& [id, entity] : _resource_entities.iter()) {
-        movable_resources.emplace_back(TypeId(id), entity);
+        resources.emplace_back(TypeId(id), entity);
     }
-    for (auto [id, entity] : movable_resources) {
+    for (auto [id, entity] : resources) {
         auto entity_mut = get_entity_mut(entity);
         if (entity_mut && entity_mut->contains_id(id)) entity_mut->remove_by_id(id);
     }
-    _storage.resources.clear();
 }
 
 void World::clear_entities() {

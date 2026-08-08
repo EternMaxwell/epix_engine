@@ -35,7 +35,7 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
     spdlog::trace("[schedule] Dispatching {} nodes.", cache->nodes.size());
 
     // Get thread pool from world resource
-    auto& pool = world.resource_or_emplace<internal::ScheduleThreadPool>().pool;
+    auto& pool = *world.resource_or_emplace<internal::ScheduleThreadPool>().pool;
 
     ExecutionState exec_state{
         .running_count       = 0,

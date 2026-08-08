@@ -5,14 +5,14 @@
 
 using namespace epix::ecs;
 
-struct SparseMovableResource {
+struct SparseResource {
     int value = 0;
 };
 template <>
-struct epix::ecs::sparse_component<SparseMovableResource> : std::true_type {};
+struct epix::ecs::sparse_component<SparseResource> : std::true_type {};
 
 namespace {
-struct MovableResource {
+struct TestResource {
     int value = 0;
 };
 
@@ -20,88 +20,108 @@ struct OrdinaryComponent {
     int value = 0;
 };
 
-struct ImmovableResource {
-    explicit ImmovableResource(int value) : value(value) {}
-    ImmovableResource(const ImmovableResource&)            = delete;
-    ImmovableResource(ImmovableResource&&)                 = delete;
-    ImmovableResource& operator=(const ImmovableResource&) = delete;
-    ImmovableResource& operator=(ImmovableResource&&)      = delete;
+struct SecondaryResource {
+    explicit SecondaryResource(int value) : value(value) {}
+    SecondaryResource(const SecondaryResource&)            = delete;
+    SecondaryResource(SecondaryResource&&)                 = default;
+    SecondaryResource& operator=(const SecondaryResource&) = delete;
+    SecondaryResource& operator=(SecondaryResource&&)      = default;
 
     int value;
 };
 
-void conflicting_resource_access(ResMut<MovableResource>, Query<const MovableResource&>) {}
-void read_movable_resource(Res<MovableResource>) {}
+void conflicting_resource_access(ResMut<TestResource>, Query<const TestResource&>) {}
+void read_resource(Res<TestResource>) {}
+void mutate_secondary_resource(ResMut<SecondaryResource> resource) { resource->value += 1; }
 void insert_resources_deferred(Commands commands) {
-    commands.insert_resource(MovableResource{13});
-    commands.emplace_resource<ImmovableResource>(17);
+    commands.insert_resource(TestResource{13});
+    commands.emplace_resource<SecondaryResource>(17);
 }
 void remove_resources_deferred(Commands commands) {
-    commands.remove_resource<MovableResource>();
-    commands.remove_resource<ImmovableResource>();
+    commands.remove_resource<TestResource>();
+    commands.remove_resource<SecondaryResource>();
 }
 }  // namespace
 
-static_assert(std::movable<MovableResource>);
-static_assert(!std::movable<ImmovableResource>);
+static_assert(std::movable<TestResource>);
+static_assert(std::movable<SecondaryResource>);
+static_assert(system_param<Res<SecondaryResource>>);
+static_assert(system_param<ResMut<SecondaryResource>>);
+static_assert(std::constructible_from<ComponentsRegistrator, Components&, ComponentIds&>);
+static_assert(!std::constructible_from<ComponentsRegistrator, Components&, ComponentIds&, Archetypes&>);
 
-TEST(ecs, movable_resource_is_an_entity_component) {
+TEST(ecs, resource_is_an_entity_component) {
     World world(WorldId(1));
-    world.insert_resource(MovableResource{1});
+    world.insert_resource(TestResource{1});
 
-    auto resource_id     = world.components().get_valid_id<MovableResource>().value();
-    auto resource_entity = world.resource_entity<MovableResource>();
+    auto resource_id     = world.components().get_valid_id<TestResource>().value();
+    auto resource_entity = world.resource_entity<TestResource>();
     ASSERT_TRUE(resource_entity);
     EXPECT_EQ(world.resource_entities().get(resource_id), resource_entity);
 
     auto entity = world.entity(*resource_entity);
-    ASSERT_TRUE(entity.contains<MovableResource>());
+    ASSERT_TRUE(entity.contains<TestResource>());
     ASSERT_TRUE(entity.contains<IsResource>());
     EXPECT_EQ(entity.get<IsResource>()->get().resource_component_id(), resource_id);
 
-    world.entity_mut(*resource_entity).get_mut<MovableResource>()->get_mut().value = 7;
-    EXPECT_EQ(world.resource<MovableResource>().value, 7);
+    world.entity_mut(*resource_entity).get_mut<TestResource>()->get_mut().value = 7;
+    EXPECT_EQ(world.resource<TestResource>().value, 7);
 
-    world.entity_mut(*resource_entity).remove<MovableResource>();
-    EXPECT_FALSE(world.get_resource<MovableResource>());
-    EXPECT_EQ(world.resource_entity<MovableResource>(), resource_entity);
+    world.entity_mut(*resource_entity).remove<TestResource>();
+    EXPECT_FALSE(world.get_resource<TestResource>());
+    EXPECT_EQ(world.resource_entity<TestResource>(), resource_entity);
 
-    world.entity_mut(*resource_entity).insert(MovableResource{8});
-    EXPECT_EQ(world.resource<MovableResource>().value, 8);
-    EXPECT_TRUE(world.remove_resource<MovableResource>());
+    world.entity_mut(*resource_entity).insert(TestResource{8});
+    EXPECT_EQ(world.resource<TestResource>().value, 8);
+    EXPECT_TRUE(world.remove_resource<TestResource>());
 
-    world.insert_resource(MovableResource{9});
-    EXPECT_EQ(world.resource_entity<MovableResource>(), resource_entity);
-    EXPECT_EQ(world.resource<MovableResource>().value, 9);
+    world.insert_resource(TestResource{9});
+    EXPECT_EQ(world.resource_entity<TestResource>(), resource_entity);
+    EXPECT_EQ(world.resource<TestResource>().value, 9);
 }
 
 TEST(ecs, system_resource_registration_configures_is_resource) {
     World world(WorldId(6));
-    auto system = make_system_unique(read_movable_resource);
+    auto system = make_system_unique(read_resource);
     system->initialize(world);
 
-    auto resource_entity = world.spawn(MovableResource{21}).id();
-    EXPECT_EQ(world.resource_entity<MovableResource>(), resource_entity);
+    auto resource_entity = world.spawn(TestResource{21}).id();
+    EXPECT_EQ(world.resource_entity<TestResource>(), resource_entity);
     EXPECT_TRUE(world.entity(resource_entity).contains<IsResource>());
-    EXPECT_EQ(world.resource<MovableResource>().value, 21);
+    EXPECT_EQ(world.resource<TestResource>().value, 21);
 }
 
 TEST(ecs, queued_resource_registration_configures_is_resource) {
     World world(WorldId(9));
-    auto resource_id = world.queued_registrator().queue_register_resource<MovableResource>();
+    auto resource_id = world.queued_registrator().queue_register_resource<TestResource>();
     world.flush_components();
 
-    auto resource_entity = world.spawn(MovableResource{34}).id();
+    auto resource_entity = world.spawn(TestResource{34}).id();
     EXPECT_EQ(world.resource_entities().get(resource_id), resource_entity);
     EXPECT_TRUE(world.entity(resource_entity).contains<IsResource>());
-    EXPECT_EQ(world.resource<MovableResource>().value, 34);
+    EXPECT_EQ(world.resource<TestResource>().value, 34);
+}
+
+TEST(ecs, all_resource_registrations_require_is_resource) {
+    World world(WorldId(14));
+    auto registrator = world.registrator();
+    auto movable_id  = registrator.register_resource<TestResource>();
+    auto second_id   = registrator.register_resource<SecondaryResource>();
+    auto marker_id   = world.components().get_valid_id<IsResource>().value();
+
+    EXPECT_TRUE(world.components().get_required_components(movable_id)->get().contains(marker_id));
+    EXPECT_TRUE(world.components().get_required_components(second_id)->get().contains(marker_id));
+
+    world.emplace_resource<SecondaryResource>(55);
+    EXPECT_TRUE(world.resource_entity<SecondaryResource>());
+    EXPECT_EQ(world.resource<SecondaryResource>().value, 55);
 }
 
 TEST(ecs, direct_entity_mutation_is_visible_to_resource_change_detection) {
     World world(WorldId(7));
-    world.insert_resource(MovableResource{1});
+    world.insert_resource(TestResource{1});
     bool modified = false;
-    auto system   = make_system_unique([&](Res<MovableResource> resource) { modified = resource.is_modified(); });
+    auto system   = make_system_unique([&](Res<TestResource> resource) { modified = resource.is_modified(); });
     system->initialize(world);
 
     ASSERT_TRUE(system->run({}, world));
@@ -110,118 +130,133 @@ TEST(ecs, direct_entity_mutation_is_visible_to_resource_change_detection) {
     EXPECT_FALSE(modified);
 
     world.increment_change_tick();
-    auto entity = world.resource_entity<MovableResource>().value();
-    world.entity_mut(entity).get_mut<MovableResource>()->get_mut().value = 2;
+    auto entity                                                       = world.resource_entity<TestResource>().value();
+    world.entity_mut(entity).get_mut<TestResource>()->get_mut().value = 2;
     ASSERT_TRUE(system->run({}, world));
     EXPECT_TRUE(modified);
-    EXPECT_EQ(world.resource<MovableResource>().value, 2);
+    EXPECT_EQ(world.resource<TestResource>().value, 2);
 }
 
 TEST(ecs, is_resource_enforces_singleton_and_removal_invariants) {
     World world(WorldId(2));
-    world.insert_resource(MovableResource{1});
-    auto resource_id = world.components().get_valid_id<MovableResource>().value();
-    auto canonical   = world.resource_entity<MovableResource>().value();
+    world.insert_resource(TestResource{1});
+    auto resource_id = world.components().get_valid_id<TestResource>().value();
+    auto canonical   = world.resource_entity<TestResource>().value();
 
-    auto duplicate = world.spawn(MovableResource{2}).id();
-    EXPECT_FALSE(world.entity(duplicate).contains<MovableResource>());
+    auto duplicate = world.spawn(TestResource{2}).id();
+    EXPECT_FALSE(world.entity(duplicate).contains<TestResource>());
     EXPECT_FALSE(world.entity(duplicate).contains<IsResource>());
-    EXPECT_EQ(world.resource_entity<MovableResource>(), canonical);
-    EXPECT_EQ(world.resource<MovableResource>().value, 1);
+    EXPECT_EQ(world.resource_entity<TestResource>(), canonical);
+    EXPECT_EQ(world.resource<TestResource>().value, 1);
 
     world.entity_mut(canonical).remove<IsResource>();
-    EXPECT_FALSE(world.resource_entity<MovableResource>());
-    EXPECT_FALSE(world.entity(canonical).contains<MovableResource>());
+    EXPECT_FALSE(world.resource_entity<TestResource>());
+    EXPECT_FALSE(world.entity(canonical).contains<TestResource>());
 
-    world.insert_resource(MovableResource{3});
-    auto replacement = world.resource_entity<MovableResource>();
+    world.insert_resource(TestResource{3});
+    auto replacement = world.resource_entity<TestResource>();
     ASSERT_TRUE(replacement);
     EXPECT_NE(*replacement, canonical);
     EXPECT_EQ(world.resource_entities().get(resource_id), replacement);
 
     world.entity_mut(*replacement).despawn();
-    EXPECT_FALSE(world.resource_entity<MovableResource>());
-    EXPECT_FALSE(world.get_resource<MovableResource>());
+    EXPECT_FALSE(world.resource_entity<TestResource>());
+    EXPECT_FALSE(world.get_resource<TestResource>());
 }
 
 TEST(ecs, component_cannot_become_a_resource_after_entity_use) {
     World world(WorldId(8));
-    world.spawn(MovableResource{1});
-    EXPECT_THROW(world.register_resource<MovableResource>(), std::logic_error);
+    world.spawn(TestResource{1});
+    EXPECT_THROW(world.register_resource<TestResource>(), std::logic_error);
 }
 
 TEST(ecs, invalid_is_resource_marker_is_removed_through_entity_access) {
     World world(WorldId(10));
-    world.insert_resource(MovableResource{1});
-    auto entity      = world.resource_entity<MovableResource>().value();
+    world.insert_resource(TestResource{1});
+    auto entity      = world.resource_entity<TestResource>().value();
     auto ordinary_id = world.registrator().register_component<OrdinaryComponent>();
 
     world.entity_mut(entity).insert(OrdinaryComponent{2}, IsResource(ordinary_id));
 
-    EXPECT_FALSE(world.resource_entity<MovableResource>());
-    EXPECT_FALSE(world.entity(entity).contains<MovableResource>());
+    EXPECT_FALSE(world.resource_entity<TestResource>());
+    EXPECT_FALSE(world.entity(entity).contains<TestResource>());
     EXPECT_FALSE(world.entity(entity).contains<OrdinaryComponent>());
     EXPECT_FALSE(world.entity(entity).contains<IsResource>());
 }
 
 TEST(ecs, sparse_set_resource_uses_entity_component_storage) {
     World world(WorldId(11));
-    world.insert_resource(SparseMovableResource{5});
+    world.insert_resource(SparseResource{5});
 
-    auto entity = world.resource_entity<SparseMovableResource>().value();
+    auto entity = world.resource_entity<SparseResource>().value();
     EXPECT_TRUE(world.entity(entity).contains<IsResource>());
-    EXPECT_EQ(world.entity(entity).get<SparseMovableResource>()->get().value, 5);
+    EXPECT_EQ(world.entity(entity).get<SparseResource>()->get().value, 5);
 
-    world.entity_mut(entity).get_mut<SparseMovableResource>()->get_mut().value = 8;
-    EXPECT_EQ(world.resource<SparseMovableResource>().value, 8);
+    world.entity_mut(entity).get_mut<SparseResource>()->get_mut().value = 8;
+    EXPECT_EQ(world.resource<SparseResource>().value, 8);
 }
 
-TEST(ecs, resource_take_and_clear_preserve_the_movable_resource_entity) {
+TEST(ecs, resource_take_and_clear_preserve_resource_entities) {
     World world(WorldId(12));
-    world.insert_resource(MovableResource{3});
-    world.emplace_resource<ImmovableResource>(4);
-    auto entity = world.resource_entity<MovableResource>().value();
+    world.insert_resource(TestResource{3});
+    world.emplace_resource<SecondaryResource>(4);
+    auto entity           = world.resource_entity<TestResource>().value();
+    auto secondary_entity = world.resource_entity<SecondaryResource>().value();
 
-    auto taken = world.take_resource<MovableResource>();
+    auto taken = world.take_resource<TestResource>();
     ASSERT_TRUE(taken);
     EXPECT_EQ(taken->value, 3);
-    EXPECT_EQ(world.resource_entity<MovableResource>(), entity);
-    EXPECT_FALSE(world.get_resource<MovableResource>());
+    EXPECT_EQ(world.resource_entity<TestResource>(), entity);
+    EXPECT_FALSE(world.get_resource<TestResource>());
 
-    world.insert_resource(MovableResource{6});
+    world.insert_resource(TestResource{6});
     world.clear_resources();
-    EXPECT_EQ(world.resource_entity<MovableResource>(), entity);
+    EXPECT_EQ(world.resource_entity<TestResource>(), entity);
     EXPECT_TRUE(world.entity(entity).contains<IsResource>());
-    EXPECT_FALSE(world.get_resource<MovableResource>());
-    EXPECT_FALSE(world.get_resource<ImmovableResource>());
+    EXPECT_FALSE(world.get_resource<TestResource>());
+    EXPECT_FALSE(world.get_resource<SecondaryResource>());
+    EXPECT_EQ(world.resource_entity<SecondaryResource>(), secondary_entity);
 
-    world.insert_resource(MovableResource{9});
-    EXPECT_EQ(world.resource_entity<MovableResource>(), entity);
-    EXPECT_EQ(world.resource<MovableResource>().value, 9);
+    world.insert_resource(TestResource{9});
+    EXPECT_EQ(world.resource_entity<TestResource>(), entity);
+    EXPECT_EQ(world.resource<TestResource>().value, 9);
 }
 
-TEST(ecs, non_movable_resource_uses_explicit_storage) {
+TEST(ecs, all_resources_use_entity_component_storage) {
     World world(WorldId(3));
-    world.emplace_resource<ImmovableResource>(42);
+    world.emplace_resource<SecondaryResource>(42);
 
-    EXPECT_FALSE(world.resource_entity<ImmovableResource>());
-    ASSERT_TRUE(world.get_resource<ImmovableResource>());
-    EXPECT_EQ(world.resource<ImmovableResource>().value, 42);
+    auto entity = world.resource_entity<SecondaryResource>();
+    ASSERT_TRUE(entity);
+    EXPECT_TRUE(world.entity(*entity).contains<SecondaryResource>());
+    EXPECT_TRUE(world.entity(*entity).contains<IsResource>());
+    ASSERT_TRUE(world.get_resource<SecondaryResource>());
+    EXPECT_EQ(world.resource<SecondaryResource>().value, 42);
 
     world.clear_entities();
-    ASSERT_TRUE(world.get_resource<ImmovableResource>());
-    EXPECT_EQ(world.resource<ImmovableResource>().value, 42);
-    EXPECT_TRUE(world.remove_resource<ImmovableResource>());
-    EXPECT_FALSE(world.get_resource<ImmovableResource>());
+    ASSERT_TRUE(world.get_resource<SecondaryResource>());
+    EXPECT_EQ(world.resource<SecondaryResource>().value, 42);
+    EXPECT_TRUE(world.remove_resource<SecondaryResource>());
+    EXPECT_FALSE(world.get_resource<SecondaryResource>());
 }
 
-TEST(ecs, clear_entities_preserves_movable_resources) {
+TEST(ecs, secondary_resource_uses_standard_system_param) {
+    World world(WorldId(15));
+    world.emplace_resource<SecondaryResource>(41);
+
+    auto system = make_system_unique(mutate_secondary_resource);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world));
+    EXPECT_EQ(world.resource<SecondaryResource>().value, 42);
+}
+
+TEST(ecs, clear_entities_preserves_resources) {
     World world(WorldId(13));
-    world.insert_resource(MovableResource{42});
+    world.insert_resource(TestResource{42});
     auto ordinary = world.spawn(OrdinaryComponent{7}).id();
-    auto resource = world.resource_entity<MovableResource>().value();
+    auto resource = world.resource_entity<TestResource>().value();
     int observed  = 0;
-    auto system   = make_system_unique([&](Res<MovableResource> value) { observed = value->value; });
+    auto system   = make_system_unique([&](Res<TestResource> value) { observed = value->value; });
     system->initialize(world);
 
     ASSERT_TRUE(system->run({}, world));
@@ -231,8 +266,8 @@ TEST(ecs, clear_entities_preserves_movable_resources) {
 
     EXPECT_FALSE(world.get_entity(ordinary));
     EXPECT_TRUE(world.get_entity(resource));
-    EXPECT_EQ(world.resource_entity<MovableResource>(), resource);
-    EXPECT_EQ(world.resource<MovableResource>().value, 42);
+    EXPECT_EQ(world.resource_entity<TestResource>(), resource);
+    EXPECT_EQ(world.resource<TestResource>().value, 42);
     observed = 0;
     ASSERT_TRUE(system->run({}, world));
     EXPECT_EQ(observed, 42);
@@ -245,19 +280,19 @@ TEST(ecs, resource_access_conflicts_with_component_access) {
     EXPECT_THROW(system->initialize(world), std::runtime_error);
 }
 
-TEST(ecs, deferred_commands_use_the_matching_resource_storage) {
+TEST(ecs, deferred_commands_use_entity_resource_storage) {
     World world(WorldId(5));
     auto insert_system = make_system_unique(insert_resources_deferred);
     insert_system->initialize(world);
     ASSERT_TRUE(insert_system->run({}, world));
-    EXPECT_EQ(world.resource<MovableResource>().value, 13);
-    EXPECT_EQ(world.resource<ImmovableResource>().value, 17);
-    EXPECT_TRUE(world.resource_entity<MovableResource>());
-    EXPECT_FALSE(world.resource_entity<ImmovableResource>());
+    EXPECT_EQ(world.resource<TestResource>().value, 13);
+    EXPECT_EQ(world.resource<SecondaryResource>().value, 17);
+    EXPECT_TRUE(world.resource_entity<TestResource>());
+    EXPECT_TRUE(world.resource_entity<SecondaryResource>());
 
     auto remove_system = make_system_unique(remove_resources_deferred);
     remove_system->initialize(world);
     ASSERT_TRUE(remove_system->run({}, world));
-    EXPECT_FALSE(world.get_resource<MovableResource>());
-    EXPECT_FALSE(world.get_resource<ImmovableResource>());
+    EXPECT_FALSE(world.get_resource<TestResource>());
+    EXPECT_FALSE(world.get_resource<SecondaryResource>());
 }

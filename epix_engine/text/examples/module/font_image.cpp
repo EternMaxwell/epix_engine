@@ -1,4 +1,4 @@
-﻿#ifndef EPIX_IMPORT_STD
+#ifndef EPIX_IMPORT_STD
 #include <cmath>
 #include <optional>
 #include <string_view>

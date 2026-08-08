@@ -342,53 +342,23 @@ struct SystemParam<Res<T>> : ParamBase {
     static constexpr bool readonly = true;
     static State init_state(World& world) { return internal::world_registrator(world).template register_resource<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
-        bool conflicts = [&] {
-            if constexpr (std::movable<T>) return access.combined_access().has_component_write(state);
-            return access.combined_access().has_resource_write(state);
-        }();
-        if (conflicts) {
+        if (access.combined_access().has_component_write(state)) {
             throw std::runtime_error(
                 std::format("Res<{}> in system [{}] has access conflicts of id {} with a previous ResMut<{}>. Consider "
                             "removing this param.",
                             meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name()));
         }
-        if constexpr (std::movable<T>) {
-            access.add_unfiltered_component_read(state);
-        } else {
-            access.add_unfiltered_resource_read(state);
-        }
+        access.add_unfiltered_component_read(state);
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
-        bool present = [&] {
-            if constexpr (std::movable<T>) {
-                return internal::get_entity_resource_ref<T>(world, state, Tick{}, Tick{}).has_value();
-            } else {
-                return internal::world_storage(world)
-                    .resources.get(state)
-                    .transform([](const ResourceData& resource) { return resource.is_present(); })
-                    .value_or(false);
-            }
-        }();
-        if (present) return {};
+        if (internal::get_entity_resource_ref<T>(world, state, Tick{}, Tick{})) return {};
         return std::unexpected(ValidateParamError{
             .param_type = meta::type_id<Res<T>>(),
             .message    = "Resource does not exist.",
         });
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        if constexpr (std::movable<T>) {
-            return Res<T>(internal::get_entity_resource_ref<T>(world, state, meta.last_run, tick).value());
-        } else {
-            return internal::world_storage(world)
-                .resources.get(state)
-                .and_then([&](const ResourceData& res) {
-                    return res.get_as<T>().transform([&](const T& value) {
-                        return Res<T>(std::addressof(value),
-                                      Ticks::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
-                    });
-                })
-                .value();
-        }
+        return Res<T>(internal::get_entity_resource_ref<T>(world, state, meta.last_run, tick).value());
     }
 };
 static_assert(system_param<Res<int>>);
@@ -401,53 +371,23 @@ struct SystemParam<ResMut<T>> : ParamBase {
     static constexpr bool readonly = false;
     static State init_state(World& world) { return internal::world_registrator(world).template register_resource<T>(); }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World&) {
-        bool conflicts = [&] {
-            if constexpr (std::movable<T>) return access.combined_access().has_component_read(state);
-            return access.combined_access().has_resource_read(state);
-        }();
-        if (conflicts) {
+        if (access.combined_access().has_component_read(state)) {
             throw std::runtime_error(std::format(
                 "ResMut<{}> in system [{}] has access conflicts of id {} with a previous Res<{}> or ResMut<{}>.",
                 meta::type_id<T>().name(), meta.name, state.get(), meta::type_id<T>().name(),
                 meta::type_id<T>().name()));
         }
-        if constexpr (std::movable<T>) {
-            access.add_unfiltered_component_write(state);
-        } else {
-            access.add_unfiltered_resource_write(state);
-        }
+        access.add_unfiltered_component_write(state);
     }
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta&, World& world) {
-        bool present = [&] {
-            if constexpr (std::movable<T>) {
-                return internal::get_entity_resource_ref<T>(world, state, Tick{}, Tick{}).has_value();
-            } else {
-                return internal::world_storage(world)
-                    .resources.get(state)
-                    .transform([](const ResourceData& resource) { return resource.is_present(); })
-                    .value_or(false);
-            }
-        }();
-        if (present) return {};
+        if (internal::get_entity_resource_ref<T>(world, state, Tick{}, Tick{})) return {};
         return std::unexpected(ValidateParamError{
             .param_type = meta::type_id<Res<T>>(),
             .message    = "Resource does not exist.",
         });
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        if constexpr (std::movable<T>) {
-            return ResMut<T>(internal::get_entity_resource_mut<T>(world, state, meta.last_run, tick).value());
-        } else {
-            return internal::world_storage_mut(world)
-                .resources.get_mut(state)
-                .and_then([&](ResourceData& res) {
-                    return res.get_as_mut<T>().transform([&](T& value) {
-                        return ResMut<T>(std::addressof(value),
-                                         TicksMut::from_refs(res.get_tick_refs().value(), meta.last_run, tick));
-                    });
-                })
-                .value();
-        }
+        return ResMut<T>(internal::get_entity_resource_mut<T>(world, state, meta.last_run, tick).value());
     }
 };
 static_assert(system_param<ResMut<int>>);

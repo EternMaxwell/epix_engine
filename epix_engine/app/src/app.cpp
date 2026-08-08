@@ -142,7 +142,7 @@ std::optional<std::reference_wrapper<Schedules>> App::get_schedules() { return _
 ScheduleOrder& App::schedule_order() { return _world.resource_or_init<ScheduleOrder>(); }
 
 std::optional<std::reference_wrapper<const ScheduleOrder>> App::get_schedule_order() const {
-    return _world.get_resource<const ScheduleOrder>();
+    return _world.get_resource<ScheduleOrder>();
 }
 
 App& App::schedule_scope(const ScheduleLabel& label,

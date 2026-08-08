@@ -10,6 +10,7 @@
 #include <epix/ecs/component/register.hpp>
 #include <epix/ecs/component/required_component.hpp>
 #include <epix/ecs/storage/dense.hpp>
+#include <epix/ecs/storage/resource.hpp>
 #include <epix/ecs/storage/sparse_set.hpp>
 #include <epix/ecs/storage/table.hpp>
 
@@ -62,6 +63,15 @@ void RequiredComponentsRegistrator::register_required_by_id(TypeId component_id,
     }
     register_required_dynamic(component_id,
                               RequiredComponentConstructor::create<C>(component_id, std::forward<F>(constructor)));
+}
+
+template <typename T>
+void internal::ResourceComponentRegistration<T>::register_required_components(
+    TypeId component_id, RequiredComponentsRegistrator& registrator) {
+    Component<T>::register_required_components(component_id, registrator);
+    auto marker_id = registrator.components_registrator().template register_component<IsResource>();
+    registrator.template register_required_by_id<IsResource>(marker_id,
+                                                             [component_id] { return IsResource(component_id); });
 }
 
 }  // namespace epix::ecs

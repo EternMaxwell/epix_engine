@@ -3,7 +3,7 @@
 
 namespace epix::ecs {
 
-Storage::Storage() : sparse_sets(), tables(), resources() {}
+Storage::Storage() : sparse_sets(), tables() {}
 
 ComponentSparseSet& SparseSets::get_or_insert(const internal::ComponentInfo& info) {
     return sets.get_mut(info.type_id())

@@ -53,13 +53,21 @@ EPIX_EXPORT struct World {
 
     /** @brief Get the world's unique identifier. */
     WorldId id() const noexcept { return _id; }
-    ComponentsRegistrator registrator() { return ComponentsRegistrator(_components, _component_ids, _archetypes); }
+    ComponentsRegistrator registrator() { return ComponentsRegistrator(_components, _component_ids); }
     ComponentsQueuedRegistrator queued_registrator() const {
         return ComponentsQueuedRegistrator(_components, _component_ids);
     }
-    /** Register a resource type using entity storage when movable and explicit storage otherwise. */
+    /** Register a resource type using entity component storage. */
     template <typename T>
+        requires std::movable<T>
     TypeId register_resource() {
+        if (auto id = _components.template get_valid_id<T>();
+            id && !internal::is_resource_component(_components, *id) && _archetypes.by_component.contains(*id)) {
+            throw std::logic_error(
+                std::format("Cannot register component {} as a resource after it has already been inserted on an "
+                            "entity.",
+                            meta::type_id<T>().name()));
+        }
         return registrator().template register_resource<T>();
     }
     /** @brief Get a const reference to the component metadata store. */
@@ -113,7 +121,7 @@ EPIX_EXPORT struct World {
     const Entities& entities() const noexcept { return _entities; }
     /** @brief Get a mutable reference to the entity allocator. */
     Entities& entities_mut() noexcept { return _entities; }
-    /** @brief Get a const reference to the storage (tables, sparse sets, resources). */
+    /** @brief Get a const reference to the component storage (tables and sparse sets). */
     const Storage& storage() const noexcept { return _storage; }
     /** @brief Get a mutable reference to the storage. */
     Storage& storage_mut() noexcept { return _storage; }
@@ -123,8 +131,8 @@ EPIX_EXPORT struct World {
         return _resource_entities.get(resource_id);
     }
     template <typename T>
+        requires std::movable<T>
     std::optional<Entity> resource_entity() const noexcept {
-        if constexpr (!std::movable<T>) return std::nullopt;
         return _components.get_valid_id<T>().and_then([&](TypeId id) { return _resource_entities.get(id); });
     }
     /** @brief Get a const reference to all archetypes. */
@@ -141,8 +149,9 @@ EPIX_EXPORT struct World {
     Tick increment_change_tick() noexcept { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
     /** @brief Get the tick value from the last time change ticks were checked. */
     Tick last_change_tick() const noexcept { return _last_change_tick; }
-    /** @brief Check and clamp stale change ticks in tables, sparse sets, and resources.
-     *  @param additional_checks Extra tick-checking logic invoked with the current change tick. */
+    /** @brief Check and clamp stale change ticks in tables and sparse sets.
+     *  @param additional_checks Extra
+     * tick-checking logic invoked with the current change tick. */
     void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
         if (change_tick.relative_to(_last_change_tick).get() < ::epix::ecs::internal::CHECK_TICK_THRESHOLD) {
@@ -150,7 +159,6 @@ EPIX_EXPORT struct World {
         }
         storage_mut().tables.check_change_ticks(change_tick);
         storage_mut().sparse_sets.check_change_ticks(change_tick);
-        storage_mut().resources.check_change_ticks(change_tick);
         additional_checks(change_tick);
         _last_change_tick = change_tick;
     }
@@ -159,7 +167,7 @@ EPIX_EXPORT struct World {
 
     /** @brief Despawn all ordinary entities while preserving entity-backed resources. */
     void clear_entities();
-    /** Remove all movable resource values and clear all explicitly stored non-movable resources. */
+    /** Remove all resource component values while preserving their canonical entities. */
     void clear_resources();
 
     /** @brief Spawn a new entity with the given components or bundle.
@@ -191,27 +199,21 @@ EPIX_EXPORT struct World {
      *  @tparam Args Constructor argument types.
      *  @param args Arguments forwarded to T's constructor. */
     template <typename T, typename... Args>
-        requires std::constructible_from<T, Args&&...>
+        requires std::movable<T> && std::constructible_from<T, Args&&...>
     void emplace_resource(Args&&... args) {
         auto id = register_resource<T>();
-        if constexpr (std::movable<T>) {
-            if (auto entity = _resource_entities.get(id); entity && get_entity(*entity)) {
-                entity_mut(*entity).template emplace<T>(std::forward_as_tuple(std::forward<Args>(args)...));
-            } else {
-                if (entity) _resource_entities.remove(id);
-                spawn(make_bundle<T, IsResource>(std::forward_as_tuple(std::forward<Args>(args)...),
-                                                 std::forward_as_tuple(id)));
-            }
+        if (auto entity = _resource_entities.get(id); entity && get_entity(*entity)) {
+            entity_mut(*entity).template emplace<T>(std::forward_as_tuple(std::forward<Args>(args)...));
         } else {
-            _storage.resources.initialize(id, _components);
-            _storage.resources.get_mut(id).value().get().template emplace<T>(change_tick(),
-                                                                             std::forward<Args>(args)...);
+            if (entity) _resource_entities.remove(id);
+            spawn(make_bundle<T, IsResource>(std::forward_as_tuple(std::forward<Args>(args)...),
+                                             std::forward_as_tuple(id)));
         }
     }
     /** @brief Insert a resource by moving or copying the given value.
      *  @tparam T Resource type (deduced). */
     template <typename T>
-        requires std::constructible_from<std::remove_cvref_t<T>, T>
+        requires std::movable<std::remove_cvref_t<T>> && std::constructible_from<std::remove_cvref_t<T>, T>
     void insert_resource(T&& value) {
         using D = std::remove_cvref_t<T>;
         emplace_resource<D>(std::forward<T>(value));
@@ -221,35 +223,18 @@ EPIX_EXPORT struct World {
      *  @note If construction throws, the resource slot is cleaned up and an error is logged. */
     template <typename T>
     TypeId init_resource()
-        requires internal::is_from_world<T>
+        requires std::movable<T> && internal::is_from_world<T>
     {
         auto id = register_resource<T>();
         if (get_resource<T>()) return id;
-        if constexpr (std::movable<T>) {
-            try {
-                insert_resource(internal::FromWorld<T>::create(*this));
-            } catch (const std::exception& e) {
-                spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
-                              e.what());
-            } catch (...) {
-                spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
-                              meta::type_id<T>::short_name());
-            }
-        } else {
-            _storage.resources.initialize(id, _components);
-            _storage.resources.get_mut(id).value().get().construct(change_tick(), [this, id](void* dest) {
-                try {
-                    internal::FromWorld<T>::emplace(dest, *this);
-                } catch (const std::exception& e) {
-                    spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
-                                  e.what());
-                    _storage.resources.get_mut(id).value().get().remove();
-                } catch (...) {
-                    spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
-                                  meta::type_id<T>::short_name());
-                    _storage.resources.get_mut(id).value().get().remove();
-                }
-            });
+        try {
+            insert_resource(internal::FromWorld<T>::create(*this));
+        } catch (const std::exception& e) {
+            spdlog::error("[app] Failed to initialize resource of type {}: {}", meta::type_id<T>::short_name(),
+                          e.what());
+        } catch (...) {
+            spdlog::error("[app] Failed to initialize resource of type {}: unknown error",
+                          meta::type_id<T>::short_name());
         }
         return id;
     }
@@ -260,6 +245,7 @@ EPIX_EXPORT struct World {
     /** @brief Remove a resource by type. Returns true if removed.
      *  @tparam T Resource type. */
     template <typename T>
+        requires std::movable<T>
     bool remove_resource() {
         return _components.get_valid_id<T>()
             .transform(std::bind_front(&World::remove_resource_by_id, this))
@@ -288,46 +274,37 @@ EPIX_EXPORT struct World {
      *  @tparam T Resource type.
      *  @return Optional const reference wrapper. */
     template <typename T>
+        requires std::movable<T>
     std::optional<std::reference_wrapper<const T>> get_resource() const {
-        if constexpr (std::movable<T>) {
-            return _components.get_valid_id<T>()
-                .and_then([&](TypeId id) { return _resource_entities.get(id); })
-                .and_then([&](Entity entity) { return get_entity(entity); })
-                .and_then([](EntityRef entity) { return entity.template get<T>(); });
-        } else {
-            return _components.get_valid_id<T>()
-                .and_then(std::bind_front(&Resources::get, std::ref(_storage.resources)))
-                .and_then(&ResourceData::get_as<T>);
-        }
+        return _components.get_valid_id<T>()
+            .and_then([&](TypeId id) { return _resource_entities.get(id); })
+            .and_then([&](Entity entity) { return get_entity(entity); })
+            .and_then([](EntityRef entity) { return entity.template get<T>(); });
     }
     /** @brief Get a mutable reference to a resource, if it exists.
      *  @tparam T Resource type.
      *  @return Optional mutable reference wrapper. */
     template <typename T>
+        requires std::movable<T>
     std::optional<std::reference_wrapper<T>> get_resource_mut() {
-        if constexpr (std::movable<T>) {
-            return _components.get_valid_id<T>()
-                .and_then([&](TypeId id) { return _resource_entities.get(id); })
-                .and_then([&](Entity entity) { return get_entity_mut(entity); })
-                .and_then([](EntityWorldMut entity) -> std::optional<std::reference_wrapper<T>> {
-                    return entity.template get_mut<T>().transform(
-                        [](Mut<T> value) { return std::ref(value.get_mut()); });
-                });
-        } else {
-            return _components.get_valid_id<T>()
-                .and_then(std::bind_front(&Resources::get_mut, std::ref(_storage.resources)))
-                .and_then(&ResourceData::get_as_mut<T>);
-        }
+        return _components.get_valid_id<T>()
+            .and_then([&](TypeId id) { return _resource_entities.get(id); })
+            .and_then([&](Entity entity) { return get_entity_mut(entity); })
+            .and_then([](EntityWorldMut entity) -> std::optional<std::reference_wrapper<T>> {
+                return entity.template get_mut<T>().transform([](Mut<T> value) { return std::ref(value.get_mut()); });
+            });
     }
     /** @brief Get a const reference to a resource. Throws if not present.
      *  @tparam T Resource type. */
     template <typename T>
+        requires std::movable<T>
     const T& resource() const {
         return get_resource<T>().value().get();
     }
     /** @brief Get a mutable reference to a resource. Throws if not present.
      *  @tparam T Resource type. */
     template <typename T>
+        requires std::movable<T>
     T& resource_mut() {
         return get_resource_mut<T>().value().get();
     }
@@ -335,6 +312,7 @@ EPIX_EXPORT struct World {
     /** @brief Get or initialize a resource. If the resource does not exist, it is
      *  created via FromWorld. @tparam T Resource type satisfying is_from_world. */
     template <internal::is_from_world T>
+        requires std::movable<T>
     T& resource_or_init() {
         return get_resource_mut<T>()
             .or_else([&]() -> std::optional<std::reference_wrapper<T>> {
@@ -347,7 +325,7 @@ EPIX_EXPORT struct World {
      *  @tparam T Resource type.
      *  @tparam Args Constructor argument types. */
     template <typename T, typename... Args>
-        requires std::constructible_from<T, Args&&...>
+        requires std::movable<T> && std::constructible_from<T, Args&&...>
     T& resource_or_emplace(Args&&... args) {
         return get_resource_mut<T>()
             .or_else([&]() -> std::optional<std::reference_wrapper<T>> {
@@ -524,7 +502,8 @@ EPIX_EXPORT struct World {
     Tick _last_change_tick;
 };
 /** @brief A deferred view of a World that provides read-only data access
- *  and deferred command submission. Does not allow direct mutation. */
+ *  and deferred command submission. Does not
+ * allow direct mutation. */
 struct DeferredWorld {
    public:
     DeferredWorld(World& world) noexcept : world_(&world) {}

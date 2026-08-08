@@ -80,7 +80,7 @@ void MultithreadFlatExecutor::execute(ScheduleSystems& _data, World& world, cons
     bool has_system = std::ranges::any_of(cache->nodes, [](const CachedNode& cn) { return (bool)cn.node->system; });
     if (!has_system) return;
 
-    auto& pool = world.resource_or_emplace<internal::ScheduleThreadPool>().pool;
+    auto& pool = *world.resource_or_emplace<internal::ScheduleThreadPool>().pool;
 
     // Execution state
     std::vector<size_t> wait_count(flat_count);
