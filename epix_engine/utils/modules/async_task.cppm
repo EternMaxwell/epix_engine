@@ -7,6 +7,7 @@ module;
 #include <coroutine>
 #include <cstdint>
 #include <exception>
+#include <expected>
 #include <functional>
 #include <memory>
 #include <mutex>
