@@ -22,6 +22,7 @@
 #include <epix/ecs/system/from_param.hpp>
 #include <epix/ecs/system/input.hpp>
 #include <epix/ecs/system/param.hpp>
+#include <epix/ecs/system/removed_components.hpp>
 
 namespace epix::ecs {
 /** @brief Wrapper around an exception caught during system execution. */

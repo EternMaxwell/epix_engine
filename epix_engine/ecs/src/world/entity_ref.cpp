@@ -46,6 +46,9 @@ void EntityWorldMut::despawn() {
     world_->trigger_on_despawn(archetype, entity_, archetype.components());
     world_->trigger_on_remove(archetype, entity_, archetype.components());
     location_ = world_->entities().get(entity_).value();
+    for (auto&& component_id : archetype.components()) {
+        internal::world_removed_components_mut(*world_).write(component_id, entity_);
+    }
     world_->entities_mut().free(entity_);
     world_->flush_entities();
     auto result = archetype.swap_remove(location_.archetype_idx);

@@ -470,6 +470,7 @@ EPIX_EXPORT namespace epix::app {
 
         std::shared_ptr<std::atomic<std::uint32_t>> _world_ids;
         ecs::World _world;
+        bool _has_updated = false;
 
         std::move_only_function<void(App&, ecs::World&)> extract_fn;
         std::unique_ptr<AppRunner> runner;

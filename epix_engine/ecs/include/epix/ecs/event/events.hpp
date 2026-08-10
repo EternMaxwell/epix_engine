@@ -80,6 +80,10 @@ struct Events {
     const T* get(std::uint32_t index) const noexcept {
         return index >= m_head && index < m_tail ? &m_events[index - m_head] : nullptr;
     }
+    /** Whether an event was written since the most recent update. */
+    bool is_current(std::uint32_t index) const noexcept {
+        return index >= m_head && index < m_tail && m_lifetimes[index - m_head] > 0;
+    }
     void advance_head(std::uint32_t new_head) {
         new_head = std::clamp(new_head, m_head, m_tail);
         for (std::uint32_t i = 0; i < new_head - m_head; ++i) {

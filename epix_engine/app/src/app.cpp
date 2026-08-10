@@ -180,6 +180,10 @@ bool App::run_schedule(const ScheduleLabel& label) {
 
 void App::update() {
     spdlog::trace("[app] Update tick for '{}'.", _label.to_string());
+    // Clear at the start of the next update so sub-app extraction can still
+    // observe the main world's current removals after this update returns.
+    if (_has_updated) _world.clear_trackers();
+    _has_updated = true;
     _world.check_change_tick([&](Tick tick) {
         (void)_world.resource_scope([&](Schedules& schedules) { schedules.check_change_tick(tick); });
     });

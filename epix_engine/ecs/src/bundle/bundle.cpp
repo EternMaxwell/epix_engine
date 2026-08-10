@@ -274,10 +274,20 @@ EntityLocation internal::BundleRemover::remove(Entity entity, EntityLocation loc
     auto& dest_archetype = *new_archetype_;
     auto& src_archetype  = *archetype_;
 
-    // trigger on_remove for components in the bundle
-    world_trigger_on_remove(*world_, src_archetype, entity, bundle_info.explicit_components());
+    auto removed_components = std::views::filter(bundle_info.explicit_components(), [&](TypeId component_id) {
+        return src_archetype.contains(component_id) && !dest_archetype.contains(component_id);
+    });
+
+    // Trigger hooks only for components that are actually leaving the entity.
+    world_trigger_on_remove(*world_, src_archetype, entity, removed_components);
 
     location = world_entities(*world_).get(entity).value();  // in case it may be changed by on_remove
+
+    // Match Bevy's lifecycle ordering: removal hooks observe the component first,
+    // then the removal is recorded, and only then is storage changed.
+    for (auto&& component_id : removed_components) {
+        world_removed_components_mut(*world_).write(component_id, entity);
+    }
 
     auto result = src_archetype.swap_remove(location.archetype_idx);
     if (result.swapped_entity) {
@@ -306,7 +316,7 @@ EntityLocation internal::BundleRemover::remove(Entity entity, EntityLocation loc
     } else {
         location = dest_archetype.allocate(entity, result.table_row);
     }
-    for (auto&& type_id : bundle_info.explicit_components()) {
+    for (auto&& type_id : removed_components) {
         world_components(*world_).get_info(type_id).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
             // Not registered component will be ignored
             auto storage_type = info.storage_type();

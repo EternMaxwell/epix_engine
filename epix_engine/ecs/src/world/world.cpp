@@ -150,6 +150,10 @@ CommandQueue& world_command_queue(World& world) noexcept { return world.command_
 Tick world_change_tick(const World& world) noexcept { return world.change_tick(); }
 Tick world_increment_change_tick(World& world) noexcept { return world.increment_change_tick(); }
 Tick world_last_change_tick(const World& world) noexcept { return world.last_change_tick(); }
+const RemovedComponentEvents& world_removed_components(const World& world) noexcept {
+    return world.removed_components();
+}
+RemovedComponentEvents& world_removed_components_mut(World& world) noexcept { return world._removed_components; }
 void world_flush_components(World& world) { world.flush_components(); }
 void world_flush_entities(World& world) { world.flush_entities(); }
 void world_flush_commands(World& world) { world.flush_commands(); }

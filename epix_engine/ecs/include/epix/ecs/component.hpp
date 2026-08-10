@@ -7,4 +7,5 @@
 #include <epix/ecs/component/hooks.hpp>
 #include <epix/ecs/component/ids.hpp>
 #include <epix/ecs/component/register.hpp>
+#include <epix/ecs/component/removal_detection.hpp>
 #include <epix/ecs/component/required_component.hpp>

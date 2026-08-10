@@ -4,6 +4,7 @@
 #include <format>
 #include <memory>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <vector>
 #endif
@@ -36,6 +37,7 @@ struct TestRunner : public AppRunner {
         app.run_schedules(PreExit, Exit, PostExit);
     }
 };
+struct AppTracked {};
 }  // namespace
 
 TEST(core, app_main) {
@@ -65,4 +67,16 @@ TEST(core, app_main) {
     spdlog::set_level(level);
 
     ASSERT_EQ(actions, expected);
+}
+
+TEST(core, app_updates_clear_removed_component_trackers_on_the_next_boundary) {
+    App app;
+    Entity entity = app.world_mut().spawn(AppTracked{}).id();
+    app.world_mut().entity_mut(entity).remove<AppTracked>();
+
+    app.update();
+    EXPECT_FALSE(std::ranges::empty(app.world().removed<AppTracked>()));
+
+    app.update();
+    EXPECT_TRUE(std::ranges::empty(app.world().removed<AppTracked>()));
 }

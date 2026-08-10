@@ -43,7 +43,8 @@ EPIX_EXPORT struct World {
           _components(),
           _storage(),
           _change_tick(std::make_unique<std::atomic<std::uint32_t>>(1)),
-          _last_change_tick(0) {
+          _last_change_tick(0),
+          _last_check_tick(0) {
         registrator().register_component<IsResource>();
     }
     World(const World&)            = delete;
@@ -140,20 +141,37 @@ EPIX_EXPORT struct World {
     Tick change_tick() const noexcept { return _change_tick->load(std::memory_order_relaxed); }
     /** @brief Atomically increment and return the previous change tick. */
     Tick increment_change_tick() noexcept { return Tick(_change_tick->fetch_add(1, std::memory_order_relaxed)); }
-    /** @brief Get the tick value from the last time change ticks were checked. */
+    /** @brief Get the tick value from the latest tracker clear. */
     Tick last_change_tick() const noexcept { return _last_change_tick; }
+    /** Removal event streams, indexed by component type. */
+    const RemovedComponentEvents& removed_components() const noexcept { return _removed_components; }
+
+    /** Entities whose T component was removed since the latest tracker clear. */
+    template <typename T>
+    auto removed() const {
+        return _removed_components.current(_components.get_valid_id<T>());
+    }
+
+    /** Entities whose component was removed since the latest tracker clear. */
+    auto removed_with_id(TypeId component_id) const { return _removed_components.current(component_id); }
+
+    /** Advance removal-event buffers and reset the world's change-tracking epoch. */
+    void clear_trackers() {
+        _removed_components.update();
+        _last_change_tick = increment_change_tick();
+    }
     /** @brief Check and clamp stale change ticks in tables and sparse sets.
      *  @param additional_checks Extra
      * tick-checking logic invoked with the current change tick. */
     void check_change_tick(std::invocable<Tick> auto&& additional_checks) {
         auto change_tick = this->change_tick();
-        if (change_tick.relative_to(_last_change_tick).get() < ::epix::ecs::internal::CHECK_TICK_THRESHOLD) {
+        if (change_tick.relative_to(_last_check_tick).get() < ::epix::ecs::internal::CHECK_TICK_THRESHOLD) {
             return;
         }
         storage_mut().tables.check_change_ticks(change_tick);
         storage_mut().sparse_sets.check_change_ticks(change_tick);
         additional_checks(change_tick);
-        _last_change_tick = change_tick;
+        _last_check_tick = change_tick;
     }
     /** @brief Get a mutable reference to the deferred command queue. */
     internal::CommandQueue& command_queue() noexcept { return _command_queue; }
@@ -481,6 +499,7 @@ EPIX_EXPORT struct World {
 
    protected:
     friend struct IsResource;
+    friend RemovedComponentEvents& internal::world_removed_components_mut(World& world) noexcept;
 
     WorldId _id;
     Components _components;
@@ -490,9 +509,11 @@ EPIX_EXPORT struct World {
     ResourceEntities _resource_entities;
     Archetypes _archetypes;
     internal::Bundles _bundles;
+    RemovedComponentEvents _removed_components;
     internal::CommandQueue _command_queue;
     std::unique_ptr<std::atomic<std::uint32_t>> _change_tick;
     Tick _last_change_tick;
+    Tick _last_check_tick;
 };
 /** @brief A deferred view of a World that provides read-only data access
  *  and deferred command submission. Does not

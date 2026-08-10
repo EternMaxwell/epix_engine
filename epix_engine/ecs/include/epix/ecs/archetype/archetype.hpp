@@ -320,8 +320,7 @@ EPIX_EXPORT struct Archetypes {
 
 namespace internal {
 template <typename R>
-concept type_id_view = std::ranges::sized_range<R> && std::same_as<std::ranges::range_value_t<R>, TypeId> &&
-                       std::ranges::viewable_range<R>;
+concept type_id_view = std::same_as<std::ranges::range_value_t<R>, TypeId> && std::ranges::viewable_range<R>;
 void world_trigger_on_add(World& world, const Archetype& archetype, Entity entity, type_id_view auto&& targets) {
     for (auto&& target : targets) {
         world_components(world).get_info(target).and_then([&](const ComponentInfo& info) -> std::optional<bool> {
