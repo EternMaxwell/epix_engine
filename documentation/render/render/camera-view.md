@@ -2,8 +2,8 @@
 
 Cameras drive rendering by specifying *what* to render (render target, clear
 color, layer mask), *how* (projection, viewport), and *which render graph* to
-use.  Internally, camera data is extracted into the render world each frame and
-processed by `ViewPlugin`.
+use. `CameraPlugin` updates and extracts cameras; `ViewPlugin` prepares their
+GPU target, depth texture, and uniform binding in the render world.
 
 All camera types live in `epix::render::camera`.  Extracted/view-side types
 live in `epix::render::view`.
@@ -101,6 +101,10 @@ struct RenderLayer {
 Cameras use `RenderLayer::all()` by default; entities use layer 0.
 `intersects()` governs camera-vs-entity visibility.
 
+Default-constructed `RenderLayer` means only layer 0. `all()` and
+`all_except()` use the inverted/complement representation, so they do not need
+to enumerate every possible layer index.
+
 ---
 
 ## Projection
@@ -184,6 +188,21 @@ struct CameraRenderGraph : public graph::GraphLabel {
 A `GraphLabel` that identifies which named sub-graph in the render graph this
 camera drives.  Set on the `CameraBundle` and extracted each frame.
 
+## Camera projection extension point
+
+`CameraProjection` accepts projection types that provide projection/frustum
+queries, near/far getters and setters, and `update(width, height)`. Register a
+custom projection component with `CameraProjectionPlugin<MyProjection>`:
+
+```cpp
+app.add_plugins(render::camera::CameraProjectionPlugin<MyProjection>{});
+```
+
+Its update system runs in `PostUpdate` under
+`CameraUpdateSystems::CameraUpdateSystem`. `CameraPlugin` installs projection
+plugins for `Projection`, `OrthographicProjection`, and
+`PerspectiveProjection` automatically.
+
 ---
 
 ## CameraBundle
@@ -201,8 +220,8 @@ struct CameraBundle {
 };
 ```
 
-Spawns a camera entity with 6 components.  The `CameraBundle::write()` Bundle
-specialisation writes all 6 into ECS storage atomically.
+Spawns a camera entity with six components. Its current `Bundle<CameraBundle>`
+specialization supplies all six to ECS storage in one structural operation.
 
 ```cpp
 // Startup system:
@@ -213,7 +232,7 @@ bundle.projection = render::camera::Projection::perspective();
 cmd.spawn(std::move(bundle));
 ```
 
-Source: `epix_engine/render/examples/render_plugin.cpp`
+Source: `epix_engine/render/examples/module/render_plugin.cpp`
 
 ---
 
@@ -226,10 +245,27 @@ struct ViewPlugin {
 ```
 
 Registered automatically by `RenderPlugin`.  Adds systems for:
-- Extracting camera data (`extract_cameras`)
 - Preparing `ViewTarget` (swapchain texture view) per camera entity
 - Creating / reusing `ViewDepth` textures (`ViewDepthCache`)
 - Building `ViewUniform` + `ViewBindGroup` each frame
+
+## CameraPlugin
+
+`CameraPlugin`, also installed by `RenderPlugin`, registers the global
+`ClearColor`, projection update systems, camera extraction, and the root
+`CameraDriverNode`. The driver clears each active camera target when configured
+and invokes the camera's named sub-graph with the extracted camera entity as
+the view entity.
+
+Inactive cameras, zero-sized targets/viewports, missing primary windows, and
+unresolvable targets are skipped during extraction or view preparation.
+
+### ExtractedCamera
+
+`camera::ExtractedCamera` is the render-world snapshot containing the normalized
+target, viewport/target sizes, optional viewport, graph label, order, optional
+resolved clear color, and render-layer mask. A primary-window target is
+normalized to the actual window entity before it reaches graph nodes.
 
 ---
 
@@ -279,6 +315,9 @@ struct ViewDepth {
 ```
 
 Depth buffer for a camera view.  Cached by viewport size in `ViewDepthCache`.
+
+The cache is recycled after rendering and cleared after view management;
+zero-sized views do not receive a depth texture.
 
 ---
 

@@ -13,5 +13,8 @@ Potential future work (no interface stubs exist yet):
 - [ ] **Text input events** — no character/code-point event (useful for text fields).
 - [ ] **Cursor position resource** — absolute cursor position is currently only available via
   the `Window` component's `cursor_pos` field; a dedicated `CursorPos` resource would be more ergonomic.
-- [ ] **Input suppression integration** — `bypass_*` flags exist on `ButtonInput` but there is no
-  automatic integration with a UI-focus system to toggle them.
+
+The ImGui plugin now integrates with the `bypass_*` flags automatically when
+`WantCaptureKeyboard` or `WantCaptureMouse` is set. Other UI integrations can use
+the same flags, but there is no engine-wide focus abstraction shared by all UI
+systems yet.

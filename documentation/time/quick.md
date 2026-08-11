@@ -1,4 +1,4 @@
-﻿# EPIX ENGINE TIME MODULE
+# EPIX ENGINE TIME MODULE
 
 Provides frame-delta time, wall-clock time, virtual (scalable/pausable) time, fixed-timestep scheduling, and per-frame timers — all wired into the ECS via a single plugin.
 
@@ -21,8 +21,11 @@ Provides frame-delta time, wall-clock time, virtual (scalable/pausable) time, fi
 ## Quick Guide
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.time;
+import epix.input;
+import epix.transform;
 
 using namespace epix;
 
@@ -31,27 +34,27 @@ app.add_plugins(time::TimePlugin{});
 
 // 2. Read frame delta in an Update system via Time<> (virtual time).
 void update_movement(
-    core::Res<time::Time<>> time,
-    core::Query<core::Item<transform::Transform&>> transforms)
+    ecs::Res<time::Time<>> time,
+    ecs::Query<ecs::Item<transform::Transform&>> transforms)
 {
     float dt = time->delta_secs();
     for (auto&& [tf] : transforms.iter()) {
         tf.translation.x += 100.0f * dt;
     }
 }
-app.add_systems(core::Update, core::into(update_movement));
+app.add_systems(app::Update, ecs::into(update_movement));
 
 // 3. Run physics at a fixed rate (default 64 Hz) in FixedUpdate.
-void physics_step(core::Res<time::Time<Fixed>> fixed_time) {
+void physics_step(ecs::Res<time::Time<time::Fixed>> fixed_time) {
     float dt = fixed_time->delta_secs(); // always == timestep (e.g. ~15.625 ms)
     // integrate physics ...
 }
-app.add_systems(time::FixedUpdate, core::into(physics_step));
+app.add_systems(time::FixedUpdate, ecs::into(physics_step));
 
 // 4. Pause game time (Time<> and Time<Virtual> stop advancing).
 void toggle_pause(
-    core::Res<time::ButtonInput<time::KeyCode>> keys,
-    core::ResMut<time::Time<Virtual>> virt)
+    ecs::Res<input::ButtonInput<input::KeyCode>> keys,
+    ecs::ResMut<time::Time<time::Virtual>> virt)
 {
     if (keys->just_pressed(input::KeyCode::KeyEscape)) {
         virt->toggle();
@@ -60,7 +63,7 @@ void toggle_pause(
 
 // 5. Schedule a system to run every 5 seconds of virtual time.
 app.add_systems(
-    core::Update,
-    core::into(my_periodic_system)
+    app::Update,
+    ecs::into(my_periodic_system)
         .run_if(time::on_timer(std::chrono::seconds(5))));
 ```

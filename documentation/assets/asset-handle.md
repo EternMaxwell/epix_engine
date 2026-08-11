@@ -1,133 +1,63 @@
-﻿# Asset Handles and IDs
+# Asset handles and IDs
 
-Typed and type-erased identifiers and handles for referencing assets.
-
-```cpp
-#import epix.assets
-```
-
----
-
-## `AssetIndex`
-
-Internal generational slot index. Holds an asset's position and generation counter inside `Assets<T>`.
+Assets are addressed by typed or type-erased IDs. Strong handles keep an asset alive; weak handles carry only an ID.
 
 ```cpp
-struct AssetIndex {
-    uint32_t index;
-    uint32_t generation;
-};
+import epix.assets;
+using namespace epix::assets;
 ```
 
-`AssetIndex` values are assigned by `Assets<T>` and exposed via `AssetId<T>`. Do not construct them manually.
+## IDs
 
----
+`AssetIndex` is a generational storage key. Its fields are private; use `index()` and `generation()`. Values are allocated by `Assets<T>` and should not be constructed manually.
 
-## `AssetId<T>`
+`AssetId<T>` contains either an `AssetIndex` or a stable `uuids::uuid`:
 
 ```cpp
-template<Asset T>
-struct AssetId {
-    // Identity
-    bool is_index() const;          // backed by AssetIndex
-    bool is_uuid() const;           // backed by uuids::uuid
-
-    std::string to_string() const;
-    std::string to_string_short() const;
-
-    static AssetId invalid();       // sentinel invalid id
-    bool operator==(const AssetId&) const;
-};
+bool is_index() const;
+bool is_uuid() const;
+std::string to_string() const;
+std::string to_string_short() const;
+static AssetId invalid();
 ```
 
-Variant of `AssetIndex` (slot-based, fast lookup) or `uuids::uuid` (stable across sessions).
-
-```cpp
-Handle<Image> h = server.load<Image>("icon.png");
-AssetId<Image> id = h.id();
-bool fast = id.is_index();   // true for most loaded assets
-```
-
----
-
-## `UntypedAssetId`
-
-Type-erased version of `AssetId`. Carries both the id and the type's `meta::type_index`.
-
-```cpp
-struct UntypedAssetId {
-    meta::type_index type_id() const;
-
-    // downcast
-    template<Asset T> AssetId<T>         typed() const;   // asserts type matches
-    template<Asset T> std::optional<AssetId<T>> try_typed() const;
-};
-```
-
----
+`UntypedAssetId` adds a runtime `meta::type_index`. `typed<T>()` asserts that the stored type matches; `try_typed<T>()` returns `std::optional<AssetId<T>>`.
 
 ## `Handle<T>`
 
-A typed reference to an asset. Can be **strong** (keeps the asset alive) or **weak** (does not).
-
 ```cpp
-template<Asset T>
-struct Handle {
-    bool is_strong() const;
-    bool is_weak() const;
+bool is_strong() const;
+bool is_weak() const;
+AssetId<T> id() const;
+std::optional<AssetPath> path() const;
 
-    AssetId<T>               id() const;
-    std::optional<AssetPath> path() const;
-
-    Handle<T>   weak() const;                    // downgrade to weak copy
-    Handle<T>   make_strong(Assets<T>& assets);  // upgrade weak handle
-
-    UntypedHandle untyped() const;               // erase type
-
-    // dependency tracking (used by loaders)
-    void visit_dependencies(auto&& visitor) const;
-};
+Handle<T> weak() const;
+void make_strong(Assets<T>& assets);
+UntypedHandle untyped() const;
 ```
 
-Handles are obtained from `AssetServer::load<T>()` or `Assets<T>::reserve_handle()`. Cloning a strong handle increments the ref-count of the underlying `StrongHandle`; dropping the last strong Handle allows the asset to be removed on the next `HandleEvents` run.
+Copying a strong handle shares the reference-counted `StrongHandle`. Dropping the last strong copy allows the asset lifecycle system to emit `Unused` and reclaim the value. `weak()` does not keep the asset alive. `make_strong()` upgrades a weak handle in place when its asset exists in the supplied store; it does nothing when already strong.
 
 ```cpp
-Handle<Image> a = server.load<Image>("tex.png");
-Handle<Image> b = a;          // strong — both keep asset alive
-Handle<Image> w = a.weak();   // weak — does not keep asset alive
+Handle<Image> strong = server.load<Image>("icon.png");
+Handle<Image> weak = strong.weak();
+weak.make_strong(images);
 ```
-
----
 
 ## `UntypedHandle`
 
-Type-erased Handle. Used where asset type is not known at compile time.
-
 ```cpp
-struct UntypedHandle {
-    meta::type_index type() const;
-    UntypedAssetId   id() const;
+meta::type_index type_id() const;
+meta::type_index type() const; // alias
+UntypedAssetId id() const;
+std::optional<AssetPath> path() const;
+UntypedHandle weak() const;
 
-    template<Asset T> Handle<T>                        typed() const;      // asserts type
-    template<Asset T> std::expected<Handle<T>, UntypedAssetConversionError> try_typed() const;
-};
+template<Asset T>
+std::expected<Handle<T>, UntypedAssetConversionError> try_typed() const;
+
+template<Asset T>
+Handle<T> typed() const; // throws on mismatch
 ```
 
-```cpp
-UntypedHandle u = server.load_untyped("unknown.bin");
-if (u.type() == meta::type_id<Image>())
-    Handle<Image> h = u.typed<Image>();
-```
-
----
-
-## `UntypedAssetConversionError`
-
-Returned by `UntypedHandle::try_typed<T>()` when the stored type does not match `T`.
-
-```cpp
-struct UntypedAssetConversionError {
-    meta::type_index expected;
-    meta::type_index found;
-};
-```
+`UntypedAssetConversionError` records the `expected` and `found` runtime type IDs.

@@ -1,4 +1,4 @@
-﻿# Render Assets
+# Render Assets
 
 Render assets bridge the main-world asset system and GPU resources.  The
 pattern is:
@@ -9,6 +9,9 @@ pattern is:
    pipeline automatically.
 3. **Access** processed GPU assets in render-world systems via
    `RenderAssets<T>`.
+
+Add the plugin after `RenderPlugin` has created the render sub-app and after the
+source asset type has been registered with the asset system.
 
 ---
 
@@ -29,7 +32,7 @@ struct epix::render::RenderAsset<MyMesh> {
     // The GPU-side type produced by process()
     using ProcessedAsset = GPUMesh;
 
-    // System parameters needed by process() — any core::system_param
+    // System parameters needed by process() — any ecs::system_param
     using Param = std::tuple<Res<wgpu::Device>, Res<wgpu::Queue>>;
 
     // Convert a MyMesh into a GPUMesh
@@ -41,6 +44,11 @@ struct epix::render::RenderAsset<MyMesh> {
 ```
 
 `RenderAsset<T>` must be an empty struct (no data members).
+
+`process()` runs during extraction and may use any valid system parameter tuple
+declared by `Param`. It receives ownership of the extracted CPU value and may
+throw; failures from a batch are collected and reported together after other
+assets in that batch have been attempted.
 
 ### RenderAssetUsageBits
 
@@ -55,6 +63,10 @@ using RenderAssetUsage = uint8_t;
 Return `MainWorld | RenderWorld` from `usage()` to keep a copy in both
 worlds (requires `T` to be copy-constructible).  Return only `RenderWorld`
 to move the asset (removing it from the main world).
+
+Return `MainWorld` to skip GPU extraction. The usage decision is evaluated for
+each added or modified asset. A non-copyable asset cannot request both worlds;
+the extraction system reports that as an error.
 
 ---
 
@@ -112,6 +124,11 @@ Registers two systems inside `ExtractSchedule` in the render sub-app:
 
 The `Extract` and `Process` sets run in order (chained).
 
+Extraction reacts to `Added` and `Modified` by rebuilding the GPU value, and to
+`Unused` by removing it from `RenderAssets<T>`. It does not retain CPU
+references across worlds. `CachedExtractedAssets<T>` is the frame-local staging
+resource between the two systems.
+
 ```cpp
 // In MyPlugin::attach():
 app.add_plugins(render::ExtractAssetPlugin<MyMesh>{});
@@ -155,3 +172,8 @@ struct RenderAsset<epix::image::Image> {
 
 Provided automatically.  Access GPU images in render systems via
 `Res<render::RenderAssets<image::Image>>`.
+
+`GPUImage` upload currently supports formats that map directly to WebGPU:
+Grey8, GreyAlpha8, RGBA8, Grey16, RGBA16, Grey32F, and RGBA32F. RGB8, RGB16,
+and RGB32F require conversion to an RGBA representation before GPU extraction.
+The upload creates one mip level and uses `DefaultImageSampler`.

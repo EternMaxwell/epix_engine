@@ -1,146 +1,69 @@
-﻿# Asset Savers and Transformers
-
-Write loadable assets back to bytes (`AssetSaver`) or convert between asset types (`AssetTransformer`).  
-Both concepts are used by the asset processing pipeline.
+# Asset Savers and Transformers
 
 ```cpp
-#import epix.assets
+import epix.assets;
 ```
 
----
+Savers write loaded assets to asynchronous `Writer` streams. Transformers
+convert one loaded asset type into another. Both are used by asset processing.
 
-## `AssetSaver` concept
+## AssetSaver
+
+An asset saver declares `Asset`, `Settings`, `OutputLoader`, and `Error`, then
+implements:
 
 ```cpp
-template<typename T>
-concept AssetSaver = requires {
-    typename T::Asset;         // must satisfy Asset
-    typename T::Settings;      // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
-    typename T::OutputLoader;  // an AssetLoader that can reload the saved bytes
-    typename T::Error;
-
-    { T::save(std::declval<std::ostream&>(),
-              std::declval<SavedAsset<typename T::Asset>>(),
-              std::declval<const typename T::Settings&>(),
-              std::declval<const std::filesystem::path&>()) }
-        -> std::convertible_to<
-               std::expected<typename T::OutputLoader::Settings, typename T::Error>>;
-};
+STDEXEC::task<std::expected<OutputLoader::Settings, Error>> save(
+    Writer& writer,
+    SavedAsset<Asset> asset,
+    const Settings& settings,
+    const AssetPath& output_path) const;
 ```
 
-A saver writes the asset to an `ostream` and returns the settings that the `OutputLoader` should
-use when the file is read back. The returned settings are stored in the sidecar `.meta` file.
-
-### Minimal example
+The returned settings are used by `OutputLoader` when the saved bytes are read
+again.
 
 ```cpp
-struct BinImageSaver {
-    using Asset        = Image;
-    struct Settings    {};                     // plain aggregate
-    using OutputLoader = BinImageLoader;       // knows how to reload the file
-    using Error        = std::exception_ptr;
-
-    static std::expected<BinImageLoader::Settings, Error> save(
-        std::ostream& out,
-        SavedAsset<Image> asset,
-        const Settings&,
-        const std::filesystem::path& path)
-    {
-        const Image& img = asset.get();
-        // write img bytes to out …
-        return BinImageLoader::Settings{};     // settings for the output loader
-    }
-};
-```
-
----
-
-## `SavedAsset<A>`
-
-Read-only view of an asset provided to savers and the processor pipeline.
-
-```cpp
-template<Asset A>
-struct SavedAsset {
-    const A& get() const;
-
-    // Access labeled sub-assets (added via LoadContext)
-    template<Asset B>
-    const B&               get_labeled(std::string_view label) const;
-    std::vector<std::string> labels() const;
-
-    // Build from a LoadedAsset (for use in processors)
-    static SavedAsset from_loaded(const LoadedAsset<A>&);
-    static SavedAsset from_transformed(const TransformedAsset<A>&);
-};
-```
-
----
-
-## `AssetTransformer` concept
-
-```cpp
-template<typename T>
-concept AssetTransformer = requires {
-    typename T::AssetInput;    // source asset type, must satisfy Asset
-    typename T::AssetOutput;   // target asset type, must satisfy Asset
-    typename T::Settings;      // must satisfy is_settings (plain aggregate, zpp::bits-serializable)
-    typename T::Error;
-
-    { T::transform(std::declval<TransformedAsset<typename T::AssetInput>>(),
-                   std::declval<const typename T::Settings&>()) }
-        -> std::convertible_to<
-               std::expected<TransformedAsset<typename T::AssetOutput>, typename T::Error>>;
-};
-```
-
-A transformer takes ownership of a `TransformedAsset<AssetInput>`, converts it, and returns a
-`TransformedAsset<AssetOutput>`. The input type and output type may differ.
-
-### Example: compress image to DXT
-
-```cpp
-struct DxtTransformer {
-    using AssetInput  = RawImage;
-    using AssetOutput = CompressedImage;
-    struct Settings {
-        int quality = 4;
-    };
+struct ImageSaver {
+    using Asset = Image;
+    struct Settings {};
+    using OutputLoader = ImageLoader;
     using Error = std::exception_ptr;
 
-    static std::expected<TransformedAsset<CompressedImage>, Error> transform(
-        TransformedAsset<RawImage> input,
-        const Settings& settings)
+    STDEXEC::task<std::expected<OutputLoader::Settings, Error>> save(
+        Writer& writer, SavedAsset<Image> image,
+        const Settings&, const AssetPath&) const
     {
-        RawImage raw = std::move(input).get();
-        CompressedImage out = compress_dxt(raw, settings.quality);
-        return TransformedAsset<CompressedImage>::from(std::move(out));
+        auto written = co_await writer.write(image->pixels);
+        if (!written) {
+            co_return std::unexpected(
+                std::make_exception_ptr(std::system_error(written.error())));
+        }
+        auto flushed = co_await writer.flush();
+        if (!flushed) {
+            co_return std::unexpected(
+                std::make_exception_ptr(std::system_error(flushed.error())));
+        }
+        co_return OutputLoader::Settings{};
     }
 };
 ```
 
----
+`SavedAsset<T>` is a non-owning, read-only view. It supports dereference,
+`get()`, optional typed/untyped labeled-asset access, handle lookup, and label
+iteration. Construct it with `from_loaded`, `from_transformed`, or `from_asset`.
 
-## `TransformedAsset<A>`
+## AssetTransformer
 
-Mutable wrapper used inside transformer implementations.
+A transformer declares `AssetInput`, `AssetOutput`, `Settings`, and `Error`, and
+returns an asynchronous transformed value:
 
 ```cpp
-template<Asset A>
-struct TransformedAsset {
-    A&        get();
-    const A&  get() const;
-
-    // Replace the primary asset value
-    template<Asset B>
-    TransformedAsset<B> replace_asset(B new_value) &&;
-
-    // Access or mutate labeled sub-assets
-    template<Asset B>
-    B*                     get_labeled(std::string_view label);
-    std::vector<std::string> labels() const;
-};
+STDEXEC::task<std::expected<TransformedAsset<AssetOutput>, Error>> transform(
+    TransformedAsset<AssetInput> input,
+    const Settings& settings) const;
 ```
 
-`TransformedAsset` is passed by value into `transform()`; the transformer can move from it to
-produce a `TransformedAsset` of a different type.
+`TransformedAsset<T>` owns the asset and carries labeled assets across the
+transformation. Use its factory/access/take operations rather than discarding
+the wrapper when labels must survive.

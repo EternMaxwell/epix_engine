@@ -11,8 +11,8 @@ struct ImGuiPlugin {
     ImGuiPlugin& set_docking(bool enabled = true) noexcept;
     ImGuiPlugin& set_viewports(bool enabled = true) noexcept;
 
-    void attach(App& app);
-    void detach(App& app);
+    void attach(app::App& app);
+    void detach(app::App& app);
 };
 }
 ```
@@ -66,7 +66,7 @@ app.add_plugins(imgui::ImGuiPlugin{}.set_docking().set_viewports());
 **Requirements:** `render::RenderPlugin` (and a GLFW window backend) must be
 added before `ImGuiPlugin`.
 
-Source: `epix_engine/render/examples/imgui_basic.cpp`
+Source: `epix_engine/render/examples/module/imgui_basic.cpp`
 
 ---
 
@@ -110,7 +110,7 @@ app.add_systems(Update, into(panel_a, panel_b)
     .set_names(std::array{"panel_a", "panel_b"}));
 ```
 
-Source: `epix_engine/render/examples/imgui_basic.cpp`
+Source: `epix_engine/render/examples/module/imgui_basic.cpp`
 
 ---
 

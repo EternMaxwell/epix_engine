@@ -1,9 +1,9 @@
-﻿# AssetPlugin
+# AssetPlugin
 
 Configure and register the asset system into an `App`.
 
 ```cpp
-#import epix.assets
+import epix.assets;
 ```
 
 ---
@@ -21,20 +21,29 @@ struct AssetPlugin {
     AssetMetaCheck     meta_check;             // Always (default)
     UnapprovedPathMode unapproved_path_mode;   // Forbid (default)
 
-    void attach(App&);
-    void ready(App&);
+    void attach(app::App&);
+    void ready(app::App&);
 
     // Register a custom asset source before attach() is called
     AssetPlugin& register_asset_source(AssetSourceId id, AssetSourceBuilder);
 };
 ```
 
-`AssetPlugin::attach()` inserts:
-- `AssetServer` resource (backed by IOTaskPool)
-- `AssetSources` resource (built from registered sources)
-- Default OS filesystem source reading from `file_path`
+`AssetPlugin::attach()` performs the complete setup:
 
-`AssetPlugin::ready()` starts background load workers and activates watch streams.
+- creates or reuses `AssetSourceBuilders`, initializes the default filesystem source, and
+  registers the embedded in-memory source;
+- builds an `AssetServer` from those sources;
+- in processed mode, creates `AssetProcessor` when processing is enabled and a processed output
+  path exists, then starts it in `Startup`;
+- inserts `EmbeddedAssetRegistry`;
+- registers the built-in `LoadedFolder` and `LoadedUntypedAsset` asset types plus typed and
+  untyped failure events; and
+- orders `AssetSystems::HandleEvents` before `AssetSystems::WriteEvents`.
+
+`AssetPlugin::ready()` is currently a no-op. Loading tasks are spawned by `AssetServer` as loads
+are requested; filesystem watchers are constructed as part of source setup when watching is
+enabled.
 
 ### Fields
 
@@ -54,6 +63,11 @@ struct AssetPlugin {
 ```cpp
 enum class AssetServerMode { Unprocessed, Processed };
 ```
+
+In processed mode, `use_asset_processor_override.value_or(true)` enables the processor. It is
+created only when `processed_file_path` has a value. The server forces metadata checking to
+`Always` in processed mode. File watching defaults to `false`; set
+`watch_for_changes_override = true` to opt in.
 
 | Mode          | Description                                                                  |
 | ------------- | ---------------------------------------------------------------------------- |
@@ -81,7 +95,7 @@ System set labels for ordering custom systems relative to asset infrastructure.
 
 ```cpp
 template<Asset T>
-void app_register_asset(App& app);
+app::App& app_register_asset(app::App& app);
 ```
 
 - Inserts `Assets<T>` resource.
@@ -89,7 +103,7 @@ void app_register_asset(App& app);
 - Must be called after `AssetPlugin` has been added.
 
 ```cpp
-app.add_plugin(AssetPlugin{});
+app.add_plugins(AssetPlugin{});
 app_register_asset<Image>(app);
 app_register_asset<Shader>(app);
 ```
@@ -100,7 +114,7 @@ app_register_asset<Shader>(app);
 
 ```cpp
 template<AssetLoader T>
-void app_register_loader(App& app, T loader = {});
+app::App& app_register_loader(app::App& app, const T& loader = T{});
 ```
 
 Registers `T` with the `AssetServer`, mapping the extensions returned by `T::extensions()` to
@@ -117,7 +131,7 @@ app_register_loader<JsonLoader>(app, JsonLoader{.strict = true});
 
 ```cpp
 template<AssetLoader T>
-void app_preregister_loader(App& app, std::span<std::string_view> extensions);
+app::App& app_preregister_loader(app::App& app, std::span<std::string_view> extensions);
 ```
 
 Maps `extensions` to loader type `T` before any instance is constructed. Useful in plugins that
@@ -129,10 +143,11 @@ want to advertise supported formats to the rest of the app without installing th
 
 ```cpp
 template<Process P>
-void app_register_asset_processor(App& app, P processor);
+app::App& app_register_asset_processor(app::App& app, P processor);
 ```
 
-Registers a processor with the `AssetProcessor` resource. Requires `AssetServerMode::Processed`.
+Registers a processor with the `AssetProcessor` resource. It throws when that resource is absent,
+so add `AssetPlugin` in processed mode with processor use and a processed path first.
 
 ---
 
@@ -140,8 +155,10 @@ Registers a processor with the `AssetProcessor` resource. Requires `AssetServerM
 
 ```cpp
 template<Process P>
-void app_set_default_asset_processor(App& app, std::string_view extension);
+app::App& app_set_default_asset_processor(app::App& app, const std::string& extension);
 ```
 
 Sets `P` as the default processor for `extension` (e.g., `"png"`, `"glsl"`). When the processor
 encounters a file with no explicit `.meta` override, it will run `P`.
+
+Like `app_register_asset_processor`, this helper throws if `AssetProcessor` is absent.

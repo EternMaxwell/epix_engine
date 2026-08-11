@@ -1,169 +1,71 @@
-﻿# Asset Meta
+# Asset metadata
 
-Controls how `.meta` sidecar files and loader/processor settings interact with the pipeline.
+Metadata controls loader settings, processing, and path policy. Sidecar files use format version `META_FORMAT_VERSION == "2.0"`.
 
 ```cpp
-#import epix.assets
+import epix.assets;
+using namespace epix::assets;
 ```
 
----
+## Settings
 
-## `Settings` / `SettingsImpl<T>` / `is_settings`
-
-Polymorphic base class for loader/processor settings. Concrete settings types are **plain
-aggregates** — they do not inherit from `Settings`. The engine wraps them in `SettingsImpl<T>`
-for polymorphic storage.
+Concrete settings are default-constructible, zpp::bits-serializable aggregates. They do not inherit from `Settings`; the engine wraps them in `SettingsImpl<T>` for type-erased storage.
 
 ```cpp
-struct Settings {
-    virtual ~Settings() = default;
-    template<typename T> std::optional<std::reference_wrapper<const T>> try_cast() const;
-    template<typename T> const T& cast() const;
-};
-
-struct EmptySettings {};  // default when no settings are needed
-
-template<typename T>
-concept is_settings = std::is_default_constructible_v<T> && /* zpp::bits-serializable */;
-
-template<typename T>
-struct SettingsImpl : Settings { T value{}; };
-```
-
-Settings must satisfy the `is_settings` concept, which requires the type to be
-default-constructible and serializable by zpp::bits (aggregates, containers,
-`std::optional`, `std::variant`, empty types, or types with an explicit serialize hook).
-
-```cpp
-// Define settings as a plain aggregate — no inheritance required
-struct PngLoaderSettings {
-    bool srgb    = true;
+struct ImageSettings {
+    bool srgb = true;
     bool mipmaps = false;
 };
-// The engine stores it as SettingsImpl<PngLoaderSettings> internally
 ```
 
-The settings struct is passed by the framework to every `load()`, `save()`, `transform()`, and `process()` call. Default-constructed settings are used unless overridden at the call site or by a `.meta` sidecar file.
+`Settings::try_cast<T>()` returns an optional reference wrapper and `cast<T>()` returns a reference. `EmptySettings` is used when a stage has no options.
 
----
-
-## `AssetMetaCheck`
-
-Controls when and whether the `AssetServer` looks for `.meta` sidecar files.
+## Metadata lookup
 
 ```cpp
 namespace asset_meta_check {
     struct Always {};
-    struct Never  {};
-    struct Paths  { std::unordered_set<std::filesystem::path> paths; };
+    struct Never {};
+    struct Paths { std::unordered_set<AssetPath> paths; };
 }
-using AssetMetaCheck = std::variant<
-    asset_meta_check::Always,
-    asset_meta_check::Never,
-    asset_meta_check::Paths>;
+using AssetMetaCheck = std::variant<asset_meta_check::Always,
+                                    asset_meta_check::Never,
+                                    asset_meta_check::Paths>;
 ```
 
-| Variant            | Behaviour                                       |
-| ------------------ | ----------------------------------------------- |
-| `Always` (default) | Check for `.meta` alongside every asset load    |
-| `Never`            | Never check; always use default loader settings |
-| `Paths{…}`         | Check only the listed paths                     |
+`Always` is the default, `Never` skips sidecars, and `Paths` limits checks to the listed asset paths. Configure the policy through `AssetPlugin::meta_check`.
 
-Set on `AssetPlugin`:
-
-```cpp
-AssetPlugin plugin;
-plugin.meta_check = asset_meta_check::Never{}; // override default Always
-```
-
----
-
-## `UnapprovedPathMode`
-
-Determines how the server handles asset paths that are not explicitly allow-listed.
+## Unapproved paths
 
 ```cpp
 enum class UnapprovedPathMode { Allow, Deny, Forbid };
 ```
 
-| Value              | Behaviour                                      |
-| ------------------ | ---------------------------------------------- |
-| `Allow`            | Any path may be loaded                         |
-| `Deny`             | Unapproved paths emit a warning but still load |
-| `Forbid` (default) | Unapproved paths fail with an error            |
+- `Allow` permits any path.
+- `Deny` rejects an unapproved path unless an override loading method is used.
+- `Forbid` always rejects it and is the default.
 
----
+`AssetPath::is_unapproved()` identifies absolute, rooted, prefixed, or parent-escaping paths.
 
-## `AssetHash`
+## Processing data
 
-32-byte BLAKE3 content hash used by the processor pipeline to detect unchanged files.
+`AssetHash` is a 32-byte BLAKE3 hash. `ProcessedInfo` stores the asset hash, full dependency hash, optional source modification timestamp, and `ProcessDependencyInfo` records. These values are serialized into processed metadata.
 
-```cpp
-using AssetHash = std::array<uint8_t, 32>;
-```
-
----
-
-## `META_FORMAT_VERSION`
-
-Version string for the binary `.meta` format. Bumped when the serialization layout changes.
+An action contains its settings explicitly:
 
 ```cpp
-inline constexpr std::string_view META_FORMAT_VERSION = "2.0";
-```
-
----
-
-## `ProcessedInfo`
-
-Stored in the `.meta` file next to each processed asset. Records hashes, dependencies, and an
-optional source-file timestamp for fast-path skip logic.
-
-```cpp
-struct ProcessDependencyInfo {
-    AssetHash   full_hash;   // hash of the dependency
-    std::string path;        // path of the dependency asset
-};
-
-struct ProcessedInfo {
-    AssetHash                          hash;               // hash of the processed output
-    AssetHash                          full_hash;          // hash of source + all dependencies
-    std::optional<std::int64_t>        source_mtime_ns;    // source last-modified (nanoseconds)
-    std::vector<ProcessDependencyInfo> process_dependencies;
-};
-```
-
-`source_mtime_ns` is a cross-session optimisation: when the source file's last-modified time
-(nanosecond precision) matches the stored value, the processor skips the expensive BLAKE3 hash
-comparison entirely. Readers that do not support timestamps (e.g. `EmbeddedAssetReader`) leave
-this field as `nullopt`, in which case the hash path is always taken.
-
-Both `ProcessedInfo` and `ProcessDependencyInfo` are serialized with **zpp::bits** and stored
-inside `.meta` sidecar files next to processed assets.
-
----
-
-## `AssetActionType` / `AssetAction`
-
-Describes what the pipeline should do with a given asset. Stored inside `.meta` files.
-
-```cpp
-enum class AssetActionType { Load, Process, Ignore };
-
-template<typename LoaderSettings, typename ProcessorSettings>
+template<class LoaderSettings, class ProcessSettings>
 struct AssetAction {
-    using Load    = LoaderSettings;
-    using Process = ProcessorSettings;
-    using Ignore  = std::monostate;
+    struct Load { LoaderSettings settings{}; };
+    struct Process {
+        ProcessSettings settings{};
+        std::string processor;
+    };
+    struct Ignore {};
 
-    std::variant<Load, Process, Ignore> action;
-
+    std::variant<Load, Process, Ignore> inner = Load{};
     AssetActionType type() const;
 };
 ```
 
-| Type      | Meaning                                                                   |
-| --------- | ------------------------------------------------------------------------- |
-| `Load`    | Use the `LoaderSettings` stored in the `.meta` file when loading          |
-| `Process` | Run the processor with the `ProcessorSettings` stored in the `.meta` file |
-| `Ignore`  | Skip this asset entirely                                                  |
+`AssetActionType` is `Load`, `Process`, or `Ignore`.

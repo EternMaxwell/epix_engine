@@ -1,4 +1,4 @@
-﻿# Fixed-Timestep Time
+# Fixed-Timestep Time
 
 `Time<Fixed>` and the `FixedMain` schedule family provide deterministic fixed-rate system execution independent of frame rate.
 
@@ -26,10 +26,10 @@ Time<Fixed> t = Time<Fixed>::from_seconds(1.0 / 30); // 30 Hz
 Time<Fixed> t = Time<Fixed>::from_duration(std::chrono::milliseconds(16));
 ```
 
-These factories are for direct construction. The `Time<Fixed>` resource is owned by `TimePlugin` — to change the timestep at runtime, use `ResMut<time::Time<Fixed>>`:
+These factories are for direct construction. The `Time<Fixed>` resource is owned by `TimePlugin` — to change the timestep at runtime, use `ResMut<time::Time<time::Fixed>>`:
 
 ```cpp
-void startup(core::ResMut<time::Time<Fixed>> fixed) {
+void startup(ecs::ResMut<time::Time<time::Fixed>> fixed) {
     fixed->set_timestep_hz(30.0);  // switch to 30 Hz
 }
 ```
@@ -61,11 +61,11 @@ bool expend() noexcept;  // subtract one timestep; advance clock; return true if
 ```cpp
 // From epix_engine/extension/fallingsand/src/systems.cpp
 app.add_systems(time::FixedUpdate,
-    core::into(simulate_worlds).set_name("fallingsand simulate"));
+    ecs::into(simulate_worlds).set_name("fallingsand simulate"));
 
 // The system receives Time<Fixed> (or Time<>, which is overwritten to fixed values
 // during FixedMain):
-void simulate_worlds(core::Res<time::Time<Fixed>> fixed_time) {
+void simulate_worlds(ecs::Res<time::Time<time::Fixed>> fixed_time) {
     float dt = fixed_time->delta_secs();  // == 1/64 s at default rate
     // deterministic simulation step
 }
@@ -88,9 +88,9 @@ void simulate_worlds(core::Res<time::Time<Fixed>> fixed_time) {
 `FixedMain` itself runs after `StateTransition` and before `Update` in the top-level schedule order.
 
 ```cpp
-app.add_systems(time::FixedPreUpdate, core::into(accumulate_physics));
-app.add_systems(time::FixedUpdate,    core::into(step_physics));
-app.add_systems(time::FixedPostUpdate, core::into(sync_transforms));
+app.add_systems(time::FixedPreUpdate, ecs::into(accumulate_physics));
+app.add_systems(time::FixedUpdate,    ecs::into(step_physics));
+app.add_systems(time::FixedPostUpdate, ecs::into(sync_transforms));
 ```
 
 ---
@@ -101,7 +101,7 @@ Use `overstep_fraction()` for render interpolation — it represents how far int
 
 ```cpp
 void render_interpolated(
-    core::Res<time::Time<Fixed>> fixed,
+    ecs::Res<time::Time<time::Fixed>> fixed,
     /* query transforms */ ...)
 {
     float alpha = fixed->overstep_fraction();

@@ -1,4 +1,4 @@
-﻿# Render Graph
+# Render Graph
 
 The render graph is a **directed acyclic graph (DAG)** of `Node` objects.
 Nodes are connected by execution-order edges (ordering) and slot edges (data
@@ -12,12 +12,12 @@ node's `run()` method.
 
 ```cpp
 namespace epix::render::graph {
-struct NodeLabel  : public epix::core::Label { /* ... */ };
-struct GraphLabel : public epix::core::::Label { /* ... */ };
+struct NodeLabel  : public epix::ecs::Label { /* ... */ };
+struct GraphLabel : public epix::ecs::Label { /* ... */ };
 }
 ```
 
-Both label types derive from `epix::core::Label` and can be constructed from
+Both label types derive from `epix::ecs::Label` and can be constructed from
 any value that constructs a `Label` (e.g. a `constexpr` struct, string, enum).
 
 ```cpp
@@ -53,7 +53,9 @@ struct SlotValue { /* type-erased; holds Entity / Buffer / TextureView / Sampler
 | `texture()` | `optional<wgpu::TextureView>` |
 | `sampler()` | `optional<wgpu::Sampler>` |
 
-A `SlotLabel` is an alias for `epix::core::Label`.
+`SlotLabel` addresses a slot either by zero-based `std::uint32_t` index or by
+string name. Prefer names in extension code because they remain stable when a
+node's slot list is reordered.
 
 ---
 
@@ -73,6 +75,11 @@ struct Node {
 Override `inputs()` / `outputs()` to declare typed data slots.  Override
 `update()` for per-frame state (called before the render pass begins) and
 `run()` to issue GPU commands.
+
+`EmptyNode` is a no-op node useful as an ordering anchor. `NodeState` stores a
+node's label, input/output metadata, edges, and owning polymorphic node. Use
+`NodeState::node<T>()` for a checked downcast when node-specific setup is needed
+after insertion.
 
 ### GraphInputNode
 
@@ -114,6 +121,11 @@ struct RenderGraph {
 
     // Inspection
     bool set_input(std::span<const SlotInfo> inputs);
+    std::optional<std::reference_wrapper<const NodeState>> get_input_node() const;
+    const NodeState& input_node() const;
+    std::optional<std::reference_wrapper<NodeState>> get_node_state(const NodeLabel&);
+    NodeState& node_state(const NodeLabel&); // throws when absent
+    std::optional<std::reference_wrapper<RenderGraph>> get_sub_graph(const GraphLabel&);
     bool has_edge(const Edge& edge) const;
     auto iter_nodes() const;  // range over NodeState
     void update(World& world);
@@ -138,6 +150,20 @@ graph.add_node_edges(my_node_a, my_node_b);  // A runs before B
 graph.add_sub_graph(my_sub_graph, std::move(sub_graph));
 ```
 
+`set_input()` creates the special `GraphInput` node and returns whether it was
+inserted. Connect its named outputs to ordinary node inputs with slot edges.
+`add_node_edges(a, b, c)` is a convenience chain; it currently discards edge
+errors, so use `try_add_node_edge()` when configuration errors must be reported.
+
+| Operation | Checked form | Throwing/convenience form |
+| --- | --- | --- |
+| add order edge | `try_add_node_edge` | `add_node_edge` |
+| add slot edge | `try_add_slot_edge` | `add_slot_edge` |
+| remove order edge | `remove_node_edge` | none |
+| remove slot edge | `remove_slot_edge` | none |
+| remove node | `remove_node` | none |
+| get node/sub-graph | `get_*` optional | `node_state` / `sub_graph` |
+
 ---
 
 ## GraphContext
@@ -146,6 +172,8 @@ graph.add_sub_graph(my_sub_graph, std::move(sub_graph));
 struct GraphContext {
     // Input slot access
     const std::vector<SlotValue>& inputs() const noexcept;
+    const SlotInfos& input_info() const noexcept;
+    const SlotInfos& output_info() const noexcept;
     const SlotValue* get_input(const SlotLabel& label) const;
     std::optional<Entity>           get_input_entity (const SlotLabel&) const;
     std::optional<wgpu::Buffer>     get_input_buffer (const SlotLabel&) const;
@@ -186,6 +214,11 @@ struct RenderContext {
 Multiple nodes accumulate commands into the same context; the runner submits
 them to the GPU queue at the end of the frame.
 
+`run_sub_graph()` queues the sub-graph invocation until the current node
+finishes. Its input count and types must match the sub-graph's input node. Pass
+the current camera/view entity when downstream nodes use
+`GraphContext::view_entity()`.
+
 ---
 
 ## Error Types
@@ -207,4 +240,5 @@ EdgeError  = variant<EdgeNodesNotPresent, SlotNotPresent, InputSlotOccupied, Slo
 | `SlotTypeMismatch` | Output slot type ≠ input slot type |
 | `SubGraphExists` | `add_sub_graph` called with a label already in use |
 
-The non-try variants (`add_node_edge`, `add_slot_edge`) panic (throw) on error.
+The non-try variants (`add_node_edge`, `add_slot_edge`) throw on error.
+`GraphError::to_string()` produces a diagnostic for logging.

@@ -1,6 +1,6 @@
-﻿# Fixed-Point 16.16 Migration Tracker (liquid_eulerian)
+# Fixed-Point 16.16 Migration Tracker (liquid_eulerian)
 
-Target file: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp)
+Target file: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp)
 
 Status legend:
 - [ ] not started
@@ -9,100 +9,100 @@ Status legend:
 
 ## 1) Core numeric model (C++)
 - [~] Define 16.16 fixed type and helpers (convert, mul/div, clamp, lerp)
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L19)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L19)
 - [~] Replace scalar constants with fixed equivalents where used in step logic
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L19)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L19)
 
 ## 2) Fluid storage + CPU stepping
 - [x] Change Fluid grids from float storage to int32 fixed storage (`D/newD/P/U/newU/V/newV/fluxU/fluxV`)
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L74)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L74)
 - [x] Migrate accessors/setters (`getD/getP/getU/getV/setD/setP/setU/setV`) to fixed-domain API
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L106)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L106)
 - [x] Migrate interpolation helpers (`sampleU/sampleV`) to fixed arithmetic (or fixed-compatible path)
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L135)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L135)
 - [ ] Migrate CPU-only simulation helpers:
   - [x] `extrapolateVelocity`
   - [x] `applyViscosity`
   - [x] `applySurfaceTension`
   - [x] `advectVelocityRK2`
-  - Location start: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L225)
+  - Location start: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L225)
 - [~] Migrate `physicsStep` and `solve` scalar math to fixed-domain variables
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L386)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L386)
 
 Progress note:
 - [~] `physicsStep -> gpu_run_full_step_chain -> dispatch_full_step_chain` now passes `dt/sticky` as 16.16 fixed, with temporary float conversion only at current uniform packing boundary.
 
 ## 3) GPU host-side buffers + upload/readback
 - [x] Change GPU host mirrors to int32 fixed (`host_d/host_u/host_v/host_p`)
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L562)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L562)
 - [x] Change byte sizing from `sizeof(float)` to fixed storage size
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L570)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L570)
 - [~] Update `upload_from_sim` conversion (float<->fixed boundary if needed)
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1829)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1829)
 - [~] Update readback methods to decode fixed data correctly:
   - [x] `readback_to_sim`
   - [x] `readback_density_to_sim`
   - [x] `readback_all_to_sim`
-  - Location start: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L2098)
+  - Location start: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L2098)
 
 ## 4) GPU parameter packing
 - [~] Replace float uniform param pack (`AdvectParam` / `SimParam`) with fixed/int layout
   - Location references:
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1882)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1908)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1927)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1968)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1996)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L2279)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1882)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1908)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1927)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1968)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1996)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L2279)
 
 ## 5) WGSL shader migrations (all to fixed-point)
 - [~] Pressure even shader `kShaderEven`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L579)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L579)
 - [~] Pressure odd shader `kShaderOdd`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L638)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L638)
 - [~] Advection U shader `kShaderAdvectU`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L697)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L697)
 - [~] Advection V shader `kShaderAdvectV`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L770)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L770)
 - [~] Density shader `kShaderDensity`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L843)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L843)
 - [~] Gravity shader `kShaderGravity`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L918)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L918)
 - [~] Post U shader `kShaderPostU`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L943)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L943)
 - [~] Post V shader `kShaderPostV`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L973)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L973)
 - [~] Surface U shader `kShaderSurfaceU`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1003)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1003)
 - [~] Surface V shader `kShaderSurfaceV`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1036)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1036)
 - [~] Viscosity U even shader `kShaderViscUEven`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1069)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1069)
 - [~] Viscosity U odd shader `kShaderViscUOdd`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1104)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1104)
 - [~] Viscosity V even shader `kShaderViscVEven`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1139)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1139)
 - [~] Viscosity V odd shader `kShaderViscVOdd`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1174)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1174)
 - [~] Wall-friction U shader `kShaderViscWallU`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1209)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1209)
 - [~] Wall-friction V shader `kShaderViscWallV`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1251)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1251)
 - [~] Extrapolate even shader `kShaderExtrapCellEven`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1293)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1293)
 - [~] Extrapolate odd shader `kShaderExtrapCellOdd`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1360)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1360)
 - [~] Clamp U shader `kShaderClampU`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1427)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1427)
 - [~] Clamp V shader `kShaderClampV`
-  - Location: [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1444)
+  - Location: [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1444)
 
 ## 6) Dispatch + API surface updates
 - [~] Update dispatch signatures and helper APIs from float params to fixed/int params where applicable
   - Locations:
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L1882)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L2279)
-  - [epix_engine/experimental/tests/visual/liquid_eulerian.cpp](../epix_engine/experimental/tests/visual/liquid_eulerian.cpp#L2446)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L1882)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L2279)
+  - [epix_engine/experimental/examples/module/liquid_eulerian.cpp](../../epix_engine/experimental/examples/module/liquid_eulerian.cpp#L2446)
 
 ## 7) Validation
 - [x] Build passes

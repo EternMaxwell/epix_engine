@@ -19,6 +19,10 @@ asset server (which loads raw `Shader` assets) and the GPU (which needs a compil
 - Caching compiled modules per `(shader_id, shader_defs)` pair.
 - Reporting which `CachedPipelineId`s need to rebuild when a shader changes.
 
+In the built-in renderer, use `PipelineServer` rather than managing this cache
+directly. `ShaderPlugin` synchronizes an independently inserted `ShaderCache`
+when present; `PipelineServer` has its own extraction/synchronization path.
+
 ### Usage
 
 ```cpp
@@ -45,22 +49,20 @@ app.world_mut().insert_resource(std::move(cache));
 **Typical per-frame flow:**
 
 ```cpp
-// In an Update or PostUpdate system:
-auto& assets = app.resource<Assets<Shader>>();
-auto& events = app.resource<Events<AssetEvent<Shader>>>();
-auto& cache  = app.resource_mut<ShaderCache>();
+void sync_and_compile(
+    ResMut<ShaderCache> cache,
+    Res<Assets<Shader>> shaders,
+    EventReader<AssetEvent<Shader>> events,
+    Res<ShaderHandles> handles)
+{
+    auto dirty = cache->sync(events.read(), *shaders);
+    for (auto pid : dirty) { rebuild_pipeline(pid); }
 
-// 1. Sync: ingest asset events, returns pipelines that need to rebuild.
-auto dirty = cache.sync(events.drain(), assets);
-for (auto pid : dirty) { rebuild_pipeline(pid); }
-
-// 2. Get: retrieve (or build) a compiled shader variant for a pipeline.
-const std::array extra_defs = {ShaderDefVal::from_bool("USE_SHADOWS")};
-auto result = cache.get(pipeline_id, shader_handle.id(), extra_defs);
-if (result.has_value()) {
-    use_module(*result);
-} else if (!result.error().is_recoverable()) {
-    spdlog::error("shader error: {}", result.error().message());
+    const std::array extra_defs = {ShaderDefVal::from_bool("USE_SHADOWS")};
+    auto result = cache->get(pipeline_id, handles->main.id(), extra_defs);
+    if (result) use_module(**result);
+    else if (!result.error().is_recoverable())
+        spdlog::error("shader error: {}", result.error().message());
 }
 ```
 
@@ -73,6 +75,10 @@ if (result.has_value()) {
 | `set_shader` | `set_shader(id, shader)`            | Insert or replace one shader; returns affected pipeline IDs.                       |
 | `remove`     | `remove(id)`                        | Remove a shader; returns affected pipeline IDs.                                    |
 | `sync`       | `sync(events, shaders)`             | Process a batch of `AssetEvent<Shader>` events; returns all affected pipeline IDs. |
+
+`sync()` calls `set_shader()` for `LoadedWithDependencies` and `Modified`, and
+`remove()` for `Unused`. It deliberately does not remove on `Removed`, because
+living strong handles may still require that shader.
 
 ### `LoadModuleFn`
 
@@ -176,8 +182,8 @@ implementation detail.
 | Field               | Type                                                        | Meaning                                     |
 | ------------------- | ----------------------------------------------------------- | ------------------------------------------- |
 | `pipelines`         | `unordered_set<CachedPipelineId>`                           | Pipelines currently using this shader.      |
-| `processed_shaders` | `map<vector<ShaderDefVal>, shared_ptr<wgpu::ShaderModule>>` | Compiled variants cached by definition set. |
-| `resolved_imports`  | `map<ShaderImport, AssetId<Shader>>`                        | Import names already matched to asset IDs.  |
+| `processed_shaders` | `unordered_map<vector<ShaderDefVal>, shared_ptr<wgpu::ShaderModule>>` | Compiled variants cached by definition set. |
+| `resolved_imports`  | `unordered_map<ShaderImport, AssetId<Shader>>`                        | Import names already matched to asset IDs.  |
 | `dependents`        | `unordered_set<AssetId<Shader>>`                            | Shaders that import this one.               |
 
 The `ShaderCache` manages `ShaderData` internally. Direct mutation outside `ShaderCache`

@@ -6,7 +6,7 @@ Asset loader, processor, and their error types for the shader asset pipeline.
 
 ### Overview
 
-`AssetLoader` implementation that reads `.wgsl`, `.slang`, and `.slang-module` files into
+`AssetLoader` implementation that reads `.wgsl`, `.spv`, `.slang`, and `.slang-module` files into
 `Shader` assets. Registered automatically by `ShaderPlugin`.
 
 | Associated type | Value               |
@@ -21,10 +21,10 @@ Asset loader, processor, and their error types for the shader asset pipeline.
 `ShaderSettings`, which can be passed via `AssetServer::load_with_settings()`:
 
 ```cpp
-auto handle = server.load_with_settings<Shader>(
+auto handle = server.load_with_settings<Shader, ShaderSettings>(
     AssetPath("shaders/lighting.wgsl"),
-    ShaderSettings{
-        .shader_defs = {ShaderDefVal::from_bool("USE_SHADOWS")}
+    [](ShaderSettings& settings) {
+        settings.shader_defs = {ShaderDefVal::from_bool("USE_SHADOWS")};
     }
 );
 ```
@@ -34,7 +34,7 @@ The loaded `Shader` will have those definitions merged into `shader_defs`.
 ### File extensions
 
 `ShaderLoader::extensions()` returns the list of handled extensions:
-`.wgsl`, `.slang`, `.slang-module`.
+`.wgsl`, `.spv`, `.slang`, `.slang-module`.
 
 ---
 
@@ -55,7 +55,8 @@ Loader settings passed to `ShaderLoader` when loading a shader asset.
 ### Overview
 
 `AssetProcessor` implementation that pre-processes shader sources before loading.
-Registered automatically by `ShaderPlugin`.
+Registered by `ShaderPlugin` when `AssetProcessor` is already present during
+plugin attachment.
 
 | Associated type | Value                     |
 | --------------- | ------------------------- |
@@ -113,13 +114,17 @@ Error returned by `ShaderLoader::load()`.
 ### Usage
 
 ```cpp
-auto result = ShaderLoader::load(stream, settings, context);
-if (!result.has_value()) {
-    const auto& err = result.error();
-    if (auto* io = std::get_if<ShaderLoaderError::Io>(&err.data)) {
-        spdlog::error("IO error on {}: {}", io->path.string(), io->code.message());
-    } else if (auto* parse = std::get_if<ShaderLoaderError::Parse>(&err.data)) {
-        spdlog::error("parse error in {} at byte {}", parse->path.string(), parse->byte_offset);
+auto inspect_load(Reader& reader, const ShaderSettings& settings, LoadContext& context)
+    -> STDEXEC::task<void>
+{
+    auto result = co_await ShaderLoader::load(reader, settings, context);
+    if (!result.has_value()) {
+        const auto& err = result.error();
+        if (auto* io = std::get_if<ShaderLoaderError::Io>(&err.data)) {
+            spdlog::error("IO error on {}: {}", io->path.string(), io->code.message());
+        } else if (auto* parse = std::get_if<ShaderLoaderError::Parse>(&err.data)) {
+            spdlog::error("parse error in {} at byte {}", parse->path.string(), parse->byte_offset);
+        }
     }
 }
 ```

@@ -1,4 +1,4 @@
-﻿# Quick Start
+# Quick Start
 
 This guide is the shortest path from a fresh checkout to a small Epix program.
 Epix is still experimental, so the first successful build is mostly about having
@@ -52,48 +52,53 @@ The smallest useful Epix app is a set of systems scheduled onto `Startup` and
 `Update`.
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 struct Position {
-		float x = 0.0f;
-		float y = 0.0f;
+	float x = 0.0f;
+	float y = 0.0f;
 };
 
 struct Velocity {
-		float dx = 0.0f;
-		float dy = 0.0f;
+	float dx = 0.0f;
+	float dy = 0.0f;
 };
 
 void spawn_entities(Commands commands) {
-		commands.spawn(Position{0.0f, 0.0f}, Velocity{1.0f, 2.0f});
-		commands.spawn(Position{10.0f, 5.0f}, Velocity{-1.0f, 0.0f});
+	commands.spawn(Position{0.0f, 0.0f}, Velocity{1.0f, 2.0f});
+	commands.spawn(Position{10.0f, 5.0f}, Velocity{-1.0f, 0.0f});
 }
 
 void move_entities(Query<Item<Position&, const Velocity&>> query) {
-		for (auto&& [pos, vel] : query.iter()) {
-				pos.x += vel.dx;
-				pos.y += vel.dy;
-		}
+	for (auto&& [pos, vel] : query.iter()) {
+		pos.x += vel.dx;
+		pos.y += vel.dy;
+	}
 }
 
 int main() {
-		App::create()
-				.add_systems(Startup, into(spawn_entities))
-				.add_systems(Update, into(move_entities))
-				.run();
+	App::create()
+		.add_systems(Startup, into(spawn_entities))
+		.add_systems(Update, into(move_entities))
+		.run();
 }
 ```
 
 The important pieces are:
 
-- `App::create()` installs the default app loop and main schedule plugin.
+- `App::create()` installs `MainSchedulePlugin`, the `AppExit` event, and a
+  one-step default runner. Add `LoopPlugin` (or a window/render plugin that
+  installs a runner) when the application should continue updating.
 - `Commands` queues entity and resource mutations safely from systems.
 - `Query<Item<...>>` declares the component access pattern for a system.
 - `into(...)` wraps ordinary functions into systems that can be scheduled.
 
-For a deeper tour of these types, continue with [core/quick.md](core/quick.md).
+For a deeper tour, continue with [ecs/quick.md](ecs/quick.md) and
+[app/quick.md](app/quick.md).
 
 ## 4. Open a Window
 
@@ -101,16 +106,17 @@ Windowing is built from a backend-agnostic `WindowPlugin` plus a backend plugin.
 Use GLFW unless you have a reason to use SFML.
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.glfw.core;
 
 int main() {
 	using namespace epix;
 
-	core::App app = core::App::create();
+	app::App app = app::App::create();
 
-	app.add_plugins(core::TaskPoolPlugin{})
+	app.add_plugins(app::TaskPoolPlugin{})
 	   .add_plugins(window::WindowPlugin{
 		   .primary_window = window::Window{
 			   .title = "Epix Window",
@@ -138,7 +144,7 @@ A rendered 2D app typically combines these plugins:
 - `SpritePlugin`, `Mesh`, or `Text` modules depending on what you draw.
 
 The compact real example to study first is
-[../epix_engine/sprite/examples/basic.cpp](../epix_engine/sprite/examples/basic.cpp).
+[../epix_engine/sprite/examples/module/basic.cpp](../epix_engine/sprite/examples/module/basic.cpp).
 It creates a window, render app, camera, in-memory texture, and a single sprite.
 
 From there, read:

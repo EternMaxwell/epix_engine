@@ -1,71 +1,85 @@
-﻿# EPIX ENGINE SHADER MODULE
+# Shader module
 
-Manages shader assets — WGSL, Slang text, SPIR-V, and pre-compiled Slang IR blobs — from
-path-based loading through import resolution, WGSL composition, and runtime cached compilation.
+`epix.shader` turns WGSL, SPIR-V, Slang source, and processed Slang modules into
+shader assets and compiled WebGPU modules. It covers four layers:
 
-## Core Parts
-
-- **[`ShaderPlugin`](./shader-asset.md)**: App plugin; registers shader asset loading and processing into the app.
-- **[`Shader`](./shader-asset.md)**: Parsed shader asset. Holds source, declared imports, default definitions, and the import path.
-- **[`Source`](./shader-asset.md)**: Source payload variant — `Wgsl`, `SpirV`, `Slang`, or `SlangIr`.
-- **[`ShaderDefVal`](./shader-defs.md)**: A named boolean/integer definition used for conditional compilation.
-- **[`ValidateShader`](./shader-defs.md)**: Enum toggling backend shader validation on a per-shader basis.
-- **[`ShaderImport`](./shader-import.md)**: An import target — either a concrete file path or a custom module name.
-- **[`ShaderRef`](./shader-import.md)**: Flexible shader reference: default shader, loaded handle, or filesystem path.
-- **[`ShaderLoader`](./shader-loading.md)**: Asset loader; reads `.wgsl`, `.slang`, and `.slang-module` files into `Shader` assets.
-- **[`ShaderProcessor`](./shader-loading.md)**: Asset processor; pre-processes shader sources before loading (optional Slang-to-IR compilation).
-- **[`ShaderComposer`](./shader-composer.md)**: WGSL-only `#import` expander and `#ifdef`/`#ifndef` conditional evaluator.
-- **[`ShaderCache`](./shader-cache.md)**: Runtime cache; resolves imports, composes WGSL or compiles Slang, caches compiled `wgpu::ShaderModule` variants keyed by definition set.
-- **[`ShaderCacheError`](./shader-cache.md)**: Error type returned by `ShaderCache`; distinguishes recoverable errors (missing imports) from hard failures.
-
-## Quick Guide
+1. `ShaderLoader` reads files into `Shader` assets;
+2. `ShaderProcessor` optionally preprocesses/compiles them in processed mode;
+3. `ShaderCache` resolves imports and caches definition-specific modules; and
+4. the renderer's `PipelineServer` uses that cache to create pipelines.
 
 ```cpp
-import epix.core;
 import epix.assets;
 import epix.shader;
+```
 
-using namespace epix::core;
-using namespace epix::assets;
-using namespace epix::shader;
+## Normal application setup
 
-// 1. Attach asset and shader support.
-App app = App::create();
-AssetPlugin{}.attach(app);
-ShaderPlugin{}.attach(app);
+With the renderer, add only `RenderPlugin`; it installs `ShaderPlugin` and owns
+the `ShaderCache` through `PipelineServer`:
 
-// 2. Insert a ShaderCache resource with a backend loader callback.
-app.world_mut().insert_resource(ShaderCache{
-    device,
-    [](const wgpu::Device& dev, const ShaderCacheSource& src, ValidateShader) {
-        // Build and return a wgpu::ShaderModule from src (Wgsl or SpirV).
-        return wgpu::ShaderModule{};
+```cpp
+app.add_plugins(render::RenderPlugin{});
+
+Handle<shader::Shader> shader =
+    app.world().resource<assets::AssetServer>().load<shader::Shader>(
+        "shaders/sprite.wgsl");
+```
+
+Without the renderer, install asset and shader support yourself:
+
+```cpp
+app.add_plugins(assets::AssetPlugin{}, shader::ShaderPlugin{});
+```
+
+`ShaderPlugin` does not create a standalone `ShaderCache`. If an application
+needs cache compilation without `PipelineServer`, construct and insert one with
+a backend `LoadModuleFn`, then let the plugin's `Last` system synchronize shader
+asset events into it.
+
+## Load with definitions
+
+```cpp
+auto handle = server.load_with_settings<shader::Shader, shader::ShaderSettings>(
+    "shaders/lighting.wgsl",
+    [](shader::ShaderSettings& settings) {
+        settings.shader_defs = {
+            shader::ShaderDefVal::from_bool("USE_SHADOWS"),
+            shader::ShaderDefVal::from_uint("CASCADE_COUNT", 4),
+        };
+    });
+```
+
+Handled extensions are `wgsl`, `spv`, `slang`, and `slang-module`. File imports
+become asset dependencies; a shader reaches `LoadedWithDependencies` only after
+those imports load.
+
+## Manual shader and cache use
+
+```cpp
+Shader shader = Shader::from_wgsl(source, "embedded://runtime/main.wgsl");
+AssetId<Shader> id = /* an ID owned by your integration */;
+
+auto invalidated = cache.set_shader(id, std::move(shader));
+auto module = cache.get(pipeline_id, id, extra_defs);
+if (!module) {
+    if (module.error().is_recoverable()) {
+        // A shader/import is not available yet; retry after synchronization.
+    } else {
+        spdlog::error("{}", module.error().message());
     }
-});
-
-app.run_schedule(Startup);
-
-// 3. Load a shader through the asset server.
-auto& server = app.resource<AssetServer>();
-auto handle  = server.load<Shader>(AssetPath("shaders/main.wgsl"));
-
-// 4. Each frame: sync asset events into the cache, then retrieve compiled variants.
-auto& assets = app.resource<Assets<Shader>>();
-auto& cache  = app.resource_mut<ShaderCache>();
-
-// Sync new/modified/removed shaders (returns pipelines that need rebuild).
-auto& events = app.resource<Events<AssetEvent<Shader>>>();
-cache.sync(events.drain(), assets);
-
-// Retrieve a compiled module for pipeline_id.
-auto result = cache.get(CachedPipelineId{pipeline_id}, handle.id(), /*shader_defs=*/{});
-if (result.has_value()) {
-    wgpu::ShaderModule module = *result;
-    // pass module to pipeline creation
-} else if (!result.error().is_recoverable()) {
-    // hard failure — log result.error().message()
 }
 ```
 
-See [`ShaderPlugin`](./shader-asset.md) for embedding shaders without the file system, and
-[`ShaderComposer`](./shader-composer.md) for standalone WGSL `#import` use.
+Do not try to drain `Events<T>` directly. In an ECS system, pass
+`EventReader<AssetEvent<Shader>>::read()` to `ShaderCache::sync`; outside the
+event pipeline, use `set_shader()` and `remove()` directly.
+
+## Cheatbook
+
+- [Shader asset, source variants, factories, and plugin](shader-asset.md)
+- [Loader, settings, processor, and loader errors](shader-loading.md)
+- [Imports and flexible shader references](shader-import.md)
+- [Definition values and validation](shader-defs.md)
+- [WGSL composition](shader-composer.md)
+- [Runtime cache, invalidation, and errors](shader-cache.md)

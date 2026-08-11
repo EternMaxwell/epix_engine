@@ -3,7 +3,9 @@
 Features that are planned, partially implemented, or have an API stub only.
 See also: [project-wide todo](../todo.md)
 
-The `epix.time` module is fully implemented. All exported functions have real bodies in `src/time.cpp`. A scan of all `modules/**/*.cppm` and `src/time.cpp` found no `// TODO`, `// FIXME`, `assert(false)`, empty bodies, or commented-out declarations.
+The `epix.time` module is fully implemented. Its public declarations live under
+`include/epix/time/`, its module entry point is `modules/time.cppm`, and the
+non-inline implementation is in `src/time.cpp`. No known public API is a stub.
 
 Potential future work (no interface stubs exist yet):
 

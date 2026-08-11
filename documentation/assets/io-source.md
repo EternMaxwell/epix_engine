@@ -1,183 +1,64 @@
-﻿# I/O — Asset Sources
-
-Register and build I/O back-ends: filesystem, memory (in-process), embedded (compiled-in binary data).
+# Asset Sources
 
 ```cpp
-#import epix.assets
+import epix.assets;
 ```
 
----
+An `AssetSource` groups a required asynchronous `AssetReader` with optional
+writers, processed readers/writers, watchers, and watcher event channels.
 
-## `AssetSourceBuilder`
-
-Fluent builder for constructing a custom `AssetSource`.
+## AssetSourceBuilder
 
 ```cpp
-struct AssetSourceBuilder {
-    using ReaderFactory  = std::function<std::unique_ptr<AssetReader>()>;
-    using WriterFactory  = std::function<std::unique_ptr<AssetWriter>()>;
-    using WatcherFactory = std::function<std::unique_ptr<AssetWatcher>(AssetServer&)>;
+auto builder = AssetSourceBuilder::create(reader_factory)
+    .with_writer(writer_factory)
+    .with_processed_reader(processed_reader_factory)
+    .with_ungated_processed_reader(ungated_reader_factory)
+    .with_processed_writer(processed_writer_factory)
+    .with_watcher(watcher_factory)
+    .with_processed_watcher(processed_watcher_factory);
 
-    // Create with a mandatory reader factory
-    static AssetSourceBuilder create(ReaderFactory reader);
-
-    // Optional components
-    AssetSourceBuilder& with_writer(WriterFactory);
-    AssetSourceBuilder& with_processed_reader(ReaderFactory);
-    AssetSourceBuilder& with_processed_writer(WriterFactory);
-    AssetSourceBuilder& with_watcher(WatcherFactory);
-
-    // Build using the OS filesystem (reads from a directory path)
-    static AssetSourceBuilder platform_default(std::filesystem::path root);
-
-    AssetSource build(std::string_view source_id);
-};
+AssetSource source = builder.build(source_id, watch, watch_processed);
 ```
 
-### Register a custom source
+Reader and writer factories take no arguments. Watcher factories receive an
+`async_channel::Sender<AssetSourceEvent>` and return an `AssetWatcher`.
+`platform_default(root, processed_root)` builds filesystem-backed factories.
 
 ```cpp
-auto dir = memory::Directory::create({});
+auto directory = memory::Directory::create({});
 
-auto builder = AssetSourceBuilder::create(
-    [dir]() -> std::unique_ptr<AssetReader> {
-        return std::make_unique<MemoryAssetReader>(dir);
+auto source = AssetSourceBuilder::create([directory] {
+        return std::make_unique<MemoryAssetReader>(directory);
     })
-    .with_writer(
-        [dir]() -> std::unique_ptr<AssetWriter> {
-            return std::make_unique<MemoryAssetWriter>(dir);
-        });
-
-plugin.register_asset_source("live-data", std::move(builder));
-
-// Then load from it: server.load<Image>("live-data://sprite.png")
+    .with_writer([directory] {
+        return std::make_unique<MemoryAssetWriter>(directory);
+    })
+    .with_watcher([directory](async_channel::Sender<AssetSourceEvent> sender) {
+        return std::make_unique<MemoryAssetWatcher>(
+            directory,
+            [sender = std::move(sender)](AssetSourceEvent event) mutable {
+                sender.try_send(std::move(event));
+            });
+    });
 ```
 
----
+## Source Collections
 
-## `AssetSource`
+`AssetSourceBuilders` stores the default and named builders, and
+`build_sources(watch, watch_processed)` produces `AssetSources`. `AssetSources`
+provides lookup, iteration, processed-source iteration, IDs, and processor
+gating.
 
-A built source. Holds optional reader, writer, processed-reader, processed-writer, and watcher.
+`AssetSourceId` identifies the default source or a named source. An `AssetPath`
+such as `textures/player.png` uses the default source; a path such as
+`memory://textures/player.png` uses the named source.
 
-```cpp
-struct AssetSource {
-    AssetReader*  reader() const;               // may be nullptr
-    AssetWriter*  writer() const;               // may be nullptr
-    AssetReader*  processed_reader() const;
-    AssetWriter*  processed_writer() const;
-    AssetWatcher* watcher() const;
+## Built-in Implementations
 
-    std::string_view id() const;
-};
-```
-
-`AssetSources` (resource injected by `AssetPlugin`) holds all built sources indexed by their id.
-
----
-
-## `AssetSources`
-
-```cpp
-struct AssetSources {
-    const AssetSource* get(std::string_view id) const;     // nullptr if not found
-    const AssetSource& default_source() const;
-};
-```
-
----
-
-## `EmbeddedAssetRegistry`
-
-In-process source for assets compiled into the binary via `xxd` / `cmake --embed` / similar tools.
-
-```cpp
-// Sentinel source id for the embedded source
-constexpr std::string_view EMBEDDED = "embedded";
-
-struct EmbeddedAssetRegistry {
-    // Insert a virtual file backed by a heap-allocated buffer
-    void insert_asset(std::string_view path, std::vector<uint8_t> data);
-
-    // Insert a virtual file backed by a static byte array (zero-copy)
-    void insert_asset_static(std::string_view path,
-                              std::span<const uint8_t> data);
-
-    // Insert a sidecar .meta file
-    void insert_meta(std::string_view path, std::vector<uint8_t> data);
-
-    // Remove a virtual file
-    void remove_asset(std::string_view path);
-
-    // Register this registry as an AssetSource with the given AssetPlugin
-    void register_source(AssetPlugin& plugin);
-};
-```
-
-```cpp
-EmbeddedAssetRegistry registry;
-registry.insert_asset_static("shaders/pbr.slang",
-    std::span<const uint8_t>(pbr_slang_bytes, pbr_slang_bytes_len));
-registry.insert_asset_static("fonts/default.ttf",
-    std::span<const uint8_t>(default_ttf, default_ttf_len));
-registry.register_source(plugin);
-
-// Later:
-Handle<Shader> sh = server.load<Shader>("embedded://shaders/pbr.slang");
-```
-
----
-
-## `MemoryAssetReader`
-
-Concrete `AssetReader` backed by a `memory::Directory` (shared in-process tree).
-
-```cpp
-struct MemoryAssetReader : AssetReader {
-    explicit MemoryAssetReader(std::shared_ptr<memory::Directory> root);
-
-    // inherits all AssetReader overrides
-};
-```
-
----
-
-## `MemoryAssetWriter`
-
-Concrete `AssetWriter` backed by a `memory::Directory`.
-
-```cpp
-struct MemoryAssetWriter : AssetWriter {
-    explicit MemoryAssetWriter(std::shared_ptr<memory::Directory> root);
-
-    // inherits all AssetWriter overrides
-};
-```
-
----
-
-## `MemoryAssetWatcher`
-
-Concrete `AssetWatcher` that receives events when `memory::Directory` entries change.
-
-```cpp
-struct MemoryAssetWatcher : AssetWatcher {
-    explicit MemoryAssetWatcher(std::shared_ptr<memory::Directory> root);
-
-    std::vector<AssetSourceEvent> drain_events() override;
-};
-```
-
-### Building a fully live in-process source
-
-```cpp
-auto dir    = memory::Directory::create({});
-auto reader = [dir]{ return std::make_unique<MemoryAssetReader>(dir); };
-auto writer = [dir]{ return std::make_unique<MemoryAssetWriter>(dir); };
-auto watch  = [dir](AssetServer&) {
-                  return std::make_unique<MemoryAssetWatcher>(dir);
-              };
-
-AssetSourceBuilder::create(reader)
-    .with_writer(writer)
-    .with_watcher(watch);
-```
+- Filesystem: `FileAssetReader`, `FileAssetWriter`, and `FileAssetWatcher`.
+- Memory: `MemoryAssetReader`, `MemoryAssetWriter`, and `MemoryAssetWatcher`
+  over `memory::Directory`.
+- Embedded: `EmbeddedAssetRegistry` and its reader for compiled-in data.
+- Processor gating: `ProcessorGatedReader` prevents runtime reads from racing
+  asset processing.

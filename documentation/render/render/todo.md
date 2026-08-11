@@ -9,7 +9,7 @@ Two code-level TODO comments were found in the implementation:
 ## Known Issues / Planned Work
 
 ### 1. DrawFunctions<P> read performance
-**File:** `epix_engine/render/render/modules/render_phase.cppm`, line 289  
+**File:** `epix_engine/render/render/include/epix/render/render_phase.hpp`
 **Note:** `DrawFunctions<P>` uses `std::shared_mutex` for thread safety.  The
 comment notes that switching to C++26 `<rcu>` would improve read-path
 performance in the future.  No user-visible API change required.
@@ -28,9 +28,8 @@ API change; affects only MSVC builds.
    built-in frustum-culling system.  Users must populate it manually or provide
    their own culling plugin.
 
-2. **Depth format customisation** — `ViewDepth` always uses the device default
-   depth format.  There is no API to select a custom format (e.g. `Depth24Plus`
-   vs `Depth32Float`) per camera.
+2. **Depth format customisation** — `ViewDepth` currently always uses
+   `Depth32Float`. There is no API to select a different format per camera.
 
 3. **Pipeline specialisation constants** — `RenderPipelineDescriptor` and
    `ComputePipelineDescriptor` have no field for `wgpu::ConstantEntry`

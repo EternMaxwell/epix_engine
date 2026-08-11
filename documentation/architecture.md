@@ -1,29 +1,29 @@
-﻿# Architecture Overview
+# Architecture Overview
 
 This document is a high-level map of Epix Engine. It explains how the major
 systems relate to each other and points to the module references for API details.
 
-Epix is built around `epix.core`. Most other modules plug into the core app,
-world, schedule, event, and query model.
+Epix is built on two foundation modules. `epix.ecs` owns data and execution;
+`epix.app` owns application lifecycle and composes ECS schedules, plugins,
+sub-apps, states, and runners. Feature modules depend on one or both layers.
 
-## Core Model
+## ECS and Application Layers
 
-The core engine types are:
+The main types are divided as follows:
 
-- `App`: owns the main `World`, schedule order, plugins, sub-apps, and runner.
-- `World`: stores entities, components, resources, archetypes, and events.
-- `Schedule`: stores systems and dependency metadata for a named phase of work.
-- `System`: an ordinary function or lambda wrapped so the scheduler can inspect
-  its data access.
-- `Plugin`: a composable setup unit with `build`, `finish`, and `finalize` hooks.
+- `epix.ecs`: `World`, entities, components, entity-backed resources, bundles,
+  queries, events, systems, schedules, change detection, hierarchy, required
+  components, and removed-component tracking.
+- `epix.app`: `App`, built-in schedule order, plugins, runners, states,
+  sub-apps, and main-to-sub-app extraction.
 
 The standard frame flow is expressed as schedules. Built-in schedules include
 startup, update, fixed update, and exit phases. Systems declare their inputs in
 their parameter list, for example `Res<T>`, `ResMut<T>`, `Commands`, `Query<...>`,
 and `EventReader<T>`.
 
-Read more in [core/quick.md](core/quick.md), [core/app.md](core/app.md),
-[core/world.md](core/world.md), and [core/schedule.md](core/schedule.md).
+Read more in [ecs/quick.md](ecs/quick.md), [ecs/world.md](ecs/world.md),
+[ecs/schedule.md](ecs/schedule.md), and [app/quick.md](app/quick.md).
 
 ## ECS Data Access
 
@@ -37,13 +37,19 @@ Common access patterns:
 - `Query<Item<...>, Filter<...>>` for component iteration.
 - `Commands` for deferred entity/resource mutations.
 - `EventReader<T>` and `EventWriter<T>` for double-buffered events.
+- `RemovedComponents<T>` for per-system removal/despawn observation.
 - `Local<T>` for per-system local state.
 
 Queries support built-ins such as entity IDs, optional components, changed refs,
 and filters such as `With<T>`, `Without<T>`, and `Or<...>`.
 
-See [core/system-params.md](core/system-params.md), [core/query.md](core/query.md),
-[core/query-built-ins.md](core/query-built-ins.md), and [core/events.md](core/events.md).
+Resources use the same component storage as entities. Each resource type has a
+canonical entity marked with `IsResource`, so resource and ordinary component
+access to the same type conflict correctly in the scheduler.
+
+See [ecs/system-params.md](ecs/system-params.md), [ecs/query.md](ecs/query.md),
+[ecs/query-built-ins.md](ecs/query-built-ins.md), [ecs/events.md](ecs/events.md),
+and [ecs/removed-components.md](ecs/removed-components.md).
 
 ## Schedule Execution
 
@@ -59,7 +65,7 @@ The main app schedule order includes startup, update, fixed update, state
 transition, and exit schedules. Time-sensitive systems can use `epix.time` to run
 inside fixed-timestep schedules such as `FixedUpdate`.
 
-See [core/built-in-schedules.md](core/built-in-schedules.md) and
+See [app/built-in-schedules.md](app/built-in-schedules.md) and
 [time/quick.md](time/quick.md).
 
 ## Plugin Lifecycle
@@ -74,19 +80,26 @@ The typical lifecycle is:
 Feature modules expose plugins so applications can opt into only the engine
 subsystems they use.
 
-See [core/app.md](core/app.md) and [core/quick.md](core/quick.md).
+See [app/app.md](app/app.md) and [app/quick.md](app/quick.md).
 
 ## Render Sub-App and Extraction
 
 Rendering lives in a dedicated render sub-app. The main world owns live gameplay
-state. The render world owns GPU-facing state. Data moves from main to render
-through extraction systems, not shared mutable access.
+state. The render world owns GPU-facing state. During the extract phase, the
+render app temporarily receives a reference to the main world through
+`Extract<T>` parameters, then writes render-owned data. The two worlds do not
+share permanent ECS storage, although mutable non-deferred extraction parameters
+are supported for deliberate move/take operations.
+
+The documents under `render/render` describe the renderer implemented today.
+The separate `render-api` tree is a future design plan and is not the current
+public API.
 
 The render flow is roughly:
 
 1. Main-world systems update gameplay state.
-2. Extraction copies selected resources, components, and assets into the render
-	 world.
+2. Extraction transfers or copies selected resources, components, and assets
+	 into render-owned state.
 3. Render-world systems prepare GPU resources, queue phase items, sort phases,
 	 and execute the render graph.
 4. The render graph submits WebGPU command buffers.
@@ -121,7 +134,7 @@ See [assets/quick.md](assets/quick.md) and [shader/quick.md](shader/quick.md).
 
 ## Tasks and Time
 
-`epix.tasks` provides engine-wide concurrency primitives: task pools, awaitable
+`epix.task` provides engine-wide concurrency primitives: task pools, awaitable
 tasks, scoped parallelism, global compute/IO pools, async channels, and broadcast
 channels.
 
@@ -130,7 +143,7 @@ timers, stopwatches, and time-based run conditions. Simulations that need stable
 steps should run in `FixedUpdate`; rendering and ordinary gameplay usually run
 in `Update`.
 
-See [tasks/quick.md](tasks/quick.md), [time/quick.md](time/quick.md), and
+See [task/quick.md](task/quick.md), [time/quick.md](time/quick.md), and
 [time/fixed-timestep.md](time/fixed-timestep.md).
 
 ## Window and Input
@@ -167,14 +180,20 @@ monolithic scene system.
 
 | Area | Main docs | Purpose |
 | ---- | --------- | ------- |
-| Core | [core/quick.md](core/quick.md) | ECS, app, systems, schedules, events, queries. |
-| Tasks | [tasks/quick.md](tasks/quick.md) | Task pools, async work, channels. |
+| ECS | [ecs/quick.md](ecs/quick.md) | World, components, resources, systems, schedules, events, queries. |
+| App | [app/quick.md](app/quick.md) | Plugins, runners, built-in schedules, states, extraction. |
+| Task | [task/quick.md](task/quick.md) | Task pools, async work, channels. |
 | Time | [time/quick.md](time/quick.md) | Frame time, fixed timestep, timers. |
 | Window | [window/quick.md](window/quick.md) | ECS windows and OS backends. |
 | Input | [input/quick.md](input/quick.md) | Keyboard/mouse events and button state. |
 | Assets | [assets/quick.md](assets/quick.md) | Asset handles, stores, loaders, processors. |
 | Shaders | [shader/quick.md](shader/quick.md) | Shader assets, imports, compilation, cache. |
 | Render | [render/render/quick.md](render/render/quick.md) | WebGPU, render graph, pipelines, cameras. |
+| Transform | [transform/quick.md](transform/quick.md) | Local/global transforms and hierarchy propagation. |
+| Image | [image/quick.md](image/quick.md) | CPU images, loading, formats, and asset integration. |
+| Mesh | [mesh/quick.md](mesh/quick.md) | Mesh assets, GPU upload, and 2D mesh rendering. |
+| Sprite | [sprite/quick.md](sprite/quick.md) | Textured-quad components and Core2D rendering. |
+| Text | [text/quick.md](text/quick.md) | Fonts, shaping, atlases, and Core2D text. |
 | ImGui | [render/imgui/quick.md](render/imgui/quick.md) | Dear ImGui lifecycle, input capture, rendering. |
 
 ## Development Notes

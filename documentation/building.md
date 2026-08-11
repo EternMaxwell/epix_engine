@@ -1,4 +1,4 @@
-﻿# Building Epix Engine
+# Building Epix Engine
 
 Epix currently targets a modern C++23 modules toolchain. Build failures are often
 toolchain issues rather than engine issues, so start by checking CMake, compiler,
@@ -67,7 +67,7 @@ To build a specific target, ask CMake for available targets for your generator o
 inspect the configure output, then pass `--target`:
 
 ```bash
-cmake --build build --target epix_core
+cmake --build build --target epix_ecs epix_app
 ```
 
 ## Test
@@ -120,13 +120,13 @@ When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables from each
 module's `examples/` directory. Examples are intentionally varied because they
 exercise different engine layers. Good starting points are:
 
-- [../epix_engine/window/examples/glfw/module_test.cpp](../epix_engine/window/examples/glfw/module_test.cpp)
+- [../epix_engine/window/examples/glfw/module/module_test.cpp](../epix_engine/window/examples/glfw/module/module_test.cpp)
 	for a simple GLFW window app.
-- [../epix_engine/render/examples/render_plugin.cpp](../epix_engine/render/examples/render_plugin.cpp)
+- [../epix_engine/render/examples/module/render_plugin.cpp](../epix_engine/render/examples/module/render_plugin.cpp)
 	for the render plugin path.
-- [../epix_engine/sprite/examples/basic.cpp](../epix_engine/sprite/examples/basic.cpp)
+- [../epix_engine/sprite/examples/module/basic.cpp](../epix_engine/sprite/examples/module/basic.cpp)
 	for a small 2D sprite app.
-- [../epix_engine/text/examples/text_interactive.cpp](../epix_engine/text/examples/text_interactive.cpp)
+- [../epix_engine/text/examples/module/text_interactive.cpp](../epix_engine/text/examples/module/text_interactive.cpp)
 	for text rendering.
 
 Run examples from the build tree produced by your generator. For debugging,

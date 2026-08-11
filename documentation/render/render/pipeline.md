@@ -4,6 +4,9 @@
 compute pipelines.  Pipelines are **queued** asynchronously and compiled in a
 background thread pool; the render graph reads them back when they are ready.
 
+Queue each logical pipeline once and store its `CachedPipelineId` in a resource
+or phase item. Queue calls do not deduplicate equivalent descriptors.
+
 ---
 
 ## Descriptors
@@ -26,6 +29,8 @@ struct VertexState {
 };
 ```
 
+When `entry_point` is empty, pipeline creation uses `"main"`.
+
 ### FragmentState
 
 ```cpp
@@ -39,6 +44,9 @@ struct FragmentState {
     auto&& add_target(wgpu::ColorTargetState);
 };
 ```
+
+The fragment stage is optional for depth-only rendering. When present, it also
+defaults to entry point `"main"`.
 
 ### RenderPipelineDescriptor
 
@@ -134,6 +142,11 @@ struct PipelineServer {
 `shared_ptr<PipelineServerData>`.  It exists both in the main app (for queuing
 pipelines) and in the render app (for executing them).
 
+Queue methods may be called through either copy. At the extraction boundary,
+new descriptors are moved into the render-side state, shader asset events are
+synchronized, and queued/requeued pipelines are submitted for background
+creation.
+
 ### Pipeline Lifecycle
 
 ```
@@ -145,13 +158,18 @@ CachedPipelineState =
     | PipelineServerError                    // permanent error
 ```
 
+A recoverable shader error (for example, a shader dependency that is not loaded
+yet) remains retryable. Shader modification/removal invalidates dependent
+pipelines and queues them again. A permanent WebGPU/shader error remains in the
+error state and is returned by retrieval.
+
 ### Usage
 
 ```cpp
-// In a render-world system during Prepare / PrepareResources:
-void my_system(ResMut<render::PipelineServer> server, ...) {
+// This may run in the main or render world; queue once and retain the ID.
+void my_system(Res<render::PipelineServer> server, ResMut<MyPipelines> ids, ...) {
     if (!my_pipeline_id) {
-        my_pipeline_id = server->queue_render_pipeline(
+        ids->main = server->queue_render_pipeline(
             render::RenderPipelineDescriptor{}
                 .set_label("my_pipeline")
                 .set_vertex(render::VertexState{}.set_shader(vs_handle))
@@ -161,7 +179,7 @@ void my_system(ResMut<render::PipelineServer> server, ...) {
 }
 
 // In a draw command or Render system:
-auto pipeline = server->get_render_pipeline(my_pipeline_id);
+auto pipeline = server->get_render_pipeline(ids->main);
 if (pipeline) {
     encoder.setPipeline(pipeline->get().pipeline());
 }
@@ -177,6 +195,10 @@ using PipelineServerError = variant<PipelineError,         // CreationFailure
                                      shader::ShaderCacheError>;
 ```
 
+Calling `get_render_pipeline()` for a compute ID (or the inverse) is reported as
+a creation failure. An ID that is queued but has not crossed into the processed
+pipeline vector reports `GetPipelineNotReady`, not invalid ID.
+
 ---
 
 ## LayoutCache
@@ -191,3 +213,7 @@ struct LayoutCache {
 Deduplicates `wgpu::PipelineLayout` objects by their constituent
 `wgpu::BindGroupLayout` IDs.  Managed internally by `PipelineServer`; not
 normally accessed directly.
+
+An empty `layouts` vector leaves the explicit WebGPU pipeline layout null,
+allowing the backend's automatic layout behavior. Non-empty layouts are cached
+in their supplied order.

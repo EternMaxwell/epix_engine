@@ -6,8 +6,16 @@ a data-flow **render graph**, manages pipelines asynchronously, and provides the
 camera / projection / view machinery used by higher-level rendering modules.
 
 ```cpp
+import epix.ecs;
+import epix.app;
+import epix.assets;
+import epix.shader;
 import epix.render;
 ```
+
+Application types and built-in schedules live in `epix.app`; ECS parameters,
+queries, schedules, and `World` live in `epix.ecs`. The render module builds on
+both foundation modules.
 
 ---
 
@@ -22,6 +30,9 @@ import epix.render;
 | [`ExtractResourcePlugin<T>`](render-plugin.md#extractresourceplugin) | Plugin template | Copies a copyable resource into the render world |
 | [`CustomRendered`](render-plugin.md#customrendered) | Component | Marks entities handled by custom pipelines |
 | [`AnonymousSurface`](render-plugin.md#anonymoussurface) | Resource | Surface creation functor for adapter/device init |
+| [`WindowRenderPlugin`](render-plugin.md#window-facing-rendering-resources) | Plugin | Extracts windows, owns surfaces, acquires and presents swapchain images |
+| [`SurfaceCreation`](render-plugin.md#window-facing-rendering-resources) | Component alias | Platform callback that creates a WebGPU surface for one window |
+| [`ExtractedWindows`](render-plugin.md#window-facing-rendering-resources) | Resource | Render-world window and current swapchain snapshots |
 | [`RenderGraph`](render-graph.md#rendergraph) | Struct | Directed-acyclic graph that drives per-frame rendering |
 | [`Node`](render-graph.md#node) | Base class | Override to implement custom render node logic |
 | [`GraphContext`](render-graph.md#graphcontext) | Struct | Slot I/O and sub-graph dispatch during node execution |
@@ -42,51 +53,62 @@ import epix.render;
 | [`ClearColorConfig`](camera-view.md#clearcolorconfig) | Struct | None / Global / Custom per-camera config |
 | [`CameraBundle`](camera-view.md#camerabundle) | Bundle | Spawns a fully configured camera entity |
 | [`CameraRenderGraph`](camera-view.md#camerarendergraph) | Component | Which render graph this camera drives |
+| [`CameraPlugin`](camera-view.md#cameraplugin) | Plugin | Updates/extracts cameras and installs the camera driver node |
+| [`CameraProjectionPlugin<T>`](camera-view.md#camera-projection-extension-point) | Plugin template | Updates a custom camera projection type |
 | [`ViewPlugin`](camera-view.md#viewplugin) | Plugin | Registers view extraction and depth systems |
 | [`ViewTarget`](camera-view.md#viewtarget) | Component | Swapchain texture view + format for a camera |
 | [`ViewDepth`](camera-view.md#viewdepth) | Component | Depth texture + view for a camera |
 | [`ViewUniform`](camera-view.md#viewuniform) | Struct | Projection + view matrices for shaders |
 | [`ViewBindGroup`](camera-view.md#viewbindgroup) | Component | Bind group exposing the ViewUniform |
-| [`BindViewUniform<Slot>`](camera-view.md#bindviewuniform) | Render command | Binds view uniform at a specified slot |
+| [`BindViewUniform<Slot>`](camera-view.md#bindviewuniformslot) | Render command | Binds view uniform at a specified slot |
 | [`VisibleEntities`](camera-view.md#visibleentities) | Component | Entities visible to a camera |
 | [`PipelineServer`](pipeline.md#pipelineserver) | Resource | Async render/compute pipeline cache |
+| `CachedPipelineId` | ID | Stable key returned when a pipeline is queued |
 | [`RenderPipelineDescriptor`](pipeline.md#descriptors) | Struct | Builder for render pipeline creation |
 | [`ComputePipelineDescriptor`](pipeline.md#descriptors) | Struct | Builder for compute pipeline creation |
-| [`VertexState`](pipeline.md#vertex-fragment-state) | Struct | Vertex shader + buffer layouts |
-| [`FragmentState`](pipeline.md#vertex-fragment-state) | Struct | Fragment shader + color targets |
-| [`RenderPipeline`](pipeline.md#render-compute-pipeline) | Struct | Created render pipeline with unique ID |
-| [`ComputePipeline`](pipeline.md#render-compute-pipeline) | Struct | Created compute pipeline with unique ID |
-| [`RenderAsset<T>`](assets.md#renderasset) | Trait struct | Specialise to make T a GPU render asset |
-| [`RenderAssets<T>`](assets.md#renderassets) | Resource | Storage for processed GPU assets |
-| [`ExtractAssetPlugin<T>`](assets.md#extractassetplugin) | Plugin template | Wires extract + process pipeline for asset T |
+| [`VertexState`](pipeline.md#vertexstate) | Struct | Vertex shader + buffer layouts |
+| [`FragmentState`](pipeline.md#fragmentstate) | Struct | Fragment shader + color targets |
+| [`RenderPipeline`](pipeline.md#rendercompute-pipeline) | Struct | Created render pipeline with unique ID |
+| [`ComputePipeline`](pipeline.md#rendercompute-pipeline) | Struct | Created compute pipeline with unique ID |
+| [`RenderAsset<T>`](assets.md#renderassett) | Trait struct | Specialise to make T a GPU render asset |
+| [`RenderAssets<T>`](assets.md#renderassetst) | Resource | Storage for processed GPU assets |
+| [`ExtractAssetPlugin<T>`](assets.md#extractassetplugint) | Plugin template | Wires extract + process pipeline for asset T |
 | [`GPUImage`](assets.md#gpuimage) | Struct | Texture + view + sampler for an Image |
-| [`RenderPhase<P>`](render-phase.md#renderphase) | Component | Sorted draw list + execution loop |
-| [`DrawFunctions<P>`](render-phase.md#drawfunctions) | Resource | Thread-safe draw function registry |
+| [`RenderPhase<P>`](render-phase.md#renderphasep) | Component | Sorted draw list + execution loop |
+| [`DrawFunctions<P>`](render-phase.md#drawfunctionsp) | Resource | Thread-safe draw function registry |
 | [`PhaseItem`](render-phase.md#concepts) | Concept | Required interface for phase items |
-| [`DrawFunction<P>`](render-phase.md#drawfunction) | Base class | Abstract type-erased draw function |
+| [`DrawFunction<P>`](render-phase.md#drawfunctionp) | Base class | Abstract type-erased draw function |
 | [`RenderCommand`](render-phase.md#rendercommand-concept) | Concept | Render command template constraint |
-| [`SetItemPipeline<P>`](render-phase.md#setitempipeline) | Render command | Binds the cached pipeline for a phase item |
+| [`SetItemPipeline<P>`](render-phase.md#setitempipelinep) | Render command | Binds the cached pipeline for a phase item |
 | [`app_add_render_commands<P, R...>()`](render-phase.md#app_add_render_commands) | Free function | Registers a command chain as a draw function |
-| [`sort_phase_items<P>`](render-phase.md#sort_phase_items) | System template | Sorts all RenderPhase<P> components |
+| [`sort_phase_items<P>`](render-phase.md#sort_phase_itemsp) | System template | Sorts all RenderPhase<P> components |
+| [`Core2dPlugin`](core-2d.md) | Plugin | Built-in opaque, transparent, and UI 2D graph/phases |
+| [`ScreenshotPlugin`](screenshot.md) | Plugin | Window or texture capture into `Image` assets |
 
 ---
 
 ## Quick Guide
 
-### 1. Add the plugin
+### 1. Add a complete renderer stack
 
 ```cpp
-// Requires a window backend (e.g. GLFWRenderPlugin) that registers SurfaceCreation.
-app.add_plugins(render::RenderPlugin{});
-// Optional: enable Vulkan validation layers
-app.add_plugins(render::RenderPlugin{}.set_validation(2));
+app.add_plugins(TaskPoolPlugin{})
+   .add_plugins(window::WindowPlugin{})
+   .add_plugins(glfw::GLFWPlugin{})
+   .add_plugins(glfw::GLFWRenderPlugin{})
+   .add_plugins(transform::TransformPlugin{})
+   .add_plugins(render::RenderPlugin{}.set_validation(2));
 ```
+
+Use validation level `0` for normal runs. Add `RenderPlugin` only once; plugin
+types are deduplicated. The platform render plugin supplies each window's
+`SurfaceCreation` callback, while `RenderPlugin` creates the render sub-app and
+installs window/image/shader/camera/view rendering.
 
 ### 2. Spawn a camera
 
 ```cpp
 // In a Startup system:
-auto [cmd] = params.get();
 constexpr struct MyGraph {} my_graph;
 cmd.spawn(render::camera::CameraBundle::with_render_graph(my_graph));
 ```
@@ -97,36 +119,38 @@ cmd.spawn(render::camera::CameraBundle::with_render_graph(my_graph));
 
 ```cpp
 struct MyNode : render::graph::Node {
-    std::vector<render::graph::SlotInfo> inputs() override {
-        return {{ "view", render::graph::SlotType::Entity }};
-    }
     void run(render::graph::GraphContext& graph_ctx,
              render::graph::RenderContext& render_ctx,
-             const World& world) override {
-        auto view = graph_ctx.get_input_entity("view").value();
+             const ecs::World& world) override {
+        auto view = graph_ctx.view_entity();
         auto& encoder = render_ctx.command_encoder();
         // ... issue draw calls ...
     }
 };
 
-// Register in render sub-app during build:
+constexpr struct MyNodeLabel {} my_node;
+
+// Register a camera-driven sub-graph during plugin setup:
 auto& render_app = app.sub_app_mut(render::Render);
-auto& graph = render_app.world_mut().resource_mut<render::RenderGraph>();
-graph.add_node(my_graph, MyNode{});
+auto& root = render_app.world_mut().resource_mut<render::RenderGraph>();
+render::RenderGraph camera_graph;
+camera_graph.add_node(my_node, MyNode{});
+root.add_sub_graph(my_graph, std::move(camera_graph)).value();
 ```
 
 ### 4. Queue a render pipeline
 
 ```cpp
-// In a render-world system (RenderSet::Queue or PrepareResources):
-void setup(ResMut<render::PipelineServer> server,
-           Res<assets::Assets<shader::Shader>> shaders) {
-    auto vs = shaders.get(vs_handle);
-    auto pipeline_id = server->queue_render_pipeline(
+// PipelineServer is shared between the main and render worlds.
+void setup(Res<render::PipelineServer> server,
+           Res<MyShaderHandles> shader_handles,
+           ResMut<MyPipelineIds> pipeline_ids) {
+    if (pipeline_ids->main) return;
+    pipeline_ids->main = server->queue_render_pipeline(
         render::RenderPipelineDescriptor{}
             .set_label("my_pipeline")
-            .set_vertex(render::VertexState{}.set_shader(vs_handle))
-            .set_fragment(render::FragmentState{}.set_shader(fs_handle)
+            .set_vertex(render::VertexState{}.set_shader(shader_handles->vertex))
+            .set_fragment(render::FragmentState{}.set_shader(shader_handles->fragment)
                               .add_target(wgpu::ColorTargetState{})));
 }
 ```
@@ -134,15 +158,22 @@ void setup(ResMut<render::PipelineServer> server,
 ### 5. Define and register a draw function
 
 ```cpp
-// Implement PhaseItem and Draw, then register:
-auto& draw_fns = world.resource_mut<render::phase::DrawFunctions<MyPhaseItem>>();
-auto id = draw_fns.add<MyDrawFunction>(world);
+// Implement PhaseItem and Draw, then register in the render world:
+auto& render_app = app.sub_app_mut(render::Render);
+render_app.world_mut().init_resource<render::phase::DrawFunctions<MyPhaseItem>>();
+auto& draw_fns = render_app.world_mut().resource_mut<render::phase::DrawFunctions<MyPhaseItem>>();
+auto id = draw_fns.add<MyDrawFunction>(render_app.world_mut());
 ```
 
 Or use the render-command chain helper:
 
 ```cpp
-render::phase::app_add_render_commands<MyPhaseItem, SetItemPipeline, MySetBindGroup, MyDraw>(app);
+render::phase::app_add_render_commands<
+    MyPhaseItem,
+    render::phase::SetItemPipeline,
+    MySetBindGroup,
+    MyDraw
+>(render_app);
 ```
 
 ### 6. Extract an asset to GPU
@@ -151,7 +182,17 @@ render::phase::app_add_render_commands<MyPhaseItem, SetItemPipeline, MySetBindGr
 // Specialize RenderAsset<T> and add the plugin:
 app.add_plugins(render::ExtractAssetPlugin<MyMesh>{});
 // Access processed assets in render systems:
-auto& gpu_meshes = world.resource<render::RenderAssets<MyMesh>>();
-auto* mesh = gpu_meshes.try_get(handle.id());
+void use_mesh(Res<render::RenderAssets<MyMesh>> meshes, Res<MeshHandle> handle) {
+    if (const auto* mesh = meshes->try_get(handle->id())) { /* bind it */ }
+}
 ```
+
+## Where to go next
+
+- [Plugin, schedule, extraction, and window flow](render-plugin.md)
+- [Camera and view setup](camera-view.md)
+- [Render graph nodes, slots, and sub-graphs](render-graph.md)
+- [Pipeline descriptors and asynchronous readiness](pipeline.md)
+- [Render assets and GPU image extraction](assets.md)
+- [Phases, draw functions, and render-command chains](render-phase.md)
 

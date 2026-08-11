@@ -1,128 +1,80 @@
-﻿# Shader Asset
+# Shader assets and plugin
 
-Parsed shader asset, its source payload variant, and the app plugin that wires everything up.
+`Shader` is the asset-side representation consumed by `ShaderCache` and the
+renderer's `PipelineServer`.
 
 ## `ShaderPlugin`
 
-### Overview
-
-`ShaderPlugin` registers all shader-related asset support into the app. It adds the
-`ShaderLoader` and `ShaderProcessor` to the asset system, and inserts a `ShaderCache`
-resource bound to the render device so that pipelines can query compiled shader modules.
-
-### Usage
-
 ```cpp
-App app = App::create();
-AssetPlugin{}.attach(app);   // must come first
-ShaderPlugin{}.attach(app);
+struct ShaderPlugin { void attach(app::App& app); };
 ```
 
-After `attach()`, the app can load `.wgsl`, `.slang`, and `.slang-module` files via
-`AssetServer::load<Shader>()`.
+Attachment registers `Assets<Shader>`, its events, and `ShaderLoader`. It also
+adds a `Last` system that synchronizes dependency-ready/modified/unused shader
+events into a `ShaderCache` when that resource exists. When `AssetProcessor` is
+already present, it registers `ShaderProcessor`, assigns it as the default for
+`wgsl`, `slang`, and `slang-module`, and maintains the processor's custom-module
+registry.
 
----
+```cpp
+app.add_plugins(assets::AssetPlugin{}, shader::ShaderPlugin{});
+```
+
+Add asset processing before `ShaderPlugin` when processor registration is
+required. In renderer applications, `RenderPlugin` installs `ShaderPlugin`
+automatically and `PipelineServer` owns the operational cache.
 
 ## `Source`
 
-### Overview
+`Source::data` is one of:
 
-Tagged union carrying the raw shader payload. Constructed via static factory functions.
+| Variant | Payload | Factory | Predicate |
+| --- | --- | --- | --- |
+| `Wgsl` | `std::string code` | `Source::wgsl` | `is_wgsl()` |
+| `SpirV` | `vector<uint8_t> bytes` | `Source::spirv` | `is_spirv()` |
+| `Slang` | `std::string code` | `Source::slang` | `is_slang()` |
+| `SlangIr` | `vector<uint8_t> bytes` | `Source::slang_ir` | `is_slang_ir()` |
 
-| Inner type        | Content                                                       |
-| ----------------- | ------------------------------------------------------------- |
-| `Source::Wgsl`    | WGSL source text                                              |
-| `Source::SpirV`   | SPIR-V bytecode `std::vector<uint8_t>`                        |
-| `Source::Slang`   | Slang source text                                             |
-| `Source::SlangIr` | Pre-compiled Slang IR blob (output of `IModule::serialize()`) |
-
-### Usage
-
-```cpp
-// Create from text
-auto wgsl = Source::wgsl("@vertex fn vs_main() -> @builtin(position) vec4f { return vec4f(); }");
-auto slang = Source::slang("import utils; [shader(\"vertex\")] float4 vs_main() : SV_Position { return 0; }");
-
-// Create from bytes
-std::vector<uint8_t> spirv_bytes = load_spirv_from_file("shader.spv");
-auto spirv = Source::spirv(std::move(spirv_bytes));
-
-// Type predicates
-if (src.is_wgsl()) { /* ... */ }
-
-// Read text (WGSL or Slang only — undefined behaviour for SpirV)
-std::string_view text = src.as_str();
-```
-
----
+`as_str()` is valid only for WGSL and Slang text. Check the predicate before
+calling it; byte-backed alternatives have no string view.
 
 ## `Shader`
 
-### Overview
+| Field | Purpose |
+| --- | --- |
+| `path` | asset path associated with the source |
+| `source` | text, bytecode, or processed IR |
+| `import_path` | name/path by which other shaders import this shader |
+| `imports` | declared dependencies |
+| `shader_defs` | default definitions merged into compiled variants |
+| `file_dependencies` | strong handles for loader-resolved file imports |
+| `validate_shader` | `Disabled` or `Enabled` backend validation request |
 
-Parsed shader asset. Created by `ShaderLoader`/`ShaderProcessor` from a file, or constructed
-manually for embedded shaders.
-
-| Field               | Type                     | Role                                                                                                          |
-| ------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| `path`              | `AssetPath`              | Where the shader came from.                                                                                   |
-| `source`            | `Source`                 | Raw payload.                                                                                                  |
-| `import_path`       | `ShaderImport`           | How other shaders import this one. Falls back to `ShaderImport::asset_path(path)` when no custom name is set. |
-| `imports`           | `vector<ShaderImport>`   | Imports declared by this shader.                                                                              |
-| `shader_defs`       | `vector<ShaderDefVal>`   | Default definitions attached to this shader.                                                                  |
-| `file_dependencies` | `vector<Handle<Shader>>` | File-backed imports resolved during loading.                                                                  |
-| `validate_shader`   | `ValidateShader`         | Whether the backend runs validation.                                                                          |
-
-### Usage — loading from file
-
-The most common path is loading from the asset server:
+Factories parse the appropriate import syntax:
 
 ```cpp
-auto handle = server.load<Shader>(AssetPath("shaders/main.wgsl"));
+Shader::from_wgsl(text, path);
+Shader::from_wgsl_with_defs(text, path, defs);
+Shader::from_spirv(bytes, path);
+Shader::from_slang(text, path);
+Shader::from_slang_with_defs(text, path, defs);
+Shader::from_slang_ir(bytes, path);
 ```
 
-Imports declared in the file are automatically resolved and loaded as asset dependencies.
-
-### Usage — manual construction
+`preprocess(wgsl, path)` and `preprocess_slang(slang, path)` return the shader's
+own `ShaderImport` plus its declared imports. Factories and the loader call them
+automatically; they are useful for tools that need dependency discovery without
+building a full asset server.
 
 ```cpp
-// WGSL from inline text
-auto shader = Shader::from_wgsl(
-    "@vertex fn vs_main() -> @builtin(position) vec4f { return vec4f(); }",
-    AssetPath("embedded://vs_main.wgsl")
-);
-
-// WGSL with attached default definitions
-auto shader = Shader::from_wgsl_with_defs(source, path, {ShaderDefVal::from_bool("USE_FOG")});
-
-// Slang text
-auto shader = Shader::from_slang(slang_source, AssetPath("shaders/lighting.slang"));
-
-// SPIR-V bytes
-auto shader = Shader::from_spirv(std::move(spirv_bytes), AssetPath("shaders/precompiled.spv"));
-
-// Pre-compiled Slang IR blob
-auto shader = Shader::from_slang_ir(std::move(ir_bytes), AssetPath("shaders/module.slang-module"));
+auto shader = Shader::from_slang_with_defs(
+    slang_source,
+    "shaders/lighting.slang",
+    {ShaderDefVal::from_bool("USE_FOG")});
+shader.validate_shader = ValidateShader::Enabled;
 ```
 
-### Usage — static preprocessing
-
-`Shader::preprocess` and `Shader::preprocess_slang` parse a shader's own import name and
-the list of imports it declares. `ShaderLoader` calls these automatically; they are exposed
-for testing and tooling.
-
-```cpp
-auto [import_path, imports] = Shader::preprocess(wgsl_source, AssetPath("shaders/main.wgsl"));
-// import_path: the name this shader exposes (from #define_import_path)
-// imports: all #import directives found in the source
-```
-
-## Constraints / Gotchas
-
-- `Source::as_str()` must only be called when `is_wgsl()` or `is_slang()` is true.
-  Calling it on `SpirV` or `SlangIr` is undefined behaviour.
-- Shaders added manually via `ShaderCache::set_shader()` can only be imported by custom
-  name, not by asset path — they are not registered in the asset server.
-- `file_dependencies` is populated only for file-backed imports resolved during loading.
-  Custom-name imports remain as logical entries in `imports` and are resolved by
-  `ShaderCache` at composition time.
+Slang IR skips source import scanning because its graph is embedded in the IR.
+Manually injected shaders may be resolved inside a cache by custom import name,
+but they are not visible to `AssetServer` as file dependencies unless they were
+loaded/registered through the asset pipeline.

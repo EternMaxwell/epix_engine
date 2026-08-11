@@ -1,76 +1,54 @@
-﻿# Asset Paths
+# Asset paths
 
-Asset addresses that combine a source, a path, and an optional sub-asset label.
-
-```cpp
-#import epix.assets
-```
-
----
-
-## `AssetSourceId`
-
-Optional name identifying which registered source to read from.
+`AssetPath` combines a source, filesystem path, and optional sub-asset label.
 
 ```cpp
-struct AssetSourceId {
-    bool        is_default() const;   // true when no source name is stored
-    std::string_view as_str() const;  // "" for the default source
-};
+import epix.assets;
+using namespace epix::assets;
 ```
 
-The default source corresponds to the filesystem root set in `AssetPlugin::file_path` (`"assets/"` by default). Named sources are registered via `AssetPlugin::register_asset_source()`.
-
----
-
-## `AssetPath`
-
-Full address for a single asset or labeled sub-asset.
+## Shape and parsing
 
 ```cpp
 struct AssetPath {
-    // Syntax: [source_id "://"] path ["#" label]
-    // Examples:
-    //   "sprite.png"
-    //   "textures/terrain.png#albedo"
-    //   "embedded://font.ttf"
+    AssetSourceId source;
+    std::filesystem::path path;
+    std::optional<std::string> label;
 
-    AssetSourceId           source() const;
-    const std::filesystem::path& path() const;
-    std::optional<std::string>   label() const;
-
-    // Fluent builders
-    AssetPath with_source(std::string_view source) const;
-    AssetPath with_label(std::string_view label) const;
-
-    // Resolve a relative path against this path's parent directory
-    AssetPath resolve(std::string_view relative) const;
-
-    // Like resolve(), but forces the "embedded://" source
-    AssetPath resolve_embed(std::string_view relative) const;
-
-    // Parent directory path (without label)
-    AssetPath parent() const;
+    explicit AssetPath(std::string_view value);
+    static std::optional<AssetPath> try_parse(std::string_view value);
+    std::string string() const;
 };
 ```
 
-`AssetPath` is constructible from `std::string_view` and `std::filesystem::path`. The constructor parses the `source://path#label` syntax:
+The textual form is `[source://]path[#label]`:
+
+| Text | Source | Path | Label |
+| --- | --- | --- | --- |
+| `textures/icon.png` | default | `textures/icon.png` | none |
+| `embedded://fonts/ui.ttf` | `embedded` | `fonts/ui.ttf` | none |
+| `models/ship.glb#Hull` | default | `models/ship.glb` | `Hull` |
+
+`AssetSourceId` derives from `std::optional<std::string>`. `is_default()` reports the empty/default source and `as_str()` returns `std::optional<std::string_view>`.
+
+## Transforming paths
 
 ```cpp
-AssetPath full("textures://terrain.png#albedo");
-// full.source()  → AssetSourceId{"textures"}
-// full.path()    → "terrain.png"
-// full.label()   → std::optional{"albedo"}
+AssetPath with_source(AssetSourceId source) const;
+AssetPath with_label(std::string label) const;
+AssetPath without_label() const;
+void remove_label();
+std::optional<std::string> take_label();
 
-AssetPath relative = full.resolve("normal.png");
-// → AssetPath{"textures://normal.png"}  (same source, label stripped)
+std::optional<AssetPath> parent() const;
+AssetPath resolve(const AssetPath& relative) const;
+AssetPath resolve_embed(const AssetPath& relative) const;
 ```
 
-### Parsing rules
+`resolve()` appends a relative path to the base. `resolve_embed()` applies embedded/RFC-style semantics by removing the base filename before joining; it does not change the source to `embedded` automatically.
 
-| Input                   | Source       | Path            | Label    |
-| ----------------------- | ------------ | --------------- | -------- |
-| `"icon.png"`            | default      | `"icon.png"`    | none     |
-| `"ui/icon.png#glow"`    | default      | `"ui/icon.png"` | `"glow"` |
-| `"embedded://font.ttf"` | `"embedded"` | `"font.ttf"`    | none     |
-| `"http://cdn/img.png"`  | `"http"`     | `"cdn/img.png"` | none     |
+Use `get_extension()`, `get_full_extension()`, and `iter_secondary_extensions()` for extension-aware loader selection. `is_unapproved()` detects paths that escape the configured asset root.
+
+## Source registration
+
+The default source normally reads from `AssetPlugin::file_path` (`assets`). Named sources are registered through the asset source builders used by `AssetPlugin`. A missing named source is reported as `MissingAssetSourceError` by operations such as `AssetServer::reload()`.

@@ -1,4 +1,4 @@
-﻿# EPIX ENGINE INPUT MODULE
+# EPIX ENGINE INPUT MODULE
 
 Provides keyboard and mouse input as ECS events and per-frame button state resources, wired into the app via a single plugin.
 
@@ -18,7 +18,8 @@ Provides keyboard and mouse input as ECS events and per-frame button state resou
 ## Quick Guide
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.input;
 
 using namespace epix;
@@ -29,8 +30,8 @@ app.add_plugins(input::InputPlugin{});
 
 // 2. Query button state in a system using Res<ButtonInput<T>>.
 void move_player(
-    core::Res<input::ButtonInput<input::KeyCode>> keys,
-    core::Res<input::ButtonInput<input::MouseButton>> mouse_btns)
+    ecs::Res<input::ButtonInput<input::KeyCode>> keys,
+    ecs::Res<input::ButtonInput<input::MouseButton>> mouse_btns)
 {
     if (keys->pressed(input::KeyCode::KeyW)) { /* move forward */ }
     if (keys->just_pressed(input::KeyCode::KeySpace)) { /* jump */ }
@@ -38,7 +39,7 @@ void move_player(
 }
 
 // 3. Read raw events in a system using EventReader<T>.
-void on_scroll(core::EventReader<input::MouseScroll> scroll) {
+void on_scroll(ecs::EventReader<input::MouseScroll> scroll) {
     for (const auto& e : scroll.read()) {
         float zoom_delta = static_cast<float>(e.yoffset);
         // apply zoom ...
@@ -46,7 +47,7 @@ void on_scroll(core::EventReader<input::MouseScroll> scroll) {
 }
 
 // 4. Register the system.
-app.add_systems(core::Update, core::into(move_player, on_scroll));
+app.add_systems(app::Update, ecs::into(move_player, on_scroll));
 ```
 
 > The window/GLFW plugin is responsible for producing the raw events consumed by `InputPlugin`.

@@ -1,4 +1,4 @@
-﻿# EPIX ENGINE WINDOW MODULE
+# EPIX ENGINE WINDOW MODULE
 
 Manages OS windows as ECS entities — create, configure, and react to window events through a backend-agnostic interface backed by either GLFW or SFML.
 
@@ -18,12 +18,14 @@ Manages OS windows as ECS entities — create, configure, and react to window ev
 ## Quick Guide
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.window;
 import epix.glfw.core; // or epix.sfml.core
 
 int main() {
-    using namespace epix::core;
+    using namespace epix::ecs;
+    using namespace epix::app;
     using namespace epix::window;
     using namespace epix::glfw;
 

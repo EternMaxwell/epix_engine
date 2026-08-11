@@ -1,10 +1,13 @@
-﻿# Input Events
+# Input Events
 
 Raw ECS events emitted each frame by the window backend for keyboard, mouse button, mouse movement, and scroll wheel input.
 
 ## Overview
 
-Four event types are registered by [`InputPlugin`](./input-plugin.md). Systems read them via `EventReader<T>`. The events are consumed each frame; unconsumed events from the previous frame are not carried forward.
+Four event types are registered by [`InputPlugin`](./input-plugin.md). Systems read them via
+`EventReader<T>`. Each reader has its own cursor. Like all ECS events registered with `add_event`,
+an input event remains available during the frame it was written and the following frame, then
+expires during the automatic event update.
 
 ---
 
@@ -25,7 +28,7 @@ struct KeyInput {
 **Usage:**
 
 ```cpp
-void on_key(core::EventReader<input::KeyInput> reader) {
+void on_key(ecs::EventReader<input::KeyInput> reader) {
     for (auto&& [key, scancode, pressed, repeat, window] : reader.read()) {
         if (pressed && !repeat && key == input::KeyCode::KeyF) {
             // F key pressed (not a repeat)
@@ -53,7 +56,7 @@ struct MouseButtonInput {
 **Usage:**
 
 ```cpp
-void on_click(core::EventReader<input::MouseButtonInput> reader) {
+void on_click(ecs::EventReader<input::MouseButtonInput> reader) {
     for (auto&& [button, pressed, window] : reader.read()) {
         if (pressed && button == input::MouseButton::MouseButtonLeft) {
             // left click
@@ -77,7 +80,7 @@ struct MouseMove {
 **Usage:**
 
 ```cpp
-void on_mouse_move(core::EventReader<input::MouseMove> reader) {
+void on_mouse_move(ecs::EventReader<input::MouseMove> reader) {
     for (auto&& [delta] : reader.read()) {
         auto [dx, dy] = delta;
         // rotate camera by (dx, dy) * sensitivity
@@ -105,8 +108,8 @@ struct MouseScroll {
 
 ```cpp
 void camera_zoom(
-    core::Query<core::Item<render::camera::Projection&>> camera,
-    core::EventReader<input::MouseScroll> scroll_input)
+    ecs::Query<ecs::Item<render::camera::Projection&>> camera,
+    ecs::EventReader<input::MouseScroll> scroll_input)
 {
     for (const auto& e : scroll_input.read()) {
         float scale = std::exp(-static_cast<float>(e.yoffset) * 0.1f);

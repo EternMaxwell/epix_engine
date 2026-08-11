@@ -59,7 +59,10 @@ const Components& components() const;
 virtual std::optional<ProcessedInfo>& mutable_processed_info() = 0;
 ```
 
-This mirrors the engine's existing naming style used throughout `epix_core` (`world_mut()`, `components_mut()`, `storage_mut()`, `entities_mut()`, `archetypes_mut()`, `bundles_mut()`, `get_mut()`, `access_mut()`, `required_mut()`, …) and the Bevy convention (`processed_info_mut`, `world_mut`, …) that the C++ code tracks.
+This mirrors the engine's existing naming style used throughout `epix_ecs` and
+`epix_app` (`world_mut()`, `components_mut()`, `storage_mut()`, `entities_mut()`,
+`archetypes_mut()`, `bundles_mut()`, `get_mut()`, `access_mut()`, and
+`required_mut()`) and the Bevy convention that the C++ code tracks.
 
 ### General rules
 

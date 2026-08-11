@@ -1,4 +1,4 @@
-﻿# ButtonInput
+# ButtonInput
 
 Per-frame button state resource that tracks which keys or mouse buttons are held, just pressed, or just released.
 
@@ -22,12 +22,12 @@ Two specializations exist: `ButtonInput<KeyCode>` for the keyboard and `ButtonIn
 
 ### Usage
 
-Inject as `core::Res<input::ButtonInput<input::KeyCode>>` (read-only) in any system.
+Inject as `ecs::Res<input::ButtonInput<input::KeyCode>>` (read-only) in any system.
 
 ```cpp
-// From epix_engine/experimental/examples/voxel_path_tracer.cpp
+// From epix_engine/experimental/examples/module/voxel_path_tracer.cpp
 void camera_control(
-    core::Res<input::ButtonInput<input::KeyCode>> keys,
+    ecs::Res<input::ButtonInput<input::KeyCode>> keys,
     // ...
     Query<Item<Mut<transform::Transform>>, With<Camera>> cameras)
 {
@@ -80,9 +80,9 @@ Identical interface to `ButtonInput<KeyCode>`, but for mouse buttons. Range-view
 ### Usage
 
 ```cpp
-// From epix_engine/experimental/examples/voxel_path_tracer.cpp
+// From epix_engine/experimental/examples/module/voxel_path_tracer.cpp
 void camera_control(
-    core::Res<input::ButtonInput<input::MouseButton>> mouse_btns,
+    ecs::Res<input::ButtonInput<input::MouseButton>> mouse_btns,
     // ...
 )
 {

@@ -1,172 +1,118 @@
-﻿# Asset Store
+# Asset store
 
-Typed in-memory collection of loaded assets and their lifecycle events.
-
-```cpp
-#import epix.assets
-```
-
----
-
-## `Assets<T>`
+`Assets<T>` is the typed in-memory store for one asset type. `app_register_asset<T>()` installs the store and its events as ECS resources.
 
 ```cpp
-template<Asset T>
-struct Assets {
-    // --- insertion ---
-    Handle<T> add(T asset);
-    template<typename... Args> Handle<T> emplace(Args&&... args);  // in-place construct
-    Handle<T> reserve_handle();                                    // allocate id before data is ready
-    Handle<T> get_or_insert_with(AssetId<T> id, auto&& make);     // insert if absent
-
-    // --- lookup ---
-    const T* get(AssetId<T> id) const;
-    T*       get_mut(AssetId<T> id);
-    std::expected<const T*, AssetError> try_get(AssetId<T> id) const;
-    std::expected<T*, AssetError>       try_get_mut(AssetId<T> id);
-
-    // --- removal ---
-    std::optional<T> remove(AssetId<T> id);  // emits Removed event
-    std::optional<T> take(AssetId<T> id);    // removes without event
-
-    // --- untracked variants (no event) ---
-    T*       get_mut_untracked(AssetId<T> id);
-    std::optional<T> remove_untracked(AssetId<T> id);
-
-    // --- query ---
-    bool     contains(AssetId<T> id) const;
-    bool     is_empty() const;
-    std::size_t len() const;
-
-    // iteration (ids only; use get() for values)
-    auto ids()      const;  // range of AssetId<T>
-    auto iter()     const;  // range of const T&
-    auto iter_mut();        // range of T&
-
-    // --- system callbacks (provided to App by app_register_asset) ---
-    static void handle_events(Res<Assets<T>>, EventReader<internal_asset_event::…>);
-    static void asset_events(Res<Assets<T>>,  EventWriter<AssetEvent<T>>, …);
-};
+import epix.assets;
+using namespace epix::assets;
 ```
 
-### `add()` vs `emplace()`
+## Core API
 
 ```cpp
-Assets<std::string>& texts = …;
-Handle<std::string> h1 = texts.add(std::string{"hello"});
-Handle<std::string> h2 = texts.emplace("world");  // no copy
+Handle<T> add(T asset);
+template<class... Args> Handle<T> emplace(Args&&... args);
+Handle<T> reserve_handle();
+
+template<class... Args>
+std::expected<bool, AssetError> insert(const AssetId<T>& id, Args&&... args);
+std::expected<Handle<T>, AssetError> get_strong_handle(const AssetId<T>& id);
+
+std::optional<std::reference_wrapper<const T>> get(const AssetId<T>& id) const;
+std::optional<std::reference_wrapper<T>> get_mut(const AssetId<T>& id);
+
+std::expected<std::reference_wrapper<const T>, AssetError>
+try_get(const AssetId<T>& id) const;
+std::expected<std::reference_wrapper<T>, AssetError>
+try_get_mut(const AssetId<T>& id);
+
+std::expected<void, AssetError> remove(const AssetId<T>& id);
+std::expected<T, AssetError> take(const AssetId<T>& id);
+
+template<class F>
+std::expected<std::reference_wrapper<T>, AssetError>
+get_or_insert_with(const AssetId<T>& id, F&& make);
 ```
 
-### `get_or_insert_with()`
-
-Inserts a default value the first time an id is seen; returns a handle in both cases.
+Mutable tracked access records a `Modified` event. `get_mut_untracked()` and `remove_untracked()` are available for internal-style operations that must not emit the usual event.
 
 ```cpp
-Handle<Mesh> cube = meshes.get_or_insert_with(cube_id, [] { return Mesh::cube(); });
+if (auto image = images.get_mut(handle.id())) {
+    image->get().regenerate_mips();
+}
+
+auto mesh = meshes.get_or_insert_with(id, [] { return Mesh{/* ... */}; });
+if (mesh) mesh->get().recalculate_bounds();
 ```
 
----
+Use `contains()`, `is_empty()`, and `len()` for store queries. Iteration is callback-based:
 
-## `AssetEvent<T>`
+```cpp
+images.iter([](AssetId<Image> id, const Image& image) { /* ... */ });
+images.iter_mut([](AssetId<Image> id, Image& image) { /* emits Modified */ });
+```
 
-Lifecycle event emitted via `EventWriter` after each `WriteEvents` tick.
+## Lifecycle events
 
 ```cpp
 template<Asset T>
 struct AssetEvent {
-    enum class Type { Added, Removed, Modified, Unused, LoadedWithDependencies };
-    Type        kind;
-    AssetId<T>  id;
+    enum class Type { Added, Removed, Modified, Unused, LoadedWithDependencies } type;
+    AssetId<T> id;
 
     bool is_added() const;
     bool is_removed() const;
     bool is_modified() const;
     bool is_unused() const;
     bool is_loaded_with_dependencies() const;
-
-    // static factory methods
-    static AssetEvent added(AssetId<T> id);
-    static AssetEvent removed(AssetId<T> id);
-    static AssetEvent modified(AssetId<T> id);
-    static AssetEvent unused(AssetId<T> id);
-    static AssetEvent loaded_with_dependencies(AssetId<T> id);
 };
 ```
 
-| Event                    | When                                                        |
-| ------------------------ | ----------------------------------------------------------- |
-| `Added`                  | Asset inserted (by loader or manually via `add()`)          |
-| `Removed`                | Asset removed from `Assets<T>`                              |
-| `Modified`               | Asset value replaced in-place (hot-reload or user mutation) |
-| `Unused`                 | Last strong `Handle<T>` was dropped                         |
-| `LoadedWithDependencies` | Asset and all recursive dependencies finished loading       |
+`Unused` means the last strong handle was dropped. `LoadedWithDependencies` means the asset and all recursive dependencies completed successfully.
 
 ```cpp
-app.add_systems(Update, [](EventReader<AssetEvent<Image>> events) {
-    for (auto& e : events.read()) {
-        if (e.is_loaded_with_dependencies())
-            std::println("ready: {}", e.id.to_string_short());
+void observe(EventReader<AssetEvent<Image>> events) {
+    for (const auto& event : events.read()) {
+        if (event.is_loaded_with_dependencies()) {
+            // event.id is ready
+        }
     }
-});
+}
 ```
 
----
+Load failures use `AssetLoadFailedEvent<T>` or `UntypedAssetLoadFailedEvent`. Both contain `id`, `path`, and an `error` stored as `std::variant<std::string, std::exception_ptr>`.
 
-## `AssetLoadFailedEvent<T>` / `UntypedAssetLoadFailedEvent`
-
-Emitted when a load attempt fails.
+## Errors
 
 ```cpp
-template<Asset T>
-struct AssetLoadFailedEvent {
-    AssetId<T>      id;
-    AssetPath       path;
-    AssetLoadError  error;
+struct IndexOutOfBound { std::uint32_t index; };
+struct SlotEmpty       { std::uint32_t index; };
+struct GenMismatch {
+    std::uint32_t index;
+    std::uint32_t current_gen;
+    std::uint32_t expected_gen;
 };
-
-struct UntypedAssetLoadFailedEvent {
-    UntypedAssetId  id;
-    AssetPath       path;
-    AssetLoadError  error;
-};
+using AssetNotPresent = std::variant<AssetIndex, uuids::uuid>;
+using AssetError = std::variant<IndexOutOfBound, SlotEmpty, GenMismatch, AssetNotPresent>;
 ```
 
----
+`LoadedFolder`, returned through the handle from `AssetServer::load_folder()`, contains `std::vector<UntypedHandle> handles`.
 
-## `LoadedFolder`
+## Complete store utilities
 
-Returned by `AssetServer::load_folder()`. Contains handles for all assets found in the directory.
+- `ids()` returns a snapshot of all index- and UUID-backed ids.
+- `reserve_handle()` reserves an index and returns its strong handle before a value exists;
+  `insert(id, ...)` can populate it later.
+- `get_strong_handle(id)` increments the store reference count and returns a strong handle for an
+  existing asset.
+- `get_handle_provider()` exposes the shared provider used for handle creation. It is mainly an
+  asset-server integration API.
+- `handle_events_manual(asset_server)` processes queued strong-handle lifecycle events. Registered
+  apps run the equivalent store systems automatically.
 
-```cpp
-struct LoadedFolder {
-    std::vector<UntypedHandle> handles;
-};
-```
+`Assets<T>` supports both generational `AssetIndex` ids and stable UUID ids. The `insert` return
+value is `true` when an existing value was replaced and `false` for a newly populated slot. A
+tracked insert emits `Modified` or `Added` accordingly.
 
----
-
-## `LoadedUntypedAsset`
-
-Returned by `AssetServer::load_untyped()`.
-
-```cpp
-struct LoadedUntypedAsset {
-    UntypedHandle handle;
-};
-```
-
----
-
-## Error Types
-
-```cpp
-struct IndexOutOfBound { AssetIndex index; };
-struct SlotEmpty       { AssetIndex index; };
-struct GenMismatch     { AssetIndex stored; AssetIndex requested; };
-struct AssetNotPresent { std::variant<AssetIndex, uuids::uuid> id; };
-
-using AssetError = std::variant<
-    IndexOutOfBound, SlotEmpty, GenMismatch, AssetNotPresent>;
-```
-
-Returned by `Assets<T>::try_get()` / `try_get_mut()` on lookup failure.
+`LoadedUntypedAsset` stores one `UntypedHandle` and is the built-in asset type used to retain a
+type-erased result.

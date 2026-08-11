@@ -1,4 +1,4 @@
-﻿# InputPlugin
+# InputPlugin
 
 Registers all input infrastructure — events, resources, and frame-update systems — into the `App`.
 
@@ -15,14 +15,15 @@ The plugin does **not** produce the raw events itself — a window backend (e.g.
 ## Usage
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 import epix.input;
 
 using namespace epix;
 
 int main() {
-    core::App app = core::App::create();
-    app.add_plugins(core::TaskPoolPlugin{})
+    app::App app = app::App::create();
+    app.add_plugins(app::TaskPoolPlugin{})
        .add_plugins(window::WindowPlugin{ /* ... */ })
        .add_plugins(input::InputPlugin{})   // registers events + ButtonInput resources
        .add_plugins(glfw::GLFWPlugin{})     // produces the raw events
@@ -37,7 +38,7 @@ int main() {
 
 ```cpp
 // Add for a single run to verify events are flowing:
-app.add_systems(core::Update, core::into(input::log_inputs));
+app.add_systems(app::Update, ecs::into(input::log_inputs));
 ```
 
 Remove it from the schedule in production — it logs every event every frame at `info` level.
@@ -45,4 +46,5 @@ Remove it from the schedule in production — it logs every event every frame at
 ## Constraints
 
 - `InputPlugin` must be added before calling `app.run()`.
-- The plugin is idempotent in the sense that `init_resource` is a no-op if the resource already exists, but `add_events` called twice would register duplicates. Add the plugin exactly once.
+- Plugin registration is type-deduplicated by `App::add_plugins()`. Event registration also uses a
+  per-type registry entry, so repeated lower-level registration does not create duplicate queues.

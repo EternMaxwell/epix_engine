@@ -8,6 +8,8 @@ API functions; no manual context management required.
 
 ```cpp
 #include <imgui.h>
+import epix.ecs;
+import epix.app;
 import epix.render.imgui;
 ```
 
@@ -75,4 +77,4 @@ systems, preventing concurrent ImGui API calls.
 | Render sub-app (after `RenderSet::Render`) | `imgui_render` lazy-inits the WebGPU backend; reconstructs draw data and submits a render pass that composites ImGui on top of the scene |
 | Plugin `detach()` | Shuts down WebGPU + GLFW backends; destroys the ImGui context |
 
-Source: `epix_engine/render/examples/imgui_basic.cpp`
+Source: `epix_engine/render/examples/module/imgui_basic.cpp`

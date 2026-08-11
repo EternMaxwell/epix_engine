@@ -1,4 +1,4 @@
-﻿# SFML Backend
+# SFML Backend
 
 SFML-based windowing backend (`epix.sfml.core`) — implements the native window lifecycle, event polling, and input dispatch for projects that use SFML.
 
@@ -49,9 +49,9 @@ struct SFMLRunner : public AppRunner {
     bool step(App& app) override;
     void exit(App& app) override;
 
-    void set_render_app(const core::AppLabel& label) noexcept;
+    void set_render_app(const app::AppLabel& label) noexcept;
     void reset_render_app() noexcept;
-    void append_system(std::unique_ptr<core::System<std::tuple<>, void>> system);
+    void append_system(std::unique_ptr<ecs::System<std::tuple<>, void>> system);
 };
 ```
 

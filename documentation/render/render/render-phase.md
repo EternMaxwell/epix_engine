@@ -1,10 +1,20 @@
-﻿# Render Phase, Draw Functions & Render Commands
+# Render Phase, Draw Functions & Render Commands
 
 The render phase system is the ECS-friendly layer above the render graph.
 It collects per-entity **phase items** during the `Queue` stage, sorts them
 during `PhaseSort`, and executes **draw functions** during `Render`.
 
 All types live in `epix::render::phase`.
+
+The normal extension workflow is:
+
+1. define a phase-item type;
+2. initialize `DrawFunctions<Item>` in the render world;
+3. register one draw function or render-command sequence and retain its ID;
+4. attach `RenderPhase<Item>` to each relevant extracted view;
+5. queue items in `RenderSet::Queue`;
+6. sort them in `RenderSet::PhaseSort`; and
+7. have a graph node begin a pass and call `phase.render(...)`.
 
 ---
 
@@ -48,7 +58,7 @@ concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
 ## DrawFunctionId
 
 ```cpp
-struct DrawFunctionId : core::int_base<uint32_t> { ... };
+struct DrawFunctionId : utils::int_base<uint32_t> { ... };
 ```
 
 A strongly-typed uint32 index into the `DrawFunctions<P>` registry.
@@ -123,6 +133,7 @@ struct DrawFunctions {
     // Lookup by type
     template <Draw<P> T>
     std::optional<DrawFunctionId> get_id() const;
+    std::optional<DrawFunctionId> get_id(meta::type_index type) const;
 
     // Lookup by index
     std::optional<std::reference_wrapper<DrawFunction<P>>>
@@ -146,6 +157,8 @@ struct RenderPhase {
     std::vector<T> items;
 
     void add(const T& item);
+    void add(T&& item);
+    std::size_t batch_size(const T& item) const;
     void sort();                           // calls T::sort(items) or std::sort by sort_key
     auto iter_entities() const;
     void render(const wgpu::RenderPassEncoder&, const World&, Entity view) const;
@@ -154,9 +167,11 @@ struct RenderPhase {
 };
 ```
 
-`RenderPhase<P>` is attached as a component to camera view entities.  During
-the `Render` stage, nodes iterate views, obtain `RenderPhase<P>`, call `sort()`
-and then `render()`.
+`RenderPhase<P>` is attached as a component to camera view entities. Queue
+systems append items; the sort system orders them; graph nodes call `render()`
+or `render_range()`. For a `BatchedPhaseItem`, the draw loop advances by
+`max(1, item.batch_size())`, so the first item in each batch represents the
+whole batch.
 
 ### sort_phase_items<P>
 
@@ -230,7 +245,7 @@ returns `RenderCommandError::Failure`.
 ```cpp
 template <PhaseItem P, template <typename> typename... R>
     requires (RenderCommand<R, P> && ...)
-DrawFunctionId app_add_render_commands(core::App& app);
+DrawFunctionId app_add_render_commands(app::App& app);
 ```
 
 Registers a chain of render commands `R0 → R1 → R2 → …` as a single draw
@@ -238,16 +253,18 @@ function for phase `P`.  Returns the `DrawFunctionId` of the registered
 sequence.
 
 ```cpp
-// In plugin attach():
-render::phase::app_add_render_commands<
+// In plugin attach(), register against the render sub-app's world:
+auto& render_app = app.sub_app_mut(render::Render);
+render_app.world_mut().init_resource<render::phase::DrawFunctions<Transparent2D>>();
+auto draw_id = render::phase::app_add_render_commands<
     Transparent2D,
     render::view::BindViewUniform<0>::Command,  // bind view UBO at slot 0
     render::phase::SetItemPipeline,             // bind pipeline
     MySpriteDrawCommand                         // issue draw call
->(app);
+>(render_app);
 ```
 
-Source: `epix_engine/render/render/modules/render_phase.cppm`
+Source: `epix_engine/render/render/include/epix/render/render_phase.hpp`
 
 ---
 
@@ -263,3 +280,8 @@ concept Draw = PhaseItem<P> &&
 ```
 
 Use `Draw` when implementing a full draw function (not via render commands).
+
+`DrawFunction::prepare()` runs before each phase render and may refresh cached
+query/system-parameter state. `DrawError::Skip` is intentionally silent; other
+errors are logged and drawing continues with later phase items. A missing draw
+function ID is also logged rather than terminating the frame.

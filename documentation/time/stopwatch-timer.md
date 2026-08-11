@@ -1,4 +1,4 @@
-﻿# Stopwatch and Timer
+# Stopwatch and Timer
 
 Utility types for measuring and counting elapsed time within game systems. Both are driven by explicit `tick()` calls — they do not automatically advance.
 
@@ -89,9 +89,9 @@ world.spawn(Explodable{ .fuse = time::Timer::from_seconds(10.0f, time::TimerMode
 
 // In Update system:
 void tick_fuses(
-    core::Res<time::Time<>> time,
-    core::Query<core::Item<Explodable&>> explodables,
-    core::Commands cmd)
+    ecs::Res<time::Time<>> time,
+    ecs::Query<ecs::Item<Explodable&>> explodables,
+    ecs::Commands cmd)
 {
     std::chrono::nanoseconds dt = time->delta();
     for (auto&& [e_id, expl] : explodables.iter_with_entity()) {

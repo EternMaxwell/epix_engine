@@ -1,4 +1,4 @@
-﻿# Epix Engine
+# Epix Engine
 
 Epix Engine is an experimental C++23, ECS-first game engine built around modules,
 data-oriented scheduling, WebGPU rendering, and a plugin-driven application model.
@@ -36,8 +36,11 @@ order, and plugins compose the app out of focused modules.
 
 ## Current Feature Map
 
-- **Core ECS**: `App`, `World`, entities, components, resources, bundles,
-	events, labels, state machines, change detection, component hooks, and queries.
+- **ECS** (`epix.ecs`): `World`, entities, components, entity-backed resources,
+	bundles, events, schedules, systems, queries, change detection, component hooks,
+	hierarchy, and removed-component tracking.
+- **Application** (`epix.app`): `App`, plugins, runners, built-in schedules,
+	state machines, sub-apps, and extraction.
 - **Schedules and systems**: built-in startup/update/exit schedules, run
 	conditions, dependency-aware execution, and plugin lifecycle hooks.
 - **Tasks**: thread pools, awaitable tasks, scoped parallel work, global pools,
@@ -79,30 +82,32 @@ configure with `-DEPIX_IMPORT_STD=OFF`.
 ## Minimal App
 
 ```cpp
-import epix.core;
+import epix.ecs;
+import epix.app;
 
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 struct Position { float x, y; };
 struct Velocity { float dx, dy; };
 
 void spawn_entities(Commands commands) {
-		commands.spawn(Position{0.0f, 0.0f}, Velocity{1.0f, 2.0f});
-		commands.spawn(Position{10.0f, 5.0f}, Velocity{-1.0f, 0.0f});
+	commands.spawn(Position{0.0f, 0.0f}, Velocity{1.0f, 2.0f});
+	commands.spawn(Position{10.0f, 5.0f}, Velocity{-1.0f, 0.0f});
 }
 
 void move_entities(Query<Item<Position&, const Velocity&>> query) {
-		for (auto&& [pos, vel] : query.iter()) {
-				pos.x += vel.dx;
-				pos.y += vel.dy;
-		}
+	for (auto&& [pos, vel] : query.iter()) {
+		pos.x += vel.dx;
+		pos.y += vel.dy;
+	}
 }
 
 int main() {
-		App::create()
-				.add_systems(Startup, into(spawn_entities))
-				.add_systems(Update, into(move_entities))
-				.run();
+	App::create()
+		.add_systems(Startup, into(spawn_entities))
+		.add_systems(Update, into(move_entities))
+		.run();
 }
 ```
 
@@ -115,9 +120,11 @@ under [epix_engine](epix_engine), then follow the module references below.
 - [Building](documentation/building.md) - toolchain, dependencies, options, and tests.
 - [Architecture Overview](documentation/architecture.md) - ECS, schedules,
 	render sub-app, extraction, assets, shaders, and module map.
-- [Core](documentation/core/quick.md) - app, world, systems, queries, events,
-	schedules, state, hierarchy, and change detection.
-- [Tasks](documentation/tasks/quick.md) - task pools, awaitable tasks, scoped
+- [ECS](documentation/ecs/quick.md) - world, systems, schedules, queries, events,
+	resources, hierarchy, change and removal detection.
+- [App](documentation/app/quick.md) - application lifecycle, plugins, built-in
+	schedules, state, sub-apps, and extraction.
+- [Task](documentation/task/quick.md) - task pools, awaitable tasks, scoped
 	parallelism, global pools, and channels.
 - [Time](documentation/time/quick.md) - real, virtual, and fixed-timestep time.
 - [Window](documentation/window/quick.md) - ECS windows and GLFW/SFML backends.
@@ -128,6 +135,11 @@ under [epix_engine](epix_engine), then follow the module references below.
 	and shader caching.
 - [Render](documentation/render/render/quick.md) - WebGPU, render graph, cameras,
 	views, phases, pipelines, and render assets.
+- [Transform](documentation/transform/quick.md) - local/global transforms and hierarchy propagation.
+- [Image](documentation/image/quick.md) - image formats, editing, loading, and asset integration.
+- [Mesh](documentation/mesh/quick.md) - CPU/GPU meshes and built-in 2D mesh rendering.
+- [Sprite](documentation/sprite/quick.md) - sprite components, batching, and Core2D rendering.
+- [Text](documentation/text/quick.md) - fonts, shaping, atlases, text meshes, and rendering.
 - [ImGui](documentation/render/imgui/quick.md) - Dear ImGui integration.
 - [Module Naming Convention](documentation/module_naming_convention.md) - naming
 	rules for C++ modules and symbols.

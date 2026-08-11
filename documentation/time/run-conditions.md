@@ -1,10 +1,13 @@
-﻿# Time-Based Run Conditions
+# Time-Based Run Conditions
 
 Factory functions that return ECS run conditions based on virtual or real time. Pass the result of these functions to `.run_if()` on a system set.
 
 ## Overview
 
-All functions in this file return lambdas that capture an internal [`Timer`](./stopwatch-timer.md#timer) and read the appropriate `Time<T>` resource each frame. They are composable with other run conditions using `.and_()` / `.or_()`.
+All factory functions in this file return lambdas that capture an internal
+[`Timer`](./stopwatch-timer.md#timer) and read the appropriate `Time<T>` resource each frame. Add
+more than one condition by calling `.run_if(...)` repeatedly on the same set configuration; all
+registered conditions must pass.
 
 ---
 
@@ -19,8 +22,8 @@ using namespace std::chrono_literals;
 
 // Run my_system every 500 ms of game time:
 app.add_systems(
-    core::Update,
-    core::into(my_system)
+    app::Update,
+    ecs::into(my_system)
         .run_if(time::on_timer(500ms)));
 ```
 
@@ -31,8 +34,8 @@ Same as `on_timer` but driven by `Time<Real>`. Fires on wall-clock intervals reg
 ```cpp
 // Send a heartbeat every 1 real second, even when game is paused:
 app.add_systems(
-    core::Update,
-    core::into(send_heartbeat)
+    app::Update,
+    ecs::into(send_heartbeat)
         .run_if(time::on_real_timer(std::chrono::seconds(1))));
 ```
 
@@ -47,8 +50,8 @@ Returns a run condition that returns `false` until `duration` of virtual time ha
 ```cpp
 // Trigger an intro cutscene exactly 3 game-seconds after startup:
 app.add_systems(
-    core::Update,
-    core::into(play_intro)
+    app::Update,
+    ecs::into(play_intro)
         .run_if(time::once_after_delay(std::chrono::seconds(3))));
 ```
 
@@ -67,8 +70,8 @@ Returns a run condition that returns `false` for the first `duration` of virtual
 ```cpp
 // Skip the first 2 seconds, then run every frame:
 app.add_systems(
-    core::Update,
-    core::into(my_system)
+    app::Update,
+    ecs::into(my_system)
         .run_if(time::repeating_after_delay(std::chrono::seconds(2))));
 ```
 
@@ -84,8 +87,8 @@ A plain function (not a factory) that returns `true` when `Time<Virtual>` is pau
 
 ```cpp
 app.add_systems(
-    core::Update,
-    core::into(render_pause_menu)
+    app::Update,
+    ecs::into(render_pause_menu)
         .run_if(time::paused));
 ```
 

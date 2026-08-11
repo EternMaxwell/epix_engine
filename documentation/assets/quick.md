@@ -1,4 +1,4 @@
-﻿# EPIX ENGINE ASSETS MODULE
+# EPIX ENGINE ASSETS MODULE
 
 Asynchronous asset management: loading, caching, hot-reloading, and processing of typed assets from the filesystem, memory, or embedded binary data.
 
@@ -42,14 +42,20 @@ Asynchronous asset management: loading, caching, hot-reloading, and processing o
 
 ```cpp
 import epix.assets;
-import epix.core;
+import epix.ecs;
+import epix.app;
 using namespace epix::assets;
-using namespace epix::core;
+using namespace epix::ecs;
+using namespace epix::app;
 
 // 1. Define your asset type (any movable type satisfies Asset)
 struct Image {
     int width, height;
     std::vector<uint8_t> pixels;
+};
+
+struct IconHandle {
+    Handle<Image> value;
 };
 
 // 2. Define a loader
@@ -62,31 +68,38 @@ struct PngLoader {
         static std::array exts = { std::string_view{"png"} };
         return exts;
     }
-    static std::expected<Image, Error> load(
-        std::istream& stream,
+    STDEXEC::task<std::expected<Image, Error>> load(
+        Reader& reader,
         const Settings&,
-        LoadContext&)
+        LoadContext&) const
     {
-        // decode PNG bytes from stream into Image …
-        return Image{ 8, 8, {} };
+        std::vector<std::uint8_t> bytes;
+        auto read = co_await reader.read_to_end(bytes);
+        if (!read) {
+            co_return std::unexpected(
+                std::make_exception_ptr(std::system_error(read.error())));
+        }
+        // Decode bytes into Image.
+        co_return Image{8, 8, std::move(bytes)};
     }
 };
 
 // 3. Build the app
 int main() {
     App app = App::create();
-    app.add_plugin(AssetPlugin{});                     // adds AssetServer resource
+    app.add_plugins(AssetPlugin{});                    // adds AssetServer resource
     app_register_asset<Image>(app);                    // adds Assets<Image> resource + events
     app_register_loader<PngLoader>(app);               // records loader mapping .png → Image
 
     // In a startup system: load from the default "assets/" folder
-    app.add_systems(Startup, [](Res<AssetServer> server) {
+    app.add_systems(Startup, into([](Commands commands, Res<AssetServer> server) {
         Handle<Image> icon = server->load<Image>("icon.png");
         // Handle is strong — asset stays alive as long as you hold it
-    });
+        commands.insert_resource(IconHandle{std::move(icon)});
+    }));
 
     // React to load completion
-    app.add_systems(Update, [](EventReader<AssetEvent<Image>> events, Res<Assets<Image>> store) {
+    app.add_systems(Update, into([](EventReader<AssetEvent<Image>> events, Res<Assets<Image>> store) {
         for (auto& e : events.read()) {
             if (e.is_loaded_with_dependencies()) {
                 auto& image = store->get(e.id)->get();
@@ -94,7 +107,7 @@ int main() {
                     e.id.to_string_short(), image.width, image.height);
             }
         }
-    });
+    }));
 
     app.run();
 }

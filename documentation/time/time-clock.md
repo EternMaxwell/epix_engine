@@ -1,4 +1,4 @@
-﻿# Time&lt;T&gt; — Core Clock
+# Time&lt;T&gt; — Core Clock
 
 The foundational clock template that tracks per-frame delta time, total elapsed time, and wrapped elapsed time.
 
@@ -45,9 +45,9 @@ void set_wrap_period(std::chrono::nanoseconds period)  noexcept;  // must be != 
 ### Usage — reading delta time in a system
 
 ```cpp
-// From epix_engine/experimental/examples/voxel_path_tracer.cpp
+// From epix_engine/experimental/examples/module/voxel_path_tracer.cpp
 void camera_control(
-    core::Res<time::Time<>> game_time,
+    ecs::Res<time::Time<>> game_time,
     /* ... */)
 {
     const float dt = game_time->delta_secs();
@@ -118,7 +118,7 @@ The `max_delta` clamp prevents the "spiral of death" — if a frame takes longer
 
 ```cpp
 void toggle_slowmo(
-    core::ResMut<time::Time<Virtual>> virt)
+    ecs::ResMut<time::Time<time::Virtual>> virt)
 {
     if (virt->relative_speed_f64() == 1.0) {
         virt->set_relative_speed(0.25f); // 4× slow-motion
