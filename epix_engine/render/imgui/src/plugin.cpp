@@ -293,8 +293,8 @@ void imgui::ImGuiPlugin::attach(App& app) {
     app.sub_app_mut(render::Render).then([](App& render_app) {
         render_app.add_systems(render::Render, into(imgui_render)
                                                    .set_name("imgui render")
-                                                   .after(render::RenderSet::Render)
-                                                   .before(render::RenderSet::Cleanup));
+                                                   .after(render::RenderSystems::Render)
+                                                   .before(render::RenderSystems::Cleanup));
     });
 }
 

@@ -10,8 +10,8 @@ std::string_view graph::type_name(SlotType type) noexcept {
     switch (type) {
         case SlotType::Buffer:
             return "Buffer";
-        case SlotType::Texture:
-            return "Texture";
+        case SlotType::TextureView:
+            return "TextureView";
         case SlotType::Sampler:
             return "Sampler";
         case SlotType::Entity:

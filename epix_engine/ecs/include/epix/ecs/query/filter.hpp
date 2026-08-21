@@ -220,7 +220,7 @@ template <query_filter... Fs>
 struct QueryFilter<Or<Fs...>> {
     constexpr static inline bool archetypal = true && (QueryFilter<Fs>::archetypal && ...);
     static bool filter_fetch(WorldQuery<Or<Fs...>>::Fetch& fetch, Entity entity, TableRow row) {
-        [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+        return [&]<std::size_t... Is>(std::index_sequence<Is...>) {
             return false || ((std::get<Is>(fetch).matches &&
                               QueryFilter<Fs>::filter_fetch(std::get<Is>(fetch).fetch, entity, row)) ||
                              ...);
@@ -259,10 +259,12 @@ struct WorldQuery<Added<T>> {
                     .last_run      = last_run,
                     .this_run      = this_run};
         if (fetch.is_sparse_set) {
-            fetch.sparse_set = internal::world_storage(world)
-                                   .sparse_sets.get(state.component_id)
-                                   .transform([](auto& ref) { return &ref.get(); })
-                                   .value_or(nullptr);
+            // MSVC optional::transform cannot handle optional<reference_wrapper>
+            // (reference_wrapper is not default-constructible); unwrap manually.
+            fetch.sparse_set = nullptr;
+            if (auto set = internal::world_storage(world).sparse_sets.get(state.component_id)) {
+                fetch.sparse_set = &set->get();
+            }
         }
         return fetch;
     }

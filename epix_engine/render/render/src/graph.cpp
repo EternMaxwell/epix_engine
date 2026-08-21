@@ -18,13 +18,12 @@ void RenderGraph::update(World& world) {
     }
 }
 
-bool RenderGraph::set_input(std::span<const SlotInfo> inputs) {
+void RenderGraph::set_input(std::span<const SlotInfo> inputs) {
+    // Bevy panics on double-set (graph.rs:98-104); throw is the C++ analogue.
     if (nodes.contains(GraphInput)) {
-        spdlog::warn("Graph input node already exists. Ignoring set_input.");
-        return false;
+        throw std::runtime_error("Graph input node already exists. Run `set_input` once.");
     }
     nodes.emplace(GraphInput, NodeState(GraphInput, new GraphInputNode(std::ranges::to<std::vector>(inputs))));
-    return true;
 }
 
 std::optional<std::reference_wrapper<const NodeState>> RenderGraph::get_input_node() const {
@@ -72,6 +71,25 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
             .input_node     = edge.input_node,
             .missing_output = !output_node,
             .missing_input  = !input_node,
+        });
+    }
+    // Bevy checks edge existence first (graph.rs:438-504): a duplicate add
+    // errors with EdgeAlreadyExists and a missing removal with EdgeDoesNotExist.
+    const bool exists = has_edge(edge);
+    if (exists && !should_exist) {
+        return std::unexpected(EdgeAlreadyExists{
+            .output_node   = edge.output_node,
+            .output_index  = edge.output_index,
+            .input_node    = edge.input_node,
+            .input_index   = edge.input_index,
+        });
+    }
+    if (!exists && should_exist) {
+        return std::unexpected(EdgeDoesNotExist{
+            .output_node   = edge.output_node,
+            .output_index  = edge.output_index,
+            .input_node    = edge.input_node,
+            .input_index   = edge.input_index,
         });
     }
     if (!edge.is_slot_edge()) return {};
@@ -256,7 +274,8 @@ bool RenderGraph::has_edge(const Edge& edge) const {
     if (!input_state || !output_state) {
         return false;
     }
-    return input_state->get().edges.has_input_edge(edge) || output_state->get().edges.has_output_edge(edge);
+    // Bevy requires the edge in BOTH endpoints' lists (graph.rs:507-519).
+    return input_state->get().edges.has_input_edge(edge) && output_state->get().edges.has_output_edge(edge);
 }
 std::optional<std::reference_wrapper<NodeState>> RenderGraph::get_node_state(const NodeLabel& id) {
     auto iter = nodes.find(id);
@@ -288,9 +307,9 @@ const NodeState& RenderGraph::node_state(const NodeLabel& id) const {
 }
 
 std::expected<void, GraphError> RenderGraph::add_sub_graph(const GraphLabel& id, RenderGraph&& graph) {
-    if (sub_graphs.contains(id)) {
-        return std::unexpected(SubGraphExists{id});
-    }
+    // Bevy HashMap::insert semantics: a duplicate label REPLACES the graph
+    // (graph.rs:577-579).
+    sub_graphs.erase(id);
     sub_graphs.emplace(id, std::move(graph));
     return {};
 }

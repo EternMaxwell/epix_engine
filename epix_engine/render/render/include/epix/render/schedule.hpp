@@ -15,34 +15,53 @@ struct RenderT {
 EPIX_EXPORT inline constexpr RenderT Render;
 
 /**
- * @brief Render schedule system sets.
+ * @brief Render schedule system sets (Bevy 0.18 `RenderSystems`).
  *
- * PostExtract -> ManageViews -> Queue -> PhaseSort -> Prepare -> Render -> Cleanup
- * PostExtract -> PrepareAssets -> Prepare
- * Prepare: (PrepareResources -> PrepareFlush -> PrepareSets)
+ * Main chain: ExtractCommands -> PrepareMeshes -> ManageViews -> Queue -> PhaseSort
+ * -> Prepare -> Render -> Cleanup -> PostCleanup
+ * ExtractCommands -> PrepareAssets -> PrepareMeshes -> Prepare
+ * Queue: (QueueMeshes -> QueueSweep)
+ * Prepare: (PrepareResources -> PrepareResourcesCollectPhaseBuffers
+ *           -> PrepareResourcesFlush -> PrepareBindGroups)
+ *
  */
-EPIX_EXPORT enum class RenderSet {
-    /** @brief Runs immediately after extraction from the main world. */
-    PostExtract,
-    /** @brief Prepare render assets (meshes, textures, etc.). */
+EPIX_EXPORT enum class RenderSystems {
+    /** @brief Applies the deferred commands queued during the extract schedule. */
+    ExtractCommands,
+    /** @brief Prepare assets that have been created/modified/removed this frame. */
     PrepareAssets,
-    /** @brief Update and manage camera views. */
+    /** @brief Prepares extracted meshes. */
+    PrepareMeshes,
+    /** @brief Create any additional views such as those used for shadow mapping. */
     ManageViews,
-    /** @brief Queue draw calls and phase items. */
+    /** @brief Queue drawable entities as phase items in render phases. */
     Queue,
-    /** @brief Sort phase items for correct draw order. */
+    /** @brief Sub-set of Queue where mesh entity queue systems run. */
+    QueueMeshes,
+    /** @brief Sub-set of Queue where meshes that became invisible/changed phase are removed. */
+    QueueSweep,
+    /** @brief Sort the sorted render phases and bin keys. */
     PhaseSort,
-    /** @brief Top-level prepare stage (contains sub-sets below). */
+    /** @brief Prepare render resources from extracted data, create bind groups. */
     Prepare,
-    /** @brief Prepare GPU resources (buffers, textures). */
+    /** @brief Sub-set of Prepare for initializing buffers, textures and uniforms. */
     PrepareResources,
-    /** @brief Flush pending resource uploads. */
-    PrepareFlush,
-    /** @brief Prepare bind groups and pipeline layouts. */
-    PrepareSets,
-    /** @brief Execute the render graph. */
+    /** @brief Collect phase buffers after PrepareResources. */
+    PrepareResourcesCollectPhaseBuffers,
+    /** @brief Flush buffers after PrepareResources, before PrepareBindGroups. */
+    PrepareResourcesFlush,
+    /** @brief Sub-set of Prepare for constructing bind groups. */
+    PrepareBindGroups,
+    /** @brief Actual rendering happens here. */
     Render,
-    /** @brief Post-render cleanup of temporary resources. */
+    /** @brief Cleanup render resources here. */
     Cleanup,
+    /** @brief Final cleanup: entities with TemporaryRenderEntity are despawned. */
+    PostCleanup,
 };
+
+/** @brief The startup schedule of the render app (Bevy 0.18 `RenderStartup`). */
+EPIX_EXPORT inline struct RenderStartupT {
+} RenderStartup;
+
 }  // namespace epix::render

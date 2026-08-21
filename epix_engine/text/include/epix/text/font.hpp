@@ -89,11 +89,25 @@ struct FontLoader {
                                                           assets::LoadContext& context);
 };
 
+/** @brief Owning handle to a FreeType library instance.
+ *
+ * Stored as an ECS resource, whose entity-component storage may relocate
+ * values (move-construct into new storage, then destroy the source). The
+ * handle is therefore move-only: copying the raw pointer would leave two
+ * owners and the moved-from destructor would free the library out from
+ * under the copy, leaving a dangling FT_Library.
+ */
 struct FontLibrary {
     void* library;
 
     FontLibrary();
     ~FontLibrary();
+
+    FontLibrary(const FontLibrary&)            = delete;
+    FontLibrary& operator=(const FontLibrary&) = delete;
+
+    FontLibrary(FontLibrary&& other) noexcept;
+    FontLibrary& operator=(FontLibrary&& other) noexcept;
 };
 
 /** @brief Metrics for a single rendered glyph from a font face. */

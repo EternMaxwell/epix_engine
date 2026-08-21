@@ -104,6 +104,129 @@ EPIX_EXPORT enum class ImageType {
     e3D,
 };
 
+
+/** @brief Texel addressing mode for sampler coordinates (Bevy
+ * `ImageAddressMode`, mirrors wgpu AddressMode). */
+EPIX_EXPORT enum class ImageAddressMode {
+    /** @brief Clamp the value to the edge of the texture. */
+    ClampToEdge,
+    /** @brief Repeat the texture in a tiling fashion. */
+    Repeat,
+    /** @brief Repeat the texture, mirroring it every repeat. */
+    MirrorRepeat,
+    /** @brief Clamp the value to the border of the texture (requires the
+     * ADDRESS_MODE_CLAMP_TO_BORDER feature). */
+    ClampToBorder,
+};
+
+/** @brief Texel mixing mode when sampling between texels (Bevy
+ * `ImageFilterMode`, mirrors wgpu FilterMode). */
+EPIX_EXPORT enum class ImageFilterMode {
+    /** @brief Nearest neighbor sampling. */
+    Nearest,
+    /** @brief Linear interpolation. */
+    Linear,
+};
+
+/** @brief Comparison function used for depth and stencil operations (Bevy
+ * `ImageCompareFunction`, mirrors wgpu CompareFunction). */
+EPIX_EXPORT enum class ImageCompareFunction {
+    Never,
+    Less,
+    Equal,
+    LessEqual,
+    Greater,
+    NotEqual,
+    GreaterEqual,
+    Always,
+};
+
+/** @brief Border color used with ImageAddressMode::ClampToBorder (Bevy
+ * `ImageSamplerBorderColor`, mirrors wgpu SamplerBorderColor). */
+EPIX_EXPORT enum class ImageSamplerBorderColor {
+    /** @brief RGBA color [0, 0, 0, 0]. */
+    TransparentBlack,
+    /** @brief RGBA color [0, 0, 0, 1]. */
+    OpaqueBlack,
+    /** @brief RGBA color [1, 1, 1, 1]. */
+    White,
+};
+
+/** @brief Sampler configuration for an image (Bevy `ImageSamplerDescriptor`,
+ * mirrors wgpu SamplerDescriptor). The default matches wgpu's default:
+ * clamp-to-edge addressing, nearest filters, lod clamp 0..32. */
+EPIX_EXPORT struct ImageSamplerDescriptor {
+    /** @brief Optional debug label. */
+    std::string label;
+    /** @brief Address mode for the u (x) direction. */
+    ImageAddressMode address_mode_u = ImageAddressMode::ClampToEdge;
+    /** @brief Address mode for the v (y) direction. */
+    ImageAddressMode address_mode_v = ImageAddressMode::ClampToEdge;
+    /** @brief Address mode for the w (z) direction. */
+    ImageAddressMode address_mode_w = ImageAddressMode::ClampToEdge;
+    /** @brief Filter when the texture is magnified (made larger). */
+    ImageFilterMode mag_filter = ImageFilterMode::Nearest;
+    /** @brief Filter when the texture is minified (made smaller). */
+    ImageFilterMode min_filter = ImageFilterMode::Nearest;
+    /** @brief Filter between mip map levels. */
+    ImageFilterMode mipmap_filter = ImageFilterMode::Nearest;
+    /** @brief Minimum level of detail (mip level). */
+    float lod_min_clamp = 0.0f;
+    /** @brief Maximum level of detail (mip level). */
+    float lod_max_clamp = 32.0f;
+    /** @brief Comparison sampler function, if enabled. */
+    std::optional<ImageCompareFunction> compare = std::nullopt;
+    /** @brief Must be at least 1; if > 1 all filters must be linear. */
+    std::uint16_t anisotropy_clamp = 1;
+    /** @brief Border color for ClampToBorder addressing. */
+    std::optional<ImageSamplerBorderColor> border_color = std::nullopt;
+
+    /** @brief Linear min/mag/mipmap filters (Bevy
+     * ImageSamplerDescriptor::linear). */
+    static ImageSamplerDescriptor linear() {
+        ImageSamplerDescriptor descriptor;
+        descriptor.mag_filter    = ImageFilterMode::Linear;
+        descriptor.min_filter    = ImageFilterMode::Linear;
+        descriptor.mipmap_filter = ImageFilterMode::Linear;
+        return descriptor;
+    }
+    /** @brief Nearest min/mag/mipmap filters (Bevy
+     * ImageSamplerDescriptor::nearest). */
+    static ImageSamplerDescriptor nearest() {
+        ImageSamplerDescriptor descriptor;
+        descriptor.mag_filter    = ImageFilterMode::Nearest;
+        descriptor.min_filter    = ImageFilterMode::Nearest;
+        descriptor.mipmap_filter = ImageFilterMode::Nearest;
+        return descriptor;
+    }
+    /** @brief Set the min/mag/mipmap filters (Bevy
+     * ImageSamplerDescriptor::set_filter). */
+    ImageSamplerDescriptor& set_filter(ImageFilterMode filter) noexcept {
+        mag_filter    = filter;
+        min_filter    = filter;
+        mipmap_filter = filter;
+        return *this;
+    }
+    /** @brief Set the u/v/w address modes (Bevy
+     * ImageSamplerDescriptor::set_address_mode). */
+    ImageSamplerDescriptor& set_address_mode(ImageAddressMode mode) noexcept {
+        address_mode_u = mode;
+        address_mode_v = mode;
+        address_mode_w = mode;
+        return *this;
+    }
+};
+
+/** @brief The sampler to use during rendering (Bevy `ImageSampler`).
+ * `Default` reads the sampler from the ImagePlugin at setup; `Descriptor`
+ * overrides the global default for this image. */
+EPIX_EXPORT enum class ImageSampler {
+    /** @brief Use the global default image sampler. */
+    Default,
+    /** @brief Use a custom sampler descriptor. */
+    Descriptor,
+};
+
 /** @brief Multi-dimensional image with runtime pixel format.
  *
  * Supports 1D, 2D, 2D array, and 3D images. Provides factory methods,
@@ -117,6 +240,9 @@ EPIX_EXPORT class Image {
     ImageType m_type                = ImageType::e2D;
     Format m_format                 = Format::Unknown;
     ImageUsage m_usage              = ImageUsage::Both;
+    bool m_copy_on_resize            = false;
+    ImageSampler m_sampler           = ImageSampler::Default;
+    ImageSamplerDescriptor m_sampler_descriptor;
 
     std::vector<std::byte> data;
 
@@ -243,6 +369,26 @@ EPIX_EXPORT class Image {
     /** @brief Set the usage flags.
      * @param usage New usage bitmask. */
     void set_usage(ImageUsage usage) noexcept { m_usage = usage; }
+    /** @brief True when a GPU upload without data copies min(old, new)
+     * extents from the previous GPU image (Bevy Image::copy_on_resize). */
+    bool copy_on_resize() const noexcept { return m_copy_on_resize; }
+    /** @brief Set whether the GPU upload copies the previous image when
+     * resizing without data. */
+    void set_copy_on_resize(bool value) noexcept { m_copy_on_resize = value; }
+    /** @brief The sampler to use during rendering (Bevy Image::sampler). */
+    ImageSampler sampler() const noexcept { return m_sampler; }
+    /** @brief Set the sampler mode (Bevy Image::sampler). */
+    void set_sampler(ImageSampler sampler) noexcept { m_sampler = sampler; }
+    /** @brief The custom sampler descriptor used when sampler() ==
+     * ImageSampler::Descriptor (Bevy ImageSampler::Descriptor). */
+    const ImageSamplerDescriptor& sampler_descriptor() const noexcept { return m_sampler_descriptor; }
+    ImageSamplerDescriptor& sampler_descriptor_mut() noexcept { return m_sampler_descriptor; }
+    /** @brief Set a custom sampler descriptor and switch to
+     * ImageSampler::Descriptor (Bevy ImageSampler::Descriptor). */
+    void set_sampler_descriptor(ImageSamplerDescriptor descriptor) noexcept {
+        m_sampler_descriptor = std::move(descriptor);
+        m_sampler           = ImageSampler::Descriptor;
+    }
 
     /** @brief Get a read-only byte span of the raw pixel data. */
     std::span<const std::byte> raw_view() const noexcept { return std::as_bytes(std::span(data)); }

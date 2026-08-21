@@ -14,6 +14,15 @@
 #include <webgpu/webgpu.hpp>
 #endif
 
+namespace epix::render::camera {
+/** @brief Forward declaration (window.hpp is included by view.hpp). */
+struct ExtractedCamera;
+}  // namespace epix::render::camera
+namespace epix::render::view {
+/** @brief Forward declaration (window.hpp is included by view.hpp). */
+struct ViewTarget;
+}  // namespace epix::render::view
+
 namespace epix::render::window {
 /**
  * @brief A component for window entity, to tell how its surface should be created, cause the backend is unknown.
@@ -46,6 +55,23 @@ EPIX_EXPORT struct ExtractedWindow {
     bool size_changed = false;
     /** @brief Whether the present mode changed since last frame. */
     bool present_mode_changed = false;
+    /** @brief Present at least once, even before any camera rendered (Bevy
+     * ExtractedWindow::needs_initial_present). */
+    bool needs_initial_present = true;
+
+    /** @brief Whether a swapchain texture is currently held (Bevy
+     * ExtractedWindow::has_swapchain_texture). */
+    bool has_swapchain_texture() const noexcept {
+        return static_cast<bool>(swapchain_texture_view) &&
+               (swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal ||
+                swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal);
+    }
+    /** @brief Release the held swapchain texture after presenting (Bevy
+     * ExtractedWindow::present takes the Option). */
+    void release_swapchain_texture() {
+        swapchain_texture      = wgpu::SurfaceTexture{};
+        swapchain_texture_view = nullptr;
+    }
 };
 /** @brief Resource collecting all extracted windows for the current
  * frame. */
@@ -106,7 +132,9 @@ void create_surfaces(ecs::Res<ExtractedWindows> windows,
                      ecs::Res<wgpu::Adapter> adapter,
                      ecs::Res<wgpu::Device> device);
 
-void present_windows(ecs::ResMut<WindowSurfaces> window_surfaces, ecs::ResMut<ExtractedWindows> windows);
+void present_windows(ecs::ResMut<WindowSurfaces> window_surfaces,
+                    ecs::ResMut<ExtractedWindows> windows,
+                    ecs::Query<ecs::Item<ecs::Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views);
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */

@@ -11,8 +11,10 @@
 #include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
+#include <epix/render/label.hpp>
 #include <epix/traits.hpp>
 #include <epix/utils.hpp>
+#include <glm/glm.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -102,24 +104,43 @@ EPIX_EXPORT struct OpaqueSortKey {
     bool operator==(const OpaqueSortKey& other) const { return (*this <=> other) == std::strong_ordering::equal; }
 };
 
-/** @brief Concept for a render phase item that provides entity, sort key,
- * and draw function identifiers. */
+/** @brief The "extra index" associated with some phase items besides the
+ * instance range (Bevy `PhaseItemExtraIndex`): a dynamic offset or an
+ * indirect-parameters index. */
+EPIX_EXPORT enum class PhaseItemExtraIndex : std::uint8_t {
+    /** @brief No extra index. */
+    None,
+    /** @brief A wgpu dynamic offset into the instance-data buffer. */
+    DynamicOffset,
+    /** @brief An index into the indirect-parameters buffer (GPU culling). */
+    IndirectParametersIndex,
+};
+
+/** @brief Length of a batch range (Bevy `Range::len`). */
+EPIX_EXPORT inline std::uint32_t batch_range_len(
+    const std::pair<std::uint32_t, std::uint32_t>& range) noexcept {
+    return range.second - range.first;
+}
+
+/** @brief Concept for a render phase item providing entity, main entity,
+ * sort key, draw function, batch range and extra index (Bevy 0.18
+ * `PhaseItem`, render_phase/mod.rs:1517-1548). */
 EPIX_EXPORT template <typename T>
 concept PhaseItem = requires(const T item) {
-    // the entity associated with this item
+    // the render entity associated with this item
     { item.entity() } -> std::same_as<epix::ecs::Entity>;
+    // the main-world entity represented by this item
+    { item.main_entity() } -> std::same_as<sync_world::MainEntity>;
     // the sort key for this item, the smaller the key, the earlier it is rendered
     { item.sort_key() } -> std::three_way_comparable;
     // the draw function index for this item
     { item.draw_function() } -> std::convertible_to<DrawFunctionId>;
-};
-
-/** @brief Concept extending PhaseItem with batch size support for
- * instanced draws. */
-EPIX_EXPORT template <typename P>
-concept BatchedPhaseItem = PhaseItem<P> && requires(const P item) {
-    // batch size/count for this item
-    { item.batch_size() } -> std::convertible_to<size_t>;
+    // the stored instance range covered by this item's batch (Bevy
+    // batch_range: Range<u32>; C++ cannot share a field and a method name,
+    // so the field is accessed directly)
+    { item.batch_range } -> std::convertible_to<const std::pair<std::uint32_t, std::uint32_t>&>;
+    // the extra index (dynamic offset / indirect parameters)
+    { item.extra_index() } -> std::same_as<PhaseItemExtraIndex>;
 };
 
 /** @brief Concept extending PhaseItem with a cached pipeline ID for
@@ -246,20 +267,39 @@ struct DrawFunctionsInternal {
             func->prepare(world);
         }
     }
+    /** @brief Append a draw function and map it to the type `T` (Bevy
+     * DrawFunctionsInternal::add_with: the mapped key is the first template
+     * parameter, draw.rs:84-92). */
+    template <typename T, Draw<P> D, typename... Args>
+        requires std::constructible_from<D, Args...>
+    DrawFunctionId add_with(Args&&... args) {
+        const auto index = static_cast<uint32_t>(m_functions.size());
+        // Bevy always appends a new function and re-maps the type to the NEW
+        // id (draw.rs:74-84); a re-registered draw function replaces the old one.
+        m_indices.insert_or_assign(meta::type_id<T>(), index);
+        if constexpr (std::derived_from<D, DrawFunction<P>>) {
+            m_functions.emplace_back(std::make_unique<D>(std::forward<Args>(args)...));
+        } else {
+            m_functions.emplace_back(std::make_unique<DrawFunctionImpl<P, D>>(std::forward<Args>(args)...));
+        }
+        return DrawFunctionId(index);
+    }
+    /** @brief Append a draw function mapped to its own type (Bevy
+     * DrawFunctionsInternal::add). */
     template <Draw<P> T, typename... Args>
         requires std::constructible_from<T, Args...>
     DrawFunctionId add(Args&&... args) {
-        meta::type_index type = meta::type_id<T>();
-        auto index            = static_cast<uint32_t>(m_functions.size());
-        auto res              = m_indices.emplace(type, index);
-        if (!res.second) return DrawFunctionId(res.first->second);
-        // only construct and add if the type is not already present
-        if constexpr (std::derived_from<T, DrawFunction<P>>) {
-            m_functions.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));
-        } else {
-            m_functions.emplace_back(std::make_unique<DrawFunctionImpl<P, T>>(std::forward<Args>(args)...));
+        return add_with<T, T>(std::forward<Args>(args)...);
+    }
+    /** @brief The id of the draw function registered under type T; throws if
+     * not registered (Bevy DrawFunctionsInternal::id panics). */
+    template <typename T>
+    DrawFunctionId id() const {
+        if (auto it = m_indices.find(meta::type_id<T>()); it != m_indices.end()) {
+            return DrawFunctionId(it->second);
         }
-        return DrawFunctionId(index);
+        throw std::runtime_error(std::format("Draw function {} not found for {}", meta::type_id<T>().name(),
+                                             meta::type_id<P>().name()));
     }
     template <typename Func>
         requires Draw<P, std::decay_t<Func>>
@@ -301,13 +341,26 @@ struct DrawFunctions {
         requires std::constructible_from<T, Args...>
     DrawFunctionId add(Args&&... args) const {
         auto&& [m_mutex, m_functions] = *m_data;
-        {
-            std::shared_lock lock(m_mutex);
-            auto id = m_functions.template get_id<T>();
-            if (id) return *id;
-        }
+        // Bevy always appends and re-maps the type to the NEW id (draw.rs:74-84).
         std::unique_lock lock(m_mutex);
         return m_functions.template add<T>(std::forward<Args>(args)...);
+    }
+    /** @brief Append a draw function mapped to the type `T` (Bevy
+     * DrawFunctions::add_with). */
+    template <typename T, Draw<P> D, typename... Args>
+        requires std::constructible_from<D, Args...>
+    DrawFunctionId add_with(Args&&... args) const {
+        auto&& [m_mutex, m_functions] = *m_data;
+        std::unique_lock lock(m_mutex);
+        return m_functions.template add_with<T, D>(std::forward<Args>(args)...);
+    }
+    /** @brief The id of the draw function registered under type T; throws if
+     * not registered (Bevy DrawFunctions::id panics). */
+    template <typename T>
+    DrawFunctionId id() const {
+        auto&& [m_mutex, m_functions] = *m_data;
+        std::shared_lock lock(m_mutex);
+        return m_functions.template id<T>();
     }
     std::optional<DrawFunctionId> get_id(const meta::type_index& type) const {
         auto&& [m_mutex, m_functions] = *m_data;
@@ -346,17 +399,17 @@ struct RenderPhase {
 
     std::vector<T> items;
 
+    /** @brief Length of the item's batch range, at least 1 (Bevy
+     * batch_range().len()). */
     std::size_t batch_size(const T& item) const {
-        if constexpr (BatchedPhaseItem<T>) {
-            return std::max<size_t>(1, item.batch_size());
-        } else {
-            return 1;
-        }
+        return std::max<std::size_t>(1, batch_range_len(item.batch_range));
     }
 
    public:
     void add(const T& item) { items.push_back(item); }
     void add(T&& item) { items.push_back(std::move(item)); }
+    /** @brief Remove all items (Bevy SortedRenderPhase::clear). */
+    void clear() { items.clear(); }
     void sort() {
         if constexpr (requires { T::sort(items); }) {
             T::sort(items);
@@ -378,6 +431,8 @@ struct RenderPhase {
 
         auto&& draw_functions = world.resource<DrawFunctions<T>>();
         draw_functions.prepare(world);
+        // Bevy: skip `batch_range.len()` items after each batched draw
+        // (render_phase/mod.rs:1470-1487).
         for (std::size_t i = start; i < end; i += batch_size(items[i])) {
             auto& item = items[i];
             if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
@@ -520,43 +575,13 @@ struct SetItemPipeline {
         auto&& [pipeline_server] = params.get();
         auto pipeline            = pipeline_server->get_render_pipeline(item.pipeline());
         if (!pipeline) {
-            if (std::holds_alternative<GetPipelineNotReady>(pipeline.error())) {
-                return std::unexpected(RenderCommandError{
-                    .type    = RenderCommandError::Type::Skip,
-                    .message = std::format("Render pipeline {} is not ready for item {:#x}.", item.pipeline().get(),
-                                           item.entity().index),
-                });
-            }
-            auto detail = std::visit(
-                []<typename T>(const T& error) -> std::string {
-                    using error_t = std::decay_t<T>;
-                    if constexpr (std::is_same_v<error_t, GetPipelineNotReady>) {
-                        return "pipeline not ready";
-                    } else if constexpr (std::is_same_v<error_t, GetPipelineInvalidId>) {
-                        return "invalid pipeline id";
-                    } else {
-                        return std::visit(
-                            []<typename Inner>(const Inner& inner) -> std::string {
-                                using inner_t = std::decay_t<Inner>;
-                                if constexpr (std::is_same_v<inner_t, PipelineError>) {
-                                    return "pipeline creation failure";
-                                } else if constexpr (std::is_same_v<inner_t, shader::ShaderCacheError>) {
-                                    if (inner.is_recoverable()) {
-                                        return "shader not loaded";
-                                    }
-                                    return std::format("shader error: {}", inner.message());
-                                } else {
-                                    return "unknown pipeline server error";
-                                }
-                            },
-                            error);
-                    }
-                },
-                pipeline.error());
+            // Bevy: ANY cache miss (not ready, invalid id, or creation failure)
+            // is a Skip — the item is simply not drawn this frame
+            // (mod.rs:1740-1748).
             return std::unexpected(RenderCommandError{
-                .type    = RenderCommandError::Type::Failure,
-                .message = std::format("Failed to resolve render pipeline {} for item {:#x}: {}.",
-                                       item.pipeline().get(), item.entity().index, detail),
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("Render pipeline {} is not ready for item {:#x}.", item.pipeline().get(),
+                                       item.entity().index),
             });
         }
 
@@ -619,4 +644,252 @@ void sort_phase_items(epix::ecs::Query<epix::ecs::Item<RenderPhase<P>&>> phases)
         phase.sort();
     }
 }
+
+/** @brief A type usable as a binned phase item batch-set key (Bevy
+ * PhaseItemBatchSetKey trait, render_phase/mod.rs:1662). Bevy requires
+ * Clone+Send+Sync+PartialEq+Eq+Ord+Hash; C++ requires comparable semantics
+ * via equality. */
+EPIX_EXPORT template <typename T>
+concept PhaseItemBatchSetKey = std::equality_comparable<T>;
+
+/** @brief Concept extending PhaseItem for binned (data-oriented) phases (Bevy
+ * `BinnedPhaseItem`). Requires `BinKey`/`BatchSetKey` types plus `bin_key()`,
+ * `batch_set_key()` and `batchable()` accessors (0.18 semantics); BatchSetKey
+ * must satisfy PhaseItemBatchSetKey. */
+EPIX_EXPORT template <typename P>
+concept BinnedPhaseItem = PhaseItem<P> && requires(const P item) {
+    typename P::BinKey;
+    typename P::BatchSetKey;
+    requires PhaseItemBatchSetKey<typename P::BatchSetKey>;
+    { item.bin_key() } -> std::same_as<const typename P::BinKey&>;
+    { item.batch_set_key() } -> std::same_as<const typename P::BatchSetKey&>;
+    { item.batchable() } -> std::convertible_to<bool>;
+};
+
+/** @brief Concept for a phase item that participates in the sorted phase path
+ * (Bevy `SortedPhaseItem`). Satisfied by any `PhaseItem` with a sort key. */
+EPIX_EXPORT template <typename P>
+concept SortedPhaseItem = PhaseItem<P>;
+
+/**
+ * @brief How a binned phase item is batched when rendered (Bevy `BatchMode`).
+ */
+EPIX_EXPORT enum class BatchMode {
+    /** @brief Batches consecutive items with the same bin key. */
+    Sequential,
+    /** @brief No batching; one item per entity. */
+    PerEntity,
+};
+
+/**
+ * @brief Marker component disabling automatic batching for an entity (Bevy
+ * `NoAutomaticBatching`).
+ */
+EPIX_EXPORT struct NoAutomaticBatching {};
+
+/**
+ * @brief A distance calculator for the draw order of phase items (Bevy
+ * `ViewRangefinder3d`). Computes the view-space Z of a world-space position.
+ */
+EPIX_EXPORT struct ViewRangefinder3d {
+    /** @brief Row 2 of the view-from-world matrix. */
+    glm::vec4 view_from_world_row_2 = glm::vec4(0.0f);
+
+    /** @brief Create from a world-from-view transform (inverse is cached). */
+    static ViewRangefinder3d from_world_from_view(const glm::mat4& world_from_view) noexcept {
+        const glm::mat4 view_from_world = glm::inverse(world_from_view);
+        // row 2 (the z row) of the column-major view matrix
+        return ViewRangefinder3d{glm::vec4(view_from_world[0].z, view_from_world[1].z, view_from_world[2].z,
+                                           view_from_world[3].z)};
+    }
+
+    /** @brief Calculates the distance (view-space Z) for the given world-space position. */
+    float distance(const glm::vec3& position) const noexcept {
+        return glm::dot(view_from_world_row_2, glm::vec4(position, 1.0f));
+    }
+};
+
+/**
+ * @brief Strongly-typed label for draw functions (Bevy `DrawFunctionLabel`).
+ */
+EPIX_EXPORT EPIX_MAKE_LABEL(DrawFunctionLabel);
+/** @brief Interned form of `DrawFunctionLabel` (Bevy `InternedDrawFunctionLabel`). */
+using InternedDrawFunctionLabel = label::Interned<DrawFunctionLabel>;
+
+/**
+ * @brief Strongly-typed label for shader imports (Bevy `ShaderLabel`).
+ */
+EPIX_EXPORT EPIX_MAKE_LABEL(ShaderLabel);
+/** @brief Interned form of `ShaderLabel` (Bevy `InternedShaderLabel`). */
+using InternedShaderLabel = label::Interned<ShaderLabel>;
+
+/**
+ * @brief A wrapper around `wgpu::RenderPassEncoder` that tracks pipeline, bind
+ * group and buffer state to avoid redundant state changes, and accumulates
+ * dynamic offsets (Bevy `TrackedRenderPass`).
+ */
+EPIX_EXPORT class TrackedRenderPass {
+   public:
+    /** @brief Identity of a bound buffer region: (buffer handle, offset,
+     * size) (Bevy BufferSliceKey). */
+    using BufferSliceKey = std::tuple<const void*, std::uint64_t, std::uint64_t>;
+
+    /** @brief Construct with the device so the state arrays match the
+     * device limits (Bevy TrackedRenderPass::new(device, pass)). */
+    explicit TrackedRenderPass(const wgpu::Device& device, wgpu::RenderPassEncoder pass) : m_pass(std::move(pass)) {
+        wgpu::Limits limits{};
+        device.getLimits(&limits);
+        m_bind_groups.resize(limits.maxBindGroups);
+        m_vertex_buffers.resize(limits.maxVertexBuffers);
+    }
+
+    /** @brief Set the render pipeline. Redundant sets are skipped (Bevy
+     * DrawState::set_pipeline). */
+    void set_pipeline(const wgpu::RenderPipeline& pipeline) {
+        const void* id = pipeline.raw();
+        if (m_pipeline == id) return;
+        m_pass.setPipeline(pipeline);
+        m_pipeline    = id;
+        m_stores_state = true;
+    }
+
+    /** @brief Bind a bind group at `index` with optional dynamic offsets.
+     * Redundant binds (same group and offsets) are skipped. */
+    void set_bind_group(std::uint32_t index, const wgpu::BindGroup& bind_group, std::span<const std::uint32_t> offsets) {
+        const void* id = bind_group.raw();
+        const auto& current_offsets = index < m_bind_groups.size() ? m_bind_groups[index].second : m_empty_offsets;
+        if (index < m_bind_groups.size() && m_bind_groups[index].first == id && current_offsets.size() == offsets.size() &&
+            std::equal(current_offsets.begin(), current_offsets.end(), offsets.begin())) {
+            return;
+        }
+        m_pass.setBindGroup(index, bind_group, offsets);
+        if (index >= m_bind_groups.size()) {
+            m_bind_groups.resize(static_cast<std::size_t>(index) + 1);
+        }
+        m_bind_groups[index].first  = id;
+        m_bind_groups[index].second.assign(offsets.begin(), offsets.end());
+        m_stores_state = true;
+    }
+
+    /** @brief Bind a vertex buffer at `slot`. Redundant binds are skipped. */
+    void set_vertex_buffer(std::uint32_t slot, const wgpu::Buffer& buffer, std::uint64_t offset = 0, std::uint64_t size = 0) {
+        const BufferSliceKey key{buffer.raw(), offset, size};
+        if (slot < m_vertex_buffers.size() && m_vertex_buffers[slot] == key) return;
+        m_pass.setVertexBuffer(slot, buffer, offset, size);
+        if (slot >= m_vertex_buffers.size()) {
+            m_vertex_buffers.resize(static_cast<std::size_t>(slot) + 1);
+        }
+        m_vertex_buffers[slot] = key;
+        m_stores_state = true;
+    }
+
+    /** @brief Bind an index buffer. Redundant binds (same slice and format)
+     * are skipped. */
+    void set_index_buffer(const wgpu::Buffer& buffer, wgpu::IndexFormat format, std::uint64_t offset = 0,
+                          std::uint64_t size = 0) {
+        const BufferSliceKey key{buffer.raw(), offset, size};
+        if (m_index_buffer && m_index_buffer->first == key && m_index_buffer->second == format) return;
+        m_pass.setIndexBuffer(buffer, format, offset, size);
+        m_index_buffer = std::pair<BufferSliceKey, wgpu::IndexFormat>{key, format};
+        m_stores_state = true;
+    }
+
+    /** @brief Issue a non-indexed draw (Bevy draw(vertices: Range<u32>,
+     * instances: Range<u32>)). */
+    void draw(std::pair<std::uint32_t, std::uint32_t> vertices, std::pair<std::uint32_t, std::uint32_t> instances) {
+        m_pass.draw(vertices.second - vertices.first, instances.second - instances.first, vertices.first,
+                    instances.first);
+    }
+
+    /** @brief Issue an indexed draw (Bevy draw_indexed(indices: Range<u32>,
+     * base_vertex, instances: Range<u32>)). */
+    void draw_indexed(std::pair<std::uint32_t, std::uint32_t> indices,
+                      std::int32_t base_vertex,
+                      std::pair<std::uint32_t, std::uint32_t> instances) {
+        m_pass.drawIndexed(indices.second - indices.first, instances.second - instances.first, indices.first,
+                           base_vertex, instances.first);
+    }
+
+    /** @brief Push a debug group. */
+    void push_debug_group(std::string_view label) { m_pass.pushDebugGroup(wgpu::StringView(label.data())); }
+    /** @brief Pop a debug group. */
+    void pop_debug_group() { m_pass.popDebugGroup(); }
+    /** @brief Insert a debug marker (Bevy TrackedRenderPass::insert_debug_marker). */
+    void insert_debug_marker(std::string_view label) { m_pass.insertDebugMarker(wgpu::StringView(label.data())); }
+
+    /** @brief Set the stencil reference value (Bevy
+     * TrackedRenderPass::set_stencil_reference). */
+    void set_stencil_reference(std::uint32_t reference) { m_pass.setStencilReference(reference); }
+
+    /** @brief Set the scissor rectangle (Bevy
+     * TrackedRenderPass::set_scissor_rect). */
+    void set_scissor_rect(std::uint32_t x, std::uint32_t y, std::uint32_t width, std::uint32_t height) {
+        m_pass.setScissorRect(x, y, width, height);
+    }
+
+    /** @brief Set the viewport (Bevy TrackedRenderPass::set_viewport). */
+    void set_viewport(float x, float y, float width, float height, float min_depth, float max_depth) {
+        m_pass.setViewport(x, y, width, height, min_depth, max_depth);
+    }
+
+    /** @brief Set the blend constant color (Bevy
+     * TrackedRenderPass::set_blend_constant). */
+    void set_blend_constant(wgpu::Color color) { m_pass.setBlendConstant(color); }
+
+    /** @brief Set push constants (Bevy TrackedRenderPass::set_push_constants). */
+    void set_push_constants(wgpu::ShaderStage stages, std::uint32_t offset, const void* data, std::size_t size) {
+        m_pass.setPushConstants(stages, offset, static_cast<std::uint32_t>(size), data);
+    }
+
+    /** @brief Issue an indirect draw (Bevy
+     * TrackedRenderPass::draw_indirect). */
+    void draw_indirect(const wgpu::Buffer& indirect_buffer, std::uint64_t indirect_offset) {
+        m_pass.drawIndirect(indirect_buffer, indirect_offset);
+    }
+
+    /** @brief Issue an indexed indirect draw (Bevy
+     * TrackedRenderPass::draw_indexed_indirect). */
+    void draw_indexed_indirect(const wgpu::Buffer& indirect_buffer, std::uint64_t indirect_offset) {
+        m_pass.drawIndexedIndirect(indirect_buffer, indirect_offset);
+    }
+
+    /** @brief Access the underlying encoder (e.g. to end the pass).
+     * Invalidates internal tracking state (Bevy wgpu_pass). */
+    wgpu::RenderPassEncoder& pass() noexcept {
+        reset_tracking();
+        return m_pass;
+    }
+
+   private:
+    /** @brief Clear all tracked state (Bevy DrawState::reset_tracking). */
+    void reset_tracking() noexcept {
+        if (!m_stores_state) return;
+        m_pipeline = nullptr;
+        for (auto& [group, offsets] : m_bind_groups) {
+            (void)group;
+            group = nullptr;
+            offsets.clear();
+        }
+        for (auto& buffer : m_vertex_buffers) {
+            buffer.reset();
+        }
+        m_index_buffer.reset();
+        m_stores_state = false;
+    }
+
+    wgpu::RenderPassEncoder m_pass;
+    /** @brief Currently bound pipeline handle (Bevy DrawState::pipeline). */
+    const void* m_pipeline = nullptr;
+    /** @brief Per-index (bind group handle, dynamic offsets). */
+    std::vector<std::pair<const void*, std::vector<std::uint32_t>>> m_bind_groups;
+    /** @brief Empty offsets fallback for out-of-range comparisons. */
+    std::vector<std::uint32_t> m_empty_offsets;
+    /** @brief Per-slot vertex buffer slice identity. */
+    std::vector<std::optional<BufferSliceKey>> m_vertex_buffers;
+    /** @brief Bound index buffer slice identity + format. */
+    std::optional<std::pair<BufferSliceKey, wgpu::IndexFormat>> m_index_buffer;
+    /** @brief True when any state is tracked (Bevy stores_state). */
+    bool m_stores_state = false;
+};
+
 }  // namespace epix::render::phase

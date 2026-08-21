@@ -12,7 +12,7 @@ bool RenderGraphRunner::run(const RenderGraph& graph,
                             const wgpu::Device& device,
                             const wgpu::Queue& queue,
                             World& world,
-                            std::function<void(const wgpu::CommandEncoder&)> finalizer) {
+                            std::function<void(wgpu::CommandEncoder&)> finalizer) {
     spdlog::trace("[render.graph] Running render graph.");
     RenderContext render_context(device.clone());
     auto res = run_graph(graph, std::nullopt, render_context, world, {}, std::nullopt);
@@ -63,7 +63,7 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         for (auto&& next_node : std::views::transform(input_node->get().edges.output_edges(),
                                                       [](const Edge& e) { return e.input_node; })) {
             if (auto state = graph.get_node_state(next_node)) {
-                node_queue.push_back(*state);
+                node_queue.push_front(*state);
             }
         }
     }
@@ -123,8 +123,18 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
             for (auto&& run_sub_graph : context.finish()) {
                 auto sub_graph = graph.get_sub_graph(run_sub_graph.id);
                 if (sub_graph) {
+                    // Bevy graph_runner.rs:284-287: debug marker around each
+                    // sub-graph run (trace feature; epix always emits).
+                    if (run_sub_graph.debug_group && render_context.has_command_encoder()) {
+                        render_context.command_encoder().insertDebugMarker(
+                            wgpu::StringView(std::string_view("Start " + *run_sub_graph.debug_group)));
+                    }
                     auto res = run_graph(*sub_graph, run_sub_graph.id, render_context, world, run_sub_graph.inputs,
                                          run_sub_graph.view_entity);
+                    if (run_sub_graph.debug_group && render_context.has_command_encoder()) {
+                        render_context.command_encoder().insertDebugMarker(
+                            wgpu::StringView(std::string_view("End " + *run_sub_graph.debug_group)));
+                    }
                     if (!res) {
                         spdlog::warn(
                             "Sub graph {} failed to run. Ignoring "
@@ -157,12 +167,14 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         for (auto&& next_node :
              std::views::transform(node_state.edges.output_edges(), [](const Edge& e) { return e.input_node; })) {
             if (auto state = graph.get_node_state(next_node)) {
-                node_queue.push_back(std::ref(*state));
+                node_queue.push_front(std::ref(*state));
             }
         }
     }
 
-    render_context.flush_encoder();  // flush the remaining commandlist. Or maybe just clearState?
+    // Bevy run_graph does NOT flush here: commands accumulate in the shared
+    // encoder and are flushed by add_command_buffer / finish() so that
+    // externally-added buffers stay in command order (graph_runner.rs).
 
     return true;
 }

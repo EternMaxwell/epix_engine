@@ -19,16 +19,17 @@
 namespace epix::render::graph {
 /** @brief Base class for render graph nodes.
  *
- * Override `inputs()` / `outputs()` to declare slots, `update()` for
+ * Override `input()` / `output()` to declare slots, `update()` for
  * per-frame state updates, and `run()` to issue GPU commands.
  */
 EPIX_EXPORT struct Node {
     /** @brief Declare the input slots this node accepts. */
-    virtual std::vector<SlotInfo> inputs() { return {}; }
+    virtual std::vector<SlotInfo> input() { return {}; }
     /** @brief Declare the output slots this node produces. */
-    virtual std::vector<SlotInfo> outputs() { return {}; }
-    /** @brief Called once per frame to update internal state before rendering. */
-    virtual void update(const epix::ecs::World&) {}
+    virtual std::vector<SlotInfo> output() { return {}; }
+    /** @brief Called once per frame to update internal state before rendering
+     * (Bevy Node::update(&mut self, world: &mut World)). */
+    virtual void update(epix::ecs::World&) {}
     /** @brief Execute this node's GPU commands during the render pass. */
     virtual void run(GraphContext&, RenderContext&, const epix::ecs::World&) {}
 };
@@ -89,6 +90,8 @@ struct Edges {
 EPIX_EXPORT struct NodeState {
     /** @brief Label identifying this node in the graph. */
     NodeLabel label;
+    /** @brief Type name of the concrete node (Bevy `type_name`, node.rs:240). */
+    std::string type_name;
     /** @brief Slot metadata for the node's inputs. */
     SlotInfos inputs;
     /** @brief Slot metadata for the node's outputs. */
@@ -99,15 +102,17 @@ EPIX_EXPORT struct NodeState {
     Edges edges;
 
     NodeState(NodeLabel id, Node* node)
-        : label(id), pnode(node), edges(id), inputs(node->inputs()), outputs(node->outputs()) {}
+        : label(id), type_name(typeid(*node).name()), pnode(node), edges(id), inputs(node->input()),
+          outputs(node->output()) {}
     template <typename T>
         requires std::derived_from<std::decay_t<T>, Node>
     NodeState(NodeLabel id, T&& node)
         : label(id),
+          type_name(typeid(std::decay_t<T>).name()),
           pnode(std::make_unique<std::decay_t<T>>(std::forward<T>(node))),
           edges(id),
-          inputs(node.inputs()),
-          outputs(node.outputs()) {}
+          inputs(node.input()),
+          outputs(node.output()) {}
 
     template <typename T>
     T* node() noexcept {
@@ -147,12 +152,13 @@ EPIX_EXPORT struct GraphInputNode : public Node {
     std::vector<SlotInfo> m_inputs;
     GraphInputNode() = default;
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
-    std::vector<SlotInfo> inputs() override { return m_inputs; }
-    std::vector<SlotInfo> outputs() override { return m_inputs; }
+    std::vector<SlotInfo> input() override { return m_inputs; }
+    std::vector<SlotInfo> output() override { return m_inputs; }
     void run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override;
 };
 /** @brief A no-op node that does nothing when run. */
 EPIX_EXPORT struct EmptyNode : public Node {
     void run(GraphContext&, RenderContext&, const epix::ecs::World&) override {}
 };
+
 }  // namespace epix::render::graph

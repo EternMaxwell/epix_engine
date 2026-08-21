@@ -22,10 +22,10 @@
 namespace epix::render::graph {
 /** @brief Type of data that can flow through a render graph slot. */
 EPIX_EXPORT enum class SlotType {
-    Buffer,  /**< @brief A GPU buffer. */
-    Texture, /**< @brief A texture view. */
-    Sampler, /**< @brief A texture sampler. */
-    Entity,  /**< @brief An ECS entity reference. */
+    Buffer,     /**< @brief A GPU buffer. */
+    TextureView, /**< @brief A texture view. */
+    Sampler,    /**< @brief A texture sampler. */
+    Entity,     /**< @brief An ECS entity reference. */
 };
 /** @brief Get a human-readable name for a SlotType.
  * @param type The slot type.
@@ -79,7 +79,7 @@ EPIX_EXPORT struct SlotValue {
         return std::visit(utils::visitor{
                               [](const epix::ecs::Entity&) { return SlotType::Entity; },
                               [](const wgpu::Buffer&) { return SlotType::Buffer; },
-                              [](const wgpu::TextureView&) { return SlotType::Texture; },
+                              [](const wgpu::TextureView&) { return SlotType::TextureView; },
                               [](const wgpu::Sampler&) { return SlotType::Sampler; },
                           },
                           value);
@@ -146,10 +146,17 @@ struct SlotInfos {
     std::size_t size() const noexcept { return slots.size(); }
     bool empty() const noexcept { return slots.empty(); }
     std::optional<std::reference_wrapper<SlotInfo>> get_slot(const SlotLabel& label) noexcept {
-        return get_slot_index(label).transform([this](std::uint32_t index) { return std::ref(slots[index]); });
+        // Bounds-checked: a numeric label out of range yields nullopt, not UB
+        // (Bevy SlotInfos::get_slot returns None). MSVC optional::and_then
+        // cannot hold reference_wrapper, so unwrap manually.
+        auto index = get_slot_index(label);
+        if (!index || *index >= slots.size()) return std::nullopt;
+        return std::ref(slots[*index]);
     }
     std::optional<std::reference_wrapper<const SlotInfo>> get_slot(const SlotLabel& label) const noexcept {
-        return get_slot_index(label).transform([this](std::uint32_t index) { return std::cref(slots[index]); });
+        auto index = get_slot_index(label);
+        if (!index || *index >= slots.size()) return std::nullopt;
+        return std::cref(slots[*index]);
     }
     std::optional<std::uint32_t> get_slot_index(const SlotLabel& label) const noexcept;
     auto iter() noexcept { return std::views::all(slots); }

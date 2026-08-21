@@ -58,7 +58,7 @@ VertexOutput main(VertexInput input) {
     TextInstance instance = text_instances[input.instance_index];
 
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(instance.model, float4(input.position, 1.0))));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(instance.model, float4(input.position, 1.0))));
     output.color = instance.color;
     output.uv_layer = input.uv_layer;
     return output;
@@ -119,7 +119,7 @@ struct ExtractedText2d {
     glm::vec4 color;
     float depth;
     assets::AssetId<image::Image> font_image;
-    render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
+    render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
 };
 
 struct TextBatch {
@@ -340,11 +340,11 @@ struct DrawTextBatch {
 
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {
-            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), item.batch_size(), 0, 0,
-                                batch.instance_start);
+            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
+                                render::phase::batch_range_len(item.batch_range), 0, 0, item.batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), item.batch_size(), 0,
-                         batch.instance_start);
+            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), render::phase::batch_range_len(item.batch_range),
+                         0, item.batch_range.first);
         }
         return {};
     }
@@ -406,7 +406,7 @@ void extract_texts_2d(Commands cmd,
                                          Opt<const TextColor&>,
                                          const TextImage&,
                                          const transform::GlobalTransform&,
-                                         Opt<const render::camera::RenderLayer&>>,
+                                         Opt<const render::camera::RenderLayers&>>,
                                     Without<render::CustomRendered>>> texts) {
     for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, opt_layer] : texts.iter()) {
         glm::vec4 color{1.0f};
@@ -418,6 +418,7 @@ void extract_texts_2d(Commands cmd,
         auto model = transform.matrix;
         model[3] += glm::vec4(text2d.offset, 0.0f, 0.0f);
         cmd.spawn(
+            epix::render::sync_world::TemporaryRenderEntity{},
             ExtractedText2d{
                 .source_entity = entity,
                 .mesh          = text_mesh.mesh().id(),
@@ -425,7 +426,7 @@ void extract_texts_2d(Commands cmd,
                 .color         = color,
                 .depth         = model[3][2],
                 .font_image    = text_image.image,
-                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
+                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayers::layer(0),
             },
             TextBatch{});
     }
@@ -457,11 +458,11 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
             }
 
             phase.add(core_graph::core_2d::Transparent2D{
-                .id          = entity,
-                .depth       = text.depth,
-                .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id->value,
-                .batch_count = 1,
+                .representative_entity = {entity, render::sync_world::MainEntity{text.source_entity}},
+                .depth                 = text.depth,
+                .pipeline_id           = *pipeline_id,
+                .draw_func             = draw_function_id->value,
+                .batch_range           = {0, 1},
             });
         }
     }
@@ -502,13 +503,14 @@ void prepare_text_batches(Query<Item<render::phase::RenderPhase<core_graph::core
                         .setLayout(pipeline_cache->texture_layout)
                         .setEntries(std::array{
                             wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                            wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->view),
+                            wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
                         }));
                 texture_bind_group_cache.emplace(text.font_image, *batch.texture_bind_group);
             }
 
             instance_buffer->instances.push_back(TextInstanceData{.model = text.model, .color = text.color});
-            item.batch_count = 1;
+            item.batch_range = {batch.instance_start,
+                                static_cast<std::uint32_t>(instance_buffer->instances.size())};
         }
     }
 
@@ -611,8 +613,8 @@ void TextRenderPlugin::ready(App& app) {
     app.add_systems(Last, into(validate_text_2d).set_name("validate_text_2d"));
 #endif
     render_subapp.add_systems(render::ExtractSchedule, into(extract_texts_2d).set_name("extract texts"))
-        .add_systems(render::Render, into(queue_texts_2d).in_set(render::RenderSet::Queue).set_name("queue texts"))
+        .add_systems(render::Render, into(queue_texts_2d).in_set(render::RenderSystems::Queue).set_name("queue texts"))
         .add_systems(
             render::Render,
-            into(prepare_text_batches).in_set(render::RenderSet::PrepareResources).set_name("prepare text batches"));
+            into(prepare_text_batches).in_set(render::RenderSystems::PrepareResources).set_name("prepare text batches"));
 }

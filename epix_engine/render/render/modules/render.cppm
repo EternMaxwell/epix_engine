@@ -28,6 +28,7 @@ import epix.shader;
 import epix.image;
 import epix.window;
 import epix.transform;
+import epix.time;
 import BS.thread_pool;
 import webgpu;
 extern "C++" {

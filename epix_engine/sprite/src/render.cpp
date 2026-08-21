@@ -59,7 +59,7 @@ VertexOutput main(VertexInput input) {
                                    1.0);
 
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(instance.model, local_position)));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(instance.model, local_position)));
     output.uv = input.uv * instance.uv_offset_scale.zw + instance.uv_offset_scale.xy;
     output.color = instance.color;
     return output;
@@ -312,7 +312,7 @@ void extract_sprites(Commands cmd,
                                         const Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
-                                        Opt<const render::camera::RenderLayer&>>,
+                                        Opt<const render::camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
                      Extract<Res<assets::Assets<image::Image>>> images) {
     for (auto&& [entity, sprite, global_transform, texture, opt_layer] : sprites.iter()) {
@@ -322,6 +322,7 @@ void extract_sprites(Commands cmd,
         }
 
         cmd.spawn(
+            epix::render::sync_world::TemporaryRenderEntity{},
             ExtractedSprite{
                 .source_entity = entity,
                 .sprite        = sprite,
@@ -329,7 +330,7 @@ void extract_sprites(Commands cmd,
                 .depth         = global_transform.matrix[3][2],
                 .texture       = texture.id(),
                 .image_size    = image_size,
-                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
+                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayers::layer(0),
             },
             SpriteBatch{});
     }
@@ -364,11 +365,11 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
             }
 
             phase.add(core_graph::core_2d::Transparent2D{
-                .id          = entity,
-                .depth       = sprite.depth,
-                .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id->value,
-                .batch_count = 1,
+                .representative_entity = {entity, render::sync_world::MainEntity{sprite.source_entity}},
+                .depth                 = sprite.depth,
+                .pipeline_id           = *pipeline_id,
+                .draw_func             = draw_function_id->value,
+                .batch_range           = {0, 1},
             });
         }
     }
@@ -407,9 +408,9 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
             }
 
             if (!current_texture || *current_texture != sprite.texture) {
-                batch_head                          = item_index;
-                phase.items[batch_head].batch_count = 0;
-                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                batch_head     = item_index;
+                batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
                 if (auto it = texture_bind_group_cache.find(sprite.texture); it != texture_bind_group_cache.end()) {
                     batch.texture_bind_group = it->second;
                 } else {
@@ -419,7 +420,7 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
                             .setLayout(pipeline_cache->texture_layout)
                             .setEntries(std::array{
                                 wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                                wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->view),
+                                wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
                             }));
                     texture_bind_group_cache.emplace(sprite.texture, batch.texture_bind_group);
                 }
@@ -427,7 +428,7 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
             }
 
             instance_buffer->instances.push_back(make_instance_data(sprite));
-            phase.items[batch_head].batch_count++;
+            phase.items[batch_head].batch_range.second = static_cast<std::uint32_t>(instance_buffer->instances.size());
         }
     }
 
@@ -488,8 +489,8 @@ void SpritePlugin::ready(app::App& app) {
             sprite::BindSpriteTexture<2>::Command, sprite::DrawSpriteBatch>(render_subapp)});
 
     render_subapp.add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
-        .add_systems(render::Render, into(queue_sprites_2d).in_set(render::RenderSet::Queue).set_name("queue sprites"))
+        .add_systems(render::Render, into(queue_sprites_2d).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
         .add_systems(render::Render, into(prepare_sprite_batches)
-                                         .in_set(render::RenderSet::PrepareResources)
+                                         .in_set(render::RenderSystems::PrepareResources)
                                          .set_name("prepare sprite batches"));
 }

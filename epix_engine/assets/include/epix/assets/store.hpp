@@ -654,6 +654,7 @@ struct Assets {
             });
     }
 
+
     /**
      * @brief Add an asset and return a strong handle to it.
      *  Convenience equivalent of emplace() matching bevy's Assets::add().

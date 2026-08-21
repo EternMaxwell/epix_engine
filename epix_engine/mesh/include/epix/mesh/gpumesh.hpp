@@ -90,13 +90,13 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     using ProcessedAsset = epix::mesh::GPUMesh;
     using Param          = epix::ecs::ParamSet<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Limits>>;
 
-    ProcessedAsset process(const epix::mesh::Mesh& mesh, Param params) {
+    ProcessedAsset prepare_asset(const epix::mesh::Mesh& mesh, Param params) {
         auto&& [device, limits] = params.get();
         return ProcessedAsset::create_from_mesh(mesh, *device, *limits);
     }
 
-    epix::render::RenderAssetUsage usage(const epix::mesh::Mesh& mesh) noexcept {
-        return epix::render::RenderAssetUsageBits::RenderWorld;
+    epix::render::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept {
+        return epix::render::RenderAssetUsages::RENDER_WORLD;
     }
 };
 

@@ -42,7 +42,7 @@ EPIX_EXPORT namespace epix::sprite {
         /** @brief Pixel dimensions of the source image. */
         glm::vec2 image_size;
         /** @brief Render layers this entity belongs to. Default: layer 0. */
-        render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
+        render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
     };
 
     /** @brief GPU batch for sprites sharing the same texture bind group.
@@ -238,8 +238,8 @@ EPIX_EXPORT namespace epix::sprite {
             encoder.setVertexBuffer(1, geometry->uv_buffer, 0, geometry->uv_buffer.getSize());
             encoder.setIndexBuffer(geometry->index_buffer, wgpu::IndexFormat::eUint16, 0,
                                    geometry->index_buffer.getSize());
-            encoder.drawIndexed(geometry->index_count, static_cast<std::uint32_t>(item.batch_size()), 0, 0,
-                                sprite_batch.instance_start);
+            encoder.drawIndexed(geometry->index_count, render::phase::batch_range_len(item.batch_range), 0, 0,
+                                item.batch_range.first);
             return {};
         }
     };

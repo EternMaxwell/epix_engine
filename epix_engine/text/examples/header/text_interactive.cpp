@@ -1,4 +1,4 @@
-#include <epix/app.hpp>
+﻿#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
@@ -138,10 +138,12 @@ int main(int argc, char** argv) {
     app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{})
         .add_plugins(input::InputPlugin{})
+        .add_plugins(time::TimePlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(CamControllPlugin{})
+        .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{}.set_validation(render_validation))
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})

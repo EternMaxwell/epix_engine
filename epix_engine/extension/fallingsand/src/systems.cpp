@@ -432,7 +432,7 @@ void update_chunk_outlines(
                                                .alpha_mode = mesh::MeshAlphaMode2d::Blend,
                                            },
                                            transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.01f)},
-                                           render::camera::RenderLayer::layer(2))
+                                           render::camera::RenderLayers::layer(2))
                                     .id();
             rc.outline_entity = oe;
         } else if (!show_outline && rc.outline_entity.has_value()) {

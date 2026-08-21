@@ -37,7 +37,7 @@ struct VertexOutput {
 VertexOutput main(VertexInput input) {
     MeshUniform mesh = mesh_instances[input.instance_index];
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
     return output;
 }
@@ -69,7 +69,7 @@ struct VertexOutput {
 VertexOutput main(VertexInput input) {
     MeshUniform mesh = mesh_instances[input.instance_index];
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
     return output;
 }
@@ -102,7 +102,7 @@ struct VertexOutput {
 VertexOutput main(VertexInput input) {
     MeshUniform mesh = mesh_instances[input.instance_index];
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
     output.uv = input.uv;
     return output;
@@ -137,7 +137,7 @@ struct VertexOutput {
 VertexOutput main(VertexInput input) {
     MeshUniform mesh = mesh_instances[input.instance_index];
     VertexOutput output;
-    output.position = mul(view_uniform.projection, mul(view_uniform.view, mul(mesh.model, float4(input.position, 1.0))));
+    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
     output.uv = input.uv;
     return output;
@@ -460,7 +460,7 @@ void extract_meshes_2d(Commands cmd,
                                           const transform::GlobalTransform&,
                                           Opt<const MeshMaterial2d&>,
                                           Opt<const MeshTextureMaterial2d&>,
-                                          Opt<const render::camera::RenderLayer&>>,
+                                          Opt<const render::camera::RenderLayers&>>,
                                      Without<render::CustomRendered>>> meshes) {
     for (auto&& [entity, mesh_handle, transform, material, texture_material, opt_layer] : meshes.iter()) {
         glm::vec4 color = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.color; })
@@ -472,6 +472,7 @@ void extract_meshes_2d(Commands cmd,
                               .value_or(MeshAlphaMode2d::Opaque));
 
         cmd.spawn(
+            epix::render::sync_world::TemporaryRenderEntity{},
             ExtractedMesh2d{
                 .source_entity = entity,
                 .mesh          = mesh_handle.handle.id(),
@@ -481,7 +482,7 @@ void extract_meshes_2d(Commands cmd,
                 .alpha_mode    = alpha_mode,
                 .texture =
                     texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
-                .render_layer = opt_layer ? *opt_layer : render::camera::RenderLayer::layer(0),
+                .render_layer = opt_layer ? *opt_layer : render::camera::RenderLayers::layer(0),
             },
             MeshBatch{});
     }
@@ -559,9 +560,9 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
             };
 
             if (!current_key || *current_key != key) {
-                batch_head                          = item_index;
-                phase.items[batch_head].batch_count = 0;
-                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                batch_head     = item_index;
+                batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
 
                 if (extracted.texture) {
                     if (auto it = texture_bind_group_cache.find(*extracted.texture);
@@ -574,7 +575,7 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
                                 .setLayout(pipeline_cache->texture_layout)
                                 .setEntries(std::array{
                                     wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                                    wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->view),
+                                    wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
                                 }));
                         texture_bind_group_cache.emplace(*extracted.texture, tg);
                         batch.texture_bind_group = std::move(tg);
@@ -589,7 +590,7 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
             }
 
             instance_buffer->instances.push_back({extracted.model, extracted.color});
-            phase.items[batch_head].batch_count++;
+            phase.items[batch_head].batch_range.second = static_cast<std::uint32_t>(instance_buffer->instances.size());
         }
     };
 
@@ -652,11 +653,11 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
             }
 
             phase.add(core_graph::core_2d::Opaque2D{
-                .id          = entity,
-                .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id->value,
-                .batch_count = 1,
-                .batch_key   = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
+                .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
+                .pipeline_id           = *pipeline_id,
+                .draw_func             = draw_function_id->value,
+                .batch_range           = {0, 1},
+                .batch_key             = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
                     .pipeline_id = pipeline_id->get(),
                     .mesh_id     = extracted_mesh.mesh,
                     .texture_id  = extracted_mesh.texture,
@@ -711,11 +712,11 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
             }
 
             phase.add(core_graph::core_2d::Transparent2D{
-                .id          = entity,
-                .depth       = extracted_mesh.depth,
-                .pipeline_id = *pipeline_id,
-                .draw_func   = draw_function_id->value,
-                .batch_count = 1,
+                .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
+                .depth                 = extracted_mesh.depth,
+                .pipeline_id           = *pipeline_id,
+                .draw_func             = draw_function_id->value,
+                .batch_range           = {0, 1},
             });
         }
     }
@@ -726,7 +727,7 @@ void MeshRenderPlugin::attach(app::App& app) {
     spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
-    app.add_plugins(render::ExtractAssetPlugin<Mesh>{});
+    app.add_plugins(render::RenderAssetPlugin<Mesh>{});
 
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
@@ -778,9 +779,9 @@ void MeshRenderPlugin::ready(app::App& app) {
 
     render_subapp.add_systems(render::ExtractSchedule, into(extract_meshes_2d).set_name("extract mesh2d"))
         .add_systems(render::Render, into(queue_meshes_2d_opaque, queue_meshes_2d_transparent)
-                                         .in_set(render::RenderSet::Queue)
+                                         .in_set(render::RenderSystems::Queue)
                                          .set_names(std::array{"queue opaque mesh2d", "queue transparent mesh2d"}))
         .add_systems(render::Render, into(prepare_mesh_instances)
-                                         .in_set(render::RenderSet::PrepareResources)
+                                         .in_set(render::RenderSystems::PrepareResources)
                                          .set_name("prepare mesh2d instances"));
 }

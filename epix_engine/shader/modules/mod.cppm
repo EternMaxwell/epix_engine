@@ -22,6 +22,7 @@ module;
 #include <vector>
 #endif
 #include <zpp_bits.h>
+#include <stdexec/execution.hpp>
 
 #include <asio/awaitable.hpp>
 

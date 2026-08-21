@@ -300,7 +300,7 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
                            into(extract_captures_and_deliver).set_name("screenshot: extract & deliver"));
 
     render_app.add_systems(Render,
-                           into(capture_frame).in_set(RenderSet::Cleanup).set_name("screenshot: capture frame"));
+                           into(capture_frame).in_set(RenderSystems::Cleanup).set_name("screenshot: capture frame"));
 
     if (capture_key.has_value()) {
         app.world_mut().insert_resource(ScreenshotHotkey{.key = *capture_key});

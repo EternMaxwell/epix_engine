@@ -18,7 +18,12 @@ bool Edges::has_output_edge(const Edge& edge) const {
 }
 
 void Edges::remove_input_edge(const Edge& edge) {
-    m_input_edges.erase(std::remove(m_input_edges.begin(), m_input_edges.end(), edge), m_input_edges.end());
+    // Bevy node.rs swap_remove: removes ONE matching edge, order-changing.
+    auto index = std::find(m_input_edges.begin(), m_input_edges.end(), edge);
+    if (index != m_input_edges.end()) {
+        std::iter_swap(index, m_input_edges.end() - 1);
+        m_input_edges.pop_back();
+    }
 }
 
 void Edges::remove_output_edge(const Edge& edge) {

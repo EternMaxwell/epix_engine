@@ -619,7 +619,7 @@ enum class BM4DNode { Trace, Blit };
 struct BM4DTraceNode : graph::Node {
     std::optional<QueryState<Item<const ExtractedView&, const ViewTarget&>, Filter<>>> view_qs;
 
-    void update(const World& world) override {
+    void update(World& world) override {
         if (!view_qs)
             view_qs = world.try_query<Item<const ExtractedView&, const ViewTarget&>>();
         else
@@ -638,7 +638,7 @@ struct BM4DTraceNode : graph::Node {
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
         if (!view_opt) return;
         auto&& [exview, target] = *view_opt;
-        glm::uvec2 vp           = exview.viewport_size;
+        glm::uvec2 vp           = glm::uvec2(exview.viewport.z, exview.viewport.w);
         if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
 
         // Build camera uniform from the extracted 4D camera state.
@@ -735,7 +735,7 @@ struct BM4DTraceNode : graph::Node {
 struct BM4DBlitNode : graph::Node {
     std::optional<QueryState<Item<const ViewTarget&>, Filter<>>> view_qs;
 
-    void update(const World& world) override {
+    void update(World& world) override {
         if (!view_qs)
             view_qs = world.try_query<Item<const ViewTarget&>>();
         else
@@ -1267,7 +1267,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     // ---- Phase 4: (re-)create per-resolution textures and bind groups ----
     glm::uvec2 vp{0, 0};
     for (auto&& [exv, tgt] : views.iter()) {
-        vp = exv.viewport_size;
+        vp = glm::uvec2(exv.viewport.z, exv.viewport.w);
         break;
     }
     if (vp.x == 0 || vp.y == 0 || vp == state->output_size) return;
@@ -1479,7 +1479,7 @@ struct BM4DPathTracerPlugin {
             .add_systems(ExtractSchedule, into(extract_bm4d_config).set_name("extract bm4d config"))
             .add_systems(ExtractSchedule, into(extract_bm4d_camera).set_name("extract bm4d camera"))
             .add_systems(Render,
-                         into(prepare_bm4d_render).in_set(RenderSet::PrepareResources).set_name("prepare bm4d render"));
+                         into(prepare_bm4d_render).in_set(RenderSystems::PrepareResources).set_name("prepare bm4d render"));
     }
 };
 

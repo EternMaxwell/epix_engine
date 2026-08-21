@@ -68,7 +68,7 @@ EPIX_EXPORT struct ExtractedMesh2d {
     /** @brief Optional texture asset ID. */
     std::optional<assets::AssetId<image::Image>> texture;
     /** @brief Render layers this entity belongs to. Default: layer 0. */
-    render::camera::RenderLayer render_layer = render::camera::RenderLayer::layer(0);
+    render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
 };
 
 /** @brief Batching key for 2D mesh draw commands (groups by texture). */
@@ -205,14 +205,14 @@ struct DrawMesh2dBatch {
             return {};
         }
 
-        auto batch_size = static_cast<std::uint32_t>(item.batch_size());
+        auto batch_size = render::phase::batch_range_len(item.batch_range);
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {
             encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
-                                mesh_batch.instance_start);
+                                item.batch_range.first);
         } else {
             encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0,
-                         mesh_batch.instance_start);
+                         item.batch_range.first);
         }
         return {};
     }

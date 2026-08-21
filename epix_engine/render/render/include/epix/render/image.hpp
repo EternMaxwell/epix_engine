@@ -17,24 +17,4 @@ EPIX_EXPORT struct DefaultImageSampler {
     /** @brief The default GPU sampler. */
     wgpu::Sampler sampler;
 };
-/** @brief GPU-side representation of an image: texture, view, and
- * sampler. */
-EPIX_EXPORT struct GPUImage {
-    /** @brief The GPU texture backing this image. */
-    wgpu::Texture texture;
-    /** @brief A texture view for binding this image in shaders. */
-    wgpu::TextureView view;
-    /** @brief The sampler used when sampling this image. */
-    wgpu::Sampler sampler;
-};
 }  // namespace epix::render
-
-template <>
-struct epix::render::RenderAsset<epix::image::Image> {
-    using Param = std::
-        tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>, epix::ecs::Res<render::DefaultImageSampler>>;
-    using ProcessedAsset = GPUImage;
-
-    ProcessedAsset process(image::Image&& asset, Param param);
-    RenderAssetUsage usage(const image::Image& asset) noexcept;
-};

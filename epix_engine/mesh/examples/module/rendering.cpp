@@ -1,4 +1,4 @@
-#ifndef EPIX_IMPORT_STD
+﻿#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -124,9 +124,11 @@ int main() {
             .exit_condition = window::ExitCondition::OnPrimaryClosed,
         })
         .add_plugins(input::InputPlugin{})
+        .add_plugins(time::TimePlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{}.set_validation(0))
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})

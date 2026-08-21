@@ -13,6 +13,7 @@
 #include <expected>
 #include <functional>
 #include <future>
+#include <limits>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -30,6 +31,22 @@ namespace epix::render {
  * layout IDs. */
 EPIX_EXPORT using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
 EPIX_EXPORT using CachedPipelineId = shader::CachedPipelineId;
+/** @brief Typed id for cached render pipelines (Bevy 'CachedRenderPipelineId'). */
+EPIX_EXPORT struct CachedRenderPipelineId : CachedPipelineId {
+    using CachedPipelineId::CachedPipelineId;
+};
+/** @brief Typed id for cached compute pipelines (Bevy 'CachedComputePipelineId'). */
+EPIX_EXPORT struct CachedComputePipelineId : CachedPipelineId {
+    using CachedPipelineId::CachedPipelineId;
+};
+/** @brief Sentinel id for an invalid render pipeline (Bevy
+ * CachedRenderPipelineId::INVALID = usize::MAX). */
+EPIX_EXPORT inline constexpr CachedRenderPipelineId INVALID_RENDER_PIPELINE_ID{
+    std::numeric_limits<std::uint64_t>::max()};
+/** @brief Sentinel id for an invalid compute pipeline (Bevy
+ * CachedComputePipelineId::INVALID = usize::MAX). */
+EPIX_EXPORT inline constexpr CachedComputePipelineId INVALID_COMPUTE_PIPELINE_ID{
+    std::numeric_limits<std::uint64_t>::max()};
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const noexcept {
         std::size_t hash = 0;
@@ -48,18 +65,31 @@ EPIX_EXPORT struct LayoutCache {
     LayoutCache(const LayoutCache&)            = delete;
     LayoutCache& operator=(const LayoutCache&) = delete;
 
-    /** @brief Get or create a pipeline layout for the given bind group layouts. */
-    wgpu::PipelineLayout get(const wgpu::Device& device, std::ranges::range auto&& layouts)
+    /** @brief Get or create a pipeline layout for the given bind group layouts
+     * and optional push constant ranges (Bevy PipelineCache layout caching
+     * incl. push_constant_ranges, pipeline_cache.rs:210-228). */
+    wgpu::PipelineLayout get(const wgpu::Device& device,
+                             std::ranges::range auto&& layouts,
+                             std::span<const wgpu::PushConstantRange> push_constant_ranges = {})
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
         LayoutCacheKey key = std::ranges::to<std::vector>(
             std::views::transform(layouts, [](const auto& layout) { return layout.id(); }));
+        key.push_back(static_cast<wgpu::BindGroupLayoutId>(push_constant_ranges.size()));
         auto it = cache.find(key);
         if (it != cache.end()) {
             return it->second;
         }
-        wgpu::PipelineLayout layout =
-            device.createPipelineLayout(wgpu::PipelineLayoutDescriptor().setBindGroupLayouts(layouts));
+        wgpu::PipelineLayoutDescriptor descriptor;
+        descriptor.setBindGroupLayouts(layouts);
+        if (!push_constant_ranges.empty()) {
+            // wgpu-native exposes push constants via the PipelineLayoutExtras
+            // chained struct on the layout descriptor.
+            wgpu::PipelineLayoutExtras extras;
+            extras.setPushConstantRanges(push_constant_ranges);
+            descriptor.setNextInChain(extras);
+        }
+        wgpu::PipelineLayout layout = device.createPipelineLayout(descriptor);
         cache[key] = layout;
         return layout;
     }
@@ -153,6 +183,16 @@ EPIX_EXPORT struct PipelineServer {
     /** @brief Get the current state of a cached pipeline by id. */
     auto get_pipeline_state(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const CachedPipelineState>>;
+    /** @brief Number of cached pipelines (Bevy pipelines().count()). */
+    std::size_t pipeline_count() const noexcept { return m_data->pipelines.size(); }
+    /** @brief Number of pipelines currently waiting to be processed (Bevy
+     * waiting_pipelines().count()). */
+    std::size_t waiting_pipeline_count() const noexcept { return m_data->waiting_pipelines.size(); }
+    /** @brief The set of pipeline ids currently waiting to be processed (Bevy
+     * waiting_pipelines()). */
+    const std::unordered_set<CachedPipelineId>& waiting_pipelines() const noexcept {
+        return m_data->waiting_pipelines;
+    }
     /** @brief Get the render pipeline descriptor for a cached pipeline. */
     auto get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;
@@ -165,6 +205,14 @@ EPIX_EXPORT struct PipelineServer {
     /** @brief Get the compiled compute pipeline, or an error if not ready. */
     auto get_compute_pipeline(CachedPipelineId id) const noexcept
         -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
+    /** @brief Wait for a render pipeline to finish compiling (Bevy
+     * PipelineCache::block_on_render_pipeline, pipeline_cache.rs:385-397).
+     * Returns false when the id is out of range. */
+    bool block_on_render_pipeline(CachedRenderPipelineId id);
+    /** @brief Wait for a compute pipeline to finish compiling (Bevy
+     * PipelineCache::block_on_compute_pipeline). Returns false when the id is
+     * out of range. */
+    bool block_on_compute_pipeline(CachedComputePipelineId id);
     /** @brief Queue a render pipeline for asynchronous creation. */
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
     /** @brief Queue a compute pipeline for asynchronous creation. */

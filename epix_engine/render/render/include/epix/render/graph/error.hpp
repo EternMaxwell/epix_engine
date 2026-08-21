@@ -75,9 +75,34 @@ EPIX_EXPORT namespace epix::render::graph {
         /** @brief Type of the input slot. */
         SlotType input_type;
     };
+    /** @brief Error indicating the edge already exists (Bevy EdgeAlreadyExists). */
+    struct EdgeAlreadyExists {
+        /** @brief Output node label. */
+        NodeLabel output_node;
+        /** @brief Output slot index. */
+        std::uint32_t output_index;
+        /** @brief Input node label. */
+        NodeLabel input_node;
+        /** @brief Input slot index. */
+        std::uint32_t input_index;
+    };
+    /** @brief Error indicating the edge does not exist (Bevy EdgeDoesNotExist). */
+    struct EdgeDoesNotExist {
+        /** @brief Output node label. */
+        NodeLabel output_node;
+        /** @brief Output slot index. */
+        std::uint32_t output_index;
+        /** @brief Input node label. */
+        NodeLabel input_node;
+        /** @brief Input slot index. */
+        std::uint32_t input_index;
+    };
     /** @brief Variant of edge-related errors. */
-    struct EdgeError : std::variant<EdgeNodesNotPresent, SlotNotPresent, InputSlotOccupied, SlotTypeMismatch> {
-        using std::variant<EdgeNodesNotPresent, SlotNotPresent, InputSlotOccupied, SlotTypeMismatch>::variant;
+    struct EdgeError
+        : std::variant<EdgeNodesNotPresent, EdgeAlreadyExists, EdgeDoesNotExist, SlotNotPresent, InputSlotOccupied,
+                       SlotTypeMismatch> {
+        using std::variant<EdgeNodesNotPresent, EdgeAlreadyExists, EdgeDoesNotExist, SlotNotPresent, InputSlotOccupied,
+                           SlotTypeMismatch>::variant;
     };
     /** @brief Error indicating a sub-graph with the given label already
      * exists. */

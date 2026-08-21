@@ -642,7 +642,7 @@ enum class VoxelNode { Trace, Blit };
 struct VoxelTraceNode : graph::Node {
     std::optional<QueryState<Item<const ExtractedView&, const ViewTarget&>, Filter<>>> view_qs;
 
-    void update(const World& world) override {
+    void update(World& world) override {
         if (!view_qs)
             view_qs = world.try_query<Item<const ExtractedView&, const ViewTarget&>>();
         else
@@ -661,7 +661,7 @@ struct VoxelTraceNode : graph::Node {
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
         if (!view_opt) return;
         auto&& [exview, target] = *view_opt;
-        glm::uvec2 vp           = exview.viewport_size;
+        glm::uvec2 vp           = glm::uvec2(exview.viewport.z, exview.viewport.w);
         if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
 
         VoxelCameraUniform cam;
@@ -768,7 +768,7 @@ struct VoxelTraceNode : graph::Node {
 struct VoxelBlitNode : graph::Node {
     std::optional<QueryState<Item<const ViewTarget&>, Filter<>>> view_qs;
 
-    void update(const World& world) override {
+    void update(World& world) override {
         if (!view_qs)
             view_qs = world.try_query<Item<const ViewTarget&>>();
         else
@@ -1245,7 +1245,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     // -----------------------------------------------------------------------
     glm::uvec2 vp_size{0, 0};
     for (auto&& [exview, target] : views.iter()) {
-        vp_size = exview.viewport_size;
+        vp_size = glm::uvec2(exview.viewport.z, exview.viewport.w);
         break;
     }
     if (vp_size.x == 0 || vp_size.y == 0 || vp_size == state->output_size) return;
@@ -1492,7 +1492,7 @@ struct VoxelPathTracerPlugin {
             .add_systems(ExtractSchedule, into(extract_voxel_config).set_name("extract voxel config"))
             .add_systems(
                 Render,
-                into(prepare_voxel_render).in_set(RenderSet::PrepareResources).set_name("prepare voxel render"));
+                into(prepare_voxel_render).in_set(RenderSystems::PrepareResources).set_name("prepare voxel render"));
     }
 };
 

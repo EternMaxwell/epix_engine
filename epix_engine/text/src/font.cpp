@@ -79,7 +79,24 @@ FontLibrary::FontLibrary() {
     }
 }
 
-FontLibrary::~FontLibrary() { FT_Done_FreeType(reinterpret_cast<FT_Library>(library)); }
+FontLibrary::FontLibrary(FontLibrary&& other) noexcept : library(other.library) { other.library = nullptr; }
+
+FontLibrary& FontLibrary::operator=(FontLibrary&& other) noexcept {
+    if (this != &other) {
+        if (library != nullptr) {
+            FT_Done_FreeType(reinterpret_cast<FT_Library>(library));
+        }
+        library       = other.library;
+        other.library = nullptr;
+    }
+    return *this;
+}
+
+FontLibrary::~FontLibrary() {
+    if (library != nullptr) {
+        FT_Done_FreeType(reinterpret_cast<FT_Library>(library));
+    }
+}
 
 std::uint32_t FontAtlas::get_glyph_index(char32_t codepoint) {
     return static_cast<std::uint32_t>(FT_Get_Char_Index(reinterpret_cast<FT_Face>(font_face), codepoint));

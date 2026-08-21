@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -29,6 +30,8 @@ EPIX_EXPORT enum class Core2dNodes {
     EndMainPass,
     /** @brief Node for the screen-space UI pass. */
     ScreenUIPass,
+    /** @brief Final node that blits the main texture to the output. */
+    BlitToOutput,
 };
 
 /**
@@ -38,25 +41,26 @@ EPIX_EXPORT enum class Core2dNodes {
  * batching.
  */
 EPIX_EXPORT struct Transparent2D {
-    /** @brief Entity this phase item refers to. */
-    ecs::Entity id;
+    /** @brief The render entity and its main-world entity (Bevy
+     * representative_entity: (Entity, MainEntity)). */
+    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
     /** @brief Depth value for sorting (inverted for back-to-front). */
     float depth;
     /** @brief Cached render pipeline ID. */
     render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
     render::phase::DrawFunctionId draw_func;
-    /** @brief Number of instances in this batch. */
-    std::size_t batch_count;
+    /** @brief Instance range covered by this item's batch (Bevy batch_range:
+     * Range<u32>). */
+    std::pair<std::uint32_t, std::uint32_t> batch_range;
 
-    ecs::Entity entity() const noexcept { return id; }
+    ecs::Entity entity() const noexcept { return representative_entity.first; }
+    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-
-    std::size_t batch_size() const noexcept { return batch_count; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
 };
-static_assert(render::phase::BatchedPhaseItem<Transparent2D>);
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Transparent2D>);
 
 /** @brief An opaque 2D render phase item.
@@ -64,24 +68,26 @@ static_assert(render::phase::CachedRenderPipelinePhaseItem<Transparent2D>);
  * Sorted by OpaqueSortKey for front-to-back rendering and batching.
  */
 EPIX_EXPORT struct Opaque2D {
-    /** @brief Entity this phase item refers to. */
-    ecs::Entity id;
+    /** @brief The render entity and its main-world entity (Bevy
+     * representative_entity: (Entity, MainEntity)). */
+    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
     /** @brief Cached render pipeline ID. */
     render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
     render::phase::DrawFunctionId draw_func;
-    /** @brief Number of instances in this batch. */
-    std::size_t batch_count;
+    /** @brief Instance range covered by this item's batch (Bevy batch_range:
+     * Range<u32>). */
+    std::pair<std::uint32_t, std::uint32_t> batch_range;
     /** @brief Sort key for front-to-back opaque ordering. */
     render::phase::OpaqueSortKey batch_key;
 
-    ecs::Entity entity() const noexcept { return id; }
+    ecs::Entity entity() const noexcept { return representative_entity.first; }
+    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     const render::phase::OpaqueSortKey& sort_key() const noexcept { return batch_key; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    std::size_t batch_size() const noexcept { return batch_count; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
 };
-static_assert(render::phase::BatchedPhaseItem<Opaque2D>);
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
 /** @brief A UI 2D render phase item.
@@ -89,36 +95,39 @@ static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
  * Sorted by `order` for z-ordering of UI elements.
  */
 EPIX_EXPORT struct UI2DItem {
-    /** @brief Entity this phase item refers to. */
-    ecs::Entity id;
+    /** @brief The render entity and its main-world entity (Bevy
+     * representative_entity: (Entity, MainEntity)). */
+    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
     /** @brief Z-order for UI stacking (higher = on top). */
     int order;
     /** @brief Cached render pipeline ID. */
     render::CachedPipelineId pipeline_id;
     /** @brief Draw function ID for rendering this item. */
     render::phase::DrawFunctionId draw_func;
-    /** @brief Number of instances in this batch. */
-    std::size_t batch_count;
+    /** @brief Instance range covered by this item's batch (Bevy batch_range:
+     * Range<u32>). */
+    std::pair<std::uint32_t, std::uint32_t> batch_range;
 
-    ecs::Entity entity() const noexcept { return id; }
+    ecs::Entity entity() const noexcept { return representative_entity.first; }
+    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     int sort_key() const noexcept { return order; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    std::size_t batch_size() const noexcept { return batch_count; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
 };
 
 template <typename P>
 struct Node2D : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::view::ExtractedView&,
                                             const render::view::ViewTarget&,
-                                            const render::view::ViewDepth&,
+                                            const render::view::ViewDepthTexture&,
                                             const render::phase::RenderPhase<P>&>,
                                   ecs::Filter<>>>
         views;
-    void update(const ecs::World& world) override {
+    void update(ecs::World& world) override {
         if (!views) {
             views = world.try_query<ecs::Item<const render::view::ExtractedView&, const render::view::ViewTarget&,
-                                              const render::view::ViewDepth&, const render::phase::RenderPhase<P>&>>();
+                                              const render::view::ViewDepthTexture&, const render::phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }
@@ -138,10 +147,7 @@ struct Node2D : render::graph::Node {
                                                     .setDepthSlice(~0u)
                                                     .setLoadOp(wgpu::LoadOp::eLoad)
                                                     .setStoreOp(wgpu::StoreOp::eStore)})
-                .setDepthStencilAttachment(wgpu::RenderPassDepthStencilAttachment()
-                                               .setView(depth.depth_view)
-                                               .setDepthLoadOp(wgpu::LoadOp::eLoad)
-                                               .setDepthStoreOp(wgpu::StoreOp::eStore)));
+                .setDepthStencilAttachment(depth.attachment.get_attachment(wgpu::StoreOp::eStore)));
         phase.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();
@@ -153,6 +159,35 @@ EPIX_EXPORT inline struct Core2dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
     void add_to(render::graph::RenderGraph& g);
 } Core2d;
+
+/** @brief Embedded slang shaders for the final output blit (Bevy
+ * core_pipeline upscaling: samples the main texture, writes to the output). */
+EPIX_EXPORT struct Core2dBlitHandles {
+    assets::Handle<shader::Shader> vertex_shader;
+    assets::Handle<shader::Shader> fragment_shader;
+};
+
+/** @brief Per-format blit pipeline resources (Bevy BlitPipeline). */
+EPIX_EXPORT struct Core2dBlitPipeline {
+    wgpu::BindGroupLayout layout;
+    wgpu::Sampler sampler;
+    wgpu::Buffer vertex_buffer;  // 3 float2 UVs of a fullscreen triangle
+    render::CachedPipelineId pipeline_id;
+    wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
+    bool ready                 = false;
+};
+
+/** @brief Final node of the 2D graph: copies the main texture to the view's
+ * output attachment (the swapchain for window cameras) and marks it for
+ * present (Bevy core_pipeline `upscaling`). */
+EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
+    std::optional<ecs::QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>, ecs::Filter<>>> views;
+    /** @brief Lazily-created per-format blit pipeline (node lives in the
+     * render graph, so its members persist across frames). */
+    std::optional<Core2dBlitPipeline> blit;
+    void update(ecs::World& world) override;
+    void run(render::graph::GraphContext& ctx, render::graph::RenderContext& render_ctx, const ecs::World& world) override;
+};
 
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */
@@ -175,7 +210,7 @@ EPIX_EXPORT struct Camera2DBundle {
     render::view::VisibleEntities visible_entities;
     Camera2D camera_2d;
     /** @brief Which layers this camera renders. Default: all layers. */
-    render::camera::RenderLayer render_layer = render::camera::RenderLayer::all();
+    render::camera::RenderLayers render_layer = render::camera::RenderLayers::all();
 };
 }  // namespace epix::core_graph::core_2d
 
@@ -191,7 +226,7 @@ struct epix::ecs::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
         write_component(
             [&](void* ptr) { new (ptr) render::view::VisibleEntities(std::move(bundle.visible_entities)); });
         write_component([&](void* ptr) { new (ptr) core_graph::core_2d::Camera2D(std::move(bundle.camera_2d)); });
-        write_component([&](void* ptr) { new (ptr) render::camera::RenderLayer(std::move(bundle.render_layer)); });
+        write_component([&](void* ptr) { new (ptr) render::camera::RenderLayers(std::move(bundle.render_layer)); });
     }
     static std::array<std::optional<TypeId>, 7> type_ids(const ecs::Components& components) {
         return std::array{
@@ -201,7 +236,7 @@ struct epix::ecs::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
             components.get_id<transform::Transform>(),
             components.get_id<render::view::VisibleEntities>(),
             components.get_id<core_graph::core_2d::Camera2D>(),
-            components.get_id<render::camera::RenderLayer>(),
+            components.get_id<render::camera::RenderLayers>(),
         };
     }
     static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
@@ -212,7 +247,7 @@ struct epix::ecs::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
         ids.push_back(components.template register_component<transform::Transform>());
         ids.push_back(components.template register_component<render::view::VisibleEntities>());
         ids.push_back(components.template register_component<core_graph::core_2d::Camera2D>());
-        ids.push_back(components.template register_component<render::camera::RenderLayer>());
+        ids.push_back(components.template register_component<render::camera::RenderLayers>());
         return ids;
     }
 };

@@ -220,15 +220,16 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 {
                     auto shader_cache = shader_cache_ptr->lock();
                     auto layout_cache = layout_cache_ptr->lock();
-                    auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, {});
+                    auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, descriptor.vertex.shader_defs);
                     if (!vertex_opt) return std::unexpected(vertex_opt.error());
                     vertex_module = *vertex_opt.value();
                     if (descriptor.fragment) {
-                        auto fragment_opt = shader_cache->get(id, descriptor.fragment->shader, {});
+                        auto fragment_opt = shader_cache->get(id, descriptor.fragment->shader, descriptor.fragment->shader_defs);
                         if (!fragment_opt) return std::unexpected(fragment_opt.error());
                         fragment_module = *fragment_opt.value();
                     }
-                    if (!descriptor.layouts.empty()) layout = layout_cache->get(device, descriptor.layouts);
+                    if (!descriptor.layouts.empty())
+                        layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
                 }
                 pipelineDesc.setLabel(std::string_view(descriptor.label));
                 pipelineDesc.setLayout(layout);
@@ -266,10 +267,11 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                     {
                         auto layout_cache = layout_cache_ptr->lock();
                         auto shader_cache = shader_cache_ptr->lock();
-                        auto shader_opt   = shader_cache->get(id, descriptor.shader, {});
+                        auto shader_opt   = shader_cache->get(id, descriptor.shader, descriptor.shader_defs);
                         if (!shader_opt) return std::unexpected(shader_opt.error());
                         module = *shader_opt.value();
-                        if (!descriptor.layouts.empty()) layout = layout_cache->get(device, descriptor.layouts);
+                        if (!descriptor.layouts.empty())
+                            layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
                     }
                     desc.setLabel(std::string_view(descriptor.label))
                         .setLayout(layout)
@@ -339,6 +341,43 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
 
     m_data->waiting_pipelines.insert(id);
 }
+bool PipelineServer::block_on_render_pipeline(CachedRenderPipelineId id) {
+    // Bevy PipelineCache::block_on_render_pipeline (pipeline_cache.rs:385-397):
+    // if the pipeline slot is not yet allocated, queue first; then wait on the
+    // creation task and store the result.
+    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) {
+        process_queue();
+    }
+    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) return false;
+    auto& cached = m_data->pipelines[static_cast<std::size_t>(id)];
+    if (auto* creating_state = std::get_if<PipelineStateCreating>(&cached.state)) {
+        auto result = creating_state->get();  // blocks until the task finishes
+        if (result) {
+            cached.state = std::move(result.value());
+        } else {
+            cached.state = result.error();
+        }
+    }
+    return true;
+}
+
+bool PipelineServer::block_on_compute_pipeline(CachedComputePipelineId id) {
+    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) {
+        process_queue();
+    }
+    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) return false;
+    auto& cached = m_data->pipelines[static_cast<std::size_t>(id)];
+    if (auto* creating_state = std::get_if<PipelineStateCreating>(&cached.state)) {
+        auto result = creating_state->get();
+        if (result) {
+            cached.state = std::move(result.value());
+        } else {
+            cached.state = result.error();
+        }
+    }
+    return true;
+}
+
 void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_server) {
     pipeline_server->process_queue();
 }

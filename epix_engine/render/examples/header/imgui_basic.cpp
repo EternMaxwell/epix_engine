@@ -1,4 +1,4 @@
-#include <imgui.h>
+﻿#include <imgui.h>
 #include <spdlog/spdlog.h>
 
 #include <epix/core_graph.hpp>
@@ -41,9 +41,11 @@ int main() {
             .exit_condition = epix::window::ExitCondition::OnPrimaryClosed,
         })
         .add_plugins(input::InputPlugin{})
+        .add_plugins(time::TimePlugin{})
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::core_2d::Core2dPlugin{})
         .add_plugins(imgui::ImGuiPlugin{

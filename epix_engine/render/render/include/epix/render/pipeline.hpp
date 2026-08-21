@@ -61,6 +61,8 @@ EPIX_EXPORT struct ComputePipeline {
 EPIX_EXPORT struct VertexState {
     /** @brief Handle to the vertex shader. */
     assets::Handle<shader::Shader> shader;
+    /** @brief Per-stage shader definitions (Bevy VertexState::shader_defs). */
+    std::vector<shader::ShaderDefVal> shader_defs;
     /** @brief Optional entry-point function name (defaults to "vs_main"). */
     std::optional<std::string> entry_point;
     /** @brief Vertex buffer layouts describing attribute bindings. */
@@ -69,6 +71,13 @@ EPIX_EXPORT struct VertexState {
     /** @brief Set the vertex shader handle. */
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the per-stage shader definitions (Bevy shader_defs). */
+    auto&& set_shader_defs(this auto&& self, std::ranges::range auto&& defs)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(defs)>, shader::ShaderDefVal>
+    {
+        self.shader_defs = std::ranges::to<std::vector<shader::ShaderDefVal>>(std::forward<decltype(defs)>(defs));
         return std::forward<decltype(self)>(self);
     }
     /** @brief Set the vertex shader entry-point name. */
@@ -92,13 +101,26 @@ EPIX_EXPORT struct VertexState {
 };
 /** @brief Fragment stage configuration: shader, entry point, and color
  * targets. */
+/** @brief Error returned when a RenderPipelineDescriptor has no fragment
+ * stage (Bevy NoFragmentStateError, pipeline.rs:131-133). */
+EPIX_EXPORT struct NoFragmentStateError {};
+
 EPIX_EXPORT struct FragmentState {
     assets::Handle<shader::Shader> shader;
+    /** @brief Per-stage shader definitions (Bevy FragmentState::shader_defs). */
+    std::vector<shader::ShaderDefVal> shader_defs;
     std::optional<std::string> entry_point;
     std::vector<wgpu::ColorTargetState> targets;
     /** @brief Set the fragment shader handle. */
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the per-stage shader definitions (Bevy shader_defs). */
+    auto&& set_shader_defs(this auto&& self, std::ranges::range auto&& defs)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(defs)>, shader::ShaderDefVal>
+    {
+        self.shader_defs = std::ranges::to<std::vector<shader::ShaderDefVal>>(std::forward<decltype(defs)>(defs));
         return std::forward<decltype(self)>(self);
     }
     /** @brief Set the fragment shader entry-point name. */
@@ -118,6 +140,8 @@ EPIX_EXPORT struct FragmentState {
 EPIX_EXPORT struct RenderPipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
+    /** @brief Push constant ranges (Bevy RenderPipelineDescriptor::push_constant_ranges). */
+    std::vector<wgpu::PushConstantRange> push_constant_ranges;
     VertexState vertex;
     wgpu::PrimitiveState primitive;
     std::optional<wgpu::DepthStencilState> depth_stencil;
@@ -136,6 +160,13 @@ EPIX_EXPORT struct RenderPipelineDescriptor {
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
         self.layouts = std::ranges::to<std::vector<wgpu::BindGroupLayout>>(std::forward<decltype(layouts)>(layouts));
+        return std::forward<decltype(self)>(self);
+    }
+    auto&& set_push_constant_ranges(this auto&& self, std::ranges::range auto&& ranges)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, wgpu::PushConstantRange>
+    {
+        self.push_constant_ranges =
+            std::ranges::to<std::vector<wgpu::PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_vertex(this auto&& self, VertexState vertex) {
@@ -158,13 +189,25 @@ EPIX_EXPORT struct RenderPipelineDescriptor {
         self.fragment = std::move(fragment);
         return std::forward<decltype(self)>(self);
     }
+    /** @brief Mutable access to the fragment state, or an error when no
+     * fragment stage is configured (Bevy fragment_mut, pipeline.rs:136-138). */
+    std::expected<FragmentState*, NoFragmentStateError> fragment_mut() {
+        if (fragment) return &*fragment;
+        return std::unexpected(NoFragmentStateError{});
+    }
 };
+
 /** @brief Full descriptor for creating a compute pipeline, including
  * layout, shader, and entry point. Uses a builder pattern. */
 EPIX_EXPORT struct ComputePipelineDescriptor {
     std::string label;
     std::vector<wgpu::BindGroupLayout> layouts;
+    /** @brief Push constant ranges (Bevy ComputePipelineDescriptor::push_constant_ranges). */
+    std::vector<wgpu::PushConstantRange> push_constant_ranges;
     assets::Handle<shader::Shader> shader;
+    /** @brief Shader definitions for this pipeline (Bevy
+     * ComputePipelineDescriptor::shader_defs). */
+    std::vector<shader::ShaderDefVal> shader_defs;
     std::optional<std::string> entry_point;
 
     auto&& set_label(this auto&& self, std::string label) {
@@ -181,8 +224,22 @@ EPIX_EXPORT struct ComputePipelineDescriptor {
         self.layouts = std::ranges::to<std::vector<wgpu::BindGroupLayout>>(std::forward<decltype(layouts)>(layouts));
         return std::forward<decltype(self)>(self);
     }
+    auto&& set_push_constant_ranges(this auto&& self, std::ranges::range auto&& ranges)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, wgpu::PushConstantRange>
+    {
+        self.push_constant_ranges =
+            std::ranges::to<std::vector<wgpu::PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
+        return std::forward<decltype(self)>(self);
+    }
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
         self.shader = std::move(shader);
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the shader definitions (Bevy shader_defs). */
+    auto&& set_shader_defs(this auto&& self, std::ranges::range auto&& defs)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(defs)>, shader::ShaderDefVal>
+    {
+        self.shader_defs = std::ranges::to<std::vector<shader::ShaderDefVal>>(std::forward<decltype(defs)>(defs));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_entry_point(this auto&& self, std::string entry_point) {

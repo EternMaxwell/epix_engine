@@ -129,7 +129,7 @@ void settings_ui(imgui::Ctx imgui_ctx,
                             const fs::SandChunkPos&,
                             Mut<fs::SandChunkDirtyRect>,
                             const Parent&>> all_chunks,
-                 Query<Item<Mut<render::camera::RenderLayer>>, Filter<With<core_graph::core_2d::Camera2D, MainCamera>>>
+                 Query<Item<Mut<render::camera::RenderLayers>>, Filter<With<core_graph::core_2d::Camera2D, MainCamera>>>
                      main_cameras) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
@@ -155,8 +155,8 @@ void settings_ui(imgui::Ctx imgui_ctx,
     if (ImGui::Checkbox("Show Dirty Rects (debug window)", &show_dirty)) {
         if (auto cam_opt = main_cameras.single()) {
             auto&& [render_layer]  = *cam_opt;
-            render_layer.get_mut() = show_dirty ? render::camera::RenderLayer::all()
-                                                : render::camera::RenderLayer::all_except(std::array{std::size_t{1}});
+            render_layer.get_mut() = show_dirty ? render::camera::RenderLayers::all()
+                                                : render::camera::RenderLayers::all_except(std::array{std::size_t{1}});
         }
     }
     ImGui::Checkbox("Show Freefall", &st.show_freefall);
@@ -691,7 +691,7 @@ void freefall_overlay_system(
                           mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
                                                .alpha_mode = mesh::MeshAlphaMode2d::Blend},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
-                          render::camera::RenderLayer::layer(2))
+                          render::camera::RenderLayers::layer(2))
                     .id();
             st.freefall_overlays[chunk_ent] = overlay_ent;
         }
@@ -701,7 +701,7 @@ void freefall_overlay_system(
 // ──────────────────────────────────────────────────────────────────────────────
 // dirty_rect_overlay_system: spawns/updates/despawns translucent red quads on
 // render layer 1 that visualize each chunk's active dirty rectangle.
-// Visible in the debug window (RenderLayer::all()) and optionally in the main
+// Visible in the debug window (RenderLayers::all()) and optionally in the main
 // window when "Show Dirty Rects" is toggled on.
 // ──────────────────────────────────────────────────────────────────────────────
 void dirty_rect_overlay_system(Commands cmd,
@@ -772,7 +772,7 @@ void dirty_rect_overlay_system(Commands cmd,
                                                               .alpha_mode = mesh::MeshAlphaMode2d::Blend},
                                          transform::Transform{.translation = {center_x, center_y, 1.0f},
                                                               .scaler      = {width, height, 1.0f}},
-                                         render::camera::RenderLayer::layer(1))
+                                         render::camera::RenderLayers::layer(1))
                                    .id();
             st.dirty_rect_overlays[chunk_ent] = overlay_ent;
         }
@@ -1045,7 +1045,7 @@ void setup(Commands cmd) {
         core_graph::core_2d::Camera2DBundle bundle{};
         // scale = 1/64 so that 1/16 m cells render at ~4 px each (64 px/world-unit)
         bundle.projection   = render::camera::Projection(render::camera::OrthographicProjection{.scale = 1.0f / 64.0f});
-        bundle.render_layer = render::camera::RenderLayer::all_except(std::array{std::size_t{1}});
+        bundle.render_layer = render::camera::RenderLayers::all_except(std::array{std::size_t{1}});
         cmd.spawn(std::move(bundle)).insert(MainCamera{});
     }
 
@@ -1054,7 +1054,7 @@ void setup(Commands cmd) {
         core_graph::core_2d::Camera2DBundle bundle{};
         bundle.camera.render_target = render::camera::RenderTarget::from_window(debug_win_ent);
         bundle.camera.order         = 1;
-        bundle.render_layer         = render::camera::RenderLayer::layers(std::array{std::size_t{1}, std::size_t{2}});
+        bundle.render_layer         = render::camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}});
         cmd.spawn(std::move(bundle)).insert(DebugCamera{});
     }
 
@@ -1243,6 +1243,7 @@ int main() {
             .enable_viewports = true,
         })
         .add_plugins(time::TimePlugin{})
+        .add_plugins(render::FrameCountPlugin{})
         .add_plugins(fs::FallingSandPlugin{})
         .add_systems(PreStartup, into(setup).set_name("fallingsand example setup"))
         .add_systems(Startup, into(seed).set_name("fallingsand example seed"))
