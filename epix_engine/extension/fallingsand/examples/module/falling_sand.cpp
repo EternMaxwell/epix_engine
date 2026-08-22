@@ -1061,20 +1061,20 @@ void setup(Commands cmd) {
 
     // ── Main camera: renders layers 0+ except layer 1 (dirty rects hidden) ───
     {
-        core_graph::core_2d::Camera2DBundle bundle{};
         // scale = 1/64 so that 1/16 m cells render at ~4 px each (64 px/world-unit)
-        bundle.projection   = render::camera::Projection(render::camera::OrthographicProjection{.scale = 1.0f / 64.0f});
-        bundle.render_layer = render::camera::RenderLayers::all_except(std::array{std::size_t{1}});
-        cmd.spawn(std::move(bundle)).insert(MainCamera{});
+        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{},
+                  render::camera::Projection(render::camera::OrthographicProjection{.scale = 1.0f / 64.0f}),
+                  render::camera::RenderLayers::all_except(std::array{std::size_t{1}}))
+            .insert(MainCamera{});
     }
 
     // ── Debug camera: layer 2 (outlines) + layer 1 (dirty rects), NOT sand (layer 0)
     {
-        core_graph::core_2d::Camera2DBundle bundle{};
-        bundle.camera.render_target = render::camera::RenderTarget::from_window(debug_win_ent);
-        bundle.camera.order         = 1;
-        bundle.render_layer         = render::camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}});
-        cmd.spawn(std::move(bundle)).insert(DebugCamera{});
+        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{},
+                  render::camera::Camera{.render_target = render::camera::RenderTarget::from_window(debug_win_ent),
+                                         .order         = 1},
+                  render::camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}}))
+            .insert(DebugCamera{});
     }
 
     constexpr std::size_t chunk_shift = 5;

@@ -95,8 +95,7 @@ int main() {
     // A camera wired to our custom render graph (a registered sub-graph;
     // an unregistered label makes the camera driver fail and nothing presents).
     app.add_systems(Startup,
-                    into([](Commands cmd) { cmd.spawn(render::camera::CameraBundle::with_render_graph(
-                        render::camera::CameraRenderGraph(kClearGraph))); }));
+                    into([](Commands cmd) { cmd.spawn(camera::Camera{}, render::camera::CameraRenderGraph(kClearGraph), transform::Transform{}); }));
 
     app.run();
 }

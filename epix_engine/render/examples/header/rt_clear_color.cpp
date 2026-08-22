@@ -1,4 +1,4 @@
-﻿// Minimal render-module-only real-time example: opens a window and animates
+// Minimal render-module-only real-time example: opens a window and animates
 // the camera's clear color each frame. The camera drives a custom sub-graph
 // whose single node clears the swapchain output attachment directly, so the
 // full render loop (extract -> camera driver -> graph node -> present) is
@@ -123,8 +123,7 @@ int main() {
     // A camera wired to our custom render graph (a registered sub-graph;
     // an unregistered label makes the camera driver fail and nothing presents).
     app.add_systems(Startup,
-                    into([](Commands cmd) { cmd.spawn(render::camera::CameraBundle::with_render_graph(
-                        render::camera::CameraRenderGraph(kClearGraph))); }));
+                    into([](Commands cmd) { cmd.spawn(camera::Camera{}, render::camera::CameraRenderGraph(kClearGraph), transform::Transform{}); }));
 
     // Animate the render-world ClearColor; log FPS from the main world.
     if (auto render_app = app.get_sub_app_mut(render::Render)) {

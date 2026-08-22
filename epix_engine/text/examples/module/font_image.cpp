@@ -110,7 +110,7 @@ int main(int argc, char** argv) {
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
     app.add_systems(app::Update, ecs::into(input::log_inputs, window::log_events));
-    app.world_mut().spawn(core_graph::core_2d::Camera2DBundle{});
+    app.world_mut().spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
 
     std::optional<assets::Handle<text::font::Font>> font_handle;
 

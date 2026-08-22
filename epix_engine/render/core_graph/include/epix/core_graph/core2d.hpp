@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <epix/common.hpp>
 
@@ -208,61 +208,13 @@ EPIX_EXPORT struct Core2dPlugin {
     void attach(app::App& app);
 };
 
-/** @brief Marker component for 2D camera entities. */
+/** @brief Marker component for 2D camera entities (Bevy Camera2d).
+ *
+ * Bevy has no camera bundles: required components pull in Camera (which
+ * requires Projection/Transform/VisibleEntities/RenderLayers/Msaa/Frustum)
+ * and the Core2d CameraRenderGraph, so spawning a bare Camera2D (optionally
+ * with Transform / Projection / Camera overrides) is all that is needed. */
 EPIX_EXPORT struct Camera2D {
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
-
-/** @brief Bundle for spawning a complete 2D camera entity configured with
- * the core 2D render graph. */
-EPIX_EXPORT struct Camera2DBundle {
-    camera::Camera camera;
-    camera::Projection projection;
-    render::camera::CameraRenderGraph render_graph = Core2d;
-    transform::Transform transform;
-    camera::VisibleEntities visible_entities;
-    Camera2D camera_2d;
-    /** @brief Which layers this camera renders. Bevy default: layer 0 only
-     * (a camera without an explicit RenderLayers sees layer 0). */
-    camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
-};
 }  // namespace epix::core_graph::core_2d
-
-template <>
-struct epix::ecs::Bundle<epix::core_graph::core_2d::Camera2DBundle> {
-    static void get_components(core_graph::core_2d::Camera2DBundle& bundle,
-                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
-        write_component([&](void* ptr) { new (ptr) camera::Camera(std::move(bundle.camera)); });
-        write_component([&](void* ptr) { new (ptr) camera::Projection(std::move(bundle.projection)); });
-        write_component(
-            [&](void* ptr) { new (ptr) render::camera::CameraRenderGraph(std::move(bundle.render_graph)); });
-        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
-        write_component(
-            [&](void* ptr) { new (ptr) camera::VisibleEntities(std::move(bundle.visible_entities)); });
-        write_component([&](void* ptr) { new (ptr) core_graph::core_2d::Camera2D(std::move(bundle.camera_2d)); });
-        write_component([&](void* ptr) { new (ptr) camera::RenderLayers(std::move(bundle.render_layer)); });
-    }
-    static std::array<std::optional<TypeId>, 7> type_ids(const ecs::Components& components) {
-        return std::array{
-            components.get_id<camera::Camera>(),
-            components.get_id<camera::Projection>(),
-            components.get_id<render::camera::CameraRenderGraph>(),
-            components.get_id<transform::Transform>(),
-            components.get_id<camera::VisibleEntities>(),
-            components.get_id<core_graph::core_2d::Camera2D>(),
-            components.get_id<camera::RenderLayers>(),
-        };
-    }
-    static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
-        std::vector<TypeId> ids;
-        ids.push_back(components.template register_component<camera::Camera>());
-        ids.push_back(components.template register_component<camera::Projection>());
-        ids.push_back(components.template register_component<render::camera::CameraRenderGraph>());
-        ids.push_back(components.template register_component<transform::Transform>());
-        ids.push_back(components.template register_component<camera::VisibleEntities>());
-        ids.push_back(components.template register_component<core_graph::core_2d::Camera2D>());
-        ids.push_back(components.template register_component<camera::RenderLayers>());
-        return ids;
-    }
-};
-static_assert(epix::ecs::is_bundle<epix::core_graph::core_2d::Camera2DBundle>);

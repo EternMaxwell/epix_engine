@@ -128,8 +128,7 @@ void setup(Commands cmd) {
 
     // Main camera.
     {
-        core_graph::core_2d::Camera2DBundle bundle{};
-        cmd.spawn(std::move(bundle)).insert(MainCamera{});
+        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{}).insert(MainCamera{});
     }
 
     // Sand world.

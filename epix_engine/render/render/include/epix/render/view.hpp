@@ -479,62 +479,10 @@ EPIX_EXPORT struct CameraDriverNode : graph::Node {
     void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const epix::ecs::World& world) override;
 };
 
-/** @brief Bundle for spawning a camera entity with all required
- * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).
- */
-EPIX_EXPORT struct CameraBundle {
-    Camera camera;
-    Projection projection;
-    CameraRenderGraph render_graph;
-    transform::Transform transform;
-    view::VisibleEntities visible;
-    /** @brief Which layers this camera renders. Bevy default: layer 0 only
-     * (a camera without an explicit RenderLayers sees layer 0, render_layers.rs:45-52). */
-    RenderLayers render_layer = RenderLayers::layer(0);
-
-    CameraBundle(const CameraRenderGraph& graph) : render_graph(graph) {}
-
-    static CameraBundle with_render_graph(const CameraRenderGraph& graph) {
-        CameraBundle bundle(graph);
-        return bundle;
-    }
-};
+// Bevy has no camera bundles: spawn Camera (with a CameraRenderGraph for a
+// specific graph) and the required components (Projection, Transform,
+// VisibleEntities, RenderLayers, Msaa, Frustum) are added automatically.
 }  // namespace epix::render::camera
-
-template <>
-struct epix::ecs::Bundle<epix::render::camera::CameraBundle> {
-    static void get_components(render::camera::CameraBundle& bundle,
-                               utils::function_ref<void(utils::function_ref<void(void*)>)> write_component) noexcept {
-        write_component([&](void* ptr) { new (ptr) render::camera::Camera(std::move(bundle.camera)); });
-        write_component([&](void* ptr) { new (ptr) render::camera::Projection(std::move(bundle.projection)); });
-        write_component(
-            [&](void* ptr) { new (ptr) render::camera::CameraRenderGraph(std::move(bundle.render_graph)); });
-        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
-        write_component([&](void* ptr) { new (ptr) render::view::VisibleEntities(std::move(bundle.visible)); });
-        write_component([&](void* ptr) { new (ptr) render::camera::RenderLayers(std::move(bundle.render_layer)); });
-    }
-    static auto type_ids(const epix::ecs::Components& components) {
-        return std::array<std::optional<epix::ecs::TypeId>, 6>{
-            components.get_id<render::camera::Camera>(),
-            components.get_id<render::camera::Projection>(),
-            components.get_id<render::camera::CameraRenderGraph>(),
-            components.get_id<transform::Transform>(),
-            components.get_id<render::view::VisibleEntities>(),
-            components.get_id<render::camera::RenderLayers>(),
-        };
-    }
-    static auto register_components(epix::ecs::ComponentsRegistrator& components) {
-        std::vector<epix::ecs::TypeId> ids;
-        ids.push_back(components.register_component<render::camera::Camera>());
-        ids.push_back(components.register_component<render::camera::Projection>());
-        ids.push_back(components.register_component<render::camera::CameraRenderGraph>());
-        ids.push_back(components.register_component<transform::Transform>());
-        ids.push_back(components.register_component<render::view::VisibleEntities>());
-        ids.push_back(components.register_component<render::camera::RenderLayers>());
-        return ids;
-    }
-};
-static_assert(epix::ecs::is_bundle<epix::render::camera::CameraBundle>);
 
 namespace epix::render::view {
 EPIX_EXPORT struct Hdr {};

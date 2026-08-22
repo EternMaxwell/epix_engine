@@ -22,7 +22,7 @@ struct BasicSpriteVisualTestPlugin {
         auto& world  = app.world_mut();
         auto& images = world.resource_mut<assets::Assets<image::Image>>();
 
-        world.spawn(core_graph::core_2d::Camera2DBundle{});
+        world.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
 
         std::vector<std::uint8_t> texture_data = {
             255, 0, 255, 255, 0, 0, 0, 255, 0, 0, 0, 255, 255, 0, 255, 255,

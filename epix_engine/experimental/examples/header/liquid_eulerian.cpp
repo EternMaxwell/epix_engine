@@ -1,4 +1,4 @@
-#include <imgui.h>
+﻿#include <imgui.h>
 
 #include <BS_thread_pool.hpp>
 #include <algorithm>
@@ -58,14 +58,14 @@ constexpr float kCellSize = 4.0f;
 
 // ------- Chunk layout constants -------
 constexpr int kChunkSize = 16;
-// ceil(kN / kChunkSize) → 13 chunks per axis covering cells [0, 207]; grid uses [0, 199]
+// ceil(kN / kChunkSize) 鈫?13 chunks per axis covering cells [0, 207]; grid uses [0, 199]
 constexpr int kChunksX    = (kN + kChunkSize - 1) / kChunkSize;  // 13
 constexpr int kChunksY    = (kN + kChunkSize - 1) / kChunkSize;  // 13
 constexpr int kMaxChunks  = kChunksX * kChunksY;                 // 169
 constexpr int kChunkCells = kChunkSize * kChunkSize;             // 256
 
 // ------- GPU buffer planar field sections (in i32 elements from buffer start) -------
-// packed_grid::offset({x,y}) = x * kChunksY + y  →  chunk index = cx * kChunksY + cy
+// packed_grid::offset({x,y}) = x * kChunksY + y  鈫? chunk index = cx * kChunksY + cy
 constexpr int kGpuDBase      = 0;
 constexpr int kGpuSBase      = kMaxChunks * kChunkCells;      // 43264
 constexpr int kGpuPBase      = 2 * kMaxChunks * kChunkCells;  // 86528
@@ -188,9 +188,9 @@ enum class PaintTool {
 
 // Per-chunk simulation data.  Chunk (cx, cy) has index = cx * kChunksY + cy
 // (matches packed_grid<2,T>{{kChunksX,kChunksY}} iteration order).
-// U and V are "CS×CS" arrays; the staggered face at global gx belongs to
+// U and V are "CS脳CS" arrays; the staggered face at global gx belongs to
 // chunk cx = gx / kChunkSize, local lx = gx % kChunkSize.  This works because
-// N % kChunkSize ≠ 0, so the boundary face at gx = kN = 200 lands in chunk 12
+// N % kChunkSize 鈮?0, so the boundary face at gx = kN = 200 lands in chunk 12
 // at local lx = 8 (< kChunkSize), and no chunk dimension exceeds kChunkSize.
 struct ChunkData {
     packed_grid<2, fx32> D{{kChunkSize, kChunkSize}, 0};
@@ -225,7 +225,7 @@ struct Fluid {
     ChunkData& chunk_at(int cx, int cy) { return chunks[ci(cx, cy)]; }
     const ChunkData& chunk_at(int cx, int cy) const { return chunks[ci(cx, cy)]; }
 
-    // Global → chunk coord
+    // Global 鈫?chunk coord
     static int cx_of(int gx) { return gx / kChunkSize; }
     static int cy_of(int gy) { return gy / kChunkSize; }
     static int lx_of(int gx) { return gx % kChunkSize; }
@@ -246,7 +246,7 @@ struct Fluid {
     }
 
     // ------- Staggered velocity accessors -------
-    // U valid at gx ∈ [0, kN], gy ∈ [0, kN-1]
+    // U valid at gx 鈭?[0, kN], gy 鈭?[0, kN-1]
     fx32 getU_fx(int gx, int gy) const {
         if (gx < 0 || gx > kN || gy < 0 || gy >= kN) return 0;
         if (cx_of(gx) >= kChunksX || cy_of(gy) >= kChunksY) return 0;
@@ -255,7 +255,7 @@ struct Fluid {
     }
     float getU(int x, int y) const { return fx_to_float(getU_fx(x, y)); }
 
-    // V valid at gx ∈ [0, kN-1], gy ∈ [0, kN]
+    // V valid at gx 鈭?[0, kN-1], gy 鈭?[0, kN]
     fx32 getV_fx(int gx, int gy) const {
         if (gx < 0 || gx >= kN || gy < 0 || gy > kN) return 0;
         if (cx_of(gx) >= kChunksX || cy_of(gy) >= kChunksY) return 0;
@@ -576,7 +576,7 @@ struct GpuPressureProjector {
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
         // each kMaxChunks*kChunkCells elements; chunk index via SvoGrid2D.lookup(cx,cy).
         // -----------------------------------------------------------------------
-        // Slang shader sources �?use epix.ext.grid.svo library (SvoGrid2D) for
+        // Slang shader sources 锟?use epix.ext.grid.svo library (SvoGrid2D) for
         // chunk-position lookup instead of hand-rolled WGSL SVO traversal.
         // -----------------------------------------------------------------------
 
@@ -1173,7 +1173,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 }
 )slg";
 
-        // Clamp U (output, NO param �?only 3 bindings)
+        // Clamp U (output, NO param 锟?only 3 bindings)
         static const std::string kShaderClampU = kSlangCommonOutput + R"slg(
 [shader("compute")]
 [numthreads(16,16,1)]
@@ -1186,7 +1186,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 }
 )slg";
 
-        // Clamp V (output, NO param �?only 3 bindings)
+        // Clamp V (output, NO param 锟?only 3 bindings)
         static const std::string kShaderClampV = kSlangCommonOutput + R"slg(
 [shader("compute")]
 [numthreads(16,16,1)]
@@ -1996,7 +1996,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
                     }));
         };
 
-        // Output without param: {chunk_data(0,rd), chunk_out(1,rw), chunk_svo(2,rd)} �� for clamp shaders
+        // Output without param: {chunk_data(0,rd), chunk_out(1,rw), chunk_svo(2,rd)} 锟斤拷 for clamp shaders
         const auto make_output_noparam_bg = [&](const wgpu::ComputePipeline& p, std::string_view label,
                                                 const wgpu::Buffer& out_buf) {
             return device.createBindGroup(
@@ -2184,7 +2184,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.end();
         }
 
-        // 2. Surface tension �� chunk_u_out_buf / chunk_v_out_buf
+        // 2. Surface tension 锟斤拷 chunk_u_out_buf / chunk_v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(surface_u_pipeline);
@@ -2196,7 +2196,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.dispatchWorkgroups(gx_v, gy_v, 1);
             pass.end();
         }
-        // Copy out �� chunk_data U/V sections
+        // Copy out 锟斤拷 chunk_data U/V sections
         encoder.copyBufferToBuffer(chunk_u_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuUBase) * 4u,
                                    kGpuFieldSectionBytes);
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
@@ -2265,7 +2265,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             pass.end();
         }
 
-        // 7. Clamp velocities �� chunk_u/v_out_buf
+        // 7. Clamp velocities 锟斤拷 chunk_u/v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(clamp_u_pipeline);
@@ -2282,7 +2282,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
                                    kGpuFieldSectionBytes);
 
-        // 8. Advect velocities �� chunk_u/v_out_buf
+        // 8. Advect velocities 锟斤拷 chunk_u/v_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(advect_u_pipeline);
@@ -2299,7 +2299,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         encoder.copyBufferToBuffer(chunk_v_out_buf, 0, chunk_data_buf, static_cast<std::uint64_t>(kGpuVBase) * 4u,
                                    kGpuFieldSectionBytes);
 
-        // 9. Density transport �� chunk_d_out_buf
+        // 9. Density transport 锟斤拷 chunk_d_out_buf
         {
             auto pass = encoder.beginComputePass();
             pass.setPipeline(density_pipeline);
@@ -2609,7 +2609,7 @@ struct Plugin {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
-        world.spawn(core_graph::core_2d::Camera2DBundle{});
+        world.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
 
         Fluid sim;
         sim.reset();
