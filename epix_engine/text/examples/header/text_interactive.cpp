@@ -49,7 +49,7 @@ struct CamControllPlugin {
     void attach(app::App& app) {
         app.add_systems(
             app::Update,
-            ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
+            ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&,
                                               transform::Transform&>> camera,
                          ecs::EventReader<input::MouseScroll> scroll_input,
                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
@@ -57,8 +57,8 @@ struct CamControllPlugin {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
                         trans.translation = glm::vec3(0, 0, 0);
-                        proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
-                            *ortho = render::camera::OrthographicProjection{};
+                        proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
+                            *ortho = camera::OrthographicProjection{};
                             return true;
                         });
                         return;
@@ -80,7 +80,7 @@ struct CamControllPlugin {
                         delta = glm::normalize(delta) * 0.1f;
                         trans.translation += delta;
                     }
-                    proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
+                    proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
                         for (const auto& e : scroll_input.read()) {
                             float scale = std::exp(-static_cast<float>(e.yoffset) * 0.1f);
                             ortho->scale *= scale;
@@ -95,8 +95,8 @@ struct CamControllPlugin {
 // Convert screen coordinates to world coordinates
 glm::vec2 screen_to_world(glm::vec2 screen_pos,
                           glm::vec2 window_size,
-                          const render::camera::Camera& camera,
-                          const render::camera::Projection& projection,
+                          const camera::Camera& camera,
+                          const camera::Projection& projection,
                           const transform::Transform& cam_transform) {
     // Normalize to NDC [-1, 1]
     float ndc_x = (screen_pos.x / window_size.x) * 2.0f - 1.0f;
@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
         ecs::into(
             [](ecs::ResMut<DragState> drag_state, ecs::Res<input::ButtonInput<input::MouseButton>> mouse_input,
                ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>> window_query,
-               ecs::ParamSet<ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
+               ecs::ParamSet<ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&,
                                                   const transform::Transform&>>,
                              ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
                                         ecs::With<MainText>>> conflicting_queries,

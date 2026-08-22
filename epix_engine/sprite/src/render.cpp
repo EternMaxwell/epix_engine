@@ -1,4 +1,4 @@
-#include <spdlog/spdlog.h>
+﻿#include <spdlog/spdlog.h>
 
 #include <array>
 #include <bit>
@@ -312,8 +312,8 @@ void extract_sprites(Commands cmd,
                                         const Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
-                                        const render::camera::ViewVisibility&,
-                                        Opt<const render::camera::RenderLayers&>>,
+                                        const camera::ViewVisibility&,
+                                        Opt<const camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
                      Extract<Res<assets::Assets<image::Image>>> images) {
     for (auto&& [entity, sprite, global_transform, texture, view_visibility, opt_layer] : sprites.iter()) {
@@ -333,7 +333,7 @@ void extract_sprites(Commands cmd,
                 .depth         = global_transform.matrix[3][2],
                 .texture       = texture.id(),
                 .image_size    = image_size,
-                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayers::layer(0),
+                .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
             },
             SpriteBatch{});
     }
@@ -447,7 +447,7 @@ void SpritePlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpritePlugin.");
     // Bevy Sprite requires Visibility (visibility/mod.rs:151-166), which pulls
     // in InheritedVisibility + ViewVisibility so hidden/layer culling works.
-    app.world_mut().register_required_components<sprite::Sprite, render::camera::Visibility>();
+    app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {

@@ -1,4 +1,4 @@
-#include <spdlog/spdlog.h>
+﻿#include <spdlog/spdlog.h>
 
 #include <array>
 #include <bit>
@@ -119,7 +119,7 @@ struct ExtractedText2d {
     glm::vec4 color;
     float depth;
     assets::AssetId<image::Image> font_image;
-    render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
+    camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
 };
 
 struct TextBatch {
@@ -406,7 +406,7 @@ void extract_texts_2d(Commands cmd,
                                          Opt<const TextColor&>,
                                          const TextImage&,
                                          const transform::GlobalTransform&,
-                                         Opt<const render::camera::RenderLayers&>>,
+                                         Opt<const camera::RenderLayers&>>,
                                     Without<render::CustomRendered>>> texts) {
     for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, opt_layer] : texts.iter()) {
         glm::vec4 color{1.0f};
@@ -426,7 +426,7 @@ void extract_texts_2d(Commands cmd,
                 .color         = color,
                 .depth         = model[3][2],
                 .font_image    = text_image.image,
-                .render_layer  = opt_layer ? *opt_layer : render::camera::RenderLayers::layer(0),
+                .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
             },
             TextBatch{});
     }

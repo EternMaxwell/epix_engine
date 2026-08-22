@@ -73,6 +73,17 @@ void RenderPlugin::attach(App& app) {
             });
         render_app.schedule_order().insert_begin(render::Render);
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
+        // Render-side camera wiring (bevy_render::camera): extract cameras into
+        // the render world, sort them per target, and drive each camera's
+        // render graph. The user-facing camera plugin lives in the camera module.
+        render_app.world_mut().insert_resource(::epix::camera::ClearColor{0.0242f, 0.0250f, 0.0289f, 1.0f});
+        render_app.world_mut().init_resource<render::camera::SortedCameras>();
+        render_app.add_systems(ExtractSchedule, into(render::camera::extract_cameras).set_name("extract cameras"));
+        render_app.add_systems(Render,
+                               into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
+        if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
+            render_graph->get().add_node(render::camera::CameraDriverNodeLabel, render::camera::CameraDriverNode{});
+        }
     });
 
     wgpu::Instance instance = wgpu::createInstance();
@@ -254,7 +265,9 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::RenderAssetPlugin<image::Image>{});
     app.add_plugins(shader::ShaderPlugin{});
-    app.add_plugins(render::camera::CameraPlugin{});
+    app.add_plugins(::epix::camera::CameraPlugin{});
+    // Bevy bevy_render extracts the ClearColor resource to the render world.
+    app.add_plugins(render::ExtractResourcePlugin<::epix::camera::ClearColor>{});
     app.add_plugins(render::view::ViewPlugin{});
     // Bevy lib.rs:362-380: GlobalsPlugin, BatchingPlugin, SyncWorldPlugin,
     // StoragePlugin, GpuReadbackPlugin are all attached by RenderPlugin.

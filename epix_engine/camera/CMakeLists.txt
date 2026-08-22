@@ -1,0 +1,8 @@
+epix_add_module(epix_camera)
+target_link_libraries(epix_camera PUBLIC epix_common)
+target_link_libraries(epix_camera PUBLIC epix_ecs)
+target_link_libraries(epix_camera PUBLIC epix_app)
+target_link_libraries(epix_camera PUBLIC epix_transform)
+target_link_libraries(epix_camera PUBLIC epix_window)
+target_link_libraries(epix_camera PUBLIC epix_utils)
+target_link_libraries(epix_camera PUBLIC webgpu)

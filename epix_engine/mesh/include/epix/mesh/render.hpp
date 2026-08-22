@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <epix/common.hpp>
 
@@ -68,7 +68,7 @@ EPIX_EXPORT struct ExtractedMesh2d {
     /** @brief Optional texture asset ID. */
     std::optional<assets::AssetId<image::Image>> texture;
     /** @brief Render layers this entity belongs to. Default: layer 0. */
-    render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
+    camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
 };
 
 /** @brief Batching key for 2D mesh draw commands (groups by texture). */

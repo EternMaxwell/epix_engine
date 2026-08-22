@@ -68,7 +68,7 @@ wgpu::BlendState alpha_blend_state() noexcept {
 
 void Camera2D::register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
     registrator.template register_required<camera::Camera>([] { return camera::Camera{}; });
-    registrator.template register_required<camera::CameraRenderGraph>([] { return camera::CameraRenderGraph{Core2d}; });
+    registrator.template register_required<render::camera::CameraRenderGraph>([] { return render::camera::CameraRenderGraph{Core2d}; });
 }
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
@@ -90,7 +90,7 @@ void Core2dGraph::add_to(graph::RenderGraph& g) {
 
 void Core2dBlitNode::update(World& world) {
     if (!views) {
-        views = world.try_query<Item<const camera::ExtractedCamera&, const view::ViewTarget&>>();
+        views = world.try_query<Item<const render::camera::ExtractedCamera&, const view::ViewTarget&>>();
     } else {
         views->update_archetypes(world);
     }
@@ -252,11 +252,11 @@ void Core2dPlugin::attach(App& app) {
                                                                  "sort opaque 2d phase"}));
         render_app.add_systems(
             Render, into([](Commands cmd,
-                            Query<Item<Entity, const camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
+                            Query<Item<Entity, const render::camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
                         // insert render phases for each view
                         for (auto&& [entity, camera] : views.iter()) {
                             // only insert for 2d camera render graph
-                            if (camera.render_graph == camera::CameraRenderGraph(Core2d)) {
+                            if (camera.render_graph == render::camera::CameraRenderGraph(Core2d)) {
                                 auto entity_commands = cmd.entity(entity);
                                 entity_commands.insert(phase::RenderPhase<Transparent2D>{},
                                                        phase::RenderPhase<Opaque2D>{}, phase::RenderPhase<UI2DItem>{});

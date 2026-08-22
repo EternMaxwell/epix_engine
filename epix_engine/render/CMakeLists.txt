@@ -1,4 +1,5 @@
 epix_add_module_subdir(epix_render render)
+target_link_libraries(epix_render PUBLIC epix_camera)
 target_link_libraries(epix_render PUBLIC epix_ecs)
 target_link_libraries(epix_render PUBLIC epix_window)
 target_link_libraries(epix_render PUBLIC epix_assets)

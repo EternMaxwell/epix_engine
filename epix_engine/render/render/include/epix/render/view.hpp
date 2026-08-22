@@ -23,6 +23,7 @@
 #include <webgpu/webgpu.hpp>
 #endif
 
+#include <epix/camera.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/graph.hpp>
 #include <epix/render/render_phase.hpp>
@@ -32,685 +33,34 @@
 #include <epix/render/window.hpp>
 
 namespace epix::render::camera {
-/** @brief Defines a sub-region of the render target for camera output. */
-EPIX_EXPORT struct Viewport {
-    /** @brief Top-left position of the viewport in pixels. */
-    glm::uvec2 pos;
-    /** @brief Size of the viewport in pixels. */
-    glm::uvec2 size;
-    /** @brief Depth range for the viewport (min, max). */
-    std::pair<float, float> depth_range{0.0f, 1.0f};
-};
-/** @brief Reference to a window entity used as a render target.
- *
- * When `primary` is true, the primary window is used regardless of
- * `window_entity`. */
-EPIX_EXPORT struct WindowRef {
-    /** @brief Whether to target the primary window. */
-    bool primary = true;
-    /** @brief Window entity to target when primary is false. */
-    epix::ecs::Entity window_entity;
-};
-/** @brief A render target that is either a GPU texture or a window
- * reference. */
-struct RenderTargetId;  // forward decl; defined after RenderTarget
-EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
-    using std::variant<wgpu::Texture, WindowRef>::variant;
-    static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
-    static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
-    static RenderTarget from_window(epix::ecs::Entity window_entity) noexcept {
-        return RenderTarget(WindowRef{false, window_entity});
-    }
-    std::optional<RenderTarget> normalize(std::optional<epix::ecs::Entity> primary) const;
-    /** @brief Stable identity for grouping/sorting by target (Bevy
-     * NormalizedRenderTarget hashing). Textures are keyed by their raw handle,
-     * windows by their entity uid. */
-    RenderTargetId identity() const noexcept;
-};
-
-/** @brief Stable identity of a normalized render target, used to share one
- * output attachment per target and to group cameras by target. */
-EPIX_EXPORT struct RenderTargetId {
-    std::uint64_t value = 0;
-    bool operator==(const RenderTargetId&) const noexcept = default;
-};
-/** @brief Hash for RenderTargetId. */
-EPIX_EXPORT struct RenderTargetIdHash {
-    std::size_t operator()(const RenderTargetId& id) const noexcept { return std::hash<std::uint64_t>{}(id.value); }
-};
-struct ComputedCameraValues {
-    glm::mat4 projection;
-    glm::uvec2 target_size;
-    std::optional<glm::uvec2> old_viewport_size;
-};
-/** @brief RGBA clear color for render targets. */
-EPIX_EXPORT struct ClearColor : public glm::vec4 {
-    using glm::vec4::vec4;
-    ClearColor(const glm::vec4& v) noexcept : glm::vec4(v) {}
-    glm::vec4 to_vec4() const noexcept { return glm::vec4(*this); }
-};
-/** @brief Controls how the render target is cleared before rendering. */
-EPIX_EXPORT struct ClearColorConfig {
-    enum class Type {
-        None,    // don't clear
-        Global,  // use world's clear color resource
-        Default = Global,
-        Custom,  // use custom clear color
-    } type = Type::Default;
-    ClearColor clear_color{0.0f, 0.0f, 0.0f, 1.0f};
-
-    static ClearColorConfig none() noexcept { return ClearColorConfig{Type::None}; }
-    static ClearColorConfig def() noexcept { return ClearColorConfig{Type::Default}; }
-    static ClearColorConfig global() noexcept { return ClearColorConfig{Type::Global}; }
-    static ClearColorConfig custom(const glm::vec4& color) noexcept { return ClearColorConfig{Type::Custom, color}; }
-};
-/** @brief Identifies which render layers a camera renders or an entity belongs to.
- *
- * Backed by a dynamic bit vector.  When `inverted` is false (the default) the
- * component represents a finite set of active layer indices.  When `inverted`
- * is true it represents the complement — i.e. "all layers except those in
- * `bits`" — which allows expressing "render everything" without enumerating
- * every possible index.
- *
- * Matching rule (camera vs entity):
- *   `camera_layer.intersects(entity_layer)` returns true when there exists at
- *   least one layer index that is active in both.
- *
- * Default construction yields layer 0 (`bits = {0}`, `inverted = false`).
- */
-EPIX_EXPORT struct RenderLayers {
-    utils::bit_vector bits;
-    bool inverted = false;
-
-    /** @brief Default: entity is on layer 0. */
-    RenderLayers() { bits.set(0); }
-
-    /** @brief Internal constructor for factory methods. */
-    RenderLayers(utils::bit_vector b, bool inv) : bits(std::move(b)), inverted(inv) {}
-
-    /** @brief Matches all layers (camera default). */
-    static RenderLayers all() { return RenderLayers(utils::bit_vector{}, true); }
-
-    /** @brief Matches no layers. */
-    static RenderLayers none() { return RenderLayers(utils::bit_vector{}, false); }
-
-    /** @brief Matches exactly one layer. */
-    static RenderLayers layer(std::size_t n) {
-        utils::bit_vector b;
-        b.set(n);
-        return RenderLayers(std::move(b), false);
-    }
-
-    /** @brief Matches a set of layers (accepts any input range of `std::size_t`). */
-    template <std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
-    static RenderLayers layers(R&& ns) {
-        utils::bit_vector b;
-        for (auto n : ns) b.set(static_cast<std::size_t>(n));
-        return RenderLayers(std::move(b), false);
-    }
-    /** @brief Matches all layers except those in the range. */
-    template <std::ranges::input_range R>
-        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
-    static RenderLayers all_except(R&& ns) {
-        utils::bit_vector b;
-        for (auto n : ns) b.set(static_cast<std::size_t>(n));
-        return RenderLayers(std::move(b), true);
-    }
-
-    /** @brief Returns true if layer index @p n is active on this RenderLayers. */
-    bool contains(std::size_t n) const noexcept {
-        bool in_bits = bits.contains(n);
-        return inverted ? !in_bits : in_bits;
-    }
-
-    /** @brief Returns true if this and @p other share at least one active layer.
-     *
-     * Truth table for the four (inverted, inverted) combinations:
-     *  - normal ∩ normal   → any shared set bit
-     *  - normal ∩ inverted → any bit in self not excluded by other
-     *  - inverted ∩ normal → any bit in other not excluded by self
-     *  - inverted ∩ inverted → always true (both cover infinitely many layers
-     *                           beyond their finite exclusion sets)
-     */
-    bool intersects(const RenderLayers& other) const noexcept {
-        if (!inverted && !other.inverted) {
-            return bits.intersect(other.bits);
-        }
-        if (!inverted && other.inverted) {
-            // any bit in self.bits that is NOT excluded by other
-            return bits.difference_count(other.bits) > 0;
-        }
-        if (inverted && !other.inverted) {
-            // any bit in other.bits that is NOT excluded by self
-            return other.bits.difference_count(bits) > 0;
-        }
-        // inverted ∩ inverted: both represent infinite sets — always overlap
-        return true;
-    }
-};
-
-
-/** @brief Camera component that controls viewport, render target, ordering,
- * and clear colour.
- *
- * Cameras with higher `order` render on top of those with lower order.
- * The computed projection and target size are updated automatically by
- * camera systems.
- */
-EPIX_EXPORT struct Camera {
-    /** @brief The camera's viewport within the render target. */
-    std::optional<Viewport> viewport;
-    /** @brief Cameras with higher order are rendered on top of cameras with
-     * lower order. */
-    std::ptrdiff_t order = 0;
-    /** @brief Whether this camera is active and should be used for rendering. */
-    bool active = true;
-    /** @brief If true, the camera uses an intermediate HDR render texture
-     * (Bevy Camera::hdr). */
-    bool hdr = false;
-
-    /** @brief The render target for this camera. */
-    RenderTarget render_target = RenderTarget::from_primary();
-    /** @brief Computed values updated by camera systems. */
-    ComputedCameraValues computed;
-    /** @brief Clear color configuration for this camera. */
-    ClearColorConfig clear_color = ClearColorConfig::global();
-
-    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator);
-
-    /** @brief Get the effective viewport size, falling back to target size. */
-    glm::uvec2 get_viewport_size() const noexcept {
-        return viewport.transform([](const Viewport& vp) { return vp.size; }).value_or(computed.target_size);
-    }
-    /** @brief Get the render target's pixel dimensions. */
-    glm::uvec2 get_target_size() const noexcept { return computed.target_size; }
-    /** @brief Get the viewport origin, defaulting to (0, 0). */
-    glm::uvec2 get_viewport_origin() const noexcept {
-        return viewport.transform([](const Viewport& vp) { return vp.pos; }).value_or(glm::uvec2(0, 0));
-    }
-};
-/** @brief Scaling mode controlling how an orthographic projection adapts to
- * the viewport size.
- *
- * Constructed via static factory methods (e.g. `fixed()`, `window_size()`,
- * `auto_min()`).
- */
-EPIX_EXPORT struct ScalingMode {
-   private:
-    enum class Mode {
-        Fixed,
-        WindowSize,
-        AutoMin,
-        AutoMax,
-        FixedVertical,
-        FixedHorizontal,
-    } mode;
-    union {
-        struct {
-            float width;
-            float height;
-        } _fixed;
-        struct {
-            float pixels_per_unit;
-        } _window_size;
-        struct {
-            float min_width;
-            float min_height;
-        } _auto_min;
-        struct {
-            float max_width;
-            float max_height;
-        } _auto_max;
-        struct {
-            float vertical;
-        } _fixed_vertical;
-        struct {
-            float horizontal;
-        } _fixed_horizontal;
-    };
-
-   public:
-    ScalingMode() noexcept : mode(Mode::WindowSize) { _window_size.pixels_per_unit = 1.0f; }
-    static ScalingMode fixed(float width, float height) noexcept {
-        ScalingMode mode;
-        mode.mode          = Mode::Fixed;
-        mode._fixed.width  = width;
-        mode._fixed.height = height;
-        return mode;
-    }
-    static ScalingMode window_size(float pixels_per_unit) noexcept {
-        ScalingMode mode;
-        mode.mode                         = Mode::WindowSize;
-        mode._window_size.pixels_per_unit = pixels_per_unit;
-        return mode;
-    }
-    static ScalingMode auto_min(float min_width, float min_height) noexcept {
-        ScalingMode mode;
-        mode.mode                 = Mode::AutoMin;
-        mode._auto_min.min_width  = min_width;
-        mode._auto_min.min_height = min_height;
-        return mode;
-    }
-    static ScalingMode auto_max(float max_width, float max_height) noexcept {
-        ScalingMode mode;
-        mode.mode                 = Mode::AutoMax;
-        mode._auto_max.max_width  = max_width;
-        mode._auto_max.max_height = max_height;
-        return mode;
-    }
-    static ScalingMode fixed_vertical(float vertical) noexcept {
-        ScalingMode mode;
-        mode.mode                     = Mode::FixedVertical;
-        mode._fixed_vertical.vertical = vertical;
-        return mode;
-    }
-    static ScalingMode fixed_horizontal(float horizontal) noexcept {
-        ScalingMode mode;
-        mode.mode                         = Mode::FixedHorizontal;
-        mode._fixed_horizontal.horizontal = horizontal;
-        return mode;
-    }
-
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_fixed(Func&& func) {
-        if (mode == Mode::Fixed) {
-            func(_fixed.width, _fixed.height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_window_size(Func&& func) {
-        if (mode == Mode::WindowSize) {
-            func(_window_size.pixels_per_unit);
-        }
-        return *this;
-    }
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_auto_min(Func&& func) {
-        if (mode == Mode::AutoMin) {
-            func(_auto_min.min_width, _auto_min.min_height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_auto_max(Func&& func) {
-        if (mode == Mode::AutoMax) {
-            func(_auto_max.max_width, _auto_max.max_height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_fixed_vertical(Func&& func) {
-        if (mode == Mode::FixedVertical) {
-            func(_fixed_vertical.vertical);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_fixed_horizontal(Func&& func) {
-        if (mode == Mode::FixedHorizontal) {
-            func(_fixed_horizontal.horizontal);
-        }
-        return *this;
-    }
-};
-/** @brief Orthographic camera projection with configurable scaling, near/far
- * planes, and viewport origin. */
-EPIX_EXPORT struct OrthographicProjection {
-    float near_plane          = -1000.0f;  // Near clipping plane
-    float far_plane           = 1000.0f;   // Far clipping plane
-    ScalingMode scaling_mode  = ScalingMode::window_size(1.0f);
-    float scale               = 1.0f;                   // Additional scale factor
-    glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
-    struct {
-        float left   = -1.0f;
-        float right  = 1.0f;
-        float bottom = -1.0f;
-        float top    = 1.0f;
-    } rect;
-
-    /** @brief Update the projection for new viewport dimensions. */
-    void update(float width, float height);
-    /** @brief Get the far clipping plane distance. */
-    float get_far() const { return far_plane; }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const { return near_plane; }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) { this->far_plane = far_plane; }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) { this->near_plane = near_plane; }
-    /** @brief Compute the orthographic projection matrix. */
-    glm::mat4 get_projection_matrix() const {
-        return glm::orthoLH(rect.left, rect.right, rect.bottom, rect.top, near_plane, far_plane);
-    }
-    /** @brief Compute the 8 corners of the view frustum. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
-        return {glm::vec3(rect.left, rect.bottom, near_plane), glm::vec3(rect.right, rect.bottom, near_plane),
-                glm::vec3(rect.right, rect.top, near_plane),   glm::vec3(rect.left, rect.top, near_plane),
-                glm::vec3(rect.left, rect.bottom, far_plane),  glm::vec3(rect.right, rect.bottom, far_plane),
-                glm::vec3(rect.right, rect.top, far_plane),    glm::vec3(rect.left, rect.top, far_plane)};
-    }
-};
-/** @brief Perspective camera projection with field of view, aspect ratio,
- * and near/far planes. */
-EPIX_EXPORT struct PerspectiveProjection {
-    float fov          = glm::radians(45.0f);  // Field of view in radians
-    float aspect_ratio = 1.0f;                 // Aspect ratio (width / height)
-    float near_plane   = 0.1f;                 // Near clipping plane
-    float far_plane    = 1000.0f;              // Far clipping plane
-
-    /** @brief Update the aspect ratio from viewport dimensions. */
-    void update(float width, float height) { aspect_ratio = width / height; }
-    /** @brief Get the far clipping plane distance. */
-    float get_far() const { return far_plane; }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const { return near_plane; }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) { this->far_plane = far_plane; }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) { this->near_plane = near_plane; }
-    /** @brief Compute the perspective projection matrix. */
-    glm::mat4 get_projection_matrix() const { return glm::perspectiveLH(fov, aspect_ratio, near_plane, far_plane); }
-    /** @brief Compute the 8 corners of the perspective frustum. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
-        float tan_half_fov = glm::tan(fov / 2.0f);
-        float near_height  = near_plane * tan_half_fov;
-        float near_width   = near_height * aspect_ratio;
-        float far_height   = far_plane * tan_half_fov;
-        float far_width    = far_height * aspect_ratio;
-
-        return {glm::vec3(-near_width, -near_height, near_plane), glm::vec3(near_width, -near_height, near_plane),
-                glm::vec3(near_width, near_height, near_plane),   glm::vec3(-near_width, near_height, near_plane),
-                glm::vec3(-far_width, -far_height, far_plane),    glm::vec3(far_width, -far_height, far_plane),
-                glm::vec3(far_width, far_height, far_plane),      glm::vec3(-far_width, far_height, far_plane)};
-    }
-};
-template <typename T>
-concept CameraProjection = requires(T t) {
-    { t.get_projection_matrix() } -> std::convertible_to<glm::mat4>;
-    { t.get_frustum_corners() } -> std::convertible_to<std::array<glm::vec3, 8>>;
-    { t.get_far() } -> std::convertible_to<float>;
-    { t.get_near() } -> std::convertible_to<float>;
-    { t.set_far(std::declval<float>()) };
-    { t.set_near(std::declval<float>()) };
-    { t.update(std::declval<float>(), std::declval<float>()) };
-};
-
-/** @brief Variant projection type wrapping orthographic or perspective. */
-EPIX_EXPORT struct Projection {
-    std::variant<OrthographicProjection, PerspectiveProjection> projection;
-
-    Projection() : projection(OrthographicProjection{}) {}
-    Projection(const OrthographicProjection& ortho) : projection(ortho) {}
-    Projection(const PerspectiveProjection& perspective) : projection(perspective) {}
-
-    /** @brief Create an orthographic projection. */
-    static Projection orthographic(const OrthographicProjection& ortho = {}) { return Projection(ortho); }
-
-    /** @brief Create a perspective projection. */
-    static Projection perspective(const PerspectiveProjection& perspective = {}) { return Projection(perspective); }
-
-    /** @brief Get the projection matrix from the active variant. */
-    glm::mat4 get_projection_matrix() const {
-        return std::visit([](const auto& proj) { return proj.get_projection_matrix(); }, projection);
-    }
-    /** @brief Get the far clipping plane distance. */
-    float get_far() const {
-        return std::visit([](const auto& proj) { return proj.get_far(); }, projection);
-    }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const {
-        return std::visit([](const auto& proj) { return proj.get_near(); }, projection);
-    }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) {
-        std::visit([far_plane](auto& proj) { proj.set_far(far_plane); }, projection);
-    }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) {
-        std::visit([near_plane](auto& proj) { proj.set_near(near_plane); }, projection);
-    }
-    /** @brief Compute the 8 frustum corner points. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
-        return std::visit([](const auto& proj) { return proj.get_frustum_corners(); }, projection);
-    }
-    /** @brief Update the projection for new viewport dimensions. */
-    void update(float width, float height) {
-        std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);
-    }
-
-    /** @brief Try to get a mutable pointer to the orthographic projection. */
-    std::optional<OrthographicProjection*> as_orthographic() {
-        if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
-            return ptr;
-        } else {
-            return std::nullopt;
-        }
-    }
-    /** @brief Try to get a const pointer to the orthographic projection. */
-    std::optional<const OrthographicProjection*> as_orthographic() const {
-        if (auto ptr = std::get_if<OrthographicProjection>(&projection)) {
-            return ptr;
-        } else {
-            return std::nullopt;
-        }
-    }
-    /** @brief Try to get a mutable pointer to the perspective projection. */
-    std::optional<PerspectiveProjection*> as_perspective() {
-        if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
-            return ptr;
-        } else {
-            return std::nullopt;
-        }
-    }
-    /** @brief Try to get a const pointer to the perspective projection. */
-    std::optional<const PerspectiveProjection*> as_perspective() const {
-        if (auto ptr = std::get_if<PerspectiveProjection>(&projection)) {
-            return ptr;
-        } else {
-            return std::nullopt;
-        }
-    }
-};
-static_assert(CameraProjection<OrthographicProjection>);
-static_assert(CameraProjection<PerspectiveProjection>);
-static_assert(CameraProjection<Projection>);
-
-// --- Camera Systems --- //
-
-/** @brief System labels for camera update systems. */
-EPIX_EXPORT enum class CameraUpdateSystems {
-    CameraUpdateSystem = 0,
-};
-
-template <CameraProjection ProjType>
-void camera_system(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>>>
-        query,                                                                            // camera and projection query
-    epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>> window_query,  // window query
-    epix::ecs::Query<epix::ecs::Item<const ::epix::window::CachedWindow&>,
-                     epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
-) {
-    for (auto&& [camera, proj] : query.iter()) {
-        // in the body we want to update the stored target size,
-        // update the projection if needed.
-
-        std::optional<glm::uvec2> viewport_size =
-            camera.get_mut().viewport.transform([](const Viewport& vp) { return glm::uvec2(vp.size); });
-
-        glm::uvec2 target_size;
-        std::visit(utils::visitor{
-                       [&](const WindowRef& window_ref) {
-                           if (window_ref.primary) {
-                               // primary window
-                               if (auto primary = primary_window_query.single()) {
-                                   auto&& [win] = *primary;
-                                   target_size  = glm::uvec2(win.size.first, win.size.second);
-                               } else {
-                                   // no primary window, use 0x0 as invalid
-                                   target_size = glm::uvec2(0, 0);
-                               }
-                           } else {
-                               // specific window
-                               if (auto opt_win = window_query.get(window_ref.window_entity)) {
-                                   auto [win]  = *opt_win;
-                                   target_size = glm::uvec2(win.size.first, win.size.second);
-                               } else {
-                                   // window not found, use 0x0 as invalid
-                                   target_size = glm::uvec2(0, 0);
-                               }
-                           }
-                       },
-                       [&](const wgpu::Texture& texture) {
-                           // texture target
-                           if (texture) {
-                               target_size = glm::uvec2(texture.getWidth(), texture.getHeight());
-                           } else {
-                               // null texture, use 0x0 as invalid
-                               target_size = glm::uvec2(0, 0);
-                           }
-                       },
-                   },
-                   camera.get().render_target);
-
-        // only update projection if logical viewport size changed
-        std::optional<glm::uvec2> new_viewport_size =
-            viewport_size
-                .and_then([&](const glm::uvec2& vp_size) -> std::optional<glm::uvec2> {
-                    // not equal to old viewport size
-                    if (camera.get().computed.old_viewport_size.has_value() &&
-                        *camera.get().computed.old_viewport_size == vp_size) {
-                        return std::nullopt;
-                    } else {
-                        return vp_size;
-                    }
-                })
-                .or_else([&]() -> std::optional<glm::uvec2> {
-                    // no viewport, use full target size
-                    if (camera.get().computed.old_viewport_size.has_value() &&
-                        *camera.get().computed.old_viewport_size == target_size) {
-                        return std::nullopt;
-                    } else if (camera.get().computed.target_size == target_size) {
-                        return std::nullopt;
-                    } else {
-                        return target_size;
-                    }
-                });
-
-        camera.get_mut().computed.target_size       = target_size;
-        camera.get_mut().computed.old_viewport_size = viewport_size;
-
-        auto new_size = camera.get().get_viewport_size();
-        proj.get_mut().update((float)new_size.x, (float)new_size.y);
-
-        camera.get_mut().computed.projection = proj.get().get_projection_matrix();
-    }
-}
-
-/** @brief Plugin that registers the camera update system for a specific
- * projection type.
- * @tparam ProjType Camera projection type satisfying CameraProjection. */
-EPIX_EXPORT template <CameraProjection ProjType>
-struct CameraProjectionPlugin {
-    void attach(epix::app::App& app) {
-        app.add_systems(epix::app::PostUpdate,
-                        into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
-    }
-};
+// Camera-module types imported for render-side use (mirrors how bevy_render imports bevy_camera); the definitions live in the epix::camera module.
+using ::epix::camera::Camera;
+using ::epix::camera::Viewport;
+using ::epix::camera::WindowRef;
+using ::epix::camera::RenderTarget;
+using ::epix::camera::RenderTargetId;
+using ::epix::camera::RenderTargetIdHash;
+using ::epix::camera::ComputedCameraValues;
+using ::epix::camera::ClearColor;
+using ::epix::camera::ClearColorConfig;
+using ::epix::camera::RenderLayers;
+using ::epix::camera::Visibility;
+using ::epix::camera::InheritedVisibility;
+using ::epix::camera::ViewVisibility;
+using ::epix::camera::Projection;
+using ::epix::camera::OrthographicProjection;
+using ::epix::camera::PerspectiveProjection;
+using ::epix::camera::ScalingMode;
+using ::epix::camera::CameraProjection;
+using ::epix::camera::CameraUpdateSystems;
+using ::epix::camera::CameraPlugin;
+using ::epix::camera::CameraProjectionPlugin;
+using ::epix::camera::camera_system;
 
 /** @brief Label identifying the render graph assigned to a camera. */
 EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
 };
-
-/** @brief Per-view visibility flags of a render-world entity (Bevy
- * bevy_camera::visibility::ViewVisibility). Bit 0 is CULLED; bits 1..16 are
- * per-view visibility (up to 16 views). `get()` reports whether the entity is
- * visible to any view. Populated by the visibility systems; extraction
- * filters on it. */
-EPIX_EXPORT struct ViewVisibility {
-    /** @brief Raw flag storage. */
-    std::uint32_t flags = 0;
-
-    /** @brief Visible to any view (Bevy ViewVisibility::get: not culled). */
-    bool get() const noexcept { return (flags & (1u << 0)) == 0; }
-    /** @brief Visible in the given view (Bevy get_in_view). */
-    bool get_in_view(std::uint32_t view_index) const noexcept {
-        return (flags & (1u << (view_index + 1))) != 0;
-    }
-    /** @brief Set visibility for the given view (Bevy set_in_view). */
-    void set_in_view(std::uint32_t view_index, bool visible) noexcept {
-        const std::uint32_t mask = 1u << (view_index + 1);
-        if (visible) {
-            flags |= mask;
-        } else {
-            flags &= ~mask;
-        }
-    }
-    /** @brief Mark the entity culled for all views (Bevy culled). */
-    void culled() noexcept { flags |= (1u << 0); }
-    /** @brief Mark the entity visible for all views (Bevy visible). */
-    void visible() noexcept { flags &= ~(1u << 0); }
-};
-
-/** @brief User indication of whether an entity is visible (Bevy
- * bevy_camera::Visibility, visibility__mod.rs:39-88). Propagates down the
- * entity hierarchy; the visibility_propagate_system itself needs the transform
- * hierarchy (bevy_hierarchy ChildOf), which epix does not port yet — the marker
- * and its toggles match Bevy's interface. */
-EPIX_EXPORT struct Visibility {
-    /** @brief Visibility kind (Bevy Visibility variants). */
-    enum class Type { Inherited, Hidden, Visible };
-
-    /** @brief The visibility kind; default Inherited (Bevy #[default]). */
-    Type type = Type::Inherited;
-
-    static Visibility inherited() noexcept { return {Type::Inherited}; }
-    static Visibility hidden() noexcept { return {Type::Hidden}; }
-    static Visibility visible() noexcept { return {Type::Visible}; }
-
-    /** @brief Toggle between Inherited and Visible (Bevy
-     * Visibility::toggle_inherited_visible; Hidden unaffected). */
-    void toggle_inherited_visible() noexcept {
-        type = type == Type::Inherited ? Type::Visible : type == Type::Visible ? Type::Inherited : type;
-    }
-    /** @brief Toggle between Inherited and Hidden (Bevy
-     * Visibility::toggle_inherited_hidden; Visible unaffected). */
-    void toggle_inherited_hidden() noexcept {
-        type = type == Type::Inherited ? Type::Hidden : type == Type::Hidden ? Type::Inherited : type;
-    }
-    /** @brief Toggle between Visible and Hidden (Bevy
-     * Visibility::toggle_visible_hidden; Inherited unaffected). */
-    void toggle_visible_hidden() noexcept {
-        type = type == Type::Visible ? Type::Hidden : type == Type::Hidden ? Type::Visible : type;
-    }
-
-    bool operator==(const Visibility&) const = default;
-};
-
-/** @brief Whether or not an entity is visible in the hierarchy (Bevy
- * bevy_camera::InheritedVisibility, visibility__mod.rs:108-131). Not accurate
- * until visibility propagation runs; without the hierarchy system epix keeps it
- * as the marker Bevy's API exposes (HIDDEN/VISIBLE consts + get()). */
-EPIX_EXPORT struct InheritedVisibility {
-    /** @brief Raw visibility flag (Bevy's newtype field is unnamed). */
-    bool is_visible = true;
-
-    /** @brief An entity invisible in the hierarchy (Bevy
-     * InheritedVisibility::HIDDEN). */
-    static InheritedVisibility hidden() noexcept { return {false}; }
-    /** @brief An entity visible in the hierarchy (Bevy
-     * InheritedVisibility::VISIBLE). */
-    static InheritedVisibility visible() noexcept { return {true}; }
-
-    /** @brief True if the entity is visible in the hierarchy (Bevy
-     * InheritedVisibility::get). */
-    bool get() const noexcept { return is_visible; }
-
-    bool operator==(const InheritedVisibility&) const = default;
-};
-
 /** @brief Usages of a camera's main textures (Bevy
  * bevy_camera::CameraMainTextureUsages). Default: RENDER_ATTACHMENT |
  * TEXTURE_BINDING (the blit samples the main texture). */
@@ -742,11 +92,16 @@ EPIX_EXPORT struct ExtractedCamera {
 };
 }  // namespace epix::render::camera
 namespace epix::render::view {
+// Camera-module types imported for render-side use (bevy_render imports bevy_camera).
+using ::epix::camera::VisibleEntities;
+using ::epix::camera::Frustum;
+using ::epix::camera::Msaa;
+using ::epix::camera::samples;
+using ::epix::camera::msaa_from_samples;
 /** @brief Forward declaration (defined below). */
 EPIX_EXPORT struct ViewTargetAttachments;
 /** @brief Forward declaration (defined below; used by extract_cameras and
  * prepare_view_target). */
-enum class Msaa : std::uint32_t;
 
 /**
  * @brief Stable cross-frame identifier for a render-world view (Bevy
@@ -810,79 +165,7 @@ EPIX_EXPORT struct ExtractedView {
         return phase::ViewRangefinder3d::from_world_from_view(transform.matrix);
     }
 };
-
-/** @brief View frustum as 6 plane half-spaces (Bevy Frustum). Each plane is
- * (normal.xyz, d) with a point in front when dot(normal, p) + d >= 0. */
-EPIX_EXPORT struct Frustum {
-    /** @brief The six planes: left, right, bottom, top, near, far. */
-    std::array<glm::vec4, 6> planes{};
-
-    /** @brief Extract the planes from a clip-from-world matrix (Bevy
-     * Frustum::from_view_projection, Gribb-Hartmann). */
-    static Frustum from_view_projection(const glm::mat4& clip_from_world) noexcept {
-        Frustum frustum;
-        // glm mat4 is column-major; extract matrix rows first.
-        auto row = [&](std::size_t i) {
-            return glm::vec4{clip_from_world[0][i], clip_from_world[1][i], clip_from_world[2][i],
-                             clip_from_world[3][i]};
-        };
-        const auto row3 = row(3);
-        auto extract    = [&](std::size_t index, glm::vec4 plane) {
-            const float len = glm::length(glm::vec3(plane));
-            if (len > 0.0f) plane /= len;
-            frustum.planes[index] = plane;
-        };
-        extract(0, row3 + row(0));  // left
-        extract(1, row3 - row(0));  // right
-        extract(2, row3 + row(1));  // bottom
-        extract(3, row3 - row(1));  // top
-        extract(4, row3 + row(2));  // near
-        extract(5, row3 - row(2));  // far
-        return frustum;
-    }
-};
-
-/** @brief Component listing entities visible to a camera view, keyed by
- * visibility class (Bevy bevy_camera::VisibleEntities,
- * visibility__mod.rs:279-316). */
-EPIX_EXPORT struct VisibleEntities {
-    /** @brief Visible entity IDs per visibility class (Bevy
-     * TypeIdMap<Vec<Entity>>). */
-    std::unordered_map<meta::type_index, std::vector<epix::ecs::Entity>> entities;
-
-    /** @brief Entities visible for the given type id; empty when absent
-     * (Bevy VisibleEntities::get). */
-    const std::vector<epix::ecs::Entity>& get(const meta::type_index& type_id) const {
-        static const std::vector<epix::ecs::Entity> kEmpty;
-        if (auto it = entities.find(type_id); it != entities.end()) return it->second;
-        return kEmpty;
-    }
-    /** @brief Mutable access, inserting an empty list if absent (Bevy
-     * VisibleEntities::get_mut). */
-    std::vector<epix::ecs::Entity>& get_mut(const meta::type_index& type_id) { return entities[type_id]; }
-    /** @brief Iterate the visible entities of the given type (Bevy
-     * VisibleEntities::iter, DoubleEndedIterator). */
-    std::span<const epix::ecs::Entity> iter(const meta::type_index& type_id) const { return get(type_id); }
-    /** @brief Number of visible entities of the given type (Bevy
-     * VisibleEntities::len). */
-    std::size_t len(const meta::type_index& type_id) const { return get(type_id).size(); }
-    /** @brief Whether any entity of the given type is visible (Bevy
-     * VisibleEntities::is_empty). */
-    bool is_empty(const meta::type_index& type_id) const { return get(type_id).empty(); }
-    /** @brief Clear the given type's list, keeping the allocation (Bevy
-     * VisibleEntities::clear). */
-    void clear(const meta::type_index& type_id) { get_mut(type_id).clear(); }
-    /** @brief Clear all lists, keeping allocations (Bevy
-     * VisibleEntities::clear_all). */
-    void clear_all() {
-        for (auto& [type_id, list] : entities) {
-            (void)type_id;
-            list.clear();
-        }
-    }
-};
-/**
- * @brief A wrapper around a texture view used as the final output color
+/** @brief A wrapper around a texture view used as the final output color
  * attachment of a view target (Bevy `OutputColorAttachment`).
  */
 
@@ -1190,9 +473,12 @@ EPIX_EXPORT void extract_cameras(
 EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 } CameraDriverNodeLabel;
 
-struct CameraPlugin {
-    void attach(epix::app::App& app);
+/** @brief Node that drives each camera's render graph in sorted order (Bevy
+ * CameraDriverNode, renderer/camera_driver_node.rs). Defined in view.cpp. */
+EPIX_EXPORT struct CameraDriverNode : graph::Node {
+    void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const epix::ecs::World& world) override;
 };
+
 /** @brief Bundle for spawning a camera entity with all required
  * components (Camera, Projection, RenderGraph, Transform, VisibleEntities).
  */
@@ -1251,29 +537,6 @@ struct epix::ecs::Bundle<epix::render::camera::CameraBundle> {
 static_assert(epix::ecs::is_bundle<epix::render::camera::CameraBundle>);
 
 namespace epix::render::view {
-/** @brief MSAA sample count for a camera view (Bevy 0.18 Msaa). */
-EPIX_EXPORT enum class Msaa : std::uint32_t {
-    Off = 1,
-    Sample2 = 2,
-    Sample4 = 4,
-    Sample8 = 8,
-};
-
-/** @brief Sample count of an Msaa value. */
-EPIX_EXPORT inline std::uint32_t samples(Msaa msaa) noexcept { return static_cast<std::uint32_t>(msaa); }
-
-/** @brief Convert a raw sample count to Msaa. Throws for unsupported counts. */
-EPIX_EXPORT inline Msaa msaa_from_samples(std::uint32_t sample_count) {
-    switch (sample_count) {
-        case 1: return Msaa::Off;
-        case 2: return Msaa::Sample2;
-        case 4: return Msaa::Sample4;
-        case 8: return Msaa::Sample8;
-        default: throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
-    }
-}
-
-/** @brief Marker component: render through an intermediate HDR texture (Bevy Hdr). */
 EPIX_EXPORT struct Hdr {};
 
 /** @brief Marker component: the view does not support indirect drawing (Bevy NoIndirectDrawing). */

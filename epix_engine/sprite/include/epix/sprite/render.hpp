@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 #include <epix/common.hpp>
 
@@ -42,7 +42,7 @@ EPIX_EXPORT namespace epix::sprite {
         /** @brief Pixel dimensions of the source image. */
         glm::vec2 image_size;
         /** @brief Render layers this entity belongs to. Default: layer 0. */
-        render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
+        camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
     };
 
     /** @brief GPU batch for sprites sharing the same texture bind group.

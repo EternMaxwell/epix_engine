@@ -37,7 +37,7 @@ struct CamControllPlugin {
     void attach(app::App& app) {
         app.add_systems(
             app::Update,
-            ecs::into([](ecs::Query<ecs::Item<const render::camera::Camera&, render::camera::Projection&,
+            ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&,
                                               transform::Transform&>> camera,
                          ecs::EventReader<input::MouseScroll> scroll_input,
                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
@@ -45,8 +45,8 @@ struct CamControllPlugin {
                     auto&& [cam, proj, trans] = *opt;
                     if (key_states->pressed(input::KeyCode::KeySpace)) {
                         trans.translation = glm::vec3(0, 0, 0);
-                        proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
-                            *ortho = render::camera::OrthographicProjection{};
+                        proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
+                            *ortho = camera::OrthographicProjection{};
                             return true;
                         });
                         return;
@@ -68,7 +68,7 @@ struct CamControllPlugin {
                         delta = glm::normalize(delta) * 0.1f;
                         trans.translation += delta;
                     }
-                    proj.as_orthographic().transform([&](render::camera::OrthographicProjection* ortho) {
+                    proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
                         for (const auto& e : scroll_input.read()) {
                             float scale = std::exp(-static_cast<float>(e.yoffset) * 0.1f);
                             ortho->scale *= scale;

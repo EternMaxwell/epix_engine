@@ -1,4 +1,4 @@
-// Minimal render-module-only real-time example: opens a window and animates
+﻿// Minimal render-module-only real-time example: opens a window and animates
 // the camera's clear color each frame. The camera drives a custom sub-graph
 // whose single node clears the swapchain output attachment directly, so the
 // full render loop (extract -> camera driver -> graph node -> present) is
@@ -79,7 +79,7 @@ struct ClearGraphPlugin {
 
 // Animates the render-world ClearColor (the one extract_cameras reads) from
 // the extracted render-world Time. Runs in the Render schedule each frame.
-void animate_clear_color(ResMut<render::camera::ClearColor> color, Res<time::Time<>> time) {
+void animate_clear_color(ResMut<camera::ClearColor> color, Res<time::Time<>> time) {
     const float t = time->elapsed_secs();
     auto& c       = *color;
     c.r = 0.5f + 0.5f * std::sin(t * 0.8f);
