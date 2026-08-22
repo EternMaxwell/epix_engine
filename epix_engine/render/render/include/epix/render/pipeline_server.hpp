@@ -28,8 +28,19 @@
 
 namespace epix::render {
 /** @brief Key type used to cache pipeline layouts by their bind group
- * layout IDs. */
-EPIX_EXPORT using LayoutCacheKey   = std::vector<wgpu::BindGroupLayoutId>;
+ * layout IDs plus the full contents of every push constant range.
+ *
+ * Keying only the push-constant COUNT would let two pipelines with different
+ * (stage, offset, size) ranges collide and reuse the wrong PipelineLayout
+ * (wgpu validates the declared ranges against the shader's usage). Bevy keys
+ * on the immediate-data size; epix uses wgpu push constants, so the ranges
+ * themselves must be part of the key. */
+struct LayoutCacheKey {
+    std::vector<wgpu::BindGroupLayoutId> bind_group_layouts;
+    /** @brief Push constant ranges flattened to {stages, start, end} per range. */
+    std::vector<std::array<std::uint32_t, 3>> push_constant_ranges;
+    bool operator==(const LayoutCacheKey&) const noexcept = default;
+};
 EPIX_EXPORT using CachedPipelineId = shader::CachedPipelineId;
 /** @brief Typed id for cached render pipelines (Bevy 'CachedRenderPipelineId'). */
 EPIX_EXPORT struct CachedRenderPipelineId : CachedPipelineId {
@@ -50,8 +61,16 @@ EPIX_EXPORT inline constexpr CachedComputePipelineId INVALID_COMPUTE_PIPELINE_ID
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const noexcept {
         std::size_t hash = 0;
-        for (const auto& id : key) {
-            hash ^= std::hash<std::size_t>()(id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        auto combine    = [&](std::size_t value) {
+            hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        };
+        for (const auto& id : key.bind_group_layouts) {
+            combine(static_cast<std::size_t>(id));
+        }
+        for (const auto& range : key.push_constant_ranges) {
+            for (const auto value : range) {
+                combine(static_cast<std::size_t>(value));
+            }
         }
         return hash;
     }
@@ -73,9 +92,14 @@ EPIX_EXPORT struct LayoutCache {
                              std::span<const wgpu::PushConstantRange> push_constant_ranges = {})
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
-        LayoutCacheKey key = std::ranges::to<std::vector>(
+        LayoutCacheKey key;
+        key.bind_group_layouts = std::ranges::to<std::vector>(
             std::views::transform(layouts, [](const auto& layout) { return layout.id(); }));
-        key.push_back(static_cast<wgpu::BindGroupLayoutId>(push_constant_ranges.size()));
+        key.push_constant_ranges.reserve(push_constant_ranges.size());
+        for (const auto& range : push_constant_ranges) {
+            key.push_constant_ranges.push_back(
+                {static_cast<std::uint32_t>(range.stages), range.start, range.end});
+        }
         auto it = cache.find(key);
         if (it != cache.end()) {
             return it->second;

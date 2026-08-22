@@ -50,6 +50,20 @@ float4 blitFrag(VIn input) : SV_Target {
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
+
+/** @brief Standard alpha blending (Bevy BlendState::ALPHA_BLENDING), used when
+ * a later camera composites over an earlier one on the same target. */
+wgpu::BlendState alpha_blend_state() noexcept {
+    return wgpu::BlendState()
+        .setColor(wgpu::BlendComponent()
+                      .setOperation(wgpu::BlendOperation::eAdd)
+                      .setSrcFactor(wgpu::BlendFactor::eSrcAlpha)
+                      .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha))
+        .setAlpha(wgpu::BlendComponent()
+                      .setOperation(wgpu::BlendOperation::eAdd)
+                      .setSrcFactor(wgpu::BlendFactor::eOne)
+                      .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha));
+}
 }  // namespace
 
 void Camera2D::register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
@@ -93,8 +107,12 @@ void Core2dBlitNode::run(graph::GraphContext& ctx,
     if (!target.out_texture.view) return;
 
     auto device = render_ctx.device();
-    // Lazily build the blit pipeline for the output format (Bevy upscaling).
-    if (!blit || !blit->ready || blit->format != target.out_texture.view_format) {
+    // A camera past the first one targeting the same output alpha-composites
+    // over it (Bevy upscaling blend_state keying).
+    const bool blend_on = camera.sorted_camera_index_for_target.value_or(0) > 0;
+    // Lazily build the blit pipeline for the output format + blend state
+    // (Bevy upscaling pipeline key).
+    if (!blit || !blit->ready || blit->format != target.out_texture.view_format || blit->blend != blend_on) {
         auto handles = world.get_resource<Core2dBlitHandles>();
         if (!handles) return;
         auto pipeline_server = world.get_resource<PipelineServer>();
@@ -147,7 +165,12 @@ void Core2dBlitNode::run(graph::GraphContext& ctx,
                                          wgpu::VertexFormat::eFloat32x2),
                                  }));
         render::FragmentState fs{.shader = handles->get().fragment_shader, .entry_point = std::string("blitFrag")};
-        fs.add_target(wgpu::ColorTargetState().setFormat(target.out_texture.view_format).setWriteMask(wgpu::ColorWriteMask::eAll));
+        wgpu::ColorTargetState color_target;
+        color_target.setFormat(target.out_texture.view_format).setWriteMask(wgpu::ColorWriteMask::eAll);
+        if (blend_on) {
+            color_target.setBlend(alpha_blend_state());
+        }
+        fs.add_target(color_target);
         built.pipeline_id = pipeline_server->get().queue_render_pipeline(render::RenderPipelineDescriptor{
             .label       = "core2d-blit",
             .layouts     = {built.layout},
@@ -159,6 +182,7 @@ void Core2dBlitNode::run(graph::GraphContext& ctx,
             .fragment    = std::move(fs),
         });
         built.format = target.out_texture.view_format;
+        built.blend  = blend_on;
         built.ready  = true;
         blit         = std::move(built);
     }
@@ -182,6 +206,11 @@ void Core2dBlitNode::run(graph::GraphContext& ctx,
     auto render_pass = render_ctx.command_encoder().beginRenderPass(
         wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture.get_attachment(clear_color)}));
+    // Bevy upscaling node set_scissor_rect: clip the blit to the camera viewport.
+    if (camera.viewport) {
+        const auto& vp = *camera.viewport;
+        render_pass.setScissorRect(vp.pos.x, vp.pos.y, vp.size.x, vp.size.y);
+    }
     render_pass.setPipeline(pipeline->get().pipeline());
     render_pass.setVertexBuffer(0, blit->vertex_buffer, 0, sizeof(float) * 6);
     render_pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});

@@ -60,7 +60,12 @@ EPIX_EXPORT struct GraphContext {
      * @return Pointer to the value, or nullptr if not found. */
     const SlotValue* get_input(const SlotLabel& label) const {
         return m_node_state.inputs.get_slot_index(label)
-            .transform([&](std::uint32_t index) -> const SlotValue* { return &m_inputs[index]; })
+            .transform([&](std::uint32_t index) -> const SlotValue* {
+                // Bounds-check like Bevy's panicking get_input: out-of-range
+                // indexes return nullptr instead of reading out of bounds.
+                if (index >= m_inputs.size()) return nullptr;
+                return &m_inputs[index];
+            })
             .value_or(nullptr);
     }
     /** @brief Get an Entity-typed input by label. */
@@ -233,14 +238,12 @@ EPIX_EXPORT struct RunGraphOnViewNode : public Node {
 
     explicit RunGraphOnViewNode(const GraphLabel& sub_graph) : sub_graph(sub_graph) {}
 
-    std::vector<SlotInfo> input() override {
-        return std::vector<SlotInfo>{SlotInfo{"view", SlotType::Entity}};
-    }
-
+    // Bevy RunGraphOnViewNode (node.rs:333-357) declares no slots: the sub
+    // graph always runs on the context's view entity, so the node works as a
+    // drop-in 'run sub-graph for the current view' node without wiring a slot.
     void run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override {
-        auto view_entity = graph.get_input_entity("view");
         std::vector<SlotValue> inputs{};
-        graph.run_sub_graph(sub_graph, inputs, view_entity);
+        graph.run_sub_graph(sub_graph, inputs, graph.get_view_entity());
     }
 };
 }  // namespace epix::render::graph

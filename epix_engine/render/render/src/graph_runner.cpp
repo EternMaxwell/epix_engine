@@ -17,7 +17,13 @@ bool RenderGraphRunner::run(const RenderGraph& graph,
     RenderContext render_context(device.clone());
     auto res = run_graph(graph, std::nullopt, render_context, world, {}, std::nullopt);
     if (!res) {
-        spdlog::warn("Failed to run graph {}.", graph.get_input_node()->get().label.type_index().short_name());
+        // The main graph has no input node, so get_input_node() may be
+        // disengaged here — never dereference it on the failure path.
+        if (auto input_node = graph.get_input_node()) {
+            spdlog::warn("Failed to run graph {}.", input_node->get().label.type_index().short_name());
+        } else {
+            spdlog::warn("Failed to run render graph.");
+        }
         return false;
     }
     // finalize the command encoder

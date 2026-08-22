@@ -557,12 +557,21 @@ TEST(RenderVisibilityRanges, InsertDedupAndAccessors) {
     EXPECT_FALSE(ranges.lod_index_for_entity(sync_world::MainEntity{Entity::from_index(99)}).has_value());
     EXPECT_FALSE(ranges.entity_has_crossfading_visibility_ranges(sync_world::MainEntity{Entity::from_index(99)}));
 
-    // clear() resets everything and marks the buffer dirty.
+    // clear() empties the per-entity info only: range indices and the GPU
+    // buffer persist so indices stay stable across frames (Bevy range.rs:106-113).
     ranges.clear();
     EXPECT_TRUE(ranges.entities.empty());
-    EXPECT_TRUE(ranges.range_to_index.empty());
-    EXPECT_TRUE(ranges.buffer.is_empty());
+    EXPECT_FALSE(ranges.range_to_index.empty());
+    EXPECT_FALSE(ranges.buffer.is_empty());
+    // buffer_dirty is left as-is by clear(): it was set by the last new-range
+    // insert and is only reset by write_render_visibility_ranges.
     EXPECT_TRUE(ranges.buffer_dirty);
+
+    // Re-inserting the same ranges reuses the stable indices.
+    ranges.insert(e1, crossfaded);
+    EXPECT_EQ(ranges.lod_index_for_entity(e1).value_or(99u), 0u);
+    ranges.insert(e3, abrupt);
+    EXPECT_EQ(ranges.lod_index_for_entity(e3).value_or(99u), 1u);
 }
 
 // BufferVec default usage for RenderVisibilityRanges carries the Bevy usages
@@ -663,7 +672,7 @@ TEST(ViewTarget, CleanupForResizeRemovesTarget) {
 // output attachments before window surfaces are reconfigured.
 TEST(ViewTarget, ClearAttachmentsEmptiesMap) {
     view::ViewTargetAttachments attachments;
-    attachments.attachments.emplace(epix::ecs::Entity::from_index(1), wgpu::TextureView{});
+    attachments.attachments.emplace(::epix::render::camera::RenderTargetId{1}, view::OutputColorAttachment{});
     ASSERT_FALSE(attachments.attachments.empty());
 
     auto system = make_system_unique(view::clear_view_attachments);
@@ -1267,9 +1276,11 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
     ASSERT_TRUE(extracted.has_value());
     ASSERT_TRUE(extracted->data.has_value());
     EXPECT_EQ(extracted->data->size(), 4u);
-    // The stored asset is stripped but still valid (kept in Assets<T>).
+    // The stored asset is stripped of data but keeps its declared descriptor
+    // size, so a re-extraction of a Modified asset still prepares a correctly
+    // sized buffer (Bevy storage.rs keeps the size in the source).
     EXPECT_FALSE(stored.data.has_value());
-    EXPECT_EQ(stored.size, 0u);
+    EXPECT_EQ(stored.size, 4u);
 }
 
 // ViewVisibility matches Bevy bevy_camera::visibility: get() reports whether

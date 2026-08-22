@@ -135,7 +135,10 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
                   asset.depth_or_layers(), static_cast<int>(asset.format()));
     wgpu::TextureDescriptor desc;
-    desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding)
+    // Bevy default Image usage (image.rs:1138-1140): TEXTURE_BINDING |
+    // COPY_DST | COPY_SRC. COPY_SRC is required for copy_on_resize
+    // (copyTextureToTexture from the previous texture) and texture readbacks.
+    desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc)
         .setDimension(dimension_cast(asset.type()))
         .setFormat(format_cast(asset.format()))
         .setSize({asset.width(), asset.height(), asset.depth_or_layers()})
@@ -209,18 +212,23 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
                             view.data(), view.size_bytes(), layout,
                             wgpu::Extent3D{width, height, asset.depth_or_layers()});
     } else {
-        // stage a row-padded copy so the upload passes validation
-        std::vector<std::uint8_t> padded(aligned_row * height);
-        for (std::uint32_t y = 0; y < height; ++y) {
-            std::memcpy(padded.data() + static_cast<std::size_t>(y) * aligned_row,
-                        view.data() + static_cast<std::size_t>(y) * raw_row, raw_row);
+        // stage a row-padded copy so the upload passes validation; the copy
+        // extent covers depth_or_layers slices, so every row of every layer
+        // must be padded (a single-slice buffer would overflow the copy).
+        const std::uint32_t layers = asset.depth_or_layers();
+        std::vector<std::uint8_t> padded(static_cast<std::size_t>(aligned_row) * height * layers);
+        for (std::uint32_t layer = 0; layer < layers; ++layer) {
+            for (std::uint32_t y = 0; y < height; ++y) {
+                std::size_t row = static_cast<std::size_t>(layer) * height + y;
+                std::memcpy(padded.data() + row * aligned_row, view.data() + row * raw_row, raw_row);
+            }
         }
         queue->writeTexture(wgpu::TexelCopyTextureInfo()
                                 .setTexture(gpu_image.texture)
                                 .setOrigin({0, 0, 0})
                                 .setAspect(wgpu::TextureAspect::eAll),
                             padded.data(), padded.size(), layout,
-                            wgpu::Extent3D{width, height, asset.depth_or_layers()});
+                            wgpu::Extent3D{width, height, layers});
     }
 
     return gpu_image;

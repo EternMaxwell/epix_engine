@@ -53,6 +53,7 @@ EPIX_EXPORT struct WindowRef {
 };
 /** @brief A render target that is either a GPU texture or a window
  * reference. */
+struct RenderTargetId;  // forward decl; defined after RenderTarget
 EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
     using std::variant<wgpu::Texture, WindowRef>::variant;
     static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
@@ -61,6 +62,21 @@ EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
         return RenderTarget(WindowRef{false, window_entity});
     }
     std::optional<RenderTarget> normalize(std::optional<epix::ecs::Entity> primary) const;
+    /** @brief Stable identity for grouping/sorting by target (Bevy
+     * NormalizedRenderTarget hashing). Textures are keyed by their raw handle,
+     * windows by their entity uid. */
+    RenderTargetId identity() const noexcept;
+};
+
+/** @brief Stable identity of a normalized render target, used to share one
+ * output attachment per target and to group cameras by target. */
+EPIX_EXPORT struct RenderTargetId {
+    std::uint64_t value = 0;
+    bool operator==(const RenderTargetId&) const noexcept = default;
+};
+/** @brief Hash for RenderTargetId. */
+EPIX_EXPORT struct RenderTargetIdHash {
+    std::size_t operator()(const RenderTargetId& id) const noexcept { return std::hash<std::uint64_t>{}(id.value); }
 };
 struct ComputedCameraValues {
     glm::mat4 projection;
@@ -726,6 +742,8 @@ EPIX_EXPORT struct ExtractedCamera {
 };
 }  // namespace epix::render::camera
 namespace epix::render::view {
+/** @brief Forward declaration (defined below). */
+EPIX_EXPORT struct ViewTargetAttachments;
 /** @brief Forward declaration (defined below; used by extract_cameras and
  * prepare_view_target). */
 enum class Msaa : std::uint32_t;
@@ -790,6 +808,37 @@ EPIX_EXPORT struct ExtractedView {
     /** @brief Create a 3D rangefinder for this view (Bevy ExtractedView::rangefinder3d). */
     phase::ViewRangefinder3d rangefinder3d() const noexcept {
         return phase::ViewRangefinder3d::from_world_from_view(transform.matrix);
+    }
+};
+
+/** @brief View frustum as 6 plane half-spaces (Bevy Frustum). Each plane is
+ * (normal.xyz, d) with a point in front when dot(normal, p) + d >= 0. */
+EPIX_EXPORT struct Frustum {
+    /** @brief The six planes: left, right, bottom, top, near, far. */
+    std::array<glm::vec4, 6> planes{};
+
+    /** @brief Extract the planes from a clip-from-world matrix (Bevy
+     * Frustum::from_view_projection, Gribb-Hartmann). */
+    static Frustum from_view_projection(const glm::mat4& clip_from_world) noexcept {
+        Frustum frustum;
+        // glm mat4 is column-major; extract matrix rows first.
+        auto row = [&](std::size_t i) {
+            return glm::vec4{clip_from_world[0][i], clip_from_world[1][i], clip_from_world[2][i],
+                             clip_from_world[3][i]};
+        };
+        const auto row3 = row(3);
+        auto extract    = [&](std::size_t index, glm::vec4 plane) {
+            const float len = glm::length(glm::vec3(plane));
+            if (len > 0.0f) plane /= len;
+            frustum.planes[index] = plane;
+        };
+        extract(0, row3 + row(0));  // left
+        extract(1, row3 - row(0));  // right
+        extract(2, row3 + row(1));  // bottom
+        extract(3, row3 - row(1));  // top
+        extract(4, row3 + row(2));  // near
+        extract(5, row3 - row(2));  // far
+        return frustum;
     }
 };
 
@@ -1022,8 +1071,9 @@ void prepare_view_target(
                                               const Msaa&>> views,
     epix::ecs::Commands cmd,
     epix::ecs::Res<window::ExtractedWindows> extracted_windows,
-    epix::ecs::Res<wgpu::Device> device);
-void create_view_depth(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ExtractedView&>> views,
+    epix::ecs::Res<wgpu::Device> device,
+    epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+void create_view_depth(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&>> views,
                        epix::ecs::Res<wgpu::Device> device,
                        epix::ecs::Res<wgpu::Queue> queue,
                        epix::ecs::ResMut<ViewDepthCache> depth_cache,
@@ -1128,6 +1178,7 @@ EPIX_EXPORT void extract_cameras(
                                                         const CameraRenderGraph&,
                                                         const transform::GlobalTransform&,
                                                         const view::VisibleEntities&,
+                                                        const view::Frustum&,
                                                         epix::ecs::Opt<const RenderLayers&>,
                                                         epix::ecs::Opt<const camera::MipBias&>,
                                                         const view::Msaa&>>> cameras,
@@ -1151,8 +1202,9 @@ EPIX_EXPORT struct CameraBundle {
     CameraRenderGraph render_graph;
     transform::Transform transform;
     view::VisibleEntities visible;
-    /** @brief Which layers this camera renders. Default: all layers. */
-    RenderLayers render_layer = RenderLayers::all();
+    /** @brief Which layers this camera renders. Bevy default: layer 0 only
+     * (a camera without an explicit RenderLayers sees layer 0, render_layers.rs:45-52). */
+    RenderLayers render_layer = RenderLayers::layer(0);
 
     CameraBundle(const CameraRenderGraph& graph) : render_graph(graph) {}
 
@@ -1287,7 +1339,10 @@ EPIX_EXPORT struct RenderVisibleEntities {
  * @brief Per-view render targets keyed by normalized render target (Bevy ViewTargetAttachments).
  */
 EPIX_EXPORT struct ViewTargetAttachments {
-    std::unordered_map<epix::ecs::Entity, wgpu::TextureView> attachments;
+    /** @brief One shared output attachment per render target, so the output is
+     * cleared at most once per frame and later cameras composite over it
+     * (Bevy ViewTargetAttachments). */
+    std::unordered_map<camera::RenderTargetId, OutputColorAttachment, camera::RenderTargetIdHash> attachments;
 };
 
 /** @brief Clears the per-frame view target attachments (Bevy
@@ -1360,15 +1415,23 @@ EPIX_EXPORT inline void sort_cameras(epix::ecs::ResMut<SortedCameras> sorted_cam
         sorted_cameras->cameras.push_back(
             SortedCamera{entity, camera.get().order, camera.get().render_target, camera.get().hdr});
     }
-    std::ranges::sort(sorted_cameras->cameras,
-                      [](const SortedCamera& a, const SortedCamera& b) { return a.sort_key() < b.sort_key(); });
-    // Assign per-target indices, matching Bevy's sorted_camera_index_for_target.
-    std::unordered_map<std::size_t, std::size_t> counts;
+    // Bevy uses a stable sort (sort_by): cameras with equal (order, target)
+    // keep their extraction order.
+    std::ranges::stable_sort(sorted_cameras->cameras,
+                             [](const SortedCamera& a, const SortedCamera& b) { return a.sort_key() < b.sort_key(); });
+    // Assign per-target indices in sorted order, keyed by (target, hdr)
+    // (Bevy camera.rs:744-763). Textures have a distinct identity per handle,
+    // so cameras targeting different textures never share a counter.
+    std::unordered_map<std::uint64_t, std::size_t> counts;
+    std::unordered_map<epix::ecs::Entity, std::size_t> index_for_entity;
+    for (const auto& cam : sorted_cameras->cameras) {
+        if (!cam.target) continue;
+        const std::uint64_t key = (cam.target->identity().value << 1) | static_cast<std::uint64_t>(cam.hdr);
+        index_for_entity[cam.entity] = counts[key]++;
+    }
     for (auto&& [entity, camera] : cameras.iter()) {
-        SortedCamera probe{entity, camera.get().order, camera.get().render_target, camera.get().hdr};
-        std::size_t key = std::get<1>(probe.sort_key());
-        if (probe.target) {
-            camera.get_mut().sorted_camera_index_for_target = counts[key]++;
+        if (auto it = index_for_entity.find(entity); it != index_for_entity.end()) {
+            camera.get_mut().sorted_camera_index_for_target = it->second;
         }
     }
 }

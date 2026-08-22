@@ -312,10 +312,13 @@ void extract_sprites(Commands cmd,
                                         const Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
+                                        const render::camera::ViewVisibility&,
                                         Opt<const render::camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
                      Extract<Res<assets::Assets<image::Image>>> images) {
-    for (auto&& [entity, sprite, global_transform, texture, opt_layer] : sprites.iter()) {
+    for (auto&& [entity, sprite, global_transform, texture, view_visibility, opt_layer] : sprites.iter()) {
+        // Bevy extract_sprites gates on ViewVisibility (visibility/mod.rs:448-458).
+        if (!view_visibility.get()) continue;
         glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
         if (auto image = images->get(texture.id()); image) {
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
@@ -442,6 +445,9 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 
 void SpritePlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpritePlugin.");
+    // Bevy Sprite requires Visibility (visibility/mod.rs:151-166), which pulls
+    // in InheritedVisibility + ViewVisibility so hidden/layer culling works.
+    app.world_mut().register_required_components<sprite::Sprite, render::camera::Visibility>();
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {

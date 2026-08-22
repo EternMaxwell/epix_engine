@@ -228,7 +228,9 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                         if (!fragment_opt) return std::unexpected(fragment_opt.error());
                         fragment_module = *fragment_opt.value();
                     }
-                    if (!descriptor.layouts.empty())
+                    // Bevy pipeline_cache.rs:519-523: a layout is created when
+                    // there are bind-group layouts OR push-constant ranges.
+                    if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
                         layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
                 }
                 pipelineDesc.setLabel(std::string_view(descriptor.label));
@@ -270,7 +272,9 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                         auto shader_opt   = shader_cache->get(id, descriptor.shader, descriptor.shader_defs);
                         if (!shader_opt) return std::unexpected(shader_opt.error());
                         module = *shader_opt.value();
-                        if (!descriptor.layouts.empty())
+                        // Bevy pipeline_cache.rs:519-523: a layout is created when
+                        // there are bind-group layouts OR push-constant ranges.
+                        if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
                             layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
                     }
                     desc.setLabel(std::string_view(descriptor.label))
@@ -316,9 +320,12 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         if (auto pipeline_error = std::get_if<PipelineError>(error)) {
             switch (*pipeline_error) {
                 case PipelineError::CreationFailure: {
+                    // Bevy treats creation failure as non-retryable (errors
+                    // surface through the wgpu error scope); a null pipeline is
+                    // a hard failure, so log once and leave the pipeline in the
+                    // error state instead of requeueing forever.
                     spdlog::error("[render.pipeline] Failed to create pipeline. Id: {}, name: {}", id.get(),
                                   pipeline_name);
-                    m_data->waiting_pipelines.insert(id);
                     break;
                 }
             }

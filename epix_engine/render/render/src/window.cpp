@@ -9,6 +9,13 @@ using namespace epix::window;
 using namespace epix::ecs;
 using namespace epix::app;
 
+namespace {
+/** @brief sRGB-suffixed variant of a surface format, or nullopt when the
+ * format is already sRGB (Bevy TextureFormat::add_srgb_suffix). Defined below
+ * in this namespace alongside resolve_present_mode. */
+std::optional<wgpu::TextureFormat> srgb_suffix(wgpu::TextureFormat format);
+}  // namespace
+
 void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
     surfaces.erase(entity);
     configured_windows.erase(entity);
@@ -121,7 +128,23 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
         switch (window.swapchain_texture.status) {
             case wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal:
             case wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal: {
-                window.swapchain_texture_view   = window.swapchain_texture.texture.createView();
+                // Bevy set_swapchain_texture (window/mod.rs:77-88): create the
+                // view with the sRGB-suffixed format (registered in the surface
+                // view_formats) so the output attachment writes through
+                // hardware sRGB encoding; shaders stay in linear space.
+                window.swapchain_texture_view_format = surface_data.config.format;
+                if (auto srgb_format = srgb_suffix(surface_data.config.format)) {
+                    window.swapchain_texture_view_format = *srgb_format;
+                }
+                wgpu::TextureViewDescriptor view_desc;
+                view_desc.setFormat(window.swapchain_texture_view_format)
+                    .setDimension(wgpu::TextureViewDimension::e2D)
+                    .setBaseMipLevel(0)
+                    .setMipLevelCount(1)
+                    .setBaseArrayLayer(0)
+                    .setArrayLayerCount(1)
+                    .setAspect(wgpu::TextureAspect::eAll);
+                window.swapchain_texture_view   = window.swapchain_texture.texture.createView(view_desc);
                 window.swapchain_texture_format = surface_data.config.format;
                 break;
             }
@@ -131,7 +154,20 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                 switch (window.swapchain_texture.status) {
                     case wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal:
                     case wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal: {
-                        window.swapchain_texture_view   = window.swapchain_texture.texture.createView();
+                        // Bevy set_swapchain_texture (window/mod.rs:77-88), sRGB-suffixed view.
+                        window.swapchain_texture_view_format = surface_data.config.format;
+                        if (auto srgb_format = srgb_suffix(surface_data.config.format)) {
+                            window.swapchain_texture_view_format = *srgb_format;
+                        }
+                wgpu::TextureViewDescriptor view_desc;
+                view_desc.setFormat(window.swapchain_texture_view_format)
+                    .setDimension(wgpu::TextureViewDimension::e2D)
+                    .setBaseMipLevel(0)
+                    .setMipLevelCount(1)
+                    .setBaseArrayLayer(0)
+                    .setArrayLayerCount(1)
+                    .setAspect(wgpu::TextureAspect::eAll);
+                window.swapchain_texture_view   = window.swapchain_texture.texture.createView(view_desc);
                         window.swapchain_texture_format = surface_data.config.format;
                         break;
                     }
@@ -216,7 +252,7 @@ std::optional<wgpu::TextureFormat> srgb_suffix(wgpu::TextureFormat format) {
 }
 }  // namespace
 
-void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
+void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
                                            ResMut<WindowSurfaces> window_surfaces,
                                            Res<wgpu::Instance> instance,
                                            Res<wgpu::Adapter> adapter,
@@ -293,6 +329,12 @@ void epix::render::window::create_surfaces(Res<ExtractedWindows> windows,
             data.config.setHeight(window.physical_height);
             // Re-validate the present mode against current capabilities
             // (Bevy reconfiguration path does the same, window/mod.rs:410-437).
+            // Bevy window/mod.rs:447-455: the swapchain texture is normally
+            // released on present, but double-check here — reconfiguring a
+            // surface while a frame is still acquired triggers wgpu validation
+            // errors (e.g. when the previous frame never presented).
+            window.swapchain_texture      = wgpu::SurfaceTexture{};
+            window.swapchain_texture_view = nullptr;
             wgpu::SurfaceCapabilities reconfig_capabilities;
             data.surface.getCapabilities(*adapter, &reconfig_capabilities);
             data.config.setPresentMode(resolve_present_mode(window.present_mode, reconfig_capabilities));
@@ -308,8 +350,12 @@ void epix::render::window::present_windows(
     Query<Item<Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views) {
     for (auto&& [entity, surface_data] : window_surfaces->surfaces) {
         auto& window = windows->windows.at(entity);
-        if (window.swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessOptimal ||
-            window.swapchain_texture.status == wgpu::SurfaceGetCurrentTextureStatus::eSuccessSuboptimal) {
+        // Gate on whether a texture is actually held: after a failed acquire
+        // swapchain_texture is reset to a default SurfaceTexture whose status
+        // is eSuccessOptimal (enum 0) but whose texture is null — presenting
+        // that would hit wgpu with no acquired frame (Bevy ExtractedWindow::present
+        // takes the Option and no-ops when None).
+        if (window.has_swapchain_texture()) {
             // Bevy render_system present gate: present when a camera targeting
             // this window wrote to its output, or once for the initial frame.
             bool view_needs_present = false;

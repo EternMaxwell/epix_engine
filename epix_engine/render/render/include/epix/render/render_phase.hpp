@@ -414,7 +414,9 @@ struct RenderPhase {
         if constexpr (requires { T::sort(items); }) {
             T::sort(items);
         } else {
-            std::ranges::sort(items, [](const T& a, const T& b) { return a.sort_key() < b.sort_key(); });
+            // Bevy sorts with a stable sort (sort_by_key on the IndexMap); equal
+            // keys keep their insertion order so same-depth sprites don't flicker.
+            std::ranges::stable_sort(items, [](const T& a, const T& b) { return a.sort_key() < b.sort_key(); });
         }
     }
     auto iter_entities() const { return std::views::transform(items, T::entity); }
@@ -431,18 +433,25 @@ struct RenderPhase {
 
         auto&& draw_functions = world.resource<DrawFunctions<T>>();
         draw_functions.prepare(world);
-        // Bevy: skip `batch_range.len()` items after each batched draw
-        // (render_phase/mod.rs:1470-1487).
-        for (std::size_t i = start; i < end; i += batch_size(items[i])) {
+        // Bevy: an empty batch range is skipped without invoking the draw
+        // function; otherwise skip `batch_range.len()` items after each
+        // batched draw (render_phase/mod.rs:1470-1487).
+        for (std::size_t i = start; i < end;) {
             auto& item = items[i];
+            const std::size_t len = batch_range_len(item.batch_range);
+            if (len == 0) {
+                ++i;
+                continue;
+            }
             if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
                 auto result = draw_function->get().draw(world, cmd, view, item);
-                if (!result) {
+                if (result) {
+                    // drawn
+                } else {
                     auto&& error = result.error();
                     if (error.type == DrawError::ErrorType::Skip) {
-                        continue;
-                    }
-                    if (!error.message.empty()) {
+                        // skip: do not log, still advance past the batch
+                    } else if (!error.message.empty()) {
                         spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
                                       static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
                                       error.message);
@@ -456,6 +465,7 @@ struct RenderPhase {
                 spdlog::error("[render] Draw function {} not found for item {:#x}.",
                               static_cast<std::uint32_t>(item.draw_function()), item.entity().index);
             }
+            i += len;
         }
     }
 };

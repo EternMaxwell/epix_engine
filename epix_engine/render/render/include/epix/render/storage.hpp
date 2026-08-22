@@ -89,7 +89,12 @@ struct RenderAsset<ShaderStorageBuffer> {
     RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
 
     /** @brief Move the data out of the stored asset so it stays in Assets<T>
-     * (Bevy RenderAsset::take_gpu_data). */
+     * (Bevy RenderAsset::take_gpu_data).
+     *
+     * The declared descriptor size is kept on the source: a re-extraction of a
+     * Modified asset whose data was already taken must still prepare a
+     * correctly sized buffer (Bevy storage.rs keeps the size in the source and
+     * preserves it in the extracted copy). */
     std::optional<ShaderStorageBuffer> take_gpu_data(ShaderStorageBuffer& source) const {
         ShaderStorageBuffer out;
         out.data        = std::move(source.data);
@@ -98,7 +103,6 @@ struct RenderAsset<ShaderStorageBuffer> {
         out.label       = std::move(source.label);
         out.asset_usage = source.asset_usage;
         source.data.reset();
-        source.size = 0;
         return out;
     }
 };

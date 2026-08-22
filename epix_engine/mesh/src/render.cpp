@@ -458,11 +458,14 @@ void extract_meshes_2d(Commands cmd,
                        Extract<Query<Item<Entity,
                                           const Mesh2d&,
                                           const transform::GlobalTransform&,
+                                          const render::camera::ViewVisibility&,
                                           Opt<const MeshMaterial2d&>,
                                           Opt<const MeshTextureMaterial2d&>,
                                           Opt<const render::camera::RenderLayers&>>,
                                      Without<render::CustomRendered>>> meshes) {
-    for (auto&& [entity, mesh_handle, transform, material, texture_material, opt_layer] : meshes.iter()) {
+    for (auto&& [entity, mesh_handle, transform, view_visibility, material, texture_material, opt_layer] : meshes.iter()) {
+        // Bevy extract_meshes gates on ViewVisibility (visibility/mod.rs:448-458).
+        if (!view_visibility.get()) continue;
         glm::vec4 color = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.color; })
                               .value_or(material.transform([](const MeshMaterial2d& value) { return value.color; })
                                             .value_or(glm::vec4(1.0f)));
@@ -725,6 +728,9 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
 
 void MeshRenderPlugin::attach(app::App& app) {
     spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
+    // Bevy Mesh2d requires Visibility, pulling in InheritedVisibility +
+    // ViewVisibility so hidden/layer culling works.
+    app.world_mut().register_required_components<Mesh2d, render::camera::Visibility>();
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::RenderAssetPlugin<Mesh>{});

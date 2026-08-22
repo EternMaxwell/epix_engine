@@ -119,6 +119,7 @@ EPIX_EXPORT struct UI2DItem {
 template <typename P>
 struct Node2D : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::view::ExtractedView&,
+                                            const render::camera::ExtractedCamera&,
                                             const render::view::ViewTarget&,
                                             const render::view::ViewDepthTexture&,
                                             const render::phase::RenderPhase<P>&>,
@@ -126,8 +127,9 @@ struct Node2D : render::graph::Node {
         views;
     void update(ecs::World& world) override {
         if (!views) {
-            views = world.try_query<ecs::Item<const render::view::ExtractedView&, const render::view::ViewTarget&,
-                                              const render::view::ViewDepthTexture&, const render::phase::RenderPhase<P>&>>();
+            views = world.try_query<ecs::Item<const render::view::ExtractedView&, const render::camera::ExtractedCamera&,
+                                              const render::view::ViewTarget&, const render::view::ViewDepthTexture&,
+                                              const render::phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }
@@ -139,7 +141,7 @@ struct Node2D : render::graph::Node {
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
         if (!view_opt) return;
-        auto&& [exview, target, depth, phase] = *view_opt;
+        auto&& [exview, camera, target, depth, phase] = *view_opt;
         auto render_pass                      = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
                 .setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
@@ -148,6 +150,14 @@ struct Node2D : render::graph::Node {
                                                     .setLoadOp(wgpu::LoadOp::eLoad)
                                                     .setStoreOp(wgpu::StoreOp::eStore)})
                 .setDepthStencilAttachment(depth.attachment.get_attachment(wgpu::StoreOp::eStore)));
+        // Bevy main_opaque_pass_2d_node set_camera_viewport: clip the main pass
+        // to the camera viewport (origin, size, depth range).
+        if (camera.viewport) {
+            const auto& vp = *camera.viewport;
+            render_pass.setViewport(static_cast<float>(vp.pos.x), static_cast<float>(vp.pos.y),
+                                    static_cast<float>(vp.size.x), static_cast<float>(vp.size.y),
+                                    vp.depth_range.first, vp.depth_range.second);
+        }
         phase.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();
@@ -174,7 +184,10 @@ EPIX_EXPORT struct Core2dBlitPipeline {
     wgpu::Buffer vertex_buffer;  // 3 float2 UVs of a fullscreen triangle
     render::CachedPipelineId pipeline_id;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-    bool ready                 = false;
+    /** @brief Whether this pipeline alpha-blends over the output (Bevy
+     * ALPHA_BLENDING for cameras with sorted_camera_index_for_target > 0). */
+    bool blend = false;
+    bool ready = false;
 };
 
 /** @brief Final node of the 2D graph: copies the main texture to the view's
@@ -209,8 +222,9 @@ EPIX_EXPORT struct Camera2DBundle {
     transform::Transform transform;
     render::view::VisibleEntities visible_entities;
     Camera2D camera_2d;
-    /** @brief Which layers this camera renders. Default: all layers. */
-    render::camera::RenderLayers render_layer = render::camera::RenderLayers::all();
+    /** @brief Which layers this camera renders. Bevy default: layer 0 only
+     * (a camera without an explicit RenderLayers sees layer 0). */
+    render::camera::RenderLayers render_layer = render::camera::RenderLayers::layer(0);
 };
 }  // namespace epix::core_graph::core_2d
 

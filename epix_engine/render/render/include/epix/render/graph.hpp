@@ -67,12 +67,24 @@ EPIX_EXPORT struct RenderGraph {
     /** @brief Remove a node from the graph by label. */
     std::expected<void, GraphError> remove_node(const NodeLabel& id);
 
-    /** @brief Add execution-order edges between a chain of node labels. */
+    /** @brief Add execution-order edges between a chain of node labels.
+     *
+     * Redefining an existing edge is tolerated (Bevy add_node_edges), every
+     * other error — e.g. a missing node label — is reported as an error so a
+     * broken chain is caught at setup time instead of silently at runtime. */
     template <typename... Args>
     void add_node_edges(Args&&... args) {
         std::array<NodeLabel, sizeof...(args)> nodes{args...};
         for (auto&& [node, next_node] : std::views::adjacent<2>(nodes)) {
             auto res = try_add_node_edge(node, next_node);
+            if (res) continue;
+            // EdgeAlreadyExists is wrapped as GraphError(EdgeError(EdgeAlreadyExists)).
+            if (const auto* edge_error = std::get_if<EdgeError>(&res.error());
+                edge_error && std::holds_alternative<EdgeAlreadyExists>(*edge_error)) {
+                continue;
+            }
+            spdlog::error("[render.graph] Failed to add edge '{}' -> '{}': {}", node.type_index().short_name(),
+                          next_node.type_index().short_name(), res.error().to_string());
         }
     }
 

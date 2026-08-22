@@ -14,6 +14,8 @@ void Camera::register_required_components(RequiredComponentsRegistrator& registr
     registrator.register_required<Projection>([] { return Projection{}; });
     registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
     registrator.register_required<view::VisibleEntities>([] { return view::VisibleEntities{}; });
+    // Bevy Camera requires Frustum (camera.rs:384-400); update_frusta fills it.
+    registrator.register_required<view::Frustum>([] { return view::Frustum{}; });
     // Bevy: a camera without RenderLayers sees layer 0 (render_layers.rs:45-52).
     registrator.register_required<RenderLayers>([] { return RenderLayers::layer(0); });
     // Bevy registers Msaa as a required component of Camera (camera.rs:56)
@@ -98,7 +100,8 @@ public struct View {
 void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&, const ExtractedView&, const Msaa&>> views,
                                Commands cmd,
                                Res<window::ExtractedWindows> extracted_windows,
-                               Res<wgpu::Device> device) {
+                               Res<wgpu::Device> device,
+                               ResMut<ViewTargetAttachments> view_target_attachments) {
     // Prepare the view target for each extracted camera view: the
     // double-buffered main textures (Bevy prepare_view_targets, view/mod.rs:1061)
     // and the final output attachment (the swapchain / image view). Nodes bind
@@ -124,7 +127,9 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
                 [&](const camera::WindowRef& win_ref) -> std::optional<wgpu::TextureFormat> {
                     auto&& id = win_ref.window_entity;
                     if (auto it = extracted_windows->windows.find(id); it != extracted_windows->windows.end()) {
-                        return it->second.swapchain_texture_format;
+                        // Bevy uses swap_chain_texture_view_format for the out
+                        // attachment (the sRGB-suffixed view format).
+                        return it->second.swapchain_texture_view_format;
                     }
                     return std::nullopt;
                 }},
@@ -137,7 +142,10 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
         if (!target_format.has_value()) {
             continue;
         }
-        const glm::uvec2 size = glm::uvec2(view.viewport.z, view.viewport.w);
+        // Bevy prepare_view_targets sizes the main textures from the camera's
+        // FULL target size (view/mod.rs:1218-1222); the camera viewport only
+        // clips the render, it does not resize the target.
+        const glm::uvec2 size = camera.target_size;
         // Bevy prepare_view_targets: the main texture format is Rgba16Float
         // when hdr, else TextureFormat::bevy_default() = Rgba8Unorm - NOT the
         // output format (the post-process blit converts in the fragment
@@ -201,7 +209,20 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
         target.main_textures       = std::move(main_textures);
         target.main_texture        = target.main_textures.main_texture;
         target.main_texture_format = main_format;
-        target.out_texture         = view::OutputColorAttachment::create(target_texture.value(), *target_format);
+        // Bevy prepare_view_attachments (view/mod.rs:1138-1170): one shared
+        // output attachment per render target, so the output is cleared at
+        // most once per frame and later cameras composite over it instead of
+        // wiping earlier cameras.
+        const auto target_id = camera.render_target.identity();
+        auto& attachments    = view_target_attachments->attachments;
+        auto attachment_it   = attachments.find(target_id);
+        if (attachment_it == attachments.end()) {
+            attachment_it = attachments
+                                .emplace(target_id,
+                                         view::OutputColorAttachment::create(target_texture.value(), *target_format))
+                                .first;
+        }
+        target.out_texture = attachment_it->second;
         target.texture_view        = target.main_textures.a.texture.default_view;
         target.format              = main_format;
         cmd.entity(entity).insert(std::move(target));
@@ -234,14 +255,16 @@ void view::cleanup_view_targets_for_resize(Commands cmd,
     }
 }
 
-void view::create_view_depth(Query<Item<Entity, const ExtractedView&>> views,
+void view::create_view_depth(Query<Item<Entity, const camera::ExtractedCamera&>> views,
                              Res<wgpu::Device> device,
                              Res<wgpu::Queue> queue,
                              ResMut<ViewDepthCache> depth_cache,
                              Commands cmd) {
     wgpu::CommandEncoder encoder = device->createCommandEncoder();
-    for (auto&& [entity, ex_view] : views.iter()) {
-        glm::uvec2 size = glm::uvec2(ex_view.viewport.z, ex_view.viewport.w);
+    for (auto&& [entity, camera] : views.iter()) {
+        // Size the depth texture from the camera's full target size (Bevy
+        // core_2d prepare_core_2d_depth_textures); the viewport only clips.
+        glm::uvec2 size = camera.target_size;
         if (size.x == 0 || size.y == 0) {
             continue;  // invalid size
         }
@@ -300,7 +323,8 @@ void create_uniform_for_view(
     Query<Item<Entity,
                const view::ExtractedView&,
                const camera::ExtractedCamera&,
-               Opt<const camera::MipBias&>>> views,
+               Opt<const camera::MipBias&>,
+               Opt<const view::Frustum&>>> views,
     Res<wgpu::Device> device,
     Res<wgpu::Limits> limits,
     ResMut<view::ViewUniforms> view_uniforms,
@@ -319,7 +343,7 @@ void create_uniform_for_view(
     if (views.iter().max_remaining() == 0) {
         return;
     }
-    for (auto&& [entity, view, camera, opt_mip_bias] : views.iter()) {
+    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum] : views.iter()) {
         const glm::mat4 clip_from_view  = view.projection;
         const glm::mat4 view_from_clip  = glm::inverse(clip_from_view);
         const glm::mat4 world_from_view = view.transform.matrix;
@@ -340,7 +364,7 @@ void create_uniform_for_view(
             .exposure                  = 1.0f,  // Bevy Exposure::default(); no Exposure component yet
             .viewport                  = viewport_vec,
             .main_pass_viewport        = viewport_vec,  // no MainPassResolutionOverride
-            .frustum                   = {},             // no Frustum component: zeros (Bevy None case)
+            .frustum                   = opt_frustum ? opt_frustum->get().planes : std::array<glm::vec4, 6>{},
             .color_grading             = {},             // default identity; no per-camera ColorGrading yet
             .mip_bias                  = opt_mip_bias ? opt_mip_bias->get().bias : 0.0f,
             .frame_count               = frame_count.get().count,
@@ -358,8 +382,9 @@ void create_uniform_for_view(
         return;
     }
     std::size_t index = 0;
-    for (auto&& [entity, view, camera, opt_mip_bias] : views.iter()) {
+    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum] : views.iter()) {
         (void)opt_mip_bias;
+        (void)opt_frustum;
         std::uint32_t offset = view_uniforms->offsets[index];
         wgpu::BindGroup bind_group =
             device.get().createBindGroup(wgpu::BindGroupDescriptor()
@@ -470,6 +495,16 @@ std::optional<RenderTarget> RenderTarget::normalize(std::optional<Entity> primar
                       *this);
 }
 
+RenderTargetId RenderTarget::identity() const noexcept {
+    return std::visit(utils::visitor{
+                          [](const wgpu::Texture& tex) -> RenderTargetId {
+                              return RenderTargetId{reinterpret_cast<std::uintptr_t>(tex.raw())};
+                          },
+                          [](const WindowRef& w) -> RenderTargetId { return RenderTargetId{w.window_entity.uid}; },
+                      },
+                      *this);
+}
+
 void OrthographicProjection::update(float width, float height) {
     float projection_width  = rect.right - rect.left;
     float projection_height = rect.top - rect.bottom;
@@ -522,6 +557,7 @@ void camera::extract_cameras(
                        const CameraRenderGraph&,
                        const transform::GlobalTransform&,
                        const view::VisibleEntities&,
+                       const view::Frustum&,
                        Opt<const RenderLayers&>,
                        Opt<const camera::MipBias&>,
                        const view::Msaa&>>> cameras,
@@ -531,7 +567,7 @@ void camera::extract_cameras(
 
     auto primary = primary_window.single();
 
-    for (auto&& [entity, camera, graph, gtransform, visible_entities, opt_render_layer, opt_mip_bias, msaa] :
+    for (auto&& [entity, camera, graph, gtransform, visible_entities, frustum, opt_render_layer, opt_mip_bias, msaa] :
          cameras.iter()) {
         if (!camera.active) continue;
         auto target_size = camera.get_target_size();
@@ -574,7 +610,8 @@ void camera::extract_cameras(
             },
             visible_entities,
             // Bevy extracts Msaa via ExtractComponentPlugin (view/mod.rs:107).
-            view::Msaa{msaa});
+            view::Msaa{msaa},
+            view::Frustum{frustum});
         // Bevy extracts MipBias only when the camera has one (ExtractComponentPlugin);
         // prepare_view_uniforms then falls back to 0.0 when absent.
         if (opt_mip_bias) {
@@ -619,8 +656,88 @@ void CameraDriverNode::run(graph::GraphContext& graph, graph::RenderContext& ren
     }
 }
 
+// ==== Visibility (Bevy bevy_camera visibility systems) ====
+
+void visibility_propagate_system(Query<Item<const Visibility&, Mut<InheritedVisibility>>> visibilities) {
+    // epix has no entity hierarchy (ChildOf) yet, so inherited visibility is
+    // the entity's own state: Hidden hides, Visible/Inherited show (Bevy's
+    // visibility_propagate_system collapses to this for hierarchy roots).
+    for (auto&& [visibility, inherited] : visibilities.iter()) {
+        inherited.get_mut().is_visible = visibility.type != Visibility::Type::Hidden;
+    }
+}
+
+void reset_view_visibility(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
+    // Bevy reset_view_visibility: everything starts visible-by-default
+    // (bit 0 clear); check_visibility culls entities hidden for every view.
+    for (auto&& [view_visibility] : view_visibilities.iter()) {
+        view_visibility.get_mut().flags = 0;
+    }
+}
+
+void check_visibility_system(
+    Query<Item<Entity, const Camera&, Mut<view::VisibleEntities>, const RenderLayers&, const view::Frustum&>> cameras,
+    Query<Item<Entity, const InheritedVisibility&, Mut<ViewVisibility>, Opt<const RenderLayers&>>> entities) {
+    // Bevy check_visibility (visibility/mod.rs:748-860): for each camera, mark
+    // entities visible to it in its view slot and collect them into the
+    // camera's VisibleEntities. Frustum culling is not applied yet — epix has
+    // no per-entity bounds; the Frustum is kept in the query for that work.
+    constexpr std::uint32_t kMaxViews = 15;  // ViewVisibility has 16 per-view bits
+    const auto visibility_class = ::epix::meta::type_index(::epix::meta::type_id<Visibility>());
+    std::unordered_set<Entity> visible_anywhere;
+    std::size_t view_index = 0;
+    for (auto&& [camera_entity, camera, visible_entities, camera_layers, frustum] : cameras.iter()) {
+        (void)camera_entity;
+        (void)camera;
+        (void)frustum;
+        if (view_index >= kMaxViews) {
+            spdlog::warn("[render.camera] More than {} cameras; visibility bits truncated.", kMaxViews);
+            break;
+        }
+        auto& class_entities = visible_entities.get_mut().get_mut(visibility_class);
+        for (auto&& [entity, inherited, view_visibility, opt_layers] : entities.iter()) {
+            if (!inherited.is_visible) continue;
+            const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
+            if (!camera_layers.intersects(entity_layers)) continue;
+            view_visibility.get_mut().set_in_view(view_index, true);
+            visible_anywhere.insert(entity);
+            class_entities.push_back(entity);
+        }
+        ++view_index;
+    }
+    // Entities visible to no view are culled (bit 0 set -> get() == false).
+    for (auto&& [entity, inherited, view_visibility, opt_layers] : entities.iter()) {
+        (void)inherited;
+        (void)opt_layers;
+        if (!visible_anywhere.contains(entity)) {
+            view_visibility.get_mut().culled();
+        }
+    }
+}
+
+void update_frusta(Query<Item<const Camera&, const ::epix::transform::GlobalTransform&, Mut<view::Frustum>>> cameras) {
+    // Bevy update_frusta: clip_from_world = projection * inverse(transform).
+    for (auto&& [camera, gtransform, frustum] : cameras.iter()) {
+        const glm::mat4 clip_from_world = camera.computed.projection * glm::inverse(gtransform.matrix);
+        frustum.get_mut()               = view::Frustum::from_view_projection(clip_from_world);
+    }
+}
+
 void CameraPlugin::attach(App& app) {
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
+    // Bevy: Visibility requires InheritedVisibility + ViewVisibility
+    // (visibility/mod.rs:151-166); required components are auto-added on spawn.
+    app.world_mut().register_required_components<Visibility, InheritedVisibility>();
+    app.world_mut().register_required_components<Visibility, ViewVisibility>();
+    app.add_systems(app::PostUpdate, into(visibility_propagate_system).set_name("visibility propagate"));
+    app.add_systems(app::PostUpdate, into(reset_view_visibility).set_name("reset view visibility"));
+    app.add_systems(app::PostUpdate, into(update_frusta).after(CameraUpdateSystems::CameraUpdateSystem).set_name("update frusta"));
+    app.add_systems(app::PostUpdate,
+                    into(check_visibility_system)
+                        .after(update_frusta)
+                        .after(visibility_propagate_system)
+                        .after(reset_view_visibility)
+                        .set_name("check visibility"));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{}, ExtractResourcePlugin<ClearColor>{});
     // Bevy ClearColor::default() = srgb_u8(43, 44, 47) in linear space.

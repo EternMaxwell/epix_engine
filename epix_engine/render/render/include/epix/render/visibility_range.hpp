@@ -90,14 +90,12 @@ EPIX_EXPORT struct RenderVisibilityRanges {
     /** @brief True when the buffer needs re-upload (Bevy default: true). */
     bool buffer_dirty = true;
 
-    /** @brief Clears the ranges in preparation for a new frame (Bevy
-     * RenderVisibilityRanges::clear). */
-    void clear() noexcept {
-        entities.clear();
-        range_to_index.clear();
-        buffer.clear();
-        buffer_dirty = true;
-    }
+    /** @brief Clears the per-entity ranges in preparation for a new frame
+     * (Bevy RenderVisibilityRanges::clear). The range index map and GPU buffer
+     * are KEPT: range indices must stay stable for the app lifetime because
+     * GPU-driven consumers bake them into per-entity data at extraction
+     * (bevy range.rs:60-70, 106-146). */
+    void clear() noexcept { entities.clear(); }
 
     /** @brief Inserts an entity's range, deduplicating identical ranges into
      * one GPU slot (Bevy RenderVisibilityRanges::insert). */
@@ -106,12 +104,19 @@ EPIX_EXPORT struct RenderVisibilityRanges {
         if (auto it = range_to_index.find(visibility_range); it != range_to_index.end()) {
             buffer_index = it->second;
         } else {
-            buffer_index = static_cast<std::uint16_t>(
-                buffer.push(glm::vec4(visibility_range.start_margin_start,
-                                      visibility_range.start_margin_end,
-                                      visibility_range.end_margin_start,
-                                      visibility_range.end_margin_end)));
+            // Indices are assigned from range_to_index.size() and never reused
+            // (Bevy range.rs:115-146); the buffer slot at that index holds the
+            // range vec4 and is stable for the app lifetime.
+            if (range_to_index.size() >= std::numeric_limits<std::uint16_t>::max()) {
+                spdlog::warn("[render] Too many distinct visibility ranges; index truncated.");
+            }
+            buffer_index = static_cast<std::uint16_t>(range_to_index.size());
+            buffer.push(glm::vec4(visibility_range.start_margin_start,
+                                  visibility_range.start_margin_end,
+                                  visibility_range.end_margin_start,
+                                  visibility_range.end_margin_end));
             range_to_index.emplace(visibility_range, buffer_index);
+            buffer_dirty = true;
         }
         entities.emplace(entity.entity, detail::RenderVisibilityEntityInfo{buffer_index, visibility_range.is_abrupt()});
     }

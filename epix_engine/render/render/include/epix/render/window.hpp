@@ -50,6 +50,10 @@ EPIX_EXPORT struct ExtractedWindow {
     wgpu::SurfaceTexture swapchain_texture;
     /** @brief Texture format of the swapchain surface. */
     wgpu::TextureFormat swapchain_texture_format;
+    /** @brief Format of the swapchain texture VIEW: the sRGB-suffixed twin of
+     * the surface format so the final output attachment always writes through
+     * hardware sRGB encoding (Bevy `swap_chain_texture_view_format`). */
+    wgpu::TextureFormat swapchain_texture_view_format;
 
     /** @brief Whether the window size changed since last frame. */
     bool size_changed = false;
@@ -126,7 +130,7 @@ EPIX_EXPORT void prepare_windows(ecs::ResMut<ExtractedWindows> windows,
                                  ecs::ResMut<WindowSurfaces> window_surfaces,
                                  ecs::Res<wgpu::Device> device,
                                  ecs::Res<wgpu::Instance> instance);
-void create_surfaces(ecs::Res<ExtractedWindows> windows,
+void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
                      ecs::ResMut<WindowSurfaces> window_surfaces,
                      ecs::Res<wgpu::Instance> instance,
                      ecs::Res<wgpu::Adapter> adapter,
