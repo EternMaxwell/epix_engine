@@ -3,10 +3,11 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <concepts>
 #include <expected>
-#include <spdlog/spdlog.h>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -140,7 +141,9 @@ EPIX_EXPORT struct RenderGraph {
     auto iter_nodes() const { return std::views::values(nodes); }
     /** @brief Iterate over all node states, allowing modification (Bevy
      * RenderGraph::iter_nodes_mut). */
-    auto iter_nodes_mut() { return std::views::values(nodes) | std::views::transform([](NodeState& n) -> NodeState& { return n; }); }
+    auto iter_nodes_mut() {
+        return std::views::values(nodes) | std::views::transform([](NodeState& n) -> NodeState& { return n; });
+    }
     /** @brief Iterate over (label, graph) pairs of the sub graphs (Bevy
      * RenderGraph::iter_sub_graphs). */
     auto iter_sub_graphs() const {
@@ -151,9 +154,8 @@ EPIX_EXPORT struct RenderGraph {
     /** @brief Iterate over (label, graph) pairs of the sub graphs, allowing
      * modification (Bevy RenderGraph::iter_sub_graphs_mut). */
     auto iter_sub_graphs_mut() {
-        return sub_graphs | std::views::transform([](auto& kv) -> std::pair<GraphLabel, RenderGraph&> {
-                   return {kv.first, kv.second};
-               });
+        return sub_graphs | std::views::transform(
+                                [](auto& kv) -> std::pair<GraphLabel, RenderGraph&> { return {kv.first, kv.second}; });
     }
     /** @brief Remove a sub graph by label; no-op when absent (Bevy
      * RenderGraph::remove_sub_graph). */
@@ -203,7 +205,9 @@ EPIX_EXPORT inline void add_render_sub_graph(epix::ecs::World& world, const Grap
  * add_render_graph_node<T: Node + FromWorld>). Warns if the graph or sub
  * graph is missing. */
 template <std::derived_from<Node> T, typename... Args>
-void add_render_graph_node(epix::ecs::World& world, const GraphLabel& sub_graph, const NodeLabel& node_label,
+void add_render_graph_node(epix::ecs::World& world,
+                           const GraphLabel& sub_graph,
+                           const NodeLabel& node_label,
                            Args&&... args) {
     auto render_graph = world.get_resource_mut<RenderGraph>();
     if (!render_graph) {

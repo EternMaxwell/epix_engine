@@ -3,8 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <concepts>
 #include <spdlog/spdlog.h>
+
+#include <concepts>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
@@ -12,10 +13,10 @@
 #include <format>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <stdexcept>
-#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -58,13 +59,12 @@ concept HasTakeGpuData = requires(RenderAsset<T> asset, T& source) {
  * previous GPU asset (Bevy RenderAsset::prepare_asset's previous_asset
  * parameter; enables e.g. copy_on_resize). */
 template <typename T>
-concept HasPreviousAssetProcess =
-    requires(RenderAsset<T> asset,
-             T&& source,
-             typename RenderAsset<T>::Param& param,
-             const typename RenderAsset<T>::ProcessedAsset* previous) {
-        asset.prepare_asset(std::move(source), param, previous);
-    };
+concept HasPreviousAssetProcess = requires(RenderAsset<T> asset,
+                                           T&& source,
+                                           typename RenderAsset<T>::Param& param,
+                                           const typename RenderAsset<T>::ProcessedAsset* previous) {
+    asset.prepare_asset(std::move(source), param, previous);
+};
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     requires std::constructible_from<RenderAsset<T>>;
@@ -82,9 +82,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
  * hook called when an asset is removed from RenderAssets (Bevy
  * RenderAsset::unload_asset). */
 template <typename T>
-concept HasUnloadAsset = requires(RenderAsset<T> asset,
-                                   assets::AssetId<T> id,
-                                   typename RenderAsset<T>::Param& param) {
+concept HasUnloadAsset = requires(RenderAsset<T> asset, assets::AssetId<T> id, typename RenderAsset<T>::Param& param) {
     { asset.unload_asset(id, param) };
 };
 
@@ -185,17 +183,17 @@ struct ExtractedAssets {
     /** @brief IDs modified this frame (Bevy ExtractedAssets::modified). */
     std::unordered_set<assets::AssetId<T>> modified;
 
-    ExtractedAssets()                                   = default;
-    ExtractedAssets(const ExtractedAssets&)             = delete;
-    ExtractedAssets(ExtractedAssets&&)                  = default;
-    ExtractedAssets& operator=(const ExtractedAssets&)  = delete;
-    ExtractedAssets& operator=(ExtractedAssets&&)       = default;
+    ExtractedAssets()                                  = default;
+    ExtractedAssets(const ExtractedAssets&)            = delete;
+    ExtractedAssets(ExtractedAssets&&)                 = default;
+    ExtractedAssets& operator=(const ExtractedAssets&) = delete;
+    ExtractedAssets& operator=(ExtractedAssets&&)      = default;
 };
 
 template <RenderAssetImpl T>
 void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
-                    app::Extract<ecs::ResMut<assets::Assets<T>>> assets,
-                    app::Extract<ecs::EventReader<assets::AssetEvent<T>>> events) {
+                          app::Extract<ecs::ResMut<assets::Assets<T>>> assets,
+                          app::Extract<ecs::EventReader<assets::AssetEvent<T>>> events) {
     std::unordered_set<assets::AssetId<T>> changed_ids;
     std::unordered_set<assets::AssetId<T>> removed;
     std::unordered_set<assets::AssetId<T>> added;
@@ -245,8 +243,8 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                         if (auto data = render_asset_impl.take_gpu_data(stored->get()); data) {
                             extracted_assets.emplace_back(id, std::move(*data));
                         } else {
-                            errors.emplace_back(std::format(
-                                "Asset [{}] with RENDER_WORLD usage cannot be extracted", id.to_string()));
+                            errors.emplace_back(
+                                std::format("Asset [{}] with RENDER_WORLD usage cannot be extracted", id.to_string()));
                         }
                     }
                 } else {
@@ -257,9 +255,9 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     }
 
     cache->extracted = std::move(extracted_assets);
-    cache->removed          = std::move(removed);
-    cache->added            = std::move(added);
-    cache->modified         = std::move(modified);
+    cache->removed   = std::move(removed);
+    cache->added     = std::move(added);
+    cache->modified  = std::move(modified);
 
     if (!errors.empty()) {
         std::stringstream ss;
@@ -269,8 +267,6 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
         throw std::runtime_error("Errors occurred while extracting render assets:\n" + ss.str());
     }
 }
-
-
 
 /**
  * @brief Temporarily stores assets that were extracted but could not be
@@ -282,7 +278,7 @@ struct PrepareNextFrameAssets {
     /** @brief (id, asset) pairs deferred to the next frame. */
     std::vector<std::pair<assets::AssetId<T>, T>> pending;
 
-    PrepareNextFrameAssets()                                    = default;
+    PrepareNextFrameAssets()                                         = default;
     PrepareNextFrameAssets(const PrepareNextFrameAssets&)            = delete;
     PrepareNextFrameAssets(PrepareNextFrameAssets&&)                 = default;
     PrepareNextFrameAssets& operator=(const PrepareNextFrameAssets&) = delete;
@@ -326,9 +322,7 @@ EPIX_EXPORT struct RenderAssetBytesPerFrameLimiter {
         }
     }
     /** @brief True when the per-frame budget has been fully consumed. */
-    bool exhausted() const noexcept {
-        return max_bytes.has_value() && bytes_written >= *max_bytes;
-    }
+    bool exhausted() const noexcept { return max_bytes.has_value() && bytes_written >= *max_bytes; }
     /** @brief Bytes still available this frame, or SIZE_MAX when unlimited
      * (Bevy RenderAssetBytesPerFrameLimiter::available_bytes). */
     std::size_t available_bytes() const noexcept {
@@ -380,10 +374,10 @@ std::optional<std::size_t> render_asset_byte_len(const RenderAsset<T>& asset, co
 
 template <RenderAssetImpl T>
 void prepare_assets(typename RenderAsset<T>::Param param,
-                      ecs::ResMut<RenderAssets<T>> render_assets,
-                      ecs::ResMut<ExtractedAssets<T>> extracted_assets,
-                      ecs::ResMut<PrepareNextFrameAssets<T>> prepare_next_frame_assets,
-                      ecs::ResMut<RenderAssetBytesPerFrameLimiter> bytes_per_frame_limiter) {
+                    ecs::ResMut<RenderAssets<T>> render_assets,
+                    ecs::ResMut<ExtractedAssets<T>> extracted_assets,
+                    ecs::ResMut<PrepareNextFrameAssets<T>> prepare_next_frame_assets,
+                    ecs::ResMut<RenderAssetBytesPerFrameLimiter> bytes_per_frame_limiter) {
     RenderAsset<T> render_asset_impl;
     std::size_t wrote_asset_count = 0;
 
@@ -419,8 +413,7 @@ void prepare_assets(typename RenderAsset<T>::Param param,
         try {
             // Bevy passes the previous GPU asset to prepare_asset.
             auto previous = render_assets->get(id);
-            render_assets->insert(
-                id, prepare_asset(render_asset_impl, std::move(asset), param, previous));
+            render_assets->insert(id, prepare_asset(render_asset_impl, std::move(asset), param, previous));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
         } catch (const std::exception& e) {
@@ -446,7 +439,7 @@ void prepare_assets(typename RenderAsset<T>::Param param,
         // The removed value is Bevy's previous_asset, passed to prepare_asset
         // (render_asset.rs:412) so specializations can e.g. copy_on_resize.
         auto previous_asset = render_assets->remove(id);
-        const auto write = write_bytes(asset);
+        const auto write    = write_bytes(asset);
         if (!write.has_value()) {
             spdlog::debug("Deferring render asset {} to next frame (budget exhausted, {} bytes available)",
                           id.to_string(), bytes_per_frame_limiter.get().available_bytes());
@@ -455,7 +448,7 @@ void prepare_assets(typename RenderAsset<T>::Param param,
         }
         try {
             render_assets->insert(id, prepare_asset(render_asset_impl, std::move(asset), param,
-                                                       previous_asset ? &*previous_asset : nullptr));
+                                                    previous_asset ? &*previous_asset : nullptr));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
         } catch (const std::exception& e) {
@@ -472,7 +465,6 @@ void prepare_assets(typename RenderAsset<T>::Param param,
     extracted_assets->modified.clear();
     (void)wrote_asset_count;
 }
-
 
 /** @brief System set for the asset extraction phase (Bevy 0.18
  * `AssetExtractionSystems`). */
@@ -504,8 +496,7 @@ struct RenderAssetPlugin {
             // first (render_asset.rs:101-108).
             if constexpr (!std::is_void_v<AFTER>) {
                 static_assert(RenderAssetImpl<AFTER>, "AFTER must be a render asset type");
-                render_app->get().add_systems(Render,
-                                              std::move(prepare).after(ecs::into(prepare_assets<AFTER>)));
+                render_app->get().add_systems(Render, std::move(prepare).after(ecs::into(prepare_assets<AFTER>)));
             } else {
                 render_app->get().add_systems(Render, std::move(prepare));
             }

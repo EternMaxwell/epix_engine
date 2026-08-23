@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <optional>
-#include <utility>
-#include <vector>
-#include <unordered_map>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
+#include <optional>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 #endif
 
 #include <epix/render/render_phase.hpp>
@@ -117,7 +117,7 @@ class IndexMap {
  */
 EPIX_EXPORT struct InputUniformIndex {
     /** @brief The buffer index. */
-    std::uint32_t index = 0;
+    std::uint32_t index                             = 0;
     bool operator==(const InputUniformIndex&) const = default;
 };
 
@@ -203,7 +203,7 @@ struct BinKeyPair {
     A first;
     /** @brief Second component (bin key). */
     B second;
-    bool operator==(const BinKeyPair&) const = default;
+    bool operator==(const BinKeyPair&) const  = default;
     auto operator<=>(const BinKeyPair&) const = default;
 };
 
@@ -242,7 +242,7 @@ struct CachedBinKey {
     /** @brief Key of the bin containing the entity. */
     typename BPI::BinKey bin_key;
     /** @brief How the entity is rendered. */
-    BinnedRenderPhaseType phase_type = BinnedRenderPhaseType::BatchableMesh;
+    BinnedRenderPhaseType phase_type           = BinnedRenderPhaseType::BatchableMesh;
     bool operator==(const CachedBinKey&) const = default;
 };
 
@@ -265,7 +265,6 @@ struct EntityThatChangedBins {
     /** @brief The bin the entity used to be in. */
     CachedBinnedEntity<BPI> old_cached_binned_entity;
 };
-
 
 /**
  * @brief A collection of all rendering instructions for a single binned
@@ -331,19 +330,17 @@ class BinnedRenderPhase {
                 break;
             }
             case BinnedRenderPhaseType::UnbatchableMesh: {
-                auto& unbatchable = unbatchable_meshes[{batch_set_key, bin_key}];
+                auto& unbatchable                        = unbatchable_meshes[{batch_set_key, bin_key}];
                 unbatchable.entities[main_entity.entity] = render_entity;
                 break;
             }
             case BinnedRenderPhaseType::NonMesh: {
-                auto& non_mesh = non_mesh_items[{batch_set_key, bin_key}];
+                auto& non_mesh                        = non_mesh_items[{batch_set_key, bin_key}];
                 non_mesh.entities[main_entity.entity] = render_entity;
                 break;
             }
         }
-        update_cache(main_entity,
-                     CachedBinKey<BPI>{batch_set_key, bin_key, phase_type},
-                     change_tick);
+        update_cache(main_entity, CachedBinKey<BPI>{batch_set_key, bin_key, phase_type}, change_tick);
     }
 
     /**
@@ -357,7 +354,7 @@ class BinnedRenderPhase {
         CachedBinnedEntity<BPI> new_entry{cached_bin_key, change_tick};
         std::optional<CachedBinnedEntity<BPI>> old_entry;
         if (auto existing = cached_entity_bin_keys.get(main_entity.entity)) {
-            old_entry = *existing;
+            old_entry                = *existing;
             existing->cached_bin_key = cached_bin_key;
             existing->change_tick    = change_tick;
         } else {
@@ -416,7 +413,9 @@ class BinnedRenderPhase {
      * instance_range)` must exist (Bevy names it `new`, a C++ keyword); phases
      * whose item type lacks it render nothing.
      */
-    void render(const wgpu::RenderPassEncoder& render_pass, const epix::ecs::World& world, epix::ecs::Entity view) const {
+    void render(const wgpu::RenderPassEncoder& render_pass,
+                const epix::ecs::World& world,
+                epix::ecs::Entity view) const {
         {
             auto&& draw_functions = world.resource<DrawFunctions<BPI>>();
             draw_functions.prepare(world);
@@ -507,18 +506,19 @@ class BinnedRenderPhase {
 
     /** @brief True when BPI provides the bin->item factory (Bevy BPI::new;
      * named `create` because `new` is a C++ keyword). */
-    static constexpr bool has_item_factory =
-        requires(typename BPI::BatchSetKey batch_set_key,
-                 typename BPI::BinKey bin_key,
-                 epix::ecs::Entity representative_entity,
-                 std::uint32_t instance_start,
-                 std::uint32_t instance_end) {
-            BPI::create(batch_set_key, bin_key, representative_entity, instance_start, instance_end);
-        };
+    static constexpr bool has_item_factory = requires(typename BPI::BatchSetKey batch_set_key,
+                                                      typename BPI::BinKey bin_key,
+                                                      epix::ecs::Entity representative_entity,
+                                                      std::uint32_t instance_start,
+                                                      std::uint32_t instance_end) {
+        BPI::create(batch_set_key, bin_key, representative_entity, instance_start, instance_end);
+    };
 
     /** @brief Run one item's draw function, logging failures (Bevy draw
      * functions return Result<(), DrawError>; Skip is ignored). */
-    void draw_item(const wgpu::RenderPassEncoder& render_pass, const epix::ecs::World& world, epix::ecs::Entity view,
+    void draw_item(const wgpu::RenderPassEncoder& render_pass,
+                   const epix::ecs::World& world,
+                   epix::ecs::Entity view,
                    const BPI& item) const {
         auto&& draw_functions = world.resource<DrawFunctions<BPI>>();
         auto draw_function    = draw_functions.get(item.draw_function());
@@ -530,27 +530,29 @@ class BinnedRenderPhase {
         auto result = draw_function->get().draw(world, render_pass, view, item);
         if (!result && result.error().type != DrawError::ErrorType::Skip) {
             spdlog::error("[render] Draw function {} failed for binned item {:#x}: {}",
-                          static_cast<std::uint32_t>(item.draw_function()), item.entity().index, result.error().message);
+                          static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                          result.error().message);
         }
     }
 
     /** @brief Render each batchable bin with a single batched item (Bevy
      * render_batchable_meshes; storage-buffer path: one item per bin). */
-    void render_batchable_meshes(const wgpu::RenderPassEncoder& render_pass, const epix::ecs::World& world,
+    void render_batchable_meshes(const wgpu::RenderPassEncoder& render_pass,
+                                 const epix::ecs::World& world,
                                  epix::ecs::Entity view) const {
         if constexpr (!has_item_factory) return;
         for (auto&& [key, bin] : batchable_meshes.iter()) {
             if (bin.empty()) continue;
             const auto representative = bin.iter().begin()->first;
-            BPI item                  = BPI::create(key.first, key.second, representative, 0u,
-                                                    static_cast<std::uint32_t>(bin.size()));
+            BPI item = BPI::create(key.first, key.second, representative, 0u, static_cast<std::uint32_t>(bin.size()));
             draw_item(render_pass, world, view, item);
         }
     }
 
     /** @brief Render each unbatchable mesh entity with a separate draw call
      * (Bevy render_unbatchable_meshes). */
-    void render_unbatchable_meshes(const wgpu::RenderPassEncoder& render_pass, const epix::ecs::World& world,
+    void render_unbatchable_meshes(const wgpu::RenderPassEncoder& render_pass,
+                                   const epix::ecs::World& world,
                                    epix::ecs::Entity view) const {
         if constexpr (!has_item_factory) return;
         for (auto&& [key, unbatchable] : unbatchable_meshes.iter()) {
@@ -564,7 +566,8 @@ class BinnedRenderPhase {
 
     /** @brief Render each non-mesh entity with a separate draw call (Bevy
      * render_non_meshes). */
-    void render_non_meshes(const wgpu::RenderPassEncoder& render_pass, const epix::ecs::World& world,
+    void render_non_meshes(const wgpu::RenderPassEncoder& render_pass,
+                           const epix::ecs::World& world,
                            epix::ecs::Entity view) const {
         if constexpr (!has_item_factory) return;
         for (auto&& [key, non_mesh] : non_mesh_items.iter()) {
@@ -630,8 +633,8 @@ struct BinnedRenderPhasePlugin {
     void attach(app::App& app) {
         if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
             render_app->get().world_mut().init_resource<ViewBinnedRenderPhases<BPI>>();
-            render_app->get().add_systems(epix::render::Render,
-                                          into(sweep_old_entities<BPI>).in_set(epix::render::RenderSystems::QueueSweep));
+            render_app->get().add_systems(
+                epix::render::Render, into(sweep_old_entities<BPI>).in_set(epix::render::RenderSystems::QueueSweep));
         }
     }
 };
@@ -652,4 +655,3 @@ struct SortedRenderPhasePlugin {
 };
 
 }  // namespace epix::render::phase
-

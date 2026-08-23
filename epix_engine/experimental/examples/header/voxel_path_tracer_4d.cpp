@@ -760,8 +760,8 @@ struct V4DBlitNode : graph::Node {
         auto&& [target] = *view_opt;
         if (!target.out_texture.view) return;
 
-        auto pass = rc.command_encoder().beginRenderPass(
-            wgpu::RenderPassDescriptor().setColorAttachments(std::array{target.out_texture.get_attachment(std::nullopt)}));
+        auto pass = rc.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
+            std::array{target.out_texture.get_attachment(std::nullopt)}));
         pass.setPipeline(pipeline->get().pipeline());
         pass.setVertexBuffer(0, state.vertex_buffer, 0, sizeof(float) * 6);
         pass.setBindGroup(0, state.blit_bg[state.accum_idx], std::span<const uint32_t>{});
@@ -1564,8 +1564,9 @@ struct Voxel4DPathTracerPlugin {
         rapp.add_systems(ExtractSchedule, into(extract_v4d_scene).set_name("extract v4d scene"))
             .add_systems(ExtractSchedule, into(extract_v4d_config).set_name("extract v4d config"))
             .add_systems(ExtractSchedule, into(extract_v4d_camera).set_name("extract v4d camera"))
-            .add_systems(Render,
-                         into(prepare_v4d_render).in_set(RenderSystems::PrepareResources).set_name("prepare v4d render"));
+            .add_systems(
+                Render,
+                into(prepare_v4d_render).in_set(RenderSystems::PrepareResources).set_name("prepare v4d render"));
     }
 };
 

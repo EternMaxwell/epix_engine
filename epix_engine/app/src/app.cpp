@@ -21,7 +21,7 @@ void handle_terminate();
 
 namespace {
 std::mutex terminate_handler_mutex;
-std::size_t active_app_count = 0;
+std::size_t active_app_count                      = 0;
 std::terminate_handler previous_terminate_handler = nullptr;
 }  // namespace
 
@@ -272,7 +272,7 @@ void handle_terminate() {
 }
 
 void App::run() {
-    auto file_sink      = std::make_shared<spdlog::sinks::basic_file_sink_mt>("epix.log", true);
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("epix.log", true);
     spdlog::default_logger()->sinks().push_back(file_sink);
     spdlog::info("[app] App attaching. - {}", _label.to_string());
     resource_scope([&](internal::Plugins& plugins) {

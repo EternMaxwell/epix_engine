@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <span>
 #include <string_view>
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render::render_resource {
@@ -25,7 +25,8 @@ EPIX_EXPORT struct BindGroupLayoutEntryInfo {
 };
 
 /** @brief Build a uniform-buffer layout entry (Bevy #[uniform(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo uniform_binding(std::uint32_t binding, wgpu::ShaderStage stage,
+EPIX_EXPORT inline BindGroupLayoutEntryInfo uniform_binding(std::uint32_t binding,
+                                                            wgpu::ShaderStage stage,
                                                             std::uint64_t min_binding_size = 0) {
     BindGroupLayoutEntryInfo info;
     info.binding = binding;
@@ -38,8 +39,10 @@ EPIX_EXPORT inline BindGroupLayoutEntryInfo uniform_binding(std::uint32_t bindin
 }
 
 /** @brief Build a storage-buffer layout entry (Bevy #[storage(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_binding(std::uint32_t binding, wgpu::ShaderStage stage,
-                                                            bool read_only = false, std::uint64_t min_binding_size = 0) {
+EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_binding(std::uint32_t binding,
+                                                            wgpu::ShaderStage stage,
+                                                            bool read_only                 = false,
+                                                            std::uint64_t min_binding_size = 0) {
     BindGroupLayoutEntryInfo info;
     info.binding = binding;
     // Bevy derive default: read_only = false (eStorage); callers pass true
@@ -54,22 +57,23 @@ EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_binding(std::uint32_t bindin
 
 /** @brief Build a texture layout entry (Bevy #[texture(..)]). */
 EPIX_EXPORT inline BindGroupLayoutEntryInfo texture_binding(
-    std::uint32_t binding, wgpu::ShaderStage stage,
-    wgpu::TextureSampleType sample_type = wgpu::TextureSampleType::eFloat,
+    std::uint32_t binding,
+    wgpu::ShaderStage stage,
+    wgpu::TextureSampleType sample_type  = wgpu::TextureSampleType::eFloat,
     wgpu::TextureViewDimension dimension = wgpu::TextureViewDimension::e2D) {
     BindGroupLayoutEntryInfo info;
     info.binding = binding;
-    info.entry.setBinding(binding).setVisibility(stage).setTexture(
-        wgpu::TextureBindingLayout()
-            .setSampleType(sample_type)
-            .setViewDimension(dimension)
-            .setMultisampled(wgpu::Bool(false)));
+    info.entry.setBinding(binding).setVisibility(stage).setTexture(wgpu::TextureBindingLayout()
+                                                                       .setSampleType(sample_type)
+                                                                       .setViewDimension(dimension)
+                                                                       .setMultisampled(wgpu::Bool(false)));
     return info;
 }
 
 /** @brief Build a sampler layout entry (Bevy #[sampler(..)]). */
 EPIX_EXPORT inline BindGroupLayoutEntryInfo sampler_binding(
-    std::uint32_t binding, wgpu::ShaderStage stage,
+    std::uint32_t binding,
+    wgpu::ShaderStage stage,
     wgpu::SamplerBindingType type = wgpu::SamplerBindingType::eFiltering) {
     BindGroupLayoutEntryInfo info;
     info.binding = binding;
@@ -79,7 +83,10 @@ EPIX_EXPORT inline BindGroupLayoutEntryInfo sampler_binding(
 
 /** @brief Build a storage-texture layout entry (Bevy #[storage_texture(..)]). */
 EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_texture_binding(
-    std::uint32_t binding, wgpu::ShaderStage stage, wgpu::StorageTextureAccess access, wgpu::TextureFormat format,
+    std::uint32_t binding,
+    wgpu::ShaderStage stage,
+    wgpu::StorageTextureAccess access,
+    wgpu::TextureFormat format,
     wgpu::TextureViewDimension dimension = wgpu::TextureViewDimension::e2D) {
     BindGroupLayoutEntryInfo info;
     info.binding = binding;
@@ -126,11 +133,10 @@ concept AsBindGroupImpl = requires {
     typename AsBindGroup<C>::Data;
     typename AsBindGroup<C>::Param;
     { AsBindGroup<C>::layout_entries() } -> std::same_as<std::vector<BindGroupLayoutEntryInfo>>;
-    { AsBindGroup<C>::as_bind_group(std::declval<const wgpu::Device&>(),
-                                    std::declval<const wgpu::BindGroupLayout&>(),
-                                    std::declval<const C&>(),
-                                    std::declval<typename AsBindGroup<C>::Param&>()) }
-        -> std::same_as<PreparedBindGroup<C>>;
+    {
+        AsBindGroup<C>::as_bind_group(std::declval<const wgpu::Device&>(), std::declval<const wgpu::BindGroupLayout&>(),
+                                      std::declval<const C&>(), std::declval<typename AsBindGroup<C>::Param&>())
+    } -> std::same_as<PreparedBindGroup<C>>;
 };
 
 /** @brief Create a bind group layout from the declared entries. */
@@ -142,9 +148,8 @@ EPIX_EXPORT inline wgpu::BindGroupLayout create_bind_group_layout(const wgpu::De
     for (const auto& info : entries) {
         raw_entries.push_back(info.entry);
     }
-    return device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                            .setLabel(label.data())
-                                            .setEntries(std::move(raw_entries)));
+    return device.createBindGroupLayout(
+        wgpu::BindGroupLayoutDescriptor().setLabel(label.data()).setEntries(std::move(raw_entries)));
 }
 
 /** @brief Create a bind group from per-binding entries. */
@@ -153,10 +158,8 @@ EPIX_EXPORT inline wgpu::BindGroup create_bind_group(const wgpu::Device& device,
                                                      std::span<const wgpu::BindGroupEntry> entries,
                                                      std::string_view label = "AsBindGroup") {
     std::vector<wgpu::BindGroupEntry> raw_entries(entries.begin(), entries.end());
-    return device.createBindGroup(wgpu::BindGroupDescriptor()
-                                      .setLabel(label.data())
-                                      .setLayout(layout)
-                                      .setEntries(std::move(raw_entries)));
+    return device.createBindGroup(
+        wgpu::BindGroupDescriptor().setLabel(label.data()).setLayout(layout).setEntries(std::move(raw_entries)));
 }
 
 /** @brief Errors that can occur while creating bind group data (Bevy

@@ -1,10 +1,9 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <epix/render.hpp>
 #include <utility>
 #include <vector>
-
-#include <epix/render.hpp>
 
 using namespace epix::ecs;
 using namespace epix::app;
@@ -27,13 +26,11 @@ void entity_sync_system(World& main_world, World& render_world) {
     //    (clearing derived/extracted components).
     if (auto pending = main_world.get_resource_mut<PendingSyncEntity>()) {
         for (const Entity main_entity : pending->get().component_removed) {
-            auto render_entity = main_world.get_entity(main_entity)
-                                     .and_then([](const EntityRef& e) -> std::optional<Entity> {
-                                         return e.get<RenderEntity>().transform(
-                                             [](const std::reference_wrapper<const RenderEntity>& re) {
-                                                 return re.get().entity;
-                                             });
-                                     });
+            auto render_entity =
+                main_world.get_entity(main_entity).and_then([](const EntityRef& e) -> std::optional<Entity> {
+                    return e.get<RenderEntity>().transform(
+                        [](const std::reference_wrapper<const RenderEntity>& re) { return re.get().entity; });
+                });
             if (render_entity && render_world.get_entity(*render_entity)) {
                 render_world.get_entity_mut(*render_entity).transform([](EntityWorldMut&& ew) -> int {
                     ew.despawn();
@@ -55,11 +52,10 @@ void entity_sync_system(World& main_world, World& render_world) {
         if (query) {
             std::vector<Entity> to_despawn;
             for (auto&& [render_entity, main_entity] : query->iter(render_world)) {
-                bool keep = main_world.get_entity(main_entity.entity)
-                                .transform([](const EntityRef& e) {
-                                    return e.template get<SyncToRenderWorld>().has_value();
-                                })
-                                .value_or(false);
+                bool keep =
+                    main_world.get_entity(main_entity.entity)
+                        .transform([](const EntityRef& e) { return e.template get<SyncToRenderWorld>().has_value(); })
+                        .value_or(false);
                 if (!keep) {
                     to_despawn.push_back(render_entity);
                 }

@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/ecs.hpp>
 #include <functional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/render/pipeline_server.hpp>
@@ -55,14 +55,12 @@ concept SpecializerKey = requires(const K& key) {
  * base descriptor and returns the canonical key used for duplicate detection.
  */
 template <typename T, typename S>
-concept SpecializerImpl = SpecializableImpl<T> && requires(S specializer,
-                                                          typename Specializable<T>::Descriptor& descriptor) {
-    typename S::Key;
-    requires SpecializerKey<typename S::Key>;
-    {
-        specializer.specialize(std::declval<const typename S::Key&>(), descriptor)
-    } -> std::same_as<typename S::Key>;
-};
+concept SpecializerImpl =
+    SpecializableImpl<T> && requires(S specializer, typename Specializable<T>::Descriptor& descriptor) {
+        typename S::Key;
+        requires SpecializerKey<typename S::Key>;
+        { specializer.specialize(std::declval<const typename S::Key&>(), descriptor) } -> std::same_as<typename S::Key>;
+    };
 
 /**
  * @brief Cache for variants of a resource type created by a specializer
@@ -105,7 +103,7 @@ struct Variants {
         // Slow path: clone the base descriptor, run the specializer, then
         // deduplicate against the canonical key of the produced descriptor.
         Descriptor descriptor = base_descriptor;
-        Key canonical = specializer.specialize(key, descriptor);
+        Key canonical         = specializer.specialize(key, descriptor);
         if (auto it = secondary_cache.find(canonical); it != secondary_cache.end()) {
             CachedId id = it->second;
             primary_cache.emplace(std::move(key), id);

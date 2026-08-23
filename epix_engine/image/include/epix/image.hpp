@@ -104,7 +104,6 @@ EPIX_EXPORT enum class ImageType {
     e3D,
 };
 
-
 /** @brief Texel addressing mode for sampler coordinates (Bevy
  * `ImageAddressMode`, mirrors wgpu AddressMode). */
 EPIX_EXPORT enum class ImageAddressMode {
@@ -240,8 +239,8 @@ EPIX_EXPORT class Image {
     ImageType m_type                = ImageType::e2D;
     Format m_format                 = Format::Unknown;
     ImageUsage m_usage              = ImageUsage::Both;
-    bool m_copy_on_resize            = false;
-    ImageSampler m_sampler           = ImageSampler::Default;
+    bool m_copy_on_resize           = false;
+    ImageSampler m_sampler          = ImageSampler::Default;
     ImageSamplerDescriptor m_sampler_descriptor;
 
     std::vector<std::byte> data;
@@ -387,7 +386,7 @@ EPIX_EXPORT class Image {
      * ImageSampler::Descriptor (Bevy ImageSampler::Descriptor). */
     void set_sampler_descriptor(ImageSamplerDescriptor descriptor) noexcept {
         m_sampler_descriptor = std::move(descriptor);
-        m_sampler           = ImageSampler::Descriptor;
+        m_sampler            = ImageSampler::Descriptor;
     }
 
     /** @brief Get a read-only byte span of the raw pixel data. */

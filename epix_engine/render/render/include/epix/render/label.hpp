@@ -4,11 +4,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/ecs.hpp>
+#include <epix/meta.hpp>
 #include <memory>
 #include <mutex>
 #include <vector>
-#include <epix/ecs.hpp>
-#include <epix/meta.hpp>
 #endif
 
 namespace epix::render::label {
@@ -72,7 +72,7 @@ class Interner {
                 return Interned<T>{stored.get()};
             }
         }
-        auto leaked = std::make_unique<T>(value);
+        auto leaked  = std::make_unique<T>(value);
         const T* ptr = leaked.get();
         m_values.push_back(std::move(leaked));
         return Interned<T>{ptr};

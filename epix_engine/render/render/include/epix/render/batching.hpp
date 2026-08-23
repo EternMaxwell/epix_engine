@@ -5,10 +5,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <optional>
 #include <type_traits>
 #include <utility>
-#include <epix/ecs.hpp>
 #endif
 #include <epix/render/render_resource.hpp>
 #include <epix/render/sync_world.hpp>
@@ -39,8 +39,8 @@ concept GetBatchDataImpl = requires(GetBatchData<T> batch) {
     {
         batch.get_batch_data(std::declval<typename GetBatchData<T>::Param&>(),
                              std::declval<std::pair<epix::ecs::Entity, sync_world::MainEntity>>())
-    } -> std::same_as<std::optional<std::pair<typename GetBatchData<T>::BufferData,
-                                            std::optional<typename GetBatchData<T>::CompareData>>>>;
+    } -> std::same_as<std::optional<
+        std::pair<typename GetBatchData<T>::BufferData, std::optional<typename GetBatchData<T>::CompareData>>>>;
 };
 
 /**
@@ -72,8 +72,7 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
                                          std::declval<sync_world::MainEntity>())
     } -> std::same_as<std::optional<std::pair<std::uint32_t, std::optional<typename GetBatchData<T>::CompareData>>>>;
     {
-        batch.get_binned_index(std::declval<typename GetBatchData<T>::Param&>(),
-                               std::declval<sync_world::MainEntity>())
+        batch.get_binned_index(std::declval<typename GetBatchData<T>::Param&>(), std::declval<sync_world::MainEntity>())
     } -> std::same_as<std::optional<std::uint32_t>>;
 };
 
@@ -96,4 +95,3 @@ EPIX_EXPORT struct BatchingPlugin {
 };
 
 }  // namespace epix::render::batching
-

@@ -5,13 +5,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <functional>
 #include <glm/glm.hpp>
 #include <optional>
 #include <unordered_map>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/render/image.hpp>
@@ -68,15 +68,15 @@ inline GpuImage create_fallback_image(epix::ecs::World& world,
     if (!device || !queue || !sampler) {
         return {};
     }
-    wgpu::Texture texture = device->get().createTexture(
-        wgpu::TextureDescriptor()
-            .setSize({1, 1, layers})
-            .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
-            .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst)
-            .setDimension(dimension)
-            .setSampleCount(1)
-            .setMipLevelCount(1)
-            .setLabel("fallback_image"));
+    wgpu::Texture texture =
+        device->get().createTexture(wgpu::TextureDescriptor()
+                                        .setSize({1, 1, layers})
+                                        .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
+                                        .setUsage(wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst)
+                                        .setDimension(dimension)
+                                        .setSampleCount(1)
+                                        .setMipLevelCount(1)
+                                        .setLabel("fallback_image"));
     const std::array<std::uint8_t, 4> color{value, value, value, value};
     for (std::uint32_t layer = 0; layer < layers; ++layer) {
         wgpu::TexelCopyTextureInfo dest;
@@ -115,18 +115,18 @@ EPIX_EXPORT struct FallbackImage {
      * FromWorld, created by TexturePlugin::finish). */
     static FallbackImage from_world(epix::ecs::World& world) {
         FallbackImage image;
-        image.d1         = detail::create_fallback_image(world, wgpu::TextureDimension::e1D,
-                                                         wgpu::TextureViewDimension::e1D, 1, 255);
-        image.d2         = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                         wgpu::TextureViewDimension::e2D, 1, 255);
+        image.d1 =
+            detail::create_fallback_image(world, wgpu::TextureDimension::e1D, wgpu::TextureViewDimension::e1D, 1, 255);
+        image.d2 =
+            detail::create_fallback_image(world, wgpu::TextureDimension::e2D, wgpu::TextureViewDimension::e2D, 1, 255);
         image.d2_array   = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
                                                          wgpu::TextureViewDimension::e2DArray, 1, 255);
         image.cube       = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
                                                          wgpu::TextureViewDimension::eCube, 6, 255);
         image.cube_array = detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
                                                          wgpu::TextureViewDimension::eCubeArray, 6, 255);
-        image.d3         = detail::create_fallback_image(world, wgpu::TextureDimension::e3D,
-                                                         wgpu::TextureViewDimension::e3D, 1, 255);
+        image.d3 =
+            detail::create_fallback_image(world, wgpu::TextureDimension::e3D, wgpu::TextureViewDimension::e3D, 1, 255);
         return image;
     }
 
@@ -134,13 +134,20 @@ EPIX_EXPORT struct FallbackImage {
      * unknown dimensions (Bevy FallbackImage::get). */
     const GpuImage* get(wgpu::TextureViewDimension dimension) const noexcept {
         switch (dimension) {
-            case wgpu::TextureViewDimension::e1D: return &d1;
-            case wgpu::TextureViewDimension::e2D: return &d2;
-            case wgpu::TextureViewDimension::e2DArray: return &d2_array;
-            case wgpu::TextureViewDimension::eCube: return &cube;
-            case wgpu::TextureViewDimension::eCubeArray: return &cube_array;
-            case wgpu::TextureViewDimension::e3D: return &d3;
-            default: return nullptr;
+            case wgpu::TextureViewDimension::e1D:
+                return &d1;
+            case wgpu::TextureViewDimension::e2D:
+                return &d2;
+            case wgpu::TextureViewDimension::e2DArray:
+                return &d2_array;
+            case wgpu::TextureViewDimension::eCube:
+                return &cube;
+            case wgpu::TextureViewDimension::eCubeArray:
+                return &cube_array;
+            case wgpu::TextureViewDimension::e3D:
+                return &d3;
+            default:
+                return nullptr;
         }
     }
 };
@@ -153,8 +160,8 @@ EPIX_EXPORT struct FallbackImageZero {
     /** @brief Create the 1x1 transparent-black fallback (Bevy
      * fallback_image.rs FromWorld). */
     static FallbackImageZero from_world(epix::ecs::World& world) {
-        return FallbackImageZero{detail::create_fallback_image(world, wgpu::TextureDimension::e2D,
-                                                               wgpu::TextureViewDimension::e2D, 1, 0)};
+        return FallbackImageZero{
+            detail::create_fallback_image(world, wgpu::TextureDimension::e2D, wgpu::TextureViewDimension::e2D, 1, 0)};
     }
 };
 
@@ -206,8 +213,9 @@ EPIX_EXPORT struct FallbackImageFormatMsaaCache {
 
 template <>
 struct epix::render::RenderAsset<epix::image::Image> {
-    using Param = std::
-        tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>, epix::ecs::Res<epix::render::DefaultImageSampler>>;
+    using Param          = std::tuple<epix::ecs::Res<wgpu::Device>,
+                                      epix::ecs::Res<wgpu::Queue>,
+                                      epix::ecs::Res<epix::render::DefaultImageSampler>>;
     using ProcessedAsset = epix::render::texture::GpuImage;
 
     ProcessedAsset prepare_asset(epix::image::Image&& asset,

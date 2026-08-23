@@ -22,10 +22,9 @@ void GlobalsPlugin::attach(App& app) {
     render_app.world_mut().init_resource<GlobalsBuffer>();
     render_app.world_mut().init_resource<FrameCount>();
     render_app.world_mut().init_resource<epix::time::Time<>>();
-    render_app.add_systems(ExtractSchedule,
-                           into(detail::extract_frame_count, detail::extract_time)
-                               .set_names(std::array{"extract frame count", "extract time"}));
-    render_app.add_systems(
-        epix::render::Render,
-        into(detail::prepare_globals_buffer).in_set(epix::render::RenderSystems::PrepareResources).set_name("prepare globals buffer"));
+    render_app.add_systems(ExtractSchedule, into(detail::extract_frame_count, detail::extract_time)
+                                                .set_names(std::array{"extract frame count", "extract time"}));
+    render_app.add_systems(epix::render::Render, into(detail::prepare_globals_buffer)
+                                                     .in_set(epix::render::RenderSystems::PrepareResources)
+                                                     .set_name("prepare globals buffer"));
 }

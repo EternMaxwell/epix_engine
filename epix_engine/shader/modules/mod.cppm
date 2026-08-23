@@ -22,9 +22,9 @@ module;
 #include <vector>
 #endif
 #include <zpp_bits.h>
-#include <stdexec/execution.hpp>
 
 #include <asio/awaitable.hpp>
+#include <stdexec/execution.hpp>
 
 export module epix.shader;
 #ifdef EPIX_IMPORT_STD

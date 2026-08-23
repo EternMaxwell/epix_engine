@@ -3,9 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <utility>
-#include <glm/glm.hpp>
 #include <epix/ecs.hpp>
+#include <glm/glm.hpp>
+#include <utility>
 #endif
 
 namespace epix::render::view {
@@ -121,12 +121,11 @@ inline ColorGradingUniform to_uniform(const ColorGrading& component) {
         glm::vec3(-2.93241f, 1.40437f, -0.0486532f),
         glm::vec3(-0.130646f, 0.00353630f, 1.0605344f),
     };
-    const glm::vec2 xy = glm::vec2(0.31272f, 0.32903f) +
-                         glm::vec2(-component.global.temperature, component.global.tint);
-    const glm::vec3 lms = glm::vec3(0.701634f, 1.15856f, -0.904175f) +
-                          (glm::vec3(-0.051461f, 0.045854f, 0.953127f) +
-                           glm::vec3(0.452749f, -0.296122f, -0.955206f) * xy.x) /
-                              xy.y;
+    const glm::vec2 xy =
+        glm::vec2(0.31272f, 0.32903f) + glm::vec2(-component.global.temperature, component.global.tint);
+    const glm::vec3 lms =
+        glm::vec3(0.701634f, 1.15856f, -0.904175f) +
+        (glm::vec3(-0.051461f, 0.045854f, 0.953127f) + glm::vec3(0.452749f, -0.296122f, -0.955206f) * xy.x) / xy.y;
     const glm::vec3 scale = glm::vec3(0.975538f, 1.01648f, 1.08475f) / lms;
     const glm::mat3 adjustment{
         glm::vec3(scale.x, 0.0f, 0.0f),
@@ -136,16 +135,16 @@ inline ColorGradingUniform to_uniform(const ColorGrading& component) {
 
     ColorGradingUniform uniform;
     uniform.balance = lms_to_rgb * adjustment * rgb_to_lms;
-    uniform.saturation = glm::vec3(component.shadows.saturation, component.midtones.saturation,
-                                   component.highlights.saturation);
-    uniform.contrast = glm::vec3(component.shadows.contrast, component.midtones.contrast,
-                                 component.highlights.contrast);
-    uniform.gamma = glm::vec3(component.shadows.gamma, component.midtones.gamma, component.highlights.gamma);
-    uniform.gain = glm::vec3(component.shadows.gain, component.midtones.gain, component.highlights.gain);
-    uniform.lift = glm::vec3(component.shadows.lift, component.midtones.lift, component.highlights.lift);
-    uniform.midtone_range = glm::vec2(component.global.midtones_range.first, component.global.midtones_range.second);
-    uniform.exposure = component.global.exposure;
-    uniform.hue = component.global.hue;
+    uniform.saturation =
+        glm::vec3(component.shadows.saturation, component.midtones.saturation, component.highlights.saturation);
+    uniform.contrast =
+        glm::vec3(component.shadows.contrast, component.midtones.contrast, component.highlights.contrast);
+    uniform.gamma           = glm::vec3(component.shadows.gamma, component.midtones.gamma, component.highlights.gamma);
+    uniform.gain            = glm::vec3(component.shadows.gain, component.midtones.gain, component.highlights.gain);
+    uniform.lift            = glm::vec3(component.shadows.lift, component.midtones.lift, component.highlights.lift);
+    uniform.midtone_range   = glm::vec2(component.global.midtones_range.first, component.global.midtones_range.second);
+    uniform.exposure        = component.global.exposure;
+    uniform.hue             = component.global.hue;
     uniform.post_saturation = component.global.post_saturation;
     return uniform;
 }

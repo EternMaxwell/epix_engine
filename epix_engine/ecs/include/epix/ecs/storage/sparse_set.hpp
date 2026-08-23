@@ -117,7 +117,8 @@ EPIX_EXPORT struct ComponentSparseSet {
         }
         return std::nullopt;
     }
-    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const ComponentSparseSet& self, Entity entity) noexcept {
+    std::optional<std::reference_wrapper<Tick>> get_added_tick(this const ComponentSparseSet& self,
+                                                               Entity entity) noexcept {
         if (auto dense_index = self.sparse.get(entity.index)) {
             return self.dense.get_added_tick(dense_index->get());
         }

@@ -1,9 +1,8 @@
 #include <spdlog/spdlog.h>
 
 #include <cstring>
-#include <string_view>
-
 #include <epix/render.hpp>
+#include <string_view>
 
 using namespace epix::ecs;
 using namespace epix::app;
@@ -16,15 +15,13 @@ wgpu::Buffer GpuReadbackBufferPool::get(const wgpu::Device& device, std::uint64_
     // find an untaken buffer for this size
     for (auto& buf : buffers) {
         if (!buf.taken) {
-            buf.taken          = true;
+            buf.taken         = true;
             buf.frames_unused = 0;
             return buf.buffer;
         }
     }
     wgpu::BufferDescriptor desc;
-    desc.setLabel("Readback Buffer")
-        .setUsage(wgpu::BufferUsage::eCopyDst | wgpu::BufferUsage::eMapRead)
-        .setSize(size);
+    desc.setLabel("Readback Buffer").setUsage(wgpu::BufferUsage::eCopyDst | wgpu::BufferUsage::eMapRead).setSize(size);
     wgpu::Buffer buffer = device.createBuffer(desc);
     buffers.push_back(GpuReadbackBuffer{buffer, true, 0});
     return buffer;
@@ -32,7 +29,7 @@ wgpu::Buffer GpuReadbackBufferPool::get(const wgpu::Device& device, std::uint64_
 
 void GpuReadbackBufferPool::return_buffer(const wgpu::Buffer& buffer) {
     const std::uint64_t size = buffer.getSize();
-    auto it                 = this->buffers.find(size);
+    auto it                  = this->buffers.find(size);
     if (it == this->buffers.end()) {
         spdlog::warn("[render.gpu_readback] Returned buffer of untracked size {}.", size);
         return;
@@ -162,12 +159,13 @@ void epix::render::sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackC
     buffer_pool.get_mut().update(max_unused_frames.get().value);
 }
 
-void epix::render::prepare_buffers(ecs::Res<wgpu::Device> device,
-                                   ecs::ResMut<readback::GpuReadbacks> readbacks,
-                                   ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
-                                   ecs::Res<RenderAssets<epix::image::Image>> gpu_images,
-                                   ecs::Res<RenderAssets<ShaderStorageBuffer>> ssbos,
-                                   ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles) {
+void epix::render::prepare_buffers(
+    ecs::Res<wgpu::Device> device,
+    ecs::ResMut<readback::GpuReadbacks> readbacks,
+    ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
+    ecs::Res<RenderAssets<epix::image::Image>> gpu_images,
+    ecs::Res<RenderAssets<ShaderStorageBuffer>> ssbos,
+    ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles) {
     for (auto&& [render_entity, main_entity, readback] : handles.iter()) {
         (void)render_entity;
         const auto entity = main_entity.entity;  // Bevy main_entity.id()
@@ -180,8 +178,8 @@ void epix::render::prepare_buffers(ecs::Res<wgpu::Device> device,
                     continue;
                 }
                 auto layout = readback::layout_data(gpu_image->size, gpu_image->texture_format);
-                auto buffer = buffer_pool.get_mut().get(device.get(),
-                                                        readback::get_aligned_size(gpu_image->size, pixel_size));
+                auto buffer =
+                    buffer_pool.get_mut().get(device.get(), readback::get_aligned_size(gpu_image->size, pixel_size));
                 readbacks.get_mut().requested.push_back(readback::GpuReadback{
                     entity,
                     readback::ReadbackSource{readback::ReadbackSource::Texture{
@@ -200,9 +198,9 @@ void epix::render::prepare_buffers(ecs::Res<wgpu::Device> device,
                 if (buffer_src->start_offset_and_size) {
                     const auto [start, s] = *buffer_src->start_offset_and_size;
                     if (start + s > full_size) {
-                        throw std::runtime_error(
-                            std::format("Tried to read past the end of the buffer (start: {}, size: {}, buffer size: {}).",
-                                        start, s, full_size));
+                        throw std::runtime_error(std::format(
+                            "Tried to read past the end of the buffer (start: {}, size: {}, buffer size: {}).", start,
+                            s, full_size));
                     }
                     size = s;
                 }
@@ -224,29 +222,28 @@ void epix::render::prepare_buffers(ecs::Res<wgpu::Device> device,
 void epix::render::map_buffers(ecs::ResMut<readback::GpuReadbacks> readbacks) {
     auto& requested = readbacks.get_mut().requested;
     for (auto& readback : requested) {
-        const std::uint64_t size   = readback.buffer.getSize();
-        const auto entity          = readback.entity;
-        const auto buffer          = readback.buffer;
-        const auto channel         = readback.channel;
-        auto callback              = wgpu::BufferMapCallback([entity, buffer, channel](
-                                                   wgpu::MapAsyncStatus status, wgpu::StringView message) {
-            if (status != wgpu::MapAsyncStatus::eSuccess) {
-                spdlog::warn("[render.gpu_readback] Failed to map readback buffer: {}.",
-                             std::string_view(message));
-                // nullopt data tells sync_readbacks to return the buffer to the pool
-                if (!channel->try_send(entity, buffer, std::nullopt)) {
+        const std::uint64_t size = readback.buffer.getSize();
+        const auto entity        = readback.entity;
+        const auto buffer        = readback.buffer;
+        const auto channel       = readback.channel;
+        auto callback =
+            wgpu::BufferMapCallback([entity, buffer, channel](wgpu::MapAsyncStatus status, wgpu::StringView message) {
+                if (status != wgpu::MapAsyncStatus::eSuccess) {
+                    spdlog::warn("[render.gpu_readback] Failed to map readback buffer: {}.", std::string_view(message));
+                    // nullopt data tells sync_readbacks to return the buffer to the pool
+                    if (!channel->try_send(entity, buffer, std::nullopt)) {
+                        spdlog::warn("[render.gpu_readback] Readback result slot full; dropping result.");
+                    }
+                    return;
+                }
+                const void* mapped = buffer.getConstMappedRange(0, buffer.getSize());
+                std::vector<std::uint8_t> data(static_cast<const std::uint8_t*>(mapped),
+                                               static_cast<const std::uint8_t*>(mapped) + buffer.getSize());
+                buffer.unmap();
+                if (!channel->try_send(entity, buffer, std::move(data))) {
                     spdlog::warn("[render.gpu_readback] Readback result slot full; dropping result.");
                 }
-                return;
-            }
-            const void* mapped = buffer.getConstMappedRange(0, buffer.getSize());
-            std::vector<std::uint8_t> data(static_cast<const std::uint8_t*>(mapped),
-                                           static_cast<const std::uint8_t*>(mapped) + buffer.getSize());
-            buffer.unmap();
-            if (!channel->try_send(entity, buffer, std::move(data))) {
-                spdlog::warn("[render.gpu_readback] Readback result slot full; dropping result.");
-            }
-        });
+            });
         readback.buffer.mapAsync(wgpu::MapMode::eRead, 0, size,
                                  wgpu::BufferMapCallbackInfo()
                                      .setMode(wgpu::CallbackMode::eAllowProcessEvents)
@@ -262,16 +259,15 @@ void epix::render::submit_readback_commands(World& world, const wgpu::CommandEnc
             if (const auto* texture = std::get_if<readback::ReadbackSource::Texture>(&readback.src.value)) {
                 wgpu::TexelCopyTextureInfo src_info;
                 src_info.setTexture(texture->texture)
-                         .setMipLevel(0)
-                         .setOrigin(wgpu::Origin3D{0, 0, 0})
-                         .setAspect(wgpu::TextureAspect::eAll);
+                    .setMipLevel(0)
+                    .setOrigin(wgpu::Origin3D{0, 0, 0})
+                    .setAspect(wgpu::TextureAspect::eAll);
                 wgpu::TexelCopyBufferInfo dst_info;
-                dst_info.setBuffer(readback.buffer)
-                         .setLayout(texture->layout);
+                dst_info.setBuffer(readback.buffer).setLayout(texture->layout);
                 encoder.copyTextureToBuffer(src_info, dst_info, texture->size);
             } else if (const auto* buffer_src = std::get_if<readback::ReadbackSource::Buffer>(&readback.src.value)) {
-                const auto [src_start, size] =
-                    buffer_src->start_offset_and_size.value_or(std::pair<std::uint64_t, std::uint64_t>{0, buffer_src->buffer.getSize()});
+                const auto [src_start, size] = buffer_src->start_offset_and_size.value_or(
+                    std::pair<std::uint64_t, std::uint64_t>{0, buffer_src->buffer.getSize()});
                 encoder.copyBufferToBuffer(buffer_src->buffer, src_start, readback.buffer, 0, size);
             }
         }

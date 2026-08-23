@@ -432,8 +432,9 @@ struct Mesh2dPipelineCache {
                                                                                 : wgpu::OptionalBool::eFalse)
                     // Core2D clears the Bevy reverse-Z depth buffer to 0.
                     .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
-            .multisample = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
-            .fragment    = std::move(fragment_state),
+            .multisample =
+                wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
+            .fragment = std::move(fragment_state),
         };
 
         auto pipeline_id = pipeline_server.queue_render_pipeline(std::move(pipeline_desc));
@@ -468,7 +469,8 @@ void extract_meshes_2d(Commands cmd,
                                           Opt<const MeshTextureMaterial2d&>,
                                           Opt<const camera::RenderLayers&>>,
                                      Without<render::CustomRendered>>> meshes) {
-    for (auto&& [entity, mesh_handle, transform, view_visibility, material, texture_material, opt_layer] : meshes.iter()) {
+    for (auto&& [entity, mesh_handle, transform, view_visibility, material, texture_material, opt_layer] :
+         meshes.iter()) {
         // Bevy extract_meshes gates on ViewVisibility (visibility/mod.rs:448-458).
         if (!view_visibility.get()) continue;
         glm::vec4 color = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.color; })
@@ -479,20 +481,19 @@ void extract_meshes_2d(Commands cmd,
                 .value_or(material.transform([](const MeshMaterial2d& value) { return value.alpha_mode; })
                               .value_or(MeshAlphaMode2d::Opaque));
 
-        cmd.spawn(
-            epix::render::sync_world::TemporaryRenderEntity{},
-            ExtractedMesh2d{
-                .source_entity = entity,
-                .mesh          = mesh_handle.handle.id(),
-                .model         = transform.matrix,
-                .color         = color,
-                .depth         = transform.matrix[3][2],
-                .alpha_mode    = alpha_mode,
-                .texture =
-                    texture_material.transform([](const MeshTextureMaterial2d& value) { return value.image.id(); }),
-                .render_layer = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
-            },
-            MeshBatch{});
+        cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
+                  ExtractedMesh2d{
+                      .source_entity = entity,
+                      .mesh          = mesh_handle.handle.id(),
+                      .model         = transform.matrix,
+                      .color         = color,
+                      .depth         = transform.matrix[3][2],
+                      .alpha_mode    = alpha_mode,
+                      .texture       = texture_material.transform(
+                          [](const MeshTextureMaterial2d& value) { return value.image.id(); }),
+                      .render_layer = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
+                  },
+                  MeshBatch{});
     }
 }
 
@@ -568,8 +569,8 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
             };
 
             if (!current_key || *current_key != key) {
-                batch_head     = item_index;
-                batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                batch_head                          = item_index;
+                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
                 phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
 
                 if (extracted.texture) {
@@ -651,10 +652,9 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
                 continue;
             }
 
-            auto pipeline_id =
-                pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
-                                           target.color_attachment_sample_count(),
-                                           extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
+            auto pipeline_id = pipeline_cache->specialize(
+                *pipeline_server, gpu_mesh->attribute_layout(), target.format, target.color_attachment_sample_count(),
+                extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip opaque mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
                              entity.index, gpu_mesh->attribute_layout().to_string());
@@ -711,10 +711,9 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
                 continue;
             }
 
-            auto pipeline_id =
-                pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
-                                           target.color_attachment_sample_count(),
-                                           extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
+            auto pipeline_id = pipeline_cache->specialize(
+                *pipeline_server, gpu_mesh->attribute_layout(), target.format, target.color_attachment_sample_count(),
+                extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
                              entity.index, gpu_mesh->attribute_layout().to_string());

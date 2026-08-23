@@ -1,12 +1,11 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
-#include <optional>
-#include <vector>
-
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
+#include <optional>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 
 using namespace epix::ecs;
@@ -138,50 +137,49 @@ TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
-    auto render_sub  = app.take_sub_app(Render);
-    auto& world      = render_sub->world();
+    auto render_sub    = app.take_sub_app(Render);
+    auto& world        = render_sub->world();
     const auto& device = world.resource<wgpu::Device>();
     const auto& queue  = world.resource<wgpu::Queue>();
 
     // Tiny render target so the pass has a valid attachment.
-    wgpu::Texture texture = device.createTexture(
-        wgpu::TextureDescriptor()
-            .setSize({16, 16, 1})
-            .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
-            .setUsage(wgpu::TextureUsage::eRenderAttachment)
-            .setDimension(wgpu::TextureDimension::e2D)
-            .setSampleCount(1)
-            .setMipLevelCount(1)
-            .setLabel("TrackedRenderPassTarget"));
+    wgpu::Texture texture  = device.createTexture(wgpu::TextureDescriptor()
+                                                      .setSize({16, 16, 1})
+                                                      .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
+                                                      .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                                                      .setDimension(wgpu::TextureDimension::e2D)
+                                                      .setSampleCount(1)
+                                                      .setMipLevelCount(1)
+                                                      .setLabel("TrackedRenderPassTarget"));
     wgpu::TextureView view = texture.createView();
 
     wgpu::CommandEncoder encoder = device.createCommandEncoder();
-    wgpu::RenderPassEncoder pass  = encoder.beginRenderPass(
-        wgpu::RenderPassDescriptor().setColorAttachments(std::array{
-            wgpu::RenderPassColorAttachment()
-                .setView(view)
-                .setLoadOp(wgpu::LoadOp::eClear)
-                .setStoreOp(wgpu::StoreOp::eStore)
-                .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 1.0))}));
+    wgpu::RenderPassEncoder pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
+        std::array{wgpu::RenderPassColorAttachment()
+                       .setView(view)
+                       .setLoadOp(wgpu::LoadOp::eClear)
+                       .setStoreOp(wgpu::StoreOp::eStore)
+                       .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 1.0))}));
 
     phase::TrackedRenderPass tracked(device, pass);
 
     // Bind group with one dynamic uniform buffer so dynamic-offset validation
     // is satisfied and the offsets-differ rebind path is observable.
-    wgpu::BindGroupLayout layout = device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setEntries(std::array{
-            wgpu::BindGroupLayoutEntry()
-                .setBinding(0)
-                .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
-                .setBuffer(wgpu::BufferBindingLayout()
-                               .setType(wgpu::BufferBindingType::eUniform)
-                               .setHasDynamicOffset(wgpu::Bool(true))
-                               .setMinBindingSize(16)),
-        }));
-    wgpu::Buffer dyn_buf = device.createBuffer(
-        wgpu::BufferDescriptor().setSize(512).setUsage(wgpu::BufferUsage::eUniform).setMappedAtCreation(wgpu::Bool(false)));
-    wgpu::BindGroup bind_group = device.createBindGroup(
-        wgpu::BindGroupDescriptor().setLayout(layout).setEntries(std::array{
+    wgpu::BindGroupLayout layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor().setEntries(std::array{
+        wgpu::BindGroupLayoutEntry()
+            .setBinding(0)
+            .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
+            .setBuffer(wgpu::BufferBindingLayout()
+                           .setType(wgpu::BufferBindingType::eUniform)
+                           .setHasDynamicOffset(wgpu::Bool(true))
+                           .setMinBindingSize(16)),
+    }));
+    wgpu::Buffer dyn_buf         = device.createBuffer(wgpu::BufferDescriptor()
+                                                           .setSize(512)
+                                                           .setUsage(wgpu::BufferUsage::eUniform)
+                                                           .setMappedAtCreation(wgpu::Bool(false)));
+    wgpu::BindGroup bind_group =
+        device.createBindGroup(wgpu::BindGroupDescriptor().setLayout(layout).setEntries(std::array{
             wgpu::BindGroupEntry().setBinding(0).setBuffer(dyn_buf).setOffset(0).setSize(16),
         }));
 
@@ -196,21 +194,19 @@ TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
     tracked.set_bind_group(0, bind_group, offsets_a);
 
     // Vertex buffer path: identical slice is a no-op.
-    wgpu::Buffer vbuf = device.createBuffer(
-        wgpu::BufferDescriptor()
-            .setSize(64)
-            .setUsage(wgpu::BufferUsage::eVertex)
-            .setMappedAtCreation(wgpu::Bool(false)));
+    wgpu::Buffer vbuf = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setSize(64)
+                                                .setUsage(wgpu::BufferUsage::eVertex)
+                                                .setMappedAtCreation(wgpu::Bool(false)));
     tracked.set_vertex_buffer(0, vbuf, 0, 64);
     tracked.set_vertex_buffer(0, vbuf, 0, 64);  // no-op
     tracked.set_vertex_buffer(0, vbuf, 32, 32);
 
     // Index buffer path: identical slice+format is a no-op; format change rebinds.
-    wgpu::Buffer ibuf = device.createBuffer(
-        wgpu::BufferDescriptor()
-            .setSize(64)
-            .setUsage(wgpu::BufferUsage::eIndex)
-            .setMappedAtCreation(wgpu::Bool(false)));
+    wgpu::Buffer ibuf = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setSize(64)
+                                                .setUsage(wgpu::BufferUsage::eIndex)
+                                                .setMappedAtCreation(wgpu::Bool(false)));
     tracked.set_index_buffer(ibuf, wgpu::IndexFormat::eUint32, 0, 64);
     tracked.set_index_buffer(ibuf, wgpu::IndexFormat::eUint32, 0, 64);  // no-op
     tracked.set_index_buffer(ibuf, wgpu::IndexFormat::eUint16, 0, 64);
@@ -235,30 +231,28 @@ TEST(RenderWorld, TrackedRenderPassExtendedState) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
-    auto render_sub  = app.take_sub_app(Render);
-    auto& world      = render_sub->world();
+    auto render_sub    = app.take_sub_app(Render);
+    auto& world        = render_sub->world();
     const auto& device = world.resource<wgpu::Device>();
     const auto& queue  = world.resource<wgpu::Queue>();
 
-    wgpu::Texture texture = device.createTexture(
-        wgpu::TextureDescriptor()
-            .setSize({16, 16, 1})
-            .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
-            .setUsage(wgpu::TextureUsage::eRenderAttachment)
-            .setDimension(wgpu::TextureDimension::e2D)
-            .setSampleCount(1)
-            .setMipLevelCount(1)
-            .setLabel("TrackedRenderPassExtendedTarget"));
+    wgpu::Texture texture  = device.createTexture(wgpu::TextureDescriptor()
+                                                      .setSize({16, 16, 1})
+                                                      .setFormat(wgpu::TextureFormat::eRGBA8Unorm)
+                                                      .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                                                      .setDimension(wgpu::TextureDimension::e2D)
+                                                      .setSampleCount(1)
+                                                      .setMipLevelCount(1)
+                                                      .setLabel("TrackedRenderPassExtendedTarget"));
     wgpu::TextureView view = texture.createView();
 
     wgpu::CommandEncoder encoder = device.createCommandEncoder();
-    wgpu::RenderPassEncoder pass  = encoder.beginRenderPass(
-        wgpu::RenderPassDescriptor().setColorAttachments(std::array{
-            wgpu::RenderPassColorAttachment()
-                .setView(view)
-                .setLoadOp(wgpu::LoadOp::eClear)
-                .setStoreOp(wgpu::StoreOp::eStore)
-                .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 1.0))}));
+    wgpu::RenderPassEncoder pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
+        std::array{wgpu::RenderPassColorAttachment()
+                       .setView(view)
+                       .setLoadOp(wgpu::LoadOp::eClear)
+                       .setStoreOp(wgpu::StoreOp::eStore)
+                       .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 1.0))}));
 
     phase::TrackedRenderPass tracked(device, pass);
 
@@ -295,9 +289,8 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     Entity visible_main =
         app.world_mut().spawn(SmokeComponent{7}, sync_world::SyncToRenderWorld{}, camera::ViewVisibility{}).id();
     // Culled entity: ViewVisibility culled -> skipped by extract_visible_components.
-    Entity culled_main  = app.world_mut()
-                              .spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, camera::ViewVisibility{})
-                              .id();
+    Entity culled_main =
+        app.world_mut().spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, camera::ViewVisibility{}).id();
     app.world_mut().get_entity_mut(culled_main).transform([](EntityWorldMut&& ew) -> int {
         ew.get_mut<camera::ViewVisibility>().value().get_mut().culled();
         return 0;
@@ -318,7 +311,8 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     ASSERT_TRUE(extracted.has_value()) << "Visible entity was not extracted";
     EXPECT_EQ(*extracted, 7);
     // ...the culled entity's component was NOT extracted.
-    EXPECT_FALSE(render_sub->world().get_entity(*culled_render)
+    EXPECT_FALSE(render_sub->world()
+                     .get_entity(*culled_render)
                      .and_then([](const EntityRef& e) { return e.get<SmokeComponent>(); })
                      .has_value())
         << "Culled entity must not be extracted";

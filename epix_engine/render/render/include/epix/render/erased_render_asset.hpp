@@ -3,13 +3,17 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <concepts>
 #include <cstddef>
+#include <epix/assets.hpp>
+#include <epix/ecs.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <format>
 #include <optional>
 #include <ranges>
-#include <spdlog/spdlog.h>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -17,12 +21,9 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
-#include <epix/meta.hpp>
 #endif
-#include <epix/render/assets.hpp>
 #include <epix/render/as_bind_group.hpp>
+#include <epix/render/assets.hpp>
 #include <epix/render/extract.hpp>
 #include <epix/render/schedule.hpp>
 
@@ -57,7 +58,9 @@ struct PrepareAssetError {
 
     E& retry_asset() { return std::get<E>(payload); }
     const E& retry_asset() const { return std::get<E>(payload); }
-    render_resource::AsBindGroupError bind_group_error() const { return std::get<render_resource::AsBindGroupError>(payload); }
+    render_resource::AsBindGroupError bind_group_error() const {
+        return std::get<render_resource::AsBindGroupError>(payload);
+    }
 };
 
 /** @brief Trait type to specialize for enabling erased render asset processing.
@@ -73,26 +76,27 @@ struct ErasedRenderAsset;
 /** @brief True when the specialization overrides asset_usage (Bevy
  * ErasedRenderAsset::asset_usage has a default). */
 template <typename A>
-concept HasErasedAssetUsage = requires(ErasedRenderAsset<A> asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
-    { asset.asset_usage(source) } -> std::same_as<RenderAssetUsages>;
-};
+concept HasErasedAssetUsage =
+    requires(ErasedRenderAsset<A> asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
+        { asset.asset_usage(source) } -> std::same_as<RenderAssetUsages>;
+    };
 
 /** @brief True when the specialization overrides byte_len (Bevy
  * ErasedRenderAsset::byte_len has a default of None). */
 template <typename A>
-concept HasErasedByteLen = requires(ErasedRenderAsset<A> asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
-    { asset.byte_len(source) } -> std::same_as<std::optional<std::size_t>>;
-};
+concept HasErasedByteLen =
+    requires(ErasedRenderAsset<A> asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
+        { asset.byte_len(source) } -> std::same_as<std::optional<std::size_t>>;
+    };
 
 /** @brief True when the specialization overrides unload_asset (Bevy
  * ErasedRenderAsset::unload_asset has a default of no-op). */
 template <typename A>
-concept HasErasedUnload =
-    requires(ErasedRenderAsset<A> asset,
-             const assets::AssetId<typename ErasedRenderAsset<A>::SourceAsset>& id,
-             typename ErasedRenderAsset<A>::Param& param) {
-        { asset.unload_asset(id, param) };
-    };
+concept HasErasedUnload = requires(ErasedRenderAsset<A> asset,
+                                   const assets::AssetId<typename ErasedRenderAsset<A>::SourceAsset>& id,
+                                   typename ErasedRenderAsset<A>::Param& param) {
+    { asset.unload_asset(id, param) };
+};
 
 /** @brief Concept satisfied by valid ErasedRenderAsset specializations. */
 template <typename A>
@@ -113,7 +117,8 @@ concept ErasedRenderAssetImpl = requires(ErasedRenderAsset<A> asset) {
 
 namespace detail {
 template <typename A>
-RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
+RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset,
+                                     const typename ErasedRenderAsset<A>::SourceAsset& source) {
     if constexpr (HasErasedAssetUsage<A>) {
         return asset.asset_usage(source);
     } else {
@@ -164,7 +169,7 @@ struct ErasedRenderAssets {
         auto it = assets.find(id);
         if (it != assets.end()) {
             ERA previous = std::move(it->second);
-            it->second    = std::move(value);
+            it->second   = std::move(value);
             return previous;
         }
         assets.emplace(id, std::move(value));
@@ -214,9 +219,10 @@ struct PrepareNextFrameAssets {
  * `extract_erased_render_asset`, erased_render_asset.rs:244-312).
  */
 template <ErasedRenderAssetImpl A>
-void extract_erased_render_asset(ecs::ResMut<ExtractedAssets<A>> cache,
-                                 app::Extract<ecs::ResMut<assets::Assets<typename ErasedRenderAsset<A>::SourceAsset>>> assets,
-                                 app::Extract<ecs::EventReader<assets::AssetEvent<typename ErasedRenderAsset<A>::SourceAsset>>> events) {
+void extract_erased_render_asset(
+    ecs::ResMut<ExtractedAssets<A>> cache,
+    app::Extract<ecs::ResMut<assets::Assets<typename ErasedRenderAsset<A>::SourceAsset>>> assets,
+    app::Extract<ecs::EventReader<assets::AssetEvent<typename ErasedRenderAsset<A>::SourceAsset>>> events) {
     using SourceAsset = typename ErasedRenderAsset<A>::SourceAsset;
 
     std::unordered_set<assets::AssetId<SourceAsset>> needs_extracting;
@@ -314,8 +320,7 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
         } else if (result.error().is_retry_next_update()) {
             prepare_next_frame->assets.emplace_back(id, std::move(result).error().retry_asset());
         } else {
-            spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}",
-                          meta::type_id<A>().short_name(),
+            spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}", meta::type_id<A>().short_name(),
                           static_cast<int>(result.error().bind_group_error()));
         }
     }
@@ -345,8 +350,7 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
         } else if (result.error().is_retry_next_update()) {
             prepare_next_frame->assets.emplace_back(id, std::move(result).error().retry_asset());
         } else {
-            spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}",
-                          meta::type_id<A>().short_name(),
+            spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}", meta::type_id<A>().short_name(),
                           static_cast<int>(result.error().bind_group_error()));
         }
     }
@@ -370,13 +374,14 @@ struct ErasedRenderAssetPlugin {
     void attach(app::App& app) {
         if (auto render_app = app.get_sub_app_mut(Render)) {
             render_app->get().world_mut().init_resource<ExtractedAssets<A>>();
-            render_app->get().world_mut().init_resource<ErasedRenderAssets<typename ErasedRenderAsset<A>::ErasedAsset>>();
+            render_app->get()
+                .world_mut()
+                .init_resource<ErasedRenderAssets<typename ErasedRenderAsset<A>::ErasedAsset>>();
             render_app->get().world_mut().init_resource<PrepareNextFrameAssets<A>>();
-            render_app->get().add_systems(
-                ExtractSchedule,
-                ecs::into(extract_erased_render_asset<A>)
-                    .in_set(AssetExtractionSystems{})
-                    .set_name(std::format("extract erased render asset<{}>", meta::type_id<A>().short_name())));
+            render_app->get().add_systems(ExtractSchedule, ecs::into(extract_erased_render_asset<A>)
+                                                               .in_set(AssetExtractionSystems{})
+                                                               .set_name(std::format("extract erased render asset<{}>",
+                                                                                     meta::type_id<A>().short_name())));
             auto prepare = ecs::into(prepare_erased_assets<A>)
                                .in_set(RenderSystems::PrepareAssets)
                                .set_name(std::format("prepare erased assets<{}>", meta::type_id<A>().short_name()));

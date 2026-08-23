@@ -22,10 +22,10 @@
 namespace epix::render::graph {
 /** @brief Type of data that can flow through a render graph slot. */
 EPIX_EXPORT enum class SlotType {
-    Buffer,     /**< @brief A GPU buffer. */
+    Buffer,      /**< @brief A GPU buffer. */
     TextureView, /**< @brief A texture view. */
-    Sampler,    /**< @brief A texture sampler. */
-    Entity,     /**< @brief An ECS entity reference. */
+    Sampler,     /**< @brief A texture sampler. */
+    Entity,      /**< @brief An ECS entity reference. */
 };
 /** @brief Get a human-readable name for a SlotType.
  * @param type The slot type.

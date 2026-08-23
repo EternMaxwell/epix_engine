@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
-#include <epix/app.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render::sync_world {

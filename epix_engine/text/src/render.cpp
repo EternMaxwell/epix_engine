@@ -233,8 +233,9 @@ struct Text2dPipelineCache {
                                  .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
                                  // Core2D uses Bevy's reverse-Z depth convention.
                                  .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
-            .multisample   = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
-            .fragment      = std::move(fragment_state),
+            .multisample =
+                wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
+            .fragment = std::move(fragment_state),
         };
 
         auto pipeline_id = pipeline_server.queue_render_pipeline(std::move(pipeline_desc));
@@ -345,8 +346,8 @@ struct DrawTextBatch {
             encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
                                 render::phase::batch_range_len(item.batch_range), 0, 0, item.batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), render::phase::batch_range_len(item.batch_range),
-                         0, item.batch_range.first);
+            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
+                         render::phase::batch_range_len(item.batch_range), 0, item.batch_range.first);
         }
         return {};
     }
@@ -419,18 +420,17 @@ void extract_texts_2d(Commands cmd,
 
         auto model = transform.matrix;
         model[3] += glm::vec4(text2d.offset, 0.0f, 0.0f);
-        cmd.spawn(
-            epix::render::sync_world::TemporaryRenderEntity{},
-            ExtractedText2d{
-                .source_entity = entity,
-                .mesh          = text_mesh.mesh().id(),
-                .model         = model,
-                .color         = color,
-                .depth         = model[3][2],
-                .font_image    = text_image.image,
-                .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
-            },
-            TextBatch{});
+        cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
+                  ExtractedText2d{
+                      .source_entity = entity,
+                      .mesh          = text_mesh.mesh().id(),
+                      .model         = model,
+                      .color         = color,
+                      .depth         = model[3][2],
+                      .font_image    = text_image.image,
+                      .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
+                  },
+                  TextBatch{});
     }
 }
 
@@ -444,8 +444,8 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server) {
     for (auto&& [phase, view, target, cam] : views.iter()) {
-        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format,
-                                                      target.color_attachment_sample_count());
+        auto pipeline_id =
+            pipeline_cache->specialize(*pipeline_server, target.format, target.color_attachment_sample_count());
         if (!pipeline_id) {
             spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
                          wgpu::to_string(target.format));
@@ -512,8 +512,7 @@ void prepare_text_batches(Query<Item<render::phase::RenderPhase<core_graph::core
             }
 
             instance_buffer->instances.push_back(TextInstanceData{.model = text.model, .color = text.color});
-            item.batch_range = {batch.instance_start,
-                                static_cast<std::uint32_t>(instance_buffer->instances.size())};
+            item.batch_range = {batch.instance_start, static_cast<std::uint32_t>(instance_buffer->instances.size())};
         }
     }
 
@@ -617,7 +616,7 @@ void TextRenderPlugin::ready(App& app) {
 #endif
     render_subapp.add_systems(render::ExtractSchedule, into(extract_texts_2d).set_name("extract texts"))
         .add_systems(render::Render, into(queue_texts_2d).in_set(render::RenderSystems::Queue).set_name("queue texts"))
-        .add_systems(
-            render::Render,
-            into(prepare_text_batches).in_set(render::RenderSystems::PrepareResources).set_name("prepare text batches"));
+        .add_systems(render::Render, into(prepare_text_batches)
+                                         .in_set(render::RenderSystems::PrepareResources)
+                                         .set_name("prepare text batches"));
 }

@@ -87,10 +87,8 @@ struct UniformBuffer {
         const std::size_t size = sizeof(T);
         if (!buffer || capacity < size || changed) {
             capacity = size;
-            buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                              .setLabel(label.c_str())
-                                              .setUsage(usage)
-                                              .setSize(capacity));
+            buffer =
+                device.createBuffer(wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(usage).setSize(capacity));
             changed = false;
         }
         if (buffer) {
@@ -157,10 +155,8 @@ struct DynamicUniformBuffer {
         const std::size_t size = values.size();
         if (!buffer || capacity < size) {
             capacity = size;
-            buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                              .setLabel(label.c_str())
-                                              .setUsage(usage)
-                                              .setSize(capacity));
+            buffer =
+                device.createBuffer(wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(usage).setSize(capacity));
         }
         if (buffer) {
             queue.writeBuffer(buffer, 0, values.data(), size);
@@ -191,9 +187,9 @@ struct StorageBuffer {
         if (!buffer || capacity < size) {
             capacity = size;
             buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                              .setLabel(label.c_str())
-                                              .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
-                                              .setSize(capacity));
+                                               .setLabel(label.c_str())
+                                               .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
+                                               .setSize(capacity));
         }
         if (buffer) {
             queue.writeBuffer(buffer, 0, &value, sizeof(T));
@@ -214,7 +210,7 @@ struct DynamicStorageBuffer {
     std::size_t capacity = 0;
     /** @brief Per-element alignment; 0 means query the device limits. */
     std::size_t dynamic_offset_alignment = 0;
-    std::string label = "DynamicStorageBuffer";
+    std::string label                    = "DynamicStorageBuffer";
 
     DynamicStorageBuffer() = default;
 
@@ -253,9 +249,9 @@ struct DynamicStorageBuffer {
         if (!buffer || capacity < size) {
             capacity = size;
             buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                              .setLabel(label.c_str())
-                                              .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
-                                              .setSize(capacity));
+                                               .setLabel(label.c_str())
+                                               .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
+                                               .setSize(capacity));
         }
         if (buffer) {
             queue.writeBuffer(buffer, 0, bytes.data(), size);
@@ -310,10 +306,8 @@ struct BufferVec {
         const std::size_t size = values.size() * sizeof(T);
         if (!buffer || capacity < size) {
             capacity = size;
-            buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                              .setLabel(label.c_str())
-                                              .setUsage(buffer_usage)
-                                              .setSize(capacity));
+            buffer   = device.createBuffer(
+                wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(buffer_usage).setSize(capacity));
         }
         if (buffer) {
             queue.writeBuffer(buffer, 0, values.data(), size);
@@ -329,8 +323,8 @@ struct BufferVec {
         if (!buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
         const std::size_t item_size = sizeof(T);
         const std::uint8_t* bytes   = reinterpret_cast<const std::uint8_t*>(values.data());
-        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * item_size),
-                          bytes + range.first * item_size, (range.second - range.first) * item_size);
+        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * item_size), bytes + range.first * item_size,
+                          (range.second - range.first) * item_size);
         return {};
     }
 };
@@ -381,7 +375,7 @@ struct BatchedUniformBuffer {
     explicit BatchedUniformBuffer(const wgpu::Limits& limits) {
         alignment = static_cast<std::size_t>(limits.minUniformBufferOffsetAlignment);
         if (alignment == 0) alignment = 256;
-        capacity  = batch_size(limits);
+        capacity = batch_size(limits);
     }
 
     /** @brief Number of elements per batch (Bevy
@@ -399,9 +393,7 @@ struct BatchedUniformBuffer {
         current_offset = 0;
     }
     /** @brief Total number of pushed elements (flushed batches + current). */
-    std::size_t len() const noexcept {
-        return buffer_bytes.size() / align_up(sizeof(T), alignment) + values.size();
-    }
+    std::size_t len() const noexcept { return buffer_bytes.size() / align_up(sizeof(T), alignment) + values.size(); }
 
     /** @brief Push one element into the current batch; when the batch fills,
      * flush it to the buffer (Bevy BatchedUniformBuffer::push). The returned
@@ -411,8 +403,8 @@ struct BatchedUniformBuffer {
         // Bevy captures the batch-start offset BEFORE the push (and possible
         // flush) so the first element of a batch points at that batch
         // (batched_uniform_buffer.rs:82-93).
-        const std::uint32_t index    = static_cast<std::uint32_t>(values.size());
-        const std::uint32_t offset   = static_cast<std::uint32_t>(current_offset);
+        const std::uint32_t index  = static_cast<std::uint32_t>(values.size());
+        const std::uint32_t offset = static_cast<std::uint32_t>(current_offset);
         values.push_back(value);
         if (values.size() == capacity) {
             flush();
@@ -425,8 +417,7 @@ struct BatchedUniformBuffer {
     void flush() {
         if (values.empty()) return;
         const std::size_t batch_bytes = values.size() * sizeof(T);
-        buffer_bytes.insert(buffer_bytes.end(),
-                            reinterpret_cast<const std::uint8_t*>(values.data()),
+        buffer_bytes.insert(buffer_bytes.end(), reinterpret_cast<const std::uint8_t*>(values.data()),
                             reinterpret_cast<const std::uint8_t*>(values.data()) + batch_bytes);
         values.clear();
         current_offset += align_up(batch_bytes, alignment);
@@ -493,14 +484,14 @@ struct GpuArrayBuffer {
  * `TextureDescriptor`; here on its meaningful fields).
  */
 struct TextureCacheKey {
-    wgpu::TextureFormat format        = wgpu::TextureFormat::eUndefined;
-    wgpu::TextureDimension dimension  = wgpu::TextureDimension::e2D;
-    std::uint32_t width              = 0;
-    std::uint32_t height             = 0;
+    wgpu::TextureFormat format          = wgpu::TextureFormat::eUndefined;
+    wgpu::TextureDimension dimension    = wgpu::TextureDimension::e2D;
+    std::uint32_t width                 = 0;
+    std::uint32_t height                = 0;
     std::uint32_t depth_or_array_layers = 1;
-    std::uint32_t mip_level_count    = 1;
-    std::uint32_t sample_count       = 1;
-    wgpu::TextureUsage usage         = wgpu::TextureUsage::eNone;
+    std::uint32_t mip_level_count       = 1;
+    std::uint32_t sample_count          = 1;
+    wgpu::TextureUsage usage            = wgpu::TextureUsage::eNone;
     /** @brief Debug label (Bevy TextureCacheKey includes the descriptor,
      * hence the label and view formats). */
     std::string label;
@@ -538,7 +529,7 @@ namespace detail {
 struct CachedTextureMeta {
     wgpu::Texture texture;
     wgpu::TextureView default_view;
-    bool taken = false;
+    bool taken                        = false;
     std::size_t frames_since_last_use = 0;
 };
 }  // namespace detail
@@ -554,17 +545,19 @@ EPIX_EXPORT struct TextureCache {
      * descriptor if needed. The key must describe the same texture as the
      * descriptor (the wgpu wrapper exposes setters only, so the caller builds
      * the key from the same fields). */
-    CachedTexture get(const wgpu::Device& device, const TextureCacheKey& key, const wgpu::TextureDescriptor& descriptor) {
+    CachedTexture get(const wgpu::Device& device,
+                      const TextureCacheKey& key,
+                      const wgpu::TextureDescriptor& descriptor) {
         auto& pool = textures[key];
         for (auto& meta : pool) {
             if (!meta.taken) {
-                meta.taken = true;
+                meta.taken                 = true;
                 meta.frames_since_last_use = 0;
                 return CachedTexture{meta.texture, meta.default_view};
             }
         }
 
-        wgpu::Texture texture = device.createTexture(descriptor);
+        wgpu::Texture texture  = device.createTexture(descriptor);
         wgpu::TextureView view = texture.createView();
         pool.push_back(detail::CachedTextureMeta{texture, view, true, 0});
         return CachedTexture{texture, view};

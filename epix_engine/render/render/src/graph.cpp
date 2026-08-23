@@ -78,18 +78,18 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
     const bool exists = has_edge(edge);
     if (exists && !should_exist) {
         return std::unexpected(EdgeAlreadyExists{
-            .output_node   = edge.output_node,
-            .output_index  = edge.output_index,
-            .input_node    = edge.input_node,
-            .input_index   = edge.input_index,
+            .output_node  = edge.output_node,
+            .output_index = edge.output_index,
+            .input_node   = edge.input_node,
+            .input_index  = edge.input_index,
         });
     }
     if (!exists && should_exist) {
         return std::unexpected(EdgeDoesNotExist{
-            .output_node   = edge.output_node,
-            .output_index  = edge.output_index,
-            .input_node    = edge.input_node,
-            .input_index   = edge.input_index,
+            .output_node  = edge.output_node,
+            .output_index = edge.output_index,
+            .input_node   = edge.input_node,
+            .input_index  = edge.input_index,
         });
     }
     if (!edge.is_slot_edge()) return {};

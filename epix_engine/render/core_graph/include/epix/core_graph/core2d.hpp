@@ -127,9 +127,10 @@ struct Node2D : render::graph::Node {
         views;
     void update(ecs::World& world) override {
         if (!views) {
-            views = world.try_query<ecs::Item<const render::view::ExtractedView&, const render::camera::ExtractedCamera&,
-                                              const render::view::ViewTarget&, const render::view::ViewDepthTexture&,
-                                              const render::phase::RenderPhase<P>&>>();
+            views =
+                world.try_query<ecs::Item<const render::view::ExtractedView&, const render::camera::ExtractedCamera&,
+                                          const render::view::ViewTarget&, const render::view::ViewDepthTexture&,
+                                          const render::phase::RenderPhase<P>&>>();
         } else {
             views->update_archetypes(world);
         }
@@ -142,7 +143,7 @@ struct Node2D : render::graph::Node {
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
         if (!view_opt) return;
         auto&& [exview, camera, target, depth, phase] = *view_opt;
-        auto render_pass                      = render_ctx.command_encoder().beginRenderPass(
+        auto render_pass                              = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
                 // ViewTarget owns the MSAA sample attachment and resolve
                 // texture.  Using its attachment is required for Bevy's
@@ -156,8 +157,8 @@ struct Node2D : render::graph::Node {
         if (camera.viewport) {
             const auto& vp = *camera.viewport;
             render_pass.setViewport(static_cast<float>(vp.pos.x), static_cast<float>(vp.pos.y),
-                                    static_cast<float>(vp.size.x), static_cast<float>(vp.size.y),
-                                    vp.depth_range.first, vp.depth_range.second);
+                                    static_cast<float>(vp.size.x), static_cast<float>(vp.size.y), vp.depth_range.first,
+                                    vp.depth_range.second);
         }
         phase.render(render_pass, world, view_entity);
         render_pass.end();
@@ -186,12 +187,14 @@ EPIX_EXPORT struct Core2dBlitPipeline {
     render::CachedPipelineId pipeline_id;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
     /** @brief Exact output blend configuration used to specialize this
-     * pipeline (including Bevy's automatic later-camera alpha blend). */
+     * pipeline (including Bevy's automatic
+     * later-camera alpha blend). */
     std::optional<wgpu::BlendState> output_blend;
 };
 
 /** @brief Render-world cache of Core2D output pipelines. Pipelines are
- * created/queued by the Queue stage, never by the render graph. */
+ * created/queued by the Queue stage, never by
+ * the render graph. */
 EPIX_EXPORT struct Core2dBlitPipelines {
     std::vector<Core2dBlitPipeline> pipelines;
 };
@@ -200,9 +203,13 @@ EPIX_EXPORT struct Core2dBlitPipelines {
  * output attachment (the swapchain for window cameras) and marks it for
  * present (Bevy core_pipeline `upscaling`). */
 EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
-    std::optional<ecs::QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>, ecs::Filter<>>> views;
+    std::optional<ecs::QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>,
+                                  ecs::Filter<>>>
+        views;
     void update(ecs::World& world) override;
-    void run(render::graph::GraphContext& ctx, render::graph::RenderContext& render_ctx, const ecs::World& world) override;
+    void run(render::graph::GraphContext& ctx,
+             render::graph::RenderContext& render_ctx,
+             const ecs::World& world) override;
 };
 
 /** @brief Plugin that sets up the core 2D render graph and camera
@@ -221,6 +228,7 @@ EPIX_EXPORT struct Camera2D {
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
 /** @brief Bevy-compatible spelling of `Camera2D`. The Core2D graph namespace
- * is an intentional Epix app-architecture divergence. */
+ * is an intentional Epix app-architecture
+ * divergence. */
 using Camera2d = Camera2D;
 }  // namespace epix::core_graph::core_2d

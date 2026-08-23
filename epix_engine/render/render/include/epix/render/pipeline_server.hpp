@@ -61,9 +61,7 @@ EPIX_EXPORT inline constexpr CachedComputePipelineId INVALID_COMPUTE_PIPELINE_ID
 struct LayoutKeyHash {
     std::size_t operator()(const LayoutCacheKey& key) const noexcept {
         std::size_t hash = 0;
-        auto combine    = [&](std::size_t value) {
-            hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        };
+        auto combine     = [&](std::size_t value) { hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
         for (const auto& id : key.bind_group_layouts) {
             combine(static_cast<std::size_t>(id));
         }
@@ -97,8 +95,7 @@ EPIX_EXPORT struct LayoutCache {
             std::views::transform(layouts, [](const auto& layout) { return layout.id(); }));
         key.push_constant_ranges.reserve(push_constant_ranges.size());
         for (const auto& range : push_constant_ranges) {
-            key.push_constant_ranges.push_back(
-                {static_cast<std::uint32_t>(range.stages), range.start, range.end});
+            key.push_constant_ranges.push_back({static_cast<std::uint32_t>(range.stages), range.start, range.end});
         }
         auto it = cache.find(key);
         if (it != cache.end()) {
@@ -114,7 +111,7 @@ EPIX_EXPORT struct LayoutCache {
             descriptor.setNextInChain(extras);
         }
         wgpu::PipelineLayout layout = device.createPipelineLayout(descriptor);
-        cache[key] = layout;
+        cache[key]                  = layout;
         return layout;
     }
 
@@ -193,8 +190,10 @@ struct PipelineServerData {
  * pool. The underlying data is shared across copies via a shared_ptr,
  * allowing PipelineServer to exist in both the main app and render app.
  * Mutation is private and driven by the render schedule. The shared state
- * deliberately lets the main and render worlds observe the same server, but
+ * deliberately lets the main and render
+ * worlds observe the same server, but
  * render-graph nodes are read-only consumers: they must never synchronously
+ *
  * advance pipeline creation.
  */
 EPIX_EXPORT struct PipelineServer {
@@ -216,9 +215,7 @@ EPIX_EXPORT struct PipelineServer {
     std::size_t waiting_pipeline_count() const noexcept { return m_data->waiting_pipelines.size(); }
     /** @brief The set of pipeline ids currently waiting to be processed (Bevy
      * waiting_pipelines()). */
-    const std::unordered_set<CachedPipelineId>& waiting_pipelines() const noexcept {
-        return m_data->waiting_pipelines;
-    }
+    const std::unordered_set<CachedPipelineId>& waiting_pipelines() const noexcept { return m_data->waiting_pipelines; }
     /** @brief Get the render pipeline descriptor for a cached pipeline. */
     auto get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;

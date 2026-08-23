@@ -86,7 +86,7 @@ EPIX_EXPORT struct WindowRef {
  * output attachment per target and to group cameras by target (Bevy
  * NormalizedRenderTarget as a HashMap key). */
 EPIX_EXPORT struct RenderTargetId {
-    std::uint64_t value = 0;
+    std::uint64_t value                                   = 0;
     bool operator==(const RenderTargetId&) const noexcept = default;
 };
 
@@ -154,7 +154,7 @@ EPIX_EXPORT struct CameraOutputMode {
     ClearColorConfig clear_color = ClearColorConfig::def();
 
     static CameraOutputMode write(std::optional<wgpu::BlendState> blend_state = std::nullopt,
-                                  ClearColorConfig clear_color = ClearColorConfig::def()) {
+                                  ClearColorConfig clear_color                = ClearColorConfig::def()) {
         return CameraOutputMode{Type::Write, std::move(blend_state), clear_color};
     }
     static CameraOutputMode skip() noexcept { return CameraOutputMode{Type::Skip}; }
@@ -163,8 +163,8 @@ EPIX_EXPORT struct CameraOutputMode {
 /** @brief Extra usages requested for a camera's intermediate main textures
  * (Bevy CameraMainTextureUsages). */
 EPIX_EXPORT struct CameraMainTextureUsages {
-    wgpu::TextureUsage usage = wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding |
-                               wgpu::TextureUsage::eCopySrc;
+    wgpu::TextureUsage usage =
+        wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc;
 
     /** @brief Adds usages while preserving the Bevy-compatible defaults. */
     CameraMainTextureUsages& with(wgpu::TextureUsage extra) noexcept {
@@ -287,9 +287,8 @@ EPIX_EXPORT struct Camera {
         const glm::vec4 clip_point = computed.projection * view_point;
         if (clip_point.w == 0.0f) return std::nullopt;
         const glm::vec3 ndc = glm::vec3(clip_point) / clip_point.w;
-        return std::isfinite(ndc.x) && std::isfinite(ndc.y) && std::isfinite(ndc.z)
-                   ? std::optional<glm::vec3>(ndc)
-                   : std::nullopt;
+        return std::isfinite(ndc.x) && std::isfinite(ndc.y) && std::isfinite(ndc.z) ? std::optional<glm::vec3>(ndc)
+                                                                                    : std::nullopt;
     }
     /** @brief Converts normalized device coordinates to world space (Bevy
      * ndc_to_world). */
@@ -298,7 +297,7 @@ EPIX_EXPORT struct Camera {
         const glm::vec4 view_point = glm::inverse(computed.projection) * glm::vec4(ndc_point, 1.0f);
         if (view_point.w == 0.0f) return std::nullopt;
         const glm::vec4 world_point = camera_transform.matrix * (view_point / view_point.w);
-        const glm::vec3 result = glm::vec3(world_point);
+        const glm::vec3 result      = glm::vec3(world_point);
         return std::isfinite(result.x) && std::isfinite(result.y) && std::isfinite(result.z)
                    ? std::optional<glm::vec3>(result)
                    : std::nullopt;
@@ -311,7 +310,7 @@ EPIX_EXPORT struct Camera {
         const glm::vec2 extent = rect->second - rect->first;
         if (extent.x <= 0.0f || extent.y <= 0.0f) return std::unexpected(ViewportConversionError::NoViewportSize);
         glm::vec2 ndc = ((viewport_position - rect->first) / extent) * 2.0f - glm::vec2(1.0f);
-        ndc.y = -ndc.y;
+        ndc.y         = -ndc.y;
         return ndc;
     }
     /** @brief Converts a world-space point to viewport pixels (Bevy
@@ -339,15 +338,15 @@ EPIX_EXPORT struct Camera {
     }
     /** @brief Returns the world ray passing through a viewport point (Bevy
      * viewport_to_world). */
-    std::expected<Ray3d, ViewportConversionError> viewport_to_world(
-        const transform::GlobalTransform& camera_transform, glm::vec2 viewport_position) const noexcept {
+    std::expected<Ray3d, ViewportConversionError> viewport_to_world(const transform::GlobalTransform& camera_transform,
+                                                                    glm::vec2 viewport_position) const noexcept {
         auto ndc_xy = viewport_to_ndc(viewport_position);
         if (!ndc_xy) return std::unexpected(ndc_xy.error());
         auto near_point = ndc_to_world(camera_transform, glm::vec3(*ndc_xy, 1.0f));
-        auto far_point = ndc_to_world(camera_transform, glm::vec3(*ndc_xy, std::numeric_limits<float>::epsilon()));
+        auto far_point  = ndc_to_world(camera_transform, glm::vec3(*ndc_xy, std::numeric_limits<float>::epsilon()));
         if (!near_point || !far_point) return std::unexpected(ViewportConversionError::InvalidData);
         glm::vec3 direction = *far_point - *near_point;
-        const float length = glm::length(direction);
+        const float length  = glm::length(direction);
         if (!std::isfinite(length) || length == 0.0f) return std::unexpected(ViewportConversionError::InvalidData);
         return Ray3d{*near_point, direction / length};
     }
@@ -385,7 +384,7 @@ EPIX_EXPORT struct Camera3dDepthTextureUsage {
  * `Camera3dDepthLoadOp`). `Clear(0)` is the reverse-Z default. */
 EPIX_EXPORT struct Camera3dDepthLoadOp {
     enum class Type { Clear, Load } type = Type::Clear;
-    float clear_value = 0.0f;
+    float clear_value                    = 0.0f;
 
     static constexpr Camera3dDepthLoadOp clear(float value = 0.0f) noexcept { return {Type::Clear, value}; }
     static constexpr Camera3dDepthLoadOp load() noexcept { return {Type::Load, 0.0f}; }
@@ -401,7 +400,7 @@ EPIX_EXPORT enum class ScreenSpaceTransmissionQuality { Low, Medium, High, Ultra
 EPIX_EXPORT struct Camera3d {
     Camera3dDepthLoadOp depth_load_op{};
     Camera3dDepthTextureUsage depth_texture_usages{};
-    std::size_t screen_space_specular_transmission_steps = 1;
+    std::size_t screen_space_specular_transmission_steps                      = 1;
     ScreenSpaceTransmissionQuality screen_space_specular_transmission_quality = ScreenSpaceTransmissionQuality::Medium;
 
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
@@ -474,7 +473,7 @@ EPIX_EXPORT enum class CameraUpdateSystems {
 template <CameraProjection ProjType>
 void camera_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>>>
-        query,                                                                            // camera and projection query
+        query,                                                                      // camera and projection query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>> window_query,  // window query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>,
                      epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
@@ -527,16 +526,16 @@ void camera_system(
         // Bevy clamps custom viewports after resolving the target. This also
         // handles a resize that leaves the previous viewport out of bounds.
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        viewport_size = camera_mut.viewport.transform([](const Viewport& vp) { return vp.size; });
-        const glm::uvec2 new_size = viewport_size.value_or(target_size);
-        const bool size_changed = camera_mut.computed.target_size != target_size ||
-                                  camera_mut.computed.old_viewport_size != viewport_size ||
-                                  camera_mut.computed.old_sub_camera_view != camera_mut.sub_camera_view;
-        camera_mut.computed.target_size       = target_size;
-        camera_mut.computed.target_info       = target_size.x != 0 && target_size.y != 0
-                                                    ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, 1.0f})
-                                                    : std::nullopt;
-        camera_mut.computed.old_viewport_size = viewport_size;
+        viewport_size                   = camera_mut.viewport.transform([](const Viewport& vp) { return vp.size; });
+        const glm::uvec2 new_size       = viewport_size.value_or(target_size);
+        const bool size_changed         = camera_mut.computed.target_size != target_size ||
+                                          camera_mut.computed.old_viewport_size != viewport_size ||
+                                          camera_mut.computed.old_sub_camera_view != camera_mut.sub_camera_view;
+        camera_mut.computed.target_size = target_size;
+        camera_mut.computed.target_info = target_size.x != 0 && target_size.y != 0
+                                              ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, 1.0f})
+                                              : std::nullopt;
+        camera_mut.computed.old_viewport_size   = viewport_size;
         camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
 
         // Bevy deliberately leaves the previous projection intact for an

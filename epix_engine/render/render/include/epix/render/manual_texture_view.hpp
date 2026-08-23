@@ -5,11 +5,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <functional>
+#include <glm/glm.hpp>
 #include <unordered_map>
 #include <webgpu/webgpu.hpp>
-#include <glm/glm.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render::texture {

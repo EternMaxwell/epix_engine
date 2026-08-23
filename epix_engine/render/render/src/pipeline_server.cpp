@@ -224,7 +224,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                     if (!vertex_opt) return std::unexpected(vertex_opt.error());
                     vertex_module = *vertex_opt.value();
                     if (descriptor.fragment) {
-                        auto fragment_opt = shader_cache->get(id, descriptor.fragment->shader, descriptor.fragment->shader_defs);
+                        auto fragment_opt =
+                            shader_cache->get(id, descriptor.fragment->shader, descriptor.fragment->shader_defs);
                         if (!fragment_opt) return std::unexpected(fragment_opt.error());
                         fragment_module = *fragment_opt.value();
                     }

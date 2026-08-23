@@ -12,9 +12,7 @@ void view::RenderVisibilityRangePlugin::attach(App& app) {
     render_app.world_mut().init_resource<view::RenderVisibilityRanges>();
     render_app.add_systems(ExtractSchedule,
                            into(view::extract_visibility_ranges).set_name("extract visibility ranges"));
-    render_app.add_systems(
-        epix::render::Render,
-        into(view::detail::write_render_visibility_ranges)
-            .in_set(epix::render::RenderSystems::PrepareResourcesFlush)
-            .set_name("write render visibility ranges"));
+    render_app.add_systems(epix::render::Render, into(view::detail::write_render_visibility_ranges)
+                                                     .in_set(epix::render::RenderSystems::PrepareResourcesFlush)
+                                                     .set_name("write render visibility ranges"));
 }

@@ -463,7 +463,8 @@ EPIX_EXPORT namespace epix::app {
        private:
         struct DefaultCreateTag {};
         /** Keeps the process terminate handler installed while this app and
-         * every member it owns are being destroyed. Defined in app.cpp. */
+         * every member it owns are being
+         * destroyed. Defined in app.cpp. */
         struct TerminateHandlerGuard;
 
         // Must be declared first so it is destroyed last: termination during

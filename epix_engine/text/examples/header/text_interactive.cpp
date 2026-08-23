@@ -49,8 +49,8 @@ struct CamControllPlugin {
     void attach(app::App& app) {
         app.add_systems(
             app::Update,
-            ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&,
-                                              transform::Transform&>> camera,
+            ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&, transform::Transform&>>
+                             camera,
                          ecs::EventReader<input::MouseScroll> scroll_input,
                          ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
                 if (auto opt = camera.single(); opt.has_value()) {
@@ -223,10 +223,10 @@ int main(int argc, char** argv) {
         ecs::into(
             [](ecs::ResMut<DragState> drag_state, ecs::Res<input::ButtonInput<input::MouseButton>> mouse_input,
                ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>> window_query,
-               ecs::ParamSet<ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&,
-                                                  const transform::Transform&>>,
-                             ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
-                                        ecs::With<MainText>>> conflicting_queries,
+               ecs::ParamSet<
+                   ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&, const transform::Transform&>>,
+                   ecs::Query<ecs::Item<transform::Transform&, text::TextBounds&, const text::ShapedText&>,
+                              ecs::With<MainText>>> conflicting_queries,
                ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
                ecs::Query<ecs::Item<ecs::Mut<text::Text>>, ecs::With<InfoText>> info_query) {
                 // Get queries from ParamSet (allows access conflict between camera and text transforms)

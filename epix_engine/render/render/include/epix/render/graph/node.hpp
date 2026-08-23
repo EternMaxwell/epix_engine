@@ -102,7 +102,11 @@ EPIX_EXPORT struct NodeState {
     Edges edges;
 
     NodeState(NodeLabel id, Node* node)
-        : label(id), type_name(typeid(*node).name()), pnode(node), edges(id), inputs(node->input()),
+        : label(id),
+          type_name(typeid(*node).name()),
+          pnode(node),
+          edges(id),
+          inputs(node->input()),
           outputs(node->output()) {}
     template <typename T>
         requires std::derived_from<std::decay_t<T>, Node>

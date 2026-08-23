@@ -4,11 +4,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
+#include <epix/time.hpp>
 #include <string>
 #include <webgpu/webgpu.hpp>
-#include <epix/ecs.hpp>
-#include <epix/app.hpp>
-#include <epix/time.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>
@@ -44,18 +44,16 @@ EPIX_EXPORT struct FrameCount {
 namespace detail {
 /** @brief System that advances the main-world FrameCount each Update (Bevy
  * bevy_diagnostic::increment_frame_count). */
-inline void increment_frame_count(ecs::ResMut<FrameCount> frame_count) {
-    frame_count->count += 1;
-}
+inline void increment_frame_count(ecs::ResMut<FrameCount> frame_count) { frame_count->count += 1; }
 /** @brief System that writes GlobalsUniform into GlobalsBuffer each frame
  * from the extracted render-world Time and FrameCount (Bevy
  * prepare_globals_buffer). */
 inline void prepare_globals_buffer(ecs::ResMut<GlobalsBuffer> globals_buffer,
-                                  ecs::Res<wgpu::Device> device,
-                                  ecs::Res<wgpu::Queue> queue,
-                                  ecs::Res<epix::time::Time<>> time,
-                                  ecs::Res<FrameCount> frame_count) {
-    auto& uniform = globals_buffer->buffer.get_mut();
+                                   ecs::Res<wgpu::Device> device,
+                                   ecs::Res<wgpu::Queue> queue,
+                                   ecs::Res<epix::time::Time<>> time,
+                                   ecs::Res<FrameCount> frame_count) {
+    auto& uniform       = globals_buffer->buffer.get_mut();
     uniform.time        = time.get().elapsed_secs_wrapped();
     uniform.delta_time  = time.get().delta_secs();
     uniform.frame_count = frame_count.get().count;

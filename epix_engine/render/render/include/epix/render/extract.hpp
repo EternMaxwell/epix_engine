@@ -52,8 +52,9 @@ concept ExtractComponentImpl = requires {
     typename ExtractComponent<C>::QueryFilter;
     requires ecs::query_filter<typename ExtractComponent<C>::QueryFilter>;
     typename ExtractComponent<C>::Out;
-    requires std::same_as<decltype(ExtractComponent<C>::extract_component(std::declval<typename ExtractComponent<C>::QueryData>())),
-                         std::optional<typename ExtractComponent<C>::Out>>;
+    requires std::same_as<decltype(ExtractComponent<C>::extract_component(
+                              std::declval<typename ExtractComponent<C>::QueryData>())),
+                          std::optional<typename ExtractComponent<C>::Out>>;
 };
 
 /** @brief System that runs `ExtractComponent<C>::extract_component` for every
@@ -62,8 +63,11 @@ concept ExtractComponentImpl = requires {
  * with a `RenderEntity` mapping (i.e. synced via SyncWorldPlugin) are
  * extracted. */
 template <ExtractComponentImpl C>
-void extract_component_system(ecs::Commands cmd,
-                              app::Extract<ecs::Query<ecs::Item<ecs::Entity, const sync_world::RenderEntity&, typename ExtractComponent<C>::QueryData>>> query) {
+void extract_component_system(
+    ecs::Commands cmd,
+    app::Extract<
+        ecs::Query<ecs::Item<ecs::Entity, const sync_world::RenderEntity&, typename ExtractComponent<C>::QueryData>>>
+        query) {
     for (auto&& [entity, render_entity, item] : query.iter()) {
         auto out = ExtractComponent<C>::extract_component(item);
         if (out) {
@@ -80,8 +84,10 @@ void extract_component_system(ecs::Commands cmd,
  * least one view (Bevy extract_visible_components, extract_component.rs:219-236). */
 template <ExtractComponentImpl C>
 void extract_visible_components_system(ecs::Commands cmd,
-                                       app::Extract<ecs::Query<ecs::Item<ecs::Entity, const sync_world::RenderEntity&, const camera::ViewVisibility&,
-                                                                          typename ExtractComponent<C>::QueryData>,
+                                       app::Extract<ecs::Query<ecs::Item<ecs::Entity,
+                                                                         const sync_world::RenderEntity&,
+                                                                         const camera::ViewVisibility&,
+                                                                         typename ExtractComponent<C>::QueryData>,
                                                                typename ExtractComponent<C>::QueryFilter>> query) {
     for (auto&& [entity, render_entity, view_visibility, item] : query.iter()) {
         if (!view_visibility.get()) continue;
@@ -98,8 +104,7 @@ void extract_visible_components_system(ecs::Commands cmd,
  * was removed, so `entity_sync_system` can despawn+respawn the render entity
  * (Bevy `on_remove` hook on `C`, sync_component.rs:35-40). */
 template <typename C>
-void record_component_removed(ecs::ResMut<sync_world::PendingSyncEntity> pending,
-                              ecs::RemovedComponents<C> removed) {
+void record_component_removed(ecs::ResMut<sync_world::PendingSyncEntity> pending, ecs::RemovedComponents<C> removed) {
     for (auto entity : removed.read()) {
         pending.get_mut().component_removed.push_back(entity);
     }
@@ -115,8 +120,9 @@ struct SyncComponentPlugin {
         // Bevy on_remove hook (sync_component.rs:35-40): record removed
         // components so entity_sync_system clears derived render data.
         app.world_mut().init_resource<sync_world::PendingSyncEntity>();
-        app.add_systems(app::Update, ecs::into(record_component_removed<C>).set_name(
-                                    std::format("record removed component '{}'", meta::type_id<C>().short_name())));
+        app.add_systems(app::Update,
+                        ecs::into(record_component_removed<C>)
+                            .set_name(std::format("record removed component '{}'", meta::type_id<C>().short_name())));
     }
 };
 
@@ -139,12 +145,12 @@ struct ExtractComponentPlugin {
         if (only_extract_visible) {
             app.sub_app_mut(Render).add_systems(
                 ExtractSchedule,
-                into(extract_visible_components_system<C>).set_name(
-                    std::format("extract visible components '{}'", meta::type_id<C>().short_name())));
+                into(extract_visible_components_system<C>)
+                    .set_name(std::format("extract visible components '{}'", meta::type_id<C>().short_name())));
         } else {
             app.sub_app_mut(Render).add_systems(
-                ExtractSchedule,
-                into(extract_component_system<C>).set_name(std::format("extract component '{}'", meta::type_id<C>().short_name())));
+                ExtractSchedule, into(extract_component_system<C>)
+                                     .set_name(std::format("extract component '{}'", meta::type_id<C>().short_name())));
         }
     }
 };
@@ -164,7 +170,8 @@ concept ExtractInstanceImpl = requires {
     typename ExtractInstance<EI>::QueryData;
     typename ExtractInstance<EI>::QueryFilter;
     requires ecs::query_filter<typename ExtractInstance<EI>::QueryFilter>;
-    requires std::same_as<decltype(ExtractInstance<EI>::extract(std::declval<typename ExtractInstance<EI>::QueryData>())),
+    requires std::same_as<decltype(ExtractInstance<EI>::extract(
+                              std::declval<typename ExtractInstance<EI>::QueryData>())),
                           std::optional<EI>>;
 };
 
@@ -193,11 +200,11 @@ void extract_all_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instanc
                                                    typename ExtractInstance<EI>::QueryFilter>> query);
 
 template <ExtractInstanceImpl EI>
-void extract_visible_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
-                               app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                                                  const camera::ViewVisibility&,
-                                                                  typename ExtractInstance<EI>::QueryData>,
-                                                       typename ExtractInstance<EI>::QueryFilter>> query);
+void extract_visible_instances(
+    ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
+    app::Extract<
+        ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
+                   typename ExtractInstance<EI>::QueryFilter>> query);
 
 /** @brief Plugin that extracts instances of `EI` into `ExtractedInstances<EI>`
  * each frame (Bevy `ExtractInstancesPlugin<EI>`). */
@@ -210,11 +217,13 @@ struct ExtractInstancesPlugin {
         auto& render_app = app.sub_app_mut(Render);
         render_app.world_mut().emplace_resource<ExtractedInstances<EI>>();
         if (only_extract_visible) {
-            render_app.add_systems(ExtractSchedule, into(extract_visible_instances<EI>).set_name(
-                                                       std::format("extract visible instances '{}'", meta::type_id<EI>().short_name())));
+            render_app.add_systems(ExtractSchedule, into(extract_visible_instances<EI>)
+                                                        .set_name(std::format("extract visible instances '{}'",
+                                                                              meta::type_id<EI>().short_name())));
         } else {
-            render_app.add_systems(ExtractSchedule, into(extract_all_instances<EI>).set_name(
-                                                       std::format("extract instances '{}'", meta::type_id<EI>().short_name())));
+            render_app.add_systems(ExtractSchedule, into(extract_all_instances<EI>)
+                                                        .set_name(std::format("extract instances '{}'",
+                                                                              meta::type_id<EI>().short_name())));
         }
     }
 };
@@ -232,11 +241,11 @@ void extract_all_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instanc
 }
 
 template <ExtractInstanceImpl EI>
-void extract_visible_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
-                               app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                                                  const camera::ViewVisibility&,
-                                                                  typename ExtractInstance<EI>::QueryData>,
-                                                       typename ExtractInstance<EI>::QueryFilter>> query) {
+void extract_visible_instances(
+    ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
+    app::Extract<
+        ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
+                   typename ExtractInstance<EI>::QueryFilter>> query) {
     // Bevy extract_visible_instances (extract_instances.rs:122-131): only
     // entities visible to at least one view are extracted.
     extracted_instances->clear();
@@ -260,14 +269,15 @@ struct ExtractResource;
 template <typename R>
 concept ExtractResourceImpl = requires {
     typename ExtractResource<R>::Source;
-    requires std::same_as<decltype(ExtractResource<R>::extract_resource(std::declval<const typename ExtractResource<R>::Source&>())),
-                          R>;
+    requires std::same_as<
+        decltype(ExtractResource<R>::extract_resource(std::declval<const typename ExtractResource<R>::Source&>())), R>;
 };
 
 template <ExtractResourceImpl R>
-void extract_resource_system(ecs::Commands cmd,
-                             app::Extract<ecs::ParamSet<std::optional<ecs::Res<typename ExtractResource<R>::Source>>>> source,
-                             std::optional<ecs::ResMut<R>> target) {
+void extract_resource_system(
+    ecs::Commands cmd,
+    app::Extract<ecs::ParamSet<std::optional<ecs::Res<typename ExtractResource<R>::Source>>>> source,
+    std::optional<ecs::ResMut<R>> target) {
     auto&& [src] = source.get();
     if (!src) return;
     if (target) {
@@ -294,8 +304,8 @@ struct ExtractResourcePlugin {
         auto& render_app = app.sub_app_mut(Render);
         if constexpr (requires { typename ExtractResource<R>::Source; }) {
             render_app.add_systems(
-                ExtractSchedule,
-                into(extract_resource_system<R>).set_name(std::format("extract resource '{}'", meta::type_id<R>().short_name())));
+                ExtractSchedule, into(extract_resource_system<R>)
+                                     .set_name(std::format("extract resource '{}'", meta::type_id<R>().short_name())));
         } else {
             render_app.add_systems(
                 ExtractSchedule,
@@ -366,11 +376,10 @@ struct GpuComponentArrayBufferPlugin {
         auto device = render_app.world().get_resource<wgpu::Device>();
         if (device) device->get().getLimits(&limits);
         render_app.world_mut().insert_resource(render_resource::GpuArrayBuffer<C>(limits));
-        render_app.add_systems(
-            Render,
-            into(prepare_gpu_component_array_buffers<C>)
-                .in_set(RenderSystems::PrepareResources)
-                .set_name(std::format("prepare gpu component array buffers '{}'", meta::type_id<C>().short_name())));
+        render_app.add_systems(Render, into(prepare_gpu_component_array_buffers<C>)
+                                           .in_set(RenderSystems::PrepareResources)
+                                           .set_name(std::format("prepare gpu component array buffers '{}'",
+                                                                 meta::type_id<C>().short_name())));
     }
 };
 
@@ -415,12 +424,10 @@ struct UniformComponentPlugin {
         auto& render_app = app.sub_app_mut(Render);
         render_app.world_mut().init_resource<ComponentUniforms<C>>();
         render_app.add_systems(
-            Render,
-            into(prepare_uniform_components<C>)
-                .in_set(RenderSystems::PrepareResources)
-                .set_name(std::format("prepare uniform components '{}'", meta::type_id<C>().short_name())));
+            Render, into(prepare_uniform_components<C>)
+                        .in_set(RenderSystems::PrepareResources)
+                        .set_name(std::format("prepare uniform components '{}'", meta::type_id<C>().short_name())));
     }
 };
 
 }  // namespace epix::render
-

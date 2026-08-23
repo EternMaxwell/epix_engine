@@ -6,6 +6,9 @@
 #include <cstdint>
 #include <cstring>
 #include <deque>
+#include <epix/app.hpp>
+#include <epix/assets.hpp>
+#include <epix/ecs.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -15,9 +18,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/app.hpp>
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/image.hpp>
@@ -47,9 +47,7 @@ EPIX_EXPORT struct Readback {
     std::variant<Texture, Buffer> value;
 
     /** @brief Create a readback for a texture handle. */
-    static Readback texture(assets::Handle<epix::image::Image> image) {
-        return Readback{Texture{std::move(image)}};
-    }
+    static Readback texture(assets::Handle<epix::image::Image> image) { return Readback{Texture{std::move(image)}}; }
     /** @brief Create a readback for a full buffer. */
     static Readback buffer(assets::Handle<ShaderStorageBuffer> buffer) {
         return Readback{Buffer{std::move(buffer), std::nullopt}};
@@ -222,12 +220,13 @@ EPIX_EXPORT void sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackCom
 
 /** @brief PrepareResources system: create readback requests from Readback
  * components (Bevy `prepare_buffers`). */
-EPIX_EXPORT void prepare_buffers(ecs::Res<wgpu::Device> device,
-                                 ecs::ResMut<readback::GpuReadbacks> readbacks,
-                                 ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
-                                 ecs::Res<RenderAssets<epix::image::Image>> gpu_images,
-                                 ecs::Res<RenderAssets<ShaderStorageBuffer>> ssbos,
-                                 ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles);
+EPIX_EXPORT void prepare_buffers(
+    ecs::Res<wgpu::Device> device,
+    ecs::ResMut<readback::GpuReadbacks> readbacks,
+    ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
+    ecs::Res<RenderAssets<epix::image::Image>> gpu_images,
+    ecs::Res<RenderAssets<ShaderStorageBuffer>> ssbos,
+    ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles);
 
 /** @brief Render system (after the graph): map the staging buffers of
  * requested readbacks asynchronously (Bevy `map_buffers`). */

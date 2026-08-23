@@ -211,8 +211,9 @@ struct SpritePipelineCache {
                                  // Bevy 0.18 does.  Transparent sprites must
                                  // therefore use the matching greater test.
                                  .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
-            .multisample   = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
-            .fragment      = std::move(fragment_state),
+            .multisample =
+                wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
+            .fragment = std::move(fragment_state),
         };
 
         auto pipeline_id = pipeline_server.queue_render_pipeline(std::move(pipeline_desc));
@@ -332,18 +333,17 @@ void extract_sprites(Commands cmd,
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
         }
 
-        cmd.spawn(
-            epix::render::sync_world::TemporaryRenderEntity{},
-            ExtractedSprite{
-                .source_entity = entity,
-                .sprite        = sprite,
-                .model         = global_transform.matrix,
-                .depth         = global_transform.matrix[3][2],
-                .texture       = texture.id(),
-                .image_size    = image_size,
-                .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
-            },
-            SpriteBatch{});
+        cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
+                  ExtractedSprite{
+                      .source_entity = entity,
+                      .sprite        = sprite,
+                      .model         = global_transform.matrix,
+                      .depth         = global_transform.matrix[3][2],
+                      .texture       = texture.id(),
+                      .image_size    = image_size,
+                      .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
+                  },
+                  SpriteBatch{});
     }
 }
 
@@ -420,8 +420,8 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
             }
 
             if (!current_texture || *current_texture != sprite.texture) {
-                batch_head     = item_index;
-                batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                batch_head                          = item_index;
+                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
                 phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
                 if (auto it = texture_bind_group_cache.find(sprite.texture); it != texture_bind_group_cache.end()) {
                     batch.texture_bind_group = it->second;
@@ -508,7 +508,8 @@ void SpritePlugin::ready(app::App& app) {
             sprite::BindSpriteTexture<2>::Command, sprite::DrawSpriteBatch>(render_subapp)});
 
     render_subapp.add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
-        .add_systems(render::Render, into(queue_sprites_2d).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
+        .add_systems(render::Render,
+                     into(queue_sprites_2d).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
         .add_systems(render::Render, into(prepare_sprite_batches)
                                          .in_set(render::RenderSystems::PrepareResources)
                                          .set_name("prepare sprite batches"));

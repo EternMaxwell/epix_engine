@@ -98,10 +98,13 @@ EPIX_EXPORT namespace epix::render::graph {
         std::uint32_t input_index;
     };
     /** @brief Variant of edge-related errors. */
-    struct EdgeError
-        : std::variant<EdgeNodesNotPresent, EdgeAlreadyExists, EdgeDoesNotExist, SlotNotPresent, InputSlotOccupied,
-                       SlotTypeMismatch> {
-        using std::variant<EdgeNodesNotPresent, EdgeAlreadyExists, EdgeDoesNotExist, SlotNotPresent, InputSlotOccupied,
+    struct EdgeError : std::variant<EdgeNodesNotPresent, EdgeAlreadyExists, EdgeDoesNotExist, SlotNotPresent,
+                                    InputSlotOccupied, SlotTypeMismatch> {
+        using std::variant<EdgeNodesNotPresent,
+                           EdgeAlreadyExists,
+                           EdgeDoesNotExist,
+                           SlotNotPresent,
+                           InputSlotOccupied,
                            SlotTypeMismatch>::variant;
     };
     /** @brief Error indicating a sub-graph with the given label already

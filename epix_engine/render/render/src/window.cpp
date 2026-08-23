@@ -72,15 +72,14 @@ void epix::render::window::extract_windows(
         } else {
             // Not extracted, extract.
             extracted_windows->windows.emplace(
-                entity,
-                ExtractedWindow{
-                    .entity          = entity,
-                    .create_surface  = surface_fn,
-                    .physical_width  = static_cast<int>(std::max<std::uint32_t>(1, window.size.first)),
-                    .physical_height = static_cast<int>(std::max<std::uint32_t>(1, window.size.second)),
-                    .present_mode    = window.present_mode,
-                    .alpha_mode      = window.composite_alpha_mode,
-                });
+                entity, ExtractedWindow{
+                            .entity          = entity,
+                            .create_surface  = surface_fn,
+                            .physical_width  = static_cast<int>(std::max<std::uint32_t>(1, window.size.first)),
+                            .physical_height = static_cast<int>(std::max<std::uint32_t>(1, window.size.second)),
+                            .present_mode    = window.present_mode,
+                            .alpha_mode      = window.composite_alpha_mode,
+                        });
         }
         if (primary) {
             extracted_windows->primary = entity;
@@ -159,15 +158,15 @@ void epix::render::window::prepare_windows(ResMut<ExtractedWindows> windows,
                         if (auto srgb_format = srgb_suffix(surface_data.config.format)) {
                             window.swapchain_texture_view_format = *srgb_format;
                         }
-                wgpu::TextureViewDescriptor view_desc;
-                view_desc.setFormat(window.swapchain_texture_view_format)
-                    .setDimension(wgpu::TextureViewDimension::e2D)
-                    .setBaseMipLevel(0)
-                    .setMipLevelCount(1)
-                    .setBaseArrayLayer(0)
-                    .setArrayLayerCount(1)
-                    .setAspect(wgpu::TextureAspect::eAll);
-                window.swapchain_texture_view   = window.swapchain_texture.texture.createView(view_desc);
+                        wgpu::TextureViewDescriptor view_desc;
+                        view_desc.setFormat(window.swapchain_texture_view_format)
+                            .setDimension(wgpu::TextureViewDimension::e2D)
+                            .setBaseMipLevel(0)
+                            .setMipLevelCount(1)
+                            .setBaseArrayLayer(0)
+                            .setArrayLayerCount(1)
+                            .setAspect(wgpu::TextureAspect::eAll);
+                        window.swapchain_texture_view   = window.swapchain_texture.texture.createView(view_desc);
                         window.swapchain_texture_format = surface_data.config.format;
                         break;
                     }
@@ -245,9 +244,12 @@ wgpu::PresentMode resolve_present_mode(::epix::window::PresentMode requested,
  * format is already sRGB (Bevy TextureFormat::add_srgb_suffix). */
 std::optional<wgpu::TextureFormat> srgb_suffix(wgpu::TextureFormat format) {
     switch (format) {
-        case wgpu::TextureFormat::eBGRA8Unorm: return wgpu::TextureFormat::eBGRA8UnormSrgb;
-        case wgpu::TextureFormat::eRGBA8Unorm: return wgpu::TextureFormat::eRGBA8UnormSrgb;
-        default: return std::nullopt;
+        case wgpu::TextureFormat::eBGRA8Unorm:
+            return wgpu::TextureFormat::eBGRA8UnormSrgb;
+        case wgpu::TextureFormat::eRGBA8Unorm:
+            return wgpu::TextureFormat::eRGBA8UnormSrgb;
+        default:
+            return std::nullopt;
     }
 }
 }  // namespace
@@ -286,35 +288,36 @@ void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
             if (view_format_count) {
                 view_formats[0] = *srgb_suffix(format);
             }
-            auto config = wgpu::SurfaceConfiguration()
-                              .setDevice(*device)
-                              .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
-                                        wgpu::TextureUsage::eCopyDst)
-                              .setFormat(format)
-                              .setWidth(window.physical_width)
-                              .setHeight(window.physical_height)
-                              // Bevy validates the requested present mode against
-                              // capabilities with fallbacks (window/mod.rs:439-483).
-                              .setPresentMode(resolve_present_mode(window.present_mode, capabilities))
-                              .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
-                              // Bevy default desired maximum frame latency = 2.
-                              .setNextInChain(wgpu::SurfaceConfigurationExtras().setDesiredMaximumFrameLatency(2))
-                              .setAlphaMode([&]() {
-                                  switch (window.alpha_mode) {
-                                      case CompositeAlphaMode::Auto:
-                                          return wgpu::CompositeAlphaMode::eAuto;
-                                      case CompositeAlphaMode::Opacity:
-                                          return wgpu::CompositeAlphaMode::eOpaque;
-                                      case CompositeAlphaMode::PreMultiplied:
-                                          return wgpu::CompositeAlphaMode::ePremultiplied;
-                                      case CompositeAlphaMode::PostMultiplied:
-                                          return wgpu::CompositeAlphaMode::eUnpremultiplied;
-                                      case CompositeAlphaMode::Inherit:
-                                          return wgpu::CompositeAlphaMode::eInherit;
-                                      default:
-                                          return wgpu::CompositeAlphaMode::eAuto;
-                                  }
-                              }());
+            auto config =
+                wgpu::SurfaceConfiguration()
+                    .setDevice(*device)
+                    .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
+                              wgpu::TextureUsage::eCopyDst)
+                    .setFormat(format)
+                    .setWidth(window.physical_width)
+                    .setHeight(window.physical_height)
+                    // Bevy validates the requested present mode against
+                    // capabilities with fallbacks (window/mod.rs:439-483).
+                    .setPresentMode(resolve_present_mode(window.present_mode, capabilities))
+                    .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
+                    // Bevy default desired maximum frame latency = 2.
+                    .setNextInChain(wgpu::SurfaceConfigurationExtras().setDesiredMaximumFrameLatency(2))
+                    .setAlphaMode([&]() {
+                        switch (window.alpha_mode) {
+                            case CompositeAlphaMode::Auto:
+                                return wgpu::CompositeAlphaMode::eAuto;
+                            case CompositeAlphaMode::Opacity:
+                                return wgpu::CompositeAlphaMode::eOpaque;
+                            case CompositeAlphaMode::PreMultiplied:
+                                return wgpu::CompositeAlphaMode::ePremultiplied;
+                            case CompositeAlphaMode::PostMultiplied:
+                                return wgpu::CompositeAlphaMode::eUnpremultiplied;
+                            case CompositeAlphaMode::Inherit:
+                                return wgpu::CompositeAlphaMode::eInherit;
+                            default:
+                                return wgpu::CompositeAlphaMode::eAuto;
+                        }
+                    }());
             surface.configure(config);
             window_surfaces->surfaces.emplace(window.entity, SurfaceData(std::move(surface), config));
         }

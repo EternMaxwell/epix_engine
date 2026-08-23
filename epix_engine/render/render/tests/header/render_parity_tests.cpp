@@ -10,7 +10,7 @@ using namespace epix::render;
 // Mirrors Bevy's ViewRangefinder3d unit test (bevy_render/render_phase/rangefinder.rs).
 TEST(ViewRangefinder3d, Distance) {
     const glm::mat4 view_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-    const auto rangefinder = phase::ViewRangefinder3d::from_world_from_view(view_matrix);
+    const auto rangefinder      = phase::ViewRangefinder3d::from_world_from_view(view_matrix);
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 0.0f)), 1.0f);
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 1.0f)), 2.0f);
 }
@@ -53,8 +53,8 @@ TEST(TextureCache, EvictsAfterThreeFrames) {
     render_resource::TextureCache cache;
     // manually seed one entry (device creation is not needed for eviction)
     render_resource::TextureCacheKey key;
-    key.width  = 4;
-    key.height = 4;
+    key.width           = 4;
+    key.height          = 4;
     cache.textures[key] = {render_resource::detail::CachedTextureMeta{}};
     // frame 1..3: unused entry ages and is released
     cache.update();  // frames_since_last_use = 1, taken = false
@@ -88,11 +88,11 @@ TEST(SortedCamera, SortKey) {
     EXPECT_TRUE(b.sort_key() < a.sort_key());
     // same order, different target types: texture (key 1) sorts before window (key 2+)
     camera::SortedCamera tex;
-    tex.order   = 1;
-    tex.target  = camera::RenderTarget::from_texture(wgpu::Texture{});
+    tex.order  = 1;
+    tex.target = camera::RenderTarget::from_texture(wgpu::Texture{});
     camera::SortedCamera win;
-    win.order   = 1;
-    win.target  = camera::RenderTarget::from_primary();
+    win.order  = 1;
+    win.target = camera::RenderTarget::from_primary();
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 
@@ -149,8 +149,7 @@ TEST(RetainedViewEntity, Equality) {
 // (view/mod.rs:243-253): main entity + optional auxiliary + subview index.
 TEST(RetainedViewEntity, CreateFactory) {
     auto rve = view::RetainedViewEntity::create(sync_world::MainEntity{Entity::from_index(7)},
-                                                sync_world::MainEntity{Entity::from_index(8)},
-                                                2);
+                                                sync_world::MainEntity{Entity::from_index(8)}, 2);
     EXPECT_EQ(rve.main_entity, sync_world::MainEntity{Entity::from_index(7)});
     ASSERT_TRUE(rve.auxiliary_entity.has_value());
     EXPECT_EQ(*rve.auxiliary_entity, sync_world::MainEntity{Entity::from_index(8)});
@@ -166,8 +165,8 @@ TEST(RetainedViewEntity, CreateFactory) {
 TEST(SlotInfos, GetSlotBoundsCheck) {
     using graph::SlotInfo;
     using graph::SlotInfos;
-    using graph::SlotType;
     using graph::SlotLabel;
+    using graph::SlotType;
     SlotInfos infos(std::array{SlotInfo{"in", SlotType::Buffer}, SlotInfo{"tex", SlotType::TextureView}});
     ASSERT_TRUE(infos.get_slot(SlotLabel{0u}).has_value());
     ASSERT_TRUE(infos.get_slot(SlotLabel{1u}).has_value());
@@ -185,7 +184,7 @@ TEST(RenderAssetBytesPerFrame, LimiterSemantics) {
     EXPECT_FALSE(limiter.exhausted());
     limiter.write_bytes(100);
     EXPECT_EQ(limiter.bytes_written, 0u);  // no limit -> not recorded
-    limiter.reset();                      // no limit -> no-op
+    limiter.reset();                       // no limit -> no-op
     EXPECT_EQ(limiter.bytes_written, 0u);
 
     limiter.max_bytes = 256;
@@ -262,12 +261,11 @@ TEST(SyncWorld, EntitySyncAndDespawn) {
     };
     Entity render_entity = get_render_entity(main_entity);
     EXPECT_TRUE(render_world.get_entity(render_entity).has_value());
-    auto main_back = render_world.get_entity(render_entity)
-                         .and_then([](const EntityRef& ref) { return ref.get<sync_world::MainEntity>(); })
-                         .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) {
-                             return me.get().entity;
-                         })
-                         .value();
+    auto main_back =
+        render_world.get_entity(render_entity)
+            .and_then([](const EntityRef& ref) { return ref.get<sync_world::MainEntity>(); })
+            .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) { return me.get().entity; })
+            .value();
     EXPECT_EQ(main_back, main_entity);
 
     // a second sync is idempotent: no duplicate render entities are spawned
@@ -288,7 +286,7 @@ TEST(SyncWorld, EntitySyncAndDespawn) {
 TEST(SyncWorld, RemoveTemporaryRenderEntities) {
     World world(WorldId(0));
     Entity persistent = world.spawn(sync_world::TemporaryRenderEntity{}).id();
-    Entity kept        = world.spawn(42).id();
+    Entity kept       = world.spawn(42).id();
     sync_world::remove_temporary_render_entities(world);
     EXPECT_FALSE(world.get_entity(persistent).has_value());
     EXPECT_TRUE(world.get_entity(kept).has_value());
@@ -306,12 +304,11 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
 
     Entity main_entity = main_world.spawn(sync_world::SyncToRenderWorld{}, 42).id();
     sync_world::entity_sync_system(main_world, render_world);
-    auto first_render = main_world.get_entity(main_entity)
-                            .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
-                            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
-                                return re.get().entity;
-                            })
-                            .value();
+    auto first_render =
+        main_world.get_entity(main_entity)
+            .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
+            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; })
+            .value();
     // simulate a stale derived/extracted artifact on the render entity
     render_world.get_entity_mut(first_render).transform([](EntityWorldMut&& ew) -> int {
         ew.insert(777);
@@ -328,16 +325,14 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
 
     // the old render entity is gone; a fresh one is linked with no stale artifact
     EXPECT_FALSE(render_world.get_entity(first_render).has_value());
-    auto second_render = main_world.get_entity(main_entity)
-                             .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
-                             .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
-                                 return re.get().entity;
-                             })
-                             .value();
+    auto second_render =
+        main_world.get_entity(main_entity)
+            .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
+            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; })
+            .value();
     EXPECT_NE(second_render, first_render);
-    EXPECT_FALSE(render_world.get_entity(second_render).and_then([](const EntityRef& e) {
-        return e.get<int>();
-    }).has_value());
+    EXPECT_FALSE(
+        render_world.get_entity(second_render).and_then([](const EntityRef& e) { return e.get<int>(); }).has_value());
 }
 
 // Label interning matches Bevy (bevy_ecs::intern): equal values dedupe to the
@@ -368,10 +363,10 @@ namespace {
 struct TestBinnedItem {
     Entity m_entity;
     phase::DrawFunctionId m_draw_function;
-    int m_sort_key = 0;
-    int m_bin_key = 0;
+    int m_sort_key      = 0;
+    int m_bin_key       = 0;
     int m_batch_set_key = 0;
-    bool m_batchable = true;
+    bool m_batchable    = true;
 
     Entity entity() const { return m_entity; }
     sync_world::MainEntity main_entity() const { return sync_world::MainEntity{m_entity}; }
@@ -379,8 +374,8 @@ struct TestBinnedItem {
     phase::DrawFunctionId draw_function() const { return m_draw_function; }
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
     phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
-    using BinKey       = int;
-    using BatchSetKey  = int;
+    using BinKey      = int;
+    using BatchSetKey = int;
     const int& bin_key() const { return m_bin_key; }
     const int& batch_set_key() const { return m_batch_set_key; }
     bool batchable() const { return m_batchable; }
@@ -430,8 +425,8 @@ TEST(BinnedRenderPhase, PhaseTypes) {
               phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
     phase.add(0, 0, Entity::from_index(11), m2, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
-    phase.add(0, 0, Entity::from_index(12), m3, phase::InputUniformIndex{2},
-              phase::BinnedRenderPhaseType::NonMesh, tick);
+    phase.add(0, 0, Entity::from_index(12), m3, phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::NonMesh,
+              tick);
 
     auto* batch_set = phase.multidrawable_meshes.get(0);
     ASSERT_NE(batch_set, nullptr);
@@ -500,13 +495,13 @@ TEST(ViewBinnedRenderPhases, PrepareForNewFrame) {
 // dedup (bevy_camera visibility ranges).
 TEST(VisibilityRange, EqualityAndHash) {
     view::VisibilityRange a;
-    a.start_margin_start = 1.0f;
-    a.end_margin_end     = 50.0f;
+    a.start_margin_start    = 1.0f;
+    a.end_margin_end        = 50.0f;
     view::VisibilityRange b = a;
     view::VisibilityRange c = a;
-    c.end_margin_end = 51.0f;
+    c.end_margin_end        = 51.0f;
     view::VisibilityRange d = a;
-    d.abrupt_start_margin = true;
+    d.abrupt_start_margin   = true;
     EXPECT_EQ(a, b);
     EXPECT_NE(a, c);
     EXPECT_NE(a, d);
@@ -601,14 +596,14 @@ TEST(RenderVisibilityRanges, ExtractSystemPopulatesAndEarlyOuts) {
     crossfaded.start_margin_end   = 5.0f;
     crossfaded.end_margin_start   = 45.0f;
     crossfaded.end_margin_end     = 50.0f;
-    Entity e1 = main_world.spawn(crossfaded).id();
-    Entity e2 = main_world.spawn(crossfaded).id();  // identical range -> dedup
+    Entity e1                     = main_world.spawn(crossfaded).id();
+    Entity e2                     = main_world.spawn(crossfaded).id();  // identical range -> dedup
     view::VisibilityRange abrupt;
     abrupt.start_margin_start = 1.0f;
     abrupt.start_margin_end   = 1.0f;
     abrupt.end_margin_start   = 50.0f;
     abrupt.end_margin_end     = 50.0f;
-    Entity e3 = main_world.spawn(abrupt).id();
+    Entity e3                 = main_world.spawn(abrupt).id();
 
     auto system = make_system_unique(view::extract_visibility_ranges);
     system->initialize(render_world);
@@ -639,12 +634,12 @@ TEST(ViewTarget, CleanupForResizeRemovesTarget) {
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
 
     epix::ecs::Entity window_entity = main_world.spawn().id();
-    epix::ecs::Entity cam_a        = render_world.spawn(view::ViewTarget{}).id();
-    epix::ecs::Entity cam_b        = render_world.spawn(view::ViewTarget{}).id();
+    epix::ecs::Entity cam_a         = render_world.spawn(view::ViewTarget{}).id();
+    epix::ecs::Entity cam_b         = render_world.spawn(view::ViewTarget{}).id();
 
     window::ExtractedWindows windows;
-    windows.primary                     = window_entity;
-    windows.windows[window_entity]      = window::ExtractedWindow{};
+    windows.primary                       = window_entity;
+    windows.windows[window_entity]        = window::ExtractedWindow{};
     windows.windows[window_entity].entity = window_entity;
     // Window resized this frame: cameras targeting it must lose ViewTarget.
     windows.windows[window_entity].size_changed = true;
@@ -709,13 +704,13 @@ TEST(ColorGrading, DefaultsMatchBevy) {
 // three per-luminance section values in the shader's component order.
 TEST(ColorGrading, PacksWhiteBalanceAndSections) {
     view::ColorGrading grading;
-    grading.global.temperature = 0.02f;
-    grading.global.tint        = -0.01f;
-    grading.global.exposure    = 1.5f;
-    grading.shadows.saturation = 0.8f;
-    grading.midtones.saturation = 1.1f;
+    grading.global.temperature    = 0.02f;
+    grading.global.tint           = -0.01f;
+    grading.global.exposure       = 1.5f;
+    grading.shadows.saturation    = 0.8f;
+    grading.midtones.saturation   = 1.1f;
     grading.highlights.saturation = 1.3f;
-    auto uniform = view::to_uniform(grading);
+    auto uniform                  = view::to_uniform(grading);
     EXPECT_EQ(uniform.saturation, glm::vec3(0.8f, 1.1f, 1.3f));
     EXPECT_FLOAT_EQ(uniform.exposure, 1.5f);
     // Non-default white balance must produce a non-identity matrix.
@@ -801,8 +796,8 @@ TEST(CameraProjection, UsesBevyReverseZConventions) {
     // infinite reverse-Z depth range: near maps to 1, far tends to 0.
     camera::PerspectiveProjection perspective;
     const auto perspective_matrix = perspective.get_projection_matrix();
-    const auto near_clip = perspective_matrix * glm::vec4(0.0f, 0.0f, -perspective.near_plane, 1.0f);
-    const auto far_clip = perspective_matrix * glm::vec4(0.0f, 0.0f, -1000000.0f, 1.0f);
+    const auto near_clip          = perspective_matrix * glm::vec4(0.0f, 0.0f, -perspective.near_plane, 1.0f);
+    const auto far_clip           = perspective_matrix * glm::vec4(0.0f, 0.0f, -1000000.0f, 1.0f);
     EXPECT_NEAR(near_clip.z / near_clip.w, 1.0f, 1e-5f);
     EXPECT_NEAR(far_clip.z / far_clip.w, 0.0f, 1e-5f);
 
@@ -825,7 +820,8 @@ TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
 
 TEST(CameraCoordinates, ViewportAndNdcConversionsMatchBevy) {
     ::epix::camera::Camera camera;
-    camera.computed.target_info = ::epix::camera::RenderTargetInfo{.physical_size = glm::uvec2(200, 100), .scale_factor = 2.0f};
+    camera.computed.target_info =
+        ::epix::camera::RenderTargetInfo{.physical_size = glm::uvec2(200, 100), .scale_factor = 2.0f};
     camera.computed.target_size = glm::uvec2(200, 100);
     camera.computed.projection  = glm::orthoRH_ZO(-100.0f, 100.0f, -50.0f, 50.0f, 1000.0f, -1000.0f);
     const ::epix::transform::GlobalTransform identity{};
@@ -851,7 +847,8 @@ TEST(CameraCoordinates, ViewportAndNdcConversionsMatchBevy) {
 
 TEST(CameraCoordinates, ReportsMissingViewportSize) {
     ::epix::camera::Camera camera;
-    EXPECT_EQ(camera.viewport_to_ndc(glm::vec2(1.0f, 1.0f)).error(), ::epix::camera::ViewportConversionError::NoViewportSize);
+    EXPECT_EQ(camera.viewport_to_ndc(glm::vec2(1.0f, 1.0f)).error(),
+              ::epix::camera::ViewportConversionError::NoViewportSize);
 }
 
 // ComponentUniforms mirrors Bevy prepare_uniform_components: each component
@@ -859,8 +856,8 @@ TEST(CameraCoordinates, ReportsMissingViewportSize) {
 TEST(ComponentUniforms, IndexAssignment) {
     ComponentUniforms<view::ViewUniform> cu;
     cu.uniforms_mut().dynamic_offset_alignment = 256;
-    const std::size_t i0 = cu.uniforms_mut().push(view::ViewUniform{});
-    const std::size_t i1 = cu.uniforms_mut().push(view::ViewUniform{});
+    const std::size_t i0                       = cu.uniforms_mut().push(view::ViewUniform{});
+    const std::size_t i1                       = cu.uniforms_mut().push(view::ViewUniform{});
     // Bevy: push returns the byte offset (stride 256 here), and
     // DynamicUniformIndex stores that byte offset.
     EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i0)}.uniform_index(), 0u);
@@ -965,9 +962,10 @@ struct epix::render::render_resource::AsBindGroup<TestMaterial> {
             render_resource::sampler_binding(2, wgpu::ShaderStage::eFragment),
         };
     }
-    static render_resource::PreparedBindGroup<TestMaterial> as_bind_group(
-        const wgpu::Device& device, const wgpu::BindGroupLayout& layout, const TestMaterial& material,
-        Param& param) {
+    static render_resource::PreparedBindGroup<TestMaterial> as_bind_group(const wgpu::Device& device,
+                                                                          const wgpu::BindGroupLayout& layout,
+                                                                          const TestMaterial& material,
+                                                                          Param& param) {
         (void)device;
         (void)layout;
         (void)material;
@@ -1038,8 +1036,8 @@ struct ProbeGraphNode : graph::Node {
 TEST(RenderGraph, SetInputTwiceThrows) {
     graph::RenderGraph g;
     g.set_input(std::vector<graph::SlotInfo>{graph::SlotInfo{"in", graph::SlotType::Buffer}});
-    EXPECT_THROW(
-        g.set_input(std::vector<graph::SlotInfo>{graph::SlotInfo{"in2", graph::SlotType::Buffer}}), std::runtime_error);
+    EXPECT_THROW(g.set_input(std::vector<graph::SlotInfo>{graph::SlotInfo{"in2", graph::SlotType::Buffer}}),
+                 std::runtime_error);
 }
 
 // Bevy graph.rs:135-142: add_node with a duplicate label REPLACES the node.
@@ -1203,7 +1201,7 @@ TEST(RenderAssetBytesPerFrame, BudgetLimiter) {
 TEST(ColorAttachment, FirstCallClearsThenLoads) {
     render_resource::ColorAttachment attachment;
     attachment.clear_color = glm::vec4(0.1f, 0.2f, 0.3f, 1.0f);
-    auto first  = attachment.get_unsampled_attachment();
+    auto first             = attachment.get_unsampled_attachment();
     EXPECT_EQ(first.loadOp, wgpu::LoadOp::eClear);
     EXPECT_EQ(first.storeOp, wgpu::StoreOp::eStore);
     auto second = attachment.get_unsampled_attachment();
@@ -1223,7 +1221,7 @@ TEST(ColorAttachment, FirstCallClearsThenLoads) {
 TEST(ColorAttachment, ResolveTargetAttachment) {
     render_resource::ColorAttachment attachment;
     attachment.resolve_target = render_resource::CachedTexture{};
-    auto attachment_view = attachment.get_attachment();
+    auto attachment_view      = attachment.get_attachment();
     EXPECT_EQ(attachment_view.loadOp, wgpu::LoadOp::eLoad);
     EXPECT_EQ(attachment_view.storeOp, wgpu::StoreOp::eStore);
 }
@@ -1244,7 +1242,7 @@ TEST(ViewTarget, PostProcessWriteFlipsAB) {
     EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 0u);  // A current
     auto write_a_to_b = target.post_process_write();
     EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 1u);  // now B
-    EXPECT_FALSE(write_a_to_b.source);       // null views; handles exercised
+    EXPECT_FALSE(write_a_to_b.source);                                    // null views; handles exercised
     EXPECT_FALSE(write_a_to_b.destination);
     auto write_b_to_a = target.post_process_write();
     EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 0u);  // back to A
@@ -1291,8 +1289,8 @@ namespace {
 struct RenderableBinnedItem {
     Entity m_entity;
     phase::DrawFunctionId m_draw_function;
-    int m_bin_key         = 0;
-    int m_batch_set_key   = 0;
+    int m_bin_key       = 0;
+    int m_batch_set_key = 0;
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
 
     Entity entity() const { return m_entity; }
@@ -1306,8 +1304,11 @@ struct RenderableBinnedItem {
     const int& batch_set_key() const { return m_batch_set_key; }
     bool batchable() const { return true; }
 
-    static RenderableBinnedItem create(int batch_set_key, int bin_key, Entity representative,
-                                       std::uint32_t instance_start, std::uint32_t instance_end) {
+    static RenderableBinnedItem create(int batch_set_key,
+                                       int bin_key,
+                                       Entity representative,
+                                       std::uint32_t instance_start,
+                                       std::uint32_t instance_end) {
         RenderableBinnedItem item;
         item.m_entity        = representative;
         item.m_bin_key       = bin_key;
@@ -1324,8 +1325,10 @@ struct CountingBinnedDraw : phase::DrawFunction<RenderableBinnedItem> {
     static inline int last_bin_key   = -1;
     static inline int last_range_end = -1;
     void prepare(const epix::ecs::World&) override {}
-    std::expected<void, phase::DrawError> draw(const epix::ecs::World&, const wgpu::RenderPassEncoder&,
-                                               epix::ecs::Entity, const RenderableBinnedItem& item) override {
+    std::expected<void, phase::DrawError> draw(const epix::ecs::World&,
+                                               const wgpu::RenderPassEncoder&,
+                                               epix::ecs::Entity,
+                                               const RenderableBinnedItem& item) override {
         ++calls;
         last_bin_key   = item.m_bin_key;
         last_range_end = static_cast<int>(item.batch_range.second);
@@ -1377,8 +1380,10 @@ namespace {
 struct CountingSortedDraw : phase::DrawFunction<TestBinnedItem> {
     static inline int calls = 0;
     void prepare(const epix::ecs::World&) override {}
-    std::expected<void, phase::DrawError> draw(const epix::ecs::World&, const wgpu::RenderPassEncoder&,
-                                               epix::ecs::Entity, const TestBinnedItem&) override {
+    std::expected<void, phase::DrawError> draw(const epix::ecs::World&,
+                                               const wgpu::RenderPassEncoder&,
+                                               epix::ecs::Entity,
+                                               const TestBinnedItem&) override {
         ++calls;
         return {};
     }
@@ -1398,7 +1403,7 @@ TEST(RenderPhase, RenderSkipsBatchedItems) {
     TestBinnedItem batched;
     batched.m_entity        = Entity{1};
     batched.m_draw_function = draw_id;
-    batched.batch_range     = std::pair<std::uint32_t, std::uint32_t>{4, 6};  // 2 instances: draw once, skip the next item
+    batched.batch_range = std::pair<std::uint32_t, std::uint32_t>{4, 6};  // 2 instances: draw once, skip the next item
     TestBinnedItem next;
     next.m_entity        = Entity{2};
     next.m_draw_function = draw_id;
@@ -1436,13 +1441,13 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
 // the entity is visible to any view (not culled); per-view flags are tracked.
 TEST(ViewVisibility, Flags) {
     camera::ViewVisibility vv;
-    EXPECT_TRUE(vv.get());           // default: not culled
+    EXPECT_TRUE(vv.get());  // default: not culled
     EXPECT_FALSE(vv.get_in_view(0));
     vv.set_in_view(0, true);
     EXPECT_TRUE(vv.get_in_view(0));
     EXPECT_FALSE(vv.get_in_view(1));
     vv.culled();
-    EXPECT_FALSE(vv.get());          // culled -> not visible to any view
+    EXPECT_FALSE(vv.get());  // culled -> not visible to any view
     vv.visible();
     EXPECT_TRUE(vv.get());
     EXPECT_TRUE(vv.get_in_view(0));  // per-view flag survives cull toggles
@@ -1483,10 +1488,11 @@ TEST(RenderVisibleEntities, AccessorsMatchBevy) {
 // the builder appends them (they reach the shader cache as variant keys).
 TEST(PipelineDescriptor, ShaderDefsPerStage) {
     epix::assets::Handle<epix::shader::Shader> shader_handle{uuids::uuid{}};
-    VertexState vs{shader_handle,
-                   {epix::shader::ShaderDefVal::from_bool("VS_OPTION"),
-                    epix::shader::ShaderDefVal::from_int("MAX_INSTANCES", 64)},
-                   std::nullopt, {}};
+    VertexState vs{
+        shader_handle,
+        {epix::shader::ShaderDefVal::from_bool("VS_OPTION"), epix::shader::ShaderDefVal::from_int("MAX_INSTANCES", 64)},
+        std::nullopt,
+        {}};
     ASSERT_EQ(vs.shader_defs.size(), 2u);
     EXPECT_EQ(vs.shader_defs[0].name, "VS_OPTION");
     EXPECT_EQ(std::get<bool>(vs.shader_defs[0].value), true);
@@ -1495,12 +1501,8 @@ TEST(PipelineDescriptor, ShaderDefsPerStage) {
     FragmentState fs{shader_handle, {epix::shader::ShaderDefVal::from_bool("FS_OPTION")}, std::nullopt, {}};
     ASSERT_EQ(fs.shader_defs.size(), 1u);
 
-    ComputePipelineDescriptor cp{"",
-                                 {},
-                                 {},
-                                 shader_handle,
-                                 {epix::shader::ShaderDefVal::from_uint("WORKGROUP", 8u)},
-                                 std::nullopt};
+    ComputePipelineDescriptor cp{
+        "", {}, {}, shader_handle, {epix::shader::ShaderDefVal::from_uint("WORKGROUP", 8u)}, std::nullopt};
     ASSERT_EQ(cp.shader_defs.size(), 1u);
     EXPECT_EQ(std::get<std::uint32_t>(cp.shader_defs[0].value), 8u);
 
@@ -1514,12 +1516,11 @@ TEST(PipelineDescriptor, ShaderDefsPerStage) {
     range.stages = wgpu::ShaderStage::eVertex;
     VertexState vs2{shader_handle, {}, std::nullopt, {}};
     std::vector<wgpu::PushConstantRange> ranges{range};
-    RenderPipelineDescriptor rpd{"", {}, ranges, vs2,
-                                 wgpu::PrimitiveState(), std::nullopt, wgpu::MultisampleState(), std::nullopt};
+    RenderPipelineDescriptor rpd{
+        "", {}, ranges, vs2, wgpu::PrimitiveState(), std::nullopt, wgpu::MultisampleState(), std::nullopt};
     ASSERT_EQ(rpd.push_constant_ranges.size(), 1u);
     EXPECT_EQ(rpd.push_constant_ranges[0].start, 0u);
     EXPECT_EQ(rpd.push_constant_ranges[0].end, 4u);
-
 
     ComputePipelineDescriptor cp2{"", {}, ranges, shader_handle, {}, std::nullopt};
     ASSERT_EQ(cp2.push_constant_ranges.size(), 1u);
@@ -1616,9 +1617,9 @@ TEST(GraphContext, LabelAndDebugGroup) {
 // RenderGraph iter_nodes_mut / iter_sub_graphs / remove_sub_graph / get_node<T>
 // match Bevy graph.rs:522-584.
 TEST(RenderGraph, IterAndRemoveAccessors) {
-    using graph::RenderGraph;
     using graph::GraphLabel;
     using graph::NodeLabel;
+    using graph::RenderGraph;
     struct SubA {};
     struct SubB {};
     struct MyNode {};
@@ -1632,20 +1633,34 @@ TEST(RenderGraph, IterAndRemoveAccessors) {
 
     // iter_nodes / iter_nodes_mut visit the node.
     std::size_t node_count = 0;
-    for (auto&& n : graph.iter_nodes()) { (void)n; ++node_count; }
+    for (auto&& n : graph.iter_nodes()) {
+        (void)n;
+        ++node_count;
+    }
     EXPECT_EQ(node_count, 1u);
     std::size_t mut_count = 0;
-    for (auto&& n : graph.iter_nodes_mut()) { (void)n; ++mut_count; }
+    for (auto&& n : graph.iter_nodes_mut()) {
+        (void)n;
+        ++mut_count;
+    }
     EXPECT_EQ(mut_count, 1u);
 
     // Sub-graphs iterate as (label, graph) pairs and remove_sub_graph erases.
     graph.add_sub_graph(GraphLabel::from_type<SubA>(), RenderGraph{});
     graph.add_sub_graph(GraphLabel::from_type<SubB>(), RenderGraph{});
     std::size_t sub_count = 0;
-    for (auto&& [label, sub] : graph.iter_sub_graphs()) { (void)label; (void)sub; ++sub_count; }
+    for (auto&& [label, sub] : graph.iter_sub_graphs()) {
+        (void)label;
+        (void)sub;
+        ++sub_count;
+    }
     EXPECT_EQ(sub_count, 2u);
     std::size_t sub_mut_count = 0;
-    for (auto&& [label, sub] : graph.iter_sub_graphs_mut()) { (void)label; (void)sub; ++sub_mut_count; }
+    for (auto&& [label, sub] : graph.iter_sub_graphs_mut()) {
+        (void)label;
+        (void)sub;
+        ++sub_mut_count;
+    }
     EXPECT_EQ(sub_mut_count, 2u);
 
     graph.remove_sub_graph(GraphLabel::from_type<SubA>());
@@ -1693,7 +1708,6 @@ TEST(RenderDebugFlags, BitflagSemantics) {
     EXPECT_FALSE(flags.allow_copies_from_indirect_parameters());
     EXPECT_EQ(flags.bits, 0u);
 
-
     // RenderPlugin carries the flags (Bevy RenderPlugin::debug_flags).
     RenderPlugin plugin;
     EXPECT_FALSE(plugin.debug_flags.allow_copies_from_indirect_parameters());
@@ -1706,7 +1720,7 @@ TEST(PhaseItemBatchSetKey, ConceptSatisfaction) {
     EXPECT_TRUE(phase::PhaseItemBatchSetKey<std::uint64_t>);
     EXPECT_TRUE(phase::PhaseItemBatchSetKey<std::string>);
 
-    struct NotComparable { };
+    struct NotComparable {};
     EXPECT_FALSE(phase::PhaseItemBatchSetKey<NotComparable>);
 }
 
@@ -1747,7 +1761,6 @@ TEST(BufferVec, WriteBufferRangeErrors) {
     EXPECT_FALSE(overflow.has_value());
     EXPECT_EQ(overflow.error(), render_resource::WriteBufferRangeError::RangeBiggerThanBuffer);
 
-
     auto uninit = vec.write_buffer_range(wgpu::Queue{}, {0, 1});
     EXPECT_FALSE(uninit.has_value());
     EXPECT_EQ(uninit.error(), render_resource::WriteBufferRangeError::BufferNotInitialized);
@@ -1758,8 +1771,8 @@ TEST(BufferVec, WriteBufferRangeErrors) {
 TEST(PipelineDescriptor, FragmentMut) {
     epix::assets::Handle<epix::shader::Shader> shader_handle{uuids::uuid{}};
     VertexState vs{shader_handle, {}, std::nullopt, {}};
-    RenderPipelineDescriptor rpd{"", {}, {}, vs, wgpu::PrimitiveState(), std::nullopt, wgpu::MultisampleState(),
-                                 std::nullopt};
+    RenderPipelineDescriptor rpd{
+        "", {}, {}, vs, wgpu::PrimitiveState(), std::nullopt, wgpu::MultisampleState(), std::nullopt};
     auto missing = rpd.fragment_mut();
     EXPECT_FALSE(missing.has_value());
 
@@ -1805,8 +1818,8 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestAdapter> {
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
-    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>>
-    prepare_asset(ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -1822,8 +1835,8 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestCloneAdapt
     RenderAssetUsages asset_usage(const ErasedTestSource&) const {
         return static_cast<RenderAssetUsages>(RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
     }
-    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>>
-    prepare_asset(ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -1837,8 +1850,8 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestMainOnlyAd
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::MAIN_WORLD; }
-    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>>
-    prepare_asset(ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -1854,12 +1867,13 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapt
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
-    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>>
-    prepare_asset(ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+    std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
         if (source.value == 99 && !g_erased_retry_already_retried) {
             g_erased_retry_already_retried = true;
             return std::unexpected(
-                epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(std::move(source)));
+                epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(
+                    std::move(source)));
         }
         return ErasedTestGpu{source.value};
     }
@@ -1876,12 +1890,12 @@ struct ErasedTestIdShiftB {};
 
 // ErasedRenderAssets container accessors (Bevy erased_render_asset.rs:192-224).
 TEST(ErasedRenderAsset, ContainerAccessors) {
-        erased_render_asset::ErasedRenderAssets<ErasedTestGpu> container;
+    erased_render_asset::ErasedRenderAssets<ErasedTestGpu> container;
     // AssetIndex is only constructible through an asset store (protected ctor),
     // so derive the ids from real handles like the asset pipeline does.
     epix::assets::Assets<ErasedTestSource> store;
-    auto handle_a                    = store.emplace(ErasedTestSource{1});
-    auto handle_b                    = store.emplace(ErasedTestSource{2});
+    auto handle_a                           = store.emplace(ErasedTestSource{1});
+    auto handle_b                           = store.emplace(ErasedTestSource{2});
     const epix::assets::UntypedAssetId id_a = epix::assets::UntypedAssetId(handle_a.id());
     const epix::assets::UntypedAssetId id_b = epix::assets::UntypedAssetId(handle_b.id());
 
@@ -1922,7 +1936,7 @@ TEST(ErasedRenderAsset, ContainerAccessors) {
 
 // PrepareAssetError variants (Bevy erased_render_asset.rs:20-26).
 TEST(ErasedRenderAsset, PrepareAssetErrorVariants) {
-        auto retry = erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(ErasedTestSource{7});
+    auto retry = erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(ErasedTestSource{7});
     EXPECT_TRUE(retry.is_retry_next_update());
     EXPECT_FALSE(retry.is_as_bind_group_error());
     EXPECT_EQ(retry.retry_asset().value, 7);
@@ -1937,7 +1951,7 @@ TEST(ErasedRenderAsset, PrepareAssetErrorVariants) {
 // extract_erased_render_asset (Bevy erased_render_asset.rs:244-312): RENDER_WORLD-only
 // assets are moved out of the main store; Unused events mark removals.
 TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
-        epix::ecs::World main_world(2);
+    epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestAdapter>{});
@@ -1947,7 +1961,7 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
-    auto& store  = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
+    auto& store   = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
     auto handle_a = store.emplace(ErasedTestSource{10});
     auto handle_b = store.emplace(ErasedTestSource{20});
     auto& events  = main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>>();
@@ -1960,7 +1974,7 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
     ASSERT_TRUE(system->run({}, render_world).has_value());
 
     auto& cache = render_world.resource<erased_render_asset::ExtractedAssets<ErasedTestAdapter>>();
-    ASSERT_EQ(cache.extracted.size(), 1u);   // b was unused -> removed, not extracted
+    ASSERT_EQ(cache.extracted.size(), 1u);  // b was unused -> removed, not extracted
     EXPECT_EQ(cache.extracted[0].first, handle_a.id());
     EXPECT_EQ(cache.extracted[0].second.value, 10);
     EXPECT_TRUE(cache.removed.contains(handle_b.id()));
@@ -1972,7 +1986,7 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
 // extract_erased_render_asset: RENDER_WORLD|MAIN_WORLD assets are cloned and stay
 // in the main store (Bevy erased_render_asset.rs:290-298).
 TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
-        epix::ecs::World main_world(2);
+    epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestCloneAdapter>{});
@@ -1982,7 +1996,7 @@ TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
-    auto& store  = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
+    auto& store   = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
     auto handle_a = store.emplace(ErasedTestSource{30});
     auto& events  = main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>>();
     events.push(epix::assets::AssetEvent<ErasedTestSource>::added(handle_a.id()));
@@ -2000,7 +2014,7 @@ TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
 
 // extract_erased_render_asset: MAIN_WORLD-only assets are never extracted.
 TEST(ErasedRenderAsset, ExtractSystemSkipsMainWorldOnly) {
-        epix::ecs::World main_world(2);
+    epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestMainOnlyAdapter>{});
@@ -2010,7 +2024,7 @@ TEST(ErasedRenderAsset, ExtractSystemSkipsMainWorldOnly) {
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
-    auto& store  = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
+    auto& store   = main_world.resource_mut<epix::assets::Assets<ErasedTestSource>>();
     auto handle_a = store.emplace(ErasedTestSource{40});
     auto& events  = main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>>();
     events.push(epix::assets::AssetEvent<ErasedTestSource>::added(handle_a.id()));
@@ -2030,7 +2044,7 @@ TEST(ErasedRenderAsset, ExtractSystemSkipsMainWorldOnly) {
 // PrepareNextFrameAssets; Unused removals unload.
 TEST(ErasedRenderAsset, PrepareSystemInsertsAndRetries) {
     epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapter>::reset();
-        epix::ecs::World world(2);
+    epix::ecs::World world(2);
     world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestRetryAdapter>{});
     world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
     world.insert_resource(erased_render_asset::PrepareNextFrameAssets<ErasedTestRetryAdapter>{});
@@ -2069,7 +2083,7 @@ TEST(ErasedRenderAsset, PrepareSystemInsertsAndRetries) {
 // erased_render_asset.rs:380-383).
 TEST(ErasedRenderAsset, PrepareSystemUnloadsRemoved) {
     epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapter>::reset();
-        epix::ecs::World world(2);
+    epix::ecs::World world(2);
     world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestRetryAdapter>{});
     world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
     world.insert_resource(erased_render_asset::PrepareNextFrameAssets<ErasedTestRetryAdapter>{});
@@ -2085,7 +2099,9 @@ TEST(ErasedRenderAsset, PrepareSystemUnloadsRemoved) {
     system->initialize(world);
     ASSERT_TRUE(system->run({}, world).has_value());
 
-    EXPECT_EQ(world.resource<erased_render_asset::ErasedRenderAssets<ErasedTestGpu>>().get(epix::assets::UntypedAssetId(id_a)), nullptr);
+    EXPECT_EQ(world.resource<erased_render_asset::ErasedRenderAssets<ErasedTestGpu>>().get(
+                  epix::assets::UntypedAssetId(id_a)),
+              nullptr);
 }
 
 // ImageSamplerDescriptor mirrors bevy_image (image.rs:758-842): linear()/nearest()
@@ -2193,7 +2209,7 @@ TEST(InheritedVisibility, ConstsAndGet) {
 namespace {
 
 struct BatchingTestCompare {
-    int key = 0;
+    int key                                           = 0;
     bool operator==(const BatchingTestCompare&) const = default;
 };
 struct BatchingTestBufferData {
@@ -2225,8 +2241,8 @@ struct epix::render::batching::GetFullBatchData<BatchingTestAdapter> {
         epix::render::batching::GetBatchData<BatchingTestAdapter>::Param&, sync_world::MainEntity) const {
         return std::pair<std::uint32_t, std::optional<BatchingTestCompare>>{2, BatchingTestCompare{4}};
     }
-    std::optional<std::uint32_t> get_binned_index(
-        epix::render::batching::GetBatchData<BatchingTestAdapter>::Param&, sync_world::MainEntity) const {
+    std::optional<std::uint32_t> get_binned_index(epix::render::batching::GetBatchData<BatchingTestAdapter>::Param&,
+                                                  sync_world::MainEntity) const {
         return 5u;
     }
 };
@@ -2333,8 +2349,8 @@ TEST(SetItemPipeline, SkipsOnPipelineMiss) {
     item.m_pipeline = CachedPipelineId{42u};  // uncached
 
     phase::SetItemPipeline<CachedPipelineTestItem> command;
-    auto result = command.render(item, epix::ecs::Item<>{}, std::optional<epix::ecs::Item<>>{},
-                                 params, wgpu::RenderPassEncoder{});
+    auto result = command.render(item, epix::ecs::Item<>{}, std::optional<epix::ecs::Item<>>{}, params,
+                                 wgpu::RenderPassEncoder{});
     ASSERT_FALSE(result.has_value());
     EXPECT_EQ(result.error().type, phase::RenderCommandError::Type::Skip);
 }
@@ -2366,7 +2382,7 @@ namespace {
 // trivially-copyable descriptor type).
 struct FakePipelineResource;
 struct FakePipelineDescriptor {
-    int config = 0;
+    int config                                           = 0;
     bool operator==(const FakePipelineDescriptor&) const = default;
 };
 }  // namespace
@@ -2391,7 +2407,7 @@ namespace {
 // dedup, Variants::specialize_slow).
 struct FakePipelineSpecializer {
     struct Key {
-        int variant = 0;
+        int variant                       = 0;
         bool operator==(const Key&) const = default;
     };
     Key specialize(const Key& key, FakePipelineDescriptor& descriptor) const {
@@ -2412,8 +2428,8 @@ static_assert(epix::render::SpecializerImpl<FakePipelineResource, FakePipelineSp
 // canonicalize to the same descriptor (Bevy specializer.rs:267-299).
 TEST(Specializer, VariantsMemoizeByKeyAndCanonicalDedup) {
     PipelineServer server{wgpu::Device{}};
-    epix::render::Variants<FakePipelineResource, FakePipelineSpecializer> variants(
-        FakePipelineSpecializer{}, FakePipelineDescriptor{});
+    epix::render::Variants<FakePipelineResource, FakePipelineSpecializer> variants(FakePipelineSpecializer{},
+                                                                                   FakePipelineDescriptor{});
 
     auto id0 = variants.specialize(server, {0});
     auto id1 = variants.specialize(server, {1});  // canonical {0} -> dedup with id0

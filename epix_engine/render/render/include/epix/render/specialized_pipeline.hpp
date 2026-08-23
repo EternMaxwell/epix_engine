@@ -5,10 +5,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstdint>
+#include <epix/ecs.hpp>
 #include <unordered_map>
 #include <utility>
 #include <variant>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/render/pipeline_server.hpp>

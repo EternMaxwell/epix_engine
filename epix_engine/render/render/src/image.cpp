@@ -83,8 +83,7 @@ wgpu::FilterMode filter_mode_cast(image::ImageFilterMode mode) noexcept {
     return mode == image::ImageFilterMode::Linear ? wgpu::FilterMode::eLinear : wgpu::FilterMode::eNearest;
 }
 wgpu::MipmapFilterMode mipmap_filter_mode_cast(image::ImageFilterMode mode) noexcept {
-    return mode == image::ImageFilterMode::Linear ? wgpu::MipmapFilterMode::eLinear
-                                                  : wgpu::MipmapFilterMode::eNearest;
+    return mode == image::ImageFilterMode::Linear ? wgpu::MipmapFilterMode::eLinear : wgpu::MipmapFilterMode::eNearest;
 }
 wgpu::CompareFunction compare_function_cast(image::ImageCompareFunction fn) noexcept {
     switch (fn) {
@@ -130,7 +129,9 @@ wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDesc
 }
 }  // namespace
 
-texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset, Param param, const texture::GpuImage* previous) {
+texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
+                                                           Param param,
+                                                           const texture::GpuImage* previous) {
     auto& [device, queue, default_sampler] = param;
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
                   asset.depth_or_layers(), static_cast<int>(asset.format()));
@@ -150,15 +151,15 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
     }
 
     texture::GpuImage gpu_image;
-    gpu_image.texture = device->createTexture(desc);
-    auto view_desc    = wgpu::TextureViewDescriptor()
-                            .setDimension(view_dimension_cast(asset.type()))
-                            .setMipLevelCount(1)
-                            .setBaseMipLevel(0)
-                            .setFormat(desc.format)
-                            .setBaseArrayLayer(0)
-                            .setArrayLayerCount(asset.layers());
-    gpu_image.texture_view    = gpu_image.texture.createView(view_desc);
+    gpu_image.texture      = device->createTexture(desc);
+    auto view_desc         = wgpu::TextureViewDescriptor()
+                                 .setDimension(view_dimension_cast(asset.type()))
+                                 .setMipLevelCount(1)
+                                 .setBaseMipLevel(0)
+                                 .setFormat(desc.format)
+                                 .setBaseArrayLayer(0)
+                                 .setArrayLayerCount(asset.layers());
+    gpu_image.texture_view = gpu_image.texture.createView(view_desc);
     // Bevy gpu_image.rs:119-122: ImageSampler::Default uses the global
     // DefaultImageSampler; ImageSampler::Descriptor creates a custom sampler.
     if (asset.sampler() == image::ImageSampler::Descriptor) {
@@ -170,8 +171,8 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
     gpu_image.size            = wgpu::Extent3D{asset.width(), asset.height(), asset.depth_or_layers()};
     gpu_image.mip_level_count = 1;
 
-    auto view = asset.raw_view();
-    gpu_image.had_data        = view.size_bytes() > 0;
+    auto view          = asset.raw_view();
+    gpu_image.had_data = view.size_bytes() > 0;
 
     // Bevy copy_on_resize (gpu_image.rs:80-108): when the upload has no data
     // and the previous GPU image exists, copy min(old, new) extents from it
@@ -227,8 +228,7 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
                                 .setTexture(gpu_image.texture)
                                 .setOrigin({0, 0, 0})
                                 .setAspect(wgpu::TextureAspect::eAll),
-                            padded.data(), padded.size(), layout,
-                            wgpu::Extent3D{width, height, layers});
+                            padded.data(), padded.size(), layout, wgpu::Extent3D{width, height, layers});
     }
 
     return gpu_image;

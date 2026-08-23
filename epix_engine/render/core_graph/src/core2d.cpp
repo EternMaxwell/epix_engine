@@ -86,16 +86,17 @@ void Camera2D::register_required_components(epix::ecs::RequiredComponentsRegistr
     // component inserter deliberately does not propagate that relationship,
     // so a bare Camera2D must declare the complete view dependency set.
     registrator.template register_required<camera::Camera>([] { return camera::Camera{}; });
-    registrator.template register_required<camera::Projection>([] {
-        return camera::Projection{camera::OrthographicProjection::default_2d()};
-    });
+    registrator.template register_required<camera::Projection>(
+        [] { return camera::Projection{camera::OrthographicProjection::default_2d()}; });
     registrator.template register_required<transform::Transform>([] { return transform::Transform{}; });
     registrator.template register_required<camera::VisibleEntities>([] { return camera::VisibleEntities{}; });
     registrator.template register_required<camera::RenderLayers>([] { return camera::RenderLayers::layer(0); });
     registrator.template register_required<view::Msaa>([] { return view::Msaa::Sample4; });
-    registrator.template register_required<camera::CameraMainTextureUsages>([] { return camera::CameraMainTextureUsages{}; });
+    registrator.template register_required<camera::CameraMainTextureUsages>(
+        [] { return camera::CameraMainTextureUsages{}; });
     registrator.template register_required<view::Frustum>([] { return view::Frustum{}; });
-    registrator.template register_required<render::camera::CameraRenderGraph>([] { return render::camera::CameraRenderGraph{Core2d}; });
+    registrator.template register_required<render::camera::CameraRenderGraph>(
+        [] { return render::camera::CameraRenderGraph{Core2d}; });
 }
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
@@ -132,8 +133,9 @@ void queue_core2d_blit_pipelines(
     for (auto&& [camera, target] : views.iter()) {
         if (camera.output_mode.type == camera::CameraOutputMode::Type::Skip || !target.out_texture.view) continue;
         const auto output_blend = output_blend_for(camera);
-        const auto existing = std::ranges::find_if(pipelines->pipelines, [&](const Core2dBlitPipeline& pipeline) {
-            return pipeline.format == target.out_texture.view_format && same_blend_state(pipeline.output_blend, output_blend);
+        const auto existing     = std::ranges::find_if(pipelines->pipelines, [&](const Core2dBlitPipeline& pipeline) {
+            return pipeline.format == target.out_texture.view_format &&
+                   same_blend_state(pipeline.output_blend, output_blend);
         });
         if (existing != pipelines->pipelines.end()) continue;
 
@@ -142,47 +144,56 @@ void queue_core2d_blit_pipelines(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("Core2dBlitLayout")
                 .setEntries(std::array{
-                    wgpu::BindGroupLayoutEntry().setBinding(0).setVisibility(wgpu::ShaderStage::eFragment).setSampler(
-                        wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
-                    wgpu::BindGroupLayoutEntry().setBinding(1).setVisibility(wgpu::ShaderStage::eFragment).setTexture(
-                        wgpu::TextureBindingLayout().setSampleType(wgpu::TextureSampleType::eFloat).setViewDimension(
-                            wgpu::TextureViewDimension::e2D)),
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
+                        .setSampler(wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eFragment)
+                        .setTexture(wgpu::TextureBindingLayout()
+                                        .setSampleType(wgpu::TextureSampleType::eFloat)
+                                        .setViewDimension(wgpu::TextureViewDimension::e2D)),
                 }));
-        built.sampler = device->createSampler(wgpu::SamplerDescriptor()
-                                                   .setLabel("Core2dBlitSampler")
-                                                   .setAddressModeU(wgpu::AddressMode::eClampToEdge)
-                                                   .setAddressModeV(wgpu::AddressMode::eClampToEdge)
-                                                   .setAddressModeW(wgpu::AddressMode::eClampToEdge)
-                                                   .setMinFilter(wgpu::FilterMode::eLinear)
-                                                   .setMagFilter(wgpu::FilterMode::eLinear)
-                                                   .setMipmapFilter(wgpu::MipmapFilterMode::eLinear)
-                                                   .setLodMinClamp(0.0f)
-                                                   .setLodMaxClamp(32.0f)
-                                                   .setMaxAnisotropy(1));
+        built.sampler                 = device->createSampler(wgpu::SamplerDescriptor()
+                                                                  .setLabel("Core2dBlitSampler")
+                                                                  .setAddressModeU(wgpu::AddressMode::eClampToEdge)
+                                                                  .setAddressModeV(wgpu::AddressMode::eClampToEdge)
+                                                                  .setAddressModeW(wgpu::AddressMode::eClampToEdge)
+                                                                  .setMinFilter(wgpu::FilterMode::eLinear)
+                                                                  .setMagFilter(wgpu::FilterMode::eLinear)
+                                                                  .setMipmapFilter(wgpu::MipmapFilterMode::eLinear)
+                                                                  .setLodMinClamp(0.0f)
+                                                                  .setLodMaxClamp(32.0f)
+                                                                  .setMaxAnisotropy(1));
         constexpr float kBlitVerts[6] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
-        built.vertex_buffer = device->createBuffer(wgpu::BufferDescriptor()
-                                                        .setLabel("Core2dBlitVBO")
-                                                        .setSize(sizeof(kBlitVerts))
-                                                        .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
+        built.vertex_buffer =
+            device->createBuffer(wgpu::BufferDescriptor()
+                                     .setLabel("Core2dBlitVBO")
+                                     .setSize(sizeof(kBlitVerts))
+                                     .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
         device->getQueue().writeBuffer(built.vertex_buffer, 0, kBlitVerts, sizeof(kBlitVerts));
 
         epix::render::VertexState vs{.shader = handles->vertex_shader, .entry_point = std::string("blitVert")};
-        vs.buffers.push_back(wgpu::VertexBufferLayout()
-                                 .setArrayStride(sizeof(float) * 2)
-                                 .setStepMode(wgpu::VertexStepMode::eVertex)
-                                 .setAttributes(std::array{
-                                     wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(wgpu::VertexFormat::eFloat32x2),
-                                 }));
+        vs.buffers.push_back(
+            wgpu::VertexBufferLayout()
+                .setArrayStride(sizeof(float) * 2)
+                .setStepMode(wgpu::VertexStepMode::eVertex)
+                .setAttributes(std::array{
+                    wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(wgpu::VertexFormat::eFloat32x2),
+                }));
         epix::render::FragmentState fs{.shader = handles->fragment_shader, .entry_point = std::string("blitFrag")};
         wgpu::ColorTargetState color_target;
         color_target.setFormat(target.out_texture.view_format).setWriteMask(wgpu::ColorWriteMask::eAll);
         if (output_blend) color_target.setBlend(*output_blend);
         fs.add_target(color_target);
-        built.pipeline_id = pipeline_server->queue_render_pipeline(epix::render::RenderPipelineDescriptor{
+        built.pipeline_id  = pipeline_server->queue_render_pipeline(epix::render::RenderPipelineDescriptor{
             .label       = "core2d-blit",
             .layouts     = {built.layout},
             .vertex      = std::move(vs),
-            .primitive   = wgpu::PrimitiveState().setTopology(wgpu::PrimitiveTopology::eTriangleList).setCullMode(wgpu::CullMode::eNone),
+            .primitive   = wgpu::PrimitiveState()
+                               .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                               .setCullMode(wgpu::CullMode::eNone),
             .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
             .fragment    = std::move(fs),
         });
@@ -194,7 +205,8 @@ void queue_core2d_blit_pipelines(
 
 void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) {
     if (!views) return;
-    auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(ctx.view_entity());
+    auto view_opt =
+        views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(ctx.view_entity());
     if (!view_opt) return;
     auto&& [camera, target] = *view_opt;
     if (!target.out_texture.view || camera.output_mode.type == camera::CameraOutputMode::Type::Skip) return;
@@ -203,18 +215,20 @@ void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_
     if (!pipelines) return;
     const auto output_blend = output_blend_for(camera);
     const auto blit = std::ranges::find_if(pipelines->get().pipelines, [&](const Core2dBlitPipeline& candidate) {
-        return candidate.format == target.out_texture.view_format && same_blend_state(candidate.output_blend, output_blend);
+        return candidate.format == target.out_texture.view_format &&
+               same_blend_state(candidate.output_blend, output_blend);
     });
     if (blit == pipelines->get().pipelines.end()) return;
     const auto& ps = world.resource<PipelineServer>();
-    auto pipeline = ps.get_render_pipeline(blit->pipeline_id);
+    auto pipeline  = ps.get_render_pipeline(blit->pipeline_id);
     if (!pipeline) return;
     auto device = render_ctx.device();
 
     // get_attachment marks the output as written -> needs_present -> present.
     std::optional<glm::vec4> clear_color;
     switch (camera.output_mode.clear_color.type) {
-        case camera::ClearColorConfig::Type::None: break;
+        case camera::ClearColorConfig::Type::None:
+            break;
         case camera::ClearColorConfig::Type::Custom:
             clear_color = camera.output_mode.clear_color.clear_color;
             break;
@@ -222,17 +236,16 @@ void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_
             if (auto global = world.get_resource<camera::ClearColor>()) clear_color = global->get().to_vec4();
             break;
     }
-    auto bind_group = device.createBindGroup(
-        wgpu::BindGroupDescriptor()
-            .setLabel("Core2dBlitBG")
-            .setLayout(blit->layout)
-            .setEntries(std::array{
-                wgpu::BindGroupEntry().setBinding(0).setSampler(blit->sampler),
-                wgpu::BindGroupEntry().setBinding(1).setTextureView(target.main_texture_view()),
-            }));
+    auto bind_group =
+        device.createBindGroup(wgpu::BindGroupDescriptor()
+                                   .setLabel("Core2dBlitBG")
+                                   .setLayout(blit->layout)
+                                   .setEntries(std::array{
+                                       wgpu::BindGroupEntry().setBinding(0).setSampler(blit->sampler),
+                                       wgpu::BindGroupEntry().setBinding(1).setTextureView(target.main_texture_view()),
+                                   }));
     auto render_pass = render_ctx.command_encoder().beginRenderPass(
-        wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture.get_attachment(clear_color)}));
+        wgpu::RenderPassDescriptor().setColorAttachments(std::array{target.out_texture.get_attachment(clear_color)}));
     // Bevy upscaling node set_scissor_rect: clip the blit to the camera viewport.
     if (camera.viewport) {
         const auto& vp = *camera.viewport;
@@ -252,7 +265,7 @@ void Core2dPlugin::attach(App& app) {
     // asset handles are plain ids so they are safe to copy across worlds.
     std::optional<Core2dBlitHandles> blit_handles;
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
-        auto server = app.world_mut().get_resource<assets::AssetServer>()) {
+        auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
         registry->get().insert_asset_static(kBlitVertexPath, shader_bytes(kBlitVertexSlang));
         registry->get().insert_asset_static(kBlitFragmentPath, shader_bytes(kBlitFragmentSlang));
         blit_handles = Core2dBlitHandles{
@@ -278,24 +291,25 @@ void Core2dPlugin::attach(App& app) {
                                            .in_set(RenderSystems::PhaseSort)
                                            .set_names(std::array{"sort transparent 2d phase", "sort ui 2d phase",
                                                                  "sort opaque 2d phase"}));
-        render_app.add_systems(Render, into(queue_core2d_blit_pipelines)
-                                           .in_set(RenderSystems::Queue)
-                                           .set_name("queue core2d blit pipelines"));
         render_app.add_systems(
-            Render, into([](Commands cmd,
-                            Query<Item<Entity, const render::camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
-                        // insert render phases for each view
-                        for (auto&& [entity, camera] : views.iter()) {
-                            // only insert for 2d camera render graph
-                            if (camera.render_graph == render::camera::CameraRenderGraph(Core2d)) {
-                                auto entity_commands = cmd.entity(entity);
-                                entity_commands.insert(phase::RenderPhase<Transparent2D>{},
-                                                       phase::RenderPhase<Opaque2D>{}, phase::RenderPhase<UI2DItem>{});
-                            }
-                        }
-                    })
-                        .in_set(RenderSystems::ManageViews)
-                        .set_name("insert 2d render phases"));
+            Render,
+            into(queue_core2d_blit_pipelines).in_set(RenderSystems::Queue).set_name("queue core2d blit pipelines"));
+        render_app.add_systems(
+            Render,
+            into([](Commands cmd,
+                    Query<Item<Entity, const render::camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
+                // insert render phases for each view
+                for (auto&& [entity, camera] : views.iter()) {
+                    // only insert for 2d camera render graph
+                    if (camera.render_graph == render::camera::CameraRenderGraph(Core2d)) {
+                        auto entity_commands = cmd.entity(entity);
+                        entity_commands.insert(phase::RenderPhase<Transparent2D>{}, phase::RenderPhase<Opaque2D>{},
+                                               phase::RenderPhase<UI2DItem>{});
+                    }
+                }
+            })
+                .in_set(RenderSystems::ManageViews)
+                .set_name("insert 2d render phases"));
         return std::make_optional(std::ref(render_app));
     });
 }

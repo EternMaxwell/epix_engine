@@ -34,9 +34,8 @@ inline glm::mat4 crop_to_sub_view(const glm::mat4& projection, const SubCameraVi
     const glm::vec2 sub_size(sub_view.size);
     const glm::vec2 scale = full_size / sub_size;
     // Input offsets use a top-left origin while clip-space Y points upward.
-    const glm::vec2 center = glm::vec2(
-        2.0f * (sub_view.offset.x + sub_size.x * 0.5f) / full_size.x - 1.0f,
-        1.0f - 2.0f * (sub_view.offset.y + sub_size.y * 0.5f) / full_size.y);
+    const glm::vec2 center = glm::vec2(2.0f * (sub_view.offset.x + sub_size.x * 0.5f) / full_size.x - 1.0f,
+                                       1.0f - 2.0f * (sub_view.offset.y + sub_size.y * 0.5f) / full_size.y);
     glm::mat4 crop(1.0f);
     crop[0][0] = scale.x;
     crop[1][1] = scale.y;
@@ -89,22 +88,24 @@ EPIX_EXPORT struct ScalingMode {
     /** @brief A fixed size in world units. */
     static ScalingMode fixed(float width, float height) {
         ScalingMode m;
-        m.mode        = Mode::Fixed;
-        m._fixed      = {width, height};
+        m.mode   = Mode::Fixed;
+        m._fixed = {width, height};
         return m;
     }
     /** @brief Match the viewport size one-to-one in world units (Bevy
      * `ScalingMode::WindowSize`). */
     static ScalingMode window_size() {
         ScalingMode m;
-        m.mode           = Mode::WindowSize;
-        m._window_size   = {1.0f};
+        m.mode         = Mode::WindowSize;
+        m._window_size = {1.0f};
         return m;
     }
     /** @brief Compatibility overload for older Epix callers. Bevy 0.18 has
      * no pixels-per-unit parameter; use `scale` on the projection instead. */
     [[deprecated("Bevy ScalingMode::WindowSize has no pixels-per-unit argument; use OrthographicProjection::scale")]]
-    static ScalingMode window_size(float) { return window_size(); }
+    static ScalingMode window_size(float) {
+        return window_size();
+    }
     /** @brief Fit the window while respecting minimum bounds. */
     static ScalingMode auto_min(float min_width, float min_height) {
         ScalingMode m;
@@ -122,8 +123,8 @@ EPIX_EXPORT struct ScalingMode {
     /** @brief Fixed vertical extent; horizontal scales with the aspect ratio. */
     static ScalingMode fixed_vertical(float vertical) {
         ScalingMode m;
-        m.mode             = Mode::FixedVertical;
-        m._fixed_vertical  = {vertical};
+        m.mode            = Mode::FixedVertical;
+        m._fixed_vertical = {vertical};
         return m;
     }
     /** @brief Fixed horizontal extent; vertical scales with the aspect ratio. */
@@ -181,8 +182,8 @@ EPIX_EXPORT struct ScalingMode {
 /** @brief Orthographic camera projection with configurable scaling, near/far
  * planes, and viewport origin. */
 EPIX_EXPORT struct OrthographicProjection {
-    float near_plane          = 0.0f;  // Bevy default_3d near clipping plane
-    float far_plane           = 1000.0f;   // Far clipping plane
+    float near_plane          = 0.0f;     // Bevy default_3d near clipping plane
+    float far_plane           = 1000.0f;  // Far clipping plane
     ScalingMode scaling_mode  = ScalingMode::window_size();
     float scale               = 1.0f;                   // Additional scale factor
     glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
@@ -205,7 +206,7 @@ EPIX_EXPORT struct OrthographicProjection {
     void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Bevy's default orthographic projection for 2D rendering. */
     static OrthographicProjection default_2d() {
-        auto projection = default_3d();
+        auto projection       = default_3d();
         projection.near_plane = -1000.0f;
         return projection;
     }
@@ -262,15 +263,16 @@ EPIX_EXPORT struct PerspectiveProjection {
         matrix[3][2] = near_plane;
         const glm::vec4 default_plane{0.0f, 0.0f, -1.0f, -near_plane};
         if (near_clip_plane == default_plane) return matrix;
-        const glm::vec4 q_prime{std::copysign(1.0f, near_clip_plane.x), std::copysign(1.0f, near_clip_plane.y), 0.0f, 1.0f};
-        const glm::vec4 q = glm::inverse(matrix) * q_prime;
+        const glm::vec4 q_prime{std::copysign(1.0f, near_clip_plane.x), std::copysign(1.0f, near_clip_plane.y), 0.0f,
+                                1.0f};
+        const glm::vec4 q       = glm::inverse(matrix) * q_prime;
         const float denominator = glm::dot(near_clip_plane, q);
         if (denominator == 0.0f || !std::isfinite(denominator)) return matrix;
         const glm::vec4 third_row = glm::vec4(0.0f, 0.0f, -1.0f, 0.0f) - near_clip_plane * (-q.z / denominator);
-        matrix[0][2] = third_row.x;
-        matrix[1][2] = third_row.y;
-        matrix[2][2] = third_row.z;
-        matrix[3][2] = third_row.w;
+        matrix[0][2]              = third_row.x;
+        matrix[1][2]              = third_row.y;
+        matrix[2][2]              = third_row.z;
+        matrix[3][2]              = third_row.w;
         return matrix;
     }
     /** @brief Projection cropped to a sub-camera view (Bevy
@@ -279,21 +281,21 @@ EPIX_EXPORT struct PerspectiveProjection {
         if (sub_view.full_size.x == 0 || sub_view.full_size.y == 0 || sub_view.size.x == 0 || sub_view.size.y == 0) {
             return get_projection_matrix();
         }
-        const float full_width = static_cast<float>(sub_view.full_size.x);
+        const float full_width  = static_cast<float>(sub_view.full_size.x);
         const float full_height = static_cast<float>(sub_view.full_size.y);
-        const float sub_width = static_cast<float>(sub_view.size.x);
-        const float sub_height = static_cast<float>(sub_view.size.y);
-        const float offset_x = sub_view.offset.x;
+        const float sub_width   = static_cast<float>(sub_view.size.x);
+        const float sub_height  = static_cast<float>(sub_view.size.y);
+        const float offset_x    = sub_view.offset.x;
         // Bevy sub-view offsets are top-left based while view-space Y is up.
-        const float offset_y = full_height - (sub_view.offset.y + sub_height);
-        const float top = near_plane * std::tan(0.5f * fov);
-        const float bottom = -top;
-        const float right = top * (full_width / full_height);
-        const float left = -right;
-        const float left_prime = left + (right - left) * offset_x / full_width;
-        const float right_prime = left + (right - left) * (offset_x + sub_width) / full_width;
+        const float offset_y     = full_height - (sub_view.offset.y + sub_height);
+        const float top          = near_plane * std::tan(0.5f * fov);
+        const float bottom       = -top;
+        const float right        = top * (full_width / full_height);
+        const float left         = -right;
+        const float left_prime   = left + (right - left) * offset_x / full_width;
+        const float right_prime  = left + (right - left) * (offset_x + sub_width) / full_width;
         const float bottom_prime = bottom + (top - bottom) * offset_y / full_height;
-        const float top_prime = bottom + (top - bottom) * (offset_y + sub_height) / full_height;
+        const float top_prime    = bottom + (top - bottom) * (offset_y + sub_height) / full_height;
         glm::mat4 matrix(0.0f);
         matrix[0][0] = 2.0f * near_plane / (right_prime - left_prime);
         matrix[1][1] = 2.0f * near_plane / (top_prime - bottom_prime);
@@ -303,15 +305,16 @@ EPIX_EXPORT struct PerspectiveProjection {
         matrix[3][2] = near_plane;
         const glm::vec4 default_plane{0.0f, 0.0f, -1.0f, -near_plane};
         if (near_clip_plane == default_plane) return matrix;
-        const glm::vec4 q_prime{std::copysign(1.0f, near_clip_plane.x), std::copysign(1.0f, near_clip_plane.y), 0.0f, 1.0f};
-        const glm::vec4 q = glm::inverse(matrix) * q_prime;
+        const glm::vec4 q_prime{std::copysign(1.0f, near_clip_plane.x), std::copysign(1.0f, near_clip_plane.y), 0.0f,
+                                1.0f};
+        const glm::vec4 q       = glm::inverse(matrix) * q_prime;
         const float denominator = glm::dot(near_clip_plane, q);
         if (denominator == 0.0f || !std::isfinite(denominator)) return matrix;
         const glm::vec4 third_row = glm::vec4(0.0f, 0.0f, -1.0f, 0.0f) - near_clip_plane * (-q.z / denominator);
-        matrix[0][2] = third_row.x;
-        matrix[1][2] = third_row.y;
-        matrix[2][2] = third_row.z;
-        matrix[3][2] = third_row.w;
+        matrix[0][2]              = third_row.x;
+        matrix[1][2]              = third_row.y;
+        matrix[2][2]              = third_row.z;
+        matrix[3][2]              = third_row.w;
         return matrix;
     }
     /** @brief Compute the 8 corners of the perspective frustum. */
@@ -361,7 +364,8 @@ EPIX_EXPORT struct Projection {
     }
     /** @brief Get the active projection matrix cropped to a sub-camera view. */
     glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
-        return std::visit([&sub_view](const auto& proj) { return proj.get_projection_matrix_for_sub(sub_view); }, projection);
+        return std::visit([&sub_view](const auto& proj) { return proj.get_projection_matrix_for_sub(sub_view); },
+                          projection);
     }
     /** @brief Get the far clipping plane distance. */
     float get_far() const {

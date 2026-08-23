@@ -15,6 +15,7 @@
 #include <epix/render/alpha.hpp>
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/assets.hpp>
+#include <epix/render/binned_phase.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/erased_render_asset.hpp>
 #include <epix/render/extract.hpp>
@@ -27,12 +28,11 @@
 #include <epix/render/manual_texture_view.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
-#include <epix/render/specializer.hpp>
-#include <epix/render/binned_phase.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>
 #include <epix/render/specialized_pipeline.hpp>
+#include <epix/render/specializer.hpp>
 #include <epix/render/storage.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/texture_attachment.hpp>
@@ -100,22 +100,32 @@ EPIX_EXPORT struct WgpuSettings {
     void apply_env_overrides() {
         if (const char* backend = std::getenv("WGPU_BACKEND")) {
             std::string_view b(backend);
-            if (b == "vulkan" || b == "Vulkan" || b == "VK") backends = wgpu::BackendType::eVulkan;
-            else if (b == "dx12" || b == "DX12" || b == "D3D12") backends = wgpu::BackendType::eD3D12;
-            else if (b == "metal" || b == "METAL") backends = wgpu::BackendType::eMetal;
-            else if (b == "gl" || b == "GL" || b == "opengl") backends = wgpu::BackendType::eOpenGL;
-            else if (b == "wgpu" || b == "browser" || b == "WGPU") backends = wgpu::BackendType::eWebGPU;
+            if (b == "vulkan" || b == "Vulkan" || b == "VK")
+                backends = wgpu::BackendType::eVulkan;
+            else if (b == "dx12" || b == "DX12" || b == "D3D12")
+                backends = wgpu::BackendType::eD3D12;
+            else if (b == "metal" || b == "METAL")
+                backends = wgpu::BackendType::eMetal;
+            else if (b == "gl" || b == "GL" || b == "opengl")
+                backends = wgpu::BackendType::eOpenGL;
+            else if (b == "wgpu" || b == "browser" || b == "WGPU")
+                backends = wgpu::BackendType::eWebGPU;
         }
         if (const char* power = std::getenv("WGPU_POWER_PREF")) {
             std::string_view p(power);
-            if (p == "low" || p == "Low") power_preference = wgpu::PowerPreference::eLowPower;
-            else if (p == "high" || p == "High") power_preference = wgpu::PowerPreference::eHighPerformance;
+            if (p == "low" || p == "Low")
+                power_preference = wgpu::PowerPreference::eLowPower;
+            else if (p == "high" || p == "High")
+                power_preference = wgpu::PowerPreference::eHighPerformance;
         }
         if (const char* prio = std::getenv("WGPU_SETTINGS_PRIO")) {
             std::string_view q(prio);
-            if (q == "compat" || q == "Compatibility") priority = WgpuSettingsPriority::Compatibility;
-            else if (q == "webgl2" || q == "WebGL2") priority = WgpuSettingsPriority::WebGL2;
-            else if (q == "func" || q == "Functionality") priority = WgpuSettingsPriority::Functionality;
+            if (q == "compat" || q == "Compatibility")
+                priority = WgpuSettingsPriority::Compatibility;
+            else if (q == "webgl2" || q == "WebGL2")
+                priority = WgpuSettingsPriority::WebGL2;
+            else if (q == "func" || q == "Functionality")
+                priority = WgpuSettingsPriority::Functionality;
         }
     }
 };
@@ -134,8 +144,7 @@ EPIX_EXPORT struct RenderDebugFlags {
         return (bits & ALLOW_COPIES_FROM_INDIRECT_PARAMETERS) != 0;
     }
     void set_allow_copies_from_indirect_parameters(bool value = true) noexcept {
-        bits = value ? (bits | ALLOW_COPIES_FROM_INDIRECT_PARAMETERS)
-                     : (bits & ~ALLOW_COPIES_FROM_INDIRECT_PARAMETERS);
+        bits = value ? (bits | ALLOW_COPIES_FROM_INDIRECT_PARAMETERS) : (bits & ~ALLOW_COPIES_FROM_INDIRECT_PARAMETERS);
     }
 };
 

@@ -14,10 +14,10 @@
 #include <epix/render/label.hpp>
 #include <epix/traits.hpp>
 #include <epix/utils.hpp>
-#include <glm/glm.hpp>
 #include <expected>
 #include <format>
 #include <functional>
+#include <glm/glm.hpp>
 #include <limits>
 #include <memory>
 #include <mutex>
@@ -117,8 +117,7 @@ EPIX_EXPORT enum class PhaseItemExtraIndex : std::uint8_t {
 };
 
 /** @brief Length of a batch range (Bevy `Range::len`). */
-EPIX_EXPORT inline std::uint32_t batch_range_len(
-    const std::pair<std::uint32_t, std::uint32_t>& range) noexcept {
+EPIX_EXPORT inline std::uint32_t batch_range_len(const std::pair<std::uint32_t, std::uint32_t>& range) noexcept {
     return range.second - range.first;
 }
 
@@ -298,8 +297,8 @@ struct DrawFunctionsInternal {
         if (auto it = m_indices.find(meta::type_id<T>()); it != m_indices.end()) {
             return DrawFunctionId(it->second);
         }
-        throw std::runtime_error(std::format("Draw function {} not found for {}", meta::type_id<T>().name(),
-                                             meta::type_id<P>().name()));
+        throw std::runtime_error(
+            std::format("Draw function {} not found for {}", meta::type_id<T>().name(), meta::type_id<P>().name()));
     }
     template <typename Func>
         requires Draw<P, std::decay_t<Func>>
@@ -401,9 +400,7 @@ struct RenderPhase {
 
     /** @brief Length of the item's batch range, at least 1 (Bevy
      * batch_range().len()). */
-    std::size_t batch_size(const T& item) const {
-        return std::max<std::size_t>(1, batch_range_len(item.batch_range));
-    }
+    std::size_t batch_size(const T& item) const { return std::max<std::size_t>(1, batch_range_len(item.batch_range)); }
 
    public:
     void add(const T& item) { items.push_back(item); }
@@ -437,7 +434,7 @@ struct RenderPhase {
         // function; otherwise skip `batch_range.len()` items after each
         // batched draw (render_phase/mod.rs:1470-1487).
         for (std::size_t i = start; i < end;) {
-            auto& item = items[i];
+            auto& item            = items[i];
             const std::size_t len = batch_range_len(item.batch_range);
             if (len == 0) {
                 ++i;
@@ -709,8 +706,8 @@ EPIX_EXPORT struct ViewRangefinder3d {
     static ViewRangefinder3d from_world_from_view(const glm::mat4& world_from_view) noexcept {
         const glm::mat4 view_from_world = glm::inverse(world_from_view);
         // row 2 (the z row) of the column-major view matrix
-        return ViewRangefinder3d{glm::vec4(view_from_world[0].z, view_from_world[1].z, view_from_world[2].z,
-                                           view_from_world[3].z)};
+        return ViewRangefinder3d{
+            glm::vec4(view_from_world[0].z, view_from_world[1].z, view_from_world[2].z, view_from_world[3].z)};
     }
 
     /** @brief Calculates the distance (view-space Z) for the given world-space position. */
@@ -759,16 +756,19 @@ EPIX_EXPORT class TrackedRenderPass {
         const void* id = pipeline.raw();
         if (m_pipeline == id) return;
         m_pass.setPipeline(pipeline);
-        m_pipeline    = id;
+        m_pipeline     = id;
         m_stores_state = true;
     }
 
     /** @brief Bind a bind group at `index` with optional dynamic offsets.
      * Redundant binds (same group and offsets) are skipped. */
-    void set_bind_group(std::uint32_t index, const wgpu::BindGroup& bind_group, std::span<const std::uint32_t> offsets) {
-        const void* id = bind_group.raw();
+    void set_bind_group(std::uint32_t index,
+                        const wgpu::BindGroup& bind_group,
+                        std::span<const std::uint32_t> offsets) {
+        const void* id              = bind_group.raw();
         const auto& current_offsets = index < m_bind_groups.size() ? m_bind_groups[index].second : m_empty_offsets;
-        if (index < m_bind_groups.size() && m_bind_groups[index].first == id && current_offsets.size() == offsets.size() &&
+        if (index < m_bind_groups.size() && m_bind_groups[index].first == id &&
+            current_offsets.size() == offsets.size() &&
             std::equal(current_offsets.begin(), current_offsets.end(), offsets.begin())) {
             return;
         }
@@ -776,13 +776,16 @@ EPIX_EXPORT class TrackedRenderPass {
         if (index >= m_bind_groups.size()) {
             m_bind_groups.resize(static_cast<std::size_t>(index) + 1);
         }
-        m_bind_groups[index].first  = id;
+        m_bind_groups[index].first = id;
         m_bind_groups[index].second.assign(offsets.begin(), offsets.end());
         m_stores_state = true;
     }
 
     /** @brief Bind a vertex buffer at `slot`. Redundant binds are skipped. */
-    void set_vertex_buffer(std::uint32_t slot, const wgpu::Buffer& buffer, std::uint64_t offset = 0, std::uint64_t size = 0) {
+    void set_vertex_buffer(std::uint32_t slot,
+                           const wgpu::Buffer& buffer,
+                           std::uint64_t offset = 0,
+                           std::uint64_t size   = 0) {
         const BufferSliceKey key{buffer.raw(), offset, size};
         if (slot < m_vertex_buffers.size() && m_vertex_buffers[slot] == key) return;
         m_pass.setVertexBuffer(slot, buffer, offset, size);
@@ -790,13 +793,15 @@ EPIX_EXPORT class TrackedRenderPass {
             m_vertex_buffers.resize(static_cast<std::size_t>(slot) + 1);
         }
         m_vertex_buffers[slot] = key;
-        m_stores_state = true;
+        m_stores_state         = true;
     }
 
     /** @brief Bind an index buffer. Redundant binds (same slice and format)
      * are skipped. */
-    void set_index_buffer(const wgpu::Buffer& buffer, wgpu::IndexFormat format, std::uint64_t offset = 0,
-                          std::uint64_t size = 0) {
+    void set_index_buffer(const wgpu::Buffer& buffer,
+                          wgpu::IndexFormat format,
+                          std::uint64_t offset = 0,
+                          std::uint64_t size   = 0) {
         const BufferSliceKey key{buffer.raw(), offset, size};
         if (m_index_buffer && m_index_buffer->first == key && m_index_buffer->second == format) return;
         m_pass.setIndexBuffer(buffer, format, offset, size);

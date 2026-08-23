@@ -137,8 +137,8 @@ void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
                      ecs::Res<wgpu::Device> device);
 
 void present_windows(ecs::ResMut<WindowSurfaces> window_surfaces,
-                    ecs::ResMut<ExtractedWindows> windows,
-                    ecs::Query<ecs::Item<ecs::Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views);
+                     ecs::ResMut<ExtractedWindows> windows,
+                     ecs::Query<ecs::Item<ecs::Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views);
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */

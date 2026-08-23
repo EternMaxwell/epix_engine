@@ -4,10 +4,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
+#include <glm/glm.hpp>
 #include <memory>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <glm/glm.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>
@@ -34,9 +34,9 @@ struct ColorAttachment {
     ColorAttachment() : is_first_call(std::make_shared<std::atomic<bool>>(true)) {}
 
     ColorAttachment(CachedTexture texture,
-                    std::optional<CachedTexture> resolve_target          = std::nullopt,
-                    std::optional<CachedTexture> previous_frame_texture  = std::nullopt,
-                    std::optional<glm::vec4> clear_color                 = std::nullopt)
+                    std::optional<CachedTexture> resolve_target         = std::nullopt,
+                    std::optional<CachedTexture> previous_frame_texture = std::nullopt,
+                    std::optional<glm::vec4> clear_color                = std::nullopt)
         : texture(std::move(texture)),
           resolve_target(std::move(resolve_target)),
           previous_frame_texture(std::move(previous_frame_texture)),
@@ -67,7 +67,7 @@ struct ColorAttachment {
     /** @brief Build the attachment without a resolve target. */
     wgpu::RenderPassColorAttachment get_unsampled_attachment() const {
         const bool first_call = is_first_call->exchange(false);
-        wgpu::LoadOp load_op   = (clear_color && first_call) ? wgpu::LoadOp::eClear : wgpu::LoadOp::eLoad;
+        wgpu::LoadOp load_op  = (clear_color && first_call) ? wgpu::LoadOp::eClear : wgpu::LoadOp::eLoad;
         wgpu::RenderPassColorAttachment attachment;
         attachment.setView(texture.default_view)
             .setDepthSlice(~0u)

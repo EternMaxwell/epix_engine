@@ -49,16 +49,18 @@ std::string GraphError::to_string() const {
                                 slot_label_name(e.input_slot), !e.missing_in_input);
                         },
                         [](const EdgeAlreadyExists& e) -> std::string {
-                            return std::format("Edge already exists: output(node={}, index={}) "
-                                               "input(node={}, index={})",
-                                               e.output_node.type_index().short_name(), e.output_index,
-                                               e.input_node.type_index().short_name(), e.input_index);
+                            return std::format(
+                                "Edge already exists: output(node={}, index={}) "
+                                "input(node={}, index={})",
+                                e.output_node.type_index().short_name(), e.output_index,
+                                e.input_node.type_index().short_name(), e.input_index);
                         },
                         [](const EdgeDoesNotExist& e) -> std::string {
-                            return std::format("Edge does not exist: output(node={}, index={}) "
-                                               "input(node={}, index={})",
-                                               e.output_node.type_index().short_name(), e.output_index,
-                                               e.input_node.type_index().short_name(), e.input_index);
+                            return std::format(
+                                "Edge does not exist: output(node={}, index={}) "
+                                "input(node={}, index={})",
+                                e.output_node.type_index().short_name(), e.output_index,
+                                e.input_node.type_index().short_name(), e.input_index);
                         },
                         [](const InputSlotOccupied& e) -> std::string {
                             return std::format(
@@ -73,9 +75,8 @@ std::string GraphError::to_string() const {
                             return std::format(
                                 "Slot type mismatch: output(node={}, index={}, "
                                 "type={}) input(node={}, index={}, type={})",
-                                e.output_node.type_index().short_name(), e.output_index,
-                                type_name(e.output_type), e.input_node.type_index().short_name(),
-                                e.input_index, type_name(e.input_type));
+                                e.output_node.type_index().short_name(), e.output_index, type_name(e.output_type),
+                                e.input_node.type_index().short_name(), e.input_index, type_name(e.input_type));
                         }},
                     e);
             },

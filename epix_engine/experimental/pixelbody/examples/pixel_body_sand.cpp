@@ -127,9 +127,7 @@ void setup(Commands cmd) {
     cmd.insert_resource(std::move(registry));
 
     // Main camera.
-    {
-        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{}).insert(MainCamera{});
-    }
+    { cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{}).insert(MainCamera{}); }
 
     // Sand world.
     constexpr std::size_t chunk_shift = 5;

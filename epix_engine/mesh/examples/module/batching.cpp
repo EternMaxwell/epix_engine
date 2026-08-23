@@ -29,37 +29,38 @@ using namespace epix;
 namespace {
 struct CamControlPlugin {
     void attach(app::App& app) {
-        app.add_systems(app::Update,
-                        ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&,
-                                                          transform::Transform&>> camera,
-                                     ecs::EventReader<input::MouseScroll> scroll_input,
-                                     ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
-                            auto opt = camera.single();
-                            if (!opt) return;
-                            auto&& [cam, proj, trans] = *opt;
-                            if (key_states->pressed(input::KeyCode::KeySpace)) {
-                                trans.translation = glm::vec3(0, 0, 0);
-                                proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
-                                    *ortho = camera::OrthographicProjection{};
-                                    return true;
-                                });
-                                return;
-                            }
-                            glm::vec3 delta(0.0f);
-                            if (key_states->pressed(input::KeyCode::KeyW)) delta += glm::vec3(0, 1, 0);
-                            if (key_states->pressed(input::KeyCode::KeyS)) delta -= glm::vec3(0, 1, 0);
-                            if (key_states->pressed(input::KeyCode::KeyA)) delta -= glm::vec3(1, 0, 0);
-                            if (key_states->pressed(input::KeyCode::KeyD)) delta += glm::vec3(1, 0, 0);
-                            if (glm::length(delta) > 0.0f) {
-                                trans.translation += glm::normalize(delta) * 5.0f;
-                            }
-                            proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
-                                for (const auto& e : scroll_input.read()) {
-                                    ortho->scale *= std::exp(-static_cast<float>(e.yoffset) * 0.1f);
-                                }
-                                return true;
-                            });
-                        }).set_name("camera control"));
+        app.add_systems(
+            app::Update,
+            ecs::into([](ecs::Query<ecs::Item<const camera::Camera&, camera::Projection&, transform::Transform&>>
+                             camera,
+                         ecs::EventReader<input::MouseScroll> scroll_input,
+                         ecs::Res<input::ButtonInput<input::KeyCode>> key_states) {
+                auto opt = camera.single();
+                if (!opt) return;
+                auto&& [cam, proj, trans] = *opt;
+                if (key_states->pressed(input::KeyCode::KeySpace)) {
+                    trans.translation = glm::vec3(0, 0, 0);
+                    proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
+                        *ortho = camera::OrthographicProjection{};
+                        return true;
+                    });
+                    return;
+                }
+                glm::vec3 delta(0.0f);
+                if (key_states->pressed(input::KeyCode::KeyW)) delta += glm::vec3(0, 1, 0);
+                if (key_states->pressed(input::KeyCode::KeyS)) delta -= glm::vec3(0, 1, 0);
+                if (key_states->pressed(input::KeyCode::KeyA)) delta -= glm::vec3(1, 0, 0);
+                if (key_states->pressed(input::KeyCode::KeyD)) delta += glm::vec3(1, 0, 0);
+                if (glm::length(delta) > 0.0f) {
+                    trans.translation += glm::normalize(delta) * 5.0f;
+                }
+                proj.as_orthographic().transform([&](camera::OrthographicProjection* ortho) {
+                    for (const auto& e : scroll_input.read()) {
+                        ortho->scale *= std::exp(-static_cast<float>(e.yoffset) * 0.1f);
+                    }
+                    return true;
+                });
+            }).set_name("camera control"));
     }
 };
 

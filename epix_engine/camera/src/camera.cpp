@@ -130,7 +130,7 @@ void check_visibility_system(
     // Frustum culling is not applied yet — epix has no per-entity bounds; the
     // Frustum is kept in the query for that work.
     constexpr std::uint32_t kMaxViews = 15;  // ViewVisibility has 16 per-view bits
-    const auto visibility_class = ::epix::meta::type_index(::epix::meta::type_id<Visibility>());
+    const auto visibility_class       = ::epix::meta::type_index(::epix::meta::type_id<Visibility>());
     std::unordered_set<Entity> visible_anywhere;
     std::size_t view_index = 0;
     for (auto&& [camera_entity, camera, visible_entities, camera_layers, frustum] : cameras.iter()) {
@@ -179,13 +179,13 @@ void CameraPlugin::attach(App& app) {
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
     app.add_systems(app::PostUpdate, into(visibility_propagate_system).set_name("visibility propagate"));
     app.add_systems(app::PostUpdate, into(reset_view_visibility).set_name("reset view visibility"));
-    app.add_systems(app::PostUpdate, into(update_frusta).after(CameraUpdateSystems::CameraUpdateSystem).set_name("update frusta"));
     app.add_systems(app::PostUpdate,
-                    into(check_visibility_system)
-                        .after(update_frusta)
-                        .after(visibility_propagate_system)
-                        .after(reset_view_visibility)
-                        .set_name("check visibility"));
+                    into(update_frusta).after(CameraUpdateSystems::CameraUpdateSystem).set_name("update frusta"));
+    app.add_systems(app::PostUpdate, into(check_visibility_system)
+                                         .after(update_frusta)
+                                         .after(visibility_propagate_system)
+                                         .after(reset_view_visibility)
+                                         .set_name("check visibility"));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{});
     // ClearColor extraction to the render world is registered by the render

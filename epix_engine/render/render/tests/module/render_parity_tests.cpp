@@ -10,7 +10,7 @@ using namespace epix::render;
 // Mirrors Bevy's ViewRangefinder3d unit test (bevy_render/render_phase/rangefinder.rs).
 TEST(ViewRangefinder3d, Distance) {
     const glm::mat4 view_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));
-    const auto rangefinder = phase::ViewRangefinder3d::from_world_from_view(view_matrix);
+    const auto rangefinder      = phase::ViewRangefinder3d::from_world_from_view(view_matrix);
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 0.0f)), 1.0f);
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 1.0f)), 2.0f);
 }
@@ -53,8 +53,8 @@ TEST(TextureCache, EvictsAfterThreeFrames) {
     render_resource::TextureCache cache;
     // manually seed one entry (device creation is not needed for eviction)
     render_resource::TextureCacheKey key;
-    key.width  = 4;
-    key.height = 4;
+    key.width           = 4;
+    key.height          = 4;
     cache.textures[key] = {render_resource::detail::CachedTextureMeta{}};
     // frame 1..3: unused entry ages and is released
     cache.update();  // frames_since_last_use = 1, taken = false
@@ -88,11 +88,11 @@ TEST(SortedCamera, SortKey) {
     EXPECT_TRUE(b.sort_key() < a.sort_key());
     // same order, different target types: texture (key 1) sorts before window (key 2+)
     camera::SortedCamera tex;
-    tex.order   = 1;
-    tex.target  = camera::RenderTarget::from_texture(wgpu::Texture{});
+    tex.order  = 1;
+    tex.target = camera::RenderTarget::from_texture(wgpu::Texture{});
     camera::SortedCamera win;
-    win.order   = 1;
-    win.target  = camera::RenderTarget::from_primary();
+    win.order  = 1;
+    win.target = camera::RenderTarget::from_primary();
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 

@@ -4,13 +4,13 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/assets.hpp>
+#include <epix/ecs.hpp>
 #include <optional>
 #include <string>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/app.hpp>
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/render/assets.hpp>
@@ -82,8 +82,8 @@ EPIX_EXPORT struct GpuShaderStorageBuffer {
 
 template <>
 struct RenderAsset<ShaderStorageBuffer> {
-    using Param            = std::tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>>;
-    using ProcessedAsset   = GpuShaderStorageBuffer;
+    using Param          = std::tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>>;
+    using ProcessedAsset = GpuShaderStorageBuffer;
 
     ProcessedAsset prepare_asset(ShaderStorageBuffer&& asset, Param param);
     RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;

@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/ecs.hpp>
+#include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
-#include <glm/glm.hpp>
 #include <webgpu/webgpu.hpp>
-#include <epix/ecs.hpp>
-#include <epix/app.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>
@@ -36,7 +36,7 @@ EPIX_EXPORT struct VisibilityRange {
     /** @brief Start of the end crossfade margin. */
     float end_margin_start = 0.0f;
     /** @brief End of the visible range. */
-    float end_margin_end = 0.0f;
+    float end_margin_end                          = 0.0f;
     bool operator==(const VisibilityRange&) const = default;
     /** @brief Whether the start margin is abrupt (no crossfade). */
     bool abrupt_start_margin = false;
@@ -69,7 +69,7 @@ namespace epix::render::view {
 namespace detail {
 struct RenderVisibilityEntityInfo {
     std::uint16_t buffer_index = 0;
-    bool is_abrupt = false;
+    bool is_abrupt             = false;
 };
 }  // namespace detail
 
@@ -84,9 +84,8 @@ EPIX_EXPORT struct RenderVisibilityRanges {
     /** @brief Range-to-index dedup map. */
     std::unordered_map<VisibilityRange, std::uint16_t> range_to_index;
     /** @brief GPU buffer of range vec4s (Bevy usages: STORAGE|UNIFORM|VERTEX). */
-    render_resource::BufferVec<glm::vec4> buffer{
-        wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eVertex |
-        wgpu::BufferUsage::eCopyDst};
+    render_resource::BufferVec<glm::vec4> buffer{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eUniform |
+                                                 wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst};
     /** @brief True when the buffer needs re-upload (Bevy default: true). */
     bool buffer_dirty = true;
 
@@ -111,10 +110,8 @@ EPIX_EXPORT struct RenderVisibilityRanges {
                 spdlog::warn("[render] Too many distinct visibility ranges; index truncated.");
             }
             buffer_index = static_cast<std::uint16_t>(range_to_index.size());
-            buffer.push(glm::vec4(visibility_range.start_margin_start,
-                                  visibility_range.start_margin_end,
-                                  visibility_range.end_margin_start,
-                                  visibility_range.end_margin_end));
+            buffer.push(glm::vec4(visibility_range.start_margin_start, visibility_range.start_margin_end,
+                                  visibility_range.end_margin_start, visibility_range.end_margin_end));
             range_to_index.emplace(visibility_range, buffer_index);
             buffer_dirty = true;
         }
@@ -188,4 +185,3 @@ EPIX_EXPORT struct RenderVisibilityRangePlugin {
 };
 
 }  // namespace epix::render::view
-

@@ -211,8 +211,7 @@ struct DrawMesh2dBatch {
             encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
                                 item.batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0,
-                         item.batch_range.first);
+            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, item.batch_range.first);
         }
         return {};
     }

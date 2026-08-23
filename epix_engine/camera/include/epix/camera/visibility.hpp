@@ -33,9 +33,7 @@ EPIX_EXPORT struct ViewVisibility {
     /** @brief Visible to any view (Bevy ViewVisibility::get: not culled). */
     bool get() const noexcept { return (flags & (1u << 0)) == 0; }
     /** @brief Visible in the given view (Bevy get_in_view). */
-    bool get_in_view(std::uint32_t view_index) const noexcept {
-        return (flags & (1u << (view_index + 1))) != 0;
-    }
+    bool get_in_view(std::uint32_t view_index) const noexcept { return (flags & (1u << (view_index + 1))) != 0; }
     /** @brief Set visibility for the given view (Bevy set_in_view). */
     void set_in_view(std::uint32_t view_index, bool visible) noexcept {
         const std::uint32_t mask = 1u << (view_index + 1);
@@ -258,7 +256,7 @@ EPIX_EXPORT struct VisibleEntities {
 
 /** @brief MSAA sample count for a camera view (Bevy 0.18 Msaa). */
 EPIX_EXPORT enum class Msaa : std::uint32_t {
-    Off = 1,
+    Off     = 1,
     Sample2 = 2,
     Sample4 = 4,
     Sample8 = 8,
@@ -270,11 +268,16 @@ EPIX_EXPORT inline std::uint32_t samples(Msaa msaa) noexcept { return static_cas
 /** @brief Convert a raw sample count to Msaa. Throws for unsupported counts. */
 EPIX_EXPORT inline Msaa msaa_from_samples(std::uint32_t sample_count) {
     switch (sample_count) {
-        case 1: return Msaa::Off;
-        case 2: return Msaa::Sample2;
-        case 4: return Msaa::Sample4;
-        case 8: return Msaa::Sample8;
-        default: throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
+        case 1:
+            return Msaa::Off;
+        case 2:
+            return Msaa::Sample2;
+        case 4:
+            return Msaa::Sample4;
+        case 8:
+            return Msaa::Sample8;
+        default:
+            throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
     }
 }
 
@@ -288,7 +291,8 @@ EPIX_EXPORT void visibility_propagate_system(
 
 /** @brief Resets every ViewVisibility to the default (visible-by-default)
  * state before check_visibility runs (Bevy reset_view_visibility). */
-EPIX_EXPORT void reset_view_visibility(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
+EPIX_EXPORT void reset_view_visibility(
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 
 /** @brief Marks entities visible per camera view: sets the per-view bit and
  * collects them into the camera's VisibleEntities (Bevy check_visibility).
@@ -307,8 +311,8 @@ EPIX_EXPORT void check_visibility_system(
 
 /** @brief Recomputes each camera's Frustum from its projection and transform
  * (Bevy update_frusta). */
-EPIX_EXPORT void update_frusta(epix::ecs::Query<epix::ecs::Item<const Camera&,
-                                                               const ::epix::transform::GlobalTransform&,
-                                                               epix::ecs::Mut<Frustum>>> cameras);
+EPIX_EXPORT void update_frusta(
+    epix::ecs::Query<epix::ecs::Item<const Camera&, const ::epix::transform::GlobalTransform&, epix::ecs::Mut<Frustum>>>
+        cameras);
 
 }  // namespace epix::camera

@@ -2,9 +2,9 @@
 #include <spdlog/spdlog.h>
 
 // include header to deal with partial specialization problem in MSVC
-#include <epix/render.hpp>
 #include <algorithm>
 #include <cctype>
+#include <epix/render.hpp>
 #include <format>
 #include <memory>
 #include <stacktrace>
@@ -55,12 +55,12 @@ void RenderPlugin::attach(App& app) {
         auto should_run_startup = std::make_shared<bool>(true);
         // AssetExtractionSystems must be registered in the ExtractSchedule for
         // the extract_*_asset systems' in_set hierarchy (Bevy configure_sets).
-        auto extract_schedule = Schedule(render::ExtractSchedule).with_schedule_config(ecs::ScheduleConfig{
-            .executor_config = {.deferred = ecs::DeferredApply::Ignore},
-        });
+        auto extract_schedule = Schedule(render::ExtractSchedule)
+                                    .with_schedule_config(ecs::ScheduleConfig{
+                                        .executor_config = {.deferred = ecs::DeferredApply::Ignore},
+                                    });
         extract_schedule.configure_sets(ecs::sets(AssetExtractionSystems{}));
-        render_app
-            .add_schedule(std::move(extract_schedule))
+        render_app.add_schedule(std::move(extract_schedule))
             .add_schedule(Schedule(render::RenderStartup))
             .add_schedule(render::Render.render_schedule())
             .set_extract_fn([should_run_startup](App& render_app, World& main_world) {
@@ -84,8 +84,8 @@ void RenderPlugin::attach(App& app) {
         // Extraction also supplies the default usage to cameras spawned before
         // EPIX can propagate a newly-added transitive required component.
         render_app.add_systems(ExtractSchedule, into(render::camera::extract_cameras).set_name("extract cameras"));
-        render_app.add_systems(Render,
-                               into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
+        render_app.add_systems(
+            Render, into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
         if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
             render_graph->get().add_node(render::camera::CameraDriverNodeLabel, render::camera::CameraDriverNode{});
         }
@@ -127,14 +127,14 @@ void RenderPlugin::attach(App& app) {
         std::vector<wgpu::Adapter> adapters(count);
         instance.enumerateAdapters(&adapters[0]);
         std::string needle = *desired_adapter_name;
-        std::ranges::transform(needle, needle.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        std::ranges::transform(needle, needle.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         for (auto& candidate : adapters) {
             wgpu::AdapterInfo info;
             candidate.getInfo(&info);
             std::string device(info.device);
-            std::ranges::transform(device, device.begin(), [](unsigned char c) {
-                return static_cast<char>(std::tolower(c));
-            });
+            std::ranges::transform(device, device.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             if (device.find(needle) != std::string::npos) {
                 adapter = candidate;
                 break;
@@ -142,14 +142,14 @@ void RenderPlugin::attach(App& app) {
         }
     }
     if (!adapter) {
-        adapter = instance.requestAdapter(wgpu::RequestAdapterOptions()
-                                              .setCompatibleSurface(surface)
-                                              .setPowerPreference(settings.power_preference)
-                                              .setBackendType(settings.backends.value_or(wgpu::BackendType::eVulkan))
-                                              .setForceFallbackAdapter(settings.force_fallback_adapter ? wgpu::Bool(true)
-                                                                                                      : wgpu::Bool(false)));
+        adapter = instance.requestAdapter(
+            wgpu::RequestAdapterOptions()
+                .setCompatibleSurface(surface)
+                .setPowerPreference(settings.power_preference)
+                .setBackendType(settings.backends.value_or(wgpu::BackendType::eVulkan))
+                .setForceFallbackAdapter(settings.force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
     }
-    surface               = nullptr;  // release the temporary surface
+    surface = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
     if (!adapter) {
         throw std::runtime_error("Failed to request WebGPU adapter");
@@ -240,8 +240,8 @@ void RenderPlugin::attach(App& app) {
             // Bevy lib.rs:383-390: the byte limiter is initialized in the render
             // app; extract_render_asset_bytes_per_frame runs in ExtractSchedule,
             // reset_render_asset_bytes_per_frame in RenderSystems::Cleanup.
-            .add_systems(ExtractSchedule, into(extract_render_asset_bytes_per_frame)
-                                               .set_name("extract render asset bytes per frame"))
+            .add_systems(ExtractSchedule,
+                         into(extract_render_asset_bytes_per_frame).set_name("extract render asset bytes per frame"))
             .add_systems(Render, into(reset_render_asset_bytes_per_frame)
                                      .in_set(RenderSystems::Cleanup)
                                      .set_name("reset render asset bytes per frame"))
@@ -252,11 +252,10 @@ void RenderPlugin::attach(App& app) {
             .add_systems(Render, into([](Res<wgpu::Device> device) { device->poll(false); })
                                      .set_name("device poll")
                                      .after(RenderSystems::Cleanup))
-            .add_systems(Render,
-                         into(PipelineServer::process_pipeline_system, render_system)
-                             .chain()
-                             .in_set(RenderSystems::Render)
-                             .set_names(std::array{"process pipeline", "render system"}))
+            .add_systems(Render, into(PipelineServer::process_pipeline_system, render_system)
+                                     .chain()
+                                     .in_set(RenderSystems::Render)
+                                     .set_names(std::array{"process pipeline", "render system"}))
             .add_systems(Render,
                          into([](ParamSet<World&, ResMut<ecs::Schedules>> params) {
                              auto&& [world, schedules] = params.get();

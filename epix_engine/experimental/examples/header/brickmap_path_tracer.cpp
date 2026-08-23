@@ -775,8 +775,8 @@ struct VoxelBlitNode : graph::Node {
         auto&& [target] = *view_opt;
         if (!target.out_texture.view) return;
 
-        auto pass = rc.command_encoder().beginRenderPass(
-            wgpu::RenderPassDescriptor().setColorAttachments(std::array{target.out_texture.get_attachment(std::nullopt)}));
+        auto pass = rc.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
+            std::array{target.out_texture.get_attachment(std::nullopt)}));
         pass.setPipeline(pipeline->get().pipeline());
         pass.setVertexBuffer(0, state.vertex_buffer, 0, sizeof(float) * 6);
         pass.setBindGroup(0, state.blit_bg[state.accum_idx], std::span<const uint32_t>{});
@@ -854,10 +854,10 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
             float new_pitch = glm::clamp(cur_pitch + float(dy) * sens, -glm::radians(89.0f), glm::radians(89.0f));
 
             // Rebuild: positive pitch = look up → negative rotation around world X
-            auto yaw_q   = glm::angleAxis(new_yaw, glm::vec3(0.0f, 1.0f, 0.0f));
-            auto pitch_q = glm::angleAxis(-new_pitch, glm::vec3(1.0f, 0.0f, 0.0f));
+            auto yaw_q             = glm::angleAxis(new_yaw, glm::vec3(0.0f, 1.0f, 0.0f));
+            auto pitch_q           = glm::angleAxis(-new_pitch, glm::vec3(1.0f, 0.0f, 0.0f));
             const auto camera_flip = glm::angleAxis(glm::radians(180.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-            tr.rotation  = glm::normalize(yaw_q * pitch_q * camera_flip);
+            tr.rotation            = glm::normalize(yaw_q * pitch_q * camera_flip);
         }
     }
 }
