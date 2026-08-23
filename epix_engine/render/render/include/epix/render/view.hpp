@@ -43,6 +43,12 @@ using ::epix::camera::RenderTargetIdHash;
 using ::epix::camera::ComputedCameraValues;
 using ::epix::camera::ClearColor;
 using ::epix::camera::ClearColorConfig;
+using ::epix::camera::Exposure;
+using ::epix::camera::MainPassResolutionOverride;
+using ::epix::camera::CameraOutputMode;
+using ::epix::camera::CameraMainTextureUsages;
+using ::epix::camera::MsaaWriteback;
+using ::epix::camera::SubCameraView;
 using ::epix::camera::RenderLayers;
 using ::epix::camera::Visibility;
 using ::epix::camera::InheritedVisibility;
@@ -61,15 +67,6 @@ using ::epix::camera::camera_system;
 EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
 };
-/** @brief Usages of a camera's main textures (Bevy
- * bevy_camera::CameraMainTextureUsages). Default: RENDER_ATTACHMENT |
- * TEXTURE_BINDING (the blit samples the main texture). */
-EPIX_EXPORT struct CameraMainTextureUsages {
-    /** @brief Texture usages of the main textures. */
-    wgpu::TextureUsage usage =
-        wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding;
-};
-
 EPIX_EXPORT struct ExtractedCamera {
     // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
     // point to the actual primary window entity.
@@ -87,6 +84,16 @@ EPIX_EXPORT struct ExtractedCamera {
      * target at the same order (Bevy
      * ExtractedCamera::sorted_camera_index_for_target). */
     std::optional<std::size_t> sorted_camera_index_for_target;
+    /** @brief Linear exposure multiplier (Bevy ExtractedCamera::exposure). */
+    float exposure = Exposure{}.exposure();
+    /** @brief Final output policy (Bevy ExtractedCamera::output_mode). */
+    CameraOutputMode output_mode{};
+    /** @brief MSAA writeback policy (Bevy ExtractedCamera::msaa_writeback). */
+    MsaaWriteback msaa_writeback = MsaaWriteback::Auto;
+    /** @brief Requested usages for intermediate main textures (Bevy
+     * CameraMainTextureUsages, extracted with the camera). */
+    wgpu::TextureUsage main_texture_usage = wgpu::TextureUsage::eRenderAttachment |
+                                             wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc;
     /** @brief Which render layers this camera renders. Default: all layers. */
     RenderLayers render_layer = RenderLayers::all();
 };
@@ -98,6 +105,9 @@ using ::epix::camera::Frustum;
 using ::epix::camera::Msaa;
 using ::epix::camera::samples;
 using ::epix::camera::msaa_from_samples;
+/** @brief Forward declaration; the Hdr marker is defined below after the
+ * camera extraction declarations. */
+EPIX_EXPORT struct Hdr;
 /** @brief Forward declaration (defined below). */
 EPIX_EXPORT struct ViewTargetAttachments;
 /** @brief Forward declaration (defined below; used by extract_cameras and
@@ -151,6 +161,8 @@ EPIX_EXPORT struct ExtractedView {
     glm::uvec4 viewport = glm::uvec4(0, 0, 0, 0);
     /** @brief Invert culling for mirrored views (Bevy invert_culling). */
     bool invert_culling = false;
+    /** @brief Filmic grading parameters for this view (Bevy color_grading). */
+    ColorGrading color_grading{};
 
     /** @brief Bevy name for the projection matrix. */
     const glm::mat4& clip_from_view() const noexcept { return projection; }
@@ -256,6 +268,14 @@ EPIX_EXPORT struct ViewTarget {
     wgpu::RenderPassColorAttachment get_color_attachment() const {
         return current_index() == 0 ? main_textures.a.get_attachment() : main_textures.b.get_attachment();
     }
+    /** @brief Sample count of the current render-pass color attachment. This
+     * is the multisampled attachment when MSAA is enabled, not the
+     * single-sample resolve texture exposed by main_texture_view(). */
+    std::uint32_t color_attachment_sample_count() const {
+        const auto& attachment = current_index() == 0 ? main_textures.a : main_textures.b;
+        return attachment.resolve_target ? attachment.resolve_target->texture.getSampleCount()
+                                         : attachment.texture.texture.getSampleCount();
+    }
     /** @brief The unsampled attachment of the current main texture. */
     wgpu::RenderPassColorAttachment get_unsampled_color_attachment() const {
         return current_index() == 0 ? main_textures.a.get_unsampled_attachment() : main_textures.b.get_unsampled_attachment();
@@ -334,11 +354,25 @@ EPIX_EXPORT struct UVec2Hash {
         return h;
     }
 };
-/** @brief Cache of depth textures keyed by viewport size to avoid
+/** @brief Key for a reusable view-depth texture. Multisample count is part of
+ * the key because a 1x depth attachment cannot be paired with a 4x main
+ * color attachment. */
+EPIX_EXPORT struct ViewDepthCacheKey {
+    glm::uvec2 size{};
+    std::uint32_t sample_count = 1;
+    bool operator==(const ViewDepthCacheKey&) const noexcept = default;
+};
+EPIX_EXPORT struct ViewDepthCacheKeyHash {
+    std::size_t operator()(const ViewDepthCacheKey& key) const noexcept {
+        std::size_t h = UVec2Hash{}(key.size);
+        return h ^ (static_cast<std::size_t>(key.sample_count) + 0x9e3779b9 + (h << 6) + (h >> 2));
+    }
+};
+/** @brief Cache of depth textures keyed by size and sample count to avoid
  * re-creation each frame. */
 EPIX_EXPORT struct ViewDepthCache {
-    /** @brief Map from viewport dimensions to cached depth textures. */
-    std::unordered_map<glm::uvec2, wgpu::Texture, UVec2Hash> cache;
+    /** @brief Map from compatible attachment descriptors to cached depth textures. */
+    std::unordered_map<ViewDepthCacheKey, wgpu::Texture, ViewDepthCacheKeyHash> cache;
 };
 
 /** @brief Plugin that registers view extraction, target preparation, and
@@ -356,9 +390,10 @@ void prepare_view_target(
     epix::ecs::Res<window::ExtractedWindows> extracted_windows,
     epix::ecs::Res<wgpu::Device> device,
     epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
-void create_view_depth(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&>> views,
+void create_view_depth(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                                        const camera::ExtractedCamera&,
+                                                        const Msaa&>> views,
                        epix::ecs::Res<wgpu::Device> device,
-                       epix::ecs::Res<wgpu::Queue> queue,
                        epix::ecs::ResMut<ViewDepthCache> depth_cache,
                        epix::ecs::Commands cmd);
 
@@ -451,6 +486,8 @@ struct BindViewUniform {
 namespace epix::render::camera {
 /** @brief Manual mip bias for the camera's textures (Bevy MipBias). Defined below; forward-declared for extract_cameras. */
 struct MipBias;
+/** @brief Per-frame temporal jitter (Bevy TemporalJitter). Defined below. */
+struct TemporalJitter;
 
 /** @brief System that extracts camera data into the render world. */
 EPIX_EXPORT void extract_cameras(
@@ -464,7 +501,13 @@ EPIX_EXPORT void extract_cameras(
                                                         const view::Frustum&,
                                                         epix::ecs::Opt<const RenderLayers&>,
                                                         epix::ecs::Opt<const camera::MipBias&>,
-                                                        const view::Msaa&>>> cameras,
+                                                        epix::ecs::Opt<const camera::TemporalJitter&>,
+                                                        epix::ecs::Opt<const view::Hdr&>,
+                                                        epix::ecs::Opt<const view::ColorGrading&>,
+                                                        epix::ecs::Opt<const Exposure&>,
+                                                        epix::ecs::Opt<const MainPassResolutionOverride&>,
+                                                        const view::Msaa&,
+                                                        epix::ecs::Opt<const CameraMainTextureUsages&>>>> cameras,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Entity, epix::ecs::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
         primary_window);
@@ -651,6 +694,16 @@ EPIX_EXPORT inline void sort_cameras(epix::ecs::ResMut<SortedCameras> sorted_cam
 EPIX_EXPORT struct TemporalJitter {
     /** @brief Jitter offset in texels. */
     glm::vec2 offset = glm::vec2(0.0f);
+    /** @brief Applies Bevy's temporal sub-pixel projection adjustment. */
+    void jitter_projection(glm::mat4& clip_from_view, glm::vec2 view_size) const noexcept {
+        if (view_size.x == 0.0f || view_size.y == 0.0f) return;
+        glm::vec2 jitter = (offset * glm::vec2(2.0f, -2.0f)) / view_size;
+        if (clip_from_view[3][3] == 1.0f) {
+            jitter *= glm::vec2(clip_from_view[0][0], clip_from_view[1][1]) * 0.5f;
+        }
+        clip_from_view[2][0] += jitter.x;
+        clip_from_view[2][1] += jitter.y;
+    }
 };
 
 /** @brief Manual mip bias for the camera's textures (Bevy MipBias). */

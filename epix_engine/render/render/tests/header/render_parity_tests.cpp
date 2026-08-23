@@ -705,6 +705,155 @@ TEST(ColorGrading, DefaultsMatchBevy) {
     EXPECT_EQ(u.saturation, glm::vec3(1.0f));
 }
 
+// ColorGradingUniform uses Bevy's D65/CAM16 transform, and preserves the
+// three per-luminance section values in the shader's component order.
+TEST(ColorGrading, PacksWhiteBalanceAndSections) {
+    view::ColorGrading grading;
+    grading.global.temperature = 0.02f;
+    grading.global.tint        = -0.01f;
+    grading.global.exposure    = 1.5f;
+    grading.shadows.saturation = 0.8f;
+    grading.midtones.saturation = 1.1f;
+    grading.highlights.saturation = 1.3f;
+    auto uniform = view::to_uniform(grading);
+    EXPECT_EQ(uniform.saturation, glm::vec3(0.8f, 1.1f, 1.3f));
+    EXPECT_FLOAT_EQ(uniform.exposure, 1.5f);
+    // Non-default white balance must produce a non-identity matrix.
+    EXPECT_NE(uniform.balance, glm::mat3(1.0f));
+}
+
+TEST(TemporalJitter, MatchesBevyProjectionAdjustment) {
+    camera::TemporalJitter jitter{glm::vec2(0.5f, 0.5f)};
+    glm::mat4 projection(1.0f);  // orthographic path
+    jitter.jitter_projection(projection, glm::vec2(100.0f, 100.0f));
+    EXPECT_FLOAT_EQ(projection[2][0], 0.005f);
+    EXPECT_FLOAT_EQ(projection[2][1], -0.005f);
+}
+
+TEST(Exposure, BlenderDefaultMatchesBevy) {
+    ::epix::camera::Exposure exposure;
+    EXPECT_FLOAT_EQ(exposure.exposure(), std::exp2(-9.7f) / 1.2f);
+    EXPECT_FLOAT_EQ(::epix::camera::Exposure::sunlight().ev100, 15.0f);
+    const ::epix::camera::PhysicalCameraParameters physical{};
+    EXPECT_FLOAT_EQ(::epix::camera::Exposure::from_physical_camera(physical).ev100, physical.ev100());
+}
+
+TEST(Viewport, ClampToTargetMatchesBevy) {
+    camera::Viewport viewport{.pos = glm::uvec2(90, 150), .size = glm::uvec2(30, 20)};
+    viewport.clamp_to_size(glm::uvec2(100, 100));
+    EXPECT_EQ(viewport.pos, glm::uvec2(90, 99));
+    EXPECT_EQ(viewport.size, glm::uvec2(10, 1));
+
+    viewport = camera::Viewport{.pos = glm::uvec2(8, 2), .size = glm::uvec2(3, 3)};
+    viewport.clamp_to_size(glm::uvec2(0, 0));
+    EXPECT_EQ(viewport.pos, glm::uvec2(0, 0));
+    EXPECT_EQ(viewport.size, glm::uvec2(0, 0));
+}
+
+TEST(MainPassResolutionOverride, StoresPhysicalDimensions) {
+    camera::MainPassResolutionOverride override{glm::uvec2(640, 360)};
+    EXPECT_EQ(override.size, glm::uvec2(640, 360));
+
+    const std::optional<::epix::camera::Viewport> viewport =
+        ::epix::camera::Viewport{.pos = glm::uvec2(3, 4), .size = glm::uvec2(10, 10)};
+    auto overridden = ::epix::camera::Viewport::from_viewport_and_override(viewport, glm::uvec2(640, 360));
+    ASSERT_TRUE(overridden.has_value());
+    EXPECT_EQ(overridden->pos, glm::uvec2(3, 4));
+    EXPECT_EQ(overridden->size, glm::uvec2(640, 360));
+}
+
+TEST(CameraOutput, ModesAndWritebackMatchBevy) {
+    camera::CameraOutputMode output;
+    EXPECT_EQ(output.type, camera::CameraOutputMode::Type::Write);
+    EXPECT_FALSE(output.blend_state.has_value());
+    EXPECT_EQ(output.clear_color.type, camera::ClearColorConfig::Type::Default);
+    EXPECT_EQ(camera::CameraOutputMode::skip().type, camera::CameraOutputMode::Type::Skip);
+    EXPECT_EQ(camera::MsaaWriteback::Auto, camera::MsaaWriteback::Auto);
+}
+
+TEST(ClearColor, DefaultMatchesBevyDarkGray) {
+    // bevy_camera::ClearColor::default() is Color::srgb_u8(43, 44, 47),
+    // converted to linear RGB before it is written through an sRGB target.
+    const ::epix::camera::ClearColor clear;
+    EXPECT_NEAR(clear.r, 0.02415763f, 1e-7f);
+    EXPECT_NEAR(clear.g, 0.02518686f, 1e-7f);
+    EXPECT_NEAR(clear.b, 0.02842604f, 1e-7f);
+    EXPECT_FLOAT_EQ(clear.a, 1.0f);
+}
+
+TEST(SubCameraView, DefaultsMatchBevy) {
+    camera::SubCameraView sub;
+    EXPECT_EQ(sub.full_size, glm::uvec2(1, 1));
+    EXPECT_EQ(sub.offset, glm::vec2(0.0f));
+    EXPECT_EQ(sub.size, glm::uvec2(1, 1));
+}
+
+TEST(SubCameraView, FullSizeCropPreservesProjection) {
+    camera::PerspectiveProjection projection;
+    projection.update(1920.0f, 1080.0f);
+    const camera::SubCameraView whole{
+        .full_size = glm::uvec2(1920, 1080), .offset = glm::vec2(0.0f), .size = glm::uvec2(1920, 1080)};
+    EXPECT_EQ(projection.get_projection_matrix_for_sub(whole), projection.get_projection_matrix());
+}
+
+TEST(CameraProjection, UsesBevyReverseZConventions) {
+    // Bevy's perspective projection is right-handed with -Z forward and an
+    // infinite reverse-Z depth range: near maps to 1, far tends to 0.
+    camera::PerspectiveProjection perspective;
+    const auto perspective_matrix = perspective.get_projection_matrix();
+    const auto near_clip = perspective_matrix * glm::vec4(0.0f, 0.0f, -perspective.near_plane, 1.0f);
+    const auto far_clip = perspective_matrix * glm::vec4(0.0f, 0.0f, -1000000.0f, 1.0f);
+    EXPECT_NEAR(near_clip.z / near_clip.w, 1.0f, 1e-5f);
+    EXPECT_NEAR(far_clip.z / far_clip.w, 0.0f, 1e-5f);
+
+    // Projection::default is Bevy's Perspective variant. Camera2d separately
+    // supplies OrthographicProjection::default_2d through its requirements.
+    EXPECT_TRUE(camera::Projection{}.as_perspective().has_value());
+    EXPECT_EQ(camera::OrthographicProjection::default_3d().near_plane, 0.0f);
+    EXPECT_EQ(camera::OrthographicProjection::default_2d().near_plane, -1000.0f);
+}
+
+TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
+    const ::epix::camera::Camera3d camera3d;
+    EXPECT_EQ(camera3d.depth_load_op.type, ::epix::camera::Camera3dDepthLoadOp::Type::Clear);
+    EXPECT_EQ(camera3d.depth_load_op.clear_value, 0.0f);
+    EXPECT_EQ(camera3d.depth_texture_usages.usage(), wgpu::TextureUsage::eRenderAttachment);
+    EXPECT_EQ(camera3d.screen_space_specular_transmission_steps, 1u);
+    EXPECT_EQ(camera3d.screen_space_specular_transmission_quality,
+              ::epix::camera::ScreenSpaceTransmissionQuality::Medium);
+}
+
+TEST(CameraCoordinates, ViewportAndNdcConversionsMatchBevy) {
+    ::epix::camera::Camera camera;
+    camera.computed.target_info = ::epix::camera::RenderTargetInfo{.physical_size = glm::uvec2(200, 100), .scale_factor = 2.0f};
+    camera.computed.target_size = glm::uvec2(200, 100);
+    camera.computed.projection  = glm::orthoRH_ZO(-100.0f, 100.0f, -50.0f, 50.0f, 1000.0f, -1000.0f);
+    const ::epix::transform::GlobalTransform identity{};
+
+    ASSERT_TRUE(camera.logical_viewport_size().has_value());
+    EXPECT_EQ(*camera.logical_viewport_size(), glm::vec2(100.0f, 50.0f));
+    EXPECT_EQ(*camera.target_scaling_factor(), 2.0f);
+
+    auto screen = camera.world_to_viewport(identity, glm::vec3(0.0f));
+    ASSERT_TRUE(screen.has_value());
+    EXPECT_NEAR(screen->x, 50.0f, 1e-5f);
+    EXPECT_NEAR(screen->y, 25.0f, 1e-5f);
+
+    auto ndc = camera.viewport_to_ndc(glm::vec2(50.0f, 25.0f));
+    ASSERT_TRUE(ndc.has_value());
+    EXPECT_NEAR(ndc->x, 0.0f, 1e-5f);
+    EXPECT_NEAR(ndc->y, 0.0f, 1e-5f);
+    auto world = camera.viewport_to_world_2d(identity, glm::vec2(50.0f, 25.0f));
+    ASSERT_TRUE(world.has_value());
+    EXPECT_NEAR(world->x, 0.0f, 1e-5f);
+    EXPECT_NEAR(world->y, 0.0f, 1e-5f);
+}
+
+TEST(CameraCoordinates, ReportsMissingViewportSize) {
+    ::epix::camera::Camera camera;
+    EXPECT_EQ(camera.viewport_to_ndc(glm::vec2(1.0f, 1.0f)).error(), ::epix::camera::ViewportConversionError::NoViewportSize);
+}
+
 // ComponentUniforms mirrors Bevy prepare_uniform_components: each component
 // is pushed into the dynamic buffer and gets a sequential index.
 TEST(ComponentUniforms, IndexAssignment) {

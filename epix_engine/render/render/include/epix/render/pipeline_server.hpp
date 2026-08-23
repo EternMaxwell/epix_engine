@@ -192,8 +192,10 @@ struct PipelineServerData {
  * `queue_compute_pipeline()` and compiled asynchronously in a thread
  * pool. The underlying data is shared across copies via a shared_ptr,
  * allowing PipelineServer to exist in both the main app and render app.
- * Mutation methods are private and driven by RenderPlugin systems in
- * ExtractSchedule.
+ * Mutation is private and driven by the render schedule. The shared state
+ * deliberately lets the main and render worlds observe the same server, but
+ * render-graph nodes are read-only consumers: they must never synchronously
+ * advance pipeline creation.
  */
 EPIX_EXPORT struct PipelineServer {
    public:
@@ -229,14 +231,6 @@ EPIX_EXPORT struct PipelineServer {
     /** @brief Get the compiled compute pipeline, or an error if not ready. */
     auto get_compute_pipeline(CachedPipelineId id) const noexcept
         -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
-    /** @brief Wait for a render pipeline to finish compiling (Bevy
-     * PipelineCache::block_on_render_pipeline, pipeline_cache.rs:385-397).
-     * Returns false when the id is out of range. */
-    bool block_on_render_pipeline(CachedRenderPipelineId id);
-    /** @brief Wait for a compute pipeline to finish compiling (Bevy
-     * PipelineCache::block_on_compute_pipeline). Returns false when the id is
-     * out of range. */
-    bool block_on_compute_pipeline(CachedComputePipelineId id);
     /** @brief Queue a render pipeline for asynchronous creation. */
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
     /** @brief Queue a compute pipeline for asynchronous creation. */

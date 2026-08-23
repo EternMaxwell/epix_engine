@@ -118,7 +118,7 @@ struct SpritePipelineCache {
     wgpu::BindGroupLayout texture_layout;
     assets::Handle<shader::Shader> vertex_shader;
     assets::Handle<shader::Shader> fragment_shader;
-    std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
+    std::unordered_map<std::uint64_t, render::CachedPipelineId> pipelines;
 
     explicit SpritePipelineCache(World& world, const SpriteShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
@@ -154,8 +154,9 @@ struct SpritePipelineCache {
           fragment_shader(shader_handles.fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
-                                                       wgpu::TextureFormat color_format) {
-        auto key = static_cast<std::uint32_t>(color_format);
+                                                       wgpu::TextureFormat color_format,
+                                                       std::uint32_t sample_count) {
+        const auto key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count;
         if (auto it = pipelines.find(key); it != pipelines.end()) {
             return it->second;
         }
@@ -206,8 +207,11 @@ struct SpritePipelineCache {
             .depth_stencil = wgpu::DepthStencilState()
                                  .setFormat(wgpu::TextureFormat::eDepth32Float)
                                  .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
-                                 .setDepthCompare(wgpu::CompareFunction::eLessEqual),
-            .multisample   = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+                                 // Core 2D clears reverse-Z depth to 0.0, as
+                                 // Bevy 0.18 does.  Transparent sprites must
+                                 // therefore use the matching greater test.
+                                 .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
+            .multisample   = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
             .fragment      = std::move(fragment_state),
         };
 
@@ -312,13 +316,17 @@ void extract_sprites(Commands cmd,
                                         const Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
-                                        const camera::ViewVisibility&,
+                                        Opt<const camera::ViewVisibility&>,
                                         Opt<const camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
                      Extract<Res<assets::Assets<image::Image>>> images) {
-    for (auto&& [entity, sprite, global_transform, texture, view_visibility, opt_layer] : sprites.iter()) {
+    for (auto&& [entity, sprite, global_transform, texture, opt_view_visibility, opt_layer] : sprites.iter()) {
         // Bevy extract_sprites gates on ViewVisibility (visibility/mod.rs:448-458).
-        if (!view_visibility.get()) continue;
+        // EPIX's bundle insertion does not backfill newly registered
+        // transitive requirements. Preserve Bevy's gate whenever the
+        // component exists, while treating an older/bundle-created sprite as
+        // visible-by-default until the ECS can provide that propagation.
+        if (opt_view_visibility && !opt_view_visibility->get().get()) continue;
         glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
         if (auto image = images->get(texture.id()); image) {
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
@@ -342,14 +350,15 @@ void extract_sprites(Commands cmd,
 void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                  const render::view::ExtractedView&,
                                  const render::view::ViewTarget&,
-                                 const render::camera::ExtractedCamera&>> views,
+                                 const render::camera::ExtractedCamera&,
+                                 const render::view::Msaa&>> views,
                       Query<Item<Entity, const ExtractedSprite&>> sprites,
                       Res<render::RenderAssets<image::Image>> images,
                       Res<TransparentSpriteDrawFunction> draw_function_id,
                       ResMut<SpritePipelineCache> pipeline_cache,
                       ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target, cam] : views.iter()) {
-        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format);
+    for (auto&& [phase, view, target, cam, msaa] : views.iter()) {
+        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format, render::view::samples(msaa));
         if (!pipeline_id) {
             spdlog::warn("[sprite] Failed to specialize sprite pipeline for target format {}.",
                          wgpu::to_string(target.format));
@@ -445,9 +454,13 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 
 void SpritePlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpritePlugin.");
-    // Bevy Sprite requires Visibility (visibility/mod.rs:151-166), which pulls
-    // in InheritedVisibility + ViewVisibility so hidden/layer culling works.
+    // Bevy Sprite requires Visibility, which in turn requires
+    // InheritedVisibility + ViewVisibility. EPIX required-component insertion
+    // is intentionally non-transitive, so materialize the complete Bevy
+    // relationship here at the ECS boundary.
     app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
+    app.world_mut().register_required_components<sprite::Sprite, camera::InheritedVisibility>();
+    app.world_mut().register_required_components<sprite::Sprite, camera::ViewVisibility>();
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {

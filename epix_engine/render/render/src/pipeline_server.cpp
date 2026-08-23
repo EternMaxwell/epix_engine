@@ -348,43 +348,6 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
 
     m_data->waiting_pipelines.insert(id);
 }
-bool PipelineServer::block_on_render_pipeline(CachedRenderPipelineId id) {
-    // Bevy PipelineCache::block_on_render_pipeline (pipeline_cache.rs:385-397):
-    // if the pipeline slot is not yet allocated, queue first; then wait on the
-    // creation task and store the result.
-    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) {
-        process_queue();
-    }
-    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) return false;
-    auto& cached = m_data->pipelines[static_cast<std::size_t>(id)];
-    if (auto* creating_state = std::get_if<PipelineStateCreating>(&cached.state)) {
-        auto result = creating_state->get();  // blocks until the task finishes
-        if (result) {
-            cached.state = std::move(result.value());
-        } else {
-            cached.state = result.error();
-        }
-    }
-    return true;
-}
-
-bool PipelineServer::block_on_compute_pipeline(CachedComputePipelineId id) {
-    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) {
-        process_queue();
-    }
-    if (m_data->pipelines.size() <= static_cast<std::size_t>(id)) return false;
-    auto& cached = m_data->pipelines[static_cast<std::size_t>(id)];
-    if (auto* creating_state = std::get_if<PipelineStateCreating>(&cached.state)) {
-        auto result = creating_state->get();
-        if (result) {
-            cached.state = std::move(result.value());
-        } else {
-            cached.state = result.error();
-        }
-    }
-    return true;
-}
-
 void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_server) {
     pipeline_server->process_queue();
 }

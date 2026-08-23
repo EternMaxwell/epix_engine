@@ -10,10 +10,37 @@
 #include <epix/ecs/core/labels.hpp>
 #include <epix/ecs/schedule.hpp>
 #include <epix/meta.hpp>
+#include <exception>
+#include <mutex>
 #include <stacktrace>
 
 namespace epix::app {
 using namespace epix::ecs;
+
+void handle_terminate();
+
+namespace {
+std::mutex terminate_handler_mutex;
+std::size_t active_app_count = 0;
+std::terminate_handler previous_terminate_handler = nullptr;
+}  // namespace
+
+struct App::TerminateHandlerGuard {
+    TerminateHandlerGuard() {
+        std::scoped_lock lock(terminate_handler_mutex);
+        if (active_app_count++ == 0) {
+            previous_terminate_handler = std::set_terminate(handle_terminate);
+        }
+    }
+
+    ~TerminateHandlerGuard() noexcept {
+        std::scoped_lock lock(terminate_handler_mutex);
+        if (--active_app_count == 0) {
+            std::set_terminate(previous_terminate_handler);
+            previous_terminate_handler = nullptr;
+        }
+    }
+};
 
 struct DefaultRunner : public AppRunner {
     bool step(App& app) override {
@@ -28,6 +55,14 @@ App App::create() {
     std::call_once(spdlog_env_loaded, []() { spdlog::cfg::load_env_levels(); });
     return App(DefaultCreateTag{});
 }
+
+App::App(const AppLabel& label, std::shared_ptr<std::atomic<std::uint32_t>> world_ids)
+    : _terminate_handler_guard(std::make_shared<TerminateHandlerGuard>()),
+      _label(label),
+      _world_ids(std::move(world_ids)),
+      _world(_world_ids->fetch_add(1)) {}
+
+App::~App() = default;
 
 App::App(DefaultCreateTag, const AppLabel& label, std::shared_ptr<std::atomic<uint32_t>> world_ids)
     : App(label, std::move(world_ids)) {
@@ -237,7 +272,6 @@ void handle_terminate() {
 }
 
 void App::run() {
-    auto prev_terminate = std::set_terminate(handle_terminate);
     auto file_sink      = std::make_shared<spdlog::sinks::basic_file_sink_mt>("epix.log", true);
     spdlog::default_logger()->sinks().push_back(file_sink);
     spdlog::info("[app] App attaching. - {}", _label.to_string());
@@ -264,7 +298,6 @@ void App::run() {
     runner->exit(*this);
     resource_scope([&](internal::Plugins& plugins) { plugins.detach_all(*this); });
     spdlog::info("[app] App terminated. - {}", _label.to_string());
-    std::set_terminate(prev_terminate);
     auto& sinks = spdlog::default_logger()->sinks();
     sinks.erase(std::remove(sinks.begin(), sinks.end(), file_sink), sinks.end());
 }

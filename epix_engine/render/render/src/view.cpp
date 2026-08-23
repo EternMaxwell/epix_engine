@@ -150,8 +150,7 @@ void view::prepare_view_target(Query<Item<Entity, const camera::ExtractedCamera&
             view_formats[0]    = wgpu::TextureFormat::eBGRA8UnormSrgb;
             view_format_count  = 1;
         }
-        const wgpu::TextureUsage main_usage =
-            wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding;
+        const wgpu::TextureUsage main_usage = camera.main_texture_usage;
         const std::uint32_t sample_count = view::samples(msaa);
         // MSAA sample texture shared by a and b (Bevy prepare_view_targets
         // creates main_texture_sampled when msaa.samples() > 1).
@@ -242,31 +241,33 @@ void view::cleanup_view_targets_for_resize(Commands cmd,
     }
 }
 
-void view::create_view_depth(Query<Item<Entity, const camera::ExtractedCamera&>> views,
+void view::create_view_depth(Query<Item<Entity, const camera::ExtractedCamera&, const Msaa&>> views,
                              Res<wgpu::Device> device,
-                             Res<wgpu::Queue> queue,
                              ResMut<ViewDepthCache> depth_cache,
                              Commands cmd) {
-    wgpu::CommandEncoder encoder = device->createCommandEncoder();
-    for (auto&& [entity, camera] : views.iter()) {
+    for (auto&& [entity, camera, msaa] : views.iter()) {
         // Size the depth texture from the camera's full target size (Bevy
         // core_2d prepare_core_2d_depth_textures); the viewport only clips.
         glm::uvec2 size = camera.target_size;
         if (size.x == 0 || size.y == 0) {
             continue;  // invalid size
         }
-        // create new depth texture
+        const ViewDepthCacheKey cache_key{size, samples(msaa)};
+        // Create a depth texture with the same sample count as the main pass.
         wgpu::Texture texture;
-        if (auto it = depth_cache->cache.find(size); it != depth_cache->cache.end()) {
+        if (auto it = depth_cache->cache.find(cache_key); it != depth_cache->cache.end()) {
             texture = std::move(it->second);
             depth_cache->cache.erase(it);
         } else {
             wgpu::TextureDescriptor desc;
             desc.setSize({size.x, size.y, 1})
                 .setFormat(wgpu::TextureFormat::eDepth32Float)
-                .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc)
+                // Bevy's view depth textures are attachment-only. In
+                // particular, COPY_SRC is invalid/unusable for a
+                // multisampled texture and poisons the command encoder.
+                .setUsage(wgpu::TextureUsage::eRenderAttachment)
                 .setDimension(wgpu::TextureDimension::e2D)
-                .setSampleCount(1)
+                .setSampleCount(cache_key.sample_count)
                 .setMipLevelCount(1)
                 .setLabel("ViewDepthTexture");
             texture = device.get().createTexture(desc);
@@ -275,18 +276,13 @@ void view::create_view_depth(Query<Item<Entity, const camera::ExtractedCamera&>>
                 continue;
             }
         }
-        wgpu::RenderPassDepthStencilAttachment depth_attachment;
         auto view = texture.createView();
-        depth_attachment.setView(view)
-            .setDepthLoadOp(wgpu::LoadOp::eClear)
-            .setDepthStoreOp(wgpu::StoreOp::eStore)
-            .setDepthClearValue(1.0f);
-        wgpu::RenderPassEncoder pass =
-            encoder.beginRenderPass(wgpu::RenderPassDescriptor().setDepthStencilAttachment(depth_attachment));
-        pass.end();
-        cmd.entity(entity).insert(view::ViewDepthTexture::create(std::move(texture), std::move(view)));
+        // The first main pass clears this attachment (Bevy
+        // ViewDepthTexture::get_attachment); no separate depth-only command
+        // buffer is needed.
+        cmd.entity(entity).insert(view::ViewDepthTexture{
+            std::move(texture), render_resource::DepthAttachment(std::move(view), 0.0f)});
     }
-    queue->submit(encoder.finish());
 }
 
 void clear_cache(ResMut<ViewDepthCache> depth_cache) { depth_cache->cache.clear(); }
@@ -294,8 +290,8 @@ void clear_cache(ResMut<ViewDepthCache> depth_cache) { depth_cache->cache.clear(
 void recycle_depth(Query<const view::ViewDepthTexture&> depths, ResMut<ViewDepthCache> depth_cache) {
     for (auto&& depth : depths.iter()) {
         if (depth.texture) {
-            glm::uvec2 size{depth.texture.getWidth(), depth.texture.getHeight()};
-            depth_cache->cache[size] = depth.texture;
+            const ViewDepthCacheKey key{{depth.texture.getWidth(), depth.texture.getHeight()}, depth.texture.getSampleCount()};
+            depth_cache->cache[key] = depth.texture;
         }
     }
 }
@@ -311,7 +307,9 @@ void create_uniform_for_view(
                const view::ExtractedView&,
                const camera::ExtractedCamera&,
                Opt<const camera::MipBias&>,
-               Opt<const view::Frustum&>>> views,
+               Opt<const view::Frustum&>,
+               Opt<const camera::TemporalJitter&>,
+               Opt<const MainPassResolutionOverride&>>> views,
     Res<wgpu::Device> device,
     Res<wgpu::Limits> limits,
     ResMut<view::ViewUniforms> view_uniforms,
@@ -330,29 +328,40 @@ void create_uniform_for_view(
     if (views.iter().max_remaining() == 0) {
         return;
     }
-    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum] : views.iter()) {
-        const glm::mat4 clip_from_view  = view.projection;
+    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum, opt_temporal_jitter, opt_resolution_override] :
+         views.iter()) {
+        const glm::mat4 unjittered_projection = view.projection;
+        glm::mat4 clip_from_view               = unjittered_projection;
+        if (opt_temporal_jitter) {
+            opt_temporal_jitter->get().jitter_projection(
+                clip_from_view, glm::vec2(view.viewport.z, view.viewport.w));
+        }
         const glm::mat4 view_from_clip  = glm::inverse(clip_from_view);
         const glm::mat4 world_from_view = view.transform.matrix;
         const glm::mat4 view_from_world = glm::inverse(world_from_view);
-        // No temporal jitter in epix yet: clip_from_world is either the cached
-        // value or clip_from_view * view_from_world (Bevy same fallback).
-        const glm::mat4 clip_from_world = view.clip_from_world.value_or(clip_from_view * view_from_world);
+        const glm::mat4 clip_from_world = opt_temporal_jitter
+                                              ? clip_from_view * view_from_world
+                                              : view.clip_from_world.value_or(clip_from_view * view_from_world);
         const glm::vec4 viewport_vec    = glm::vec4(view.viewport);
+        glm::vec4 main_pass_viewport     = viewport_vec;
+        if (opt_resolution_override) {
+            main_pass_viewport.z = static_cast<float>(opt_resolution_override->get().size.x);
+            main_pass_viewport.w = static_cast<float>(opt_resolution_override->get().size.y);
+        }
         ViewUniform uniform{
             .clip_from_world           = clip_from_world,
-            .unjittered_clip_from_world = clip_from_view * view_from_world,
+            .unjittered_clip_from_world = unjittered_projection * view_from_world,
             .world_from_clip           = world_from_view * view_from_clip,
             .world_from_view           = world_from_view,
             .view_from_world           = view_from_world,
             .clip_from_view            = clip_from_view,
             .view_from_clip            = view_from_clip,
             .world_position            = glm::vec3(world_from_view[3]),
-            .exposure                  = 1.0f,  // Bevy Exposure::default(); no Exposure component yet
+            .exposure                  = camera.exposure,
             .viewport                  = viewport_vec,
-            .main_pass_viewport        = viewport_vec,  // no MainPassResolutionOverride
+            .main_pass_viewport        = main_pass_viewport,
             .frustum                   = opt_frustum ? opt_frustum->get().planes : std::array<glm::vec4, 6>{},
-            .color_grading             = {},             // default identity; no per-camera ColorGrading yet
+            .color_grading             = view::to_uniform(view.color_grading),
             .mip_bias                  = opt_mip_bias ? opt_mip_bias->get().bias : 0.0f,
             .frame_count               = frame_count.get().count,
         };
@@ -369,9 +378,12 @@ void create_uniform_for_view(
         return;
     }
     std::size_t index = 0;
-    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum] : views.iter()) {
+    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum, opt_temporal_jitter, opt_resolution_override] :
+         views.iter()) {
         (void)opt_mip_bias;
         (void)opt_frustum;
+        (void)opt_temporal_jitter;
+        (void)opt_resolution_override;
         std::uint32_t offset = view_uniforms->offsets[index];
         wgpu::BindGroup bind_group =
             device.get().createBindGroup(wgpu::BindGroupDescriptor()
@@ -479,16 +491,24 @@ void camera::extract_cameras(
                        const view::Frustum&,
                        Opt<const RenderLayers&>,
                        Opt<const camera::MipBias&>,
-                       const view::Msaa&>>> cameras,
+                       Opt<const camera::TemporalJitter&>,
+                       Opt<const view::Hdr&>,
+                       Opt<const view::ColorGrading&>,
+                       Opt<const Exposure&>,
+                       Opt<const MainPassResolutionOverride&>,
+                       const view::Msaa&,
+                       Opt<const CameraMainTextureUsages&>>>> cameras,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
     // extract camera entities to render world, this will spawn an related
     // entity with ExtractedCamera, ExtractedView and other components.
 
     auto primary = primary_window.single();
 
-    for (auto&& [entity, camera, graph, gtransform, visible_entities, frustum, opt_render_layer, opt_mip_bias, msaa] :
+    for (auto&& [entity, camera, graph, gtransform, visible_entities, frustum, opt_render_layer, opt_mip_bias,
+                 opt_temporal_jitter, opt_hdr, opt_color_grading, opt_exposure, opt_resolution_override, msaa,
+                 opt_main_texture_usages] :
          cameras.iter()) {
-        if (!camera.active) continue;
+        if (!camera.is_active) continue;
         auto target_size = camera.get_target_size();
         if (target_size.x == 0 || target_size.y == 0) continue;
         auto normalized_target = camera.render_target.normalize(primary);
@@ -496,6 +516,9 @@ void camera::extract_cameras(
         auto viewport_size   = camera.get_viewport_size();
         auto viewport_origin = camera.get_viewport_origin();
 
+        // Bevy represents HDR as a dedicated marker component. Keep the old
+        // camera flag as a compatibility fallback for pre-marker Epix scenes.
+        const bool hdr = opt_hdr.has_value() || camera.hdr;
         auto commands = cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{});
         // single call to insert to reduce overhead
         commands.insert(
@@ -516,7 +539,15 @@ void camera::extract_cameras(
                         return std::nullopt;
                     }
                 }(),
-                .hdr          = camera.hdr,
+                .hdr          = hdr,
+                .exposure     = opt_exposure ? opt_exposure->get().exposure() : Exposure{}.exposure(),
+                .output_mode  = camera.output_mode,
+                .msaa_writeback = camera.msaa_writeback,
+                // Camera requires this component, like Bevy. Make it optional
+                // during extraction as EPIX does not yet backfill a newly-added
+                // transitive required component onto already-spawned cameras.
+                .main_texture_usage = opt_main_texture_usages ? opt_main_texture_usages->get().usage
+                                                               : CameraMainTextureUsages{}.usage,
                 .render_layer = opt_render_layer ? *opt_render_layer : RenderLayers::layer(0),
             },
             view::ExtractedView{
@@ -524,8 +555,10 @@ void camera::extract_cameras(
                     view::RetainedViewEntity{sync_world::MainEntity{entity}, std::nullopt, 0},
                 .projection = camera.computed.projection,
                 .transform  = gtransform,
-                .hdr        = camera.hdr,
+                .hdr        = hdr,
                 .viewport   = glm::uvec4(viewport_origin.x, viewport_origin.y, viewport_size.x, viewport_size.y),
+                .invert_culling = camera.invert_culling,
+                .color_grading = opt_color_grading ? opt_color_grading->get() : view::ColorGrading{},
             },
             visible_entities,
             // Bevy extracts Msaa via ExtractComponentPlugin (view/mod.rs:107).
@@ -535,6 +568,12 @@ void camera::extract_cameras(
         // prepare_view_uniforms then falls back to 0.0 when absent.
         if (opt_mip_bias) {
             commands.insert(camera::MipBias{opt_mip_bias->get().bias});
+        }
+        if (opt_temporal_jitter) {
+            commands.insert(camera::TemporalJitter{opt_temporal_jitter->get().offset});
+        }
+        if (opt_resolution_override) {
+            commands.insert(MainPassResolutionOverride{opt_resolution_override->get().size});
         }
     }
 }
@@ -546,26 +585,12 @@ void epix::render::camera::CameraDriverNode::run(graph::GraphContext& graph, gra
     if (!sorted) return;
     auto cameras = world.try_query<Item<Entity, const ExtractedCamera&, const view::ViewTarget&>>();
     if (!cameras) return;
-    auto encoder = render_ctx.command_encoder();
     for (const auto& sorted_camera : sorted->get().cameras) {
         auto opt = cameras->query(world).get(sorted_camera.entity);
         if (!opt) continue;
         auto&& [entity, camera, target] = *opt;
-        if (camera.clear_color) {
-            auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(std::array{
-                wgpu::RenderPassColorAttachment()
-                    .setView(target.texture_view)
-                    .setLoadOp(wgpu::LoadOp::eClear)
-                    .setStoreOp(wgpu::StoreOp::eStore)
-                    .setDepthSlice(~0u)
-                    .setClearValue(wgpu::Color(camera.clear_color->r, camera.clear_color->g, camera.clear_color->b,
-                                               camera.clear_color->a)),
-            }));
-            render_pass.end();
-        }
-        // Bevy CameraDriverNode (view/camera_driver_node.rs): the camera's
-        // render graph clears, renders the main passes and the post-process
-        // blit to the output; the driver only runs the graph.
+        // Bevy CameraDriverNode only runs the camera graph. The first core
+        // main-pass attachment clears (and resolves MSAA) through ViewTarget.
         if (!graph.run_sub_graph(camera.render_graph, {}, entity)) {
             spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}", entity.index,
                          camera.render_graph.type_index().short_name());

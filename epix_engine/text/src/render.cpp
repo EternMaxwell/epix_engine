@@ -144,7 +144,7 @@ struct Text2dPipelineCache {
     wgpu::BindGroupLayout texture_layout;
     assets::Handle<shader::Shader> vertex_shader;
     assets::Handle<shader::Shader> fragment_shader;
-    std::unordered_map<std::uint32_t, render::CachedPipelineId> pipelines;
+    std::unordered_map<std::uint64_t, render::CachedPipelineId> pipelines;
 
     explicit Text2dPipelineCache(World& world, const TextShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
@@ -180,8 +180,9 @@ struct Text2dPipelineCache {
           fragment_shader(shader_handles.fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
-                                                       wgpu::TextureFormat color_format) {
-        auto key = static_cast<std::uint32_t>(color_format);
+                                                       wgpu::TextureFormat color_format,
+                                                       std::uint32_t sample_count) {
+        const auto key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count;
         if (auto it = pipelines.find(key); it != pipelines.end()) {
             return it->second;
         }
@@ -230,8 +231,9 @@ struct Text2dPipelineCache {
             .depth_stencil = wgpu::DepthStencilState()
                                  .setFormat(wgpu::TextureFormat::eDepth32Float)
                                  .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
-                                 .setDepthCompare(wgpu::CompareFunction::eLessEqual),
-            .multisample   = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+                                 // Core2D uses Bevy's reverse-Z depth convention.
+                                 .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
+            .multisample   = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
             .fragment      = std::move(fragment_state),
         };
 
@@ -442,7 +444,8 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server) {
     for (auto&& [phase, view, target, cam] : views.iter()) {
-        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format);
+        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format,
+                                                      target.color_attachment_sample_count());
         if (!pipeline_id) {
             spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
                          wgpu::to_string(target.format));

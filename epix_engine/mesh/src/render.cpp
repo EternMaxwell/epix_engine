@@ -231,6 +231,7 @@ struct Mesh2dPipelineKey {
     MeshAlphaMode2d alpha_mode;
     wgpu::PrimitiveTopology primitive_type;
     wgpu::TextureFormat color_format;
+    std::uint32_t sample_count;
 
     bool operator==(const Mesh2dPipelineKey&) const = default;
 };
@@ -244,6 +245,7 @@ struct Mesh2dPipelineKeyHash {
                 (hash >> 2);
         hash ^= std::hash<std::uint32_t>()(static_cast<std::uint32_t>(key.color_format)) + 0x9e3779b9 + (hash << 6) +
                 (hash >> 2);
+        hash ^= std::hash<std::uint32_t>()(key.sample_count) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
@@ -326,6 +328,7 @@ struct Mesh2dPipelineCache {
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        const MeshAttributeLayout& layout,
                                                        wgpu::TextureFormat color_format,
+                                                       std::uint32_t sample_count,
                                                        MeshAlphaMode2d alpha_mode,
                                                        bool textured) {
         if (!layout.get_attribute(Mesh::ATTRIBUTE_POSITION)) {
@@ -356,6 +359,7 @@ struct Mesh2dPipelineCache {
             .alpha_mode     = alpha_mode,
             .primitive_type = layout.primitive_type,
             .color_format   = color_format,
+            .sample_count   = sample_count,
         };
         if (auto it = pipelines.find(key); it != pipelines.end()) {
             return it->second;
@@ -426,8 +430,9 @@ struct Mesh2dPipelineCache {
                     .setFormat(wgpu::TextureFormat::eDepth32Float)
                     .setDepthWriteEnabled(alpha_mode == MeshAlphaMode2d::Opaque ? wgpu::OptionalBool::eTrue
                                                                                 : wgpu::OptionalBool::eFalse)
-                    .setDepthCompare(wgpu::CompareFunction::eLessEqual),
-            .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+                    // Core2D clears the Bevy reverse-Z depth buffer to 0.
+                    .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
+            .multisample = wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
             .fragment    = std::move(fragment_state),
         };
 
@@ -648,6 +653,7 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
 
             auto pipeline_id =
                 pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
+                                           target.color_attachment_sample_count(),
                                            extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip opaque mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
@@ -707,6 +713,7 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
 
             auto pipeline_id =
                 pipeline_cache->specialize(*pipeline_server, gpu_mesh->attribute_layout(), target.format,
+                                           target.color_attachment_sample_count(),
                                            extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",

@@ -128,13 +128,12 @@ EPIX_EXPORT namespace epix::app {
     struct App {
        public:
         App(const AppLabel& label                                 = AppLabel::from_type<App>(),
-            std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0))
-            : _label(label), _world(world_ids->fetch_add(1)), _world_ids(world_ids) {}
+            std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0));
         App(const App&)            = delete;
         App(App&&)                 = default;
         App& operator=(const App&) = delete;
         App& operator=(App&&)      = default;
-        ~App()                     = default;
+        ~App();
 
         /** @brief Create a default App with all core plugins. */
         static App create();
@@ -463,6 +462,13 @@ EPIX_EXPORT namespace epix::app {
 
        private:
         struct DefaultCreateTag {};
+        /** Keeps the process terminate handler installed while this app and
+         * every member it owns are being destroyed. Defined in app.cpp. */
+        struct TerminateHandlerGuard;
+
+        // Must be declared first so it is destroyed last: termination during
+        // runner/plugin/world teardown is still reported by the app handler.
+        std::shared_ptr<TerminateHandlerGuard> _terminate_handler_guard;
 
         AppLabel _label;
 

@@ -103,7 +103,6 @@ function(epix_parse_options)
   endif()
   if(EPIX_ENABLE_TEST)
     target_compile_definitions(${ARGN} PRIVATE EPIX_ENABLE_TEST)
-    target_link_libraries(${ARGN} PRIVATE GTest::gtest_main)
   endif()
 endfunction()
 

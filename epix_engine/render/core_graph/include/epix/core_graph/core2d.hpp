@@ -144,11 +144,12 @@ struct Node2D : render::graph::Node {
         auto&& [exview, camera, target, depth, phase] = *view_opt;
         auto render_pass                      = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
-                .setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
-                                                    .setView(target.texture_view)
-                                                    .setDepthSlice(~0u)
-                                                    .setLoadOp(wgpu::LoadOp::eLoad)
-                                                    .setStoreOp(wgpu::StoreOp::eStore)})
+                // ViewTarget owns the MSAA sample attachment and resolve
+                // texture.  Using its attachment is required for Bevy's
+                // default 4x MSAA; binding texture_view directly would pair
+                // a single-sample color target with a multisampled depth
+                // target.
+                .setColorAttachments(std::array{target.get_color_attachment()})
                 .setDepthStencilAttachment(depth.attachment.get_attachment(wgpu::StoreOp::eStore)));
         // Bevy main_opaque_pass_2d_node set_camera_viewport: clip the main pass
         // to the camera viewport (origin, size, depth range).
@@ -184,10 +185,15 @@ EPIX_EXPORT struct Core2dBlitPipeline {
     wgpu::Buffer vertex_buffer;  // 3 float2 UVs of a fullscreen triangle
     render::CachedPipelineId pipeline_id;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-    /** @brief Whether this pipeline alpha-blends over the output (Bevy
-     * ALPHA_BLENDING for cameras with sorted_camera_index_for_target > 0). */
-    bool blend = false;
-    bool ready = false;
+    /** @brief Exact output blend configuration used to specialize this
+     * pipeline (including Bevy's automatic later-camera alpha blend). */
+    std::optional<wgpu::BlendState> output_blend;
+};
+
+/** @brief Render-world cache of Core2D output pipelines. Pipelines are
+ * created/queued by the Queue stage, never by the render graph. */
+EPIX_EXPORT struct Core2dBlitPipelines {
+    std::vector<Core2dBlitPipeline> pipelines;
 };
 
 /** @brief Final node of the 2D graph: copies the main texture to the view's
@@ -195,9 +201,6 @@ EPIX_EXPORT struct Core2dBlitPipeline {
  * present (Bevy core_pipeline `upscaling`). */
 EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>, ecs::Filter<>>> views;
-    /** @brief Lazily-created per-format blit pipeline (node lives in the
-     * render graph, so its members persist across frames). */
-    std::optional<Core2dBlitPipeline> blit;
     void update(ecs::World& world) override;
     void run(render::graph::GraphContext& ctx, render::graph::RenderContext& render_ctx, const ecs::World& world) override;
 };
@@ -217,4 +220,7 @@ EPIX_EXPORT struct Core2dPlugin {
 EPIX_EXPORT struct Camera2D {
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
+/** @brief Bevy-compatible spelling of `Camera2D`. The Core2D graph namespace
+ * is an intentional Epix app-architecture divergence. */
+using Camera2d = Camera2D;
 }  // namespace epix::core_graph::core_2d

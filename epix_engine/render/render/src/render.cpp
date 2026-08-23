@@ -76,8 +76,13 @@ void RenderPlugin::attach(App& app) {
         // Render-side camera wiring (bevy_render::camera): extract cameras into
         // the render world, sort them per target, and drive each camera's
         // render graph. The user-facing camera plugin lives in the camera module.
-        render_app.world_mut().insert_resource(::epix::camera::ClearColor{0.0242f, 0.0250f, 0.0289f, 1.0f});
+        render_app.world_mut().insert_resource(::epix::camera::ClearColor{});
         render_app.world_mut().init_resource<render::camera::SortedCameras>();
+        // Extraction includes per-view HDR/color grading, temporal jitter,
+        // exposure, main-pass resolution overrides, and camera-owned
+        // main-texture usages.
+        // Extraction also supplies the default usage to cameras spawned before
+        // EPIX can propagate a newly-added transitive required component.
         render_app.add_systems(ExtractSchedule, into(render::camera::extract_cameras).set_name("extract cameras"));
         render_app.add_systems(Render,
                                into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));

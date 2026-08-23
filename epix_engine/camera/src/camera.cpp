@@ -17,6 +17,9 @@ using namespace epix::app;
 
 namespace epix::camera {
 void Camera::register_required_components(RequiredComponentsRegistrator& registrator) {
+    // ComputedCameraValues starts at a defined 0x0 target until this system's
+    // first target-resolution pass; target resolution reads the current
+    // Window component rather than a backend cache snapshot.
     registrator.register_required<Projection>([] { return Projection{}; });
     registrator.register_required<::epix::transform::Transform>([] { return ::epix::transform::Transform{}; });
     registrator.register_required<VisibleEntities>([] { return VisibleEntities{}; });
@@ -25,6 +28,7 @@ void Camera::register_required_components(RequiredComponentsRegistrator& registr
     // Bevy registers Msaa as a required component of Camera (camera.rs:56)
     // with Msaa::default() = Sample4.
     registrator.register_required<Msaa>([] { return Msaa::Sample4; });
+    registrator.register_required<CameraMainTextureUsages>([] { return CameraMainTextureUsages{}; });
     // Bevy Camera requires Frustum; update_frusta fills it.
     registrator.register_required<Frustum>([] { return Frustum{}; });
 }
@@ -167,6 +171,7 @@ void update_frusta(Query<Item<const Camera&, const ::epix::transform::GlobalTran
 }
 
 void CameraPlugin::attach(App& app) {
+    // Camera projection updates include Bevy-compatible sub-camera cropping.
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
     // Bevy: Visibility requires InheritedVisibility + ViewVisibility
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
@@ -183,9 +188,8 @@ void CameraPlugin::attach(App& app) {
                         .set_name("check visibility"));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{});
-    // Bevy ClearColor::default() = srgb_u8(43, 44, 47) in linear space.
-    // (ClearColor extraction to the render world is registered by the render
-    // module's RenderPlugin, like bevy_render.)
-    app.world_mut().insert_resource(ClearColor{0.0242f, 0.0250f, 0.0289f, 1.0f});
+    // ClearColor extraction to the render world is registered by the render
+    // module's RenderPlugin, like bevy_render.
+    app.world_mut().insert_resource(ClearColor{});
 }
 }  // namespace epix::camera
