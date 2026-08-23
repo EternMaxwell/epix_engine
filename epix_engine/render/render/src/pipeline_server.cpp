@@ -218,8 +218,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 std::optional<wgpu::ShaderModule> fragment_module;
                 wgpu::PipelineLayout layout;
                 {
-                    auto shader_cache = shader_cache_ptr->lock();
                     auto layout_cache = layout_cache_ptr->lock();
+                    auto shader_cache = shader_cache_ptr->lock();
                     auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, descriptor.vertex.shader_defs);
                     if (!vertex_opt) return std::unexpected(vertex_opt.error());
                     vertex_module = *vertex_opt.value();
