@@ -1,4 +1,4 @@
-﻿#ifndef EPIX_IMPORT_STD
+#ifndef EPIX_IMPORT_STD
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -56,7 +56,7 @@ struct MeshRenderingVisualTestPlugin {
         auto& mesh_assets  = world.resource_mut<assets::Assets<mesh::Mesh>>();
         auto& image_assets = world.resource_mut<assets::Assets<image::Image>>();
 
-        world.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
+        world.spawn(camera::Camera2d{}, transform::Transform{});
 
         std::vector<std::uint8_t> texture_data = {
             255, 50, 50, 255, 50, 255, 50, 255, 50, 50, 255, 255, 255, 255, 50, 255,

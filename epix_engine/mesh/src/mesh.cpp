@@ -14,6 +14,20 @@ MeshAttributeLayout Mesh::attribute_layout() const {
     return layout;
 }
 
+std::optional<epix::camera::Aabb> Mesh::compute_aabb() const {
+    const auto attribute = get_attribute(ATTRIBUTE_POSITION);
+    if (!attribute || attribute->get().data.type_info() != epix::meta::type_info::of<glm::vec3>()) return std::nullopt;
+    const auto positions = attribute->get().data.cspan_as<glm::vec3>();
+    if (positions.empty()) return std::nullopt;
+    glm::vec3 minimum = positions.front();
+    glm::vec3 maximum = positions.front();
+    for (const glm::vec3& position : positions) {
+        minimum = glm::min(minimum, position);
+        maximum = glm::max(maximum, position);
+    }
+    return epix::camera::Aabb::from_min_max(minimum, maximum);
+}
+
 std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> Mesh::get_attribute(
     const MeshAttribute& attribute) const {
     auto it = _attributes.find(attribute.slot);

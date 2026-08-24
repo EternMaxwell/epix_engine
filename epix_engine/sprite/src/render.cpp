@@ -289,8 +289,7 @@ bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::Ex
         glm::vec4(min_corner.x, max_corner.y, 0.0f, 1.0f),
     };
 
-    glm::mat4 view_projection = view.projection * glm::inverse(view.transform.matrix);
-    glm::mat4 mvp             = view_projection * sprite.model;
+    glm::mat4 mvp = view.clip_from_world_or_derived() * sprite.model;
 
     bool outside_left   = true;
     bool outside_right  = true;
@@ -317,17 +316,13 @@ void extract_sprites(Commands cmd,
                                         const Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
-                                        Opt<const camera::ViewVisibility&>,
+                                        const camera::ViewVisibility&,
                                         Opt<const camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
                      Extract<Res<assets::Assets<image::Image>>> images) {
-    for (auto&& [entity, sprite, global_transform, texture, opt_view_visibility, opt_layer] : sprites.iter()) {
+    for (auto&& [entity, sprite, global_transform, texture, view_visibility, opt_layer] : sprites.iter()) {
         // Bevy extract_sprites gates on ViewVisibility (visibility/mod.rs:448-458).
-        // EPIX's bundle insertion does not backfill newly registered
-        // transitive requirements. Preserve Bevy's gate whenever the
-        // component exists, while treating an older/bundle-created sprite as
-        // visible-by-default until the ECS can provide that propagation.
-        if (opt_view_visibility && !opt_view_visibility->get().get()) continue;
+        if (!view_visibility.get()) continue;
         glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
         if (auto image = images->get(texture.id()); image) {
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
@@ -350,15 +345,18 @@ void extract_sprites(Commands cmd,
 void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                  const render::view::ExtractedView&,
                                  const render::view::ViewTarget&,
-                                 const render::camera::ExtractedCamera&,
-                                 const render::view::Msaa&>> views,
+                                 Opt<const ::epix::camera::RenderLayers&>,
+                                 const ::epix::render::view::Msaa&,
+                                 const ::epix::render::view::RenderVisibleEntities&>> views,
                       Query<Item<Entity, const ExtractedSprite&>> sprites,
                       Res<render::RenderAssets<image::Image>> images,
                       Res<TransparentSpriteDrawFunction> draw_function_id,
                       ResMut<SpritePipelineCache> pipeline_cache,
                       ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target, cam, msaa] : views.iter()) {
-        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format, render::view::samples(msaa));
+    for (auto&& [phase, view, target, opt_camera_layers, msaa, visible_entities] : views.iter()) {
+        const auto& camera_layers =
+            opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
+        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format, ::epix::render::view::samples(msaa));
         if (!pipeline_id) {
             spdlog::warn("[sprite] Failed to specialize sprite pipeline for target format {}.",
                          wgpu::to_string(target.format));
@@ -372,7 +370,12 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
             if (!sprite_may_be_visible(sprite, view)) {
                 continue;
             }
-            if (!cam.render_layer.intersects(sprite.render_layer)) {
+            if (!camera_layers.intersects(sprite.render_layer)) {
+                continue;
+            }
+            if (const auto& visible = visible_entities.template get<Sprite>();
+                std::ranges::find(visible, sprite.source_entity,
+                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
                 continue;
             }
 
@@ -455,12 +458,12 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
 void SpritePlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpritePlugin.");
     // Bevy Sprite requires Visibility, which in turn requires
-    // InheritedVisibility + ViewVisibility. EPIX required-component insertion
-    // is intentionally non-transitive, so materialize the complete Bevy
-    // relationship here at the ECS boundary.
+    // InheritedVisibility + ViewVisibility. Epix propagates those required
+    // components transitively, so Sprite declares only the direct edge.
     app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
-    app.world_mut().register_required_components<sprite::Sprite, camera::InheritedVisibility>();
-    app.world_mut().register_required_components<sprite::Sprite, camera::ViewVisibility>();
+    app.world_mut().register_required_components_with<sprite::Sprite>([] {
+        return camera::VisibilityClass{meta::type_index(meta::type_id<sprite::Sprite>())};
+    });
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {

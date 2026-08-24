@@ -27,6 +27,10 @@ using namespace epix;
 void Text2d::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
     registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
     registrator.register_required<TextColor>([] { return TextColor{}; });
+    registrator.register_required<camera::Visibility>([] { return camera::Visibility{}; });
+    registrator.register_required<camera::VisibilityClass>([] {
+        return camera::VisibilityClass{meta::type_index(meta::type_id<Text2d>())};
+    });
 }
 
 namespace {
@@ -409,9 +413,14 @@ void extract_texts_2d(Commands cmd,
                                          Opt<const TextColor&>,
                                          const TextImage&,
                                          const transform::GlobalTransform&,
+                                         const camera::ViewVisibility&,
                                          Opt<const camera::RenderLayers&>>,
                                     Without<render::CustomRendered>>> texts) {
-    for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, opt_layer] : texts.iter()) {
+    for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, view_visibility, opt_layer] :
+         texts.iter()) {
+        // Bevy extract_text2d gates on ViewVisibility just like the other
+        // 2D renderable extractors.
+        if (!view_visibility.get()) continue;
         glm::vec4 color{1.0f};
         if (text_color) {
             auto&& value = text_color->get();
@@ -437,13 +446,16 @@ void extract_texts_2d(Commands cmd,
 void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                const render::view::ExtractedView&,
                                const render::view::ViewTarget&,
-                               const render::camera::ExtractedCamera&>> views,
+                               Opt<const ::epix::camera::RenderLayers&>,
+                               const ::epix::render::view::RenderVisibleEntities&>> views,
                     Query<Item<Entity, const ExtractedText2d&>> texts,
                     Res<render::RenderAssets<image::Image>> images,
                     Res<TransparentTextDrawFunction> draw_function_id,
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target, cam] : views.iter()) {
+    for (auto&& [phase, view, target, opt_camera_layers, visible_entities] : views.iter()) {
+        const auto& camera_layers =
+            opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         auto pipeline_id =
             pipeline_cache->specialize(*pipeline_server, target.format, target.color_attachment_sample_count());
         if (!pipeline_id) {
@@ -456,7 +468,12 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
             if (!images->try_get(text.font_image)) {
                 continue;
             }
-            if (!cam.render_layer.intersects(text.render_layer)) {
+            if (!camera_layers.intersects(text.render_layer)) {
+                continue;
+            }
+            if (const auto& visible = visible_entities.template get<Text2d>();
+                std::ranges::find(visible, text.source_entity,
+                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
                 continue;
             }
 

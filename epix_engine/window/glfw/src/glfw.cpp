@@ -130,6 +130,11 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
     if (desc.visible) {
         glfwShowWindow(window);
     }
+    glfwGetFramebufferSize(window, &desc.physical_size.first, &desc.physical_size.second);
+    float scale_x = 1.0f;
+    float scale_y = 1.0f;
+    glfwGetWindowContentScale(window, &scale_x, &scale_y);
+    desc.scale_factor = scale_x > 0.0f ? scale_x : 1.0f;
     return window;
 }
 
@@ -151,6 +156,13 @@ void GLFWPlugin::update_size(Query<Item<Entity, Mut<Window>, const CachedWindow&
         glfwGetWindowSize(window, &width, &height);
         desc.size   = {width, height};
         cached.size = desc.size;
+        glfwGetFramebufferSize(window, &desc.physical_size.first, &desc.physical_size.second);
+        cached.physical_size = desc.physical_size;
+        float scale_x = 1.0f;
+        float scale_y = 1.0f;
+        glfwGetWindowContentScale(window, &scale_x, &scale_y);
+        desc.scale_factor   = scale_x > 0.0f ? scale_x : 1.0f;
+        cached.scale_factor = desc.scale_factor;
     }
 }
 void GLFWPlugin::update_pos(Commands commands,

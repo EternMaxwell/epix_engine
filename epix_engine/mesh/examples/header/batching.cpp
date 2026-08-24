@@ -1,4 +1,4 @@
-﻿#include <epix/app.hpp>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
@@ -61,7 +61,7 @@ struct MeshBatchingTestPlugin {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
-        world.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
+        world.spawn(camera::Camera2d{}, transform::Transform{});
 
         // Three shared mesh handles: box, circle, triangle
         auto box_handle    = mesh_assets.emplace(mesh::make_box2d(20.0f, 20.0f));

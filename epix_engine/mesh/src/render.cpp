@@ -12,6 +12,29 @@ using namespace epix::app;
 using namespace epix::mesh;
 
 namespace {
+
+void calculate_mesh2d_bounds(
+    Commands cmd,
+    Query<Item<Entity,
+               const Mesh2d&,
+               Opt<Mut<camera::Aabb>>,
+               Opt<const camera::NoAutoAabb&>,
+               Opt<const camera::NoFrustumCulling&>>> meshes,
+    Res<assets::Assets<Mesh>> mesh_assets) {
+    for (auto&& [entity, mesh2d, existing_aabb, no_auto_aabb, no_frustum_culling] : meshes.iter()) {
+        if (no_auto_aabb || no_frustum_culling) continue;
+        const auto mesh = mesh_assets->get(mesh2d.handle.id());
+        if (!mesh) continue;
+        const auto aabb = mesh->get().compute_aabb();
+        if (!aabb) continue;
+        if (existing_aabb) {
+            existing_aabb->get_mut() = *aabb;
+        } else {
+            cmd.entity(entity).insert(*aabb);
+        }
+    }
+}
+
 constexpr std::string_view kMeshSolidVertexShader = R"(
 import epix.view;
 
@@ -619,19 +642,27 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
 
 void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&,
                                        const render::view::ViewTarget&,
-                                       const render::camera::ExtractedCamera&>> views,
+                                       Opt<const ::epix::camera::RenderLayers&>,
+                                       const ::epix::render::view::RenderVisibleEntities&>> views,
                             Query<Item<Entity, const ExtractedMesh2d&>> meshes,
                             Res<render::RenderAssets<Mesh>> gpu_meshes,
                             Res<render::RenderAssets<image::Image>> images,
                             Res<OpaqueMesh2dDrawFunction> draw_function_id,
                             ResMut<Mesh2dPipelineCache> pipeline_cache,
                             ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target, cam] : views.iter()) {
+    for (auto&& [phase, target, opt_camera_layers, visible_entities] : views.iter()) {
+        const auto& camera_layers =
+            opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
+        const auto& visible = visible_entities.template get<Mesh2d>();
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
                 continue;
             }
-            if (!cam.render_layer.intersects(extracted_mesh.render_layer)) {
+            if (!camera_layers.intersects(extracted_mesh.render_layer)) {
+                continue;
+            }
+            if (std::ranges::find(visible, extracted_mesh.source_entity,
+                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
                 continue;
             }
 
@@ -678,19 +709,27 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
 
 void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
                                             const render::view::ViewTarget&,
-                                            const render::camera::ExtractedCamera&>> views,
+                                            Opt<const ::epix::camera::RenderLayers&>,
+                                            const ::epix::render::view::RenderVisibleEntities&>> views,
                                  Query<Item<Entity, const ExtractedMesh2d&>> meshes,
                                  Res<render::RenderAssets<Mesh>> gpu_meshes,
                                  Res<render::RenderAssets<image::Image>> images,
                                  Res<TransparentMesh2dDrawFunction> draw_function_id,
                                  ResMut<Mesh2dPipelineCache> pipeline_cache,
                                  ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target, cam] : views.iter()) {
+    for (auto&& [phase, target, opt_camera_layers, visible_entities] : views.iter()) {
+        const auto& camera_layers =
+            opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
+        const auto& visible = visible_entities.template get<Mesh2d>();
         for (auto&& [entity, extracted_mesh] : meshes.iter()) {
             if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Blend) {
                 continue;
             }
-            if (!cam.render_layer.intersects(extracted_mesh.render_layer)) {
+            if (!camera_layers.intersects(extracted_mesh.render_layer)) {
+                continue;
+            }
+            if (std::ranges::find(visible, extracted_mesh.source_entity,
+                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
                 continue;
             }
 
@@ -737,6 +776,14 @@ void MeshRenderPlugin::attach(app::App& app) {
     // Bevy Mesh2d requires Visibility, pulling in InheritedVisibility +
     // ViewVisibility so hidden/layer culling works.
     app.world_mut().register_required_components<Mesh2d, camera::Visibility>();
+    app.world_mut().register_required_components_with<Mesh2d>([] {
+        return camera::VisibilityClass{meta::type_index(meta::type_id<Mesh2d>())};
+    });
+    app.add_systems(app::PostUpdate,
+                    into(calculate_mesh2d_bounds)
+                        .in_set(camera::VisibilitySystems::CalculateBounds)
+                        .before(camera::VisibilitySystems::CheckVisibility)
+                        .set_name("calculate mesh2d bounds"));
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::RenderAssetPlugin<Mesh>{});

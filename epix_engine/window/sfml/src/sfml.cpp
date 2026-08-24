@@ -237,6 +237,12 @@ void SFMLPlugin::update_size(Query<Item<Entity, Mut<WindowDesc>, const CachedWin
         auto sz     = window->getSize();
         desc.size   = {static_cast<int>(sz.x), static_cast<int>(sz.y)};
         cached.size = desc.size;
+        // SFML exposes its drawable size directly on the supported desktop
+        // backends; it has no separate content-scale API here.
+        desc.physical_size   = desc.size;
+        desc.scale_factor    = 1.0f;
+        cached.physical_size = desc.physical_size;
+        cached.scale_factor  = desc.scale_factor;
     }
 }
 

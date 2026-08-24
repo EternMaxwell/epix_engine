@@ -1,4 +1,4 @@
-﻿#include <epix/app.hpp>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
@@ -102,7 +102,7 @@ glm::vec2 screen_to_world(glm::vec2 screen_pos,
     float ndc_x = (screen_pos.x / window_size.x) * 2.0f - 1.0f;
     float ndc_y = 1.0f - (screen_pos.y / window_size.y) * 2.0f;  // Flip Y
 
-    glm::mat4 proj_matrix = camera.computed.projection;
+    glm::mat4 proj_matrix = camera.computed.clip_from_view;
     glm::mat4 view_matrix = glm::inverse(cam_transform.to_matrix());
     glm::mat4 vp_inv      = glm::inverse(proj_matrix * view_matrix);
 
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
 
-    app.world_mut().spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
+    app.world_mut().spawn(camera::Camera2d{}, transform::Transform{});
 
     // Setup: spawn text entity, outline meshes, info text
     app.add_systems(

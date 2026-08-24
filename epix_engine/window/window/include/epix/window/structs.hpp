@@ -141,8 +141,14 @@ EPIX_EXPORT namespace epix::window {
          * Usually equals `pos` when pos_type is TopLeft and monitor is 0. */
         std::pair<int, int> final_pos = {0, 0};
 
-        /** @brief Size of the window in pixels. */
+        /** @brief Logical size of the window in platform coordinates. */
         std::pair<int, int> size = {1280, 720};
+        /** @brief Drawable framebuffer size in physical pixels (read-only).
+         * This can differ from `size` on high-DPI displays. */
+        std::pair<int, int> physical_size = {1280, 720};
+        /** @brief Logical-to-physical DPI scale reported by the backend
+         * (read-only). */
+        float scale_factor = 1.0f;
 
         /** @brief Cursor position (x, y) in client-area coordinates.
          *
