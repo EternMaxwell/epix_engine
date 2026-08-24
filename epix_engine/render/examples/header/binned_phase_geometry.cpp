@@ -73,7 +73,14 @@ struct Adapter {};
 
 struct PipelineState {
     wgpu::RenderPipeline pipeline;
+    wgpu::ComputePipeline preprocess_pipeline;
+    wgpu::BindGroup render_bind_group;
+    wgpu::BindGroup preprocess_bind_group;
+    wgpu::BindGroupLayout render_bind_group_layout;
     wgpu::Buffer vertex_buffer;
+    wgpu::Buffer input_indices_buffer;
+    wgpu::Buffer work_items_buffer;
+    wgpu::Buffer output_indices_buffer;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
 };
 
@@ -88,6 +95,7 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
                                                        const Item& item) override {
         if (!state->pipeline) return std::unexpected(render::phase::DrawError::skip());
         pass.setPipeline(state->pipeline);
+        pass.setBindGroup(0, state->render_bind_group, std::span<const std::uint32_t>{});
         pass.setVertexBuffer(0, state->vertex_buffer, 0, 3 * sizeof(float) * 2);
         pass.draw(3, item.batch_range.second - item.batch_range.first, 0, item.batch_range.first);
         return {};
@@ -145,9 +153,32 @@ static_assert(render::phase::BinnedPhaseItem<Item>);
 static_assert(render::batching::GetFullBatchDataImpl<Adapter>);
 
 // The engine's pipeline assets use Slang. This deliberately tiny direct-wgpu
-// shader is test scaffolding for the accepted direct-resource layer: it keeps
-// the visual proof focused on the generic binned-phase draw ranges.
+// shader is test scaffolding for the accepted direct-resource layer: its
+// compute stage consumes the generic GPU-preprocessing work items and its
+// vertex stage consumes the generated output data.
+constexpr std::string_view kPreprocessShader = R"(
+struct PreprocessWorkItem {
+    input_index: u32,
+    output_or_indirect_parameters_index: u32,
+};
+
+@group(0) @binding(0) var<storage, read> input_indices: array<u32>;
+@group(0) @binding(1) var<storage, read> work_items: array<PreprocessWorkItem>;
+@group(0) @binding(2) var<storage, read_write> output_indices: array<u32>;
+
+@compute @workgroup_size(64)
+fn preprocessMain(@builtin(global_invocation_id) invocation: vec3<u32>) {
+    if (invocation.x >= arrayLength(&work_items)) {
+        return;
+    }
+    let item = work_items[invocation.x];
+    output_indices[item.output_or_indirect_parameters_index] = input_indices[item.input_index];
+}
+)";
+
 constexpr std::string_view kTriangleShader = R"(
+@group(0) @binding(2) var<storage, read> output_indices: array<u32>;
+
 struct VertexInput {
     @location(0) position: vec2<f32>,
     @builtin(instance_index) instance_index: u32,
@@ -155,8 +186,9 @@ struct VertexInput {
 
 @vertex
 fn vertexMain(input: VertexInput) -> @builtin(position) vec4<f32> {
-    let column = input.instance_index % 3u;
-    let row = input.instance_index / 3u;
+    let processed_index = output_indices[input.instance_index];
+    let column = processed_index % 3u;
+    let row = processed_index / 3u;
     let center = vec2<f32>(-0.62 + f32(column) * 0.62, 0.34 - f32(row) * 0.62);
     return vec4<f32>(center + input.position, 0.0, 1.0);
 }
@@ -175,6 +207,8 @@ struct BinnedGeometryNode : render::graph::Node {
     std::shared_ptr<binned_phase_geometry::PipelineState> pipeline = std::make_shared<binned_phase_geometry::PipelineState>();
     render::phase::BinnedRenderPhase<Item> phase;
     wgpu::ShaderModule shader_module;
+    wgpu::ShaderModule preprocess_shader_module;
+    std::uint32_t preprocess_work_item_count = 0;
     bool prepared = false;
 
     void update(World& world) override {
@@ -191,6 +225,14 @@ struct BinnedGeometryNode : render::graph::Node {
         world.insert_resource(std::move(draw_functions));
 
         const Tick tick{1};
+        render::batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
+        render::batching::UntypedPhaseIndirectParametersBuffers indirect_parameters;
+        render::batching::InstanceInputUniformBuffer<std::uint32_t> input_indices;
+        for (std::uint32_t index = 0; index < 5; ++index) input_indices.add(index);
+        input_indices.ensure_nonempty();
+        const render::view::RetainedViewEntity retained_view{
+            render::sync_world::MainEntity{Entity::from_index(1)}, std::nullopt, 0};
+        phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::PreprocessingOnly};
         for (std::uint32_t index = 0; index < 3; ++index) {
             phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index + 1)},
                       render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::BatchableMesh, tick);
@@ -199,10 +241,8 @@ struct BinnedGeometryNode : render::graph::Node {
             phase.add(0, 1, Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 4)},
                       render::phase::InputUniformIndex{index + 3}, render::phase::BinnedRenderPhaseType::BatchableMesh, tick);
         }
-        wgpu::Limits limits{};
-        limits.maxStorageBuffersPerShaderStage = 1;
-        render::render_resource::GpuArrayBuffer<std::uint32_t> instances{limits};
-        render::batching::batch_and_prepare_binned_phase<Item, Adapter>(phase, instances, world);
+        render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(
+            phase, phase_buffers, indirect_parameters, retained_view, true, false, world);
 
         auto device = world.get_resource<wgpu::Device>();
         if (!device) throw std::runtime_error("render device is unavailable");
@@ -218,24 +258,78 @@ struct BinnedGeometryNode : render::graph::Node {
             wgpu::ShaderModuleDescriptor()
                 .setLabel("binned-phase-geometry-test-shader")
                 .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kTriangleShader)));
-        if (!shader_module) throw std::runtime_error("failed to create binned-phase test shader module");
+        preprocess_shader_module = device->get().createShaderModule(
+            wgpu::ShaderModuleDescriptor()
+                .setLabel("binned-phase-geometry-preprocess-shader")
+                .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kPreprocessShader)));
+        if (!shader_module || !preprocess_shader_module) {
+            throw std::runtime_error("failed to create binned-phase test shader modules");
+        }
+        input_indices.buffer.write_buffer(device->get(), world.resource<wgpu::Queue>());
+        phase_buffers.write_buffers(device->get(), world.resource<wgpu::Queue>());
+        const auto& direct_work_items = std::get<render::batching::PreprocessWorkItemBuffers::Direct>(
+            phase_buffers.work_item_buffers.at(retained_view).storage).items;
+        preprocess_work_item_count = static_cast<std::uint32_t>(direct_work_items.len());
+        pipeline->input_indices_buffer = input_indices.buffer.buffer;
+        pipeline->work_items_buffer = direct_work_items.buffer;
+        pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
+        const auto preprocess_layout = device->get().createBindGroupLayout(
+            wgpu::BindGroupLayoutDescriptor()
+                .setLabel("binned-phase-geometry-preprocess-layout")
+                .setEntries(std::array{
+                    wgpu::BindGroupLayoutEntry().setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
+                    wgpu::BindGroupLayoutEntry().setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
+                    wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
+                }));
+        pipeline->render_bind_group_layout = device->get().createBindGroupLayout(
+            wgpu::BindGroupLayoutDescriptor()
+                .setLabel("binned-phase-geometry-render-layout")
+                .setEntries(std::array{wgpu::BindGroupLayoutEntry()
+                                            .setBinding(2)
+                                            .setVisibility(wgpu::ShaderStage::eVertex)
+                                            .setBuffer(wgpu::BufferBindingLayout()
+                                                           .setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
+        const auto preprocess_pipeline_layout = device->get().createPipelineLayout(
+            wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-preprocess-pipeline-layout")
+                .setBindGroupLayouts(std::array{preprocess_layout}));
+        pipeline->preprocess_pipeline = device->get().createComputePipeline(
+            wgpu::ComputePipelineDescriptor().setLabel("binned-phase-geometry-preprocess-pipeline")
+                .setLayout(preprocess_pipeline_layout)
+                .setCompute(wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader_module).setEntryPoint("preprocessMain")));
+        pipeline->preprocess_bind_group = device->get().createBindGroup(
+            wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-preprocess-bind-group")
+                .setLayout(preprocess_layout)
+                .setEntries(std::array{
+                    wgpu::BindGroupEntry().setBinding(0).setBuffer(pipeline->input_indices_buffer)
+                        .setSize(input_indices.buffer.len() * sizeof(std::uint32_t)),
+                    wgpu::BindGroupEntry().setBinding(1).setBuffer(pipeline->work_items_buffer)
+                        .setSize(direct_work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
+                    wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
+                        .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
+                }));
+        pipeline->render_bind_group = device->get().createBindGroup(
+            wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-render-bind-group")
+                .setLayout(pipeline->render_bind_group_layout)
+                .setEntries(std::array{wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
+                                            .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
         prepared = true;
     }
 
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& context,
                                                           render::graph::RenderContext& render_context,
                                                           const World& world) override {
-        if (!views || !shader_module) return {};
+        if (!views || !shader_module || !preprocess_shader_module) return {};
         const auto view = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
         if (!view) return {};
         const auto& target = std::get<1>(*view);
         if (!pipeline->pipeline || pipeline->format != target.output_attachment.view_format) {
             const auto format = target.output_attachment.view_format;
-            // The Slang modules deliberately have no bindings. Supplying the
-            // empty layout explicitly avoids wgpu's SPIR-V interface
-            // reflection path, which is unrelated to the phase under test.
             auto layout = world.resource<wgpu::Device>().createPipelineLayout(
-                wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-layout"));
+                wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-layout")
+                    .setBindGroupLayouts(std::array{pipeline->render_bind_group_layout}));
             const auto attributes = std::array{wgpu::VertexAttribute()
                                                    .setFormat(wgpu::VertexFormat::eFloat32x2)
                                                    .setOffset(0)
@@ -261,6 +355,14 @@ struct BinnedGeometryNode : render::graph::Node {
                                       .setCullMode(wgpu::CullMode::eNone))
                     .setMultisample(wgpu::MultisampleState().setCount(1).setMask(~0u)));
             pipeline->format = format;
+        }
+        {
+            auto preprocess = render_context.command_encoder().beginComputePass(
+                wgpu::ComputePassDescriptor().setLabel("binned-phase-geometry-preprocess-pass"));
+            preprocess.setPipeline(pipeline->preprocess_pipeline);
+            preprocess.setBindGroup(0, pipeline->preprocess_bind_group, std::span<const std::uint32_t>{});
+            preprocess.dispatchWorkgroups((preprocess_work_item_count + 63) / 64, 1, 1);
+            preprocess.end();
         }
         auto pass = render_context.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture_color_attachment(glm::vec4{0.10f, 0.11f, 0.14f, 1.0f})}));
