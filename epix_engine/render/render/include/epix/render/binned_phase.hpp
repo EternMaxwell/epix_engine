@@ -10,11 +10,13 @@
 #include <optional>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 #endif
 
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_debug.hpp>
+#include <epix/render/gpu_preprocessing_mode.hpp>
 #include <epix/render/schedule.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/view.hpp>
@@ -143,6 +145,28 @@ EPIX_EXPORT struct BinnedRenderPhaseBatch {
     std::pair<std::uint32_t, std::uint32_t> instance_range{0, 0};
     PhaseItemExtraIndex extra_index{};
 };
+
+/** @brief A group of binned batches submitted through one multi-draw indirect
+ * command (Bevy `BinnedRenderPhaseBatchSet`). */
+template <typename BK>
+struct BinnedRenderPhaseBatchSet {
+    BinnedRenderPhaseBatch first_batch;
+    BK bin_key;
+    std::uint32_t index = 0;
+};
+
+/**
+ * @brief The draw-batch layout chosen for a binned phase (Bevy
+ * `BinnedRenderPhaseBatchSets`).
+ *
+ * `None` uses dynamic-uniform batches, `PreprocessingOnly` emits direct
+ * batches, and `Culling` groups them for indirect multi-draw.  Concrete GPU
+ * preprocessing consumers populate these containers during preparation.
+ */
+template <typename BK>
+using BinnedRenderPhaseBatchSets = std::variant<std::vector<std::vector<BinnedRenderPhaseBatch>>,
+                                                std::vector<BinnedRenderPhaseBatch>,
+                                                std::vector<BinnedRenderPhaseBatchSet<BK>>>;
 
 /**
  * @brief All entities that share a mesh and a material and can be batched as
@@ -299,10 +323,6 @@ struct EntityThatChangedBins {
  * @brief A collection of all rendering instructions for a single binned
  * render phase for a single view (Bevy `BinnedRenderPhase<BPI>`, 0.18).
  *
- * This port implements the storage-buffer fast path (Bevy's
- * `BinnedRenderPhaseBatchSets::Direct`): the WebGL2 dynamic-uniform fallback
- * and GPU-side multidraw preprocessing are not replicated.
- *
  * Entities are binned by `(batch_set_key, bin_key)`; bin membership is
  * cached per entity with a change tick so that `sweep_old_entities` can
  * cheaply remove entities that disappeared or changed bins.
@@ -314,6 +334,11 @@ class BinnedRenderPhase {
     using BatchSetKey = typename BPI::BatchSetKey;
     using BinKey      = typename BPI::BinKey;
 
+    /** @brief Construct a phase for the selected GPU preprocessing mode. */
+    explicit BinnedRenderPhase(
+        batching::GpuPreprocessingMode gpu_preprocessing_mode = batching::GpuPreprocessingMode::None)
+        : batch_sets(make_batch_sets(gpu_preprocessing_mode)), gpu_preprocessing_mode(gpu_preprocessing_mode) {}
+
     /** @brief Batch set -> (bin -> entities) for multidrawable meshes. */
     IndexMap<BatchSetKey, IndexMap<BinKey, RenderBin>> multidrawable_meshes;
     /** @brief (batch set, bin) -> entities for batchable non-multidrawable meshes. */
@@ -322,6 +347,11 @@ class BinnedRenderPhase {
     IndexMap<BinKeyPair<BatchSetKey, BinKey>, UnbatchableBinnedEntities> unbatchable_meshes;
     /** @brief (batch set, bin) -> entities for non-mesh items. */
     IndexMap<BinKeyPair<BatchSetKey, BinKey>, NonMeshEntities> non_mesh_items;
+    /** @brief Per-frame prepared batches. Its alternative is fixed by
+     * `gpu_preprocessing_mode`. */
+    BinnedRenderPhaseBatchSets<BinKey> batch_sets;
+    /** @brief GPU preprocessing mode selected when this phase was created. */
+    batching::GpuPreprocessingMode gpu_preprocessing_mode;
 
     /** @brief True when no entities are binned in any list. */
     bool is_empty() const noexcept {
@@ -346,11 +376,10 @@ class BinnedRenderPhase {
              InputUniformIndex input_uniform_index,
              BinnedRenderPhaseType phase_type,
              ecs::Tick change_tick) {
-        // Epix currently uses Bevy's no-GPU-preprocessing path.  In that
-        // mode Bevy downgrades multidrawable items to ordinary batchable
-        // meshes before inserting them: there is no indirect/multidraw batch
-        // set to consume `multidrawable_meshes` otherwise.
-        if (phase_type == BinnedRenderPhaseType::MultidrawableMesh) {
+        // Match Bevy: only the direct preprocessing path overrides indirect
+        // drawing. Culling keeps multidrawable bins separate.
+        if (gpu_preprocessing_mode == batching::GpuPreprocessingMode::PreprocessingOnly &&
+            phase_type == BinnedRenderPhaseType::MultidrawableMesh) {
             phase_type = BinnedRenderPhaseType::BatchableMesh;
         }
         switch (phase_type) {
@@ -416,6 +445,7 @@ class BinnedRenderPhase {
      * `prepare_for_new_frame`).
      */
     void prepare_for_new_frame() {
+        std::visit([](auto& batches) { batches.clear(); }, batch_sets);
         valid_cached_entity_bin_keys.assign(cached_entity_bin_keys.size(), false);
         entities_that_changed_bins.clear();
         for (auto& [key, unbatchable] : unbatchable_meshes.iter()) {
@@ -496,6 +526,18 @@ class BinnedRenderPhase {
     }
 
    private:
+    static BinnedRenderPhaseBatchSets<BinKey> make_batch_sets(batching::GpuPreprocessingMode mode) {
+        switch (mode) {
+            case batching::GpuPreprocessingMode::None:
+                return std::vector<std::vector<BinnedRenderPhaseBatch>>{};
+            case batching::GpuPreprocessingMode::PreprocessingOnly:
+                return std::vector<BinnedRenderPhaseBatch>{};
+            case batching::GpuPreprocessingMode::Culling:
+                return std::vector<BinnedRenderPhaseBatchSet<BinKey>>{};
+        }
+        std::unreachable();
+    }
+
     void remove_entity_from_bin(epix::ecs::Entity main_entity, const CachedBinKey<BPI>& key) {
         switch (key.phase_type) {
             case BinnedRenderPhaseType::MultidrawableMesh: {
@@ -668,11 +710,12 @@ struct ViewBinnedRenderPhases {
 
     /** @brief Reset the phase for the view, creating it if needed (Bevy
      * `prepare_for_new_frame`). */
-    void prepare_for_new_frame(const view::RetainedViewEntity& retained_view_entity) {
+    void prepare_for_new_frame(const view::RetainedViewEntity& retained_view_entity,
+                               batching::GpuPreprocessingMode gpu_preprocessing_mode) {
         if (auto it = phases.find(retained_view_entity); it != phases.end()) {
             it->second.prepare_for_new_frame();
         } else {
-            phases.emplace(retained_view_entity, BinnedRenderPhase<BPI>{});
+            phases.emplace(retained_view_entity, BinnedRenderPhase<BPI>{gpu_preprocessing_mode});
         }
     }
 };

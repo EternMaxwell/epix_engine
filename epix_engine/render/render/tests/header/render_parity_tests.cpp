@@ -803,9 +803,9 @@ TEST(BinnedRenderPhase, BinsByKey) {
     EXPECT_FALSE(phase.is_empty());
 }
 
-// Without GPU preprocessing, Bevy downgrades multidrawable items to normal
-// batchable meshes; unbatchable and non-mesh items retain their own lists.
-TEST(BinnedRenderPhase, PhaseTypes) {
+// Bevy only downgrades multidrawable items when the view explicitly requests
+// direct preprocessing. None and culling retain the multidrawable bins.
+TEST(BinnedRenderPhase, PreservesMultidrawableItemsOutsideDirectPreprocessing) {
     phase::BinnedRenderPhase<TestBinnedItem> phase;
     const Tick tick(1);
     const sync_world::MainEntity m1{Entity::from_index(1)};
@@ -818,17 +818,46 @@ TEST(BinnedRenderPhase, PhaseTypes) {
     phase.add(0, 0, Entity::from_index(12), m3, phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::NonMesh,
               tick);
 
-    EXPECT_TRUE(phase.multidrawable_meshes.empty());
-    auto* batchable = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
-    ASSERT_NE(batchable, nullptr);
-    EXPECT_EQ(batchable->size(), 1u);
-    EXPECT_TRUE(batchable->contains(m1.entity));
+    auto* multidrawable = phase.multidrawable_meshes.get(0);
+    ASSERT_NE(multidrawable, nullptr);
+    auto* multidrawable_bin = multidrawable->get(0);
+    ASSERT_NE(multidrawable_bin, nullptr);
+    EXPECT_EQ(multidrawable_bin->size(), 1u);
+    EXPECT_TRUE(multidrawable_bin->contains(m1.entity));
+    EXPECT_TRUE(phase.batchable_meshes.empty());
     auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
     ASSERT_NE(unbatchable, nullptr);
     EXPECT_EQ(unbatchable->entities.at(m2.entity), Entity::from_index(11));
     auto* non_mesh = phase.non_mesh_items.get(phase::BinKeyPair<int, int>{0, 0});
     ASSERT_NE(non_mesh, nullptr);
     EXPECT_EQ(non_mesh->entities.at(m3.entity), Entity::from_index(12));
+}
+
+TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
+    using Mode = batching::GpuPreprocessingMode;
+    phase::BinnedRenderPhase<TestBinnedItem> no_gpu{Mode::None};
+    phase::BinnedRenderPhase<TestBinnedItem> direct{Mode::PreprocessingOnly};
+    phase::BinnedRenderPhase<TestBinnedItem> culling{Mode::Culling};
+
+    EXPECT_EQ(no_gpu.batch_sets.index(), 0u);
+    EXPECT_EQ(direct.batch_sets.index(), 1u);
+    EXPECT_EQ(culling.batch_sets.index(), 2u);
+
+    const sync_world::MainEntity entity{Entity::from_index(1)};
+    direct.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
+               phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
+    EXPECT_TRUE(direct.multidrawable_meshes.empty());
+    auto* direct_bin = direct.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    ASSERT_NE(direct_bin, nullptr);
+    EXPECT_EQ(direct_bin->size(), 1u);
+
+    culling.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
+                phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
+    ASSERT_NE(culling.multidrawable_meshes.get(0), nullptr);
+    EXPECT_EQ(culling.multidrawable_meshes.get(0)->get(0)->size(), 1u);
+    std::get<2>(culling.batch_sets).push_back({});
+    culling.prepare_for_new_frame();
+    EXPECT_TRUE(std::get<2>(culling.batch_sets).empty());
 }
 
 // Entities not re-queued after prepare_for_new_frame are swept from their
@@ -877,9 +906,9 @@ TEST(BinnedRenderPhase, ChangedBinMoved) {
 TEST(ViewBinnedRenderPhases, PrepareForNewFrame) {
     phase::ViewBinnedRenderPhases<TestBinnedItem> phases;
     const view::RetainedViewEntity v{sync_world::MainEntity{Entity::from_index(5)}, std::nullopt, 0};
-    phases.prepare_for_new_frame(v);
+    phases.prepare_for_new_frame(v, batching::GpuPreprocessingMode::None);
     EXPECT_EQ(phases.phases.size(), 1u);
-    phases.prepare_for_new_frame(v);
+    phases.prepare_for_new_frame(v, batching::GpuPreprocessingMode::None);
     EXPECT_EQ(phases.phases.size(), 1u);
 }
 
@@ -887,7 +916,7 @@ TEST(BinnedRenderPhase, SortsKeysBeforePreparation) {
     World world(WorldId(103));
     phase::ViewBinnedRenderPhases<TestBinnedItem> phases;
     const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(6)}, std::nullopt, 0};
-    phases.prepare_for_new_frame(view);
+    phases.prepare_for_new_frame(view, batching::GpuPreprocessingMode::None);
     auto& render_phase = phases.phases.at(view);
     // Queue in reverse order: PhaseSort must establish deterministic key order.
     render_phase.add(2, 3, Entity::from_index(21), sync_world::MainEntity{Entity::from_index(21)},

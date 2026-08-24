@@ -19,6 +19,7 @@
 #include <epix/render/render_resource.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/binned_phase.hpp>
+#include <epix/render/gpu_preprocessing_mode.hpp>
 #include <epix/render/sync_world.hpp>
 
 namespace epix::render::batching {
@@ -796,14 +797,6 @@ void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
 }  // namespace epix::render::phase
 
 namespace epix::render::batching {
-
-/** @brief Degree of GPU preprocessing supported by the active adapter (Bevy
- * `GpuPreprocessingMode`). */
-EPIX_EXPORT enum class GpuPreprocessingMode : std::uint8_t {
-    None,
-    PreprocessingOnly,
-    Culling,
-};
 
 /** @brief Adapter capability summary for GPU preprocessing (Bevy
  * `GpuPreprocessingSupport`). */
