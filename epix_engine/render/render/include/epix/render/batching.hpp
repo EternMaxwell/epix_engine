@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <optional>
+#include <typeindex>
 #include <type_traits>
 #include <utility>
 #include <variant>
@@ -20,6 +21,7 @@
 #include <epix/render/render_phase.hpp>
 #include <epix/render/binned_phase.hpp>
 #include <epix/render/gpu_preprocessing_mode.hpp>
+#include <epix/render/occlusion_culling.hpp>
 #include <epix/render/sync_world.hpp>
 
 namespace epix::render::batching {
@@ -232,9 +234,7 @@ struct InstanceInputUniformBuffer {
 };
 
 /** @brief GPU preprocessing buffers for one phase, without the phase type
- * (Bevy `UntypedPhaseBatchedInstanceBuffers`). Epix stores this directly in
- * the phase-typed resource rather than Bevy's type-erased outer map; that is
- * equivalent under Epix's parallel render-world scheduling. */
+ * (Bevy `UntypedPhaseBatchedInstanceBuffers`). */
 template <render_resource::GpuArrayBufferable BufferData>
 struct UntypedPhaseBatchedInstanceBuffers {
     render_resource::UninitBufferVec<BufferData> data_buffer{wgpu::BufferUsage::eStorage |
@@ -289,6 +289,24 @@ struct UntypedPhaseBatchedInstanceBuffers {
 template <phase::PhaseItem PI, render_resource::GpuArrayBufferable BufferData>
 struct PhaseBatchedInstanceBuffers {
     UntypedPhaseBatchedInstanceBuffers<BufferData> buffers;
+};
+
+/** @brief Input and output buffers shared by phases that use the same GPU
+ * preprocessing adapter data (Bevy `BatchedInstanceBuffers`). Phase-local
+ * buffers are moved into this table after parallel preparation so concrete
+ * preprocessing passes can look them up by phase type. */
+template <render_resource::GpuArrayBufferable BufferData, render_resource::ShaderType BufferInputData>
+struct BatchedInstanceBuffers {
+    InstanceInputUniformBuffer<BufferInputData> current_input_buffer;
+    InstanceInputUniformBuffer<BufferInputData> previous_input_buffer;
+    std::unordered_map<std::type_index, UntypedPhaseBatchedInstanceBuffers<BufferData>> phase_instance_buffers;
+
+    void clear() {
+        for (auto& [phase_type, buffers] : phase_instance_buffers) {
+            (void)phase_type;
+            buffers.clear();
+        }
+    }
 };
 
 /** @brief Remove cached work-item buffers for views that no longer exist
@@ -412,6 +430,39 @@ struct PhaseIndirectParametersBuffers {
 
     explicit PhaseIndirectParametersBuffers(bool allow_copy_src = false) : buffers(allow_copy_src) {}
 };
+
+/** @brief Indirect command buffers gathered from all phase-local preparation
+ * resources (Bevy `IndirectParametersBuffers`). */
+struct IndirectParametersBuffers {
+    std::unordered_map<std::type_index, UntypedPhaseIndirectParametersBuffers> buffers;
+    bool allow_copies_from_indirect_parameter_buffers = false;
+
+    explicit IndirectParametersBuffers(bool allow_copy_src = false)
+        : allow_copies_from_indirect_parameter_buffers(allow_copy_src) {}
+
+    void clear() {
+        for (auto& [phase_type, parameters] : buffers) {
+            (void)phase_type;
+            parameters.clear();
+        }
+    }
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        for (auto& [phase_type, parameters] : buffers) {
+            (void)phase_type;
+            parameters.write_buffers(device, queue);
+        }
+    }
+};
+
+inline void clear_indirect_parameters_buffers(ecs::ResMut<IndirectParametersBuffers> buffers) {
+    buffers->clear();
+}
+
+inline void write_indirect_parameters_buffers(ecs::ResMut<IndirectParametersBuffers> buffers,
+                                              ecs::Res<wgpu::Device> device,
+                                              ecs::Res<wgpu::Queue> queue) {
+    buffers->write_buffers(device.get(), queue.get());
+}
 
 template <phase::PhaseItem PI>
 void clear_phase_indirect_parameters_buffers(ecs::ResMut<PhaseIndirectParametersBuffers<PI>> buffers) {
@@ -640,6 +691,84 @@ void batch_and_prepare_gpu_binned_phase(
                                                                            : phase::PhaseItemExtraIndex::None,
                                                     });
         }
+    }
+}
+
+/** @brief ECS entry point for GPU binned-phase preparation (Bevy
+ * `gpu_preprocessing::batch_and_prepare_binned_render_phase`). It is only
+ * scheduled when the concrete renderer has installed the matching shared
+ * `BatchedInstanceBuffers` resource. */
+template <phase::BinnedPhaseItem BPI, typename Adapter>
+    requires GetFullBatchDataImpl<Adapter>
+void batch_and_prepare_gpu_binned_render_phase(
+    ecs::ResMut<PhaseBatchedInstanceBuffers<BPI, typename GetBatchData<Adapter>::BufferData>> phase_buffers,
+    ecs::ResMut<PhaseIndirectParametersBuffers<BPI>> indirect_parameters,
+    ecs::ResMut<phase::ViewBinnedRenderPhases<BPI>> phases,
+    ecs::Query<ecs::Item<const view::ExtractedView&,
+                         ecs::Has<view::NoIndirectDrawing>,
+                         ecs::Has<experimental::OcclusionCulling>>,
+               ecs::With<view::ExtractedView>> views,
+    typename GetBatchData<Adapter>::Param batch_param) {
+    for (auto&& [extracted_view, no_indirect_drawing, occlusion_culling] : views.iter()) {
+        const auto phase = phases->phases.find(extracted_view.retained_view_entity);
+        if (phase == phases->phases.end()) continue;
+        batch_and_prepare_gpu_binned_phase<BPI, Adapter>(phase->second, phase_buffers->buffers,
+                                                          indirect_parameters->buffers,
+                                                          extracted_view.retained_view_entity, no_indirect_drawing,
+                                                          occlusion_culling, batch_param);
+    }
+}
+
+/** @brief Moves one phase's prepared GPU buffers into the shared lookup
+ * tables, retaining the previous allocation for the next frame (Bevy
+ * `gpu_preprocessing::collect_buffers_for_phase`). */
+template <phase::PhaseItem PI, typename Adapter>
+    requires GetFullBatchDataImpl<Adapter>
+void collect_buffers_for_phase(
+    ecs::ResMut<PhaseBatchedInstanceBuffers<PI, typename GetBatchData<Adapter>::BufferData>> phase_buffers,
+    ecs::ResMut<PhaseIndirectParametersBuffers<PI>> phase_indirect_parameters,
+    ecs::ResMut<BatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData,
+                                        typename GetFullBatchData<Adapter>::BufferInputData>> batched_instance_buffers,
+    ecs::ResMut<IndirectParametersBuffers> indirect_parameters) {
+    const auto phase_type = std::type_index(typeid(PI));
+
+    auto prepared_buffers = std::exchange(phase_buffers->buffers, {});
+    if (auto it = batched_instance_buffers->phase_instance_buffers.find(phase_type);
+        it == batched_instance_buffers->phase_instance_buffers.end()) {
+        batched_instance_buffers->phase_instance_buffers.emplace(phase_type, std::move(prepared_buffers));
+    } else {
+        std::swap(it->second, prepared_buffers);
+        prepared_buffers.clear();
+        phase_buffers->buffers = std::move(prepared_buffers);
+    }
+
+    auto prepared_indirect = std::exchange(
+        phase_indirect_parameters->buffers,
+        UntypedPhaseIndirectParametersBuffers{indirect_parameters->allow_copies_from_indirect_parameter_buffers});
+    if (auto it = indirect_parameters->buffers.find(phase_type); it == indirect_parameters->buffers.end()) {
+        indirect_parameters->buffers.emplace(phase_type, std::move(prepared_indirect));
+    } else {
+        std::swap(it->second, prepared_indirect);
+        prepared_indirect.clear();
+        phase_indirect_parameters->buffers = std::move(prepared_indirect);
+    }
+}
+
+/** @brief Uploads the shared input and per-phase GPU-preprocessing buffers
+ * (Bevy `gpu_preprocessing::write_batched_instance_buffers`). Concrete
+ * renderers register this for their `GetFullBatchData` adapter. */
+template <typename Adapter>
+    requires GetFullBatchDataImpl<Adapter>
+void write_batched_instance_buffers(
+    ecs::ResMut<BatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData,
+                                        typename GetFullBatchData<Adapter>::BufferInputData>> buffers,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<wgpu::Queue> queue) {
+    buffers->current_input_buffer.buffer.write_buffer(device.get(), queue.get());
+    buffers->previous_input_buffer.buffer.write_buffer(device.get(), queue.get());
+    for (auto& [phase_type, phase_buffers] : buffers->phase_instance_buffers) {
+        (void)phase_type;
+        phase_buffers.write_buffers(device.get(), queue.get());
     }
 }
 
@@ -915,18 +1044,29 @@ void BinnedRenderPhasePlugin<BPI, Adapter>::attach(app::App& app) {
     batching::CpuBinnedRenderPhasePlugin<BPI, Adapter>{}.attach(app);
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
+        world.init_resource<batching::PhaseBatchedInstanceBuffers<BPI, typename batching::GetBatchData<Adapter>::BufferData>>();
         world.insert_resource(batching::PhaseIndirectParametersBuffers<BPI>{
             debug_flags.allow_copies_from_indirect_parameters()});
         render_app->get().add_systems(
             Render,
-            ecs::into(batching::clear_phase_indirect_parameters_buffers<BPI>)
-                .in_set(RenderSystems::ManageViews)
-                .set_name(std::format("clear indirect parameter buffers '{}'", meta::type_id<BPI>().short_name())));
+            ecs::into(batching::batch_and_prepare_gpu_binned_render_phase<BPI, Adapter>)
+                .in_set(RenderSystems::PrepareResources)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<batching::BatchedInstanceBuffers<
+                        typename batching::GetBatchData<Adapter>::BufferData,
+                        typename batching::GetFullBatchData<Adapter>::BufferInputData>>().has_value();
+                })
+                .set_name(std::format("GPU batch binned render phase '{}'", meta::type_id<BPI>().short_name())));
         render_app->get().add_systems(
             Render,
-            ecs::into(batching::write_phase_indirect_parameters_buffers<BPI>)
-                .in_set(RenderSystems::PrepareResourcesFlush)
-                .set_name(std::format("write indirect parameter buffers '{}'", meta::type_id<BPI>().short_name())));
+            ecs::into(batching::collect_buffers_for_phase<BPI, Adapter>)
+                .in_set(RenderSystems::PrepareResourcesCollectPhaseBuffers)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<batching::BatchedInstanceBuffers<
+                        typename batching::GetBatchData<Adapter>::BufferData,
+                        typename batching::GetFullBatchData<Adapter>::BufferInputData>>().has_value();
+                })
+                .set_name(std::format("collect binned phase GPU buffers '{}'", meta::type_id<BPI>().short_name())));
     }
 }
 
@@ -1014,9 +1154,17 @@ EPIX_EXPORT struct BatchingPlugin {
                 adapter->get().getInfo(&info);
                 backend_type = info.backendType;
             }
-            render_app->get().world_mut().insert_resource(
-                device ? GpuPreprocessingSupport::from_device(device->get(), backend_type)
-                       : GpuPreprocessingSupport{});
+            auto& world = render_app->get().world_mut();
+            world.insert_resource(IndirectParametersBuffers{
+                debug_flags.allow_copies_from_indirect_parameters()});
+            world.insert_resource(device ? GpuPreprocessingSupport::from_device(device->get(), backend_type)
+                                         : GpuPreprocessingSupport{});
+            render_app->get().add_systems(
+                Render, ecs::into(clear_indirect_parameters_buffers).in_set(RenderSystems::ManageViews)
+                            .set_name("clear indirect parameter buffers"));
+            render_app->get().add_systems(
+                Render, ecs::into(write_indirect_parameters_buffers).in_set(RenderSystems::PrepareResourcesFlush)
+                            .set_name("write indirect parameter buffers"));
         }
     }
 };

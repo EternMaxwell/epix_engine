@@ -698,12 +698,16 @@ TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
     wgpu::Limits limits{};
     app.get_sub_app_mut(Render)->get().world_mut().insert_resource(
         batching::BatchedInstanceBuffer<std::uint32_t>{limits});
+    batching::BatchingPlugin{}.attach(app);
     phase::SortedRenderPhasePlugin<CpuBatchTestItem, CpuBatchSystemAdapter>{}.attach(app);
     phase::BinnedRenderPhasePlugin<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>{}.attach(app);
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
     EXPECT_TRUE((render_app->get().world().get_resource<batching::BatchedInstanceBuffer<std::uint32_t>>().has_value()));
+    EXPECT_TRUE((render_app->get().world().get_resource<batching::IndirectParametersBuffers>().has_value()));
+    EXPECT_TRUE((render_app->get().world().get_resource<batching::PhaseBatchedInstanceBuffers<
+                     CpuBinnedBatchTestItem, std::uint32_t>>().has_value()));
     EXPECT_TRUE((render_app->get().world()
                      .get_resource<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>()
                      .has_value()));
@@ -744,6 +748,40 @@ TEST(PhaseIndirectParametersBuffers, AllocatesMatchingIndirectMetadataAndBatchSe
     EXPECT_EQ(buffers.indexed_batch_sets.values[0].indirect_parameters_base, 2u);
     buffers.set_cpu_metadata(true, 1, {.base_output_index = 17, .batch_set_index = 0});
     EXPECT_EQ(buffers.indexed_cpu_metadata.values[1].base_output_index, 17u);
+}
+
+TEST(GpuPreprocessCollection, MovesPhaseBuffersIntoSharedLookupTables) {
+    World world(WorldId(108));
+    world.insert_resource(batching::PhaseBatchedInstanceBuffers<CpuBinnedBatchTestItem, std::uint32_t>{});
+    world.insert_resource(batching::PhaseIndirectParametersBuffers<CpuBinnedBatchTestItem>{});
+    world.insert_resource(batching::BatchedInstanceBuffers<std::uint32_t, std::uint32_t>{});
+    world.insert_resource(batching::IndirectParametersBuffers{});
+
+    auto& phase_buffers =
+        world.resource_mut<batching::PhaseBatchedInstanceBuffers<CpuBinnedBatchTestItem, std::uint32_t>>().buffers;
+    phase_buffers.data_buffer.add_multiple(3);
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(9)}, std::nullopt, 0};
+    phase_buffers.work_item_buffers.emplace(view, true).first->second.push(true, {.input_index = 1,
+                                                                                    .output_or_indirect_parameters_index = 2});
+    auto& phase_indirect =
+        world.resource_mut<batching::PhaseIndirectParametersBuffers<CpuBinnedBatchTestItem>>().buffers;
+    phase_indirect.allocate(true, 1);
+
+    auto system = make_system_unique(
+        &batching::collect_buffers_for_phase<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+
+    const auto phase_type = std::type_index(typeid(CpuBinnedBatchTestItem));
+    const auto& shared = world.resource<batching::BatchedInstanceBuffers<std::uint32_t, std::uint32_t>>();
+    ASSERT_TRUE(shared.phase_instance_buffers.contains(phase_type));
+    EXPECT_EQ(shared.phase_instance_buffers.at(phase_type).data_buffer.len(), 3u);
+    EXPECT_EQ(shared.phase_instance_buffers.at(phase_type).work_item_buffers.at(view).storage.index(), 0u);
+    const auto& indirect = world.resource<batching::IndirectParametersBuffers>();
+    ASSERT_TRUE(indirect.buffers.contains(phase_type));
+    EXPECT_EQ(indirect.buffers.at(phase_type).indexed_data.len(), 1u);
+    EXPECT_TRUE((world.resource<batching::PhaseBatchedInstanceBuffers<CpuBinnedBatchTestItem, std::uint32_t>>()
+                     .buffers.data_buffer.is_empty()));
 }
 
 TEST(GpuPreprocessWorkItems, KeepsPerViewClassStreamsAndLateDispatchSlots) {
