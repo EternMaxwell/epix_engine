@@ -487,6 +487,165 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
     } -> std::same_as<void>;
 };
 
+/**
+ * @brief Build the per-view work items, output slots, indirect metadata, and
+ * prepared batch sets for a binned GPU-preprocessed phase (Bevy
+ * `gpu_preprocessing::batch_and_prepare_binned_render_phase`).
+ *
+ * A renderer-specific compute pass consumes the written work items and fills
+ * `data_buffer`/indirect commands. Keeping that pass separate is deliberate:
+ * Bevy's generic render crate owns this preparation, while the concrete mesh
+ * renderer owns the preprocessing shader and input-uniform layout.
+ */
+template <phase::BinnedPhaseItem BPI, typename Adapter>
+    requires(GetFullBatchDataImpl<Adapter> &&
+             std::default_initializable<typename GetBatchData<Adapter>::BufferData>)
+void batch_and_prepare_gpu_binned_phase(
+    phase::BinnedRenderPhase<BPI>& render_phase,
+    UntypedPhaseBatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData>& phase_buffers,
+    UntypedPhaseIndirectParametersBuffers& indirect_parameters,
+    const view::RetainedViewEntity& retained_view,
+    bool no_indirect_drawing,
+    bool enable_gpu_occlusion_culling,
+    typename GetBatchData<Adapter>::Param& batch_param) {
+    using BufferData = typename GetBatchData<Adapter>::BufferData;
+    auto& output_data = phase_buffers.data_buffer;
+    auto& work_items = get_or_create_work_item_buffer(phase_buffers.work_item_buffers, retained_view,
+                                                       no_indirect_drawing, enable_gpu_occlusion_culling);
+    work_items.clear();
+    init_work_item_buffers(work_items, phase_buffers.late_indexed_indirect_parameters,
+                           phase_buffers.late_non_indexed_indirect_parameters);
+
+    const auto reserve_output = [&](std::uint32_t count) {
+        const auto first = static_cast<std::uint32_t>(output_data.values.size());
+        output_data.values.resize(output_data.values.size() + count);
+        return first;
+    };
+    const auto append_direct_batch = [&](const phase::BinnedRenderPhaseBatch& batch) {
+        if (auto* direct = std::get_if<1>(&render_phase.batch_sets)) {
+            direct->push_back(batch);
+        } else if (auto* dynamic = std::get_if<0>(&render_phase.batch_sets)) {
+            dynamic->push_back({batch});
+        }
+    };
+
+    // In culling mode each multidrawable batch set owns one contiguous range
+    // of indirect commands. The compute consumer fills the command contents.
+    if (!no_indirect_drawing) {
+        if (auto* multidraw_sets = std::get_if<2>(&render_phase.batch_sets)) {
+            for (const auto& [batch_set_key, bins] : render_phase.multidrawable_meshes.iter()) {
+                if (bins.empty()) continue;
+                const bool indexed = batch_set_key.indexed();
+                const std::uint32_t command_base = indirect_parameters.allocate(
+                    indexed, static_cast<std::uint32_t>(bins.size()));
+                const std::uint32_t batch_set_index =
+                    indirect_parameters.next_batch_set_index(indexed).value_or(0);
+                const std::uint32_t output_base = static_cast<std::uint32_t>(output_data.values.size());
+                const auto first_bin = bins.iter().begin();
+                const auto first_entity = first_bin->second.iter().begin()->first;
+                const std::uint32_t first_count = static_cast<std::uint32_t>(first_bin->second.size());
+                std::uint32_t command_index = command_base;
+
+                for (const auto& [bin_key, bin] : bins.iter()) {
+                    (void)bin_key;
+                    const std::uint32_t first_output = reserve_output(static_cast<std::uint32_t>(bin.size()));
+                    GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
+                        indexed, first_output, batch_set_index, indirect_parameters, command_index);
+                    for (const auto& [main_entity, input_index] : bin.iter()) {
+                        (void)main_entity;
+                        work_items.push(indexed, {.input_index = input_index.index,
+                                                  .output_or_indirect_parameters_index = command_index});
+                    }
+                    ++command_index;
+                }
+                indirect_parameters.add_batch_set(indexed, command_base);
+                multidraw_sets->push_back({
+                    .first_batch = {.representative_entity = sync_world::MainEntity{first_entity},
+                                    .instance_range = {output_base, output_base + first_count},
+                                    .extra_index = phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                        command_base, command_index, batch_set_index)},
+                    .bin_key = first_bin->first,
+                    .batch_count = command_index - command_base,
+                    .index = batch_set_index,
+                });
+            }
+        }
+    }
+
+    // Prepare regular mesh bins. Direct preprocessing uses output indices;
+    // indirect preprocessing uses one command per bin.
+    for (const auto& [key, bin] : render_phase.batchable_meshes.iter()) {
+        if (bin.empty()) continue;
+        const bool indexed = key.first.indexed();
+        const std::uint32_t output_base = reserve_output(static_cast<std::uint32_t>(bin.size()));
+        const std::optional<std::uint32_t> indirect_index =
+            no_indirect_drawing ? std::nullopt : std::optional{indirect_parameters.allocate(indexed, 1)};
+        const std::optional<std::uint32_t> batch_set_index =
+            indirect_index && std::holds_alternative<std::vector<phase::BinnedRenderPhaseBatchSet<typename BPI::BinKey>>>(
+                                  render_phase.batch_sets)
+                ? indirect_parameters.next_batch_set_index(indexed)
+                : std::nullopt;
+        if (indirect_index) {
+            GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
+                indexed, output_base, batch_set_index, indirect_parameters, *indirect_index);
+        }
+        const auto representative = sync_world::MainEntity{bin.iter().begin()->first};
+        for (std::uint32_t offset = 0; const auto& entry : bin.iter()) {
+            const auto& input_index = entry.second;
+            work_items.push(indexed, {.input_index = input_index.index,
+                                      .output_or_indirect_parameters_index =
+                                          indirect_index.value_or(output_base + offset)});
+            ++offset;
+        }
+        phase::BinnedRenderPhaseBatch batch{
+            .representative_entity = representative,
+            .instance_range = {output_base, output_base + static_cast<std::uint32_t>(bin.size())},
+            .extra_index = indirect_index
+                               ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                     *indirect_index, *indirect_index + 1, batch_set_index)
+                               : phase::PhaseItemExtraIndex::None,
+        };
+        if (auto* multidraw_sets = std::get_if<2>(&render_phase.batch_sets)) {
+            const std::uint32_t index = batch_set_index.value_or(0);
+            if (indirect_index) indirect_parameters.add_batch_set(indexed, *indirect_index);
+            multidraw_sets->push_back({.first_batch = batch, .bin_key = key.second, .batch_count = 1, .index = index});
+        } else {
+            append_direct_batch(batch);
+        }
+    }
+
+    // Unbatchable meshes are still copied by preprocessing, but each entity
+    // retains an individual draw/indirect-command range.
+    for (auto& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {
+        const bool indexed = key.first.indexed();
+        unbatchable.batches.clear();
+        for (const auto& [main_entity, render_entity] : unbatchable.entities) {
+            (void)render_entity;
+            const auto input_index = GetFullBatchData<Adapter>{}.get_binned_index(
+                batch_param, sync_world::MainEntity{main_entity});
+            if (!input_index) continue;
+            const std::uint32_t output = reserve_output(1);
+            const std::optional<std::uint32_t> indirect_index =
+                no_indirect_drawing ? std::nullopt : std::optional{indirect_parameters.allocate(indexed, 1)};
+            if (indirect_index) {
+                GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
+                    indexed, output, std::nullopt, indirect_parameters, *indirect_index);
+                indirect_parameters.add_batch_set(indexed, *indirect_index);
+            }
+            work_items.push(indexed, {.input_index = *input_index,
+                                      .output_or_indirect_parameters_index = indirect_index.value_or(output)});
+            unbatchable.batches.emplace(main_entity, phase::BinnedRenderPhaseBatch{
+                                                        .representative_entity = sync_world::MainEntity{main_entity},
+                                                        .instance_range = {output, output + 1},
+                                                        .extra_index = indirect_index
+                                                                           ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                                                                 *indirect_index, *indirect_index + 1)
+                                                                           : phase::PhaseItemExtraIndex::None,
+                                                    });
+        }
+    }
+}
+
 /** @brief Metadata used to decide whether consecutive sorted items can share
  * one draw (Bevy `BatchMeta`). */
 template <typename CompareData>

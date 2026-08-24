@@ -1,10 +1,10 @@
 // Visual verification for the generic automatic binned-phase batching API.
 //
-// The render graph runs the same `GetFullBatchData` preparation entry point
-// that a renderer uses, then displays green only when the two bins produce
-// the expected contiguous batches. This is intentionally a minimal render
-// module example: it validates the reusable phase API without relying on the
-// mesh subsystem's separate batching implementation.
+// The render graph runs the CPU and GPU-preprocessing `GetFullBatchData`
+// preparation entry points that a renderer uses, then displays green only
+// when both produce the expected contiguous batches/work-item metadata. This
+// intentionally validates the reusable phase APIs without relying on the mesh
+// subsystem's separate batching implementation.
 
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
@@ -129,9 +129,29 @@ bool prepare_demo_batches() {
 
     const auto* first = phase.batchable_meshes.get({batching_phase_demo::BatchSetKey{0}, 0});
     const auto* second = phase.batchable_meshes.get({batching_phase_demo::BatchSetKey{0}, 1});
-    return first && second && first->batches.size() == 1 && second->batches.size() == 1 &&
-           first->batches.front().instance_range == std::pair<std::uint32_t, std::uint32_t>{0, 3} &&
-           second->batches.front().instance_range == std::pair<std::uint32_t, std::uint32_t>{3, 5};
+    const bool cpu_ready = first && second && first->batches.size() == 1 && second->batches.size() == 1 &&
+                           first->batches.front().instance_range == std::pair<std::uint32_t, std::uint32_t>{0, 3} &&
+                           second->batches.front().instance_range == std::pair<std::uint32_t, std::uint32_t>{3, 5};
+
+    render::phase::BinnedRenderPhase<Item> gpu_phase{render::batching::GpuPreprocessingMode::Culling};
+    gpu_phase.add(0, 0, Entity::from_index(300), render::sync_world::MainEntity{Entity::from_index(6)},
+                  render::phase::InputUniformIndex{6}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+    gpu_phase.add(0, 1, Entity::from_index(301), render::sync_world::MainEntity{Entity::from_index(7)},
+                  render::phase::InputUniformIndex{7}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+    render::batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
+    render::batching::UntypedPhaseIndirectParametersBuffers indirect_parameters;
+    const render::view::RetainedViewEntity retained_view{render::sync_world::MainEntity{Entity::from_index(50)},
+                                                          std::nullopt, 0};
+    render::batching::batch_and_prepare_gpu_binned_phase<Item, batching_phase_demo::Adapter>(
+        gpu_phase, phase_buffers, indirect_parameters, retained_view, false, false, scratch_world);
+    const auto* work = phase_buffers.work_item_buffers.contains(retained_view)
+                           ? &phase_buffers.work_item_buffers.at(retained_view)
+                           : nullptr;
+    const bool gpu_ready = work && phase_buffers.data_buffer.len() == 2 && indirect_parameters.indexed_data.len() == 2 &&
+                           indirect_parameters.indexed_batch_sets.len() == 1 &&
+                           std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(work->storage).indexed.len() == 2 &&
+                           std::get<2>(gpu_phase.batch_sets).size() == 1;
+    return cpu_ready && gpu_ready;
 }
 
 struct BatchingPhaseNode : render::graph::Node {
@@ -187,7 +207,7 @@ int main() {
     App app = App::create();
 
     window::Window primary_window;
-    primary_window.title = "Automatic Batching Visual Test (green = prepared)";
+    primary_window.title = "Automatic Batch Preparation Visual Test (green = prepared)";
     primary_window.size = {1280, 720};
 
     app.add_plugins(TaskPoolPlugin{})

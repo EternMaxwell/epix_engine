@@ -736,6 +736,69 @@ TEST(GpuPreprocessWorkItems, KeepsPerViewClassStreamsAndLateDispatchSlots) {
     EXPECT_TRUE(indirect_streams.gpu_occlusion_culling->late_indexed.is_empty());
 }
 
+TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
+    phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{
+        batching::GpuPreprocessingMode::PreprocessingOnly};
+    const Tick tick{1};
+    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+                     phase::InputUniformIndex{3}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    render_phase.add(0, 0, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+                     phase::InputUniformIndex{4}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    render_phase.add(0, 1, Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)},
+                     phase::InputUniformIndex{5}, phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
+
+    batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
+    batching::UntypedPhaseIndirectParametersBuffers indirect;
+    World world(WorldId(104));
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(9)}, std::nullopt, 0};
+    batching::batch_and_prepare_gpu_binned_phase<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>(
+        render_phase, phase_buffers, indirect, view, true, false, world);
+
+    EXPECT_EQ(phase_buffers.data_buffer.len(), 3u);
+    const auto& work = phase_buffers.work_item_buffers.at(view);
+    const auto& direct = std::get<batching::PreprocessWorkItemBuffers::Direct>(work.storage);
+    ASSERT_EQ(direct.items.len(), 3u);
+    EXPECT_EQ(direct.items.values[0].input_index, 3u);
+    EXPECT_EQ(direct.items.values[2].output_or_indirect_parameters_index, 2u);
+    const auto& batches = std::get<1>(render_phase.batch_sets);
+    ASSERT_EQ(batches.size(), 1u);
+    EXPECT_EQ(batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})->batches.at(Entity::from_index(3)).instance_range,
+              (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    EXPECT_TRUE(indirect.indexed_data.is_empty());
+}
+
+TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
+    phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{batching::GpuPreprocessingMode::Culling};
+    const Tick tick{1};
+    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+                     phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+    render_phase.add(0, 1, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+                     phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+
+    batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
+    batching::UntypedPhaseIndirectParametersBuffers indirect;
+    World world(WorldId(105));
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(10)}, std::nullopt, 0};
+    batching::batch_and_prepare_gpu_binned_phase<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>(
+        render_phase, phase_buffers, indirect, view, false, true, world);
+
+    EXPECT_EQ(phase_buffers.data_buffer.len(), 2u);
+    const auto& work = phase_buffers.work_item_buffers.at(view);
+    const auto& streams = std::get<batching::PreprocessWorkItemBuffers::Indirect>(work.storage);
+    EXPECT_EQ(streams.indexed.len(), 2u);
+    ASSERT_TRUE(streams.gpu_occlusion_culling.has_value());
+    EXPECT_EQ(streams.gpu_occlusion_culling->late_indexed.len(), 2u);
+    ASSERT_EQ(indirect.indexed_data.len(), 2u);
+    ASSERT_EQ(indirect.indexed_cpu_metadata.len(), 2u);
+    ASSERT_EQ(indirect.indexed_batch_sets.len(), 1u);
+    const auto& batch_sets = std::get<2>(render_phase.batch_sets);
+    ASSERT_EQ(batch_sets.size(), 1u);
+    EXPECT_EQ(batch_sets[0].batch_count, 2u);
+    EXPECT_EQ(batch_sets[0].first_batch.extra_index.indirect_range,
+              (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+}
+
 TEST(InstanceInputUniformBuffer, ReusesFreedSlotsAndRetainsDefaultBindingElement) {
     batching::InstanceInputUniformBuffer<std::uint32_t> inputs;
     EXPECT_EQ(inputs.add(10), 0u);
