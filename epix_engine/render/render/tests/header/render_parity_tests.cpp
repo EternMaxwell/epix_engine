@@ -4,6 +4,10 @@
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 
+#include <array>
+#include <cstring>
+#include <type_traits>
+
 using namespace epix::ecs;
 using namespace epix::render;
 
@@ -15,28 +19,40 @@ TEST(ViewRangefinder3d, Distance) {
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 1.0f)), 2.0f);
 }
 
-// RenderLayers truth table matches Bevy RenderLayers::intersects.
+// Bevy RenderLayers uses an unbounded positive bit mask. Epix retains its
+// intentional inverted-mask helpers on the same dynamically growing storage.
 TEST(RenderLayers, Intersects) {
-    auto layer0 = camera::RenderLayers::layer(0);
-    auto layer1 = camera::RenderLayers::layer(1);
-    auto all    = camera::RenderLayers::all();
-    auto none   = camera::RenderLayers::none();
+    auto layer0 = ::epix::camera::RenderLayers::layer(0);
+    auto layer1 = ::epix::camera::RenderLayers::layer(1);
+    auto none   = ::epix::camera::RenderLayers::none();
     EXPECT_TRUE(layer0.intersects(layer0));
     EXPECT_FALSE(layer0.intersects(layer1));
-    EXPECT_TRUE(all.intersects(layer0));
-    EXPECT_TRUE(layer0.intersects(all));
     EXPECT_FALSE(none.intersects(layer0));
     EXPECT_FALSE(layer0.intersects(none));
-    EXPECT_TRUE(all.intersects(all));  // inverted x inverted always overlaps
     EXPECT_TRUE(layer0.contains(0));
     EXPECT_FALSE(layer0.contains(1));
+
+    // Epix's complement helpers are intentional extensions and must remain
+    // dynamically extensible too.
+    const auto all_except_130 = ::epix::camera::RenderLayers::all_except(std::array<std::size_t, 1>{130});
+    EXPECT_TRUE(::epix::camera::RenderLayers::all().contains(10'000));
+    EXPECT_FALSE(all_except_130.contains(130));
+    EXPECT_TRUE(all_except_130.contains(131));
+
+    const auto dynamic = ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 3>{0, 64, 130});
+    EXPECT_TRUE(dynamic.contains(130));
+    EXPECT_TRUE(dynamic.intersects(::epix::camera::RenderLayers::layer(130)));
+    EXPECT_EQ(dynamic.iter(), (std::vector<std::size_t>{0, 64, 130}));
+    EXPECT_EQ(dynamic.without(130).without(64).without(0), none);
+    EXPECT_EQ(dynamic & ::epix::camera::RenderLayers::layer(64), ::epix::camera::RenderLayers::layer(64));
+    EXPECT_EQ(dynamic | layer1, ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 4>{0, 1, 64, 130}));
 }
 
 TEST(Msaa, FromSamples) {
-    EXPECT_EQ(view::samples(view::Msaa::Off), 1u);
-    EXPECT_EQ(view::samples(view::Msaa::Sample4), 4u);
-    EXPECT_EQ(view::msaa_from_samples(8), view::Msaa::Sample8);
-    EXPECT_THROW(view::msaa_from_samples(3), std::runtime_error);
+    EXPECT_EQ(::epix::render::view::samples(::epix::render::view::Msaa::Off), 1u);
+    EXPECT_EQ(::epix::render::view::samples(::epix::render::view::Msaa::Sample4), 4u);
+    EXPECT_EQ(::epix::render::view::msaa_from_samples(8), ::epix::render::view::Msaa::Sample8);
+    EXPECT_THROW(::epix::render::view::msaa_from_samples(3), std::runtime_error);
 }
 
 TEST(AlphaMode, Factories) {
@@ -80,20 +96,61 @@ TEST(DynamicUniformBuffer, AlignmentAndPush) {
     EXPECT_TRUE(buf.is_empty());
 }
 
+// The uniform fallback binds every dynamic-offset batch as a fixed-capacity
+// shader array. A partial final batch therefore still must reserve and clear
+// the unused elements (Bevy BatchedUniformBuffer::flush).
+TEST(BatchedUniformBuffer, PadsPartialBatchToFixedBindingSize) {
+    wgpu::Limits limits;
+    limits.maxUniformBufferBindingSize  = sizeof(view::ViewUniform) * 2;
+    limits.minUniformBufferOffsetAlignment = 16;
+    render_resource::BatchedUniformBuffer<view::ViewUniform> buffer(limits);
+    ASSERT_EQ(buffer.capacity, 2u);
+
+    view::ViewUniform value;
+    value.exposure = 42.0f;
+    buffer.push(value);
+    buffer.flush();
+
+    EXPECT_EQ(buffer.len(), 1u);
+    EXPECT_EQ(buffer.current_offset, sizeof(view::ViewUniform) * 2);
+    ASSERT_EQ(buffer.buffer_bytes.size(), sizeof(view::ViewUniform) * 2);
+    view::ViewUniform uploaded{};
+    std::memcpy(&uploaded, buffer.buffer_bytes.data(), sizeof(uploaded));
+    EXPECT_FLOAT_EQ(uploaded.exposure, 42.0f);
+    EXPECT_TRUE(std::all_of(buffer.buffer_bytes.begin() + sizeof(view::ViewUniform),
+                            buffer.buffer_bytes.end(), [](std::uint8_t byte) { return byte == 0; }));
+}
+
 TEST(SortedCamera, SortKey) {
     camera::SortedCamera a;
     a.order = 2;
     camera::SortedCamera b;
     b.order = 1;
     EXPECT_TRUE(b.sort_key() < a.sort_key());
-    // same order, different target types: texture (key 1) sorts before window (key 2+)
+    // Bevy's NormalizedRenderTarget derives enum ordering: Window before Image.
     camera::SortedCamera tex;
     tex.order  = 1;
-    tex.target = camera::RenderTarget::from_texture(wgpu::Texture{});
+    tex.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ImageRenderTarget{wgpu::Texture{}}};
     camera::SortedCamera win;
     win.order  = 1;
-    win.target = camera::RenderTarget::from_primary();
-    EXPECT_TRUE(tex.sort_key() < win.sort_key());
+    win.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, epix::ecs::Entity{.uid = 1}}};
+    EXPECT_TRUE(win.sort_key() < tex.sort_key());
+}
+
+TEST(RenderTarget, VariantsNormalizeAndKeepDistinctIdentities) {
+    const auto window = ::epix::camera::RenderTarget::from_window(epix::ecs::Entity{.uid = 42});
+    const auto manual = ::epix::camera::RenderTarget::from_manual_texture_view(::epix::camera::ManualTextureViewHandle{42});
+    const auto none   = ::epix::camera::RenderTarget::none(glm::uvec2{42, 0});
+
+    EXPECT_TRUE(window.normalize(std::nullopt).has_value());
+    EXPECT_TRUE(manual.normalize(std::nullopt).has_value());
+    EXPECT_TRUE(none.normalize(std::nullopt).has_value());
+    EXPECT_NE(window.normalize(std::nullopt)->identity(), manual.normalize(std::nullopt)->identity());
+    EXPECT_NE(manual.normalize(std::nullopt)->identity(), none.normalize(std::nullopt)->identity());
+
+    camera::SortedCamera manual_sorted{.order = 0, .target = manual.normalize(std::nullopt)};
+    camera::SortedCamera none_sorted{.order = 0, .target = none.normalize(std::nullopt)};
+    EXPECT_TRUE(manual_sorted.sort_key() < none_sorted.sort_key());
 }
 
 TEST(GlobalsUniform, CpuFields) {
@@ -151,12 +208,11 @@ TEST(RetainedViewEntity, CreateFactory) {
     auto rve = view::RetainedViewEntity::create(sync_world::MainEntity{Entity::from_index(7)},
                                                 sync_world::MainEntity{Entity::from_index(8)}, 2);
     EXPECT_EQ(rve.main_entity, sync_world::MainEntity{Entity::from_index(7)});
-    ASSERT_TRUE(rve.auxiliary_entity.has_value());
-    EXPECT_EQ(*rve.auxiliary_entity, sync_world::MainEntity{Entity::from_index(8)});
+    EXPECT_EQ(rve.auxiliary_entity, sync_world::MainEntity{Entity::from_index(8)});
     EXPECT_EQ(rve.subview_index, 2u);
 
     auto no_aux = view::RetainedViewEntity::create(sync_world::MainEntity{Entity::from_index(9)}, std::nullopt, 0);
-    EXPECT_FALSE(no_aux.auxiliary_entity.has_value());
+    EXPECT_EQ(no_aux.auxiliary_entity, view::RetainedViewEntity::placeholder_auxiliary_entity());
     EXPECT_EQ(no_aux.subview_index, 0u);
 }
 
@@ -358,6 +414,340 @@ TEST(LabelInterner, TypedAliases) {
     EXPECT_EQ(s, label::intern(phase::ShaderLabel{}));
 }
 
+TEST(PhaseItemExtraIndex, PreservesDynamicAndIndirectPayloads) {
+    const auto dynamic = phase::PhaseItemExtraIndex::dynamic_offset(256);
+    EXPECT_EQ(dynamic.type, phase::PhaseItemExtraIndex::Type::DynamicOffset);
+    EXPECT_EQ(dynamic.value, 256u);
+
+    const auto indirect = phase::PhaseItemExtraIndex::indirect_parameters_index(7);
+    EXPECT_EQ(indirect.type, phase::PhaseItemExtraIndex::Type::IndirectParametersIndex);
+    EXPECT_EQ(indirect.indirect_range, (std::pair<std::uint32_t, std::uint32_t>{7, 8}));
+    EXPECT_FALSE(indirect.batch_set_index.has_value());
+
+    const auto multi_draw = phase::PhaseItemExtraIndex::indirect_parameters_range(3, 9, 2);
+    EXPECT_EQ(multi_draw.indirect_range, (std::pair<std::uint32_t, std::uint32_t>{3, 9}));
+    ASSERT_TRUE(multi_draw.batch_set_index.has_value());
+    EXPECT_EQ(*multi_draw.batch_set_index, 2u);
+    EXPECT_EQ(phase::PhaseItemExtraIndex::None.type, phase::PhaseItemExtraIndex::Type::None);
+}
+
+namespace {
+struct CpuBatchTestItem {
+    Entity render_entity;
+    sync_world::MainEntity main;
+    CachedPipelineId pipeline_id;
+    phase::DrawFunctionId draw_id;
+    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    phase::PhaseItemExtraIndex extra_index_value{};
+
+    Entity entity() const noexcept { return render_entity; }
+    sync_world::MainEntity main_entity() const noexcept { return main; }
+    std::uint32_t sort_key() const noexcept { return render_entity.index; }
+    phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
+    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
+    void set_extra_index(phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
+};
+
+struct CpuBatchTestAdapter {};
+struct CpuBatchSystemParam {};
+struct CpuBatchSystemAdapter {};
+}  // namespace
+
+template <>
+struct epix::render::batching::GetBatchData<CpuBatchTestAdapter> {
+    using Param       = World&;
+    using CompareData = std::uint32_t;
+    using BufferData  = std::uint32_t;
+
+    std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
+        World&, std::pair<Entity, sync_world::MainEntity> entity) const {
+        const auto index = entity.second.entity.index;
+        return std::pair<BufferData, std::optional<CompareData>>{index, index < 3 ? 1u : 2u};
+    }
+};
+
+template <>
+struct epix::render::batching::GetBatchData<CpuBatchSystemAdapter> {
+    using Param       = Res<CpuBatchSystemParam>;
+    using CompareData = std::uint32_t;
+    using BufferData  = std::uint32_t;
+
+    std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
+        Param&, std::pair<Entity, sync_world::MainEntity> entity) const {
+        return std::pair<BufferData, std::optional<CompareData>>{entity.second.entity.index, 1u};
+    }
+};
+
+template <>
+struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
+    using BufferInputData = std::uint32_t;
+    std::optional<std::uint32_t> get_binned_batch_data(Res<CpuBatchSystemParam>&,
+                                                        sync_world::MainEntity entity) const {
+        return entity.entity.index;
+    }
+    std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
+        Res<CpuBatchSystemParam>&, sync_world::MainEntity entity) const {
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, 1u};
+    }
+    std::optional<std::uint32_t> get_binned_index(Res<CpuBatchSystemParam>&,
+                                                  sync_world::MainEntity entity) const {
+        return entity.entity.index;
+    }
+    void write_batch_indirect_parameters_metadata(bool, std::uint32_t, std::optional<std::uint32_t>,
+                                                  batching::UntypedPhaseIndirectParametersBuffers&,
+                                                  std::uint32_t) const {}
+};
+
+namespace {
+static_assert(phase::MutablePhaseItemExtraIndex<CpuBatchTestItem>);
+static_assert(batching::GetBatchDataImpl<CpuBatchTestAdapter>);
+}  // namespace
+
+TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
+    phase::RenderPhase<CpuBatchTestItem> render_phase;
+    render_phase.items = {
+        {Entity::from_index(1), sync_world::MainEntity{Entity::from_index(1)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+        {Entity::from_index(2), sync_world::MainEntity{Entity::from_index(2)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+        {Entity::from_index(3), sync_world::MainEntity{Entity::from_index(3)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+    };
+
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 1;
+    render_resource::GpuArrayBuffer<std::uint32_t> instance_buffer{limits};
+    World world(WorldId(99));
+    batching::batch_and_prepare_sorted_phase<CpuBatchTestItem, CpuBatchTestAdapter>(render_phase, instance_buffer,
+                                                                                       world);
+
+    EXPECT_EQ(render_phase.items[0].batch_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(render_phase.items[1].batch_range, (std::pair<std::uint32_t, std::uint32_t>{1, 2}));
+    EXPECT_EQ(render_phase.items[2].batch_range, (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    EXPECT_EQ(render_phase.items[0].extra_index(), phase::PhaseItemExtraIndex::None);
+    EXPECT_EQ(render_phase.items[2].extra_index(), phase::PhaseItemExtraIndex::None);
+
+    World system_world(WorldId(101));
+    system_world.insert_resource(CpuBatchSystemParam{});
+    system_world.insert_resource(batching::BatchedInstanceBuffer<std::uint32_t>{limits});
+    phase::RenderPhase<CpuBatchTestItem> system_phase;
+    system_phase.items = {
+        {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(10)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+        {Entity::from_index(11), sync_world::MainEntity{Entity::from_index(11)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+    };
+    system_world.spawn(std::move(system_phase));
+    auto system = make_system_unique(
+        &batching::batch_and_prepare_sorted_render_phase<CpuBatchTestItem, CpuBatchSystemAdapter>);
+    system->initialize(system_world);
+    EXPECT_TRUE(system->run({}, system_world).has_value());
+}
+
+namespace {
+struct CpuBinnedBatchTestItem {
+    Entity render_entity;
+    sync_world::MainEntity main;
+    CachedPipelineId pipeline_id;
+    phase::DrawFunctionId draw_id;
+    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    phase::PhaseItemExtraIndex extra_index_value{};
+    using BinKey      = int;
+    using BatchSetKey = int;
+
+    Entity entity() const noexcept { return render_entity; }
+    sync_world::MainEntity main_entity() const noexcept { return main; }
+    std::uint32_t sort_key() const noexcept { return render_entity.index; }
+    phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
+    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
+    void set_extra_index(phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
+    const BinKey& bin_key() const { static const BinKey key = 0; return key; }
+    const BatchSetKey& batch_set_key() const { static const BatchSetKey key = 0; return key; }
+    bool batchable() const noexcept { return true; }
+};
+struct CpuBinnedBatchTestAdapter {};
+}  // namespace
+
+template <>
+struct epix::render::batching::GetBatchData<CpuBinnedBatchTestAdapter> {
+    using Param       = World&;
+    using CompareData = std::uint32_t;
+    using BufferData  = std::uint32_t;
+    std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
+        World&, std::pair<Entity, sync_world::MainEntity>) const {
+        return std::nullopt;
+    }
+};
+template <>
+struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
+    using BufferInputData = std::uint32_t;
+    std::optional<std::uint32_t> get_binned_batch_data(World&, sync_world::MainEntity entity) const {
+        return entity.entity.index;
+    }
+    std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
+        World&, sync_world::MainEntity entity) const {
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, entity.entity.index};
+    }
+    std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
+        return entity.entity.index;
+    }
+    void write_batch_indirect_parameters_metadata(bool, std::uint32_t, std::optional<std::uint32_t>,
+                                                  batching::UntypedPhaseIndirectParametersBuffers&,
+                                                  std::uint32_t) const {}
+};
+
+namespace {
+static_assert(phase::BinnedPhaseItem<CpuBinnedBatchTestItem>);
+static_assert(batching::GetFullBatchDataImpl<CpuBinnedBatchTestAdapter>);
+}  // namespace
+
+TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
+    phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase;
+    const Tick tick{1};
+    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+                     phase::InputUniformIndex{0}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    render_phase.add(0, 0, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+                     phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    render_phase.add(0, 1, Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)},
+                     phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
+
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 1;
+    render_resource::GpuArrayBuffer<std::uint32_t> instance_buffer{limits};
+    World world(WorldId(100));
+    batching::batch_and_prepare_binned_phase<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>(render_phase,
+                                                                                                   instance_buffer, world);
+
+    const auto* bin = render_phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    ASSERT_NE(bin, nullptr);
+    ASSERT_EQ(bin->batches.size(), 1u);
+    EXPECT_EQ(bin->batches[0].representative_entity.entity, Entity::from_index(1));
+    EXPECT_EQ(bin->batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(bin->batches[0].extra_index, phase::PhaseItemExtraIndex::None);
+
+    const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<int, int>{0, 1});
+    ASSERT_NE(unbatchable, nullptr);
+    ASSERT_EQ(unbatchable->batches.size(), 1u);
+    EXPECT_EQ(unbatchable->batches.at(Entity::from_index(3)).instance_range,
+              (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+}
+
+TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
+    epix::app::App app = epix::app::App::create();
+    app.add_sub_app(Render);
+    wgpu::Limits limits{};
+    app.get_sub_app_mut(Render)->get().world_mut().insert_resource(
+        batching::BatchedInstanceBuffer<std::uint32_t>{limits});
+    phase::SortedRenderPhasePlugin<CpuBatchTestItem, CpuBatchSystemAdapter>{}.attach(app);
+    phase::BinnedRenderPhasePlugin<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>{}.attach(app);
+
+    const auto render_app = app.get_sub_app(Render);
+    ASSERT_TRUE(render_app.has_value());
+    EXPECT_TRUE((render_app->get().world().get_resource<batching::BatchedInstanceBuffer<std::uint32_t>>().has_value()));
+    EXPECT_TRUE((render_app->get().world()
+                     .get_resource<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>()
+                     .has_value()));
+    EXPECT_TRUE((render_app->get().world()
+                     .get_resource<batching::PhaseIndirectParametersBuffers<CpuBinnedBatchTestItem>>()
+                     .has_value()));
+}
+
+TEST(PhaseIndirectParametersBuffers, ClearsPhaseLocalBuffers) {
+    World world(WorldId(103));
+    world.insert_resource(batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>{});
+    auto& buffers = world.resource_mut<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>().buffers;
+    buffers.indexed_data.values.push_back({.index_count = 3, .instance_count = 2});
+    buffers.non_indexed_gpu_metadata.values.push_back({.mesh_index = 7});
+
+    auto system = make_system_unique(&batching::clear_phase_indirect_parameters_buffers<CpuBatchTestItem>);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+
+    const auto& cleared = world.resource<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>().buffers;
+    EXPECT_TRUE(cleared.indexed_data.values.empty());
+    EXPECT_TRUE(cleared.non_indexed_gpu_metadata.values.empty());
+}
+
+TEST(PhaseIndirectParametersBuffers, AllocatesMatchingIndirectMetadataAndBatchSets) {
+    batching::UntypedPhaseIndirectParametersBuffers buffers;
+    EXPECT_EQ(buffers.allocate(true, 2), 0u);
+    EXPECT_EQ(buffers.allocate(true, 1), 2u);
+    EXPECT_EQ(buffers.allocate(false, 3), 0u);
+    EXPECT_EQ(buffers.batch_count(true), 3u);
+    EXPECT_EQ(buffers.batch_count(false), 3u);
+    EXPECT_EQ(buffers.indexed_cpu_metadata.len(), 3u);
+    EXPECT_EQ(buffers.indexed_gpu_metadata.len(), 3u);
+    EXPECT_EQ(buffers.next_batch_set_index(true), 0u);
+    buffers.add_batch_set(true, 2);
+    EXPECT_EQ(buffers.next_batch_set_index(true), 1u);
+    ASSERT_EQ(buffers.indexed_batch_sets.len(), 1u);
+    EXPECT_EQ(buffers.indexed_batch_sets.values[0].indirect_parameters_base, 2u);
+    buffers.set_cpu_metadata(true, 1, {.base_output_index = 17, .batch_set_index = 0});
+    EXPECT_EQ(buffers.indexed_cpu_metadata.values[1].base_output_index, 17u);
+}
+
+TEST(GpuPreprocessWorkItems, KeepsPerViewClassStreamsAndLateDispatchSlots) {
+    batching::PreprocessWorkItemBuffers direct{true};
+    direct.push(true, {.input_index = 1, .output_or_indirect_parameters_index = 2});
+    ASSERT_TRUE(std::holds_alternative<batching::PreprocessWorkItemBuffers::Direct>(direct.storage));
+    EXPECT_EQ(std::get<batching::PreprocessWorkItemBuffers::Direct>(direct.storage).items.len(), 1u);
+
+    batching::PreprocessWorkItemBuffers indirect;
+    auto& indirect_streams = std::get<batching::PreprocessWorkItemBuffers::Indirect>(indirect.storage);
+    indirect_streams.gpu_occlusion_culling.emplace();
+    indirect.push(true, {.input_index = 3, .output_or_indirect_parameters_index = 4});
+    indirect.push(false, {.input_index = 5, .output_or_indirect_parameters_index = 6});
+    EXPECT_EQ(indirect_streams.indexed.len(), 1u);
+    EXPECT_EQ(indirect_streams.non_indexed.len(), 1u);
+    EXPECT_EQ(indirect_streams.gpu_occlusion_culling->late_indexed.len(), 1u);
+    EXPECT_EQ(indirect_streams.gpu_occlusion_culling->late_non_indexed.len(), 1u);
+
+    render_resource::RawBufferVec<batching::LatePreprocessWorkItemIndirectParameters> late_indexed{
+        wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst};
+    render_resource::RawBufferVec<batching::LatePreprocessWorkItemIndirectParameters> late_non_indexed{
+        wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst};
+    batching::init_work_item_buffers(indirect, late_indexed, late_non_indexed);
+    EXPECT_EQ(late_indexed.len(), 1u);
+    EXPECT_EQ(late_non_indexed.len(), 1u);
+    EXPECT_EQ(indirect_streams.gpu_occlusion_culling->late_indirect_parameters_indexed_offset, 0u);
+    indirect.clear();
+    EXPECT_TRUE(indirect_streams.indexed.is_empty());
+    EXPECT_TRUE(indirect_streams.gpu_occlusion_culling->late_indexed.is_empty());
+}
+
+TEST(InstanceInputUniformBuffer, ReusesFreedSlotsAndRetainsDefaultBindingElement) {
+    batching::InstanceInputUniformBuffer<std::uint32_t> inputs;
+    EXPECT_EQ(inputs.add(10), 0u);
+    EXPECT_EQ(inputs.add(20), 1u);
+    inputs.remove(0);
+    EXPECT_FALSE(inputs.get(0).has_value());
+    EXPECT_EQ(inputs.add(30), 0u);
+    EXPECT_EQ(inputs.get(0), 30u);
+    inputs.clear();
+    inputs.ensure_nonempty();
+    EXPECT_EQ(inputs.len(), 1u);
+    EXPECT_EQ(inputs.get_unchecked(0), 0u);
+}
+
+TEST(CpuBatching, SharedBufferRequiresExplicitFrameClear) {
+    // Bevy owns this buffer by BufferData, not by phase type. The renderer
+    // clears it before all CPU batch systems for that BufferData run.
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 1;
+    World world(WorldId(102));
+    world.insert_resource(batching::BatchedInstanceBuffer<std::uint32_t>{limits});
+    auto& shared = world.resource_mut<batching::BatchedInstanceBuffer<std::uint32_t>>().buffer;
+    shared.push(7u);
+    ASSERT_EQ(std::get<1>(shared.storage).values.size(), 1u);
+
+    auto system = make_system_unique(&batching::clear_batched_cpu_instance_buffers<CpuBatchSystemAdapter>);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+    EXPECT_TRUE(std::get<1>(world.resource<batching::BatchedInstanceBuffer<std::uint32_t>>().buffer.storage).values.empty());
+}
+
 namespace {
 // Minimal binned phase item for exercising the binned-phase machinery.
 struct TestBinnedItem {
@@ -413,8 +803,8 @@ TEST(BinnedRenderPhase, BinsByKey) {
     EXPECT_FALSE(phase.is_empty());
 }
 
-// Multidrawable / unbatchable / non-mesh items land in their own lists
-// (Bevy BinnedRenderPhaseType).
+// Without GPU preprocessing, Bevy downgrades multidrawable items to normal
+// batchable meshes; unbatchable and non-mesh items retain their own lists.
 TEST(BinnedRenderPhase, PhaseTypes) {
     phase::BinnedRenderPhase<TestBinnedItem> phase;
     const Tick tick(1);
@@ -428,9 +818,11 @@ TEST(BinnedRenderPhase, PhaseTypes) {
     phase.add(0, 0, Entity::from_index(12), m3, phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::NonMesh,
               tick);
 
-    auto* batch_set = phase.multidrawable_meshes.get(0);
-    ASSERT_NE(batch_set, nullptr);
-    EXPECT_EQ(batch_set->get(0)->size(), 1u);
+    EXPECT_TRUE(phase.multidrawable_meshes.empty());
+    auto* batchable = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    ASSERT_NE(batchable, nullptr);
+    EXPECT_EQ(batchable->size(), 1u);
+    EXPECT_TRUE(batchable->contains(m1.entity));
     auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
     ASSERT_NE(unbatchable, nullptr);
     EXPECT_EQ(unbatchable->entities.at(m2.entity), Entity::from_index(11));
@@ -491,21 +883,44 @@ TEST(ViewBinnedRenderPhases, PrepareForNewFrame) {
     EXPECT_EQ(phases.phases.size(), 1u);
 }
 
+TEST(BinnedRenderPhase, SortsKeysBeforePreparation) {
+    World world(WorldId(103));
+    phase::ViewBinnedRenderPhases<TestBinnedItem> phases;
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(6)}, std::nullopt, 0};
+    phases.prepare_for_new_frame(view);
+    auto& render_phase = phases.phases.at(view);
+    // Queue in reverse order: PhaseSort must establish deterministic key order.
+    render_phase.add(2, 3, Entity::from_index(21), sync_world::MainEntity{Entity::from_index(21)},
+                     phase::InputUniformIndex{0}, phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
+    render_phase.add(1, 2, Entity::from_index(22), sync_world::MainEntity{Entity::from_index(22)},
+                     phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
+    world.insert_resource(std::move(phases));
+
+    auto system = make_system_unique(&phase::sort_binned_render_phase<TestBinnedItem>);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+    const auto& sorted = world.resource<phase::ViewBinnedRenderPhases<TestBinnedItem>>().phases.at(view);
+    const auto first = sorted.batchable_meshes.iter().begin();
+    ASSERT_NE(first, sorted.batchable_meshes.iter().end());
+    EXPECT_EQ(first->first.first, 1);
+    EXPECT_EQ(first->first.second, 2);
+}
+
 // VisibilityRange equality/hashing participate in RenderVisibilityRanges
 // dedup (bevy_camera visibility ranges).
 TEST(VisibilityRange, EqualityAndHash) {
-    view::VisibilityRange a;
+    ::epix::camera::VisibilityRange a;
     a.start_margin_start    = 1.0f;
     a.end_margin_end        = 50.0f;
-    view::VisibilityRange b = a;
-    view::VisibilityRange c = a;
+    ::epix::camera::VisibilityRange b = a;
+    ::epix::camera::VisibilityRange c = a;
     c.end_margin_end        = 51.0f;
-    view::VisibilityRange d = a;
-    d.abrupt_start_margin   = true;
+    ::epix::camera::VisibilityRange d = a;
+    d.use_aabb              = true;
     EXPECT_EQ(a, b);
     EXPECT_NE(a, c);
     EXPECT_NE(a, d);
-    EXPECT_EQ(std::hash<view::VisibilityRange>{}(a), std::hash<view::VisibilityRange>{}(b));
+    EXPECT_EQ(std::hash<::epix::camera::VisibilityRange>{}(a), std::hash<::epix::camera::VisibilityRange>{}(b));
 }
 
 // RenderVisibilityRanges insert/dedup/accessors match Bevy range.rs:104-163:
@@ -514,14 +929,14 @@ TEST(VisibilityRange, EqualityAndHash) {
 TEST(RenderVisibilityRanges, InsertDedupAndAccessors) {
     view::RenderVisibilityRanges ranges;
 
-    view::VisibilityRange crossfaded;
+    ::epix::camera::VisibilityRange crossfaded;
     crossfaded.start_margin_start = 1.0f;
     crossfaded.start_margin_end   = 5.0f;  // crossfade: margins differ
     crossfaded.end_margin_start   = 45.0f;
     crossfaded.end_margin_end     = 50.0f;
     EXPECT_FALSE(crossfaded.is_abrupt());
 
-    view::VisibilityRange abrupt;
+    ::epix::camera::VisibilityRange abrupt;
     abrupt.start_margin_start = 1.0f;
     abrupt.start_margin_end   = 1.0f;  // abrupt: start == end
     abrupt.end_margin_start   = 50.0f;
@@ -591,14 +1006,14 @@ TEST(RenderVisibilityRanges, ExtractSystemPopulatesAndEarlyOuts) {
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(view::RenderVisibilityRanges{});
 
-    view::VisibilityRange crossfaded;
+    ::epix::camera::VisibilityRange crossfaded;
     crossfaded.start_margin_start = 1.0f;
     crossfaded.start_margin_end   = 5.0f;
     crossfaded.end_margin_start   = 45.0f;
     crossfaded.end_margin_end     = 50.0f;
     Entity e1                     = main_world.spawn(crossfaded).id();
     Entity e2                     = main_world.spawn(crossfaded).id();  // identical range -> dedup
-    view::VisibilityRange abrupt;
+    ::epix::camera::VisibilityRange abrupt;
     abrupt.start_margin_start = 1.0f;
     abrupt.start_margin_end   = 1.0f;
     abrupt.end_margin_start   = 50.0f;
@@ -624,7 +1039,7 @@ TEST(RenderVisibilityRanges, ExtractSystemPopulatesAndEarlyOuts) {
     EXPECT_EQ(render_world.resource<view::RenderVisibilityRanges>().range_to_index.size(), 2u);
 }
 
-// cleanup_view_targets_for_resize (Bevy view/mod.rs:1046-1059): a camera
+// cleanup_view_targets_for_resize (Bevy view/mod.rs:1046-1059): an extracted camera
 // targeting a window that was resized or changed present mode loses its
 // ViewTarget so prepare_view_target recreates the main textures at the new
 // size; unchanged windows keep their ViewTarget.
@@ -644,10 +1059,14 @@ TEST(ViewTarget, CleanupForResizeRemovesTarget) {
     // Window resized this frame: cameras targeting it must lose ViewTarget.
     windows.windows[window_entity].size_changed = true;
     render_world.insert_resource(std::move(windows));
-    render_world.get_entity_mut(cam_a).transform([](epix::ecs::EntityWorldMut&& cam) -> int {
-        cam.insert(camera::ExtractedCamera{.render_target = camera::RenderTarget::from_primary()});
+    render_world.get_entity_mut(cam_a).transform([window_entity](epix::ecs::EntityWorldMut&& cam) -> int {
+        cam.insert(camera::ExtractedCamera{.target =
+                                               ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, window_entity}}});
         return 0;
     });
+    // Direct entity mutation can leave ECS archetype bookkeeping pending;
+    // scheduled extraction has already flushed by this point in production.
+    render_world.flush();
 
     auto system = make_system_unique(view::cleanup_view_targets_for_resize);
     system->initialize(render_world);
@@ -667,7 +1086,7 @@ TEST(ViewTarget, CleanupForResizeRemovesTarget) {
 // output attachments before window surfaces are reconfigured.
 TEST(ViewTarget, ClearAttachmentsEmptiesMap) {
     view::ViewTargetAttachments attachments;
-    attachments.attachments.emplace(::epix::render::camera::RenderTargetId{1}, view::OutputColorAttachment{});
+    attachments.attachments.emplace(::epix::camera::RenderTargetId{1}, view::OutputColorAttachment{});
     ASSERT_FALSE(attachments.attachments.empty());
 
     auto system = make_system_unique(view::clear_view_attachments);
@@ -728,42 +1147,43 @@ TEST(TemporalJitter, MatchesBevyProjectionAdjustment) {
 TEST(Exposure, BlenderDefaultMatchesBevy) {
     ::epix::camera::Exposure exposure;
     EXPECT_FLOAT_EQ(exposure.exposure(), std::exp2(-9.7f) / 1.2f);
-    EXPECT_FLOAT_EQ(::epix::camera::Exposure::sunlight().ev100, 15.0f);
+    EXPECT_FLOAT_EQ(::epix::camera::Exposure::SUNLIGHT.ev100, 15.0f);
     const ::epix::camera::PhysicalCameraParameters physical{};
     EXPECT_FLOAT_EQ(::epix::camera::Exposure::from_physical_camera(physical).ev100, physical.ev100());
 }
 
 TEST(Viewport, ClampToTargetMatchesBevy) {
-    camera::Viewport viewport{.pos = glm::uvec2(90, 150), .size = glm::uvec2(30, 20)};
+    ::epix::camera::Viewport viewport{.physical_position = glm::uvec2(90, 150),
+                                      .physical_size     = glm::uvec2(30, 20)};
     viewport.clamp_to_size(glm::uvec2(100, 100));
-    EXPECT_EQ(viewport.pos, glm::uvec2(90, 99));
-    EXPECT_EQ(viewport.size, glm::uvec2(10, 1));
+    EXPECT_EQ(viewport.physical_position, glm::uvec2(90, 99));
+    EXPECT_EQ(viewport.physical_size, glm::uvec2(10, 1));
 
-    viewport = camera::Viewport{.pos = glm::uvec2(8, 2), .size = glm::uvec2(3, 3)};
+    viewport = ::epix::camera::Viewport{.physical_position = glm::uvec2(8, 2), .physical_size = glm::uvec2(3, 3)};
     viewport.clamp_to_size(glm::uvec2(0, 0));
-    EXPECT_EQ(viewport.pos, glm::uvec2(0, 0));
-    EXPECT_EQ(viewport.size, glm::uvec2(0, 0));
+    EXPECT_EQ(viewport.physical_position, glm::uvec2(0, 0));
+    EXPECT_EQ(viewport.physical_size, glm::uvec2(0, 0));
 }
 
 TEST(MainPassResolutionOverride, StoresPhysicalDimensions) {
-    camera::MainPassResolutionOverride override{glm::uvec2(640, 360)};
+    ::epix::camera::MainPassResolutionOverride override{glm::uvec2(640, 360)};
     EXPECT_EQ(override.size, glm::uvec2(640, 360));
 
     const std::optional<::epix::camera::Viewport> viewport =
-        ::epix::camera::Viewport{.pos = glm::uvec2(3, 4), .size = glm::uvec2(10, 10)};
+        ::epix::camera::Viewport{.physical_position = glm::uvec2(3, 4), .physical_size = glm::uvec2(10, 10)};
     auto overridden = ::epix::camera::Viewport::from_viewport_and_override(viewport, glm::uvec2(640, 360));
     ASSERT_TRUE(overridden.has_value());
-    EXPECT_EQ(overridden->pos, glm::uvec2(3, 4));
-    EXPECT_EQ(overridden->size, glm::uvec2(640, 360));
+    EXPECT_EQ(overridden->physical_position, glm::uvec2(3, 4));
+    EXPECT_EQ(overridden->physical_size, glm::uvec2(640, 360));
 }
 
 TEST(CameraOutput, ModesAndWritebackMatchBevy) {
-    camera::CameraOutputMode output;
-    EXPECT_EQ(output.type, camera::CameraOutputMode::Type::Write);
+    ::epix::camera::CameraOutputMode output;
+    EXPECT_EQ(output.type, ::epix::camera::CameraOutputMode::Type::Write);
     EXPECT_FALSE(output.blend_state.has_value());
-    EXPECT_EQ(output.clear_color.type, camera::ClearColorConfig::Type::Default);
-    EXPECT_EQ(camera::CameraOutputMode::skip().type, camera::CameraOutputMode::Type::Skip);
-    EXPECT_EQ(camera::MsaaWriteback::Auto, camera::MsaaWriteback::Auto);
+    EXPECT_EQ(output.clear_color.type, ::epix::camera::ClearColorConfig::Type::Default);
+    EXPECT_EQ(::epix::camera::CameraOutputMode::skip().type, ::epix::camera::CameraOutputMode::Type::Skip);
+    EXPECT_EQ(::epix::camera::MsaaWriteback::Auto, ::epix::camera::MsaaWriteback::Auto);
 }
 
 TEST(ClearColor, DefaultMatchesBevyDarkGray) {
@@ -777,16 +1197,16 @@ TEST(ClearColor, DefaultMatchesBevyDarkGray) {
 }
 
 TEST(SubCameraView, DefaultsMatchBevy) {
-    camera::SubCameraView sub;
+    ::epix::camera::SubCameraView sub;
     EXPECT_EQ(sub.full_size, glm::uvec2(1, 1));
     EXPECT_EQ(sub.offset, glm::vec2(0.0f));
     EXPECT_EQ(sub.size, glm::uvec2(1, 1));
 }
 
 TEST(SubCameraView, FullSizeCropPreservesProjection) {
-    camera::PerspectiveProjection projection;
+    ::epix::camera::PerspectiveProjection projection;
     projection.update(1920.0f, 1080.0f);
-    const camera::SubCameraView whole{
+    const ::epix::camera::SubCameraView whole{
         .full_size = glm::uvec2(1920, 1080), .offset = glm::vec2(0.0f), .size = glm::uvec2(1920, 1080)};
     EXPECT_EQ(projection.get_projection_matrix_for_sub(whole), projection.get_projection_matrix());
 }
@@ -794,7 +1214,7 @@ TEST(SubCameraView, FullSizeCropPreservesProjection) {
 TEST(CameraProjection, UsesBevyReverseZConventions) {
     // Bevy's perspective projection is right-handed with -Z forward and an
     // infinite reverse-Z depth range: near maps to 1, far tends to 0.
-    camera::PerspectiveProjection perspective;
+    ::epix::camera::PerspectiveProjection perspective;
     const auto perspective_matrix = perspective.get_projection_matrix();
     const auto near_clip          = perspective_matrix * glm::vec4(0.0f, 0.0f, -perspective.near_plane, 1.0f);
     const auto far_clip           = perspective_matrix * glm::vec4(0.0f, 0.0f, -1000000.0f, 1.0f);
@@ -803,9 +1223,18 @@ TEST(CameraProjection, UsesBevyReverseZConventions) {
 
     // Projection::default is Bevy's Perspective variant. Camera2d separately
     // supplies OrthographicProjection::default_2d through its requirements.
-    EXPECT_TRUE(camera::Projection{}.as_perspective().has_value());
-    EXPECT_EQ(camera::OrthographicProjection::default_3d().near_plane, 0.0f);
-    EXPECT_EQ(camera::OrthographicProjection::default_2d().near_plane, -1000.0f);
+    EXPECT_TRUE(::epix::camera::Projection{}.as_perspective().has_value());
+    EXPECT_EQ(::epix::camera::OrthographicProjection::default_3d().near_plane, 0.0f);
+    EXPECT_EQ(::epix::camera::OrthographicProjection::default_2d().near_plane, -1000.0f);
+}
+
+TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
+    auto projection = ::epix::camera::Projection::custom(::epix::camera::OrthographicProjection::default_2d());
+    auto* custom = projection.get_custom<::epix::camera::OrthographicProjection>();
+    ASSERT_NE(custom, nullptr);
+    custom->scale = 2.0f;
+    projection.update(400.0f, 200.0f);
+    EXPECT_NE(projection.get_projection_matrix()[0][0], 0.0f);
 }
 
 TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
@@ -818,12 +1247,40 @@ TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
               ::epix::camera::ScreenSpaceTransmissionQuality::Medium);
 }
 
+TEST(CameraMarkers, SupplyCameraRenderTargetRequirements) {
+    epix::ecs::World world(2);
+    world.register_required_components_with<::epix::camera::Camera>([] {
+        return ::epix::render::view::Msaa::Sample4;
+    });
+    const auto raw_camera = world.spawn(::epix::camera::Camera{}).id();
+    const auto camera2d = world.spawn(::epix::camera::Camera2d{}).id();
+    const auto camera3d = world.spawn(::epix::camera::Camera3d{}).id();
+
+    // Bevy's base Camera deliberately does not require a Projection: custom
+    // graph cameras can be target-only.  Camera2d/Camera3d add it themselves.
+    EXPECT_FALSE(world.entity(raw_camera).contains<::epix::camera::Projection>());
+    EXPECT_TRUE(world.entity(camera2d).contains<::epix::camera::Camera>());
+    EXPECT_TRUE(world.entity(camera2d).contains<::epix::camera::RenderTarget>());
+    EXPECT_TRUE(world.entity(camera2d).contains<::epix::camera::Projection>());
+    EXPECT_TRUE(world.entity(camera3d).contains<::epix::camera::Camera>());
+    EXPECT_TRUE(world.entity(camera3d).contains<::epix::camera::RenderTarget>());
+    EXPECT_TRUE(world.entity(camera3d).contains<::epix::camera::Projection>());
+    EXPECT_TRUE(world.entity(camera2d).get<::epix::camera::Projection>()->get().as_orthographic().has_value());
+    EXPECT_TRUE(world.entity(camera3d).get<::epix::camera::Projection>()->get().as_perspective().has_value());
+    EXPECT_EQ(world.entity(raw_camera).get<::epix::render::view::Msaa>()->get(), ::epix::render::view::Msaa::Sample4);
+    EXPECT_EQ(world.entity(camera2d).get<::epix::render::view::Msaa>()->get(), ::epix::render::view::Msaa::Sample4);
+    EXPECT_EQ(world.entity(camera3d).get<::epix::render::view::Msaa>()->get(), ::epix::render::view::Msaa::Sample4);
+}
+
+TEST(ExtractedCamera, StoresTheRenderGraphLabelNotTheMainWorldWrapper) {
+    static_assert(std::is_same_v<decltype(camera::ExtractedCamera::render_graph), graph::GraphLabel>);
+}
+
 TEST(CameraCoordinates, ViewportAndNdcConversionsMatchBevy) {
     ::epix::camera::Camera camera;
     camera.computed.target_info =
         ::epix::camera::RenderTargetInfo{.physical_size = glm::uvec2(200, 100), .scale_factor = 2.0f};
-    camera.computed.target_size = glm::uvec2(200, 100);
-    camera.computed.projection  = glm::orthoRH_ZO(-100.0f, 100.0f, -50.0f, 50.0f, 1000.0f, -1000.0f);
+    camera.computed.clip_from_view  = glm::orthoRH_ZO(-100.0f, 100.0f, -50.0f, 50.0f, 1000.0f, -1000.0f);
     const ::epix::transform::GlobalTransform identity{};
 
     ASSERT_TRUE(camera.logical_viewport_size().has_value());
@@ -875,6 +1332,11 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     storage_limits.maxStorageBuffersPerShaderStage = 8;
     render_resource::GpuArrayBuffer<view::ViewUniform> storage_buf(storage_limits);
     EXPECT_TRUE(std::holds_alternative<render_resource::BufferVec<view::ViewUniform>>(storage_buf.storage));
+    const auto storage_layout = render_resource::GpuArrayBuffer<view::ViewUniform>::binding_layout(storage_limits);
+    EXPECT_EQ(storage_layout.type, wgpu::BufferBindingType::eReadOnlyStorage);
+    EXPECT_FALSE(static_cast<bool>(storage_layout.hasDynamicOffset));
+    EXPECT_FALSE(render_resource::GpuArrayBuffer<view::ViewUniform>::batch_size(storage_limits).has_value());
+    EXPECT_FALSE(storage_buf.binding().has_value());  // no upload/allocation yet
     EXPECT_EQ(storage_buf.push(view::ViewUniform{}).index, 0u);
     EXPECT_EQ(storage_buf.push(view::ViewUniform{}).index, 1u);
     EXPECT_FALSE(storage_buf.push(view::ViewUniform{}).dynamic_offset.has_value());
@@ -884,6 +1346,12 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     uniform_limits.maxStorageBuffersPerShaderStage = 0;
     render_resource::GpuArrayBuffer<view::ViewUniform> uniform_buf(uniform_limits);
     EXPECT_TRUE(std::holds_alternative<render_resource::BatchedUniformBuffer<view::ViewUniform>>(uniform_buf.storage));
+    const auto uniform_layout = render_resource::GpuArrayBuffer<view::ViewUniform>::binding_layout(uniform_limits);
+    EXPECT_EQ(uniform_layout.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_TRUE(static_cast<bool>(uniform_layout.hasDynamicOffset));
+    ASSERT_TRUE(render_resource::GpuArrayBuffer<view::ViewUniform>::batch_size(uniform_limits).has_value());
+    EXPECT_EQ(*render_resource::GpuArrayBuffer<view::ViewUniform>::batch_size(uniform_limits), 1u);
+    EXPECT_FALSE(uniform_buf.binding().has_value());  // no upload/allocation yet
     auto idx0 = uniform_buf.push(view::ViewUniform{});
     auto idx1 = uniform_buf.push(view::ViewUniform{});
     // Bevy: index is the IN-BATCH element index (resets per batch); dynamic
@@ -1029,6 +1497,11 @@ struct GraphTestNodeD {};
 struct ProbeGraphNode : graph::Node {
     std::vector<graph::SlotInfo> input() override { return {}; }
     std::vector<graph::SlotInfo> output() override { return {}; }
+    std::expected<void, graph::NodeRunError> run(graph::GraphContext&,
+                                                  graph::RenderContext&,
+                                                  const epix::ecs::World&) override {
+        return {};
+    }
 };
 }  // namespace
 
@@ -1239,14 +1712,21 @@ TEST(OutputColorAttachment, NeedsPresentTracksWrite) {
 // source->destination pair to copy (Bevy view/mod.rs post_process_write).
 TEST(ViewTarget, PostProcessWriteFlipsAB) {
     view::ViewTarget target;
-    EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 0u);  // A current
+    EXPECT_EQ(target.main_textures.main_texture->load(std::memory_order_seq_cst), 0u);  // A current
     auto write_a_to_b = target.post_process_write();
-    EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 1u);  // now B
+    EXPECT_EQ(target.main_textures.main_texture->load(std::memory_order_seq_cst), 1u);  // now B
     EXPECT_FALSE(write_a_to_b.source);                                    // null views; handles exercised
     EXPECT_FALSE(write_a_to_b.destination);
     auto write_b_to_a = target.post_process_write();
-    EXPECT_EQ(target.main_texture->load(std::memory_order_seq_cst), 0u);  // back to A
+    EXPECT_EQ(target.main_textures.main_texture->load(std::memory_order_seq_cst), 0u);  // back to A
     EXPECT_FALSE(write_b_to_a.source);
+    EXPECT_FALSE(target.main_texture());
+    EXPECT_FALSE(target.main_texture_other());
+    EXPECT_FALSE(target.sampled_main_texture().has_value());
+    EXPECT_FALSE(target.sampled_main_texture_view().has_value());
+    EXPECT_EQ(target.main_texture_format(), wgpu::TextureFormat::eUndefined);
+    EXPECT_EQ(target.out_texture_view_format(), wgpu::TextureFormat::eUndefined);
+    EXPECT_FALSE(target.out_texture());
     // The legacy texture_view aliases the current main texture view.
     EXPECT_EQ(target.texture_view.raw(), target.main_texture_view().raw());
 }
@@ -1437,20 +1917,20 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
     EXPECT_EQ(stored.size, 4u);
 }
 
-// ViewVisibility matches Bevy bevy_camera::visibility: get() reports whether
-// the entity is visible to any view (not culled); per-view flags are tracked.
+// ViewVisibility matches Bevy bevy_camera::visibility: it stores only current
+// and previous aggregate visibility, with no fixed per-camera bit budget.
 TEST(ViewVisibility, Flags) {
-    camera::ViewVisibility vv;
-    EXPECT_TRUE(vv.get());  // default: not culled
+    ::epix::camera::ViewVisibility vv;
+    EXPECT_FALSE(vv.get());  // Bevy ViewVisibility::HIDDEN
     EXPECT_FALSE(vv.get_in_view(0));
-    vv.set_in_view(0, true);
-    EXPECT_TRUE(vv.get_in_view(0));
-    EXPECT_FALSE(vv.get_in_view(1));
-    vv.culled();
-    EXPECT_FALSE(vv.get());  // culled -> not visible to any view
     vv.visible();
     EXPECT_TRUE(vv.get());
-    EXPECT_TRUE(vv.get_in_view(0));  // per-view flag survives cull toggles
+    vv.update();
+    EXPECT_FALSE(vv.get());
+    vv.set_in_view(0, true);
+    EXPECT_TRUE(vv.get());
+    vv.culled();
+    EXPECT_FALSE(vv.get());
 }
 
 // RenderVisibleEntities accessors match Bevy view/visibility/mod.rs:23-53:
@@ -1567,6 +2047,37 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     _putenv_s("WGPU_BACKEND", "");
     _putenv_s("WGPU_POWER_PREF", "");
     _putenv_s("WGPU_SETTINGS_PRIO", "");
+}
+
+// RenderCreation distinguishes automatic device creation from embedding-host
+// supplied native wgpu resources (Bevy settings.rs RenderCreation).
+TEST(RenderCreation, AutomaticAndManualVariants) {
+    RenderCreation automatic;
+    EXPECT_FALSE(automatic.is_manual());
+    ASSERT_NE(automatic.automatic_settings(), nullptr);
+    EXPECT_EQ(automatic.manual_resources(), nullptr);
+
+    WgpuSettings settings;
+    settings.force_fallback_adapter = true;
+    automatic = RenderCreation::automatic(settings);
+    ASSERT_NE(automatic.automatic_settings(), nullptr);
+    EXPECT_TRUE(automatic.automatic_settings()->force_fallback_adapter);
+
+    RenderResources supplied{};
+    auto manual = RenderCreation::manual(supplied);
+    EXPECT_TRUE(manual.is_manual());
+    EXPECT_EQ(manual.automatic_settings(), nullptr);
+    ASSERT_NE(manual.manual_resources(), nullptr);
+    EXPECT_FALSE(static_cast<bool>(manual.manual_resources()->device));
+
+    RenderAdapterInfo info;
+    info.device = "host adapter";
+    auto manual_arguments = RenderCreation::manual(wgpu::Device{}, wgpu::Queue{}, info, wgpu::Adapter{}, wgpu::Instance{});
+    ASSERT_NE(manual_arguments.manual_resources(), nullptr);
+    EXPECT_EQ(manual_arguments.manual_resources()->adapter_info.device, "host adapter");
+
+    RenderPlugin plugin;
+    EXPECT_FALSE(plugin.render_creation.is_manual());
 }
 
 // GpuImage::aspect_ratio / size_2d match Bevy gpu_image.rs:142-152.
@@ -1789,11 +2300,11 @@ TEST(PipelineDescriptor, FragmentMut) {
 // RenderLayers is the Bevy name for epix's RenderLayers (bevy_camera
 // render_layers.rs) - the alias is interchangeable.
 TEST(RenderLayers, AliasIsRenderLayers) {
-    camera::RenderLayers layers = camera::RenderLayers::layer(0);
-    EXPECT_TRUE(layers.intersects(camera::RenderLayers::layer(0)));
-    EXPECT_FALSE(layers.intersects(camera::RenderLayers::layer(1)));
-    camera::RenderLayers all = camera::RenderLayers::all();
-    EXPECT_TRUE(all.intersects(camera::RenderLayers::layer(3)));
+    ::epix::camera::RenderLayers layers = ::epix::camera::RenderLayers::layer(0);
+    EXPECT_TRUE(layers.intersects(::epix::camera::RenderLayers::layer(0)));
+    EXPECT_FALSE(layers.intersects(::epix::camera::RenderLayers::layer(1)));
+    layers = layers.with(3);
+    EXPECT_TRUE(layers.intersects(::epix::camera::RenderLayers::layer(3)));
 }
 
 // ---------- erased asset pipeline (bevy_render 0.18 erased_render_asset.rs) ----------
@@ -2163,46 +2674,131 @@ TEST(Image, SamplerAccessors) {
 // Visibility marker matches Bevy bevy_camera::Visibility (visibility__mod.rs:39-88):
 // default Inherited, three kinds, toggle helpers.
 TEST(Visibility, MarkersAndToggles) {
-    epix::render::camera::Visibility v;
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Inherited);
-    EXPECT_EQ(epix::render::camera::Visibility::hidden().type, epix::render::camera::Visibility::Type::Hidden);
-    EXPECT_EQ(epix::render::camera::Visibility::visible().type, epix::render::camera::Visibility::Type::Visible);
+    epix::camera::Visibility v;
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Inherited);
+    EXPECT_EQ(epix::camera::Visibility::hidden().type, epix::camera::Visibility::Type::Hidden);
+    EXPECT_EQ(epix::camera::Visibility::visible().type, epix::camera::Visibility::Type::Visible);
 
     // toggle_inherited_visible: Inherited<->Visible, Hidden unaffected.
     v.toggle_inherited_visible();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Visible);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Visible);
     v.toggle_inherited_visible();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Inherited);
-    v = epix::render::camera::Visibility::hidden();
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Inherited);
+    v = epix::camera::Visibility::hidden();
     v.toggle_inherited_visible();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Hidden);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Hidden);
 
     // toggle_inherited_hidden: Inherited<->Hidden, Visible unaffected.
     v.toggle_inherited_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Inherited);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Inherited);
     v.toggle_inherited_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Hidden);
-    v = epix::render::camera::Visibility::visible();
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Hidden);
+    v = epix::camera::Visibility::visible();
     v.toggle_inherited_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Visible);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Visible);
 
     // toggle_visible_hidden: Visible<->Hidden, Inherited unaffected.
     v.toggle_visible_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Hidden);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Hidden);
     v.toggle_visible_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Visible);
-    v = epix::render::camera::Visibility::inherited();
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Visible);
+    v = epix::camera::Visibility::inherited();
     v.toggle_visible_hidden();
-    EXPECT_EQ(v.type, epix::render::camera::Visibility::Type::Inherited);
+    EXPECT_EQ(v.type, epix::camera::Visibility::Type::Inherited);
 }
 
 // InheritedVisibility matches Bevy (visibility__mod.rs:108-131): HIDDEN/VISIBLE
 // consts and get().
 TEST(InheritedVisibility, ConstsAndGet) {
-    EXPECT_FALSE(epix::render::camera::InheritedVisibility::hidden().get());
-    EXPECT_TRUE(epix::render::camera::InheritedVisibility::visible().get());
-    epix::render::camera::InheritedVisibility def;
+    EXPECT_FALSE(epix::camera::InheritedVisibility::hidden().get());
+    EXPECT_TRUE(epix::camera::InheritedVisibility::visible().get());
+    epix::camera::InheritedVisibility def;
     EXPECT_TRUE(def.get());
+}
+
+// Bevy primitives::Frustum performs a sphere rejection before the OBB test
+// in check_visibility.  Exercise both tests with a unit clip volume.
+TEST(CameraFrustum, CullsSphereAndOrientedBounds) {
+    epix::camera::Frustum frustum;
+    frustum.planes = {
+        glm::vec4{1.0f, 0.0f, 0.0f, 1.0f},  glm::vec4{-1.0f, 0.0f, 0.0f, 1.0f},
+        glm::vec4{0.0f, 1.0f, 0.0f, 1.0f},  glm::vec4{0.0f, -1.0f, 0.0f, 1.0f},
+        glm::vec4{0.0f, 0.0f, 1.0f, 0.0f},  glm::vec4{0.0f, 0.0f, -1.0f, 1.0f},
+    };
+    EXPECT_TRUE(frustum.intersects_sphere({.center = {0.0f, 0.0f, 0.5f}, .radius = 0.25f}));
+    EXPECT_FALSE(frustum.intersects_sphere({.center = {3.0f, 0.0f, 0.5f}, .radius = 0.25f}));
+
+    const epix::camera::Aabb aabb{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.25f)};
+    EXPECT_TRUE(frustum.intersects_obb(aabb, glm::mat4(1.0f)));
+    EXPECT_FALSE(frustum.intersects_obb(aabb, glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 0.0f, 0.0f))));
+}
+
+TEST(CameraPrimitives, MatchBevyClipPlanesAndHelpers) {
+    const auto frustum = epix::camera::Frustum::from_clip_from_world(glm::mat4(1.0f));
+    // Bevy's zero-to-one-depth extraction uses row2 as the far plane.
+    EXPECT_EQ(frustum.planes[5], glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+    EXPECT_EQ(epix::camera::face_index_to_name(4), "+z");
+    EXPECT_EQ(epix::camera::face_index_to_name(5), "-z");
+    EXPECT_EQ(epix::camera::face_index_to_name(6), "invalid");
+
+    const std::array points{glm::vec3(-2.0f, 1.0f, 4.0f), glm::vec3(4.0f, -3.0f, 2.0f)};
+    const auto aabb = epix::camera::Aabb::enclosing(points);
+    ASSERT_TRUE(aabb);
+    EXPECT_EQ(aabb->min(), glm::vec3(-2.0f, -3.0f, 2.0f));
+    EXPECT_EQ(aabb->max(), glm::vec3(4.0f, 1.0f, 4.0f));
+}
+
+TEST(CameraFrustum, CustomFarMatchesProjectionFrustumConstruction) {
+    const auto projection = epix::camera::PerspectiveProjection{};
+    const auto frustum = epix::camera::Frustum::from_clip_from_world_custom_far(
+        projection.get_projection_matrix(), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
+    // The camera faces -Z, so a point beyond the declared finite culling far
+    // distance is rejected even though the reverse-Z projection is infinite.
+    EXPECT_TRUE(frustum.intersects_sphere({.center = {0.0f, 0.0f, -999.0f}, .radius = 0.1f}));
+    EXPECT_FALSE(frustum.intersects_sphere({.center = {0.0f, 0.0f, -1001.0f}, .radius = 0.1f}));
+}
+
+TEST(OcclusionCulling, ExtractsViewMarker) {
+    using namespace epix::render;
+    const ::epix::render::experimental::OcclusionCulling marker;
+    const auto extracted = ExtractComponent<::epix::render::experimental::OcclusionCulling>::extract_component(marker);
+    ASSERT_TRUE(extracted);
+    static_assert(ExtractComponentImpl<::epix::render::experimental::OcclusionCulling>);
+}
+
+TEST(GpuPreprocessingSupport, CapsRequestedMode) {
+    using namespace ::epix::render::batching;
+    const GpuPreprocessingSupport unavailable{};
+    EXPECT_FALSE(unavailable.is_available());
+    EXPECT_EQ(unavailable.min(GpuPreprocessingMode::Culling), GpuPreprocessingMode::None);
+    const GpuPreprocessingSupport preprocess{GpuPreprocessingMode::PreprocessingOnly};
+    EXPECT_TRUE(preprocess.is_available());
+    EXPECT_FALSE(preprocess.is_culling_supported());
+    EXPECT_EQ(preprocess.min(GpuPreprocessingMode::Culling), GpuPreprocessingMode::PreprocessingOnly);
+}
+
+TEST(ColorGrading, SectionsFollowBevyOrder) {
+    view::ColorGrading grading;
+    grading.shadows.saturation    = 0.2f;
+    grading.midtones.saturation   = 0.5f;
+    grading.highlights.saturation = 0.8f;
+    const auto sections = grading.all_sections();
+    EXPECT_EQ(sections[0].get().saturation, 0.2f);
+    EXPECT_EQ(sections[1].get().saturation, 0.5f);
+    EXPECT_EQ(sections[2].get().saturation, 0.8f);
+
+    auto mutable_sections = grading.all_sections_mut();
+    mutable_sections[1].get().gain = 1.5f;
+    EXPECT_EQ(grading.midtones.gain, 1.5f);
+}
+
+TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
+    epix::camera::ViewVisibility visibility;
+    visibility.set_visible();
+    visibility.update();
+    EXPECT_TRUE(visibility.was_visible_now_hidden());
+    visibility.set_visible();
+    EXPECT_FALSE(visibility.was_visible_now_hidden());
 }
 
 // GetBatchData / GetFullBatchData batching traits (bevy_render batching/mod.rs:76-178).
@@ -2245,6 +2841,20 @@ struct epix::render::batching::GetFullBatchData<BatchingTestAdapter> {
                                                   sync_world::MainEntity) const {
         return 5u;
     }
+    void write_batch_indirect_parameters_metadata(
+        bool,
+        std::uint32_t base_output_index,
+        std::optional<std::uint32_t> batch_set_index,
+        epix::render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
+        std::uint32_t indirect_parameters_offset) const {
+        if (buffers.indexed_cpu_metadata.values.size() <= indirect_parameters_offset) {
+            buffers.indexed_cpu_metadata.values.resize(indirect_parameters_offset + 1);
+        }
+        buffers.indexed_cpu_metadata.values[indirect_parameters_offset] = {
+            .base_output_index = base_output_index,
+            .batch_set_index = batch_set_index.value_or(0),
+        };
+    }
 };
 
 // Both batching trait concepts are satisfied by a full specialization, and
@@ -2274,13 +2884,19 @@ TEST(GetBatchData, ConceptsAndData) {
     auto index = full.get_binned_index(param, sync_world::MainEntity{epix::ecs::Entity{}});
     ASSERT_TRUE(index.has_value());
     EXPECT_EQ(*index, 5u);
+
+    epix::render::batching::UntypedPhaseIndirectParametersBuffers indirect;
+    full.write_batch_indirect_parameters_metadata(true, 9, 3, indirect, 1);
+    ASSERT_EQ(indirect.indexed_cpu_metadata.values.size(), 2u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].base_output_index, 9u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].batch_set_index, 3u);
 }
 
 // World-side VisibleEntities is per-visibility-class (Bevy bevy_camera
 // visibility__mod.rs:279-316): type-id-keyed lists with get/get_mut/iter/
 // len/is_empty/clear/clear_all.
 TEST(VisibleEntities, PerClassAccessors) {
-    view::VisibleEntities visible;
+    ::epix::camera::VisibleEntities visible;
     const auto class_a = epix::meta::type_index(epix::meta::type_id<int>());
     const auto class_b = epix::meta::type_index(epix::meta::type_id<float>());
 
@@ -2288,6 +2904,11 @@ TEST(VisibleEntities, PerClassAccessors) {
     EXPECT_TRUE(visible.get(class_a).empty());
     EXPECT_TRUE(visible.is_empty(class_a));
     EXPECT_EQ(visible.len(class_a), 0u);
+
+    visible.push(epix::ecs::Entity::from_index(42), class_a);
+    ASSERT_EQ(visible.len(class_a), 1u);
+    EXPECT_EQ(visible.get(class_a).front(), epix::ecs::Entity::from_index(42));
+    visible.clear(class_a);
 
     // get_mut inserts and populates per class.
     visible.get_mut(class_a).push_back(epix::ecs::Entity::from_index(1));
@@ -2306,6 +2927,22 @@ TEST(VisibleEntities, PerClassAccessors) {
     visible.clear_all();
     EXPECT_TRUE(visible.is_empty(class_a));
     EXPECT_TRUE(visible.is_empty(class_b));
+}
+
+TEST(VisibilityClass, AddHookAppendsTheComponentType) {
+    struct CustomRenderable {};
+    epix::ecs::World world(epix::ecs::WorldId(0));
+    const auto component_id = world.registrator().register_component<CustomRenderable>();
+    const auto entity = world.spawn(::epix::camera::VisibilityClass{}).id();
+
+    ::epix::camera::add_visibility_class<CustomRenderable>(
+        world, epix::ecs::HookContext{.entity = entity, .component_id = component_id});
+
+    auto visibility_class = world.get_entity(entity)->get<::epix::camera::VisibilityClass>();
+    ASSERT_TRUE(visibility_class.has_value());
+    ASSERT_EQ(visibility_class->get().classes.size(), 1u);
+    EXPECT_EQ(visibility_class->get().classes.front(),
+              epix::meta::type_index(epix::meta::type_id<CustomRenderable>()));
 }
 
 namespace {

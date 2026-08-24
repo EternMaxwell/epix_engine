@@ -6,14 +6,351 @@
 #include <concepts>
 #include <cstdint>
 #include <epix/ecs.hpp>
+#include <epix/meta.hpp>
+#include <memory>
+#include <unordered_map>
 #include <optional>
 #include <type_traits>
 #include <utility>
+#include <variant>
+#include <vector>
 #endif
 #include <epix/render/render_resource.hpp>
+#include <epix/render/render_phase.hpp>
+#include <epix/render/binned_phase.hpp>
 #include <epix/render/sync_world.hpp>
 
 namespace epix::render::batching {
+
+/** @brief Indexed draw parameters consumed by `drawIndexedIndirect` (Bevy
+ * `IndirectParametersIndexed`). */
+EPIX_EXPORT struct IndirectParametersIndexed {
+    std::uint32_t index_count = 0;
+    std::uint32_t instance_count = 0;
+    std::uint32_t first_index = 0;
+    std::int32_t base_vertex = 0;
+    std::uint32_t first_instance = 0;
+};
+static_assert(std::is_standard_layout_v<IndirectParametersIndexed> && sizeof(IndirectParametersIndexed) == 20);
+
+/** @brief Non-indexed draw parameters consumed by `drawIndirect` (Bevy
+ * `IndirectParametersNonIndexed`). */
+EPIX_EXPORT struct IndirectParametersNonIndexed {
+    std::uint32_t vertex_count = 0;
+    std::uint32_t instance_count = 0;
+    std::uint32_t first_vertex = 0;
+    std::uint32_t first_instance = 0;
+};
+static_assert(std::is_standard_layout_v<IndirectParametersNonIndexed> && sizeof(IndirectParametersNonIndexed) == 16);
+
+/** @brief CPU metadata supplied for an indirect batch (Bevy
+ * `IndirectParametersCpuMetadata`). */
+EPIX_EXPORT struct IndirectParametersCpuMetadata {
+    std::uint32_t base_output_index = 0;
+    std::uint32_t batch_set_index = 0;
+};
+
+/** @brief GPU-visible batch metadata (Bevy
+ * `IndirectParametersGpuMetadata`). */
+EPIX_EXPORT struct IndirectParametersGpuMetadata {
+    std::uint32_t mesh_index = 0;
+    std::uint32_t early_instance_count = 0;
+    std::uint32_t late_instance_count = 0;
+};
+
+/** @brief One preprocessing-shader invocation for an instance in one view
+ * (Bevy `PreprocessWorkItem`). */
+EPIX_EXPORT struct PreprocessWorkItem {
+    std::uint32_t input_index = 0;
+    std::uint32_t output_or_indirect_parameters_index = 0;
+};
+static_assert(std::is_standard_layout_v<PreprocessWorkItem> && sizeof(PreprocessWorkItem) == 8);
+
+/** @brief Indirect compute dispatch parameters for the late occlusion pass
+ * (Bevy `LatePreprocessWorkItemIndirectParameters`). */
+EPIX_EXPORT struct LatePreprocessWorkItemIndirectParameters {
+    std::uint32_t dispatch_x = 0;
+    std::uint32_t dispatch_y = 1;
+    std::uint32_t dispatch_z = 1;
+    std::uint32_t work_item_count = 0;
+    std::uint32_t pad[4]{};
+};
+static_assert(std::is_standard_layout_v<LatePreprocessWorkItemIndirectParameters> &&
+              sizeof(LatePreprocessWorkItemIndirectParameters) == 32);
+
+/** @brief A contiguous multi-draw batch range (Bevy `IndirectBatchSet`). */
+EPIX_EXPORT struct IndirectBatchSet {
+    std::uint32_t indirect_parameters_count = 0;
+    std::uint32_t indirect_parameters_base = 0;
+};
+
+/** @brief Per-view late-work-item storage used when GPU occlusion culling is
+ * enabled (Bevy `GpuOcclusionCullingWorkItemBuffers`). */
+EPIX_EXPORT struct GpuOcclusionCullingWorkItemBuffers {
+    render_resource::UninitBufferVec<PreprocessWorkItem> late_indexed{wgpu::BufferUsage::eStorage |
+                                                                        wgpu::BufferUsage::eCopyDst};
+    render_resource::UninitBufferVec<PreprocessWorkItem> late_non_indexed{wgpu::BufferUsage::eStorage |
+                                                                            wgpu::BufferUsage::eCopyDst};
+    std::uint32_t late_indirect_parameters_indexed_offset = 0;
+    std::uint32_t late_indirect_parameters_non_indexed_offset = 0;
+};
+
+/** @brief Per-view preprocessing work-item buffers (Bevy
+ * `PreprocessWorkItemBuffers`). Direct mode has one stream; indirect mode
+ * separates indexed and non-indexed commands. */
+EPIX_EXPORT struct PreprocessWorkItemBuffers {
+    struct Direct {
+        render_resource::RawBufferVec<PreprocessWorkItem> items{wgpu::BufferUsage::eStorage |
+                                                                  wgpu::BufferUsage::eCopyDst};
+    };
+    struct Indirect {
+        render_resource::RawBufferVec<PreprocessWorkItem> indexed{wgpu::BufferUsage::eStorage |
+                                                                     wgpu::BufferUsage::eCopyDst};
+        render_resource::RawBufferVec<PreprocessWorkItem> non_indexed{wgpu::BufferUsage::eStorage |
+                                                                         wgpu::BufferUsage::eCopyDst};
+        std::optional<GpuOcclusionCullingWorkItemBuffers> gpu_occlusion_culling;
+    };
+
+    std::variant<Direct, Indirect> storage;
+
+    explicit PreprocessWorkItemBuffers(bool no_indirect_drawing = false)
+        : storage(no_indirect_drawing ? std::variant<Direct, Indirect>{std::in_place_type<Direct>}
+                                      : std::variant<Direct, Indirect>{std::in_place_type<Indirect>}) {}
+
+    /** @brief Add one item to the stream appropriate for its mesh class. */
+    void push(bool indexed, const PreprocessWorkItem& item) {
+        std::visit(
+            [&](auto& buffers) {
+                using Buffers = std::decay_t<decltype(buffers)>;
+                if constexpr (std::same_as<Buffers, Direct>) {
+                    buffers.items.push(item);
+                } else {
+                    auto& target = indexed ? buffers.indexed : buffers.non_indexed;
+                    target.push(item);
+                    if (buffers.gpu_occlusion_culling) {
+                        auto& late = indexed ? buffers.gpu_occlusion_culling->late_indexed
+                                             : buffers.gpu_occlusion_culling->late_non_indexed;
+                        late.push(PreprocessWorkItem{});
+                    }
+                }
+            },
+            storage);
+    }
+
+    /** @brief Clear work for a new frame but retain GPU allocations. */
+    void clear() {
+        std::visit(
+            [](auto& buffers) {
+                using Buffers = std::decay_t<decltype(buffers)>;
+                if constexpr (std::same_as<Buffers, Direct>) {
+                    buffers.items.clear();
+                } else {
+                    buffers.indexed.clear();
+                    buffers.non_indexed.clear();
+                    if (buffers.gpu_occlusion_culling) {
+                        buffers.gpu_occlusion_culling->late_indexed.clear();
+                        buffers.gpu_occlusion_culling->late_non_indexed.clear();
+                        buffers.gpu_occlusion_culling->late_indirect_parameters_indexed_offset = 0;
+                        buffers.gpu_occlusion_culling->late_indirect_parameters_non_indexed_offset = 0;
+                    }
+                }
+            },
+            storage);
+    }
+};
+
+/** @brief Initialize or retrieve a view's work-item buffers, including the
+ * optional late culling streams (Bevy `get_or_create_work_item_buffer`). */
+inline PreprocessWorkItemBuffers& get_or_create_work_item_buffer(
+    std::unordered_map<view::RetainedViewEntity, PreprocessWorkItemBuffers>& work_item_buffers,
+    view::RetainedViewEntity view,
+    bool no_indirect_drawing,
+    bool enable_gpu_occlusion_culling) {
+    auto [it, inserted] = work_item_buffers.try_emplace(view, no_indirect_drawing);
+    (void)inserted;
+    if (auto* indirect = std::get_if<PreprocessWorkItemBuffers::Indirect>(&it->second.storage)) {
+        if (enable_gpu_occlusion_culling && !indirect->gpu_occlusion_culling) {
+            indirect->gpu_occlusion_culling.emplace();
+        } else if (!enable_gpu_occlusion_culling) {
+            indirect->gpu_occlusion_culling.reset();
+        }
+    }
+    return it->second;
+}
+
+/** @brief Allocate late-dispatch metadata for a view's indirect work streams
+ * (Bevy `init_work_item_buffers`). */
+inline void init_work_item_buffers(
+    PreprocessWorkItemBuffers& work_item_buffers,
+    render_resource::RawBufferVec<LatePreprocessWorkItemIndirectParameters>& late_indexed_indirect_parameters,
+    render_resource::RawBufferVec<LatePreprocessWorkItemIndirectParameters>& late_non_indexed_indirect_parameters) {
+    if (auto* indirect = std::get_if<PreprocessWorkItemBuffers::Indirect>(&work_item_buffers.storage);
+        indirect && indirect->gpu_occlusion_culling) {
+        auto& culling = *indirect->gpu_occlusion_culling;
+        culling.late_indirect_parameters_indexed_offset =
+            static_cast<std::uint32_t>(late_indexed_indirect_parameters.push({}));
+        culling.late_indirect_parameters_non_indexed_offset =
+            static_cast<std::uint32_t>(late_non_indexed_indirect_parameters.push({}));
+    }
+}
+
+/** @brief CPU-owned input-buffer allocator used by a GPU preprocessing
+ * pipeline (Bevy `InstanceInputUniformBuffer`). */
+template <render_resource::ShaderType InputData>
+struct InstanceInputUniformBuffer {
+    render_resource::RawBufferVec<InputData> buffer{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst};
+    std::vector<std::uint32_t> free_uniform_indices;
+
+    void clear() noexcept {
+        buffer.clear();
+        free_uniform_indices.clear();
+    }
+    std::uint32_t add(const InputData& value) {
+        if (!free_uniform_indices.empty()) {
+            const auto index = free_uniform_indices.back();
+            free_uniform_indices.pop_back();
+            buffer.values[index] = value;
+            return index;
+        }
+        return static_cast<std::uint32_t>(buffer.push(value));
+    }
+    void remove(std::uint32_t index) { free_uniform_indices.push_back(index); }
+    std::optional<InputData> get(std::uint32_t index) const {
+        if (index >= buffer.values.size() || std::ranges::find(free_uniform_indices, index) != free_uniform_indices.end())
+            return std::nullopt;
+        return buffer.values[index];
+    }
+    InputData get_unchecked(std::uint32_t index) const { return buffer.values.at(index); }
+    void set(std::uint32_t index, const InputData& value) { buffer.values.at(index) = value; }
+    void ensure_nonempty() {
+        if (buffer.values.empty()) buffer.push(InputData{});
+    }
+    std::size_t len() const noexcept { return buffer.len(); }
+    bool is_empty() const noexcept { return buffer.is_empty(); }
+};
+
+/** @brief GPU buffers used by one render phase for indirect drawing (Bevy
+ * `UntypedPhaseIndirectParametersBuffers`). */
+EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
+    render_resource::BufferVec<IndirectParametersIndexed> indexed_data;
+    render_resource::BufferVec<IndirectParametersNonIndexed> non_indexed_data;
+    render_resource::BufferVec<IndirectParametersCpuMetadata> indexed_cpu_metadata;
+    render_resource::BufferVec<IndirectParametersCpuMetadata> non_indexed_cpu_metadata;
+    render_resource::BufferVec<IndirectParametersGpuMetadata> indexed_gpu_metadata;
+    render_resource::BufferVec<IndirectParametersGpuMetadata> non_indexed_gpu_metadata;
+    render_resource::BufferVec<IndirectBatchSet> indexed_batch_sets;
+    render_resource::BufferVec<IndirectBatchSet> non_indexed_batch_sets;
+
+    explicit UntypedPhaseIndirectParametersBuffers(bool allow_copy_src = false)
+        : indexed_data(indirect_usage(allow_copy_src)), non_indexed_data(indirect_usage(allow_copy_src)),
+          indexed_cpu_metadata(storage_usage()), non_indexed_cpu_metadata(storage_usage()),
+          indexed_gpu_metadata(storage_usage()), non_indexed_gpu_metadata(storage_usage()),
+          indexed_batch_sets(storage_usage()), non_indexed_batch_sets(storage_usage()) {}
+
+    static wgpu::BufferUsage indirect_usage(bool allow_copy_src) noexcept {
+        auto usage = wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst;
+        return allow_copy_src ? usage | wgpu::BufferUsage::eCopySrc : usage;
+    }
+    static wgpu::BufferUsage storage_usage() noexcept {
+        return wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst;
+    }
+    /** @brief Reserve matching CPU/GPU metadata and command slots, returning
+     * the first allocated indirect-command index (Bevy
+     * `UntypedPhaseIndirectParametersBuffers::allocate`). */
+    std::uint32_t allocate(bool indexed, std::uint32_t count) {
+        if (indexed) {
+            const auto first = static_cast<std::uint32_t>(indexed_data.len());
+            indexed_data.values.resize(indexed_data.len() + count);
+            indexed_cpu_metadata.values.resize(indexed_cpu_metadata.len() + count);
+            indexed_gpu_metadata.values.resize(indexed_gpu_metadata.len() + count);
+            return first;
+        }
+        const auto first = static_cast<std::uint32_t>(non_indexed_data.len());
+        non_indexed_data.values.resize(non_indexed_data.len() + count);
+        non_indexed_cpu_metadata.values.resize(non_indexed_cpu_metadata.len() + count);
+        non_indexed_gpu_metadata.values.resize(non_indexed_gpu_metadata.len() + count);
+        return first;
+    }
+    /** @brief Number of allocated indirect commands for one mesh class. */
+    std::size_t batch_count(bool indexed) const noexcept {
+        return indexed ? indexed_data.len() : non_indexed_data.len();
+    }
+    /** @brief Number of multi-draw batch sets for one mesh class. */
+    std::size_t batch_set_count(bool indexed) const noexcept {
+        return indexed ? indexed_batch_sets.len() : non_indexed_batch_sets.len();
+    }
+    /** @brief Append a batch-set counter with the command-buffer base offset
+     * (Bevy `add_batch_set`). */
+    void add_batch_set(bool indexed, std::uint32_t indirect_parameters_base) {
+        auto& batch_sets = indexed ? indexed_batch_sets : non_indexed_batch_sets;
+        batch_sets.push({.indirect_parameters_count = 0, .indirect_parameters_base = indirect_parameters_base});
+    }
+    /** @brief The index that the next batch set will receive, or no value when
+     * it would collide with Bevy's `NonMaxU32` sentinel. */
+    std::optional<std::uint32_t> next_batch_set_index(bool indexed) const noexcept {
+        const auto count = batch_set_count(indexed);
+        if (count >= std::numeric_limits<std::uint32_t>::max()) return std::nullopt;
+        return static_cast<std::uint32_t>(count);
+    }
+    /** @brief Store metadata generated while a phase is batched. */
+    void set_cpu_metadata(bool indexed, std::uint32_t index, IndirectParametersCpuMetadata value) {
+        auto& metadata = indexed ? indexed_cpu_metadata : non_indexed_cpu_metadata;
+        metadata.values.at(index) = value;
+    }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> data_buffer(bool indexed) const noexcept {
+        const auto& data = indexed ? indexed_data.buffer : non_indexed_data.buffer;
+        if (!data) return std::nullopt;
+        return std::cref(data);
+    }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> cpu_metadata_buffer(bool indexed) const noexcept {
+        const auto& metadata = indexed ? indexed_cpu_metadata.buffer : non_indexed_cpu_metadata.buffer;
+        if (!metadata) return std::nullopt;
+        return std::cref(metadata);
+    }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> gpu_metadata_buffer(bool indexed) const noexcept {
+        const auto& metadata = indexed ? indexed_gpu_metadata.buffer : non_indexed_gpu_metadata.buffer;
+        if (!metadata) return std::nullopt;
+        return std::cref(metadata);
+    }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> batch_sets_buffer(bool indexed) const noexcept {
+        const auto& batch_sets = indexed ? indexed_batch_sets.buffer : non_indexed_batch_sets.buffer;
+        if (!batch_sets) return std::nullopt;
+        return std::cref(batch_sets);
+    }
+    void clear() noexcept {
+        indexed_data.clear(); non_indexed_data.clear(); indexed_cpu_metadata.clear(); non_indexed_cpu_metadata.clear();
+        indexed_gpu_metadata.clear(); non_indexed_gpu_metadata.clear(); indexed_batch_sets.clear(); non_indexed_batch_sets.clear();
+    }
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        indexed_data.write_buffer(device, queue); non_indexed_data.write_buffer(device, queue);
+        indexed_cpu_metadata.write_buffer(device, queue); non_indexed_cpu_metadata.write_buffer(device, queue);
+        indexed_gpu_metadata.write_buffer(device, queue); non_indexed_gpu_metadata.write_buffer(device, queue);
+        indexed_batch_sets.write_buffer(device, queue); non_indexed_batch_sets.write_buffer(device, queue);
+    }
+};
+
+/** @brief Indirect buffers owned by one concrete render phase (Bevy
+ * `PhaseIndirectParametersBuffers<PI>`). The later GPU collection pass moves
+ * these phase-local buffers into its cross-phase working set, which permits
+ * phase preparation to remain parallel. */
+template <phase::PhaseItem PI>
+struct PhaseIndirectParametersBuffers {
+    UntypedPhaseIndirectParametersBuffers buffers;
+
+    explicit PhaseIndirectParametersBuffers(bool allow_copy_src = false) : buffers(allow_copy_src) {}
+};
+
+template <phase::PhaseItem PI>
+void clear_phase_indirect_parameters_buffers(ecs::ResMut<PhaseIndirectParametersBuffers<PI>> buffers) {
+    buffers->buffers.clear();
+}
+
+template <phase::PhaseItem PI>
+void write_phase_indirect_parameters_buffers(ecs::ResMut<PhaseIndirectParametersBuffers<PI>> buffers,
+                                              ecs::Res<wgpu::Device> device,
+                                              ecs::Res<wgpu::Queue> queue) {
+    buffers->buffers.write_buffers(device.get(), queue.get());
+}
 
 /**
  * @brief Trait to specialize for CPU batching support (Bevy `GetBatchData`,
@@ -45,17 +382,13 @@ concept GetBatchDataImpl = requires(GetBatchData<T> batch) {
 
 /**
  * @brief Trait to specialize for binning + GPU preprocessing batching support
- * (Bevy `GetFullBatchData`, batching/mod.rs:106-178). The GPU-culling
- * `write_batch_indirect_parameters_metadata` method is documented as N/A: GPU
- * preprocessing is not ported (the bundled wgpu-native lacks the
- * binding-array descriptor APIs required for the preprocessing shaders).
+ * (Bevy `GetFullBatchData`, batching/mod.rs:106-178).
  * @tparam T The adapter type identifying this batching specialization.
  */
 template <typename T>
 struct GetFullBatchData;
 
-/** @brief Concept satisfied by valid GetFullBatchData specializations (the
- * CPU-usable subset; the GPU-culling indirect-metadata method is N/A). */
+/** @brief Concept satisfied by valid GetFullBatchData specializations. */
 template <typename T>
 concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<T> batch) {
     requires std::constructible_from<GetFullBatchData<T>>;
@@ -74,23 +407,391 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
     {
         batch.get_binned_index(std::declval<typename GetBatchData<T>::Param&>(), std::declval<sync_world::MainEntity>())
     } -> std::same_as<std::optional<std::uint32_t>>;
+    {
+        batch.write_batch_indirect_parameters_metadata(
+            std::declval<bool>(), std::declval<std::uint32_t>(), std::declval<std::optional<std::uint32_t>>(),
+            std::declval<UntypedPhaseIndirectParametersBuffers&>(), std::declval<std::uint32_t>())
+    } -> std::same_as<void>;
+};
+
+/** @brief Metadata used to decide whether consecutive sorted items can share
+ * one draw (Bevy `BatchMeta`). */
+template <typename CompareData>
+struct CpuBatchMeta {
+    CachedPipelineId pipeline;
+    phase::DrawFunctionId draw_function;
+    std::optional<std::uint32_t> dynamic_offset;
+    CompareData compare_data;
+
+    bool operator==(const CpuBatchMeta&) const = default;
+};
+
+/** @brief CPU-built instance buffer shared by every phase with the same
+ * `BufferData` (Bevy `no_gpu_preprocessing::BatchedInstanceBuffer`). */
+template <render_resource::GpuArrayBufferable BufferData>
+struct BatchedInstanceBuffer {
+    render_resource::GpuArrayBuffer<BufferData> buffer;
+
+    explicit BatchedInstanceBuffer(const wgpu::Limits& limits) : buffer(limits) {}
+};
+
+/** @brief Whether a phase item opts in to Bevy-style automatic batching.
+ * Items that do not expose the optional static flag retain Bevy's default of
+ * participating in automatic batching. */
+template <typename P>
+inline constexpr bool automatic_batching_enabled = [] {
+    if constexpr (requires { { P::AUTOMATIC_BATCHING } -> std::convertible_to<bool>; }) {
+        return static_cast<bool>(P::AUTOMATIC_BATCHING);
+    }
+    return true;
+}();
+
+/** @brief CPU fallback for Bevy
+ * `no_gpu_preprocessing::batch_and_prepare_sorted_render_phase`.
+ *
+ * It writes per-instance data, assigns the actual dynamic offset where the
+ * uniform fallback requires one, and joins adjacent items only when their
+ * pipeline, draw function, dynamic offset, and adapter comparison data all
+ * agree. */
+template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
+    requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+void batch_and_prepare_sorted_phase(phase::RenderPhase<P>& render_phase,
+                                    render_resource::GpuArrayBuffer<typename GetBatchData<Adapter>::BufferData>& instance_buffer,
+                                    typename GetBatchData<Adapter>::Param& batch_param) {
+    using compare_data = typename GetBatchData<Adapter>::CompareData;
+    std::optional<CpuBatchMeta<compare_data>> previous_meta;
+    P* batch_head = nullptr;
+
+    for (auto& item : render_phase.items) {
+        auto batch_data = GetBatchData<Adapter>{}.get_batch_data(batch_param, {item.entity(), item.main_entity()});
+        if (!batch_data) {
+            item.batch_range = {0, 0};
+            item.set_extra_index(phase::PhaseItemExtraIndex::None);
+            previous_meta.reset();
+            batch_head = nullptr;
+            continue;
+        }
+
+        auto&& [buffer_data, optional_compare_data] = *batch_data;
+        const auto buffer_index = instance_buffer.push(buffer_data);
+        item.batch_range = {buffer_index.index, buffer_index.index + 1};
+        item.set_extra_index(buffer_index.dynamic_offset
+                                 ? phase::PhaseItemExtraIndex::dynamic_offset(*buffer_index.dynamic_offset)
+                                 : phase::PhaseItemExtraIndex::None);
+
+        const std::optional<CpuBatchMeta<typename GetBatchData<Adapter>::CompareData>> current_meta =
+            automatic_batching_enabled<P> && optional_compare_data
+                ? std::optional{CpuBatchMeta<typename GetBatchData<Adapter>::CompareData>{
+                      .pipeline       = item.pipeline(),
+                      .draw_function  = item.draw_function(),
+                      .dynamic_offset = buffer_index.dynamic_offset,
+                      .compare_data   = std::move(*optional_compare_data),
+                  }}
+                : std::nullopt;
+
+        if (current_meta && previous_meta && *current_meta == *previous_meta) {
+            batch_head->batch_range.second = item.batch_range.second;
+        } else {
+            batch_head = &item;
+        }
+        previous_meta = current_meta;
+    }
+}
+
+/** @brief ECS wrapper for CPU sorted-phase batching. The buffer is shared by
+ * all views of the phase, exactly as Bevy's `BatchedInstanceBuffer`. */
+template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
+    requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+void batch_and_prepare_sorted_render_phase(
+    ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
+    ecs::Query<ecs::Item<phase::RenderPhase<P>&>> phases,
+    typename GetBatchData<Adapter>::Param batch_param) {
+    for (auto&& [render_phase] : phases.iter()) {
+        batch_and_prepare_sorted_phase<P, Adapter>(render_phase, instance_buffer->buffer, batch_param);
+    }
+}
+
+/** @brief Clears the shared CPU instance buffer once per frame (Bevy
+ * `clear_batched_cpu_instance_buffers`). Renderers that provide a CPU
+ * fallback register this before their phase batch systems. */
+template <typename Adapter>
+    requires GetBatchDataImpl<Adapter>
+void clear_batched_cpu_instance_buffers(
+    ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer) {
+    instance_buffer->buffer.clear();
+}
+
+/** @brief Uploads a CPU-batched sorted-phase instance buffer in the same
+ * render set as Bevy's `write_batched_instance_buffer`. */
+template <typename P, typename Adapter>
+    requires GetBatchDataImpl<Adapter>
+void write_batched_cpu_instance_buffer(
+    ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<wgpu::Queue> queue) {
+    instance_buffer->buffer.write_buffer(device.get(), queue.get());
+}
+
+/** @brief Installs the CPU fallback for a sorted render phase. This is the
+ * C++ counterpart of Bevy's sorted-phase batching path when GPU
+ * preprocessing is unavailable. */
+template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
+    requires(GetFullBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+struct CpuSortedRenderPhasePlugin {
+    void attach(app::App& app) const {
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batch_and_prepare_sorted_render_phase<P, Adapter>)
+                .in_set(RenderSystems::PrepareResources)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
+                        .has_value();
+                })
+                .set_name(std::format("batch sorted render phase '{}'", meta::type_id<P>().short_name())));
+        render_app->get().add_systems(
+            Render,
+            ecs::into(write_batched_cpu_instance_buffer<P, Adapter>)
+                .in_set(RenderSystems::PrepareResourcesFlush)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
+                        .has_value();
+                })
+                .set_name(std::format("write sorted-phase instance buffer '{}'", meta::type_id<P>().short_name())));
+    }
+};
+
+/** @brief CPU fallback for Bevy
+ * `no_gpu_preprocessing::batch_and_prepare_binned_render_phase`. It builds
+ * explicit batches for each render bin and preserves the dynamic-offset split
+ * required by the uniform-buffer fallback. */
+template <phase::BinnedPhaseItem BPI, typename Adapter>
+    requires GetFullBatchDataImpl<Adapter>
+void batch_and_prepare_binned_phase(
+    phase::BinnedRenderPhase<BPI>& render_phase,
+    render_resource::GpuArrayBuffer<typename GetBatchData<Adapter>::BufferData>& instance_buffer,
+    typename GetBatchData<Adapter>::Param& batch_param) {
+    for (auto&& [key, bin] : render_phase.batchable_meshes.iter()) {
+        (void)key;
+        bin.clear_batches();
+        for (const auto& [main_entity, input_uniform_index] : bin.iter()) {
+            (void)input_uniform_index;
+            auto buffer_data = GetFullBatchData<Adapter>{}.get_binned_batch_data(
+                batch_param, sync_world::MainEntity{main_entity});
+            if (!buffer_data) continue;
+            const auto index = instance_buffer.push(*buffer_data);
+            const auto extra = index.dynamic_offset
+                                   ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)
+                                   : phase::PhaseItemExtraIndex::None;
+            if (bin.batches.empty() || bin.batches.back().instance_range.second != index.index ||
+                bin.batches.back().extra_index != extra) {
+                bin.batches.push_back(phase::BinnedRenderPhaseBatch{
+                    .representative_entity = sync_world::MainEntity{main_entity},
+                    .instance_range         = {index.index, index.index},
+                    .extra_index            = extra,
+                });
+            }
+            bin.batches.back().instance_range.second = index.index + 1;
+        }
+    }
+
+    for (auto&& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {
+        (void)key;
+        unbatchable.batches.clear();
+        for (const auto& [main_entity, render_entity] : unbatchable.entities) {
+            (void)render_entity;
+            auto buffer_data = GetFullBatchData<Adapter>{}.get_binned_batch_data(
+                batch_param, sync_world::MainEntity{main_entity});
+            if (!buffer_data) continue;
+            const auto index = instance_buffer.push(*buffer_data);
+            unbatchable.batches.emplace(main_entity, phase::BinnedRenderPhaseBatch{
+                                                        .representative_entity = sync_world::MainEntity{main_entity},
+                                                        .instance_range         = {index.index, index.index + 1},
+                                                        .extra_index = index.dynamic_offset
+                                                                           ? phase::PhaseItemExtraIndex::dynamic_offset(
+                                                                                 *index.dynamic_offset)
+                                                                           : phase::PhaseItemExtraIndex::None,
+                                                    });
+        }
+    }
+}
+
+/** @brief ECS wrapper for CPU binned-phase batching. */
+template <phase::BinnedPhaseItem BPI, typename Adapter>
+    requires GetFullBatchDataImpl<Adapter>
+void batch_and_prepare_binned_render_phase(
+    ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
+    ecs::ResMut<phase::ViewBinnedRenderPhases<BPI>> phases,
+    typename GetBatchData<Adapter>::Param batch_param) {
+    for (auto& [view, render_phase] : phases->phases) {
+        (void)view;
+        batch_and_prepare_binned_phase<BPI, Adapter>(render_phase, instance_buffer->buffer, batch_param);
+    }
+}
+
+/** @brief Installs the CPU fallback for a binned render phase. */
+template <phase::BinnedPhaseItem BPI, typename Adapter>
+    requires(GetFullBatchDataImpl<Adapter> && std::totally_ordered<typename BPI::BatchSetKey> &&
+             std::totally_ordered<typename BPI::BinKey>)
+struct CpuBinnedRenderPhasePlugin {
+    void attach(app::App& app) const {
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
+        auto& render_world = render_app->get().world_mut();
+        render_world.init_resource<phase::ViewBinnedRenderPhases<BPI>>();
+        render_app->get().add_systems(
+            Render, ecs::into(phase::sweep_old_entities<BPI>).in_set(RenderSystems::QueueSweep));
+        render_app->get().add_systems(
+            Render, ecs::into(phase::sort_binned_render_phase<BPI>).in_set(RenderSystems::PhaseSort));
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batch_and_prepare_binned_render_phase<BPI, Adapter>)
+                .in_set(RenderSystems::PrepareResources)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
+                        .has_value();
+                })
+                .set_name(std::format("batch binned render phase '{}'", meta::type_id<BPI>().short_name())));
+        render_app->get().add_systems(
+            Render,
+            ecs::into(write_batched_cpu_instance_buffer<BPI, Adapter>)
+                .in_set(RenderSystems::PrepareResourcesFlush)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
+                        .has_value();
+                })
+                .set_name(std::format("write binned-phase instance buffer '{}'", meta::type_id<BPI>().short_name())));
+    }
+};
+
+}  // namespace epix::render::batching
+
+namespace epix::render::phase {
+
+/** @brief Bevy-compatible automatic binned-phase plugin. The standard phase
+ * plugin always owns its `GetFullBatchData` adapter; bespoke phase-only
+ * registration is deliberately not an alternate public API here. */
+template <BinnedPhaseItem BPI, typename Adapter>
+void BinnedRenderPhasePlugin<BPI, Adapter>::attach(app::App& app) {
+    static_assert(batching::GetFullBatchDataImpl<Adapter>,
+                  "BinnedRenderPhasePlugin adapter must specialize GetFullBatchData");
+    static_assert(std::totally_ordered<typename BPI::BatchSetKey> && std::totally_ordered<typename BPI::BinKey>,
+                  "BinnedRenderPhasePlugin keys must be orderable for Bevy-compatible bin sorting");
+    batching::CpuBinnedRenderPhasePlugin<BPI, Adapter>{}.attach(app);
+    if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
+        auto& world = render_app->get().world_mut();
+        world.insert_resource(batching::PhaseIndirectParametersBuffers<BPI>{
+            debug_flags.allow_copies_from_indirect_parameters()});
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batching::clear_phase_indirect_parameters_buffers<BPI>)
+                .in_set(RenderSystems::ManageViews)
+                .set_name(std::format("clear indirect parameter buffers '{}'", meta::type_id<BPI>().short_name())));
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batching::write_phase_indirect_parameters_buffers<BPI>)
+                .in_set(RenderSystems::PrepareResourcesFlush)
+                .set_name(std::format("write indirect parameter buffers '{}'", meta::type_id<BPI>().short_name())));
+    }
+}
+
+/** @brief Bevy-compatible automatic sorted-phase plugin. */
+template <CachedRenderPipelinePhaseItem P, typename Adapter>
+void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
+    static_assert(batching::GetFullBatchDataImpl<Adapter>,
+                  "SortedRenderPhasePlugin adapter must specialize GetFullBatchData");
+    static_assert(MutablePhaseItemExtraIndex<P>,
+                  "Automatic sorted batching requires set_extra_index on the phase item");
+    batching::CpuSortedRenderPhasePlugin<P, Adapter>{}.attach(app);
+    if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
+        auto& world = render_app->get().world_mut();
+        world.insert_resource(batching::PhaseIndirectParametersBuffers<P>{
+            debug_flags.allow_copies_from_indirect_parameters()});
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batching::clear_phase_indirect_parameters_buffers<P>)
+                .in_set(RenderSystems::ManageViews)
+                .set_name(std::format("clear indirect parameter buffers '{}'", meta::type_id<P>().short_name())));
+        render_app->get().add_systems(
+            Render,
+            ecs::into(batching::write_phase_indirect_parameters_buffers<P>)
+                .in_set(RenderSystems::PrepareResourcesFlush)
+                .set_name(std::format("write indirect parameter buffers '{}'", meta::type_id<P>().short_name())));
+    }
+}
+
+}  // namespace epix::render::phase
+
+namespace epix::render::batching {
+
+/** @brief Degree of GPU preprocessing supported by the active adapter (Bevy
+ * `GpuPreprocessingMode`). */
+EPIX_EXPORT enum class GpuPreprocessingMode : std::uint8_t {
+    None,
+    PreprocessingOnly,
+    Culling,
+};
+
+/** @brief Adapter capability summary for GPU preprocessing (Bevy
+ * `GpuPreprocessingSupport`). */
+EPIX_EXPORT struct GpuPreprocessingSupport {
+    GpuPreprocessingMode max_supported_mode = GpuPreprocessingMode::None;
+
+    bool is_available() const noexcept { return max_supported_mode != GpuPreprocessingMode::None; }
+    bool is_culling_supported() const noexcept { return max_supported_mode == GpuPreprocessingMode::Culling; }
+    GpuPreprocessingMode min(GpuPreprocessingMode mode) const noexcept {
+        if (max_supported_mode == GpuPreprocessingMode::None || mode == GpuPreprocessingMode::None) {
+            return GpuPreprocessingMode::None;
+        }
+        if (max_supported_mode == GpuPreprocessingMode::Culling) return mode;
+        return GpuPreprocessingMode::PreprocessingOnly;
+    }
+    static GpuPreprocessingSupport from_device(const wgpu::Device& device,
+                                               std::optional<wgpu::BackendType> backend_type = std::nullopt) noexcept {
+        // Bevy's gate is based on compute support for preprocessing, then on
+        // indirect-first-instance, push constants, and texture/compute limits
+        // for the stronger occlusion-culling mode. Multi-draw is useful to
+        // render a prepared batch but is not a prerequisite for preprocessing
+        // itself.
+        wgpu::Limits limits;
+        device.getLimits(&limits);
+        const bool compute_supported = limits.maxComputeWorkgroupSizeX != 0;
+        const bool is_gl_backend = backend_type && *backend_type == wgpu::BackendType::eOpenGL;
+        if (!compute_supported || is_gl_backend) return {};
+
+        const bool culling_features = device.hasFeature(wgpu::FeatureName::eIndirectFirstInstance) &&
+                                      device.hasFeature(wgpu::FeatureName(wgpu::NativeFeature::ePushConstants));
+        const bool culling_limits = limits.maxStorageTexturesPerShaderStage >= 12 &&
+                                    limits.maxComputeWorkgroupStorageSize != 0;
+        return {culling_features && culling_limits ? GpuPreprocessingMode::Culling
+                                                    : GpuPreprocessingMode::PreprocessingOnly};
+    }
 };
 
 /**
  * @brief Plugin enabling automatic batching (Bevy `BatchingPlugin`,
- * batching/gpu_preprocessing.rs:45-79). Bevy registers the GPU-preprocessing
- * indirect-parameters buffers here; that path is not ported (the bundled
- * wgpu-native lacks the binding-array descriptor APIs), so epix batches via
- * PhaseItem `batch_range` merging at queue sites and this plugin is attached
- * for structural parity (Bevy lib.rs:371-373).
+ * batching/gpu_preprocessing.rs:45-79). Capability detection is installed in
+ * the render world; phase-specific GPU work is registered by the phase that
+ * owns its input/output buffers.
  */
 EPIX_EXPORT struct BatchingPlugin {
     /** @brief Debugging flags (Bevy BatchingPlugin::debug_flags). */
     RenderDebugFlags debug_flags{};
 
-    void attach(app::App&) const noexcept {
-        // GPU preprocessing is not ported (wgpu-native FFI limitation);
-        // nothing to register.
+    void attach(app::App& app) const noexcept {
+        if (auto render_app = app.get_sub_app_mut(Render)) {
+            auto device = render_app->get().world().get_resource<wgpu::Device>();
+            std::optional<wgpu::BackendType> backend_type;
+            if (auto adapter = render_app->get().world().get_resource<wgpu::Adapter>()) {
+                wgpu::AdapterInfo info;
+                adapter->get().getInfo(&info);
+                backend_type = info.backendType;
+            }
+            render_app->get().world_mut().insert_resource(
+                device ? GpuPreprocessingSupport::from_device(device->get(), backend_type)
+                       : GpuPreprocessingSupport{});
+        }
     }
 };
 
