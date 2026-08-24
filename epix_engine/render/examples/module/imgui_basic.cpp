@@ -1,4 +1,4 @@
-﻿#include <imgui.h>
+#include <imgui.h>
 #include <spdlog/spdlog.h>
 
 import epix.ecs;
@@ -59,7 +59,7 @@ int main() {
         });
 
     app.add_systems(Startup,
-                    into([](Commands cmd) { cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{}); }));
+                    into([](Commands cmd) { cmd.spawn(camera::Camera2d{}, transform::Transform{}); }));
 
     app.add_systems(Update, into(demo_system, hello_system).set_names(std::array{"imgui demo", "imgui hello"}));
 

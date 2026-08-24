@@ -647,25 +647,25 @@ struct VoxelTraceNode : graph::Node {
             view_qs->update_archetypes(world);
     }
 
-    void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
+    std::expected<void, graph::NodeRunError> run(GraphContext& ctx, RenderContext& rc, const World& world) override {
         auto& state = const_cast<VoxelRenderState&>(world.resource<VoxelRenderState>());
-        if (!state.svo_valid || !state.resources_created) return;
+        if (!state.svo_valid || !state.resources_created) return {};
         const auto& ps = world.resource<PipelineServer>();
         auto trace_pl  = ps.get_compute_pipeline(state.trace_pipeline_id);
         auto taa_pl    = ps.get_compute_pipeline(state.taa_pipeline_id);
-        if (!trace_pl || !taa_pl) return;
+        if (!trace_pl || !taa_pl) return {};
         auto view_ent = ctx.get_view_entity();
-        if (!view_ent || !view_qs) return;
+        if (!view_ent || !view_qs) return {};
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [exview, target] = *view_opt;
         glm::uvec2 vp           = glm::uvec2(exview.viewport.z, exview.viewport.w);
-        if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
+        if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return {};
 
         VoxelCameraUniform cam;
-        cam.inv_proj       = glm::inverse(exview.projection);
-        cam.inv_view       = exview.transform.matrix;
-        cam.prev_view_proj = exview.projection * glm::inverse(state.prev_inv_view);
+        cam.inv_proj       = glm::inverse(exview.clip_from_view);
+        cam.inv_view       = exview.world_from_view.matrix;
+        cam.prev_view_proj = exview.clip_from_view * glm::inverse(state.prev_inv_view);
         cam.prev_inv_view  = state.prev_inv_view;
         cam.frame_index    = state.frame_count++;
         cam.taa_blend      = world.resource<VoxelConfig>().taa_blend;
@@ -748,7 +748,8 @@ struct VoxelTraceNode : graph::Node {
 
         // Advance ping-pong and save camera for next frame.
         state.accum_idx     = next;
-        state.prev_inv_view = exview.transform.matrix;
+        state.prev_inv_view = exview.world_from_view.matrix;
+        return {};
     }
 };
 
@@ -762,27 +763,28 @@ struct VoxelBlitNode : graph::Node {
             view_qs->update_archetypes(world);
     }
 
-    void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
+    std::expected<void, graph::NodeRunError> run(GraphContext& ctx, RenderContext& rc, const World& world) override {
         const auto& state = world.resource<VoxelRenderState>();
-        if (!state.svo_valid || !state.pipelines_queued) return;
+        if (!state.svo_valid || !state.pipelines_queued) return {};
         const auto& ps = world.resource<PipelineServer>();
         auto pipeline  = ps.get_render_pipeline(state.blit_pipeline_id);
-        if (!pipeline) return;
+        if (!pipeline) return {};
         auto view_ent = ctx.get_view_entity();
-        if (!view_ent || !view_qs) return;
+        if (!view_ent || !view_qs) return {};
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [target] = *view_opt;
-        if (!target.out_texture.view) return;
+        if (!target.out_texture()) return {};
 
         auto pass = rc.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture.get_attachment(std::nullopt)}));
+            std::array{target.out_texture_color_attachment(std::nullopt)}));
         pass.setPipeline(pipeline->get().pipeline());
         pass.setVertexBuffer(0, state.vertex_buffer, 0, sizeof(float) * 6);
         pass.setBindGroup(0, state.blit_bg[state.accum_idx], std::span<const uint32_t>{});
         pass.draw(3, 1, 0, 0);
         pass.end();
         rc.flush_encoder();
+        return {};
     }
 };
 
@@ -810,7 +812,7 @@ void camera_control(Res<input::ButtonInput<input::KeyCode>> keys,
                     Local<std::optional<glm::dvec2>> last_mouse_pos,
                     Single<const epix::window::Window&, With<epix::window::PrimaryWindow>> window,
                     Res<VoxelConfig> config,
-                    Query<Item<Mut<tf::Transform>>, With<Camera>> cameras) {
+                    Query<Item<Mut<tf::Transform>>, With<::epix::camera::Camera>> cameras) {
     const float dt    = game_time->delta_secs();
     const float speed = config->camera_speed;
     const float sens  = 0.002f;
@@ -916,7 +918,7 @@ void setup_voxel_scene(Commands cmd) {
     cmd.spawn(std::move(scene));
 
     // Perspective camera, positioned outside the scene looking inward.
-    auto projection = Projection::perspective(PerspectiveProjection{
+    auto projection = ::epix::camera::Projection::perspective(::epix::camera::PerspectiveProjection{
         .fov        = glm::radians(65.0f),
         .near_plane = 0.1f,
         .far_plane  = 600.0f,
@@ -1181,7 +1183,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     if (state->resources_created && !state->pipelines_queued) {
         wgpu::TextureFormat color_fmt = wgpu::TextureFormat::eUndefined;
         for (auto&& [exview, target] : views.iter()) {
-            color_fmt = target.out_texture.view_format;
+            color_fmt = target.out_texture_view_format();
             break;
         }
         if (color_fmt != wgpu::TextureFormat::eUndefined) {

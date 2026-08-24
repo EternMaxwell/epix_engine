@@ -1,4 +1,4 @@
-﻿#include <imgui.h>
+#include <imgui.h>
 
 #include <BS_thread_pool.hpp>
 #include <algorithm>
@@ -2367,14 +2367,14 @@ struct FluidState {
 
 glm::vec2 screen_to_world(glm::vec2 screen_pos,
                           glm::vec2 window_size,
-                          const render::camera::Camera& camera,
-                          const render::camera::Projection& projection,
+                          const camera::Camera& camera,
+                          const camera::Projection& projection,
                           const transform::Transform& cam_transform) {
     (void)projection;
     const float ndc_x = (screen_pos.x / window_size.x) * 2.0f - 1.0f;
     const float ndc_y = 1.0f - (screen_pos.y / window_size.y) * 2.0f;
 
-    const glm::mat4 proj_matrix = camera.computed.projection;
+    const glm::mat4 proj_matrix = camera.computed.clip_from_view;
     const glm::mat4 view_matrix = glm::inverse(cam_transform.to_matrix());
     const glm::mat4 vp_inv      = glm::inverse(proj_matrix * view_matrix);
 
@@ -2609,7 +2609,7 @@ struct Plugin {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
 
-        world.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{});
+        world.spawn(camera::Camera2d{}, transform::Transform{});
 
         Fluid sim;
         sim.reset();
@@ -2636,7 +2636,7 @@ struct Plugin {
                          ecs::Res<input::ButtonInput<input::KeyCode>> keys,
                          ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>>
                              window_query,
-                         ecs::Query<ecs::Item<const render::camera::Camera&, const render::camera::Projection&,
+                         ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&,
                                               const transform::Transform&>> camera_query,
                          ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
                 if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;

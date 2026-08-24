@@ -27,12 +27,12 @@ namespace epix::ext::fallingsand {
  * @param cam_transform Transform of the camera entity.
  */
 EPIX_EXPORT inline glm::vec2 relative_to_world(glm::vec2 relative_pos,
-                                               const render::camera::Camera& camera,
+                                               const ::epix::camera::Camera& camera,
                                                const transform::Transform& cam_transform) {
     float ndc_x = relative_pos.x * 2.0f;
     float ndc_y = relative_pos.y * 2.0f;
 
-    glm::mat4 proj_matrix = camera.computed.projection;
+    glm::mat4 proj_matrix = camera.computed.clip_from_view;
     glm::mat4 view_matrix = glm::inverse(cam_transform.to_matrix());
     glm::mat4 vp_inv      = glm::inverse(proj_matrix * view_matrix);
 

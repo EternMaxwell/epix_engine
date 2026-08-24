@@ -44,21 +44,28 @@ struct ClearPassNode : render::graph::Node {
         }
     }
 
-    void run(render::graph::GraphContext& ctx, render::graph::RenderContext& render_ctx, const World& world) override {
-        if (!views) return;
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
+                                                          render::graph::RenderContext& render_ctx,
+                                                          const World& world) override {
+        if (!views) return {};
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [camera, target] = *view_opt;
 
         // Clear the swapchain output directly (no post-process / blit needed
         // for a clear-only pass; writing out_texture marks it for present).
-        std::optional<glm::vec4> clear_color;
-        if (camera.clear_color) clear_color = *camera.clear_color;
+        const auto clear_color = camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::None
+                                     ? std::optional<glm::vec4>{}
+                                     : camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::Custom
+                                           ? std::optional<glm::vec4>{camera.clear_color.clear_color.to_vec4()}
+                                           : world.get_resource<::epix::camera::ClearColor>()
+                                                 .transform([](const auto& color) { return color.get().to_vec4(); });
         auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture.get_attachment(clear_color)}));
+            std::array{target.out_texture_color_attachment(clear_color)}));
         pass.end();
         render_ctx.flush_encoder();
+        return {};
     }
 };
 
@@ -78,7 +85,7 @@ struct ClearGraphPlugin {
 
 // Animates the render-world ClearColor (the one extract_cameras reads) from
 // the extracted render-world Time. Runs in the Render schedule each frame.
-void animate_clear_color(ResMut<camera::ClearColor> color, Res<time::Time<>> time) {
+void animate_clear_color(ResMut<::epix::camera::ClearColor> color, Res<time::Time<>> time) {
     const float t = time->elapsed_secs();
     auto& c       = *color;
     c.r           = 0.5f + 0.5f * std::sin(t * 0.8f);
@@ -122,7 +129,7 @@ int main() {
     // A camera wired to our custom render graph (a registered sub-graph;
     // an unregistered label makes the camera driver fail and nothing presents).
     app.add_systems(Startup, into([](Commands cmd) {
-                        cmd.spawn(camera::Camera{}, render::camera::CameraRenderGraph(kClearGraph),
+                        cmd.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{}, render::camera::CameraRenderGraph(kClearGraph),
                                   transform::Transform{});
                     }));
 

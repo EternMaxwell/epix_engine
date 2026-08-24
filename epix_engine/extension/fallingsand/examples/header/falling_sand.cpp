@@ -129,7 +129,7 @@ void settings_ui(imgui::Ctx imgui_ctx,
                             const fs::SandChunkPos&,
                             Mut<fs::SandChunkDirtyRect>,
                             const Parent&>> all_chunks,
-                 Query<Item<Mut<render::camera::RenderLayers>>, Filter<With<core_graph::core_2d::Camera2D, MainCamera>>>
+                 Query<Item<Mut<camera::RenderLayers>>, Filter<With<camera::Camera2d, MainCamera>>>
                      main_cameras) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
@@ -155,8 +155,8 @@ void settings_ui(imgui::Ctx imgui_ctx,
     if (ImGui::Checkbox("Show Dirty Rects (debug window)", &show_dirty)) {
         if (auto cam_opt = main_cameras.single()) {
             auto&& [render_layer]  = *cam_opt;
-            render_layer.get_mut() = show_dirty ? render::camera::RenderLayers::all()
-                                                : render::camera::RenderLayers::all_except(std::array{std::size_t{1}});
+            render_layer.get_mut() = show_dirty ? camera::RenderLayers::all()
+                                                : camera::RenderLayers::all_except(std::array{std::size_t{1}});
         }
     }
     ImGui::Checkbox("Show Freefall", &st.show_freefall);
@@ -228,8 +228,8 @@ void camera_control(ResMut<SandAppState> app_state,
                     Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
                     Res<input::ButtonInput<input::KeyCode>> keys,
                     Query<Item<Entity, const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-                    Query<Item<Mut<transform::Transform>, Mut<render::camera::Projection>>,
-                          Filter<With<core_graph::core_2d::Camera2D, MainCamera>>> cameras) {
+                    Query<Item<Mut<transform::Transform>, Mut<camera::Projection>>,
+                          Filter<With<camera::Camera2d, MainCamera>>> cameras) {
     if (ImGui::GetIO().WantCaptureMouse && ImGui::GetIO().WantCaptureKeyboard) return;
 
     auto win_opt = windows.single();
@@ -301,8 +301,8 @@ void debug_camera_control(ResMut<SandAppState> app_state,
                           EventReader<input::MouseButtonInput> mouse_button_events,
                           Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
                           Query<Item<const window::CachedWindow&>> all_windows,
-                          Query<Item<Mut<transform::Transform>, Mut<render::camera::Projection>>,
-                                Filter<With<core_graph::core_2d::Camera2D, DebugCamera>>> cameras) {
+                          Query<Item<Mut<transform::Transform>, Mut<camera::Projection>>,
+                                Filter<With<camera::Camera2d, DebugCamera>>> cameras) {
     auto& st           = app_state.get_mut();
     auto debug_win_ent = st.debug_window_entity;
 
@@ -375,7 +375,7 @@ void input_system(ResMut<SandAppState> app_state,
                   Res<input::ButtonInput<input::KeyCode>> keys,
                   Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
                   Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-                  Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                  Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
                   Query<Item<Mut<fs::ChunkElementGrid>,
                              Mut<fs::ChunkAirGrid>,
                              Mut<fs::ChunkThermalGrid>,
@@ -463,7 +463,7 @@ void explosion_system(ResMut<SandAppState> app_state,
                       Res<fs::ElementRegistry> registry,
                       Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
                       Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-                      Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                      Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
                       Query<Item<Mut<fs::ChunkElementGrid>,
                                  Mut<fs::ChunkAirGrid>,
                                  Mut<fs::ChunkThermalGrid>,
@@ -512,8 +512,8 @@ void debug_window_chunk_input(Commands cmd,
                               Res<SandAppState> app_state,
                               Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
                               Query<Item<const window::CachedWindow&>> all_windows,
-                              Query<Item<const render::camera::Camera&, const transform::Transform&>,
-                                    Filter<With<core_graph::core_2d::Camera2D, DebugCamera>>> debug_cameras,
+                              Query<Item<const camera::Camera&, const transform::Transform&>,
+                                    Filter<With<camera::Camera2d, DebugCamera>>> debug_cameras,
                               Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
                               Query<Item<Entity, const fs::SandChunkPos&, const Parent&>> chunks) {
     const auto& st   = app_state.get();
@@ -691,7 +691,7 @@ void freefall_overlay_system(
                           mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
                                                .alpha_mode = mesh::MeshAlphaMode2d::Blend},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
-                          render::camera::RenderLayers::layer(2))
+                          camera::RenderLayers::layer(2))
                     .id();
             st.freefall_overlays[chunk_ent] = overlay_ent;
         }
@@ -772,7 +772,7 @@ void dirty_rect_overlay_system(Commands cmd,
                                                               .alpha_mode = mesh::MeshAlphaMode2d::Blend},
                                          transform::Transform{.translation = {center_x, center_y, 1.0f},
                                                               .scaler      = {width, height, 1.0f}},
-                                         render::camera::RenderLayers::layer(1))
+                                         camera::RenderLayers::layer(1))
                                    .id();
             st.dirty_rect_overlays[chunk_ent] = overlay_ent;
         }
@@ -1043,18 +1043,17 @@ void setup(Commands cmd) {
     // ── Main camera: renders layers 0+ except layer 1 (dirty rects hidden) ───
     {
         // scale = 1/64 so that 1/16 m cells render at ~4 px each (64 px/world-unit)
-        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{},
-                  render::camera::Projection(render::camera::OrthographicProjection{.scale = 1.0f / 64.0f}),
-                  render::camera::RenderLayers::all_except(std::array{std::size_t{1}}))
+        cmd.spawn(camera::Camera2d{}, transform::Transform{},
+                  camera::Projection(camera::OrthographicProjection{.scale = 1.0f / 64.0f}),
+                  camera::RenderLayers::all_except(std::array{std::size_t{1}}))
             .insert(MainCamera{});
     }
 
     // ── Debug camera: layer 2 (outlines) + layer 1 (dirty rects), NOT sand (layer 0)
     {
-        cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{},
-                  render::camera::Camera{.render_target = render::camera::RenderTarget::from_window(debug_win_ent),
-                                         .order         = 1},
-                  render::camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}}))
+        cmd.spawn(camera::Camera2d{}, transform::Transform{},
+                  camera::Camera{.order = 1}, camera::RenderTarget::from_window(debug_win_ent),
+                  camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}}))
             .insert(DebugCamera{});
     }
 
@@ -1092,7 +1091,7 @@ void element_hover_info(
     Res<fs::ElementRegistry> registry,
     Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
     Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
     Query<Item<Mut<fs::ChunkElementGrid>,
                Mut<fs::ChunkAirGrid>,
                Mut<fs::ChunkThermalGrid>,

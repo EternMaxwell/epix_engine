@@ -626,20 +626,20 @@ struct BM4DTraceNode : graph::Node {
             view_qs->update_archetypes(world);
     }
 
-    void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
+    std::expected<void, graph::NodeRunError> run(GraphContext& ctx, RenderContext& rc, const World& world) override {
         auto& state = const_cast<BM4DRenderState&>(world.resource<BM4DRenderState>());
-        if (!state.bm_valid || !state.resources_created) return;
+        if (!state.bm_valid || !state.resources_created) return {};
         const auto& ps = world.resource<PipelineServer>();
         auto trace_pl  = ps.get_compute_pipeline(state.trace_pipeline_id);
         auto taa_pl    = ps.get_compute_pipeline(state.taa_pipeline_id);
-        if (!trace_pl || !taa_pl) return;
+        if (!trace_pl || !taa_pl) return {};
         auto view_ent = ctx.get_view_entity();
-        if (!view_ent || !view_qs) return;
+        if (!view_ent || !view_qs) return {};
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [exview, target] = *view_opt;
         glm::uvec2 vp           = glm::uvec2(exview.viewport.z, exview.viewport.w);
-        if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return;
+        if (vp.x == 0 || vp.y == 0 || state.output_size != vp) return {};
 
         // Build camera uniform from the extracted 4D camera state.
         const auto& ecam = world.resource<ExtractedBM4DCamera>();
@@ -725,6 +725,7 @@ struct BM4DTraceNode : graph::Node {
         state.prev_right   = ecam.right;
         state.prev_up      = ecam.up;
         state.prev_fov_y   = ecam.fov_y;
+        return {};
     }
 };
 
@@ -738,26 +739,27 @@ struct BM4DBlitNode : graph::Node {
             view_qs->update_archetypes(world);
     }
 
-    void run(GraphContext& ctx, RenderContext& rc, const World& world) override {
+    std::expected<void, graph::NodeRunError> run(GraphContext& ctx, RenderContext& rc, const World& world) override {
         const auto& state = world.resource<BM4DRenderState>();
-        if (!state.bm_valid || !state.pipelines_queued) return;
+        if (!state.bm_valid || !state.pipelines_queued) return {};
         const auto& ps = world.resource<PipelineServer>();
         auto pipeline  = ps.get_render_pipeline(state.blit_pipeline_id);
-        if (!pipeline) return;
+        if (!pipeline) return {};
         auto view_ent = ctx.get_view_entity();
-        if (!view_ent || !view_qs) return;
+        if (!view_ent || !view_qs) return {};
         auto view_opt = view_qs->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(*view_ent);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [target] = *view_opt;
-        if (!target.out_texture.view) return;
+        if (!target.out_texture()) return {};
 
         auto pass = rc.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture.get_attachment(std::nullopt)}));
+            std::array{target.out_texture_color_attachment(std::nullopt)}));
         pass.setPipeline(pipeline->get().pipeline());
         pass.setVertexBuffer(0, state.vertex_buffer, 0, sizeof(float) * 6);
         pass.setBindGroup(0, state.blit_bg[state.accum_idx], std::span<const uint32_t>{});
         pass.draw(3, 1, 0, 0);
         pass.end();
+        return {};
     }
 };
 
@@ -980,7 +982,7 @@ void setup_bm4d_scene(Commands cmd) {
 
     cmd.spawn(std::move(scene));
 
-    auto projection = Projection::perspective(PerspectiveProjection{
+    auto projection = ::epix::camera::Projection::perspective(::epix::camera::PerspectiveProjection{
         .fov        = glm::radians(65.0f),
         .near_plane = 0.1f,
         .far_plane  = 600.0f,
@@ -1206,7 +1208,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     if (state->resources_created && !state->pipelines_queued) {
         wgpu::TextureFormat fmt = wgpu::TextureFormat::eUndefined;
         for (auto&& [exv, tgt] : views.iter()) {
-            fmt = tgt.out_texture.view_format;
+            fmt = tgt.out_texture_view_format();
             break;
         }
         if (fmt != wgpu::TextureFormat::eUndefined) {

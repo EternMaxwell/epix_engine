@@ -15,6 +15,8 @@
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 #include <optional>
+#include <stdexcept>
+#include <utility>
 using namespace epix;
 using namespace epix::ecs;
 using namespace epix::app;
@@ -38,19 +40,26 @@ struct ClearPassNode : render::graph::Node {
         }
     }
 
-    void run(render::graph::GraphContext& ctx, render::graph::RenderContext& render_ctx, const World& world) override {
-        if (!views) return;
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
+                                                          render::graph::RenderContext& render_ctx,
+                                                          const World& world) override {
+        if (!views) return {};
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [camera, target] = *view_opt;
 
-        std::optional<glm::vec4> clear_color;
-        if (camera.clear_color) clear_color = *camera.clear_color;
+        const auto clear_color = camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::None
+                                     ? std::optional<glm::vec4>{}
+                                     : camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::Custom
+                                           ? std::optional<glm::vec4>{camera.clear_color.clear_color.to_vec4()}
+                                           : world.get_resource<::epix::camera::ClearColor>()
+                                                 .transform([](const auto& color) { return color.get().to_vec4(); });
         auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture.get_attachment(clear_color)}));
+            std::array{target.out_texture_color_attachment(clear_color)}));
         pass.end();
         render_ctx.flush_encoder();
+        return {};
     }
 };
 
@@ -70,8 +79,34 @@ struct ClearGraphPlugin {
 
 }  // namespace
 
+// Demonstrates Bevy RenderCreation::Manual semantics: the embedding program
+// owns adapter/device creation and supplies the direct wgpu resources to
+// RenderPlugin.  The graph below is intentionally independent of any shader
+// pipeline so that this is also a small, runnable host-integration example.
+render::RenderResources create_manual_render_resources() {
+    wgpu::Instance instance = wgpu::createInstance();
+    wgpu::Adapter adapter   = instance.requestAdapter(
+        wgpu::RequestAdapterOptions().setPowerPreference(wgpu::PowerPreference::eHighPerformance));
+    if (!adapter) throw std::runtime_error("Unable to create adapter for manual render creation example");
+
+    wgpu::Device device = adapter.requestDevice(
+        wgpu::DeviceDescriptor().setLabel("Manual Render Creation Device").setDefaultQueue(wgpu::QueueDescriptor{}));
+    if (!device) throw std::runtime_error("Unable to create device for manual render creation example");
+    return render::RenderResources{
+        .device       = device,
+        .queue        = device.getQueue(),
+        .adapter_info = render::RenderAdapterInfo::from_adapter(adapter),
+        .adapter      = adapter,
+        .instance     = instance,
+    };
+}
+
 int main() {
     App app = App::create();
+
+    render::RenderPlugin render_plugin;
+    render_plugin.render_creation = render::RenderCreation::manual(create_manual_render_resources());
+    render_plugin.set_validation(0);
 
     window::Window primary_window;
     primary_window.title = "Render Plugin";
@@ -88,13 +123,13 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(std::move(render_plugin))
         .add_plugins(ClearGraphPlugin{});
 
     // A camera wired to our custom render graph (a registered sub-graph;
     // an unregistered label makes the camera driver fail and nothing presents).
     app.add_systems(Startup, into([](Commands cmd) {
-                        cmd.spawn(camera::Camera{}, render::camera::CameraRenderGraph(kClearGraph),
+                        cmd.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{}, render::camera::CameraRenderGraph(kClearGraph),
                                   transform::Transform{});
                     }));
 

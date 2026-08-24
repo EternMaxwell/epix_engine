@@ -127,7 +127,7 @@ void setup(Commands cmd) {
     cmd.insert_resource(std::move(registry));
 
     // Main camera.
-    { cmd.spawn(core_graph::core_2d::Camera2D{}, transform::Transform{}).insert(MainCamera{}); }
+    { cmd.spawn(camera::Camera2d{}, transform::Transform{}).insert(MainCamera{}); }
 
     // Sand world.
     constexpr std::size_t chunk_shift = 5;
@@ -219,8 +219,8 @@ void camera_control(ResMut<AppState> app_state,
                     EventReader<input::MouseScroll> scroll_events,
                     Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
                     Query<Item<Entity, const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-                    Query<Item<Mut<transform::Transform>, Mut<render::camera::Projection>>,
-                          Filter<With<core_graph::core_2d::Camera2D, MainCamera>>> cameras) {
+                    Query<Item<Mut<transform::Transform>, Mut<camera::Projection>>,
+                          Filter<With<camera::Camera2d, MainCamera>>> cameras) {
     auto win_opt = windows.single();
     if (!win_opt.has_value()) return;
     auto&& [win_ent, win] = *win_opt;
@@ -274,7 +274,7 @@ void spawn_body_on_click(
     Res<fs::ElementRegistry> registry,
     Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
     Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras) {
+    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras) {
     if (ImGui::GetIO().WantCaptureMouse) return;
     if (!mouse_buttons->just_pressed(input::MouseButton::MouseButtonRight)) return;
 
@@ -306,7 +306,7 @@ void paint_sand_on_drag(
     Res<fs::ElementRegistry> registry,
     Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
     Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const render::camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
     Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
     Query<Item<Mut<fs::ChunkElementGrid>,
                Mut<fs::ChunkAirGrid>,
