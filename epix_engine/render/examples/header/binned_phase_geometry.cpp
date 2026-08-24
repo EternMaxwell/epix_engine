@@ -1,9 +1,10 @@
-// A visual test for the standard automatic CPU binned-phase API.
+// A visual test for the standard automatic GPU binned-phase API.
 //
 // This intentionally does not encode a pass/fail color. The graph clears the
 // output to a neutral background, then `BinnedRenderPhase::render` invokes a
-// real draw function. The two prepared batches issue instanced
-// triangle draws, so a bad preparation/render path leaves geometry missing.
+// real draw function. Compute preprocessing writes both the instance output
+// and indirect command counts; the two prepared commands issue triangle draws,
+// so a bad preparation/render path leaves geometry missing.
 
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
@@ -81,6 +82,7 @@ struct PipelineState {
     wgpu::Buffer input_indices_buffer;
     wgpu::Buffer work_items_buffer;
     wgpu::Buffer output_indices_buffer;
+    wgpu::Buffer indirect_parameters_buffer;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
 };
 
@@ -97,7 +99,14 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
         pass.setPipeline(state->pipeline);
         pass.setBindGroup(0, state->render_bind_group, std::span<const std::uint32_t>{});
         pass.setVertexBuffer(0, state->vertex_buffer, 0, 3 * sizeof(float) * 2);
-        pass.draw(3, item.batch_range.second - item.batch_range.first, 0, item.batch_range.first);
+        if (item.extra.type == render::phase::PhaseItemExtraIndex::Type::IndirectParametersIndex) {
+            for (auto command = item.extra.indirect_range.first; command < item.extra.indirect_range.second; ++command) {
+                pass.drawIndirect(state->indirect_parameters_buffer,
+                                  command * sizeof(render::batching::IndirectParametersNonIndexed));
+            }
+        } else {
+            pass.draw(3, item.batch_range.second - item.batch_range.first, 0, item.batch_range.first);
+        }
         return {};
     }
 };
@@ -138,10 +147,14 @@ struct render::batching::GetFullBatchData<binned_phase_geometry::Adapter> {
         return entity.entity.index;
     }
     void write_batch_indirect_parameters_metadata(bool,
-                                                  std::uint32_t,
+                                                  std::uint32_t output_index,
                                                   std::optional<std::uint32_t>,
-                                                  render::batching::UntypedPhaseIndirectParametersBuffers&,
-                                                  std::uint32_t) const {}
+                                                  render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
+                                                  std::uint32_t command_index) const {
+        buffers.non_indexed_data.values.at(command_index) = {
+            .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+        buffers.set_cpu_metadata(false, command_index, {.base_output_index = output_index, .batch_set_index = 0});
+    }
 };
 
 namespace {
@@ -161,10 +174,22 @@ struct PreprocessWorkItem {
     input_index: u32,
     output_or_indirect_parameters_index: u32,
 };
+struct IndirectMetadata {
+    base_output_index: u32,
+    batch_set_index: u32,
+};
+struct IndirectParameters {
+    vertex_count: u32,
+    instance_count: atomic<u32>,
+    first_vertex: u32,
+    first_instance: u32,
+};
 
 @group(0) @binding(0) var<storage, read> input_indices: array<u32>;
 @group(0) @binding(1) var<storage, read> work_items: array<PreprocessWorkItem>;
 @group(0) @binding(2) var<storage, read_write> output_indices: array<u32>;
+@group(0) @binding(3) var<storage, read> indirect_metadata: array<IndirectMetadata>;
+@group(0) @binding(4) var<storage, read_write> indirect_parameters: array<IndirectParameters>;
 
 @compute @workgroup_size(64)
 fn preprocessMain(@builtin(global_invocation_id) invocation: vec3<u32>) {
@@ -172,7 +197,10 @@ fn preprocessMain(@builtin(global_invocation_id) invocation: vec3<u32>) {
         return;
     }
     let item = work_items[invocation.x];
-    output_indices[item.output_or_indirect_parameters_index] = input_indices[item.input_index];
+    let command_index = item.output_or_indirect_parameters_index;
+    let output_index = indirect_metadata[command_index].base_output_index +
+        atomicAdd(&indirect_parameters[command_index].instance_count, 1u);
+    output_indices[output_index] = input_indices[item.input_index];
 }
 )";
 
@@ -232,17 +260,17 @@ struct BinnedGeometryNode : render::graph::Node {
         input_indices.ensure_nonempty();
         const render::view::RetainedViewEntity retained_view{
             render::sync_world::MainEntity{Entity::from_index(1)}, std::nullopt, 0};
-        phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::PreprocessingOnly};
+        phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::Culling};
         for (std::uint32_t index = 0; index < 3; ++index) {
             phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index + 1)},
-                      render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::BatchableMesh, tick);
+                      render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
         }
         for (std::uint32_t index = 0; index < 2; ++index) {
             phase.add(0, 1, Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 4)},
-                      render::phase::InputUniformIndex{index + 3}, render::phase::BinnedRenderPhaseType::BatchableMesh, tick);
+                      render::phase::InputUniformIndex{index + 3}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
         }
         render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(
-            phase, phase_buffers, indirect_parameters, retained_view, true, false, world);
+            phase, phase_buffers, indirect_parameters, retained_view, false, false, world);
 
         auto device = world.get_resource<wgpu::Device>();
         if (!device) throw std::runtime_error("render device is unavailable");
@@ -267,12 +295,14 @@ struct BinnedGeometryNode : render::graph::Node {
         }
         input_indices.buffer.write_buffer(device->get(), world.resource<wgpu::Queue>());
         phase_buffers.write_buffers(device->get(), world.resource<wgpu::Queue>());
-        const auto& direct_work_items = std::get<render::batching::PreprocessWorkItemBuffers::Direct>(
-            phase_buffers.work_item_buffers.at(retained_view).storage).items;
-        preprocess_work_item_count = static_cast<std::uint32_t>(direct_work_items.len());
+        indirect_parameters.write_buffers(device->get(), world.resource<wgpu::Queue>());
+        const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(
+            phase_buffers.work_item_buffers.at(retained_view).storage).non_indexed;
+        preprocess_work_item_count = static_cast<std::uint32_t>(work_items.len());
         pipeline->input_indices_buffer = input_indices.buffer.buffer;
-        pipeline->work_items_buffer = direct_work_items.buffer;
+        pipeline->work_items_buffer = work_items.buffer;
         pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
+        pipeline->indirect_parameters_buffer = indirect_parameters.non_indexed_data.buffer;
         const auto preprocess_layout = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("binned-phase-geometry-preprocess-layout")
@@ -282,6 +312,10 @@ struct BinnedGeometryNode : render::graph::Node {
                     wgpu::BindGroupLayoutEntry().setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
                     wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
+                    wgpu::BindGroupLayoutEntry().setBinding(3).setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
+                    wgpu::BindGroupLayoutEntry().setBinding(4).setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
                 }));
         pipeline->render_bind_group_layout = device->get().createBindGroupLayout(
@@ -306,9 +340,15 @@ struct BinnedGeometryNode : render::graph::Node {
                     wgpu::BindGroupEntry().setBinding(0).setBuffer(pipeline->input_indices_buffer)
                         .setSize(input_indices.buffer.len() * sizeof(std::uint32_t)),
                     wgpu::BindGroupEntry().setBinding(1).setBuffer(pipeline->work_items_buffer)
-                        .setSize(direct_work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
+                        .setSize(work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
                     wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
                         .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
+                    wgpu::BindGroupEntry().setBinding(3).setBuffer(indirect_parameters.non_indexed_cpu_metadata.buffer)
+                        .setSize(indirect_parameters.non_indexed_cpu_metadata.len() *
+                                 sizeof(render::batching::IndirectParametersCpuMetadata)),
+                    wgpu::BindGroupEntry().setBinding(4).setBuffer(pipeline->indirect_parameters_buffer)
+                        .setSize(indirect_parameters.non_indexed_data.len() *
+                                 sizeof(render::batching::IndirectParametersNonIndexed)),
                 }));
         pipeline->render_bind_group = device->get().createBindGroup(
             wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-render-bind-group")

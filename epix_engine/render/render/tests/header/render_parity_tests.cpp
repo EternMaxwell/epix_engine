@@ -494,9 +494,23 @@ struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
                                                   sync_world::MainEntity entity) const {
         return entity.entity.index;
     }
-    void write_batch_indirect_parameters_metadata(bool, std::uint32_t, std::optional<std::uint32_t>,
-                                                  batching::UntypedPhaseIndirectParametersBuffers&,
-                                                  std::uint32_t) const {}
+    void write_batch_indirect_parameters_metadata(bool indexed,
+                                                  std::uint32_t output_index,
+                                                  std::optional<std::uint32_t> batch_set_index,
+                                                  batching::UntypedPhaseIndirectParametersBuffers& buffers,
+                                                  std::uint32_t command_index) const {
+        if (indexed) {
+            buffers.indexed_data.values.at(command_index) = {
+                .index_count = 3, .instance_count = 0, .first_index = 0, .base_vertex = 0,
+                .first_instance = output_index};
+        } else {
+            buffers.non_indexed_data.values.at(command_index) = {
+                .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+        }
+        buffers.set_cpu_metadata(indexed, command_index,
+                                 {.base_output_index = output_index,
+                                  .batch_set_index = batch_set_index.value_or(0)});
+    }
 };
 
 namespace {
@@ -620,9 +634,23 @@ struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
     std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
         return entity.entity.index;
     }
-    void write_batch_indirect_parameters_metadata(bool, std::uint32_t, std::optional<std::uint32_t>,
-                                                  batching::UntypedPhaseIndirectParametersBuffers&,
-                                                  std::uint32_t) const {}
+    void write_batch_indirect_parameters_metadata(bool indexed,
+                                                  std::uint32_t output_index,
+                                                  std::optional<std::uint32_t> batch_set_index,
+                                                  batching::UntypedPhaseIndirectParametersBuffers& buffers,
+                                                  std::uint32_t command_index) const {
+        if (indexed) {
+            buffers.indexed_data.values.at(command_index) = {
+                .index_count = 3, .instance_count = 0, .first_index = 0, .base_vertex = 0,
+                .first_instance = output_index};
+        } else {
+            buffers.non_indexed_data.values.at(command_index) = {
+                .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+        }
+        buffers.set_cpu_metadata(indexed, command_index,
+                                 {.base_output_index = output_index,
+                                  .batch_set_index = batch_set_index.value_or(0)});
+    }
 };
 template <>
 struct epix::render::batching::GetBatchData<GpuWrittenBinnedBatchTestAdapter> {
@@ -888,6 +916,10 @@ TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
     ASSERT_EQ(indirect.indexed_data.len(), 2u);
     ASSERT_EQ(indirect.indexed_cpu_metadata.len(), 2u);
     ASSERT_EQ(indirect.indexed_batch_sets.len(), 1u);
+    EXPECT_EQ(indirect.indexed_data.values[0].index_count, 3u);
+    EXPECT_EQ(indirect.indexed_data.values[0].instance_count, 0u);
+    EXPECT_EQ(indirect.indexed_data.values[0].first_instance, 0u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].base_output_index, 1u);
     const auto& batch_sets = std::get<2>(render_phase.batch_sets);
     ASSERT_EQ(batch_sets.size(), 1u);
     EXPECT_EQ(batch_sets[0].batch_count, 2u);
