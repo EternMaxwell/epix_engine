@@ -4,6 +4,8 @@
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 
+#include <array>
+
 using namespace epix::ecs;
 using namespace epix::render;
 
@@ -15,28 +17,40 @@ TEST(ViewRangefinder3d, Distance) {
     EXPECT_FLOAT_EQ(rangefinder.distance(glm::vec3(0.0f, 0.0f, 1.0f)), 2.0f);
 }
 
-// RenderLayers truth table matches Bevy RenderLayers::intersects.
+// Bevy RenderLayers uses an unbounded positive bit mask. Epix retains its
+// intentional inverted-mask helpers on the same dynamically growing storage.
 TEST(RenderLayers, Intersects) {
-    auto layer0 = camera::RenderLayers::layer(0);
-    auto layer1 = camera::RenderLayers::layer(1);
-    auto all    = camera::RenderLayers::all();
-    auto none   = camera::RenderLayers::none();
+    auto layer0 = ::epix::camera::RenderLayers::layer(0);
+    auto layer1 = ::epix::camera::RenderLayers::layer(1);
+    auto none   = ::epix::camera::RenderLayers::none();
     EXPECT_TRUE(layer0.intersects(layer0));
     EXPECT_FALSE(layer0.intersects(layer1));
-    EXPECT_TRUE(all.intersects(layer0));
-    EXPECT_TRUE(layer0.intersects(all));
     EXPECT_FALSE(none.intersects(layer0));
     EXPECT_FALSE(layer0.intersects(none));
-    EXPECT_TRUE(all.intersects(all));  // inverted x inverted always overlaps
     EXPECT_TRUE(layer0.contains(0));
     EXPECT_FALSE(layer0.contains(1));
+
+    // Epix's complement helpers are intentional extensions and must remain
+    // dynamically extensible too.
+    const auto all_except_130 = ::epix::camera::RenderLayers::all_except(std::array<std::size_t, 1>{130});
+    EXPECT_TRUE(::epix::camera::RenderLayers::all().contains(10'000));
+    EXPECT_FALSE(all_except_130.contains(130));
+    EXPECT_TRUE(all_except_130.contains(131));
+
+    const auto dynamic = ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 3>{0, 64, 130});
+    EXPECT_TRUE(dynamic.contains(130));
+    EXPECT_TRUE(dynamic.intersects(::epix::camera::RenderLayers::layer(130)));
+    EXPECT_EQ(dynamic.iter(), (std::vector<std::size_t>{0, 64, 130}));
+    EXPECT_EQ(dynamic.without(130).without(64).without(0), none);
+    EXPECT_EQ(dynamic & ::epix::camera::RenderLayers::layer(64), ::epix::camera::RenderLayers::layer(64));
+    EXPECT_EQ(dynamic | layer1, ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 4>{0, 1, 64, 130}));
 }
 
 TEST(Msaa, FromSamples) {
-    EXPECT_EQ(view::samples(view::Msaa::Off), 1u);
-    EXPECT_EQ(view::samples(view::Msaa::Sample4), 4u);
-    EXPECT_EQ(view::msaa_from_samples(8), view::Msaa::Sample8);
-    EXPECT_THROW(view::msaa_from_samples(3), std::runtime_error);
+    EXPECT_EQ(::epix::render::view::samples(::epix::render::view::Msaa::Off), 1u);
+    EXPECT_EQ(::epix::render::view::samples(::epix::render::view::Msaa::Sample4), 4u);
+    EXPECT_EQ(::epix::render::view::msaa_from_samples(8), ::epix::render::view::Msaa::Sample8);
+    EXPECT_THROW(::epix::render::view::msaa_from_samples(3), std::runtime_error);
 }
 
 TEST(AlphaMode, Factories) {
@@ -89,10 +103,10 @@ TEST(SortedCamera, SortKey) {
     // same order, different target types: texture (key 1) sorts before window (key 2+)
     camera::SortedCamera tex;
     tex.order  = 1;
-    tex.target = camera::RenderTarget::from_texture(wgpu::Texture{});
+    tex.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ImageRenderTarget{wgpu::Texture{}}};
     camera::SortedCamera win;
     win.order  = 1;
-    win.target = camera::RenderTarget::from_primary();
+    win.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, epix::ecs::Entity{.uid = 1}}};
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 

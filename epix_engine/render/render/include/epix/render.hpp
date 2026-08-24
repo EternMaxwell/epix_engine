@@ -9,7 +9,10 @@
 #include <epix/ecs.hpp>
 #include <epix/shader.hpp>
 #include <functional>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <variant>
 #include <webgpu/webgpu.hpp>
 #endif
 #include <epix/render/alpha.hpp>
@@ -26,9 +29,11 @@
 #include <epix/render/image.hpp>
 #include <epix/render/label.hpp>
 #include <epix/render/manual_texture_view.hpp>
+#include <epix/render/occlusion_culling.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
 #include <epix/render/render_phase.hpp>
+#include <epix/render/render_debug.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>
 #include <epix/render/specialized_pipeline.hpp>
@@ -130,22 +135,57 @@ EPIX_EXPORT struct WgpuSettings {
     }
 };
 
-/** @brief Debugging flags that can optionally be set when constructing the
- * renderer (Bevy RenderDebugFlags, lib.rs:133-144). */
-EPIX_EXPORT struct RenderDebugFlags {
-    /** @brief Raw flag storage (bitflags over u8). */
-    std::uint8_t bits = 0;
+/** @brief Stable adapter information exposed to render systems (Bevy
+ * `RenderAdapterInfo`). Native `wgpu::AdapterInfo` uses borrowed string
+ * views, so Epix owns copies of those strings. */
+EPIX_EXPORT struct RenderAdapterInfo {
+    std::string vendor;
+    std::string architecture;
+    std::string device;
+    std::string description;
+    wgpu::BackendType backend_type = wgpu::BackendType::eUndefined;
+    wgpu::AdapterType adapter_type = wgpu::AdapterType::eUnknown;
+    std::uint32_t vendor_id        = 0;
+    std::uint32_t device_id        = 0;
 
-    constexpr static std::uint8_t ALLOW_COPIES_FROM_INDIRECT_PARAMETERS = 1;
+    static RenderAdapterInfo from_adapter(const wgpu::Adapter& adapter);
+};
 
-    /** @brief Whether indirect draw parameters get the COPY_SRC flag for CPU
-     * readback (Bevy ALLOW_COPIES_FROM_INDIRECT_PARAMETERS). */
-    bool allow_copies_from_indirect_parameters() const noexcept {
-        return (bits & ALLOW_COPIES_FROM_INDIRECT_PARAMETERS) != 0;
+/** @brief Renderer resources supplied by an embedding application (Bevy
+ * `RenderResources`). Epix deliberately exposes the native wgpu handles;
+ * their ownership follows the normal wgpu reference-counting rules. */
+EPIX_EXPORT struct RenderResources {
+    wgpu::Device device;
+    wgpu::Queue queue;
+    RenderAdapterInfo adapter_info;
+    wgpu::Adapter adapter;
+    wgpu::Instance instance;
+};
+
+/** @brief Chooses whether RenderPlugin creates wgpu resources itself or uses
+ * resources supplied by the host (Bevy `RenderCreation`). */
+EPIX_EXPORT struct RenderCreation {
+    std::variant<WgpuSettings, RenderResources> value{WgpuSettings{}};
+
+    RenderCreation() = default;
+    explicit RenderCreation(WgpuSettings settings) : value(std::move(settings)) {}
+    explicit RenderCreation(RenderResources resources) : value(std::move(resources)) {}
+
+    static RenderCreation automatic(WgpuSettings settings = {}) { return RenderCreation{std::move(settings)}; }
+    static RenderCreation manual(RenderResources resources) { return RenderCreation{std::move(resources)}; }
+    static RenderCreation manual(wgpu::Device device,
+                                 wgpu::Queue queue,
+                                 RenderAdapterInfo adapter_info,
+                                 wgpu::Adapter adapter,
+                                 wgpu::Instance instance) {
+        return manual(RenderResources{std::move(device), std::move(queue), std::move(adapter_info), std::move(adapter),
+                                      std::move(instance)});
     }
-    void set_allow_copies_from_indirect_parameters(bool value = true) noexcept {
-        bits = value ? (bits | ALLOW_COPIES_FROM_INDIRECT_PARAMETERS) : (bits & ~ALLOW_COPIES_FROM_INDIRECT_PARAMETERS);
-    }
+    bool is_manual() const noexcept { return std::holds_alternative<RenderResources>(value); }
+    const WgpuSettings* automatic_settings() const noexcept { return std::get_if<WgpuSettings>(&value); }
+    WgpuSettings* automatic_settings() noexcept { return std::get_if<WgpuSettings>(&value); }
+    const RenderResources* manual_resources() const noexcept { return std::get_if<RenderResources>(&value); }
+    RenderResources* manual_resources() noexcept { return std::get_if<RenderResources>(&value); }
 };
 
 /** @brief Plugin that initializes the WebGPU rendering subsystem. */
@@ -153,13 +193,15 @@ EPIX_EXPORT struct RenderPlugin {
     /** @brief Validation level (0 = none, 1 = nvrhi, 2 = Vulkan validation
      * layers). */
     int validation = 0;
-    /** @brief Renderer configuration (Bevy RenderPlugin::render_creation's
-     * WgpuSettings). Defaults mirror Bevy: HighPerformance + Functionality +
-     * auto backend; WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO env
-     * vars are honored. */
-    WgpuSettings settings;
+    /** @brief Automatic or host-provided renderer creation (Bevy
+     * `RenderPlugin::render_creation`). */
+    RenderCreation render_creation;
     /** @brief Debugging flags (Bevy RenderPlugin::debug_flags). */
     RenderDebugFlags debug_flags;
+    /** @brief When true, compile queued pipelines on the render thread rather
+     * than the background task pool (Bevy
+     * RenderPlugin::synchronous_pipeline_compilation). */
+    bool synchronous_pipeline_compilation = true;
     /**
      * @brief Set the validation level for the render plugin.
      * 0 - No validation

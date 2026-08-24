@@ -3,6 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
@@ -13,6 +14,8 @@
 #endif
 
 #include <epix/render/render_phase.hpp>
+#include <epix/render/render_debug.hpp>
+#include <epix/render/schedule.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/view.hpp>
 
@@ -84,6 +87,17 @@ class IndexMap {
         }
         return std::nullopt;
     }
+    /** @brief Sort entries by key (Bevy `IndexMap::sort_unstable_keys`). */
+    void sort_unstable_keys()
+        requires std::totally_ordered<K>
+    {
+        std::sort(m_entries.begin(), m_entries.end(),
+                  [](const value_type& lhs, const value_type& rhs) { return lhs.first < rhs.first; });
+        m_indices.clear();
+        for (std::size_t index = 0; index < m_entries.size(); ++index) {
+            m_indices.emplace(m_entries[index].first, index);
+        }
+    }
     /** @brief Remove the entry at the given insertion position, preserving the
      * order of the rest. Returns the removed pair. */
     value_type remove_at(std::size_t idx) {
@@ -121,12 +135,24 @@ EPIX_EXPORT struct InputUniformIndex {
     bool operator==(const InputUniformIndex&) const = default;
 };
 
+/** @brief One CPU-prepared draw within a binned render bin (Bevy
+ * `BinnedRenderPhaseBatch`). A bin can split into several draws when the
+ * dynamic-uniform fallback changes offset. */
+EPIX_EXPORT struct BinnedRenderPhaseBatch {
+    sync_world::MainEntity representative_entity;
+    std::pair<std::uint32_t, std::uint32_t> instance_range{0, 0};
+    PhaseItemExtraIndex extra_index{};
+};
+
 /**
  * @brief All entities that share a mesh and a material and can be batched as
  * part of a `BinnedRenderPhase` (Bevy `RenderBin`).
  */
 EPIX_EXPORT class RenderBin {
    public:
+    /** @brief CPU-prepared draw batches, rebuilt every frame. */
+    std::vector<BinnedRenderPhaseBatch> batches;
+
     /** @brief Insert an entity (main-world id) with its input uniform index.
      * Replaces any existing entry for the same entity. */
     void insert(epix::ecs::Entity main_entity, InputUniformIndex uniform_index) {
@@ -171,6 +197,7 @@ EPIX_EXPORT class RenderBin {
      * (this order determines instance indices). */
     auto iter() { return std::views::all(m_entries); }
     auto iter() const { return std::views::all(m_entries); }
+    void clear_batches() noexcept { batches.clear(); }
 
    private:
     std::vector<std::pair<epix::ecs::Entity, InputUniformIndex>> m_entries;
@@ -184,6 +211,8 @@ EPIX_EXPORT struct UnbatchableBinnedEntities {
     sync_world::MainEntityHashMap<epix::ecs::Entity> entities;
     /** @brief Instance index range [start, end) of this bin's entities. */
     std::optional<std::pair<std::uint32_t, std::uint32_t>> instance_range;
+    /** @brief Per-entity CPU-prepared range and dynamic/indirect index. */
+    std::unordered_map<epix::ecs::Entity, BinnedRenderPhaseBatch> batches;
     bool empty() const noexcept { return entities.empty(); }
 };
 
@@ -317,6 +346,13 @@ class BinnedRenderPhase {
              InputUniformIndex input_uniform_index,
              BinnedRenderPhaseType phase_type,
              ecs::Tick change_tick) {
+        // Epix currently uses Bevy's no-GPU-preprocessing path.  In that
+        // mode Bevy downgrades multidrawable items to ordinary batchable
+        // meshes before inserting them: there is no indirect/multidraw batch
+        // set to consume `multidrawable_meshes` otherwise.
+        if (phase_type == BinnedRenderPhaseType::MultidrawableMesh) {
+            phase_type = BinnedRenderPhaseType::BatchableMesh;
+        }
         switch (phase_type) {
             case BinnedRenderPhaseType::MultidrawableMesh: {
                 auto& batch_set = multidrawable_meshes[batch_set_key];
@@ -385,6 +421,11 @@ class BinnedRenderPhase {
         for (auto& [key, unbatchable] : unbatchable_meshes.iter()) {
             (void)key;
             unbatchable.instance_range.reset();
+            unbatchable.batches.clear();
+        }
+        for (auto& [key, bin] : batchable_meshes.iter()) {
+            (void)key;
+            bin.clear_batches();
         }
     }
 
@@ -514,6 +555,19 @@ class BinnedRenderPhase {
         BPI::create(batch_set_key, bin_key, representative_entity, instance_start, instance_end);
     };
 
+    static BPI make_item(const BatchSetKey& batch_set_key,
+                         const BinKey& bin_key,
+                         sync_world::MainEntity representative_entity,
+                         std::pair<std::uint32_t, std::uint32_t> instance_range,
+                         PhaseItemExtraIndex extra_index) {
+        auto item = BPI::create(batch_set_key, bin_key, representative_entity.entity, instance_range.first,
+                                instance_range.second);
+        if constexpr (MutablePhaseItemExtraIndex<BPI>) {
+            item.set_extra_index(extra_index);
+        }
+        return item;
+    }
+
     /** @brief Run one item's draw function, logging failures (Bevy draw
      * functions return Result<(), DrawError>; Skip is ignored). */
     void draw_item(const wgpu::RenderPassEncoder& render_pass,
@@ -543,9 +597,18 @@ class BinnedRenderPhase {
         if constexpr (!has_item_factory) return;
         for (auto&& [key, bin] : batchable_meshes.iter()) {
             if (bin.empty()) continue;
-            const auto representative = bin.iter().begin()->first;
-            BPI item = BPI::create(key.first, key.second, representative, 0u, static_cast<std::uint32_t>(bin.size()));
-            draw_item(render_pass, world, view, item);
+            if (bin.batches.empty()) {
+                const auto representative = sync_world::MainEntity{bin.iter().begin()->first};
+                draw_item(render_pass, world, view,
+                          make_item(key.first, key.second, representative, {0u, static_cast<std::uint32_t>(bin.size())},
+                                    PhaseItemExtraIndex::None));
+                continue;
+            }
+            for (const auto& batch : bin.batches) {
+                draw_item(render_pass, world, view,
+                          make_item(key.first, key.second, batch.representative_entity, batch.instance_range,
+                                    batch.extra_index));
+            }
         }
     }
 
@@ -558,8 +621,14 @@ class BinnedRenderPhase {
         for (auto&& [key, unbatchable] : unbatchable_meshes.iter()) {
             for (auto&& [main_entity, render_entity] : unbatchable.entities) {
                 (void)render_entity;
-                BPI item = BPI::create(key.first, key.second, main_entity, 0u, 1u);
-                draw_item(render_pass, world, view, item);
+                const auto prepared = unbatchable.batches.find(main_entity);
+                const auto range = prepared == unbatchable.batches.end()
+                                       ? std::pair<std::uint32_t, std::uint32_t>{0u, 1u}
+                                       : prepared->second.instance_range;
+                const auto extra = prepared == unbatchable.batches.end() ? PhaseItemExtraIndex::None
+                                                                            : prepared->second.extra_index;
+                draw_item(render_pass, world, view,
+                          make_item(key.first, key.second, sync_world::MainEntity{main_entity}, range, extra));
             }
         }
     }
@@ -620,38 +689,52 @@ void sweep_old_entities(ecs::ResMut<ViewBinnedRenderPhases<BPI>> render_phases) 
     }
 }
 
+/** @brief Sort each binned phase's keys (Bevy
+ * `batching::sort_binned_render_phase`). */
+EPIX_EXPORT template <BinnedPhaseItem BPI>
+    requires(std::totally_ordered<typename BPI::BatchSetKey> && std::totally_ordered<typename BPI::BinKey>)
+void sort_binned_render_phase(ecs::ResMut<ViewBinnedRenderPhases<BPI>> render_phases) {
+    for (auto& [view, phase] : render_phases->phases) {
+        (void)view;
+        phase.multidrawable_meshes.sort_unstable_keys();
+        for (auto& [batch_set_key, bins] : phase.multidrawable_meshes.iter()) {
+            (void)batch_set_key;
+            bins.sort_unstable_keys();
+        }
+        phase.batchable_meshes.sort_unstable_keys();
+        phase.unbatchable_meshes.sort_unstable_keys();
+        phase.non_mesh_items.sort_unstable_keys();
+    }
+}
+
 /**
  * @brief Plugin that sets up a binned render phase (Bevy
- * `BinnedRenderPhasePlugin`): registers the per-view phase resource and
- * wires `sweep_old_entities` into `RenderSystems::QueueSweep`. The GPU
- * preprocessing batch/prepare/collect systems are part of Bevy's batching
- * pipeline (BatchingPlugin/GetBatchData), which epix does not replicate;
- * epix renders each bin as one item (storage-buffer path).
+ * `BinnedRenderPhasePlugin`). Like Bevy's plugin, its batch-data adapter is
+ * mandatory: phase-only registration belongs to the subsystem that owns a
+ * bespoke phase, not to this automatic-batching plugin.
  */
-EPIX_EXPORT template <BinnedPhaseItem BPI>
+EPIX_EXPORT template <BinnedPhaseItem BPI, typename Adapter>
 struct BinnedRenderPhasePlugin {
-    void attach(app::App& app) {
-        if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
-            render_app->get().world_mut().init_resource<ViewBinnedRenderPhases<BPI>>();
-            render_app->get().add_systems(
-                epix::render::Render, into(sweep_old_entities<BPI>).in_set(epix::render::RenderSystems::QueueSweep));
-        }
-    }
+    RenderDebugFlags debug_flags{};
+    explicit BinnedRenderPhasePlugin(RenderDebugFlags flags = {}) noexcept : debug_flags(flags) {}
+    void attach(app::App& app);
 };
 
 /**
  * @brief Plugin that sets up a sorted render phase (Bevy
  * `SortedRenderPhasePlugin`): registers the phase sort system in
- * `RenderSystems::PhaseSort`.
+ * `RenderSystems::PhaseSort`. As in Bevy, automatic sorted-phase batching
+ * always has a `GetFullBatchData` adapter.
  */
-EPIX_EXPORT template <PhaseItem P>
+EPIX_EXPORT template <CachedRenderPipelinePhaseItem P, typename Adapter>
 struct SortedRenderPhasePlugin {
-    void attach(app::App& app) {
-        if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
-            render_app->get().add_systems(epix::render::Render,
-                                          into(sort_phase_items<P>).in_set(epix::render::RenderSystems::PhaseSort));
-        }
-    }
+    RenderDebugFlags debug_flags{};
+    explicit SortedRenderPhasePlugin(RenderDebugFlags flags = {}) noexcept : debug_flags(flags) {}
+    void attach(app::App& app);
 };
 
 }  // namespace epix::render::phase
+
+// Keep this public header self-contained: the phase-plugin member templates
+// are defined by batching.hpp after all phase types above are complete.
+#include <epix/render/batching.hpp>

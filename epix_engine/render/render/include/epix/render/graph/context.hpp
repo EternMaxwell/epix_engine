@@ -173,20 +173,6 @@ EPIX_EXPORT struct RenderContext {
 };
 
 /**
- * @brief Error type returned by a node run in Bevy (`NodeRunError`). The C++
- * graph runner ignores return values (nodes are `void`), so this type exists
- * for parity and for nodes that want to signal failures explicitly.
- */
-EPIX_EXPORT enum class NodeRunError {
-    /** @brief The node could not run because it has unconnected inputs. */
-    InvalidInputs,
-    /** @brief The node ran but produced invalid output. */
-    InvalidOutputs,
-    /** @brief A requested sub-graph does not exist. */
-    SubGraphDoesNotExist,
-};
-
-/**
  * @brief A render graph node that runs on a specific view entity (Bevy
  * `ViewNode`). The `run` receives the view entity associated with the
  * current graph execution.
@@ -197,7 +183,7 @@ concept ViewNode = std::derived_from<T, Node> && requires(T& node,
                                                           RenderContext& render_ctx,
                                                           epix::ecs::World& world,
                                                           epix::ecs::Entity view_entity) {
-    { node.run(graph, render_ctx, world, view_entity) };
+    { node.run(graph, render_ctx, world, view_entity) } -> std::same_as<std::expected<void, NodeRunError>>;
     { node.update(world) };
 };
 
@@ -217,14 +203,16 @@ struct ViewNodeRunner : public Node {
     std::vector<SlotInfo> output() override { return node.output(); }
     void update(epix::ecs::World& world) override { node.update(world); }
 
-    void run(GraphContext& graph, RenderContext& render_ctx, const epix::ecs::World& world) override {
+    std::expected<void, NodeRunError> run(GraphContext& graph,
+                                          RenderContext& render_ctx,
+                                          const epix::ecs::World& world) override {
         // Bevy ViewNodeRunner::run (node.rs:413-425): when the view entity has
         // no matching component (here: the view entity is unset or does not
         // exist), the node is skipped instead of failing.
         auto view_entity = graph.get_view_entity();
-        if (!view_entity) return;
-        if (!world.get_entity(*view_entity).has_value()) return;
-        node.run(graph, render_ctx, world, *view_entity);
+        if (!view_entity) return {};
+        if (!world.get_entity(*view_entity).has_value()) return {};
+        return node.run(graph, render_ctx, world, *view_entity);
     }
 };
 
@@ -241,9 +229,14 @@ EPIX_EXPORT struct RunGraphOnViewNode : public Node {
     // Bevy RunGraphOnViewNode (node.rs:333-357) declares no slots: the sub
     // graph always runs on the context's view entity, so the node works as a
     // drop-in 'run sub-graph for the current view' node without wiring a slot.
-    void run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override {
+    std::expected<void, NodeRunError> run(GraphContext& graph,
+                                          RenderContext&,
+                                          const epix::ecs::World&) override {
         std::vector<SlotValue> inputs{};
-        graph.run_sub_graph(sub_graph, inputs, graph.get_view_entity());
+        if (!graph.run_sub_graph(sub_graph, inputs, graph.get_view_entity())) {
+            return std::unexpected(NodeRunError::RunSubGraphError);
+        }
+        return {};
     }
 };
 }  // namespace epix::render::graph

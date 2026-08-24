@@ -51,8 +51,8 @@ void epix::render::window::extract_windows(
             auto& extracted = it->second;
             // Bevy clamps the physical size to at least 1 pixel (a 0-size
             // minimized window would fail surface configuration).
-            const std::uint32_t physical_width  = std::max<std::uint32_t>(1, window.size.first);
-            const std::uint32_t physical_height = std::max<std::uint32_t>(1, window.size.second);
+            const std::uint32_t physical_width  = std::max(1, window.physical_size.first);
+            const std::uint32_t physical_height = std::max(1, window.physical_size.second);
             if (extracted.physical_width != physical_width || extracted.physical_height != physical_height) {
                 extracted.physical_width  = physical_width;
                 extracted.physical_height = physical_height;
@@ -75,8 +75,8 @@ void epix::render::window::extract_windows(
                 entity, ExtractedWindow{
                             .entity          = entity,
                             .create_surface  = surface_fn,
-                            .physical_width  = static_cast<int>(std::max<std::uint32_t>(1, window.size.first)),
-                            .physical_height = static_cast<int>(std::max<std::uint32_t>(1, window.size.second)),
+                            .physical_width  = std::max(1, window.physical_size.first),
+                            .physical_height = std::max(1, window.physical_size.second),
                             .present_mode    = window.present_mode,
                             .alpha_mode      = window.composite_alpha_mode,
                         });
@@ -365,7 +365,7 @@ void epix::render::window::present_windows(
             for (auto&& [cam_entity, camera, view_target] : views.iter()) {
                 (void)cam_entity;
                 if (!view_target.needs_present()) continue;
-                if (auto* win_ref = std::get_if<camera::WindowRef>(&camera.render_target);
+                if (camera.target) if (auto* win_ref = std::get_if<::epix::camera::WindowRef>(&*camera.target);
                     win_ref && win_ref->window_entity == entity) {
                     view_needs_present = true;
                     break;

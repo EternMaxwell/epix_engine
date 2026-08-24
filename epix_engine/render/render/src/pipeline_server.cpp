@@ -77,13 +77,15 @@ std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Devi
     }
 }
 
-PipelineServerData::PipelineServerData(wgpu::Device dev)
+PipelineServerData::PipelineServerData(wgpu::Device dev, bool synchronous_pipeline_compilation)
     : layout_cache(std::make_shared<utils::Mutex<LayoutCache>>()),
       shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(dev, load_module)),
       device(std::move(dev)),
-      pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())) {}
+      pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())),
+      synchronous_pipeline_compilation(synchronous_pipeline_compilation) {}
 
-PipelineServer::PipelineServer(wgpu::Device device) : m_data(std::make_shared<PipelineServerData>(std::move(device))) {}
+PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation)
+    : m_data(std::make_shared<PipelineServerData>(std::move(device), synchronous_pipeline_compilation)) {}
 
 auto PipelineServer::get_pipeline_state(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const CachedPipelineState>> {
@@ -207,12 +209,20 @@ void PipelineServer::process_queue() {
 }
 
 void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id) {
+    auto schedule_creation = [&](auto task) {
+        if (m_data->synchronous_pipeline_compilation) {
+            auto result = task();
+            cached_pipeline.state = result ? CachedPipelineState{std::move(result.value())}
+                                           : CachedPipelineState{std::move(result.error())};
+        } else {
+            cached_pipeline.state = PipelineStateCreating{m_data->pipeline_create_task_pool->submit_task(std::move(task))};
+        }
+    };
     auto create_render_pipeline = [&](const RenderPipelineDescriptor& descriptor) mutable {
-        cached_pipeline.state = PipelineStateCreating{
-            m_data->pipeline_create_task_pool->submit_task([device           = m_data->device, descriptor,
-                                                            layout_cache_ptr = m_data->layout_cache,
-                                                            shader_cache_ptr = m_data->shader_cache,
-                                                            id]() -> std::expected<Pipeline, PipelineServerError> {
+        auto task = [device           = m_data->device, descriptor,
+                     layout_cache_ptr = m_data->layout_cache,
+                     shader_cache_ptr = m_data->shader_cache,
+                     id]() -> std::expected<Pipeline, PipelineServerError> {
                 wgpu::RenderPipelineDescriptor pipelineDesc;
                 wgpu::ShaderModule vertex_module;
                 std::optional<wgpu::ShaderModule> fragment_module;
@@ -256,14 +266,12 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 auto pipeline = device.createRenderPipeline(pipelineDesc);
                 if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
                 return Pipeline{RenderPipeline(std::move(pipeline))};
-            }),
-        };
+            };
+        schedule_creation(std::move(task));
     };
     auto create_compute_pipeline = [&](const ComputePipelineDescriptor& descriptor) mutable {
-        cached_pipeline.state = PipelineStateCreating{
-            m_data->pipeline_create_task_pool->submit_task(
-                [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
-                 shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+        auto task = [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
+                     shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
                     wgpu::ComputePipelineDescriptor desc;
                     wgpu::PipelineLayout layout;
                     wgpu::ShaderModule module;
@@ -286,8 +294,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                     auto pipeline = device.createComputePipeline(desc);
                     if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
                     return Pipeline{ComputePipeline(std::move(pipeline))};
-                }),
-        };
+                };
+        schedule_creation(std::move(task));
     };
     auto pipeline_name = std::visit(utils::visitor{
                                         [](const RenderPipelineDescriptor& desc) { return desc.label; },

@@ -53,13 +53,16 @@ EPIX_EXPORT struct Transparent2D {
     /** @brief Instance range covered by this item's batch (Bevy batch_range:
      * Range<u32>). */
     std::pair<std::uint32_t, std::uint32_t> batch_range;
+    /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
+    render::phase::PhaseItemExtraIndex extra_index_value{};
 
     ecs::Entity entity() const noexcept { return representative_entity.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
+    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Transparent2D>);
 
@@ -80,13 +83,16 @@ EPIX_EXPORT struct Opaque2D {
     std::pair<std::uint32_t, std::uint32_t> batch_range;
     /** @brief Sort key for front-to-back opaque ordering. */
     render::phase::OpaqueSortKey batch_key;
+    /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
+    render::phase::PhaseItemExtraIndex extra_index_value{};
 
     ecs::Entity entity() const noexcept { return representative_entity.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     const render::phase::OpaqueSortKey& sort_key() const noexcept { return batch_key; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
+    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
@@ -107,13 +113,16 @@ EPIX_EXPORT struct UI2DItem {
     /** @brief Instance range covered by this item's batch (Bevy batch_range:
      * Range<u32>). */
     std::pair<std::uint32_t, std::uint32_t> batch_range;
+    /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
+    render::phase::PhaseItemExtraIndex extra_index_value{};
 
     ecs::Entity entity() const noexcept { return representative_entity.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     int sort_key() const noexcept { return order; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return render::phase::PhaseItemExtraIndex::None; }
+    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
+    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
 };
 
 template <typename P>
@@ -135,13 +144,17 @@ struct Node2D : render::graph::Node {
             views->update_archetypes(world);
         }
     }
-    void run(render::graph::GraphContext& ctx,
-             render::graph::RenderContext& render_ctx,
-             const ecs::World& world) override {
-        if (!views) return;  // likely be components of the query not all got registered, just skip running for now
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
+                                                          render::graph::RenderContext& render_ctx,
+                                                          const ecs::World& world) override {
+        // No matching render-world query yet: this is the same benign
+        // no-view condition that Bevy's ViewNodeRunner treats as Ok(()).
+        // Once the query exists, actual graph invocation failures are returned
+        // through NodeRunError rather than being skipped.
+        if (!views) return {};
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
-        if (!view_opt) return;
+        if (!view_opt) return {};
         auto&& [exview, camera, target, depth, phase] = *view_opt;
         auto render_pass                              = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
@@ -151,18 +164,19 @@ struct Node2D : render::graph::Node {
                 // a single-sample color target with a multisampled depth
                 // target.
                 .setColorAttachments(std::array{target.get_color_attachment()})
-                .setDepthStencilAttachment(depth.attachment.get_attachment(wgpu::StoreOp::eStore)));
+                .setDepthStencilAttachment(depth.get_attachment(wgpu::StoreOp::eStore)));
         // Bevy main_opaque_pass_2d_node set_camera_viewport: clip the main pass
         // to the camera viewport (origin, size, depth range).
         if (camera.viewport) {
             const auto& vp = *camera.viewport;
-            render_pass.setViewport(static_cast<float>(vp.pos.x), static_cast<float>(vp.pos.y),
-                                    static_cast<float>(vp.size.x), static_cast<float>(vp.size.y), vp.depth_range.first,
-                                    vp.depth_range.second);
+            render_pass.setViewport(static_cast<float>(vp.physical_position.x), static_cast<float>(vp.physical_position.y),
+                                    static_cast<float>(vp.physical_size.x), static_cast<float>(vp.physical_size.y), vp.depth.first,
+                                    vp.depth.second);
         }
         phase.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();
+        return {};
     }
 };
 
@@ -207,9 +221,9 @@ EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
                                   ecs::Filter<>>>
         views;
     void update(ecs::World& world) override;
-    void run(render::graph::GraphContext& ctx,
-             render::graph::RenderContext& render_ctx,
-             const ecs::World& world) override;
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
+                                                          render::graph::RenderContext& render_ctx,
+                                                          const ecs::World& world) override;
 };
 
 /** @brief Plugin that sets up the core 2D render graph and camera
@@ -218,17 +232,4 @@ EPIX_EXPORT struct Core2dPlugin {
     void attach(app::App& app);
 };
 
-/** @brief Marker component for 2D camera entities (Bevy Camera2d).
- *
- * Bevy has no camera bundles: required components pull in Camera (which
- * requires Projection/Transform/VisibleEntities/RenderLayers/Msaa/Frustum)
- * and the Core2d CameraRenderGraph, so spawning a bare Camera2D (optionally
- * with Transform / Projection / Camera overrides) is all that is needed. */
-EPIX_EXPORT struct Camera2D {
-    static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
-};
-/** @brief Bevy-compatible spelling of `Camera2D`. The Core2D graph namespace
- * is an intentional Epix app-architecture
- * divergence. */
-using Camera2d = Camera2D;
 }  // namespace epix::core_graph::core_2d

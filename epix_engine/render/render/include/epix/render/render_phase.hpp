@@ -104,17 +104,47 @@ EPIX_EXPORT struct OpaqueSortKey {
     bool operator==(const OpaqueSortKey& other) const { return (*this <=> other) == std::strong_ordering::equal; }
 };
 
-/** @brief The "extra index" associated with some phase items besides the
- * instance range (Bevy `PhaseItemExtraIndex`): a dynamic offset or an
- * indirect-parameters index. */
-EPIX_EXPORT enum class PhaseItemExtraIndex : std::uint8_t {
-    /** @brief No extra index. */
-    None,
-    /** @brief A wgpu dynamic offset into the instance-data buffer. */
-    DynamicOffset,
-    /** @brief An index into the indirect-parameters buffer (GPU culling). */
-    IndirectParametersIndex,
+/** @brief The extra index associated with a phase item besides its instance
+ * range (Bevy `PhaseItemExtraIndex`). A dynamic offset is one value, while an
+ * indirect draw carries both the command range and its optional multi-draw
+ * batch-set index. */
+EPIX_EXPORT struct PhaseItemExtraIndex {
+    enum class Type : std::uint8_t {
+        None,
+        DynamicOffset,
+        IndirectParametersIndex,
+    } type = Type::None;
+
+    /** Dynamic uniform-buffer offset when `type == DynamicOffset`. */
+    std::uint32_t value = 0;
+    /** Half-open indirect-command range when `type == IndirectParametersIndex`.
+     * It is intentionally a range: GPU culling can reduce it to fewer actual
+     * commands when multi-draw-indirect-count is available. */
+    std::pair<std::uint32_t, std::uint32_t> indirect_range{0, 0};
+    /** Optional multi-draw batch-set index for an indirect command range. */
+    std::optional<std::uint32_t> batch_set_index;
+
+    constexpr PhaseItemExtraIndex() noexcept = default;
+    constexpr PhaseItemExtraIndex(Type type, std::uint32_t value,
+                                  std::pair<std::uint32_t, std::uint32_t> indirect_range = {0, 0},
+                                  std::optional<std::uint32_t> batch_set_index = std::nullopt) noexcept
+        : type(type), value(value), indirect_range(indirect_range), batch_set_index(batch_set_index) {}
+    static const PhaseItemExtraIndex None;
+    static constexpr PhaseItemExtraIndex dynamic_offset(std::uint32_t offset) noexcept {
+        return {Type::DynamicOffset, offset};
+    }
+    static constexpr PhaseItemExtraIndex indirect_parameters_index(std::uint32_t index) noexcept {
+        return indirect_parameters_range(index, index + 1);
+    }
+    static constexpr PhaseItemExtraIndex indirect_parameters_range(
+        std::uint32_t start, std::uint32_t end, std::optional<std::uint32_t> batch_set = std::nullopt) noexcept {
+        return {Type::IndirectParametersIndex, 0, {start, end}, batch_set};
+    }
+
+    constexpr bool operator==(const PhaseItemExtraIndex&) const noexcept = default;
 };
+
+inline const PhaseItemExtraIndex PhaseItemExtraIndex::None{};
 
 /** @brief Length of a batch range (Bevy `Range::len`). */
 EPIX_EXPORT inline std::uint32_t batch_range_len(const std::pair<std::uint32_t, std::uint32_t>& range) noexcept {
@@ -140,6 +170,13 @@ concept PhaseItem = requires(const T item) {
     { item.batch_range } -> std::convertible_to<const std::pair<std::uint32_t, std::uint32_t>&>;
     // the extra index (dynamic offset / indirect parameters)
     { item.extra_index() } -> std::same_as<PhaseItemExtraIndex>;
+};
+
+/** @brief Extends a phase item with Bevy's mutable extra-index contract,
+ * used by automatic CPU batching and GPU preprocessing. */
+EPIX_EXPORT template <typename T>
+concept MutablePhaseItemExtraIndex = PhaseItem<T> && requires(T item, PhaseItemExtraIndex extra_index) {
+    { item.set_extra_index(extra_index) } -> std::same_as<void>;
 };
 
 /** @brief Concept extending PhaseItem with a cached pipeline ID for
@@ -866,6 +903,43 @@ EPIX_EXPORT class TrackedRenderPass {
      * TrackedRenderPass::draw_indexed_indirect). */
     void draw_indexed_indirect(const wgpu::Buffer& indirect_buffer, std::uint64_t indirect_offset) {
         m_pass.drawIndexedIndirect(indirect_buffer, indirect_offset);
+    }
+
+    /** @brief Issue multiple non-indexed indirect draws (Bevy
+     * `TrackedRenderPass::multi_draw_indirect`). */
+    void multi_draw_indirect(const wgpu::Buffer& indirect_buffer,
+                             std::uint64_t indirect_offset,
+                             std::uint32_t count) {
+        m_pass.multiDrawIndirect(indirect_buffer, indirect_offset, count);
+    }
+
+    /** @brief Issue multiple indexed indirect draws (Bevy
+     * `TrackedRenderPass::multi_draw_indexed_indirect`). */
+    void multi_draw_indexed_indirect(const wgpu::Buffer& indirect_buffer,
+                                     std::uint64_t indirect_offset,
+                                     std::uint32_t count) {
+        m_pass.multiDrawIndexedIndirect(indirect_buffer, indirect_offset, count);
+    }
+
+    /** @brief Issue non-indexed indirect draws whose count is held in a GPU
+     * buffer (Bevy `multi_draw_indirect_count`). */
+    void multi_draw_indirect_count(const wgpu::Buffer& indirect_buffer,
+                                   std::uint64_t indirect_offset,
+                                   const wgpu::Buffer& count_buffer,
+                                   std::uint64_t count_buffer_offset,
+                                   std::uint32_t max_count) {
+        m_pass.multiDrawIndirectCount(indirect_buffer, indirect_offset, count_buffer, count_buffer_offset, max_count);
+    }
+
+    /** @brief Indexed counterpart of `multi_draw_indirect_count` (Bevy
+     * `multi_draw_indexed_indirect_count`). */
+    void multi_draw_indexed_indirect_count(const wgpu::Buffer& indirect_buffer,
+                                           std::uint64_t indirect_offset,
+                                           const wgpu::Buffer& count_buffer,
+                                           std::uint64_t count_buffer_offset,
+                                           std::uint32_t max_count) {
+        m_pass.multiDrawIndexedIndirectCount(indirect_buffer, indirect_offset, count_buffer, count_buffer_offset,
+                                              max_count);
     }
 
     /** @brief Access the underlying encoder (e.g. to end the pass).

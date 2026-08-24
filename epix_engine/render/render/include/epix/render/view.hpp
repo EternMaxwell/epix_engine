@@ -16,6 +16,9 @@
 #include <optional>
 #include <ranges>
 #include <span>
+#include <stdexcept>
+#include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -28,88 +31,85 @@
 #include <epix/render/graph.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
+#include <epix/render/manual_texture_view.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/texture_attachment.hpp>
 #include <epix/render/window.hpp>
 
-namespace epix::render::camera {
-// Camera-module types imported for render-side use (mirrors how bevy_render imports bevy_camera); the definitions live
-// in the epix::camera module.
-using ::epix::camera::Camera;
-using ::epix::camera::camera_system;
-using ::epix::camera::CameraMainTextureUsages;
-using ::epix::camera::CameraOutputMode;
-using ::epix::camera::CameraPlugin;
-using ::epix::camera::CameraProjection;
-using ::epix::camera::CameraProjectionPlugin;
-using ::epix::camera::CameraUpdateSystems;
-using ::epix::camera::ClearColor;
-using ::epix::camera::ClearColorConfig;
-using ::epix::camera::ComputedCameraValues;
-using ::epix::camera::Exposure;
-using ::epix::camera::InheritedVisibility;
-using ::epix::camera::MainPassResolutionOverride;
-using ::epix::camera::MsaaWriteback;
-using ::epix::camera::OrthographicProjection;
-using ::epix::camera::PerspectiveProjection;
-using ::epix::camera::Projection;
-using ::epix::camera::RenderLayers;
-using ::epix::camera::RenderTarget;
-using ::epix::camera::RenderTargetId;
-using ::epix::camera::RenderTargetIdHash;
-using ::epix::camera::ScalingMode;
-using ::epix::camera::SubCameraView;
-using ::epix::camera::Viewport;
-using ::epix::camera::ViewVisibility;
-using ::epix::camera::Visibility;
-using ::epix::camera::WindowRef;
+namespace epix::render::batching {
+struct GpuPreprocessingSupport;
+}
 
+namespace epix::render::camera {
 /** @brief Label identifying the render graph assigned to a camera. */
 EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
     using graph::GraphLabel::GraphLabel;
+
+    /** @brief Replaces the graph label (Bevy `CameraRenderGraph::set`). */
+    template <typename T>
+        requires(std::constructible_from<graph::GraphLabel, T>)
+    void set(T graph_label) noexcept {
+        static_cast<graph::GraphLabel&>(*this) = graph::GraphLabel(std::move(graph_label));
+    }
 };
 EPIX_EXPORT struct ExtractedCamera {
     // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
     // point to the actual primary window entity.
-    RenderTarget render_target;
-    glm::uvec2 viewport_size;
-    glm::uvec2 target_size;
-    std::optional<Viewport> viewport;
-    CameraRenderGraph render_graph;
+    std::optional<::epix::camera::NormalizedRenderTarget> target;
+    std::optional<glm::uvec2> physical_viewport_size;
+    std::optional<glm::uvec2> physical_target_size;
+    std::optional<::epix::camera::Viewport> viewport;
+    // CameraRenderGraph is the main-world component wrapper.  As in Bevy,
+    // extraction stores its interned graph label itself in the render world.
+    graph::GraphLabel render_graph;
     std::ptrdiff_t order;
-    std::optional<ClearColor> clear_color;
+    ::epix::camera::ClearColorConfig clear_color{};
     /** @brief Whether the camera renders through an HDR intermediate texture
      * (Bevy ExtractedCamera::hdr). */
     bool hdr = false;
     /** @brief Index of this camera among cameras targeting the same render
      * target at the same order (Bevy
      * ExtractedCamera::sorted_camera_index_for_target). */
-    std::optional<std::size_t> sorted_camera_index_for_target;
+    std::size_t sorted_camera_index_for_target = 0;
     /** @brief Linear exposure multiplier (Bevy ExtractedCamera::exposure). */
-    float exposure = Exposure{}.exposure();
+    float exposure = ::epix::camera::Exposure{}.exposure();
     /** @brief Final output policy (Bevy ExtractedCamera::output_mode). */
-    CameraOutputMode output_mode{};
+    ::epix::camera::CameraOutputMode output_mode{};
     /** @brief MSAA writeback policy (Bevy ExtractedCamera::msaa_writeback). */
-    MsaaWriteback msaa_writeback = MsaaWriteback::Auto;
-    /** @brief Requested usages for intermediate main textures (Bevy
-     * CameraMainTextureUsages, extracted with the
-     * camera). */
-    wgpu::TextureUsage main_texture_usage =
-        wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc;
-    /** @brief Which render layers this camera renders. Default: all layers. */
-    RenderLayers render_layer = RenderLayers::all();
+    ::epix::camera::MsaaWriteback msaa_writeback = ::epix::camera::MsaaWriteback::Auto;
 };
 }  // namespace epix::render::camera
 namespace epix::render::view {
-// Camera-module types imported for render-side use (bevy_render imports bevy_camera).
-using ::epix::camera::Frustum;
-using ::epix::camera::Msaa;
-using ::epix::camera::msaa_from_samples;
-using ::epix::camera::samples;
-using ::epix::camera::VisibleEntities;
+/** @brief Number of samples for multisample anti-aliasing (Bevy
+ * `bevy_render::view::Msaa`). The render-side camera plugin supplies
+ * `Sample4` when a Camera is spawned without an explicit value. */
+EPIX_EXPORT enum class Msaa : std::uint32_t {
+    Off     = 1,
+    Sample2 = 2,
+    Sample4 = 4,
+    Sample8 = 8,
+};
+
+/** @brief C++ equivalent of Bevy `Msaa::samples`. */
+EPIX_EXPORT inline std::uint32_t samples(Msaa msaa) noexcept { return static_cast<std::uint32_t>(msaa); }
+
+/** @brief C++ equivalent of Bevy `Msaa::from_samples`. */
+EPIX_EXPORT inline Msaa msaa_from_samples(std::uint32_t sample_count) {
+    switch (sample_count) {
+        case 1: return Msaa::Off;
+        case 2: return Msaa::Sample2;
+        case 4: return Msaa::Sample4;
+        case 8: return Msaa::Sample8;
+        default: throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
+    }
+}
+
 /** @brief Forward declaration; the Hdr marker is defined below after the
  * camera extraction declarations. */
 EPIX_EXPORT struct Hdr;
+/** @brief Forward declaration; the marker is defined below after the camera
+ * extraction declarations. */
+EPIX_EXPORT struct NoIndirectDrawing;
 /** @brief Forward declaration (defined below). */
 EPIX_EXPORT struct ViewTargetAttachments;
 /** @brief Forward declaration (defined below; used by extract_cameras and
@@ -122,10 +122,23 @@ EPIX_EXPORT struct ViewTargetAttachments;
 EPIX_EXPORT struct RetainedViewEntity {
     /** @brief Main-world entity this view corresponds to. */
     sync_world::MainEntity main_entity;
-    /** @brief Auxiliary entity (e.g. shadow-casting camera), or std::nullopt. */
-    std::optional<sync_world::MainEntity> auxiliary_entity;
+    /** @brief Auxiliary entity (e.g. a camera associated with a shadow
+     * cascade).  A missing value is represented by the stable placeholder,
+     * exactly as Bevy's `RetainedViewEntity` does. */
+    sync_world::MainEntity auxiliary_entity;
     /** @brief Subview index (0 for cameras; cascade/face index for shadow views). */
     std::uint32_t subview_index = 0;
+
+    static sync_world::MainEntity placeholder_auxiliary_entity() noexcept {
+        return sync_world::MainEntity{ecs::Entity::PLACEHOLDER};
+    }
+
+    RetainedViewEntity(sync_world::MainEntity main_entity,
+                       std::optional<sync_world::MainEntity> auxiliary_entity = std::nullopt,
+                       std::uint32_t subview_index = 0)
+        : main_entity(main_entity),
+          auxiliary_entity(auxiliary_entity.value_or(placeholder_auxiliary_entity())),
+          subview_index(subview_index) {}
 
     bool operator==(const RetainedViewEntity&) const = default;
 
@@ -141,18 +154,15 @@ EPIX_EXPORT struct RetainedViewEntity {
 /** @brief Extracted view data: projection, transform, viewport and HDR
  * state for a single camera (Bevy ExtractedView).
  *
- * Field-name notes: Bevy names the projection clip_from_view and the
- * transform world_from_view; epix keeps the legacy field names projection
- * / transform for compatibility, with clip_from_view() /
- * world_from_view() accessors for the Bevy names. */
+ */
 EPIX_EXPORT struct ExtractedView {
     /** @brief Stable identifier of the main-world view this render view
      * corresponds to (Bevy retained_view_entity). */
     RetainedViewEntity retained_view_entity;
     /** @brief Clip-from-view (projection) matrix (Bevy clip_from_view). */
-    glm::mat4 projection;
+    glm::mat4 clip_from_view;
     /** @brief World-from-view transform (Bevy world_from_view). */
-    transform::GlobalTransform transform;
+    transform::GlobalTransform world_from_view;
     /** @brief Optional pre-computed clip-from-world matrix; overrides the
      * derived value when set (Bevy clip_from_world). */
     std::optional<glm::mat4> clip_from_world;
@@ -166,17 +176,13 @@ EPIX_EXPORT struct ExtractedView {
     /** @brief Filmic grading parameters for this view (Bevy color_grading). */
     ColorGrading color_grading{};
 
-    /** @brief Bevy name for the projection matrix. */
-    const glm::mat4& clip_from_view() const noexcept { return projection; }
-    /** @brief Bevy name for the world-from-view transform matrix. */
-    glm::mat4 world_from_view() const noexcept { return transform.matrix; }
     /** @brief The clip-from-world matrix, either the cached one or derived. */
     glm::mat4 clip_from_world_or_derived() const noexcept {
-        return clip_from_world.value_or(projection * glm::inverse(transform.matrix));
+        return clip_from_world.value_or(clip_from_view * glm::inverse(world_from_view.matrix));
     }
     /** @brief Create a 3D rangefinder for this view (Bevy ExtractedView::rangefinder3d). */
     phase::ViewRangefinder3d rangefinder3d() const noexcept {
-        return phase::ViewRangefinder3d::from_world_from_view(transform.matrix);
+        return phase::ViewRangefinder3d::from_world_from_view(world_from_view.matrix);
     }
 };
 /** @brief A wrapper around a texture view used as the final output color
@@ -246,23 +252,23 @@ EPIX_EXPORT struct MainTargetTextures {
  * render into the main texture; the camera driver presents the output.
  */
 EPIX_EXPORT struct ViewTarget {
+    /** @brief HDR main-texture format (Bevy `ViewTarget::TEXTURE_FORMAT_HDR`). */
+    static constexpr wgpu::TextureFormat TEXTURE_FORMAT_HDR = wgpu::TextureFormat::eRGBA16Float;
     /** @brief Double-buffered main textures (Bevy main_textures). */
     MainTargetTextures main_textures;
-    /** @brief Format of the main textures (Bevy main_texture_format). */
-    wgpu::TextureFormat main_texture_format = wgpu::TextureFormat::eUndefined;
-    /** @brief Shared A/B toggle (Bevy main_texture: Arc<AtomicUsize>). */
-    std::shared_ptr<std::atomic<std::uint32_t>> main_texture;
+    /** @brief Storage backing `main_texture_format()`. */
+    wgpu::TextureFormat main_texture_format_ = wgpu::TextureFormat::eUndefined;
     /** @brief Final output attachment (Bevy out_texture). */
-    OutputColorAttachment out_texture;
+    OutputColorAttachment output_attachment;
 
     /** @brief Create a view target with a fresh A/B toggle and empty output. */
-    ViewTarget() : main_texture(std::make_shared<std::atomic<std::uint32_t>>(0)) {}
+    ViewTarget() = default;
 
     /** @brief Legacy alias: texture view of the current main texture (epix
      * extension so existing render nodes keep binding `target.texture_view`). */
     wgpu::TextureView texture_view;
     /** @brief Legacy alias: format of the current main texture (epix
-     * extension; equals `main_texture_format`). */
+     * extension; equals `main_texture_format()`). */
     wgpu::TextureFormat format;
 
     /** @brief The color attachment of the current main texture (Bevy
@@ -293,15 +299,41 @@ EPIX_EXPORT struct ViewTarget {
     const wgpu::TextureView& main_texture_other_view() const {
         return current_index() == 0 ? main_textures.b.texture.default_view : main_textures.a.texture.default_view;
     }
-    /** @brief The current main texture (Bevy main_texture; renamed because
-     * C++ cannot share the name with the A/B toggle field). */
-    const wgpu::Texture& current_main_texture() const {
+    /** @brief The current unsampled main texture (Bevy `main_texture`). */
+    const wgpu::Texture& main_texture() const {
         return current_index() == 0 ? main_textures.a.texture.texture : main_textures.b.texture.texture;
     }
+    /** @brief The other unsampled main texture (Bevy `main_texture_other`). */
+    const wgpu::Texture& main_texture_other() const {
+        return current_index() == 0 ? main_textures.b.texture.texture : main_textures.a.texture.texture;
+    }
+    /** @brief The single-sample MSAA resolve texture when present (Bevy
+     * `sampled_main_texture`). */
+    std::optional<std::reference_wrapper<const wgpu::Texture>> sampled_main_texture() const noexcept {
+        if (!main_textures.a.resolve_target) return std::nullopt;
+        return std::cref(main_textures.a.resolve_target->texture);
+    }
+    /** @brief The single-sample MSAA resolve view when present (Bevy
+     * `sampled_main_texture_view`). */
+    std::optional<std::reference_wrapper<const wgpu::TextureView>> sampled_main_texture_view() const noexcept {
+        if (!main_textures.a.resolve_target) return std::nullopt;
+        return std::cref(main_textures.a.resolve_target->default_view);
+    }
+    /** @brief Main texture format (Bevy `main_texture_format`). */
+    wgpu::TextureFormat main_texture_format() const noexcept { return main_texture_format_; }
     /** @brief Whether the main texture is HDR (Bevy is_hdr). */
-    bool is_hdr() const noexcept { return main_texture_format == wgpu::TextureFormat::eRGBA16Float; }
+    bool is_hdr() const noexcept { return main_texture_format_ == TEXTURE_FORMAT_HDR; }
+    /** @brief Final output texture view (Bevy `out_texture`). */
+    const wgpu::TextureView& out_texture() const noexcept { return output_attachment.view; }
+    /** @brief Final output color attachment with first-write clear semantics
+     * (Bevy `out_texture_color_attachment`). */
+    wgpu::RenderPassColorAttachment out_texture_color_attachment(std::optional<glm::vec4> clear_color) const {
+        return output_attachment.get_attachment(clear_color);
+    }
     /** @brief Whether the output needs to be presented (Bevy needs_present). */
-    bool needs_present() const noexcept { return out_texture.needs_present(); }
+    bool needs_present() const noexcept { return output_attachment.needs_present(); }
+    /** @brief Final output view format (Bevy `out_texture_view_format`). */
+    wgpu::TextureFormat out_texture_view_format() const noexcept { return output_attachment.view_format; }
 
     /** @brief Flip the A/B toggle, returning the source view/texture that the
      * caller must copy to the returned destination (Bevy
@@ -316,7 +348,7 @@ EPIX_EXPORT struct ViewTarget {
         // Mutates only the shared A/B toggle and the attachments' first-call
         // flags (both atomic), so it is safe on a const view (Bevy takes
         // &self).
-        const std::uint32_t old_is_a = main_texture->fetch_xor(1, std::memory_order_seq_cst);
+        const std::uint32_t old_is_a = main_textures.main_texture->fetch_xor(1, std::memory_order_seq_cst);
         if (old_is_a == 0) {
             main_textures.b.mark_as_cleared();
             return PostProcessWrite{main_textures.a.texture.default_view, main_textures.a.texture.texture,
@@ -329,7 +361,7 @@ EPIX_EXPORT struct ViewTarget {
 
    private:
     std::uint32_t current_index() const noexcept {
-        return main_texture ? main_texture->load(std::memory_order_seq_cst) : 0;
+        return main_textures.main_texture ? main_textures.main_texture->load(std::memory_order_seq_cst) : 0;
     }
 };
 /** @brief Component holding the depth texture and attachment for a camera
@@ -345,6 +377,19 @@ EPIX_EXPORT struct ViewDepthTexture {
     static ViewDepthTexture create(wgpu::Texture tex, wgpu::TextureView view) {
         return ViewDepthTexture{std::move(tex), render_resource::DepthAttachment(std::move(view), std::nullopt)};
     }
+    /** @brief Create from a cached texture and first-use clear value (Bevy
+     * `ViewDepthTexture::new`; `new` is a C++ keyword). */
+    static ViewDepthTexture create(render_resource::CachedTexture cached_texture, std::optional<float> clear_value) {
+        return ViewDepthTexture{cached_texture.texture,
+                                render_resource::DepthAttachment(std::move(cached_texture.default_view), clear_value)};
+    }
+    /** @brief Build the depth attachment (Bevy
+     * `ViewDepthTexture::get_attachment`). */
+    wgpu::RenderPassDepthStencilAttachment get_attachment(wgpu::StoreOp store) const {
+        return attachment.get_attachment(store);
+    }
+    /** @brief Depth texture view (Bevy `ViewDepthTexture::view`). */
+    const wgpu::TextureView& view() const noexcept { return attachment.view; }
 };
 
 EPIX_EXPORT struct UVec2Hash {
@@ -387,12 +432,56 @@ EPIX_EXPORT struct ViewPlugin {
 };
 
 void prepare_view_target(
-    epix::ecs::Query<
-        epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&, const ExtractedView&, const Msaa&>> views,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                     const camera::ExtractedCamera&,
+                                     const ExtractedView&,
+                                     const ::epix::camera::CameraMainTextureUsages&,
+                                     const Msaa&>> views,
     epix::ecs::Commands cmd,
+    epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
     epix::ecs::Res<window::ExtractedWindows> extracted_windows,
+    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
     epix::ecs::Res<wgpu::Device> device,
+    epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
     epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+
+/** Update cameras that target a manually supplied texture view.  This runs in
+ * the main world after the camera module's general update system, mirroring
+ * Bevy's render-side camera_system access to ManualTextureViews. */
+template <::epix::camera::CameraProjection ProjType>
+void update_manual_texture_view_cameras(
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>, epix::ecs::Mut<ProjType>,
+                                     const ::epix::camera::RenderTarget&>> cameras,
+    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views) {
+    for (auto&& [camera, projection, target] : cameras.iter()) {
+        const auto* handle = std::get_if<::epix::camera::ManualTextureViewHandle>(&target);
+        if (!handle) continue;
+        const auto view_it = manual_texture_views->views.find(::epix::camera::ManualTextureViewHandle{handle->id});
+        if (view_it == manual_texture_views->views.end()) {
+            // Bevy leaves target information unavailable for an invalid
+            // manual handle.  The camera module already installed this state.
+            continue;
+        }
+        auto& camera_mut = camera.get_mut();
+        const glm::uvec2 target_size = view_it->second.size;
+        if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
+        const auto viewport_size =
+            camera_mut.viewport.transform([](const ::epix::camera::Viewport& viewport) {
+                return viewport.physical_size;
+            });
+        camera_mut.computed.target_info       = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
+        camera_mut.computed.old_viewport_size = viewport_size;
+        camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
+        const glm::uvec2 projection_size = viewport_size.value_or(target_size);
+        if (projection_size.x != 0 && projection_size.y != 0) {
+            projection.get_mut().update(static_cast<float>(projection_size.x), static_cast<float>(projection_size.y));
+            camera_mut.computed.clip_from_view = camera_mut.sub_camera_view
+                                                 ? projection.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
+                                                 : projection.get().get_projection_matrix();
+        }
+    }
+}
+
 void create_view_depth(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&, const Msaa&>> views,
     epix::ecs::Res<wgpu::Device> device,
@@ -495,22 +584,26 @@ struct TemporalJitter;
 /** @brief System that extracts camera data into the render world. */
 EPIX_EXPORT void extract_cameras(
     epix::ecs::Commands cmd,
-    epix::ecs::Res<ClearColor> global_clear_color,
     epix::app::Extract<epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                                        const Camera&,
+                                                        const ::epix::camera::Camera&,
+                                                        const ::epix::camera::RenderTarget&,
                                                         const CameraRenderGraph&,
                                                         const transform::GlobalTransform&,
-                                                        const view::VisibleEntities&,
-                                                        const view::Frustum&,
-                                                        epix::ecs::Opt<const RenderLayers&>,
+                                                        const ::epix::camera::VisibleEntities&,
+                                                        const ::epix::camera::Frustum&,
+                                                        epix::ecs::Opt<const ::epix::camera::RenderLayers&>,
                                                         epix::ecs::Opt<const camera::MipBias&>,
                                                         epix::ecs::Opt<const camera::TemporalJitter&>,
                                                         epix::ecs::Opt<const view::Hdr&>,
                                                         epix::ecs::Opt<const view::ColorGrading&>,
-                                                        epix::ecs::Opt<const Exposure&>,
-                                                        epix::ecs::Opt<const MainPassResolutionOverride&>,
+                                                        epix::ecs::Opt<const ::epix::camera::Exposure&>,
+                                                        epix::ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>,
                                                         const view::Msaa&,
-                                                        epix::ecs::Opt<const CameraMainTextureUsages&>>>> cameras,
+                                                        const ::epix::camera::CameraMainTextureUsages&,
+                                                        epix::ecs::Opt<const ::epix::camera::Projection&>,
+                                                        epix::ecs::Opt<const view::NoIndirectDrawing&>>>> cameras,
+    epix::ecs::Res<batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+    epix::app::Extract<epix::ecs::Query<const sync_world::RenderEntity&>> mapper,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Entity, epix::ecs::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
         primary_window);
@@ -522,12 +615,14 @@ EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 /** @brief Node that drives each camera's render graph in sorted order (Bevy
  * CameraDriverNode, renderer/camera_driver_node.rs). Defined in view.cpp. */
 EPIX_EXPORT struct CameraDriverNode : graph::Node {
-    void run(graph::GraphContext& graph, graph::RenderContext& render_ctx, const epix::ecs::World& world) override;
+    std::expected<void, graph::NodeRunError> run(graph::GraphContext& graph,
+                                                 graph::RenderContext& render_ctx,
+                                                 const epix::ecs::World& world) override;
 };
 
 // Bevy has no camera bundles: spawn Camera (with a CameraRenderGraph for a
-// specific graph) and the required components (Projection, Transform,
-// VisibleEntities, RenderLayers, Msaa, Frustum) are added automatically.
+// specific graph) and the required components (RenderTarget, Projection,
+// Transform, VisibleEntities, Msaa, Frustum) are added automatically.
 }  // namespace epix::render::camera
 
 namespace epix::render::view {
@@ -535,9 +630,6 @@ EPIX_EXPORT struct Hdr {};
 
 /** @brief Marker component: the view does not support indirect drawing (Bevy NoIndirectDrawing). */
 EPIX_EXPORT struct NoIndirectDrawing {};
-
-/** @brief Marker component: the view does not support CPU culling (Bevy NoCpuCulling). */
-EPIX_EXPORT struct NoCpuCulling {};
 
 /**
  * @brief Resource holding the dynamic uniform buffer for all view uniforms and
@@ -598,7 +690,7 @@ EPIX_EXPORT struct ViewTargetAttachments {
     /** @brief One shared output attachment per render target, so the output is
      * cleared at most once per frame and later cameras composite over it
      * (Bevy ViewTargetAttachments). */
-    std::unordered_map<camera::RenderTargetId, OutputColorAttachment, camera::RenderTargetIdHash> attachments;
+    std::unordered_map<::epix::camera::RenderTargetId, OutputColorAttachment, ::epix::camera::RenderTargetIdHash> attachments;
 };
 
 /** @brief Clears the per-frame view target attachments (Bevy
@@ -631,24 +723,27 @@ EPIX_EXPORT struct SortedCamera {
     /** @brief Camera order; lower renders first (behind). */
     std::ptrdiff_t order = 0;
     /** @brief The normalized render target this camera renders to (Bevy SortedCamera::target). */
-    std::optional<RenderTarget> target;
+    std::optional<::epix::camera::NormalizedRenderTarget> target;
     /** @brief Whether this camera uses an HDR intermediate texture. */
     bool hdr = false;
 
     /** @brief Comparable key used to group same-order cameras by target type
      * and identity (Bevy sorts by (order, target)). */
-    std::pair<std::ptrdiff_t, std::size_t> sort_key() const noexcept {
-        std::size_t target_key = 0;
-        if (target) {
-            target_key = std::visit(utils::visitor{
-                                        [](const wgpu::Texture&) -> std::size_t { return 1; },
-                                        [](const WindowRef& w) -> std::size_t {
-                                            return 2 + static_cast<std::size_t>(w.window_entity.index);
-                                        },
-                                    },
-                                    *target);
-        }
-        return {order, target_key};
+    std::tuple<std::ptrdiff_t, std::uint8_t, std::uint64_t> sort_key() const noexcept {
+        // RenderTargetId is the canonical normalized-target identity used by
+        // the attachment map. Do not hash it here: a hash collision would
+        // make distinct targets compare equal and break the grouping contract.
+        // Bevy derives Ord for NormalizedRenderTarget: Window precedes Image.
+        // Epix's direct texture target is the Image counterpart.
+        const std::uint8_t target_kind = target ? std::visit(utils::visitor{
+                                                     [](const ::epix::camera::WindowRef&) { return std::uint8_t{0}; },
+                                                     [](const ::epix::camera::ImageRenderTarget&) { return std::uint8_t{1}; },
+                                                     [](const ::epix::camera::ManualTextureViewHandle&) { return std::uint8_t{2}; },
+                                                     [](const ::epix::camera::NoColorTarget&) { return std::uint8_t{3}; },
+                                                 },
+                                                 *target)
+                                                : std::uint8_t{0};
+        return {order, target_kind, target ? target->identity().value : 0};
     }
 };
 
@@ -669,7 +764,7 @@ EPIX_EXPORT inline void sort_cameras(
     sorted_cameras->cameras.clear();
     for (auto&& [entity, camera] : cameras.iter()) {
         sorted_cameras->cameras.push_back(
-            SortedCamera{entity, camera.get().order, camera.get().render_target, camera.get().hdr});
+            SortedCamera{entity, camera.get().order, camera.get().target, camera.get().hdr});
     }
     // Bevy uses a stable sort (sort_by): cameras with equal (order, target)
     // keep their extraction order.
@@ -721,12 +816,8 @@ template <>
 struct std::hash<::epix::render::view::RetainedViewEntity> {
     std::size_t operator()(const ::epix::render::view::RetainedViewEntity& r) const noexcept {
         std::size_t h = std::hash<::epix::render::sync_world::MainEntity>{}(r.main_entity);
-        h ^= r.auxiliary_entity
-                 .transform([](const ::epix::render::sync_world::MainEntity& aux) {
-                     return std::hash<::epix::render::sync_world::MainEntity>{}(aux);
-                 })
-                 .value_or(0u) +
-             0x9e3779b9 + (h << 6) + (h >> 2);
+        h ^= std::hash<::epix::render::sync_world::MainEntity>{}(r.auxiliary_entity) + 0x9e3779b9 + (h << 6) +
+             (h >> 2);
         h ^= std::hash<std::uint32_t>{}(r.subview_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
         return h;
     }

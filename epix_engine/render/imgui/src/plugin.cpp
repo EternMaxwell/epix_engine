@@ -109,7 +109,7 @@ bool surface_supports_format(wgpu::SurfaceCapabilities& capabilities, wgpu::Text
 }
 
 ViewportSurfaceData* ensure_viewport_surface(const epix::imgui::ViewportDrawDataSnapshot& snap,
-                                             const wgpu::TextureFormat render_target_format,
+                                             const wgpu::TextureFormat target_format,
                                              const wgpu::Instance& instance,
                                              const wgpu::Adapter& adapter,
                                              const wgpu::Device& device) {
@@ -131,16 +131,16 @@ ViewportSurfaceData* ensure_viewport_surface(const epix::imgui::ViewportDrawData
             spdlog::warn("[imgui] Failed to get surface capabilities for viewport {}.", snap.viewport_id);
             return nullptr;
         }
-        if (!surface_supports_format(capabilities, render_target_format)) {
+        if (!surface_supports_format(capabilities, target_format)) {
             spdlog::warn("[imgui] Viewport {} surface does not support primary ImGui render target format {}.",
-                         snap.viewport_id, static_cast<int>(render_target_format));
+                         snap.viewport_id, static_cast<int>(target_format));
             return nullptr;
         }
 
         auto config = wgpu::SurfaceConfiguration()
                           .setDevice(device)
                           .setUsage(wgpu::TextureUsage::eRenderAttachment)
-                          .setFormat(render_target_format)
+                          .setFormat(target_format)
                           .setWidth(width)
                           .setHeight(height)
                           .setPresentMode(wgpu::PresentMode::eFifo)
@@ -163,7 +163,7 @@ ViewportSurfaceData* ensure_viewport_surface(const epix::imgui::ViewportDrawData
 }
 
 void render_viewport_snapshot(const epix::imgui::ViewportDrawDataSnapshot& snap,
-                              const wgpu::TextureFormat render_target_format,
+                              const wgpu::TextureFormat target_format,
                               const wgpu::Instance& instance,
                               const wgpu::Adapter& adapter,
                               const wgpu::Device& device,
@@ -171,7 +171,7 @@ void render_viewport_snapshot(const epix::imgui::ViewportDrawDataSnapshot& snap,
     if (!snap.valid || snap.minimized || snap.draw_lists.empty()) return;
     if (snap.display_size_x <= 0.0f || snap.display_size_y <= 0.0f) return;
 
-    ViewportSurfaceData* surface_data = ensure_viewport_surface(snap, render_target_format, instance, adapter, device);
+    ViewportSurfaceData* surface_data = ensure_viewport_surface(snap, target_format, instance, adapter, device);
     if (!surface_data) return;
 
     wgpu::SurfaceTexture surface_texture;

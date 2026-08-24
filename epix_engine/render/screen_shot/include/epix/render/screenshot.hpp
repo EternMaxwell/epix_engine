@@ -20,9 +20,9 @@ namespace epix::render::screenshot {
 /** @brief Event sent by the user to request a frame capture.
  *
  * Set @c target to control which render target is captured. Defaults to the
- * primary window swapchain (same as @c camera::RenderTarget::from_primary()). */
+ * primary window swapchain (same as @c epix::camera::RenderTarget::from_primary()). */
 EPIX_EXPORT struct ScreenCapture {
-    camera::RenderTarget target = camera::RenderTarget::from_primary();
+    ::epix::camera::RenderTarget target = ::epix::camera::RenderTarget::from_primary();
 };
 
 /** @brief Event fired with the captured frame's asset handle. */

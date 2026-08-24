@@ -369,6 +369,8 @@ struct BatchedUniformBuffer {
     std::size_t alignment = 0;
     /** @brief Byte offset of the next batch in the buffer. */
     std::size_t current_offset = 0;
+    /** @brief Number of logical elements pushed this frame. */
+    std::size_t element_count = 0;
     std::string label          = "BatchedUniformBuffer";
 
     BatchedUniformBuffer() = default;
@@ -391,9 +393,10 @@ struct BatchedUniformBuffer {
         values.clear();
         buffer_bytes.clear();
         current_offset = 0;
+        element_count  = 0;
     }
     /** @brief Total number of pushed elements (flushed batches + current). */
-    std::size_t len() const noexcept { return buffer_bytes.size() / align_up(sizeof(T), alignment) + values.size(); }
+    std::size_t len() const noexcept { return element_count; }
 
     /** @brief Push one element into the current batch; when the batch fills,
      * flush it to the buffer (Bevy BatchedUniformBuffer::push). The returned
@@ -406,6 +409,7 @@ struct BatchedUniformBuffer {
         const std::uint32_t index  = static_cast<std::uint32_t>(values.size());
         const std::uint32_t offset = static_cast<std::uint32_t>(current_offset);
         values.push_back(value);
+        ++element_count;
         if (values.size() == capacity) {
             flush();
         }
@@ -416,9 +420,20 @@ struct BatchedUniformBuffer {
      * offset (Bevy BatchedUniformBuffer::flush). */
     void flush() {
         if (values.empty()) return;
-        const std::size_t batch_bytes = values.size() * sizeof(T);
+        // The shader sees a fixed-size `array<T, capacity>` at every dynamic
+        // offset (Bevy's MaxCapacityArray). Upload a full, zero-padded batch
+        // even when the final batch is only partially populated; otherwise a
+        // dynamic bind group with the required batch size would run past the
+        // end of the native wgpu buffer.
+        const std::size_t batch_bytes = capacity * sizeof(T);
+        const std::size_t populated_bytes = values.size() * sizeof(T);
         buffer_bytes.insert(buffer_bytes.end(), reinterpret_cast<const std::uint8_t*>(values.data()),
-                            reinterpret_cast<const std::uint8_t*>(values.data()) + batch_bytes);
+                            reinterpret_cast<const std::uint8_t*>(values.data()) + populated_bytes);
+        // The insertion above copied only the populated prefix; make the
+        // remaining fixed-capacity elements zero-initialized.
+        if (values.size() < capacity) {
+            buffer_bytes.resize(buffer_bytes.size() + (capacity - values.size()) * sizeof(T), 0);
+        }
         values.clear();
         current_offset += align_up(batch_bytes, alignment);
         buffer_bytes.resize(current_offset, 0);
@@ -476,6 +491,47 @@ struct GpuArrayBuffer {
 
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         std::visit([&](auto& s) { s.write_buffer(device, queue); }, storage);
+    }
+
+    /** @brief Layout of the buffer binding required by the selected backing
+     * store (Bevy `GpuArrayBuffer::binding_layout`).  Epix exposes the native
+     * wgpu layout object directly; the caller supplies the binding number and
+     * shader visibility when adding it to a bind-group layout. */
+    static wgpu::BufferBindingLayout binding_layout(const wgpu::Limits& limits) {
+        if (limits.maxStorageBuffersPerShaderStage == 0) {
+            return wgpu::BufferBindingLayout()
+                .setType(wgpu::BufferBindingType::eUniform)
+                .setHasDynamicOffset(wgpu::Bool(true))
+                // The fallback is a runtime-sized array.  As in Bevy, leave
+                // validation of its concrete size to wgpu at bind time.
+                .setMinBindingSize(0);
+        }
+        return wgpu::BufferBindingLayout()
+            .setType(wgpu::BufferBindingType::eReadOnlyStorage)
+            .setHasDynamicOffset(wgpu::Bool(false))
+            .setMinBindingSize(0);
+    }
+
+    /** @brief The GPU buffer after `write_buffer`, if one has been allocated
+     * (Bevy `GpuArrayBuffer::binding`).  The native wgpu binding entry owns
+     * the offset and size, so Epix returns the resource directly. */
+    std::optional<wgpu::Buffer> binding() const {
+        return std::visit(
+            [](const auto& s) -> std::optional<wgpu::Buffer> {
+                if (!s.buffer) return std::nullopt;
+                return s.buffer;
+            },
+            storage);
+    }
+
+    /** @brief Number of elements addressable through one dynamic uniform
+     * binding, or `nullopt` when the storage-buffer path is selected (Bevy
+     * `GpuArrayBuffer::batch_size`). */
+    static std::optional<std::uint32_t> batch_size(const wgpu::Limits& limits) {
+        if (limits.maxStorageBuffersPerShaderStage == 0) {
+            return static_cast<std::uint32_t>(BatchedUniformBuffer<T>::batch_size(limits));
+        }
+        return std::nullopt;
     }
 };
 

@@ -23,7 +23,7 @@ namespace epix::render::screenshot {
 
 /** @brief Internal render-world state for the screenshot plugin. */
 struct ScreenshotState {
-    std::vector<camera::RenderTarget> pending;
+    std::vector<::epix::camera::RenderTarget> pending;
     std::vector<image::Image> completed;
     std::optional<std::filesystem::path> save_path;
 };
@@ -83,16 +83,20 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
         state->pending.push_back(cap.target);
         spdlog::info("[render.screenshot] Capture requested for target '{}' through ScreenCapture event",
                      std::visit(epix::utils::visitor{
-                                    [](const camera::WindowRef& win_ref) {
+                                    [](const ::epix::camera::WindowRef& win_ref) {
                                         if (win_ref.primary) {
                                             return std::string("primary window");
                                         } else {
                                             return std::format("window entity {}", win_ref.window_entity.index);
                                         }
                                     },
-                                    [](const wgpu::Texture& tex) {
-                                        return std::format("wgpu texture {}", static_cast<void*>(tex.raw()));
+                                    [](const ::epix::camera::ImageRenderTarget& image) {
+                                        return std::format("wgpu texture {}", static_cast<void*>(image.texture.raw()));
                                     },
+                                    [](const ::epix::camera::ManualTextureViewHandle& handle) {
+                                        return std::format("manual texture view {}", handle.id);
+                                    },
+                                    [](const ::epix::camera::NoColorTarget&) { return std::string("no color target"); },
                                 },
                                 cap.target));
     }
@@ -114,7 +118,7 @@ static void capture_frame(ResMut<ScreenshotState> state,
         wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
 
         std::visit(epix::utils::visitor{
-                       [&](const camera::WindowRef& win_ref) {
+                       [&](const ::epix::camera::WindowRef& win_ref) {
                            Entity win_entity;
                            if (win_ref.primary) {
                                if (!windows->primary.has_value()) return;
@@ -131,12 +135,21 @@ static void capture_frame(ResMut<ScreenshotState> state,
                            height  = static_cast<uint32_t>(win.physical_height);
                            format  = win.swapchain_texture_format;
                        },
-                       [&](const wgpu::Texture& tex) {
-                           if (!tex) return;
-                           texture = tex;
-                           width   = tex.getWidth();
-                           height  = tex.getHeight();
-                           format  = tex.getFormat();
+                       [&](const ::epix::camera::ImageRenderTarget& image) {
+                           if (!image.texture) return;
+                           texture = image.texture;
+                           width   = image.texture.getWidth();
+                           height  = image.texture.getHeight();
+                           format  = image.texture.getFormat();
+                       },
+                       [&](const ::epix::camera::ManualTextureViewHandle&) {
+                           // ScreenCapture stores a main-world target and this
+                           // system has no ManualTextureViews resource. Bevy's
+                           // target normalization similarly requires render-side
+                           // lookup, so report an unresolved capture below.
+                       },
+                       [&](const ::epix::camera::NoColorTarget&) {
+                           // A no-color camera has no texture to copy.
                        },
                    },
                    req_target);

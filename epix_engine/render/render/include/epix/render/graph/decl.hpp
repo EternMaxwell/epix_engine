@@ -3,6 +3,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
@@ -30,6 +31,8 @@ EPIX_EXPORT EPIX_MAKE_LABEL(GraphLabel);
  * rendering logic. */
 EPIX_EXPORT struct Node;
 EPIX_EXPORT struct NodeState;
+/** @brief A recoverable failure reported by a render-graph node. */
+EPIX_EXPORT enum class NodeRunError : std::uint8_t;
 /** @brief Directed acyclic graph of render nodes that drives the rendering
  * pipeline. */
 EPIX_EXPORT struct RenderGraph;

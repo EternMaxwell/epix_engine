@@ -9,6 +9,7 @@
 #include <epix/meta.hpp>
 #include <memory>
 #include <unordered_map>
+#include <unordered_set>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -228,6 +229,77 @@ struct InstanceInputUniformBuffer {
     std::size_t len() const noexcept { return buffer.len(); }
     bool is_empty() const noexcept { return buffer.is_empty(); }
 };
+
+/** @brief GPU preprocessing buffers for one phase, without the phase type
+ * (Bevy `UntypedPhaseBatchedInstanceBuffers`). Epix stores this directly in
+ * the phase-typed resource rather than Bevy's type-erased outer map; that is
+ * equivalent under Epix's parallel render-world scheduling. */
+template <render_resource::GpuArrayBufferable BufferData>
+struct UntypedPhaseBatchedInstanceBuffers {
+    render_resource::UninitBufferVec<BufferData> data_buffer{wgpu::BufferUsage::eStorage |
+                                                              wgpu::BufferUsage::eCopyDst};
+    std::unordered_map<view::RetainedViewEntity, PreprocessWorkItemBuffers> work_item_buffers;
+    render_resource::RawBufferVec<LatePreprocessWorkItemIndirectParameters> late_indexed_indirect_parameters{
+        wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst};
+    render_resource::RawBufferVec<LatePreprocessWorkItemIndirectParameters> late_non_indexed_indirect_parameters{
+        wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst};
+
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> instance_data_binding() const noexcept {
+        if (!data_buffer.buffer) return std::nullopt;
+        return std::cref(data_buffer.buffer);
+    }
+    /** @brief Reset the frame's storage while preserving per-view allocations. */
+    void clear() {
+        data_buffer.clear();
+        late_indexed_indirect_parameters.clear();
+        late_non_indexed_indirect_parameters.clear();
+        for (auto& [view, work_items] : work_item_buffers) {
+            (void)view;
+            work_items.clear();
+        }
+    }
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        data_buffer.write_buffer(device, queue);
+        late_indexed_indirect_parameters.write_buffer(device, queue);
+        late_non_indexed_indirect_parameters.write_buffer(device, queue);
+        for (auto& [view, work_items] : work_item_buffers) {
+            (void)view;
+            std::visit(
+                [&](auto& streams) {
+                    using Streams = std::decay_t<decltype(streams)>;
+                    if constexpr (std::same_as<Streams, PreprocessWorkItemBuffers::Direct>) {
+                        streams.items.write_buffer(device, queue);
+                    } else {
+                        streams.indexed.write_buffer(device, queue);
+                        streams.non_indexed.write_buffer(device, queue);
+                        if (streams.gpu_occlusion_culling) {
+                            streams.gpu_occlusion_culling->late_indexed.write_buffer(device, queue);
+                            streams.gpu_occlusion_culling->late_non_indexed.write_buffer(device, queue);
+                        }
+                    }
+                },
+                work_items.storage);
+        }
+    }
+};
+
+/** @brief Typed resource wrapper for preprocessing buffers of one render phase
+ * (Bevy `PhaseBatchedInstanceBuffers<PI, BD>`). */
+template <phase::PhaseItem PI, render_resource::GpuArrayBufferable BufferData>
+struct PhaseBatchedInstanceBuffers {
+    UntypedPhaseBatchedInstanceBuffers<BufferData> buffers;
+};
+
+/** @brief Remove cached work-item buffers for views that no longer exist
+ * (Bevy `delete_old_work_item_buffers`). */
+template <render_resource::GpuArrayBufferable BufferData, std::ranges::input_range Views>
+    requires std::convertible_to<std::ranges::range_value_t<Views>, view::RetainedViewEntity>
+void delete_old_work_item_buffers(UntypedPhaseBatchedInstanceBuffers<BufferData>& buffers, const Views& views) {
+    std::unordered_set<view::RetainedViewEntity> retained_views;
+    for (const auto& view : views) retained_views.insert(static_cast<view::RetainedViewEntity>(view));
+    std::erase_if(buffers.work_item_buffers,
+                  [&](const auto& entry) { return !retained_views.contains(entry.first); });
+}
 
 /** @brief GPU buffers used by one render phase for indirect drawing (Bevy
  * `UntypedPhaseIndirectParametersBuffers`). */

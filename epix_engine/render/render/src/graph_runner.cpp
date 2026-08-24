@@ -124,7 +124,11 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
                 context.set_view_entity(view_entity.value());
             }
             spdlog::debug("Running node {}.", node_state.label.type_index().short_name());
-            node_state.pnode->run(context, render_context, world);
+            if (auto result = node_state.pnode->run(context, render_context, world); !result) {
+                spdlog::warn("Node {} failed with error {}.", node_state.label.type_index().short_name(),
+                             static_cast<std::uint32_t>(result.error()));
+                return false;
+            }
 
             for (auto&& run_sub_graph : context.finish()) {
                 auto sub_graph = graph.get_sub_graph(run_sub_graph.id);

@@ -20,6 +20,21 @@ RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
     return *this;
 }
 
+RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) {
+    wgpu::AdapterInfo native;
+    adapter.getInfo(&native);
+    return RenderAdapterInfo{
+        .vendor       = std::string(native.vendor),
+        .architecture = std::string(native.architecture),
+        .device       = std::string(native.device),
+        .description  = std::string(native.description),
+        .backend_type = native.backendType,
+        .adapter_type = native.adapterType,
+        .vendor_id    = native.vendorID,
+        .device_id    = native.deviceID,
+    };
+}
+
 void epix::render::render_system(World& world) {
     auto&& graph  = world.resource_mut<graph::RenderGraph>();
     auto&& device = world.resource<wgpu::Device>();
@@ -43,10 +58,18 @@ void RenderPlugin::attach(App& app) {
     // Honor WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO (Bevy
     // settings_priority_from_env); the adapter/device creation below consumes
     // the resulting WgpuSettings.
-    settings.apply_env_overrides();
+    if (auto* settings = render_creation.automatic_settings()) {
+        settings->apply_env_overrides();
+    }
     // Bevy lib.rs:382: RenderAssetBytesPerFrame lives in the main world; the
     // limiter + extract/reset systems live in the render app (lib.rs:383-390).
     app.world_mut().init_resource<RenderAssetBytesPerFrame>();
+    // Bevy's render-side CameraPlugin requires Msaa directly from Camera.
+    // Epix required components are transitive, so Camera2d/Camera3d inherit
+    // this one requirement through their Camera requirement.
+    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
+        return render::view::Msaa::Sample4;
+    });
     app.add_sub_app(Render);
     app.sub_app_mut(Render).then([](App& render_app) {
         // Bevy's extract closure (lib.rs:506-523): run RenderStartup once,
@@ -73,7 +96,9 @@ void RenderPlugin::attach(App& app) {
             });
         render_app.schedule_order().insert_begin(render::Render);
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
-        // Render-side camera wiring (bevy_render::camera): extract cameras into
+        render_app.world_mut().init_resource<render_resource::TextureCache>();
+        render_app.world_mut().init_resource<render::texture::ManualTextureViews>();
+        // Render-side camera wiring (bevy_render::camera): extract normalized cameras into
         // the render world, sort them per target, and drive each camera's
         // render graph. The user-facing camera plugin lives in the camera module.
         render_app.world_mut().insert_resource(::epix::camera::ClearColor{});
@@ -81,18 +106,31 @@ void RenderPlugin::attach(App& app) {
         // Extraction includes per-view HDR/color grading, temporal jitter,
         // exposure, main-pass resolution overrides, and camera-owned
         // main-texture usages.
-        // Extraction also supplies the default usage to cameras spawned before
-        // EPIX can propagate a newly-added transitive required component.
+        // Extraction maps main-world visible entities into their render-world
+        // counterparts, extracts `NoIndirectDrawing` from the camera/support
+        // state, and carries the independently extracted main-texture usage.
         render_app.add_systems(ExtractSchedule, into(render::camera::extract_cameras).set_name("extract cameras"));
         render_app.add_systems(
             Render, into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
+        render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
+                                           .in_set(RenderSystems::Cleanup)
+                                           .set_name("update texture cache"));
         if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
             render_graph->get().add_node(render::camera::CameraDriverNodeLabel, render::camera::CameraDriverNode{});
         }
     });
 
-    wgpu::Instance instance = wgpu::createInstance();
-    spdlog::debug("[render] WebGPU instance created.");
+    wgpu::Instance instance;
+    wgpu::Adapter adapter;
+    wgpu::Device device;
+    wgpu::Queue queue;
+    wgpu::Limits limits{};
+    RenderAdapterInfo adapter_info;
+    std::optional<wgpu::DeviceDescriptor> automatic_device_descriptor;
+
+    if (auto* settings = render_creation.automatic_settings()) {
+        instance = wgpu::createInstance();
+        spdlog::debug("[render] WebGPU instance created.");
     wgpu::Surface surface = app.world()
                                 .get_resource<AnonymousSurface>()
                                 .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
@@ -117,11 +155,10 @@ void RenderPlugin::attach(App& app) {
     // WGPU_ADAPTER_NAME env > settings.adapter_name -> enumerate + substring
     // match; otherwise requestAdapter with the configured power preference,
     // backend and fallback flag.
-    std::optional<std::string> desired_adapter_name = settings.adapter_name;
+    std::optional<std::string> desired_adapter_name = settings->adapter_name;
     if (const char* env_name = std::getenv("WGPU_ADAPTER_NAME"); env_name && env_name[0] != '\0') {
         desired_adapter_name = std::string(env_name);
     }
-    wgpu::Adapter adapter;
     if (desired_adapter_name.has_value()) {
         std::size_t count = instance.enumerateAdapters(nullptr);
         std::vector<wgpu::Adapter> adapters(count);
@@ -145,9 +182,9 @@ void RenderPlugin::attach(App& app) {
         adapter = instance.requestAdapter(
             wgpu::RequestAdapterOptions()
                 .setCompatibleSurface(surface)
-                .setPowerPreference(settings.power_preference)
-                .setBackendType(settings.backends.value_or(wgpu::BackendType::eVulkan))
-                .setForceFallbackAdapter(settings.force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
+                .setPowerPreference(settings->power_preference)
+                .setBackendType(settings->backends.value_or(wgpu::BackendType::eVulkan))
+                .setForceFallbackAdapter(settings->force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
     }
     surface = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
@@ -162,6 +199,7 @@ void RenderPlugin::attach(App& app) {
                      std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
                      std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
     }
+    adapter_info = RenderAdapterInfo::from_adapter(adapter);
 
     // Engine-mandatory features plus WgpuSettings::features (Bevy renderer:
     // settings.features | required_features).
@@ -171,10 +209,23 @@ void RenderPlugin::attach(App& app) {
         // access for formats like RGBA8Unorm on Vulkan/DX12/Metal.
         wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures),
         wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough)};
-    required_features.insert(required_features.end(), settings.features.begin(), settings.features.end());
-    wgpu::DeviceDescriptor deviceDesc =
+    required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
+    const auto request_optional_native_feature = [&adapter, &required_features](wgpu::NativeFeature feature) {
+        const auto named_feature = wgpu::FeatureName(feature);
+        if (adapter.hasFeature(named_feature)) required_features.push_back(named_feature);
+    };
+    const auto request_optional_feature = [&adapter, &required_features](wgpu::FeatureName feature) {
+        if (adapter.hasFeature(feature)) required_features.push_back(feature);
+    };
+    request_optional_feature(wgpu::FeatureName::eIndirectFirstInstance);
+    request_optional_native_feature(wgpu::NativeFeature::ePushConstants);
+    request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirect);
+    request_optional_native_feature(wgpu::NativeFeature::eTextureBindingArray);
+    request_optional_native_feature(wgpu::NativeFeature::eStorageResourceBindingArray);
+    request_optional_native_feature(wgpu::NativeFeature::eBufferBindingArray);
+    automatic_device_descriptor =
         wgpu::DeviceDescriptor()
-            .setLabel(wgpu::StringView(settings.device_label))
+            .setLabel(wgpu::StringView(settings->device_label))
             .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
             .setRequiredFeatures(required_features)
             .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
@@ -187,16 +238,30 @@ void RenderPlugin::attach(App& app) {
                     std::stacktrace stack = std::stacktrace::current();
                     spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
                 }));
-    if (settings.limits.has_value()) {
-        deviceDesc.setRequiredLimits(*settings.limits);
+    if (settings->limits.has_value()) {
+        automatic_device_descriptor->setRequiredLimits(*settings->limits);
     }
-    wgpu::Device device = adapter.requestDevice(deviceDesc);
+    device = adapter.requestDevice(*automatic_device_descriptor);
     spdlog::debug("[render] WebGPU device created.");
-    wgpu::Limits limits;
     device.getLimits(&limits);
-    wgpu::Queue queue = device.getQueue();
+    queue = device.getQueue();
+    } else {
+        const auto& resources = *render_creation.manual_resources();
+        if (!resources.instance || !resources.adapter || !resources.device || !resources.queue) {
+            throw std::runtime_error("RenderCreation::manual requires non-null instance, adapter, device, and queue");
+        }
+        instance = resources.instance.clone();
+        adapter  = resources.adapter.clone();
+        device   = resources.device.clone();
+        queue    = resources.queue.clone();
+        device.getLimits(&limits);
+        adapter_info = resources.adapter_info.device.empty() ? RenderAdapterInfo::from_adapter(adapter) : resources.adapter_info;
+        app.world_mut().remove_resource<AnonymousSurface>();
+        spdlog::debug("[render] Using manually supplied WebGPU resources.");
+    }
     app.world_mut().insert_resource(instance.clone());
     app.world_mut().insert_resource(adapter.clone());
+    app.world_mut().insert_resource(adapter_info);
     app.world_mut().insert_resource(device.clone());
     app.world_mut().insert_resource(queue.clone());
     app.world_mut().insert_resource(limits);
@@ -218,12 +283,16 @@ void RenderPlugin::attach(App& app) {
     app.world_mut().insert_resource(render::DefaultImageSampler{
         .sampler = default_sampler,
     });
-    // keep the device descriptor to make the callbacks alive.
-    app.world_mut().insert_resource(std::move(deviceDesc));
+    // Keep the automatic descriptor alive because it owns the callback
+    // storage. For manual creation, the embedding application owns it.
+    if (automatic_device_descriptor) {
+        app.world_mut().insert_resource(std::move(*automatic_device_descriptor));
+    }
 
     app.sub_app_mut(Render).then([&](App& render_app) {
         render_app.world_mut().insert_resource(instance.clone());
         render_app.world_mut().insert_resource(adapter.clone());
+        render_app.world_mut().insert_resource(adapter_info);
         render_app.world_mut().insert_resource(device.clone());
         render_app.world_mut().insert_resource(queue.clone());
         render_app.world_mut().insert_resource(limits);
@@ -233,7 +302,7 @@ void RenderPlugin::attach(App& app) {
         // Bevy lib.rs:384: RenderAssetBytesPerFrameLimiter is a render-app
         // resource (required by prepare_assets / extract/reset systems).
         render_app.world_mut().init_resource<RenderAssetBytesPerFrameLimiter>();
-        PipelineServer pipeline_server(device.clone());
+        PipelineServer pipeline_server(device.clone(), synchronous_pipeline_compilation);
         app.world_mut().insert_resource(pipeline_server);
         render_app.world_mut().insert_resource(std::move(pipeline_server));
         render_app
@@ -269,14 +338,47 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::RenderAssetPlugin<image::Image>{});
     app.add_plugins(shader::ShaderPlugin{});
+    // CameraPlugin supplies Camera's required RenderTarget component before
+    // the independently extracted camera components are installed.
     app.add_plugins(::epix::camera::CameraPlugin{});
+    // ManualTextureViews is owned by applications in the main world and
+    // extracted for target preparation.  It must be available there as well
+    // as in the render world so camera projection updates can resolve its
+    // physical size, as Bevy's render-side camera_system does.
+    app.world_mut().init_resource<render::texture::ManualTextureViews>();
+    app.add_plugins(render::ExtractResourcePlugin<render::texture::ManualTextureViews>{});
+    app.add_systems(app::PostStartup,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view cameras"));
+    app.add_systems(app::PostStartup,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view orthographic cameras"));
+    app.add_systems(app::PostStartup,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view perspective cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view orthographic cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(render::view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view perspective cameras"));
     // Bevy bevy_render extracts the ClearColor resource to the render world.
     app.add_plugins(render::ExtractResourcePlugin<::epix::camera::ClearColor>{});
+    app.add_plugins(render::experimental::OcclusionCullingPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
     // Bevy lib.rs:362-380: GlobalsPlugin, BatchingPlugin, SyncWorldPlugin,
     // StoragePlugin, GpuReadbackPlugin are all attached by RenderPlugin.
     app.add_plugins(render::GlobalsPlugin{});
-    app.add_plugins(render::batching::BatchingPlugin{render::RenderDebugFlags{}});
+    app.add_plugins(render::batching::BatchingPlugin{debug_flags});
     app.add_plugins(sync_world::SyncWorldPlugin{});
     app.add_plugins(render::StoragePlugin{});
     app.add_plugins(render::GpuReadbackPlugin{});

@@ -3,7 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <epix/ecs.hpp>
+#include <functional>
 #include <glm/glm.hpp>
 #include <utility>
 #endif
@@ -63,6 +65,16 @@ EPIX_EXPORT struct ColorGrading {
      * sections (Bevy ColorGrading::with_identical_sections). */
     static ColorGrading with_identical_sections(ColorGradingGlobal global, ColorGradingSection section) {
         return ColorGrading{std::move(global), section, section, section};
+    }
+    /** @brief Visits shadows, midtones, then highlights (Bevy
+     * `ColorGrading::all_sections`). */
+    std::array<std::reference_wrapper<const ColorGradingSection>, 3> all_sections() const noexcept {
+        return {std::cref(shadows), std::cref(midtones), std::cref(highlights)};
+    }
+    /** @brief Mutable counterpart of `all_sections` (Bevy
+     * `ColorGrading::all_sections_mut`). */
+    std::array<std::reference_wrapper<ColorGradingSection>, 3> all_sections_mut() noexcept {
+        return {std::ref(shadows), std::ref(midtones), std::ref(highlights)};
     }
 };
 

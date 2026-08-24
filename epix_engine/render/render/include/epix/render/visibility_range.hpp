@@ -13,6 +13,7 @@
 #endif
 
 #include <epix/render/render_resource.hpp>
+#include <epix/camera.hpp>
 #include <epix/render/sync_world.hpp>
 
 namespace epix::render::view {
@@ -23,47 +24,7 @@ EPIX_EXPORT inline constexpr std::uint32_t VISIBILITY_RANGES_STORAGE_BUFFER_COUN
  * uniform buffer must be used instead (WebGL2; Bevy const). */
 EPIX_EXPORT inline constexpr std::size_t VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE = 64;
 
-/**
- * @brief Component defining a distance range in which an entity is visible
- * (cross-crate: bevy_camera::visibility::VisibilityRange; epix keeps the data
- * here in the render module).
- */
-EPIX_EXPORT struct VisibilityRange {
-    /** @brief Start of the crossfade margin into the visible range. */
-    float start_margin_start = 0.0f;
-    /** @brief End of the start crossfade margin. */
-    float start_margin_end = 0.0f;
-    /** @brief Start of the end crossfade margin. */
-    float end_margin_start = 0.0f;
-    /** @brief End of the visible range. */
-    float end_margin_end                          = 0.0f;
-    bool operator==(const VisibilityRange&) const = default;
-    /** @brief Whether the start margin is abrupt (no crossfade). */
-    bool abrupt_start_margin = false;
-    /** @brief Whether the end margin is abrupt (no crossfade). */
-    bool abrupt_end_margin = false;
-
-    /** @brief True if both transitions are abrupt, i.e. no crossfade (Bevy
-     * VisibilityRange::is_abrupt). */
-    bool is_abrupt() const noexcept {
-        return start_margin_start == start_margin_end && end_margin_start == end_margin_end;
-    }
-};
-
 }  // namespace epix::render::view
-
-template <>
-struct std::hash<epix::render::view::VisibilityRange> {
-    std::size_t operator()(const epix::render::view::VisibilityRange& r) const noexcept {
-        std::size_t h = std::hash<float>{}(r.start_margin_start);
-        h ^= std::hash<float>{}(r.start_margin_end) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<float>{}(r.end_margin_start) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<float>{}(r.end_margin_end) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<bool>{}(r.abrupt_start_margin) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<bool>{}(r.abrupt_end_margin) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        return h;
-    }
-};
 
 namespace epix::render::view {
 namespace detail {
@@ -82,7 +43,7 @@ EPIX_EXPORT struct RenderVisibilityRanges {
     /** @brief Per-entity range info. */
     sync_world::MainEntityHashMap<detail::RenderVisibilityEntityInfo> entities;
     /** @brief Range-to-index dedup map. */
-    std::unordered_map<VisibilityRange, std::uint16_t> range_to_index;
+    std::unordered_map<::epix::camera::VisibilityRange, std::uint16_t> range_to_index;
     /** @brief GPU buffer of range vec4s (Bevy usages: STORAGE|UNIFORM|VERTEX). */
     render_resource::BufferVec<glm::vec4> buffer{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eUniform |
                                                  wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst};
@@ -98,7 +59,7 @@ EPIX_EXPORT struct RenderVisibilityRanges {
 
     /** @brief Inserts an entity's range, deduplicating identical ranges into
      * one GPU slot (Bevy RenderVisibilityRanges::insert). */
-    void insert(sync_world::MainEntity entity, const VisibilityRange& visibility_range) {
+    void insert(sync_world::MainEntity entity, const ::epix::camera::VisibilityRange& visibility_range) {
         std::uint16_t buffer_index = 0;
         if (auto it = range_to_index.find(visibility_range); it != range_to_index.end()) {
             buffer_index = it->second;
@@ -141,10 +102,10 @@ EPIX_EXPORT struct RenderVisibilityRanges {
  * range changed and nothing was removed. */
 inline void extract_visibility_ranges(
     ecs::ResMut<RenderVisibilityRanges> render_visibility_ranges,
-    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const VisibilityRange&>>> visibility_ranges_query,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::VisibilityRange&>>> visibility_ranges_query,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity>,
-                            ecs::Or<ecs::Added<VisibilityRange>, ecs::Modified<VisibilityRange>>>> changed_ranges_query,
-    app::Extract<ecs::RemovedComponents<VisibilityRange>> removed_visibility_ranges) {
+                            ecs::Or<ecs::Added<::epix::camera::VisibilityRange>, ecs::Modified<::epix::camera::VisibilityRange>>>> changed_ranges_query,
+    app::Extract<ecs::RemovedComponents<::epix::camera::VisibilityRange>> removed_visibility_ranges) {
     auto changed        = changed_ranges_query.iter();
     auto removed_reader = removed_visibility_ranges.read();
     if (changed.begin() == changed.end() && removed_reader.begin() == removed_reader.end()) {

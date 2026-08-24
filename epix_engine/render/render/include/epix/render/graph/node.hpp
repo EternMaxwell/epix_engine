@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/ecs.hpp>
+#include <expected>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -17,6 +18,13 @@
 #include <epix/render/graph/slot.hpp>
 
 namespace epix::render::graph {
+/** @brief Error type returned by a node run (Bevy `NodeRunError`). */
+EPIX_EXPORT enum class NodeRunError : std::uint8_t {
+    InputSlotError,
+    OutputSlotError,
+    RunSubGraphError,
+    DrawError,
+};
 /** @brief Base class for render graph nodes.
  *
  * Override `input()` / `output()` to declare slots, `update()` for
@@ -30,8 +38,11 @@ EPIX_EXPORT struct Node {
     /** @brief Called once per frame to update internal state before rendering
      * (Bevy Node::update(&mut self, world: &mut World)). */
     virtual void update(epix::ecs::World&) {}
-    /** @brief Execute this node's GPU commands during the render pass. */
-    virtual void run(GraphContext&, RenderContext&, const epix::ecs::World&) {}
+    /** @brief Execute this node's GPU commands during the render pass (Bevy
+     * `Node::run -> Result<(), NodeRunError>`). */
+    virtual std::expected<void, NodeRunError> run(GraphContext&,
+                                                   RenderContext&,
+                                                   const epix::ecs::World&) = 0;
 };
 /**
  * @brief An edge in the render graph.
@@ -158,11 +169,15 @@ EPIX_EXPORT struct GraphInputNode : public Node {
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}
     std::vector<SlotInfo> input() override { return m_inputs; }
     std::vector<SlotInfo> output() override { return m_inputs; }
-    void run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override;
+    std::expected<void, NodeRunError> run(GraphContext& graph,
+                                          RenderContext&,
+                                          const epix::ecs::World&) override;
 };
 /** @brief A no-op node that does nothing when run. */
 EPIX_EXPORT struct EmptyNode : public Node {
-    void run(GraphContext&, RenderContext&, const epix::ecs::World&) override {}
+    std::expected<void, NodeRunError> run(GraphContext&, RenderContext&, const epix::ecs::World&) override {
+        return {};
+    }
 };
 
 }  // namespace epix::render::graph

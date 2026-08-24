@@ -179,8 +179,9 @@ struct PipelineServerData {
     std::unordered_set<CachedPipelineId> waiting_pipelines;
     utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
     std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
+    bool synchronous_pipeline_compilation = true;
 
-    PipelineServerData(wgpu::Device device);
+    PipelineServerData(wgpu::Device device, bool synchronous_pipeline_compilation);
 };
 /** @brief Central server that manages pipeline creation, caching, and
  * shader dependency tracking.
@@ -203,7 +204,7 @@ EPIX_EXPORT struct PipelineServer {
     PipelineServer(PipelineServer&&)                 = default;
     PipelineServer& operator=(PipelineServer&&)      = default;
 
-    PipelineServer(wgpu::Device device);
+    PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation = true);
 
     /** @brief Get the current state of a cached pipeline by id. */
     auto get_pipeline_state(CachedPipelineId id) const noexcept

@@ -78,7 +78,7 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     }
 
     app.resource_mut<Events<ScreenCapture>>().push(
-        ScreenCapture{.target = camera::RenderTarget::from_texture(texture)});
+        ScreenCapture{.target = ::epix::camera::RenderTarget::from_texture(texture)});
 
     auto render_sub = app.take_sub_app(epix::render::Render);
     ASSERT_TRUE(render_sub) << "Render sub-app not found";

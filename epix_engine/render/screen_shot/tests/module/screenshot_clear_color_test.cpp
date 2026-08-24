@@ -100,7 +100,7 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     //         the offscreen texture we just cleared.
     // ------------------------------------------------------------------
     app.resource_mut<Events<ScreenCapture>>().push(
-        ScreenCapture{.target = camera::RenderTarget::from_texture(texture)});
+        ScreenCapture{.target = ::epix::camera::RenderTarget::from_texture(texture)});
 
     // ------------------------------------------------------------------
     // Step 3: manually drive the render sub-app.

@@ -76,28 +76,10 @@ bool same_blend_state(const std::optional<wgpu::BlendState>& lhs, const std::opt
 
 std::optional<wgpu::BlendState> output_blend_for(const epix::render::camera::ExtractedCamera& camera) {
     if (camera.output_mode.blend_state) return camera.output_mode.blend_state;
-    if (camera.sorted_camera_index_for_target.value_or(0) > 0) return alpha_blend_state();
+    if (camera.sorted_camera_index_for_target > 0) return alpha_blend_state();
     return std::nullopt;
 }
 }  // namespace
-
-void Camera2D::register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
-    // Bevy gets these through Camera's transitive required components. EPIX's
-    // component inserter deliberately does not propagate that relationship,
-    // so a bare Camera2D must declare the complete view dependency set.
-    registrator.template register_required<camera::Camera>([] { return camera::Camera{}; });
-    registrator.template register_required<camera::Projection>(
-        [] { return camera::Projection{camera::OrthographicProjection::default_2d()}; });
-    registrator.template register_required<transform::Transform>([] { return transform::Transform{}; });
-    registrator.template register_required<camera::VisibleEntities>([] { return camera::VisibleEntities{}; });
-    registrator.template register_required<camera::RenderLayers>([] { return camera::RenderLayers::layer(0); });
-    registrator.template register_required<view::Msaa>([] { return view::Msaa::Sample4; });
-    registrator.template register_required<camera::CameraMainTextureUsages>(
-        [] { return camera::CameraMainTextureUsages{}; });
-    registrator.template register_required<view::Frustum>([] { return view::Frustum{}; });
-    registrator.template register_required<render::camera::CameraRenderGraph>(
-        [] { return render::camera::CameraRenderGraph{Core2d}; });
-}
 
 void Core2dGraph::add_to(graph::RenderGraph& g) {
     spdlog::debug("[render.core_graph] Adding Core2D sub-graph to render graph.");
@@ -131,10 +113,10 @@ void queue_core2d_blit_pipelines(
     ResMut<PipelineServer> pipeline_server,
     ResMut<Core2dBlitPipelines> pipelines) {
     for (auto&& [camera, target] : views.iter()) {
-        if (camera.output_mode.type == camera::CameraOutputMode::Type::Skip || !target.out_texture.view) continue;
+        if (camera.output_mode.type == ::epix::camera::CameraOutputMode::Type::Skip || !target.out_texture()) continue;
         const auto output_blend = output_blend_for(camera);
         const auto existing     = std::ranges::find_if(pipelines->pipelines, [&](const Core2dBlitPipeline& pipeline) {
-            return pipeline.format == target.out_texture.view_format &&
+            return pipeline.format == target.out_texture_view_format() &&
                    same_blend_state(pipeline.output_blend, output_blend);
         });
         if (existing != pipelines->pipelines.end()) continue;
@@ -184,7 +166,7 @@ void queue_core2d_blit_pipelines(
                 }));
         epix::render::FragmentState fs{.shader = handles->fragment_shader, .entry_point = std::string("blitFrag")};
         wgpu::ColorTargetState color_target;
-        color_target.setFormat(target.out_texture.view_format).setWriteMask(wgpu::ColorWriteMask::eAll);
+        color_target.setFormat(target.out_texture_view_format()).setWriteMask(wgpu::ColorWriteMask::eAll);
         if (output_blend) color_target.setBlend(*output_blend);
         fs.add_target(color_target);
         built.pipeline_id  = pipeline_server->queue_render_pipeline(epix::render::RenderPipelineDescriptor{
@@ -197,43 +179,45 @@ void queue_core2d_blit_pipelines(
             .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
             .fragment    = std::move(fs),
         });
-        built.format       = target.out_texture.view_format;
+        built.format       = target.out_texture_view_format();
         built.output_blend = output_blend;
         pipelines->pipelines.push_back(std::move(built));
     }
 }
 
-void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_ctx, const World& world) {
-    if (!views) return;
+std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext& ctx,
+                                                              graph::RenderContext& render_ctx,
+                                                              const World& world) {
+    if (!views) return {};
     auto view_opt =
         views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(ctx.view_entity());
-    if (!view_opt) return;
+    if (!view_opt) return {};
     auto&& [camera, target] = *view_opt;
-    if (!target.out_texture.view || camera.output_mode.type == camera::CameraOutputMode::Type::Skip) return;
+    if (!target.out_texture() || camera.output_mode.type == ::epix::camera::CameraOutputMode::Type::Skip) return {};
 
     auto pipelines = world.get_resource<Core2dBlitPipelines>();
-    if (!pipelines) return;
+    if (!pipelines) return {};
     const auto output_blend = output_blend_for(camera);
     const auto blit = std::ranges::find_if(pipelines->get().pipelines, [&](const Core2dBlitPipeline& candidate) {
-        return candidate.format == target.out_texture.view_format &&
+        return candidate.format == target.out_texture_view_format() &&
                same_blend_state(candidate.output_blend, output_blend);
     });
-    if (blit == pipelines->get().pipelines.end()) return;
+    if (blit == pipelines->get().pipelines.end()) return {};
     const auto& ps = world.resource<PipelineServer>();
     auto pipeline  = ps.get_render_pipeline(blit->pipeline_id);
-    if (!pipeline) return;
+    if (!pipeline) return {};
     auto device = render_ctx.device();
 
     // get_attachment marks the output as written -> needs_present -> present.
     std::optional<glm::vec4> clear_color;
     switch (camera.output_mode.clear_color.type) {
-        case camera::ClearColorConfig::Type::None:
+        case ::epix::camera::ClearColorConfig::Type::None:
             break;
-        case camera::ClearColorConfig::Type::Custom:
+        case ::epix::camera::ClearColorConfig::Type::Custom:
             clear_color = camera.output_mode.clear_color.clear_color;
             break;
-        case camera::ClearColorConfig::Type::Default:
-            if (auto global = world.get_resource<camera::ClearColor>()) clear_color = global->get().to_vec4();
+        case ::epix::camera::ClearColorConfig::Type::Default:
+            if (auto global = world.get_resource<::epix::camera::ClearColor>()) clear_color = global->get().to_vec4();
             break;
     }
     auto bind_group =
@@ -245,11 +229,11 @@ void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_
                                        wgpu::BindGroupEntry().setBinding(1).setTextureView(target.main_texture_view()),
                                    }));
     auto render_pass = render_ctx.command_encoder().beginRenderPass(
-        wgpu::RenderPassDescriptor().setColorAttachments(std::array{target.out_texture.get_attachment(clear_color)}));
+        wgpu::RenderPassDescriptor().setColorAttachments(std::array{target.out_texture_color_attachment(clear_color)}));
     // Bevy upscaling node set_scissor_rect: clip the blit to the camera viewport.
     if (camera.viewport) {
         const auto& vp = *camera.viewport;
-        render_pass.setScissorRect(vp.pos.x, vp.pos.y, vp.size.x, vp.size.y);
+        render_pass.setScissorRect(vp.physical_position.x, vp.physical_position.y, vp.physical_size.x, vp.physical_size.y);
     }
     render_pass.setPipeline(pipeline->get().pipeline());
     render_pass.setVertexBuffer(0, blit->vertex_buffer, 0, sizeof(float) * 6);
@@ -257,9 +241,14 @@ void Core2dBlitNode::run(graph::GraphContext& ctx, graph::RenderContext& render_
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();
     render_ctx.flush_encoder();
+    return {};
 }
 
 void Core2dPlugin::attach(App& app) {
+    // `Camera2d` belongs to the camera module. Core2d only supplies the
+    // render-graph requirement, as Bevy's Core2dPlugin does.
+    app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
+        [] { return render::camera::CameraRenderGraph{Core2d}; });
     // Register the embedded blit shaders (Bevy core_pipeline blit). The
     // handles must live in the RENDER world (the blit node reads them there);
     // asset handles are plain ids so they are safe to copy across worlds.
@@ -301,7 +290,7 @@ void Core2dPlugin::attach(App& app) {
                 // insert render phases for each view
                 for (auto&& [entity, camera] : views.iter()) {
                     // only insert for 2d camera render graph
-                    if (camera.render_graph == render::camera::CameraRenderGraph(Core2d)) {
+                    if (camera.render_graph == render::graph::GraphLabel(Core2d)) {
                         auto entity_commands = cmd.entity(entity);
                         entity_commands.insert(phase::RenderPhase<Transparent2D>{}, phase::RenderPhase<Opaque2D>{},
                                                phase::RenderPhase<UI2DItem>{});

@@ -4,6 +4,7 @@
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
+#include <epix/time.hpp>
 #include <optional>
 #include <vector>
 #include <webgpu/webgpu.hpp>
@@ -21,6 +22,10 @@ struct SmokeTaskPoolInit {
 } g_smoke_task_pool_init;
 
 }  // namespace
+
+void add_render_test_prerequisites(App& app) {
+    app.add_plugins(epix::time::TimePlugin{}).add_plugins(FrameCountPlugin{});
+}
 
 namespace {
 
@@ -67,6 +72,7 @@ std::optional<Entity> get_main_entity(const World& render_world, Entity render_e
 TEST(RenderWorld, EndToEndSyncAndExtract) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
@@ -126,11 +132,49 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     app.insert_sub_app(Render, std::move(render_sub));
 }
 
+// RenderCreation::Manual must install host-supplied native wgpu resources in
+// both worlds without creating a second device (Bevy RenderCreation::Manual).
+TEST(RenderWorld, ManualRenderCreationUsesSuppliedResources) {
+    App provider = App::create();
+    provider.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(provider);
+    try {
+        RenderPlugin{}.attach(provider);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
+        return;
+    }
+
+    const auto resources = RenderResources{
+        .device       = provider.world().resource<wgpu::Device>().clone(),
+        .queue        = provider.world().resource<wgpu::Queue>().clone(),
+        .adapter_info = provider.world().resource<RenderAdapterInfo>(),
+        .adapter      = provider.world().resource<wgpu::Adapter>().clone(),
+        .instance     = provider.world().resource<wgpu::Instance>().clone(),
+    };
+
+    App manual = App::create();
+    manual.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(manual);
+    RenderPlugin plugin;
+    plugin.render_creation = RenderCreation::manual(resources);
+    plugin.attach(manual);
+
+    const auto& manual_device = manual.world().resource<wgpu::Device>();
+    EXPECT_EQ(manual_device, resources.device);
+    EXPECT_EQ(manual.world().resource<RenderAdapterInfo>().device, resources.adapter_info.device);
+    const auto render_app = manual.get_sub_app(Render);
+    ASSERT_TRUE(render_app.has_value());
+    EXPECT_EQ(render_app->get().world().resource<wgpu::Device>(), resources.device);
+    EXPECT_EQ(render_app->get().world().resource<RenderAdapterInfo>().device, resources.adapter_info.device);
+}
+
 // TrackedRenderPass skips redundant pipeline/bind-group/buffer state changes
 // (Bevy draw_state.rs) and invalidates tracking on wgpu_pass()/pass().
 TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
@@ -225,6 +269,7 @@ TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
 TEST(RenderWorld, TrackedRenderPassExtendedState) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
@@ -276,6 +321,7 @@ TEST(RenderWorld, TrackedRenderPassExtendedState) {
 TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
@@ -285,14 +331,20 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     app.run_schedule(Startup);
     app.add_plugins(ExtractComponentPlugin<SmokeComponent>::extract_visible());
 
-    // Visible entity: ViewVisibility default (not culled).
+    // Visible entity: visibility is normally set by the camera visibility
+    // systems. This isolated extraction test has no camera, so mark it as
+    // visible explicitly (matching Bevy's default-hidden ViewVisibility).
     Entity visible_main =
-        app.world_mut().spawn(SmokeComponent{7}, sync_world::SyncToRenderWorld{}, camera::ViewVisibility{}).id();
+        app.world_mut().spawn(SmokeComponent{7}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{}).id();
     // Culled entity: ViewVisibility culled -> skipped by extract_visible_components.
     Entity culled_main =
-        app.world_mut().spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, camera::ViewVisibility{}).id();
+        app.world_mut().spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{}).id();
     app.world_mut().get_entity_mut(culled_main).transform([](EntityWorldMut&& ew) -> int {
-        ew.get_mut<camera::ViewVisibility>().value().get_mut().culled();
+        ew.get_mut<::epix::camera::ViewVisibility>().value().get_mut().culled();
+        return 0;
+    });
+    app.world_mut().get_entity_mut(visible_main).transform([](EntityWorldMut&& ew) -> int {
+        ew.get_mut<::epix::camera::ViewVisibility>().value().get_mut().set_visible();
         return 0;
     });
 
