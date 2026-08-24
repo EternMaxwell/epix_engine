@@ -62,7 +62,7 @@ EPIX_EXPORT struct RenderGraph {
         requires std::derived_from<std::decay_t<T>, Node>
     void add_node(const NodeLabel& id, T&& node) {
         nodes.erase(id);
-        nodes.emplace(id, NodeState(id, node));
+        nodes.emplace(id, NodeState(id, std::forward<T>(node)));
     }
 
     /** @brief Remove a node from the graph by label. */

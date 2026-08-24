@@ -445,6 +445,7 @@ struct CpuBatchTestItem {
     std::uint32_t sort_key() const noexcept { return render_entity.index; }
     phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
     CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    bool indexed() const noexcept { return false; }
     phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
     void set_extra_index(phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
 };
@@ -629,7 +630,8 @@ struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         World&, sync_world::MainEntity entity) const {
-        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, entity.entity.index};
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{
+            entity.entity.index, entity.entity.index < 3 ? std::optional{1u} : std::optional{2u}};
     }
     std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
         return entity.entity.index;
@@ -734,6 +736,8 @@ TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
     ASSERT_TRUE(render_app.has_value());
     EXPECT_TRUE((render_app->get().world().get_resource<batching::BatchedInstanceBuffer<std::uint32_t>>().has_value()));
     EXPECT_TRUE((render_app->get().world().get_resource<batching::IndirectParametersBuffers>().has_value()));
+    EXPECT_TRUE((render_app->get().world().get_resource<batching::PhaseBatchedInstanceBuffers<
+                     CpuBatchTestItem, std::uint32_t>>().has_value()));
     EXPECT_TRUE((render_app->get().world().get_resource<batching::PhaseBatchedInstanceBuffers<
                      CpuBinnedBatchTestItem, std::uint32_t>>().has_value()));
     EXPECT_TRUE((render_app->get().world()
@@ -925,6 +929,41 @@ TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
     EXPECT_EQ(batch_sets[0].batch_count, 2u);
     EXPECT_EQ(batch_sets[0].first_batch.extra_index.indirect_range,
               (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+}
+
+TEST(GpuSortedPreprocessing, BuildsIndirectRunsAndCommandMetadata) {
+    // The third item changes the adapter comparison key and must begin a new
+    // indirect run rather than extending the first two-item batch.
+    phase::RenderPhase<CpuBatchTestItem> render_phase;
+    render_phase.items = {
+        {Entity::from_index(1), sync_world::MainEntity{Entity::from_index(1)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+        {Entity::from_index(2), sync_world::MainEntity{Entity::from_index(2)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+        {Entity::from_index(3), sync_world::MainEntity{Entity::from_index(3)}, CachedPipelineId{5},
+         phase::DrawFunctionId{7}},
+    };
+    batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
+    batching::UntypedPhaseIndirectParametersBuffers indirect;
+    World world(WorldId(109));
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(9)}, std::nullopt, 0};
+
+    batching::batch_and_prepare_gpu_sorted_phase<CpuBatchTestItem, CpuBinnedBatchTestAdapter>(
+        render_phase, phase_buffers, indirect, view, false, false, world);
+
+    EXPECT_EQ(phase_buffers.data_buffer.len(), 3u);
+    const auto& work = std::get<batching::PreprocessWorkItemBuffers::Indirect>(
+        phase_buffers.work_item_buffers.at(view).storage);
+    EXPECT_EQ(work.non_indexed.len(), 3u);
+    ASSERT_EQ(indirect.non_indexed_data.len(), 2u);
+    EXPECT_EQ(indirect.non_indexed_data.values[0].vertex_count, 3u);
+    EXPECT_EQ(indirect.non_indexed_data.values[1].first_instance, 2u);
+    EXPECT_EQ(render_phase.items[0].batch_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(render_phase.items[0].extra_index().indirect_range,
+              (std::pair<std::uint32_t, std::uint32_t>{0, 1}));
+    EXPECT_EQ(render_phase.items[2].batch_range, (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    EXPECT_EQ(render_phase.items[2].extra_index().indirect_range,
+              (std::pair<std::uint32_t, std::uint32_t>{1, 2}));
 }
 
 TEST(InstanceInputUniformBuffer, ReusesFreedSlotsAndRetainsDefaultBindingElement) {

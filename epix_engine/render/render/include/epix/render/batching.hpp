@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <optional>
+#include <tuple>
 #include <typeindex>
 #include <type_traits>
 #include <utility>
@@ -772,6 +773,107 @@ void write_batched_instance_buffers(
     }
 }
 
+/** @brief GPU-preprocessing version of sorted-phase batching (Bevy
+ * `gpu_preprocessing::batch_and_prepare_sorted_render_phase`). The first
+ * item in each compatible run receives the output/indirect range; rendering
+ * skips the remaining items in that range, exactly like Bevy's sorted phase.
+ */
+template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
+    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P> && phase::MutablePhaseItemExtraIndex<P>)
+void batch_and_prepare_gpu_sorted_phase(
+    phase::RenderPhase<P>& render_phase,
+    UntypedPhaseBatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData>& phase_buffers,
+    UntypedPhaseIndirectParametersBuffers& indirect_parameters,
+    const view::RetainedViewEntity& retained_view,
+    bool no_indirect_drawing,
+    bool enable_gpu_occlusion_culling,
+    typename GetBatchData<Adapter>::Param& batch_param) {
+    using CompareData = typename GetBatchData<Adapter>::CompareData;
+    using BatchMeta = std::tuple<CachedPipelineId, phase::DrawFunctionId, CompareData>;
+    struct ActiveBatch {
+        std::size_t phase_item_start = 0;
+        std::uint32_t instance_start = 0;
+        bool indexed = false;
+        std::optional<std::uint32_t> indirect_index;
+        std::optional<BatchMeta> meta;
+    };
+
+    auto& output_data = phase_buffers.data_buffer;
+    auto& work_items = get_or_create_work_item_buffer(phase_buffers.work_item_buffers, retained_view,
+                                                       no_indirect_drawing, enable_gpu_occlusion_culling);
+    work_items.clear();
+    init_work_item_buffers(work_items, phase_buffers.late_indexed_indirect_parameters,
+                           phase_buffers.late_non_indexed_indirect_parameters);
+
+    std::optional<ActiveBatch> active;
+    const auto flush = [&](std::optional<std::uint32_t> instance_end = std::nullopt) {
+        if (!active) return;
+        auto& item = render_phase.items[active->phase_item_start];
+        item.batch_range = {active->instance_start,
+                            instance_end.value_or(static_cast<std::uint32_t>(output_data.len()))};
+        item.set_extra_index(active->indirect_index
+                                 ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                       *active->indirect_index, *active->indirect_index + 1)
+                                 : phase::PhaseItemExtraIndex::None);
+        if (active->indirect_index) indirect_parameters.add_batch_set(active->indexed, *active->indirect_index);
+        active.reset();
+    };
+
+    for (std::size_t current_index = 0; current_index < render_phase.items.size(); ++current_index) {
+        auto& item = render_phase.items[current_index];
+        const auto input_and_compare = GetFullBatchData<Adapter>{}.get_index_and_compare_data(batch_param, item.main_entity());
+        if (!input_and_compare) {
+            flush();
+            continue;
+        }
+        const auto& [input_index, compare_data] = *input_and_compare;
+        const std::optional<BatchMeta> current_meta = compare_data
+            ? std::optional{BatchMeta{item.pipeline(), item.draw_function(), *compare_data}}
+            : std::nullopt;
+        const bool can_batch = active && current_meta && active->meta && *current_meta == *active->meta;
+        const auto output_index = static_cast<std::uint32_t>(output_data.add());
+        if (!can_batch) {
+            flush(output_index);
+            const bool indexed = item.indexed();
+            const std::optional<std::uint32_t> indirect_index =
+                no_indirect_drawing ? std::nullopt : std::optional{indirect_parameters.allocate(indexed, 1)};
+            if (indirect_index) {
+                GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
+                    indexed, output_index, std::nullopt, indirect_parameters, *indirect_index);
+            }
+            active = ActiveBatch{.phase_item_start = current_index,
+                                 .instance_start = output_index,
+                                 .indexed = indexed,
+                                 .indirect_index = indirect_index,
+                                 .meta = current_meta};
+        }
+        work_items.push(item.indexed(), {.input_index = input_index,
+                                         .output_or_indirect_parameters_index =
+                                             active->indirect_index.value_or(output_index)});
+    }
+    flush();
+}
+
+/** @brief ECS wrapper for GPU sorted-phase batching. */
+template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
+    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P> && phase::MutablePhaseItemExtraIndex<P>)
+void batch_and_prepare_gpu_sorted_render_phase(
+    ecs::ResMut<PhaseBatchedInstanceBuffers<P, typename GetBatchData<Adapter>::BufferData>> phase_buffers,
+    ecs::ResMut<PhaseIndirectParametersBuffers<P>> indirect_parameters,
+    ecs::Query<ecs::Item<const view::ExtractedView&,
+                         ecs::Has<view::NoIndirectDrawing>,
+                         ecs::Has<experimental::OcclusionCulling>,
+                         phase::RenderPhase<P>&>,
+               ecs::With<view::ExtractedView>> views,
+    typename GetBatchData<Adapter>::Param batch_param) {
+    for (auto&& [extracted_view, no_indirect_drawing, occlusion_culling, render_phase] : views.iter()) {
+        batch_and_prepare_gpu_sorted_phase<P, Adapter>(render_phase, phase_buffers->buffers,
+                                                        indirect_parameters->buffers,
+                                                        extracted_view.retained_view_entity, no_indirect_drawing,
+                                                        occlusion_culling, batch_param);
+    }
+}
+
 /** @brief Metadata used to decide whether consecutive sorted items can share
  * one draw (Bevy `BatchMeta`). */
 template <typename CompareData>
@@ -1075,23 +1177,36 @@ template <CachedRenderPipelinePhaseItem P, typename Adapter>
 void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
     static_assert(batching::GetFullBatchDataImpl<Adapter>,
                   "SortedRenderPhasePlugin adapter must specialize GetFullBatchData");
+    static_assert(SortedPhaseItem<P>,
+                  "SortedRenderPhasePlugin phase items must provide indexed() for GPU indirect batching");
     static_assert(MutablePhaseItemExtraIndex<P>,
                   "Automatic sorted batching requires set_extra_index on the phase item");
     batching::CpuSortedRenderPhasePlugin<P, Adapter>{}.attach(app);
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
+        world.init_resource<batching::PhaseBatchedInstanceBuffers<P, typename batching::GetBatchData<Adapter>::BufferData>>();
         world.insert_resource(batching::PhaseIndirectParametersBuffers<P>{
             debug_flags.allow_copies_from_indirect_parameters()});
         render_app->get().add_systems(
             Render,
-            ecs::into(batching::clear_phase_indirect_parameters_buffers<P>)
-                .in_set(RenderSystems::ManageViews)
-                .set_name(std::format("clear indirect parameter buffers '{}'", meta::type_id<P>().short_name())));
+            ecs::into(batching::batch_and_prepare_gpu_sorted_render_phase<P, Adapter>)
+                .in_set(RenderSystems::PrepareResources)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<batching::BatchedInstanceBuffers<
+                        typename batching::GetBatchData<Adapter>::BufferData,
+                        typename batching::GetFullBatchData<Adapter>::BufferInputData>>().has_value();
+                })
+                .set_name(std::format("GPU batch sorted render phase '{}'", meta::type_id<P>().short_name())));
         render_app->get().add_systems(
             Render,
-            ecs::into(batching::write_phase_indirect_parameters_buffers<P>)
-                .in_set(RenderSystems::PrepareResourcesFlush)
-                .set_name(std::format("write indirect parameter buffers '{}'", meta::type_id<P>().short_name())));
+            ecs::into(batching::collect_buffers_for_phase<P, Adapter>)
+                .in_set(RenderSystems::PrepareResourcesCollectPhaseBuffers)
+                .run_if([](const ecs::World& world) {
+                    return world.get_resource<batching::BatchedInstanceBuffers<
+                        typename batching::GetBatchData<Adapter>::BufferData,
+                        typename batching::GetFullBatchData<Adapter>::BufferInputData>>().has_value();
+                })
+                .set_name(std::format("collect sorted phase GPU buffers '{}'", meta::type_id<P>().short_name())));
     }
 }
 

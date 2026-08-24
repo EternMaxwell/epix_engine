@@ -713,9 +713,12 @@ concept BinnedPhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 /** @brief Concept for a phase item that participates in the sorted phase path
- * (Bevy `SortedPhaseItem`). Satisfied by any `PhaseItem` with a sort key. */
+ * (Bevy `SortedPhaseItem`). `indexed()` selects the correct indirect-command
+ * layout when GPU preprocessing is active. */
 EPIX_EXPORT template <typename P>
-concept SortedPhaseItem = PhaseItem<P>;
+concept SortedPhaseItem = PhaseItem<P> && requires(const P item) {
+    { item.indexed() } -> std::convertible_to<bool>;
+};
 
 /**
  * @brief How a binned phase item is batched when rendered (Bevy `BatchMode`).
