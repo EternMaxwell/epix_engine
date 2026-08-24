@@ -36,7 +36,13 @@ EPIX_EXPORT struct Entity {
     static Entity from_parts(std::uint32_t index, std::uint32_t generation) noexcept {
         return Entity{generation, index};
     }
+
+    /** @brief Sentinel entity for render-world mappings that have no backing
+     * render entity yet (Bevy `Entity::PLACEHOLDER`). */
+    static const Entity PLACEHOLDER;
 };
+
+inline const Entity Entity::PLACEHOLDER{UINT32_MAX, UINT32_MAX};
 }  // namespace epix::ecs
 
 template <>

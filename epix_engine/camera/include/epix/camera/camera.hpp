@@ -13,6 +13,7 @@
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
 #include <epix/window.hpp>
+#include <functional>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
@@ -32,11 +33,11 @@ namespace epix::camera {
  * bevy_camera::Viewport). */
 EPIX_EXPORT struct Viewport {
     /** @brief Top-left position of the viewport in pixels. */
-    glm::uvec2 pos{0, 0};
+    glm::uvec2 physical_position{0, 0};
     /** @brief Size of the viewport in pixels. */
-    glm::uvec2 size{1, 1};
+    glm::uvec2 physical_size{1, 1};
     /** @brief Depth range for the viewport (min, max). */
-    std::pair<float, float> depth_range{0.0f, 1.0f};
+    std::pair<float, float> depth{0.0f, 1.0f};
 
     /** @brief Clamp this viewport to a physical target extent (Bevy
      * Viewport::clamp_to_size). */
@@ -55,8 +56,8 @@ EPIX_EXPORT struct Viewport {
                 extent = 0;
             }
         };
-        clamp_axis(pos.x, size.x, target_size.x);
-        clamp_axis(pos.y, size.y, target_size.y);
+        clamp_axis(physical_position.x, physical_size.x, target_size.x);
+        clamp_axis(physical_position.y, physical_size.y, target_size.y);
     }
 
     /** @brief Returns a viewport derived from an optional camera viewport and
@@ -66,7 +67,7 @@ EPIX_EXPORT struct Viewport {
         const std::optional<Viewport>& viewport, const std::optional<glm::uvec2>& main_pass_resolution_override) {
         if (!main_pass_resolution_override) return viewport;
         Viewport result = viewport.value_or(Viewport{});
-        result.size     = *main_pass_resolution_override;
+        result.physical_size = *main_pass_resolution_override;
         return result;
     }
 };
@@ -82,11 +83,33 @@ EPIX_EXPORT struct WindowRef {
     epix::ecs::Entity window_entity;
 };
 
+EPIX_EXPORT struct ManualTextureViewHandle {
+    std::uint32_t id = 0;
+    bool operator==(const ManualTextureViewHandle&) const noexcept = default;
+};
+
+EPIX_EXPORT struct ImageRenderTarget {
+    wgpu::Texture texture;
+    float scale_factor = 1.0f;
+};
+
+EPIX_EXPORT struct NoColorTarget {
+    glm::uvec2 size{0, 0};
+};
+
 /** @brief Stable identity of a normalized render target, used to share one
  * output attachment per target and to group cameras by target (Bevy
  * NormalizedRenderTarget as a HashMap key). */
 EPIX_EXPORT struct RenderTargetId {
+    /// The normalized RenderTarget alternative.  Keeping this separate from
+    /// its value prevents a window entity, texture handle, and manual view
+    /// with coincident numeric identities from sharing an attachment.
+    std::uint8_t kind                                      = 0;
     std::uint64_t value                                   = 0;
+    constexpr RenderTargetId() noexcept = default;
+    constexpr RenderTargetId(std::uint64_t target_value) noexcept : value(target_value) {}
+    constexpr RenderTargetId(std::uint8_t target_kind, std::uint64_t target_value) noexcept
+        : kind(target_kind), value(target_value) {}
     bool operator==(const RenderTargetId&) const noexcept = default;
 };
 
@@ -115,31 +138,40 @@ EPIX_EXPORT struct Ray3d {
 };
 /** @brief Hash for RenderTargetId. */
 EPIX_EXPORT struct RenderTargetIdHash {
-    std::size_t operator()(const RenderTargetId& id) const noexcept { return std::hash<std::uint64_t>{}(id.value); }
+    std::size_t operator()(const RenderTargetId& id) const noexcept {
+        return std::hash<std::uint64_t>{}(id.value) ^ (std::hash<std::uint8_t>{}(id.kind) << 1);
+    }
+};
+
+/** @brief Resolved target identity (Bevy `NormalizedRenderTarget`). Render
+ * code uses this after an optional primary window has been resolved. */
+EPIX_EXPORT struct NormalizedRenderTarget
+    : std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
+    using std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
+    RenderTargetId identity() const noexcept;
 };
 
 /** @brief A render target that is either a GPU texture or a window
- * reference (Bevy bevy_camera::RenderTarget). */
-EPIX_EXPORT struct RenderTarget : std::variant<wgpu::Texture, WindowRef> {
-    using std::variant<wgpu::Texture, WindowRef>::variant;
-    static RenderTarget from_texture(wgpu::Texture texture) { return RenderTarget(std::move(texture)); }
+ * reference (Bevy `bevy_camera::RenderTarget`). */
+EPIX_EXPORT struct RenderTarget : std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
+    using std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
+    static RenderTarget from_texture(wgpu::Texture texture, float scale_factor = 1.0f) {
+        return RenderTarget(ImageRenderTarget{std::move(texture), scale_factor});
+    }
     static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
     static RenderTarget from_window(epix::ecs::Entity window_entity) noexcept {
         return RenderTarget(WindowRef{false, window_entity});
     }
-    std::optional<RenderTarget> normalize(std::optional<epix::ecs::Entity> primary) const;
-    /** @brief Stable identity for grouping/sorting by target. Textures are
-     * keyed by their raw handle, windows by their entity uid. */
-    RenderTargetId identity() const noexcept;
+    static RenderTarget from_manual_texture_view(ManualTextureViewHandle handle) noexcept { return RenderTarget(handle); }
+    static RenderTarget none(glm::uvec2 size) noexcept { return RenderTarget(NoColorTarget{size}); }
+    /** @brief Returns the image target when this is an image target (Bevy
+     * `RenderTarget::as_image`). */
+    const ImageRenderTarget* as_image() const noexcept { return std::get_if<ImageRenderTarget>(this); }
+    std::optional<NormalizedRenderTarget> normalize(std::optional<epix::ecs::Entity> primary) const;
 };
 
 struct ComputedCameraValues {
-    // A camera can be extracted before the first camera-update pass has
-    // resolved its window target.  Bevy represents that state as an absent
-    // physical target size; use an explicit 0x0 sentinel rather than GLM's
-    // intentionally uninitialised default constructor.
-    glm::mat4 projection{1.0f};
-    glm::uvec2 target_size{0, 0};
+    glm::mat4 clip_from_view{1.0f};
     std::optional<RenderTargetInfo> target_info;
     std::optional<glm::uvec2> old_viewport_size;
     std::optional<SubCameraView> old_sub_camera_view;
@@ -185,17 +217,8 @@ EPIX_EXPORT struct Camera {
     /** @brief Cameras with higher order are rendered on top of cameras with
      * lower order. */
     std::ptrdiff_t order = 0;
-    /** @brief Whether this camera is active and should be used for rendering.
-     * `is_active` is the Bevy 0.18 spelling; `active` is retained as a source
-     * compatible Epix alias. */
-    union {
-        bool is_active = true;
-        bool active;
-    };
-    /** @brief Legacy Epix HDR flag. Bevy 0.18 uses the standalone render
-     * world `Hdr` marker; extraction prefers that marker while honouring this
-     * flag for existing Epix scenes. */
-    bool hdr = false;
+    /** @brief Whether this camera is active and should be used for rendering. */
+    bool is_active = true;
     /** @brief Reverse face culling for mirrored views (Bevy
      * ExtractedView::invert_culling input). */
     bool invert_culling = false;
@@ -206,25 +229,12 @@ EPIX_EXPORT struct Camera {
     /** @brief Optional slice of a larger, shared camera view. */
     std::optional<SubCameraView> sub_camera_view;
 
-    /** @brief The render target for this camera. */
-    RenderTarget render_target = RenderTarget::from_primary();
     /** @brief Computed values updated by camera systems. */
     ComputedCameraValues computed;
     /** @brief Clear color configuration for this camera. */
     ClearColorConfig clear_color = ClearColorConfig::global();
 
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator);
-
-    /** @brief Get the effective viewport size, falling back to target size. */
-    glm::uvec2 get_viewport_size() const noexcept {
-        return viewport.transform([](const Viewport& vp) { return vp.size; }).value_or(computed.target_size);
-    }
-    /** @brief Get the render target's pixel dimensions. */
-    glm::uvec2 get_target_size() const noexcept { return computed.target_size; }
-    /** @brief Get the viewport origin, defaulting to (0, 0). */
-    glm::uvec2 get_viewport_origin() const noexcept {
-        return viewport.transform([](const Viewport& vp) { return vp.pos; }).value_or(glm::uvec2(0, 0));
-    }
 
     /** @brief Converts a physical pixel size into this target's logical size
      * (Bevy Camera::to_logical). */
@@ -237,7 +247,8 @@ EPIX_EXPORT struct Camera {
     std::optional<std::pair<glm::uvec2, glm::uvec2>> physical_viewport_rect() const noexcept {
         auto size = physical_viewport_size();
         if (!size) return std::nullopt;
-        const auto min = get_viewport_origin();
+        const auto min = viewport.transform([](const Viewport& vp) { return vp.physical_position; })
+                             .value_or(glm::uvec2(0, 0));
         return std::pair{min, min + *size};
     }
     /** @brief Logical viewport rectangle as (min, max) (Bevy
@@ -253,7 +264,7 @@ EPIX_EXPORT struct Camera {
     /** @brief The physical viewport size, if the target has been resolved
      * (Bevy physical_viewport_size). */
     std::optional<glm::uvec2> physical_viewport_size() const noexcept {
-        if (viewport) return viewport->size;
+        if (viewport) return viewport->physical_size;
         return physical_target_size();
     }
     /** @brief The logical viewport size (Bevy logical_viewport_size). */
@@ -277,14 +288,14 @@ EPIX_EXPORT struct Camera {
         return computed.target_info.transform([](const RenderTargetInfo& info) { return info.scale_factor; });
     }
     /** @brief Computed clip-from-view matrix (Bevy clip_from_view). */
-    const glm::mat4& clip_from_view() const noexcept { return computed.projection; }
+    const glm::mat4& clip_from_view() const noexcept { return computed.clip_from_view; }
 
     /** @brief Converts a world-space point to normalized device coordinates
      * (Bevy world_to_ndc). */
     std::optional<glm::vec3> world_to_ndc(const transform::GlobalTransform& camera_transform,
                                           glm::vec3 world_point) const noexcept {
         const glm::vec4 view_point = glm::inverse(camera_transform.matrix) * glm::vec4(world_point, 1.0f);
-        const glm::vec4 clip_point = computed.projection * view_point;
+        const glm::vec4 clip_point = computed.clip_from_view * view_point;
         if (clip_point.w == 0.0f) return std::nullopt;
         const glm::vec3 ndc = glm::vec3(clip_point) / clip_point.w;
         return std::isfinite(ndc.x) && std::isfinite(ndc.y) && std::isfinite(ndc.z) ? std::optional<glm::vec3>(ndc)
@@ -294,7 +305,7 @@ EPIX_EXPORT struct Camera {
      * ndc_to_world). */
     std::optional<glm::vec3> ndc_to_world(const transform::GlobalTransform& camera_transform,
                                           glm::vec3 ndc_point) const noexcept {
-        const glm::vec4 view_point = glm::inverse(computed.projection) * glm::vec4(ndc_point, 1.0f);
+        const glm::vec4 view_point = glm::inverse(computed.clip_from_view) * glm::vec4(ndc_point, 1.0f);
         if (view_point.w == 0.0f) return std::nullopt;
         const glm::vec4 world_point = camera_transform.matrix * (view_point / view_point.w);
         const glm::vec3 result      = glm::vec3(world_point);
@@ -362,11 +373,11 @@ EPIX_EXPORT struct Camera {
     }
     /** @brief Converts NDC depth to perspective view Z (Bevy
      * depth_ndc_to_view_z). */
-    float depth_ndc_to_view_z(float ndc_depth) const noexcept { return -computed.projection[3][2] / ndc_depth; }
+    float depth_ndc_to_view_z(float ndc_depth) const noexcept { return -computed.clip_from_view[3][2] / ndc_depth; }
     /** @brief Converts NDC depth to orthographic view Z (Bevy
      * depth_ndc_to_view_z_2d). */
     float depth_ndc_to_view_z_2d(float ndc_depth) const noexcept {
-        return -(computed.projection[3][2] - ndc_depth) / computed.projection[2][2];
+        return -(computed.clip_from_view[3][2] - ndc_depth) / computed.clip_from_view[2][2];
     }
 };
 
@@ -404,16 +415,24 @@ EPIX_EXPORT struct Camera3d {
     ScreenSpaceTransmissionQuality screen_space_specular_transmission_quality = ScreenSpaceTransmissionQuality::Medium;
 
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
-        // EPIX required components are not transitive, so mirror Camera's
-        // Bevy requirements here as well as Camera + Projection.
         registrator.template register_required<Camera>([] { return Camera{}; });
         registrator.template register_required<Projection>([] { return Projection{}; });
-        registrator.template register_required<transform::Transform>([] { return transform::Transform{}; });
-        registrator.template register_required<VisibleEntities>([] { return VisibleEntities{}; });
-        registrator.template register_required<RenderLayers>([] { return RenderLayers::layer(0); });
-        registrator.template register_required<Msaa>([] { return Msaa::Sample4; });
-        registrator.template register_required<CameraMainTextureUsages>([] { return CameraMainTextureUsages{}; });
-        registrator.template register_required<Frustum>([] { return Frustum{}; });
+    }
+};
+
+/** @brief 2D camera marker (Bevy `Camera2d`).  Adding it supplies the
+ * orthographic 2D projection and the standard camera requirements. */
+EPIX_EXPORT struct Camera2d {
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<Camera>([] { return Camera{}; });
+        registrator.template register_required<Projection>([] {
+            return Projection::orthographic(OrthographicProjection::default_2d());
+        });
+        registrator.template register_required<Frustum>([] {
+            const auto projection = OrthographicProjection::default_2d();
+            return Frustum::from_clip_from_world_custom_far(projection.get_projection_matrix(), glm::vec3(0.0f),
+                                                             glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
+        });
     }
 };
 
@@ -426,15 +445,20 @@ EPIX_EXPORT struct Exposure {
     static constexpr float EV100_INDOOR   = 7.0f;
     static constexpr float EV100_BLENDER  = 9.7f;
 
-    static constexpr Exposure sunlight() noexcept { return Exposure{EV100_SUNLIGHT}; }
-    static constexpr Exposure overcast() noexcept { return Exposure{EV100_OVERCAST}; }
-    static constexpr Exposure indoor() noexcept { return Exposure{EV100_INDOOR}; }
-    static constexpr Exposure blender() noexcept { return Exposure{EV100_BLENDER}; }
+    static const Exposure SUNLIGHT;
+    static const Exposure OVERCAST;
+    static const Exposure INDOOR;
+    static const Exposure BLENDER;
     static Exposure from_physical_camera(const PhysicalCameraParameters& parameters) noexcept;
 
     float ev100 = 9.7f;  ///< Blender-compatible Bevy default.
     float exposure() const noexcept { return std::exp2(-ev100) / 1.2f; }
 };
+
+inline const Exposure Exposure::SUNLIGHT{Exposure::EV100_SUNLIGHT};
+inline const Exposure Exposure::OVERCAST{Exposure::EV100_OVERCAST};
+inline const Exposure Exposure::INDOOR{Exposure::EV100_INDOOR};
+inline const Exposure Exposure::BLENDER{Exposure::EV100_BLENDER};
 
 /** @brief Physical camera settings used to derive EV100 (Bevy
  * PhysicalCameraParameters). */
@@ -472,29 +496,31 @@ EPIX_EXPORT enum class CameraUpdateSystems {
 
 template <CameraProjection ProjType>
 void camera_system(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>>>
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>, const RenderTarget&>>
         query,                                                                      // camera and projection query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>> window_query,  // window query
     epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>,
                      epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
 ) {
-    for (auto&& [camera, proj] : query.iter()) {
+    for (auto&& [camera, proj, target] : query.iter()) {
         // update the stored target size, update the projection if needed.
 
         std::optional<glm::uvec2> viewport_size =
-            camera.get_mut().viewport.transform([](const Viewport& vp) { return glm::uvec2(vp.size); });
+            camera.get_mut().viewport.transform([](const Viewport& vp) { return glm::uvec2(vp.physical_size); });
 
         // A camera can be updated before the native backend has supplied a
         // target.  Keep that state explicitly invalid instead of permitting
         // GLM's uninitialised default constructor to reach GPU allocation.
         glm::uvec2 target_size{0, 0};
+        float target_scale_factor = 1.0f;
         std::visit(utils::visitor{
                        [&](const WindowRef& window_ref) {
                            if (window_ref.primary) {
                                // primary window
                                if (auto primary = primary_window_query.single()) {
                                    auto&& [win] = *primary;
-                                   target_size  = glm::uvec2(win.size.first, win.size.second);
+                                   target_size  = glm::uvec2(win.physical_size.first, win.physical_size.second);
+                                   target_scale_factor = win.scale_factor;
                                } else {
                                    // no primary window, use 0x0 as invalid
                                    target_size = glm::uvec2(0, 0);
@@ -503,37 +529,37 @@ void camera_system(
                                // specific window
                                if (auto opt_win = window_query.get(window_ref.window_entity)) {
                                    auto [win]  = *opt_win;
-                                   target_size = glm::uvec2(win.size.first, win.size.second);
+                                   target_size = glm::uvec2(win.physical_size.first, win.physical_size.second);
+                                   target_scale_factor = win.scale_factor;
                                } else {
                                    // window not found, use 0x0 as invalid
                                    target_size = glm::uvec2(0, 0);
                                }
                            }
                        },
-                       [&](const wgpu::Texture& texture) {
+                       [&](const ImageRenderTarget& image) {
                            // texture target
-                           if (texture) {
-                               target_size = glm::uvec2(texture.getWidth(), texture.getHeight());
+                           if (image.texture) {
+                               target_size = glm::uvec2(image.texture.getWidth(), image.texture.getHeight());
+                               target_scale_factor = image.scale_factor;
                            } else {
                                // null texture, use 0x0 as invalid
                                target_size = glm::uvec2(0, 0);
                            }
                        },
+                       [&](const ManualTextureViewHandle&) { target_size = glm::uvec2(0, 0); },
+                       [&](const NoColorTarget& no_color) { target_size = no_color.size; },
                    },
-                   camera.get().render_target);
+                   target);
 
         auto& camera_mut = camera.get_mut();
         // Bevy clamps custom viewports after resolving the target. This also
         // handles a resize that leaves the previous viewport out of bounds.
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        viewport_size                   = camera_mut.viewport.transform([](const Viewport& vp) { return vp.size; });
+        viewport_size = camera_mut.viewport.transform([](const Viewport& vp) { return vp.physical_size; });
         const glm::uvec2 new_size       = viewport_size.value_or(target_size);
-        const bool size_changed         = camera_mut.computed.target_size != target_size ||
-                                          camera_mut.computed.old_viewport_size != viewport_size ||
-                                          camera_mut.computed.old_sub_camera_view != camera_mut.sub_camera_view;
-        camera_mut.computed.target_size = target_size;
         camera_mut.computed.target_info = target_size.x != 0 && target_size.y != 0
-                                              ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, 1.0f})
+                                              ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, target_scale_factor})
                                               : std::nullopt;
         camera_mut.computed.old_viewport_size   = viewport_size;
         camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
@@ -548,7 +574,7 @@ void camera_system(
         // Bevy's changed-camera / changed-projection update path.
         if (new_size.x != 0 && new_size.y != 0) {
             proj.get_mut().update(static_cast<float>(new_size.x), static_cast<float>(new_size.y));
-            camera_mut.computed.projection = camera_mut.sub_camera_view
+            camera_mut.computed.clip_from_view = camera_mut.sub_camera_view
                                                  ? proj.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
                                                  : proj.get().get_projection_matrix();
         }
@@ -561,6 +587,8 @@ void camera_system(
 EPIX_EXPORT template <CameraProjection ProjType>
 struct CameraProjectionPlugin {
     void attach(epix::app::App& app) {
+        app.add_systems(epix::app::PostStartup,
+                        into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
         app.add_systems(epix::app::PostUpdate,
                         into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
     }
@@ -575,3 +603,11 @@ EPIX_EXPORT struct CameraPlugin {
 };
 
 }  // namespace epix::camera
+
+/** @brief Hash support for the camera-owned ManualTextureViewHandle. */
+template <>
+struct std::hash<epix::camera::ManualTextureViewHandle> {
+    std::size_t operator()(const epix::camera::ManualTextureViewHandle& handle) const noexcept {
+        return std::hash<std::uint32_t>{}(handle.id);
+    }
+};

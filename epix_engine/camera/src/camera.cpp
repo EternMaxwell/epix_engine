@@ -20,41 +20,53 @@ void Camera::register_required_components(RequiredComponentsRegistrator& registr
     // ComputedCameraValues starts at a defined 0x0 target until this system's
     // first target-resolution pass; target resolution reads the current
     // Window component rather than a backend cache snapshot.
-    registrator.register_required<Projection>([] { return Projection{}; });
     registrator.register_required<::epix::transform::Transform>([] { return ::epix::transform::Transform{}; });
     registrator.register_required<VisibleEntities>([] { return VisibleEntities{}; });
-    // Bevy: a camera without RenderLayers sees layer 0 (render_layers.rs:45-52).
-    registrator.register_required<RenderLayers>([] { return RenderLayers::layer(0); });
-    // Bevy registers Msaa as a required component of Camera (camera.rs:56)
-    // with Msaa::default() = Sample4.
-    registrator.register_required<Msaa>([] { return Msaa::Sample4; });
+    // Bevy Camera requires Visibility. CameraPlugin in turn supplies its
+    // InheritedVisibility and ViewVisibility dependencies.
+    registrator.register_required<Visibility>([] { return Visibility{}; });
+    // In Bevy 0.18 RenderTarget is a separate required component, rather
+    // than state stored in Camera.
+    registrator.register_required<RenderTarget>([] { return RenderTarget::from_primary(); });
     registrator.register_required<CameraMainTextureUsages>([] { return CameraMainTextureUsages{}; });
     // Bevy Camera requires Frustum; update_frusta fills it.
     registrator.register_required<Frustum>([] { return Frustum{}; });
 }
 
-std::optional<RenderTarget> RenderTarget::normalize(std::optional<Entity> primary) const {
-    return std::visit(utils::visitor{[&](const wgpu::Texture& tex) -> std::optional<RenderTarget> { return *this; },
-                                     [&](const WindowRef& win_ref) -> std::optional<RenderTarget> {
+std::optional<NormalizedRenderTarget> RenderTarget::normalize(std::optional<Entity> primary) const {
+    return std::visit(utils::visitor{[&](const WindowRef& win_ref) -> std::optional<NormalizedRenderTarget> {
                                          if (win_ref.primary) {
                                              if (primary.has_value()) {
-                                                 return RenderTarget(WindowRef{false, primary.value()});
+                                                 return NormalizedRenderTarget(WindowRef{false, primary.value()});
                                              } else {
                                                  return std::nullopt;
                                              }
                                          } else {
-                                             return *this;
+                                             return NormalizedRenderTarget(win_ref);
                                          }
+                                     },
+                                     [&](const ImageRenderTarget& target) -> std::optional<NormalizedRenderTarget> {
+                                         return NormalizedRenderTarget(target);
+                                     },
+                                     [&](const ManualTextureViewHandle& target) -> std::optional<NormalizedRenderTarget> {
+                                         return NormalizedRenderTarget(target);
+                                     },
+                                     [&](const NoColorTarget& target) -> std::optional<NormalizedRenderTarget> {
+                                         return NormalizedRenderTarget(target);
                                      }},
                       *this);
 }
 
-RenderTargetId RenderTarget::identity() const noexcept {
+RenderTargetId NormalizedRenderTarget::identity() const noexcept {
     return std::visit(utils::visitor{
-                          [](const wgpu::Texture& tex) -> RenderTargetId {
-                              return RenderTargetId{reinterpret_cast<std::uintptr_t>(tex.raw())};
+                          [](const ImageRenderTarget& image) -> RenderTargetId {
+                              return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw())};
                           },
-                          [](const WindowRef& w) -> RenderTargetId { return RenderTargetId{w.window_entity.uid}; },
+                          [](const WindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.window_entity.uid}; },
+                          [](const ManualTextureViewHandle& handle) -> RenderTargetId { return RenderTargetId{2, handle.id}; },
+                          [](const NoColorTarget& target) -> RenderTargetId {
+                              return RenderTargetId{3, (std::uint64_t{target.size.x} << 32) | target.size.y};
+                          },
                       },
                       *this);
 }
@@ -115,77 +127,170 @@ void visibility_propagate_system(Query<Item<const Visibility&, Mut<InheritedVisi
 }
 
 void reset_view_visibility(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
-    // Bevy reset_view_visibility: everything starts visible-by-default
-    // (bit 0 clear); check_visibility culls entities hidden for every view.
     for (auto&& [view_visibility] : view_visibilities.iter()) {
-        view_visibility.get_mut().flags = 0;
+        // Bevy ViewVisibility::update: current visibility becomes the
+        // previous-frame scratch bit and the current bit is cleared.
+        view_visibility.get_mut().update();
+    }
+}
+
+void mark_newly_hidden_entities_invisible(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
+    for (auto&& [view_visibility] : view_visibilities.iter()) {
+        if (view_visibility.get().was_visible_now_hidden()) {
+            view_visibility.get_mut().flags = 0;
+        }
+    }
+}
+
+void check_visibility_ranges(
+    ResMut<VisibleEntityRanges> visible_entity_ranges,
+    Query<Item<Entity, const ::epix::transform::GlobalTransform&>, With<Camera>> cameras,
+    Query<Item<Entity, const ::epix::transform::GlobalTransform&, Opt<const Aabb&>, const VisibilityRange&>> entities) {
+    visible_entity_ranges->clear();
+    if (entities.iter().max_remaining() == 0) return;
+
+    std::vector<std::pair<Entity, glm::vec3>> views;
+    for (auto&& [entity, transform] : cameras.iter()) {
+        if (views.size() == 32) break;
+        const auto index = static_cast<std::uint8_t>(views.size());
+        visible_entity_ranges->views.emplace(entity, index);
+        views.emplace_back(entity, glm::vec3(transform.matrix[3]));
+    }
+    for (auto&& [entity, transform, opt_aabb, range] : entities.iter()) {
+        std::uint32_t visibility = 0;
+        glm::vec3 model_position = glm::vec3(transform.matrix[3]);
+        if (range.use_aabb && opt_aabb) {
+            model_position = glm::vec3(transform.matrix * glm::vec4(opt_aabb->get().center, 1.0f));
+        }
+        for (std::size_t index = 0; index < views.size(); ++index) {
+            if (range.is_visible_at_all(glm::length(views[index].second - model_position))) {
+                visibility |= std::uint32_t{1} << index;
+            }
+        }
+        if (visibility != 0) visible_entity_ranges->entities.emplace(entity, visibility);
     }
 }
 
 void check_visibility_system(
-    Query<Item<Entity, const Camera&, Mut<VisibleEntities>, const RenderLayers&, const Frustum&>> cameras,
-    Query<Item<Entity, const InheritedVisibility&, Mut<ViewVisibility>, Opt<const RenderLayers&>>> entities) {
+    Query<Item<Entity,
+               const Camera&,
+               Mut<VisibleEntities>,
+               Opt<const RenderLayers&>,
+               const Frustum&,
+               Opt<const NoCpuCulling&>>>
+        cameras,
+    Query<Item<Entity,
+               const InheritedVisibility&,
+               Mut<ViewVisibility>,
+               Opt<const VisibilityClass&>,
+               Opt<const RenderLayers&>,
+               Opt<const Aabb&>,
+               Opt<const ::epix::transform::GlobalTransform&>,
+               Opt<const NoFrustumCulling&>,
+               Opt<const VisibilityRange&>>>
+        entities,
+    Res<VisibleEntityRanges> visible_entity_ranges) {
     // Bevy check_visibility: for each camera, mark entities visible to it in
     // its view slot and collect them into the camera's VisibleEntities.
     // Frustum culling is not applied yet — epix has no per-entity bounds; the
     // Frustum is kept in the query for that work.
-    constexpr std::uint32_t kMaxViews = 15;  // ViewVisibility has 16 per-view bits
-    const auto visibility_class       = ::epix::meta::type_index(::epix::meta::type_id<Visibility>());
-    std::unordered_set<Entity> visible_anywhere;
-    std::size_t view_index = 0;
-    for (auto&& [camera_entity, camera, visible_entities, camera_layers, frustum] : cameras.iter()) {
+    for (auto&& [camera_entity, camera, visible_entities, opt_camera_layers, frustum, no_cpu_culling] : cameras.iter()) {
         (void)camera_entity;
-        (void)camera;
-        (void)frustum;
-        if (view_index >= kMaxViews) {
-            spdlog::warn("[camera] More than {} cameras; visibility bits truncated.", kMaxViews);
-            break;
-        }
-        auto& class_entities = visible_entities.get_mut().get_mut(visibility_class);
-        for (auto&& [entity, inherited, view_visibility, opt_layers] : entities.iter()) {
+        if (!camera.is_active) continue;
+        const auto& camera_layers = opt_camera_layers ? *opt_camera_layers : RenderLayers::layer(0);
+        visible_entities.get_mut().clear_all();
+        for (auto&& [entity, inherited, view_visibility, opt_classes, opt_layers, opt_aabb, opt_transform,
+                     no_frustum_culling, opt_visibility_range] : entities.iter()) {
             if (!inherited.is_visible) continue;
             const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
             if (!camera_layers.intersects(entity_layers)) continue;
-            view_visibility.get_mut().set_in_view(view_index, true);
-            visible_anywhere.insert(entity);
-            class_entities.push_back(entity);
-        }
-        ++view_index;
-    }
-    // Entities visible to no view are culled (bit 0 set -> get() == false).
-    for (auto&& [entity, inherited, view_visibility, opt_layers] : entities.iter()) {
-        (void)inherited;
-        (void)opt_layers;
-        if (!visible_anywhere.contains(entity)) {
-            view_visibility.get_mut().culled();
+            if (opt_visibility_range && !visible_entity_ranges->entity_is_in_range_of_view(entity, camera_entity)) {
+                continue;
+            }
+            if (!no_cpu_culling && !no_frustum_culling && opt_aabb && opt_transform) {
+                const auto& aabb      = opt_aabb->get();
+                const auto& transform = opt_transform->get().matrix;
+                const glm::vec3 center = glm::vec3(transform * glm::vec4(aabb.center, 1.0f));
+                const float radius = glm::length(glm::abs(glm::mat3(transform)) * aabb.half_extents);
+                if (!frustum.intersects_sphere(Sphere{center, radius}, false) ||
+                    !frustum.intersects_obb(aabb, transform, true, false)) {
+                    continue;
+                }
+            }
+            view_visibility.get_mut().visible();
+            if (opt_classes) {
+                for (const auto& visibility_class : opt_classes->get().classes) {
+                    visible_entities.get_mut().push(entity, visibility_class);
+                }
+            }
         }
     }
 }
 
-void update_frusta(Query<Item<const Camera&, const ::epix::transform::GlobalTransform&, Mut<Frustum>>> cameras) {
-    // Bevy update_frusta: clip_from_world = projection * inverse(transform).
-    for (auto&& [camera, gtransform, frustum] : cameras.iter()) {
-        const glm::mat4 clip_from_world = camera.computed.projection * glm::inverse(gtransform.matrix);
-        frustum.get_mut()               = Frustum::from_view_projection(clip_from_world);
+void VisibilityRangePlugin::attach(App& app) {
+    app.world_mut().init_resource<VisibleEntityRanges>();
+    app.add_systems(app::PostUpdate,
+                    into(check_visibility_ranges)
+                        .in_set(VisibilitySystems::CheckVisibility)
+                        .before(check_visibility_system)
+                        .set_name("check visibility ranges"));
+}
+
+void update_frusta(Query<Item<const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&, Mut<Frustum>>>
+                        cameras) {
+    // Bevy Projection::compute_frustum uses the explicit far distance even
+    // when the projection matrix is infinite reverse-Z.  The matrix alone
+    // cannot recover that finite culling bound.
+    for (auto&& [gtransform, projection, frustum] : cameras.iter()) {
+        const glm::mat4 clip_from_world = projection.get_projection_matrix() * glm::inverse(gtransform.matrix);
+        const glm::vec3 translation     = glm::vec3(gtransform.matrix[3]);
+        glm::vec3 backward               = glm::vec3(gtransform.matrix[2]);
+        const float backward_length      = glm::length(backward);
+        if (backward_length > 0.0f && std::isfinite(backward_length)) {
+            backward /= backward_length;
+        } else {
+            backward = glm::vec3(0.0f, 0.0f, 1.0f);
+        }
+        frustum.get_mut() = Frustum::from_clip_from_world_custom_far(clip_from_world, translation, backward,
+                                                                       projection.get_far());
     }
 }
 
 void CameraPlugin::attach(App& app) {
     // Camera projection updates include Bevy-compatible sub-camera cropping.
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
+    app.configure_sets(sets(VisibilitySystems::CalculateBounds));
+    app.configure_sets(sets(VisibilitySystems::UpdateFrusta));
+    app.configure_sets(sets(VisibilitySystems::VisibilityPropagate));
+    app.configure_sets(sets(VisibilitySystems::CheckVisibility));
+    app.configure_sets(sets(VisibilitySystems::MarkNewlyHidden));
     // Bevy: Visibility requires InheritedVisibility + ViewVisibility
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
-    app.add_systems(app::PostUpdate, into(visibility_propagate_system).set_name("visibility propagate"));
-    app.add_systems(app::PostUpdate, into(reset_view_visibility).set_name("reset view visibility"));
+    VisibilityRangePlugin{}.attach(app);
     app.add_systems(app::PostUpdate,
-                    into(update_frusta).after(CameraUpdateSystems::CameraUpdateSystem).set_name("update frusta"));
+                    into(visibility_propagate_system)
+                        .in_set(VisibilitySystems::VisibilityPropagate)
+                        .set_name("visibility propagate"));
+    app.add_systems(app::PostUpdate,
+                    into(reset_view_visibility).in_set(VisibilitySystems::CheckVisibility).set_name("reset view visibility"));
+    app.add_systems(app::PostUpdate,
+                    into(update_frusta)
+                        .after(CameraUpdateSystems::CameraUpdateSystem)
+                        .in_set(VisibilitySystems::UpdateFrusta)
+                        .set_name("update frusta"));
     app.add_systems(app::PostUpdate, into(check_visibility_system)
                                          .after(update_frusta)
                                          .after(visibility_propagate_system)
                                          .after(reset_view_visibility)
+                                         .in_set(VisibilitySystems::CheckVisibility)
                                          .set_name("check visibility"));
+    app.add_systems(app::PostUpdate,
+                    into(mark_newly_hidden_entities_invisible)
+                        .after(check_visibility_system)
+                        .in_set(VisibilitySystems::MarkNewlyHidden)
+                        .set_name("mark newly hidden entities invisible"));
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{});
     // ClearColor extraction to the render world is registered by the render

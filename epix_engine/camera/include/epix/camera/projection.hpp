@@ -10,6 +10,8 @@
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <memory>
+#include <optional>
 #include <utility>
 #include <variant>
 #endif
@@ -344,9 +346,87 @@ concept CameraProjection = requires(T t) {
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
 
-/** @brief Variant projection type wrapping orthographic or perspective. */
+/** @brief Type-erased custom camera projection (Bevy `CustomProjection`).
+ * The stored projection is cloned on copy, so copying a `Projection` retains
+ * ordinary component value semantics. */
+struct DynCameraProjection {
+    virtual ~DynCameraProjection() = default;
+    virtual std::shared_ptr<DynCameraProjection> clone() const = 0;
+    virtual glm::mat4 projection_matrix() const = 0;
+    virtual glm::mat4 projection_matrix_for_sub(const SubCameraView&) const = 0;
+    virtual std::array<glm::vec3, 8> frustum_corners() const = 0;
+    virtual float far_value() const = 0;
+    virtual float near_value() const = 0;
+    virtual void set_far_value(float) = 0;
+    virtual void set_near_value(float) = 0;
+    virtual void update_projection(float, float) = 0;
+};
+
+template <CameraProjection P>
+    requires std::copy_constructible<P>
+struct DynCameraProjectionImpl final : DynCameraProjection {
+    P value;
+    explicit DynCameraProjectionImpl(P projection) : value(std::move(projection)) {}
+    std::shared_ptr<DynCameraProjection> clone() const override {
+        return std::make_shared<DynCameraProjectionImpl>(value);
+    }
+    glm::mat4 projection_matrix() const override { return value.get_projection_matrix(); }
+    glm::mat4 projection_matrix_for_sub(const SubCameraView& sub_view) const override {
+        return value.get_projection_matrix_for_sub(sub_view);
+    }
+    std::array<glm::vec3, 8> frustum_corners() const override { return value.get_frustum_corners(); }
+    float far_value() const override { return value.get_far(); }
+    float near_value() const override { return value.get_near(); }
+    void set_far_value(float far_plane) override { value.set_far(far_plane); }
+    void set_near_value(float near_plane) override { value.set_near(near_plane); }
+    void update_projection(float width, float height) override { value.update(width, height); }
+};
+
+EPIX_EXPORT struct CustomProjection {
+   private:
+    std::shared_ptr<DynCameraProjection> dyn_projection;
+
+   public:
+    CustomProjection() : dyn_projection(std::make_shared<DynCameraProjectionImpl<PerspectiveProjection>>(PerspectiveProjection{})) {}
+    CustomProjection(const CustomProjection& other)
+        : dyn_projection(other.dyn_projection ? other.dyn_projection->clone() : nullptr) {}
+    CustomProjection(CustomProjection&&) noexcept = default;
+    CustomProjection& operator=(const CustomProjection& other) {
+        dyn_projection = other.dyn_projection ? other.dyn_projection->clone() : nullptr;
+        return *this;
+    }
+    CustomProjection& operator=(CustomProjection&&) noexcept = default;
+
+    template <CameraProjection P>
+        requires std::copy_constructible<P>
+    explicit CustomProjection(P projection) : dyn_projection(std::make_shared<DynCameraProjectionImpl<P>>(std::move(projection))) {}
+
+    template <CameraProjection P>
+    P* get() noexcept {
+        if (auto* impl = dynamic_cast<DynCameraProjectionImpl<P>*>(dyn_projection.get())) return &impl->value;
+        return nullptr;
+    }
+    template <CameraProjection P>
+    const P* get() const noexcept {
+        if (auto* impl = dynamic_cast<const DynCameraProjectionImpl<P>*>(dyn_projection.get())) return &impl->value;
+        return nullptr;
+    }
+    glm::mat4 get_projection_matrix() const { return dyn_projection->projection_matrix(); }
+    glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
+        return dyn_projection->projection_matrix_for_sub(sub_view);
+    }
+    std::array<glm::vec3, 8> get_frustum_corners() const { return dyn_projection->frustum_corners(); }
+    float get_far() const { return dyn_projection->far_value(); }
+    float get_near() const { return dyn_projection->near_value(); }
+    void set_far(float far_plane) { dyn_projection->set_far_value(far_plane); }
+    void set_near(float near_plane) { dyn_projection->set_near_value(near_plane); }
+    void update(float width, float height) { dyn_projection->update_projection(width, height); }
+};
+
+/** @brief Variant projection type wrapping orthographic, perspective, or a
+ * type-erased custom projection (Bevy `Projection`). */
 EPIX_EXPORT struct Projection {
-    std::variant<OrthographicProjection, PerspectiveProjection> projection;
+    std::variant<OrthographicProjection, PerspectiveProjection, CustomProjection> projection;
 
     Projection() : projection(PerspectiveProjection{}) {}
     Projection(const OrthographicProjection& ortho) : projection(ortho) {}
@@ -357,6 +437,13 @@ EPIX_EXPORT struct Projection {
 
     /** @brief Create a perspective projection. */
     static Projection perspective(const PerspectiveProjection& perspective = {}) { return Projection(perspective); }
+    template <CameraProjection P>
+        requires std::copy_constructible<P>
+    static Projection custom(P projection) {
+        Projection result;
+        result.projection = CustomProjection{std::move(projection)};
+        return result;
+    }
 
     /** @brief Get the projection matrix from the active variant. */
     glm::mat4 get_projection_matrix() const {
@@ -418,6 +505,17 @@ EPIX_EXPORT struct Projection {
             return ptr;
         }
         return std::nullopt;
+    }
+    /** Return the custom projection when its stored concrete type is `P`. */
+    template <CameraProjection P>
+    P* get_custom() noexcept {
+        if (auto* custom = std::get_if<CustomProjection>(&projection)) return custom->get<P>();
+        return nullptr;
+    }
+    template <CameraProjection P>
+    const P* get_custom() const noexcept {
+        if (auto* custom = std::get_if<CustomProjection>(&projection)) return custom->get<P>();
+        return nullptr;
     }
 };
 
