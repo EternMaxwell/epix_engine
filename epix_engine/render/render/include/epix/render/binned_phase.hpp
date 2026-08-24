@@ -152,6 +152,7 @@ template <typename BK>
 struct BinnedRenderPhaseBatchSet {
     BinnedRenderPhaseBatch first_batch;
     BK bin_key;
+    std::uint32_t batch_count = 0;
     std::uint32_t index = 0;
 };
 

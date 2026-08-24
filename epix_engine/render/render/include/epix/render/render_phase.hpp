@@ -690,11 +690,13 @@ void sort_phase_items(epix::ecs::Query<epix::ecs::Item<RenderPhase<P>&>> phases)
 }
 
 /** @brief A type usable as a binned phase item batch-set key (Bevy
- * PhaseItemBatchSetKey trait, render_phase/mod.rs:1662). Bevy requires
- * Clone+Send+Sync+PartialEq+Eq+Ord+Hash; C++ requires comparable semantics
- * via equality. */
+ * PhaseItemBatchSetKey trait, render_phase/mod.rs:1662). Bevy requires a
+ * stable ordering/hash and an `indexed()` discriminator, which selects the
+ * indexed or non-indexed indirect-command layout. */
 EPIX_EXPORT template <typename T>
-concept PhaseItemBatchSetKey = std::equality_comparable<T>;
+concept PhaseItemBatchSetKey = std::equality_comparable<T> && std::totally_ordered<T> && requires(const T key) {
+    { key.indexed() } -> std::convertible_to<bool>;
+};
 
 /** @brief Concept extending PhaseItem for binned (data-oriented) phases (Bevy
  * `BinnedPhaseItem`). Requires `BinKey`/`BatchSetKey` types plus `bin_key()`,

@@ -546,6 +546,25 @@ TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
 }
 
 namespace {
+struct TestBatchSetKey {
+    int value          = 0;
+    bool indexed_value = true;
+
+    TestBatchSetKey() = default;
+    TestBatchSetKey(int value, bool indexed = true) : value(value), indexed_value(indexed) {}
+    bool indexed() const noexcept { return indexed_value; }
+    auto operator<=>(const TestBatchSetKey&) const = default;
+};
+}  // namespace
+
+template <>
+struct std::hash<TestBatchSetKey> {
+    std::size_t operator()(const TestBatchSetKey& key) const noexcept {
+        return std::hash<int>{}(key.value) ^ (std::hash<bool>{}(key.indexed_value) << 1);
+    }
+};
+
+namespace {
 struct CpuBinnedBatchTestItem {
     Entity render_entity;
     sync_world::MainEntity main;
@@ -554,7 +573,7 @@ struct CpuBinnedBatchTestItem {
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
     phase::PhaseItemExtraIndex extra_index_value{};
     using BinKey      = int;
-    using BatchSetKey = int;
+    using BatchSetKey = TestBatchSetKey;
 
     Entity entity() const noexcept { return render_entity; }
     sync_world::MainEntity main_entity() const noexcept { return main; }
@@ -620,14 +639,14 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     batching::batch_and_prepare_binned_phase<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>(render_phase,
                                                                                                    instance_buffer, world);
 
-    const auto* bin = render_phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    const auto* bin = render_phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
     ASSERT_EQ(bin->batches.size(), 1u);
     EXPECT_EQ(bin->batches[0].representative_entity.entity, Entity::from_index(1));
     EXPECT_EQ(bin->batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(bin->batches[0].extra_index, phase::PhaseItemExtraIndex::None);
 
-    const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<int, int>{0, 1});
+    const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(unbatchable, nullptr);
     ASSERT_EQ(unbatchable->batches.size(), 1u);
     EXPECT_EQ(unbatchable->batches.at(Entity::from_index(3)).instance_range,
@@ -755,7 +774,7 @@ struct TestBinnedItem {
     phase::DrawFunctionId m_draw_function;
     int m_sort_key      = 0;
     int m_bin_key       = 0;
-    int m_batch_set_key = 0;
+    TestBatchSetKey m_batch_set_key{};
     bool m_batchable    = true;
 
     Entity entity() const { return m_entity; }
@@ -765,9 +784,9 @@ struct TestBinnedItem {
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
     phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
     using BinKey      = int;
-    using BatchSetKey = int;
+    using BatchSetKey = TestBatchSetKey;
     const int& bin_key() const { return m_bin_key; }
-    const int& batch_set_key() const { return m_batch_set_key; }
+    const TestBatchSetKey& batch_set_key() const { return m_batch_set_key; }
     bool batchable() const { return m_batchable; }
 };
 static_assert(epix::render::phase::BinnedPhaseItem<TestBinnedItem>);
@@ -788,7 +807,7 @@ TEST(BinnedRenderPhase, BinsByKey) {
     phase.add(0, 1, Entity::from_index(12), m3, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
 
-    auto* bin0 = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    auto* bin0 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin0, nullptr);
     EXPECT_EQ(bin0->size(), 2u);
     EXPECT_TRUE(bin0->contains(m1.entity));
@@ -796,7 +815,7 @@ TEST(BinnedRenderPhase, BinsByKey) {
     EXPECT_EQ(bin0->get(m1.entity)->index, 0u);
     EXPECT_EQ(bin0->get(m2.entity)->index, 1u);
 
-    auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 1});
+    auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(bin1, nullptr);
     EXPECT_EQ(bin1->size(), 1u);
     EXPECT_TRUE(bin1->contains(m3.entity));
@@ -825,10 +844,10 @@ TEST(BinnedRenderPhase, PreservesMultidrawableItemsOutsideDirectPreprocessing) {
     EXPECT_EQ(multidrawable_bin->size(), 1u);
     EXPECT_TRUE(multidrawable_bin->contains(m1.entity));
     EXPECT_TRUE(phase.batchable_meshes.empty());
-    auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(unbatchable, nullptr);
     EXPECT_EQ(unbatchable->entities.at(m2.entity), Entity::from_index(11));
-    auto* non_mesh = phase.non_mesh_items.get(phase::BinKeyPair<int, int>{0, 0});
+    auto* non_mesh = phase.non_mesh_items.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(non_mesh, nullptr);
     EXPECT_EQ(non_mesh->entities.at(m3.entity), Entity::from_index(12));
 }
@@ -847,7 +866,7 @@ TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
     direct.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
                phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
     EXPECT_TRUE(direct.multidrawable_meshes.empty());
-    auto* direct_bin = direct.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    auto* direct_bin = direct.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(direct_bin, nullptr);
     EXPECT_EQ(direct_bin->size(), 1u);
 
@@ -877,7 +896,7 @@ TEST(BinnedRenderPhase, SweepRemovesUnqueued) {
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
     phase.sweep_old_entities();
 
-    auto* bin = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0});
+    auto* bin = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
     EXPECT_EQ(bin->size(), 1u);
     EXPECT_TRUE(bin->contains(e1.entity));
@@ -896,8 +915,8 @@ TEST(BinnedRenderPhase, ChangedBinMoved) {
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
     phase.sweep_old_entities();
 
-    EXPECT_EQ(phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 0}), nullptr);
-    auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<int, int>{0, 1});
+    EXPECT_EQ(phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0}), nullptr);
+    auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(bin1, nullptr);
     EXPECT_EQ(bin1->size(), 1u);
 }
@@ -1799,7 +1818,7 @@ struct RenderableBinnedItem {
     Entity m_entity;
     phase::DrawFunctionId m_draw_function;
     int m_bin_key       = 0;
-    int m_batch_set_key = 0;
+    TestBatchSetKey m_batch_set_key{};
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
 
     Entity entity() const { return m_entity; }
@@ -1808,12 +1827,12 @@ struct RenderableBinnedItem {
     phase::DrawFunctionId draw_function() const { return m_draw_function; }
     phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
     using BinKey      = int;
-    using BatchSetKey = int;
+    using BatchSetKey = TestBatchSetKey;
     const int& bin_key() const { return m_bin_key; }
-    const int& batch_set_key() const { return m_batch_set_key; }
+    const TestBatchSetKey& batch_set_key() const { return m_batch_set_key; }
     bool batchable() const { return true; }
 
-    static RenderableBinnedItem create(int batch_set_key,
+    static RenderableBinnedItem create(TestBatchSetKey batch_set_key,
                                        int bin_key,
                                        Entity representative,
                                        std::uint32_t instance_start,
@@ -2253,12 +2272,13 @@ TEST(RenderDebugFlags, BitflagSemantics) {
     EXPECT_FALSE(plugin.debug_flags.allow_copies_from_indirect_parameters());
 }
 
-// PhaseItemBatchSetKey (Bevy render_phase/mod.rs:1662) is satisfied by
-// comparable types; BinnedPhaseItem requires it on BatchSetKey.
+// PhaseItemBatchSetKey (Bevy render_phase/mod.rs:1662) requires an indexed
+// discriminator in addition to ordering/equality.
 TEST(PhaseItemBatchSetKey, ConceptSatisfaction) {
-    EXPECT_TRUE(phase::PhaseItemBatchSetKey<int>);
-    EXPECT_TRUE(phase::PhaseItemBatchSetKey<std::uint64_t>);
-    EXPECT_TRUE(phase::PhaseItemBatchSetKey<std::string>);
+    EXPECT_TRUE(phase::PhaseItemBatchSetKey<TestBatchSetKey>);
+    EXPECT_FALSE(phase::PhaseItemBatchSetKey<int>);
+    EXPECT_FALSE(phase::PhaseItemBatchSetKey<std::uint64_t>);
+    EXPECT_FALSE(phase::PhaseItemBatchSetKey<std::string>);
 
     struct NotComparable {};
     EXPECT_FALSE(phase::PhaseItemBatchSetKey<NotComparable>);
