@@ -492,7 +492,19 @@ class BinnedRenderPhase {
             auto&& draw_functions = world.resource<DrawFunctions<BPI>>();
             draw_functions.prepare(world);
         }
-        render_batchable_meshes(render_pass, world, view);
+        // Preparation writes the mode-specific batch-set representation. As in
+        // Bevy, this render path consumes only that representation: an empty
+        // prepared set means no batchable mesh was prepared this frame.
+        if (std::holds_alternative<std::vector<std::vector<BinnedRenderPhaseBatch>>>(batch_sets)) {
+            const auto& dynamic = std::get<0>(batch_sets);
+            render_dynamic_uniform_batches(render_pass, world, view, dynamic);
+        } else if (std::holds_alternative<std::vector<BinnedRenderPhaseBatch>>(batch_sets)) {
+            const auto& direct = std::get<1>(batch_sets);
+            render_direct_batches(render_pass, world, view, direct);
+        } else {
+            const auto& multidraw = std::get<2>(batch_sets);
+            render_multidraw_batches(render_pass, world, view, multidraw);
+        }
         render_unbatchable_meshes(render_pass, world, view);
         render_non_meshes(render_pass, world, view);
     }
@@ -632,25 +644,60 @@ class BinnedRenderPhase {
         }
     }
 
-    /** @brief Render each batchable bin with a single batched item (Bevy
-     * render_batchable_meshes; storage-buffer path: one item per bin). */
-    void render_batchable_meshes(const wgpu::RenderPassEncoder& render_pass,
-                                 const epix::ecs::World& world,
-                                 epix::ecs::Entity view) const {
+    void render_dynamic_uniform_batches(const wgpu::RenderPassEncoder& render_pass,
+                                        const epix::ecs::World& world,
+                                        epix::ecs::Entity view,
+                                        const std::vector<std::vector<BinnedRenderPhaseBatch>>& batches) const {
         if constexpr (!has_item_factory) return;
-        for (auto&& [key, bin] : batchable_meshes.iter()) {
-            if (bin.empty()) continue;
-            if (bin.batches.empty()) {
-                const auto representative = sync_world::MainEntity{bin.iter().begin()->first};
+        auto key = batchable_meshes.iter().begin();
+        for (const auto& bin_batches : batches) {
+            if (key == batchable_meshes.iter().end()) break;
+            for (const auto& batch : bin_batches) {
                 draw_item(render_pass, world, view,
-                          make_item(key.first, key.second, representative, {0u, static_cast<std::uint32_t>(bin.size())},
-                                    PhaseItemExtraIndex::None));
-                continue;
+                          make_item(key->first.first, key->first.second, batch.representative_entity,
+                                    batch.instance_range, batch.extra_index));
             }
-            for (const auto& batch : bin.batches) {
+            ++key;
+        }
+    }
+
+    void render_direct_batches(const wgpu::RenderPassEncoder& render_pass,
+                               const epix::ecs::World& world,
+                               epix::ecs::Entity view,
+                               const std::vector<BinnedRenderPhaseBatch>& batches) const {
+        if constexpr (!has_item_factory) return;
+        auto key = batchable_meshes.iter().begin();
+        for (const auto& batch : batches) {
+            if (key == batchable_meshes.iter().end()) break;
+            draw_item(render_pass, world, view,
+                      make_item(key->first.first, key->first.second, batch.representative_entity,
+                                batch.instance_range, batch.extra_index));
+            ++key;
+        }
+    }
+
+    void render_multidraw_batches(const wgpu::RenderPassEncoder& render_pass,
+                                  const epix::ecs::World& world,
+                                  epix::ecs::Entity view,
+                                  const std::vector<BinnedRenderPhaseBatchSet<BinKey>>& batches) const {
+        if constexpr (!has_item_factory) return;
+        auto multidraw_key = multidrawable_meshes.iter().begin();
+        auto batchable_key = batchable_meshes.iter().begin();
+        for (const auto& batch_set : batches) {
+            if (multidraw_key != multidrawable_meshes.iter().end()) {
                 draw_item(render_pass, world, view,
-                          make_item(key.first, key.second, batch.representative_entity, batch.instance_range,
-                                    batch.extra_index));
+                          make_item(multidraw_key->first, batch_set.bin_key,
+                                    batch_set.first_batch.representative_entity,
+                                    batch_set.first_batch.instance_range, batch_set.first_batch.extra_index));
+                ++multidraw_key;
+            } else if (batchable_key != batchable_meshes.iter().end()) {
+                draw_item(render_pass, world, view,
+                          make_item(batchable_key->first.first, batch_set.bin_key,
+                                    batch_set.first_batch.representative_entity,
+                                    batch_set.first_batch.instance_range, batch_set.first_batch.extra_index));
+                ++batchable_key;
+            } else {
+                break;
             }
         }
     }
@@ -665,13 +712,10 @@ class BinnedRenderPhase {
             for (auto&& [main_entity, render_entity] : unbatchable.entities) {
                 (void)render_entity;
                 const auto prepared = unbatchable.batches.find(main_entity);
-                const auto range = prepared == unbatchable.batches.end()
-                                       ? std::pair<std::uint32_t, std::uint32_t>{0u, 1u}
-                                       : prepared->second.instance_range;
-                const auto extra = prepared == unbatchable.batches.end() ? PhaseItemExtraIndex::None
-                                                                            : prepared->second.extra_index;
+                if (prepared == unbatchable.batches.end()) continue;
                 draw_item(render_pass, world, view,
-                          make_item(key.first, key.second, sync_world::MainEntity{main_entity}, range, extra));
+                          make_item(key.first, key.second, sync_world::MainEntity{main_entity},
+                                    prepared->second.instance_range, prepared->second.extra_index));
             }
         }
     }

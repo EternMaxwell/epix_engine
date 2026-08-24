@@ -132,7 +132,7 @@ EPIX_EXPORT struct PreprocessWorkItemBuffers {
                     if (buffers.gpu_occlusion_culling) {
                         auto& late = indexed ? buffers.gpu_occlusion_culling->late_indexed
                                              : buffers.gpu_occlusion_culling->late_non_indexed;
-                        late.push(PreprocessWorkItem{});
+                        late.add();
                     }
                 }
             },
@@ -260,7 +260,7 @@ struct UntypedPhaseBatchedInstanceBuffers {
         }
     }
     void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
-        data_buffer.write_buffer(device, queue);
+        data_buffer.write_buffer(device);
         late_indexed_indirect_parameters.write_buffer(device, queue);
         late_non_indexed_indirect_parameters.write_buffer(device, queue);
         for (auto& [view, work_items] : work_item_buffers) {
@@ -274,8 +274,8 @@ struct UntypedPhaseBatchedInstanceBuffers {
                         streams.indexed.write_buffer(device, queue);
                         streams.non_indexed.write_buffer(device, queue);
                         if (streams.gpu_occlusion_culling) {
-                            streams.gpu_occlusion_culling->late_indexed.write_buffer(device, queue);
-                            streams.gpu_occlusion_culling->late_non_indexed.write_buffer(device, queue);
+                            streams.gpu_occlusion_culling->late_indexed.write_buffer(device);
+                            streams.gpu_occlusion_culling->late_non_indexed.write_buffer(device);
                         }
                     }
                 },
@@ -498,8 +498,7 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
  * renderer owns the preprocessing shader and input-uniform layout.
  */
 template <phase::BinnedPhaseItem BPI, typename Adapter>
-    requires(GetFullBatchDataImpl<Adapter> &&
-             std::default_initializable<typename GetBatchData<Adapter>::BufferData>)
+    requires(GetFullBatchDataImpl<Adapter>)
 void batch_and_prepare_gpu_binned_phase(
     phase::BinnedRenderPhase<BPI>& render_phase,
     UntypedPhaseBatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData>& phase_buffers,
@@ -517,9 +516,7 @@ void batch_and_prepare_gpu_binned_phase(
                            phase_buffers.late_non_indexed_indirect_parameters);
 
     const auto reserve_output = [&](std::uint32_t count) {
-        const auto first = static_cast<std::uint32_t>(output_data.values.size());
-        output_data.values.resize(output_data.values.size() + count);
-        return first;
+        return static_cast<std::uint32_t>(output_data.add_multiple(count));
     };
     const auto append_direct_batch = [&](const phase::BinnedRenderPhaseBatch& batch) {
         if (auto* direct = std::get_if<1>(&render_phase.batch_sets)) {
@@ -540,7 +537,7 @@ void batch_and_prepare_gpu_binned_phase(
                     indexed, static_cast<std::uint32_t>(bins.size()));
                 const std::uint32_t batch_set_index =
                     indirect_parameters.next_batch_set_index(indexed).value_or(0);
-                const std::uint32_t output_base = static_cast<std::uint32_t>(output_data.values.size());
+                const std::uint32_t output_base = static_cast<std::uint32_t>(output_data.len());
                 const auto first_bin = bins.iter().begin();
                 const auto first_entity = first_bin->second.iter().begin()->first;
                 const std::uint32_t first_count = static_cast<std::uint32_t>(first_bin->second.size());
@@ -804,6 +801,10 @@ void batch_and_prepare_binned_phase(
     phase::BinnedRenderPhase<BPI>& render_phase,
     render_resource::GpuArrayBuffer<typename GetBatchData<Adapter>::BufferData>& instance_buffer,
     typename GetBatchData<Adapter>::Param& batch_param) {
+    auto* dynamic_batch_sets = std::get_if<0>(&render_phase.batch_sets);
+    if (!dynamic_batch_sets) {
+        spdlog::error("[render] Dynamic uniform batch sets are required when GPU preprocessing is disabled");
+    }
     for (auto&& [key, bin] : render_phase.batchable_meshes.iter()) {
         (void)key;
         bin.clear_batches();
@@ -826,6 +827,7 @@ void batch_and_prepare_binned_phase(
             }
             bin.batches.back().instance_range.second = index.index + 1;
         }
+        if (dynamic_batch_sets) dynamic_batch_sets->push_back(bin.batches);
     }
 
     for (auto&& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {

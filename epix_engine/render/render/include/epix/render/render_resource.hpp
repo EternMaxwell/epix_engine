@@ -332,9 +332,57 @@ struct BufferVec {
 /** @brief Alias kept for API parity: raw byte-vec buffer (Bevy `RawBufferVec<T>`). */
 template <typename T>
 using RawBufferVec = BufferVec<T>;
-/** @brief Alias for uninitialized-data buffers (Bevy `UninitBufferVec<T>`). */
+
+/**
+ * @brief GPU-only allocation vector (Bevy `UninitBufferVec<T>`).
+ *
+ * Unlike `BufferVec`, this deliberately owns no CPU `T` values. GPU
+ * preprocessing reserves output slots and the compute pass writes them, so
+ * requiring `T` to be default constructible (or uploading zero-initialized
+ * placeholder values) is both unnecessary and contrary to Bevy's contract.
+ */
 template <typename T>
-using UninitBufferVec = BufferVec<T>;
+struct UninitBufferVec {
+    /** @brief GPU buffer, materialized lazily by `write_buffer`. */
+    wgpu::Buffer buffer;
+    /** @brief Number of reserved elements for this frame. */
+    std::size_t length = 0;
+    /** @brief Allocated element capacity. */
+    std::size_t capacity = 0;
+    /** @brief Required usages excluding the internally added copy-destination bit. */
+    wgpu::BufferUsage buffer_usage = wgpu::BufferUsage::eStorage;
+    /** @brief Debug label used for materialized buffers. */
+    std::string label = "UninitBufferVec";
+
+    explicit UninitBufferVec(wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage) : buffer_usage(usage) {}
+
+    /** @brief Reserve one output element and return its index. */
+    std::size_t add() noexcept { return add_multiple(1); }
+    /** @brief Reserve `count` output elements and return the first index. */
+    std::size_t add_multiple(std::size_t count) noexcept {
+        const auto index = length;
+        length += count;
+        return index;
+    }
+    std::size_t len() const noexcept { return length; }
+    bool is_empty() const noexcept { return length == 0; }
+    void clear() noexcept { length = 0; }
+
+    /** @brief Ensure GPU storage for at least `requested_capacity` elements. */
+    void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
+        if (requested_capacity <= capacity && buffer) return;
+        capacity = requested_capacity;
+        buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                         .setLabel(label.c_str())
+                                         .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                         .setSize(capacity * sizeof(T)));
+    }
+
+    /** @brief Materialize storage for all slots reserved this frame. */
+    void write_buffer(const wgpu::Device& device) {
+        if (!is_empty()) reserve(length, device);
+    }
+};
 
 /** @brief Concept for types that can live in a `GpuArrayBuffer` (Bevy `GpuArrayBufferable`). */
 template <typename T>

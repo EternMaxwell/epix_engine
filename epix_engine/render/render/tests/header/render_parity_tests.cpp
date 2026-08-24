@@ -587,6 +587,14 @@ struct CpuBinnedBatchTestItem {
     bool batchable() const noexcept { return true; }
 };
 struct CpuBinnedBatchTestAdapter {};
+struct GpuWrittenBinnedBatchData {
+    std::uint32_t value;
+    GpuWrittenBinnedBatchData() = delete;
+    explicit GpuWrittenBinnedBatchData(std::uint32_t value) : value(value) {}
+};
+static_assert(render_resource::GpuArrayBufferable<GpuWrittenBinnedBatchData>);
+static_assert(!std::default_initializable<GpuWrittenBinnedBatchData>);
+struct GpuWrittenBinnedBatchTestAdapter {};
 }  // namespace
 
 template <>
@@ -604,6 +612,33 @@ struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
     using BufferInputData = std::uint32_t;
     std::optional<std::uint32_t> get_binned_batch_data(World&, sync_world::MainEntity entity) const {
         return entity.entity.index;
+    }
+    std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
+        World&, sync_world::MainEntity entity) const {
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, entity.entity.index};
+    }
+    std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
+        return entity.entity.index;
+    }
+    void write_batch_indirect_parameters_metadata(bool, std::uint32_t, std::optional<std::uint32_t>,
+                                                  batching::UntypedPhaseIndirectParametersBuffers&,
+                                                  std::uint32_t) const {}
+};
+template <>
+struct epix::render::batching::GetBatchData<GpuWrittenBinnedBatchTestAdapter> {
+    using Param       = World&;
+    using CompareData = std::uint32_t;
+    using BufferData  = GpuWrittenBinnedBatchData;
+    std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
+        World&, std::pair<Entity, sync_world::MainEntity>) const {
+        return std::nullopt;
+    }
+};
+template <>
+struct epix::render::batching::GetFullBatchData<GpuWrittenBinnedBatchTestAdapter> {
+    using BufferInputData = std::uint32_t;
+    std::optional<GpuWrittenBinnedBatchData> get_binned_batch_data(World&, sync_world::MainEntity entity) const {
+        return GpuWrittenBinnedBatchData{entity.entity.index};
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         World&, sync_world::MainEntity entity) const {
@@ -645,6 +680,10 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     EXPECT_EQ(bin->batches[0].representative_entity.entity, Entity::from_index(1));
     EXPECT_EQ(bin->batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(bin->batches[0].extra_index, phase::PhaseItemExtraIndex::None);
+    const auto& batch_sets = std::get<0>(render_phase.batch_sets);
+    ASSERT_EQ(batch_sets.size(), 1u);
+    ASSERT_EQ(batch_sets[0].size(), 1u);
+    EXPECT_EQ(batch_sets[0][0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
 
     const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(unbatchable, nullptr);
@@ -766,6 +805,25 @@ TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
     EXPECT_EQ(render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})->batches.at(Entity::from_index(3)).instance_range,
               (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
     EXPECT_TRUE(indirect.indexed_data.is_empty());
+}
+
+TEST(GpuBinnedPreprocessing, ReservesGpuOutputForNonDefaultConstructibleData) {
+    phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{
+        batching::GpuPreprocessingMode::PreprocessingOnly};
+    const Tick tick{1};
+    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+                     phase::InputUniformIndex{3}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
+
+    batching::UntypedPhaseBatchedInstanceBuffers<GpuWrittenBinnedBatchData> phase_buffers;
+    batching::UntypedPhaseIndirectParametersBuffers indirect;
+    World world(WorldId(107));
+    const view::RetainedViewEntity view{sync_world::MainEntity{Entity::from_index(9)}, std::nullopt, 0};
+    batching::batch_and_prepare_gpu_binned_phase<CpuBinnedBatchTestItem, GpuWrittenBinnedBatchTestAdapter>(
+        render_phase, phase_buffers, indirect, view, true, false, world);
+
+    EXPECT_EQ(phase_buffers.data_buffer.len(), 1u);
+    EXPECT_EQ(phase_buffers.data_buffer.capacity, 0u);
+    EXPECT_FALSE(phase_buffers.data_buffer.buffer);
 }
 
 TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
@@ -1955,6 +2013,16 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
     phase.add(0, 13, Entity{5}, sync_world::MainEntity{Entity{5}}, phase::InputUniformIndex{4},
               phase::BinnedRenderPhaseType::NonMesh, tick);
 
+    // Binned rendering consumes the mode-owned prepared representation. The
+    // CPU batcher would normally populate this before the render node runs.
+    std::get<0>(phase.batch_sets) = {
+        {{.representative_entity = sync_world::MainEntity{Entity{1}}, .instance_range = {0, 2}}},
+        {{.representative_entity = sync_world::MainEntity{Entity{3}}, .instance_range = {2, 3}}},
+    };
+    phase.unbatchable_meshes.get({TestBatchSetKey{0}, 11})->batches.emplace(
+        Entity{4}, phase::BinnedRenderPhaseBatch{.representative_entity = sync_world::MainEntity{Entity{4}},
+                                                  .instance_range = {3, 4}});
+
     // One draw call per batchable BIN (2 bins) + one per unbatchable entity
     // + one per non-mesh entity = 4 (Bevy storage-buffer path).
     wgpu::RenderPassEncoder null_pass{};
@@ -1963,6 +2031,62 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
     // The last call was the non-mesh item (bin key 13, range 1).
     EXPECT_EQ(CountingBinnedDraw::last_bin_key, 13);
     EXPECT_EQ(CountingBinnedDraw::last_range_end, 1);
+}
+
+TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
+    epix::ecs::World world(WorldId(106));
+    phase::DrawFunctions<RenderableBinnedItem> functions;
+    functions.template add<CountingBinnedDraw>();
+    world.insert_resource(std::move(functions));
+    const auto tick = world.change_tick();
+    wgpu::RenderPassEncoder null_pass{};
+
+    CountingBinnedDraw::calls = 0;
+    phase::BinnedRenderPhase<RenderableBinnedItem> direct{batching::GpuPreprocessingMode::PreprocessingOnly};
+    direct.add(0, 7, Entity{1}, sync_world::MainEntity{Entity{1}}, phase::InputUniformIndex{0},
+               phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    direct.add(1, 9, Entity{2}, sync_world::MainEntity{Entity{2}}, phase::InputUniformIndex{1},
+               phase::BinnedRenderPhaseType::BatchableMesh, tick);
+    std::get<1>(direct.batch_sets) = {
+        {.representative_entity = sync_world::MainEntity{Entity{1}}, .instance_range = {4, 6}},
+        {.representative_entity = sync_world::MainEntity{Entity{2}}, .instance_range = {6, 9}},
+    };
+    direct.render(null_pass, world, Entity{100});
+    EXPECT_EQ(CountingBinnedDraw::calls, 2);
+    EXPECT_EQ(CountingBinnedDraw::last_bin_key, 9);
+    EXPECT_EQ(CountingBinnedDraw::last_range_end, 9);
+
+    CountingBinnedDraw::calls = 0;
+    phase::BinnedRenderPhase<RenderableBinnedItem> multidraw{batching::GpuPreprocessingMode::Culling};
+    multidraw.add(0, 3, Entity{3}, sync_world::MainEntity{Entity{3}}, phase::InputUniformIndex{2},
+                  phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+    std::get<2>(multidraw.batch_sets).push_back({
+        .first_batch = {.representative_entity = sync_world::MainEntity{Entity{3}},
+                        .instance_range = {9, 12},
+                        .extra_index = phase::PhaseItemExtraIndex::indirect_parameters_range(4, 5, 0)},
+        .bin_key = 3,
+        .batch_count = 1,
+        .index = 0,
+    });
+    multidraw.render(null_pass, world, Entity{100});
+    EXPECT_EQ(CountingBinnedDraw::calls, 1);
+    EXPECT_EQ(CountingBinnedDraw::last_bin_key, 3);
+    EXPECT_EQ(CountingBinnedDraw::last_range_end, 12);
+}
+
+TEST(BinnedRenderPhase, EmptyPreparedSetDoesNotFallbackToRawBins) {
+    epix::ecs::World world(WorldId(108));
+    phase::DrawFunctions<RenderableBinnedItem> functions;
+    functions.template add<CountingBinnedDraw>();
+    world.insert_resource(std::move(functions));
+    const auto tick = world.change_tick();
+    phase::BinnedRenderPhase<RenderableBinnedItem> phase;
+    phase.add(0, 7, Entity{1}, sync_world::MainEntity{Entity{1}}, phase::InputUniformIndex{0},
+              phase::BinnedRenderPhaseType::BatchableMesh, tick);
+
+    CountingBinnedDraw::calls = 0;
+    phase.render(wgpu::RenderPassEncoder{}, world, Entity{100});
+    EXPECT_EQ(CountingBinnedDraw::calls, 0);
 }
 
 namespace {
@@ -2387,6 +2511,30 @@ TEST(BufferVec, WriteBufferRangeErrors) {
     auto uninit = vec.write_buffer_range(wgpu::Queue{}, {0, 1});
     EXPECT_FALSE(uninit.has_value());
     EXPECT_EQ(uninit.error(), render_resource::WriteBufferRangeError::BufferNotInitialized);
+}
+
+// UninitBufferVec reserves GPU-written output slots without constructing CPU
+// values (Bevy buffer_vec.rs:472-552). This is essential for preprocessing
+// payloads that intentionally have no default constructor.
+TEST(UninitBufferVec, ReservesSlotsWithoutCpuValues) {
+    struct GpuWrittenOnly {
+        std::uint32_t value;
+        GpuWrittenOnly() = delete;
+        explicit GpuWrittenOnly(std::uint32_t value) : value(value) {}
+    };
+    static_assert(!std::default_initializable<GpuWrittenOnly>);
+
+    render_resource::UninitBufferVec<GpuWrittenOnly> vec{wgpu::BufferUsage::eStorage};
+    EXPECT_TRUE(vec.is_empty());
+    EXPECT_EQ(vec.add_multiple(3), 0u);
+    EXPECT_EQ(vec.add(), 3u);
+    EXPECT_EQ(vec.len(), 4u);
+    EXPECT_EQ(vec.capacity, 0u);
+    EXPECT_FALSE(vec.buffer);
+
+    vec.clear();
+    EXPECT_TRUE(vec.is_empty());
+    EXPECT_EQ(vec.len(), 0u);
 }
 
 // RenderPipelineDescriptor::fragment_mut matches Bevy pipeline.rs:136-138:
