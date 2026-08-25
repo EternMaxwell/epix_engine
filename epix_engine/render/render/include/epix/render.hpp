@@ -70,18 +70,66 @@ EPIX_EXPORT enum class WgpuSettingsPriority {
  * are recognized; any other value has no effect. */
 EPIX_EXPORT std::optional<WgpuSettingsPriority> settings_priority_from_env() noexcept;
 
+/** @brief Backend bitmask used by automatic renderer creation (wgpu
+ * `Backends`). It intentionally preserves every backend selected by callers;
+ * the current Slang/Vulkan workaround is applied privately when the renderer
+ * creates its native instance and adapter. */
+EPIX_EXPORT struct Backends {
+    enum Bit : std::uint32_t {
+        Noop           = 1u << 0,
+        Vulkan         = 1u << 1,
+        Metal          = 1u << 2,
+        Dx12           = 1u << 3,
+        Gl             = 1u << 4,
+        BrowserWebGpu  = 1u << 5,
+    };
+
+    constexpr Backends() = default;
+    constexpr Backends(Bit bit) : bits_(static_cast<std::uint32_t>(bit)) {}
+    constexpr explicit Backends(std::uint32_t bits) : bits_(bits) {}
+
+    [[nodiscard]] static constexpr Backends empty() noexcept { return {}; }
+    [[nodiscard]] static constexpr Backends all() noexcept {
+        return Backends{static_cast<std::uint32_t>(Noop) | static_cast<std::uint32_t>(Vulkan) |
+                        static_cast<std::uint32_t>(Metal) | static_cast<std::uint32_t>(Dx12) |
+                        static_cast<std::uint32_t>(Gl) | static_cast<std::uint32_t>(BrowserWebGpu)};
+    }
+    [[nodiscard]] static constexpr Backends primary() noexcept {
+        return Backends{static_cast<std::uint32_t>(Vulkan) | static_cast<std::uint32_t>(Metal) |
+                        static_cast<std::uint32_t>(Dx12) | static_cast<std::uint32_t>(BrowserWebGpu)};
+    }
+    [[nodiscard]] static constexpr Backends secondary() noexcept { return Backends{Gl}; }
+    [[nodiscard]] constexpr std::uint32_t bits() const noexcept { return bits_; }
+    [[nodiscard]] constexpr bool is_empty() const noexcept { return bits_ == 0; }
+    [[nodiscard]] constexpr bool contains(Backends other) const noexcept {
+        return (bits_ & other.bits_) == other.bits_;
+    }
+    [[nodiscard]] static Backends from_comma_list(std::string_view) noexcept;
+    [[nodiscard]] static std::optional<Backends> from_env() noexcept;
+
+    friend constexpr bool operator==(Backends, Backends) = default;
+    friend constexpr Backends operator|(Backends lhs, Backends rhs) noexcept {
+        return Backends{lhs.bits_ | rhs.bits_};
+    }
+    friend constexpr Backends operator|(Backends lhs, Bit rhs) noexcept { return lhs | Backends{rhs}; }
+    friend constexpr Backends operator|(Bit lhs, Backends rhs) noexcept { return Backends{lhs} | rhs; }
+
+   private:
+    std::uint32_t bits_ = 0;
+};
+
 /**
  * @brief Renderer configuration for adapter/device creation (Bevy
- * WgpuSettings; the subset relevant to adapter selection). The env vars
+ * WgpuSettings). The env vars
  * WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO are honored by
  * apply_env_overrides like Bevy's settings_priority_from_env.
  */
 EPIX_EXPORT struct WgpuSettings {
     /** @brief Optional debug label for the render device. */
     std::optional<std::string> device_label;
-    /** @brief Preferred backend. An empty value lets wgpu select from all
-     * available backends, matching Bevy's default `Backends::all()`. */
-    std::optional<wgpu::BackendType> backends;
+    /** @brief Backends enabled for instance creation (Bevy default
+     * `Some(Backends::all())`). */
+    std::optional<Backends> backends = Backends::all();
     /** @brief Power preference (Bevy default HighPerformance). */
     wgpu::PowerPreference power_preference = wgpu::PowerPreference::eHighPerformance;
     /** @brief Feature/limit priority (Bevy default Functionality). */
@@ -116,19 +164,7 @@ EPIX_EXPORT struct WgpuSettings {
      * settings_priority_from_env / PowerPreference::from_env / Backends
      * from_env). */
     void apply_env_overrides() {
-        if (const char* backend = std::getenv("WGPU_BACKEND")) {
-            std::string_view b(backend);
-            if (b == "vulkan" || b == "Vulkan" || b == "VK")
-                backends = wgpu::BackendType::eVulkan;
-            else if (b == "dx12" || b == "DX12" || b == "D3D12")
-                backends = wgpu::BackendType::eD3D12;
-            else if (b == "metal" || b == "METAL")
-                backends = wgpu::BackendType::eMetal;
-            else if (b == "gl" || b == "GL" || b == "opengl")
-                backends = wgpu::BackendType::eOpenGL;
-            else if (b == "wgpu" || b == "browser" || b == "WGPU")
-                backends = wgpu::BackendType::eWebGPU;
-        }
+        if (const auto configured_backends = Backends::from_env()) backends = *configured_backends;
         if (const char* power = std::getenv("WGPU_POWER_PREF")) {
             std::string_view p(power);
             if (p == "low" || p == "Low")

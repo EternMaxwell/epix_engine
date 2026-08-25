@@ -84,6 +84,34 @@ std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() n
     return std::nullopt;
 }
 
+Backends Backends::from_comma_list(std::string_view value) noexcept {
+    Backends result;
+    while (!value.empty()) {
+        const auto comma = value.find(',');
+        auto name        = value.substr(0, comma);
+        while (!name.empty() && std::isspace(static_cast<unsigned char>(name.front()))) name.remove_prefix(1);
+        while (!name.empty() && std::isspace(static_cast<unsigned char>(name.back()))) name.remove_suffix(1);
+        std::string normalized(name);
+        std::ranges::transform(normalized, normalized.begin(),
+                               [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+        if (normalized == "noop") result = result | Noop;
+        else if (normalized == "vulkan" || normalized == "vk") result = result | Vulkan;
+        else if (normalized == "metal" || normalized == "mtl") result = result | Metal;
+        else if (normalized == "dx12" || normalized == "d3d12") result = result | Dx12;
+        else if (normalized == "opengl" || normalized == "gles" || normalized == "gl") result = result | Gl;
+        else if (normalized == "webgpu") result = result | BrowserWebGpu;
+        if (comma == std::string_view::npos) break;
+        value.remove_prefix(comma + 1);
+    }
+    return result;
+}
+
+std::optional<Backends> Backends::from_env() noexcept {
+    const char* value = std::getenv("WGPU_BACKEND");
+    if (!value) return std::nullopt;
+    return from_comma_list(value);
+}
+
 std::optional<std::uint32_t> epix::render::get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept {
 #if defined(__ANDROID__)
     constexpr std::string_view prefix = "Adreno (TM) ";

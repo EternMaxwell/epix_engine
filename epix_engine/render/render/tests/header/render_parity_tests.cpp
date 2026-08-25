@@ -2454,7 +2454,8 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     WgpuSettings settings;
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::Functionality);
-    EXPECT_FALSE(settings.backends.has_value());
+    ASSERT_TRUE(settings.backends.has_value());
+    EXPECT_EQ(*settings.backends, Backends::all());
     EXPECT_FALSE(settings.force_fallback_adapter);
     ASSERT_EQ(settings.features.size(), 1u);
     EXPECT_EQ(settings.features.front(), wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures));
@@ -2469,16 +2470,16 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     // No env vars set: overrides leave defaults untouched.
     settings.apply_env_overrides();
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
-    EXPECT_FALSE(settings.backends.has_value());
+    EXPECT_EQ(*settings.backends, Backends::all());
 
     // With env vars set, values are picked up. Restore with the empty string
     // (never nullptr - _putenv_s(nullptr) is a crash on MSVC).
-    _putenv_s("WGPU_BACKEND", "vulkan");
+    _putenv_s("WGPU_BACKEND", "vulkan, dx12, gl");
     _putenv_s("WGPU_POWER_PREF", "low");
     _putenv_s("WGPU_SETTINGS_PRIO", "WeBgL2");
     settings.apply_env_overrides();
     EXPECT_TRUE(settings.backends.has_value());
-    EXPECT_EQ(*settings.backends, wgpu::BackendType::eVulkan);
+    EXPECT_EQ(*settings.backends, Backends::Vulkan | Backends::Dx12 | Backends::Gl);
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eLowPower);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::WebGL2);
 
