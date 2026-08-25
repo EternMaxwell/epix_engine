@@ -15,6 +15,7 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 #endif
 
 #include <epix/render/graph/context.hpp>
@@ -23,6 +24,16 @@
 #include <epix/render/graph/node.hpp>
 #include <epix/render/graph/slot.hpp>
 namespace epix::render::graph {
+/** @brief Internal commands recorded after the render graph and before its
+ * command buffers are submitted.
+ *
+ * Render extensions use this to append work which must observe the finished
+ * graph output (for example, screenshot readback).  Keeping the hook in the
+ * render module avoids making the graph runner depend on optional plugins. */
+struct RenderGraphFinalizers {
+    std::vector<std::function<void(epix::ecs::World&, wgpu::CommandEncoder&)>> callbacks;
+};
+
 /** @brief Directed acyclic graph of render nodes.
  *
  * Nodes are connected by node edges (execution order) and slot edges

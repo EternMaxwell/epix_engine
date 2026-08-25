@@ -43,6 +43,12 @@ void epix::render::render_system(World& world) {
     // Bevy render_system (renderer/mod.rs:82-89): after the graph runs, record
     // the readback copy commands into the same encoder before submitting.
     const auto result = graph::RenderGraphRunner::run(graph, device, queue, world, [&world](wgpu::CommandEncoder& encoder) {
+        // Optional render extensions append their work after graph output is
+        // complete.  Readback copies deliberately run last, so extensions can
+        // enqueue shared GpuReadbacks for this same submission.
+        if (auto finalizers = world.get_resource<graph::RenderGraphFinalizers>()) {
+            for (auto& callback : finalizers->get().callbacks) callback(world, encoder);
+        }
         submit_readback_commands(world, encoder);
     });
     if (!result) {
@@ -300,6 +306,7 @@ void RenderPlugin::attach(App& app) {
         render_app.world_mut().insert_resource(render::DefaultImageSampler{
             .sampler = default_sampler,
         });
+        render_app.world_mut().init_resource<graph::RenderGraphFinalizers>();
         // Bevy lib.rs:384: RenderAssetBytesPerFrameLimiter is a render-app
         // resource (required by prepare_assets / extract/reset systems).
         render_app.world_mut().init_resource<RenderAssetBytesPerFrameLimiter>();
