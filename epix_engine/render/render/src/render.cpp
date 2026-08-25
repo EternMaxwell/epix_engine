@@ -247,16 +247,13 @@ void RenderPlugin::attach(App& app) {
     std::optional<wgpu::DeviceDescriptor> automatic_device_descriptor;
 
     if (auto* settings = render_creation.automatic_settings()) {
-        // The automatic path forces Vulkan below while Slang requires native
-        // SPIR-V passthrough. Preserve the rest of Bevy's instance options.
-        wgpu::InstanceExtras instance_extras;
-        instance_extras.setBackends(static_cast<wgpu::InstanceBackend>(WGPUInstanceBackend_Vulkan))
-            .setFlags(static_cast<wgpu::InstanceFlag>(settings->instance_flags.native_supported_bits()))
-            .setDx12ShaderCompiler(settings->dx12_shader_compiler)
-            .setGles3MinorVersion(settings->gles3_minor_version);
-        wgpu::InstanceDescriptor instance_descriptor;
-        instance_descriptor.setNextInChain(instance_extras);
-        instance = wgpu::createInstance(instance_descriptor);
+        // TEMPORARY wgpu-native workaround: this vendored runtime corrupts an
+        // InstanceExtras chain when an instance owns a window surface. Keep
+        // WgpuSettings Bevy-shaped, but construct the native instance with
+        // its defaults until that runtime bug is fixed. The renderer-local
+        // Vulkan adapter coercion below is still what preserves Slang's
+        // SPIR-V passthrough requirement.
+        instance = wgpu::createInstance();
         spdlog::debug("[render] WebGPU instance created.");
     wgpu::Surface surface = app.world()
                                 .get_resource<AnonymousSurface>()
