@@ -343,6 +343,13 @@ EPIX_EXPORT struct VisibilityRangePlugin {
     void attach(epix::app::App& app);
 };
 
+/** @brief Installs the base visibility propagation, frustum-culling, and
+ * visibility-state systems (Bevy `VisibilityPlugin`).  `CameraPlugin`
+ * composes this plugin with projection and range support. */
+EPIX_EXPORT struct VisibilityPlugin {
+    void attach(epix::app::App& app);
+};
+
 /** @brief A normalized inward-facing plane half-space (Bevy `HalfSpace`). */
 EPIX_EXPORT struct HalfSpace {
     glm::vec4 normal_d{0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()};

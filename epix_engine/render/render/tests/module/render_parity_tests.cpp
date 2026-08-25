@@ -9,6 +9,14 @@
 using namespace epix::ecs;
 using namespace epix::render;
 
+TEST(VisibilityPlugin, StandaloneRegistersVisibilityRequirements) {
+    auto app = epix::app::App::create();
+    ::epix::camera::VisibilityPlugin{}.attach(app);
+    const Entity entity = app.world_mut().spawn(::epix::camera::Visibility{}).id();
+    EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::InheritedVisibility>());
+    EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::ViewVisibility>());
+}
+
 // Mirrors Bevy's ViewRangefinder3d unit test (bevy_render/render_phase/rangefinder.rs).
 TEST(ViewRangefinder3d, Distance) {
     const glm::mat4 view_matrix = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -1.0f));

@@ -256,9 +256,7 @@ void update_frusta(Query<Item<const ::epix::transform::GlobalTransform&, const :
     }
 }
 
-void CameraPlugin::attach(App& app) {
-    // Camera projection updates include Bevy-compatible sub-camera cropping.
-    app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
+void VisibilityPlugin::attach(App& app) {
     app.configure_sets(sets(VisibilitySystems::CalculateBounds));
     app.configure_sets(sets(VisibilitySystems::UpdateFrusta));
     app.configure_sets(sets(VisibilitySystems::VisibilityPropagate));
@@ -268,7 +266,6 @@ void CameraPlugin::attach(App& app) {
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
-    VisibilityRangePlugin{}.attach(app);
     app.add_systems(app::PostUpdate,
                     into(visibility_propagate_system)
                         .in_set(VisibilitySystems::VisibilityPropagate)
@@ -291,6 +288,13 @@ void CameraPlugin::attach(App& app) {
                         .after(check_visibility_system)
                         .in_set(VisibilitySystems::MarkNewlyHidden)
                         .set_name("mark newly hidden entities invisible"));
+}
+
+void CameraPlugin::attach(App& app) {
+    // Camera projection updates include Bevy-compatible sub-camera cropping.
+    app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
+    VisibilityPlugin{}.attach(app);
+    VisibilityRangePlugin{}.attach(app);
     app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
                     CameraProjectionPlugin<PerspectiveProjection>{});
     // ClearColor extraction to the render world is registered by the render
