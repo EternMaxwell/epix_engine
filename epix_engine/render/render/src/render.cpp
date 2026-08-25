@@ -35,6 +35,19 @@ RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) 
     };
 }
 
+std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() noexcept {
+    const char* setting = std::getenv("WGPU_SETTINGS_PRIO");
+    if (!setting) return std::nullopt;
+    std::string value(setting);
+    std::ranges::transform(value, value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    if (value == "compatibility") return WgpuSettingsPriority::Compatibility;
+    if (value == "functionality") return WgpuSettingsPriority::Functionality;
+    if (value == "webgl2") return WgpuSettingsPriority::WebGL2;
+    return std::nullopt;
+}
+
 std::optional<std::uint32_t> epix::render::get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept {
 #if defined(__ANDROID__)
     constexpr std::string_view prefix = "Adreno (TM) ";
@@ -230,7 +243,7 @@ void RenderPlugin::attach(App& app) {
             wgpu::RequestAdapterOptions()
                 .setCompatibleSurface(surface)
                 .setPowerPreference(settings->power_preference)
-                .setBackendType(settings->backends.value_or(wgpu::BackendType::eVulkan))
+                .setBackendType(settings->backends.value_or(wgpu::BackendType::eUndefined))
                 .setForceFallbackAdapter(settings->force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
     }
     surface = nullptr;  // release the temporary surface
@@ -254,8 +267,7 @@ void RenderPlugin::attach(App& app) {
         // NativeFeature::eTextureAdapterSpecificFormatFeatures: exposes
         // per-hardware texture capabilities, including read-write storage
         // access for formats like RGBA8Unorm on Vulkan/DX12/Metal.
-        wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures),
-        wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough)};
+        wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures)};
     required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
     const auto request_optional_native_feature = [&adapter, &required_features](wgpu::NativeFeature feature) {
         const auto named_feature = wgpu::FeatureName(feature);
@@ -265,6 +277,7 @@ void RenderPlugin::attach(App& app) {
         if (adapter.hasFeature(feature)) required_features.push_back(feature);
     };
     request_optional_feature(wgpu::FeatureName::eIndirectFirstInstance);
+    request_optional_native_feature(wgpu::NativeFeature::eSpirvShaderPassthrough);
     request_optional_native_feature(wgpu::NativeFeature::ePushConstants);
     request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirect);
     request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirectCount);

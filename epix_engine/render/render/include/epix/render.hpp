@@ -65,6 +65,11 @@ EPIX_EXPORT enum class WgpuSettingsPriority {
     WebGL2,
 };
 
+/** @brief Reads Bevy's `WGPU_SETTINGS_PRIO` environment setting. Only the
+ * case-insensitive `compatibility`, `functionality`, and `webgl2` spellings
+ * are recognized; any other value has no effect. */
+EPIX_EXPORT std::optional<WgpuSettingsPriority> settings_priority_from_env() noexcept;
+
 /**
  * @brief Renderer configuration for adapter/device creation (Bevy
  * WgpuSettings; the subset relevant to adapter selection). The env vars
@@ -74,11 +79,9 @@ EPIX_EXPORT enum class WgpuSettingsPriority {
 EPIX_EXPORT struct WgpuSettings {
     /** @brief Debug label for the render device. */
     std::string device_label = "Render Device";
-    /** @brief Preferred backend. Defaults to Vulkan: epix's slang->SPIR-V
-     * passthrough path requires it (Bevy defaults to Backends::all(), but the
-     * non-passthrough SPIR-V path has open wgpu/naga bugs, so this engine is
-     * Vulkan-only). Override via WGPU_BACKEND or the field. */
-    std::optional<wgpu::BackendType> backends = wgpu::BackendType::eVulkan;
+    /** @brief Preferred backend. An empty value lets wgpu select from all
+     * available backends, matching Bevy's default `Backends::all()`. */
+    std::optional<wgpu::BackendType> backends;
     /** @brief Power preference (Bevy default HighPerformance). */
     wgpu::PowerPreference power_preference = wgpu::PowerPreference::eHighPerformance;
     /** @brief Feature/limit priority (Bevy default Functionality). */
@@ -123,15 +126,7 @@ EPIX_EXPORT struct WgpuSettings {
             else if (p == "high" || p == "High")
                 power_preference = wgpu::PowerPreference::eHighPerformance;
         }
-        if (const char* prio = std::getenv("WGPU_SETTINGS_PRIO")) {
-            std::string_view q(prio);
-            if (q == "compat" || q == "Compatibility")
-                priority = WgpuSettingsPriority::Compatibility;
-            else if (q == "webgl2" || q == "WebGL2")
-                priority = WgpuSettingsPriority::WebGL2;
-            else if (q == "func" || q == "Functionality")
-                priority = WgpuSettingsPriority::Functionality;
-        }
+        if (auto configured_priority = settings_priority_from_env()) priority = *configured_priority;
     }
 };
 
