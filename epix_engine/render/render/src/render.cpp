@@ -85,7 +85,7 @@ std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() n
 }
 
 Backends Backends::from_comma_list(std::string_view value) noexcept {
-    Backends result;
+    Backends result = Backends::empty();
     while (!value.empty()) {
         const auto comma = value.find(',');
         auto name        = value.substr(0, comma);

@@ -86,11 +86,12 @@ EPIX_EXPORT struct Backends {
         BrowserWebGpu  = 1u << 5,
     };
 
-    constexpr Backends() = default;
+    // Mirrors `wgpu::Backends::default()`.
+    constexpr Backends() : bits_(all().bits_) {}
     constexpr Backends(Bit bit) : bits_(static_cast<std::uint32_t>(bit)) {}
     constexpr explicit Backends(std::uint32_t bits) : bits_(bits) {}
 
-    [[nodiscard]] static constexpr Backends empty() noexcept { return {}; }
+    [[nodiscard]] static constexpr Backends empty() noexcept { return Backends{0}; }
     [[nodiscard]] static constexpr Backends all() noexcept {
         return Backends{static_cast<std::uint32_t>(Noop) | static_cast<std::uint32_t>(Vulkan) |
                         static_cast<std::uint32_t>(Metal) | static_cast<std::uint32_t>(Dx12) |
@@ -106,8 +107,10 @@ EPIX_EXPORT struct Backends {
     [[nodiscard]] constexpr bool contains(Backends other) const noexcept {
         return (bits_ & other.bits_) == other.bits_;
     }
+    [[nodiscard]] constexpr bool intersects(Backends other) const noexcept { return (bits_ & other.bits_) != 0; }
     [[nodiscard]] static Backends from_comma_list(std::string_view) noexcept;
     [[nodiscard]] static std::optional<Backends> from_env() noexcept;
+    [[nodiscard]] Backends with_env() const noexcept { return from_env().value_or(*this); }
 
     friend constexpr bool operator==(Backends, Backends) = default;
     friend constexpr Backends operator|(Backends lhs, Backends rhs) noexcept {
@@ -116,6 +119,10 @@ EPIX_EXPORT struct Backends {
     friend constexpr Backends operator|(Bit lhs, Bit rhs) noexcept { return Backends{lhs} | Backends{rhs}; }
     friend constexpr Backends operator|(Backends lhs, Bit rhs) noexcept { return lhs | Backends{rhs}; }
     friend constexpr Backends operator|(Bit lhs, Backends rhs) noexcept { return Backends{lhs} | rhs; }
+    friend constexpr Backends operator&(Backends lhs, Backends rhs) noexcept {
+        return Backends{lhs.bits_ & rhs.bits_};
+    }
+    friend constexpr Backends operator~(Backends value) noexcept { return Backends{all().bits_ & ~value.bits_}; }
 
    private:
     std::uint32_t bits_ = 0;
@@ -136,11 +143,26 @@ EPIX_EXPORT struct InstanceFlags {
         AutomaticTimestampNormalization   = 1u << 6,
     };
 
-    constexpr InstanceFlags() = default;
+    // Mirrors `wgpu::InstanceFlags::default()`.
+    constexpr InstanceFlags() noexcept
+#if defined(_DEBUG)
+        : bits_(static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
+                static_cast<std::uint32_t>(ValidationIndirectCall)) {}
+#else
+        : bits_(static_cast<std::uint32_t>(ValidationIndirectCall)) {}
+#endif
     constexpr InstanceFlags(Bit bit) : bits_(static_cast<std::uint32_t>(bit)) {}
     constexpr explicit InstanceFlags(std::uint32_t bits) : bits_(bits) {}
 
-    [[nodiscard]] static constexpr InstanceFlags empty() noexcept { return {}; }
+    [[nodiscard]] static constexpr InstanceFlags empty() noexcept { return InstanceFlags{0}; }
+    [[nodiscard]] static constexpr InstanceFlags all() noexcept {
+        return InstanceFlags{static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
+                             static_cast<std::uint32_t>(DiscardHalLabels) |
+                             static_cast<std::uint32_t>(AllowUnderlyingNoncompliantAdapter) |
+                             static_cast<std::uint32_t>(GpuBasedValidation) |
+                             static_cast<std::uint32_t>(ValidationIndirectCall) |
+                             static_cast<std::uint32_t>(AutomaticTimestampNormalization)};
+    }
     [[nodiscard]] static constexpr InstanceFlags debugging() noexcept {
         return InstanceFlags{Debug} | Validation | ValidationIndirectCall;
     }
@@ -158,6 +180,9 @@ EPIX_EXPORT struct InstanceFlags {
     [[nodiscard]] constexpr bool is_empty() const noexcept { return bits_ == 0; }
     [[nodiscard]] constexpr bool contains(InstanceFlags other) const noexcept {
         return (bits_ & other.bits_) == other.bits_;
+    }
+    [[nodiscard]] constexpr bool intersects(InstanceFlags other) const noexcept {
+        return (bits_ & other.bits_) != 0;
     }
     [[nodiscard]] InstanceFlags with_env() const noexcept {
         auto result = *this;
@@ -185,6 +210,12 @@ EPIX_EXPORT struct InstanceFlags {
     friend constexpr InstanceFlags operator|(Bit lhs, Bit rhs) noexcept { return InstanceFlags{lhs} | InstanceFlags{rhs}; }
     friend constexpr InstanceFlags operator|(InstanceFlags lhs, Bit rhs) noexcept { return lhs | InstanceFlags{rhs}; }
     friend constexpr InstanceFlags operator|(Bit lhs, InstanceFlags rhs) noexcept { return InstanceFlags{lhs} | rhs; }
+    friend constexpr InstanceFlags operator&(InstanceFlags lhs, InstanceFlags rhs) noexcept {
+        return InstanceFlags{lhs.bits_ & rhs.bits_};
+    }
+    friend constexpr InstanceFlags operator~(InstanceFlags value) noexcept {
+        return InstanceFlags{all().bits_ & ~value.bits_};
+    }
 
    private:
     [[nodiscard]] constexpr std::uint32_t native_supported_bits() const noexcept {

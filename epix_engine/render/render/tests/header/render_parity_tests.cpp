@@ -2451,6 +2451,15 @@ TEST(PipelineCacheId, InvalidSentinels) {
 // Functionality + auto backend); env overrides honor WGPU_BACKEND /
 // WGPU_POWER_PREF / WGPU_SETTINGS_PRIO.
 TEST(WgpuSettings, DefaultsAndEnvOverrides) {
+    EXPECT_EQ(Backends{}, Backends::all());
+    EXPECT_EQ(Backends::empty() | Backends::Vulkan, Backends::Vulkan);
+    EXPECT_EQ(Backends::primary() & Backends::secondary(), Backends::empty());
+    EXPECT_EQ((~Backends::all()), Backends::empty());
+    EXPECT_EQ(Backends::all().with_env(), Backends::all());
+    EXPECT_EQ(InstanceFlags{}, InstanceFlags::from_build_config());
+    EXPECT_EQ((~InstanceFlags::all()), InstanceFlags::empty());
+    EXPECT_TRUE(InstanceFlags::all().intersects(InstanceFlags::Validation));
+
     WgpuSettings settings;
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::Functionality);
@@ -2496,6 +2505,7 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(constructor_settings.gles3_minor_version, wgpu::Gles3MinorVersion::eVersion2);
     EXPECT_TRUE(constructor_settings.instance_flags.contains(InstanceFlags::Validation));
     EXPECT_FALSE(constructor_settings.instance_flags.contains(InstanceFlags::Debug));
+    EXPECT_EQ(Backends::all().with_env(), Backends::Vulkan | Backends::Dx12 | Backends::Gl);
 
     // Bevy accepts the named GLES option without regard to case.
     _putenv_s("WGPU_GLES_MINOR_VERSION", "AuToMaTiC");
