@@ -191,7 +191,8 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
 static void capture_frame(ResMut<ScreenshotState> state,
                           Res<wgpu::Device> device,
                           Res<wgpu::Queue> queue,
-                          Res<ExtractedWindows> windows) {
+                          Res<ExtractedWindows> windows,
+                          Res<texture::ManualTextureViews> manual_texture_views) {
     if (state->pending.empty()) return;
 
     for (auto& request : state->pending) {
@@ -226,11 +227,16 @@ static void capture_frame(ResMut<ScreenshotState> state,
                            height  = image.texture.getHeight();
                            format  = image.texture.getFormat();
                        },
-                       [&](const ::epix::camera::ManualTextureViewHandle&) {
-                           // ScreenCapture stores a main-world target and this
-                           // system has no ManualTextureViews resource. Bevy's
-                           // target normalization similarly requires render-side
-                           // lookup, so report an unresolved capture below.
+                       [&](const ::epix::camera::ManualTextureViewHandle& handle) {
+                           const auto it = manual_texture_views->views.find(handle);
+                           if (it == manual_texture_views->views.end() || !it->second.texture) return;
+                           // Direct wgpu mapping: unlike Bevy's wrapper
+                           // pipeline, retain the backing texture alongside the
+                           // manual view and copy it directly.
+                           texture = it->second.texture;
+                           width   = it->second.size.x;
+                           height  = it->second.size.y;
+                           format  = it->second.view_format;
                        },
                        [&](const ::epix::camera::NoColorTarget&) {
                            // A no-color camera has no texture to copy.

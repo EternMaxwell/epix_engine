@@ -18,6 +18,10 @@ namespace epix::render::texture {
 struct ManualTextureView {
     /** @brief The texture view to render into. */
     wgpu::TextureView texture_view;
+    /** @brief Optional backing texture for direct-wgpu consumers such as
+     * screenshot readback.  A view alone is sufficient for rendering, but
+     * WebGPU copies require the source texture. */
+    wgpu::Texture texture;
     /** @brief Size of the texture in pixels. */
     glm::uvec2 size = glm::uvec2(0, 0);
     /** @brief Format of the view. */
