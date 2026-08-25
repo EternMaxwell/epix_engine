@@ -41,8 +41,6 @@ EPIX_EXPORT struct Screenshot {
     static Screenshot image(wgpu::Texture texture, float scale_factor = 1.0f) {
         return Screenshot(::epix::camera::RenderTarget::from_texture(std::move(texture), scale_factor));
     }
-    /** @brief Capture a manual texture view. Its ManualTextureView entry must
-     * retain the direct-wgpu backing texture so it can be copied. */
     static Screenshot texture_view(::epix::camera::ManualTextureViewHandle texture_view) noexcept {
         return Screenshot(::epix::camera::RenderTarget::from_manual_texture_view(texture_view));
     }

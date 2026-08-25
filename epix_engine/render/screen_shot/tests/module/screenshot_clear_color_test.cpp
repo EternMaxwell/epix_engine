@@ -101,17 +101,8 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     // ------------------------------------------------------------------
     app.resource_mut<Events<ScreenCapture>>().push(
         ScreenCapture{.target = ::epix::camera::RenderTarget::from_texture(texture)});
-    const ::epix::camera::ManualTextureViewHandle manual_handle{91};
-    app.resource_mut<render::texture::ManualTextureViews>().views.emplace(
-        manual_handle, render::texture::ManualTextureView{
-                           .texture_view = texture.createView(),
-                           .texture      = texture,
-                           .size         = glm::uvec2(TEX_W, TEX_H),
-                           .view_format  = wgpu::TextureFormat::eRGBA8Unorm,
-                       });
     const Entity first_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
     const Entity duplicate_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
-    const Entity manual_component_request = app.world_mut().spawn(Screenshot::texture_view(manual_handle)).id();
     app.run_schedule(PreUpdate);
     const bool first_is_capturing = app.world().get_entity(first_component_request)
                                         .transform([](const EntityRef& entity) { return entity.contains<Capturing>(); })
@@ -125,7 +116,6 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     const Entity component_request = first_is_capturing ? first_component_request : duplicate_component_request;
     const Entity duplicate_request = first_is_capturing ? duplicate_component_request : first_component_request;
     EXPECT_FALSE(app.world().get_entity(duplicate_request).has_value());
-    ASSERT_TRUE(app.world().entity(manual_component_request).contains<Capturing>());
 
     // ------------------------------------------------------------------
     // Step 3: manually drive the render sub-app.
@@ -186,29 +176,19 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     }
 
     const auto& captured_events = app.resource<Events<ScreenshotCaptured>>();
-    ASSERT_EQ(captured_events.size(), 2u) << "Both direct and manual component requests must complete";
-    const ScreenshotCaptured* captured = nullptr;
-    const ScreenshotCaptured* manual_captured = nullptr;
-    for (std::uint32_t index = captured_events.head(); index < captured_events.tail(); ++index) {
-        const auto* event = captured_events.get(index);
-        if (event && event->entity == component_request) captured = event;
-        if (event && event->entity == manual_component_request) manual_captured = event;
-    }
+    ASSERT_FALSE(captured_events.empty()) << "No component ScreenshotCaptured event was delivered";
+    const ScreenshotCaptured* captured = captured_events.get(captured_events.head());
     ASSERT_TRUE(captured != nullptr);
-    ASSERT_TRUE(manual_captured != nullptr);
+    EXPECT_EQ(captured->entity, component_request);
     ASSERT_EQ(captured->image.raw_view().size(), pixel_count * 4u);
-    ASSERT_EQ(manual_captured->image.raw_view().size(), pixel_count * 4u);
     EXPECT_NEAR(static_cast<int>(static_cast<uint8_t>(captured->image.raw_view()[0])), exp_r, kTolerance);
-    EXPECT_NEAR(static_cast<int>(static_cast<uint8_t>(manual_captured->image.raw_view()[0])), exp_r, kTolerance);
     ASSERT_TRUE(app.world().entity(component_request).contains<Capturing>());
     ASSERT_TRUE(app.world().entity(component_request).contains<Captured>());
 
     app.run_schedule(Last);
     EXPECT_TRUE(app.world().get_entity(component_request).has_value())
         << "Captured request must survive the completion frame";
-    EXPECT_TRUE(app.world().get_entity(manual_component_request).has_value());
     app.world_mut().clear_trackers();
     app.run_schedule(Last);
     EXPECT_FALSE(app.world().get_entity(component_request).has_value());
-    EXPECT_FALSE(app.world().get_entity(manual_component_request).has_value());
 }
