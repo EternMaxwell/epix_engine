@@ -24,7 +24,7 @@ struct SmokeTaskPoolInit {
 }  // namespace
 
 void add_render_test_prerequisites(App& app) {
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::camera::CameraPlugin{}).add_plugins(FrameCountPlugin{});
 }
 
 namespace {
@@ -72,13 +72,18 @@ std::optional<Entity> get_main_entity(const World& render_world, Entity render_e
 TEST(RenderWorld, EndToEndSyncAndExtract) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
-    add_render_test_prerequisites(app);
+    app.add_plugins(epix::time::TimePlugin{}).add_plugins(FrameCountPlugin{});
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
+    // Bevy RenderPlugin owns the renderer-side CameraPlugin only. The public
+    // camera module remains an explicit application prerequisite.
+    EXPECT_FALSE(app.world().get_resource<epix::camera::ClearColor>().has_value());
+    app.add_plugins(epix::camera::CameraPlugin{});
+    EXPECT_TRUE(app.world().get_resource<epix::camera::ClearColor>().has_value());
     const auto texture_render_app = app.get_sub_app(Render);
     ASSERT_TRUE(texture_render_app.has_value());
     const auto& texture_world = texture_render_app->get().world();

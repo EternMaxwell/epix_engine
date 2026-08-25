@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <epix/ecs.hpp>
+#include <epix/camera.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
@@ -124,6 +125,7 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(camera::CameraPlugin{})
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(ClearGraphPlugin{});

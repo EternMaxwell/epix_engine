@@ -205,12 +205,9 @@ void RenderPlugin::attach(App& app) {
                 }
                 sync_world::entity_sync_system(main_world, render_app.world_mut());
                 render_app.run_schedule(ExtractSchedule);
-            });
+        });
         render_app.schedule_order().insert_begin(render::Render);
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
-        render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
-                                           .in_set(RenderSystems::Cleanup)
-                                           .set_name("update texture cache"));
     });
 
     wgpu::Instance instance;
@@ -442,12 +439,9 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(image::ImagePlugin{});
     app.add_plugins(render::TexturePlugin{});
     app.add_plugins(shader::ShaderPlugin{});
-    // CameraPlugin supplies Camera's required RenderTarget component before
-    // the independently extracted camera components are installed.
-    app.add_plugins(::epix::camera::CameraPlugin{});
-    // Distinct from the camera-module plugin above, this is Bevy's
-    // render::camera::CameraPlugin. Add it through the plugin list just as
-    // Bevy RenderPlugin does, after the render sub-app is initialized.
+    // This is Bevy's render::camera::CameraPlugin. The public main-world
+    // epix::camera::CameraPlugin is deliberately a separate application
+    // plugin, just as bevy_camera::CameraPlugin is outside RenderPlugin.
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::experimental::OcclusionCullingPlugin{});
     app.add_plugins(render::view::ViewPlugin{});

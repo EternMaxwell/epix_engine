@@ -1,5 +1,6 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
@@ -64,6 +65,7 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(camera::CameraPlugin{})
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(render::screenshot::ScreenshotPlugin{})
