@@ -15,6 +15,47 @@ using namespace epix::render;
 using namespace epix::ecs;
 using namespace epix::app;
 
+namespace {
+
+wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constraints) {
+    const auto upper_bound = [](auto& limit, const auto constraint) { limit = std::min(limit, constraint); };
+    const auto lower_bound = [](auto& limit, const auto constraint) { limit = std::max(limit, constraint); };
+    upper_bound(limits.maxTextureDimension1D, constraints.maxTextureDimension1D);
+    upper_bound(limits.maxTextureDimension2D, constraints.maxTextureDimension2D);
+    upper_bound(limits.maxTextureDimension3D, constraints.maxTextureDimension3D);
+    upper_bound(limits.maxTextureArrayLayers, constraints.maxTextureArrayLayers);
+    upper_bound(limits.maxBindGroups, constraints.maxBindGroups);
+    upper_bound(limits.maxBindGroupsPlusVertexBuffers, constraints.maxBindGroupsPlusVertexBuffers);
+    upper_bound(limits.maxBindingsPerBindGroup, constraints.maxBindingsPerBindGroup);
+    upper_bound(limits.maxDynamicUniformBuffersPerPipelineLayout, constraints.maxDynamicUniformBuffersPerPipelineLayout);
+    upper_bound(limits.maxDynamicStorageBuffersPerPipelineLayout, constraints.maxDynamicStorageBuffersPerPipelineLayout);
+    upper_bound(limits.maxSampledTexturesPerShaderStage, constraints.maxSampledTexturesPerShaderStage);
+    upper_bound(limits.maxSamplersPerShaderStage, constraints.maxSamplersPerShaderStage);
+    upper_bound(limits.maxStorageBuffersPerShaderStage, constraints.maxStorageBuffersPerShaderStage);
+    upper_bound(limits.maxStorageTexturesPerShaderStage, constraints.maxStorageTexturesPerShaderStage);
+    upper_bound(limits.maxUniformBuffersPerShaderStage, constraints.maxUniformBuffersPerShaderStage);
+    upper_bound(limits.maxUniformBufferBindingSize, constraints.maxUniformBufferBindingSize);
+    upper_bound(limits.maxStorageBufferBindingSize, constraints.maxStorageBufferBindingSize);
+    lower_bound(limits.minUniformBufferOffsetAlignment, constraints.minUniformBufferOffsetAlignment);
+    lower_bound(limits.minStorageBufferOffsetAlignment, constraints.minStorageBufferOffsetAlignment);
+    upper_bound(limits.maxVertexBuffers, constraints.maxVertexBuffers);
+    upper_bound(limits.maxBufferSize, constraints.maxBufferSize);
+    upper_bound(limits.maxVertexAttributes, constraints.maxVertexAttributes);
+    upper_bound(limits.maxVertexBufferArrayStride, constraints.maxVertexBufferArrayStride);
+    upper_bound(limits.maxInterStageShaderVariables, constraints.maxInterStageShaderVariables);
+    upper_bound(limits.maxColorAttachments, constraints.maxColorAttachments);
+    upper_bound(limits.maxColorAttachmentBytesPerSample, constraints.maxColorAttachmentBytesPerSample);
+    upper_bound(limits.maxComputeWorkgroupStorageSize, constraints.maxComputeWorkgroupStorageSize);
+    upper_bound(limits.maxComputeInvocationsPerWorkgroup, constraints.maxComputeInvocationsPerWorkgroup);
+    upper_bound(limits.maxComputeWorkgroupSizeX, constraints.maxComputeWorkgroupSizeX);
+    upper_bound(limits.maxComputeWorkgroupSizeY, constraints.maxComputeWorkgroupSizeY);
+    upper_bound(limits.maxComputeWorkgroupSizeZ, constraints.maxComputeWorkgroupSizeZ);
+    upper_bound(limits.maxComputeWorkgroupsPerDimension, constraints.maxComputeWorkgroupsPerDimension);
+    return limits;
+}
+
+} // namespace
+
 RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
     validation = level;
     return *this;
@@ -189,6 +230,9 @@ void RenderPlugin::attach(App& app) {
     std::optional<wgpu::DeviceDescriptor> automatic_device_descriptor;
 
     if (auto* settings = render_creation.automatic_settings()) {
+        // The automatic path forces Vulkan below. The vendored native wgpu
+        // runtime rejects every InstanceExtras chain on a window surface, so
+        // preserve its default instance configuration here.
         instance = wgpu::createInstance();
         spdlog::debug("[render] WebGPU instance created.");
     wgpu::Surface surface = app.world()
@@ -201,7 +245,7 @@ void RenderPlugin::attach(App& app) {
         // enumerate all adapters
         std::size_t count = instance.enumerateAdapters(nullptr);
         std::vector<wgpu::Adapter> adapters(count);
-        instance.enumerateAdapters(&adapters[0]);
+        if (count != 0) instance.enumerateAdapters(adapters.data());
         spdlog::info("[render] Available WebGPU adapters:");
         for (const auto& adapter : adapters) {
             wgpu::AdapterInfo adapterInfo;
@@ -219,16 +263,28 @@ void RenderPlugin::attach(App& app) {
     if (const char* env_name = std::getenv("WGPU_ADAPTER_NAME"); env_name && env_name[0] != '\0') {
         desired_adapter_name = std::string(env_name);
     }
+    const bool force_fallback_adapter = [] (bool configured) {
+        const char* value = std::getenv("WGPU_FORCE_FALLBACK_ADAPTER");
+        if (!value) return configured;
+        const std::string_view override_value(value);
+        // Mirrors Bevy: every non-empty value other than `0` and `false`
+        // enables fallback-adapter selection.
+        return !(override_value.empty() || override_value == "0" || override_value == "false");
+    }(settings->force_fallback_adapter);
     if (desired_adapter_name.has_value()) {
         std::size_t count = instance.enumerateAdapters(nullptr);
         std::vector<wgpu::Adapter> adapters(count);
-        instance.enumerateAdapters(&adapters[0]);
+        if (count != 0) instance.enumerateAdapters(adapters.data());
         std::string needle = *desired_adapter_name;
         std::ranges::transform(needle, needle.begin(),
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
         for (auto& candidate : adapters) {
             wgpu::AdapterInfo info;
             candidate.getInfo(&info);
+            // TEMPORARY: named-adapter selection must obey the same Vulkan
+            // coercion as the automatic path while Slang needs native SPIR-V
+            // passthrough. Remove this filter with that workaround.
+            if (info.backendType != wgpu::BackendType::eVulkan) continue;
             std::string device(info.device);
             std::ranges::transform(device, device.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
@@ -240,16 +296,16 @@ void RenderPlugin::attach(App& app) {
     }
     // TEMPORARY Slang compatibility requirement: authored Slang is compiled
     // to SPIR-V and wgpu-native must pass it through to Vulkan. Keep this
-    // renderer-local override out of WgpuSettings so its public default stays
+    // renderer-local coercion out of WgpuSettings so its public default stays
     // Bevy-compatible; remove it when native SPIR-V ingestion is fixed.
-    const auto automatic_backend = settings->backends.value_or(wgpu::BackendType::eVulkan);
+    const auto automatic_backend = wgpu::BackendType::eVulkan;
     if (!adapter) {
         adapter = instance.requestAdapter(
             wgpu::RequestAdapterOptions()
                 .setCompatibleSurface(surface)
                 .setPowerPreference(settings->power_preference)
                 .setBackendType(automatic_backend)
-                .setForceFallbackAdapter(settings->force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
+                .setForceFallbackAdapter(force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
     }
     surface = nullptr;  // release the temporary surface
     app.world_mut().remove_resource<AnonymousSurface>();
@@ -266,35 +322,40 @@ void RenderPlugin::attach(App& app) {
     }
     adapter_info = RenderAdapterInfo::from_adapter(adapter);
 
-    // Engine-mandatory features plus WgpuSettings::features (Bevy renderer:
-    // settings.features | required_features).
-    std::vector<wgpu::FeatureName> required_features{
-        // NativeFeature::eTextureAdapterSpecificFormatFeatures: exposes
-        // per-hardware texture capabilities, including read-write storage
-        // access for formats like RGBA8Unorm on Vulkan/DX12/Metal.
-        wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures),
-        // TEMPORARY Slang compatibility requirement; see automatic_backend
-        // above. Remove alongside the Vulkan restriction once wgpu-native can
-        // reliably ingest Slang-produced SPIR-V through Naga.
-        wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough)};
+    // Bevy's Functionality priority starts from every feature/limit supported
+    // by the selected adapter. Compatibility starts from the WebGPU defaults.
+    std::vector<wgpu::FeatureName> required_features;
+    std::optional<wgpu::Limits> required_limits = settings->limits;
+    if (settings->priority == WgpuSettingsPriority::Functionality) {
+        wgpu::SupportedFeatures supported_features;
+        adapter.getFeatures(&supported_features);
+        required_features.assign(supported_features.features.begin(), supported_features.features.end());
+        if (adapter_info.adapter_type == wgpu::AdapterType::eDiscreteGPU) {
+            std::erase(required_features, wgpu::FeatureName(wgpu::NativeFeature::eMappablePrimaryBuffers));
+        }
+        wgpu::Limits supported_limits;
+        if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
+    }
+    if (settings->disabled_features.has_value()) {
+        for (const auto feature : *settings->disabled_features) std::erase(required_features, feature);
+    }
+    // Apply configured features after disabled_features, as Bevy does. Its
+    // default is TextureAdapterSpecificFormatFeatures, which intentionally
+    // remains enabled even when that feature appears in disabled_features.
     required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
-    const auto request_optional_native_feature = [&adapter, &required_features](wgpu::NativeFeature feature) {
-        const auto named_feature = wgpu::FeatureName(feature);
-        if (adapter.hasFeature(named_feature)) required_features.push_back(named_feature);
-    };
-    const auto request_optional_feature = [&adapter, &required_features](wgpu::FeatureName feature) {
-        if (adapter.hasFeature(feature)) required_features.push_back(feature);
-    };
-    request_optional_feature(wgpu::FeatureName::eIndirectFirstInstance);
-    request_optional_native_feature(wgpu::NativeFeature::ePushConstants);
-    request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirect);
-    request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirectCount);
-    request_optional_native_feature(wgpu::NativeFeature::eTextureBindingArray);
-    request_optional_native_feature(wgpu::NativeFeature::eStorageResourceBindingArray);
-    request_optional_native_feature(wgpu::NativeFeature::eBufferBindingArray);
+    // TEMPORARY Slang compatibility requirement; remove alongside the Vulkan
+    // restriction once wgpu-native can reliably ingest Slang-produced SPIR-V
+    // through Naga.
+    required_features.push_back(wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough));
+    std::ranges::sort(required_features, {}, [](const wgpu::FeatureName feature) { return static_cast<std::uint32_t>(feature); });
+    required_features.erase(std::unique(required_features.begin(), required_features.end()), required_features.end());
+    if (settings->constrained_limits.has_value()) {
+        required_limits = required_limits.transform([&](const wgpu::Limits& limits) {
+            return constrain_limits(limits, *settings->constrained_limits);
+        }).or_else([&] { return std::optional{*settings->constrained_limits}; });
+    }
     automatic_device_descriptor =
         wgpu::DeviceDescriptor()
-            .setLabel(wgpu::StringView(settings->device_label))
             .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
             .setRequiredFeatures(required_features)
             .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
@@ -307,8 +368,11 @@ void RenderPlugin::attach(App& app) {
                     std::stacktrace stack = std::stacktrace::current();
                     spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
                 }));
-    if (settings->limits.has_value()) {
-        automatic_device_descriptor->setRequiredLimits(*settings->limits);
+    if (settings->device_label.has_value()) {
+        automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));
+    }
+    if (required_limits.has_value()) {
+        automatic_device_descriptor->setRequiredLimits(*required_limits);
     }
     device = adapter.requestDevice(*automatic_device_descriptor);
     spdlog::debug("[render] WebGPU device created.");

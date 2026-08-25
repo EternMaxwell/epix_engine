@@ -77,8 +77,8 @@ EPIX_EXPORT std::optional<WgpuSettingsPriority> settings_priority_from_env() noe
  * apply_env_overrides like Bevy's settings_priority_from_env.
  */
 EPIX_EXPORT struct WgpuSettings {
-    /** @brief Debug label for the render device. */
-    std::string device_label = "Render Device";
+    /** @brief Optional debug label for the render device. */
+    std::optional<std::string> device_label;
     /** @brief Preferred backend. An empty value lets wgpu select from all
      * available backends, matching Bevy's default `Backends::all()`. */
     std::optional<wgpu::BackendType> backends;
@@ -93,13 +93,23 @@ EPIX_EXPORT struct WgpuSettings {
      * matches this substring wins (Bevy adapter_name). The WGPU_ADAPTER_NAME
      * env var takes precedence (Bevy renderer/mod.rs:243-245). */
     std::optional<std::string> adapter_name;
-    /** @brief Features to ensure are enabled regardless of what the
-     * adapter/backend supports, on top of the engine-mandatory set (Bevy
-     * WgpuSettings::features, settings.rs:38-40). */
-    std::vector<wgpu::FeatureName> features;
-    /** @brief Imposed device limits; when set, passed as the required limits
-     * on device creation (Bevy WgpuSettings::limits, settings.rs:44). */
+    /** @brief Features to ensure are enabled regardless of adapter support.
+     * Mirrors Bevy's default TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES. */
+    std::vector<wgpu::FeatureName> features{
+        wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures)};
+    /** @brief Features to remove from the automatically selected set. */
+    std::optional<std::vector<wgpu::FeatureName>> disabled_features;
+    /** @brief Imposed device limits. The native wgpu C API uses a null
+     * descriptor pointer for its default limits, hence this optional form. */
     std::optional<wgpu::Limits> limits;
+    /** @brief Upper/lower bounds applied to the selected adapter limits. */
+    std::optional<wgpu::Limits> constrained_limits;
+    /** @brief DX12 shader compiler used while creating the wgpu instance. */
+    wgpu::Dx12Compiler dx12_shader_compiler = wgpu::Dx12Compiler::eFxc;
+    /** @brief Requested GLES 3 minor version for the GL backend. */
+    wgpu::Gles3MinorVersion gles3_minor_version = wgpu::Gles3MinorVersion::eAutomatic;
+    /** @brief wgpu instance debug/validation flags. */
+    wgpu::InstanceFlag instance_flags = wgpu::InstanceFlag::eDefault;
 
     /** @brief Apply the WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO
      * environment variables on top of the current values (Bevy

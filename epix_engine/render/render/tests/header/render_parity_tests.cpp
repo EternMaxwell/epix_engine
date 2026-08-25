@@ -2456,7 +2456,15 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::Functionality);
     EXPECT_FALSE(settings.backends.has_value());
     EXPECT_FALSE(settings.force_fallback_adapter);
-    EXPECT_EQ(settings.device_label, "Render Device");
+    ASSERT_EQ(settings.features.size(), 1u);
+    EXPECT_EQ(settings.features.front(), wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures));
+    EXPECT_FALSE(settings.device_label.has_value());
+    EXPECT_FALSE(settings.disabled_features.has_value());
+    EXPECT_FALSE(settings.limits.has_value());
+    EXPECT_FALSE(settings.constrained_limits.has_value());
+    EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eFxc);
+    EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
+    EXPECT_EQ(settings.instance_flags, wgpu::InstanceFlag::eDefault);
 
     // No env vars set: overrides leave defaults untouched.
     settings.apply_env_overrides();
