@@ -1577,8 +1577,10 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
 
 TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
     const ::epix::camera::Camera3d camera3d;
-    EXPECT_EQ(camera3d.depth_load_op.type, ::epix::camera::Camera3dDepthLoadOp::Type::Clear);
-    EXPECT_EQ(camera3d.depth_load_op.clear_value, 0.0f);
+    ASSERT_TRUE(std::holds_alternative<::epix::camera::Camera3dDepthLoadOp::Clear>(camera3d.depth_load_op));
+    EXPECT_EQ(std::get<::epix::camera::Camera3dDepthLoadOp::Clear>(camera3d.depth_load_op).value, 0.0f);
+    EXPECT_TRUE(std::holds_alternative<::epix::camera::Camera3dDepthLoadOp::Load>(
+        ::epix::camera::Camera3dDepthLoadOp{::epix::camera::Camera3dDepthLoadOp::Load{}}));
     EXPECT_EQ(camera3d.depth_texture_usages.usage(), wgpu::TextureUsage::eRenderAttachment);
     EXPECT_EQ(camera3d.screen_space_specular_transmission_steps, 1u);
     EXPECT_EQ(camera3d.screen_space_specular_transmission_quality,

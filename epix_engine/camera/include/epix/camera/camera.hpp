@@ -399,12 +399,24 @@ EPIX_EXPORT struct Camera3dDepthTextureUsage {
 
 /** @brief Depth attachment load policy for the 3D main pass (Bevy
  * `Camera3dDepthLoadOp`). `Clear(0)` is the reverse-Z default. */
-EPIX_EXPORT struct Camera3dDepthLoadOp {
-    enum class Type { Clear, Load } type = Type::Clear;
-    float clear_value                    = 0.0f;
+namespace detail {
+struct Camera3dDepthLoadOpClear {
+    float value = 0.0f;
+};
+struct Camera3dDepthLoadOpLoad {};
+}  // namespace detail
 
-    static constexpr Camera3dDepthLoadOp clear(float value = 0.0f) noexcept { return {Type::Clear, value}; }
-    static constexpr Camera3dDepthLoadOp load() noexcept { return {Type::Load, 0.0f}; }
+EPIX_EXPORT struct Camera3dDepthLoadOp
+    : std::variant<detail::Camera3dDepthLoadOpClear, detail::Camera3dDepthLoadOpLoad> {
+    using Clear = detail::Camera3dDepthLoadOpClear;
+    using Load  = detail::Camera3dDepthLoadOpLoad;
+
+   private:
+    using Base = std::variant<Clear, Load>;
+
+   public:
+    using Base::Base;
+    constexpr Camera3dDepthLoadOp() noexcept : Base(Clear{}) {}
 };
 
 /** @brief Quality of screen-space specular transmission filtering (Bevy
