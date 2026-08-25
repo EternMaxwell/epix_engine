@@ -437,20 +437,21 @@ void RenderPlugin::attach(App& app) {
 
     app.add_plugins(render::window::WindowRenderPlugin{});
     app.add_plugins(image::ImagePlugin{});
-    app.add_plugins(render::TexturePlugin{});
     app.add_plugins(shader::ShaderPlugin{});
     // This is Bevy's render::camera::CameraPlugin. The public main-world
     // epix::camera::CameraPlugin is deliberately a separate application
     // plugin, just as bevy_camera::CameraPlugin is outside RenderPlugin.
     app.add_plugins(render::camera::CameraPlugin{});
-    app.add_plugins(render::experimental::OcclusionCullingPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
-    // Bevy lib.rs:362-380: GlobalsPlugin, BatchingPlugin, SyncWorldPlugin,
-    // StoragePlugin, GpuReadbackPlugin are all attached by RenderPlugin.
+    // Keep the remaining directly comparable plugin order aligned with Bevy
+    // RenderPlugin: Globals, Texture, Batching, SyncWorld, Storage,
+    // GpuReadback, then OcclusionCulling. Mesh is a separate Epix module.
     app.add_plugins(render::GlobalsPlugin{});
+    app.add_plugins(render::TexturePlugin{});
     app.add_plugins(render::batching::BatchingPlugin{debug_flags});
     app.add_plugins(sync_world::SyncWorldPlugin{});
     app.add_plugins(render::StoragePlugin{});
     app.add_plugins(render::GpuReadbackPlugin{});
+    app.add_plugins(render::experimental::OcclusionCullingPlugin{});
 }
 void RenderPlugin::detach(App& app) noexcept {}
