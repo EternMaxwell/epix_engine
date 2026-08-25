@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
@@ -38,7 +39,11 @@ constexpr uint32_t TEX_H = 4u;
 TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::image::ImagePlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(FrameCountPlugin{});
 
     try {
         RenderPlugin{}.attach(app);

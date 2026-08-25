@@ -640,7 +640,6 @@ STDEXEC::task<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Re
 
 void ImagePlugin::attach(epix::app::App& app) {
     spdlog::debug("[image] Attaching ImagePlugin.");
-    app.add_plugins(assets::AssetPlugin{});
     assets::app_register_asset<Image>(app);
     assets::app_register_loader<ImageLoader>(app);
     auto& images = app.world_mut().resource_mut<assets::Assets<Image>>();

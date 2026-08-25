@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
@@ -27,6 +28,7 @@ struct SmokeTaskPoolInit {
 void add_render_test_prerequisites(App& app) {
     app.add_plugins(epix::time::TimePlugin{})
         .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(FrameCountPlugin{});
 }
@@ -47,6 +49,7 @@ TEST(ImagePlugin, ExposesBevyDefaultSamplerChoices) {
 
 TEST(ImagePlugin, InstallsBevyFallbackImageAssets) {
     App app = App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
     app.add_plugins(epix::image::ImagePlugin{});
 
     const auto& images = app.world().resource<epix::assets::Assets<epix::image::Image>>();
@@ -55,12 +58,24 @@ TEST(ImagePlugin, InstallsBevyFallbackImageAssets) {
     EXPECT_EQ(opaque->get().width(), 1u);
     EXPECT_EQ(opaque->get().height(), 1u);
     EXPECT_EQ(opaque->get().format(), epix::image::Format::RGBA8);
-    EXPECT_EQ(opaque->get().raw_view(), std::as_bytes(std::span{std::array<std::uint8_t, 4>{255, 255, 255, 255}}));
+    constexpr std::array<std::uint8_t, 4> opaque_pixels{255, 255, 255, 255};
+    ASSERT_EQ(opaque->get().raw_view().size(), opaque_pixels.size());
+    for (std::size_t i = 0; i < opaque_pixels.size(); ++i) {
+        EXPECT_EQ(opaque->get().raw_view()[i], static_cast<std::byte>(opaque_pixels[i]));
+    }
 
     const auto transparent = images.get(epix::image::TRANSPARENT_IMAGE_HANDLE.id());
     ASSERT_TRUE(transparent.has_value());
-    EXPECT_EQ(transparent->get().raw_view(),
-              std::as_bytes(std::span{std::array<std::uint8_t, 4>{255, 255, 255, 0}}));
+    constexpr std::array<std::uint8_t, 4> transparent_pixels{255, 255, 255, 0};
+    ASSERT_EQ(transparent->get().raw_view().size(), transparent_pixels.size());
+    for (std::size_t i = 0; i < transparent_pixels.size(); ++i) {
+        EXPECT_EQ(transparent->get().raw_view()[i], static_cast<std::byte>(transparent_pixels[i]));
+    }
+}
+
+TEST(ImagePlugin, RequiresExplicitAssetPlugin) {
+    App app = App::create();
+    EXPECT_THROW(epix::image::ImagePlugin{}.attach(app), std::bad_optional_access);
 }
 
 // A user component that is extracted into the render world each frame.
@@ -106,7 +121,10 @@ std::optional<Entity> get_main_entity(const World& render_world, Entity render_e
 TEST(RenderWorld, EndToEndSyncAndExtract) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::image::ImagePlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(FrameCountPlugin{});
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {

@@ -1515,6 +1515,7 @@ int main() {
         .add_plugins(tf::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(::epix::camera::CameraPlugin{})
+        .add_plugins(assets::AssetPlugin{})
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
