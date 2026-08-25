@@ -177,19 +177,25 @@ struct ComputedCameraValues {
     std::optional<SubCameraView> old_sub_camera_view;
 };
 
-/** @brief The final-output policy for a camera (Bevy CameraOutputMode). */
-EPIX_EXPORT struct CameraOutputMode {
-    enum class Type { Write, Skip } type = Type::Write;
-    /** @brief Optional blend state for writing the intermediate target. */
+namespace detail {
+struct CameraOutputModeWrite {
     std::optional<wgpu::BlendState> blend_state;
-    /** @brief Clear operation for the final target in Write mode. */
     ClearColorConfig clear_color{};
+};
+struct CameraOutputModeSkip {};
+}  // namespace detail
 
-    static CameraOutputMode write(std::optional<wgpu::BlendState> blend_state = std::nullopt,
-                                  ClearColorConfig clear_color                = {}) {
-        return CameraOutputMode{Type::Write, std::move(blend_state), clear_color};
-    }
-    static CameraOutputMode skip() noexcept { return CameraOutputMode{Type::Skip}; }
+/** @brief The final-output policy for a camera (Bevy `CameraOutputMode`). */
+EPIX_EXPORT struct CameraOutputMode : std::variant<detail::CameraOutputModeWrite, detail::CameraOutputModeSkip> {
+    using Write = detail::CameraOutputModeWrite;
+    using Skip  = detail::CameraOutputModeSkip;
+
+   private:
+    using Base = std::variant<Write, Skip>;
+
+   public:
+    using Base::Base;
+    CameraOutputMode() noexcept : Base(Write{}) {}
 };
 
 /** @brief Extra usages requested for a camera's intermediate main textures

@@ -75,7 +75,9 @@ bool same_blend_state(const std::optional<wgpu::BlendState>& lhs, const std::opt
 }
 
 std::optional<wgpu::BlendState> output_blend_for(const epix::render::camera::ExtractedCamera& camera) {
-    if (camera.output_mode.blend_state) return camera.output_mode.blend_state;
+    const auto* write = std::get_if<epix::camera::CameraOutputMode::Write>(&camera.output_mode);
+    if (!write) return std::nullopt;
+    if (write->blend_state) return write->blend_state;
     if (camera.sorted_camera_index_for_target > 0) return alpha_blend_state();
     return std::nullopt;
 }
@@ -113,7 +115,7 @@ void queue_core2d_blit_pipelines(
     ResMut<PipelineServer> pipeline_server,
     ResMut<Core2dBlitPipelines> pipelines) {
     for (auto&& [camera, target] : views.iter()) {
-        if (camera.output_mode.type == ::epix::camera::CameraOutputMode::Type::Skip || !target.out_texture()) continue;
+        if (std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode) || !target.out_texture()) continue;
         const auto output_blend = output_blend_for(camera);
         const auto existing     = std::ranges::find_if(pipelines->pipelines, [&](const Core2dBlitPipeline& pipeline) {
             return pipeline.format == target.out_texture_view_format() &&
@@ -193,7 +195,7 @@ std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext
         views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(ctx.view_entity());
     if (!view_opt) return {};
     auto&& [camera, target] = *view_opt;
-    if (!target.out_texture() || camera.output_mode.type == ::epix::camera::CameraOutputMode::Type::Skip) return {};
+    if (!target.out_texture() || std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode)) return {};
 
     auto pipelines = world.get_resource<Core2dBlitPipelines>();
     if (!pipelines) return {};
@@ -210,9 +212,10 @@ std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext
 
     // get_attachment marks the output as written -> needs_present -> present.
     std::optional<glm::vec4> clear_color;
-    if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.output_mode.clear_color)) {
+    const auto& output = std::get<::epix::camera::CameraOutputMode::Write>(camera.output_mode);
+    if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&output.clear_color)) {
         clear_color = custom->color.to_vec4();
-    } else if (!std::holds_alternative<::epix::camera::ClearColorConfig::None>(camera.output_mode.clear_color)) {
+    } else if (!std::holds_alternative<::epix::camera::ClearColorConfig::None>(output.clear_color)) {
         if (auto global = world.get_resource<::epix::camera::ClearColor>()) clear_color = global->get().to_vec4();
     }
     auto bind_group =
