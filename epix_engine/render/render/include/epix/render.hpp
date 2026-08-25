@@ -160,8 +160,13 @@ EPIX_EXPORT struct InstanceFlags {
         return (bits_ & other.bits_) == other.bits_;
     }
     [[nodiscard]] constexpr std::uint32_t native_supported_bits() const noexcept {
-        return bits_ & (static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
-                        static_cast<std::uint32_t>(DiscardHalLabels));
+        auto native = bits_ & (static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
+                               static_cast<std::uint32_t>(DiscardHalLabels));
+        // Native wgpu v25 has no GPU-assisted validation flag. Its closest
+        // available behavior is ordinary backend validation.
+        if ((bits_ & static_cast<std::uint32_t>(GpuBasedValidation)) != 0)
+            native |= static_cast<std::uint32_t>(Validation);
+        return native;
     }
     [[nodiscard]] InstanceFlags with_env() const noexcept {
         auto result = *this;

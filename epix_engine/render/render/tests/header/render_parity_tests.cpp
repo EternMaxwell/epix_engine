@@ -2494,6 +2494,8 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     settings.apply_env_overrides();
     EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::Validation));
     EXPECT_FALSE(settings.instance_flags.contains(InstanceFlags::Debug));
+    EXPECT_EQ(InstanceFlags{InstanceFlags::GpuBasedValidation}.native_supported_bits(),
+              static_cast<std::uint32_t>(InstanceFlags::Validation));
 
     _putenv_s("WGPU_SETTINGS_PRIO", "compat");
     EXPECT_FALSE(settings_priority_from_env().has_value());
