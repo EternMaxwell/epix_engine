@@ -95,7 +95,7 @@ int main() {
         .add_plugins(sfml::SFMLRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(ClearGraphPlugin{});
 
     // A camera wired to our custom render graph (a registered sub-graph;

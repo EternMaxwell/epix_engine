@@ -1072,7 +1072,7 @@ void setup(Commands cmd) {
     {
         cmd.spawn(camera::Camera2d{}, transform::Transform{},
                   camera::Camera{.order = 1}, camera::RenderTarget::from_window(debug_win_ent),
-                  camera::RenderLayers::layers(std::array{std::size_t{1}, std::size_t{2}}))
+                  camera::RenderLayers::from_layers(std::array{std::size_t{1}, std::size_t{2}}))
             .insert(DebugCamera{});
     }
 
@@ -1253,7 +1253,7 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{

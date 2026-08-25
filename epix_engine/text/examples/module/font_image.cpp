@@ -81,18 +81,7 @@ struct CamControllPlugin {
     }
 };
 
-int main(int argc, char** argv) {
-    int render_validation = 0;
-
-    if (argc > 1) {
-        std::string_view arg1 = argv[1];
-        if (arg1 == "--render-validation=1") {
-            render_validation = 1;
-        } else if (arg1 == "--render-validation=2") {
-            render_validation = 2;
-        }
-    }
-
+int main() {
     app::App app = app::App::create();
     app.add_plugins(app::TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{})
@@ -103,7 +92,7 @@ int main(int argc, char** argv) {
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(CamControllPlugin{})
         .add_plugins(render::FrameCountPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(render_validation))
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
         .add_plugins(sprite::SpritePlugin{})

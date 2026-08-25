@@ -202,9 +202,6 @@ EPIX_EXPORT struct RenderCreation {
 
 /** @brief Plugin that initializes the WebGPU rendering subsystem. */
 EPIX_EXPORT struct RenderPlugin {
-    /** @brief Validation level (0 = none, 1 = nvrhi, 2 = Vulkan validation
-     * layers). */
-    int validation = 0;
     /** @brief Automatic or host-provided renderer creation (Bevy
      * `RenderPlugin::render_creation`). */
     RenderCreation render_creation;
@@ -214,14 +211,6 @@ EPIX_EXPORT struct RenderPlugin {
      * than the background task pool (Bevy
      * RenderPlugin::synchronous_pipeline_compilation). */
     bool synchronous_pipeline_compilation = true;
-    /**
-     * @brief Set the validation level for the render plugin.
-     * 0 - No validation
-     * 1 - Nvrhi validation
-     * 2 - Vulkan validation layers
-     * @param level the validation level to set
-     */
-    RenderPlugin& set_validation(int level = 0) noexcept;
     void attach(app::App&);
     void detach(app::App&) noexcept;
 };

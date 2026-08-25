@@ -784,7 +784,7 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})

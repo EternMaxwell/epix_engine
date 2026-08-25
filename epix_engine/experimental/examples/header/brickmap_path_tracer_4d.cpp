@@ -1496,7 +1496,7 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(tf::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
-        .add_plugins(render::RenderPlugin{}.set_validation(0))
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(BM4DPathTracerPlugin{});
 

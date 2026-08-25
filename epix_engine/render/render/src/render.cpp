@@ -56,11 +56,6 @@ wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constrain
 
 } // namespace
 
-RenderPlugin& RenderPlugin::set_validation(int level) noexcept {
-    validation = level;
-    return *this;
-}
-
 RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) {
     wgpu::AdapterInfo native;
     adapter.getInfo(&native);

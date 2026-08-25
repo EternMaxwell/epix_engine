@@ -106,7 +106,6 @@ int main() {
 
     render::RenderPlugin render_plugin;
     render_plugin.render_creation = render::RenderCreation::manual(create_manual_render_resources());
-    render_plugin.set_validation(0);
 
     window::Window primary_window;
     primary_window.title = "Render Plugin";
