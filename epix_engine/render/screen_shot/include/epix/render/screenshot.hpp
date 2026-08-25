@@ -9,13 +9,78 @@
 #include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
+#include <deque>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
 namespace epix::render::screenshot {
+
+/** @brief Component requesting a screenshot of a render target.
+ *
+ * Spawn this component on a request entity.  The plugin adds @c Capturing
+ * while work is in flight, emits @c ScreenshotCaptured when the image is
+ * available, adds @c Captured, then despawns the request entity on the next
+ * frame.  This is the component-oriented counterpart to Bevy's Screenshot.
+ *
+ * Epix render targets use direct wgpu textures rather than asset handles, so
+ * @c image accepts a texture directly. */
+EPIX_EXPORT struct Screenshot {
+    ::epix::camera::RenderTarget target = ::epix::camera::RenderTarget::from_primary();
+
+    Screenshot() = default;
+    explicit Screenshot(::epix::camera::RenderTarget render_target) : target(std::move(render_target)) {}
+
+    static Screenshot window(ecs::Entity window_entity) noexcept {
+        return Screenshot(::epix::camera::RenderTarget::from_window(window_entity));
+    }
+    static Screenshot primary_window() noexcept { return Screenshot(::epix::camera::RenderTarget::from_primary()); }
+    static Screenshot image(wgpu::Texture texture, float scale_factor = 1.0f) {
+        return Screenshot(::epix::camera::RenderTarget::from_texture(std::move(texture), scale_factor));
+    }
+    static Screenshot texture_view(::epix::camera::ManualTextureViewHandle texture_view) noexcept {
+        return Screenshot(::epix::camera::RenderTarget::from_manual_texture_view(texture_view));
+    }
+};
+
+/** @brief Marker component indicating a Screenshot request is in flight. */
+EPIX_EXPORT struct Capturing {};
+
+/** @brief Marker component indicating ScreenshotCaptured has been delivered. */
+EPIX_EXPORT struct Captured {};
+
+/** @brief Event emitted when a component-based screenshot request completes. */
+EPIX_EXPORT struct ScreenshotCaptured {
+    ecs::Entity entity;
+    image::Image image;
+};
+
+/** @brief Main-world completion queue for component-based screenshot requests.
+ *
+ * Epix uses its event system instead of Bevy observers; the plugin drains this
+ * queue into Events<ScreenshotCaptured> during PreUpdate. */
+EPIX_EXPORT class CapturedScreenshots {
+   public:
+    bool empty() const noexcept { return m_captures.empty(); }
+    std::size_t size() const noexcept { return m_captures.size(); }
+    std::optional<ScreenshotCaptured> try_recv() {
+        if (m_captures.empty()) return std::nullopt;
+        auto result = std::move(m_captures.front());
+        m_captures.pop_front();
+        return result;
+    }
+    /** @brief Enqueue a captured image for main-world event delivery. */
+    void push(ScreenshotCaptured capture) { m_captures.push_back(std::move(capture)); }
+
+   private:
+    std::deque<ScreenshotCaptured> m_captures;
+};
+
+/** @brief Returns a handler which writes a component-based screenshot to disk. */
+EPIX_EXPORT std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path);
 
 /** @brief Event sent by the user to request a frame capture.
  *

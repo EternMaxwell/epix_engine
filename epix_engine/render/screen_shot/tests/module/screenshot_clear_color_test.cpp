@@ -58,7 +58,7 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
         return;
     }
 
-    ScreenshotPlugin{}.attach(app);
+    ScreenshotPlugin{.save_path = std::nullopt, .capture_key = std::nullopt}.attach(app);
 
     // Run startup schedule so plugin-registered startup systems can execute.
     app.run_schedule(Startup);
@@ -101,6 +101,21 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     // ------------------------------------------------------------------
     app.resource_mut<Events<ScreenCapture>>().push(
         ScreenCapture{.target = ::epix::camera::RenderTarget::from_texture(texture)});
+    const Entity first_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
+    const Entity duplicate_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
+    app.run_schedule(PreUpdate);
+    const bool first_is_capturing = app.world().get_entity(first_component_request)
+                                        .transform([](const EntityRef& entity) { return entity.contains<Capturing>(); })
+                                        .value_or(false);
+    const bool duplicate_is_capturing =
+        app.world()
+            .get_entity(duplicate_component_request)
+            .transform([](const EntityRef& entity) { return entity.contains<Capturing>(); })
+            .value_or(false);
+    ASSERT_NE(first_is_capturing, duplicate_is_capturing) << "Duplicate screenshot targets must be coalesced";
+    const Entity component_request = first_is_capturing ? first_component_request : duplicate_component_request;
+    const Entity duplicate_request = first_is_capturing ? duplicate_component_request : first_component_request;
+    EXPECT_FALSE(app.world().get_entity(duplicate_request).has_value());
 
     // ------------------------------------------------------------------
     // Step 3: manually drive the render sub-app.
@@ -120,6 +135,7 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     render_sub->update();      // Render: capture_frame -> completed
     render_sub->extract(app);  // ExtractSchedule: delivers results
     app.insert_sub_app(epix::render::Render, std::move(render_sub));
+    app.run_schedule(PreUpdate);
 
     // ------------------------------------------------------------------
     // Step 4: verify the captured image.
@@ -158,4 +174,21 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
         EXPECT_NEAR(b, exp_b, kTolerance) << "Pixel[" << i << "] B";
         EXPECT_NEAR(a, exp_a, kTolerance) << "Pixel[" << i << "] A";
     }
+
+    const auto& captured_events = app.resource<Events<ScreenshotCaptured>>();
+    ASSERT_FALSE(captured_events.empty()) << "No component ScreenshotCaptured event was delivered";
+    const ScreenshotCaptured* captured = captured_events.get(captured_events.head());
+    ASSERT_TRUE(captured != nullptr);
+    EXPECT_EQ(captured->entity, component_request);
+    ASSERT_EQ(captured->image.raw_view().size(), pixel_count * 4u);
+    EXPECT_NEAR(static_cast<int>(static_cast<uint8_t>(captured->image.raw_view()[0])), exp_r, kTolerance);
+    ASSERT_TRUE(app.world().entity(component_request).contains<Capturing>());
+    ASSERT_TRUE(app.world().entity(component_request).contains<Captured>());
+
+    app.run_schedule(Last);
+    EXPECT_TRUE(app.world().get_entity(component_request).has_value())
+        << "Captured request must survive the completion frame";
+    app.world_mut().clear_trackers();
+    app.run_schedule(Last);
+    EXPECT_FALSE(app.world().get_entity(component_request).has_value());
 }

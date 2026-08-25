@@ -8,6 +8,7 @@
 #include <epix/render/screenshot.hpp>
 #include <epix/task.hpp>
 #include <webgpu/webgpu.hpp>
+#include <unordered_set>
 
 using namespace epix::render::screenshot;
 using namespace epix::ecs;
@@ -23,19 +24,92 @@ namespace epix::render::screenshot {
 
 /** @brief Internal render-world state for the screenshot plugin. */
 struct ScreenshotState {
-    std::vector<::epix::camera::RenderTarget> pending;
-    std::vector<image::Image> completed;
+    struct PendingCapture {
+        ::epix::camera::RenderTarget target;
+        std::optional<Entity> entity;
+    };
+    struct CompletedCapture {
+        image::Image image;
+        std::optional<Entity> entity;
+    };
+
+    std::vector<PendingCapture> pending;
+    std::vector<CompletedCapture> completed;
     std::optional<std::filesystem::path> save_path;
 };
+
+/** @brief Main-world staging area for component requests awaiting extraction. */
+struct ScreenshotRequests {
+    std::vector<ScreenshotState::PendingCapture> pending;
+};
+
+/** @brief Retains delivered request entities for exactly one main-world frame. */
+struct ScreenshotCleanupState {
+    std::vector<Entity> delivered_this_frame;
+    std::vector<Entity> pending_cleanup;
+};
+
+static void request_component_screenshots(
+    Commands commands,
+    Query<Item<Entity, const Screenshot&>, Without<Capturing>> screenshots,
+    Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>> primary_window,
+    ResMut<ScreenshotRequests> requests) {
+    std::unordered_set<::epix::camera::RenderTargetId, ::epix::camera::RenderTargetIdHash> seen_targets;
+    const auto primary = primary_window.single();
+    for (auto&& [entity, screenshot] : screenshots.iter()) {
+        const auto target = screenshot.target.normalize(primary);
+        if (!target.has_value()) {
+            spdlog::warn("[render.screenshot] Could not normalize component screenshot target; request remains pending");
+            continue;
+        }
+        if (!seen_targets.insert(target->identity()).second) {
+            spdlog::warn("[render.screenshot] Duplicate component screenshot target; removing request entity {}", entity.index);
+            commands.entity(entity).despawn();
+            continue;
+        }
+        requests->pending.push_back(ScreenshotState::PendingCapture{.target = screenshot.target, .entity = entity});
+        commands.entity(entity).insert(Capturing{});
+    }
+}
+
+static void trigger_component_screenshots(Commands commands,
+                                          ResMut<CapturedScreenshots> completed,
+                                          ResMut<ScreenshotCleanupState> cleanup,
+                                          ResMut<Events<ScreenshotCaptured>> events) {
+    while (auto screenshot = completed->try_recv()) {
+        commands.entity(screenshot->entity).insert(Captured{});
+        cleanup->delivered_this_frame.push_back(screenshot->entity);
+        events->push(std::move(*screenshot));
+    }
+}
+
+static void clear_captured_screenshots(Commands commands, ResMut<ScreenshotCleanupState> cleanup) {
+    for (Entity entity : cleanup->pending_cleanup) commands.entity(entity).despawn();
+    cleanup->pending_cleanup = std::move(cleanup->delivered_this_frame);
+    cleanup->delivered_this_frame.clear();
+}
+
+std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path) {
+    return [path = std::move(path)](const ScreenshotCaptured& captured) {
+        if (auto result = image::Image::save(path, captured.image); !result) {
+            spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", path.string());
+        } else {
+            spdlog::info("[render.screenshot] Screenshot saved to '{}'", path.string());
+        }
+    };
+}
 
 /** @brief ExtractSchedule system — delivers completed images to the main world and
  *  queues new capture requests from the main world's ScreenCapture events. */
 static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                                          Extract<EventReader<ScreenCapture>> captures,
+                                         Extract<ResMut<ScreenshotRequests>> component_captures,
                                          Extract<ResMut<Events<ScreenCaptureResult>>> result_events,
+                                         Extract<ResMut<CapturedScreenshots>> captured_screenshots,
                                          Extract<ResMut<assets::Assets<image::Image>>> images) {
     // Deliver results from previous frame into main world
-    for (auto& img : state->completed) {
+    for (auto& completed : state->completed) {
+        auto& img = completed.image;
         // Auto-save to disk if an output directory was configured
         if (state->save_path.has_value()) {
             auto now  = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
@@ -73,14 +147,20 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                 }
             }
         }
-        auto handle = images->add(std::move(img));
-        result_events->push(ScreenCaptureResult{.handle = std::move(handle)});
+        // The legacy event API owns the captured asset.  Component requests
+        // instead retain the image value, matching Bevy's ScreenshotCaptured.
+        if (completed.entity.has_value()) {
+            captured_screenshots->push(ScreenshotCaptured{.entity = *completed.entity, .image = std::move(img)});
+        } else {
+            auto handle = images->add(std::move(img));
+            result_events->push(ScreenCaptureResult{.handle = std::move(handle)});
+        }
     }
     state->completed.clear();
 
     // Collect new ScreenCapture requests from main world
     for (auto&& cap : captures.read()) {
-        state->pending.push_back(cap.target);
+        state->pending.push_back(ScreenshotState::PendingCapture{.target = cap.target});
         spdlog::info("[render.screenshot] Capture requested for target '{}' through ScreenCapture event",
                      std::visit(epix::utils::visitor{
                                     [](const ::epix::camera::WindowRef& win_ref) {
@@ -100,6 +180,9 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                                 },
                                 cap.target));
     }
+
+    for (auto& capture : component_captures->pending) state->pending.push_back(std::move(capture));
+    component_captures->pending.clear();
 }
 
 /** @brief Cleanup-set system — copies the primary window's swapchain texture to a
@@ -111,7 +194,8 @@ static void capture_frame(ResMut<ScreenshotState> state,
                           Res<ExtractedWindows> windows) {
     if (state->pending.empty()) return;
 
-    for (auto& req_target : state->pending) {
+    for (auto& request : state->pending) {
+        const auto& req_target = request.target;
         // Resolve the render target to a concrete texture + dimensions
         wgpu::Texture texture;
         uint32_t width = 0, height = 0;
@@ -285,7 +369,8 @@ static void capture_frame(ResMut<ScreenshotState> state,
         }
         img_opt->set_usage(image::ImageUsage::Main);
 
-        state->completed.push_back(std::move(img_opt.value()));
+        state->completed.push_back(
+            ScreenshotState::CompletedCapture{.image = std::move(img_opt.value()), .entity = request.entity});
         spdlog::debug("[render.screenshot] Frame captured ({}x{}, wgpu_fmt={}{})", width, height,
                       static_cast<int>(format), fmt_info.bgra_swap ? ", BGRA→RGBA" : "");
     }  // end for req_target
@@ -305,6 +390,10 @@ static void screenshot_capture_on_key(Res<ScreenshotHotkey> hotkey,
 void ScreenshotPlugin::attach(epix::app::App& app) {
     app.add_event<ScreenCapture>();
     app.add_event<ScreenCaptureResult>();
+    app.add_event<ScreenshotCaptured>();
+    app.world_mut().insert_resource(ScreenshotRequests{});
+    app.world_mut().insert_resource(CapturedScreenshots{});
+    app.world_mut().insert_resource(ScreenshotCleanupState{});
 
     auto& render_app = app.sub_app_mut(Render);
     render_app.world_mut().insert_resource(ScreenshotState{.save_path = save_path});
@@ -319,8 +408,12 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
         app.world_mut().insert_resource(ScreenshotHotkey{.key = *capture_key});
     }
     app.add_systems(PreUpdate,
+                    into(request_component_screenshots, trigger_component_screenshots)
+                        .set_names(std::array{"screenshot: component request", "screenshot: component delivery"}));
+    app.add_systems(PreUpdate,
                     into(screenshot_capture_on_key)
                         .set_name("screenshot: hotkey capture")
                         .run_if([](std::optional<Res<ScreenshotHotkey>> hotkey) { return hotkey.has_value(); }));
+    app.add_systems(Last, into(clear_captured_screenshots).set_name("screenshot: cleanup captured requests"));
 }
 }  // namespace epix::render::screenshot

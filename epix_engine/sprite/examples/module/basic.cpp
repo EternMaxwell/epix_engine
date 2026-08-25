@@ -45,6 +45,12 @@ struct BasicSpriteVisualTestPlugin {
                 },
             .texture = handle,
         });
+
+        // Component-oriented screenshot example: the request entity is marked
+        // Capturing, emits ScreenshotCaptured, then is cleaned up by the
+        // plugin. The saved file is the same real swapchain image displayed
+        // by this visual example (rather than a synthetic success color).
+        world.spawn(render::screenshot::Screenshot::primary_window());
     }
 };
 }  // namespace
