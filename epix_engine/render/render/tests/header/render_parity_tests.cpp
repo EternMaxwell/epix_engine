@@ -2479,11 +2479,15 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     _putenv_s("WGPU_BACKEND", "vulkan, dx12, gl");
     _putenv_s("WGPU_POWER_PREF", "LOW");
     _putenv_s("WGPU_SETTINGS_PRIO", "WeBgL2");
+    _putenv_s("WGPU_DX12_COMPILER", "dXc");
+    _putenv_s("WGPU_GLES_MINOR_VERSION", "2");
     settings.apply_env_overrides();
     EXPECT_TRUE(settings.backends.has_value());
     EXPECT_EQ(*settings.backends, Backends::Vulkan | Backends::Dx12 | Backends::Gl);
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eLowPower);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::WebGL2);
+    EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eDxc);
+    EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eVersion2);
 
     _putenv_s("WGPU_POWER_PREF", "none");
     settings.apply_env_overrides();
@@ -2497,6 +2501,14 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(InstanceFlags{InstanceFlags::GpuBasedValidation}.native_supported_bits(),
               static_cast<std::uint32_t>(InstanceFlags::Validation));
 
+    // Bevy reads these settings at construction time as well.
+    WgpuSettings constructor_settings;
+    EXPECT_EQ(constructor_settings.priority, WgpuSettingsPriority::WebGL2);
+    EXPECT_EQ(constructor_settings.limits.maxTextureDimension2D, 2048u);
+    EXPECT_EQ(constructor_settings.limits.maxStorageTexturesPerShaderStage, 0u);
+    EXPECT_EQ(constructor_settings.dx12_shader_compiler, wgpu::Dx12Compiler::eDxc);
+    EXPECT_EQ(constructor_settings.gles3_minor_version, wgpu::Gles3MinorVersion::eVersion2);
+
     _putenv_s("WGPU_SETTINGS_PRIO", "compat");
     EXPECT_FALSE(settings_priority_from_env().has_value());
     _putenv_s("WGPU_SETTINGS_PRIO", "compatibility");
@@ -2509,6 +2521,8 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     _putenv_s("WGPU_SETTINGS_PRIO", "");
     _putenv_s("WGPU_VALIDATION", "");
     _putenv_s("WGPU_DEBUG", "");
+    _putenv_s("WGPU_DX12_COMPILER", "");
+    _putenv_s("WGPU_GLES_MINOR_VERSION", "");
 }
 
 // RenderCreation distinguishes automatic device creation from embedding-host
