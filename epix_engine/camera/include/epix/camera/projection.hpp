@@ -46,139 +46,33 @@ inline glm::mat4 crop_to_sub_view(const glm::mat4& projection, const SubCameraVi
     return crop * projection;
 }
 
+namespace detail {
+struct ScalingModeWindowSize {};
+struct ScalingModeFixed { float width; float height; };
+struct ScalingModeAutoMin { float min_width; float min_height; };
+struct ScalingModeAutoMax { float max_width; float max_height; };
+struct ScalingModeFixedVertical { float viewport_height; };
+struct ScalingModeFixedHorizontal { float viewport_width; };
+}  // namespace detail
+
 /** @brief Scaling mode controlling how an orthographic projection adapts to
- * the viewport size.
- *
- * Constructed via static factory methods (e.g. fixed(), window_size(),
- * auto_min()).
- */
-EPIX_EXPORT struct ScalingMode {
+ * the viewport size (Bevy `ScalingMode`). */
+EPIX_EXPORT struct ScalingMode
+    : std::variant<detail::ScalingModeWindowSize, detail::ScalingModeFixed, detail::ScalingModeAutoMin,
+                   detail::ScalingModeAutoMax, detail::ScalingModeFixedVertical, detail::ScalingModeFixedHorizontal> {
+    using WindowSize      = detail::ScalingModeWindowSize;
+    using Fixed           = detail::ScalingModeFixed;
+    using AutoMin         = detail::ScalingModeAutoMin;
+    using AutoMax         = detail::ScalingModeAutoMax;
+    using FixedVertical   = detail::ScalingModeFixedVertical;
+    using FixedHorizontal = detail::ScalingModeFixedHorizontal;
+
    private:
-    enum class Mode {
-        Fixed,
-        WindowSize,
-        AutoMin,
-        AutoMax,
-        FixedVertical,
-        FixedHorizontal,
-    } mode;
-    union {
-        struct {
-            float width;
-            float height;
-        } _fixed;
-        struct {
-            float pixels_per_unit;
-        } _window_size;
-        struct {
-            float min_width;
-            float min_height;
-        } _auto_min;
-        struct {
-            float max_width;
-            float max_height;
-        } _auto_max;
-        struct {
-            float vertical;
-        } _fixed_vertical;
-        struct {
-            float horizontal;
-        } _fixed_horizontal;
-    };
+    using Base = std::variant<WindowSize, Fixed, AutoMin, AutoMax, FixedVertical, FixedHorizontal>;
 
    public:
-    /** @brief A fixed size in world units. */
-    static ScalingMode fixed(float width, float height) {
-        ScalingMode m;
-        m.mode   = Mode::Fixed;
-        m._fixed = {width, height};
-        return m;
-    }
-    /** @brief Match the viewport size one-to-one in world units (Bevy
-     * `ScalingMode::WindowSize`). */
-    static ScalingMode window_size() {
-        ScalingMode m;
-        m.mode         = Mode::WindowSize;
-        m._window_size = {1.0f};
-        return m;
-    }
-    /** @brief Compatibility overload for older Epix callers. Bevy 0.18 has
-     * no pixels-per-unit parameter; use `scale` on the projection instead. */
-    [[deprecated("Bevy ScalingMode::WindowSize has no pixels-per-unit argument; use OrthographicProjection::scale")]]
-    static ScalingMode window_size(float) {
-        return window_size();
-    }
-    /** @brief Fit the window while respecting minimum bounds. */
-    static ScalingMode auto_min(float min_width, float min_height) {
-        ScalingMode m;
-        m.mode      = Mode::AutoMin;
-        m._auto_min = {min_width, min_height};
-        return m;
-    }
-    /** @brief Fit the window while respecting maximum bounds. */
-    static ScalingMode auto_max(float max_width, float max_height) {
-        ScalingMode m;
-        m.mode      = Mode::AutoMax;
-        m._auto_max = {max_width, max_height};
-        return m;
-    }
-    /** @brief Fixed vertical extent; horizontal scales with the aspect ratio. */
-    static ScalingMode fixed_vertical(float vertical) {
-        ScalingMode m;
-        m.mode            = Mode::FixedVertical;
-        m._fixed_vertical = {vertical};
-        return m;
-    }
-    /** @brief Fixed horizontal extent; vertical scales with the aspect ratio. */
-    static ScalingMode fixed_horizontal(float horizontal) {
-        ScalingMode m;
-        m.mode              = Mode::FixedHorizontal;
-        m._fixed_horizontal = {horizontal};
-        return m;
-    }
-
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_fixed(Func&& func) {
-        if (mode == Mode::Fixed) {
-            func(_fixed.width, _fixed.height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_window_size(Func&& func) {
-        if (mode == Mode::WindowSize) {
-            func(_window_size.pixels_per_unit);
-        }
-        return *this;
-    }
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_auto_min(Func&& func) {
-        if (mode == Mode::AutoMin) {
-            func(_auto_min.min_width, _auto_min.min_height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&, float&> Func>
-    ScalingMode& on_auto_max(Func&& func) {
-        if (mode == Mode::AutoMax) {
-            func(_auto_max.max_width, _auto_max.max_height);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_fixed_vertical(Func&& func) {
-        if (mode == Mode::FixedVertical) {
-            func(_fixed_vertical.vertical);
-        }
-        return *this;
-    }
-    template <std::invocable<float&> Func>
-    ScalingMode& on_fixed_horizontal(Func&& func) {
-        if (mode == Mode::FixedHorizontal) {
-            func(_fixed_horizontal.horizontal);
-        }
-        return *this;
-    }
+    using Base::Base;
+    constexpr ScalingMode() noexcept : Base(WindowSize{}) {}
 };
 
 /** @brief Orthographic camera projection with configurable scaling, near/far
@@ -186,7 +80,7 @@ EPIX_EXPORT struct ScalingMode {
 EPIX_EXPORT struct OrthographicProjection {
     float near_plane          = 0.0f;     // Bevy default_3d near clipping plane
     float far_plane           = 1000.0f;  // Far clipping plane
-    ScalingMode scaling_mode  = ScalingMode::window_size();
+    ScalingMode scaling_mode{};
     float scale               = 1.0f;                   // Additional scale factor
     glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
     struct {

@@ -74,41 +74,43 @@ RenderTargetId NormalizedRenderTarget::identity() const noexcept {
 void OrthographicProjection::update(float width, float height) {
     float projection_width  = rect.right - rect.left;
     float projection_height = rect.top - rect.bottom;
-    scaling_mode
-        .on_fixed([&](float& fixed_width, float& fixed_height) {
-            projection_width  = fixed_width;
-            projection_height = fixed_height;
-        })
-        .on_window_size([&](float& pixels_per_unit) {
-            projection_width  = width / pixels_per_unit;
-            projection_height = height / pixels_per_unit;
-        })
-        .on_auto_min([&](float& min_width, float& min_height) {
-            if (width * min_height > min_width * height) {
-                projection_width  = width * min_height / height;
-                projection_height = min_height;
-            } else {
-                projection_width  = min_width;
-                projection_height = height * min_width / width;
-            }
-        })
-        .on_auto_max([&](float& max_width, float& max_height) {
-            if (width * max_height < max_width * height) {
-                projection_width  = width * max_height / height;
-                projection_height = max_height;
-            } else {
-                projection_width  = max_width;
-                projection_height = height * max_width / width;
-            }
-        })
-        .on_fixed_vertical([&](float& vertical) {
-            projection_height = vertical;
-            projection_width  = width * vertical / height;
-        })
-        .on_fixed_horizontal([&](float& horizontal) {
-            projection_width  = horizontal;
-            projection_height = height * horizontal / width;
-        });
+    std::visit(
+        utils::visitor{
+            [&](const ScalingMode::Fixed& fixed) {
+                projection_width  = fixed.width;
+                projection_height = fixed.height;
+            },
+            [&](const ScalingMode::WindowSize&) {
+                projection_width  = width;
+                projection_height = height;
+            },
+            [&](const ScalingMode::AutoMin& auto_min) {
+                if (width * auto_min.min_height > auto_min.min_width * height) {
+                    projection_width  = width * auto_min.min_height / height;
+                    projection_height = auto_min.min_height;
+                } else {
+                    projection_width  = auto_min.min_width;
+                    projection_height = height * auto_min.min_width / width;
+                }
+            },
+            [&](const ScalingMode::AutoMax& auto_max) {
+                if (width * auto_max.max_height < auto_max.max_width * height) {
+                    projection_width  = width * auto_max.max_height / height;
+                    projection_height = auto_max.max_height;
+                } else {
+                    projection_width  = auto_max.max_width;
+                    projection_height = height * auto_max.max_width / width;
+                }
+            },
+            [&](const ScalingMode::FixedVertical& fixed_vertical) {
+                projection_height = fixed_vertical.viewport_height;
+                projection_width  = width * fixed_vertical.viewport_height / height;
+            },
+            [&](const ScalingMode::FixedHorizontal& fixed_horizontal) {
+                projection_width  = fixed_horizontal.viewport_width;
+                projection_height = height * fixed_horizontal.viewport_width / width;
+            }},
+        scaling_mode);
     rect.left   = -projection_width * viewport_origin.x * scale;
     rect.right  = projection_width * scale + rect.left;
     rect.bottom = -projection_height * viewport_origin.y * scale;

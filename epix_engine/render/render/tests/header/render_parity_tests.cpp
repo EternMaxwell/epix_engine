@@ -1575,6 +1575,37 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     EXPECT_NE(projection.get_projection_matrix()[0][0], 0.0f);
 }
 
+TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
+    using ScalingMode = ::epix::camera::ScalingMode;
+    ::epix::camera::OrthographicProjection projection;
+    EXPECT_TRUE(std::holds_alternative<ScalingMode::WindowSize>(projection.scaling_mode));
+
+    projection.scaling_mode = ScalingMode::Fixed{100.0f, 50.0f};
+    projection.update(800.0f, 400.0f);
+    EXPECT_FLOAT_EQ(projection.rect.right - projection.rect.left, 100.0f);
+    EXPECT_FLOAT_EQ(projection.rect.top - projection.rect.bottom, 50.0f);
+
+    projection.scaling_mode = ScalingMode::AutoMin{200.0f, 100.0f};
+    projection.update(1000.0f, 100.0f);
+    EXPECT_FLOAT_EQ(projection.rect.right - projection.rect.left, 1000.0f);
+    EXPECT_FLOAT_EQ(projection.rect.top - projection.rect.bottom, 100.0f);
+
+    projection.scaling_mode = ScalingMode::AutoMax{1000.0f, 500.0f};
+    projection.update(100.0f, 1000.0f);
+    EXPECT_FLOAT_EQ(projection.rect.right - projection.rect.left, 50.0f);
+    EXPECT_FLOAT_EQ(projection.rect.top - projection.rect.bottom, 500.0f);
+
+    projection.scaling_mode = ScalingMode::FixedVertical{20.0f};
+    projection.update(400.0f, 100.0f);
+    EXPECT_FLOAT_EQ(projection.rect.right - projection.rect.left, 80.0f);
+    EXPECT_FLOAT_EQ(projection.rect.top - projection.rect.bottom, 20.0f);
+
+    projection.scaling_mode = ScalingMode::FixedHorizontal{20.0f};
+    projection.update(400.0f, 100.0f);
+    EXPECT_FLOAT_EQ(projection.rect.right - projection.rect.left, 20.0f);
+    EXPECT_FLOAT_EQ(projection.rect.top - projection.rect.bottom, 5.0f);
+}
+
 TEST(Camera3d, DefaultsMatchBevyCameraComponents) {
     const ::epix::camera::Camera3d camera3d;
     ASSERT_TRUE(std::holds_alternative<::epix::camera::Camera3dDepthLoadOp::Clear>(camera3d.depth_load_op));
@@ -3312,16 +3343,18 @@ TEST(ColorGrading, SectionsFollowBevyOrder) {
 }
 
 TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
-    App app;
-    ::epix::camera::VisibilityPlugin{}.attach(app);
+    ::epix::app::App app = ::epix::app::App::create();
+    ::epix::camera::CameraPlugin{}.attach(app);
     const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::hidden()).id();
     app.world_mut().get_entity_mut(entity).transform([](EntityWorldMut&& world_entity) -> int {
         world_entity.get_mut<epix::camera::ViewVisibility>().value().get_mut().set_visible();
         return 0;
     });
 
-    app.run_schedule(app::PostUpdate);
-    EXPECT_FALSE(app.world().entity(entity).get<epix::camera::ViewVisibility>()->get());
+    app.update();
+    const auto visibility = app.world().entity(entity).get<epix::camera::ViewVisibility>();
+    ASSERT_TRUE(visibility.has_value());
+    EXPECT_FALSE(visibility->get().get());
 }
 
 // GetBatchData / GetFullBatchData batching traits (bevy_render batching/mod.rs:76-178).
