@@ -1511,7 +1511,13 @@ TEST(CameraOutput, ModesAndWritebackMatchBevy) {
     ::epix::camera::CameraOutputMode output;
     EXPECT_EQ(output.type, ::epix::camera::CameraOutputMode::Type::Write);
     EXPECT_FALSE(output.blend_state.has_value());
-    EXPECT_EQ(output.clear_color.type, ::epix::camera::ClearColorConfig::Type::Default);
+    EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Default>(output.clear_color));
+    EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Default>(::epix::camera::ClearColorConfig{}));
+    EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::Custom>(
+        ::epix::camera::ClearColorConfig{::epix::camera::ClearColorConfig::Custom{
+            ::epix::camera::ClearColor{1.0f, 0.0f, 0.0f, 1.0f}}}));
+    EXPECT_TRUE(std::holds_alternative<::epix::camera::ClearColorConfig::None>(
+        ::epix::camera::ClearColorConfig{::epix::camera::ClearColorConfig::None{}}));
     EXPECT_EQ(::epix::camera::CameraOutputMode::skip().type, ::epix::camera::CameraOutputMode::Type::Skip);
     EXPECT_EQ(::epix::camera::MsaaWriteback::Auto, ::epix::camera::MsaaWriteback::Auto);
 }

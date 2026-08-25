@@ -183,10 +183,10 @@ EPIX_EXPORT struct CameraOutputMode {
     /** @brief Optional blend state for writing the intermediate target. */
     std::optional<wgpu::BlendState> blend_state;
     /** @brief Clear operation for the final target in Write mode. */
-    ClearColorConfig clear_color = ClearColorConfig::def();
+    ClearColorConfig clear_color{};
 
     static CameraOutputMode write(std::optional<wgpu::BlendState> blend_state = std::nullopt,
-                                  ClearColorConfig clear_color                = ClearColorConfig::def()) {
+                                  ClearColorConfig clear_color                = {}) {
         return CameraOutputMode{Type::Write, std::move(blend_state), clear_color};
     }
     static CameraOutputMode skip() noexcept { return CameraOutputMode{Type::Skip}; }
@@ -232,7 +232,7 @@ EPIX_EXPORT struct Camera {
     /** @brief Computed values updated by camera systems. */
     ComputedCameraValues computed;
     /** @brief Clear color configuration for this camera. */
-    ClearColorConfig clear_color = ClearColorConfig::global();
+    ClearColorConfig clear_color{};
 
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator);
 

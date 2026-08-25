@@ -210,15 +210,10 @@ std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext
 
     // get_attachment marks the output as written -> needs_present -> present.
     std::optional<glm::vec4> clear_color;
-    switch (camera.output_mode.clear_color.type) {
-        case ::epix::camera::ClearColorConfig::Type::None:
-            break;
-        case ::epix::camera::ClearColorConfig::Type::Custom:
-            clear_color = camera.output_mode.clear_color.clear_color;
-            break;
-        case ::epix::camera::ClearColorConfig::Type::Default:
-            if (auto global = world.get_resource<::epix::camera::ClearColor>()) clear_color = global->get().to_vec4();
-            break;
+    if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.output_mode.clear_color)) {
+        clear_color = custom->color.to_vec4();
+    } else if (!std::holds_alternative<::epix::camera::ClearColorConfig::None>(camera.output_mode.clear_color)) {
+        if (auto global = world.get_resource<::epix::camera::ClearColor>()) clear_color = global->get().to_vec4();
     }
     auto bind_group =
         device.createBindGroup(wgpu::BindGroupDescriptor()

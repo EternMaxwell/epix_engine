@@ -203,12 +203,11 @@ void view::prepare_view_target(
             shared.main_texture = std::make_shared<std::atomic<std::uint32_t>>(0);
         }
         const auto clear_color = [&]() -> std::optional<glm::vec4> {
-            switch (camera.clear_color.type) {
-                case ::epix::camera::ClearColorConfig::Type::None: return std::nullopt;
-                case ::epix::camera::ClearColorConfig::Type::Custom: return camera.clear_color.clear_color.to_vec4();
-                case ::epix::camera::ClearColorConfig::Type::Global: return global_clear_color->to_vec4();
+            if (std::holds_alternative<::epix::camera::ClearColorConfig::None>(camera.clear_color)) return std::nullopt;
+            if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.clear_color)) {
+                return custom->color.to_vec4();
             }
-            return std::nullopt;
+            return global_clear_color->to_vec4();
         }();
         const auto& shared = shared_it->second;
         view::MainTargetTextures main_textures;

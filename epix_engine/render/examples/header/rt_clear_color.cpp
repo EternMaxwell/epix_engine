@@ -55,12 +55,14 @@ struct ClearPassNode : render::graph::Node {
 
         // Clear the swapchain output directly (no post-process / blit needed
         // for a clear-only pass; writing out_texture marks it for present).
-        const auto clear_color = camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::None
-                                     ? std::optional<glm::vec4>{}
-                                     : camera.clear_color.type == ::epix::camera::ClearColorConfig::Type::Custom
-                                           ? std::optional<glm::vec4>{camera.clear_color.clear_color.to_vec4()}
-                                           : world.get_resource<::epix::camera::ClearColor>()
-                                                 .transform([](const auto& color) { return color.get().to_vec4(); });
+        const auto clear_color = [&]() -> std::optional<glm::vec4> {
+            if (std::holds_alternative<::epix::camera::ClearColorConfig::None>(camera.clear_color)) return std::nullopt;
+            if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.clear_color)) {
+                return custom->color.to_vec4();
+            }
+            return world.get_resource<::epix::camera::ClearColor>()
+                .transform([](const auto& color) { return color.get().to_vec4(); });
+        }();
         auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture_color_attachment(clear_color)}));
         pass.end();
