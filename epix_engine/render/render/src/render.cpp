@@ -35,6 +35,19 @@ RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) 
     };
 }
 
+std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() noexcept {
+    const char* setting = std::getenv("WGPU_SETTINGS_PRIO");
+    if (!setting) return std::nullopt;
+    std::string value(setting);
+    std::ranges::transform(value, value.begin(), [](unsigned char character) {
+        return static_cast<char>(std::tolower(character));
+    });
+    if (value == "compatibility") return WgpuSettingsPriority::Compatibility;
+    if (value == "functionality") return WgpuSettingsPriority::Functionality;
+    if (value == "webgl2") return WgpuSettingsPriority::WebGL2;
+    return std::nullopt;
+}
+
 std::optional<std::uint32_t> epix::render::get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept {
 #if defined(__ANDROID__)
     constexpr std::string_view prefix = "Adreno (TM) ";
@@ -225,12 +238,17 @@ void RenderPlugin::attach(App& app) {
             }
         }
     }
+    // TEMPORARY Slang compatibility requirement: authored Slang is compiled
+    // to SPIR-V and wgpu-native must pass it through to Vulkan. Keep this
+    // renderer-local override out of WgpuSettings so its public default stays
+    // Bevy-compatible; remove it when native SPIR-V ingestion is fixed.
+    const auto automatic_backend = settings->backends.value_or(wgpu::BackendType::eVulkan);
     if (!adapter) {
         adapter = instance.requestAdapter(
             wgpu::RequestAdapterOptions()
                 .setCompatibleSurface(surface)
                 .setPowerPreference(settings->power_preference)
-                .setBackendType(settings->backends.value_or(wgpu::BackendType::eVulkan))
+                .setBackendType(automatic_backend)
                 .setForceFallbackAdapter(settings->force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
     }
     surface = nullptr;  // release the temporary surface
@@ -255,6 +273,9 @@ void RenderPlugin::attach(App& app) {
         // per-hardware texture capabilities, including read-write storage
         // access for formats like RGBA8Unorm on Vulkan/DX12/Metal.
         wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures),
+        // TEMPORARY Slang compatibility requirement; see automatic_backend
+        // above. Remove alongside the Vulkan restriction once wgpu-native can
+        // reliably ingest Slang-produced SPIR-V through Naga.
         wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough)};
     required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
     const auto request_optional_native_feature = [&adapter, &required_features](wgpu::NativeFeature feature) {
