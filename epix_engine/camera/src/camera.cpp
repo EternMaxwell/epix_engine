@@ -122,7 +122,7 @@ void visibility_propagate_system(Query<Item<const Visibility&, Mut<InheritedVisi
     // the entity's own state: Hidden hides, Visible/Inherited show (Bevy's
     // visibility_propagate_system collapses to this for hierarchy roots).
     for (auto&& [visibility, inherited] : visibilities.iter()) {
-        inherited.get_mut().is_visible = visibility.type != Visibility::Type::Hidden;
+        inherited.get_mut().is_visible_ = visibility.type != Visibility::Type::Hidden;
     }
 }
 
@@ -137,7 +137,7 @@ void reset_view_visibility(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
 void mark_newly_hidden_entities_invisible(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
     for (auto&& [view_visibility] : view_visibilities.iter()) {
         if (view_visibility.get().was_visible_now_hidden()) {
-            view_visibility.get_mut().flags = 0;
+            view_visibility.get_mut() = ViewVisibility::hidden();
         }
     }
 }
@@ -201,7 +201,7 @@ void check_visibility_system(
         visible_entities.get_mut().clear_all();
         for (auto&& [entity, inherited, view_visibility, opt_classes, opt_layers, opt_aabb, opt_transform,
                      no_frustum_culling, opt_visibility_range] : entities.iter()) {
-            if (!inherited.is_visible) continue;
+            if (!inherited.get()) continue;
             const auto& entity_layers = opt_layers ? *opt_layers : RenderLayers::layer(0);
             if (!camera_layers.intersects(entity_layers)) continue;
             if (opt_visibility_range && !visible_entity_ranges->entity_is_in_range_of_view(entity, camera_entity)) {
@@ -217,7 +217,7 @@ void check_visibility_system(
                     continue;
                 }
             }
-            view_visibility.get_mut().visible();
+            view_visibility.get_mut().set_visible();
             if (opt_classes) {
                 for (const auto& visibility_class : opt_classes->get().classes) {
                     visible_entities.get_mut().push(entity, visibility_class);

@@ -33,26 +33,27 @@ EPIX_EXPORT struct NoCpuCulling {};
  * `ViewVisibility`). Bit 0 is current visibility and bit 1 previous
  * visibility, avoiding a fixed per-camera bit budget. */
 EPIX_EXPORT struct ViewVisibility {
-    /** @brief Raw flag storage. */
-    std::uint32_t flags = 0;
+    /** @brief An entity that cannot be seen from any views (Bevy
+     * `ViewVisibility::HIDDEN`). */
+    [[nodiscard]] static constexpr ViewVisibility hidden() noexcept { return {}; }
 
     /** @brief Visible to any view in the current frame. */
     bool get() const noexcept { return (flags & 1u) != 0; }
-    /** @brief Compatibility accessor; Bevy 0.18 exposes aggregate rather
-     * than capped per-camera visibility. */
-    bool get_in_view(std::uint32_t) const noexcept { return get(); }
-    void set_in_view(std::uint32_t, bool is_visible) noexcept {
-        if (is_visible) set_visible();
-    }
-    void culled() noexcept { flags &= ~1u; }
     void set_visible() noexcept { flags |= 1u; }
-    /** Compatibility spelling retained for existing Epix callers. */
-    void visible() noexcept { set_visible(); }
+
+   private:
+    // Bevy's tuple field is private. The previous-frame bit is only scratch
+    // state for the visibility systems, not a public per-camera mask.
+    std::uint8_t flags = 0;
     /** Advance the current bit to previous-frame scratch storage. */
     void update() noexcept { flags = (flags & 1u) << 1u; }
     /** True after `update` when visibility was lost this frame (Bevy
      * `was_visible_now_hidden`). */
     bool was_visible_now_hidden() const noexcept { return flags == 0b10u; }
+    friend void reset_view_visibility(
+        epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
+    friend void mark_newly_hidden_entities_invisible(
+        epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 };
 
 /** @brief C++ equivalent of Bevy's `SetViewVisibility` trait. */
@@ -97,19 +98,24 @@ EPIX_EXPORT struct Visibility {
  * bevy_camera::visibility::InheritedVisibility). Not accurate until
  * visibility propagation runs. */
 EPIX_EXPORT struct InheritedVisibility {
-    /** @brief Raw visibility flag (Bevy's newtype field is unnamed). */
-    bool is_visible = true;
-
+    constexpr InheritedVisibility() = default;
     /** @brief An entity invisible in the hierarchy (Bevy
      * InheritedVisibility::HIDDEN). */
-    static InheritedVisibility hidden() noexcept { return {false}; }
+    static InheritedVisibility hidden() noexcept { return InheritedVisibility(false); }
     /** @brief An entity visible in the hierarchy (Bevy
      * InheritedVisibility::VISIBLE). */
-    static InheritedVisibility visible() noexcept { return {true}; }
+    static InheritedVisibility visible() noexcept { return InheritedVisibility(true); }
 
     /** @brief True if the entity is visible in the hierarchy (Bevy
      * InheritedVisibility::get). */
-    bool get() const noexcept { return is_visible; }
+    bool get() const noexcept { return is_visible_; }
+
+   private:
+    // Bevy's newtype field is private.
+    constexpr explicit InheritedVisibility(bool is_visible) noexcept : is_visible_(is_visible) {}
+    bool is_visible_ = true;
+    friend void visibility_propagate_system(
+        epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibilities);
 };
 
 

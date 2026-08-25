@@ -2354,15 +2354,8 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
 TEST(ViewVisibility, Flags) {
     ::epix::camera::ViewVisibility vv;
     EXPECT_FALSE(vv.get());  // Bevy ViewVisibility::HIDDEN
-    EXPECT_FALSE(vv.get_in_view(0));
-    vv.visible();
+    vv.set_visible();
     EXPECT_TRUE(vv.get());
-    vv.update();
-    EXPECT_FALSE(vv.get());
-    vv.set_in_view(0, true);
-    EXPECT_TRUE(vv.get());
-    vv.culled();
-    EXPECT_FALSE(vv.get());
 }
 
 // RenderVisibleEntities accessors match Bevy view/visibility/mod.rs:23-53:
@@ -3309,12 +3302,16 @@ TEST(ColorGrading, SectionsFollowBevyOrder) {
 }
 
 TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
-    epix::camera::ViewVisibility visibility;
-    visibility.set_visible();
-    visibility.update();
-    EXPECT_TRUE(visibility.was_visible_now_hidden());
-    visibility.set_visible();
-    EXPECT_FALSE(visibility.was_visible_now_hidden());
+    App app;
+    ::epix::camera::VisibilityPlugin{}.attach(app);
+    const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::hidden()).id();
+    app.world_mut().get_entity_mut(entity).transform([](EntityWorldMut&& world_entity) -> int {
+        world_entity.get_mut<epix::camera::ViewVisibility>().value().get_mut().set_visible();
+        return 0;
+    });
+
+    app.run_schedule(app::PostUpdate);
+    EXPECT_FALSE(app.world().entity(entity).get<epix::camera::ViewVisibility>()->get());
 }
 
 // GetBatchData / GetFullBatchData batching traits (bevy_render batching/mod.rs:76-178).
