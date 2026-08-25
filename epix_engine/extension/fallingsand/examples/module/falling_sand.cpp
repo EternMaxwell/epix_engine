@@ -28,6 +28,8 @@ import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
 import epix.render;
+import epix.image;
+import epix.camera;
 import epix.render.imgui;
 import epix.core_graph;
 import epix.mesh;
@@ -1253,6 +1255,8 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(camera::CameraPlugin{})
+        .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})

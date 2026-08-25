@@ -151,6 +151,14 @@ Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint3
     }
 }
 
+Image::Image() : m_format(Format::RGBA8), data(4, std::byte{0xFF}) {}
+
+Image Image::transparent() {
+    auto image = Image{};
+    image.data[3] = std::byte{0};
+    return image;
+}
+
 Image Image::create1d(std::uint32_t w, Format fmt) {
     Image img;
     img.m_width           = w;
@@ -158,7 +166,7 @@ Image Image::create1d(std::uint32_t w, Format fmt) {
     img.m_depth_or_layers = 1;
     img.m_type            = ImageType::e1D;
     img.m_format          = fmt;
-    img.data.resize(static_cast<std::size_t>(w) * getFormatInfo(fmt).pixelSize(), std::byte(0));
+    img.data.assign(static_cast<std::size_t>(w) * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
@@ -169,7 +177,7 @@ Image Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt) {
     img.m_depth_or_layers = 1;
     img.m_type            = ImageType::e2D;
     img.m_format          = fmt;
-    img.data.resize(static_cast<std::size_t>(w) * h * getFormatInfo(fmt).pixelSize(), std::byte(0));
+    img.data.assign(static_cast<std::size_t>(w) * h * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
@@ -180,7 +188,7 @@ Image Image::create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t laye
     img.m_depth_or_layers = std::max(layers, 1u);
     img.m_type            = ImageType::e2DArray;
     img.m_format          = fmt;
-    img.data.resize(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
+    img.data.assign(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
                     std::byte(0));
     return img;
 }
@@ -192,7 +200,7 @@ Image Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, For
     img.m_depth_or_layers = std::max(depth, 1u);
     img.m_type            = ImageType::e3D;
     img.m_format          = fmt;
-    img.data.resize(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
+    img.data.assign(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
                     std::byte(0));
     return img;
 }
@@ -635,5 +643,8 @@ void ImagePlugin::attach(epix::app::App& app) {
     app.add_plugins(assets::AssetPlugin{});
     assets::app_register_asset<Image>(app);
     assets::app_register_loader<ImageLoader>(app);
+    auto& images = app.world_mut().resource_mut<assets::Assets<Image>>();
+    (void)images.insert(DEFAULT_IMAGE_HANDLE.id(), Image{});
+    (void)images.insert(TRANSPARENT_IMAGE_HANDLE.id(), Image::transparent());
 }
 }  // namespace epix::image

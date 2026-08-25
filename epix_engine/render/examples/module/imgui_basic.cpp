@@ -6,6 +6,8 @@ import epix.input;
 import epix.window;
 import epix.transform;
 import epix.render;
+import epix.image;
+import epix.camera;
 import epix.core_graph;
 import epix.glfw.core;
 import epix.glfw.render;
@@ -51,6 +53,8 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
+        .add_plugins(camera::CameraPlugin{})
+        .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::core_2d::Core2dPlugin{})
         .add_plugins(imgui::ImGuiPlugin{

@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
@@ -24,10 +25,43 @@ struct SmokeTaskPoolInit {
 }  // namespace
 
 void add_render_test_prerequisites(App& app) {
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::camera::CameraPlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(FrameCountPlugin{});
 }
 
 namespace {
+
+TEST(ImagePlugin, ExposesBevyDefaultSamplerChoices) {
+    const auto linear = epix::image::ImagePlugin::default_linear();
+    EXPECT_EQ(linear.default_sampler.min_filter, epix::image::ImageFilterMode::Linear);
+    EXPECT_EQ(linear.default_sampler.mag_filter, epix::image::ImageFilterMode::Linear);
+    EXPECT_EQ(linear.default_sampler.mipmap_filter, epix::image::ImageFilterMode::Linear);
+
+    const auto nearest = epix::image::ImagePlugin::default_nearest();
+    EXPECT_EQ(nearest.default_sampler.min_filter, epix::image::ImageFilterMode::Nearest);
+    EXPECT_EQ(nearest.default_sampler.mag_filter, epix::image::ImageFilterMode::Nearest);
+    EXPECT_EQ(nearest.default_sampler.mipmap_filter, epix::image::ImageFilterMode::Nearest);
+}
+
+TEST(ImagePlugin, InstallsBevyFallbackImageAssets) {
+    App app = App::create();
+    app.add_plugins(epix::image::ImagePlugin{});
+
+    const auto& images = app.world().resource<epix::assets::Assets<epix::image::Image>>();
+    const auto opaque  = images.get(epix::image::DEFAULT_IMAGE_HANDLE.id());
+    ASSERT_TRUE(opaque.has_value());
+    EXPECT_EQ(opaque->get().width(), 1u);
+    EXPECT_EQ(opaque->get().height(), 1u);
+    EXPECT_EQ(opaque->get().format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(opaque->get().raw_view(), std::as_bytes(std::span{std::array<std::uint8_t, 4>{255, 255, 255, 255}}));
+
+    const auto transparent = images.get(epix::image::TRANSPARENT_IMAGE_HANDLE.id());
+    ASSERT_TRUE(transparent.has_value());
+    EXPECT_EQ(transparent->get().raw_view(),
+              std::as_bytes(std::span{std::array<std::uint8_t, 4>{255, 255, 255, 0}}));
+}
 
 // A user component that is extracted into the render world each frame.
 struct SmokeComponent {
@@ -72,7 +106,7 @@ std::optional<Entity> get_main_entity(const World& render_world, Entity render_e
 TEST(RenderWorld, EndToEndSyncAndExtract) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::image::ImagePlugin{}).add_plugins(FrameCountPlugin{});
     try {
         RenderPlugin{}.attach(app);
     } catch (const std::exception& e) {

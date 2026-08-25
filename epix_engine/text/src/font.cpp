@@ -439,7 +439,6 @@ void register_default_embedded_font(app::App& app) {
 
 void FontPlugin::attach(app::App& app) {
     spdlog::debug("[text] Attaching FontPlugin.");
-    app.add_plugins(image::ImagePlugin{});
     assets::app_register_asset<Font>(app);
     assets::app_register_loader<FontLoader>(app);
     app.world_mut().init_resource<FontLibrary>();

@@ -30,6 +30,8 @@ import epix.window;
 import epix.glfw.core;
 import epix.glfw.render;
 import epix.render;
+import epix.image;
+import epix.camera;
 import epix.core_graph;
 import epix.mesh;
 import epix.transform;
@@ -491,6 +493,14 @@ struct GpuPressureProjector {
     // Readback buffer (copy of chunk_data after simulation step)
     wgpu::Buffer readback_buf;
 
+    // Slang SPIR-V passthrough does not provide wgpu-native with reliable
+    // automatic bind-group-layout reflection. Keep the layouts explicit,
+    // matching the vk::binding declarations in the compute sources below.
+    wgpu::BindGroupLayout inplace_layout;
+    wgpu::BindGroupLayout inplace_param_layout;
+    wgpu::BindGroupLayout output_layout;
+    wgpu::BindGroupLayout output_noparam_layout;
+
     // ------- Compute pipelines -------
     wgpu::ComputePipeline pipeline_even;
     wgpu::ComputePipeline pipeline_odd;
@@ -576,6 +586,43 @@ struct GpuPressureProjector {
     // Creates GPU buffers and builds the chunk-position SVO. Called lazily each frame.
     void init(const wgpu::Device& device) {
         if (buffers_ready_) return;
+
+        const auto storage = [](std::uint32_t binding, wgpu::BufferBindingType type) {
+            auto buffer = wgpu::BufferBindingLayout().setType(type);
+            if (type == wgpu::BufferBindingType::eUniform) buffer.setMinBindingSize(kParamBytes);
+            return wgpu::BindGroupLayoutEntry()
+                .setBinding(binding)
+                .setVisibility(wgpu::ShaderStage::eCompute)
+                .setBuffer(std::move(buffer));
+        };
+        inplace_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                                           .setLabel("LiquidInplaceLayout")
+                                                           .setEntries(std::array{
+                                                               storage(0, wgpu::BufferBindingType::eStorage),
+                                                               storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                           }));
+        inplace_param_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                                                 .setLabel("LiquidInplaceParamLayout")
+                                                                 .setEntries(std::array{
+                                                                     storage(0, wgpu::BufferBindingType::eStorage),
+                                                                     storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                                     storage(2, wgpu::BufferBindingType::eUniform),
+                                                                 }));
+        output_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                                          .setLabel("LiquidOutputLayout")
+                                                          .setEntries(std::array{
+                                                              storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                              storage(1, wgpu::BufferBindingType::eStorage),
+                                                              storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                              storage(3, wgpu::BufferBindingType::eUniform),
+                                                          }));
+        output_noparam_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                                                  .setLabel("LiquidOutputNoParamLayout")
+                                                                  .setEntries(std::array{
+                                                                      storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                                      storage(1, wgpu::BufferBindingType::eStorage),
+                                                                      storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                                  }));
 
         // ------- Slang shader common preambles (SVO-indexed chunk lookup via kSvoGridSlangSource) -------
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
@@ -1245,6 +1292,11 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
         if (!registry || !server) {
             return;  // Resources not yet available; called too early or missing plugins
         }
+        // Pipeline descriptors retain their bind-group-layout handles. Create
+        // them before queueing: waiting for the first render frame would queue
+        // null default handles and make PipelineServer create an invalid
+        // pipeline layout.
+        init(world.resource<wgpu::Device>());
 
         const auto bytes = [](std::string_view s) {
             return std::span<const std::byte>(reinterpret_cast<const std::byte*>(s.data()), s.size());
@@ -1856,38 +1908,42 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 )slg";
 
         // Register + load + queue each compute pipeline
-        const auto queue_one = [&](std::string_view path, const std::string& src, const char* label) {
+        const auto queue_one = [&](std::string_view path,
+                                   const std::string& src,
+                                   const char* label,
+                                   const wgpu::BindGroupLayout& layout) {
             registry->get().insert_asset_static(path, bytes(src));
             auto handle = server->get().load<shader::Shader>(std::string("embedded://") + std::string(path));
             return ps.queue_compute_pipeline(render::ComputePipelineDescriptor{
                 .label       = std::string(label),
+                .layouts     = {layout},
                 .shader      = std::move(handle),
                 .entry_point = std::string("computeMain"),
             });
         };
 
-        pipeline_even_id        = queue_one("liquid/pressure_even.slang", kShaderEven, "LiquidPressureProjectEven");
-        pipeline_odd_id         = queue_one("liquid/pressure_odd.slang", kShaderOdd, "LiquidPressureProjectOdd");
-        gravity_pipeline_id     = queue_one("liquid/gravity.slang", kShaderGravity, "LiquidGravity");
-        post_u_pipeline_id      = queue_one("liquid/post_u.slang", kShaderPostU, "LiquidPostU");
-        post_v_pipeline_id      = queue_one("liquid/post_v.slang", kShaderPostV, "LiquidPostV");
-        visc_u_even_pipeline_id = queue_one("liquid/visc_u_even.slang", kShaderViscUEven, "LiquidViscosityUEven");
-        visc_u_odd_pipeline_id  = queue_one("liquid/visc_u_odd.slang", kShaderViscUOdd, "LiquidViscosityUOdd");
-        visc_v_even_pipeline_id = queue_one("liquid/visc_v_even.slang", kShaderViscVEven, "LiquidViscosityVEven");
-        visc_v_odd_pipeline_id  = queue_one("liquid/visc_v_odd.slang", kShaderViscVOdd, "LiquidViscosityVOdd");
-        visc_wall_u_pipeline_id = queue_one("liquid/visc_wall_u.slang", kShaderViscWallU, "LiquidViscosityWallU");
-        visc_wall_v_pipeline_id = queue_one("liquid/visc_wall_v.slang", kShaderViscWallV, "LiquidViscosityWallV");
+        pipeline_even_id        = queue_one("liquid/pressure_even.slang", kShaderEven, "LiquidPressureProjectEven", inplace_layout);
+        pipeline_odd_id         = queue_one("liquid/pressure_odd.slang", kShaderOdd, "LiquidPressureProjectOdd", inplace_layout);
+        gravity_pipeline_id     = queue_one("liquid/gravity.slang", kShaderGravity, "LiquidGravity", inplace_param_layout);
+        post_u_pipeline_id      = queue_one("liquid/post_u.slang", kShaderPostU, "LiquidPostU", inplace_layout);
+        post_v_pipeline_id      = queue_one("liquid/post_v.slang", kShaderPostV, "LiquidPostV", inplace_layout);
+        visc_u_even_pipeline_id = queue_one("liquid/visc_u_even.slang", kShaderViscUEven, "LiquidViscosityUEven", inplace_param_layout);
+        visc_u_odd_pipeline_id  = queue_one("liquid/visc_u_odd.slang", kShaderViscUOdd, "LiquidViscosityUOdd", inplace_param_layout);
+        visc_v_even_pipeline_id = queue_one("liquid/visc_v_even.slang", kShaderViscVEven, "LiquidViscosityVEven", inplace_param_layout);
+        visc_v_odd_pipeline_id  = queue_one("liquid/visc_v_odd.slang", kShaderViscVOdd, "LiquidViscosityVOdd", inplace_param_layout);
+        visc_wall_u_pipeline_id = queue_one("liquid/visc_wall_u.slang", kShaderViscWallU, "LiquidViscosityWallU", inplace_param_layout);
+        visc_wall_v_pipeline_id = queue_one("liquid/visc_wall_v.slang", kShaderViscWallV, "LiquidViscosityWallV", inplace_param_layout);
         extrap_cell_even_pipeline_id =
-            queue_one("liquid/extrap_even.slang", kShaderExtrapCellEven, "LiquidExtrapolateCellEven");
+            queue_one("liquid/extrap_even.slang", kShaderExtrapCellEven, "LiquidExtrapolateCellEven", inplace_layout);
         extrap_cell_odd_pipeline_id =
-            queue_one("liquid/extrap_odd.slang", kShaderExtrapCellOdd, "LiquidExtrapolateCellOdd");
-        advect_u_pipeline_id  = queue_one("liquid/advect_u.slang", kShaderAdvectU, "LiquidAdvectU");
-        advect_v_pipeline_id  = queue_one("liquid/advect_v.slang", kShaderAdvectV, "LiquidAdvectV");
-        density_pipeline_id   = queue_one("liquid/density.slang", kShaderDensity, "LiquidDensityTransport");
-        surface_u_pipeline_id = queue_one("liquid/surface_u.slang", kShaderSurfaceU, "LiquidSurfaceU");
-        surface_v_pipeline_id = queue_one("liquid/surface_v.slang", kShaderSurfaceV, "LiquidSurfaceV");
-        clamp_u_pipeline_id   = queue_one("liquid/clamp_u.slang", kShaderClampU, "LiquidClampU");
-        clamp_v_pipeline_id   = queue_one("liquid/clamp_v.slang", kShaderClampV, "LiquidClampV");
+            queue_one("liquid/extrap_odd.slang", kShaderExtrapCellOdd, "LiquidExtrapolateCellOdd", inplace_layout);
+        advect_u_pipeline_id  = queue_one("liquid/advect_u.slang", kShaderAdvectU, "LiquidAdvectU", output_layout);
+        advect_v_pipeline_id  = queue_one("liquid/advect_v.slang", kShaderAdvectV, "LiquidAdvectV", output_layout);
+        density_pipeline_id   = queue_one("liquid/density.slang", kShaderDensity, "LiquidDensityTransport", output_layout);
+        surface_u_pipeline_id = queue_one("liquid/surface_u.slang", kShaderSurfaceU, "LiquidSurfaceU", output_layout);
+        surface_v_pipeline_id = queue_one("liquid/surface_v.slang", kShaderSurfaceV, "LiquidSurfaceV", output_layout);
+        clamp_u_pipeline_id   = queue_one("liquid/clamp_u.slang", kShaderClampU, "LiquidClampU", output_noparam_layout);
+        clamp_v_pipeline_id   = queue_one("liquid/clamp_v.slang", kShaderClampV, "LiquidClampV", output_noparam_layout);
 
         queued_ = true;
     }
@@ -2741,6 +2797,10 @@ int main() {
         .add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
+        .add_plugins(time::TimePlugin{})
+        .add_plugins(render::FrameCountPlugin{})
+        .add_plugins(camera::CameraPlugin{})
+        .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(mesh::MeshRenderPlugin{})

@@ -9,7 +9,6 @@ using namespace epix::app;
 
 void SFMLPlugin::attach(App& app) {
     spdlog::debug("[sfml] Attaching SFMLPlugin.");
-    app.add_plugins(image::ImagePlugin{});
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<SFMLwindows>();
     app.world_mut().init_resource<PendingWindowPositions>();

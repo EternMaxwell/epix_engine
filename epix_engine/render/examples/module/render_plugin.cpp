@@ -14,6 +14,8 @@ import epix.input;
 import epix.window;
 import epix.transform;
 import epix.render;
+import epix.image;
+import epix.camera;
 import epix.glfw.core;
 import epix.glfw.render;
 #ifdef EPIX_IMPORT_STD
@@ -101,6 +103,8 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(render::FrameCountPlugin{})
+        .add_plugins(camera::CameraPlugin{})
+        .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(ClearGraphPlugin{});
 

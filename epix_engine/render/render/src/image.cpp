@@ -6,6 +6,10 @@
 
 namespace epix::render {
 
+namespace {
+wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDescriptor& descriptor);
+}
+
 void TexturePlugin::attach(app::App& app) {
     // Bevy texture::TexturePlugin owns image render-asset extraction and the
     // manually managed texture-view resource.
@@ -13,7 +17,16 @@ void TexturePlugin::attach(app::App& app) {
     app.world_mut().init_resource<texture::ManualTextureViews>();
     app.add_plugins(ExtractResourcePlugin<texture::ManualTextureViews>{});
 
-    app.sub_app_mut(Render).then([](app::App& render_app) {
+    // Bevy TexturePlugin::finish obtains this configuration from the separate
+    // bevy_image::ImagePlugin.  Keep that ownership boundary: RenderPlugin
+    // must not silently install ImagePlugin.
+    const auto image_plugin = app.get_plugin<image::ImagePlugin>();
+    if (!image_plugin) {
+        throw std::runtime_error("render::TexturePlugin requires image::ImagePlugin to be added before render::RenderPlugin");
+    }
+    const image::ImageSamplerDescriptor default_sampler_descriptor = image_plugin->get().default_sampler;
+
+    app.sub_app_mut(Render).then([default_sampler_descriptor](app::App& render_app) {
         auto& world = render_app.world_mut();
         world.init_resource<render_resource::TextureCache>();
         render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
@@ -25,17 +38,9 @@ void TexturePlugin::attach(app::App& app) {
         // after render resources are available. Epix initializes them during
         // attachment because RenderPlugin creates its device synchronously
         // before child plugins are attached.
-        wgpu::Sampler sampler = device.createSampler(wgpu::SamplerDescriptor()
-                                                          .setLabel("DefaultImageSampler")
-                                                          .setAddressModeU(wgpu::AddressMode::eClampToEdge)
-                                                          .setAddressModeV(wgpu::AddressMode::eClampToEdge)
-                                                          .setAddressModeW(wgpu::AddressMode::eClampToEdge)
-                                                          .setMinFilter(wgpu::FilterMode::eLinear)
-                                                          .setMagFilter(wgpu::FilterMode::eLinear)
-                                                          .setMipmapFilter(wgpu::MipmapFilterMode::eLinear)
-                                                          .setLodMinClamp(0.0f)
-                                                          .setLodMaxClamp(32.0f)
-                                                          .setMaxAnisotropy(1));
+        auto sampler_descriptor = to_wgpu_sampler_descriptor(default_sampler_descriptor);
+        sampler_descriptor.setLabel("DefaultImageSampler");
+        wgpu::Sampler sampler = device.createSampler(sampler_descriptor);
         world.insert_resource(DefaultImageSampler{.sampler = std::move(sampler)});
         auto fallback = texture::FallbackImage::from_world(world);
         world.insert_resource(std::move(fallback));

@@ -125,6 +125,7 @@ int main() {
         .add_plugins(glfw::GLFWRenderPlugin{})
         .add_plugins(transform::TransformPlugin{})
         .add_plugins(camera::CameraPlugin{})
+        .add_plugins(image::ImagePlugin{})
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(std::move(render_plugin))
         .add_plugins(ClearGraphPlugin{});

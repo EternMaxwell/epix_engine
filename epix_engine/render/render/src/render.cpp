@@ -436,7 +436,6 @@ void RenderPlugin::attach(App& app) {
     });
 
     app.add_plugins(render::window::WindowRenderPlugin{});
-    app.add_plugins(image::ImagePlugin{});
     app.add_plugins(shader::ShaderPlugin{});
     // This is Bevy's render::camera::CameraPlugin. The public main-world
     // epix::camera::CameraPlugin is deliberately a separate application

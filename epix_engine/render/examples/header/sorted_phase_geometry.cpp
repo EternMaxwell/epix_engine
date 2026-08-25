@@ -294,7 +294,7 @@ int main() {
         .add_plugins(window::WindowPlugin{.primary_window = primary_window, .exit_condition = window::ExitCondition::OnPrimaryClosed})
         .add_plugins(input::InputPlugin{}).add_plugins(time::TimePlugin{}).add_plugins(glfw::GLFWPlugin{})
         .add_plugins(glfw::GLFWRenderPlugin{}).add_plugins(transform::TransformPlugin{})
-        .add_plugins(render::FrameCountPlugin{}).add_plugins(render::RenderPlugin{})
+        .add_plugins(render::FrameCountPlugin{}).add_plugins(camera::CameraPlugin{}).add_plugins(image::ImagePlugin{}).add_plugins(render::RenderPlugin{})
         .add_plugins(SortedGeometryPlugin{});
     app.add_systems(Startup, into([](Commands commands) {
         commands.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{},

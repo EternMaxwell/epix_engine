@@ -254,9 +254,14 @@ EPIX_EXPORT class Image {
         return reinterpret_cast<const T*>(data.data());
     }
 
-    Image() = default;
-
    public:
+    /** @brief Create Bevy's default opaque-white 1x1 RGBA image. */
+    Image();
+
+    /** @brief Create a transparent-white 1x1 RGBA image (Bevy
+     * `Image::transparent`). */
+    static Image transparent();
+
     /** @brief Create a zero-initialized image with the given type and
      * dimensions.
      * @param type Image dimension type.
@@ -447,6 +452,15 @@ EPIX_EXPORT class Image {
     Image blur(std::uint32_t radius) const;
 };
 
+/** @brief The persistent opaque-white fallback image installed by
+ * `ImagePlugin`, corresponding to Bevy's `Handle<Image>::default()`. */
+inline const assets::Handle<Image> DEFAULT_IMAGE_HANDLE{uuids::uuid{}};
+
+/** @brief The persistent transparent-white fallback image installed by
+ * `ImagePlugin`, matching Bevy's `TRANSPARENT_IMAGE_HANDLE`. */
+inline const assets::Handle<Image> TRANSPARENT_IMAGE_HANDLE{
+    uuids::uuid::from_string("d18ad97e-a322-4981-9505-44c59a4b5e46").value()};
+
 /** @brief Asset loader for image files.
  *
  * Registered with the asset server to load supported image formats. */
@@ -465,8 +479,23 @@ EPIX_EXPORT struct ImageLoader {
                                                                     assets::LoadContext& context);
 };
 /** @brief Plugin that registers the image asset loader and related
- * systems. */
+ * systems (Bevy `ImagePlugin`).
+ *
+ * Render-side texture preparation reads @c default_sampler from this
+ * application plugin, so add this plugin before @c render::RenderPlugin when
+ * using default-sampled images. */
 EPIX_EXPORT struct ImagePlugin {
+    /** @brief The sampler used by images whose sampler is @c Default. */
+    ImageSamplerDescriptor default_sampler = ImageSamplerDescriptor::linear();
+
+    /** @brief Make an image plugin with linear sampling by default (Bevy
+     * `ImagePlugin::default_linear`). */
+    static ImagePlugin default_linear() { return ImagePlugin{.default_sampler = ImageSamplerDescriptor::linear()}; }
+
+    /** @brief Make an image plugin with nearest sampling by default (Bevy
+     * `ImagePlugin::default_nearest`). */
+    static ImagePlugin default_nearest() { return ImagePlugin{.default_sampler = ImageSamplerDescriptor::nearest()}; }
+
     void attach(epix::app::App& app);
 };
 

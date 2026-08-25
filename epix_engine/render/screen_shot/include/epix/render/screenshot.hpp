@@ -115,7 +115,7 @@ EPIX_EXPORT struct ScreenshotHotkey {
  * resource will be inserted and the plugin will fire a @c ScreenCapture event whenever
  * that key is pressed. also see @c ScreenshotHotkey.
  *
- * Requires @c RenderPlugin (and therefore @c ImagePlugin) to be registered. */
+ * Requires @c image::ImagePlugin and @c RenderPlugin to be registered. */
 EPIX_EXPORT struct ScreenshotPlugin {
     /** @brief Optional output directory for auto-saving captures to disk. */
     std::optional<std::filesystem::path> save_path = "screenshots";

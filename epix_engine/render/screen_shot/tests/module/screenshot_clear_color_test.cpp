@@ -8,6 +8,7 @@
 
 import epix.ecs;
 import epix.render;
+import epix.image;
 import epix.render.screenshot;
 import epix.image;
 import epix.assets;
@@ -50,7 +51,7 @@ constexpr uint32_t TEX_H = 4u;
 TEST(ScreenshotPlugin, CaptureClearColorTexture) {
     App app = App::create();
     app.add_events<epix::window::WindowClosed>();
-    app.add_plugins(epix::time::TimePlugin{}).add_plugins(FrameCountPlugin{});
+    app.add_plugins(epix::time::TimePlugin{}).add_plugins(epix::image::ImagePlugin{}).add_plugins(FrameCountPlugin{});
 
     // Build RenderPlugin first; skip test if GPU/Vulkan is unavailable.
     try {

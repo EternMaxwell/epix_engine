@@ -44,7 +44,6 @@ void GLFWPlugin::attach(App& app) {
         throw std::runtime_error("Failed to initialize GLFW");
     }
     spdlog::info("[glfw] GLFW initialized successfully on platform {}.", glfw_platform_name(glfwGetPlatform()));
-    app.add_plugins(image::ImagePlugin{});
     app.world_mut().insert_resource(Clipboard{});
     app.world_mut().init_resource<GLFWwindows>();
     app.add_events<SetClipboardString>().set_runner(std::make_unique<GLFWRunner>(app));
