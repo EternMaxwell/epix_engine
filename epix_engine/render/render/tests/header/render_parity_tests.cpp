@@ -2477,13 +2477,17 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     // With env vars set, values are picked up. Restore with the empty string
     // (never nullptr - _putenv_s(nullptr) is a crash on MSVC).
     _putenv_s("WGPU_BACKEND", "vulkan, dx12, gl");
-    _putenv_s("WGPU_POWER_PREF", "low");
+    _putenv_s("WGPU_POWER_PREF", "LOW");
     _putenv_s("WGPU_SETTINGS_PRIO", "WeBgL2");
     settings.apply_env_overrides();
     EXPECT_TRUE(settings.backends.has_value());
     EXPECT_EQ(*settings.backends, Backends::Vulkan | Backends::Dx12 | Backends::Gl);
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eLowPower);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::WebGL2);
+
+    _putenv_s("WGPU_POWER_PREF", "none");
+    settings.apply_env_overrides();
+    EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eUndefined);
 
     _putenv_s("WGPU_SETTINGS_PRIO", "compat");
     EXPECT_FALSE(settings_priority_from_env().has_value());

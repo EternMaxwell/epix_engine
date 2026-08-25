@@ -3,6 +3,8 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <epix/app.hpp>
@@ -111,6 +113,7 @@ EPIX_EXPORT struct Backends {
     friend constexpr Backends operator|(Backends lhs, Backends rhs) noexcept {
         return Backends{lhs.bits_ | rhs.bits_};
     }
+    friend constexpr Backends operator|(Bit lhs, Bit rhs) noexcept { return Backends{lhs} | Backends{rhs}; }
     friend constexpr Backends operator|(Backends lhs, Bit rhs) noexcept { return lhs | Backends{rhs}; }
     friend constexpr Backends operator|(Bit lhs, Backends rhs) noexcept { return Backends{lhs} | rhs; }
 
@@ -199,11 +202,16 @@ EPIX_EXPORT struct WgpuSettings {
     void apply_env_overrides() {
         if (const auto configured_backends = Backends::from_env()) backends = *configured_backends;
         if (const char* power = std::getenv("WGPU_POWER_PREF")) {
-            std::string_view p(power);
-            if (p == "low" || p == "Low")
+            std::string p(power);
+            std::ranges::transform(p, p.begin(), [](unsigned char character) {
+                return static_cast<char>(std::tolower(character));
+            });
+            if (p == "low")
                 power_preference = wgpu::PowerPreference::eLowPower;
-            else if (p == "high" || p == "High")
+            else if (p == "high")
                 power_preference = wgpu::PowerPreference::eHighPerformance;
+            else if (p == "none")
+                power_preference = wgpu::PowerPreference::eUndefined;
         }
         if (auto configured_priority = settings_priority_from_env()) priority = *configured_priority;
     }
