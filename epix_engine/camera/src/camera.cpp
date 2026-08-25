@@ -191,9 +191,9 @@ void check_visibility_system(
         entities,
     Res<VisibleEntityRanges> visible_entity_ranges) {
     // Bevy check_visibility: for each camera, mark entities visible to it in
-    // its view slot and collect them into the camera's VisibleEntities.
-    // Frustum culling is not applied yet — epix has no per-entity bounds; the
-    // Frustum is kept in the query for that work.
+    // its view slot and collect them into the camera's VisibleEntities. When
+    // bounds are available, use its sphere broad phase followed by a
+    // transformed-AABB frustum test.
     for (auto&& [camera_entity, camera, visible_entities, opt_camera_layers, frustum, no_cpu_culling] : cameras.iter()) {
         (void)camera_entity;
         if (!camera.is_active) continue;

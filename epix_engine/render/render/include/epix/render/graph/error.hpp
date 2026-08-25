@@ -3,7 +3,9 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <variant>
 #endif
@@ -116,6 +118,58 @@ EPIX_EXPORT namespace epix::render::graph {
     /** @brief Top-level render graph error, wrapping node, edge, or sub-graph errors. */
     struct GraphError : std::variant<NodeNotPresent, EdgeError, SubGraphExists> {
         using std::variant<NodeNotPresent, EdgeError, SubGraphExists>::variant;
+        std::string to_string() const;
+    };
+
+    /** @brief A node returned its Bevy-compatible `NodeRunError`. */
+    struct RunnerNodeRunError {
+        NodeLabel node;
+        NodeRunError error;
+    };
+    /** @brief A graph input slot did not receive a value. */
+    struct RunnerMissingInput {
+        std::size_t slot_index;
+        std::string slot_name;
+        std::optional<GraphLabel> sub_graph;
+    };
+    /** @brief A graph input value has a different slot type than declared. */
+    struct RunnerMismatchedInputSlotType {
+        std::size_t slot_index;
+        SlotType expected;
+        SlotType actual;
+    };
+    /** @brief A node was invoked without all of its declared inputs. */
+    struct RunnerMismatchedInputCount {
+        NodeLabel node;
+        std::size_t slot_count;
+        std::size_t value_count;
+    };
+    /** @brief A node returned without filling a declared output slot. */
+    struct RunnerEmptyNodeOutputSlot {
+        NodeLabel node;
+        std::size_t slot_index;
+        std::string slot_name;
+    };
+    /** @brief A queued subgraph no longer exists. This is unreachable after
+     * graph validation, but remains an explicit runtime error. */
+    struct RunnerSubGraphNotFound {
+        GraphLabel sub_graph;
+    };
+    /** @brief Typed failure from `RenderGraphRunner`, mirroring Bevy's
+     * `RenderGraphRunnerError` rather than collapsing errors to `bool`. */
+    struct RenderGraphRunnerError
+        : std::variant<RunnerNodeRunError,
+                       RunnerMissingInput,
+                       RunnerMismatchedInputSlotType,
+                       RunnerMismatchedInputCount,
+                       RunnerEmptyNodeOutputSlot,
+                       RunnerSubGraphNotFound> {
+        using std::variant<RunnerNodeRunError,
+                           RunnerMissingInput,
+                           RunnerMismatchedInputSlotType,
+                           RunnerMismatchedInputCount,
+                           RunnerEmptyNodeOutputSlot,
+                           RunnerSubGraphNotFound>::variant;
         std::string to_string() const;
     };
 }  // namespace epix::render::graph

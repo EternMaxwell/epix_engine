@@ -84,4 +84,35 @@ std::string GraphError::to_string() const {
         *this);
 }
 
+std::string RenderGraphRunnerError::to_string() const {
+    return std::visit(
+        epix::utils::visitor{
+            [](const RunnerNodeRunError& e) {
+                return std::format("node '{}' failed with NodeRunError {}", e.node.type_index().short_name(),
+                                   static_cast<std::uint32_t>(e.error));
+            },
+            [](const RunnerMissingInput& e) {
+                return std::format("graph '{}' input slot {} ('{}') has no value",
+                                   e.sub_graph ? e.sub_graph->type_index().short_name() : "main", e.slot_index,
+                                   e.slot_name);
+            },
+            [](const RunnerMismatchedInputSlotType& e) {
+                return std::format("input slot {} type mismatch: expected {}, got {}", e.slot_index,
+                                   type_name(e.expected), type_name(e.actual));
+            },
+            [](const RunnerMismatchedInputCount& e) {
+                return std::format("node '{}' has {} input slots but received {} values",
+                                   e.node.type_index().short_name(), e.slot_count, e.value_count);
+            },
+            [](const RunnerEmptyNodeOutputSlot& e) {
+                return std::format("node '{}' did not set output slot {} ('{}')",
+                                   e.node.type_index().short_name(), e.slot_index, e.slot_name);
+            },
+            [](const RunnerSubGraphNotFound& e) {
+                return std::format("queued subgraph '{}' was not found", e.sub_graph.type_index().short_name());
+            },
+        },
+        *this);
+}
+
 }  // namespace epix::render::graph

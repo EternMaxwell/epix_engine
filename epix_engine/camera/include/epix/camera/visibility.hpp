@@ -654,9 +654,9 @@ EPIX_EXPORT void check_visibility_ranges(
                                      const VisibilityRange&>> entities);
 
 /** @brief Marks entities visible per camera view: sets the per-view bit and
- * collects them into the camera's VisibleEntities (Bevy check_visibility).
- * Frustum culling is not applied yet — epix has no per-entity bounds; the
- * Frustum is kept in the query for that work. */
+ * collects them into the camera's VisibleEntities (Bevy `check_visibility`).
+ * When bounds and a global transform are present, it performs Bevy's sphere
+ * broad phase followed by transformed-AABB frustum culling. */
 EPIX_EXPORT void check_visibility_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                      const Camera&,

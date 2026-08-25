@@ -1795,6 +1795,13 @@ struct ProbeGraphNode : graph::Node {
         return {};
     }
 };
+struct FailingGraphNode : graph::Node {
+    std::expected<void, graph::NodeRunError> run(graph::GraphContext&,
+                                                  graph::RenderContext&,
+                                                  const epix::ecs::World&) override {
+        return std::unexpected(graph::NodeRunError::DrawError);
+    }
+};
 }  // namespace
 
 // Bevy graph.rs:98-104 PANICS when set_input is called twice.
@@ -1803,6 +1810,35 @@ TEST(RenderGraph, SetInputTwiceThrows) {
     g.set_input(std::vector<graph::SlotInfo>{graph::SlotInfo{"in", graph::SlotType::Buffer}});
     EXPECT_THROW(g.set_input(std::vector<graph::SlotInfo>{graph::SlotInfo{"in2", graph::SlotType::Buffer}}),
                  std::runtime_error);
+}
+
+// Bevy RenderGraphRunner preserves the concrete failure from Node::run rather
+// than reducing it to a boolean. The runner's inner graph step needs no GPU
+// context when the node immediately reports an error.
+TEST(RenderGraphRunner, PropagatesNodeRunError) {
+    graph::RenderGraph g;
+    g.add_node<FailingGraphNode>(GraphTestNodeA{});
+    epix::ecs::World world(WorldId(110));
+    graph::RenderContext context(wgpu::Device{});
+    const auto result = graph::RenderGraphRunner::run_graph(g, std::nullopt, context, world, {}, std::nullopt);
+    ASSERT_FALSE(result.has_value());
+    const auto* error = std::get_if<graph::RunnerNodeRunError>(&result.error());
+    ASSERT_NE(error, nullptr);
+    EXPECT_EQ(error->node, graph::NodeLabel(GraphTestNodeA{}));
+    EXPECT_EQ(error->error, graph::NodeRunError::DrawError);
+}
+
+TEST(RenderGraphRunner, ReportsMissingGraphInput) {
+    graph::RenderGraph g;
+    g.set_input(std::array{graph::SlotInfo{"source", graph::SlotType::Buffer}});
+    epix::ecs::World world(WorldId(111));
+    graph::RenderContext context(wgpu::Device{});
+    const auto result = graph::RenderGraphRunner::run_graph(g, std::nullopt, context, world, {}, std::nullopt);
+    ASSERT_FALSE(result.has_value());
+    const auto* error = std::get_if<graph::RunnerMissingInput>(&result.error());
+    ASSERT_NE(error, nullptr);
+    EXPECT_EQ(error->slot_index, 0u);
+    EXPECT_EQ(error->slot_name, "source");
 }
 
 // Bevy graph.rs:135-142: add_node with a duplicate label REPLACES the node.

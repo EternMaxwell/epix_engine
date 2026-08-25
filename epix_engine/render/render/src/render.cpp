@@ -42,14 +42,14 @@ void epix::render::render_system(World& world) {
     graph.update(world);
     // Bevy render_system (renderer/mod.rs:82-89): after the graph runs, record
     // the readback copy commands into the same encoder before submitting.
-    bool ok = graph::RenderGraphRunner::run(graph, device, queue, world, [&world](wgpu::CommandEncoder& encoder) {
+    const auto result = graph::RenderGraphRunner::run(graph, device, queue, world, [&world](wgpu::CommandEncoder& encoder) {
         submit_readback_commands(world, encoder);
     });
-    if (!ok) {
-        // Bevy logs the full error chain and panics; epix logs and drops the
-        // frame instead — the runner already refused to submit, so presenting
-        // would show the previous frame's image (no corruption).
-        spdlog::error("[render] Render graph failed to run; frame was not submitted.");
+    if (!result) {
+        // Match Bevy's render_system: the encoder is not submitted and this
+        // typed failure reaches the application's terminate handler rather
+        // than being silently converted into a stale frame.
+        throw std::runtime_error(std::format("Render graph failed to run: {}", result.error().to_string()));
     }
 }
 

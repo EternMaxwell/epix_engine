@@ -8,38 +8,31 @@ using namespace epix::render::graph;
 using namespace epix::ecs;
 using namespace epix::app;
 
-bool RenderGraphRunner::run(const RenderGraph& graph,
-                            const wgpu::Device& device,
-                            const wgpu::Queue& queue,
-                            World& world,
-                            std::function<void(wgpu::CommandEncoder&)> finalizer) {
+std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run(
+    const RenderGraph& graph,
+    const wgpu::Device& device,
+    const wgpu::Queue& queue,
+    World& world,
+    std::function<void(wgpu::CommandEncoder&)> finalizer) {
     spdlog::trace("[render.graph] Running render graph.");
     RenderContext render_context(device.clone());
     auto res = run_graph(graph, std::nullopt, render_context, world, {}, std::nullopt);
-    if (!res) {
-        // The main graph has no input node, so get_input_node() may be
-        // disengaged here — never dereference it on the failure path.
-        if (auto input_node = graph.get_input_node()) {
-            spdlog::warn("Failed to run graph {}.", input_node->get().label.type_index().short_name());
-        } else {
-            spdlog::warn("Failed to run render graph.");
-        }
-        return false;
-    }
+    if (!res) return std::unexpected(res.error());
     // finalize the command encoder
     if (finalizer) finalizer(render_context.command_encoder());
     // submit generated cmd buffers
     auto command_buffers = render_context.finish();
     if (command_buffers.size()) queue.submit(command_buffers);
-    return true;
+    return {};
 }
 
-bool RenderGraphRunner::run_graph(const RenderGraph& graph,
-                                  std::optional<GraphLabel> sub_graph,
-                                  RenderContext& render_context,
-                                  World& world,
-                                  std::span<const SlotValue> inputs,
-                                  std::optional<Entity> view_entity) {
+std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(
+    const RenderGraph& graph,
+    std::optional<GraphLabel> sub_graph,
+    RenderContext& render_context,
+    World& world,
+    std::span<const SlotValue> inputs,
+    std::optional<Entity> view_entity) {
     // store all outputs of nodes in a map
     std::unordered_map<NodeLabel, std::vector<SlotValue>> node_outputs;
 
@@ -54,13 +47,13 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         for (auto&& [i, input_slot] : std::views::enumerate(input_node->get().inputs.iter())) {
             if (i < inputs.size()) {
                 if (input_slot.type != inputs[i].type()) {
-                    spdlog::warn("Input slot {} type mismatch. Expected {}, got {}.", input_slot.name,
-                                 type_name(input_slot.type), type_name(inputs[i].type()));
-                    return false;
+                    return std::unexpected(RunnerMismatchedInputSlotType{
+                        .slot_index = static_cast<std::size_t>(i), .expected = input_slot.type, .actual = inputs[i].type()});
                 }
                 input_values.push_back(inputs[i]);
             } else {
-                return false;
+                return std::unexpected(
+                    RunnerMissingInput{.slot_index = static_cast<std::size_t>(i), .slot_name = input_slot.name, .sub_graph = sub_graph});
             }
         }
 
@@ -112,9 +105,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
         auto inputs = std::ranges::to<std::vector>(
             std::views::transform(slot_indices_and_inputs, [](const auto& pair) { return pair.second; }));
         if (inputs.size() != node_state.inputs.size()) {
-            spdlog::warn("Node {} input size mismatch. Expected {}, got {}.",
-                         node_state.label.type_index().short_name(), node_state.inputs.size(), inputs.size());
-            return false;
+            return std::unexpected(RunnerMismatchedInputCount{
+                .node = node_state.label, .slot_count = node_state.inputs.size(), .value_count = inputs.size()});
         }
 
         std::vector<std::optional<SlotValue>> outputs(node_state.outputs.size(), std::nullopt);
@@ -125,9 +117,7 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
             }
             spdlog::debug("Running node {}.", node_state.label.type_index().short_name());
             if (auto result = node_state.pnode->run(context, render_context, world); !result) {
-                spdlog::warn("Node {} failed with error {}.", node_state.label.type_index().short_name(),
-                             static_cast<std::uint32_t>(result.error()));
-                return false;
+                return std::unexpected(RunnerNodeRunError{.node = node_state.label, .error = result.error()});
             }
 
             for (auto&& run_sub_graph : context.finish()) {
@@ -146,16 +136,10 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
                             wgpu::StringView(std::string_view("End " + *run_sub_graph.debug_group)));
                     }
                     if (!res) {
-                        spdlog::warn(
-                            "Sub graph {} failed to run. Ignoring "
-                            "run_sub_graph.",
-                            run_sub_graph.id.type_index().short_name());
-                        return false;
+                        return std::unexpected(res.error());
                     }
                 } else {
-                    spdlog::warn("Sub graph {} not found. Ignoring run_sub_graph.",
-                                 run_sub_graph.id.type_index().short_name());
-                    return false;
+                    return std::unexpected(RunnerSubGraphNotFound{.sub_graph = run_sub_graph.id});
                 }
             }
         }
@@ -167,8 +151,8 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
                 if (outputs[index]) {
                     output_values.push_back(*outputs[index]);
                 } else {
-                    spdlog::warn("Output slot {} is empty. Ignoring run_sub_graph.", output_slot.name);
-                    return false;
+                    return std::unexpected(RunnerEmptyNodeOutputSlot{
+                        .node = node_state.label, .slot_index = static_cast<std::size_t>(index), .slot_name = output_slot.name});
                 }
             }
         }
@@ -186,5 +170,5 @@ bool RenderGraphRunner::run_graph(const RenderGraph& graph,
     // encoder and are flushed by add_command_buffer / finish() so that
     // externally-added buffers stay in command order (graph_runner.rs).
 
-    return true;
+    return {};
 }

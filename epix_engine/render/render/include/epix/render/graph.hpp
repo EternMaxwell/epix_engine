@@ -175,18 +175,18 @@ EPIX_EXPORT struct RenderGraph {
 };
 
 struct RenderGraphRunner {
-    static bool run(const RenderGraph& graph,
-                    const wgpu::Device& device,
-                    const wgpu::Queue& queue,
-                    epix::ecs::World& world,
-                    std::function<void(wgpu::CommandEncoder&)> finalizer);
+    static std::expected<void, RenderGraphRunnerError> run(const RenderGraph& graph,
+                                                           const wgpu::Device& device,
+                                                           const wgpu::Queue& queue,
+                                                           epix::ecs::World& world,
+                                                           std::function<void(wgpu::CommandEncoder&)> finalizer);
 
-    static bool run_graph(const RenderGraph& graph,
-                          std::optional<GraphLabel> sub_graph,
-                          RenderContext& render_context,
-                          epix::ecs::World& world,
-                          std::span<const SlotValue> inputs,
-                          std::optional<epix::ecs::Entity> view_entity);
+    static std::expected<void, RenderGraphRunnerError> run_graph(const RenderGraph& graph,
+                                                                 std::optional<GraphLabel> sub_graph,
+                                                                 RenderContext& render_context,
+                                                                 epix::ecs::World& world,
+                                                                 std::span<const SlotValue> inputs,
+                                                                 std::optional<epix::ecs::Entity> view_entity);
 };
 /**
  * @brief Bevy `RenderGraphExt` helpers (render_graph/app.rs), operating on the
