@@ -147,9 +147,42 @@ EPIX_EXPORT struct WgpuSettings {
         wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures)};
     /** @brief Features to remove from the automatically selected set. */
     std::optional<std::vector<wgpu::FeatureName>> disabled_features;
-    /** @brief Imposed device limits. The native wgpu C API uses a null
-     * descriptor pointer for its default limits, hence this optional form. */
-    std::optional<wgpu::Limits> limits;
+    /** @brief Imposed device limits (Bevy `WgpuLimits::default()`). */
+    wgpu::Limits limits = [] {
+        wgpu::Limits result;
+        result.setMaxTextureDimension1D(8192)
+            .setMaxTextureDimension2D(8192)
+            .setMaxTextureDimension3D(2048)
+            .setMaxTextureArrayLayers(256)
+            .setMaxBindGroups(4)
+            .setMaxBindGroupsPlusVertexBuffers(24)
+            .setMaxBindingsPerBindGroup(1000)
+            .setMaxDynamicUniformBuffersPerPipelineLayout(8)
+            .setMaxDynamicStorageBuffersPerPipelineLayout(4)
+            .setMaxSampledTexturesPerShaderStage(16)
+            .setMaxSamplersPerShaderStage(16)
+            .setMaxStorageBuffersPerShaderStage(8)
+            .setMaxStorageTexturesPerShaderStage(4)
+            .setMaxUniformBuffersPerShaderStage(12)
+            .setMaxUniformBufferBindingSize(64ull << 10)
+            .setMaxStorageBufferBindingSize(128ull << 20)
+            .setMinUniformBufferOffsetAlignment(256)
+            .setMinStorageBufferOffsetAlignment(256)
+            .setMaxVertexBuffers(8)
+            .setMaxBufferSize(256ull << 20)
+            .setMaxVertexAttributes(16)
+            .setMaxVertexBufferArrayStride(2048)
+            .setMaxInterStageShaderVariables(16)
+            .setMaxColorAttachments(8)
+            .setMaxColorAttachmentBytesPerSample(32)
+            .setMaxComputeWorkgroupStorageSize(16384)
+            .setMaxComputeInvocationsPerWorkgroup(256)
+            .setMaxComputeWorkgroupSizeX(256)
+            .setMaxComputeWorkgroupSizeY(256)
+            .setMaxComputeWorkgroupSizeZ(64)
+            .setMaxComputeWorkgroupsPerDimension(65535);
+        return result;
+    }();
     /** @brief Upper/lower bounds applied to the selected adapter limits. */
     std::optional<wgpu::Limits> constrained_limits;
     /** @brief DX12 shader compiler used while creating the wgpu instance. */

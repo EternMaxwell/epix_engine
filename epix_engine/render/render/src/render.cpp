@@ -348,7 +348,7 @@ void RenderPlugin::attach(App& app) {
     // Bevy's Functionality priority starts from every feature/limit supported
     // by the selected adapter. Compatibility starts from the WebGPU defaults.
     std::vector<wgpu::FeatureName> required_features;
-    std::optional<wgpu::Limits> required_limits = settings->limits;
+    wgpu::Limits required_limits = settings->limits;
     if (settings->priority == WgpuSettingsPriority::Functionality) {
         wgpu::SupportedFeatures supported_features;
         adapter.getFeatures(&supported_features);
@@ -373,9 +373,7 @@ void RenderPlugin::attach(App& app) {
     std::ranges::sort(required_features, {}, [](const wgpu::FeatureName feature) { return static_cast<std::uint32_t>(feature); });
     required_features.erase(std::unique(required_features.begin(), required_features.end()), required_features.end());
     if (settings->constrained_limits.has_value()) {
-        required_limits = required_limits.transform([&](const wgpu::Limits& limits) {
-            return constrain_limits(limits, *settings->constrained_limits);
-        }).or_else([&] { return std::optional{*settings->constrained_limits}; });
+        required_limits = constrain_limits(required_limits, *settings->constrained_limits);
     }
     automatic_device_descriptor =
         wgpu::DeviceDescriptor()
@@ -394,9 +392,7 @@ void RenderPlugin::attach(App& app) {
     if (settings->device_label.has_value()) {
         automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));
     }
-    if (required_limits.has_value()) {
-        automatic_device_descriptor->setRequiredLimits(*required_limits);
-    }
+    automatic_device_descriptor->setRequiredLimits(required_limits);
     device = adapter.requestDevice(*automatic_device_descriptor);
     spdlog::debug("[render] WebGPU device created.");
     device.getLimits(&limits);

@@ -2461,7 +2461,9 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(settings.features.front(), wgpu::FeatureName(wgpu::NativeFeature::eTextureAdapterSpecificFormatFeatures));
     EXPECT_FALSE(settings.device_label.has_value());
     EXPECT_FALSE(settings.disabled_features.has_value());
-    EXPECT_FALSE(settings.limits.has_value());
+    EXPECT_EQ(settings.limits.maxTextureDimension2D, 8192u);
+    EXPECT_EQ(settings.limits.maxBindGroups, 4u);
+    EXPECT_EQ(settings.limits.maxUniformBufferBindingSize, 64ull << 10);
     EXPECT_FALSE(settings.constrained_limits.has_value());
     EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eFxc);
     EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
