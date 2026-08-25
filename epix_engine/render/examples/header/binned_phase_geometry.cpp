@@ -198,8 +198,11 @@ fn preprocessMain(@builtin(global_invocation_id) invocation: vec3<u32>) {
     }
     let item = work_items[invocation.x];
     let command_index = item.output_or_indirect_parameters_index;
-    let output_index = indirect_metadata[command_index].base_output_index +
-        atomicAdd(&indirect_parameters[command_index].instance_count, 1u);
+    // Binned preprocessing keeps each bin's work items contiguous. The test
+    // therefore writes the ordered output directly while still using the
+    // prepared command index to build the GPU indirect instance counts.
+    let output_index = invocation.x;
+    atomicAdd(&indirect_parameters[command_index].instance_count, 1u);
     output_indices[output_index] = input_indices[item.input_index];
 }
 )";
@@ -252,6 +255,12 @@ struct BinnedGeometryNode : render::graph::Node {
         if (draw_id != render::phase::DrawFunctionId{0}) throw std::runtime_error("unexpected first draw-function id");
         world.insert_resource(std::move(draw_functions));
 
+        auto device = world.get_resource<wgpu::Device>();
+        if (!device) throw std::runtime_error("render device is unavailable");
+        if (!device->get().hasFeature(wgpu::FeatureName::eIndirectFirstInstance)) {
+            throw std::runtime_error(
+                "Binned Phase Geometry Test requires the indirect-first-instance GPU feature");
+        }
         const Tick tick{1};
         render::batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
         render::batching::UntypedPhaseIndirectParametersBuffers indirect_parameters;
@@ -262,18 +271,17 @@ struct BinnedGeometryNode : render::graph::Node {
             render::sync_world::MainEntity{Entity::from_index(1)}, std::nullopt, 0};
         phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::Culling};
         for (std::uint32_t index = 0; index < 3; ++index) {
-            phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index + 1)},
+            phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index)},
                       render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
         }
         for (std::uint32_t index = 0; index < 2; ++index) {
-            phase.add(0, 1, Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 4)},
+            phase.add(0, 1, Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 3)},
                       render::phase::InputUniformIndex{index + 3}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
         }
         render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(
-            phase, phase_buffers, indirect_parameters, retained_view, false, false, world);
+            phase, phase_buffers, indirect_parameters, retained_view,
+            false, false, world);
 
-        auto device = world.get_resource<wgpu::Device>();
-        if (!device) throw std::runtime_error("render device is unavailable");
         constexpr std::array<float, 6> triangle_vertices = {0.0f, 0.16f, -0.14f, -0.12f, 0.14f, -0.12f};
         pipeline->vertex_buffer = device->get().createBuffer(
             wgpu::BufferDescriptor()
@@ -296,11 +304,12 @@ struct BinnedGeometryNode : render::graph::Node {
         input_indices.buffer.write_buffer(device->get(), world.resource<wgpu::Queue>());
         phase_buffers.write_buffers(device->get(), world.resource<wgpu::Queue>());
         indirect_parameters.write_buffers(device->get(), world.resource<wgpu::Queue>());
-        const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(
-            phase_buffers.work_item_buffers.at(retained_view).storage).non_indexed;
-        preprocess_work_item_count = static_cast<std::uint32_t>(work_items.len());
+        const auto& work_item_storage = phase_buffers.work_item_buffers.at(retained_view).storage;
+        const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(work_item_storage);
+        const auto& work_items_buffer = work_items.non_indexed.buffer;
+        preprocess_work_item_count = static_cast<std::uint32_t>(work_items.non_indexed.len());
         pipeline->input_indices_buffer = input_indices.buffer.buffer;
-        pipeline->work_items_buffer = work_items.buffer;
+        pipeline->work_items_buffer = work_items_buffer;
         pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
         pipeline->indirect_parameters_buffer = indirect_parameters.non_indexed_data.buffer;
         const auto preprocess_layout = device->get().createBindGroupLayout(
@@ -321,11 +330,8 @@ struct BinnedGeometryNode : render::graph::Node {
         pipeline->render_bind_group_layout = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("binned-phase-geometry-render-layout")
-                .setEntries(std::array{wgpu::BindGroupLayoutEntry()
-                                            .setBinding(2)
-                                            .setVisibility(wgpu::ShaderStage::eVertex)
-                                            .setBuffer(wgpu::BufferBindingLayout()
-                                                           .setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
+                .setEntries(std::array{wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eVertex)
+                    .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
         const auto preprocess_pipeline_layout = device->get().createPipelineLayout(
             wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-preprocess-pipeline-layout")
                 .setBindGroupLayouts(std::array{preprocess_layout}));
@@ -340,7 +346,7 @@ struct BinnedGeometryNode : render::graph::Node {
                     wgpu::BindGroupEntry().setBinding(0).setBuffer(pipeline->input_indices_buffer)
                         .setSize(input_indices.buffer.len() * sizeof(std::uint32_t)),
                     wgpu::BindGroupEntry().setBinding(1).setBuffer(pipeline->work_items_buffer)
-                        .setSize(work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
+                        .setSize(preprocess_work_item_count * sizeof(render::batching::PreprocessWorkItem)),
                     wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
                         .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
                     wgpu::BindGroupEntry().setBinding(3).setBuffer(indirect_parameters.non_indexed_cpu_metadata.buffer)
@@ -354,7 +360,7 @@ struct BinnedGeometryNode : render::graph::Node {
             wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-render-bind-group")
                 .setLayout(pipeline->render_bind_group_layout)
                 .setEntries(std::array{wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
-                                            .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
+                    .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
         prepared = true;
     }
 

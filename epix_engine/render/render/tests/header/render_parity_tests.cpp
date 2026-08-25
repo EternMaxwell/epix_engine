@@ -1109,6 +1109,20 @@ TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
     EXPECT_TRUE(std::get<2>(culling.batch_sets).empty());
 }
 
+TEST(BinnedRenderPhase, MultidrawExtraIndexOnlyUsesGpuCountWhenSupported) {
+    const auto source = phase::PhaseItemExtraIndex::indirect_parameters_range(7, 8, 4);
+    const auto without_count = phase::multidraw_extra_index(source, 3, false, 9);
+    EXPECT_EQ(without_count.indirect_range, (std::pair<std::uint32_t, std::uint32_t>{7, 10}));
+    EXPECT_FALSE(without_count.batch_set_index.has_value());
+
+    const auto with_count = phase::multidraw_extra_index(source, 3, true, 9);
+    EXPECT_EQ(with_count.indirect_range, (std::pair<std::uint32_t, std::uint32_t>{7, 10}));
+    EXPECT_EQ(with_count.batch_set_index, std::optional<std::uint32_t>{9});
+
+    const auto dynamic = phase::PhaseItemExtraIndex::dynamic_offset(12);
+    EXPECT_EQ(phase::multidraw_extra_index(dynamic, 3, true, 9), dynamic);
+}
+
 // Entities not re-queued after prepare_for_new_frame are swept from their
 // bins (Bevy sweep_old_entities).
 TEST(BinnedRenderPhase, SweepRemovesUnqueued) {

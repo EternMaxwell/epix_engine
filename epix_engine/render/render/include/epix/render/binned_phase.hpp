@@ -23,6 +23,23 @@
 
 namespace epix::render::phase {
 
+/** @brief Reconstruct the extra index passed to a multidraw item (Bevy
+ * `BinnedRenderPhase::render`). A GPU-generated command count is meaningful
+ * only when the device exposes multi-draw-indirect-count; wgpu's DX12 backend
+ * is excluded to mirror Bevy's driver workaround. */
+EPIX_EXPORT constexpr PhaseItemExtraIndex multidraw_extra_index(
+    PhaseItemExtraIndex extra_index,
+    std::uint32_t batch_count,
+    bool multi_draw_indirect_count_supported,
+    std::uint32_t batch_set_index) noexcept {
+    if (extra_index.type != PhaseItemExtraIndex::Type::IndirectParametersIndex) return extra_index;
+    extra_index.indirect_range.second = extra_index.indirect_range.first + batch_count;
+    extra_index.batch_set_index = multi_draw_indirect_count_supported
+                                      ? std::optional{batch_set_index}
+                                      : std::nullopt;
+    return extra_index;
+}
+
 /**
  * @brief Map with insertion-ordered iteration and O(1) lookup (Bevy
  * `indexmap::IndexMap`). Used by the binned phase machinery so that bin and
@@ -681,20 +698,36 @@ class BinnedRenderPhase {
                                   epix::ecs::Entity view,
                                   const std::vector<BinnedRenderPhaseBatchSet<BinKey>>& batches) const {
         if constexpr (!has_item_factory) return;
+        const bool multi_draw_indirect_count_supported = [&world] {
+            const auto device = world.get_resource<wgpu::Device>();
+            if (!device || !device->get().hasFeature(
+                               wgpu::FeatureName(wgpu::NativeFeature::eMultiDrawIndirectCount))) {
+                return false;
+            }
+            const auto adapter = world.get_resource<wgpu::Adapter>();
+            if (!adapter) return true;
+            wgpu::AdapterInfo info;
+            adapter->get().getInfo(&info);
+            // Same temporary DX12 exclusion as Bevy (#7974).
+            return info.backendType != wgpu::BackendType::eD3D12;
+        }();
         auto multidraw_key = multidrawable_meshes.iter().begin();
         auto batchable_key = batchable_meshes.iter().begin();
         for (const auto& batch_set : batches) {
+            const auto extra_index = multidraw_extra_index(
+                batch_set.first_batch.extra_index, batch_set.batch_count,
+                multi_draw_indirect_count_supported, batch_set.index);
             if (multidraw_key != multidrawable_meshes.iter().end()) {
                 draw_item(render_pass, world, view,
                           make_item(multidraw_key->first, batch_set.bin_key,
                                     batch_set.first_batch.representative_entity,
-                                    batch_set.first_batch.instance_range, batch_set.first_batch.extra_index));
+                                    batch_set.first_batch.instance_range, extra_index));
                 ++multidraw_key;
             } else if (batchable_key != batchable_meshes.iter().end()) {
                 draw_item(render_pass, world, view,
                           make_item(batchable_key->first.first, batch_set.bin_key,
                                     batch_set.first_batch.representative_entity,
-                                    batch_set.first_batch.instance_range, batch_set.first_batch.extra_index));
+                                    batch_set.first_batch.instance_range, extra_index));
                 ++batchable_key;
             } else {
                 break;

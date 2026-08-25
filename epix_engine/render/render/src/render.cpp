@@ -220,6 +220,7 @@ void RenderPlugin::attach(App& app) {
     request_optional_feature(wgpu::FeatureName::eIndirectFirstInstance);
     request_optional_native_feature(wgpu::NativeFeature::ePushConstants);
     request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirect);
+    request_optional_native_feature(wgpu::NativeFeature::eMultiDrawIndirectCount);
     request_optional_native_feature(wgpu::NativeFeature::eTextureBindingArray);
     request_optional_native_feature(wgpu::NativeFeature::eStorageResourceBindingArray);
     request_optional_native_feature(wgpu::NativeFeature::eBufferBindingArray);
