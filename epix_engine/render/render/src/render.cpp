@@ -182,12 +182,6 @@ void RenderPlugin::attach(App& app) {
     // Bevy lib.rs:382: RenderAssetBytesPerFrame lives in the main world; the
     // limiter + extract/reset systems live in the render app (lib.rs:383-390).
     app.world_mut().init_resource<RenderAssetBytesPerFrame>();
-    // Bevy's render-side CameraPlugin requires Msaa directly from Camera.
-    // Epix required components are transitive, so Camera2d/Camera3d inherit
-    // this one requirement through their Camera requirement.
-    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
-        return render::view::Msaa::Sample4;
-    });
     app.add_sub_app(Render);
     app.sub_app_mut(Render).then([](App& render_app) {
         // Bevy's extract closure (lib.rs:506-523): run RenderStartup once,
@@ -216,26 +210,9 @@ void RenderPlugin::attach(App& app) {
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
         render_app.world_mut().init_resource<render_resource::TextureCache>();
         render_app.world_mut().init_resource<render::texture::ManualTextureViews>();
-        // Render-side camera wiring (bevy_render::camera): extract normalized cameras into
-        // the render world, sort them per target, and drive each camera's
-        // render graph. The user-facing camera plugin lives in the camera module.
-        render_app.world_mut().insert_resource(::epix::camera::ClearColor{});
-        render_app.world_mut().init_resource<render::camera::SortedCameras>();
-        // Extraction includes per-view HDR/color grading, temporal jitter,
-        // exposure, main-pass resolution overrides, and camera-owned
-        // main-texture usages.
-        // Extraction maps main-world visible entities into their render-world
-        // counterparts, extracts `NoIndirectDrawing` from the camera/support
-        // state, and carries the independently extracted main-texture usage.
-        render_app.add_systems(ExtractSchedule, into(render::camera::extract_cameras).set_name("extract cameras"));
-        render_app.add_systems(
-            Render, into(render::camera::sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
         render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
                                            .in_set(RenderSystems::Cleanup)
                                            .set_name("update texture cache"));
-        if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
-            render_graph->get().add_node(render::camera::CameraDriverNodeLabel, render::camera::CameraDriverNode{});
-        }
     });
 
     wgpu::Instance instance;
@@ -491,6 +468,10 @@ void RenderPlugin::attach(App& app) {
     // CameraPlugin supplies Camera's required RenderTarget component before
     // the independently extracted camera components are installed.
     app.add_plugins(::epix::camera::CameraPlugin{});
+    // Distinct from the camera-module plugin above, this is Bevy's
+    // render::camera::CameraPlugin. Add it through the plugin list just as
+    // Bevy RenderPlugin does, after the render sub-app is initialized.
+    app.add_plugins(render::camera::CameraPlugin{});
     // ManualTextureViews is owned by applications in the main world and
     // extracted for target preparation.  It must be available there as well
     // as in the render world so camera projection updates can resolve its

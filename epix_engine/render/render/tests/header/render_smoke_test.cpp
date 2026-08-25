@@ -82,6 +82,13 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     app.run_schedule(Startup);
     app.add_plugins(ExtractComponentPlugin<SmokeComponent>{});
 
+    // Bevy's render-side CameraPlugin registers these requirements on
+    // Camera3d. Verify the actual RenderPlugin registration, not a test-only
+    // world setup.
+    const Entity camera_3d = app.world_mut().spawn(epix::camera::Camera3d{}).id();
+    EXPECT_TRUE(app.world().entity(camera_3d).contains<view::ColorGrading>());
+    EXPECT_TRUE(app.world().entity(camera_3d).contains<epix::camera::Exposure>());
+
     // Spawn a synced entity in the main world.
     Entity main_entity = app.world_mut().spawn(SmokeComponent{42}, sync_world::SyncToRenderWorld{}).id();
 

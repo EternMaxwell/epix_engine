@@ -53,6 +53,15 @@ EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
         static_cast<graph::GraphLabel&>(*this) = graph::GraphLabel(std::move(graph_label));
     }
 };
+
+/** @brief Render-side camera integration (Bevy
+ * `bevy_render::camera::CameraPlugin`). This is distinct from the
+ * camera-module `epix::camera::CameraPlugin`: it owns render-facing camera
+ * requirements, extraction, sorting, and the camera driver graph node. */
+EPIX_EXPORT struct CameraPlugin {
+    void attach(epix::app::App& app);
+};
+
 EPIX_EXPORT struct ExtractedCamera {
     // This render target is normalized before extraction: a window target is
     // therefore always a window::NormalizedWindowRef containing a concrete entity.

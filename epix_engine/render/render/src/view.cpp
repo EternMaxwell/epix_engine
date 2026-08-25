@@ -487,6 +487,32 @@ void view::ViewPlugin::attach(App& app) {
     }
 }
 
+void epix::render::camera::CameraPlugin::attach(App& app) {
+    // Bevy render::camera::CameraPlugin owns render-facing requirements.
+    // Keep them distinct from epix::camera::CameraPlugin, which owns only
+    // camera-module projection and visibility setup.
+    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
+        return view::Msaa::Sample4;
+    });
+    app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] {
+        return view::ColorGrading{};
+    });
+    app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] {
+        return ::epix::camera::Exposure{};
+    });
+
+    app.sub_app_mut(Render).then([](App& render_app) {
+        render_app.world_mut().insert_resource(::epix::camera::ClearColor{});
+        render_app.world_mut().init_resource<SortedCameras>();
+        render_app.add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
+        render_app.add_systems(
+            Render, into(sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
+        if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
+            render_graph->get().add_node(CameraDriverNodeLabel, CameraDriverNode{});
+        }
+    });
+}
+
 void camera::extract_cameras(
     Commands cmd,
     Extract<Query<Item<Entity,
