@@ -20,6 +20,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -439,11 +440,9 @@ void prepare_view_target(
                                      const Msaa&>> views,
     epix::ecs::Commands cmd,
     epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
-    epix::ecs::Res<window::ExtractedWindows> extracted_windows,
-    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
     epix::ecs::Res<wgpu::Device> device,
     epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
-    epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+    epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
 
 /** Update cameras that target a manually supplied texture view.  This runs in
  * the main world after the camera module's general update system, mirroring
@@ -697,6 +696,14 @@ EPIX_EXPORT struct ViewTargetAttachments {
  * clear_view_attachments, view/mod.rs:1042-1044). Registered in
  * RenderSystems::ManageViews before create_surfaces. */
 void clear_view_attachments(epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+/** @brief Prepares one output attachment per current-frame render target
+ * (Bevy `prepare_view_attachments`). Screenshot and other extensions may
+ * replace an entry before `prepare_view_target` consumes it. */
+void prepare_view_attachments(
+    epix::ecs::Res<window::ExtractedWindows> extracted_windows,
+    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
+    epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
+    epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
 /** @brief Removes the ViewTarget of cameras targeting a window that was
  * resized or changed present mode, so prepare_view_target recreates them at
  * the new size (Bevy cleanup_view_targets_for_resize, view/mod.rs:1046-1059).
@@ -709,11 +716,150 @@ void cleanup_view_targets_for_resize(
 }  // namespace epix::render::view
 
 namespace epix::render::camera {
-/** @brief Error returned when render target information cannot be resolved (Bevy MissingRenderTargetInfoError). */
+/** @brief Error returned when render target information cannot be resolved
+ * (Bevy `MissingRenderTargetInfoError`). */
 EPIX_EXPORT struct MissingRenderTargetInfoError {
-    /** @brief Description of the unresolvable target. */
-    std::string message;
-    std::string to_string() const { return "missing render target info: " + message; }
+    struct Window { epix::ecs::Entity window; };
+    struct Image { ::epix::camera::RenderTargetId image; };
+    struct TextureView { ::epix::camera::ManualTextureViewHandle texture_view; };
+
+    std::variant<Window, Image, TextureView> value;
+
+    std::string to_string() const {
+        return std::visit(utils::visitor{
+                              [](const Window& error) {
+                                  return std::format("RenderTarget::Window missing ({})", error.window.index);
+                              },
+                              [](const Image& error) {
+                                  return std::format("RenderTarget::Image missing ({})", error.image.value);
+                              },
+                              [](const TextureView& error) {
+                                  return std::format("RenderTarget::TextureView missing ({})", error.texture_view.id);
+                              },
+                          },
+                          value);
+    }
+};
+
+/** @brief Render-side target resolution helpers (Bevy
+ * `NormalizedRenderTargetExt`).
+ *
+ * Epix image targets directly own a wgpu texture, so `get_texture_view`
+ * returns an owned view rather than a borrow into `RenderAssets<GpuImage>`.
+ */
+EPIX_EXPORT struct NormalizedRenderTargetExt {
+    static std::optional<wgpu::TextureView> get_texture_view(
+        const ::epix::camera::NormalizedRenderTarget& target,
+        const window::ExtractedWindows& windows,
+        const texture::ManualTextureViews& manual_texture_views) {
+        return std::visit(utils::visitor{
+                              [&](const ::epix::camera::WindowRef& window_ref) -> std::optional<wgpu::TextureView> {
+                                  auto it = windows.windows.find(window_ref.window_entity);
+                                  return it != windows.windows.end() && it->second.swapchain_texture_view
+                                             ? std::optional<wgpu::TextureView>{it->second.swapchain_texture_view}
+                                             : std::nullopt;
+                              },
+                              [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureView> {
+                                  return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()}
+                                                       : std::nullopt;
+                              },
+                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
+                                  -> std::optional<wgpu::TextureView> {
+                                  auto it = manual_texture_views.views.find(handle);
+                                  return it != manual_texture_views.views.end() && it->second.texture_view
+                                             ? std::optional<wgpu::TextureView>{it->second.texture_view}
+                                             : std::nullopt;
+                              },
+                              [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureView> {
+                                  return std::nullopt;
+                              },
+                          },
+                          target);
+    }
+
+    static std::optional<wgpu::TextureFormat> get_texture_view_format(
+        const ::epix::camera::NormalizedRenderTarget& target,
+        const window::ExtractedWindows& windows,
+        const texture::ManualTextureViews& manual_texture_views) {
+        return std::visit(utils::visitor{
+                              [&](const ::epix::camera::WindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
+                                  auto it = windows.windows.find(window_ref.window_entity);
+                                  return it != windows.windows.end() && it->second.swapchain_texture_view
+                                             ? std::optional<wgpu::TextureFormat>{it->second.swapchain_texture_view_format}
+                                             : std::nullopt;
+                              },
+                              [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureFormat> {
+                                  return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()}
+                                                       : std::nullopt;
+                              },
+                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
+                                  -> std::optional<wgpu::TextureFormat> {
+                                  auto it = manual_texture_views.views.find(handle);
+                                  return it != manual_texture_views.views.end()
+                                             ? std::optional<wgpu::TextureFormat>{it->second.view_format}
+                                             : std::nullopt;
+                              },
+                              [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> {
+                                  return std::nullopt;
+                              },
+                          },
+                          target);
+    }
+
+    /** @brief Resolve physical size and scale factor using a main-world
+     * window-info snapshot, direct image texture, or manual view. */
+    static std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> get_render_target_info(
+        const ::epix::camera::NormalizedRenderTarget& target,
+        std::span<const std::pair<epix::ecs::Entity, ::epix::camera::RenderTargetInfo>> windows,
+        const texture::ManualTextureViews& manual_texture_views) {
+        return std::visit(utils::visitor{
+                              [&](const ::epix::camera::WindowRef& window_ref)
+                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                                  auto it = std::ranges::find(windows, window_ref.window_entity, &std::pair<
+                                      epix::ecs::Entity, ::epix::camera::RenderTargetInfo>::first);
+                                  if (it != windows.end()) return it->second;
+                                  return std::unexpected(MissingRenderTargetInfoError{
+                                      MissingRenderTargetInfoError::Window{window_ref.window_entity}});
+                              },
+                              [&](const ::epix::camera::ImageRenderTarget& image)
+                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                                  if (image.texture) return ::epix::camera::RenderTargetInfo{
+                                      {image.texture.getWidth(), image.texture.getHeight()}, image.scale_factor};
+                                  return std::unexpected(MissingRenderTargetInfoError{
+                                      MissingRenderTargetInfoError::Image{target.identity()}});
+                              },
+                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
+                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                                  auto it = manual_texture_views.views.find(handle);
+                                  if (it != manual_texture_views.views.end())
+                                      return ::epix::camera::RenderTargetInfo{it->second.size, 1.0f};
+                                  return std::unexpected(MissingRenderTargetInfoError{
+                                      MissingRenderTargetInfoError::TextureView{handle}});
+                              },
+                              [](const ::epix::camera::NoColorTarget& target)
+                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                                  return ::epix::camera::RenderTargetInfo{target.size, 1.0f};
+                              },
+                          },
+                          target);
+    }
+
+    static bool is_changed(const ::epix::camera::NormalizedRenderTarget& target,
+                           const std::unordered_set<epix::ecs::Entity>& changed_windows,
+                           const std::unordered_set<::epix::camera::RenderTargetId,
+                                                    ::epix::camera::RenderTargetIdHash>& changed_images) {
+        return std::visit(utils::visitor{
+                              [&](const ::epix::camera::WindowRef& window_ref) {
+                                  return changed_windows.contains(window_ref.window_entity);
+                              },
+                              [&](const ::epix::camera::ImageRenderTarget&) {
+                                  return changed_images.contains(target.identity());
+                              },
+                              [](const ::epix::camera::ManualTextureViewHandle&) { return true; },
+                              [](const ::epix::camera::NoColorTarget&) { return false; },
+                          },
+                          target);
+    }
 };
 
 /** @brief Per-camera sort entry (Bevy SortedCamera). */

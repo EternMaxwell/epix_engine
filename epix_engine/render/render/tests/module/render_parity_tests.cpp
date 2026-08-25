@@ -118,6 +118,36 @@ TEST(SortedCamera, SortKey) {
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 
+TEST(NormalizedRenderTargetExt, ResolvesManualAndNoColorTargets) {
+    const ::epix::camera::ManualTextureViewHandle handle{7};
+    texture::ManualTextureViews manual_views;
+    manual_views.views.emplace(handle, texture::ManualTextureView{
+                                           .size = glm::uvec2(320, 180),
+                                           .view_format = wgpu::TextureFormat::eRGBA8UnormSrgb,
+                                       });
+    window::ExtractedWindows windows;
+    const ::epix::camera::NormalizedRenderTarget manual{handle};
+    EXPECT_FALSE(camera::NormalizedRenderTargetExt::get_texture_view(manual, windows, manual_views).has_value());
+    EXPECT_EQ(camera::NormalizedRenderTargetExt::get_texture_view_format(manual, windows, manual_views),
+              wgpu::TextureFormat::eRGBA8UnormSrgb);
+    auto manual_info = camera::NormalizedRenderTargetExt::get_render_target_info(manual, {}, manual_views);
+    ASSERT_TRUE(manual_info.has_value());
+    EXPECT_EQ(manual_info->physical_size, glm::uvec2(320, 180));
+    EXPECT_FLOAT_EQ(manual_info->scale_factor, 1.0f);
+    EXPECT_TRUE(camera::NormalizedRenderTargetExt::is_changed(manual, {}, {}));
+
+    const ::epix::camera::NormalizedRenderTarget none{::epix::camera::NoColorTarget{glm::uvec2(12, 34)}};
+    auto none_info = camera::NormalizedRenderTargetExt::get_render_target_info(none, {}, manual_views);
+    ASSERT_TRUE(none_info.has_value());
+    EXPECT_EQ(none_info->physical_size, glm::uvec2(12, 34));
+    EXPECT_FALSE(camera::NormalizedRenderTargetExt::is_changed(none, {}, {}));
+
+    const ::epix::camera::NormalizedRenderTarget missing{::epix::camera::ManualTextureViewHandle{8}};
+    auto missing_info = camera::NormalizedRenderTargetExt::get_render_target_info(missing, {}, manual_views);
+    ASSERT_FALSE(missing_info.has_value());
+    EXPECT_TRUE(std::holds_alternative<camera::MissingRenderTargetInfoError::TextureView>(missing_info.error().value));
+}
+
 TEST(GlobalsUniform, CpuFields) {
     GlobalsUniform g;
     g.time        = 1.5f;

@@ -4,12 +4,12 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
+#include <epix/async_channel.hpp>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/render.hpp>
-#include <deque>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -58,25 +58,26 @@ EPIX_EXPORT struct ScreenshotCaptured {
     image::Image image;
 };
 
-/** @brief Main-world completion queue for component-based screenshot requests.
+/** @brief Main-world receiver for component-based screenshot completions.
  *
- * Epix uses its event system instead of Bevy observers; the plugin drains this
- * queue into Events<ScreenshotCaptured> during PreUpdate. */
+ * The render world sends completed captures through this thread-safe channel,
+ * matching Bevy's CapturedScreenshots receiver. The plugin drains it into
+ * Events<ScreenshotCaptured> during PreUpdate. */
 EPIX_EXPORT class CapturedScreenshots {
    public:
-    bool empty() const noexcept { return m_captures.empty(); }
-    std::size_t size() const noexcept { return m_captures.size(); }
-    std::optional<ScreenshotCaptured> try_recv() {
-        if (m_captures.empty()) return std::nullopt;
-        auto result = std::move(m_captures.front());
-        m_captures.pop_front();
-        return result;
+    CapturedScreenshots() = default;
+    explicit CapturedScreenshots(async_channel::Receiver<ScreenshotCaptured> receiver)
+        : m_receiver(std::move(receiver)) {}
+
+    bool empty() const noexcept { return m_receiver.is_empty(); }
+    std::size_t size() const noexcept { return m_receiver.len(); }
+    std::optional<ScreenshotCaptured> try_recv() const {
+        auto capture = m_receiver.try_recv();
+        return capture ? std::optional<ScreenshotCaptured>(std::move(*capture)) : std::nullopt;
     }
-    /** @brief Enqueue a captured image for main-world event delivery. */
-    void push(ScreenshotCaptured capture) { m_captures.push_back(std::move(capture)); }
 
    private:
-    std::deque<ScreenshotCaptured> m_captures;
+    async_channel::Receiver<ScreenshotCaptured> m_receiver;
 };
 
 /** @brief Returns a handler which writes a component-based screenshot to disk. */

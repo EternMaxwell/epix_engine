@@ -93,11 +93,9 @@ void view::prepare_view_target(
                const view::Msaa&>> views,
     Commands cmd,
     Res<::epix::camera::ClearColor> global_clear_color,
-    Res<window::ExtractedWindows> extracted_windows,
-    Res<texture::ManualTextureViews> manual_texture_views,
     Res<wgpu::Device> device,
     ResMut<render_resource::TextureCache> texture_cache,
-    ResMut<ViewTargetAttachments> view_target_attachments) {
+    Res<ViewTargetAttachments> view_target_attachments) {
     // NormalizedRenderTarget guarantees primary-window resolution occurred
     // during extraction. Prepare the view target for each extracted camera view: the
     // double-buffered main textures (Bevy prepare_view_targets, view/mod.rs:1061)
@@ -116,52 +114,11 @@ void view::prepare_view_target(
     for (auto&& [entity, camera, view, texture_usage, msaa] : views.iter()) {
         if (!camera.target || !camera.physical_target_size) continue;
         const auto& normalized_target = *camera.target;
-        std::optional<wgpu::TextureView> target_texture = std::visit(
-            utils::visitor{
-                [&](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureView> {
-                    return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()} : std::nullopt;
-                },
-                [&](const ::epix::camera::WindowRef& win_ref) -> std::optional<wgpu::TextureView> {
-                    auto&& id = win_ref.window_entity;
-                    if (auto it = extracted_windows->windows.find(id);
-                        it != extracted_windows->windows.end() && it->second.swapchain_texture_view) {
-                        return it->second.swapchain_texture_view;
-                    } else {
-                        return std::nullopt;
-                    }
-                },
-                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureView> {
-                    auto it = manual_texture_views->views.find(::epix::camera::ManualTextureViewHandle{handle.id});
-                    return it == manual_texture_views->views.end() ? std::nullopt : std::optional{it->second.texture_view};
-                },
-                [&](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureView> { return std::nullopt; }},
-            normalized_target);
-        std::optional<wgpu::TextureFormat> target_format = std::visit(
-            utils::visitor{
-                [&](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureFormat> {
-                    return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()} : std::nullopt;
-                },
-                [&](const ::epix::camera::WindowRef& win_ref) -> std::optional<wgpu::TextureFormat> {
-                    auto&& id = win_ref.window_entity;
-                    if (auto it = extracted_windows->windows.find(id); it != extracted_windows->windows.end()) {
-                        // Bevy uses swap_chain_texture_view_format for the out
-                        // attachment (the sRGB-suffixed view format).
-                        return it->second.swapchain_texture_view_format;
-                    }
-                    return std::nullopt;
-                },
-                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureFormat> {
-                    auto it = manual_texture_views->views.find(::epix::camera::ManualTextureViewHandle{handle.id});
-                    return it == manual_texture_views->views.end() ? std::nullopt : std::optional{it->second.view_format};
-                },
-                [&](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> { return std::nullopt; }},
-            normalized_target);
-        if (!target_texture.has_value() || !target_texture.value()) {
-            // invalid target texture, handle error;
-            // no need to remove the entity, it will just be missing ViewTarget.
-            continue;
-        }
-        if (!target_format.has_value()) {
+        const auto attachment_it = view_target_attachments->attachments.find(normalized_target.identity());
+        if (attachment_it == view_target_attachments->attachments.end()) {
+            // Match Bevy: an unavailable output attachment invalidates this
+            // frame's ViewTarget rather than retaining a stale texture view.
+            cmd.entity(entity).template remove<view::ViewTarget>();
             continue;
         }
         // Bevy prepare_view_targets sizes the main textures from the camera's
@@ -262,19 +219,6 @@ void view::prepare_view_target(
         view::ViewTarget target;
         target.main_textures       = std::move(main_textures);
         target.main_texture_format_ = main_format;
-        // Bevy prepare_view_attachments (view/mod.rs:1138-1170): one shared
-        // output attachment per render target, so the output is cleared at
-        // most once per frame and later cameras composite over it instead of
-        // wiping earlier cameras.
-        const auto target_id = normalized_target.identity();
-        auto& attachments    = view_target_attachments->attachments;
-        auto attachment_it   = attachments.find(target_id);
-        if (attachment_it == attachments.end()) {
-            attachment_it =
-                attachments
-                    .emplace(target_id, view::OutputColorAttachment::create(target_texture.value(), *target_format))
-                    .first;
-        }
         target.output_attachment = attachment_it->second;
         target.texture_view = target.main_textures.a.texture.default_view;
         target.format       = main_format;
@@ -525,8 +469,13 @@ void view::ViewPlugin::attach(App& app) {
                         .before(window::create_surfaces)
                         .in_set(RenderSystems::ManageViews)
                         .set_names(std::array{"clear view attachments", "cleanup view targets for resize"}));
-        sub_app->get().add_systems(Render, into(prepare_view_target, create_view_depth)
+        sub_app->get().add_systems(Render, into(prepare_view_attachments)
                                                .after(window::prepare_windows)
+                                               .before(prepare_view_target)
+                                               .in_set(RenderSystems::ManageViews)
+                                               .set_name("prepare view attachments"));
+        sub_app->get().add_systems(Render, into(prepare_view_target, create_view_depth)
+                                               .after(prepare_view_attachments)
                                                .in_set(RenderSystems::ManageViews)
                                                .set_names(std::array{"prepare view targets", "create view depths"}));
         sub_app->get().add_systems(
@@ -673,4 +622,25 @@ std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode:
         }
     }
     return {};
+}
+
+void view::prepare_view_attachments(Res<window::ExtractedWindows> extracted_windows,
+                                    Res<texture::ManualTextureViews> manual_texture_views,
+                                    Query<Item<const camera::ExtractedCamera&>> cameras,
+                                    ResMut<ViewTargetAttachments> view_target_attachments) {
+    // Bevy view/mod.rs:1012-1039: prepare the default output once per target,
+    // leaving a later extension (such as ScreenshotPlugin) free to override it.
+    for (const auto& [extracted_camera] : cameras.iter()) {
+        if (!extracted_camera.target) continue;
+        const auto& target = *extracted_camera.target;
+        const auto target_id = target.identity();
+        if (view_target_attachments->attachments.contains(target_id)) continue;
+        auto texture_view = camera::NormalizedRenderTargetExt::get_texture_view(
+            target, *extracted_windows, *manual_texture_views);
+        auto texture_format = camera::NormalizedRenderTargetExt::get_texture_view_format(
+            target, *extracted_windows, *manual_texture_views);
+        if (!texture_view || !*texture_view || !texture_format) continue;
+        view_target_attachments->attachments.emplace(
+            target_id, view::OutputColorAttachment::create(std::move(*texture_view), *texture_format));
+    }
 }
