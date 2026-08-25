@@ -2512,6 +2512,18 @@ TEST(RenderCreation, AutomaticAndManualVariants) {
     EXPECT_FALSE(plugin.render_creation.is_manual());
 }
 
+TEST(RenderAdapterInfo, AndroidWorkaroundHelpersArePlatformGated) {
+    RenderAdapterInfo adreno{.device = "Adreno (TM) 642L"};
+    RenderAdapterInfo mali{.device = "Mali-G715", .description = "driver v1.r43p0"};
+#if defined(__ANDROID__)
+    EXPECT_EQ(get_adreno_model(adreno), 642u);
+    EXPECT_EQ(get_mali_driver_version(mali), 43u);
+#else
+    EXPECT_FALSE(get_adreno_model(adreno).has_value());
+    EXPECT_FALSE(get_mali_driver_version(mali).has_value());
+#endif
+}
+
 // GpuImage::aspect_ratio / size_2d match Bevy gpu_image.rs:142-152.
 TEST(GpuImage, AspectRatioAndSize2d) {
     texture::GpuImage image;

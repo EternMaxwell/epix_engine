@@ -35,6 +35,47 @@ RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) 
     };
 }
 
+std::optional<std::uint32_t> epix::render::get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept {
+#if defined(__ANDROID__)
+    constexpr std::string_view prefix = "Adreno (TM) ";
+    const std::string_view name = adapter_info.device;
+    if (!name.starts_with(prefix)) return std::nullopt;
+    std::uint32_t value = 0;
+    bool found_digit = false;
+    for (const char character : name.substr(prefix.size())) {
+        if (character < '0' || character > '9') break;
+        found_digit = true;
+        value = value * 10u + static_cast<std::uint32_t>(character - '0');
+    }
+    return found_digit ? std::optional<std::uint32_t>{value} : std::nullopt;
+#else
+    (void)adapter_info;
+    return std::nullopt;
+#endif
+}
+
+std::optional<std::uint32_t> epix::render::get_mali_driver_version(const RenderAdapterInfo& adapter_info) noexcept {
+#if defined(__ANDROID__)
+    if (!adapter_info.device.contains("Mali")) return std::nullopt;
+    constexpr std::string_view prefix = "v1.r";
+    const auto start = adapter_info.description.find(prefix);
+    if (start == std::string::npos) return std::nullopt;
+    const auto end = adapter_info.description.find('p', start + prefix.size());
+    if (end == std::string::npos) return std::nullopt;
+    std::uint32_t value = 0;
+    const auto digits = std::string_view(adapter_info.description).substr(start + prefix.size(), end - start - prefix.size());
+    if (digits.empty()) return std::nullopt;
+    for (const char character : digits) {
+        if (character < '0' || character > '9') return std::nullopt;
+        value = value * 10u + static_cast<std::uint32_t>(character - '0');
+    }
+    return value;
+#else
+    (void)adapter_info;
+    return std::nullopt;
+#endif
+}
+
 void epix::render::render_system(World& world) {
     auto&& graph  = world.resource_mut<graph::RenderGraph>();
     auto&& device = world.resource<wgpu::Device>();

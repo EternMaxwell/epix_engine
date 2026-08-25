@@ -160,6 +160,18 @@ TEST(GlobalsUniform, CpuFields) {
     static_assert(sizeof(GlobalsUniform) == 12);
 }
 
+TEST(RenderAdapterInfo, AndroidWorkaroundHelpersArePlatformGated) {
+    RenderAdapterInfo adreno{.device = "Adreno (TM) 642L"};
+    RenderAdapterInfo mali{.device = "Mali-G715", .description = "driver v1.r43p0"};
+#if defined(__ANDROID__)
+    EXPECT_EQ(get_adreno_model(adreno), 642u);
+    EXPECT_EQ(get_mali_driver_version(mali), 43u);
+#else
+    EXPECT_FALSE(get_adreno_model(adreno).has_value());
+    EXPECT_FALSE(get_mali_driver_version(mali).has_value());
+#endif
+}
+
 TEST(RetainedViewEntity, Equality) {
     view::RetainedViewEntity a{sync_world::MainEntity{Entity{1}}, std::nullopt, 0};
     view::RetainedViewEntity b{sync_world::MainEntity{Entity{1}}, std::nullopt, 0};

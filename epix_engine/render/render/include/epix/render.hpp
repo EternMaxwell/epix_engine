@@ -151,6 +151,13 @@ EPIX_EXPORT struct RenderAdapterInfo {
     static RenderAdapterInfo from_adapter(const wgpu::Adapter& adapter);
 };
 
+/** @brief Returns the Qualcomm Adreno model number when available (Bevy
+ * `get_adreno_model`). Non-Android builds intentionally return nullopt. */
+EPIX_EXPORT std::optional<std::uint32_t> get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept;
+/** @brief Returns the Mali `v1.rNNp` driver revision when available (Bevy
+ * `get_mali_driver_version`). Non-Android builds intentionally return nullopt. */
+EPIX_EXPORT std::optional<std::uint32_t> get_mali_driver_version(const RenderAdapterInfo& adapter_info) noexcept;
+
 /** @brief Renderer resources supplied by an embedding application (Bevy
  * `RenderResources`). Epix deliberately exposes the native wgpu handles;
  * their ownership follows the normal wgpu reference-counting rules. */
