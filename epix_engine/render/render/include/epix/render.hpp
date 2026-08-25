@@ -159,15 +159,6 @@ EPIX_EXPORT struct InstanceFlags {
     [[nodiscard]] constexpr bool contains(InstanceFlags other) const noexcept {
         return (bits_ & other.bits_) == other.bits_;
     }
-    [[nodiscard]] constexpr std::uint32_t native_supported_bits() const noexcept {
-        auto native = bits_ & (static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
-                               static_cast<std::uint32_t>(DiscardHalLabels));
-        // Native wgpu v25 has no GPU-assisted validation flag. Its closest
-        // available behavior is ordinary backend validation.
-        if ((bits_ & static_cast<std::uint32_t>(GpuBasedValidation)) != 0)
-            native |= static_cast<std::uint32_t>(Validation);
-        return native;
-    }
     [[nodiscard]] InstanceFlags with_env() const noexcept {
         auto result = *this;
         const auto set_from_env = [&result](Bit bit, const char* name) {
@@ -196,6 +187,16 @@ EPIX_EXPORT struct InstanceFlags {
     friend constexpr InstanceFlags operator|(Bit lhs, InstanceFlags rhs) noexcept { return InstanceFlags{lhs} | rhs; }
 
    private:
+    [[nodiscard]] constexpr std::uint32_t native_supported_bits() const noexcept {
+        auto native = bits_ & (static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
+                               static_cast<std::uint32_t>(DiscardHalLabels));
+        // Native wgpu v25 has no GPU-assisted validation flag. Its closest
+        // available behavior is ordinary backend validation.
+        if ((bits_ & static_cast<std::uint32_t>(GpuBasedValidation)) != 0)
+            native |= static_cast<std::uint32_t>(Validation);
+        return native;
+    }
+    friend struct RenderPlugin;
     std::uint32_t bits_ = 0;
 };
 
@@ -299,10 +300,10 @@ EPIX_EXPORT struct WgpuSettings {
         }
     }
 
-    /** @brief Apply the WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO
-     * environment variables on top of the current values (Bevy
-     * settings_priority_from_env / PowerPreference::from_env / Backends
-     * from_env). */
+   private:
+    // Bevy performs these overrides while constructing WgpuSettings. Keeping
+    // this private prevents an Epix-only later mutation API from diverging
+    // from that behavior.
     void apply_env_overrides() {
         if (const auto configured_backends = Backends::from_env()) backends = *configured_backends;
         if (const char* power = std::getenv("WGPU_POWER_PREF")) {
@@ -329,7 +330,10 @@ EPIX_EXPORT struct WgpuSettings {
                 dx12_shader_compiler = wgpu::Dx12Compiler::eFxc;
         }
         if (const char* gles = std::getenv("WGPU_GLES_MINOR_VERSION")) {
-            std::string_view value(gles);
+            std::string value(gles);
+            std::ranges::transform(value, value.begin(), [](unsigned char character) {
+                return static_cast<char>(std::tolower(character));
+            });
             if (value == "0")
                 gles3_minor_version = wgpu::Gles3MinorVersion::eVersion0;
             else if (value == "1")

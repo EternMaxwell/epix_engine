@@ -179,12 +179,6 @@ void epix::render::render_system(World& world) {
 
 void RenderPlugin::attach(App& app) {
     spdlog::debug("[render] Attaching RenderPlugin.");
-    // Honor WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO (Bevy
-    // settings_priority_from_env); the adapter/device creation below consumes
-    // the resulting WgpuSettings.
-    if (auto* settings = render_creation.automatic_settings()) {
-        settings->apply_env_overrides();
-    }
     // Bevy lib.rs:382: RenderAssetBytesPerFrame lives in the main world; the
     // limiter + extract/reset systems live in the render app (lib.rs:383-390).
     app.world_mut().init_resource<RenderAssetBytesPerFrame>();

@@ -2469,45 +2469,38 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
     EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::ValidationIndirectCall));
 
-    // No env vars set: overrides leave defaults untouched.
-    settings.apply_env_overrides();
+    // No env vars set: defaults remain untouched.
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
     EXPECT_EQ(*settings.backends, Backends::all());
 
-    // With env vars set, values are picked up. Restore with the empty string
-    // (never nullptr - _putenv_s(nullptr) is a crash on MSVC).
+    // Bevy picks up environment values when WgpuSettings is constructed.
+    // Restore with the empty string (never nullptr - _putenv_s(nullptr) is a
+    // crash on MSVC).
     _putenv_s("WGPU_BACKEND", "vulkan, dx12, gl");
     _putenv_s("WGPU_POWER_PREF", "LOW");
     _putenv_s("WGPU_SETTINGS_PRIO", "WeBgL2");
     _putenv_s("WGPU_DX12_COMPILER", "dXc");
     _putenv_s("WGPU_GLES_MINOR_VERSION", "2");
-    settings.apply_env_overrides();
-    EXPECT_TRUE(settings.backends.has_value());
-    EXPECT_EQ(*settings.backends, Backends::Vulkan | Backends::Dx12 | Backends::Gl);
-    EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eLowPower);
-    EXPECT_EQ(settings.priority, WgpuSettingsPriority::WebGL2);
-    EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eDxc);
-    EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eVersion2);
-
-    _putenv_s("WGPU_POWER_PREF", "none");
-    settings.apply_env_overrides();
-    EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eUndefined);
-
     _putenv_s("WGPU_VALIDATION", "1");
     _putenv_s("WGPU_DEBUG", "0");
-    settings.apply_env_overrides();
-    EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::Validation));
-    EXPECT_FALSE(settings.instance_flags.contains(InstanceFlags::Debug));
-    EXPECT_EQ(InstanceFlags{InstanceFlags::GpuBasedValidation}.native_supported_bits(),
-              static_cast<std::uint32_t>(InstanceFlags::Validation));
 
-    // Bevy reads these settings at construction time as well.
+    // Bevy reads these settings at construction time.
     WgpuSettings constructor_settings;
     EXPECT_EQ(constructor_settings.priority, WgpuSettingsPriority::WebGL2);
+    ASSERT_TRUE(constructor_settings.backends.has_value());
+    EXPECT_EQ(*constructor_settings.backends, Backends::Vulkan | Backends::Dx12 | Backends::Gl);
+    EXPECT_EQ(constructor_settings.power_preference, wgpu::PowerPreference::eLowPower);
     EXPECT_EQ(constructor_settings.limits.maxTextureDimension2D, 2048u);
     EXPECT_EQ(constructor_settings.limits.maxStorageTexturesPerShaderStage, 0u);
     EXPECT_EQ(constructor_settings.dx12_shader_compiler, wgpu::Dx12Compiler::eDxc);
     EXPECT_EQ(constructor_settings.gles3_minor_version, wgpu::Gles3MinorVersion::eVersion2);
+    EXPECT_TRUE(constructor_settings.instance_flags.contains(InstanceFlags::Validation));
+    EXPECT_FALSE(constructor_settings.instance_flags.contains(InstanceFlags::Debug));
+
+    // Bevy accepts the named GLES option without regard to case.
+    _putenv_s("WGPU_GLES_MINOR_VERSION", "AuToMaTiC");
+    WgpuSettings named_gles_settings;
+    EXPECT_EQ(named_gles_settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
 
     _putenv_s("WGPU_SETTINGS_PRIO", "compat");
     EXPECT_FALSE(settings_priority_from_env().has_value());
