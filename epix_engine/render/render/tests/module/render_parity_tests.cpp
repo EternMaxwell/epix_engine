@@ -114,7 +114,7 @@ TEST(SortedCamera, SortKey) {
     tex.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ImageRenderTarget{wgpu::Texture{}}};
     camera::SortedCamera win;
     win.order  = 1;
-    win.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, epix::ecs::Entity{.uid = 1}}};
+    win.target = ::epix::camera::NormalizedRenderTarget{::epix::window::NormalizedWindowRef{epix::ecs::Entity{.uid = 1}}};
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 

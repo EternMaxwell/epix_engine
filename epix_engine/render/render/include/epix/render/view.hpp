@@ -54,8 +54,8 @@ EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
     }
 };
 EPIX_EXPORT struct ExtractedCamera {
-    // this render target is a normalized one, which means if it is a WindowRef and is primary, the entity field will
-    // point to the actual primary window entity.
+    // This render target is normalized before extraction: a window target is
+    // therefore always a window::NormalizedWindowRef containing a concrete entity.
     std::optional<::epix::camera::NormalizedRenderTarget> target;
     std::optional<glm::uvec2> physical_viewport_size;
     std::optional<glm::uvec2> physical_target_size;
@@ -753,8 +753,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
         const window::ExtractedWindows& windows,
         const texture::ManualTextureViews& manual_texture_views) {
         return std::visit(utils::visitor{
-                              [&](const ::epix::camera::WindowRef& window_ref) -> std::optional<wgpu::TextureView> {
-                                  auto it = windows.windows.find(window_ref.window_entity);
+                              [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureView> {
+                                  auto it = windows.windows.find(window_ref.entity());
                                   return it != windows.windows.end() && it->second.swapchain_texture_view
                                              ? std::optional<wgpu::TextureView>{it->second.swapchain_texture_view}
                                              : std::nullopt;
@@ -782,8 +782,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
         const window::ExtractedWindows& windows,
         const texture::ManualTextureViews& manual_texture_views) {
         return std::visit(utils::visitor{
-                              [&](const ::epix::camera::WindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
-                                  auto it = windows.windows.find(window_ref.window_entity);
+                              [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
+                                  auto it = windows.windows.find(window_ref.entity());
                                   return it != windows.windows.end() && it->second.swapchain_texture_view
                                              ? std::optional<wgpu::TextureFormat>{it->second.swapchain_texture_view_format}
                                              : std::nullopt;
@@ -813,13 +813,13 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
         std::span<const std::pair<epix::ecs::Entity, ::epix::camera::RenderTargetInfo>> windows,
         const texture::ManualTextureViews& manual_texture_views) {
         return std::visit(utils::visitor{
-                              [&](const ::epix::camera::WindowRef& window_ref)
+                              [&](const ::epix::window::NormalizedWindowRef& window_ref)
                                   -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                                  auto it = std::ranges::find(windows, window_ref.window_entity, &std::pair<
+                                  auto it = std::ranges::find(windows, window_ref.entity(), &std::pair<
                                       epix::ecs::Entity, ::epix::camera::RenderTargetInfo>::first);
                                   if (it != windows.end()) return it->second;
                                   return std::unexpected(MissingRenderTargetInfoError{
-                                      MissingRenderTargetInfoError::Window{window_ref.window_entity}});
+                                      MissingRenderTargetInfoError::Window{window_ref.entity()}});
                               },
                               [&](const ::epix::camera::ImageRenderTarget& image)
                                   -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
@@ -849,8 +849,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
                            const std::unordered_set<::epix::camera::RenderTargetId,
                                                     ::epix::camera::RenderTargetIdHash>& changed_images) {
         return std::visit(utils::visitor{
-                              [&](const ::epix::camera::WindowRef& window_ref) {
-                                  return changed_windows.contains(window_ref.window_entity);
+                              [&](const ::epix::window::NormalizedWindowRef& window_ref) {
+                                  return changed_windows.contains(window_ref.entity());
                               },
                               [&](const ::epix::camera::ImageRenderTarget&) {
                                   return changed_images.contains(target.identity());
@@ -882,7 +882,7 @@ EPIX_EXPORT struct SortedCamera {
         // Bevy derives Ord for NormalizedRenderTarget: Window precedes Image.
         // Epix's direct texture target is the Image counterpart.
         const std::uint8_t target_kind = target ? std::visit(utils::visitor{
-                                                     [](const ::epix::camera::WindowRef&) { return std::uint8_t{0}; },
+                                                     [](const ::epix::window::NormalizedWindowRef&) { return std::uint8_t{0}; },
                                                      [](const ::epix::camera::ImageRenderTarget&) { return std::uint8_t{1}; },
                                                      [](const ::epix::camera::ManualTextureViewHandle&) { return std::uint8_t{2}; },
                                                      [](const ::epix::camera::NoColorTarget&) { return std::uint8_t{3}; },

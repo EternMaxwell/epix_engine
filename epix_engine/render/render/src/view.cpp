@@ -239,10 +239,8 @@ void view::cleanup_view_targets_for_resize(Commands cmd,
     // camera's ViewTarget so prepare_view_target recreates the main textures
     // at the new size.
     for (auto&& [entity, camera] : cameras.iter()) {
-        if (camera.target) if (auto* win_ref = std::get_if<::epix::camera::WindowRef>(&*camera.target)) {
-            epix::ecs::Entity window_entity =
-                win_ref->primary ? windows->primary.value_or(epix::ecs::Entity{}) : win_ref->window_entity;
-            if (auto it = windows->windows.find(window_entity); it != windows->windows.end()) {
+        if (camera.target) if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target)) {
+            if (auto it = windows->windows.find(win_ref->entity()); it != windows->windows.end()) {
                 if (it->second.size_changed || it->second.present_mode_changed) {
                     cmd.entity(entity).template remove<view::ViewTarget>();
                 }

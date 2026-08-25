@@ -34,16 +34,10 @@ void Camera::register_required_components(RequiredComponentsRegistrator& registr
 }
 
 std::optional<NormalizedRenderTarget> RenderTarget::normalize(std::optional<Entity> primary) const {
-    return std::visit(utils::visitor{[&](const WindowRef& win_ref) -> std::optional<NormalizedRenderTarget> {
-                                         if (win_ref.primary) {
-                                             if (primary.has_value()) {
-                                                 return NormalizedRenderTarget(WindowRef{false, primary.value()});
-                                             } else {
-                                                 return std::nullopt;
-                                             }
-                                         } else {
-                                             return NormalizedRenderTarget(win_ref);
-                                         }
+    return std::visit(utils::visitor{[&](const window::WindowRef& win_ref) -> std::optional<NormalizedRenderTarget> {
+                                         return win_ref.normalize(primary).transform([](window::NormalizedWindowRef window) {
+                                             return NormalizedRenderTarget(window);
+                                         });
                                      },
                                      [&](const ImageRenderTarget& target) -> std::optional<NormalizedRenderTarget> {
                                          return NormalizedRenderTarget(target);
@@ -62,7 +56,7 @@ RenderTargetId NormalizedRenderTarget::identity() const noexcept {
                           [](const ImageRenderTarget& image) -> RenderTargetId {
                               return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw())};
                           },
-                          [](const WindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.window_entity.uid}; },
+                          [](const window::NormalizedWindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.entity().uid}; },
                           [](const ManualTextureViewHandle& handle) -> RenderTargetId { return RenderTargetId{2, handle.id}; },
                           [](const NoColorTarget& target) -> RenderTargetId {
                               return RenderTargetId{3, (std::uint64_t{target.size.x} << 32) | target.size.y};

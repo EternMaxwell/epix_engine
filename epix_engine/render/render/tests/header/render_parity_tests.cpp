@@ -141,11 +141,25 @@ TEST(SortedCamera, SortKey) {
     tex.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ImageRenderTarget{wgpu::Texture{}}};
     camera::SortedCamera win;
     win.order  = 1;
-    win.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, epix::ecs::Entity{.uid = 1}}};
+    win.target = ::epix::camera::NormalizedRenderTarget{::epix::window::NormalizedWindowRef{epix::ecs::Entity{.uid = 1}}};
     EXPECT_TRUE(win.sort_key() < tex.sort_key());
 }
 
 TEST(RenderTarget, VariantsNormalizeAndKeepDistinctIdentities) {
+    const epix::ecs::Entity primary_entity{.uid = 7};
+    const epix::ecs::Entity direct_entity{.uid = 42};
+    const ::epix::window::WindowRef primary;
+    EXPECT_TRUE(std::holds_alternative<::epix::window::WindowRef::Primary>(primary));
+    EXPECT_FALSE(primary.normalize(std::nullopt).has_value());
+    const auto normalized_primary = primary.normalize(primary_entity);
+    ASSERT_TRUE(normalized_primary.has_value());
+    EXPECT_EQ(normalized_primary->entity(), primary_entity);
+
+    const ::epix::window::WindowRef direct{::epix::window::WindowRef::Entity{direct_entity}};
+    const auto normalized_direct = direct.normalize(primary_entity);
+    ASSERT_TRUE(normalized_direct.has_value());
+    EXPECT_EQ(normalized_direct->entity(), direct_entity);
+
     const auto window = ::epix::camera::RenderTarget::from_window(epix::ecs::Entity{.uid = 42});
     const auto manual = ::epix::camera::RenderTarget::from_manual_texture_view(::epix::camera::ManualTextureViewHandle{42});
     const auto none   = ::epix::camera::RenderTarget::none(glm::uvec2{42, 0});
@@ -1391,7 +1405,7 @@ TEST(ViewTarget, CleanupForResizeRemovesTarget) {
     render_world.insert_resource(std::move(windows));
     render_world.get_entity_mut(cam_a).transform([window_entity](epix::ecs::EntityWorldMut&& cam) -> int {
         cam.insert(camera::ExtractedCamera{.target =
-                                               ::epix::camera::NormalizedRenderTarget{::epix::camera::WindowRef{false, window_entity}}});
+                                               ::epix::camera::NormalizedRenderTarget{::epix::window::NormalizedWindowRef{window_entity}}});
         return 0;
     });
     // Direct entity mutation can leave ECS archetype bookkeeping pending;

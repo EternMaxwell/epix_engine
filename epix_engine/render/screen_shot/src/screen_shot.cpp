@@ -246,12 +246,16 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
         state->pending.push_back(ScreenshotState::PendingCapture{.target = cap.target});
         spdlog::info("[render.screenshot] Capture requested for target '{}' through ScreenCapture event",
                      std::visit(epix::utils::visitor{
-                                    [](const ::epix::camera::WindowRef& win_ref) {
-                                        if (win_ref.primary) {
-                                            return std::string("primary window");
-                                        } else {
-                                            return std::format("window entity {}", win_ref.window_entity.index);
-                                        }
+                                    [](const ::epix::window::WindowRef& win_ref) {
+                                        return std::visit(epix::utils::visitor{
+                                                              [](const ::epix::window::WindowRef::Primary&) {
+                                                                  return std::string("primary window");
+                                                              },
+                                                              [](const ::epix::window::WindowRef::Entity& window) {
+                                                                  return std::format("window entity {}", window.entity.index);
+                                                              },
+                                                          },
+                                                          win_ref);
                                     },
                                     [](const ::epix::camera::ImageRenderTarget& image) {
                                         return std::format("wgpu texture {}", static_cast<void*>(image.texture.raw()));
@@ -436,8 +440,8 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                            size = {image.texture.getWidth(), image.texture.getHeight()};
                            format = image.texture.getFormat();
                        },
-                       [&](const ::epix::camera::WindowRef& window) {
-                           if (auto it = windows->windows.find(window.window_entity); it != windows->windows.end()) {
+                       [&](const ::epix::window::NormalizedWindowRef& window) {
+                           if (auto it = windows->windows.find(window.entity()); it != windows->windows.end()) {
                                const auto& extracted = it->second;
                                if (!extracted.swapchain_texture_view || !extracted.swapchain_texture.texture) return;
                                direct_texture = extracted.swapchain_texture.texture;

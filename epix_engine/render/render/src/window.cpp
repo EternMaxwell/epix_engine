@@ -365,8 +365,8 @@ void epix::render::window::present_windows(
             for (auto&& [cam_entity, camera, view_target] : views.iter()) {
                 (void)cam_entity;
                 if (!view_target.needs_present()) continue;
-                if (camera.target) if (auto* win_ref = std::get_if<::epix::camera::WindowRef>(&*camera.target);
-                    win_ref && win_ref->window_entity == entity) {
+                if (camera.target) if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target);
+                    win_ref && win_ref->entity() == entity) {
                     view_needs_present = true;
                     break;
                 }

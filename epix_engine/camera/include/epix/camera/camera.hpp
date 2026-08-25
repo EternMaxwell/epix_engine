@@ -72,17 +72,6 @@ EPIX_EXPORT struct Viewport {
     }
 };
 
-/** @brief Reference to a window entity used as a render target.
- *
- * When primary is true, the primary window is used regardless of
- * window_entity. */
-EPIX_EXPORT struct WindowRef {
-    /** @brief Whether to target the primary window. */
-    bool primary = true;
-    /** @brief Window entity to target when primary is false. */
-    epix::ecs::Entity window_entity;
-};
-
 EPIX_EXPORT struct ManualTextureViewHandle {
     std::uint32_t id = 0;
     bool operator==(const ManualTextureViewHandle&) const noexcept = default;
@@ -146,21 +135,21 @@ EPIX_EXPORT struct RenderTargetIdHash {
 /** @brief Resolved target identity (Bevy `NormalizedRenderTarget`). Render
  * code uses this after an optional primary window has been resolved. */
 EPIX_EXPORT struct NormalizedRenderTarget
-    : std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
-    using std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
+    : std::variant<window::NormalizedWindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
+    using std::variant<window::NormalizedWindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
     RenderTargetId identity() const noexcept;
 };
 
 /** @brief A render target that is either a GPU texture or a window
  * reference (Bevy `bevy_camera::RenderTarget`). */
-EPIX_EXPORT struct RenderTarget : std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
-    using std::variant<WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
+EPIX_EXPORT struct RenderTarget : std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
+    using std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
     static RenderTarget from_texture(wgpu::Texture texture, float scale_factor = 1.0f) {
         return RenderTarget(ImageRenderTarget{std::move(texture), scale_factor});
     }
-    static RenderTarget from_primary() noexcept { return RenderTarget(WindowRef{true}); }
+    static RenderTarget from_primary() noexcept { return RenderTarget(window::WindowRef{window::WindowRef::Primary{}}); }
     static RenderTarget from_window(epix::ecs::Entity window_entity) noexcept {
-        return RenderTarget(WindowRef{false, window_entity});
+        return RenderTarget(window::WindowRef{window::WindowRef::Entity{window_entity}});
     }
     static RenderTarget from_manual_texture_view(ManualTextureViewHandle handle) noexcept { return RenderTarget(handle); }
     static RenderTarget none(glm::uvec2 size) noexcept { return RenderTarget(NoColorTarget{size}); }
@@ -532,28 +521,23 @@ void camera_system(
         glm::uvec2 target_size{0, 0};
         float target_scale_factor = 1.0f;
         std::visit(utils::visitor{
-                       [&](const WindowRef& window_ref) {
-                           if (window_ref.primary) {
-                               // primary window
-                               if (auto primary = primary_window_query.single()) {
-                                   auto&& [win] = *primary;
-                                   target_size  = glm::uvec2(win.physical_size.first, win.physical_size.second);
-                                   target_scale_factor = win.scale_factor;
-                               } else {
-                                   // no primary window, use 0x0 as invalid
-                                   target_size = glm::uvec2(0, 0);
-                               }
-                           } else {
-                               // specific window
-                               if (auto opt_win = window_query.get(window_ref.window_entity)) {
-                                   auto [win]  = *opt_win;
-                                   target_size = glm::uvec2(win.physical_size.first, win.physical_size.second);
-                                   target_scale_factor = win.scale_factor;
-                               } else {
-                                   // window not found, use 0x0 as invalid
-                                   target_size = glm::uvec2(0, 0);
-                               }
-                           }
+                       [&](const window::WindowRef& window_ref) {
+                           std::visit(utils::visitor{
+                                          [&](const window::WindowRef::Primary&) {
+                                              if (auto primary = primary_window_query.single()) {
+                                                  auto&& [win] = *primary;
+                                                  target_size  = glm::uvec2(win.physical_size.first, win.physical_size.second);
+                                                  target_scale_factor = win.scale_factor;
+                                              }
+                                          },
+                                          [&](const window::WindowRef::Entity& window) {
+                                              if (auto opt_win = window_query.get(window.entity)) {
+                                                  auto [win]  = *opt_win;
+                                                  target_size = glm::uvec2(win.physical_size.first, win.physical_size.second);
+                                                  target_scale_factor = win.scale_factor;
+                                              }
+                                          }},
+                                      window_ref);
                        },
                        [&](const ImageRenderTarget& image) {
                            // texture target

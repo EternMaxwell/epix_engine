@@ -7,6 +7,7 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/utils.hpp>
 #include <optional>
 #include <string>
 #include <utility>
@@ -125,6 +126,52 @@ EPIX_EXPORT namespace epix::window {
         Fullscreen,
         BorderlessFullscreen,
     };
+
+    /** @brief A concrete window entity after primary-window resolution (Bevy
+     * `NormalizedWindowRef`). */
+    struct NormalizedWindowRef {
+        constexpr explicit NormalizedWindowRef(epix::ecs::Entity entity) noexcept : entity_(entity) {}
+        [[nodiscard]] constexpr epix::ecs::Entity entity() const noexcept { return entity_; }
+        bool operator==(const NormalizedWindowRef&) const noexcept = default;
+
+       private:
+        epix::ecs::Entity entity_;
+    };
+
+    namespace detail {
+    struct WindowRefPrimary {};
+    struct WindowRefEntity {
+        epix::ecs::Entity entity;
+    };
+    }  // namespace detail
+
+    /** @brief Reference to the primary window or to a specific window entity
+     * (Bevy `WindowRef`). */
+    struct WindowRef : std::variant<detail::WindowRefPrimary, detail::WindowRefEntity> {
+        using Primary = detail::WindowRefPrimary;
+        using Entity  = detail::WindowRefEntity;
+
+       private:
+        using Base = std::variant<Primary, Entity>;
+
+       public:
+        using Base::Base;
+        constexpr WindowRef() noexcept : Base(Primary{}) {}
+        [[nodiscard]] std::optional<NormalizedWindowRef> normalize(
+            std::optional<epix::ecs::Entity> primary_window) const {
+            return std::visit(utils::visitor{
+                                  [&](const Primary&) -> std::optional<NormalizedWindowRef> {
+                                      return primary_window.transform([](epix::ecs::Entity entity) {
+                                          return NormalizedWindowRef(entity);
+                                      });
+                                  },
+                                  [](const Entity& entity) -> std::optional<NormalizedWindowRef> {
+                                      return NormalizedWindowRef(entity.entity);
+                                  }},
+                              *this);
+        }
+    };
+
     /** @brief Main window configuration component.
      *
      * Controls position, size, cursor, decorations, fullscreen mode, and
