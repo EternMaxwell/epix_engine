@@ -2467,7 +2467,7 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_FALSE(settings.constrained_limits.has_value());
     EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eFxc);
     EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
-    EXPECT_EQ(settings.instance_flags, wgpu::InstanceFlag::eDefault);
+    EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::ValidationIndirectCall));
 
     // No env vars set: overrides leave defaults untouched.
     settings.apply_env_overrides();
@@ -2489,6 +2489,12 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     settings.apply_env_overrides();
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eUndefined);
 
+    _putenv_s("WGPU_VALIDATION", "1");
+    _putenv_s("WGPU_DEBUG", "0");
+    settings.apply_env_overrides();
+    EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::Validation));
+    EXPECT_FALSE(settings.instance_flags.contains(InstanceFlags::Debug));
+
     _putenv_s("WGPU_SETTINGS_PRIO", "compat");
     EXPECT_FALSE(settings_priority_from_env().has_value());
     _putenv_s("WGPU_SETTINGS_PRIO", "compatibility");
@@ -2499,6 +2505,8 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     _putenv_s("WGPU_BACKEND", "");
     _putenv_s("WGPU_POWER_PREF", "");
     _putenv_s("WGPU_SETTINGS_PRIO", "");
+    _putenv_s("WGPU_VALIDATION", "");
+    _putenv_s("WGPU_DEBUG", "");
 }
 
 // RenderCreation distinguishes automatic device creation from embedding-host

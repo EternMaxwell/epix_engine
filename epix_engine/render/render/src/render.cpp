@@ -253,10 +253,16 @@ void RenderPlugin::attach(App& app) {
     std::optional<wgpu::DeviceDescriptor> automatic_device_descriptor;
 
     if (auto* settings = render_creation.automatic_settings()) {
-        // The automatic path forces Vulkan below. The vendored native wgpu
-        // runtime rejects every InstanceExtras chain on a window surface, so
-        // preserve its default instance configuration here.
-        instance = wgpu::createInstance();
+        // The automatic path forces Vulkan below while Slang requires native
+        // SPIR-V passthrough. Preserve the rest of Bevy's instance options.
+        wgpu::InstanceExtras instance_extras;
+        instance_extras.setBackends(static_cast<wgpu::InstanceBackend>(WGPUInstanceBackend_Vulkan))
+            .setFlags(static_cast<wgpu::InstanceFlag>(settings->instance_flags.native_supported_bits()))
+            .setDx12ShaderCompiler(settings->dx12_shader_compiler)
+            .setGles3MinorVersion(settings->gles3_minor_version);
+        wgpu::InstanceDescriptor instance_descriptor;
+        instance_descriptor.setNextInChain(instance_extras);
+        instance = wgpu::createInstance(instance_descriptor);
         spdlog::debug("[render] WebGPU instance created.");
     wgpu::Surface surface = app.world()
                                 .get_resource<AnonymousSurface>()

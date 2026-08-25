@@ -121,6 +121,79 @@ EPIX_EXPORT struct Backends {
     std::uint32_t bits_ = 0;
 };
 
+/** @brief wgpu instance debugging flags (Bevy `InstanceFlags`). The native
+ * wgpu version currently used by Epix accepts Debug, Validation, and
+ * DiscardHalLabels; the remaining Bevy bits are retained in this public
+ * value for forward-compatible configuration. */
+EPIX_EXPORT struct InstanceFlags {
+    enum Bit : std::uint32_t {
+        Debug                             = 1u << 0,
+        Validation                        = 1u << 1,
+        DiscardHalLabels                  = 1u << 2,
+        AllowUnderlyingNoncompliantAdapter = 1u << 3,
+        GpuBasedValidation                = 1u << 4,
+        ValidationIndirectCall            = 1u << 5,
+        AutomaticTimestampNormalization   = 1u << 6,
+    };
+
+    constexpr InstanceFlags() = default;
+    constexpr InstanceFlags(Bit bit) : bits_(static_cast<std::uint32_t>(bit)) {}
+    constexpr explicit InstanceFlags(std::uint32_t bits) : bits_(bits) {}
+
+    [[nodiscard]] static constexpr InstanceFlags empty() noexcept { return {}; }
+    [[nodiscard]] static constexpr InstanceFlags debugging() noexcept {
+        return InstanceFlags{Debug} | Validation | ValidationIndirectCall;
+    }
+    [[nodiscard]] static constexpr InstanceFlags advanced_debugging() noexcept {
+        return debugging() | GpuBasedValidation;
+    }
+    [[nodiscard]] static constexpr InstanceFlags from_build_config() noexcept {
+#if defined(_DEBUG)
+        return debugging();
+#else
+        return InstanceFlags{ValidationIndirectCall};
+#endif
+    }
+    [[nodiscard]] constexpr std::uint32_t bits() const noexcept { return bits_; }
+    [[nodiscard]] constexpr bool is_empty() const noexcept { return bits_ == 0; }
+    [[nodiscard]] constexpr bool contains(InstanceFlags other) const noexcept {
+        return (bits_ & other.bits_) == other.bits_;
+    }
+    [[nodiscard]] constexpr std::uint32_t native_supported_bits() const noexcept {
+        return bits_ & (static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
+                        static_cast<std::uint32_t>(DiscardHalLabels));
+    }
+    [[nodiscard]] InstanceFlags with_env() const noexcept {
+        auto result = *this;
+        const auto set_from_env = [&result](Bit bit, const char* name) {
+            const char* value = std::getenv(name);
+            if (!value) return;
+            if (std::string_view(value) == "0")
+                result.bits_ &= ~static_cast<std::uint32_t>(bit);
+            else
+                result.bits_ |= static_cast<std::uint32_t>(bit);
+        };
+        set_from_env(Validation, "WGPU_VALIDATION");
+        set_from_env(Debug, "WGPU_DEBUG");
+        set_from_env(DiscardHalLabels, "WGPU_DISCARD_HAL_LABELS");
+        set_from_env(AllowUnderlyingNoncompliantAdapter, "WGPU_ALLOW_UNDERLYING_NONCOMPLIANT_ADAPTER");
+        set_from_env(GpuBasedValidation, "WGPU_GPU_BASED_VALIDATION");
+        set_from_env(ValidationIndirectCall, "WGPU_VALIDATION_INDIRECT_CALL");
+        return result;
+    }
+
+    friend constexpr bool operator==(InstanceFlags, InstanceFlags) = default;
+    friend constexpr InstanceFlags operator|(InstanceFlags lhs, InstanceFlags rhs) noexcept {
+        return InstanceFlags{lhs.bits_ | rhs.bits_};
+    }
+    friend constexpr InstanceFlags operator|(Bit lhs, Bit rhs) noexcept { return InstanceFlags{lhs} | InstanceFlags{rhs}; }
+    friend constexpr InstanceFlags operator|(InstanceFlags lhs, Bit rhs) noexcept { return lhs | InstanceFlags{rhs}; }
+    friend constexpr InstanceFlags operator|(Bit lhs, InstanceFlags rhs) noexcept { return InstanceFlags{lhs} | rhs; }
+
+   private:
+    std::uint32_t bits_ = 0;
+};
+
 /**
  * @brief Renderer configuration for adapter/device creation (Bevy
  * WgpuSettings). The env vars
@@ -193,7 +266,7 @@ EPIX_EXPORT struct WgpuSettings {
     /** @brief Requested GLES 3 minor version for the GL backend. */
     wgpu::Gles3MinorVersion gles3_minor_version = wgpu::Gles3MinorVersion::eAutomatic;
     /** @brief wgpu instance debug/validation flags. */
-    wgpu::InstanceFlag instance_flags = wgpu::InstanceFlag::eDefault;
+    InstanceFlags instance_flags = InstanceFlags::from_build_config();
 
     /** @brief Apply the WGPU_BACKEND / WGPU_POWER_PREF / WGPU_SETTINGS_PRIO
      * environment variables on top of the current values (Bevy
@@ -214,6 +287,7 @@ EPIX_EXPORT struct WgpuSettings {
                 power_preference = wgpu::PowerPreference::eUndefined;
         }
         if (auto configured_priority = settings_priority_from_env()) priority = *configured_priority;
+        instance_flags = instance_flags.with_env();
     }
 };
 
