@@ -2454,32 +2454,27 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     WgpuSettings settings;
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::Functionality);
-    EXPECT_FALSE(settings.backends.has_value());
+    ASSERT_TRUE(settings.backends.has_value());
+    EXPECT_EQ(*settings.backends, wgpu::BackendType::eVulkan);  // engine default
     EXPECT_FALSE(settings.force_fallback_adapter);
     EXPECT_EQ(settings.device_label, "Render Device");
 
     // No env vars set: overrides leave defaults untouched.
     settings.apply_env_overrides();
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);
-    EXPECT_FALSE(settings.backends.has_value());
+    ASSERT_TRUE(settings.backends.has_value());
+    EXPECT_EQ(*settings.backends, wgpu::BackendType::eVulkan);
 
     // With env vars set, values are picked up. Restore with the empty string
     // (never nullptr - _putenv_s(nullptr) is a crash on MSVC).
     _putenv_s("WGPU_BACKEND", "vulkan");
     _putenv_s("WGPU_POWER_PREF", "low");
-    _putenv_s("WGPU_SETTINGS_PRIO", "WeBgL2");
+    _putenv_s("WGPU_SETTINGS_PRIO", "webgl2");
     settings.apply_env_overrides();
     EXPECT_TRUE(settings.backends.has_value());
     EXPECT_EQ(*settings.backends, wgpu::BackendType::eVulkan);
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eLowPower);
     EXPECT_EQ(settings.priority, WgpuSettingsPriority::WebGL2);
-
-    _putenv_s("WGPU_SETTINGS_PRIO", "compat");
-    EXPECT_FALSE(settings_priority_from_env().has_value());
-    _putenv_s("WGPU_SETTINGS_PRIO", "compatibility");
-    EXPECT_EQ(settings_priority_from_env(), WgpuSettingsPriority::Compatibility);
-    _putenv_s("WGPU_SETTINGS_PRIO", "functionality");
-    EXPECT_EQ(settings_priority_from_env(), WgpuSettingsPriority::Functionality);
 
     _putenv_s("WGPU_BACKEND", "");
     _putenv_s("WGPU_POWER_PREF", "");

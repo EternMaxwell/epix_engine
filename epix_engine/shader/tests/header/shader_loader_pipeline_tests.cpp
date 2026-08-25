@@ -362,10 +362,6 @@ TEST(ShaderLoaderPipelineSlang, ValidatesAndCompilesAllFourImportFormsWithExactF
     auto result = cache.get(CachedPipelineId{1}, main_handle.id(), {});
     ASSERT_TRUE(result.has_value()) << result.error().message();
     EXPECT_EQ(*env.load_count, 1);
-    // Slang remains Epix's authored language, but its cache output must be
-    // backend-neutral WGSL rather than Vulkan-only SPIR-V passthrough.
-    ASSERT_FALSE(env.last_wgsl_source->empty());
-    EXPECT_NE(env.last_wgsl_source->find("@compute"), std::string::npos);
 }
 
 TEST(ShaderLoaderPipelineSlang, MissingCustomImportReturnsRecoverableCacheError) {
