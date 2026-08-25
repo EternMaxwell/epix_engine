@@ -79,6 +79,22 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
     }
+    const auto texture_render_app = app.get_sub_app(Render);
+    ASSERT_TRUE(texture_render_app.has_value());
+    const auto& texture_world = texture_render_app->get().world();
+    EXPECT_TRUE(texture_world.get_resource<render_resource::TextureCache>().has_value());
+    EXPECT_TRUE(texture_world.get_resource<DefaultImageSampler>().has_value());
+    const auto fallback = texture_world.get_resource<texture::FallbackImage>();
+    ASSERT_TRUE(fallback.has_value());
+    EXPECT_TRUE(static_cast<bool>(fallback->get().d2.texture_view));
+    EXPECT_TRUE(static_cast<bool>(fallback->get().cube.texture_view));
+    const auto fallback_zero = texture_world.get_resource<texture::FallbackImageZero>();
+    ASSERT_TRUE(fallback_zero.has_value());
+    EXPECT_TRUE(static_cast<bool>(fallback_zero->get().image.texture_view));
+    const auto fallback_cubemap = texture_world.get_resource<texture::FallbackImageCubemap>();
+    ASSERT_TRUE(fallback_cubemap.has_value());
+    EXPECT_TRUE(static_cast<bool>(fallback_cubemap->get().image.texture_view));
+    EXPECT_TRUE(texture_world.get_resource<texture::FallbackImageFormatMsaaCache>().has_value());
     app.run_schedule(Startup);
     app.add_plugins(ExtractComponentPlugin<SmokeComponent>{});
 

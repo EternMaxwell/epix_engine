@@ -3,6 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/image.hpp>
 #include <tuple>
@@ -16,5 +17,10 @@ namespace epix::render {
 EPIX_EXPORT struct DefaultImageSampler {
     /** @brief The default GPU sampler. */
     wgpu::Sampler sampler;
+};
+
+/** @brief Render texture integration (Bevy `bevy_render::texture::TexturePlugin`). */
+EPIX_EXPORT struct TexturePlugin {
+    void attach(app::App& app);
 };
 }  // namespace epix::render

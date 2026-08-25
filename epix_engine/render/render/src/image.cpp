@@ -6,6 +6,47 @@
 
 namespace epix::render {
 
+void TexturePlugin::attach(app::App& app) {
+    // Bevy texture::TexturePlugin owns image render-asset extraction and the
+    // manually managed texture-view resource.
+    app.add_plugins(RenderAssetPlugin<image::Image>{});
+    app.world_mut().init_resource<texture::ManualTextureViews>();
+    app.add_plugins(ExtractResourcePlugin<texture::ManualTextureViews>{});
+
+    app.sub_app_mut(Render).then([](app::App& render_app) {
+        auto& world = render_app.world_mut();
+        world.init_resource<render_resource::TextureCache>();
+        render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
+                                         .in_set(RenderSystems::Cleanup)
+                                         .set_name("update texture cache"));
+
+        const wgpu::Device device = world.resource<wgpu::Device>().clone();
+        // Bevy TexturePlugin::finish creates the sampler and fallback images
+        // after render resources are available. Epix initializes them during
+        // attachment because RenderPlugin creates its device synchronously
+        // before child plugins are attached.
+        wgpu::Sampler sampler = device.createSampler(wgpu::SamplerDescriptor()
+                                                          .setLabel("DefaultImageSampler")
+                                                          .setAddressModeU(wgpu::AddressMode::eClampToEdge)
+                                                          .setAddressModeV(wgpu::AddressMode::eClampToEdge)
+                                                          .setAddressModeW(wgpu::AddressMode::eClampToEdge)
+                                                          .setMinFilter(wgpu::FilterMode::eLinear)
+                                                          .setMagFilter(wgpu::FilterMode::eLinear)
+                                                          .setMipmapFilter(wgpu::MipmapFilterMode::eLinear)
+                                                          .setLodMinClamp(0.0f)
+                                                          .setLodMaxClamp(32.0f)
+                                                          .setMaxAnisotropy(1));
+        world.insert_resource(DefaultImageSampler{.sampler = std::move(sampler)});
+        auto fallback = texture::FallbackImage::from_world(world);
+        world.insert_resource(std::move(fallback));
+        auto fallback_zero = texture::FallbackImageZero::from_world(world);
+        world.insert_resource(std::move(fallback_zero));
+        auto fallback_cubemap = texture::FallbackImageCubemap::from_world(world);
+        world.insert_resource(std::move(fallback_cubemap));
+        world.init_resource<texture::FallbackImageFormatMsaaCache>();
+    });
+}
+
 wgpu::TextureFormat format_cast(image::Format format) noexcept {
     switch (format) {
         case image::Format::Grey8:

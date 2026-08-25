@@ -208,8 +208,6 @@ void RenderPlugin::attach(App& app) {
             });
         render_app.schedule_order().insert_begin(render::Render);
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
-        render_app.world_mut().init_resource<render_resource::TextureCache>();
-        render_app.world_mut().init_resource<render::texture::ManualTextureViews>();
         render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
                                            .in_set(RenderSystems::Cleanup)
                                            .set_name("update texture cache"));
@@ -391,24 +389,6 @@ void RenderPlugin::attach(App& app) {
     app.world_mut().insert_resource(device.clone());
     app.world_mut().insert_resource(queue.clone());
     app.world_mut().insert_resource(limits);
-    // Bevy's default image sampler is ImageSamplerDescriptor::linear()
-
-    // (bevy_image image.rs:189, 806-813): linear min/mag/mipmap filters,
-    // clamp-to-edge addressing, lod clamp 0..32.
-    wgpu::Sampler default_sampler = device.createSampler(wgpu::SamplerDescriptor()
-                                                             .setLabel("DefaultImageSampler")
-                                                             .setAddressModeU(wgpu::AddressMode::eClampToEdge)
-                                                             .setAddressModeV(wgpu::AddressMode::eClampToEdge)
-                                                             .setAddressModeW(wgpu::AddressMode::eClampToEdge)
-                                                             .setMinFilter(wgpu::FilterMode::eLinear)
-                                                             .setMagFilter(wgpu::FilterMode::eLinear)
-                                                             .setMipmapFilter(wgpu::MipmapFilterMode::eLinear)
-                                                             .setLodMinClamp(0.0f)
-                                                             .setLodMaxClamp(32.0f)
-                                                             .setMaxAnisotropy(1));
-    app.world_mut().insert_resource(render::DefaultImageSampler{
-        .sampler = default_sampler,
-    });
     // Keep the automatic descriptor alive because it owns the callback
     // storage. For manual creation, the embedding application owns it.
     if (automatic_device_descriptor) {
@@ -422,9 +402,6 @@ void RenderPlugin::attach(App& app) {
         render_app.world_mut().insert_resource(device.clone());
         render_app.world_mut().insert_resource(queue.clone());
         render_app.world_mut().insert_resource(limits);
-        render_app.world_mut().insert_resource(render::DefaultImageSampler{
-            .sampler = default_sampler,
-        });
         render_app.world_mut().init_resource<graph::RenderGraphFinalizers>();
         // Bevy lib.rs:384: RenderAssetBytesPerFrameLimiter is a render-app
         // resource (required by prepare_assets / extract/reset systems).
@@ -463,7 +440,7 @@ void RenderPlugin::attach(App& app) {
 
     app.add_plugins(render::window::WindowRenderPlugin{});
     app.add_plugins(image::ImagePlugin{});
-    app.add_plugins(render::RenderAssetPlugin<image::Image>{});
+    app.add_plugins(render::TexturePlugin{});
     app.add_plugins(shader::ShaderPlugin{});
     // CameraPlugin supplies Camera's required RenderTarget component before
     // the independently extracted camera components are installed.
@@ -472,38 +449,6 @@ void RenderPlugin::attach(App& app) {
     // render::camera::CameraPlugin. Add it through the plugin list just as
     // Bevy RenderPlugin does, after the render sub-app is initialized.
     app.add_plugins(render::camera::CameraPlugin{});
-    // ManualTextureViews is owned by applications in the main world and
-    // extracted for target preparation.  It must be available there as well
-    // as in the render world so camera projection updates can resolve its
-    // physical size, as Bevy's render-side camera_system does.
-    app.world_mut().init_resource<render::texture::ManualTextureViews>();
-    app.add_plugins(render::ExtractResourcePlugin<render::texture::ManualTextureViews>{});
-    app.add_systems(app::PostStartup,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::Projection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("startup update manual texture view cameras"));
-    app.add_systems(app::PostStartup,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("startup update manual texture view orthographic cameras"));
-    app.add_systems(app::PostStartup,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("startup update manual texture view perspective cameras"));
-    app.add_systems(app::PostUpdate,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::Projection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("update manual texture view cameras"));
-    app.add_systems(app::PostUpdate,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("update manual texture view orthographic cameras"));
-    app.add_systems(app::PostUpdate,
-                    into(render::view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("update manual texture view perspective cameras"));
-    // Bevy bevy_render extracts the ClearColor resource to the render world.
-    app.add_plugins(render::ExtractResourcePlugin<::epix::camera::ClearColor>{});
     app.add_plugins(render::experimental::OcclusionCullingPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
     // Bevy lib.rs:362-380: GlobalsPlugin, BatchingPlugin, SyncWorldPlugin,

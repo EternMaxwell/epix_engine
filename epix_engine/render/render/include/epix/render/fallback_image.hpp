@@ -87,7 +87,15 @@ inline GpuImage create_fallback_image(epix::ecs::World& world,
     }
     GpuImage image;
     image.texture         = texture;
-    image.texture_view    = texture.createView(wgpu::TextureViewDescriptor().setDimension(view_dimension));
+    // wgpu-native requires the view's explicit ranges to be non-zero.  This
+    // is Bevy's default view range: its one mip level and every created layer.
+    wgpu::TextureViewDescriptor view_descriptor{};
+    view_descriptor.dimension       = view_dimension;
+    view_descriptor.baseMipLevel    = 0;
+    view_descriptor.mipLevelCount   = 1;
+    view_descriptor.baseArrayLayer  = 0;
+    view_descriptor.arrayLayerCount = layers;
+    image.texture_view              = texture.createView(view_descriptor);
     image.texture_format  = wgpu::TextureFormat::eRGBA8Unorm;
     image.sampler         = sampler->get().sampler;
     image.size            = wgpu::Extent3D{1, 1, layers};

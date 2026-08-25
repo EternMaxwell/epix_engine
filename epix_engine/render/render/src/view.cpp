@@ -511,6 +511,34 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
             render_graph->get().add_node(CameraDriverNodeLabel, CameraDriverNode{});
         }
     });
+
+    // Bevy render::camera::CameraPlugin extracts ClearColor and owns the
+    // main-world camera target update path, including manual texture views.
+    app.add_plugins(ExtractResourcePlugin<::epix::camera::ClearColor>{});
+    app.add_systems(app::PostStartup,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view cameras"));
+    app.add_systems(app::PostStartup,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view orthographic cameras"));
+    app.add_systems(app::PostStartup,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("startup update manual texture view perspective cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view orthographic cameras"));
+    app.add_systems(app::PostUpdate,
+                    into(view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
+                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                        .set_name("update manual texture view perspective cameras"));
 }
 
 void camera::extract_cameras(
