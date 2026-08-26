@@ -15,6 +15,12 @@ struct EarlyExtractInstance {
     int value = 0;
 };
 
+struct UniformPluginProbe {
+    int value = 0;
+
+    UniformPluginProbe get() const noexcept { return *this; }
+};
+
 template <>
 struct epix::render::ExtractInstance<EarlyExtractInstance> {
     using QueryData   = const EarlyExtractInstance&;
@@ -1611,6 +1617,17 @@ TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     EXPECT_EQ(clear_color.to_vec4(), configured.to_vec4());
 }
 
+TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
+    auto app = epix::app::App::create();
+    app.add_sub_app(Render);
+
+    ::epix::render::camera::CameraPlugin{}.attach(app);
+
+    const auto render_app = app.get_sub_app(Render);
+    ASSERT_TRUE(render_app.has_value());
+    EXPECT_FALSE(render_app->get().world().get_resource<::epix::camera::ClearColor>().has_value());
+}
+
 TEST(CameraMainTextureUsages, WithReturnsAugmentedCopy) {
     const ::epix::camera::CameraMainTextureUsages defaults;
     const auto augmented = defaults.with(wgpu::TextureUsage::eCopyDst);
@@ -1627,7 +1644,7 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(ExtractInstancesPlugin<EarlyExtractInstance>{}.attach(app));
     EXPECT_NO_THROW(ExtractResourcePlugin<FrameCount>{}.attach(app));
     EXPECT_NO_THROW(GpuComponentArrayBufferPlugin<EarlyExtractInstance>{}.attach(app));
-    EXPECT_NO_THROW(UniformComponentPlugin<EarlyExtractInstance>{}.attach(app));
+    EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
 }
 
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {

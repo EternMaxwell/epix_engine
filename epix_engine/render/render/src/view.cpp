@@ -502,7 +502,6 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
     });
 
     app.sub_app_mut(Render).then([](App& render_app) {
-        render_app.world_mut().insert_resource(::epix::camera::ClearColor{});
         render_app.world_mut().init_resource<SortedCameras>();
         render_app.add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
         render_app.add_systems(
