@@ -101,6 +101,89 @@ bool can_use_platform_viewports(const ImGuiIO& io) {
            (io.BackendFlags & ImGuiBackendFlags_RendererHasViewports);
 }
 
+bool has_primary_content(const std::shared_ptr<epix::imgui::DrawDataSnapshot>& snapshot) {
+    return snapshot && snapshot->valid && !snapshot->draw_lists.empty() && snapshot->display_size_x > 0.0f &&
+           snapshot->display_size_y > 0.0f;
+}
+
+const rwin::ExtractedWindow* primary_window_with_frame(const rwin::ExtractedWindows& windows) {
+    if (!windows.primary) return nullptr;
+    auto it = windows.windows.find(*windows.primary);
+    if (it == windows.windows.end() || !it->second.swapchain_texture_view) return nullptr;
+    return &it->second;
+}
+
+// This extension writes the primary swapchain image directly.  Normal render
+// graph output flips this marker through ViewTarget::out_texture_color_attachment;
+// keep the same Bevy present gate accurate for an ImGui-only frame.
+void mark_primary_output_written(epix::ecs::World& world, const epix::ecs::Entity primary_window) {
+    auto views = world.try_query<Item<const epix::render::camera::ExtractedCamera&, const epix::render::view::ViewTarget&>>();
+    if (!views) return;
+    for (const auto& [camera, target] : views->iter(world)) {
+        if (!camera.target) continue;
+        if (const auto* window = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target);
+            window && window->entity() == primary_window) {
+            target.output_attachment.mark_as_cleared();
+        }
+    }
+}
+
+void ensure_wgpu_backend(const epix::imgui::ImGuiState& state,
+                         const rwin::ExtractedWindow& window,
+                         const wgpu::Device& device) {
+    if (g_wgpu_initialized) return;
+    ImGui_ImplWGPU_InitInfo init_info{};
+    init_info.Device             = device;
+    init_info.RenderTargetFormat = static_cast<WGPUTextureFormat>(window.swapchain_texture_format);
+    init_info.DepthStencilFormat = WGPUTextureFormat_Undefined;
+    init_info.NumFramesInFlight  = 3;
+    ImGui_ImplWGPU_Init(&init_info);
+    if (state.enable_viewports) ImGui::GetIO().BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    g_wgpu_initialized = true;
+    spdlog::debug("[imgui] Initialized WebGPU backend (format={}).", static_cast<int>(window.swapchain_texture_format));
+}
+
+// The primary viewport is part of the renderer submission. This is the only
+// place an extension may draw to its acquired swapchain image before Bevy's
+// render-system presentation point.
+void render_primary_viewport(epix::ecs::World& world, wgpu::CommandEncoder& encoder) {
+    const auto state   = world.get_resource<epix::imgui::ImGuiState>();
+    const auto windows = world.get_resource<rwin::ExtractedWindows>();
+    const auto device  = world.get_resource<wgpu::Device>();
+    if (!state || !windows || !device || !state->get().ctx) return;
+
+    ImGui::SetCurrentContext(static_cast<ImGuiContext*>(state->get().ctx));
+    const auto window = primary_window_with_frame(windows->get());
+    if (!window) return;
+    ensure_wgpu_backend(state->get(), *window, device->get());
+    ImGui_ImplWGPU_NewFrame();
+
+    const auto snapshot = state->get().draw_snapshot;
+    if (!has_primary_content(snapshot)) return;
+    const float expected_width  = snapshot->display_size_x * snapshot->fb_scale_x;
+    const float expected_height = snapshot->display_size_y * snapshot->fb_scale_y;
+    if ((window->physical_width > 0 && expected_width > static_cast<float>(window->physical_width) + 1.0f) ||
+        (window->physical_height > 0 && expected_height > static_cast<float>(window->physical_height) + 1.0f)) {
+        return;
+    }
+
+    ReconstructedDrawData reconstructed(*snapshot);
+    auto pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                            .setLabel("ImGui Pass")
+                                            .setColorAttachments(std::array{
+                                                wgpu::RenderPassColorAttachment()
+                                                    .setView(window->swapchain_texture_view)
+                                                    .setDepthSlice(~0u)
+                                                    .setLoadOp(wgpu::LoadOp::eLoad)
+                                                    .setStoreOp(wgpu::StoreOp::eStore),
+                                            }));
+    ImGui_ImplWGPU_RenderDrawData(&reconstructed.draw_data, pass);
+    pass.end();
+    mark_primary_output_written(world, *windows->get().primary);
+    // The reconstructed draw lists are owned by this stack object.
+    reconstructed.draw_data.Clear();
+}
+
 bool surface_supports_format(wgpu::SurfaceCapabilities& capabilities, wgpu::TextureFormat format) {
     for (auto available : capabilities.formats) {
         if (available == format) return true;
@@ -289,11 +372,16 @@ void imgui::ImGuiPlugin::attach(App& app) {
     // Extract ImGuiState to render world
     app.add_plugins(render::ExtractResourcePlugin<ImGuiState>{});
 
-    // Render sub-app: add ImGui render system after the render graph
+    // Primary-window ImGui is recorded into the graph submission before
+    // WindowRenderPlugin presents it. Platform viewport windows retain their
+    // independent surface/submit/present path below.
     app.sub_app_mut(render::Render).then([](App& render_app) {
+        render_app.world_mut()
+            .resource_mut<render::graph::RenderGraphFinalizers>()
+            .callbacks.emplace_back(render_primary_viewport);
         render_app.add_systems(render::Render, into(imgui_render)
-                                                   .set_name("imgui render")
-                                                   .after(render::RenderSystems::Render)
+                                                   .set_name("imgui platform viewport render")
+                                                   .after(render::render_system)
                                                    .before(render::RenderSystems::Cleanup));
     });
 }
@@ -457,86 +545,19 @@ void imgui::imgui_render(Res<ImGuiState> state,
     if (!state->ctx) return;
     ImGui::SetCurrentContext(static_cast<ImGuiContext*>(state->ctx));
 
-    auto snap = state->draw_snapshot;
-    const bool has_primary_content =
-        snap && snap->valid && !snap->draw_lists.empty() && snap->display_size_x > 0.0f && snap->display_size_y > 0.0f;
     const bool has_secondary_content =
         state->enable_viewports && state->viewport_snapshots && !state->viewport_snapshots->empty();
-    if (!has_primary_content && !has_secondary_content) return;
+    if (!has_secondary_content) return;
 
-    // Find the primary window with a valid swapchain texture view (needed for WebGPU init format)
-    const render::window::ExtractedWindow* target_window = nullptr;
-    if (windows->primary) {
-        if (auto it = windows->windows.find(*windows->primary); it != windows->windows.end()) {
-            if (it->second.swapchain_texture_view) {
-                target_window = &it->second;
-            }
-        }
-    }
-    if (!target_window) return;
-    const auto& window = *target_window;
-
-    // Lazy-initialize WebGPU backend
-    if (!g_wgpu_initialized) {
-        ImGui_ImplWGPU_InitInfo init_info{};
-        init_info.Device             = *device;
-        init_info.RenderTargetFormat = static_cast<WGPUTextureFormat>(window.swapchain_texture_format);
-        init_info.DepthStencilFormat = WGPUTextureFormat_Undefined;
-        init_info.NumFramesInFlight  = 3;
-        ImGui_ImplWGPU_Init(&init_info);
-        if (state->enable_viewports) ImGui::GetIO().BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
-        g_wgpu_initialized = true;
-        spdlog::debug("[imgui] Initialized WebGPU backend (format={}).",
-                      static_cast<int>(window.swapchain_texture_format));
-    }
-    ImGui_ImplWGPU_NewFrame();
-
-    // Primary viewport: render only if we have content and the window size is valid
-    if (has_primary_content) {
-        bool skip_primary = false;
-        // Guard: if window physical size doesn't match snapshot display size (mid-resize),
-        // skip this frame to avoid WebGPU viewport validation errors.
-        if (window.physical_width > 0 && window.physical_height > 0) {
-            float expected_w = snap->display_size_x * snap->fb_scale_x;
-            float expected_h = snap->display_size_y * snap->fb_scale_y;
-            float actual_w   = static_cast<float>(window.physical_width);
-            float actual_h   = static_cast<float>(window.physical_height);
-            if (expected_w > actual_w + 1.0f || expected_h > actual_h + 1.0f) skip_primary = true;
-        }
-
-        if (!skip_primary) {
-            ReconstructedDrawData reconstructed(*snap);
-
-            // Create a render pass targeting the primary window surface
-            wgpu::CommandEncoder encoder =
-                device->createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("ImGui Encoder"));
-            wgpu::RenderPassEncoder pass =
-                encoder.beginRenderPass(wgpu::RenderPassDescriptor()
-                                            .setLabel("ImGui Pass")
-                                            .setColorAttachments(std::array{
-                                                wgpu::RenderPassColorAttachment()
-                                                    .setView(window.swapchain_texture_view)
-                                                    .setDepthSlice(~0u)
-                                                    .setLoadOp(wgpu::LoadOp::eLoad)  // preserve scene
-                                                    .setStoreOp(wgpu::StoreOp::eStore),
-                                            }));
-
-            ImGui_ImplWGPU_RenderDrawData(&reconstructed.draw_data, pass);
-            pass.end();
-
-            // Prevent the temporary draw_data from freeing draw lists it doesn't own
-            reconstructed.draw_data.Clear();
-
-            wgpu::CommandBuffer cmd = encoder.finish();
-            queue->submit(cmd);
-        }
-    }
+    const auto* window = primary_window_with_frame(*windows);
+    if (!window) return;
+    ensure_wgpu_backend(*state, *window, *device);
 
     if (state->enable_viewports && state->viewport_snapshots) {
         std::unordered_set<unsigned int> active_viewports;
         for (const auto& viewport_snap : *state->viewport_snapshots) {
             active_viewports.insert(viewport_snap.viewport_id);
-            render_viewport_snapshot(viewport_snap, window.swapchain_texture_format, *instance, *adapter, *device,
+            render_viewport_snapshot(viewport_snap, window->swapchain_texture_format, *instance, *adapter, *device,
                                      *queue);
         }
         for (auto it = g_viewport_surfaces.begin(); it != g_viewport_surfaces.end();) {

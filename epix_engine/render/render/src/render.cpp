@@ -175,6 +175,9 @@ void epix::render::render_system(World& world) {
         // than being silently converted into a stale frame.
         throw std::runtime_error(std::format("Render graph failed to run: {}", result.error().to_string()));
     }
+    // Bevy renderer::render_system presents immediately after graph submission,
+    // while temporary extracted views still exist to drive ViewTarget::needs_present.
+    window::present_windows(world);
 }
 
 void RenderPlugin::attach(App& app) {

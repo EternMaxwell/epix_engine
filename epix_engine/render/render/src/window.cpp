@@ -31,11 +31,6 @@ void WindowRenderPlugin::attach(App& app) {
     render_app.add_systems(
         epix::render::Render,
         into(prepare_windows).set_name("prepare windows").in_set(epix::render::RenderSystems::ManageViews));
-    if (handle_present) {
-        render_app.add_systems(
-            epix::render::Render,
-            into(present_windows).set_name("present windows").after(epix::render::RenderSystems::Cleanup));
-    }
 }
 
 void epix::render::window::extract_windows(
@@ -347,12 +342,13 @@ void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
     }
 }
 
-void epix::render::window::present_windows(
-    ResMut<WindowSurfaces> window_surfaces,
-    ResMut<ExtractedWindows> windows,
-    Query<Item<Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views) {
-    for (auto&& [entity, surface_data] : window_surfaces->surfaces) {
-        auto& window = windows->windows.at(entity);
+void epix::render::window::present_windows(World& world) {
+    auto&& window_surfaces = world.resource_mut<WindowSurfaces>();
+    auto&& windows = world.resource_mut<ExtractedWindows>();
+    auto views = world.try_query<Item<Entity, const camera::ExtractedCamera&, const view::ViewTarget&>>();
+    if (!views) return;
+    for (auto&& [entity, surface_data] : window_surfaces.surfaces) {
+        auto& window = windows.windows.at(entity);
         // Gate on whether a texture is actually held: after a failed acquire
         // swapchain_texture is reset to a default SurfaceTexture whose status
         // is eSuccessOptimal (enum 0) but whose texture is null — presenting
@@ -362,7 +358,7 @@ void epix::render::window::present_windows(
             // Bevy render_system present gate: present when a camera targeting
             // this window wrote to its output, or once for the initial frame.
             bool view_needs_present = false;
-            for (auto&& [cam_entity, camera, view_target] : views.iter()) {
+            for (auto&& [cam_entity, camera, view_target] : views->iter(world)) {
                 (void)cam_entity;
                 if (!view_target.needs_present()) continue;
                 if (camera.target) if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target);

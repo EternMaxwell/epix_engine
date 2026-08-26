@@ -136,16 +136,13 @@ void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
                      ecs::Res<wgpu::Adapter> adapter,
                      ecs::Res<wgpu::Device> device);
 
-void present_windows(ecs::ResMut<WindowSurfaces> window_surfaces,
-                     ecs::ResMut<ExtractedWindows> windows,
-                     ecs::Query<ecs::Item<ecs::Entity, const camera::ExtractedCamera&, const view::ViewTarget&>> views);
+/** @brief Present completed surface frames. Called by render_system immediately
+ * after graph submission, matching Bevy renderer::render_system. */
+void present_windows(ecs::World& world);
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */
 EPIX_EXPORT struct WindowRenderPlugin {
-    /** @brief Whether this plugin handles presenting the swapchain
-     * (default true). */
-    bool handle_present = true;
     void attach(app::App&);
 };
 }  // namespace epix::render::window

@@ -1606,6 +1606,15 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     EXPECT_NE(projection.get_projection_matrix()[0][0], 0.0f);
 }
 
+TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
+    auto app = epix::app::App::create();
+    app.add_sub_app(Render);
+    window::WindowRenderPlugin{}.attach(app);
+    const auto& render_world = app.sub_app(Render).world();
+    EXPECT_TRUE(render_world.get_resource<window::ExtractedWindows>().has_value());
+    EXPECT_TRUE(render_world.get_resource<window::WindowSurfaces>().has_value());
+}
+
 TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     auto app = epix::app::App::create();
     const ::epix::camera::ClearColor configured{0.25f, 0.5f, 0.75f, 1.0f};

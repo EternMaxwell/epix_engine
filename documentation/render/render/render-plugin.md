@@ -171,13 +171,10 @@ renderer. Standard higher-level pipelines can use it as an exclusion filter.
 `RenderPlugin` installs `render::window::WindowRenderPlugin`. The platform
 render plugin adds `SurfaceCreation` to each backend window. Extraction creates
 `ExtractedWindows`; render preparation creates/configures `WindowSurfaces`,
-acquires each swapchain texture and view, and presentation occurs after
-`RenderSet::Cleanup` when `WindowRenderPlugin::handle_present` is true.
+acquires each swapchain texture and view, and presentation occurs immediately
+after the render graph submission and before `RenderSystems::Cleanup`.
 
-Normally these resources are internal to camera/view preparation. Custom
-present control can add `WindowRenderPlugin{.handle_present = false}` only when
-the built-in instance has not already been installed and application code will
-present every acquired surface texture itself.
+Normally these resources are internal to camera/view preparation.
 
 The extension-facing shapes are:
 
@@ -204,7 +201,6 @@ struct ExtractedWindows {
 };
 
 struct WindowRenderPlugin {
-    bool handle_present = true;
     void attach(App&);
 };
 ```
