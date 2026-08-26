@@ -225,6 +225,7 @@ struct epix::render::RenderAsset<epix::image::Image> {
                                       epix::ecs::Res<wgpu::Queue>,
                                       epix::ecs::Res<epix::render::DefaultImageSampler>>;
     using ProcessedAsset = epix::render::texture::GpuImage;
+    using ExtractedAsset = epix::image::Image;
 
     ProcessedAsset prepare_asset(epix::image::Image&& asset,
                                  Param param,

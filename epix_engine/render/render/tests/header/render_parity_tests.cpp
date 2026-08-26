@@ -20,6 +20,32 @@ struct UniformPluginProbe {
     UniformPluginProbe get() const noexcept { return *this; }
 };
 
+struct IncrementalExtractSource {
+    std::vector<std::uint32_t> resident_data;
+    std::vector<std::uint32_t> dirty_region;
+};
+
+struct IncrementalExtractPayload {
+    std::vector<std::uint32_t> dirty_region;
+};
+
+struct IncrementalExtractIdShiftA {};
+struct IncrementalExtractIdShiftB {};
+struct IncrementalExtractIdShiftC {};
+
+template <>
+struct epix::render::RenderAsset<IncrementalExtractSource> {
+    using ExtractedAsset = IncrementalExtractPayload;
+    using ProcessedAsset = std::vector<std::uint32_t>;
+    using Param          = std::tuple<>;
+
+    ExtractedAsset extract(const IncrementalExtractSource& source) const { return {.dirty_region = source.dirty_region}; }
+    ProcessedAsset prepare_asset(ExtractedAsset&& payload, Param) const { return std::move(payload.dirty_region); }
+    RenderAssetUsages usage(const IncrementalExtractSource&) const {
+        return static_cast<RenderAssetUsages>(MAIN_WORLD | RENDER_WORLD);
+    }
+};
+
 template <>
 struct epix::render::ExtractInstance<EarlyExtractInstance> {
     using QueryData   = const EarlyExtractInstance&;
@@ -2493,15 +2519,66 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
     EXPECT_EQ(stored.size, 4u);
 
     RenderAsset<ShaderStorageBuffer> impl;
-    auto extracted = impl.take_gpu_data(stored);
+    auto extracted = impl.take_gpu_data(stored, nullptr);
     ASSERT_TRUE(extracted.has_value());
     ASSERT_TRUE(extracted->data.has_value());
     EXPECT_EQ(extracted->data->size(), 4u);
-    // The stored asset is stripped of data but keeps its declared descriptor
-    // size, so a re-extraction of a Modified asset still prepares a correctly
-    // sized buffer (Bevy storage.rs keeps the size in the source).
+    // The stored asset is stripped of its transferred bytes but retains its
+    // descriptor. A repeated extraction without replacement data is invalid
+    // when the previous GPU buffer already owns uploaded data (Bevy storage.rs).
     EXPECT_FALSE(stored.data.has_value());
     EXPECT_EQ(stored.size, 4u);
+
+    GpuShaderStorageBuffer previous{.had_data = true};
+    auto repeated = impl.take_gpu_data(stored, &previous);
+    ASSERT_FALSE(repeated.has_value());
+    EXPECT_EQ(repeated.error(), AssetExtractionError::AlreadyExtracted);
+}
+
+TEST(RenderAsset, ExtractsCompactPayloadFromDualWorldSource) {
+    static_assert(RenderAssetImpl<IncrementalExtractSource>);
+    IncrementalExtractSource source{
+        .resident_data = std::vector<std::uint32_t>(4096, 7),
+        .dirty_region  = {17, 19, 23},
+    };
+    RenderAsset<IncrementalExtractSource> asset;
+    const auto payload = extract_asset(asset, source);
+
+    EXPECT_EQ(payload.dirty_region, (std::vector<std::uint32_t>{17, 19, 23}));
+    EXPECT_EQ(source.resident_data.size(), 4096u);
+    EXPECT_EQ(source.resident_data.front(), 7u);
+}
+
+TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
+    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
+
+    // Keep main-world resource ids distinct from the render-world ids used by
+    // ExtractedWorld, as production's sub-app setup does.
+    main_world.insert_resource(IncrementalExtractIdShiftA{});
+    main_world.insert_resource(IncrementalExtractIdShiftB{});
+    main_world.insert_resource(IncrementalExtractIdShiftC{});
+    main_world.insert_resource(epix::assets::Assets<IncrementalExtractSource>{});
+    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
+    auto handle = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>().emplace(
+        IncrementalExtractSource{.resident_data = std::vector<std::uint32_t>(4096, 7), .dirty_region = {29, 31}});
+    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>>().push(
+        epix::assets::AssetEvent<IncrementalExtractSource>::added(handle.id()));
+
+    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+
+    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
+    ASSERT_EQ(extracted.extracted.size(), 1u);
+    EXPECT_EQ(extracted.extracted.front().first, handle.id());
+    EXPECT_EQ(extracted.extracted.front().second.dirty_region, (std::vector<std::uint32_t>{29, 31}));
+    const auto source = main_world.resource<epix::assets::Assets<IncrementalExtractSource>>().get(handle.id());
+    ASSERT_TRUE(source.has_value());
+    EXPECT_EQ(source->get().resident_data.size(), 4096u);
 }
 
 // ViewVisibility matches Bevy bevy_camera::visibility: it stores only current

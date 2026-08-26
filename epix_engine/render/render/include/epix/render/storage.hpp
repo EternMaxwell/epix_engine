@@ -84,6 +84,7 @@ template <>
 struct RenderAsset<ShaderStorageBuffer> {
     using Param          = std::tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>>;
     using ProcessedAsset = GpuShaderStorageBuffer;
+    using ExtractedAsset = ShaderStorageBuffer;
 
     ProcessedAsset prepare_asset(ShaderStorageBuffer&& asset, Param param);
     RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
@@ -91,16 +92,18 @@ struct RenderAsset<ShaderStorageBuffer> {
     /** @brief Move the data out of the stored asset so it stays in Assets<T>
      * (Bevy RenderAsset::take_gpu_data).
      *
-     * The declared descriptor size is kept on the source: a re-extraction of a
-     * Modified asset whose data was already taken must still prepare a
-     * correctly sized buffer (Bevy storage.rs keeps the size in the source and
-     * preserves it in the extracted copy). */
-    std::optional<ShaderStorageBuffer> take_gpu_data(ShaderStorageBuffer& source) const {
+     * The declared descriptor is retained in the source. As in Bevy, a second
+     * extraction without replacement data is rejected when the previous GPU
+     * buffer already owns uploaded data. */
+    std::expected<ShaderStorageBuffer, AssetExtractionError> take_gpu_data(
+        ShaderStorageBuffer& source, const GpuShaderStorageBuffer* previous_gpu_asset) const {
+        const bool valid_upload = source.data.has_value() || !previous_gpu_asset || !previous_gpu_asset->had_data;
+        if (!valid_upload) return std::unexpected(AssetExtractionError::AlreadyExtracted);
         ShaderStorageBuffer out;
         out.data        = std::move(source.data);
         out.size        = source.size;
         out.usage       = source.usage;
-        out.label       = std::move(source.label);
+        out.label       = source.label;
         out.asset_usage = source.asset_usage;
         source.data.reset();
         return out;
