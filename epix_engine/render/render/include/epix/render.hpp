@@ -442,9 +442,8 @@ EPIX_EXPORT struct RenderPlugin {
     /** @brief Debugging flags (Bevy RenderPlugin::debug_flags). */
     RenderDebugFlags debug_flags;
     /** @brief When true, compile queued pipelines on the render thread rather
-     * than the background task pool (Bevy
-     * RenderPlugin::synchronous_pipeline_compilation). */
-    bool synchronous_pipeline_compilation = true;
+     * than the background task pool. Defaults to asynchronous compilation. */
+    bool synchronous_pipeline_compilation = false;
     void attach(app::App&);
     void detach(app::App&) noexcept;
 };

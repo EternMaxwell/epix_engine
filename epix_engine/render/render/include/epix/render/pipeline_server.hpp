@@ -179,7 +179,7 @@ struct PipelineServerData {
     std::unordered_set<CachedPipelineId> waiting_pipelines;
     utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
     std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
-    bool synchronous_pipeline_compilation = true;
+    bool synchronous_pipeline_compilation = false;
 
     PipelineServerData(wgpu::Device device, bool synchronous_pipeline_compilation);
 };
@@ -187,8 +187,9 @@ struct PipelineServerData {
  * shader dependency tracking.
  *
  * Pipelines are queued via `queue_render_pipeline()` /
- * `queue_compute_pipeline()` and compiled asynchronously in a thread
- * pool. The underlying data is shared across copies via a shared_ptr,
+ * `queue_compute_pipeline()` and by default compiled asynchronously in a
+ * thread pool; synchronous compilation is an explicit constructor opt-in.
+ * The underlying data is shared across copies via a shared_ptr,
  * allowing PipelineServer to exist in both the main app and render app.
  * Mutation is private and driven by the render schedule. The shared state
  * deliberately lets the main and render
@@ -204,7 +205,7 @@ EPIX_EXPORT struct PipelineServer {
     PipelineServer(PipelineServer&&)                 = default;
     PipelineServer& operator=(PipelineServer&&)      = default;
 
-    PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation = true);
+    PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation = false);
 
     /** @brief Get the current state of a cached pipeline by id. */
     auto get_pipeline_state(CachedPipelineId id) const noexcept
@@ -229,9 +230,9 @@ EPIX_EXPORT struct PipelineServer {
     /** @brief Get the compiled compute pipeline, or an error if not ready. */
     auto get_compute_pipeline(CachedPipelineId id) const noexcept
         -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError>;
-    /** @brief Queue a render pipeline for asynchronous creation. */
+    /** @brief Queue a render pipeline for creation. */
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
-    /** @brief Queue a compute pipeline for asynchronous creation. */
+    /** @brief Queue a compute pipeline for creation. */
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
 
    private:
