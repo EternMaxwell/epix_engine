@@ -11,6 +11,17 @@
 using namespace epix::ecs;
 using namespace epix::render;
 
+struct EarlyExtractInstance {
+    int value = 0;
+};
+
+template <>
+struct epix::render::ExtractInstance<EarlyExtractInstance> {
+    using QueryData   = const EarlyExtractInstance&;
+    using QueryFilter = epix::ecs::Filter<>;
+    static std::optional<EarlyExtractInstance> extract(const EarlyExtractInstance& instance) { return instance; }
+};
+
 TEST(VisibilityPlugin, StandaloneRegistersVisibilityRequirements) {
     auto app = epix::app::App::create();
     ::epix::camera::VisibilityPlugin{}.attach(app);
@@ -1613,6 +1624,8 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     auto app = epix::app::App::create();
     EXPECT_NO_THROW(GlobalsPlugin{}.attach(app));
     EXPECT_NO_THROW(view::RenderVisibilityRangePlugin{}.attach(app));
+    EXPECT_NO_THROW(ExtractInstancesPlugin<EarlyExtractInstance>{}.attach(app));
+    EXPECT_NO_THROW(ExtractResourcePlugin<FrameCount>{}.attach(app));
 }
 
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {

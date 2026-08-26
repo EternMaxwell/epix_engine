@@ -142,13 +142,15 @@ struct ExtractComponentPlugin {
         // Bevy auto-registers SyncComponentPlugin so entities with C are
         // synced to the render world (extract_component.rs:188).
         SyncComponentPlugin<C>{}.attach(app);
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
         if (only_extract_visible) {
-            app.sub_app_mut(Render).add_systems(
+            render_app->get().add_systems(
                 ExtractSchedule,
                 into(extract_visible_components_system<C>)
                     .set_name(std::format("extract visible components '{}'", meta::type_id<C>().short_name())));
         } else {
-            app.sub_app_mut(Render).add_systems(
+            render_app->get().add_systems(
                 ExtractSchedule, into(extract_component_system<C>)
                                      .set_name(std::format("extract component '{}'", meta::type_id<C>().short_name())));
         }
@@ -214,16 +216,18 @@ struct ExtractInstancesPlugin {
     bool only_extract_visible = false;
 
     void attach(app::App& app) {
-        auto& render_app = app.sub_app_mut(Render);
-        render_app.world_mut().emplace_resource<ExtractedInstances<EI>>();
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
+        auto& render_world = render_app->get();
+        render_world.world_mut().init_resource<ExtractedInstances<EI>>();
         if (only_extract_visible) {
-            render_app.add_systems(ExtractSchedule, into(extract_visible_instances<EI>)
-                                                        .set_name(std::format("extract visible instances '{}'",
-                                                                              meta::type_id<EI>().short_name())));
+            render_world.add_systems(ExtractSchedule, into(extract_visible_instances<EI>)
+                                                          .set_name(std::format("extract visible instances '{}'",
+                                                                                meta::type_id<EI>().short_name())));
         } else {
-            render_app.add_systems(ExtractSchedule, into(extract_all_instances<EI>)
-                                                        .set_name(std::format("extract instances '{}'",
-                                                                              meta::type_id<EI>().short_name())));
+            render_world.add_systems(ExtractSchedule, into(extract_all_instances<EI>)
+                                                          .set_name(std::format("extract instances '{}'",
+                                                                                meta::type_id<EI>().short_name())));
         }
     }
 };
@@ -301,13 +305,14 @@ void extract_resource_system(
 EPIX_EXPORT template <typename R>
 struct ExtractResourcePlugin {
     void attach(epix::app::App& app) {
-        auto& render_app = app.sub_app_mut(Render);
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
         if constexpr (requires { typename ExtractResource<R>::Source; }) {
-            render_app.add_systems(
+            render_app->get().add_systems(
                 ExtractSchedule, into(extract_resource_system<R>)
                                      .set_name(std::format("extract resource '{}'", meta::type_id<R>().short_name())));
         } else {
-            render_app.add_systems(
+            render_app->get().add_systems(
                 ExtractSchedule,
                 into(extract_fn<R>).set_name(std::format("extract resource '{}'", meta::type_id<R>().short_name())));
         }
