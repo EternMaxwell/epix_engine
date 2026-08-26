@@ -376,15 +376,24 @@ void prepare_gpu_component_array_buffers(ecs::Commands cmd,
 template <render_resource::GpuArrayBufferable C>
 struct GpuComponentArrayBufferPlugin {
     void attach(app::App& app) {
-        auto& render_app = app.sub_app_mut(Render);
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
+        render_app->get().add_systems(Render, into(prepare_gpu_component_array_buffers<C>)
+                                                  .in_set(RenderSystems::PrepareResources)
+                                                  .set_name(std::format("prepare gpu component array buffers '{}'",
+                                                                        meta::type_id<C>().short_name())));
+    }
+
+    // This is the equivalent of Bevy's Plugin::finish: the render device is
+    // initialized after all plugins attach, so create the device-dependent
+    // backing resource only once that phase has completed.
+    void ready(app::App& app) {
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
         wgpu::Limits limits;
-        auto device = render_app.world().get_resource<wgpu::Device>();
+        auto device = render_app->get().world().get_resource<wgpu::Device>();
         if (device) device->get().getLimits(&limits);
-        render_app.world_mut().insert_resource(render_resource::GpuArrayBuffer<C>(limits));
-        render_app.add_systems(Render, into(prepare_gpu_component_array_buffers<C>)
-                                           .in_set(RenderSystems::PrepareResources)
-                                           .set_name(std::format("prepare gpu component array buffers '{}'",
-                                                                 meta::type_id<C>().short_name())));
+        render_app->get().world_mut().insert_resource(render_resource::GpuArrayBuffer<C>(limits));
     }
 };
 
@@ -426,9 +435,10 @@ void prepare_uniform_components(ecs::Commands cmd,
 template <typename C>
 struct UniformComponentPlugin {
     void attach(app::App& app) {
-        auto& render_app = app.sub_app_mut(Render);
-        render_app.world_mut().init_resource<ComponentUniforms<C>>();
-        render_app.add_systems(
+        auto render_app = app.get_sub_app_mut(Render);
+        if (!render_app) return;
+        render_app->get().world_mut().insert_resource(ComponentUniforms<C>{});
+        render_app->get().add_systems(
             Render, into(prepare_uniform_components<C>)
                         .in_set(RenderSystems::PrepareResources)
                         .set_name(std::format("prepare uniform components '{}'", meta::type_id<C>().short_name())));

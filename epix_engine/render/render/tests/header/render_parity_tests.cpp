@@ -1626,6 +1626,8 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(view::RenderVisibilityRangePlugin{}.attach(app));
     EXPECT_NO_THROW(ExtractInstancesPlugin<EarlyExtractInstance>{}.attach(app));
     EXPECT_NO_THROW(ExtractResourcePlugin<FrameCount>{}.attach(app));
+    EXPECT_NO_THROW(GpuComponentArrayBufferPlugin<EarlyExtractInstance>{}.attach(app));
+    EXPECT_NO_THROW(UniformComponentPlugin<EarlyExtractInstance>{}.attach(app));
 }
 
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
