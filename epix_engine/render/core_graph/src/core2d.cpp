@@ -115,7 +115,8 @@ void queue_core2d_blit_pipelines(
     ResMut<PipelineServer> pipeline_server,
     ResMut<Core2dBlitPipelines> pipelines) {
     for (auto&& [camera, target] : views.iter()) {
-        if (std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode) || !target.out_texture()) continue;
+        if (std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode) || !target.out_texture())
+            continue;
         const auto output_blend = output_blend_for(camera);
         const auto existing     = std::ranges::find_if(pipelines->pipelines, [&](const Core2dBlitPipeline& pipeline) {
             return pipeline.format == target.out_texture_view_format() &&
@@ -188,14 +189,15 @@ void queue_core2d_blit_pipelines(
 }
 
 std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext& ctx,
-                                                              graph::RenderContext& render_ctx,
-                                                              const World& world) {
+                                                             graph::RenderContext& render_ctx,
+                                                             const World& world) {
     if (!views) return {};
     auto view_opt =
         views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(ctx.view_entity());
     if (!view_opt) return {};
     auto&& [camera, target] = *view_opt;
-    if (!target.out_texture() || std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode)) return {};
+    if (!target.out_texture() || std::holds_alternative<::epix::camera::CameraOutputMode::Skip>(camera.output_mode))
+        return {};
 
     auto pipelines = world.get_resource<Core2dBlitPipelines>();
     if (!pipelines) return {};
@@ -231,7 +233,8 @@ std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext
     // Bevy upscaling node set_scissor_rect: clip the blit to the camera viewport.
     if (camera.viewport) {
         const auto& vp = *camera.viewport;
-        render_pass.setScissorRect(vp.physical_position.x, vp.physical_position.y, vp.physical_size.x, vp.physical_size.y);
+        render_pass.setScissorRect(vp.physical_position.x, vp.physical_position.y, vp.physical_size.x,
+                                   vp.physical_size.y);
     }
     render_pass.setPipeline(pipeline->get().pipeline());
     render_pass.setVertexBuffer(0, blit->vertex_buffer, 0, sizeof(float) * 6);

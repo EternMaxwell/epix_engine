@@ -66,15 +66,14 @@ void epix::render::window::extract_windows(
             }
         } else {
             // Not extracted, extract.
-            extracted_windows->windows.emplace(
-                entity, ExtractedWindow{
-                            .entity          = entity,
-                            .create_surface  = surface_fn,
-                            .physical_width  = std::max(1, window.physical_size.first),
-                            .physical_height = std::max(1, window.physical_size.second),
-                            .present_mode    = window.present_mode,
-                            .alpha_mode      = window.composite_alpha_mode,
-                        });
+            extracted_windows->windows.emplace(entity, ExtractedWindow{
+                                                           .entity          = entity,
+                                                           .create_surface  = surface_fn,
+                                                           .physical_width  = std::max(1, window.physical_size.first),
+                                                           .physical_height = std::max(1, window.physical_size.second),
+                                                           .present_mode    = window.present_mode,
+                                                           .alpha_mode      = window.composite_alpha_mode,
+                                                       });
         }
         if (primary) {
             extracted_windows->primary = entity;
@@ -344,8 +343,8 @@ void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
 
 void epix::render::window::present_windows(World& world) {
     auto&& window_surfaces = world.resource_mut<WindowSurfaces>();
-    auto&& windows = world.resource_mut<ExtractedWindows>();
-    auto views = world.try_query<Item<Entity, const camera::ExtractedCamera&, const view::ViewTarget&>>();
+    auto&& windows         = world.resource_mut<ExtractedWindows>();
+    auto views             = world.try_query<Item<Entity, const camera::ExtractedCamera&, const view::ViewTarget&>>();
     if (!views) return;
     for (auto&& [entity, surface_data] : window_surfaces.surfaces) {
         auto& window = windows.windows.at(entity);
@@ -361,11 +360,12 @@ void epix::render::window::present_windows(World& world) {
             for (auto&& [cam_entity, camera, view_target] : views->iter(world)) {
                 (void)cam_entity;
                 if (!view_target.needs_present()) continue;
-                if (camera.target) if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target);
-                    win_ref && win_ref->entity() == entity) {
-                    view_needs_present = true;
-                    break;
-                }
+                if (camera.target)
+                    if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target);
+                        win_ref && win_ref->entity() == entity) {
+                        view_needs_present = true;
+                        break;
+                    }
             }
             if (view_needs_present || window.needs_initial_present) {
                 // Bevy ExtractedWindow::present: present + take the texture;

@@ -27,8 +27,10 @@ namespace epix::render::graph {
 /** @brief Internal commands recorded after the render graph and before its
  * command buffers are submitted.
  *
+ *
  * Render extensions use this to append work which must observe the finished
- * graph output (for example, screenshot readback).  Keeping the hook in the
+ * graph output (for example, screenshot
+ * readback).  Keeping the hook in the
  * render module avoids making the graph runner depend on optional plugins. */
 struct RenderGraphFinalizers {
     std::vector<std::function<void(epix::ecs::World&, wgpu::CommandEncoder&)>> callbacks;

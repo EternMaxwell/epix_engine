@@ -1,8 +1,8 @@
 #include <imgui.h>
 #include <spdlog/spdlog.h>
 
-#include <epix/core_graph.hpp>
 #include <epix/camera.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -57,8 +57,7 @@ int main() {
             .enable_viewports = true,
         });
 
-    app.add_systems(Startup,
-                    into([](Commands cmd) { cmd.spawn(camera::Camera2d{}, transform::Transform{}); }));
+    app.add_systems(Startup, into([](Commands cmd) { cmd.spawn(camera::Camera2d{}, transform::Transform{}); }));
 
     app.add_systems(Update, into(demo_system, hello_system).set_names(std::array{"imgui demo", "imgui hello"}));
 

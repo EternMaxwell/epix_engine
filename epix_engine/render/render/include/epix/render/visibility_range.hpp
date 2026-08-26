@@ -12,8 +12,8 @@
 #include <webgpu/webgpu.hpp>
 #endif
 
-#include <epix/render/render_resource.hpp>
 #include <epix/camera.hpp>
+#include <epix/render/render_resource.hpp>
 #include <epix/render/sync_world.hpp>
 
 namespace epix::render::view {
@@ -104,7 +104,8 @@ inline void extract_visibility_ranges(
     ecs::ResMut<RenderVisibilityRanges> render_visibility_ranges,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::VisibilityRange&>>> visibility_ranges_query,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity>,
-                            ecs::Or<ecs::Added<::epix::camera::VisibilityRange>, ecs::Modified<::epix::camera::VisibilityRange>>>> changed_ranges_query,
+                            ecs::Or<ecs::Added<::epix::camera::VisibilityRange>,
+                                    ecs::Modified<::epix::camera::VisibilityRange>>>> changed_ranges_query,
     app::Extract<ecs::RemovedComponents<::epix::camera::VisibilityRange>> removed_visibility_ranges) {
     auto changed        = changed_ranges_query.iter();
     auto removed_reader = removed_visibility_ranges.read();

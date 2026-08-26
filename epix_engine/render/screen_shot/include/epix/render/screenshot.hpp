@@ -4,8 +4,8 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
-#include <epix/async_channel.hpp>
 #include <epix/assets.hpp>
+#include <epix/async_channel.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
@@ -60,8 +60,10 @@ EPIX_EXPORT struct ScreenshotCaptured {
 
 /** @brief Main-world receiver for component-based screenshot completions.
  *
- * The render world sends completed captures through this thread-safe channel,
- * matching Bevy's CapturedScreenshots receiver. The plugin drains it into
+ * The render world sends completed
+ * captures through this thread-safe channel,
+ * matching Bevy's CapturedScreenshots receiver. The plugin drains it
+ * into
  * Events<ScreenshotCaptured> during PreUpdate. */
 EPIX_EXPORT class CapturedScreenshots {
    public:

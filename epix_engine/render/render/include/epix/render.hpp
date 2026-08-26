@@ -34,8 +34,8 @@
 #include <epix/render/occlusion_culling.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
-#include <epix/render/render_phase.hpp>
 #include <epix/render/render_debug.hpp>
+#include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>
 #include <epix/render/specialized_pipeline.hpp>
@@ -78,12 +78,12 @@ EPIX_EXPORT std::optional<WgpuSettingsPriority> settings_priority_from_env() noe
  * creates its native instance and adapter. */
 EPIX_EXPORT struct Backends {
     enum Bit : std::uint32_t {
-        Noop           = 1u << 0,
-        Vulkan         = 1u << 1,
-        Metal          = 1u << 2,
-        Dx12           = 1u << 3,
-        Gl             = 1u << 4,
-        BrowserWebGpu  = 1u << 5,
+        Noop          = 1u << 0,
+        Vulkan        = 1u << 1,
+        Metal         = 1u << 2,
+        Dx12          = 1u << 3,
+        Gl            = 1u << 4,
+        BrowserWebGpu = 1u << 5,
     };
 
     // Mirrors `wgpu::Backends::default()`.
@@ -113,15 +113,11 @@ EPIX_EXPORT struct Backends {
     [[nodiscard]] Backends with_env() const noexcept { return from_env().value_or(*this); }
 
     friend constexpr bool operator==(Backends, Backends) = default;
-    friend constexpr Backends operator|(Backends lhs, Backends rhs) noexcept {
-        return Backends{lhs.bits_ | rhs.bits_};
-    }
+    friend constexpr Backends operator|(Backends lhs, Backends rhs) noexcept { return Backends{lhs.bits_ | rhs.bits_}; }
     friend constexpr Backends operator|(Bit lhs, Bit rhs) noexcept { return Backends{lhs} | Backends{rhs}; }
     friend constexpr Backends operator|(Backends lhs, Bit rhs) noexcept { return lhs | Backends{rhs}; }
     friend constexpr Backends operator|(Bit lhs, Backends rhs) noexcept { return Backends{lhs} | rhs; }
-    friend constexpr Backends operator&(Backends lhs, Backends rhs) noexcept {
-        return Backends{lhs.bits_ & rhs.bits_};
-    }
+    friend constexpr Backends operator&(Backends lhs, Backends rhs) noexcept { return Backends{lhs.bits_ & rhs.bits_}; }
     friend constexpr Backends operator~(Backends value) noexcept { return Backends{all().bits_ & ~value.bits_}; }
 
    private:
@@ -134,24 +130,27 @@ EPIX_EXPORT struct Backends {
  * value for forward-compatible configuration. */
 EPIX_EXPORT struct InstanceFlags {
     enum Bit : std::uint32_t {
-        Debug                             = 1u << 0,
-        Validation                        = 1u << 1,
-        DiscardHalLabels                  = 1u << 2,
+        Debug                              = 1u << 0,
+        Validation                         = 1u << 1,
+        DiscardHalLabels                   = 1u << 2,
         AllowUnderlyingNoncompliantAdapter = 1u << 3,
-        GpuBasedValidation                = 1u << 4,
-        ValidationIndirectCall            = 1u << 5,
-        AutomaticTimestampNormalization   = 1u << 6,
+        GpuBasedValidation                 = 1u << 4,
+        ValidationIndirectCall             = 1u << 5,
+        AutomaticTimestampNormalization    = 1u << 6,
     };
 
     // Mirrors `wgpu::InstanceFlags::default()`.
     constexpr InstanceFlags() noexcept
 #if defined(_DEBUG)
         : bits_(static_cast<std::uint32_t>(Debug) | static_cast<std::uint32_t>(Validation) |
-                static_cast<std::uint32_t>(ValidationIndirectCall)) {}
+                static_cast<std::uint32_t>(ValidationIndirectCall)){}
 #else
-        : bits_(static_cast<std::uint32_t>(ValidationIndirectCall)) {}
+        : bits_(static_cast<std::uint32_t>(ValidationIndirectCall)) {
+    }
 #endif
-    constexpr InstanceFlags(Bit bit) : bits_(static_cast<std::uint32_t>(bit)) {}
+          constexpr InstanceFlags(Bit bit)
+        : bits_(static_cast<std::uint32_t>(bit)) {
+    }
     constexpr explicit InstanceFlags(std::uint32_t bits) : bits_(bits) {}
 
     [[nodiscard]] static constexpr InstanceFlags empty() noexcept { return InstanceFlags{0}; }
@@ -181,11 +180,9 @@ EPIX_EXPORT struct InstanceFlags {
     [[nodiscard]] constexpr bool contains(InstanceFlags other) const noexcept {
         return (bits_ & other.bits_) == other.bits_;
     }
-    [[nodiscard]] constexpr bool intersects(InstanceFlags other) const noexcept {
-        return (bits_ & other.bits_) != 0;
-    }
+    [[nodiscard]] constexpr bool intersects(InstanceFlags other) const noexcept { return (bits_ & other.bits_) != 0; }
     [[nodiscard]] InstanceFlags with_env() const noexcept {
-        auto result = *this;
+        auto result             = *this;
         const auto set_from_env = [&result](Bit bit, const char* name) {
             const char* value = std::getenv(name);
             if (!value) return;
@@ -207,7 +204,9 @@ EPIX_EXPORT struct InstanceFlags {
     friend constexpr InstanceFlags operator|(InstanceFlags lhs, InstanceFlags rhs) noexcept {
         return InstanceFlags{lhs.bits_ | rhs.bits_};
     }
-    friend constexpr InstanceFlags operator|(Bit lhs, Bit rhs) noexcept { return InstanceFlags{lhs} | InstanceFlags{rhs}; }
+    friend constexpr InstanceFlags operator|(Bit lhs, Bit rhs) noexcept {
+        return InstanceFlags{lhs} | InstanceFlags{rhs};
+    }
     friend constexpr InstanceFlags operator|(InstanceFlags lhs, Bit rhs) noexcept { return lhs | InstanceFlags{rhs}; }
     friend constexpr InstanceFlags operator|(Bit lhs, InstanceFlags rhs) noexcept { return InstanceFlags{lhs} | rhs; }
     friend constexpr InstanceFlags operator&(InstanceFlags lhs, InstanceFlags rhs) noexcept {
@@ -339,9 +338,8 @@ EPIX_EXPORT struct WgpuSettings {
         if (const auto configured_backends = Backends::from_env()) backends = *configured_backends;
         if (const char* power = std::getenv("WGPU_POWER_PREF")) {
             std::string p(power);
-            std::ranges::transform(p, p.begin(), [](unsigned char character) {
-                return static_cast<char>(std::tolower(character));
-            });
+            std::ranges::transform(p, p.begin(),
+                                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
             if (p == "low")
                 power_preference = wgpu::PowerPreference::eLowPower;
             else if (p == "high")
@@ -352,9 +350,8 @@ EPIX_EXPORT struct WgpuSettings {
         if (auto configured_priority = settings_priority_from_env()) priority = *configured_priority;
         if (const char* compiler = std::getenv("WGPU_DX12_COMPILER")) {
             std::string value(compiler);
-            std::ranges::transform(value, value.begin(), [](unsigned char character) {
-                return static_cast<char>(std::tolower(character));
-            });
+            std::ranges::transform(value, value.begin(),
+                                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
             if (value == "dxc" || value == "dynamicdxc" || value == "staticdxc")
                 dx12_shader_compiler = wgpu::Dx12Compiler::eDxc;
             else if (value == "fxc" || value == "auto")
@@ -362,9 +359,8 @@ EPIX_EXPORT struct WgpuSettings {
         }
         if (const char* gles = std::getenv("WGPU_GLES_MINOR_VERSION")) {
             std::string value(gles);
-            std::ranges::transform(value, value.begin(), [](unsigned char character) {
-                return static_cast<char>(std::tolower(character));
-            });
+            std::ranges::transform(value, value.begin(),
+                                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
             if (value == "0")
                 gles3_minor_version = wgpu::Gles3MinorVersion::eVersion0;
             else if (value == "1")

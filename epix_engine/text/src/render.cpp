@@ -28,9 +28,8 @@ void Text2d::register_required_components(ecs::RequiredComponentsRegistrator& re
     registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
     registrator.register_required<TextColor>([] { return TextColor{}; });
     registrator.register_required<camera::Visibility>([] { return camera::Visibility{}; });
-    registrator.register_required<camera::VisibilityClass>([] {
-        return camera::VisibilityClass{meta::type_index(meta::type_id<Text2d>())};
-    });
+    registrator.register_required<camera::VisibilityClass>(
+        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<Text2d>())}; });
 }
 
 namespace {

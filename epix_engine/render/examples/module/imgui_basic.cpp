@@ -62,8 +62,7 @@ int main() {
             .enable_viewports = true,
         });
 
-    app.add_systems(Startup,
-                    into([](Commands cmd) { cmd.spawn(camera::Camera2d{}, transform::Transform{}); }));
+    app.add_systems(Startup, into([](Commands cmd) { cmd.spawn(camera::Camera2d{}, transform::Transform{}); }));
 
     app.add_systems(Update, into(demo_system, hello_system).set_names(std::array{"imgui demo", "imgui hello"}));
 

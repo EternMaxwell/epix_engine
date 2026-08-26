@@ -11,8 +11,8 @@
 #include <epix/render/screenshot.hpp>
 #include <epix/render/view.hpp>
 #include <epix/task.hpp>
-#include <webgpu/webgpu.hpp>
 #include <unordered_set>
+#include <webgpu/webgpu.hpp>
 
 using namespace epix::render::screenshot;
 using namespace epix::ecs;
@@ -43,7 +43,7 @@ struct ScreenshotState {
         wgpu::TextureView output_view;
         glm::uvec2 size{};
         wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-        bool restore_output = false;
+        bool restore_output        = false;
     };
     struct InFlightCapture {
         std::optional<Entity> entity;
@@ -76,8 +76,8 @@ struct ScreenshotBlitPipelines {
     std::vector<ScreenshotBlitPipeline> pipelines;
 };
 
-constexpr std::string_view kScreenshotVertexPath = "screenshot/blit_vert.slang";
-constexpr std::string_view kScreenshotVertexSlang = R"slang(
+constexpr std::string_view kScreenshotVertexPath    = "screenshot/blit_vert.slang";
+constexpr std::string_view kScreenshotVertexSlang   = R"slang(
 struct VOut { float4 pos : SV_Position; [[vk::location(0)]] float2 uv; };
 [shader("vertex")]
 VOut screenshotVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
@@ -87,7 +87,7 @@ VOut screenshotVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
     return o;
 }
 )slang";
-constexpr std::string_view kScreenshotFragmentPath = "screenshot/blit_frag.slang";
+constexpr std::string_view kScreenshotFragmentPath  = "screenshot/blit_frag.slang";
 constexpr std::string_view kScreenshotFragmentSlang = R"slang(
 [[vk::binding(0, 0)]] SamplerState screenshot_sampler;
 [[vk::binding(1, 0)]] Texture2D<float4> screenshot_texture;
@@ -137,11 +137,13 @@ static void request_component_screenshots(
     for (auto&& [entity, screenshot] : screenshots.iter()) {
         const auto target = screenshot.target.normalize(primary);
         if (!target.has_value()) {
-            spdlog::warn("[render.screenshot] Could not normalize component screenshot target; request remains pending");
+            spdlog::warn(
+                "[render.screenshot] Could not normalize component screenshot target; request remains pending");
             continue;
         }
         if (!seen_targets.insert(target->identity()).second) {
-            spdlog::warn("[render.screenshot] Duplicate component screenshot target; removing request entity {}", entity.index);
+            spdlog::warn("[render.screenshot] Duplicate component screenshot target; removing request entity {}",
+                         entity.index);
             commands.entity(entity).despawn();
             continue;
         }
@@ -230,7 +232,8 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
         // same channel hand-off Bevy uses for ScreenshotCaptured; the legacy
         // Epix event is delivered through its own private receiver.
         if (completed.entity.has_value()) {
-            if (!delivery->component.try_send(ScreenshotCaptured{.entity = *completed.entity, .image = std::move(img)})) {
+            if (!delivery->component.try_send(
+                    ScreenshotCaptured{.entity = *completed.entity, .image = std::move(img)})) {
                 spdlog::warn("[render.screenshot] Dropped component screenshot because its delivery receiver closed");
             }
         } else {
@@ -252,7 +255,8 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
                                                                   return std::string("primary window");
                                                               },
                                                               [](const ::epix::window::WindowRef::Entity& window) {
-                                                                  return std::format("window entity {}", window.entity.index);
+                                                                  return std::format("window entity {}",
+                                                                                     window.entity.index);
                                                               },
                                                           },
                                                           win_ref);
@@ -273,9 +277,9 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
 }
 
 struct CaptureFormatInfo {
-    uint32_t bytes_per_pixel = 0;
+    uint32_t bytes_per_pixel   = 0;
     image::Format image_format = image::Format::Unknown;
-    bool bgra_swap = false;
+    bool bgra_swap             = false;
 };
 
 static void collect_completed_readbacks(ResMut<ScreenshotState> state,
@@ -285,16 +289,23 @@ static void collect_completed_readbacks(ResMut<ScreenshotState> state,
 static CaptureFormatInfo capture_format(wgpu::TextureFormat format) {
     switch (format) {
         case wgpu::TextureFormat::eRGBA8Unorm:
-        case wgpu::TextureFormat::eRGBA8UnormSrgb: return {4, image::Format::RGBA8, false};
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            return {4, image::Format::RGBA8, false};
         case wgpu::TextureFormat::eBGRA8Unorm:
-        case wgpu::TextureFormat::eBGRA8UnormSrgb: return {4, image::Format::RGBA8, true};
-        case wgpu::TextureFormat::eR8Unorm: return {1, image::Format::Grey8, false};
-        case wgpu::TextureFormat::eRG8Unorm: return {2, image::Format::GreyAlpha8, false};
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+            return {4, image::Format::RGBA8, true};
+        case wgpu::TextureFormat::eR8Unorm:
+            return {1, image::Format::Grey8, false};
+        case wgpu::TextureFormat::eRG8Unorm:
+            return {2, image::Format::GreyAlpha8, false};
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
-        case wgpu::TextureFormat::eRGBA16Float: return {8, image::Format::RGBA16, false};
-        case wgpu::TextureFormat::eRGBA32Float: return {16, image::Format::RGBA32F, false};
-        default: return {};
+        case wgpu::TextureFormat::eRGBA16Float:
+            return {8, image::Format::RGBA16, false};
+        case wgpu::TextureFormat::eRGBA32Float:
+            return {16, image::Format::RGBA32F, false};
+        default:
+            return {};
     }
 }
 
@@ -308,20 +319,22 @@ static void trigger_legacy_screenshots(Res<LegacyCapturedScreenshots> completed,
 }
 
 static std::optional<image::Image> image_from_readback(const ScreenshotState::InFlightCapture& capture,
-                                                        const std::vector<std::uint8_t>& data) {
+                                                       const std::vector<std::uint8_t>& data) {
     const auto info = capture_format(capture.format);
     if (info.bytes_per_pixel == 0) return std::nullopt;
-    const std::size_t packed_row = static_cast<std::size_t>(capture.size.x) * info.bytes_per_pixel;
+    const std::size_t packed_row  = static_cast<std::size_t>(capture.size.x) * info.bytes_per_pixel;
     const std::size_t aligned_row = readback::align_byte_size(static_cast<std::uint32_t>(packed_row));
     if (data.size() < aligned_row * capture.size.y) return std::nullopt;
     std::vector<std::byte> pixels(packed_row * capture.size.y);
     for (uint32_t y = 0; y < capture.size.y; ++y) {
         const auto* src = reinterpret_cast<const std::byte*>(data.data() + aligned_row * y);
-        auto* dst = pixels.data() + packed_row * y;
+        auto* dst       = pixels.data() + packed_row * y;
         if (info.bgra_swap) {
             for (uint32_t x = 0; x < capture.size.x; ++x) {
-                dst[x * 4] = src[x * 4 + 2]; dst[x * 4 + 1] = src[x * 4 + 1];
-                dst[x * 4 + 2] = src[x * 4]; dst[x * 4 + 3] = src[x * 4 + 3];
+                dst[x * 4]     = src[x * 4 + 2];
+                dst[x * 4 + 1] = src[x * 4 + 1];
+                dst[x * 4 + 2] = src[x * 4];
+                dst[x * 4 + 3] = src[x * 4 + 3];
             }
         } else {
             std::memcpy(dst, src, packed_row);
@@ -356,58 +369,64 @@ static void collect_completed_readbacks(ResMut<ScreenshotState> state,
 }
 
 static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
-                                                      const wgpu::Device& device,
-                                                      const ScreenshotBlitHandles& handles,
-                                                      PipelineServer& pipeline_server,
-                                                      ScreenshotBlitPipelines& pipelines) {
+                                                     const wgpu::Device& device,
+                                                     const ScreenshotBlitHandles& handles,
+                                                     PipelineServer& pipeline_server,
+                                                     ScreenshotBlitPipelines& pipelines) {
     if (auto it = std::ranges::find(pipelines.pipelines, format, &ScreenshotBlitPipeline::format);
-        it != pipelines.pipelines.end()) return *it;
+        it != pipelines.pipelines.end())
+        return *it;
     ScreenshotBlitPipeline pipeline;
     pipeline.format = format;
     pipeline.layout = device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel("ScreenshotBlitLayout").setEntries(std::array{
-            wgpu::BindGroupLayoutEntry().setBinding(0).setVisibility(wgpu::ShaderStage::eFragment).setSampler(
-                wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
-            wgpu::BindGroupLayoutEntry()
-                .setBinding(1)
-                .setVisibility(wgpu::ShaderStage::eFragment)
-                .setTexture(wgpu::TextureBindingLayout()
-                                .setSampleType(wgpu::TextureSampleType::eFloat)
-                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-        }));
-    pipeline.sampler = device.createSampler(wgpu::SamplerDescriptor()
-                                                .setLabel("ScreenshotBlitSampler")
-                                                .setAddressModeU(wgpu::AddressMode::eClampToEdge)
-                                                .setAddressModeV(wgpu::AddressMode::eClampToEdge)
-                                                .setAddressModeW(wgpu::AddressMode::eClampToEdge)
-                                                .setMinFilter(wgpu::FilterMode::eLinear)
-                                                .setMagFilter(wgpu::FilterMode::eLinear)
-                                                .setMaxAnisotropy(1));
+        wgpu::BindGroupLayoutDescriptor()
+            .setLabel("ScreenshotBlitLayout")
+            .setEntries(std::array{
+                wgpu::BindGroupLayoutEntry()
+                    .setBinding(0)
+                    .setVisibility(wgpu::ShaderStage::eFragment)
+                    .setSampler(wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
+                wgpu::BindGroupLayoutEntry()
+                    .setBinding(1)
+                    .setVisibility(wgpu::ShaderStage::eFragment)
+                    .setTexture(wgpu::TextureBindingLayout()
+                                    .setSampleType(wgpu::TextureSampleType::eFloat)
+                                    .setViewDimension(wgpu::TextureViewDimension::e2D)),
+            }));
+    pipeline.sampler           = device.createSampler(wgpu::SamplerDescriptor()
+                                                          .setLabel("ScreenshotBlitSampler")
+                                                          .setAddressModeU(wgpu::AddressMode::eClampToEdge)
+                                                          .setAddressModeV(wgpu::AddressMode::eClampToEdge)
+                                                          .setAddressModeW(wgpu::AddressMode::eClampToEdge)
+                                                          .setMinFilter(wgpu::FilterMode::eLinear)
+                                                          .setMagFilter(wgpu::FilterMode::eLinear)
+                                                          .setMaxAnisotropy(1));
     constexpr float vertices[] = {0.f, 0.f, 2.f, 0.f, 0.f, 2.f};
-    pipeline.vertex_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                     .setLabel("ScreenshotBlitVertices")
-                                                     .setSize(sizeof(vertices))
-                                                     .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
+    pipeline.vertex_buffer =
+        device.createBuffer(wgpu::BufferDescriptor()
+                                .setLabel("ScreenshotBlitVertices")
+                                .setSize(sizeof(vertices))
+                                .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
     device.getQueue().writeBuffer(pipeline.vertex_buffer, 0, vertices, sizeof(vertices));
     VertexState vertex{.shader = handles.vertex_shader, .entry_point = std::string("screenshotVert")};
-    vertex.buffers.push_back(wgpu::VertexBufferLayout()
-                                 .setArrayStride(sizeof(float) * 2)
-                                 .setStepMode(wgpu::VertexStepMode::eVertex)
-                                 .setAttributes(std::array{
-                                     wgpu::VertexAttribute()
-                                         .setShaderLocation(0)
-                                         .setOffset(0)
-                                         .setFormat(wgpu::VertexFormat::eFloat32x2),
-                                 }));
+    vertex.buffers.push_back(
+        wgpu::VertexBufferLayout()
+            .setArrayStride(sizeof(float) * 2)
+            .setStepMode(wgpu::VertexStepMode::eVertex)
+            .setAttributes(std::array{
+                wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(wgpu::VertexFormat::eFloat32x2),
+            }));
     FragmentState fragment{.shader = handles.fragment_shader, .entry_point = std::string("screenshotFrag")};
     fragment.add_target(wgpu::ColorTargetState().setFormat(format).setWriteMask(wgpu::ColorWriteMask::eAll));
     pipeline.pipeline_id = pipeline_server.queue_render_pipeline(RenderPipelineDescriptor{
-        .label = "screenshot-to-screen",
-        .layouts = {pipeline.layout},
-        .vertex = std::move(vertex),
-        .primitive = wgpu::PrimitiveState().setTopology(wgpu::PrimitiveTopology::eTriangleList).setCullMode(wgpu::CullMode::eNone),
+        .label       = "screenshot-to-screen",
+        .layouts     = {pipeline.layout},
+        .vertex      = std::move(vertex),
+        .primitive   = wgpu::PrimitiveState()
+                           .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                           .setCullMode(wgpu::CullMode::eNone),
         .multisample = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
-        .fragment = std::move(fragment),
+        .fragment    = std::move(fragment),
     });
     pipelines.pipelines.push_back(std::move(pipeline));
     return pipelines.pipelines.back();
@@ -436,65 +455,70 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                        [&](const ::epix::camera::ImageRenderTarget& image) {
                            if (!image.texture) return;
                            direct_texture = image.texture;
-                           output_view = image.texture.createView();
-                           size = {image.texture.getWidth(), image.texture.getHeight()};
-                           format = image.texture.getFormat();
+                           output_view    = image.texture.createView();
+                           size           = {image.texture.getWidth(), image.texture.getHeight()};
+                           format         = image.texture.getFormat();
                        },
                        [&](const ::epix::window::NormalizedWindowRef& window) {
                            if (auto it = windows->windows.find(window.entity()); it != windows->windows.end()) {
                                const auto& extracted = it->second;
                                if (!extracted.swapchain_texture_view || !extracted.swapchain_texture.texture) return;
                                direct_texture = extracted.swapchain_texture.texture;
-                               output_view = extracted.swapchain_texture_view;
-                               size = {static_cast<uint32_t>(extracted.physical_width),
-                                       static_cast<uint32_t>(extracted.physical_height)};
-                               format = extracted.swapchain_texture_view_format;
+                               output_view    = extracted.swapchain_texture_view;
+                               size           = {static_cast<uint32_t>(extracted.physical_width),
+                                                 static_cast<uint32_t>(extracted.physical_height)};
+                               format         = extracted.swapchain_texture_view_format;
                            }
                        },
                        [&](const ::epix::camera::ManualTextureViewHandle& handle) {
-                           if (auto it = manual_texture_views->views.find(handle); it != manual_texture_views->views.end()) {
+                           if (auto it = manual_texture_views->views.find(handle);
+                               it != manual_texture_views->views.end()) {
                                output_view = it->second.texture_view;
-                               size = it->second.size;
-                               format = it->second.view_format;
+                               size        = it->second.size;
+                               format      = it->second.view_format;
                            }
                        },
                        [&](const ::epix::camera::NoColorTarget&) {},
-                   }, *target);
+                   },
+                   *target);
         if (!output_view || size.x == 0 || size.y == 0 || capture_format(format).bytes_per_pixel == 0) {
             spdlog::warn("[render.screenshot] Could not resolve a readable screenshot target");
             continue;
         }
-        const Entity readback_entity = request.entity.value_or(
-            Entity::from_parts(UINT32_MAX - 1u, ++state->next_legacy_capture));
+        const Entity readback_entity =
+            request.entity.value_or(Entity::from_parts(UINT32_MAX - 1u, ++state->next_legacy_capture));
         if (!request.entity) {
             // Legacy ScreenCapture retains direct-texture semantics, but now
             // uses the shared asynchronous readback pool after graph output.
             if (!direct_texture) {
-                spdlog::warn("[render.screenshot] Legacy ScreenCapture cannot read a ManualTextureView; use Screenshot");
+                spdlog::warn(
+                    "[render.screenshot] Legacy ScreenCapture cannot read a ManualTextureView; use Screenshot");
                 continue;
             }
-            state->prepared.push_back({readback_entity, std::nullopt, *direct_texture, *output_view, size, format, false});
+            state->prepared.push_back(
+                {readback_entity, std::nullopt, *direct_texture, *output_view, size, format, false});
             continue;
         }
         // Bevy Screenshot always redirects the target to a temporary texture:
         // it is safe to COPY_SRC and works for ManualTextureView, whose source
         // texture is intentionally not part of the public camera API.
-        auto temporary = device->createTexture(wgpu::TextureDescriptor()
-                                                   .setLabel("screenshot-capture-rendertarget")
-                                                   .setSize({size.x, size.y, 1})
-                                                   .setFormat(format)
-                                                   .setUsage(wgpu::TextureUsage::eRenderAttachment |
-                                                             wgpu::TextureUsage::eCopySrc |
-                                                             wgpu::TextureUsage::eTextureBinding)
-                                                   .setDimension(wgpu::TextureDimension::e2D)
-                                                   .setMipLevelCount(1)
-                                                   .setSampleCount(1));
+        auto temporary =
+            device->createTexture(wgpu::TextureDescriptor()
+                                      .setLabel("screenshot-capture-rendertarget")
+                                      .setSize({size.x, size.y, 1})
+                                      .setFormat(format)
+                                      .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
+                                                wgpu::TextureUsage::eTextureBinding)
+                                      .setDimension(wgpu::TextureDimension::e2D)
+                                      .setMipLevelCount(1)
+                                      .setSampleCount(1));
         if (!temporary) continue;
         const auto temporary_view = temporary.createView();
-        attachments->attachments.insert_or_assign(
-            target->identity(), view::OutputColorAttachment::create(temporary_view, format));
+        attachments->attachments.insert_or_assign(target->identity(),
+                                                  view::OutputColorAttachment::create(temporary_view, format));
         prepare_blit_pipeline(format, *device, *handles, *pipeline_server, *pipelines);
-        state->prepared.push_back({readback_entity, request.entity, std::move(temporary), *output_view, size, format, true});
+        state->prepared.push_back(
+            {readback_entity, request.entity, std::move(temporary), *output_view, size, format, true});
     }
     state->pending.clear();
 }
@@ -502,30 +526,40 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
 static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encoder) {
     auto& state = world.resource_mut<ScreenshotState>();
     if (state.prepared.empty()) return;
-    const auto& device = world.resource<wgpu::Device>();
-    const auto& pipelines = world.resource<ScreenshotBlitPipelines>();
+    const auto& device          = world.resource<wgpu::Device>();
+    const auto& pipelines       = world.resource<ScreenshotBlitPipelines>();
     const auto& pipeline_server = world.resource<PipelineServer>();
-    auto& readbacks = world.resource_mut<readback::GpuReadbacks>();
-    auto& pool = world.resource_mut<readback::GpuReadbackBufferPool>();
+    auto& readbacks             = world.resource_mut<readback::GpuReadbacks>();
+    auto& pool                  = world.resource_mut<readback::GpuReadbackBufferPool>();
     for (auto& capture : state.prepared) {
         if (capture.restore_output) {
-            const auto pipeline = std::ranges::find(pipelines.pipelines, capture.format, &ScreenshotBlitPipeline::format);
-            if (pipeline != pipelines.pipelines.end()) if (auto ready = pipeline_server.get_render_pipeline(pipeline->pipeline_id)) {
-                const auto source_view = capture.texture.createView();
-                const auto bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
-                    .setLabel("ScreenshotBlitBindGroup").setLayout(pipeline->layout).setEntries(std::array{
-                        wgpu::BindGroupEntry().setBinding(0).setSampler(pipeline->sampler),
-                        wgpu::BindGroupEntry().setBinding(1).setTextureView(source_view),
-                    }));
-                auto pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setLabel("screenshot-to-screen").setColorAttachments(
-                    std::array{wgpu::RenderPassColorAttachment().setView(capture.output_view).setLoadOp(wgpu::LoadOp::eLoad)
-                        .setStoreOp(wgpu::StoreOp::eStore).setDepthSlice(~0u)}));
-                pass.setPipeline(ready->get().pipeline());
-                pass.setVertexBuffer(0, pipeline->vertex_buffer, 0, sizeof(float) * 6);
-                pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
-                pass.draw(3, 1, 0, 0);
-                pass.end();
-            }
+            const auto pipeline =
+                std::ranges::find(pipelines.pipelines, capture.format, &ScreenshotBlitPipeline::format);
+            if (pipeline != pipelines.pipelines.end())
+                if (auto ready = pipeline_server.get_render_pipeline(pipeline->pipeline_id)) {
+                    const auto source_view = capture.texture.createView();
+                    const auto bind_group  = device.createBindGroup(
+                        wgpu::BindGroupDescriptor()
+                            .setLabel("ScreenshotBlitBindGroup")
+                            .setLayout(pipeline->layout)
+                            .setEntries(std::array{
+                                wgpu::BindGroupEntry().setBinding(0).setSampler(pipeline->sampler),
+                                wgpu::BindGroupEntry().setBinding(1).setTextureView(source_view),
+                            }));
+                    auto pass = encoder.beginRenderPass(
+                        wgpu::RenderPassDescriptor()
+                            .setLabel("screenshot-to-screen")
+                            .setColorAttachments(std::array{wgpu::RenderPassColorAttachment()
+                                                                .setView(capture.output_view)
+                                                                .setLoadOp(wgpu::LoadOp::eLoad)
+                                                                .setStoreOp(wgpu::StoreOp::eStore)
+                                                                .setDepthSlice(~0u)}));
+                    pass.setPipeline(ready->get().pipeline());
+                    pass.setVertexBuffer(0, pipeline->vertex_buffer, 0, sizeof(float) * 6);
+                    pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
+                    pass.draw(3, 1, 0, 0);
+                    pass.end();
+                }
         }
         const auto info = capture_format(capture.format);
         const wgpu::Extent3D extent(capture.size.x, capture.size.y, 1);
@@ -541,8 +575,8 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
             buffer,
             std::make_shared<readback::ReadbackChannel>(),
         });
-        state.in_flight.insert_or_assign(capture.readback_entity,
-            ScreenshotState::InFlightCapture{capture.entity, capture.size, capture.format});
+        state.in_flight.insert_or_assign(
+            capture.readback_entity, ScreenshotState::InFlightCapture{capture.entity, capture.size, capture.format});
     }
     state.prepared.clear();
 }
@@ -576,21 +610,20 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
         ScreenshotDeliverySenders{std::move(component_sender), std::move(legacy_sender)});
 
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
-        auto server = app.world_mut().get_resource<assets::AssetServer>()) {
+        auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
         registry->get().insert_asset_static(kScreenshotVertexPath, shader_bytes(kScreenshotVertexSlang));
         registry->get().insert_asset_static(kScreenshotFragmentPath, shader_bytes(kScreenshotFragmentSlang));
         render_app.world_mut().insert_resource(ScreenshotBlitHandles{
-            .vertex_shader = server->get().load<shader::Shader>("embedded://screenshot/blit_vert.slang"),
+            .vertex_shader   = server->get().load<shader::Shader>("embedded://screenshot/blit_vert.slang"),
             .fragment_shader = server->get().load<shader::Shader>("embedded://screenshot/blit_frag.slang"),
         });
     } else {
         throw std::runtime_error("ScreenshotPlugin requires AssetServer and EmbeddedAssetRegistry");
     }
 
-    render_app.add_systems(ExtractSchedule,
-                           into(extract_captures_and_deliver)
-                               .before(sync_readbacks)
-                               .set_name("screenshot: extract & deliver"));
+    render_app.add_systems(
+        ExtractSchedule,
+        into(extract_captures_and_deliver).before(sync_readbacks).set_name("screenshot: extract & deliver"));
 
     render_app.add_systems(Render, into(prepare_screenshots)
                                        .after(window::prepare_windows)
@@ -598,9 +631,7 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
                                        .before(view::prepare_view_target)
                                        .in_set(RenderSystems::ManageViews)
                                        .set_name("screenshot: prepare targets"));
-    render_app.world_mut()
-        .resource_mut<graph::RenderGraphFinalizers>()
-        .callbacks.push_back(submit_screenshot_commands);
+    render_app.world_mut().resource_mut<graph::RenderGraphFinalizers>().callbacks.push_back(submit_screenshot_commands);
 
     if (capture_key.has_value()) {
         app.world_mut().insert_resource(ScreenshotHotkey{.key = *capture_key});

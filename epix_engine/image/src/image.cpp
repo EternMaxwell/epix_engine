@@ -154,7 +154,7 @@ Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint3
 Image::Image() : m_format(Format::RGBA8), data(4, std::byte{0xFF}) {}
 
 Image Image::transparent() {
-    auto image = Image{};
+    auto image    = Image{};
     image.data[3] = std::byte{0};
     return image;
 }

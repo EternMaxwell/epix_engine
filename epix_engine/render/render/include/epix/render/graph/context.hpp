@@ -229,9 +229,7 @@ EPIX_EXPORT struct RunGraphOnViewNode : public Node {
     // Bevy RunGraphOnViewNode (node.rs:333-357) declares no slots: the sub
     // graph always runs on the context's view entity, so the node works as a
     // drop-in 'run sub-graph for the current view' node without wiring a slot.
-    std::expected<void, NodeRunError> run(GraphContext& graph,
-                                          RenderContext&,
-                                          const epix::ecs::World&) override {
+    std::expected<void, NodeRunError> run(GraphContext& graph, RenderContext&, const epix::ecs::World&) override {
         std::vector<SlotValue> inputs{};
         if (!graph.run_sub_graph(sub_graph, inputs, graph.get_view_entity())) {
             return std::unexpected(NodeRunError::RunSubGraphError);

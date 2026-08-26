@@ -34,77 +34,76 @@ void Camera::register_required_components(RequiredComponentsRegistrator& registr
 }
 
 std::optional<NormalizedRenderTarget> RenderTarget::normalize(std::optional<Entity> primary) const {
-    return std::visit(utils::visitor{[&](const window::WindowRef& win_ref) -> std::optional<NormalizedRenderTarget> {
-                                         return win_ref.normalize(primary).transform([](window::NormalizedWindowRef window) {
-                                             return NormalizedRenderTarget(window);
-                                         });
-                                     },
-                                     [&](const ImageRenderTarget& target) -> std::optional<NormalizedRenderTarget> {
-                                         return NormalizedRenderTarget(target);
-                                     },
-                                     [&](const ManualTextureViewHandle& target) -> std::optional<NormalizedRenderTarget> {
-                                         return NormalizedRenderTarget(target);
-                                     },
-                                     [&](const NoColorTarget& target) -> std::optional<NormalizedRenderTarget> {
-                                         return NormalizedRenderTarget(target);
-                                     }},
-                      *this);
+    return std::visit(
+        utils::visitor{[&](const window::WindowRef& win_ref) -> std::optional<NormalizedRenderTarget> {
+                           return win_ref.normalize(primary).transform(
+                               [](window::NormalizedWindowRef window) { return NormalizedRenderTarget(window); });
+                       },
+                       [&](const ImageRenderTarget& target) -> std::optional<NormalizedRenderTarget> {
+                           return NormalizedRenderTarget(target);
+                       },
+                       [&](const ManualTextureViewHandle& target) -> std::optional<NormalizedRenderTarget> {
+                           return NormalizedRenderTarget(target);
+                       },
+                       [&](const NoColorTarget& target) -> std::optional<NormalizedRenderTarget> {
+                           return NormalizedRenderTarget(target);
+                       }},
+        *this);
 }
 
 RenderTargetId NormalizedRenderTarget::identity() const noexcept {
-    return std::visit(utils::visitor{
-                          [](const ImageRenderTarget& image) -> RenderTargetId {
-                              return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw())};
-                          },
-                          [](const window::NormalizedWindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.entity().uid}; },
-                          [](const ManualTextureViewHandle& handle) -> RenderTargetId { return RenderTargetId{2, handle.id}; },
-                          [](const NoColorTarget& target) -> RenderTargetId {
-                              return RenderTargetId{3, (std::uint64_t{target.size.x} << 32) | target.size.y};
-                          },
-                      },
-                      *this);
+    return std::visit(
+        utils::visitor{
+            [](const ImageRenderTarget& image) -> RenderTargetId {
+                return RenderTargetId{1, reinterpret_cast<std::uintptr_t>(image.texture.raw())};
+            },
+            [](const window::NormalizedWindowRef& w) -> RenderTargetId { return RenderTargetId{0, w.entity().uid}; },
+            [](const ManualTextureViewHandle& handle) -> RenderTargetId { return RenderTargetId{2, handle.id}; },
+            [](const NoColorTarget& target) -> RenderTargetId {
+                return RenderTargetId{3, (std::uint64_t{target.size.x} << 32) | target.size.y};
+            },
+        },
+        *this);
 }
 
 void OrthographicProjection::update(float width, float height) {
     float projection_width  = rect.right - rect.left;
     float projection_height = rect.top - rect.bottom;
-    std::visit(
-        utils::visitor{
-            [&](const ScalingMode::Fixed& fixed) {
-                projection_width  = fixed.width;
-                projection_height = fixed.height;
-            },
-            [&](const ScalingMode::WindowSize&) {
-                projection_width  = width;
-                projection_height = height;
-            },
-            [&](const ScalingMode::AutoMin& auto_min) {
-                if (width * auto_min.min_height > auto_min.min_width * height) {
-                    projection_width  = width * auto_min.min_height / height;
-                    projection_height = auto_min.min_height;
-                } else {
-                    projection_width  = auto_min.min_width;
-                    projection_height = height * auto_min.min_width / width;
-                }
-            },
-            [&](const ScalingMode::AutoMax& auto_max) {
-                if (width * auto_max.max_height < auto_max.max_width * height) {
-                    projection_width  = width * auto_max.max_height / height;
-                    projection_height = auto_max.max_height;
-                } else {
-                    projection_width  = auto_max.max_width;
-                    projection_height = height * auto_max.max_width / width;
-                }
-            },
-            [&](const ScalingMode::FixedVertical& fixed_vertical) {
-                projection_height = fixed_vertical.viewport_height;
-                projection_width  = width * fixed_vertical.viewport_height / height;
-            },
-            [&](const ScalingMode::FixedHorizontal& fixed_horizontal) {
-                projection_width  = fixed_horizontal.viewport_width;
-                projection_height = height * fixed_horizontal.viewport_width / width;
-            }},
-        scaling_mode);
+    std::visit(utils::visitor{[&](const ScalingMode::Fixed& fixed) {
+                                  projection_width  = fixed.width;
+                                  projection_height = fixed.height;
+                              },
+                              [&](const ScalingMode::WindowSize&) {
+                                  projection_width  = width;
+                                  projection_height = height;
+                              },
+                              [&](const ScalingMode::AutoMin& auto_min) {
+                                  if (width * auto_min.min_height > auto_min.min_width * height) {
+                                      projection_width  = width * auto_min.min_height / height;
+                                      projection_height = auto_min.min_height;
+                                  } else {
+                                      projection_width  = auto_min.min_width;
+                                      projection_height = height * auto_min.min_width / width;
+                                  }
+                              },
+                              [&](const ScalingMode::AutoMax& auto_max) {
+                                  if (width * auto_max.max_height < auto_max.max_width * height) {
+                                      projection_width  = width * auto_max.max_height / height;
+                                      projection_height = auto_max.max_height;
+                                  } else {
+                                      projection_width  = auto_max.max_width;
+                                      projection_height = height * auto_max.max_width / width;
+                                  }
+                              },
+                              [&](const ScalingMode::FixedVertical& fixed_vertical) {
+                                  projection_height = fixed_vertical.viewport_height;
+                                  projection_width  = width * fixed_vertical.viewport_height / height;
+                              },
+                              [&](const ScalingMode::FixedHorizontal& fixed_horizontal) {
+                                  projection_width  = fixed_horizontal.viewport_width;
+                                  projection_height = height * fixed_horizontal.viewport_width / width;
+                              }},
+               scaling_mode);
     rect.left   = -projection_width * viewport_origin.x * scale;
     rect.right  = projection_width * scale + rect.left;
     rect.bottom = -projection_height * viewport_origin.y * scale;
@@ -167,30 +166,28 @@ void check_visibility_ranges(
     }
 }
 
-void check_visibility_system(
-    Query<Item<Entity,
-               const Camera&,
-               Mut<VisibleEntities>,
-               Opt<const RenderLayers&>,
-               const Frustum&,
-               Opt<const NoCpuCulling&>>>
-        cameras,
-    Query<Item<Entity,
-               const InheritedVisibility&,
-               Mut<ViewVisibility>,
-               Opt<const VisibilityClass&>,
-               Opt<const RenderLayers&>,
-               Opt<const Aabb&>,
-               Opt<const ::epix::transform::GlobalTransform&>,
-               Opt<const NoFrustumCulling&>,
-               Opt<const VisibilityRange&>>>
-        entities,
-    Res<VisibleEntityRanges> visible_entity_ranges) {
+void check_visibility_system(Query<Item<Entity,
+                                        const Camera&,
+                                        Mut<VisibleEntities>,
+                                        Opt<const RenderLayers&>,
+                                        const Frustum&,
+                                        Opt<const NoCpuCulling&>>> cameras,
+                             Query<Item<Entity,
+                                        const InheritedVisibility&,
+                                        Mut<ViewVisibility>,
+                                        Opt<const VisibilityClass&>,
+                                        Opt<const RenderLayers&>,
+                                        Opt<const Aabb&>,
+                                        Opt<const ::epix::transform::GlobalTransform&>,
+                                        Opt<const NoFrustumCulling&>,
+                                        Opt<const VisibilityRange&>>> entities,
+                             Res<VisibleEntityRanges> visible_entity_ranges) {
     // Bevy check_visibility: for each camera, mark entities visible to it in
     // its view slot and collect them into the camera's VisibleEntities. When
     // bounds are available, use its sphere broad phase followed by a
     // transformed-AABB frustum test.
-    for (auto&& [camera_entity, camera, visible_entities, opt_camera_layers, frustum, no_cpu_culling] : cameras.iter()) {
+    for (auto&& [camera_entity, camera, visible_entities, opt_camera_layers, frustum, no_cpu_culling] :
+         cameras.iter()) {
         (void)camera_entity;
         if (!camera.is_active) continue;
         const auto& camera_layers = opt_camera_layers ? *opt_camera_layers : RenderLayers::layer(0);
@@ -204,10 +201,10 @@ void check_visibility_system(
                 continue;
             }
             if (!no_cpu_culling && !no_frustum_culling && opt_aabb && opt_transform) {
-                const auto& aabb      = opt_aabb->get();
-                const auto& transform = opt_transform->get().matrix;
+                const auto& aabb       = opt_aabb->get();
+                const auto& transform  = opt_transform->get().matrix;
                 const glm::vec3 center = glm::vec3(transform * glm::vec4(aabb.center, 1.0f));
-                const float radius = glm::length(glm::abs(glm::mat3(transform)) * aabb.half_extents);
+                const float radius     = glm::length(glm::abs(glm::mat3(transform)) * aabb.half_extents);
                 if (!frustum.intersects_sphere(Sphere{center, radius}, false) ||
                     !frustum.intersects_obb(aabb, transform, true, false)) {
                     continue;
@@ -225,30 +222,29 @@ void check_visibility_system(
 
 void VisibilityRangePlugin::attach(App& app) {
     app.world_mut().init_resource<VisibleEntityRanges>();
-    app.add_systems(app::PostUpdate,
-                    into(check_visibility_ranges)
-                        .in_set(VisibilitySystems::CheckVisibility)
-                        .before(check_visibility_system)
-                        .set_name("check visibility ranges"));
+    app.add_systems(app::PostUpdate, into(check_visibility_ranges)
+                                         .in_set(VisibilitySystems::CheckVisibility)
+                                         .before(check_visibility_system)
+                                         .set_name("check visibility ranges"));
 }
 
-void update_frusta(Query<Item<const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&, Mut<Frustum>>>
-                        cameras) {
+void update_frusta(
+    Query<Item<const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&, Mut<Frustum>>> cameras) {
     // Bevy Projection::compute_frustum uses the explicit far distance even
     // when the projection matrix is infinite reverse-Z.  The matrix alone
     // cannot recover that finite culling bound.
     for (auto&& [gtransform, projection, frustum] : cameras.iter()) {
         const glm::mat4 clip_from_world = projection.get_projection_matrix() * glm::inverse(gtransform.matrix);
         const glm::vec3 translation     = glm::vec3(gtransform.matrix[3]);
-        glm::vec3 backward               = glm::vec3(gtransform.matrix[2]);
-        const float backward_length      = glm::length(backward);
+        glm::vec3 backward              = glm::vec3(gtransform.matrix[2]);
+        const float backward_length     = glm::length(backward);
         if (backward_length > 0.0f && std::isfinite(backward_length)) {
             backward /= backward_length;
         } else {
             backward = glm::vec3(0.0f, 0.0f, 1.0f);
         }
-        frustum.get_mut() = Frustum::from_clip_from_world_custom_far(clip_from_world, translation, backward,
-                                                                       projection.get_far());
+        frustum.get_mut() =
+            Frustum::from_clip_from_world_custom_far(clip_from_world, translation, backward, projection.get_far());
     }
 }
 
@@ -262,28 +258,26 @@ void VisibilityPlugin::attach(App& app) {
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
-    app.add_systems(app::PostUpdate,
-                    into(visibility_propagate_system)
-                        .in_set(VisibilitySystems::VisibilityPropagate)
-                        .set_name("visibility propagate"));
-    app.add_systems(app::PostUpdate,
-                    into(reset_view_visibility).in_set(VisibilitySystems::CheckVisibility).set_name("reset view visibility"));
-    app.add_systems(app::PostUpdate,
-                    into(update_frusta)
-                        .after(CameraUpdateSystems::CameraUpdateSystem)
-                        .in_set(VisibilitySystems::UpdateFrusta)
-                        .set_name("update frusta"));
+    app.add_systems(app::PostUpdate, into(visibility_propagate_system)
+                                         .in_set(VisibilitySystems::VisibilityPropagate)
+                                         .set_name("visibility propagate"));
+    app.add_systems(
+        app::PostUpdate,
+        into(reset_view_visibility).in_set(VisibilitySystems::CheckVisibility).set_name("reset view visibility"));
+    app.add_systems(app::PostUpdate, into(update_frusta)
+                                         .after(CameraUpdateSystems::CameraUpdateSystem)
+                                         .in_set(VisibilitySystems::UpdateFrusta)
+                                         .set_name("update frusta"));
     app.add_systems(app::PostUpdate, into(check_visibility_system)
                                          .after(update_frusta)
                                          .after(visibility_propagate_system)
                                          .after(reset_view_visibility)
                                          .in_set(VisibilitySystems::CheckVisibility)
                                          .set_name("check visibility"));
-    app.add_systems(app::PostUpdate,
-                    into(mark_newly_hidden_entities_invisible)
-                        .after(check_visibility_system)
-                        .in_set(VisibilitySystems::MarkNewlyHidden)
-                        .set_name("mark newly hidden entities invisible"));
+    app.add_systems(app::PostUpdate, into(mark_newly_hidden_entities_invisible)
+                                         .after(check_visibility_system)
+                                         .in_set(VisibilitySystems::MarkNewlyHidden)
+                                         .set_name("mark newly hidden entities invisible"));
 }
 
 void CameraPlugin::attach(App& app) {

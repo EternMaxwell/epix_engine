@@ -151,19 +151,17 @@ EPIX_EXPORT namespace epix::render::graph {
         std::string slot_name;
     };
     /** @brief A queued subgraph no longer exists. This is unreachable after
-     * graph validation, but remains an explicit runtime error. */
+     * graph validation, but remains an
+     * explicit runtime error. */
     struct RunnerSubGraphNotFound {
         GraphLabel sub_graph;
     };
     /** @brief Typed failure from `RenderGraphRunner`, mirroring Bevy's
-     * `RenderGraphRunnerError` rather than collapsing errors to `bool`. */
+     * `RenderGraphRunnerError` rather than
+     * collapsing errors to `bool`. */
     struct RenderGraphRunnerError
-        : std::variant<RunnerNodeRunError,
-                       RunnerMissingInput,
-                       RunnerMismatchedInputSlotType,
-                       RunnerMismatchedInputCount,
-                       RunnerEmptyNodeOutputSlot,
-                       RunnerSubGraphNotFound> {
+        : std::variant<RunnerNodeRunError, RunnerMissingInput, RunnerMismatchedInputSlotType,
+                       RunnerMismatchedInputCount, RunnerEmptyNodeOutputSlot, RunnerSubGraphNotFound> {
         using std::variant<RunnerNodeRunError,
                            RunnerMissingInput,
                            RunnerMismatchedInputSlotType,

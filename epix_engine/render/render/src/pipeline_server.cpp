@@ -211,90 +211,88 @@ void PipelineServer::process_queue() {
 void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id) {
     auto schedule_creation = [&](auto task) {
         if (m_data->synchronous_pipeline_compilation) {
-            auto result = task();
+            auto result           = task();
             cached_pipeline.state = result ? CachedPipelineState{std::move(result.value())}
                                            : CachedPipelineState{std::move(result.error())};
         } else {
-            cached_pipeline.state = PipelineStateCreating{m_data->pipeline_create_task_pool->submit_task(std::move(task))};
+            cached_pipeline.state =
+                PipelineStateCreating{m_data->pipeline_create_task_pool->submit_task(std::move(task))};
         }
     };
     auto create_render_pipeline = [&](const RenderPipelineDescriptor& descriptor) mutable {
-        auto task = [device           = m_data->device, descriptor,
-                     layout_cache_ptr = m_data->layout_cache,
-                     shader_cache_ptr = m_data->shader_cache,
-                     id]() -> std::expected<Pipeline, PipelineServerError> {
-                wgpu::RenderPipelineDescriptor pipelineDesc;
-                wgpu::ShaderModule vertex_module;
-                std::optional<wgpu::ShaderModule> fragment_module;
-                wgpu::PipelineLayout layout;
-                {
-                    auto layout_cache = layout_cache_ptr->lock();
-                    auto shader_cache = shader_cache_ptr->lock();
-                    auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, descriptor.vertex.shader_defs);
-                    if (!vertex_opt) return std::unexpected(vertex_opt.error());
-                    vertex_module = *vertex_opt.value();
-                    if (descriptor.fragment) {
-                        auto fragment_opt =
-                            shader_cache->get(id, descriptor.fragment->shader, descriptor.fragment->shader_defs);
-                        if (!fragment_opt) return std::unexpected(fragment_opt.error());
-                        fragment_module = *fragment_opt.value();
-                    }
-                    // Bevy pipeline_cache.rs:519-523: a layout is created when
-                    // there are bind-group layouts OR push-constant ranges.
-                    if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
-                        layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
+        auto task = [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
+                     shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+            wgpu::RenderPipelineDescriptor pipelineDesc;
+            wgpu::ShaderModule vertex_module;
+            std::optional<wgpu::ShaderModule> fragment_module;
+            wgpu::PipelineLayout layout;
+            {
+                auto layout_cache = layout_cache_ptr->lock();
+                auto shader_cache = shader_cache_ptr->lock();
+                auto vertex_opt   = shader_cache->get(id, descriptor.vertex.shader, descriptor.vertex.shader_defs);
+                if (!vertex_opt) return std::unexpected(vertex_opt.error());
+                vertex_module = *vertex_opt.value();
+                if (descriptor.fragment) {
+                    auto fragment_opt =
+                        shader_cache->get(id, descriptor.fragment->shader, descriptor.fragment->shader_defs);
+                    if (!fragment_opt) return std::unexpected(fragment_opt.error());
+                    fragment_module = *fragment_opt.value();
                 }
-                pipelineDesc.setLabel(std::string_view(descriptor.label));
-                pipelineDesc.setLayout(layout);
-                pipelineDesc.setVertex(wgpu::VertexState()
-                                           .setModule(vertex_module)
-                                           .setBuffers(descriptor.vertex.buffers)
-                                           .setEntryPoint(descriptor.vertex.entry_point
-                                                              .transform([](auto&& s) { return std::string_view(s); })
-                                                              .value_or(std::string_view("main"))));
-                pipelineDesc.setPrimitive(descriptor.primitive);
-                if (descriptor.depth_stencil) pipelineDesc.setDepthStencil(*descriptor.depth_stencil);
-                pipelineDesc.setMultisample(descriptor.multisample);
-                if (descriptor.fragment)
-                    pipelineDesc.setFragment(
-                        wgpu::FragmentState()
-                            .setModule(*fragment_module)
-                            .setTargets(descriptor.fragment->targets)
-                            .setEntryPoint(
-                                descriptor.fragment->entry_point.transform([](auto&& s) { return std::string_view(s); })
-                                    .value_or(std::string_view("main"))));
-                auto pipeline = device.createRenderPipeline(pipelineDesc);
-                if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
-                return Pipeline{RenderPipeline(std::move(pipeline))};
-            };
+                // Bevy pipeline_cache.rs:519-523: a layout is created when
+                // there are bind-group layouts OR push-constant ranges.
+                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
+                    layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
+            }
+            pipelineDesc.setLabel(std::string_view(descriptor.label));
+            pipelineDesc.setLayout(layout);
+            pipelineDesc.setVertex(
+                wgpu::VertexState()
+                    .setModule(vertex_module)
+                    .setBuffers(descriptor.vertex.buffers)
+                    .setEntryPoint(descriptor.vertex.entry_point.transform([](auto&& s) { return std::string_view(s); })
+                                       .value_or(std::string_view("main"))));
+            pipelineDesc.setPrimitive(descriptor.primitive);
+            if (descriptor.depth_stencil) pipelineDesc.setDepthStencil(*descriptor.depth_stencil);
+            pipelineDesc.setMultisample(descriptor.multisample);
+            if (descriptor.fragment)
+                pipelineDesc.setFragment(wgpu::FragmentState()
+                                             .setModule(*fragment_module)
+                                             .setTargets(descriptor.fragment->targets)
+                                             .setEntryPoint(descriptor.fragment->entry_point
+                                                                .transform([](auto&& s) { return std::string_view(s); })
+                                                                .value_or(std::string_view("main"))));
+            auto pipeline = device.createRenderPipeline(pipelineDesc);
+            if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
+            return Pipeline{RenderPipeline(std::move(pipeline))};
+        };
         schedule_creation(std::move(task));
     };
     auto create_compute_pipeline = [&](const ComputePipelineDescriptor& descriptor) mutable {
         auto task = [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
                      shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
-                    wgpu::ComputePipelineDescriptor desc;
-                    wgpu::PipelineLayout layout;
-                    wgpu::ShaderModule module;
-                    {
-                        auto layout_cache = layout_cache_ptr->lock();
-                        auto shader_cache = shader_cache_ptr->lock();
-                        auto shader_opt   = shader_cache->get(id, descriptor.shader, descriptor.shader_defs);
-                        if (!shader_opt) return std::unexpected(shader_opt.error());
-                        module = *shader_opt.value();
-                        // Bevy pipeline_cache.rs:519-523: a layout is created when
-                        // there are bind-group layouts OR push-constant ranges.
-                        if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
-                            layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
-                    }
-                    desc.setLabel(std::string_view(descriptor.label))
-                        .setLayout(layout)
-                        .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint(
-                            descriptor.entry_point.transform([](auto&& s) { return std::string_view(s); })
-                                .value_or(std::string_view("main"))));
-                    auto pipeline = device.createComputePipeline(desc);
-                    if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
-                    return Pipeline{ComputePipeline(std::move(pipeline))};
-                };
+            wgpu::ComputePipelineDescriptor desc;
+            wgpu::PipelineLayout layout;
+            wgpu::ShaderModule module;
+            {
+                auto layout_cache = layout_cache_ptr->lock();
+                auto shader_cache = shader_cache_ptr->lock();
+                auto shader_opt   = shader_cache->get(id, descriptor.shader, descriptor.shader_defs);
+                if (!shader_opt) return std::unexpected(shader_opt.error());
+                module = *shader_opt.value();
+                // Bevy pipeline_cache.rs:519-523: a layout is created when
+                // there are bind-group layouts OR push-constant ranges.
+                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
+                    layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
+            }
+            desc.setLabel(std::string_view(descriptor.label))
+                .setLayout(layout)
+                .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint(
+                    descriptor.entry_point.transform([](auto&& s) { return std::string_view(s); })
+                        .value_or(std::string_view("main"))));
+            auto pipeline = device.createComputePipeline(desc);
+            if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
+            return Pipeline{ComputePipeline(std::move(pipeline))};
+        };
         schedule_creation(std::move(task));
     };
     auto pipeline_name = std::visit(utils::visitor{

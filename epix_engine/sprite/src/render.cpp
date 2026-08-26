@@ -356,7 +356,8 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
     for (auto&& [phase, view, target, opt_camera_layers, msaa, visible_entities] : views.iter()) {
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
-        auto pipeline_id = pipeline_cache->specialize(*pipeline_server, target.format, ::epix::render::view::samples(msaa));
+        auto pipeline_id =
+            pipeline_cache->specialize(*pipeline_server, target.format, ::epix::render::view::samples(msaa));
         if (!pipeline_id) {
             spdlog::warn("[sprite] Failed to specialize sprite pipeline for target format {}.",
                          wgpu::to_string(target.format));
@@ -461,9 +462,8 @@ void SpritePlugin::attach(app::App& app) {
     // InheritedVisibility + ViewVisibility. Epix propagates those required
     // components transitively, so Sprite declares only the direct edge.
     app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
-    app.world_mut().register_required_components_with<sprite::Sprite>([] {
-        return camera::VisibilityClass{meta::type_index(meta::type_id<sprite::Sprite>())};
-    });
+    app.world_mut().register_required_components_with<sprite::Sprite>(
+        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<sprite::Sprite>())}; });
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {

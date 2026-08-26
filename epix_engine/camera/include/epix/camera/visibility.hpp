@@ -118,7 +118,6 @@ EPIX_EXPORT struct InheritedVisibility {
         epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibilities);
 };
 
-
 /** @brief An identifier for a render layer (Bevy `Layer`). */
 using Layer = std::size_t;
 
@@ -148,7 +147,7 @@ EPIX_EXPORT struct RenderLayers {
         for (std::size_t i = 0; i < result.size(); ++i) {
             const auto lhs = i < blocks_.size() ? blocks_[i] : 0;
             const auto rhs = i < other.blocks_.size() ? other.blocks_[i] : 0;
-            result[i] = op(lhs, rhs);
+            result[i]      = op(lhs, rhs);
         }
         return RenderLayers(std::move(result), inverted);
     }
@@ -191,7 +190,7 @@ EPIX_EXPORT struct RenderLayers {
         return result;
     }
     RenderLayers without(Layer layer) const {
-        auto result = *this;
+        auto result      = *this;
         const auto index = block_index(layer);
         if (result.inverted_) result.extend(index + 1);
         if (index < result.blocks_.size())
@@ -219,7 +218,7 @@ EPIX_EXPORT struct RenderLayers {
     std::span<const std::uint64_t> bits() const noexcept { return blocks_; }
     bool is_inverted() const noexcept { return inverted_; }
     bool contains(Layer layer) const noexcept {
-        const auto index = block_index(layer);
+        const auto index  = block_index(layer);
         const bool stored = index < blocks_.size() && (blocks_[index] & layer_bit(layer)) != 0;
         return inverted_ ? !stored : stored;
     }
@@ -231,7 +230,7 @@ EPIX_EXPORT struct RenderLayers {
                 if ((blocks_[i] & other.blocks_[i]) != 0) return true;
             return false;
         }
-        const auto& finite = inverted_ ? other : *this;
+        const auto& finite   = inverted_ ? other : *this;
         const auto& excluded = inverted_ ? *this : other;
         for (std::size_t i = 0; i < finite.blocks_.size(); ++i) {
             const auto excluded_block = i < excluded.blocks_.size() ? excluded.blocks_[i] : 0;
@@ -247,13 +246,13 @@ EPIX_EXPORT struct RenderLayers {
     }
     RenderLayers union_with(const RenderLayers& other) const {
         if (!inverted_ && !other.inverted_) return combine_blocks(other, [](auto lhs, auto rhs) { return lhs | rhs; });
-        if (!inverted_ && other.inverted_) return combine_blocks(other, [](auto lhs, auto rhs) { return rhs & ~lhs; }, true);
+        if (!inverted_ && other.inverted_)
+            return combine_blocks(other, [](auto lhs, auto rhs) { return rhs & ~lhs; }, true);
         if (inverted_ && !other.inverted_) return other.union_with(*this);
         return combine_blocks(other, [](auto lhs, auto rhs) { return lhs & rhs; }, true);
     }
     RenderLayers symmetric_difference(const RenderLayers& other) const {
-        if (inverted_ == other.inverted_)
-            return combine_blocks(other, [](auto lhs, auto rhs) { return lhs ^ rhs; });
+        if (inverted_ == other.inverted_) return combine_blocks(other, [](auto lhs, auto rhs) { return lhs ^ rhs; });
         return combine_blocks(other, [](auto lhs, auto rhs) { return lhs ^ rhs; }, true);
     }
     friend RenderLayers operator&(const RenderLayers& lhs, const RenderLayers& rhs) { return lhs.intersection(rhs); }
@@ -304,17 +303,14 @@ EPIX_EXPORT struct NoAutoAabb {};
  * render's `RenderVisibilityRanges`, but this is a main-world camera
  * component. */
 EPIX_EXPORT struct VisibilityRange {
-    float start_margin_start = 0.0f;
-    float start_margin_end   = 0.0f;
-    float end_margin_start   = 0.0f;
-    float end_margin_end     = 0.0f;
-    bool use_aabb            = false;
+    float start_margin_start                      = 0.0f;
+    float start_margin_end                        = 0.0f;
+    float end_margin_start                        = 0.0f;
+    float end_margin_end                          = 0.0f;
+    bool use_aabb                                 = false;
     bool operator==(const VisibilityRange&) const = default;
     static VisibilityRange abrupt(float start, float end) noexcept {
-        return {.start_margin_start = start,
-                .start_margin_end   = start,
-                .end_margin_start   = end,
-                .end_margin_end     = end};
+        return {.start_margin_start = start, .start_margin_end = start, .end_margin_start = end, .end_margin_end = end};
     }
     bool is_abrupt() const noexcept {
         return start_margin_start == start_margin_end && end_margin_start == end_margin_end;
@@ -378,7 +374,7 @@ EPIX_EXPORT struct Aabb {
      * `Aabb::enclosing`). */
     template <std::ranges::input_range R>
     static std::optional<Aabb> enclosing(R&& points) noexcept {
-        auto first = std::ranges::begin(points);
+        auto first      = std::ranges::begin(points);
         const auto last = std::ranges::end(points);
         if (first == last) return std::nullopt;
         glm::vec3 minimum = *first;
@@ -418,8 +414,8 @@ EPIX_EXPORT struct Sphere {
     float radius = 0.0f;
     bool intersects_obb(const Aabb& aabb, const glm::mat4& world_from_local) const noexcept {
         const glm::vec3 aabb_center = glm::vec3(world_from_local * glm::vec4(aabb.center, 1.0f));
-        const glm::vec3 offset = aabb_center - center;
-        const float distance = glm::length(offset);
+        const glm::vec3 offset      = aabb_center - center;
+        const float distance        = glm::length(offset);
         if (distance == 0.0f) return true;
         return distance < radius + aabb.relative_radius(offset / distance, glm::mat3(world_from_local));
     }
@@ -458,7 +454,7 @@ EPIX_EXPORT struct Frustum {
         extract(4, row3 + row(2));  // near
         // Bevy (and Epix's GLM configuration) use a zero-to-one clip-space
         // depth range, so the far plane is row2, not row3 - row2.
-        extract(5, row(2));          // far
+        extract(5, row(2));  // far
         return frustum;
     }
 
@@ -473,11 +469,11 @@ EPIX_EXPORT struct Frustum {
                                                    const glm::vec3& view_translation,
                                                    const glm::vec3& view_backward,
                                                    float far_distance) noexcept {
-        Frustum frustum = from_clip_from_world(clip_from_world);
+        Frustum frustum            = from_clip_from_world(clip_from_world);
         const glm::vec3 far_center = view_translation - far_distance * view_backward;
         glm::vec4 far_plane(view_backward, -glm::dot(view_backward, far_center));
         const float length = glm::length(glm::vec3(far_plane));
-        frustum.planes[5] = length > 0.0f ? far_plane / length : far_plane;
+        frustum.planes[5]  = length > 0.0f ? far_plane / length : far_plane;
         return frustum;
     }
 
@@ -496,7 +492,7 @@ EPIX_EXPORT struct Frustum {
     bool intersects_obb(const Aabb& aabb,
                         const glm::mat4& world_from_local,
                         bool intersect_near = true,
-                        bool intersect_far = true) const noexcept {
+                        bool intersect_far  = true) const noexcept {
         const glm::vec3 center = glm::vec3(world_from_local * glm::vec4(aabb.center, 1.0f));
         const glm::mat3 basis(world_from_local);
         for (std::size_t i = 0; i < planes.size(); ++i) {
@@ -506,9 +502,7 @@ EPIX_EXPORT struct Frustum {
         }
         return true;
     }
-    bool intersects_obb_identity(const Aabb& aabb) const noexcept {
-        return intersects_obb(aabb, glm::mat4(1.0f));
-    }
+    bool intersects_obb_identity(const Aabb& aabb) const noexcept { return intersects_obb(aabb, glm::mat4(1.0f)); }
     bool contains_aabb(const Aabb& aabb, const glm::mat4& world_from_local) const noexcept {
         for (const auto& plane : planes) {
             if (!aabb.is_in_half_space(HalfSpace::from_normal_d(plane), world_from_local)) return false;
@@ -530,9 +524,12 @@ EPIX_EXPORT struct CubeMapFace {
     glm::vec3 up{0.0f, 1.0f, 0.0f};
 };
 EPIX_EXPORT inline const std::array<CubeMapFace, 6> CubeMapFaces{{
-    {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, {{-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
-    {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}}, {{0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}},
-    {{0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}}, {{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},
+    {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+    {{-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+    {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}},
+    {{0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}},
+    {{0.0f, 0.0f, -1.0f}, {0.0f, 1.0f, 0.0f}},
+    {{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 0.0f}},
 }};
 
 /** @brief Bevy `face_index_to_name` equivalent. */
@@ -542,7 +539,12 @@ EPIX_EXPORT inline std::string_view face_index_to_name(std::size_t face_index) n
 }
 
 /** @brief Packed cubemap image layouts (Bevy `CubemapLayout`). */
-EPIX_EXPORT enum class CubemapLayout : std::uint8_t { CrossVertical, CrossHorizontal, SequenceVertical, SequenceHorizontal };
+EPIX_EXPORT enum class CubemapLayout : std::uint8_t {
+    CrossVertical,
+    CrossHorizontal,
+    SequenceVertical,
+    SequenceHorizontal
+};
 
 /** @brief Per-cubemap-face frusta (Bevy `CubemapFrusta`). */
 EPIX_EXPORT struct CubemapFrusta {
@@ -690,11 +692,9 @@ EPIX_EXPORT void check_visibility_system(
 
 /** @brief Recomputes each camera's Frustum from its projection and transform
  * (Bevy update_frusta). */
-EPIX_EXPORT void update_frusta(
-    epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
-                                     const ::epix::camera::Projection&,
-                                     epix::ecs::Mut<Frustum>>>
-        cameras);
+EPIX_EXPORT void update_frusta(epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
+                                                                const ::epix::camera::Projection&,
+                                                                epix::ecs::Mut<Frustum>>> cameras);
 
 }  // namespace epix::camera
 

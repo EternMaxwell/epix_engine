@@ -85,17 +85,16 @@ public struct View {
 )";
 }  // namespace
 
-void view::prepare_view_target(
-    Query<Item<Entity,
-               const camera::ExtractedCamera&,
-               const ExtractedView&,
-               const ::epix::camera::CameraMainTextureUsages&,
-               const view::Msaa&>> views,
-    Commands cmd,
-    Res<::epix::camera::ClearColor> global_clear_color,
-    Res<wgpu::Device> device,
-    ResMut<render_resource::TextureCache> texture_cache,
-    Res<ViewTargetAttachments> view_target_attachments) {
+void view::prepare_view_target(Query<Item<Entity,
+                                          const camera::ExtractedCamera&,
+                                          const ExtractedView&,
+                                          const ::epix::camera::CameraMainTextureUsages&,
+                                          const view::Msaa&>> views,
+                               Commands cmd,
+                               Res<::epix::camera::ClearColor> global_clear_color,
+                               Res<wgpu::Device> device,
+                               ResMut<render_resource::TextureCache> texture_cache,
+                               Res<ViewTargetAttachments> view_target_attachments) {
     // NormalizedRenderTarget guarantees primary-window resolution occurred
     // during extraction. Prepare the view target for each extracted camera view: the
     // double-buffered main textures (Bevy prepare_view_targets, view/mod.rs:1061)
@@ -114,7 +113,7 @@ void view::prepare_view_target(
     for (auto&& [entity, camera, view, texture_usage, msaa] : views.iter()) {
         if (!camera.target || !camera.physical_target_size) continue;
         const auto& normalized_target = *camera.target;
-        const auto attachment_it = view_target_attachments->attachments.find(normalized_target.identity());
+        const auto attachment_it      = view_target_attachments->attachments.find(normalized_target.identity());
         if (attachment_it == view_target_attachments->attachments.end()) {
             // Match Bevy: an unavailable output attachment invalidates this
             // frame's ViewTarget rather than retaining a stale texture view.
@@ -144,9 +143,9 @@ void view::prepare_view_target(
         }
         const wgpu::TextureUsage main_usage = texture_usage.usage;
         const std::uint32_t sample_count    = view::samples(msaa);
-        const auto target_identity = normalized_target.identity();
-        const auto shared_key = std::to_string(target_identity.kind) + ':' + std::to_string(target_identity.value) + ':' +
-                                std::to_string(static_cast<std::uint64_t>(main_usage)) + ':' +
+        const auto target_identity          = normalized_target.identity();
+        const auto shared_key = std::to_string(target_identity.kind) + ':' + std::to_string(target_identity.value) +
+                                ':' + std::to_string(static_cast<std::uint64_t>(main_usage)) + ':' +
                                 std::to_string(camera.hdr) + ':' + std::to_string(sample_count) + ':' +
                                 std::to_string(size.x) + ':' + std::to_string(size.y);
         auto [shared_it, inserted] = shared_main_textures.try_emplace(shared_key);
@@ -155,47 +154,48 @@ void view::prepare_view_target(
             // MSAA sample texture shared by A and B (Bevy
             // prepare_view_targets creates main_texture_sampled).
             if (sample_count > 1) {
-            wgpu::TextureDescriptor descriptor;
-            descriptor.setSize({std::max<std::uint32_t>(1, size.x), std::max<std::uint32_t>(1, size.y), 1})
-                .setFormat(main_format)
-                .setUsage(wgpu::TextureUsage::eRenderAttachment)
-                .setDimension(wgpu::TextureDimension::e2D)
-                .setSampleCount(sample_count)
-                .setMipLevelCount(1)
-                .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
-                .setLabel("main_texture_sampled");
-                shared.sampled = texture_cache->get(*device,
-                                                     render_resource::TextureCacheKey{.format = main_format,
-                                                                                      .width = std::max(1u, size.x),
-                                                                                      .height = std::max(1u, size.y),
-                                                                                      .sample_count = sample_count,
-                                                                                      .usage = wgpu::TextureUsage::eRenderAttachment,
-                                                                                      .label = "main_texture_sampled",
-                                                                                      .view_formats = std::vector<wgpu::TextureFormat>(
-                                                                                          view_formats.begin(),
-                                                                                          view_formats.begin() + view_format_count)},
-                                                     descriptor);
+                wgpu::TextureDescriptor descriptor;
+                descriptor.setSize({std::max<std::uint32_t>(1, size.x), std::max<std::uint32_t>(1, size.y), 1})
+                    .setFormat(main_format)
+                    .setUsage(wgpu::TextureUsage::eRenderAttachment)
+                    .setDimension(wgpu::TextureDimension::e2D)
+                    .setSampleCount(sample_count)
+                    .setMipLevelCount(1)
+                    .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
+                    .setLabel("main_texture_sampled");
+                shared.sampled =
+                    texture_cache->get(*device,
+                                       render_resource::TextureCacheKey{
+                                           .format       = main_format,
+                                           .width        = std::max(1u, size.x),
+                                           .height       = std::max(1u, size.y),
+                                           .sample_count = sample_count,
+                                           .usage        = wgpu::TextureUsage::eRenderAttachment,
+                                           .label        = "main_texture_sampled",
+                                           .view_formats = std::vector<wgpu::TextureFormat>(
+                                               view_formats.begin(), view_formats.begin() + view_format_count)},
+                                       descriptor);
             }
             auto make_main_texture = [&](const char* label) {
-            wgpu::TextureDescriptor descriptor;
-            descriptor.setSize({std::max<std::uint32_t>(1, size.x), std::max<std::uint32_t>(1, size.y), 1})
-                .setFormat(main_format)
-                .setUsage(main_usage)
-                .setDimension(wgpu::TextureDimension::e2D)
-                .setSampleCount(1)
-                .setMipLevelCount(1)
-                .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
-                .setLabel(label);
+                wgpu::TextureDescriptor descriptor;
+                descriptor.setSize({std::max<std::uint32_t>(1, size.x), std::max<std::uint32_t>(1, size.y), 1})
+                    .setFormat(main_format)
+                    .setUsage(main_usage)
+                    .setDimension(wgpu::TextureDimension::e2D)
+                    .setSampleCount(1)
+                    .setMipLevelCount(1)
+                    .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
+                    .setLabel(label);
                 return texture_cache->get(*device,
-                                          render_resource::TextureCacheKey{.format = main_format,
-                                                                           .width = std::max(1u, size.x),
-                                                                           .height = std::max(1u, size.y),
-                                                                           .sample_count = 1,
-                                                                           .usage = main_usage,
-                                                                           .label = label,
-                                                                           .view_formats = std::vector<wgpu::TextureFormat>(
-                                                                               view_formats.begin(),
-                                                                               view_formats.begin() + view_format_count)},
+                                          render_resource::TextureCacheKey{
+                                              .format       = main_format,
+                                              .width        = std::max(1u, size.x),
+                                              .height       = std::max(1u, size.y),
+                                              .sample_count = 1,
+                                              .usage        = main_usage,
+                                              .label        = label,
+                                              .view_formats = std::vector<wgpu::TextureFormat>(
+                                                  view_formats.begin(), view_formats.begin() + view_format_count)},
                                           descriptor);
             };
             shared.a            = make_main_texture("main_texture_a");
@@ -216,11 +216,11 @@ void view::prepare_view_target(
         main_textures.main_texture = shared.main_texture;
 
         view::ViewTarget target;
-        target.main_textures       = std::move(main_textures);
+        target.main_textures        = std::move(main_textures);
         target.main_texture_format_ = main_format;
-        target.output_attachment = attachment_it->second;
-        target.texture_view = target.main_textures.a.texture.default_view;
-        target.format       = main_format;
+        target.output_attachment    = attachment_it->second;
+        target.texture_view         = target.main_textures.a.texture.default_view;
+        target.format               = main_format;
         cmd.entity(entity).insert(std::move(target));
     }
 }
@@ -239,13 +239,14 @@ void view::cleanup_view_targets_for_resize(Commands cmd,
     // camera's ViewTarget so prepare_view_target recreates the main textures
     // at the new size.
     for (auto&& [entity, camera] : cameras.iter()) {
-        if (camera.target) if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target)) {
-            if (auto it = windows->windows.find(win_ref->entity()); it != windows->windows.end()) {
-                if (it->second.size_changed || it->second.present_mode_changed) {
-                    cmd.entity(entity).template remove<view::ViewTarget>();
+        if (camera.target)
+            if (auto* win_ref = std::get_if<::epix::window::NormalizedWindowRef>(&*camera.target)) {
+                if (auto it = windows->windows.find(win_ref->entity()); it != windows->windows.end()) {
+                    if (it->second.size_changed || it->second.present_mode_changed) {
+                        cmd.entity(entity).template remove<view::ViewTarget>();
+                    }
                 }
             }
-        }
     }
 }
 
@@ -344,14 +345,14 @@ void create_uniform_for_view(Commands cmd,
         if (opt_temporal_jitter) {
             opt_temporal_jitter->get().jitter_projection(clip_from_view, glm::vec2(view.viewport.z, view.viewport.w));
         }
-        const glm::mat4 view_from_clip  = glm::inverse(clip_from_view);
+        const glm::mat4 view_from_clip         = glm::inverse(clip_from_view);
         const glm::mat4 world_from_view_matrix = view.world_from_view.matrix;
         const glm::mat4 view_from_world        = glm::inverse(world_from_view_matrix);
-        const glm::mat4 clip_from_world = opt_temporal_jitter
-                                              ? clip_from_view * view_from_world
-                                              : view.clip_from_world.value_or(clip_from_view * view_from_world);
-        const glm::vec4 viewport_vec    = glm::vec4(view.viewport);
-        glm::vec4 main_pass_viewport    = viewport_vec;
+        const glm::mat4 clip_from_world        = opt_temporal_jitter
+                                                     ? clip_from_view * view_from_world
+                                                     : view.clip_from_world.value_or(clip_from_view * view_from_world);
+        const glm::vec4 viewport_vec           = glm::vec4(view.viewport);
+        glm::vec4 main_pass_viewport           = viewport_vec;
         if (opt_resolution_override) {
             main_pass_viewport.z = static_cast<float>(opt_resolution_override->get().size.x);
             main_pass_viewport.w = static_cast<float>(opt_resolution_override->get().size.y);
@@ -493,24 +494,17 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
     // Bevy render::camera::CameraPlugin owns render-facing requirements.
     // Keep them distinct from epix::camera::CameraPlugin, which owns only
     // camera-module projection and visibility setup.
-    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
-        return view::Msaa::Sample4;
-    });
-    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
-        return sync_world::SyncToRenderWorld{};
-    });
-    app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] {
-        return view::ColorGrading{};
-    });
-    app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] {
-        return ::epix::camera::Exposure{};
-    });
+    app.world_mut().register_required_components_with<::epix::camera::Camera>([] { return view::Msaa::Sample4; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera>(
+        [] { return sync_world::SyncToRenderWorld{}; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] { return view::ColorGrading{}; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera3d>(
+        [] { return ::epix::camera::Exposure{}; });
 
     app.sub_app_mut(Render).then([](App& render_app) {
         render_app.world_mut().init_resource<SortedCameras>();
         render_app.add_systems(ExtractSchedule, into(extract_cameras).set_name("extract cameras"));
-        render_app.add_systems(
-            Render, into(sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
+        render_app.add_systems(Render, into(sort_cameras).in_set(RenderSystems::ManageViews).set_name("sort cameras"));
         if (auto render_graph = render_app.get_resource_mut<graph::RenderGraph>()) {
             render_graph->get().add_node(CameraDriverNodeLabel, CameraDriverNode{});
         }
@@ -519,10 +513,9 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
     // Bevy render::camera::CameraPlugin extracts ClearColor and owns the
     // main-world camera target update path, including manual texture views.
     app.add_plugins(ExtractResourcePlugin<::epix::camera::ClearColor>{});
-    app.add_systems(app::PostStartup,
-                    into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("startup update manual texture view cameras"));
+    app.add_systems(app::PostStartup, into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                                          .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                                          .set_name("startup update manual texture view cameras"));
     app.add_systems(app::PostStartup,
                     into(view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
                         .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
@@ -531,10 +524,9 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
                     into(view::update_manual_texture_view_cameras<::epix::camera::PerspectiveProjection>)
                         .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
                         .set_name("startup update manual texture view perspective cameras"));
-    app.add_systems(app::PostUpdate,
-                    into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
-                        .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
-                        .set_name("update manual texture view cameras"));
+    app.add_systems(app::PostUpdate, into(view::update_manual_texture_view_cameras<::epix::camera::Projection>)
+                                         .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
+                                         .set_name("update manual texture view cameras"));
     app.add_systems(app::PostUpdate,
                     into(view::update_manual_texture_view_cameras<::epix::camera::OrthographicProjection>)
                         .after(::epix::camera::CameraUpdateSystems::CameraUpdateSystem)
@@ -577,7 +569,7 @@ void camera::extract_cameras(
                  opt_temporal_jitter, opt_hdr, opt_color_grading, opt_exposure, opt_resolution_override, msaa,
                  main_texture_usages, opt_projection, opt_no_indirect_drawing] : cameras.iter()) {
         if (!camera.is_active) continue;
-        const auto target_size = camera.physical_target_size();
+        const auto target_size   = camera.physical_target_size();
         const auto viewport_size = camera.physical_viewport_size();
         const auto viewport_rect = camera.physical_viewport_rect();
         if (!target_size || !viewport_size || !viewport_rect || target_size->x == 0 || target_size->y == 0) continue;
@@ -592,38 +584,40 @@ void camera::extract_cameras(
             auto& render_entities = render_visible_entities.entities[visibility_class];
             render_entities.reserve(main_entities.size());
             for (const Entity main_entity : main_entities) {
-                const Entity render_entity = mapper.get(main_entity)
-                                                 .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
-                                                     return re.get().entity;
-                                                 })
-                                                 .value_or(Entity::PLACEHOLDER);
+                const Entity render_entity =
+                    mapper.get(main_entity)
+                        .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
+                            return re.get().entity;
+                        })
+                        .value_or(Entity::PLACEHOLDER);
                 render_entities.emplace_back(render_entity, sync_world::MainEntity{main_entity});
             }
         }
-        auto commands  = cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{});
+        auto commands = cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{});
         // single call to insert to reduce overhead
         commands.insert(
             ExtractedCamera{
-                .target = *normalized_target,
+                .target                 = *normalized_target,
                 .physical_viewport_size = *viewport_size,
                 .physical_target_size   = *target_size,
-                .viewport      = camera.viewport,
-                .render_graph  = static_cast<const graph::GraphLabel&>(graph),
-                .order         = camera.order,
-                .clear_color   = camera.clear_color,
-                .hdr            = hdr,
+                .viewport               = camera.viewport,
+                .render_graph           = static_cast<const graph::GraphLabel&>(graph),
+                .order                  = camera.order,
+                .clear_color            = camera.clear_color,
+                .hdr                    = hdr,
                 .exposure       = opt_exposure ? opt_exposure->get().exposure() : ::epix::camera::Exposure{}.exposure(),
                 .output_mode    = camera.output_mode,
                 .msaa_writeback = camera.msaa_writeback,
             },
             view::ExtractedView{
-                .retained_view_entity = view::RetainedViewEntity::create(sync_world::MainEntity{entity}, std::nullopt, 0),
-                .clip_from_view       = camera.computed.clip_from_view,
-                .world_from_view      = gtransform,
-                .hdr                  = hdr,
-                .viewport       = glm::uvec4(viewport_origin.x, viewport_origin.y, viewport_size->x, viewport_size->y),
-                .invert_culling = camera.invert_culling,
-                .color_grading  = opt_color_grading ? opt_color_grading->get() : view::ColorGrading{},
+                .retained_view_entity =
+                    view::RetainedViewEntity::create(sync_world::MainEntity{entity}, std::nullopt, 0),
+                .clip_from_view  = camera.computed.clip_from_view,
+                .world_from_view = gtransform,
+                .hdr             = hdr,
+                .viewport        = glm::uvec4(viewport_origin.x, viewport_origin.y, viewport_size->x, viewport_size->y),
+                .invert_culling  = camera.invert_culling,
+                .color_grading   = opt_color_grading ? opt_color_grading->get() : view::ColorGrading{},
             },
             std::move(render_visible_entities),
             // Bevy extracts render::view::Msaa via ExtractComponentPlugin.
@@ -652,10 +646,9 @@ void camera::extract_cameras(
     }
 }
 
-std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode::run(
-    graph::GraphContext& graph,
-    graph::RenderContext& render_ctx,
-    const World& world) {
+std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode::run(graph::GraphContext& graph,
+                                                                                     graph::RenderContext& render_ctx,
+                                                                                     const World& world) {
     // Iterate cameras in sorted order (Bevy CameraDriverNode uses SortedCameras).
     auto sorted = world.get_resource<SortedCameras>();
     if (!sorted) return {};
@@ -687,13 +680,13 @@ void view::prepare_view_attachments(Res<window::ExtractedWindows> extracted_wind
     // leaving a later extension (such as ScreenshotPlugin) free to override it.
     for (const auto& [extracted_camera] : cameras.iter()) {
         if (!extracted_camera.target) continue;
-        const auto& target = *extracted_camera.target;
+        const auto& target   = *extracted_camera.target;
         const auto target_id = target.identity();
         if (view_target_attachments->attachments.contains(target_id)) continue;
-        auto texture_view = camera::NormalizedRenderTargetExt::get_texture_view(
-            target, *extracted_windows, *manual_texture_views);
-        auto texture_format = camera::NormalizedRenderTargetExt::get_texture_view_format(
-            target, *extracted_windows, *manual_texture_views);
+        auto texture_view =
+            camera::NormalizedRenderTargetExt::get_texture_view(target, *extracted_windows, *manual_texture_views);
+        auto texture_format = camera::NormalizedRenderTargetExt::get_texture_view_format(target, *extracted_windows,
+                                                                                         *manual_texture_views);
         if (!texture_view || !*texture_view || !texture_format) continue;
         view_target_attachments->attachments.emplace(
             target_id, view::OutputColorAttachment::create(std::move(*texture_view), *texture_format));

@@ -105,8 +105,10 @@ EPIX_EXPORT struct OpaqueSortKey {
 };
 
 /** @brief The extra index associated with a phase item besides its instance
- * range (Bevy `PhaseItemExtraIndex`). A dynamic offset is one value, while an
+ * range (Bevy `PhaseItemExtraIndex`). A
+ * dynamic offset is one value, while an
  * indirect draw carries both the command range and its optional multi-draw
+ *
  * batch-set index. */
 EPIX_EXPORT struct PhaseItemExtraIndex {
     enum class Type : std::uint8_t {
@@ -118,16 +120,18 @@ EPIX_EXPORT struct PhaseItemExtraIndex {
     /** Dynamic uniform-buffer offset when `type == DynamicOffset`. */
     std::uint32_t value = 0;
     /** Half-open indirect-command range when `type == IndirectParametersIndex`.
-     * It is intentionally a range: GPU culling can reduce it to fewer actual
+     * It is intentionally a range: GPU
+     * culling can reduce it to fewer actual
      * commands when multi-draw-indirect-count is available. */
     std::pair<std::uint32_t, std::uint32_t> indirect_range{0, 0};
     /** Optional multi-draw batch-set index for an indirect command range. */
     std::optional<std::uint32_t> batch_set_index;
 
     constexpr PhaseItemExtraIndex() noexcept = default;
-    constexpr PhaseItemExtraIndex(Type type, std::uint32_t value,
+    constexpr PhaseItemExtraIndex(Type type,
+                                  std::uint32_t value,
                                   std::pair<std::uint32_t, std::uint32_t> indirect_range = {0, 0},
-                                  std::optional<std::uint32_t> batch_set_index = std::nullopt) noexcept
+                                  std::optional<std::uint32_t> batch_set_index           = std::nullopt) noexcept
         : type(type), value(value), indirect_range(indirect_range), batch_set_index(batch_set_index) {}
     static const PhaseItemExtraIndex None;
     static constexpr PhaseItemExtraIndex dynamic_offset(std::uint32_t offset) noexcept {
@@ -173,7 +177,8 @@ concept PhaseItem = requires(const T item) {
 };
 
 /** @brief Extends a phase item with Bevy's mutable extra-index contract,
- * used by automatic CPU batching and GPU preprocessing. */
+ * used by automatic CPU batching and GPU
+ * preprocessing. */
 EPIX_EXPORT template <typename T>
 concept MutablePhaseItemExtraIndex = PhaseItem<T> && requires(T item, PhaseItemExtraIndex extra_index) {
     { item.set_extra_index(extra_index) } -> std::same_as<void>;
@@ -691,7 +696,8 @@ void sort_phase_items(epix::ecs::Query<epix::ecs::Item<RenderPhase<P>&>> phases)
 
 /** @brief A type usable as a binned phase item batch-set key (Bevy
  * PhaseItemBatchSetKey trait, render_phase/mod.rs:1662). Bevy requires a
- * stable ordering/hash and an `indexed()` discriminator, which selects the
+ * stable ordering/hash and an `indexed()`
+ * discriminator, which selects the
  * indexed or non-indexed indirect-command layout. */
 EPIX_EXPORT template <typename T>
 concept PhaseItemBatchSetKey = std::equality_comparable<T> && std::totally_ordered<T> && requires(const T key) {
@@ -713,7 +719,8 @@ concept BinnedPhaseItem = PhaseItem<P> && requires(const P item) {
 };
 
 /** @brief Concept for a phase item that participates in the sorted phase path
- * (Bevy `SortedPhaseItem`). `indexed()` selects the correct indirect-command
+ * (Bevy `SortedPhaseItem`). `indexed()`
+ * selects the correct indirect-command
  * layout when GPU preprocessing is active. */
 EPIX_EXPORT template <typename P>
 concept SortedPhaseItem = PhaseItem<P> && requires(const P item) {
@@ -912,9 +919,7 @@ EPIX_EXPORT class TrackedRenderPass {
 
     /** @brief Issue multiple non-indexed indirect draws (Bevy
      * `TrackedRenderPass::multi_draw_indirect`). */
-    void multi_draw_indirect(const wgpu::Buffer& indirect_buffer,
-                             std::uint64_t indirect_offset,
-                             std::uint32_t count) {
+    void multi_draw_indirect(const wgpu::Buffer& indirect_buffer, std::uint64_t indirect_offset, std::uint32_t count) {
         m_pass.multiDrawIndirect(indirect_buffer, indirect_offset, count);
     }
 
@@ -927,7 +932,8 @@ EPIX_EXPORT class TrackedRenderPass {
     }
 
     /** @brief Issue non-indexed indirect draws whose count is held in a GPU
-     * buffer (Bevy `multi_draw_indirect_count`). */
+     * buffer (Bevy
+     * `multi_draw_indirect_count`). */
     void multi_draw_indirect_count(const wgpu::Buffer& indirect_buffer,
                                    std::uint64_t indirect_offset,
                                    const wgpu::Buffer& count_buffer,
@@ -944,7 +950,7 @@ EPIX_EXPORT class TrackedRenderPass {
                                            std::uint64_t count_buffer_offset,
                                            std::uint32_t max_count) {
         m_pass.multiDrawIndexedIndirectCount(indirect_buffer, indirect_offset, count_buffer, count_buffer_offset,
-                                              max_count);
+                                             max_count);
     }
 
     /** @brief Access the underlying encoder (e.g. to end the pass).

@@ -27,8 +27,10 @@ wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constrain
     upper_bound(limits.maxBindGroups, constraints.maxBindGroups);
     upper_bound(limits.maxBindGroupsPlusVertexBuffers, constraints.maxBindGroupsPlusVertexBuffers);
     upper_bound(limits.maxBindingsPerBindGroup, constraints.maxBindingsPerBindGroup);
-    upper_bound(limits.maxDynamicUniformBuffersPerPipelineLayout, constraints.maxDynamicUniformBuffersPerPipelineLayout);
-    upper_bound(limits.maxDynamicStorageBuffersPerPipelineLayout, constraints.maxDynamicStorageBuffersPerPipelineLayout);
+    upper_bound(limits.maxDynamicUniformBuffersPerPipelineLayout,
+                constraints.maxDynamicUniformBuffersPerPipelineLayout);
+    upper_bound(limits.maxDynamicStorageBuffersPerPipelineLayout,
+                constraints.maxDynamicStorageBuffersPerPipelineLayout);
     upper_bound(limits.maxSampledTexturesPerShaderStage, constraints.maxSampledTexturesPerShaderStage);
     upper_bound(limits.maxSamplersPerShaderStage, constraints.maxSamplersPerShaderStage);
     upper_bound(limits.maxStorageBuffersPerShaderStage, constraints.maxStorageBuffersPerShaderStage);
@@ -54,7 +56,7 @@ wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constrain
     return limits;
 }
 
-} // namespace
+}  // namespace
 
 RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) {
     wgpu::AdapterInfo native;
@@ -75,9 +77,8 @@ std::optional<WgpuSettingsPriority> epix::render::settings_priority_from_env() n
     const char* setting = std::getenv("WGPU_SETTINGS_PRIO");
     if (!setting) return std::nullopt;
     std::string value(setting);
-    std::ranges::transform(value, value.begin(), [](unsigned char character) {
-        return static_cast<char>(std::tolower(character));
-    });
+    std::ranges::transform(value, value.begin(),
+                           [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
     if (value == "compatibility") return WgpuSettingsPriority::Compatibility;
     if (value == "functionality") return WgpuSettingsPriority::Functionality;
     if (value == "webgl2") return WgpuSettingsPriority::WebGL2;
@@ -94,12 +95,18 @@ Backends Backends::from_comma_list(std::string_view value) noexcept {
         std::string normalized(name);
         std::ranges::transform(normalized, normalized.begin(),
                                [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-        if (normalized == "noop") result = result | Noop;
-        else if (normalized == "vulkan" || normalized == "vk") result = result | Vulkan;
-        else if (normalized == "metal" || normalized == "mtl") result = result | Metal;
-        else if (normalized == "dx12" || normalized == "d3d12") result = result | Dx12;
-        else if (normalized == "opengl" || normalized == "gles" || normalized == "gl") result = result | Gl;
-        else if (normalized == "webgpu") result = result | BrowserWebGpu;
+        if (normalized == "noop")
+            result = result | Noop;
+        else if (normalized == "vulkan" || normalized == "vk")
+            result = result | Vulkan;
+        else if (normalized == "metal" || normalized == "mtl")
+            result = result | Metal;
+        else if (normalized == "dx12" || normalized == "d3d12")
+            result = result | Dx12;
+        else if (normalized == "opengl" || normalized == "gles" || normalized == "gl")
+            result = result | Gl;
+        else if (normalized == "webgpu")
+            result = result | BrowserWebGpu;
         if (comma == std::string_view::npos) break;
         value.remove_prefix(comma + 1);
     }
@@ -115,14 +122,14 @@ std::optional<Backends> Backends::from_env() noexcept {
 std::optional<std::uint32_t> epix::render::get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept {
 #if defined(__ANDROID__)
     constexpr std::string_view prefix = "Adreno (TM) ";
-    const std::string_view name = adapter_info.device;
+    const std::string_view name       = adapter_info.device;
     if (!name.starts_with(prefix)) return std::nullopt;
     std::uint32_t value = 0;
-    bool found_digit = false;
+    bool found_digit    = false;
     for (const char character : name.substr(prefix.size())) {
         if (character < '0' || character > '9') break;
         found_digit = true;
-        value = value * 10u + static_cast<std::uint32_t>(character - '0');
+        value       = value * 10u + static_cast<std::uint32_t>(character - '0');
     }
     return found_digit ? std::optional<std::uint32_t>{value} : std::nullopt;
 #else
@@ -135,12 +142,13 @@ std::optional<std::uint32_t> epix::render::get_mali_driver_version(const RenderA
 #if defined(__ANDROID__)
     if (!adapter_info.device.contains("Mali")) return std::nullopt;
     constexpr std::string_view prefix = "v1.r";
-    const auto start = adapter_info.description.find(prefix);
+    const auto start                  = adapter_info.description.find(prefix);
     if (start == std::string::npos) return std::nullopt;
     const auto end = adapter_info.description.find('p', start + prefix.size());
     if (end == std::string::npos) return std::nullopt;
     std::uint32_t value = 0;
-    const auto digits = std::string_view(adapter_info.description).substr(start + prefix.size(), end - start - prefix.size());
+    const auto digits =
+        std::string_view(adapter_info.description).substr(start + prefix.size(), end - start - prefix.size());
     if (digits.empty()) return std::nullopt;
     for (const char character : digits) {
         if (character < '0' || character > '9') return std::nullopt;
@@ -160,15 +168,16 @@ void epix::render::render_system(World& world) {
     graph.update(world);
     // Bevy render_system (renderer/mod.rs:82-89): after the graph runs, record
     // the readback copy commands into the same encoder before submitting.
-    const auto result = graph::RenderGraphRunner::run(graph, device, queue, world, [&world](wgpu::CommandEncoder& encoder) {
-        // Optional render extensions append their work after graph output is
-        // complete.  Readback copies deliberately run last, so extensions can
-        // enqueue shared GpuReadbacks for this same submission.
-        if (auto finalizers = world.get_resource<graph::RenderGraphFinalizers>()) {
-            for (auto& callback : finalizers->get().callbacks) callback(world, encoder);
-        }
-        submit_readback_commands(world, encoder);
-    });
+    const auto result =
+        graph::RenderGraphRunner::run(graph, device, queue, world, [&world](wgpu::CommandEncoder& encoder) {
+            // Optional render extensions append their work after graph output is
+            // complete.  Readback copies deliberately run last, so extensions can
+            // enqueue shared GpuReadbacks for this same submission.
+            if (auto finalizers = world.get_resource<graph::RenderGraphFinalizers>()) {
+                for (auto& callback : finalizers->get().callbacks) callback(world, encoder);
+            }
+            submit_readback_commands(world, encoder);
+        });
     if (!result) {
         // Match Bevy's render_system: the encoder is not submitted and this
         // typed failure reaches the application's terminate handler rather
@@ -208,7 +217,7 @@ void RenderPlugin::attach(App& app) {
                 }
                 sync_world::entity_sync_system(main_world, render_app.world_mut());
                 render_app.run_schedule(ExtractSchedule);
-        });
+            });
         render_app.schedule_order().insert_begin(render::Render);
         render_app.world_mut().emplace_resource<graph::RenderGraph>();
     });
@@ -230,145 +239,148 @@ void RenderPlugin::attach(App& app) {
         // SPIR-V passthrough requirement.
         instance = wgpu::createInstance();
         spdlog::debug("[render] WebGPU instance created.");
-    wgpu::Surface surface = app.world()
-                                .get_resource<AnonymousSurface>()
-                                .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
-                                    return anonymous_surface.create_surface(instance);
-                                })
-                                .value_or(wgpu::Surface{});
-    if (auto print_adapters = std::getenv("EPIX_PRINT_WEBGPU_ADAPTERS"); print_adapters && print_adapters[0] != '0') {
-        // enumerate all adapters
-        std::size_t count = instance.enumerateAdapters(nullptr);
-        std::vector<wgpu::Adapter> adapters(count);
-        if (count != 0) instance.enumerateAdapters(adapters.data());
-        spdlog::info("[render] Available WebGPU adapters:");
-        for (const auto& adapter : adapters) {
+        wgpu::Surface surface = app.world()
+                                    .get_resource<AnonymousSurface>()
+                                    .transform([&](const AnonymousSurface& anonymous_surface) -> wgpu::Surface {
+                                        return anonymous_surface.create_surface(instance);
+                                    })
+                                    .value_or(wgpu::Surface{});
+        if (auto print_adapters = std::getenv("EPIX_PRINT_WEBGPU_ADAPTERS");
+            print_adapters && print_adapters[0] != '0') {
+            // enumerate all adapters
+            std::size_t count = instance.enumerateAdapters(nullptr);
+            std::vector<wgpu::Adapter> adapters(count);
+            if (count != 0) instance.enumerateAdapters(adapters.data());
+            spdlog::info("[render] Available WebGPU adapters:");
+            for (const auto& adapter : adapters) {
+                wgpu::AdapterInfo adapterInfo;
+                adapter.getInfo(&adapterInfo);
+                spdlog::info("  vender={}, architecture={}, device={}, description={}",
+                             std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
+                             std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
+            }
+        }
+        // Adapter selection honors WgpuSettings (Bevy renderer/mod.rs:243-279):
+        // WGPU_ADAPTER_NAME env > settings.adapter_name -> enumerate + substring
+        // match; otherwise requestAdapter with the configured power preference,
+        // backend and fallback flag.
+        std::optional<std::string> desired_adapter_name = settings->adapter_name;
+        if (const char* env_name = std::getenv("WGPU_ADAPTER_NAME"); env_name && env_name[0] != '\0') {
+            desired_adapter_name = std::string(env_name);
+        }
+        const bool force_fallback_adapter = [](bool configured) {
+            const char* value = std::getenv("WGPU_FORCE_FALLBACK_ADAPTER");
+            if (!value) return configured;
+            const std::string_view override_value(value);
+            // Mirrors Bevy: every non-empty value other than `0` and `false`
+            // enables fallback-adapter selection.
+            return !(override_value.empty() || override_value == "0" || override_value == "false");
+        }(settings->force_fallback_adapter);
+        if (desired_adapter_name.has_value()) {
+            std::size_t count = instance.enumerateAdapters(nullptr);
+            std::vector<wgpu::Adapter> adapters(count);
+            if (count != 0) instance.enumerateAdapters(adapters.data());
+            std::string needle = *desired_adapter_name;
+            std::ranges::transform(needle, needle.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            for (auto& candidate : adapters) {
+                wgpu::AdapterInfo info;
+                candidate.getInfo(&info);
+                // TEMPORARY: named-adapter selection must obey the same Vulkan
+                // coercion as the automatic path while Slang needs native SPIR-V
+                // passthrough. Remove this filter with that workaround.
+                if (info.backendType != wgpu::BackendType::eVulkan) continue;
+                std::string device(info.device);
+                std::ranges::transform(device, device.begin(),
+                                       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                if (device.find(needle) != std::string::npos) {
+                    adapter = candidate;
+                    break;
+                }
+            }
+        }
+        // TEMPORARY Slang compatibility requirement: authored Slang is compiled
+        // to SPIR-V and wgpu-native must pass it through to Vulkan. Keep this
+        // renderer-local coercion out of WgpuSettings so its public default stays
+        // Bevy-compatible; remove it when native SPIR-V ingestion is fixed.
+        const auto automatic_backend = wgpu::BackendType::eVulkan;
+        if (!adapter) {
+            adapter = instance.requestAdapter(
+                wgpu::RequestAdapterOptions()
+                    .setCompatibleSurface(surface)
+                    .setPowerPreference(settings->power_preference)
+                    .setBackendType(automatic_backend)
+                    .setForceFallbackAdapter(force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
+        }
+        surface = nullptr;  // release the temporary surface
+        app.world_mut().remove_resource<AnonymousSurface>();
+        if (!adapter) {
+            throw std::runtime_error("Failed to request WebGPU adapter");
+        }
+        // show info about acquired adapter
+        {
             wgpu::AdapterInfo adapterInfo;
             adapter.getInfo(&adapterInfo);
-            spdlog::info("  vender={}, architecture={}, device={}, description={}",
+            spdlog::info("[render] Acquired WebGPU adapter: vender={}, architecture={}, device={}, description={}",
                          std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
                          std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
         }
-    }
-    // Adapter selection honors WgpuSettings (Bevy renderer/mod.rs:243-279):
-    // WGPU_ADAPTER_NAME env > settings.adapter_name -> enumerate + substring
-    // match; otherwise requestAdapter with the configured power preference,
-    // backend and fallback flag.
-    std::optional<std::string> desired_adapter_name = settings->adapter_name;
-    if (const char* env_name = std::getenv("WGPU_ADAPTER_NAME"); env_name && env_name[0] != '\0') {
-        desired_adapter_name = std::string(env_name);
-    }
-    const bool force_fallback_adapter = [] (bool configured) {
-        const char* value = std::getenv("WGPU_FORCE_FALLBACK_ADAPTER");
-        if (!value) return configured;
-        const std::string_view override_value(value);
-        // Mirrors Bevy: every non-empty value other than `0` and `false`
-        // enables fallback-adapter selection.
-        return !(override_value.empty() || override_value == "0" || override_value == "false");
-    }(settings->force_fallback_adapter);
-    if (desired_adapter_name.has_value()) {
-        std::size_t count = instance.enumerateAdapters(nullptr);
-        std::vector<wgpu::Adapter> adapters(count);
-        if (count != 0) instance.enumerateAdapters(adapters.data());
-        std::string needle = *desired_adapter_name;
-        std::ranges::transform(needle, needle.begin(),
-                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        for (auto& candidate : adapters) {
-            wgpu::AdapterInfo info;
-            candidate.getInfo(&info);
-            // TEMPORARY: named-adapter selection must obey the same Vulkan
-            // coercion as the automatic path while Slang needs native SPIR-V
-            // passthrough. Remove this filter with that workaround.
-            if (info.backendType != wgpu::BackendType::eVulkan) continue;
-            std::string device(info.device);
-            std::ranges::transform(device, device.begin(),
-                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-            if (device.find(needle) != std::string::npos) {
-                adapter = candidate;
-                break;
-            }
-        }
-    }
-    // TEMPORARY Slang compatibility requirement: authored Slang is compiled
-    // to SPIR-V and wgpu-native must pass it through to Vulkan. Keep this
-    // renderer-local coercion out of WgpuSettings so its public default stays
-    // Bevy-compatible; remove it when native SPIR-V ingestion is fixed.
-    const auto automatic_backend = wgpu::BackendType::eVulkan;
-    if (!adapter) {
-        adapter = instance.requestAdapter(
-            wgpu::RequestAdapterOptions()
-                .setCompatibleSurface(surface)
-                .setPowerPreference(settings->power_preference)
-                .setBackendType(automatic_backend)
-                .setForceFallbackAdapter(force_fallback_adapter ? wgpu::Bool(true) : wgpu::Bool(false)));
-    }
-    surface = nullptr;  // release the temporary surface
-    app.world_mut().remove_resource<AnonymousSurface>();
-    if (!adapter) {
-        throw std::runtime_error("Failed to request WebGPU adapter");
-    }
-    // show info about acquired adapter
-    {
-        wgpu::AdapterInfo adapterInfo;
-        adapter.getInfo(&adapterInfo);
-        spdlog::info("[render] Acquired WebGPU adapter: vender={}, architecture={}, device={}, description={}",
-                     std::string_view(adapterInfo.vendor), std::string_view(adapterInfo.architecture),
-                     std::string_view(adapterInfo.device), std::string_view(adapterInfo.description));
-    }
-    adapter_info = RenderAdapterInfo::from_adapter(adapter);
+        adapter_info = RenderAdapterInfo::from_adapter(adapter);
 
-    // Bevy's Functionality priority starts from every feature/limit supported
-    // by the selected adapter. Compatibility starts from the WebGPU defaults.
-    std::vector<wgpu::FeatureName> required_features;
-    wgpu::Limits required_limits = settings->limits;
-    if (settings->priority == WgpuSettingsPriority::Functionality) {
-        wgpu::SupportedFeatures supported_features;
-        adapter.getFeatures(&supported_features);
-        required_features.assign(supported_features.features.begin(), supported_features.features.end());
-        if (adapter_info.adapter_type == wgpu::AdapterType::eDiscreteGPU) {
-            std::erase(required_features, wgpu::FeatureName(wgpu::NativeFeature::eMappablePrimaryBuffers));
+        // Bevy's Functionality priority starts from every feature/limit supported
+        // by the selected adapter. Compatibility starts from the WebGPU defaults.
+        std::vector<wgpu::FeatureName> required_features;
+        wgpu::Limits required_limits = settings->limits;
+        if (settings->priority == WgpuSettingsPriority::Functionality) {
+            wgpu::SupportedFeatures supported_features;
+            adapter.getFeatures(&supported_features);
+            required_features.assign(supported_features.features.begin(), supported_features.features.end());
+            if (adapter_info.adapter_type == wgpu::AdapterType::eDiscreteGPU) {
+                std::erase(required_features, wgpu::FeatureName(wgpu::NativeFeature::eMappablePrimaryBuffers));
+            }
+            wgpu::Limits supported_limits;
+            if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
         }
-        wgpu::Limits supported_limits;
-        if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
-    }
-    if (settings->disabled_features.has_value()) {
-        for (const auto feature : *settings->disabled_features) std::erase(required_features, feature);
-    }
-    // Apply configured features after disabled_features, as Bevy does. Its
-    // default is TextureAdapterSpecificFormatFeatures, which intentionally
-    // remains enabled even when that feature appears in disabled_features.
-    required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
-    // TEMPORARY Slang compatibility requirement; remove alongside the Vulkan
-    // restriction once wgpu-native can reliably ingest Slang-produced SPIR-V
-    // through Naga.
-    required_features.push_back(wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough));
-    std::ranges::sort(required_features, {}, [](const wgpu::FeatureName feature) { return static_cast<std::uint32_t>(feature); });
-    required_features.erase(std::unique(required_features.begin(), required_features.end()), required_features.end());
-    if (settings->constrained_limits.has_value()) {
-        required_limits = constrain_limits(required_limits, *settings->constrained_limits);
-    }
-    automatic_device_descriptor =
-        wgpu::DeviceDescriptor()
-            .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
-            .setRequiredFeatures(required_features)
-            .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
-                [](wgpu::Device const& device, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-                    std::stacktrace stack = std::stacktrace::current();
-                    spdlog::error("WebGPU Device lost: {}, with stack:\n{}", std::string_view(message), stack);
-                }))
-            .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
-                [](wgpu::Device const& device, wgpu::ErrorType type, wgpu::StringView message) {
-                    std::stacktrace stack = std::stacktrace::current();
-                    spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
-                }));
-    if (settings->device_label.has_value()) {
-        automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));
-    }
-    automatic_device_descriptor->setRequiredLimits(required_limits);
-    device = adapter.requestDevice(*automatic_device_descriptor);
-    spdlog::debug("[render] WebGPU device created.");
-    device.getLimits(&limits);
-    queue = device.getQueue();
+        if (settings->disabled_features.has_value()) {
+            for (const auto feature : *settings->disabled_features) std::erase(required_features, feature);
+        }
+        // Apply configured features after disabled_features, as Bevy does. Its
+        // default is TextureAdapterSpecificFormatFeatures, which intentionally
+        // remains enabled even when that feature appears in disabled_features.
+        required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
+        // TEMPORARY Slang compatibility requirement; remove alongside the Vulkan
+        // restriction once wgpu-native can reliably ingest Slang-produced SPIR-V
+        // through Naga.
+        required_features.push_back(wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough));
+        std::ranges::sort(required_features, {},
+                          [](const wgpu::FeatureName feature) { return static_cast<std::uint32_t>(feature); });
+        required_features.erase(std::unique(required_features.begin(), required_features.end()),
+                                required_features.end());
+        if (settings->constrained_limits.has_value()) {
+            required_limits = constrain_limits(required_limits, *settings->constrained_limits);
+        }
+        automatic_device_descriptor =
+            wgpu::DeviceDescriptor()
+                .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
+                .setRequiredFeatures(required_features)
+                .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
+                    [](wgpu::Device const& device, wgpu::DeviceLostReason reason, wgpu::StringView message) {
+                        std::stacktrace stack = std::stacktrace::current();
+                        spdlog::error("WebGPU Device lost: {}, with stack:\n{}", std::string_view(message), stack);
+                    }))
+                .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
+                    [](wgpu::Device const& device, wgpu::ErrorType type, wgpu::StringView message) {
+                        std::stacktrace stack = std::stacktrace::current();
+                        spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
+                    }));
+        if (settings->device_label.has_value()) {
+            automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));
+        }
+        automatic_device_descriptor->setRequiredLimits(required_limits);
+        device = adapter.requestDevice(*automatic_device_descriptor);
+        spdlog::debug("[render] WebGPU device created.");
+        device.getLimits(&limits);
+        queue = device.getQueue();
     } else {
         const auto& resources = *render_creation.manual_resources();
         if (!resources.instance || !resources.adapter || !resources.device || !resources.queue) {
@@ -379,7 +391,8 @@ void RenderPlugin::attach(App& app) {
         device   = resources.device.clone();
         queue    = resources.queue.clone();
         device.getLimits(&limits);
-        adapter_info = resources.adapter_info.device.empty() ? RenderAdapterInfo::from_adapter(adapter) : resources.adapter_info;
+        adapter_info =
+            resources.adapter_info.device.empty() ? RenderAdapterInfo::from_adapter(adapter) : resources.adapter_info;
         app.world_mut().remove_resource<AnonymousSurface>();
         spdlog::debug("[render] Using manually supplied WebGPU resources.");
     }

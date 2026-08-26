@@ -10,8 +10,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
-#include <epix/ecs.hpp>
 #include <epix/camera.hpp>
+#include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <functional>
@@ -335,7 +335,8 @@ EPIX_EXPORT struct Mesh {
     };
 
     /** @brief Compute local-space bounds from the position attribute (Bevy
-     * `MeshAabb::compute_aabb`). Returns empty when no float3 position data
+     * `MeshAabb::compute_aabb`). Returns
+     * empty when no float3 position data
      * is available. */
     std::optional<camera::Aabb> compute_aabb() const;
 

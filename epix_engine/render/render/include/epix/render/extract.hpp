@@ -145,10 +145,9 @@ struct ExtractComponentPlugin {
         auto render_app = app.get_sub_app_mut(Render);
         if (!render_app) return;
         if (only_extract_visible) {
-            render_app->get().add_systems(
-                ExtractSchedule,
-                into(extract_visible_components_system<C>)
-                    .set_name(std::format("extract visible components '{}'", meta::type_id<C>().short_name())));
+            render_app->get().add_systems(ExtractSchedule, into(extract_visible_components_system<C>)
+                                                               .set_name(std::format("extract visible components '{}'",
+                                                                                     meta::type_id<C>().short_name())));
         } else {
             render_app->get().add_systems(
                 ExtractSchedule, into(extract_component_system<C>)
@@ -204,9 +203,9 @@ void extract_all_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instanc
 template <ExtractInstanceImpl EI>
 void extract_visible_instances(
     ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
-    app::Extract<
-        ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
-                   typename ExtractInstance<EI>::QueryFilter>> query);
+    app::Extract<ecs::Query<
+        ecs::Item<ecs::Entity, const ::epix::camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
+        typename ExtractInstance<EI>::QueryFilter>> query);
 
 /** @brief Plugin that extracts instances of `EI` into `ExtractedInstances<EI>`
  * each frame (Bevy `ExtractInstancesPlugin<EI>`). */
@@ -247,9 +246,9 @@ void extract_all_instances(ecs::ResMut<ExtractedInstances<EI>> extracted_instanc
 template <ExtractInstanceImpl EI>
 void extract_visible_instances(
     ecs::ResMut<ExtractedInstances<EI>> extracted_instances,
-    app::Extract<
-        ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
-                   typename ExtractInstance<EI>::QueryFilter>> query) {
+    app::Extract<ecs::Query<
+        ecs::Item<ecs::Entity, const ::epix::camera::ViewVisibility&, typename ExtractInstance<EI>::QueryData>,
+        typename ExtractInstance<EI>::QueryFilter>> query) {
     // Bevy extract_visible_instances (extract_instances.rs:122-131): only
     // entities visible to at least one view are extracted.
     extracted_instances->clear();

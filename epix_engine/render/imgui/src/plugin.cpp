@@ -117,7 +117,8 @@ const rwin::ExtractedWindow* primary_window_with_frame(const rwin::ExtractedWind
 // graph output flips this marker through ViewTarget::out_texture_color_attachment;
 // keep the same Bevy present gate accurate for an ImGui-only frame.
 void mark_primary_output_written(epix::ecs::World& world, const epix::ecs::Entity primary_window) {
-    auto views = world.try_query<Item<const epix::render::camera::ExtractedCamera&, const epix::render::view::ViewTarget&>>();
+    auto views =
+        world.try_query<Item<const epix::render::camera::ExtractedCamera&, const epix::render::view::ViewTarget&>>();
     if (!views) return;
     for (const auto& [camera, target] : views->iter(world)) {
         if (!camera.target) continue;
@@ -376,9 +377,8 @@ void imgui::ImGuiPlugin::attach(App& app) {
     // WindowRenderPlugin presents it. Platform viewport windows retain their
     // independent surface/submit/present path below.
     app.sub_app_mut(render::Render).then([](App& render_app) {
-        render_app.world_mut()
-            .resource_mut<render::graph::RenderGraphFinalizers>()
-            .callbacks.emplace_back(render_primary_viewport);
+        render_app.world_mut().resource_mut<render::graph::RenderGraphFinalizers>().callbacks.emplace_back(
+            render_primary_viewport);
         render_app.add_systems(render::Render, into(imgui_render)
                                                    .set_name("imgui platform viewport render")
                                                    .after(render::render_system)

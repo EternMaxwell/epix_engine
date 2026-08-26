@@ -86,7 +86,7 @@ inline GpuImage create_fallback_image(epix::ecs::World& world,
                                   wgpu::Extent3D{1, 1, 1});
     }
     GpuImage image;
-    image.texture         = texture;
+    image.texture = texture;
     // wgpu-native requires the view's explicit ranges to be non-zero.  This
     // is Bevy's default view range: its one mip level and every created layer.
     wgpu::TextureViewDescriptor view_descriptor{};
@@ -96,11 +96,11 @@ inline GpuImage create_fallback_image(epix::ecs::World& world,
     view_descriptor.baseArrayLayer  = 0;
     view_descriptor.arrayLayerCount = layers;
     image.texture_view              = texture.createView(view_descriptor);
-    image.texture_format  = wgpu::TextureFormat::eRGBA8Unorm;
-    image.sampler         = sampler->get().sampler;
-    image.size            = wgpu::Extent3D{1, 1, layers};
-    image.mip_level_count = 1;
-    image.had_data        = true;
+    image.texture_format            = wgpu::TextureFormat::eRGBA8Unorm;
+    image.sampler                   = sampler->get().sampler;
+    image.size                      = wgpu::Extent3D{1, 1, layers};
+    image.mip_level_count           = 1;
+    image.had_data                  = true;
     return image;
 }
 }  // namespace detail

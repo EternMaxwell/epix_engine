@@ -11,8 +11,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <epix/ecs.hpp>
 #include <epix/camera.hpp>
+#include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
@@ -46,8 +46,8 @@ struct ClearPassNode : render::graph::Node {
     }
 
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
-                                                          render::graph::RenderContext& render_ctx,
-                                                          const World& world) override {
+                                                         render::graph::RenderContext& render_ctx,
+                                                         const World& world) override {
         if (!views) return {};
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
@@ -61,8 +61,8 @@ struct ClearPassNode : render::graph::Node {
             if (const auto* custom = std::get_if<::epix::camera::ClearColorConfig::Custom>(&camera.clear_color)) {
                 return custom->color.to_vec4();
             }
-            return world.get_resource<::epix::camera::ClearColor>()
-                .transform([](const auto& color) { return color.get().to_vec4(); });
+            return world.get_resource<::epix::camera::ClearColor>().transform(
+                [](const auto& color) { return color.get().to_vec4(); });
         }();
         auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture_color_attachment(clear_color)}));
@@ -135,8 +135,8 @@ int main() {
     // A camera wired to our custom render graph (a registered sub-graph;
     // an unregistered label makes the camera driver fail and nothing presents).
     app.add_systems(Startup, into([](Commands cmd) {
-                        cmd.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{}, render::camera::CameraRenderGraph(kClearGraph),
-                                  transform::Transform{});
+                        cmd.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{},
+                                  render::camera::CameraRenderGraph(kClearGraph), transform::Transform{});
                     }));
 
     // Animate the render-world ClearColor; log FPS from the main world.

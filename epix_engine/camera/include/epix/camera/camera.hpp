@@ -66,14 +66,14 @@ EPIX_EXPORT struct Viewport {
     static std::optional<Viewport> from_viewport_and_override(
         const std::optional<Viewport>& viewport, const std::optional<glm::uvec2>& main_pass_resolution_override) {
         if (!main_pass_resolution_override) return viewport;
-        Viewport result = viewport.value_or(Viewport{});
+        Viewport result      = viewport.value_or(Viewport{});
         result.physical_size = *main_pass_resolution_override;
         return result;
     }
 };
 
 EPIX_EXPORT struct ManualTextureViewHandle {
-    std::uint32_t id = 0;
+    std::uint32_t id                                               = 0;
     bool operator==(const ManualTextureViewHandle&) const noexcept = default;
 };
 
@@ -93,8 +93,8 @@ EPIX_EXPORT struct RenderTargetId {
     /// The normalized RenderTarget alternative.  Keeping this separate from
     /// its value prevents a window entity, texture handle, and manual view
     /// with coincident numeric identities from sharing an attachment.
-    std::uint8_t kind                                      = 0;
-    std::uint64_t value                                   = 0;
+    std::uint8_t kind                   = 0;
+    std::uint64_t value                 = 0;
     constexpr RenderTargetId() noexcept = default;
     constexpr RenderTargetId(std::uint64_t target_value) noexcept : value(target_value) {}
     constexpr RenderTargetId(std::uint8_t target_kind, std::uint64_t target_value) noexcept
@@ -142,16 +142,21 @@ EPIX_EXPORT struct NormalizedRenderTarget
 
 /** @brief A render target that is either a GPU texture or a window
  * reference (Bevy `bevy_camera::RenderTarget`). */
-EPIX_EXPORT struct RenderTarget : std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
+EPIX_EXPORT struct RenderTarget
+    : std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
     using std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
     static RenderTarget from_texture(wgpu::Texture texture, float scale_factor = 1.0f) {
         return RenderTarget(ImageRenderTarget{std::move(texture), scale_factor});
     }
-    static RenderTarget from_primary() noexcept { return RenderTarget(window::WindowRef{window::WindowRef::Primary{}}); }
+    static RenderTarget from_primary() noexcept {
+        return RenderTarget(window::WindowRef{window::WindowRef::Primary{}});
+    }
     static RenderTarget from_window(epix::ecs::Entity window_entity) noexcept {
         return RenderTarget(window::WindowRef{window::WindowRef::Entity{window_entity}});
     }
-    static RenderTarget from_manual_texture_view(ManualTextureViewHandle handle) noexcept { return RenderTarget(handle); }
+    static RenderTarget from_manual_texture_view(ManualTextureViewHandle handle) noexcept {
+        return RenderTarget(handle);
+    }
     static RenderTarget none(glm::uvec2 size) noexcept { return RenderTarget(NoColorTarget{size}); }
     /** @brief Returns the image target when this is an image target (Bevy
      * `RenderTarget::as_image`). */
@@ -244,8 +249,8 @@ EPIX_EXPORT struct Camera {
     std::optional<std::pair<glm::uvec2, glm::uvec2>> physical_viewport_rect() const noexcept {
         auto size = physical_viewport_size();
         if (!size) return std::nullopt;
-        const auto min = viewport.transform([](const Viewport& vp) { return vp.physical_position; })
-                             .value_or(glm::uvec2(0, 0));
+        const auto min =
+            viewport.transform([](const Viewport& vp) { return vp.physical_position; }).value_or(glm::uvec2(0, 0));
         return std::pair{min, min + *size};
     }
     /** @brief Logical viewport rectangle as (min, max) (Bevy
@@ -434,13 +439,12 @@ EPIX_EXPORT struct Camera3d {
 EPIX_EXPORT struct Camera2d {
     static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
         registrator.template register_required<Camera>([] { return Camera{}; });
-        registrator.template register_required<Projection>([] {
-            return Projection::orthographic(OrthographicProjection::default_2d());
-        });
+        registrator.template register_required<Projection>(
+            [] { return Projection::orthographic(OrthographicProjection::default_2d()); });
         registrator.template register_required<Frustum>([] {
             const auto projection = OrthographicProjection::default_2d();
             return Frustum::from_clip_from_world_custom_far(projection.get_projection_matrix(), glm::vec3(0.0f),
-                                                             glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
+                                                            glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
         });
     }
 };
@@ -524,27 +528,28 @@ void camera_system(
         float target_scale_factor = 1.0f;
         std::visit(utils::visitor{
                        [&](const window::WindowRef& window_ref) {
-                           std::visit(utils::visitor{
-                                          [&](const window::WindowRef::Primary&) {
-                                              if (auto primary = primary_window_query.single()) {
-                                                  auto&& [win] = *primary;
-                                                  target_size  = glm::uvec2(win.physical_size.first, win.physical_size.second);
-                                                  target_scale_factor = win.scale_factor;
-                                              }
-                                          },
-                                          [&](const window::WindowRef::Entity& window) {
-                                              if (auto opt_win = window_query.get(window.entity)) {
-                                                  auto [win]  = *opt_win;
-                                                  target_size = glm::uvec2(win.physical_size.first, win.physical_size.second);
-                                                  target_scale_factor = win.scale_factor;
-                                              }
-                                          }},
+                           std::visit(utils::visitor{[&](const window::WindowRef::Primary&) {
+                                                         if (auto primary = primary_window_query.single()) {
+                                                             auto&& [win]        = *primary;
+                                                             target_size         = glm::uvec2(win.physical_size.first,
+                                                                                              win.physical_size.second);
+                                                             target_scale_factor = win.scale_factor;
+                                                         }
+                                                     },
+                                                     [&](const window::WindowRef::Entity& window) {
+                                                         if (auto opt_win = window_query.get(window.entity)) {
+                                                             auto [win]          = *opt_win;
+                                                             target_size         = glm::uvec2(win.physical_size.first,
+                                                                                              win.physical_size.second);
+                                                             target_scale_factor = win.scale_factor;
+                                                         }
+                                                     }},
                                       window_ref);
                        },
                        [&](const ImageRenderTarget& image) {
                            // texture target
                            if (image.texture) {
-                               target_size = glm::uvec2(image.texture.getWidth(), image.texture.getHeight());
+                               target_size         = glm::uvec2(image.texture.getWidth(), image.texture.getHeight());
                                target_scale_factor = image.scale_factor;
                            } else {
                                // null texture, use 0x0 as invalid
@@ -560,11 +565,12 @@ void camera_system(
         // Bevy clamps custom viewports after resolving the target. This also
         // handles a resize that leaves the previous viewport out of bounds.
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        viewport_size = camera_mut.viewport.transform([](const Viewport& vp) { return vp.physical_size; });
-        const glm::uvec2 new_size       = viewport_size.value_or(target_size);
-        camera_mut.computed.target_info = target_size.x != 0 && target_size.y != 0
-                                              ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, target_scale_factor})
-                                              : std::nullopt;
+        viewport_size             = camera_mut.viewport.transform([](const Viewport& vp) { return vp.physical_size; });
+        const glm::uvec2 new_size = viewport_size.value_or(target_size);
+        camera_mut.computed.target_info =
+            target_size.x != 0 && target_size.y != 0
+                ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, target_scale_factor})
+                : std::nullopt;
         camera_mut.computed.old_viewport_size   = viewport_size;
         camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
 
@@ -578,9 +584,9 @@ void camera_system(
         // Bevy's changed-camera / changed-projection update path.
         if (new_size.x != 0 && new_size.y != 0) {
             proj.get_mut().update(static_cast<float>(new_size.x), static_cast<float>(new_size.y));
-            camera_mut.computed.clip_from_view = camera_mut.sub_camera_view
-                                                 ? proj.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
-                                                 : proj.get().get_projection_matrix();
+            camera_mut.computed.clip_from_view =
+                camera_mut.sub_camera_view ? proj.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
+                                           : proj.get().get_projection_matrix();
         }
     }
 }

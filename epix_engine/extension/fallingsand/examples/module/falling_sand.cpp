@@ -150,8 +150,7 @@ void settings_ui(imgui::Ctx imgui_ctx,
                             const fs::SandChunkPos&,
                             Mut<fs::SandChunkDirtyRect>,
                             const Parent&>> all_chunks,
-                 Query<Item<Mut<camera::RenderLayers>>, Filter<With<camera::Camera2d, MainCamera>>>
-                     main_cameras) {
+                 Query<Item<Mut<camera::RenderLayers>>, Filter<With<camera::Camera2d, MainCamera>>> main_cameras) {
     auto opt = worlds.single();
     if (!opt.has_value()) return;
     auto&& [sand_world, maybe_children, maybe_debug] = *opt;
@@ -175,9 +174,9 @@ void settings_ui(imgui::Ctx imgui_ctx,
     bool& show_dirty = st.show_dirty_rects;
     if (ImGui::Checkbox("Show Dirty Rects (debug window)", &show_dirty)) {
         if (auto cam_opt = main_cameras.single()) {
-            auto&& [render_layer]  = *cam_opt;
-            render_layer.get_mut() = show_dirty ? camera::RenderLayers::all()
-                                                : camera::RenderLayers::all_except(std::array{std::size_t{1}});
+            auto&& [render_layer] = *cam_opt;
+            render_layer.get_mut() =
+                show_dirty ? camera::RenderLayers::all() : camera::RenderLayers::all_except(std::array{std::size_t{1}});
         }
     }
     ImGui::Checkbox("Show Freefall", &st.show_freefall);
@@ -1072,8 +1071,8 @@ void setup(Commands cmd) {
 
     // ── Debug camera: layer 2 (outlines) + layer 1 (dirty rects), NOT sand (layer 0)
     {
-        cmd.spawn(camera::Camera2d{}, transform::Transform{},
-                  camera::Camera{.order = 1}, camera::RenderTarget::from_window(debug_win_ent),
+        cmd.spawn(camera::Camera2d{}, transform::Transform{}, camera::Camera{.order = 1},
+                  camera::RenderTarget::from_window(debug_win_ent),
                   camera::RenderLayers::from_layers(std::array{std::size_t{1}, std::size_t{2}}))
             .insert(DebugCamera{});
     }
@@ -1108,17 +1107,16 @@ void setup(Commands cmd) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Element hover info — show element data when hovering over a cell.
 // ──────────────────────────────────────────────────────────────────────────────
-void element_hover_info(
-    Res<fs::ElementRegistry> registry,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
-    Query<Item<Mut<fs::ChunkElementGrid>,
-               Mut<fs::ChunkAirGrid>,
-               Mut<fs::ChunkThermalGrid>,
-               const fs::SandChunkPos&,
-               Mut<fs::SandChunkDirtyRect>,
-               const Parent&>> all_chunks) {
+void element_hover_info(Res<fs::ElementRegistry> registry,
+                        Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+                        Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                        Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                        Query<Item<Mut<fs::ChunkElementGrid>,
+                                   Mut<fs::ChunkAirGrid>,
+                                   Mut<fs::ChunkThermalGrid>,
+                                   const fs::SandChunkPos&,
+                                   Mut<fs::SandChunkDirtyRect>,
+                                   const Parent&>> all_chunks) {
     auto world_opt = worlds.single();
     if (!world_opt.has_value()) return;
     auto&& [sand_world, maybe_children] = *world_opt;

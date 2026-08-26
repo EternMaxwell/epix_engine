@@ -1,10 +1,9 @@
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
 
+#include <array>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
-
-#include <array>
 
 using namespace epix::ecs;
 using namespace epix::render;
@@ -113,8 +112,9 @@ TEST(SortedCamera, SortKey) {
     tex.order  = 1;
     tex.target = ::epix::camera::NormalizedRenderTarget{::epix::camera::ImageRenderTarget{wgpu::Texture{}}};
     camera::SortedCamera win;
-    win.order  = 1;
-    win.target = ::epix::camera::NormalizedRenderTarget{::epix::window::NormalizedWindowRef{epix::ecs::Entity{.uid = 1}}};
+    win.order = 1;
+    win.target =
+        ::epix::camera::NormalizedRenderTarget{::epix::window::NormalizedWindowRef{epix::ecs::Entity{.uid = 1}}};
     EXPECT_TRUE(tex.sort_key() < win.sort_key());
 }
 
@@ -122,7 +122,7 @@ TEST(NormalizedRenderTargetExt, ResolvesManualAndNoColorTargets) {
     const ::epix::camera::ManualTextureViewHandle handle{7};
     texture::ManualTextureViews manual_views;
     manual_views.views.emplace(handle, texture::ManualTextureView{
-                                           .size = glm::uvec2(320, 180),
+                                           .size        = glm::uvec2(320, 180),
                                            .view_format = wgpu::TextureFormat::eRGBA8UnormSrgb,
                                        });
     window::ExtractedWindows windows;

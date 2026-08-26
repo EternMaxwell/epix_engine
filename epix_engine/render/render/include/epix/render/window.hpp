@@ -137,7 +137,8 @@ void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
                      ecs::Res<wgpu::Device> device);
 
 /** @brief Present completed surface frames. Called by render_system immediately
- * after graph submission, matching Bevy renderer::render_system. */
+ * after graph submission, matching
+ * Bevy renderer::render_system. */
 void present_windows(ecs::World& world);
 
 /** @brief Plugin that registers window surface creation, extraction,

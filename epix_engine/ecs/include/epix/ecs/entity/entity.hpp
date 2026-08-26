@@ -38,7 +38,8 @@ EPIX_EXPORT struct Entity {
     }
 
     /** @brief Sentinel entity for render-world mappings that have no backing
-     * render entity yet (Bevy `Entity::PLACEHOLDER`). */
+     * render entity yet (Bevy
+     * `Entity::PLACEHOLDER`). */
     static const Entity PLACEHOLDER;
 };
 

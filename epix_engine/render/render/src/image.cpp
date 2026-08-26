@@ -22,7 +22,8 @@ void TexturePlugin::attach(app::App& app) {
     // must not silently install ImagePlugin.
     const auto image_plugin = app.get_plugin<image::ImagePlugin>();
     if (!image_plugin) {
-        throw std::runtime_error("render::TexturePlugin requires image::ImagePlugin to be added before render::RenderPlugin");
+        throw std::runtime_error(
+            "render::TexturePlugin requires image::ImagePlugin to be added before render::RenderPlugin");
     }
     const image::ImageSamplerDescriptor default_sampler_descriptor = image_plugin->get().default_sampler;
 
@@ -30,8 +31,8 @@ void TexturePlugin::attach(app::App& app) {
         auto& world = render_app.world_mut();
         world.init_resource<render_resource::TextureCache>();
         render_app.add_systems(Render, into(render_resource::update_texture_cache_system)
-                                         .in_set(RenderSystems::Cleanup)
-                                         .set_name("update texture cache"));
+                                           .in_set(RenderSystems::Cleanup)
+                                           .set_name("update texture cache"));
 
         const wgpu::Device device = world.resource<wgpu::Device>().clone();
         // Bevy TexturePlugin::finish creates the sampler and fallback images

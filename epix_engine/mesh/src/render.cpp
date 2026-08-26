@@ -13,14 +13,13 @@ using namespace epix::mesh;
 
 namespace {
 
-void calculate_mesh2d_bounds(
-    Commands cmd,
-    Query<Item<Entity,
-               const Mesh2d&,
-               Opt<Mut<camera::Aabb>>,
-               Opt<const camera::NoAutoAabb&>,
-               Opt<const camera::NoFrustumCulling&>>> meshes,
-    Res<assets::Assets<Mesh>> mesh_assets) {
+void calculate_mesh2d_bounds(Commands cmd,
+                             Query<Item<Entity,
+                                        const Mesh2d&,
+                                        Opt<Mut<camera::Aabb>>,
+                                        Opt<const camera::NoAutoAabb&>,
+                                        Opt<const camera::NoFrustumCulling&>>> meshes,
+                             Res<assets::Assets<Mesh>> mesh_assets) {
     for (auto&& [entity, mesh2d, existing_aabb, no_auto_aabb, no_frustum_culling] : meshes.iter()) {
         if (no_auto_aabb || no_frustum_culling) continue;
         const auto mesh = mesh_assets->get(mesh2d.handle.id());
@@ -776,14 +775,12 @@ void MeshRenderPlugin::attach(app::App& app) {
     // Bevy Mesh2d requires Visibility, pulling in InheritedVisibility +
     // ViewVisibility so hidden/layer culling works.
     app.world_mut().register_required_components<Mesh2d, camera::Visibility>();
-    app.world_mut().register_required_components_with<Mesh2d>([] {
-        return camera::VisibilityClass{meta::type_index(meta::type_id<Mesh2d>())};
-    });
-    app.add_systems(app::PostUpdate,
-                    into(calculate_mesh2d_bounds)
-                        .in_set(camera::VisibilitySystems::CalculateBounds)
-                        .before(camera::VisibilitySystems::CheckVisibility)
-                        .set_name("calculate mesh2d bounds"));
+    app.world_mut().register_required_components_with<Mesh2d>(
+        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<Mesh2d>())}; });
+    app.add_systems(app::PostUpdate, into(calculate_mesh2d_bounds)
+                                         .in_set(camera::VisibilitySystems::CalculateBounds)
+                                         .before(camera::VisibilitySystems::CheckVisibility)
+                                         .set_name("calculate mesh2d bounds"));
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(render::RenderAssetPlugin<Mesh>{});

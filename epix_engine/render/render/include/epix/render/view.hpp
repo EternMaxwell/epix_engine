@@ -30,9 +30,9 @@
 #include <epix/camera.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/graph.hpp>
+#include <epix/render/manual_texture_view.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
-#include <epix/render/manual_texture_view.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/texture_attachment.hpp>
 #include <epix/render/window.hpp>
@@ -56,8 +56,10 @@ EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
 
 /** @brief Render-side camera integration (Bevy
  * `bevy_render::camera::CameraPlugin`). This is distinct from the
+ *
  * camera-module `epix::camera::CameraPlugin`: it owns render-facing camera
- * requirements, extraction, sorting, and the camera driver graph node. */
+ * requirements, extraction, sorting, and
+ * the camera driver graph node. */
 EPIX_EXPORT struct CameraPlugin {
     void attach(epix::app::App& app);
 };
@@ -91,7 +93,8 @@ EPIX_EXPORT struct ExtractedCamera {
 }  // namespace epix::render::camera
 namespace epix::render::view {
 /** @brief Number of samples for multisample anti-aliasing (Bevy
- * `bevy_render::view::Msaa`). The render-side camera plugin supplies
+ * `bevy_render::view::Msaa`). The render-side camera
+ * plugin supplies
  * `Sample4` when a Camera is spawned without an explicit value. */
 EPIX_EXPORT enum class Msaa : std::uint32_t {
     Off     = 1,
@@ -106,11 +109,16 @@ EPIX_EXPORT inline std::uint32_t samples(Msaa msaa) noexcept { return static_cas
 /** @brief C++ equivalent of Bevy `Msaa::from_samples`. */
 EPIX_EXPORT inline Msaa msaa_from_samples(std::uint32_t sample_count) {
     switch (sample_count) {
-        case 1: return Msaa::Off;
-        case 2: return Msaa::Sample2;
-        case 4: return Msaa::Sample4;
-        case 8: return Msaa::Sample8;
-        default: throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
+        case 1:
+            return Msaa::Off;
+        case 2:
+            return Msaa::Sample2;
+        case 4:
+            return Msaa::Sample4;
+        case 8:
+            return Msaa::Sample8;
+        default:
+            throw std::runtime_error("Unsupported MSAA sample count: " + std::to_string(sample_count));
     }
 }
 
@@ -133,7 +141,8 @@ EPIX_EXPORT struct RetainedViewEntity {
     /** @brief Main-world entity this view corresponds to. */
     sync_world::MainEntity main_entity;
     /** @brief Auxiliary entity (e.g. a camera associated with a shadow
-     * cascade).  A missing value is represented by the stable placeholder,
+     * cascade).  A missing value is represented
+     * by the stable placeholder,
      * exactly as Bevy's `RetainedViewEntity` does. */
     sync_world::MainEntity auxiliary_entity;
     /** @brief Subview index (0 for cameras; cascade/face index for shadow views). */
@@ -145,7 +154,7 @@ EPIX_EXPORT struct RetainedViewEntity {
 
     RetainedViewEntity(sync_world::MainEntity main_entity,
                        std::optional<sync_world::MainEntity> auxiliary_entity = std::nullopt,
-                       std::uint32_t subview_index = 0)
+                       std::uint32_t subview_index                            = 0)
         : main_entity(main_entity),
           auxiliary_entity(auxiliary_entity.value_or(placeholder_auxiliary_entity())),
           subview_index(subview_index) {}
@@ -336,7 +345,8 @@ EPIX_EXPORT struct ViewTarget {
     /** @brief Final output texture view (Bevy `out_texture`). */
     const wgpu::TextureView& out_texture() const noexcept { return output_attachment.view; }
     /** @brief Final output color attachment with first-write clear semantics
-     * (Bevy `out_texture_color_attachment`). */
+     * (Bevy
+     * `out_texture_color_attachment`). */
     wgpu::RenderPassColorAttachment out_texture_color_attachment(std::optional<glm::vec4> clear_color) const {
         return output_attachment.get_attachment(clear_color);
     }
@@ -388,7 +398,8 @@ EPIX_EXPORT struct ViewDepthTexture {
         return ViewDepthTexture{std::move(tex), render_resource::DepthAttachment(std::move(view), std::nullopt)};
     }
     /** @brief Create from a cached texture and first-use clear value (Bevy
-     * `ViewDepthTexture::new`; `new` is a C++ keyword). */
+     * `ViewDepthTexture::new`; `new` is a
+     * C++ keyword). */
     static ViewDepthTexture create(render_resource::CachedTexture cached_texture, std::optional<float> clear_value) {
         return ViewDepthTexture{cached_texture.texture,
                                 render_resource::DepthAttachment(std::move(cached_texture.default_view), clear_value)};
@@ -441,26 +452,26 @@ EPIX_EXPORT struct ViewPlugin {
     void attach(epix::app::App& app);
 };
 
-void prepare_view_target(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                     const camera::ExtractedCamera&,
-                                     const ExtractedView&,
-                                     const ::epix::camera::CameraMainTextureUsages&,
-                                     const Msaa&>> views,
-    epix::ecs::Commands cmd,
-    epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
-    epix::ecs::Res<wgpu::Device> device,
-    epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
-    epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
+void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                                          const camera::ExtractedCamera&,
+                                                          const ExtractedView&,
+                                                          const ::epix::camera::CameraMainTextureUsages&,
+                                                          const Msaa&>> views,
+                         epix::ecs::Commands cmd,
+                         epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
+                         epix::ecs::Res<wgpu::Device> device,
+                         epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
+                         epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
 
 /** Update cameras that target a manually supplied texture view.  This runs in
- * the main world after the camera module's general update system, mirroring
+ * the main world after the camera
+ * module's general update system, mirroring
  * Bevy's render-side camera_system access to ManualTextureViews. */
 template <::epix::camera::CameraProjection ProjType>
-void update_manual_texture_view_cameras(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>, epix::ecs::Mut<ProjType>,
-                                     const ::epix::camera::RenderTarget&>> cameras,
-    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views) {
+void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
+                                                                         epix::ecs::Mut<ProjType>,
+                                                                         const ::epix::camera::RenderTarget&>> cameras,
+                                        epix::ecs::Res<texture::ManualTextureViews> manual_texture_views) {
     for (auto&& [camera, projection, target] : cameras.iter()) {
         const auto* handle = std::get_if<::epix::camera::ManualTextureViewHandle>(&target);
         if (!handle) continue;
@@ -470,22 +481,20 @@ void update_manual_texture_view_cameras(
             // manual handle.  The camera module already installed this state.
             continue;
         }
-        auto& camera_mut = camera.get_mut();
+        auto& camera_mut             = camera.get_mut();
         const glm::uvec2 target_size = view_it->second.size;
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        const auto viewport_size =
-            camera_mut.viewport.transform([](const ::epix::camera::Viewport& viewport) {
-                return viewport.physical_size;
-            });
-        camera_mut.computed.target_info       = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
-        camera_mut.computed.old_viewport_size = viewport_size;
+        const auto viewport_size = camera_mut.viewport.transform(
+            [](const ::epix::camera::Viewport& viewport) { return viewport.physical_size; });
+        camera_mut.computed.target_info         = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
+        camera_mut.computed.old_viewport_size   = viewport_size;
         camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
-        const glm::uvec2 projection_size = viewport_size.value_or(target_size);
+        const glm::uvec2 projection_size        = viewport_size.value_or(target_size);
         if (projection_size.x != 0 && projection_size.y != 0) {
             projection.get_mut().update(static_cast<float>(projection_size.x), static_cast<float>(projection_size.y));
-            camera_mut.computed.clip_from_view = camera_mut.sub_camera_view
-                                                 ? projection.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
-                                                 : projection.get().get_projection_matrix();
+            camera_mut.computed.clip_from_view =
+                camera_mut.sub_camera_view ? projection.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
+                                           : projection.get().get_projection_matrix();
         }
     }
 }
@@ -592,24 +601,25 @@ struct TemporalJitter;
 /** @brief System that extracts camera data into the render world. */
 EPIX_EXPORT void extract_cameras(
     epix::ecs::Commands cmd,
-    epix::app::Extract<epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                                        const ::epix::camera::Camera&,
-                                                        const ::epix::camera::RenderTarget&,
-                                                        const CameraRenderGraph&,
-                                                        const transform::GlobalTransform&,
-                                                        const ::epix::camera::VisibleEntities&,
-                                                        const ::epix::camera::Frustum&,
-                                                        epix::ecs::Opt<const ::epix::camera::RenderLayers&>,
-                                                        epix::ecs::Opt<const camera::MipBias&>,
-                                                        epix::ecs::Opt<const camera::TemporalJitter&>,
-                                                        epix::ecs::Opt<const view::Hdr&>,
-                                                        epix::ecs::Opt<const view::ColorGrading&>,
-                                                        epix::ecs::Opt<const ::epix::camera::Exposure&>,
-                                                        epix::ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>,
-                                                        const view::Msaa&,
-                                                        const ::epix::camera::CameraMainTextureUsages&,
-                                                        epix::ecs::Opt<const ::epix::camera::Projection&>,
-                                                        epix::ecs::Opt<const view::NoIndirectDrawing&>>>> cameras,
+    epix::app::Extract<
+        epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                         const ::epix::camera::Camera&,
+                                         const ::epix::camera::RenderTarget&,
+                                         const CameraRenderGraph&,
+                                         const transform::GlobalTransform&,
+                                         const ::epix::camera::VisibleEntities&,
+                                         const ::epix::camera::Frustum&,
+                                         epix::ecs::Opt<const ::epix::camera::RenderLayers&>,
+                                         epix::ecs::Opt<const camera::MipBias&>,
+                                         epix::ecs::Opt<const camera::TemporalJitter&>,
+                                         epix::ecs::Opt<const view::Hdr&>,
+                                         epix::ecs::Opt<const view::ColorGrading&>,
+                                         epix::ecs::Opt<const ::epix::camera::Exposure&>,
+                                         epix::ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>,
+                                         const view::Msaa&,
+                                         const ::epix::camera::CameraMainTextureUsages&,
+                                         epix::ecs::Opt<const ::epix::camera::Projection&>,
+                                         epix::ecs::Opt<const view::NoIndirectDrawing&>>>> cameras,
     epix::ecs::Res<batching::GpuPreprocessingSupport> gpu_preprocessing_support,
     epix::app::Extract<epix::ecs::Query<const sync_world::RenderEntity&>> mapper,
     epix::app::Extract<
@@ -698,7 +708,8 @@ EPIX_EXPORT struct ViewTargetAttachments {
     /** @brief One shared output attachment per render target, so the output is
      * cleared at most once per frame and later cameras composite over it
      * (Bevy ViewTargetAttachments). */
-    std::unordered_map<::epix::camera::RenderTargetId, OutputColorAttachment, ::epix::camera::RenderTargetIdHash> attachments;
+    std::unordered_map<::epix::camera::RenderTargetId, OutputColorAttachment, ::epix::camera::RenderTargetIdHash>
+        attachments;
 };
 
 /** @brief Clears the per-frame view target attachments (Bevy
@@ -706,16 +717,16 @@ EPIX_EXPORT struct ViewTargetAttachments {
  * RenderSystems::ManageViews before create_surfaces. */
 void clear_view_attachments(epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
 /** @brief Prepares one output attachment per current-frame render target
- * (Bevy `prepare_view_attachments`). Screenshot and other extensions may
+ * (Bevy `prepare_view_attachments`).
+ * Screenshot and other extensions may
  * replace an entry before `prepare_view_target` consumes it. */
-void prepare_view_attachments(
-    epix::ecs::Res<window::ExtractedWindows> extracted_windows,
-    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
-    epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
-    epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+void prepare_view_attachments(epix::ecs::Res<window::ExtractedWindows> extracted_windows,
+                              epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
+                              epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
+                              epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
 /** @brief Removes the ViewTarget of cameras targeting a window that was
- * resized or changed present mode, so prepare_view_target recreates them at
- * the new size (Bevy cleanup_view_targets_for_resize, view/mod.rs:1046-1059).
+ * resized or changed present mode, so
+ * prepare_view_target recreates them at the new size (Bevy cleanup_view_targets_for_resize, view/mod.rs:1046-1059).
  * Registered in RenderSystems::ManageViews before create_surfaces. */
 void cleanup_view_targets_for_resize(
     epix::ecs::Commands cmd,
@@ -728,146 +739,148 @@ namespace epix::render::camera {
 /** @brief Error returned when render target information cannot be resolved
  * (Bevy `MissingRenderTargetInfoError`). */
 EPIX_EXPORT struct MissingRenderTargetInfoError {
-    struct Window { epix::ecs::Entity window; };
-    struct Image { ::epix::camera::RenderTargetId image; };
-    struct TextureView { ::epix::camera::ManualTextureViewHandle texture_view; };
+    struct Window {
+        epix::ecs::Entity window;
+    };
+    struct Image {
+        ::epix::camera::RenderTargetId image;
+    };
+    struct TextureView {
+        ::epix::camera::ManualTextureViewHandle texture_view;
+    };
 
     std::variant<Window, Image, TextureView> value;
 
     std::string to_string() const {
-        return std::visit(utils::visitor{
-                              [](const Window& error) {
-                                  return std::format("RenderTarget::Window missing ({})", error.window.index);
-                              },
-                              [](const Image& error) {
-                                  return std::format("RenderTarget::Image missing ({})", error.image.value);
-                              },
-                              [](const TextureView& error) {
-                                  return std::format("RenderTarget::TextureView missing ({})", error.texture_view.id);
-                              },
-                          },
-                          value);
+        return std::visit(
+            utils::visitor{
+                [](const Window& error) {
+                    return std::format("RenderTarget::Window missing ({})", error.window.index);
+                },
+                [](const Image& error) { return std::format("RenderTarget::Image missing ({})", error.image.value); },
+                [](const TextureView& error) {
+                    return std::format("RenderTarget::TextureView missing ({})", error.texture_view.id);
+                },
+            },
+            value);
     }
 };
 
 /** @brief Render-side target resolution helpers (Bevy
  * `NormalizedRenderTargetExt`).
  *
- * Epix image targets directly own a wgpu texture, so `get_texture_view`
- * returns an owned view rather than a borrow into `RenderAssets<GpuImage>`.
+ * Epix image targets
+ * directly own a wgpu texture, so `get_texture_view`
+ * returns an owned view rather than a borrow into
+ * `RenderAssets<GpuImage>`.
  */
 EPIX_EXPORT struct NormalizedRenderTargetExt {
-    static std::optional<wgpu::TextureView> get_texture_view(
-        const ::epix::camera::NormalizedRenderTarget& target,
-        const window::ExtractedWindows& windows,
-        const texture::ManualTextureViews& manual_texture_views) {
-        return std::visit(utils::visitor{
-                              [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureView> {
-                                  auto it = windows.windows.find(window_ref.entity());
-                                  return it != windows.windows.end() && it->second.swapchain_texture_view
-                                             ? std::optional<wgpu::TextureView>{it->second.swapchain_texture_view}
-                                             : std::nullopt;
-                              },
-                              [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureView> {
-                                  return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()}
-                                                       : std::nullopt;
-                              },
-                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
-                                  -> std::optional<wgpu::TextureView> {
-                                  auto it = manual_texture_views.views.find(handle);
-                                  return it != manual_texture_views.views.end() && it->second.texture_view
-                                             ? std::optional<wgpu::TextureView>{it->second.texture_view}
-                                             : std::nullopt;
-                              },
-                              [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureView> {
-                                  return std::nullopt;
-                              },
-                          },
-                          target);
+    static std::optional<wgpu::TextureView> get_texture_view(const ::epix::camera::NormalizedRenderTarget& target,
+                                                             const window::ExtractedWindows& windows,
+                                                             const texture::ManualTextureViews& manual_texture_views) {
+        return std::visit(
+            utils::visitor{
+                [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureView> {
+                    auto it = windows.windows.find(window_ref.entity());
+                    return it != windows.windows.end() && it->second.swapchain_texture_view
+                               ? std::optional<wgpu::TextureView>{it->second.swapchain_texture_view}
+                               : std::nullopt;
+                },
+                [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureView> {
+                    return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()} : std::nullopt;
+                },
+                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureView> {
+                    auto it = manual_texture_views.views.find(handle);
+                    return it != manual_texture_views.views.end() && it->second.texture_view
+                               ? std::optional<wgpu::TextureView>{it->second.texture_view}
+                               : std::nullopt;
+                },
+                [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureView> { return std::nullopt; },
+            },
+            target);
     }
 
     static std::optional<wgpu::TextureFormat> get_texture_view_format(
         const ::epix::camera::NormalizedRenderTarget& target,
         const window::ExtractedWindows& windows,
         const texture::ManualTextureViews& manual_texture_views) {
-        return std::visit(utils::visitor{
-                              [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
-                                  auto it = windows.windows.find(window_ref.entity());
-                                  return it != windows.windows.end() && it->second.swapchain_texture_view
-                                             ? std::optional<wgpu::TextureFormat>{it->second.swapchain_texture_view_format}
-                                             : std::nullopt;
-                              },
-                              [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureFormat> {
-                                  return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()}
-                                                       : std::nullopt;
-                              },
-                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
-                                  -> std::optional<wgpu::TextureFormat> {
-                                  auto it = manual_texture_views.views.find(handle);
-                                  return it != manual_texture_views.views.end()
-                                             ? std::optional<wgpu::TextureFormat>{it->second.view_format}
-                                             : std::nullopt;
-                              },
-                              [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> {
-                                  return std::nullopt;
-                              },
-                          },
-                          target);
+        return std::visit(
+            utils::visitor{
+                [&](const ::epix::window::NormalizedWindowRef& window_ref) -> std::optional<wgpu::TextureFormat> {
+                    auto it = windows.windows.find(window_ref.entity());
+                    return it != windows.windows.end() && it->second.swapchain_texture_view
+                               ? std::optional<wgpu::TextureFormat>{it->second.swapchain_texture_view_format}
+                               : std::nullopt;
+                },
+                [](const ::epix::camera::ImageRenderTarget& image) -> std::optional<wgpu::TextureFormat> {
+                    return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()} : std::nullopt;
+                },
+                [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureFormat> {
+                    auto it = manual_texture_views.views.find(handle);
+                    return it != manual_texture_views.views.end()
+                               ? std::optional<wgpu::TextureFormat>{it->second.view_format}
+                               : std::nullopt;
+                },
+                [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> { return std::nullopt; },
+            },
+            target);
     }
 
     /** @brief Resolve physical size and scale factor using a main-world
-     * window-info snapshot, direct image texture, or manual view. */
+     * window-info snapshot, direct image
+     * texture, or manual view. */
     static std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> get_render_target_info(
         const ::epix::camera::NormalizedRenderTarget& target,
         std::span<const std::pair<epix::ecs::Entity, ::epix::camera::RenderTargetInfo>> windows,
         const texture::ManualTextureViews& manual_texture_views) {
-        return std::visit(utils::visitor{
-                              [&](const ::epix::window::NormalizedWindowRef& window_ref)
-                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                                  auto it = std::ranges::find(windows, window_ref.entity(), &std::pair<
-                                      epix::ecs::Entity, ::epix::camera::RenderTargetInfo>::first);
-                                  if (it != windows.end()) return it->second;
-                                  return std::unexpected(MissingRenderTargetInfoError{
-                                      MissingRenderTargetInfoError::Window{window_ref.entity()}});
-                              },
-                              [&](const ::epix::camera::ImageRenderTarget& image)
-                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                                  if (image.texture) return ::epix::camera::RenderTargetInfo{
-                                      {image.texture.getWidth(), image.texture.getHeight()}, image.scale_factor};
-                                  return std::unexpected(MissingRenderTargetInfoError{
-                                      MissingRenderTargetInfoError::Image{target.identity()}});
-                              },
-                              [&](const ::epix::camera::ManualTextureViewHandle& handle)
-                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                                  auto it = manual_texture_views.views.find(handle);
-                                  if (it != manual_texture_views.views.end())
-                                      return ::epix::camera::RenderTargetInfo{it->second.size, 1.0f};
-                                  return std::unexpected(MissingRenderTargetInfoError{
-                                      MissingRenderTargetInfoError::TextureView{handle}});
-                              },
-                              [](const ::epix::camera::NoColorTarget& target)
-                                  -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                                  return ::epix::camera::RenderTargetInfo{target.size, 1.0f};
-                              },
-                          },
-                          target);
+        return std::visit(
+            utils::visitor{
+                [&](const ::epix::window::NormalizedWindowRef& window_ref)
+                    -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                    auto it = std::ranges::find(windows, window_ref.entity(),
+                                                &std::pair<epix::ecs::Entity, ::epix::camera::RenderTargetInfo>::first);
+                    if (it != windows.end()) return it->second;
+                    return std::unexpected(
+                        MissingRenderTargetInfoError{MissingRenderTargetInfoError::Window{window_ref.entity()}});
+                },
+                [&](const ::epix::camera::ImageRenderTarget& image)
+                    -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                    if (image.texture)
+                        return ::epix::camera::RenderTargetInfo{{image.texture.getWidth(), image.texture.getHeight()},
+                                                                image.scale_factor};
+                    return std::unexpected(
+                        MissingRenderTargetInfoError{MissingRenderTargetInfoError::Image{target.identity()}});
+                },
+                [&](const ::epix::camera::ManualTextureViewHandle& handle)
+                    -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                    auto it = manual_texture_views.views.find(handle);
+                    if (it != manual_texture_views.views.end())
+                        return ::epix::camera::RenderTargetInfo{it->second.size, 1.0f};
+                    return std::unexpected(
+                        MissingRenderTargetInfoError{MissingRenderTargetInfoError::TextureView{handle}});
+                },
+                [](const ::epix::camera::NoColorTarget& target)
+                    -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
+                    return ::epix::camera::RenderTargetInfo{target.size, 1.0f};
+                },
+            },
+            target);
     }
 
-    static bool is_changed(const ::epix::camera::NormalizedRenderTarget& target,
-                           const std::unordered_set<epix::ecs::Entity>& changed_windows,
-                           const std::unordered_set<::epix::camera::RenderTargetId,
-                                                    ::epix::camera::RenderTargetIdHash>& changed_images) {
-        return std::visit(utils::visitor{
-                              [&](const ::epix::window::NormalizedWindowRef& window_ref) {
-                                  return changed_windows.contains(window_ref.entity());
-                              },
-                              [&](const ::epix::camera::ImageRenderTarget&) {
-                                  return changed_images.contains(target.identity());
-                              },
-                              [](const ::epix::camera::ManualTextureViewHandle&) { return true; },
-                              [](const ::epix::camera::NoColorTarget&) { return false; },
-                          },
-                          target);
+    static bool is_changed(
+        const ::epix::camera::NormalizedRenderTarget& target,
+        const std::unordered_set<epix::ecs::Entity>& changed_windows,
+        const std::unordered_set<::epix::camera::RenderTargetId, ::epix::camera::RenderTargetIdHash>& changed_images) {
+        return std::visit(
+            utils::visitor{
+                [&](const ::epix::window::NormalizedWindowRef& window_ref) {
+                    return changed_windows.contains(window_ref.entity());
+                },
+                [&](const ::epix::camera::ImageRenderTarget&) { return changed_images.contains(target.identity()); },
+                [](const ::epix::camera::ManualTextureViewHandle&) { return true; },
+                [](const ::epix::camera::NoColorTarget&) { return false; },
+            },
+            target);
     }
 };
 
@@ -890,14 +903,15 @@ EPIX_EXPORT struct SortedCamera {
         // make distinct targets compare equal and break the grouping contract.
         // Bevy derives Ord for NormalizedRenderTarget: Window precedes Image.
         // Epix's direct texture target is the Image counterpart.
-        const std::uint8_t target_kind = target ? std::visit(utils::visitor{
-                                                     [](const ::epix::window::NormalizedWindowRef&) { return std::uint8_t{0}; },
-                                                     [](const ::epix::camera::ImageRenderTarget&) { return std::uint8_t{1}; },
-                                                     [](const ::epix::camera::ManualTextureViewHandle&) { return std::uint8_t{2}; },
-                                                     [](const ::epix::camera::NoColorTarget&) { return std::uint8_t{3}; },
-                                                 },
-                                                 *target)
-                                                : std::uint8_t{0};
+        const std::uint8_t target_kind =
+            target ? std::visit(utils::visitor{
+                                    [](const ::epix::window::NormalizedWindowRef&) { return std::uint8_t{0}; },
+                                    [](const ::epix::camera::ImageRenderTarget&) { return std::uint8_t{1}; },
+                                    [](const ::epix::camera::ManualTextureViewHandle&) { return std::uint8_t{2}; },
+                                    [](const ::epix::camera::NoColorTarget&) { return std::uint8_t{3}; },
+                                },
+                                *target)
+                   : std::uint8_t{0};
         return {order, target_kind, target ? target->identity().value : 0};
     }
 };
@@ -971,8 +985,7 @@ template <>
 struct std::hash<::epix::render::view::RetainedViewEntity> {
     std::size_t operator()(const ::epix::render::view::RetainedViewEntity& r) const noexcept {
         std::size_t h = std::hash<::epix::render::sync_world::MainEntity>{}(r.main_entity);
-        h ^= std::hash<::epix::render::sync_world::MainEntity>{}(r.auxiliary_entity) + 0x9e3779b9 + (h << 6) +
-             (h >> 2);
+        h ^= std::hash<::epix::render::sync_world::MainEntity>{}(r.auxiliary_entity) + 0x9e3779b9 + (h << 6) + (h >> 2);
         h ^= std::hash<std::uint32_t>{}(r.subview_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
         return h;
     }

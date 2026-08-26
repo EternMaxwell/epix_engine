@@ -48,18 +48,34 @@ inline glm::mat4 crop_to_sub_view(const glm::mat4& projection, const SubCameraVi
 
 namespace detail {
 struct ScalingModeWindowSize {};
-struct ScalingModeFixed { float width; float height; };
-struct ScalingModeAutoMin { float min_width; float min_height; };
-struct ScalingModeAutoMax { float max_width; float max_height; };
-struct ScalingModeFixedVertical { float viewport_height; };
-struct ScalingModeFixedHorizontal { float viewport_width; };
+struct ScalingModeFixed {
+    float width;
+    float height;
+};
+struct ScalingModeAutoMin {
+    float min_width;
+    float min_height;
+};
+struct ScalingModeAutoMax {
+    float max_width;
+    float max_height;
+};
+struct ScalingModeFixedVertical {
+    float viewport_height;
+};
+struct ScalingModeFixedHorizontal {
+    float viewport_width;
+};
 }  // namespace detail
 
 /** @brief Scaling mode controlling how an orthographic projection adapts to
  * the viewport size (Bevy `ScalingMode`). */
-EPIX_EXPORT struct ScalingMode
-    : std::variant<detail::ScalingModeWindowSize, detail::ScalingModeFixed, detail::ScalingModeAutoMin,
-                   detail::ScalingModeAutoMax, detail::ScalingModeFixedVertical, detail::ScalingModeFixedHorizontal> {
+EPIX_EXPORT struct ScalingMode : std::variant<detail::ScalingModeWindowSize,
+                                              detail::ScalingModeFixed,
+                                              detail::ScalingModeAutoMin,
+                                              detail::ScalingModeAutoMax,
+                                              detail::ScalingModeFixedVertical,
+                                              detail::ScalingModeFixedHorizontal> {
     using WindowSize      = detail::ScalingModeWindowSize;
     using Fixed           = detail::ScalingModeFixed;
     using AutoMin         = detail::ScalingModeAutoMin;
@@ -78,8 +94,8 @@ EPIX_EXPORT struct ScalingMode
 /** @brief Orthographic camera projection with configurable scaling, near/far
  * planes, and viewport origin. */
 EPIX_EXPORT struct OrthographicProjection {
-    float near_plane          = 0.0f;     // Bevy default_3d near clipping plane
-    float far_plane           = 1000.0f;  // Far clipping plane
+    float near_plane = 0.0f;     // Bevy default_3d near clipping plane
+    float far_plane  = 1000.0f;  // Far clipping plane
     ScalingMode scaling_mode{};
     float scale               = 1.0f;                   // Additional scale factor
     glm::vec2 viewport_origin = glm::vec2(0.5f, 0.5f);  // Viewport origin (0 to 1)
@@ -244,16 +260,16 @@ concept CameraProjection = requires(T t) {
  * The stored projection is cloned on copy, so copying a `Projection` retains
  * ordinary component value semantics. */
 struct DynCameraProjection {
-    virtual ~DynCameraProjection() = default;
-    virtual std::shared_ptr<DynCameraProjection> clone() const = 0;
-    virtual glm::mat4 projection_matrix() const = 0;
+    virtual ~DynCameraProjection()                                          = default;
+    virtual std::shared_ptr<DynCameraProjection> clone() const              = 0;
+    virtual glm::mat4 projection_matrix() const                             = 0;
     virtual glm::mat4 projection_matrix_for_sub(const SubCameraView&) const = 0;
-    virtual std::array<glm::vec3, 8> frustum_corners() const = 0;
-    virtual float far_value() const = 0;
-    virtual float near_value() const = 0;
-    virtual void set_far_value(float) = 0;
-    virtual void set_near_value(float) = 0;
-    virtual void update_projection(float, float) = 0;
+    virtual std::array<glm::vec3, 8> frustum_corners() const                = 0;
+    virtual float far_value() const                                         = 0;
+    virtual float near_value() const                                        = 0;
+    virtual void set_far_value(float)                                       = 0;
+    virtual void set_near_value(float)                                      = 0;
+    virtual void update_projection(float, float)                            = 0;
 };
 
 template <CameraProjection P>
@@ -281,7 +297,8 @@ EPIX_EXPORT struct CustomProjection {
     std::shared_ptr<DynCameraProjection> dyn_projection;
 
    public:
-    CustomProjection() : dyn_projection(std::make_shared<DynCameraProjectionImpl<PerspectiveProjection>>(PerspectiveProjection{})) {}
+    CustomProjection()
+        : dyn_projection(std::make_shared<DynCameraProjectionImpl<PerspectiveProjection>>(PerspectiveProjection{})) {}
     CustomProjection(const CustomProjection& other)
         : dyn_projection(other.dyn_projection ? other.dyn_projection->clone() : nullptr) {}
     CustomProjection(CustomProjection&&) noexcept = default;
@@ -293,7 +310,8 @@ EPIX_EXPORT struct CustomProjection {
 
     template <CameraProjection P>
         requires std::copy_constructible<P>
-    explicit CustomProjection(P projection) : dyn_projection(std::make_shared<DynCameraProjectionImpl<P>>(std::move(projection))) {}
+    explicit CustomProjection(P projection)
+        : dyn_projection(std::make_shared<DynCameraProjectionImpl<P>>(std::move(projection))) {}
 
     template <CameraProjection P>
     P* get() noexcept {

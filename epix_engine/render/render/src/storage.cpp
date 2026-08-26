@@ -16,7 +16,7 @@ GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderSto
     // data length, usage | COPY_DST implicitly); without -> create_buffer with
     // the descriptor usage unchanged.
     const std::uint64_t size = asset.data.has_value() ? asset.data->size() : asset.size;
-    const auto usage = asset.data.has_value() ? asset.usage | wgpu::BufferUsage::eCopyDst : asset.usage;
+    const auto usage         = asset.data.has_value() ? asset.usage | wgpu::BufferUsage::eCopyDst : asset.usage;
 
     wgpu::BufferDescriptor desc;
     desc.setLabel(asset.label.c_str()).setUsage(usage).setSize(size);

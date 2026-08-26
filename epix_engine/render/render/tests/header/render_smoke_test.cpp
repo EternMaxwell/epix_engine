@@ -415,10 +415,14 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     // systems. This isolated extraction test has no camera, so mark it as
     // visible explicitly (matching Bevy's default-hidden ViewVisibility).
     Entity visible_main =
-        app.world_mut().spawn(SmokeComponent{7}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{}).id();
+        app.world_mut()
+            .spawn(SmokeComponent{7}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{})
+            .id();
     // Culled entity: ViewVisibility culled -> skipped by extract_visible_components.
     Entity culled_main =
-        app.world_mut().spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{}).id();
+        app.world_mut()
+            .spawn(SmokeComponent{8}, sync_world::SyncToRenderWorld{}, ::epix::camera::ViewVisibility{})
+            .id();
     app.world_mut().get_entity_mut(visible_main).transform([](EntityWorldMut&& ew) -> int {
         ew.get_mut<::epix::camera::ViewVisibility>().value().get_mut().set_visible();
         return 0;

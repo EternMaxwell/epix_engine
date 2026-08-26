@@ -159,15 +159,14 @@ EPIX_EXPORT namespace epix::window {
         constexpr WindowRef() noexcept : Base(Primary{}) {}
         [[nodiscard]] std::optional<NormalizedWindowRef> normalize(
             std::optional<epix::ecs::Entity> primary_window) const {
-            return std::visit(utils::visitor{
-                                  [&](const Primary&) -> std::optional<NormalizedWindowRef> {
-                                      return primary_window.transform([](epix::ecs::Entity entity) {
-                                          return NormalizedWindowRef(entity);
-                                      });
-                                  },
-                                  [](const Entity& entity) -> std::optional<NormalizedWindowRef> {
-                                      return NormalizedWindowRef(entity.entity);
-                                  }},
+            return std::visit(utils::visitor{[&](const Primary&) -> std::optional<NormalizedWindowRef> {
+                                                 return primary_window.transform([](epix::ecs::Entity entity) {
+                                                     return NormalizedWindowRef(entity);
+                                                 });
+                                             },
+                                             [](const Entity& entity) -> std::optional<NormalizedWindowRef> {
+                                                 return NormalizedWindowRef(entity.entity);
+                                             }},
                               *this);
         }
     };
@@ -191,7 +190,8 @@ EPIX_EXPORT namespace epix::window {
         /** @brief Logical size of the window in platform coordinates. */
         std::pair<int, int> size = {1280, 720};
         /** @brief Drawable framebuffer size in physical pixels (read-only).
-         * This can differ from `size` on high-DPI displays. */
+         * This can differ from `size` on
+         * high-DPI displays. */
         std::pair<int, int> physical_size = {1280, 720};
         /** @brief Logical-to-physical DPI scale reported by the backend
          * (read-only). */

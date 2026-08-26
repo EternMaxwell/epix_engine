@@ -145,8 +145,8 @@ struct Node2D : render::graph::Node {
         }
     }
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
-                                                          render::graph::RenderContext& render_ctx,
-                                                          const ecs::World& world) override {
+                                                         render::graph::RenderContext& render_ctx,
+                                                         const ecs::World& world) override {
         // No matching render-world query yet: this is the same benign
         // no-view condition that Bevy's ViewNodeRunner treats as Ok(()).
         // Once the query exists, actual graph invocation failures are returned
@@ -169,9 +169,9 @@ struct Node2D : render::graph::Node {
         // to the camera viewport (origin, size, depth range).
         if (camera.viewport) {
             const auto& vp = *camera.viewport;
-            render_pass.setViewport(static_cast<float>(vp.physical_position.x), static_cast<float>(vp.physical_position.y),
-                                    static_cast<float>(vp.physical_size.x), static_cast<float>(vp.physical_size.y), vp.depth.first,
-                                    vp.depth.second);
+            render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                    static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
+                                    static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
         }
         phase.render(render_pass, world, view_entity);
         render_pass.end();
@@ -222,8 +222,8 @@ EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
         views;
     void update(ecs::World& world) override;
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
-                                                          render::graph::RenderContext& render_ctx,
-                                                          const ecs::World& world) override;
+                                                         render::graph::RenderContext& render_ctx,
+                                                         const ecs::World& world) override;
 };
 
 /** @brief Plugin that sets up the core 2D render graph and camera

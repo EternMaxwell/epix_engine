@@ -86,10 +86,11 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
 
     app.resource_mut<Events<ScreenCapture>>().push(
         ScreenCapture{.target = ::epix::camera::RenderTarget::from_texture(texture)});
-    const Entity first_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
+    const Entity first_component_request     = app.world_mut().spawn(Screenshot::image(texture)).id();
     const Entity duplicate_component_request = app.world_mut().spawn(Screenshot::image(texture)).id();
     app.run_schedule(PreUpdate);
-    const bool first_is_capturing = app.world().get_entity(first_component_request)
+    const bool first_is_capturing = app.world()
+                                        .get_entity(first_component_request)
                                         .transform([](const EntityRef& entity) { return entity.contains<Capturing>(); })
                                         .value_or(false);
     const bool duplicate_is_capturing =
@@ -112,8 +113,8 @@ TEST(ScreenshotPlugin, CaptureClearColorTexture) {
         render_sub->update();
         device.poll(wgpu::Bool(true));
         render_sub->extract(app);
-        if (!app.resource<Events<ScreenCaptureResult>>().empty() &&
-            !app.resource<Events<ScreenshotCaptured>>().empty()) break;
+        if (!app.resource<Events<ScreenCaptureResult>>().empty() && !app.resource<Events<ScreenshotCaptured>>().empty())
+            break;
     }
     app.insert_sub_app(epix::render::Render, std::move(render_sub));
     app.run_schedule(PreUpdate);

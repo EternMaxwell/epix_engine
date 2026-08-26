@@ -14,9 +14,9 @@
 #include <vector>
 #endif
 
-#include <epix/render/render_phase.hpp>
-#include <epix/render/render_debug.hpp>
 #include <epix/render/gpu_preprocessing_mode.hpp>
+#include <epix/render/render_debug.hpp>
+#include <epix/render/render_phase.hpp>
 #include <epix/render/schedule.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/view.hpp>
@@ -24,19 +24,18 @@
 namespace epix::render::phase {
 
 /** @brief Reconstruct the extra index passed to a multidraw item (Bevy
- * `BinnedRenderPhase::render`). A GPU-generated command count is meaningful
+ * `BinnedRenderPhase::render`). A GPU-generated
+ * command count is meaningful
  * only when the device exposes multi-draw-indirect-count; wgpu's DX12 backend
- * is excluded to mirror Bevy's driver workaround. */
-EPIX_EXPORT constexpr PhaseItemExtraIndex multidraw_extra_index(
-    PhaseItemExtraIndex extra_index,
-    std::uint32_t batch_count,
-    bool multi_draw_indirect_count_supported,
-    std::uint32_t batch_set_index) noexcept {
+ * is
+ * excluded to mirror Bevy's driver workaround. */
+EPIX_EXPORT constexpr PhaseItemExtraIndex multidraw_extra_index(PhaseItemExtraIndex extra_index,
+                                                                std::uint32_t batch_count,
+                                                                bool multi_draw_indirect_count_supported,
+                                                                std::uint32_t batch_set_index) noexcept {
     if (extra_index.type != PhaseItemExtraIndex::Type::IndirectParametersIndex) return extra_index;
     extra_index.indirect_range.second = extra_index.indirect_range.first + batch_count;
-    extra_index.batch_set_index = multi_draw_indirect_count_supported
-                                      ? std::optional{batch_set_index}
-                                      : std::nullopt;
+    extra_index.batch_set_index = multi_draw_indirect_count_supported ? std::optional{batch_set_index} : std::nullopt;
     return extra_index;
 }
 
@@ -155,7 +154,8 @@ EPIX_EXPORT struct InputUniformIndex {
 };
 
 /** @brief One CPU-prepared draw within a binned render bin (Bevy
- * `BinnedRenderPhaseBatch`). A bin can split into several draws when the
+ * `BinnedRenderPhaseBatch`). A bin can split into
+ * several draws when the
  * dynamic-uniform fallback changes offset. */
 EPIX_EXPORT struct BinnedRenderPhaseBatch {
     sync_world::MainEntity representative_entity;
@@ -164,21 +164,24 @@ EPIX_EXPORT struct BinnedRenderPhaseBatch {
 };
 
 /** @brief A group of binned batches submitted through one multi-draw indirect
- * command (Bevy `BinnedRenderPhaseBatchSet`). */
+ * command (Bevy
+ * `BinnedRenderPhaseBatchSet`). */
 template <typename BK>
 struct BinnedRenderPhaseBatchSet {
     BinnedRenderPhaseBatch first_batch;
     BK bin_key;
     std::uint32_t batch_count = 0;
-    std::uint32_t index = 0;
+    std::uint32_t index       = 0;
 };
 
 /**
  * @brief The draw-batch layout chosen for a binned phase (Bevy
  * `BinnedRenderPhaseBatchSets`).
  *
- * `None` uses dynamic-uniform batches, `PreprocessingOnly` emits direct
- * batches, and `Culling` groups them for indirect multi-draw.  Concrete GPU
+ * `None` uses
+ * dynamic-uniform batches, `PreprocessingOnly` emits direct
+ * batches, and `Culling` groups them for indirect
+ * multi-draw.  Concrete GPU
  * preprocessing consumers populate these containers during preparation.
  */
 template <typename BK>
@@ -342,8 +345,8 @@ struct EntityThatChangedBins {
  * render phase for a single view (Bevy `BinnedRenderPhase<BPI>`, 0.18).
  *
  * Entities are binned by `(batch_set_key, bin_key)`; bin membership is
- * cached per entity with a change tick so that `sweep_old_entities` can
- * cheaply remove entities that disappeared or changed bins.
+ * cached per entity with a change tick so that
+ * `sweep_old_entities` can cheaply remove entities that disappeared or changed bins.
  * @tparam BPI The binned phase item type (see `BinnedPhaseItem`).
  */
 EPIX_EXPORT template <BinnedPhaseItem BPI>
@@ -687,8 +690,8 @@ class BinnedRenderPhase {
         for (const auto& batch : batches) {
             if (key == batchable_meshes.iter().end()) break;
             draw_item(render_pass, world, view,
-                      make_item(key->first.first, key->first.second, batch.representative_entity,
-                                batch.instance_range, batch.extra_index));
+                      make_item(key->first.first, key->first.second, batch.representative_entity, batch.instance_range,
+                                batch.extra_index));
             ++key;
         }
     }
@@ -700,8 +703,7 @@ class BinnedRenderPhase {
         if constexpr (!has_item_factory) return;
         const bool multi_draw_indirect_count_supported = [&world] {
             const auto device = world.get_resource<wgpu::Device>();
-            if (!device || !device->get().hasFeature(
-                               wgpu::FeatureName(wgpu::NativeFeature::eMultiDrawIndirectCount))) {
+            if (!device || !device->get().hasFeature(wgpu::FeatureName(wgpu::NativeFeature::eMultiDrawIndirectCount))) {
                 return false;
             }
             const auto adapter = world.get_resource<wgpu::Adapter>();
@@ -714,20 +716,19 @@ class BinnedRenderPhase {
         auto multidraw_key = multidrawable_meshes.iter().begin();
         auto batchable_key = batchable_meshes.iter().begin();
         for (const auto& batch_set : batches) {
-            const auto extra_index = multidraw_extra_index(
-                batch_set.first_batch.extra_index, batch_set.batch_count,
-                multi_draw_indirect_count_supported, batch_set.index);
+            const auto extra_index = multidraw_extra_index(batch_set.first_batch.extra_index, batch_set.batch_count,
+                                                           multi_draw_indirect_count_supported, batch_set.index);
             if (multidraw_key != multidrawable_meshes.iter().end()) {
-                draw_item(render_pass, world, view,
-                          make_item(multidraw_key->first, batch_set.bin_key,
-                                    batch_set.first_batch.representative_entity,
-                                    batch_set.first_batch.instance_range, extra_index));
+                draw_item(
+                    render_pass, world, view,
+                    make_item(multidraw_key->first, batch_set.bin_key, batch_set.first_batch.representative_entity,
+                              batch_set.first_batch.instance_range, extra_index));
                 ++multidraw_key;
             } else if (batchable_key != batchable_meshes.iter().end()) {
                 draw_item(render_pass, world, view,
                           make_item(batchable_key->first.first, batch_set.bin_key,
-                                    batch_set.first_batch.representative_entity,
-                                    batch_set.first_batch.instance_range, extra_index));
+                                    batch_set.first_batch.representative_entity, batch_set.first_batch.instance_range,
+                                    extra_index));
                 ++batchable_key;
             } else {
                 break;
@@ -831,7 +832,8 @@ void sort_binned_render_phase(ecs::ResMut<ViewBinnedRenderPhases<BPI>> render_ph
 /**
  * @brief Plugin that sets up a binned render phase (Bevy
  * `BinnedRenderPhasePlugin`). Like Bevy's plugin, its batch-data adapter is
- * mandatory: phase-only registration belongs to the subsystem that owns a
+ * mandatory: phase-only registration
+ * belongs to the subsystem that owns a
  * bespoke phase, not to this automatic-batching plugin.
  */
 EPIX_EXPORT template <BinnedPhaseItem BPI, typename Adapter>
@@ -846,6 +848,7 @@ struct BinnedRenderPhasePlugin {
  * `SortedRenderPhasePlugin`): registers the phase sort system in
  * `RenderSystems::PhaseSort`. As in Bevy, automatic sorted-phase batching
  * always has a `GetFullBatchData` adapter.
+
  */
 EPIX_EXPORT template <CachedRenderPipelinePhaseItem P, typename Adapter>
 struct SortedRenderPhasePlugin {

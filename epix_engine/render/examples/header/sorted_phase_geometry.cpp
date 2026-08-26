@@ -2,6 +2,8 @@
 // pass/fail surface: compute writes the instance output used by the vertex
 // stage, and RenderPhase consumes the prepared ranges to draw real geometry.
 
+#include <array>
+#include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -10,9 +12,6 @@
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
-
-#include <array>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -77,9 +76,9 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
 
 template <>
 struct render::batching::GetBatchData<sorted_phase_geometry::Adapter> {
-    using Param = World&;
+    using Param       = World&;
     using CompareData = std::uint32_t;
-    using BufferData = std::uint32_t;
+    using BufferData  = std::uint32_t;
     std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
         World&, std::pair<Entity, render::sync_world::MainEntity>) const {
         return std::nullopt;
@@ -143,20 +142,25 @@ struct VertexInput { @location(0) position: vec2<f32>, @builtin(instance_index) 
 @fragment fn fragmentMain() -> @location(0) vec4<f32> { return vec4<f32>(0.25, 0.76, 0.94, 1.0); }
 )";
 
-constexpr struct SortedGeometryGraphLabel {} kSortedGeometryGraph;
+constexpr struct SortedGeometryGraphLabel {
+} kSortedGeometryGraph;
 
 struct SortedGeometryNode : render::graph::Node {
     std::optional<QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>> views;
-    std::shared_ptr<sorted_phase_geometry::PipelineState> pipeline = std::make_shared<sorted_phase_geometry::PipelineState>();
+    std::shared_ptr<sorted_phase_geometry::PipelineState> pipeline =
+        std::make_shared<sorted_phase_geometry::PipelineState>();
     render::phase::RenderPhase<Item> phase;
     wgpu::ShaderModule render_shader;
     wgpu::ShaderModule preprocess_shader;
     std::uint32_t work_item_count = 0;
-    bool prepared = false;
+    bool prepared                 = false;
 
     void update(World& world) override {
-        if (!views) views = world.try_query<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>();
-        else views->update_archetypes(world);
+        if (!views)
+            views =
+                world.try_query<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>();
+        else
+            views->update_archetypes(world);
         if (prepared) return;
 
         render::phase::DrawFunctions<Item> draw_functions;
@@ -166,97 +170,153 @@ struct SortedGeometryNode : render::graph::Node {
 
         for (std::uint32_t index = 0; index < 5; ++index) {
             phase.items.push_back({.render_entity = Entity::from_index(100 + index),
-                                   .main = render::sync_world::MainEntity{Entity::from_index(index)},
-                                   .pipeline_id = render::CachedPipelineId{1},
-                                   .draw_id = draw_id});
+                                   .main          = render::sync_world::MainEntity{Entity::from_index(index)},
+                                   .pipeline_id   = render::CachedPipelineId{1},
+                                   .draw_id       = draw_id});
         }
         render::batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
         render::batching::UntypedPhaseIndirectParametersBuffers indirect_parameters;
         render::batching::InstanceInputUniformBuffer<std::uint32_t> inputs;
         for (std::uint32_t index = 0; index < 5; ++index) inputs.add(index);
         inputs.ensure_nonempty();
-        const render::view::RetainedViewEntity retained_view{
-            render::sync_world::MainEntity{Entity::from_index(1)}, std::nullopt, 0};
-        render::batching::batch_and_prepare_gpu_sorted_phase<Item, Adapter>(
-            phase, phase_buffers, indirect_parameters, retained_view, true, false, world);
+        const render::view::RetainedViewEntity retained_view{render::sync_world::MainEntity{Entity::from_index(1)},
+                                                             std::nullopt, 0};
+        render::batching::batch_and_prepare_gpu_sorted_phase<Item, Adapter>(phase, phase_buffers, indirect_parameters,
+                                                                            retained_view, true, false, world);
 
         auto device = world.get_resource<wgpu::Device>();
         if (!device) throw std::runtime_error("render device is unavailable");
         constexpr std::array<float, 6> vertices = {0.0f, 0.16f, -0.14f, -0.12f, 0.14f, -0.12f};
-        pipeline->vertex_buffer = device->get().createBuffer(wgpu::BufferDescriptor()
-            .setLabel("sorted-phase-geometry-vertices").setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
-            .setSize(sizeof(vertices)));
+        pipeline->vertex_buffer =
+            device->get().createBuffer(wgpu::BufferDescriptor()
+                                           .setLabel("sorted-phase-geometry-vertices")
+                                           .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
+                                           .setSize(sizeof(vertices)));
         world.resource<wgpu::Queue>().writeBuffer(pipeline->vertex_buffer, 0, vertices.data(), sizeof(vertices));
-        render_shader = device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
-            .setLabel("sorted-phase-geometry-render-shader").setNextInChain(wgpu::ShaderSourceWGSL().setCode(kRenderShader)));
-        preprocess_shader = device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
-            .setLabel("sorted-phase-geometry-preprocess-shader").setNextInChain(wgpu::ShaderSourceWGSL().setCode(kPreprocessShader)));
-        if (!render_shader || !preprocess_shader) throw std::runtime_error("failed to create sorted-phase test shaders");
+        render_shader =
+            device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
+                                                 .setLabel("sorted-phase-geometry-render-shader")
+                                                 .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kRenderShader)));
+        preprocess_shader =
+            device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
+                                                 .setLabel("sorted-phase-geometry-preprocess-shader")
+                                                 .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kPreprocessShader)));
+        if (!render_shader || !preprocess_shader)
+            throw std::runtime_error("failed to create sorted-phase test shaders");
         inputs.buffer.write_buffer(device->get(), world.resource<wgpu::Queue>());
         phase_buffers.write_buffers(device->get(), world.resource<wgpu::Queue>());
-        const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Direct>(
-            phase_buffers.work_item_buffers.at(retained_view).storage).items;
-        work_item_count = static_cast<std::uint32_t>(work_items.len());
-        pipeline->input_indices_buffer = inputs.buffer.buffer;
-        pipeline->work_items_buffer = work_items.buffer;
+        const auto& work_items          = std::get<render::batching::PreprocessWorkItemBuffers::Direct>(
+                                              phase_buffers.work_item_buffers.at(retained_view).storage)
+                                              .items;
+        work_item_count                 = static_cast<std::uint32_t>(work_items.len());
+        pipeline->input_indices_buffer  = inputs.buffer.buffer;
+        pipeline->work_items_buffer     = work_items.buffer;
         pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
-        const auto preprocess_layout = device->get().createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-            .setLabel("sorted-phase-geometry-preprocess-layout").setEntries(std::array{
-                wgpu::BindGroupLayoutEntry().setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
-                    .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                wgpu::BindGroupLayoutEntry().setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
-                    .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eCompute)
-                    .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
-            }));
-        pipeline->render_bind_group_layout = device->get().createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-            .setLabel("sorted-phase-geometry-render-layout").setEntries(std::array{wgpu::BindGroupLayoutEntry()
-                .setBinding(2).setVisibility(wgpu::ShaderStage::eVertex)
-                .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
-        auto preprocess_pipeline_layout = device->get().createPipelineLayout(wgpu::PipelineLayoutDescriptor()
-            .setLabel("sorted-phase-geometry-preprocess-pipeline-layout").setBindGroupLayouts(std::array{preprocess_layout}));
-        pipeline->preprocess_pipeline = device->get().createComputePipeline(wgpu::ComputePipelineDescriptor()
-            .setLabel("sorted-phase-geometry-preprocess-pipeline").setLayout(preprocess_pipeline_layout)
-            .setCompute(wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader).setEntryPoint("preprocessMain")));
-        pipeline->preprocess_bind_group = device->get().createBindGroup(wgpu::BindGroupDescriptor()
-            .setLabel("sorted-phase-geometry-preprocess-bind-group").setLayout(preprocess_layout).setEntries(std::array{
-                wgpu::BindGroupEntry().setBinding(0).setBuffer(pipeline->input_indices_buffer).setSize(inputs.buffer.len() * sizeof(std::uint32_t)),
-                wgpu::BindGroupEntry().setBinding(1).setBuffer(pipeline->work_items_buffer).setSize(work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
-                wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer).setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
-            }));
-        pipeline->render_bind_group = device->get().createBindGroup(wgpu::BindGroupDescriptor()
-            .setLabel("sorted-phase-geometry-render-bind-group").setLayout(pipeline->render_bind_group_layout)
-            .setEntries(std::array{wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
-                .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
+        const auto preprocess_layout    = device->get().createBindGroupLayout(
+            wgpu::BindGroupLayoutDescriptor()
+                .setLabel("sorted-phase-geometry-preprocess-layout")
+                .setEntries(std::array{
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
+                }));
+        pipeline->render_bind_group_layout = device->get().createBindGroupLayout(
+            wgpu::BindGroupLayoutDescriptor()
+                .setLabel("sorted-phase-geometry-render-layout")
+                .setEntries(std::array{
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eVertex)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
+        auto preprocess_pipeline_layout =
+            device->get().createPipelineLayout(wgpu::PipelineLayoutDescriptor()
+                                                   .setLabel("sorted-phase-geometry-preprocess-pipeline-layout")
+                                                   .setBindGroupLayouts(std::array{preprocess_layout}));
+        pipeline->preprocess_pipeline = device->get().createComputePipeline(
+            wgpu::ComputePipelineDescriptor()
+                .setLabel("sorted-phase-geometry-preprocess-pipeline")
+                .setLayout(preprocess_pipeline_layout)
+                .setCompute(
+                    wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader).setEntryPoint("preprocessMain")));
+        pipeline->preprocess_bind_group = device->get().createBindGroup(
+            wgpu::BindGroupDescriptor()
+                .setLabel("sorted-phase-geometry-preprocess-bind-group")
+                .setLayout(preprocess_layout)
+                .setEntries(std::array{
+                    wgpu::BindGroupEntry()
+                        .setBinding(0)
+                        .setBuffer(pipeline->input_indices_buffer)
+                        .setSize(inputs.buffer.len() * sizeof(std::uint32_t)),
+                    wgpu::BindGroupEntry()
+                        .setBinding(1)
+                        .setBuffer(pipeline->work_items_buffer)
+                        .setSize(work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
+                    wgpu::BindGroupEntry()
+                        .setBinding(2)
+                        .setBuffer(pipeline->output_indices_buffer)
+                        .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
+                }));
+        pipeline->render_bind_group = device->get().createBindGroup(
+            wgpu::BindGroupDescriptor()
+                .setLabel("sorted-phase-geometry-render-bind-group")
+                .setLayout(pipeline->render_bind_group_layout)
+                .setEntries(std::array{wgpu::BindGroupEntry()
+                                           .setBinding(2)
+                                           .setBuffer(pipeline->output_indices_buffer)
+                                           .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
         prepared = true;
     }
 
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& context,
-                                                          render::graph::RenderContext& render_context,
-                                                          const World& world) override {
+                                                         render::graph::RenderContext& render_context,
+                                                         const World& world) override {
         if (!views || !render_shader || !preprocess_shader) return {};
-        const auto view = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
+        const auto view =
+            views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
         if (!view) return {};
         const auto& target = std::get<1>(*view);
         if (!pipeline->render_pipeline || pipeline->format != target.output_attachment.view_format) {
-            const auto attributes = std::array{wgpu::VertexAttribute().setFormat(wgpu::VertexFormat::eFloat32x2)
-                .setOffset(0).setShaderLocation(0)};
-            const auto buffers = std::array{wgpu::VertexBufferLayout().setArrayStride(2 * sizeof(float))
-                .setStepMode(wgpu::VertexStepMode::eVertex).setAttributes(attributes)};
-            auto layout = world.resource<wgpu::Device>().createPipelineLayout(wgpu::PipelineLayoutDescriptor()
-                .setLabel("sorted-phase-geometry-layout").setBindGroupLayouts(std::array{pipeline->render_bind_group_layout}));
-            pipeline->render_pipeline = world.resource<wgpu::Device>().createRenderPipeline(wgpu::RenderPipelineDescriptor()
-                .setLabel("sorted-phase-geometry-pipeline").setLayout(layout)
-                .setVertex(wgpu::VertexState().setModule(render_shader).setEntryPoint("vertexMain").setBuffers(buffers))
-                .setFragment(wgpu::FragmentState().setModule(render_shader).setEntryPoint("fragmentMain")
-                    .setTargets(std::array{wgpu::ColorTargetState().setFormat(target.output_attachment.view_format).setWriteMask(wgpu::ColorWriteMask::eAll)}))
-                .setPrimitive(wgpu::PrimitiveState().setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                    .setFrontFace(wgpu::FrontFace::eCCW).setCullMode(wgpu::CullMode::eNone))
-                .setMultisample(wgpu::MultisampleState().setCount(1).setMask(~0u)));
+            const auto attributes = std::array{
+                wgpu::VertexAttribute().setFormat(wgpu::VertexFormat::eFloat32x2).setOffset(0).setShaderLocation(0)};
+            const auto buffers = std::array{wgpu::VertexBufferLayout()
+                                                .setArrayStride(2 * sizeof(float))
+                                                .setStepMode(wgpu::VertexStepMode::eVertex)
+                                                .setAttributes(attributes)};
+            auto layout        = world.resource<wgpu::Device>().createPipelineLayout(
+                wgpu::PipelineLayoutDescriptor()
+                    .setLabel("sorted-phase-geometry-layout")
+                    .setBindGroupLayouts(std::array{pipeline->render_bind_group_layout}));
+            pipeline->render_pipeline = world.resource<wgpu::Device>().createRenderPipeline(
+                wgpu::RenderPipelineDescriptor()
+                    .setLabel("sorted-phase-geometry-pipeline")
+                    .setLayout(layout)
+                    .setVertex(
+                        wgpu::VertexState().setModule(render_shader).setEntryPoint("vertexMain").setBuffers(buffers))
+                    .setFragment(wgpu::FragmentState()
+                                     .setModule(render_shader)
+                                     .setEntryPoint("fragmentMain")
+                                     .setTargets(std::array{wgpu::ColorTargetState()
+                                                                .setFormat(target.output_attachment.view_format)
+                                                                .setWriteMask(wgpu::ColorWriteMask::eAll)}))
+                    .setPrimitive(wgpu::PrimitiveState()
+                                      .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                                      .setFrontFace(wgpu::FrontFace::eCCW)
+                                      .setCullMode(wgpu::CullMode::eNone))
+                    .setMultisample(wgpu::MultisampleState().setCount(1).setMask(~0u)));
             pipeline->format = target.output_attachment.view_format;
         }
         {
-            auto compute = render_context.command_encoder().beginComputePass(wgpu::ComputePassDescriptor().setLabel("sorted-phase-geometry-preprocess-pass"));
+            auto compute = render_context.command_encoder().beginComputePass(
+                wgpu::ComputePassDescriptor().setLabel("sorted-phase-geometry-preprocess-pass"));
             compute.setPipeline(pipeline->preprocess_pipeline);
             compute.setBindGroup(0, pipeline->preprocess_bind_group, std::span<const std::uint32_t>{});
             compute.dispatchWorkgroups((work_item_count + 63) / 64, 1, 1);
@@ -275,7 +335,8 @@ struct SortedGeometryPlugin {
     void attach(App& app) {
         if (auto render_app = app.get_sub_app_mut(render::Render)) {
             render::graph::RenderGraph graph;
-            constexpr struct SortedGeometryNodeLabel {} kSortedGeometryNode;
+            constexpr struct SortedGeometryNodeLabel {
+            } kSortedGeometryNode;
             graph.add_node(render::graph::NodeLabel(kSortedGeometryNode), SortedGeometryNode{});
             render_app->get().world_mut().resource_mut<render::graph::RenderGraph>().add_sub_graph(
                 render::graph::GraphLabel(kSortedGeometryGraph), std::move(graph));
@@ -289,16 +350,24 @@ int main() {
     App app = App::create();
     window::Window primary_window;
     primary_window.title = "Sorted Phase Geometry Test";
-    primary_window.size = {1280, 720};
+    primary_window.size  = {1280, 720};
     app.add_plugins(TaskPoolPlugin{})
-        .add_plugins(window::WindowPlugin{.primary_window = primary_window, .exit_condition = window::ExitCondition::OnPrimaryClosed})
-        .add_plugins(input::InputPlugin{}).add_plugins(time::TimePlugin{}).add_plugins(glfw::GLFWPlugin{})
-        .add_plugins(glfw::GLFWRenderPlugin{}).add_plugins(transform::TransformPlugin{})
-.add_plugins(render::FrameCountPlugin{}).add_plugins(camera::CameraPlugin{}).add_plugins(assets::AssetPlugin{}).add_plugins(image::ImagePlugin{}).add_plugins(render::RenderPlugin{})
+        .add_plugins(window::WindowPlugin{.primary_window = primary_window,
+                                          .exit_condition = window::ExitCondition::OnPrimaryClosed})
+        .add_plugins(input::InputPlugin{})
+        .add_plugins(time::TimePlugin{})
+        .add_plugins(glfw::GLFWPlugin{})
+        .add_plugins(glfw::GLFWRenderPlugin{})
+        .add_plugins(transform::TransformPlugin{})
+        .add_plugins(render::FrameCountPlugin{})
+        .add_plugins(camera::CameraPlugin{})
+        .add_plugins(assets::AssetPlugin{})
+        .add_plugins(image::ImagePlugin{})
+        .add_plugins(render::RenderPlugin{})
         .add_plugins(SortedGeometryPlugin{});
     app.add_systems(Startup, into([](Commands commands) {
-        commands.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{},
-                       render::camera::CameraRenderGraph(kSortedGeometryGraph), transform::Transform{});
-    }));
+                        commands.spawn(::epix::camera::Camera{}, ::epix::camera::Projection{},
+                                       render::camera::CameraRenderGraph(kSortedGeometryGraph), transform::Transform{});
+                    }));
     app.run();
 }

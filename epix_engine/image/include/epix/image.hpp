@@ -453,11 +453,13 @@ EPIX_EXPORT class Image {
 };
 
 /** @brief The persistent opaque-white fallback image installed by
- * `ImagePlugin`, corresponding to Bevy's `Handle<Image>::default()`. */
+ * `ImagePlugin`, corresponding to Bevy's
+ * `Handle<Image>::default()`. */
 inline const assets::Handle<Image> DEFAULT_IMAGE_HANDLE{uuids::uuid{}};
 
 /** @brief The persistent transparent-white fallback image installed by
- * `ImagePlugin`, matching Bevy's `TRANSPARENT_IMAGE_HANDLE`. */
+ * `ImagePlugin`, matching Bevy's
+ * `TRANSPARENT_IMAGE_HANDLE`. */
 inline const assets::Handle<Image> TRANSPARENT_IMAGE_HANDLE{
     uuids::uuid::from_string("d18ad97e-a322-4981-9505-44c59a4b5e46").value()};
 
@@ -481,8 +483,10 @@ EPIX_EXPORT struct ImageLoader {
 /** @brief Plugin that registers the image asset loader and related
  * systems (Bevy `ImagePlugin`).
  *
- * Render-side texture preparation reads @c default_sampler from this
- * application plugin, so add this plugin before @c render::RenderPlugin when
+ * Render-side
+ * texture preparation reads @c default_sampler from this
+ * application plugin, so add this plugin before @c
+ * render::RenderPlugin when
  * using default-sampled images. */
 EPIX_EXPORT struct ImagePlugin {
     /** @brief The sampler used by images whose sampler is @c Default. */

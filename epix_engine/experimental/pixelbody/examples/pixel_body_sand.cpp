@@ -270,13 +270,12 @@ void camera_control(ResMut<AppState> app_state,
 // ──────────────────────────────────────────────────────────────────────────────
 // Click-to-spawn pixel body at cursor (RMB).
 // ──────────────────────────────────────────────────────────────────────────────
-void spawn_body_on_click(
-    Commands cmd,
-    Res<AppState> app_state,
-    Res<fs::ElementRegistry> registry,
-    Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras) {
+void spawn_body_on_click(Commands cmd,
+                         Res<AppState> app_state,
+                         Res<fs::ElementRegistry> registry,
+                         Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                         Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                         Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras) {
     if (ImGui::GetIO().WantCaptureMouse) return;
     if (!mouse_buttons->just_pressed(input::MouseButton::MouseButtonRight)) return;
 
@@ -303,18 +302,17 @@ void spawn_body_on_click(
 // ──────────────────────────────────────────────────────────────────────────────
 // Paint sand/water/stone/erase under the cursor (LMB held).
 // ──────────────────────────────────────────────────────────────────────────────
-void paint_sand_on_drag(
-    Res<AppState> app_state,
-    Res<fs::ElementRegistry> registry,
-    Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-    Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
-    Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
-    Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
-    Query<Item<Mut<fs::ChunkElementGrid>,
-               Mut<fs::ChunkAirGrid>,
-               Mut<fs::ChunkThermalGrid>,
-               const fs::SandChunkPos&,
-               Mut<fs::SandChunkDirtyRect>>> chunks_q) {
+void paint_sand_on_drag(Res<AppState> app_state,
+                        Res<fs::ElementRegistry> registry,
+                        Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                        Query<Item<const window::CachedWindow&>, With<window::PrimaryWindow>> windows,
+                        Query<Item<const camera::Camera&, const transform::Transform&>, With<MainCamera>> cameras,
+                        Query<Item<Mut<fs::SandWorld>, Opt<const Children&>>, With<fs::SimulatedByPlugin>> worlds,
+                        Query<Item<Mut<fs::ChunkElementGrid>,
+                                   Mut<fs::ChunkAirGrid>,
+                                   Mut<fs::ChunkThermalGrid>,
+                                   const fs::SandChunkPos&,
+                                   Mut<fs::SandChunkDirtyRect>>> chunks_q) {
     if (ImGui::GetIO().WantCaptureMouse) return;
     if (!mouse_buttons->pressed(input::MouseButton::MouseButtonLeft)) return;
 

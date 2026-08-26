@@ -372,10 +372,10 @@ struct UninitBufferVec {
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
         if (requested_capacity <= capacity && buffer) return;
         capacity = requested_capacity;
-        buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                         .setLabel(label.c_str())
-                                         .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
-                                         .setSize(capacity * sizeof(T)));
+        buffer   = device.createBuffer(wgpu::BufferDescriptor()
+                                           .setLabel(label.c_str())
+                                           .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                           .setSize(capacity * sizeof(T)));
     }
 
     /** @brief Materialize storage for all slots reserved this frame. */
@@ -419,7 +419,7 @@ struct BatchedUniformBuffer {
     std::size_t current_offset = 0;
     /** @brief Number of logical elements pushed this frame. */
     std::size_t element_count = 0;
-    std::string label          = "BatchedUniformBuffer";
+    std::string label         = "BatchedUniformBuffer";
 
     BatchedUniformBuffer() = default;
     explicit BatchedUniformBuffer(const wgpu::Limits& limits) {
@@ -473,7 +473,7 @@ struct BatchedUniformBuffer {
         // even when the final batch is only partially populated; otherwise a
         // dynamic bind group with the required batch size would run past the
         // end of the native wgpu buffer.
-        const std::size_t batch_bytes = capacity * sizeof(T);
+        const std::size_t batch_bytes     = capacity * sizeof(T);
         const std::size_t populated_bytes = values.size() * sizeof(T);
         buffer_bytes.insert(buffer_bytes.end(), reinterpret_cast<const std::uint8_t*>(values.data()),
                             reinterpret_cast<const std::uint8_t*>(values.data()) + populated_bytes);

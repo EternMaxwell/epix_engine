@@ -6,6 +6,8 @@
 // and indirect command counts; the two prepared commands issue triangle draws,
 // so a bad preparation/render path leaves geometry missing.
 
+#include <array>
+#include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
@@ -14,9 +16,6 @@
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
-
-#include <array>
-#include <cstdint>
 #include <memory>
 #include <optional>
 #include <utility>
@@ -28,7 +27,7 @@ using namespace epix::ecs;
 namespace binned_phase_geometry {
 
 struct BatchSetKey {
-    int value = 0;
+    int value          = 0;
     bool indexed_value = false;
 
     BatchSetKey() = default;
@@ -51,7 +50,7 @@ struct Item {
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
     render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra; }
     void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra = value; }
-    using BinKey = int;
+    using BinKey      = int;
     using BatchSetKey = binned_phase_geometry::BatchSetKey;
     const int& bin_key() const noexcept { return bin; }
     const BatchSetKey& batch_set_key() const noexcept { return batch_set; }
@@ -100,7 +99,8 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
         pass.setBindGroup(0, state->render_bind_group, std::span<const std::uint32_t>{});
         pass.setVertexBuffer(0, state->vertex_buffer, 0, 3 * sizeof(float) * 2);
         if (item.extra.type == render::phase::PhaseItemExtraIndex::Type::IndirectParametersIndex) {
-            for (auto command = item.extra.indirect_range.first; command < item.extra.indirect_range.second; ++command) {
+            for (auto command = item.extra.indirect_range.first; command < item.extra.indirect_range.second;
+                 ++command) {
                 pass.drawIndirect(state->indirect_parameters_buffer,
                                   command * sizeof(render::batching::IndirectParametersNonIndexed));
             }
@@ -122,9 +122,9 @@ struct std::hash<binned_phase_geometry::BatchSetKey> {
 
 template <>
 struct render::batching::GetBatchData<binned_phase_geometry::Adapter> {
-    using Param = World&;
+    using Param       = World&;
     using CompareData = std::uint32_t;
-    using BufferData = std::uint32_t;
+    using BufferData  = std::uint32_t;
 
     std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
         World&, std::pair<Entity, render::sync_world::MainEntity>) const {
@@ -234,17 +234,20 @@ constexpr struct BinnedGeometryGraphLabel {
 } kBinnedGeometryGraph;
 
 struct BinnedGeometryNode : render::graph::Node {
-    std::optional<QueryState<epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>> views;
-    std::shared_ptr<binned_phase_geometry::PipelineState> pipeline = std::make_shared<binned_phase_geometry::PipelineState>();
+    std::optional<QueryState<epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>>
+        views;
+    std::shared_ptr<binned_phase_geometry::PipelineState> pipeline =
+        std::make_shared<binned_phase_geometry::PipelineState>();
     render::phase::BinnedRenderPhase<Item> phase;
     wgpu::ShaderModule shader_module;
     wgpu::ShaderModule preprocess_shader_module;
     std::uint32_t preprocess_work_item_count = 0;
-    bool prepared = false;
+    bool prepared                            = false;
 
     void update(World& world) override {
         if (!views) {
-            views = world.try_query<epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>();
+            views = world.try_query<
+                epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>();
         } else {
             views->update_archetypes(world);
         }
@@ -258,8 +261,7 @@ struct BinnedGeometryNode : render::graph::Node {
         auto device = world.get_resource<wgpu::Device>();
         if (!device) throw std::runtime_error("render device is unavailable");
         if (!device->get().hasFeature(wgpu::FeatureName::eIndirectFirstInstance)) {
-            throw std::runtime_error(
-                "Binned Phase Geometry Test requires the indirect-first-instance GPU feature");
+            throw std::runtime_error("Binned Phase Geometry Test requires the indirect-first-instance GPU feature");
         }
         const Tick tick{1};
         render::batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
@@ -267,37 +269,39 @@ struct BinnedGeometryNode : render::graph::Node {
         render::batching::InstanceInputUniformBuffer<std::uint32_t> input_indices;
         for (std::uint32_t index = 0; index < 5; ++index) input_indices.add(index);
         input_indices.ensure_nonempty();
-        const render::view::RetainedViewEntity retained_view{
-            render::sync_world::MainEntity{Entity::from_index(1)}, std::nullopt, 0};
+        const render::view::RetainedViewEntity retained_view{render::sync_world::MainEntity{Entity::from_index(1)},
+                                                             std::nullopt, 0};
         phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::Culling};
         for (std::uint32_t index = 0; index < 3; ++index) {
             phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index)},
-                      render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+                      render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::MultidrawableMesh,
+                      tick);
         }
         for (std::uint32_t index = 0; index < 2; ++index) {
-            phase.add(0, 1, Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 3)},
-                      render::phase::InputUniformIndex{index + 3}, render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+            phase.add(0, 1, Entity::from_index(200 + index),
+                      render::sync_world::MainEntity{Entity::from_index(index + 3)},
+                      render::phase::InputUniformIndex{index + 3},
+                      render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
         }
-        render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(
-            phase, phase_buffers, indirect_parameters, retained_view,
-            false, false, world);
+        render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(phase, phase_buffers, indirect_parameters,
+                                                                            retained_view, false, false, world);
 
         constexpr std::array<float, 6> triangle_vertices = {0.0f, 0.16f, -0.14f, -0.12f, 0.14f, -0.12f};
-        pipeline->vertex_buffer = device->get().createBuffer(
-            wgpu::BufferDescriptor()
-                .setLabel("binned-phase-geometry-vertices")
-                .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
-                .setSize(sizeof(triangle_vertices)));
+        pipeline->vertex_buffer =
+            device->get().createBuffer(wgpu::BufferDescriptor()
+                                           .setLabel("binned-phase-geometry-vertices")
+                                           .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
+                                           .setSize(sizeof(triangle_vertices)));
         world.resource<wgpu::Queue>().writeBuffer(pipeline->vertex_buffer, 0, triangle_vertices.data(),
-                                                   sizeof(triangle_vertices));
-        shader_module = device->get().createShaderModule(
-            wgpu::ShaderModuleDescriptor()
-                .setLabel("binned-phase-geometry-test-shader")
-                .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kTriangleShader)));
-        preprocess_shader_module = device->get().createShaderModule(
-            wgpu::ShaderModuleDescriptor()
-                .setLabel("binned-phase-geometry-preprocess-shader")
-                .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kPreprocessShader)));
+                                                  sizeof(triangle_vertices));
+        shader_module =
+            device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
+                                                 .setLabel("binned-phase-geometry-test-shader")
+                                                 .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kTriangleShader)));
+        preprocess_shader_module =
+            device->get().createShaderModule(wgpu::ShaderModuleDescriptor()
+                                                 .setLabel("binned-phase-geometry-preprocess-shader")
+                                                 .setNextInChain(wgpu::ShaderSourceWGSL().setCode(kPreprocessShader)));
         if (!shader_module || !preprocess_shader_module) {
             throw std::runtime_error("failed to create binned-phase test shader modules");
         }
@@ -306,95 +310,128 @@ struct BinnedGeometryNode : render::graph::Node {
         indirect_parameters.write_buffers(device->get(), world.resource<wgpu::Queue>());
         const auto& work_item_storage = phase_buffers.work_item_buffers.at(retained_view).storage;
         const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(work_item_storage);
-        const auto& work_items_buffer = work_items.non_indexed.buffer;
-        preprocess_work_item_count = static_cast<std::uint32_t>(work_items.non_indexed.len());
-        pipeline->input_indices_buffer = input_indices.buffer.buffer;
-        pipeline->work_items_buffer = work_items_buffer;
-        pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
+        const auto& work_items_buffer        = work_items.non_indexed.buffer;
+        preprocess_work_item_count           = static_cast<std::uint32_t>(work_items.non_indexed.len());
+        pipeline->input_indices_buffer       = input_indices.buffer.buffer;
+        pipeline->work_items_buffer          = work_items_buffer;
+        pipeline->output_indices_buffer      = phase_buffers.data_buffer.buffer;
         pipeline->indirect_parameters_buffer = indirect_parameters.non_indexed_data.buffer;
-        const auto preprocess_layout = device->get().createBindGroupLayout(
+        const auto preprocess_layout         = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("binned-phase-geometry-preprocess-layout")
                 .setEntries(std::array{
-                    wgpu::BindGroupLayoutEntry().setBinding(0).setVisibility(wgpu::ShaderStage::eCompute)
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(0)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                    wgpu::BindGroupLayoutEntry().setBinding(1).setVisibility(wgpu::ShaderStage::eCompute)
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(1)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                    wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eCompute)
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
-                    wgpu::BindGroupLayoutEntry().setBinding(3).setVisibility(wgpu::ShaderStage::eCompute)
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(3)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                    wgpu::BindGroupLayoutEntry().setBinding(4).setVisibility(wgpu::ShaderStage::eCompute)
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(4)
+                        .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eStorage)),
                 }));
         pipeline->render_bind_group_layout = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("binned-phase-geometry-render-layout")
-                .setEntries(std::array{wgpu::BindGroupLayoutEntry().setBinding(2).setVisibility(wgpu::ShaderStage::eVertex)
-                    .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
-        const auto preprocess_pipeline_layout = device->get().createPipelineLayout(
-            wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-preprocess-pipeline-layout")
-                .setBindGroupLayouts(std::array{preprocess_layout}));
-        pipeline->preprocess_pipeline = device->get().createComputePipeline(
-            wgpu::ComputePipelineDescriptor().setLabel("binned-phase-geometry-preprocess-pipeline")
-                .setLayout(preprocess_pipeline_layout)
-                .setCompute(wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader_module).setEntryPoint("preprocessMain")));
+                .setEntries(std::array{
+                    wgpu::BindGroupLayoutEntry()
+                        .setBinding(2)
+                        .setVisibility(wgpu::ShaderStage::eVertex)
+                        .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage))}));
+        const auto preprocess_pipeline_layout =
+            device->get().createPipelineLayout(wgpu::PipelineLayoutDescriptor()
+                                                   .setLabel("binned-phase-geometry-preprocess-pipeline-layout")
+                                                   .setBindGroupLayouts(std::array{preprocess_layout}));
+        pipeline->preprocess_pipeline =
+            device->get().createComputePipeline(wgpu::ComputePipelineDescriptor()
+                                                    .setLabel("binned-phase-geometry-preprocess-pipeline")
+                                                    .setLayout(preprocess_pipeline_layout)
+                                                    .setCompute(wgpu::ProgrammableStageDescriptor()
+                                                                    .setModule(preprocess_shader_module)
+                                                                    .setEntryPoint("preprocessMain")));
         pipeline->preprocess_bind_group = device->get().createBindGroup(
-            wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-preprocess-bind-group")
+            wgpu::BindGroupDescriptor()
+                .setLabel("binned-phase-geometry-preprocess-bind-group")
                 .setLayout(preprocess_layout)
                 .setEntries(std::array{
-                    wgpu::BindGroupEntry().setBinding(0).setBuffer(pipeline->input_indices_buffer)
+                    wgpu::BindGroupEntry()
+                        .setBinding(0)
+                        .setBuffer(pipeline->input_indices_buffer)
                         .setSize(input_indices.buffer.len() * sizeof(std::uint32_t)),
-                    wgpu::BindGroupEntry().setBinding(1).setBuffer(pipeline->work_items_buffer)
+                    wgpu::BindGroupEntry()
+                        .setBinding(1)
+                        .setBuffer(pipeline->work_items_buffer)
                         .setSize(preprocess_work_item_count * sizeof(render::batching::PreprocessWorkItem)),
-                    wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
+                    wgpu::BindGroupEntry()
+                        .setBinding(2)
+                        .setBuffer(pipeline->output_indices_buffer)
                         .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
-                    wgpu::BindGroupEntry().setBinding(3).setBuffer(indirect_parameters.non_indexed_cpu_metadata.buffer)
+                    wgpu::BindGroupEntry()
+                        .setBinding(3)
+                        .setBuffer(indirect_parameters.non_indexed_cpu_metadata.buffer)
                         .setSize(indirect_parameters.non_indexed_cpu_metadata.len() *
                                  sizeof(render::batching::IndirectParametersCpuMetadata)),
-                    wgpu::BindGroupEntry().setBinding(4).setBuffer(pipeline->indirect_parameters_buffer)
+                    wgpu::BindGroupEntry()
+                        .setBinding(4)
+                        .setBuffer(pipeline->indirect_parameters_buffer)
                         .setSize(indirect_parameters.non_indexed_data.len() *
                                  sizeof(render::batching::IndirectParametersNonIndexed)),
                 }));
         pipeline->render_bind_group = device->get().createBindGroup(
-            wgpu::BindGroupDescriptor().setLabel("binned-phase-geometry-render-bind-group")
+            wgpu::BindGroupDescriptor()
+                .setLabel("binned-phase-geometry-render-bind-group")
                 .setLayout(pipeline->render_bind_group_layout)
-                .setEntries(std::array{wgpu::BindGroupEntry().setBinding(2).setBuffer(pipeline->output_indices_buffer)
-                    .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
+                .setEntries(std::array{wgpu::BindGroupEntry()
+                                           .setBinding(2)
+                                           .setBuffer(pipeline->output_indices_buffer)
+                                           .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t))}));
         prepared = true;
     }
 
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& context,
-                                                          render::graph::RenderContext& render_context,
-                                                          const World& world) override {
+                                                         render::graph::RenderContext& render_context,
+                                                         const World& world) override {
         if (!views || !shader_module || !preprocess_shader_module) return {};
-        const auto view = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
+        const auto view =
+            views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
         if (!view) return {};
         const auto& target = std::get<1>(*view);
         if (!pipeline->pipeline || pipeline->format != target.output_attachment.view_format) {
             const auto format = target.output_attachment.view_format;
-            auto layout = world.resource<wgpu::Device>().createPipelineLayout(
-                wgpu::PipelineLayoutDescriptor().setLabel("binned-phase-geometry-layout")
+            auto layout       = world.resource<wgpu::Device>().createPipelineLayout(
+                wgpu::PipelineLayoutDescriptor()
+                    .setLabel("binned-phase-geometry-layout")
                     .setBindGroupLayouts(std::array{pipeline->render_bind_group_layout}));
-            const auto attributes = std::array{wgpu::VertexAttribute()
-                                                   .setFormat(wgpu::VertexFormat::eFloat32x2)
-                                                   .setOffset(0)
-                                                   .setShaderLocation(0)};
+            const auto attributes = std::array{
+                wgpu::VertexAttribute().setFormat(wgpu::VertexFormat::eFloat32x2).setOffset(0).setShaderLocation(0)};
             const auto vertex_buffers = std::array{wgpu::VertexBufferLayout()
-                                                        .setArrayStride(sizeof(float) * 2)
-                                                        .setStepMode(wgpu::VertexStepMode::eVertex)
-                                                        .setAttributes(attributes)};
-            pipeline->pipeline = world.resource<wgpu::Device>().createRenderPipeline(
+                                                       .setArrayStride(sizeof(float) * 2)
+                                                       .setStepMode(wgpu::VertexStepMode::eVertex)
+                                                       .setAttributes(attributes)};
+            pipeline->pipeline        = world.resource<wgpu::Device>().createRenderPipeline(
                 wgpu::RenderPipelineDescriptor()
                     .setLabel("binned-phase-geometry-pipeline")
                     .setLayout(layout)
-                    .setVertex(wgpu::VertexState().setModule(shader_module).setEntryPoint("vertexMain").setBuffers(vertex_buffers))
+                    .setVertex(wgpu::VertexState()
+                                   .setModule(shader_module)
+                                   .setEntryPoint("vertexMain")
+                                   .setBuffers(vertex_buffers))
                     .setFragment(wgpu::FragmentState()
                                      .setModule(shader_module)
                                      .setEntryPoint("fragmentMain")
-                                     .setTargets(std::array{wgpu::ColorTargetState()
-                                                                .setFormat(format)
-                                                                .setWriteMask(wgpu::ColorWriteMask::eAll)}))
+                                     .setTargets(std::array{wgpu::ColorTargetState().setFormat(format).setWriteMask(
+                                         wgpu::ColorWriteMask::eAll)}))
                     .setPrimitive(wgpu::PrimitiveState()
                                       .setTopology(wgpu::PrimitiveTopology::eTriangleList)
                                       .setFrontFace(wgpu::FrontFace::eCCW)
@@ -438,11 +475,11 @@ int main() {
     App app = App::create();
     window::Window primary_window;
     primary_window.title = "Binned Phase Geometry Test";
-    primary_window.size = {1280, 720};
+    primary_window.size  = {1280, 720};
 
     app.add_plugins(TaskPoolPlugin{})
         .add_plugins(window::WindowPlugin{.primary_window = primary_window,
-                                           .exit_condition = window::ExitCondition::OnPrimaryClosed})
+                                          .exit_condition = window::ExitCondition::OnPrimaryClosed})
         .add_plugins(input::InputPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(glfw::GLFWPlugin{})

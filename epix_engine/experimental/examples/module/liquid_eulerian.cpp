@@ -596,33 +596,35 @@ struct GpuPressureProjector {
                 .setBuffer(std::move(buffer));
         };
         inplace_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                           .setLabel("LiquidInplaceLayout")
-                                                           .setEntries(std::array{
-                                                               storage(0, wgpu::BufferBindingType::eStorage),
-                                                               storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                           }));
-        inplace_param_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                                 .setLabel("LiquidInplaceParamLayout")
-                                                                 .setEntries(std::array{
-                                                                     storage(0, wgpu::BufferBindingType::eStorage),
-                                                                     storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                                     storage(2, wgpu::BufferBindingType::eUniform),
-                                                                 }));
-        output_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                          .setLabel("LiquidOutputLayout")
+                                                          .setLabel("LiquidInplaceLayout")
                                                           .setEntries(std::array{
-                                                              storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                              storage(1, wgpu::BufferBindingType::eStorage),
-                                                              storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                              storage(3, wgpu::BufferBindingType::eUniform),
+                                                              storage(0, wgpu::BufferBindingType::eStorage),
+                                                              storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
                                                           }));
-        output_noparam_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                                  .setLabel("LiquidOutputNoParamLayout")
-                                                                  .setEntries(std::array{
-                                                                      storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                                      storage(1, wgpu::BufferBindingType::eStorage),
-                                                                      storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                                  }));
+        inplace_param_layout =
+            device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                             .setLabel("LiquidInplaceParamLayout")
+                                             .setEntries(std::array{
+                                                 storage(0, wgpu::BufferBindingType::eStorage),
+                                                 storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                 storage(2, wgpu::BufferBindingType::eUniform),
+                                             }));
+        output_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                                         .setLabel("LiquidOutputLayout")
+                                                         .setEntries(std::array{
+                                                             storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                             storage(1, wgpu::BufferBindingType::eStorage),
+                                                             storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                             storage(3, wgpu::BufferBindingType::eUniform),
+                                                         }));
+        output_noparam_layout =
+            device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
+                                             .setLabel("LiquidOutputNoParamLayout")
+                                             .setEntries(std::array{
+                                                 storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
+                                                 storage(1, wgpu::BufferBindingType::eStorage),
+                                                 storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
+                                             }));
 
         // ------- Slang shader common preambles (SVO-indexed chunk lookup via kSvoGridSlangSource) -------
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
@@ -1908,9 +1910,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 )slg";
 
         // Register + load + queue each compute pipeline
-        const auto queue_one = [&](std::string_view path,
-                                   const std::string& src,
-                                   const char* label,
+        const auto queue_one = [&](std::string_view path, const std::string& src, const char* label,
                                    const wgpu::BindGroupLayout& layout) {
             registry->get().insert_asset_static(path, bytes(src));
             auto handle = server->get().load<shader::Shader>(std::string("embedded://") + std::string(path));
@@ -1922,24 +1922,33 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
             });
         };
 
-        pipeline_even_id        = queue_one("liquid/pressure_even.slang", kShaderEven, "LiquidPressureProjectEven", inplace_layout);
-        pipeline_odd_id         = queue_one("liquid/pressure_odd.slang", kShaderOdd, "LiquidPressureProjectOdd", inplace_layout);
-        gravity_pipeline_id     = queue_one("liquid/gravity.slang", kShaderGravity, "LiquidGravity", inplace_param_layout);
-        post_u_pipeline_id      = queue_one("liquid/post_u.slang", kShaderPostU, "LiquidPostU", inplace_layout);
-        post_v_pipeline_id      = queue_one("liquid/post_v.slang", kShaderPostV, "LiquidPostV", inplace_layout);
-        visc_u_even_pipeline_id = queue_one("liquid/visc_u_even.slang", kShaderViscUEven, "LiquidViscosityUEven", inplace_param_layout);
-        visc_u_odd_pipeline_id  = queue_one("liquid/visc_u_odd.slang", kShaderViscUOdd, "LiquidViscosityUOdd", inplace_param_layout);
-        visc_v_even_pipeline_id = queue_one("liquid/visc_v_even.slang", kShaderViscVEven, "LiquidViscosityVEven", inplace_param_layout);
-        visc_v_odd_pipeline_id  = queue_one("liquid/visc_v_odd.slang", kShaderViscVOdd, "LiquidViscosityVOdd", inplace_param_layout);
-        visc_wall_u_pipeline_id = queue_one("liquid/visc_wall_u.slang", kShaderViscWallU, "LiquidViscosityWallU", inplace_param_layout);
-        visc_wall_v_pipeline_id = queue_one("liquid/visc_wall_v.slang", kShaderViscWallV, "LiquidViscosityWallV", inplace_param_layout);
+        pipeline_even_id =
+            queue_one("liquid/pressure_even.slang", kShaderEven, "LiquidPressureProjectEven", inplace_layout);
+        pipeline_odd_id =
+            queue_one("liquid/pressure_odd.slang", kShaderOdd, "LiquidPressureProjectOdd", inplace_layout);
+        gravity_pipeline_id = queue_one("liquid/gravity.slang", kShaderGravity, "LiquidGravity", inplace_param_layout);
+        post_u_pipeline_id  = queue_one("liquid/post_u.slang", kShaderPostU, "LiquidPostU", inplace_layout);
+        post_v_pipeline_id  = queue_one("liquid/post_v.slang", kShaderPostV, "LiquidPostV", inplace_layout);
+        visc_u_even_pipeline_id =
+            queue_one("liquid/visc_u_even.slang", kShaderViscUEven, "LiquidViscosityUEven", inplace_param_layout);
+        visc_u_odd_pipeline_id =
+            queue_one("liquid/visc_u_odd.slang", kShaderViscUOdd, "LiquidViscosityUOdd", inplace_param_layout);
+        visc_v_even_pipeline_id =
+            queue_one("liquid/visc_v_even.slang", kShaderViscVEven, "LiquidViscosityVEven", inplace_param_layout);
+        visc_v_odd_pipeline_id =
+            queue_one("liquid/visc_v_odd.slang", kShaderViscVOdd, "LiquidViscosityVOdd", inplace_param_layout);
+        visc_wall_u_pipeline_id =
+            queue_one("liquid/visc_wall_u.slang", kShaderViscWallU, "LiquidViscosityWallU", inplace_param_layout);
+        visc_wall_v_pipeline_id =
+            queue_one("liquid/visc_wall_v.slang", kShaderViscWallV, "LiquidViscosityWallV", inplace_param_layout);
         extrap_cell_even_pipeline_id =
             queue_one("liquid/extrap_even.slang", kShaderExtrapCellEven, "LiquidExtrapolateCellEven", inplace_layout);
         extrap_cell_odd_pipeline_id =
             queue_one("liquid/extrap_odd.slang", kShaderExtrapCellOdd, "LiquidExtrapolateCellOdd", inplace_layout);
-        advect_u_pipeline_id  = queue_one("liquid/advect_u.slang", kShaderAdvectU, "LiquidAdvectU", output_layout);
-        advect_v_pipeline_id  = queue_one("liquid/advect_v.slang", kShaderAdvectV, "LiquidAdvectV", output_layout);
-        density_pipeline_id   = queue_one("liquid/density.slang", kShaderDensity, "LiquidDensityTransport", output_layout);
+        advect_u_pipeline_id = queue_one("liquid/advect_u.slang", kShaderAdvectU, "LiquidAdvectU", output_layout);
+        advect_v_pipeline_id = queue_one("liquid/advect_v.slang", kShaderAdvectV, "LiquidAdvectV", output_layout);
+        density_pipeline_id =
+            queue_one("liquid/density.slang", kShaderDensity, "LiquidDensityTransport", output_layout);
         surface_u_pipeline_id = queue_one("liquid/surface_u.slang", kShaderSurfaceU, "LiquidSurfaceU", output_layout);
         surface_v_pipeline_id = queue_one("liquid/surface_v.slang", kShaderSurfaceV, "LiquidSurfaceV", output_layout);
         clamp_u_pipeline_id   = queue_one("liquid/clamp_u.slang", kShaderClampU, "LiquidClampU", output_noparam_layout);
@@ -2691,89 +2700,91 @@ struct Plugin {
 
         app.add_systems(
             app::Update,
-            ecs::into([](ecs::ResMut<FluidState> state, ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue,
-                         ecs::ResMut<render::PipelineServer> pipeline_server,
-                         ecs::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
-                         ecs::Res<input::ButtonInput<input::KeyCode>> keys,
-                         ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>>
-                             window_query,
-                         ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&,
-                                              const transform::Transform&>> camera_query,
-                         ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
-                if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
-                if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
+            ecs::into(
+                [](ecs::ResMut<FluidState> state, ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue,
+                   ecs::ResMut<render::PipelineServer> pipeline_server,
+                   ecs::Res<input::ButtonInput<input::MouseButton>> mouse_buttons,
+                   ecs::Res<input::ButtonInput<input::KeyCode>> keys,
+                   ecs::Query<ecs::Item<const window::CachedWindow&>, ecs::With<window::PrimaryWindow>> window_query,
+                   ecs::Query<ecs::Item<const camera::Camera&, const camera::Projection&, const transform::Transform&>>
+                       camera_query,
+                   ecs::ResMut<assets::Assets<mesh::Mesh>> meshes) {
+                    if (keys->just_pressed(input::KeyCode::KeySpace)) state->sim.paused = !state->sim.paused;
+                    if (keys->just_pressed(input::KeyCode::KeyR)) state->sim.reset();
 
-                if (keys->just_pressed(input::KeyCode::Key0)) {
-                    state->latency_mode = FluidState::SyncLatencyMode::NoLatency;
-                    state->pending_mesh.reset();
-                }
-                if (keys->just_pressed(input::KeyCode::Key9)) {
-                    state->latency_mode = FluidState::SyncLatencyMode::OneFrame;
-                    state->pending_mesh.reset();
-                }
+                    if (keys->just_pressed(input::KeyCode::Key0)) {
+                        state->latency_mode = FluidState::SyncLatencyMode::NoLatency;
+                        state->pending_mesh.reset();
+                    }
+                    if (keys->just_pressed(input::KeyCode::Key9)) {
+                        state->latency_mode = FluidState::SyncLatencyMode::OneFrame;
+                        state->pending_mesh.reset();
+                    }
 
-                if (keys->just_pressed(input::KeyCode::Key1)) state->sim.tool = PaintTool::Water;
-                if (keys->just_pressed(input::KeyCode::Key2)) state->sim.tool = PaintTool::Wall;
-                if (keys->just_pressed(input::KeyCode::Key3)) state->sim.tool = PaintTool::Eraser;
+                    if (keys->just_pressed(input::KeyCode::Key1)) state->sim.tool = PaintTool::Water;
+                    if (keys->just_pressed(input::KeyCode::Key2)) state->sim.tool = PaintTool::Wall;
+                    if (keys->just_pressed(input::KeyCode::Key3)) state->sim.tool = PaintTool::Eraser;
 
-                if (keys->just_pressed(input::KeyCode::KeyLeftBracket))
-                    state->sim.pen_size = std::max(1, state->sim.pen_size - 1);
-                if (keys->just_pressed(input::KeyCode::KeyRightBracket))
-                    state->sim.pen_size = std::min(20, state->sim.pen_size + 1);
+                    if (keys->just_pressed(input::KeyCode::KeyLeftBracket))
+                        state->sim.pen_size = std::max(1, state->sim.pen_size - 1);
+                    if (keys->just_pressed(input::KeyCode::KeyRightBracket))
+                        state->sim.pen_size = std::min(20, state->sim.pen_size + 1);
 
-                if (keys->just_pressed(input::KeyCode::KeyMinus))
-                    state->sim.dt_scale = std::max(1.0f, state->sim.dt_scale - 0.25f);
-                if (keys->just_pressed(input::KeyCode::KeyEqual))
-                    state->sim.dt_scale = std::min(10.0f, state->sim.dt_scale + 0.25f);
+                    if (keys->just_pressed(input::KeyCode::KeyMinus))
+                        state->sim.dt_scale = std::max(1.0f, state->sim.dt_scale - 0.25f);
+                    if (keys->just_pressed(input::KeyCode::KeyEqual))
+                        state->sim.dt_scale = std::min(10.0f, state->sim.dt_scale + 0.25f);
 
-                if (keys->just_pressed(input::KeyCode::KeyComma))
-                    state->sim.stickiness = std::max(0.0f, state->sim.stickiness - 0.1f);
-                if (keys->just_pressed(input::KeyCode::KeyPeriod))
-                    state->sim.stickiness = std::min(10.0f, state->sim.stickiness + 0.1f);
+                    if (keys->just_pressed(input::KeyCode::KeyComma))
+                        state->sim.stickiness = std::max(0.0f, state->sim.stickiness - 0.1f);
+                    if (keys->just_pressed(input::KeyCode::KeyPeriod))
+                        state->sim.stickiness = std::min(10.0f, state->sim.stickiness + 0.1f);
 
-                auto win_opt = window_query.single();
-                auto cam_opt = camera_query.single();
+                    auto win_opt = window_query.single();
+                    auto cam_opt = camera_query.single();
 
-                if (win_opt && cam_opt) {
-                    auto&& [window]                   = *win_opt;
-                    auto&& [cam, proj, cam_transform] = *cam_opt;
+                    if (win_opt && cam_opt) {
+                        auto&& [window]                   = *win_opt;
+                        auto&& [cam, proj, cam_transform] = *cam_opt;
 
-                    const auto [cx, cy] = window.cursor_pos;
-                    const auto [ww, wh] = window.size;
-                    if (ww > 0 && wh > 0) {
-                        const glm::vec2 world = screen_to_world(
-                            glm::vec2(static_cast<float>(cx), static_cast<float>(cy)),
-                            glm::vec2(static_cast<float>(ww), static_cast<float>(wh)), cam, proj, cam_transform);
+                        const auto [cx, cy] = window.cursor_pos;
+                        const auto [ww, wh] = window.size;
+                        if (ww > 0 && wh > 0) {
+                            const glm::vec2 world = screen_to_world(
+                                glm::vec2(static_cast<float>(cx), static_cast<float>(cy)),
+                                glm::vec2(static_cast<float>(ww), static_cast<float>(wh)), cam, proj, cam_transform);
 
-                        if (auto cell = world_to_cell(world); cell.has_value()) {
-                            const bool lmb = mouse_buttons->pressed(input::MouseButton::MouseButtonLeft);
-                            const bool rmb = mouse_buttons->pressed(input::MouseButton::MouseButtonRight);
-                            if (lmb || rmb) {
-                                const PaintTool t = rmb ? PaintTool::Eraser : state->sim.tool;
-                                state->sim.apply_brush(cell->first, cell->second, t);
+                            if (auto cell = world_to_cell(world); cell.has_value()) {
+                                const bool lmb = mouse_buttons->pressed(input::MouseButton::MouseButtonLeft);
+                                const bool rmb = mouse_buttons->pressed(input::MouseButton::MouseButtonRight);
+                                if (lmb || rmb) {
+                                    const PaintTool t = rmb ? PaintTool::Eraser : state->sim.tool;
+                                    state->sim.apply_brush(cell->first, cell->second, t);
+                                }
                             }
                         }
                     }
-                }
 
-                if (!state->sim.paused) {
-                    const float dt = state->sim.dt_scale * 0.05f;
-                    state->sim.solve(dt, state->thread_pool.get(), state->gpu_pressure.get(), std::addressof(*device),
-                                     std::addressof(*queue), std::addressof(*pipeline_server));
-                    ++state->step_count;
-                }
-
-                auto latest_mesh = build_mesh(state->sim, state->thread_pool.get());
-
-                if (state->latency_mode == FluidState::SyncLatencyMode::OneFrame) {
-                    if (state->pending_mesh.has_value()) {
-                        (void)meshes->insert(state->mesh_handle.id(), std::move(*state->pending_mesh));
+                    if (!state->sim.paused) {
+                        const float dt = state->sim.dt_scale * 0.05f;
+                        state->sim.solve(dt, state->thread_pool.get(), state->gpu_pressure.get(),
+                                         std::addressof(*device), std::addressof(*queue),
+                                         std::addressof(*pipeline_server));
+                        ++state->step_count;
                     }
-                    state->pending_mesh.emplace(std::move(latest_mesh));
-                } else {
-                    (void)meshes->insert(state->mesh_handle.id(), std::move(latest_mesh));
-                }
-            }).set_name("liquid html-port update"));
+
+                    auto latest_mesh = build_mesh(state->sim, state->thread_pool.get());
+
+                    if (state->latency_mode == FluidState::SyncLatencyMode::OneFrame) {
+                        if (state->pending_mesh.has_value()) {
+                            (void)meshes->insert(state->mesh_handle.id(), std::move(*state->pending_mesh));
+                        }
+                        state->pending_mesh.emplace(std::move(latest_mesh));
+                    } else {
+                        (void)meshes->insert(state->mesh_handle.id(), std::move(latest_mesh));
+                    }
+                })
+                .set_name("liquid html-port update"));
 
         app.add_systems(app::PreUpdate, ecs::into(liquid_imgui_ui).after(imgui::BeginFrameSet));
     }

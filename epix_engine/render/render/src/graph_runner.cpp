@@ -26,13 +26,12 @@ std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run(
     return {};
 }
 
-std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(
-    const RenderGraph& graph,
-    std::optional<GraphLabel> sub_graph,
-    RenderContext& render_context,
-    World& world,
-    std::span<const SlotValue> inputs,
-    std::optional<Entity> view_entity) {
+std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(const RenderGraph& graph,
+                                                                         std::optional<GraphLabel> sub_graph,
+                                                                         RenderContext& render_context,
+                                                                         World& world,
+                                                                         std::span<const SlotValue> inputs,
+                                                                         std::optional<Entity> view_entity) {
     // store all outputs of nodes in a map
     std::unordered_map<NodeLabel, std::vector<SlotValue>> node_outputs;
 
@@ -47,13 +46,14 @@ std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(
         for (auto&& [i, input_slot] : std::views::enumerate(input_node->get().inputs.iter())) {
             if (i < inputs.size()) {
                 if (input_slot.type != inputs[i].type()) {
-                    return std::unexpected(RunnerMismatchedInputSlotType{
-                        .slot_index = static_cast<std::size_t>(i), .expected = input_slot.type, .actual = inputs[i].type()});
+                    return std::unexpected(RunnerMismatchedInputSlotType{.slot_index = static_cast<std::size_t>(i),
+                                                                         .expected   = input_slot.type,
+                                                                         .actual     = inputs[i].type()});
                 }
                 input_values.push_back(inputs[i]);
             } else {
-                return std::unexpected(
-                    RunnerMissingInput{.slot_index = static_cast<std::size_t>(i), .slot_name = input_slot.name, .sub_graph = sub_graph});
+                return std::unexpected(RunnerMissingInput{
+                    .slot_index = static_cast<std::size_t>(i), .slot_name = input_slot.name, .sub_graph = sub_graph});
             }
         }
 
@@ -151,8 +151,9 @@ std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(
                 if (outputs[index]) {
                     output_values.push_back(*outputs[index]);
                 } else {
-                    return std::unexpected(RunnerEmptyNodeOutputSlot{
-                        .node = node_state.label, .slot_index = static_cast<std::size_t>(index), .slot_name = output_slot.name});
+                    return std::unexpected(RunnerEmptyNodeOutputSlot{.node       = node_state.label,
+                                                                     .slot_index = static_cast<std::size_t>(index),
+                                                                     .slot_name  = output_slot.name});
                 }
             }
         }
