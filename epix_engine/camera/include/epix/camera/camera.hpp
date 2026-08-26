@@ -193,10 +193,12 @@ EPIX_EXPORT struct CameraMainTextureUsages {
     wgpu::TextureUsage usage =
         wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc;
 
-    /** @brief Adds usages while preserving the Bevy-compatible defaults. */
-    CameraMainTextureUsages& with(wgpu::TextureUsage extra) noexcept {
-        usage = usage | extra;
-        return *this;
+    /** @brief Returns a copy with additional usages, matching Bevy's
+     * consuming `CameraMainTextureUsages::with` builder. */
+    CameraMainTextureUsages with(wgpu::TextureUsage extra) const noexcept {
+        auto result  = *this;
+        result.usage = result.usage | extra;
+        return result;
     }
 };
 

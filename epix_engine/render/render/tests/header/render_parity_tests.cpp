@@ -1600,6 +1600,15 @@ TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     EXPECT_EQ(clear_color.to_vec4(), configured.to_vec4());
 }
 
+TEST(CameraMainTextureUsages, WithReturnsAugmentedCopy) {
+    const ::epix::camera::CameraMainTextureUsages defaults;
+    const auto augmented = defaults.with(wgpu::TextureUsage::eCopyDst);
+
+    constexpr auto copy_dst = static_cast<std::uint64_t>(wgpu::TextureUsage::eCopyDst);
+    EXPECT_EQ(static_cast<std::uint64_t>(defaults.usage) & copy_dst, 0u);
+    EXPECT_EQ(static_cast<std::uint64_t>(augmented.usage) & copy_dst, copy_dst);
+}
+
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
     using ScalingMode = ::epix::camera::ScalingMode;
     ::epix::camera::OrthographicProjection projection;
