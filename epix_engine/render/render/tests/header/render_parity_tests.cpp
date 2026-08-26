@@ -1650,6 +1650,13 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
 }
 
+TEST(ViewPlugin, ToleratesMissingRenderSubAppWithoutMainWorldGpuState) {
+    auto app = epix::app::App::create();
+
+    EXPECT_NO_THROW(view::ViewPlugin{}.attach(app));
+    EXPECT_FALSE(app.world().get_resource<view::ViewUniformBindingLayout>().has_value());
+}
+
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
     using ScalingMode = ::epix::camera::ScalingMode;
     ::epix::camera::OrthographicProjection projection;

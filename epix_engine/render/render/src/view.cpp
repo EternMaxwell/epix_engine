@@ -439,11 +439,13 @@ void view::ViewPlugin::attach(App& app) {
     }
     // Bevy ViewPlugin adds RenderVisibilityRangePlugin (view/mod.rs:105-110).
     RenderVisibilityRangePlugin{}.attach(app);
-    ViewUniformBindingLayout view_uniform_binding_layout(app.world_mut());
-    app.world_mut().insert_resource(view_uniform_binding_layout);
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {
-        sub_app->get().world_mut().insert_resource(view_uniform_binding_layout);
-        sub_app->get().world_mut().insert_resource(ViewDepthCache{});
+        // Bevy creates this render-device-dependent state only in the
+        // RenderApp. Keeping it out of the main world also permits ViewPlugin
+        // to be used without a renderer, as Bevy permits.
+        auto& render_world = sub_app->get().world_mut();
+        render_world.insert_resource(ViewUniformBindingLayout(render_world));
+        render_world.insert_resource(ViewDepthCache{});
         // Bevy view/mod.rs:141-142: ViewUniforms + ViewTargetAttachments are
         // initialized in the render app (clear_view_attachments needs the latter).
         sub_app->get().world_mut().init_resource<ViewTargetAttachments>();
