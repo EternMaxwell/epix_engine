@@ -2664,6 +2664,9 @@ TEST(ReadbackComplete, ToShaderType) {
     Payload out = complete.to_shader_type<Payload>();
     EXPECT_FLOAT_EQ(out.x, 3.5f);
     EXPECT_EQ(out.y, 42u);
+
+    complete.data.resize(sizeof(Payload) - 1);
+    EXPECT_THROW((complete.to_shader_type<Payload>()), std::runtime_error);
 }
 
 // RunSubGraph carries an optional debug_group marker name (Bevy

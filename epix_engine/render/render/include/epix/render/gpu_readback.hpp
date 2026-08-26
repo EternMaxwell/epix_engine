@@ -12,6 +12,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -22,6 +23,7 @@
 
 #include <epix/image.hpp>
 #include <epix/render/extract.hpp>
+#include <epix/render/render_resource.hpp>
 #include <epix/render/storage.hpp>
 
 namespace epix::render {
@@ -69,16 +71,17 @@ EPIX_EXPORT struct ReadbackComplete {
     std::vector<std::uint8_t> data;
 
     /** @brief Interpret the raw bytes as a shader type T (Bevy
-     * ReadbackComplete::to_shader_type, gpu_readback.rs:122-129). T must be
-     * trivially copyable and fit the data; no bounds check (Bevy panics via
-     * Reader on overflow - here the caller guarantees the size). */
+     * ReadbackComplete::to_shader_type, gpu_readback.rs:122-129). The
+     * payload must contain a complete shader type; invalid data fails just as
+     * Bevy's encase Reader does. */
     template <typename T>
-        requires std::is_trivially_copyable_v<T>
+        requires render_resource::ShaderType<T>
     T to_shader_type() const {
-        T val{};
-        if (data.size() >= sizeof(T)) {
-            std::memcpy(&val, data.data(), sizeof(T));
+        if (data.size() < sizeof(T)) {
+            throw std::runtime_error("GPU readback payload is too small for the requested shader type.");
         }
+        T val{};
+        std::memcpy(&val, data.data(), sizeof(T));
         return val;
     }
 };
