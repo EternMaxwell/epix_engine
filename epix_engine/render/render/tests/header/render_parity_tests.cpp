@@ -1589,6 +1589,17 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     EXPECT_NE(projection.get_projection_matrix()[0][0], 0.0f);
 }
 
+TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
+    auto app = epix::app::App::create();
+    const ::epix::camera::ClearColor configured{0.25f, 0.5f, 0.75f, 1.0f};
+    app.world_mut().insert_resource(configured);
+
+    ::epix::camera::CameraPlugin{}.attach(app);
+
+    const auto& clear_color = app.world().resource<::epix::camera::ClearColor>();
+    EXPECT_EQ(clear_color.to_vec4(), configured.to_vec4());
+}
+
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
     using ScalingMode = ::epix::camera::ScalingMode;
     ::epix::camera::OrthographicProjection projection;

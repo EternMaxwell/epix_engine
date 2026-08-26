@@ -295,6 +295,8 @@ void CameraPlugin::attach(App& app) {
                     CameraProjectionPlugin<PerspectiveProjection>{});
     // ClearColor extraction to the render world is registered by the render
     // module's RenderPlugin, like bevy_render.
-    app.world_mut().insert_resource(ClearColor{});
+    // Bevy CameraPlugin::build uses init_resource, preserving an application
+    // clear color configured before the plugin is attached.
+    app.world_mut().init_resource<ClearColor>();
 }
 }  // namespace epix::camera
