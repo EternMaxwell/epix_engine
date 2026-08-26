@@ -1609,6 +1609,12 @@ TEST(CameraMainTextureUsages, WithReturnsAugmentedCopy) {
     EXPECT_EQ(static_cast<std::uint64_t>(augmented.usage) & copy_dst, copy_dst);
 }
 
+TEST(RenderPlugins, TolerateMissingRenderSubApp) {
+    auto app = epix::app::App::create();
+    EXPECT_NO_THROW(GlobalsPlugin{}.attach(app));
+    EXPECT_NO_THROW(view::RenderVisibilityRangePlugin{}.attach(app));
+}
+
 TEST(ScalingMode, VariantsAndProjectionSizingMatchBevy) {
     using ScalingMode = ::epix::camera::ScalingMode;
     ::epix::camera::OrthographicProjection projection;
