@@ -494,6 +494,9 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
     app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
         return view::Msaa::Sample4;
     });
+    app.world_mut().register_required_components_with<::epix::camera::Camera>([] {
+        return sync_world::SyncToRenderWorld{};
+    });
     app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] {
         return view::ColorGrading{};
     });

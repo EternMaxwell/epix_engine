@@ -1626,6 +1626,9 @@ TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
     EXPECT_FALSE(render_app->get().world().get_resource<::epix::camera::ClearColor>().has_value());
+
+    const Entity camera = app.world_mut().spawn(::epix::camera::Camera{}).id();
+    EXPECT_TRUE(app.world().entity(camera).contains<sync_world::SyncToRenderWorld>());
 }
 
 TEST(CameraMainTextureUsages, WithReturnsAugmentedCopy) {
