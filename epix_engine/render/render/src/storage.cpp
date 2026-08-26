@@ -14,11 +14,12 @@ GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderSto
 
     // Bevy (storage.rs:131-157): with data -> create_buffer_with_data (size =
     // data length, usage | COPY_DST implicitly); without -> create_buffer with
-    // the descriptor size. `usage | eCopyDst` mirrors create_buffer_with_data.
+    // the descriptor usage unchanged.
     const std::uint64_t size = asset.data.has_value() ? asset.data->size() : asset.size;
+    const auto usage = asset.data.has_value() ? asset.usage | wgpu::BufferUsage::eCopyDst : asset.usage;
 
     wgpu::BufferDescriptor desc;
-    desc.setLabel(asset.label.c_str()).setUsage(asset.usage | wgpu::BufferUsage::eCopyDst).setSize(size);
+    desc.setLabel(asset.label.c_str()).setUsage(usage).setSize(size);
     result.buffer = device.get().createBuffer(desc);
     if (!result.buffer) {
         throw std::runtime_error("Failed to create GPU storage buffer for ShaderStorageBuffer");
