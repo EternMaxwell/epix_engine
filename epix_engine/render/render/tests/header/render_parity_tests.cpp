@@ -1650,6 +1650,19 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
 }
 
+TEST(GlobalsPlugin, LeavesRenderFrameCountToExtraction) {
+    auto app = epix::app::App::create();
+    app.add_sub_app(Render);
+
+    GlobalsPlugin{}.attach(app);
+
+    const auto render_app = app.get_sub_app(Render);
+    ASSERT_TRUE(render_app.has_value());
+    EXPECT_TRUE(render_app->get().world().get_resource<GlobalsBuffer>().has_value());
+    EXPECT_TRUE(render_app->get().world().get_resource<epix::time::Time<>>().has_value());
+    EXPECT_FALSE(render_app->get().world().get_resource<FrameCount>().has_value());
+}
+
 TEST(ViewPlugin, ToleratesMissingRenderSubAppWithoutMainWorldGpuState) {
     auto app = epix::app::App::create();
 
