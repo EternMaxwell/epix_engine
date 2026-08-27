@@ -45,7 +45,7 @@ struct Edges {
 template <typename T>
 concept valid_system =
     valid_function_system<T> && std::same_as<typename function_system_traits<T>::Input, std::tuple<>> &&
-    std::same_as<typename function_system_traits<T>::Output, void>;
+    std::same_as<system_output_t<typename function_system_traits<T>::Output>, void>;
 }  // namespace internal
 EPIX_EXPORT struct Node {
     Node(const SystemSetLabel& label) noexcept : label(label) {}

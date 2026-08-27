@@ -99,6 +99,11 @@ void MultithreadClassicExecutor::execute(ScheduleSystems& _data, World& world, c
                 spdlog::error("[schedule] system exception at system '{}', msg: unknown",
                               cache->nodes[index].node->system->name());
             }
+        } else if (std::holds_alternative<SystemResultError>(error)) {
+            const auto& result_error = std::get<SystemResultError>(error);
+            spdlog::error("[schedule] system error at system '{}', type: '{}', msg: {}",
+                          cache->nodes[index].node->system->name(), result_error.error_type.short_name(),
+                          result_error.message);
         }
         if (config.on_error) config.on_error(error);
     };

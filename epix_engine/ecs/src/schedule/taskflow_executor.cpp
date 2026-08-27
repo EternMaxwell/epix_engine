@@ -59,6 +59,11 @@ struct TaskflowExecutor::Impl {
                 spdlog::error("[schedule] system exception at system '{}', msg: unknown",
                               source->nodes[index].node->system->name());
             }
+        } else if (std::holds_alternative<SystemResultError>(error)) {
+            const auto& result_error = std::get<SystemResultError>(error);
+            spdlog::error("[schedule] system error at system '{}', type: '{}', msg: {}",
+                          source->nodes[index].node->system->name(), result_error.error_type.short_name(),
+                          result_error.message);
         }
         if (exec_config.on_error) exec_config.on_error(error);
     };

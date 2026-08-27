@@ -30,8 +30,27 @@ EPIX_EXPORT struct SystemException {
     /** @brief The captured exception. */
     std::exception_ptr exception;
 };
-/** @brief Error type for system execution: either a parameter validation error or exception. */
-EPIX_EXPORT using RunSystemError = std::variant<ValidateParamError, SystemException>;
+/** @brief Error returned by a fallible system function (`std::expected<T, E>`). */
+EPIX_EXPORT struct SystemResultError {
+    /** @brief Concrete type of the function's error value. */
+    meta::type_index error_type;
+    /** @brief Human-readable message when the error is string-like. */
+    std::string message;
+
+    template <typename E>
+    static SystemResultError from(E&& error) {
+        using Error = std::decay_t<E>;
+        if constexpr (std::derived_from<Error, std::exception>) {
+            return {.error_type = meta::type_id<Error>(), .message = error.what()};
+        } else if constexpr (std::same_as<Error, std::string> || std::same_as<Error, std::string_view>) {
+            return {.error_type = meta::type_id<Error>(), .message = std::string(std::forward<E>(error))};
+        } else {
+            return {.error_type = meta::type_id<Error>(), .message = {}};
+        }
+    }
+};
+/** @brief Error type for system execution. */
+EPIX_EXPORT using RunSystemError = std::variant<ValidateParamError, SystemException, SystemResultError>;
 /** @brief Abstract base class for all systems.
  *  Owns parameter state and provides run/apply/validate interface.
  *  @tparam In System input type (default: empty tuple).
@@ -92,6 +111,22 @@ EPIX_EXPORT template <typename In = std::tuple<>, typename Out = void>
 using SystemUnique = std::unique_ptr<System<In, Out>>;
 
 namespace internal {
+template <typename T>
+struct system_output {
+    using type                                  = T;
+    static constexpr bool is_fallible_expected = false;
+};
+
+template <typename T, typename E>
+struct system_output<std::expected<T, E>> {
+    using type                                  = T;
+    using error_type                            = E;
+    static constexpr bool is_fallible_expected = true;
+};
+
+template <typename T>
+using system_output_t = typename system_output<T>::type;
+
 template <typename F>
     requires requires {
         typename traits::function_traits<F>;
@@ -131,10 +166,13 @@ concept valid_function_system = requires {
 
 template <valid_function_system F>
 struct FunctionSystem
-    : public System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output> {
+    : public System<typename function_system_traits<F>::Input,
+                    system_output_t<typename function_system_traits<F>::Output>> {
    public:
     // Storage type to store the orginal function. This is to handle function pointers and lambdas uniformly.
-    using Base    = System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>;
+    using RawOutput = typename function_system_traits<F>::Output;
+    using Output    = system_output_t<RawOutput>;
+    using Base      = System<typename function_system_traits<F>::Input, Output>;
     using Storage = typename function_system_traits<F>::Storage;
     using State   = typename SystemParam<typename function_system_traits<F>::ParamTuple>::State;
     using SInput  = internal::SystemInput<typename function_system_traits<F>::Input>;
@@ -179,12 +217,21 @@ struct FunctionSystem
         }
     }
 
-    std::expected<typename function_system_traits<F>::Output, RunSystemError> run_internal(typename SInput::Input input,
-                                                                                           World& world) override {
+    std::expected<Output, RunSystemError> run_internal(typename SInput::Input input, World& world) override {
         auto call = [](auto&& f,
-                       auto&& t) -> std::expected<typename function_system_traits<F>::Output, RunSystemError> {
+                       auto&& t) -> std::expected<Output, RunSystemError> {
             try {
-                if constexpr (std::same_as<void, typename function_system_traits<F>::Output>) {
+                if constexpr (system_output<RawOutput>::is_fallible_expected) {
+                    auto result = std::apply(f, std::move(t));
+                    if (!result) {
+                        return std::unexpected(SystemResultError::from(std::move(result).error()));
+                    }
+                    if constexpr (std::same_as<Output, void>) {
+                        return {};
+                    } else {
+                        return std::move(*result);
+                    }
+                } else if constexpr (std::same_as<RawOutput, void>) {
                     std::apply(f, std::move(t));
                     return {};
                 } else {
@@ -230,7 +277,8 @@ struct FunctionSystem
 };
 
 template <valid_function_system F>
-System<typename function_system_traits<F>::Input, typename function_system_traits<F>::Output>* make_system(F&& func) {
+System<typename function_system_traits<F>::Input, system_output_t<typename function_system_traits<F>::Output>>*
+make_system(F&& func) {
     return new FunctionSystem<F>(std::forward<F>(func));
 }
 }  // namespace internal
@@ -239,19 +287,21 @@ EPIX_EXPORT using internal::function_system_traits;
 /** @brief Create a system from a function and return it as a unique_ptr. */
 EPIX_EXPORT template <internal::valid_function_system F>
 std::unique_ptr<
-    System<typename internal::function_system_traits<F>::Input, typename internal::function_system_traits<F>::Output>>
+    System<typename internal::function_system_traits<F>::Input,
+           internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
 make_system_unique(F&& func) {
     return std::unique_ptr<System<typename internal::function_system_traits<F>::Input,
-                                  typename internal::function_system_traits<F>::Output>>(
+                                  internal::system_output_t<typename internal::function_system_traits<F>::Output>>>(
         internal::make_system(std::forward<F>(func)));
 }
 /** @brief Create a system from a function and return it as a shared_ptr. */
 EPIX_EXPORT template <internal::valid_function_system F>
 std::shared_ptr<
-    System<typename internal::function_system_traits<F>::Input, typename internal::function_system_traits<F>::Output>>
+    System<typename internal::function_system_traits<F>::Input,
+           internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
 make_system_shared(F&& func) {
     return std::shared_ptr<System<typename internal::function_system_traits<F>::Input,
-                                  typename internal::function_system_traits<F>::Output>>(
+                                  internal::system_output_t<typename internal::function_system_traits<F>::Output>>>(
         internal::make_system(std::forward<F>(func)));
 }
 }  // namespace epix::ecs

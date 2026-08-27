@@ -1,11 +1,13 @@
 #include <gtest/gtest.h>
 
 #include <epix/ecs.hpp>
+#include <expected>
 #include <iostream>
 #include <memory>
 #include <print>
 #include <random>
 #include <string>
+#include <stdexcept>
 #include <type_traits>
 #include <utility>
 
@@ -24,6 +26,10 @@ struct Comp3 {
 
 struct Comp4 {
     double value = 0.0;
+};
+
+struct SystemTestError : std::runtime_error {
+    using std::runtime_error::runtime_error;
 };
 }  // namespace
 template <>
@@ -141,4 +147,26 @@ TEST(ecs, schedule) {
     std::println(std::cout, "Since commands are deferred, spawned entities are not visible yet.");
     std::println(std::cout, "Second execution:");
     exec_sched.execute(world);
+}
+
+TEST(ecs, scheduled_expected_error_is_forwarded_to_error_handler) {
+    World world(WorldId(2));
+    Schedule schedule(ScheduleLabel::from_type<Comp1>());
+    schedule.add_systems(into([]() -> std::expected<void, SystemTestError> {
+        return std::unexpected(SystemTestError("expected system failure"));
+    }));
+
+    bool received = false;
+    const auto expected_error_type = epix::meta::type_id<SystemTestError>();
+    ScheduleConfig config;
+    config.executor_config.on_error = [&](const RunSystemError& error) {
+        ASSERT_TRUE((std::holds_alternative<SystemResultError>(error)));
+        const auto& result_error = std::get<SystemResultError>(error);
+        EXPECT_EQ(result_error.error_type, expected_error_type);
+        EXPECT_EQ(result_error.message, "expected system failure");
+        received = true;
+    };
+
+    schedule.execute(world, config);
+    EXPECT_TRUE(received);
 }
