@@ -228,7 +228,8 @@ struct epix::render::RenderAsset<epix::image::Image> {
     using ExtractedAsset = epix::image::Image;
 
     ProcessedAsset prepare_asset(epix::image::Image&& asset,
+                                 epix::assets::AssetId<epix::image::Image> id,
                                  Param param,
-                                 const epix::render::texture::GpuImage* previous = nullptr);
+                                 const epix::render::texture::GpuImage* previous);
     epix::render::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
 };

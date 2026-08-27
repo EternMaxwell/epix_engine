@@ -177,8 +177,10 @@ wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDesc
 }  // namespace
 
 texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
+                                                           assets::AssetId<image::Image> id,
                                                            Param param,
                                                            const texture::GpuImage* previous) {
+    (void)id;
     auto& [device, queue, default_sampler] = param;
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
                   asset.depth_or_layers(), static_cast<int>(asset.format()));

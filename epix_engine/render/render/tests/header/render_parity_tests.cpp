@@ -26,7 +26,10 @@ struct IncrementalExtractSource {
 };
 
 struct IncrementalExtractPayload {
-    std::vector<std::uint32_t> dirty_region;
+    std::vector<std::uint32_t> values;
+    bool full_snapshot = false;
+    RenderAssetExtractionReason reason{};
+    bool had_previous_asset = false;
 };
 
 struct IncrementalExtractIdShiftA {};
@@ -39,8 +42,25 @@ struct epix::render::RenderAsset<IncrementalExtractSource> {
     using ProcessedAsset = std::vector<std::uint32_t>;
     using Param          = std::tuple<>;
 
-    ExtractedAsset extract(const IncrementalExtractSource& source) const { return {.dirty_region = source.dirty_region}; }
-    ProcessedAsset prepare_asset(ExtractedAsset&& payload, Param) const { return std::move(payload.dirty_region); }
+    ExtractedAsset extract(const IncrementalExtractSource& source,
+                           epix::assets::AssetId<IncrementalExtractSource>,
+                           RenderAssetExtractionReason reason,
+                           const ProcessedAsset* previous_asset) const {
+        const bool full_snapshot = reason == RenderAssetExtractionReason::Added ||
+                                   reason == RenderAssetExtractionReason::Reextract || previous_asset == nullptr;
+        return {
+            .values             = full_snapshot ? source.resident_data : source.dirty_region,
+            .full_snapshot      = full_snapshot,
+            .reason             = reason,
+            .had_previous_asset = previous_asset != nullptr,
+        };
+    }
+    ProcessedAsset prepare_asset(ExtractedAsset&& payload,
+                                 epix::assets::AssetId<IncrementalExtractSource>,
+                                 Param,
+                                 const ProcessedAsset*) const {
+        return std::move(payload.values);
+    }
     RenderAssetUsages usage(const IncrementalExtractSource&) const {
         return static_cast<RenderAssetUsages>(MAIN_WORLD | RENDER_WORLD);
     }
@@ -2542,11 +2562,35 @@ TEST(RenderAsset, ExtractsCompactPayloadFromDualWorldSource) {
         .dirty_region  = {17, 19, 23},
     };
     RenderAsset<IncrementalExtractSource> asset;
-    const auto payload = extract_asset(asset, source);
+    const std::vector<std::uint32_t> previous = source.resident_data;
+    const auto payload = asset.extract(source,
+                                       epix::assets::AssetId<IncrementalExtractSource>::invalid(),
+                                       RenderAssetExtractionReason::Modified,
+                                       &previous);
 
-    EXPECT_EQ(payload.dirty_region, (std::vector<std::uint32_t>{17, 19, 23}));
+    EXPECT_EQ(payload.values, (std::vector<std::uint32_t>{17, 19, 23}));
+    EXPECT_FALSE(payload.full_snapshot);
+    EXPECT_EQ(payload.reason, RenderAssetExtractionReason::Modified);
+    EXPECT_TRUE(payload.had_previous_asset);
     EXPECT_EQ(source.resident_data.size(), 4096u);
     EXPECT_EQ(source.resident_data.front(), 7u);
+}
+
+TEST(RenderAsset, ReextractsCompletePayloadAfterDeviceRecovery) {
+    IncrementalExtractSource source{
+        .resident_data = std::vector<std::uint32_t>(4096, 7),
+        .dirty_region  = {17, 19, 23},
+    };
+    RenderAsset<IncrementalExtractSource> asset;
+    const auto payload = asset.extract(source,
+                                       epix::assets::AssetId<IncrementalExtractSource>::invalid(),
+                                       RenderAssetExtractionReason::Reextract,
+                                       nullptr);
+
+    EXPECT_EQ(payload.values, source.resident_data);
+    EXPECT_TRUE(payload.full_snapshot);
+    EXPECT_EQ(payload.reason, RenderAssetExtractionReason::Reextract);
+    EXPECT_FALSE(payload.had_previous_asset);
 }
 
 TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
@@ -2565,8 +2609,10 @@ TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
     auto handle = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>().emplace(
         IncrementalExtractSource{.resident_data = std::vector<std::uint32_t>(4096, 7), .dirty_region = {29, 31}});
+    render_world.resource_mut<RenderAssets<IncrementalExtractSource>>().emplace(handle.id(),
+                                                                                   std::vector<std::uint32_t>(4096, 7));
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>>().push(
-        epix::assets::AssetEvent<IncrementalExtractSource>::added(handle.id()));
+        epix::assets::AssetEvent<IncrementalExtractSource>::modified(handle.id()));
 
     auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
     system->initialize(render_world);
@@ -2575,7 +2621,10 @@ TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
     const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
     ASSERT_EQ(extracted.extracted.size(), 1u);
     EXPECT_EQ(extracted.extracted.front().first, handle.id());
-    EXPECT_EQ(extracted.extracted.front().second.dirty_region, (std::vector<std::uint32_t>{29, 31}));
+    EXPECT_EQ(extracted.extracted.front().second.values, (std::vector<std::uint32_t>{29, 31}));
+    EXPECT_FALSE(extracted.extracted.front().second.full_snapshot);
+    EXPECT_EQ(extracted.extracted.front().second.reason, RenderAssetExtractionReason::Modified);
+    EXPECT_TRUE(extracted.extracted.front().second.had_previous_asset);
     const auto source = main_world.resource<epix::assets::Assets<IncrementalExtractSource>>().get(handle.id());
     ASSERT_TRUE(source.has_value());
     EXPECT_EQ(source->get().resident_data.size(), 4096u);

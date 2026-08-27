@@ -7,7 +7,12 @@ using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::render;
 
-GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderStorageBuffer&& asset, Param param) {
+GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderStorageBuffer&& asset,
+                                                                        assets::AssetId<ShaderStorageBuffer> id,
+                                                                        Param param,
+                                                                        const ProcessedAsset* previous) {
+    (void)id;
+    (void)previous;
     auto& [device, queue] = param;
     GpuShaderStorageBuffer result;
     result.had_data = asset.data.has_value();

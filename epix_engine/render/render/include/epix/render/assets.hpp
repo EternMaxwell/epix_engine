@@ -34,8 +34,8 @@ namespace epix::render {
  * Specialize `RenderAsset<T>` and define `ExtractedAsset`, `ProcessedAsset`,
  * `Param`, `prepare_asset()`, and `usage()` to make type T extractable and
  * processable as a GPU-side render asset. When `ExtractedAsset` differs from
- * T, `extract(const T&)` defines the compact data transferred to the render
- * world.
+ * T, `extract(const T&, id, reason, previous_asset)` defines the compact data
+ * transferred to the render world.
  * @tparam T The source asset type. */
 EPIX_EXPORT template <typename T>
 struct RenderAsset;
@@ -57,6 +57,17 @@ EPIX_EXPORT enum class AssetExtractionError {
     NoExtractionImplementation,
 };
 
+/** @brief Why a source asset is being copied into the render world.
+ *
+ * `Reextract` is reserved for render-device recovery. A compact extractor
+ * must return a complete payload for that reason because no processed asset
+ * remains to receive a patch. */
+EPIX_EXPORT enum class RenderAssetExtractionReason {
+    Added,
+    Modified,
+    Reextract,
+};
+
 /** @brief True when the RenderAsset specialization provides a take_gpu_data
  * hook (Bevy RenderAsset::take_gpu_data): moves heavy data out of the stored
  * asset while retaining its metadata in Assets<T>. Bevy supplies the previous
@@ -70,19 +81,12 @@ concept HasTakeGpuData = requires(RenderAsset<T> asset,
 
 /** @brief True when a compact extracted representation is explicitly defined. */
 template <typename T>
-concept HasExtractAsset = requires(RenderAsset<T> asset, const T& source) {
-    { asset.extract(source) } -> std::same_as<typename RenderAsset<T>::ExtractedAsset>;
-};
-
-/** @brief True when the RenderAsset specialization's prepare_asset accepts the
- * previous GPU asset (Bevy RenderAsset::prepare_asset's previous_asset
- * parameter; enables e.g. copy_on_resize). */
-template <typename T>
-concept HasPreviousAssetProcess = requires(RenderAsset<T> asset,
-                                           typename RenderAsset<T>::ExtractedAsset&& source,
-                                           typename RenderAsset<T>::Param& param,
-                                           const typename RenderAsset<T>::ProcessedAsset* previous) {
-    asset.prepare_asset(std::move(source), param, previous);
+concept HasExtractAsset = requires(RenderAsset<T> asset,
+                                   const T& source,
+                                   assets::AssetId<T> id,
+                                   RenderAssetExtractionReason reason,
+                                   const typename RenderAsset<T>::ProcessedAsset* previous_asset) {
+    { asset.extract(source, id, reason, previous_asset) } -> std::same_as<typename RenderAsset<T>::ExtractedAsset>;
 };
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
@@ -94,7 +98,9 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     requires ecs::system_param<typename RenderAsset<T>::Param>;
     {
         asset.prepare_asset(std::declval<typename RenderAsset<T>::ExtractedAsset&&>(),
-                            std::declval<typename RenderAsset<T>::Param&>())
+                            std::declval<assets::AssetId<T>>(),
+                            std::declval<typename RenderAsset<T>::Param&>(),
+                            std::declval<const typename RenderAsset<T>::ProcessedAsset*>())
     } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsages>;
     requires std::same_as<typename RenderAsset<T>::ExtractedAsset, T> || HasExtractAsset<T>;
@@ -107,44 +113,6 @@ template <typename T>
 concept HasUnloadAsset = requires(RenderAsset<T> asset, assets::AssetId<T> id, typename RenderAsset<T>::Param& param) {
     { asset.unload_asset(id, param) };
 };
-
-/** @brief Run RenderAsset::prepare_asset, passing the previous GPU asset when
- * the specialization supports it (Bevy prepare_asset(..., previous_asset)). */
-template <RenderAssetImpl T>
-typename RenderAsset<T>::ProcessedAsset prepare_asset(RenderAsset<T>& asset,
-                                                      typename RenderAsset<T>::ExtractedAsset&& source,
-                                                      typename RenderAsset<T>::Param& param,
-                                                      const typename RenderAsset<T>::ProcessedAsset* previous) {
-    if constexpr (HasPreviousAssetProcess<T>) {
-        return asset.prepare_asset(std::move(source), param, previous);
-    } else {
-        (void)previous;
-        return asset.prepare_asset(std::move(source), param);
-    }
-}
-
-/** @brief Extract the render-world payload. Identical source and extracted
- * types retain Bevy's full-asset copy semantics; a distinct type uses the
- * specialization's `extract(const T&)` hook. */
-template <RenderAssetImpl T>
-typename RenderAsset<T>::ExtractedAsset extract_asset(RenderAsset<T>& asset, const T& source) {
-    if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
-        return source;
-    } else {
-        return asset.extract(source);
-    }
-}
-
-/** @brief Extract a payload whose source data was moved out of a
- * RENDER_WORLD-only asset. */
-template <RenderAssetImpl T>
-typename RenderAsset<T>::ExtractedAsset extract_asset(RenderAsset<T>& asset, T&& source) {
-    if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
-        return std::move(source);
-    } else {
-        return asset.extract(source);
-    }
-}
 
 /** @brief Storage for processed GPU-ready render assets, keyed by asset
  * ID.
@@ -240,7 +208,7 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                           app::Extract<ecs::ResMut<assets::Assets<T>>> assets,
                           app::Extract<ecs::EventReader<assets::AssetEvent<T>>> events,
                           ecs::Res<RenderAssets<T>> render_assets) {
-    std::unordered_set<assets::AssetId<T>> changed_ids;
+    std::unordered_map<assets::AssetId<T>, RenderAssetExtractionReason> changed_assets;
     std::unordered_set<assets::AssetId<T>> removed;
     std::unordered_set<assets::AssetId<T>> added;
     std::unordered_set<assets::AssetId<T>> modified;
@@ -249,13 +217,15 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     // LoadedWithDependencies is a TODO (ignored).
     for (const auto& event : events.read()) {
         if (event.is_added()) {
-            changed_ids.insert(event.id);
+            changed_assets.try_emplace(event.id, RenderAssetExtractionReason::Added);
             added.insert(event.id);
         } else if (event.is_modified()) {
-            changed_ids.insert(event.id);
+            // An asset added and then modified before extraction still needs
+            // an initial full upload, so retain the earlier Added reason.
+            changed_assets.try_emplace(event.id, RenderAssetExtractionReason::Modified);
             modified.insert(event.id);
         } else if (event.is_unused()) {
-            changed_ids.erase(event.id);
+            changed_assets.erase(event.id);
             modified.erase(event.id);
             removed.insert(event.id);
         }
@@ -263,10 +233,11 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     std::vector<std::pair<assets::AssetId<T>, typename RenderAsset<T>::ExtractedAsset>> extracted_assets;
     RenderAsset<T> render_asset_impl;
     std::vector<std::string> errors;
-    for (const auto& id : changed_ids) {
+    for (const auto& [id, reason] : changed_assets) {
         if (auto asset = assets->get(id)) {
             const T& source = asset->get();
             const auto usage = render_asset_impl.usage(source);
+            const auto previous_asset = render_assets->get(id);
             if (!(usage & RENDER_WORLD)) continue;
             if (usage & MAIN_WORLD) {
                 // This asset remains in the main world. A compact
@@ -278,7 +249,11 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                                     "must be copyable or define a compact ExtractedAsset",
                                     id.to_string()));
                 } else {
-                    extracted_assets.emplace_back(id, extract_asset<T>(render_asset_impl, source));
+                    if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
+                        extracted_assets.emplace_back(id, source);
+                    } else {
+                        extracted_assets.emplace_back(id, render_asset_impl.extract(source, id, reason, previous_asset));
+                    }
                 }
             } else {
                 // Bevy 0.18 RENDER_WORLD-only semantics: take_gpu_data keeps
@@ -287,10 +262,14 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                 if constexpr (HasTakeGpuData<T>) {
                     auto stored = assets->get_mut_untracked(id);
                     if (stored) {
-                        const auto previous = render_assets->get(id);
-                        auto data = render_asset_impl.take_gpu_data(stored->get(), previous);
+                        auto data = render_asset_impl.take_gpu_data(stored->get(), previous_asset);
                         if (data) {
-                            extracted_assets.emplace_back(id, extract_asset<T>(render_asset_impl, std::move(*data)));
+                            if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
+                                extracted_assets.emplace_back(id, std::move(*data));
+                            } else {
+                                extracted_assets.emplace_back(
+                                    id, render_asset_impl.extract(*data, id, reason, previous_asset));
+                            }
                         } else {
                             errors.emplace_back(std::format("Asset [{}] with RENDER_WORLD usage cannot be extracted: {}",
                                                             id.to_string(),
@@ -467,7 +446,7 @@ void prepare_assets(typename RenderAsset<T>::Param param,
         try {
             // Bevy passes the previous GPU asset to prepare_asset.
             auto previous = render_assets->get(id);
-            render_assets->insert(id, prepare_asset(render_asset_impl, std::move(asset), param, previous));
+            render_assets->insert(id, render_asset_impl.prepare_asset(std::move(asset), id, param, previous));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
         } catch (const std::exception& e) {
@@ -501,8 +480,8 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             continue;
         }
         try {
-            render_assets->insert(id, prepare_asset(render_asset_impl, std::move(asset), param,
-                                                    previous_asset ? &*previous_asset : nullptr));
+            render_assets->insert(
+                id, render_asset_impl.prepare_asset(std::move(asset), id, param, previous_asset ? &*previous_asset : nullptr));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
         } catch (const std::exception& e) {
