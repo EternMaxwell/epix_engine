@@ -24,6 +24,7 @@
 namespace epix::camera {
 
 struct Camera;  // defined in camera.hpp; used by the visibility systems
+struct VisibilityPropagationAccess;
 
 /** @brief Marker disabling CPU frustum culling for a camera (Bevy
  * bevy_camera::visibility::NoCpuCulling). */
@@ -114,8 +115,13 @@ EPIX_EXPORT struct InheritedVisibility {
     // Bevy's newtype field is private.
     constexpr explicit InheritedVisibility(bool is_visible) noexcept : is_visible_(is_visible) {}
     bool is_visible_ = true;
-    friend void visibility_propagate_system(
-        epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibilities);
+    friend struct VisibilityPropagationAccess;
+};
+
+/** @brief Internal access bridge keeping `InheritedVisibility` state private
+ * while allowing the propagation system to update it. */
+struct VisibilityPropagationAccess {
+    static void set(InheritedVisibility& visibility, bool is_visible) noexcept { visibility.is_visible_ = is_visible; }
 };
 
 /** @brief An identifier for a render layer (Bevy `Layer`). */
@@ -641,11 +647,18 @@ EPIX_EXPORT enum class VisibilitySystems {
 
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====
 
-/** @brief Computes each entity's inherited visibility from its own Visibility
- * marker (Bevy visibility_propagate_system). epix has no ChildOf hierarchy
- * yet, so propagation collapses to the entity's own state. */
+/** @brief Computes inherited visibility through the `Parent` / `Children`
+ * hierarchy (Bevy `visibility_propagate_system`, where `Parent` is Epix's
+ * established name for Bevy's `ChildOf` relationship). Uses only ECS queries
+ * so the scheduler can run it alongside non-conflicting systems. */
 EPIX_EXPORT void visibility_propagate_system(
-    epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibilities);
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                     const Visibility&,
+                                     epix::ecs::Opt<const epix::ecs::Parent&>,
+                                     epix::ecs::Opt<const epix::ecs::Children&>>>
+        changed,
+    epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibility_query,
+    epix::ecs::Query<epix::ecs::Item<const epix::ecs::Children&>> children_query);
 
 /** @brief Resets every ViewVisibility to the default (visible-by-default)
  * state before check_visibility runs (Bevy reset_view_visibility). */

@@ -112,12 +112,46 @@ void OrthographicProjection::update(float width, float height) {
 
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====
 
-void visibility_propagate_system(Query<Item<const Visibility&, Mut<InheritedVisibility>>> visibilities) {
-    // epix has no entity hierarchy (ChildOf) yet, so inherited visibility is
-    // the entity's own state: Hidden hides, Visible/Inherited show (Bevy's
-    // visibility_propagate_system collapses to this for hierarchy roots).
-    for (auto&& [visibility, inherited] : visibilities.iter()) {
-        inherited.get_mut().is_visible_ = visibility.type != Visibility::Type::Hidden;
+void visibility_propagate_system(
+    Query<Item<Entity, const Visibility&, Opt<const Parent&>, Opt<const Children&>>> changed,
+    Query<Item<const Visibility&, Mut<InheritedVisibility>>> visibility_query,
+    Query<Item<const Children&>> children_query) {
+    auto propagate = [&](auto&& self, bool parent_is_visible, Entity entity) -> void {
+        auto item = visibility_query.get(entity);
+        if (!item) return;
+
+        auto&& [visibility, inherited] = *item;
+        const bool is_visible = visibility.type == Visibility::Type::Visible
+                                    ? true
+                                    : visibility.type == Visibility::Type::Hidden ? false : parent_is_visible;
+        if (inherited.get().get() != is_visible) VisibilityPropagationAccess::set(inherited.get_mut(), is_visible);
+        if (auto children = children_query.get(entity)) {
+            for (const Entity child : std::get<0>(*children).entities()) {
+                self(self, is_visible, child);
+            }
+        }
+    };
+
+    for (auto&& [entity, visibility, parent, children] : changed.iter()) {
+        const bool is_visible = visibility.type == Visibility::Type::Visible
+                                    ? true
+                                    : visibility.type == Visibility::Type::Hidden
+                                          ? false
+                                          : parent.and_then([&](const auto& child_of) {
+                                                       return visibility_query.get(child_of.get().entity()).transform(
+                                                            [](const auto& parent_visibility) {
+                                                                return std::get<1>(parent_visibility).get().get();
+                                                            });
+                                                   }).value_or(true);
+        if (auto own_visibility = visibility_query.get(entity);
+            own_visibility && std::get<1>(*own_visibility).get().get() != is_visible) {
+            VisibilityPropagationAccess::set(std::get<1>(*own_visibility).get_mut(), is_visible);
+            if (children) {
+                for (const Entity child : children->get().entities()) {
+                    propagate(propagate, is_visible, child);
+                }
+            }
+        }
     }
 }
 

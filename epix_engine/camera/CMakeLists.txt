@@ -6,3 +6,5 @@ target_link_libraries(epix_camera PUBLIC epix_transform)
 target_link_libraries(epix_camera PUBLIC epix_window)
 target_link_libraries(epix_camera PUBLIC epix_utils)
 target_link_libraries(epix_camera PUBLIC webgpu)
+
+epix_add_tests(camera LINK_LIBS epix_camera)
