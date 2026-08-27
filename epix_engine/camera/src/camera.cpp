@@ -113,7 +113,9 @@ void OrthographicProjection::update(float width, float height) {
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====
 
 void visibility_propagate_system(
-    Query<Item<Entity, const Visibility&, Opt<const Parent&>, Opt<const Children&>>> changed,
+    // The changed query mirrors Bevy's propagation trigger exactly.
+    Query<Item<Entity, const Visibility&, Opt<const Parent&>, Opt<const Children&>>,
+          Filter<With<InheritedVisibility>, Or<Modified<Visibility>, Modified<Parent>>>> changed,
     Query<Item<const Visibility&, Mut<InheritedVisibility>>> visibility_query,
     Query<Item<const Children&>> children_query) {
     auto propagate = [&](auto&& self, bool parent_is_visible, Entity entity) -> void {

@@ -181,11 +181,6 @@ struct FunctionSystem
 
     std::expected<typename function_system_traits<F>::Output, RunSystemError> run_internal(typename SInput::Input input,
                                                                                            World& world) override {
-        struct TickSpan {
-            Tick* tick;
-            World* world;
-            ~TickSpan() { *tick = world->change_tick(); }
-        };
         auto call = [](auto&& f,
                        auto&& t) -> std::expected<typename function_system_traits<F>::Output, RunSystemError> {
             try {
@@ -201,15 +196,21 @@ struct FunctionSystem
                 });
             }
         };
-        TickSpan span{
-            .tick  = &meta_.last_run,
-            .world = &world,
-        };
+        // Match Bevy's FunctionSystem: the returned tick is the tick passed
+        // to the system parameters and therefore the system's last-run tick.
+        // Recording the post-increment world tick would make an immediate
+        // EntityWorldMut mutation share the system's last-run tick and evade
+        // Modified<T> filters on the next execution.
+        const Tick change_tick = world.increment_change_tick();
         if constexpr (function_system_traits<F>::has_input) {
+            auto params = SParam::get_param(*state_, meta_, world, change_tick);
+            meta_.last_run = change_tick;
             return call(func_, std::tuple_cat(std::forward_as_tuple(SInput::wrap_input(std::move(input))),
-                                              SParam::get_param(*state_, meta_, world, world.increment_change_tick())));
+                                              std::move(params)));
         } else {
-            return call(func_, SParam::get_param(*state_, meta_, world, world.increment_change_tick()));
+            auto params = SParam::get_param(*state_, meta_, world, change_tick);
+            meta_.last_run = change_tick;
+            return call(func_, std::move(params));
         }
     }
 

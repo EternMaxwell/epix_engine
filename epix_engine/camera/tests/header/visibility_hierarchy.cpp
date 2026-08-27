@@ -14,7 +14,7 @@ TEST(camera_visibility, inherited_visibility_follows_parent_children_hierarchy) 
     const Entity explicitly_visible_child = world.spawn(Visibility::visible(), Parent{root}).id();
     const Entity grandchild = world.spawn(Visibility::inherited(), Parent{inherited_child}).id();
 
-    // Run through the scheduler: propagation must retain ordinary query-level access.
+    // Run through the scheduler: propagation keeps ordinary query-level access and change filters.
     Schedule schedule(ScheduleLabel::from_type<VisibilitySystems>());
     schedule.add_systems(into(visibility_propagate_system));
     schedule.execute(world);

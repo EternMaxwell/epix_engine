@@ -63,8 +63,7 @@ concept SetViewVisibility = requires(T& visibility) { visibility.set_visible(); 
 
 /** @brief User indication of whether an entity is visible (Bevy
  * bevy_camera::visibility::Visibility). Propagates down the entity hierarchy;
- * epix has no ChildOf hierarchy yet, so the marker and its toggles match
- * Bevy's interface and propagation collapses to the entity's own state. */
+ * Epix's established `Parent` / `Children` hierarchy. */
 EPIX_EXPORT struct Visibility {
     /** @brief Visibility kind (Bevy Visibility variants). */
     enum class Type { Inherited, Hidden, Visible };
@@ -655,7 +654,10 @@ EPIX_EXPORT void visibility_propagate_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                      const Visibility&,
                                      epix::ecs::Opt<const epix::ecs::Parent&>,
-                                     epix::ecs::Opt<const epix::ecs::Children&>>>
+                                     epix::ecs::Opt<const epix::ecs::Children&>>,
+                     epix::ecs::Filter<epix::ecs::With<InheritedVisibility>,
+                                       epix::ecs::Or<epix::ecs::Modified<Visibility>,
+                                                     epix::ecs::Modified<epix::ecs::Parent>>>>
         changed,
     epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibility_query,
     epix::ecs::Query<epix::ecs::Item<const epix::ecs::Children&>> children_query);

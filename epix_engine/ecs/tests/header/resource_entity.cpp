@@ -129,7 +129,6 @@ TEST(ecs, direct_entity_mutation_is_visible_to_resource_change_detection) {
     ASSERT_TRUE(system->run({}, world));
     EXPECT_FALSE(modified);
 
-    world.increment_change_tick();
     auto entity                                                       = world.resource_entity<TestResource>().value();
     world.entity_mut(entity).get_mut<TestResource>()->get_mut().value = 2;
     ASSERT_TRUE(system->run({}, world));
