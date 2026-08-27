@@ -100,7 +100,16 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     }
 
     epix::render::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept {
+        (void)mesh;
         return epix::render::RenderAssetUsages::RENDER_WORLD;
+    }
+
+    std::expected<epix::mesh::Mesh, epix::render::AssetExtractionError> take_gpu_data(
+        epix::mesh::Mesh& source, const ProcessedAsset*) const {
+        if (auto extracted = source.take_gpu_data()) {
+            return std::move(*extracted);
+        }
+        return std::unexpected(epix::render::AssetExtractionError::AlreadyExtracted);
     }
 };
 

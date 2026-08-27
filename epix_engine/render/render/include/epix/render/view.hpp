@@ -493,8 +493,8 @@ void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::e
         if (projection_size.x != 0 && projection_size.y != 0) {
             projection.get_mut().update(static_cast<float>(projection_size.x), static_cast<float>(projection_size.y));
             camera_mut.computed.clip_from_view =
-                camera_mut.sub_camera_view ? projection.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
-                                           : projection.get().get_projection_matrix();
+                camera_mut.sub_camera_view ? projection.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
+                                           : projection.get().get_clip_from_view();
         }
     }
 }

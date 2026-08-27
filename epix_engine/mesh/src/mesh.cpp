@@ -68,6 +68,15 @@ std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> Mesh::get_at
     return std::unexpected(MeshError::SlotNotFound);
 }
 
+std::optional<Mesh> Mesh::take_gpu_data() {
+    if (_attributes.empty() && (!_indices.has_value() || _indices->empty())) return std::nullopt;
+
+    Mesh extracted{primitive_type};
+    extracted._attributes = std::move(_attributes);
+    extracted._indices    = std::move(_indices);
+    return extracted;
+}
+
 std::expected<MeshAttributeData, MeshError> Mesh::remove_attribute(const MeshAttribute& attribute) {
     auto it = _attributes.find(attribute.slot);
     if (it == _attributes.end()) {

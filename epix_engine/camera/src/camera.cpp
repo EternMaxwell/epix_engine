@@ -270,7 +270,7 @@ void update_frusta(
     // when the projection matrix is infinite reverse-Z.  The matrix alone
     // cannot recover that finite culling bound.
     for (auto&& [gtransform, projection, frustum] : cameras.iter()) {
-        const glm::mat4 clip_from_world = projection.get_projection_matrix() * glm::inverse(gtransform.matrix);
+        const glm::mat4 clip_from_world = projection.get_clip_from_view() * glm::inverse(gtransform.matrix);
         const glm::vec3 translation     = glm::vec3(gtransform.matrix[3]);
         glm::vec3 backward              = glm::vec3(gtransform.matrix[2]);
         const float backward_length     = glm::length(backward);

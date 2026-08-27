@@ -82,6 +82,10 @@ bool GLFWRunner::step(App& app) {
                             } catch (...) {
                                 spdlog::error("GLFW System [{}] unknown exception during run.", sys->name());
                             }
+                        },
+                        [&](const SystemResultError& result_error) {
+                            spdlog::error("GLFW System [{}] error result: type: {}, msg: {}", sys->name(),
+                                          result_error.error_type.short_name(), result_error.message);
                         }},
                     error);
                 return error;
@@ -104,6 +108,10 @@ bool GLFWRunner::step(App& app) {
                             } catch (...) {
                                 spdlog::error("GLFW extra system [{}] unknown exception during run.", sys->name());
                             }
+                        },
+                        [&](const SystemResultError& result_error) {
+                            spdlog::error("GLFW extra system [{}] error result: type: {}, msg: {}", sys->name(),
+                                          result_error.error_type.short_name(), result_error.message);
                         }},
                     error);
                 return error;

@@ -340,6 +340,12 @@ EPIX_EXPORT struct Mesh {
      * is available. */
     std::optional<camera::Aabb> compute_aabb() const;
 
+    /** @brief Move the vertex/index payload into a render-world copy while
+     * retaining this asset's metadata. This mirrors Bevy `Mesh::take_gpu_data`
+     * for assets whose usage is render-world-only. Returns empty when the
+     * payload was already extracted and has not since been replaced. */
+    std::optional<Mesh> take_gpu_data();
+
    private:
     wgpu::PrimitiveTopology primitive_type;
     std::map<std::size_t, MeshAttributeData> _attributes;

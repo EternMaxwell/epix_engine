@@ -4,6 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
+#include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <epix/app.hpp>
@@ -108,14 +109,6 @@ EPIX_EXPORT struct OrthographicProjection {
 
     /** @brief Update the projection for new viewport dimensions. */
     void update(float width, float height);
-    /** @brief Get the far clipping plane distance. */
-    float get_far() const { return far_plane; }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const { return near_plane; }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) { this->far_plane = far_plane; }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Bevy's default orthographic projection for 2D rendering. */
     static OrthographicProjection default_2d() {
         auto projection       = default_3d();
@@ -126,20 +119,24 @@ EPIX_EXPORT struct OrthographicProjection {
     static OrthographicProjection default_3d() { return OrthographicProjection{}; }
     /** @brief Compute the right-handed reverse-Z orthographic matrix used by
      * Bevy (`Mat4::orthographic_rh(..., far, near)`). */
-    glm::mat4 get_projection_matrix() const {
+    glm::mat4 get_clip_from_view() const {
         return glm::orthoRH_ZO(rect.left, rect.right, rect.bottom, rect.top, far_plane, near_plane);
     }
     /** @brief Projection cropped to a sub-camera view (Bevy
      * get_clip_from_view_for_sub). */
-    glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
-        return crop_to_sub_view(get_projection_matrix(), sub_view);
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView& sub_view) const {
+        return crop_to_sub_view(get_clip_from_view(), sub_view);
     }
-    /** @brief Compute the 8 corners of the view frustum. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
-        return {glm::vec3(rect.right, rect.bottom, -near_plane), glm::vec3(rect.right, rect.top, -near_plane),
-                glm::vec3(rect.left, rect.top, -near_plane),     glm::vec3(rect.left, rect.bottom, -near_plane),
-                glm::vec3(rect.right, rect.bottom, -far_plane),  glm::vec3(rect.right, rect.top, -far_plane),
-                glm::vec3(rect.left, rect.top, -far_plane),      glm::vec3(rect.left, rect.bottom, -far_plane)};
+    float get_far() const { return far_plane; }
+    float get_near() const { return near_plane; }
+    void set_far(float far_value) { far_plane = far_value; }
+    void set_near(float near_value) { near_plane = near_value; }
+    /** @brief Compute frustum corners at the caller-provided view-space depths. */
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
+        return {glm::vec3(rect.right, rect.bottom, z_near), glm::vec3(rect.right, rect.top, z_near),
+                glm::vec3(rect.left, rect.top, z_near),    glm::vec3(rect.left, rect.bottom, z_near),
+                glm::vec3(rect.right, rect.bottom, z_far), glm::vec3(rect.right, rect.top, z_far),
+                glm::vec3(rect.left, rect.top, z_far),     glm::vec3(rect.left, rect.bottom, z_far)};
     }
 };
 
@@ -156,17 +153,9 @@ EPIX_EXPORT struct PerspectiveProjection {
 
     /** @brief Update the aspect ratio from viewport dimensions. */
     void update(float width, float height) { aspect_ratio = width / height; }
-    /** @brief Get the far clipping plane distance. */
-    float get_far() const { return far_plane; }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const { return near_plane; }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) { this->far_plane = far_plane; }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) { this->near_plane = near_plane; }
     /** @brief Compute Bevy's infinite right-handed reverse-Z perspective
      * projection, including its optional oblique clip-plane adjustment. */
-    glm::mat4 get_projection_matrix() const {
+    glm::mat4 get_clip_from_view() const {
         const float f = 1.0f / std::tan(fov * 0.5f);
         glm::mat4 matrix(0.0f);
         matrix[0][0] = f / aspect_ratio;
@@ -189,9 +178,9 @@ EPIX_EXPORT struct PerspectiveProjection {
     }
     /** @brief Projection cropped to a sub-camera view (Bevy
      * get_clip_from_view_for_sub). */
-    glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView& sub_view) const {
         if (sub_view.full_size.x == 0 || sub_view.full_size.y == 0 || sub_view.size.x == 0 || sub_view.size.y == 0) {
-            return get_projection_matrix();
+            return get_clip_from_view();
         }
         const float full_width  = static_cast<float>(sub_view.full_size.x);
         const float full_height = static_cast<float>(sub_view.full_size.y);
@@ -229,30 +218,34 @@ EPIX_EXPORT struct PerspectiveProjection {
         matrix[3][2]              = third_row.w;
         return matrix;
     }
-    /** @brief Compute the 8 corners of the perspective frustum. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
+    float get_far() const { return far_plane; }
+    float get_near() const { return near_plane; }
+    void set_far(float far_value) { far_plane = far_value; }
+    void set_near(float near_value) { near_plane = near_value; }
+    /** @brief Compute frustum corners at the caller-provided view-space depths. */
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
         float tan_half_fov = glm::tan(fov / 2.0f);
-        float near_height  = near_plane * tan_half_fov;
+        float near_height  = std::abs(z_near) * tan_half_fov;
         float near_width   = near_height * aspect_ratio;
-        float far_height   = far_plane * tan_half_fov;
+        float far_height   = std::abs(z_far) * tan_half_fov;
         float far_width    = far_height * aspect_ratio;
 
-        return {glm::vec3(near_width, -near_height, -near_plane), glm::vec3(near_width, near_height, -near_plane),
-                glm::vec3(-near_width, near_height, -near_plane), glm::vec3(-near_width, -near_height, -near_plane),
-                glm::vec3(far_width, -far_height, -far_plane),    glm::vec3(far_width, far_height, -far_plane),
-                glm::vec3(-far_width, far_height, -far_plane),    glm::vec3(-far_width, -far_height, -far_plane)};
+        return {glm::vec3(near_width, -near_height, z_near), glm::vec3(near_width, near_height, z_near),
+                glm::vec3(-near_width, near_height, z_near), glm::vec3(-near_width, -near_height, z_near),
+                glm::vec3(far_width, -far_height, z_far),    glm::vec3(far_width, far_height, z_far),
+                glm::vec3(-far_width, far_height, z_far),    glm::vec3(-far_width, -far_height, z_far)};
     }
 };
 
 template <typename T>
 concept CameraProjection = requires(T t) {
-    { t.get_projection_matrix() } -> std::convertible_to<glm::mat4>;
-    { t.get_projection_matrix_for_sub(std::declval<const SubCameraView&>()) } -> std::convertible_to<glm::mat4>;
-    { t.get_frustum_corners() } -> std::convertible_to<std::array<glm::vec3, 8>>;
+    { t.get_clip_from_view() } -> std::convertible_to<glm::mat4>;
+    { t.get_clip_from_view_for_sub(std::declval<const SubCameraView&>()) } -> std::convertible_to<glm::mat4>;
+    { t.get_frustum_corners(std::declval<float>(), std::declval<float>()) } -> std::convertible_to<std::array<glm::vec3, 8>>;
     { t.get_far() } -> std::convertible_to<float>;
     { t.get_near() } -> std::convertible_to<float>;
-    { t.set_far(std::declval<float>()) };
-    { t.set_near(std::declval<float>()) };
+    { t.set_far(std::declval<float>()) } -> std::same_as<void>;
+    { t.set_near(std::declval<float>()) } -> std::same_as<void>;
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
 
@@ -262,9 +255,9 @@ concept CameraProjection = requires(T t) {
 struct DynCameraProjection {
     virtual ~DynCameraProjection()                                          = default;
     virtual std::shared_ptr<DynCameraProjection> clone() const              = 0;
-    virtual glm::mat4 projection_matrix() const                             = 0;
-    virtual glm::mat4 projection_matrix_for_sub(const SubCameraView&) const = 0;
-    virtual std::array<glm::vec3, 8> frustum_corners() const                = 0;
+    virtual glm::mat4 clip_from_view() const                                = 0;
+    virtual glm::mat4 clip_from_view_for_sub(const SubCameraView&) const    = 0;
+    virtual std::array<glm::vec3, 8> frustum_corners(float, float) const    = 0;
     virtual float far_value() const                                         = 0;
     virtual float near_value() const                                        = 0;
     virtual void set_far_value(float)                                       = 0;
@@ -280,15 +273,17 @@ struct DynCameraProjectionImpl final : DynCameraProjection {
     std::shared_ptr<DynCameraProjection> clone() const override {
         return std::make_shared<DynCameraProjectionImpl>(value);
     }
-    glm::mat4 projection_matrix() const override { return value.get_projection_matrix(); }
-    glm::mat4 projection_matrix_for_sub(const SubCameraView& sub_view) const override {
-        return value.get_projection_matrix_for_sub(sub_view);
+    glm::mat4 clip_from_view() const override { return value.get_clip_from_view(); }
+    glm::mat4 clip_from_view_for_sub(const SubCameraView& sub_view) const override {
+        return value.get_clip_from_view_for_sub(sub_view);
     }
-    std::array<glm::vec3, 8> frustum_corners() const override { return value.get_frustum_corners(); }
+    std::array<glm::vec3, 8> frustum_corners(float z_near, float z_far) const override {
+        return value.get_frustum_corners(z_near, z_far);
+    }
     float far_value() const override { return value.get_far(); }
     float near_value() const override { return value.get_near(); }
-    void set_far_value(float far_plane) override { value.set_far(far_plane); }
-    void set_near_value(float near_plane) override { value.set_near(near_plane); }
+    void set_far_value(float far_value) override { value.set_far(far_value); }
+    void set_near_value(float near_value) override { value.set_near(near_value); }
     void update_projection(float width, float height) override { value.update(width, height); }
 };
 
@@ -323,15 +318,17 @@ EPIX_EXPORT struct CustomProjection {
         if (auto* impl = dynamic_cast<const DynCameraProjectionImpl<P>*>(dyn_projection.get())) return &impl->value;
         return nullptr;
     }
-    glm::mat4 get_projection_matrix() const { return dyn_projection->projection_matrix(); }
-    glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
-        return dyn_projection->projection_matrix_for_sub(sub_view);
+    glm::mat4 get_clip_from_view() const { return dyn_projection->clip_from_view(); }
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView& sub_view) const {
+        return dyn_projection->clip_from_view_for_sub(sub_view);
     }
-    std::array<glm::vec3, 8> get_frustum_corners() const { return dyn_projection->frustum_corners(); }
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
+        return dyn_projection->frustum_corners(z_near, z_far);
+    }
     float get_far() const { return dyn_projection->far_value(); }
     float get_near() const { return dyn_projection->near_value(); }
-    void set_far(float far_plane) { dyn_projection->set_far_value(far_plane); }
-    void set_near(float near_plane) { dyn_projection->set_near_value(near_plane); }
+    void set_far(float far_value) { dyn_projection->set_far_value(far_value); }
+    void set_near(float near_value) { dyn_projection->set_near_value(near_value); }
     void update(float width, float height) { dyn_projection->update_projection(width, height); }
 };
 
@@ -357,38 +354,27 @@ EPIX_EXPORT struct Projection {
         return result;
     }
 
-    /** @brief Get the projection matrix from the active variant. */
-    glm::mat4 get_projection_matrix() const {
-        return std::visit([](const auto& proj) { return proj.get_projection_matrix(); }, projection);
+    /** @brief Get the clip-from-view matrix from the active variant. */
+    glm::mat4 get_clip_from_view() const {
+        return std::visit([](const auto& proj) { return proj.get_clip_from_view(); }, projection);
     }
     /** @brief Get the active projection matrix cropped to a sub-camera view. */
-    glm::mat4 get_projection_matrix_for_sub(const SubCameraView& sub_view) const {
-        return std::visit([&sub_view](const auto& proj) { return proj.get_projection_matrix_for_sub(sub_view); },
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView& sub_view) const {
+        return std::visit([&sub_view](const auto& proj) { return proj.get_clip_from_view_for_sub(sub_view); },
                           projection);
     }
     /** @brief Get the far clipping plane distance. */
-    float get_far() const {
-        return std::visit([](const auto& proj) { return proj.get_far(); }, projection);
-    }
-    /** @brief Get the near clipping plane distance. */
-    float get_near() const {
-        return std::visit([](const auto& proj) { return proj.get_near(); }, projection);
-    }
-    /** @brief Set the far clipping plane distance. */
-    void set_far(float far_plane) {
-        std::visit([far_plane](auto& proj) { proj.set_far(far_plane); }, projection);
-    }
-    /** @brief Set the near clipping plane distance. */
-    void set_near(float near_plane) {
-        std::visit([near_plane](auto& proj) { proj.set_near(near_plane); }, projection);
-    }
+    float get_far() const { return std::visit([](const auto& proj) { return proj.get_far(); }, projection); }
+    float get_near() const { return std::visit([](const auto& proj) { return proj.get_near(); }, projection); }
+    void set_far(float far_value) { std::visit([=](auto& proj) { proj.set_far(far_value); }, projection); }
+    void set_near(float near_value) { std::visit([=](auto& proj) { proj.set_near(near_value); }, projection); }
     /** @brief Update the active projection for new viewport dimensions. */
     void update(float width, float height) {
         std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);
     }
     /** @brief Compute the 8 frustum corner points. */
-    std::array<glm::vec3, 8> get_frustum_corners() const {
-        return std::visit([](const auto& proj) { return proj.get_frustum_corners(); }, projection);
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
+        return std::visit([=](const auto& proj) { return proj.get_frustum_corners(z_near, z_far); }, projection);
     }
     /** @brief Try to get a mutable pointer to the orthographic projection. */
     std::optional<OrthographicProjection*> as_orthographic() {

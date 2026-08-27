@@ -82,6 +82,10 @@ bool SFMLRunner::step(App& app) {
                             } catch (...) {
                                 spdlog::error("SFML System [{}] unknown exception during run.", sys->name());
                             }
+                        },
+                        [&](const SystemResultError& result_error) {
+                            spdlog::error("SFML System [{}] error result: type: {}, msg: {}", sys->name(),
+                                          result_error.error_type.short_name(), result_error.message);
                         }},
                     error);
                 return error;
@@ -104,6 +108,10 @@ bool SFMLRunner::step(App& app) {
                             } catch (...) {
                                 spdlog::error("SFML extra system [{}] unknown exception during run.", sys->name());
                             }
+                        },
+                        [&](const SystemResultError& result_error) {
+                            spdlog::error("SFML extra system [{}] error result: type: {}, msg: {}", sys->name(),
+                                          result_error.error_type.short_name(), result_error.message);
                         }},
                     error);
                 return error;

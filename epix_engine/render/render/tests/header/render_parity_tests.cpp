@@ -1633,14 +1633,14 @@ TEST(SubCameraView, FullSizeCropPreservesProjection) {
     projection.update(1920.0f, 1080.0f);
     const ::epix::camera::SubCameraView whole{
         .full_size = glm::uvec2(1920, 1080), .offset = glm::vec2(0.0f), .size = glm::uvec2(1920, 1080)};
-    EXPECT_EQ(projection.get_projection_matrix_for_sub(whole), projection.get_projection_matrix());
+    EXPECT_EQ(projection.get_clip_from_view_for_sub(whole), projection.get_clip_from_view());
 }
 
 TEST(CameraProjection, UsesBevyReverseZConventions) {
     // Bevy's perspective projection is right-handed with -Z forward and an
     // infinite reverse-Z depth range: near maps to 1, far tends to 0.
     ::epix::camera::PerspectiveProjection perspective;
-    const auto perspective_matrix = perspective.get_projection_matrix();
+    const auto perspective_matrix = perspective.get_clip_from_view();
     const auto near_clip          = perspective_matrix * glm::vec4(0.0f, 0.0f, -perspective.near_plane, 1.0f);
     const auto far_clip           = perspective_matrix * glm::vec4(0.0f, 0.0f, -1000000.0f, 1.0f);
     EXPECT_NEAR(near_clip.z / near_clip.w, 1.0f, 1e-5f);
@@ -1651,6 +1651,13 @@ TEST(CameraProjection, UsesBevyReverseZConventions) {
     EXPECT_TRUE(::epix::camera::Projection{}.as_perspective().has_value());
     EXPECT_EQ(::epix::camera::OrthographicProjection::default_3d().near_plane, 0.0f);
     EXPECT_EQ(::epix::camera::OrthographicProjection::default_2d().near_plane, -1000.0f);
+
+    // The Bevy trait receives cascade-selected view-space depths rather than
+    // always using the projection's own near/far fields.
+    const auto corners = perspective.get_frustum_corners(-2.0f, -20.0f);
+    EXPECT_EQ(corners[0].z, -2.0f);
+    EXPECT_EQ(corners[7].z, -20.0f);
+    EXPECT_NEAR(corners[4].x / corners[0].x, 10.0f, 1e-5f);
 }
 
 TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
@@ -1659,7 +1666,7 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     ASSERT_NE(custom, nullptr);
     custom->scale = 2.0f;
     projection.update(400.0f, 200.0f);
-    EXPECT_NE(projection.get_projection_matrix()[0][0], 0.0f);
+    EXPECT_NE(projection.get_clip_from_view()[0][0], 0.0f);
 }
 
 TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
@@ -3544,7 +3551,7 @@ TEST(CameraPrimitives, MatchBevyClipPlanesAndHelpers) {
 TEST(CameraFrustum, CustomFarMatchesProjectionFrustumConstruction) {
     const auto projection = epix::camera::PerspectiveProjection{};
     const auto frustum    = epix::camera::Frustum::from_clip_from_world_custom_far(
-        projection.get_projection_matrix(), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
+        projection.get_clip_from_view(), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
     // The camera faces -Z, so a point beyond the declared finite culling far
     // distance is rejected even though the reverse-Z projection is infinite.
     EXPECT_TRUE(frustum.intersects_sphere({.center = {0.0f, 0.0f, -999.0f}, .radius = 0.1f}));

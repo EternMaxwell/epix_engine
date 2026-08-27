@@ -443,7 +443,7 @@ EPIX_EXPORT struct Camera2d {
             [] { return Projection::orthographic(OrthographicProjection::default_2d()); });
         registrator.template register_required<Frustum>([] {
             const auto projection = OrthographicProjection::default_2d();
-            return Frustum::from_clip_from_world_custom_far(projection.get_projection_matrix(), glm::vec3(0.0f),
+            return Frustum::from_clip_from_world_custom_far(projection.get_clip_from_view(), glm::vec3(0.0f),
                                                             glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
         });
     }
@@ -585,8 +585,8 @@ void camera_system(
         if (new_size.x != 0 && new_size.y != 0) {
             proj.get_mut().update(static_cast<float>(new_size.x), static_cast<float>(new_size.y));
             camera_mut.computed.clip_from_view =
-                camera_mut.sub_camera_view ? proj.get().get_projection_matrix_for_sub(*camera_mut.sub_camera_view)
-                                           : proj.get().get_projection_matrix();
+                camera_mut.sub_camera_view ? proj.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
+                                           : proj.get().get_clip_from_view();
         }
     }
 }

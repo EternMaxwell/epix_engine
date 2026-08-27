@@ -11,6 +11,9 @@ using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::mesh;
 
+static_assert(render::HasTakeGpuData<Mesh>,
+              "Mesh uses RENDER_WORLD-only extraction and must transfer its GPU payload.");
+
 namespace {
 
 void calculate_mesh2d_bounds(Commands cmd,
