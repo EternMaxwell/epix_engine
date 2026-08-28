@@ -218,28 +218,34 @@ TEST(DynamicUniformBuffer, AlignmentAndPush) {
 }
 
 // The uniform fallback binds every dynamic-offset batch as a fixed-capacity
-// shader array. A partial final batch therefore still must reserve and clear
-// the unused elements (Bevy BatchedUniformBuffer::flush).
-TEST(BatchedUniformBuffer, PadsPartialBatchToFixedBindingSize) {
+// shader array. Bevy exposes that runtime array size through binding(), even
+// when the final batch is only partially populated.
+TEST(BatchedUniformBuffer, UsesFixedSizeRuntimeArrayBindings) {
     wgpu::Limits limits;
     limits.maxUniformBufferBindingSize     = sizeof(view::ViewUniform) * 2;
     limits.minUniformBufferOffsetAlignment = 16;
     render_resource::BatchedUniformBuffer<view::ViewUniform> buffer(limits);
-    ASSERT_EQ(buffer.capacity, 2u);
+    ASSERT_EQ(render_resource::BatchedUniformBuffer<view::ViewUniform>::batch_size(limits), 2u);
+    EXPECT_EQ(buffer.size(), sizeof(view::ViewUniform) * 2);
+    EXPECT_FALSE(buffer.binding().has_value());
 
     view::ViewUniform value;
     value.exposure = 42.0f;
-    buffer.push(value);
-    buffer.flush();
+    const auto first = buffer.push(value);
+    const auto second = buffer.push(value);
 
-    EXPECT_EQ(buffer.len(), 1u);
-    EXPECT_EQ(buffer.current_offset, sizeof(view::ViewUniform) * 2);
-    ASSERT_EQ(buffer.buffer_bytes.size(), sizeof(view::ViewUniform) * 2);
-    view::ViewUniform uploaded{};
-    std::memcpy(&uploaded, buffer.buffer_bytes.data(), sizeof(uploaded));
-    EXPECT_FLOAT_EQ(uploaded.exposure, 42.0f);
-    EXPECT_TRUE(std::all_of(buffer.buffer_bytes.begin() + sizeof(view::ViewUniform), buffer.buffer_bytes.end(),
-                            [](std::uint8_t byte) { return byte == 0; }));
+    EXPECT_EQ(first.index, 0u);
+    EXPECT_EQ(first.dynamic_offset, 0u);
+    EXPECT_EQ(second.index, 1u);
+    EXPECT_EQ(second.dynamic_offset, 0u);
+    EXPECT_EQ(buffer.size(), sizeof(view::ViewUniform) * 2);
+
+    const auto after_clear = [&] {
+        buffer.clear();
+        return buffer.push(value);
+    }();
+    EXPECT_EQ(after_clear.index, 0u);
+    EXPECT_EQ(after_clear.dynamic_offset, 0u);
 }
 
 TEST(SortedCamera, SortKey) {

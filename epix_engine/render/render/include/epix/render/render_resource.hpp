@@ -638,32 +638,30 @@ struct GpuArrayBufferIndex {
  */
 template <GpuArrayBufferable T>
 struct BatchedUniformBuffer {
+private:
     /** @brief Cap on uniform buffer binding size to avoid oversized arrays on
      * macOS (Bevy MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE). */
     static constexpr std::size_t MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE = 1 << 20;
 
     /** @brief Elements of the current (incomplete) batch. */
-    std::vector<T> values;
+    std::vector<T> temporary_values;
     /** @brief Byte storage of all flushed batches, offset-aligned (Bevy
      * DynamicUniformBuffer<MaxCapacityArray<Vec<T>>>). */
     std::vector<std::uint8_t> buffer_bytes;
-    /** @brief The uploaded GPU buffer. */
-    wgpu::Buffer buffer;
+    /** @brief The uploaded dynamic-uniform buffer. */
+    wgpu::Buffer gpu_buffer;
     /** @brief Number of elements per batch (Bevy batch_size). */
     std::size_t capacity = 0;
     /** @brief Dynamic offset alignment. */
     std::size_t alignment = 0;
     /** @brief Byte offset of the next batch in the buffer. */
     std::size_t current_offset = 0;
-    /** @brief Number of logical elements pushed this frame. */
-    std::size_t element_count = 0;
-    std::string label         = "BatchedUniformBuffer";
-
-    BatchedUniformBuffer() = default;
+public:
     explicit BatchedUniformBuffer(const wgpu::Limits& limits) {
         alignment = static_cast<std::size_t>(limits.minUniformBufferOffsetAlignment);
         if (alignment == 0) alignment = 256;
         capacity = batch_size(limits);
+        temporary_values.reserve(capacity);
     }
 
     /** @brief Number of elements per batch (Bevy
@@ -672,17 +670,20 @@ struct BatchedUniformBuffer {
     static std::size_t batch_size(const wgpu::Limits& limits) {
         const std::size_t binding = std::min(static_cast<std::size_t>(limits.maxUniformBufferBindingSize),
                                              MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE);
-        return std::max<std::size_t>(1, binding / ShaderTypeInfo<T>::shader_size);
+        return binding / ShaderTypeInfo<T>::shader_size;
     }
 
     void clear() noexcept {
-        values.clear();
+        temporary_values.clear();
         buffer_bytes.clear();
         current_offset = 0;
-        element_count  = 0;
     }
-    /** @brief Total number of pushed elements (flushed batches + current). */
-    std::size_t len() const noexcept { return element_count; }
+
+    /** @brief Size of one fixed-capacity runtime array binding (Bevy
+     * `BatchedUniformBuffer::size`). `std::size_t` is the C++ substitute for
+     * Rust's `NonZero<u64>`; the `max(1, capacity)` rule preserves the same
+     * nonzero size. */
+    std::size_t size() const noexcept { return std::max<std::size_t>(1, capacity) * ShaderTypeInfo<T>::shader_size; }
 
     /** @brief Push one element into the current batch; when the batch fills,
      * flush it to the buffer (Bevy BatchedUniformBuffer::push). The returned
@@ -692,11 +693,10 @@ struct BatchedUniformBuffer {
         // Bevy captures the batch-start offset BEFORE the push (and possible
         // flush) so the first element of a batch points at that batch
         // (batched_uniform_buffer.rs:82-93).
-        const std::uint32_t index  = static_cast<std::uint32_t>(values.size());
+        const std::uint32_t index  = static_cast<std::uint32_t>(temporary_values.size());
         const std::uint32_t offset = static_cast<std::uint32_t>(current_offset);
-        values.push_back(value);
-        ++element_count;
-        if (values.size() == capacity) {
+        temporary_values.push_back(value);
+        if (temporary_values.size() == capacity) {
             flush();
         }
         return GpuArrayBufferIndex<T>{index, offset};
@@ -705,38 +705,45 @@ struct BatchedUniformBuffer {
     /** @brief Write the current batch into the byte buffer at the aligned
      * offset (Bevy BatchedUniformBuffer::flush). */
     void flush() {
-        if (values.empty()) return;
         // The shader sees a fixed-size `array<T, capacity>` at every dynamic
         // offset (Bevy's MaxCapacityArray). Upload a full, zero-padded batch
         // even when the final batch is only partially populated; otherwise a
         // dynamic bind group with the required batch size would run past the
         // end of the native wgpu buffer.
         const std::size_t batch_bytes     = capacity * ShaderTypeInfo<T>::shader_size;
-        const std::size_t populated_bytes = values.size() * ShaderTypeInfo<T>::shader_size;
-        auto encoded_values               = encode_shader_values<T>(values);
+        auto encoded_values               = encode_shader_values<T>(temporary_values);
         buffer_bytes.insert(buffer_bytes.end(), encoded_values.begin(), encoded_values.end());
         // The insertion above copied only the populated prefix; make the
         // remaining fixed-capacity elements zero-initialized.
-        if (values.size() < capacity) {
-            buffer_bytes.resize(buffer_bytes.size() + (capacity - values.size()) * ShaderTypeInfo<T>::shader_size, 0);
+        if (temporary_values.size() < capacity) {
+            buffer_bytes.resize(buffer_bytes.size() + (capacity - temporary_values.size()) * ShaderTypeInfo<T>::shader_size,
+                                0);
         }
-        values.clear();
+        temporary_values.clear();
         current_offset += align_up(batch_bytes, alignment);
         buffer_bytes.resize(current_offset, 0);
     }
 
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        flush();
+        if (!temporary_values.empty()) flush();
         if (buffer_bytes.empty()) return;
-        if (!buffer || buffer.getSize() < buffer_bytes.size()) {
-            buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                             .setLabel(label.c_str())
+        if (!gpu_buffer || gpu_buffer.getSize() < buffer_bytes.size()) {
+            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                             .setLabel("BatchedUniformBuffer")
                                              .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst)
                                              .setSize(buffer_bytes.size()));
         }
-        if (buffer) {
-            queue.writeBuffer(buffer, 0, buffer_bytes.data(), buffer_bytes.size());
+        if (gpu_buffer) {
+            queue.writeBuffer(gpu_buffer, 0, buffer_bytes.data(), buffer_bytes.size());
         }
+    }
+
+    /** @brief The uploaded dynamic-uniform buffer, if any (Bevy
+     * `BatchedUniformBuffer::binding`, without Rust's `BindingResource`
+     * wrapper). The binding's required size is `size()`. */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (!gpu_buffer) return std::nullopt;
+        return std::cref(gpu_buffer);
     }
 };
 
@@ -747,15 +754,20 @@ struct BatchedUniformBuffer {
 template <GpuArrayBufferable T>
 struct GpuArrayBuffer {
     /** @brief Backing storage: uniform fallback or storage buffer. */
-    std::variant<BatchedUniformBuffer<T>, BufferVec<T>> storage;
+    using Storage = std::variant<BatchedUniformBuffer<T>, BufferVec<T>>;
 
-    explicit GpuArrayBuffer(const wgpu::Limits& limits) {
+private:
+    static Storage make_storage(const wgpu::Limits& limits) {
         if (limits.maxStorageBuffersPerShaderStage == 0) {
-            storage.emplace<0>(limits);
-        } else {
-            storage.emplace<1>(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst);
+            return Storage{std::in_place_index<0>, limits};
         }
+        return Storage{std::in_place_index<1>, wgpu::BufferUsage::eStorage};
     }
+
+public:
+    Storage storage;
+
+    explicit GpuArrayBuffer(const wgpu::Limits& limits) : storage(make_storage(limits)) {}
 
     void clear() {
         std::visit([](auto& s) { s.clear(); }, storage);
@@ -809,8 +821,8 @@ struct GpuArrayBuffer {
                     if (const auto* buffer = s.buffer()) return *buffer;
                     return std::nullopt;
                 } else {
-                    if (!s.buffer) return std::nullopt;
-                    return s.buffer;
+                    if (auto binding = s.binding()) return binding->get();
+                    return std::nullopt;
                 }
             },
             storage);
