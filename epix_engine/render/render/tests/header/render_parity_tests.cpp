@@ -20,6 +20,35 @@ struct UniformPluginProbe {
     UniformPluginProbe get() const noexcept { return *this; }
 };
 
+struct ExplicitShaderValue {
+    float value = 0.0f;
+    bool enabled = false;
+};
+
+namespace epix::render::render_resource {
+template <>
+struct ShaderTypeInfo<::EarlyExtractInstance> : RawShaderType<::EarlyExtractInstance> {};
+
+template <>
+struct ShaderTypeInfo<::UniformPluginProbe> : RawShaderType<::UniformPluginProbe> {};
+
+template <>
+struct ShaderTypeInfo<::ExplicitShaderValue> {
+    static constexpr std::size_t shader_size = 8;
+    static void write_into(const ::ExplicitShaderValue& value, std::span<std::uint8_t> destination) {
+        RawShaderType<float>::write_into(value.value, destination.first(sizeof(float)));
+        ShaderTypeInfo<bool>::write_into(value.enabled, destination.subspan(sizeof(float)));
+    }
+    static std::expected<::ExplicitShaderValue, std::string> read_from(std::span<const std::uint8_t> source) {
+        auto value = RawShaderType<float>::read_from(source.first(sizeof(float)));
+        auto enabled = ShaderTypeInfo<bool>::read_from(source.subspan(sizeof(float)));
+        if (!value) return std::unexpected(value.error());
+        if (!enabled) return std::unexpected(enabled.error());
+        return ::ExplicitShaderValue{*value, *enabled};
+    }
+};
+}  // namespace epix::render::render_resource
+
 struct IncrementalExtractSource {
     std::vector<std::uint32_t> resident_data;
     std::vector<std::uint32_t> dirty_region;
@@ -739,10 +768,14 @@ struct GpuWrittenBinnedBatchData {
     GpuWrittenBinnedBatchData() = delete;
     explicit GpuWrittenBinnedBatchData(std::uint32_t value) : value(value) {}
 };
-static_assert(render_resource::GpuArrayBufferable<GpuWrittenBinnedBatchData>);
 static_assert(!std::default_initializable<GpuWrittenBinnedBatchData>);
 struct GpuWrittenBinnedBatchTestAdapter {};
 }  // namespace
+
+template <>
+struct epix::render::render_resource::ShaderTypeInfo<GpuWrittenBinnedBatchData>
+    : epix::render::render_resource::RawShaderType<GpuWrittenBinnedBatchData> {};
+static_assert(render_resource::GpuArrayBufferable<GpuWrittenBinnedBatchData>);
 
 template <>
 struct epix::render::batching::GetBatchData<CpuBinnedBatchTestAdapter> {
@@ -2934,21 +2967,16 @@ TEST(GpuImage, AspectRatioAndSize2d) {
 // ReadbackComplete::to_shader_type decodes the raw bytes (Bevy
 // gpu_readback.rs:122-129).
 TEST(ReadbackComplete, ToShaderType) {
-    struct Payload {
-        float x;
-        std::uint32_t y;
-    };
-    Payload p{3.5f, 42u};
+    ExplicitShaderValue p{3.5f, true};
     ReadbackComplete complete{epix::ecs::Entity{}, {}};
-    complete.data.resize(sizeof(Payload));
-    std::memcpy(complete.data.data(), &p, sizeof(Payload));
+    complete.data = render_resource::encode_shader_values<ExplicitShaderValue>(std::array{p});
 
-    Payload out = complete.to_shader_type<Payload>();
-    EXPECT_FLOAT_EQ(out.x, 3.5f);
-    EXPECT_EQ(out.y, 42u);
+    ExplicitShaderValue out = complete.to_shader_type<ExplicitShaderValue>();
+    EXPECT_FLOAT_EQ(out.value, 3.5f);
+    EXPECT_TRUE(out.enabled);
 
-    complete.data.resize(sizeof(Payload) - 1);
-    EXPECT_THROW((complete.to_shader_type<Payload>()), std::runtime_error);
+    complete.data.resize(7);
+    EXPECT_THROW((complete.to_shader_type<ExplicitShaderValue>()), std::runtime_error);
 }
 
 // RunSubGraph carries an optional debug_group marker name (Bevy
@@ -3120,6 +3148,28 @@ TEST(BufferVec, WriteBufferRangeErrors) {
     auto uninit = vec.write_buffer_range(wgpu::Queue{}, {0, 1});
     EXPECT_FALSE(uninit.has_value());
     EXPECT_EQ(uninit.error(), render_resource::WriteBufferRangeError::BufferNotInitialized);
+}
+
+TEST(ShaderType, RequiresExplicitLayoutAndEncodesFields) {
+    struct PlainPod {
+        float value;
+        bool enabled;
+    };
+    static_assert(!render_resource::ShaderType<PlainPod>);
+    static_assert(render_resource::ShaderWritable<ExplicitShaderValue>);
+
+    const ExplicitShaderValue input{2.5f, true};
+    const auto encoded = render_resource::encode_shader_values<ExplicitShaderValue>(std::array{input});
+    ASSERT_EQ(encoded.size(), 8u);
+    EXPECT_EQ(encoded[4], 1u);
+    EXPECT_EQ(encoded[5], 0u);
+    EXPECT_EQ(encoded[6], 0u);
+    EXPECT_EQ(encoded[7], 0u);
+
+    render_resource::DynamicUniformBuffer<ExplicitShaderValue> dynamic;
+    dynamic.dynamic_offset_alignment = 8;
+    EXPECT_EQ(dynamic.push(input), 0u);
+    EXPECT_EQ(dynamic.values, encoded);
 }
 
 // UninitBufferVec reserves GPU-written output slots without constructing CPU
@@ -3689,6 +3739,12 @@ struct BatchingTestInputData {
 };
 struct BatchingTestAdapter;
 }  // namespace
+template <>
+struct epix::render::render_resource::ShaderTypeInfo<BatchingTestBufferData>
+    : epix::render::render_resource::RawShaderType<BatchingTestBufferData> {};
+template <>
+struct epix::render::render_resource::ShaderTypeInfo<BatchingTestInputData>
+    : epix::render::render_resource::RawShaderType<BatchingTestInputData> {};
 template <>
 struct epix::render::batching::GetBatchData<BatchingTestAdapter> {
     using Param       = std::tuple<>;

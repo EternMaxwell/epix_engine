@@ -26,7 +26,15 @@ EPIX_EXPORT struct GlobalsUniform {
     /** @brief Frame count since app start, wraps at u32 max. */
     std::uint32_t frame_count = 0;
 };
-static_assert(render_resource::ShaderType<GlobalsUniform>);
+}  // namespace epix::render
+
+namespace epix::render::render_resource {
+template <>
+struct ShaderTypeInfo<::epix::render::GlobalsUniform> : RawShaderType<::epix::render::GlobalsUniform> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::render {
+static_assert(render_resource::ShaderWritable<GlobalsUniform>);
 
 /** @brief Resource holding the GPU buffer containing GlobalsUniform (Bevy GlobalsBuffer). */
 EPIX_EXPORT struct GlobalsBuffer {

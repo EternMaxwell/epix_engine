@@ -201,7 +201,7 @@ inline void init_work_item_buffers(
 
 /** @brief CPU-owned input-buffer allocator used by a GPU preprocessing
  * pipeline (Bevy `InstanceInputUniformBuffer`). */
-template <render_resource::ShaderType InputData>
+template <render_resource::ShaderWritable InputData>
 struct InstanceInputUniformBuffer {
     render_resource::RawBufferVec<InputData> buffer{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst};
     std::vector<std::uint32_t> free_uniform_indices;
@@ -296,7 +296,7 @@ struct PhaseBatchedInstanceBuffers {
  * preprocessing adapter data (Bevy `BatchedInstanceBuffers`). Phase-local
  * buffers are moved into this table after parallel preparation so concrete
  * preprocessing passes can look them up by phase type. */
-template <render_resource::GpuArrayBufferable BufferData, render_resource::ShaderType BufferInputData>
+template <render_resource::GpuArrayBufferable BufferData, render_resource::ShaderWritable BufferInputData>
 struct BatchedInstanceBuffers {
     InstanceInputUniformBuffer<BufferInputData> current_input_buffer;
     InstanceInputUniformBuffer<BufferInputData> previous_input_buffer;
@@ -323,14 +323,14 @@ void delete_old_work_item_buffers(UntypedPhaseBatchedInstanceBuffers<BufferData>
 /** @brief GPU buffers used by one render phase for indirect drawing (Bevy
  * `UntypedPhaseIndirectParametersBuffers`). */
 EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
-    render_resource::BufferVec<IndirectParametersIndexed> indexed_data;
-    render_resource::BufferVec<IndirectParametersNonIndexed> non_indexed_data;
-    render_resource::BufferVec<IndirectParametersCpuMetadata> indexed_cpu_metadata;
-    render_resource::BufferVec<IndirectParametersCpuMetadata> non_indexed_cpu_metadata;
-    render_resource::BufferVec<IndirectParametersGpuMetadata> indexed_gpu_metadata;
-    render_resource::BufferVec<IndirectParametersGpuMetadata> non_indexed_gpu_metadata;
-    render_resource::BufferVec<IndirectBatchSet> indexed_batch_sets;
-    render_resource::BufferVec<IndirectBatchSet> non_indexed_batch_sets;
+    render_resource::RawBufferVec<IndirectParametersIndexed> indexed_data;
+    render_resource::RawBufferVec<IndirectParametersNonIndexed> non_indexed_data;
+    render_resource::RawBufferVec<IndirectParametersCpuMetadata> indexed_cpu_metadata;
+    render_resource::RawBufferVec<IndirectParametersCpuMetadata> non_indexed_cpu_metadata;
+    render_resource::RawBufferVec<IndirectParametersGpuMetadata> indexed_gpu_metadata;
+    render_resource::RawBufferVec<IndirectParametersGpuMetadata> non_indexed_gpu_metadata;
+    render_resource::RawBufferVec<IndirectBatchSet> indexed_batch_sets;
+    render_resource::RawBufferVec<IndirectBatchSet> non_indexed_batch_sets;
 
     explicit UntypedPhaseIndirectParametersBuffers(bool allow_copy_src = false)
         : indexed_data(indirect_usage(allow_copy_src)),
@@ -530,7 +530,7 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
     requires std::constructible_from<GetFullBatchData<T>>;
     requires std::is_empty_v<GetFullBatchData<T>>;
     typename GetFullBatchData<T>::BufferInputData;
-    requires render_resource::ShaderType<typename GetFullBatchData<T>::BufferInputData>;
+    requires render_resource::ShaderWritable<typename GetFullBatchData<T>::BufferInputData>;
     requires std::default_initializable<typename GetFullBatchData<T>::BufferInputData>;
     {
         batch.get_binned_batch_data(std::declval<typename GetBatchData<T>::Param&>(),

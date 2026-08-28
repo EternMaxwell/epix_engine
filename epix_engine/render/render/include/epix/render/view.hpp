@@ -546,6 +546,14 @@ EPIX_EXPORT struct ViewUniform {
     float _pad_tail[2]{};
 };
 static_assert(sizeof(ViewUniform) == 768);
+}  // namespace epix::render::view
+
+namespace epix::render::render_resource {
+template <>
+struct ShaderTypeInfo<::epix::render::view::ViewUniform> : RawShaderType<::epix::render::view::ViewUniform> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::render::view {
 struct UniformBuffer {
     wgpu::Buffer buffer;
 };

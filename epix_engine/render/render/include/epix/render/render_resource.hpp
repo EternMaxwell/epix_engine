@@ -6,8 +6,14 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
+#include <expected>
+#include <glm/glm.hpp>
 #include <optional>
+#include <span>
+#include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -16,13 +22,85 @@
 
 namespace epix::render::render_resource {
 
-/**
- * @brief C++ stand-in for encase's `ShaderType` bound: POD types whose
- * `sizeof` matches the WGSL layout. Users must keep std140/std430 alignment
- * themselves (same requirement as writing raw WGSL uniform structs).
- */
+/** @brief Explicit GPU layout contract for a shader value.
+ *
+ * This is the C++ counterpart to encase's ShaderType / WriteInto contract.
+ * It deliberately has no implicit POD fallback: every type admitted to a
+ * typed GPU buffer must opt in with its encoded size and writer. */
 template <typename T>
-concept ShaderType = std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>;
+struct ShaderTypeInfo;
+
+/** @brief Reusable opt-in encoder for types whose object representation has
+ * already been intentionally laid out to match the shader representation. */
+template <typename T>
+    requires(std::is_standard_layout_v<T> && std::is_trivially_copyable_v<T>)
+struct RawShaderType {
+    static constexpr std::size_t shader_size = sizeof(T);
+
+    static void write_into(const T& value, std::span<std::uint8_t> destination) {
+        if (destination.size() < shader_size) throw std::out_of_range("Shader destination is too small.");
+        std::memcpy(destination.data(), std::addressof(value), shader_size);
+    }
+
+    static std::expected<T, std::string> read_from(std::span<const std::uint8_t> source) {
+        if (source.size() < shader_size) return std::unexpected("Shader source is too small.");
+        T value{};
+        std::memcpy(std::addressof(value), source.data(), shader_size);
+        return value;
+    }
+};
+
+template <typename T>
+concept ShaderType = requires {
+    { ShaderTypeInfo<T>::shader_size } -> std::convertible_to<std::size_t>;
+} && (ShaderTypeInfo<T>::shader_size > 0);
+
+template <typename T>
+concept ShaderWritable = ShaderType<T> && requires(const T& value, std::span<std::uint8_t> destination) {
+    ShaderTypeInfo<T>::write_into(value, destination);
+};
+
+template <typename T>
+concept ShaderReadable = ShaderType<T> && requires(std::span<const std::uint8_t> source) {
+    { ShaderTypeInfo<T>::read_from(source) } -> std::same_as<std::expected<T, std::string>>;
+};
+
+template <ShaderWritable T>
+inline std::vector<std::uint8_t> encode_shader_values(std::span<const T> values) {
+    std::vector<std::uint8_t> encoded(values.size() * ShaderTypeInfo<T>::shader_size);
+    for (std::size_t index = 0; index < values.size(); ++index) {
+        ShaderTypeInfo<T>::write_into(values[index],
+                                      std::span<std::uint8_t>{encoded.data() + index * ShaderTypeInfo<T>::shader_size,
+                                                              ShaderTypeInfo<T>::shader_size});
+    }
+    return encoded;
+}
+
+template <>
+struct ShaderTypeInfo<float> : RawShaderType<float> {};
+template <>
+struct ShaderTypeInfo<std::int32_t> : RawShaderType<std::int32_t> {};
+template <>
+struct ShaderTypeInfo<std::uint32_t> : RawShaderType<std::uint32_t> {};
+
+/** WGSL bool occupies a four-byte scalar, unlike C++ bool. */
+template <>
+struct ShaderTypeInfo<bool> {
+    static constexpr std::size_t shader_size = sizeof(std::uint32_t);
+    static void write_into(bool value, std::span<std::uint8_t> destination) {
+        const std::uint32_t encoded = value ? 1u : 0u;
+        RawShaderType<std::uint32_t>::write_into(encoded, destination);
+    }
+    static std::expected<bool, std::string> read_from(std::span<const std::uint8_t> source) {
+        auto encoded = RawShaderType<std::uint32_t>::read_from(source);
+        if (!encoded) return std::unexpected(encoded.error());
+        return *encoded != 0;
+    }
+};
+
+template <glm::length_t L, typename T, glm::qualifier Q>
+    requires((L == 2 || L == 4) && std::same_as<T, float>)
+struct ShaderTypeInfo<glm::vec<L, T, Q>> : RawShaderType<glm::vec<L, T, Q>> {};
 
 /** @brief Round `value` up to a multiple of `alignment`. */
 constexpr std::size_t align_up(std::size_t value, std::size_t alignment) noexcept {
@@ -41,7 +119,7 @@ constexpr std::size_t element_offset(std::size_t index, std::size_t element_size
  * @brief Stores a single value to be transferred to the GPU and made
  * accessible to shaders as a uniform buffer (Bevy `UniformBuffer<T>`).
  */
-template <ShaderType T>
+template <ShaderWritable T>
 struct UniformBuffer {
     /** @brief CPU-side value. */
     T value{};
@@ -84,7 +162,7 @@ struct UniformBuffer {
      * uploaded into the existing buffer (Bevy write_buffer,
      * uniform_buffer.rs:129-142). */
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        const std::size_t size = sizeof(T);
+        const std::size_t size = ShaderTypeInfo<T>::shader_size;
         if (!buffer || capacity < size || changed) {
             capacity = size;
             buffer =
@@ -92,7 +170,9 @@ struct UniformBuffer {
             changed = false;
         }
         if (buffer) {
-            queue.writeBuffer(buffer, 0, &value, sizeof(T));
+            std::vector<std::uint8_t> encoded(size);
+            ShaderTypeInfo<T>::write_into(value, encoded);
+            queue.writeBuffer(buffer, 0, encoded.data(), encoded.size());
         }
     }
 };
@@ -102,7 +182,7 @@ struct UniformBuffer {
  * per-element dynamic offsets (Bevy `DynamicUniformBuffer<T>`). The CPU side
  * is a byte vector laid out with std140 element alignment.
  */
-template <ShaderType T>
+template <ShaderWritable T>
 struct DynamicUniformBuffer {
     /** @brief Raw byte storage, one aligned element per `T`. */
     std::vector<std::uint8_t> values;
@@ -128,7 +208,7 @@ struct DynamicUniformBuffer {
     /** @brief Per-element byte stride in the CPU buffer. */
     std::size_t element_stride() const noexcept {
         const std::size_t alignment = dynamic_offset_alignment ? dynamic_offset_alignment : 256;
-        return align_up(sizeof(T), alignment);
+        return align_up(ShaderTypeInfo<T>::shader_size, alignment);
     }
 
     /** @brief Append one element; returns its byte offset (Bevy
@@ -136,7 +216,9 @@ struct DynamicUniformBuffer {
     std::size_t push(const T& item) {
         const std::size_t index = len();
         values.resize((index + 1) * element_stride());
-        std::memcpy(values.data() + index * element_stride(), &item, sizeof(T));
+        ShaderTypeInfo<T>::write_into(item,
+                                      std::span<std::uint8_t>{values.data() + index * element_stride(),
+                                                              ShaderTypeInfo<T>::shader_size});
         return index * element_stride();
     }
 
@@ -168,7 +250,7 @@ struct DynamicUniformBuffer {
  * @brief Stores a single value accessible to shaders as a storage buffer
  * (Bevy `StorageBuffer<T>`).
  */
-template <ShaderType T>
+template <ShaderWritable T>
 struct StorageBuffer {
     T value{};
     wgpu::Buffer buffer;
@@ -183,7 +265,7 @@ struct StorageBuffer {
     void set(T v) { value = std::move(v); }
 
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        const std::size_t size = sizeof(T);
+        const std::size_t size = ShaderTypeInfo<T>::shader_size;
         if (!buffer || capacity < size) {
             capacity = size;
             buffer   = device.createBuffer(wgpu::BufferDescriptor()
@@ -192,7 +274,9 @@ struct StorageBuffer {
                                                .setSize(capacity));
         }
         if (buffer) {
-            queue.writeBuffer(buffer, 0, &value, sizeof(T));
+            std::vector<std::uint8_t> encoded(size);
+            ShaderTypeInfo<T>::write_into(value, encoded);
+            queue.writeBuffer(buffer, 0, encoded.data(), encoded.size());
         }
     }
 };
@@ -201,7 +285,7 @@ struct StorageBuffer {
  * @brief Stores a dynamic array of values accessible as a storage buffer
  * (Bevy `DynamicStorageBuffer<T>`).
  */
-template <ShaderType T>
+template <ShaderWritable T>
 struct DynamicStorageBuffer {
     /** @brief Raw byte storage, one aligned element per T (Bevy
      * DynamicStorageBuffer uses an encase std430 scratch). */
@@ -223,7 +307,7 @@ struct DynamicStorageBuffer {
      * element type; storage-buffer offset alignment fallback 256). */
     std::size_t element_stride() const noexcept {
         const std::size_t alignment = dynamic_offset_alignment ? dynamic_offset_alignment : 256;
-        return align_up(sizeof(T), alignment);
+        return align_up(ShaderTypeInfo<T>::shader_size, alignment);
     }
 
     /** @brief Append one element; returns its byte offset (Bevy
@@ -232,7 +316,9 @@ struct DynamicStorageBuffer {
     std::size_t push(const T& item) {
         const std::size_t index = len();
         bytes.resize((index + 1) * element_stride());
-        std::memcpy(bytes.data() + index * element_stride(), &item, sizeof(T));
+        ShaderTypeInfo<T>::write_into(item,
+                                      std::span<std::uint8_t>{bytes.data() + index * element_stride(),
+                                                              ShaderTypeInfo<T>::shader_size});
         return index * element_stride();
     }
 
@@ -272,7 +358,7 @@ EPIX_EXPORT enum class WriteBufferRangeError {
 /**
  * @brief CPU vector of `T` with a lazily-created GPU buffer (Bevy `BufferVec<T>`).
  */
-template <typename T>
+template <ShaderWritable T>
 struct BufferVec {
     /** @brief CPU-side values. */
     std::vector<T> values;
@@ -303,14 +389,15 @@ struct BufferVec {
     /** @brief Create (if needed) and upload the values into a GPU buffer. */
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         if (values.empty()) return;
-        const std::size_t size = values.size() * sizeof(T);
+        auto encoded            = encode_shader_values<T>(values);
+        const std::size_t size = encoded.size();
         if (!buffer || capacity < size) {
             capacity = size;
             buffer   = device.createBuffer(
                 wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(buffer_usage).setSize(capacity));
         }
         if (buffer) {
-            queue.writeBuffer(buffer, 0, values.data(), size);
+            queue.writeBuffer(buffer, 0, encoded.data(), size);
         }
     }
 
@@ -321,17 +408,52 @@ struct BufferVec {
         if (values.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
         if (range.second > values.size()) return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
         if (!buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
-        const std::size_t item_size = sizeof(T);
-        const std::uint8_t* bytes   = reinterpret_cast<const std::uint8_t*>(values.data());
-        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * item_size), bytes + range.first * item_size,
-                          (range.second - range.first) * item_size);
+        const std::size_t item_size = ShaderTypeInfo<T>::shader_size;
+        auto encoded = encode_shader_values<T>(std::span<const T>{values.data() + range.first, range.second - range.first});
+        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * item_size), encoded.data(), encoded.size());
         return {};
     }
 };
 
-/** @brief Alias kept for API parity: raw byte-vec buffer (Bevy `RawBufferVec<T>`). */
+/** @brief Raw byte-vec buffer (Bevy `RawBufferVec<T>`). This intentionally
+ * uses the in-memory representation and is therefore separate from typed
+ * shader buffers. */
 template <typename T>
-using RawBufferVec = BufferVec<T>;
+    requires(std::is_trivially_copyable_v<T>)
+struct RawBufferVec {
+    std::vector<T> values;
+    wgpu::Buffer buffer;
+    std::size_t capacity = 0;
+    wgpu::BufferUsage buffer_usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst;
+    std::string label = "RawBufferVec";
+
+    explicit RawBufferVec(wgpu::BufferUsage usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
+        : buffer_usage(usage) {}
+    std::size_t len() const noexcept { return values.size(); }
+    bool is_empty() const noexcept { return values.empty(); }
+    void clear() noexcept { values.clear(); }
+    std::size_t push(const T& item) { values.push_back(item); return values.size() - 1; }
+    void reserve(std::size_t extra) { values.reserve(values.size() + extra); }
+    std::vector<T>& get_mut() noexcept { return values; }
+    void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
+        if (values.empty()) return;
+        const std::size_t size = values.size() * sizeof(T);
+        if (!buffer || capacity < size) {
+            capacity = size;
+            buffer = device.createBuffer(wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(buffer_usage).setSize(capacity));
+        }
+        if (buffer) queue.writeBuffer(buffer, 0, values.data(), size);
+    }
+    std::expected<void, WriteBufferRangeError> write_buffer_range(const wgpu::Queue& queue,
+                                                                   std::pair<std::size_t, std::size_t> range) {
+        if (values.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
+        if (range.second > values.size()) return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
+        if (!buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
+        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * sizeof(T)), values.data() + range.first,
+                          (range.second - range.first) * sizeof(T));
+        return {};
+    }
+};
 
 /**
  * @brief GPU-only allocation vector (Bevy `UninitBufferVec<T>`).
@@ -386,7 +508,7 @@ struct UninitBufferVec {
 
 /** @brief Concept for types that can live in a `GpuArrayBuffer` (Bevy `GpuArrayBufferable`). */
 template <typename T>
-concept GpuArrayBufferable = ShaderType<T> && std::is_copy_constructible_v<T>;
+concept GpuArrayBufferable = ShaderWritable<T> && std::is_copy_constructible_v<T>;
 
 template <GpuArrayBufferable T>
 struct GpuArrayBufferIndex {
@@ -434,7 +556,7 @@ struct BatchedUniformBuffer {
     static std::size_t batch_size(const wgpu::Limits& limits) {
         const std::size_t binding = std::min(static_cast<std::size_t>(limits.maxUniformBufferBindingSize),
                                              MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE);
-        return std::max<std::size_t>(1, binding / sizeof(T));
+        return std::max<std::size_t>(1, binding / ShaderTypeInfo<T>::shader_size);
     }
 
     void clear() noexcept {
@@ -473,14 +595,14 @@ struct BatchedUniformBuffer {
         // even when the final batch is only partially populated; otherwise a
         // dynamic bind group with the required batch size would run past the
         // end of the native wgpu buffer.
-        const std::size_t batch_bytes     = capacity * sizeof(T);
-        const std::size_t populated_bytes = values.size() * sizeof(T);
-        buffer_bytes.insert(buffer_bytes.end(), reinterpret_cast<const std::uint8_t*>(values.data()),
-                            reinterpret_cast<const std::uint8_t*>(values.data()) + populated_bytes);
+        const std::size_t batch_bytes     = capacity * ShaderTypeInfo<T>::shader_size;
+        const std::size_t populated_bytes = values.size() * ShaderTypeInfo<T>::shader_size;
+        auto encoded_values               = encode_shader_values<T>(values);
+        buffer_bytes.insert(buffer_bytes.end(), encoded_values.begin(), encoded_values.end());
         // The insertion above copied only the populated prefix; make the
         // remaining fixed-capacity elements zero-initialized.
         if (values.size() < capacity) {
-            buffer_bytes.resize(buffer_bytes.size() + (capacity - values.size()) * sizeof(T), 0);
+            buffer_bytes.resize(buffer_bytes.size() + (capacity - values.size()) * ShaderTypeInfo<T>::shader_size, 0);
         }
         values.clear();
         current_offset += align_up(batch_bytes, alignment);

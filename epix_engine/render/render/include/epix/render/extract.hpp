@@ -335,7 +335,7 @@ struct DynamicUniformIndex {
  * @brief Resource holding all uniforms of a component type in a dynamic
  * uniform buffer (Bevy `ComponentUniforms<C>`).
  */
-template <typename C>
+template <render_resource::ShaderWritable C>
 struct ComponentUniforms {
     /** @brief Dynamic uniform buffer containing one entry per entity. */
     render_resource::DynamicUniformBuffer<C> uniforms;
@@ -396,7 +396,7 @@ struct GpuComponentArrayBufferPlugin {
     }
 };
 
-template <typename C>
+template <render_resource::ShaderWritable C>
 void prepare_uniform_components(ecs::Commands cmd,
                                 ecs::ResMut<ComponentUniforms<C>> component_uniforms,
                                 ecs::Res<wgpu::Device> device,
@@ -431,7 +431,7 @@ void prepare_uniform_components(ecs::Commands cmd,
  * @brief Plugin that prepares all `C` components as GPU uniforms each frame
  * (Bevy `UniformComponentPlugin<C>`).
  */
-template <typename C>
+template <render_resource::ShaderWritable C>
 struct UniformComponentPlugin {
     void attach(app::App& app) {
         auto render_app = app.get_sub_app_mut(Render);

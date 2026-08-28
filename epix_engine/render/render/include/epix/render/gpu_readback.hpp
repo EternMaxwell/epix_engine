@@ -75,14 +75,14 @@ EPIX_EXPORT struct ReadbackComplete {
      * payload must contain a complete shader type; invalid data fails just as
      * Bevy's encase Reader does. */
     template <typename T>
-        requires render_resource::ShaderType<T>
+        requires render_resource::ShaderReadable<T>
     T to_shader_type() const {
-        if (data.size() < sizeof(T)) {
+        if (data.size() < render_resource::ShaderTypeInfo<T>::shader_size) {
             throw std::runtime_error("GPU readback payload is too small for the requested shader type.");
         }
-        T val{};
-        std::memcpy(&val, data.data(), sizeof(T));
-        return val;
+        auto decoded = render_resource::ShaderTypeInfo<T>::read_from(data);
+        if (!decoded) throw std::runtime_error(decoded.error());
+        return std::move(*decoded);
     }
 };
 
