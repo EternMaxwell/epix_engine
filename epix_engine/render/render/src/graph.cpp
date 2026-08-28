@@ -58,7 +58,8 @@ std::expected<void, GraphError> RenderGraph::remove_node(const NodeLabel& id) {
         nodes.erase(id);
         return {};
     }
-    return std::unexpected(NodeNotPresent{id});
+    // Bevy's remove_node succeeds when the label is absent (graph.rs:151-184).
+    return {};
 }
 
 std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool should_exist) {
@@ -306,12 +307,11 @@ const NodeState& RenderGraph::node_state(const NodeLabel& id) const {
     throw std::runtime_error(std::format("Node {} not found.", id.type_index().short_name()));
 }
 
-std::expected<void, GraphError> RenderGraph::add_sub_graph(const GraphLabel& id, RenderGraph&& graph) {
+void RenderGraph::add_sub_graph(const GraphLabel& id, RenderGraph&& graph) {
     // Bevy HashMap::insert semantics: a duplicate label REPLACES the graph
     // (graph.rs:577-579).
     sub_graphs.erase(id);
     sub_graphs.emplace(id, std::move(graph));
-    return {};
 }
 std::optional<std::reference_wrapper<RenderGraph>> RenderGraph::get_sub_graph(const GraphLabel& id) {
     auto iter = sub_graphs.find(id);

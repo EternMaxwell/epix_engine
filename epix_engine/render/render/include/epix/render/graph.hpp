@@ -78,7 +78,8 @@ EPIX_EXPORT struct RenderGraph {
         nodes.emplace(id, NodeState(id, std::forward<T>(node)));
     }
 
-    /** @brief Remove a node from the graph by label. */
+    /** @brief Remove a node from the graph by label; no-op when absent (Bevy
+     * RenderGraph::remove_node). */
     std::expected<void, GraphError> remove_node(const NodeLabel& id);
 
     /** @brief Add execution-order edges between a chain of node labels.
@@ -140,8 +141,9 @@ EPIX_EXPORT struct RenderGraph {
     /** @brief Get a const node state reference. Throws if not found. */
     const NodeState& node_state(const NodeLabel& id) const;
 
-    /** @brief Add a named sub-graph to this graph. */
-    std::expected<void, GraphError> add_sub_graph(const GraphLabel& id, RenderGraph&& graph);
+    /** @brief Add a named sub-graph, replacing a graph with the same label
+     * (Bevy RenderGraph::add_sub_graph). */
+    void add_sub_graph(const GraphLabel& id, RenderGraph&& graph);
     /** @brief Get a mutable reference to a sub-graph by label. */
     std::optional<std::reference_wrapper<RenderGraph>> get_sub_graph(const GraphLabel& id);
     /** @brief Get a const reference to a sub-graph by label. */

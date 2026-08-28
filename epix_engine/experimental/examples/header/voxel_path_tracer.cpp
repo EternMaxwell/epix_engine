@@ -794,9 +794,7 @@ void VoxelGraphTag::register_to(RenderGraph& g) {
     vg.add_node(VoxelNode::Trace, VoxelTraceNode{});
     vg.add_node(VoxelNode::Blit, VoxelBlitNode{});
     vg.add_node_edges(VoxelNode::Trace, VoxelNode::Blit);
-    if (auto res = g.add_sub_graph(VoxelGraph, std::move(vg)); !res) {
-        spdlog::error("[voxel] Failed to register sub-graph");
-    }
+    g.add_sub_graph(VoxelGraph, std::move(vg));
 }
 
 // ===========================================================================

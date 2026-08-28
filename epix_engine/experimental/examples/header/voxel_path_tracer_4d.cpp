@@ -777,7 +777,7 @@ void V4DGraphTag::register_to(RenderGraph& g) {
     vg.add_node(V4DNode::Trace, V4DTraceNode{});
     vg.add_node(V4DNode::Blit, V4DBlitNode{});
     vg.add_node_edges(V4DNode::Trace, V4DNode::Blit);
-    if (auto res = g.add_sub_graph(V4DGraph, std::move(vg)); !res) spdlog::error("[v4d] Failed to register sub-graph");
+    g.add_sub_graph(V4DGraph, std::move(vg));
 }
 
 // ===========================================================================

@@ -94,10 +94,7 @@ void Core2dGraph::add_to(graph::RenderGraph& g) {
     g2d.add_node(Core2dNodes::BlitToOutput, Core2dBlitNode{});
     g2d.add_node_edges(Core2dNodes::StartMainPass, Core2dNodes::MainOpaquePass, Core2dNodes::MainTransparentPass,
                        Core2dNodes::EndMainPass, Core2dNodes::ScreenUIPass, Core2dNodes::BlitToOutput);
-    auto res = g.add_sub_graph(Core2d, std::move(g2d)).transform_error([](auto&& err) {
-        spdlog::error("Failed to add Core2D graph: {}", err.to_string());
-        return std::move(err);
-    });
+    g.add_sub_graph(Core2d, std::move(g2d));
 }
 
 void Core2dBlitNode::update(World& world) {

@@ -768,8 +768,7 @@ void BM4DGraphTag::register_to(RenderGraph& g) {
     vg.add_node(BM4DNode::Trace, BM4DTraceNode{});
     vg.add_node(BM4DNode::Blit, BM4DBlitNode{});
     vg.add_node_edges(BM4DNode::Trace, BM4DNode::Blit);
-    if (auto res = g.add_sub_graph(BM4DGraph, std::move(vg)); !res)
-        spdlog::error("[bm4d] Failed to register sub-graph");
+    g.add_sub_graph(BM4DGraph, std::move(vg));
 }
 
 // ===========================================================================

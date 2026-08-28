@@ -2206,15 +2206,26 @@ TEST(RenderGraph, AddSubGraphReplaces) {
     graph::RenderGraph g;
     graph::RenderGraph inner;
     inner.add_node<ProbeGraphNode>(GraphTestNodeA{});
-    EXPECT_TRUE(g.add_sub_graph(GraphTestNodeC{}, std::move(inner)).has_value());
+    g.add_sub_graph(GraphTestNodeC{}, std::move(inner));
     graph::RenderGraph inner2;
     inner2.add_node<ProbeGraphNode>(GraphTestNodeB{});
-    EXPECT_TRUE(g.add_sub_graph(GraphTestNodeC{}, std::move(inner2)).has_value());
+    g.add_sub_graph(GraphTestNodeC{}, std::move(inner2));
     auto sub = g.get_sub_graph(GraphTestNodeC{});
     ASSERT_TRUE(sub.has_value());
     // The replaced graph contains only GraphTestNodeB.
     EXPECT_TRUE(sub->get().get_node_state(GraphTestNodeA{}).has_value() == false);
     EXPECT_TRUE(sub->get().get_node_state(GraphTestNodeB{}).has_value());
+}
+
+// Bevy graph.rs:151-184: removing an absent node is a no-op, rather than a
+// NodeNotPresent error.
+TEST(RenderGraph, RemoveMissingNodeIsNoOp) {
+    graph::RenderGraph graph;
+    EXPECT_TRUE(graph.remove_node(GraphTestNodeA{}).has_value());
+
+    graph.add_node<ProbeGraphNode>(GraphTestNodeA{});
+    EXPECT_TRUE(graph.remove_node(GraphTestNodeA{}).has_value());
+    EXPECT_TRUE(graph.remove_node(GraphTestNodeA{}).has_value());
 }
 
 // Bevy graph.rs add_edge -> validate_edge_duplicates: duplicate edge errors.
