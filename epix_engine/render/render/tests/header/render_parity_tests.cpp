@@ -2634,7 +2634,9 @@ TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
     auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
     system->initialize(render_world);
     ASSERT_TRUE(system->run({}, render_world).has_value());
-    EXPECT_TRUE(render_world.resource<ExtractedAssets<IncrementalExtractSource>>().extracted.empty());
+    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
+    EXPECT_TRUE(extracted.extracted.empty());
+    EXPECT_TRUE(extracted.added.empty());
 }
 
 TEST(RenderAsset, PrepareSystemRetriesRetryNextUpdatePayload) {
@@ -2695,6 +2697,10 @@ TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
     EXPECT_FALSE(extracted.extracted.front().second.full_snapshot);
     EXPECT_EQ(extracted.extracted.front().second.reason, RenderAssetExtractionReason::Modified);
     EXPECT_TRUE(extracted.extracted.front().second.had_previous_asset);
+    // Bevy's `added` set records every asset actually handed to the render
+    // world, including a successfully extracted Modified event.
+    EXPECT_TRUE(extracted.added.contains(handle.id()));
+    EXPECT_TRUE(extracted.modified.contains(handle.id()));
     const auto source = main_world.resource<epix::assets::Assets<IncrementalExtractSource>>().get(handle.id());
     ASSERT_TRUE(source.has_value());
     EXPECT_EQ(source->get().resident_data.size(), 4096u);

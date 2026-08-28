@@ -246,7 +246,6 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     for (const auto& event : events.read()) {
         if (event.is_added()) {
             changed_assets.try_emplace(event.id, RenderAssetExtractionReason::Added);
-            added.insert(event.id);
         } else if (event.is_modified()) {
             // An asset added and then modified before extraction still needs
             // an initial full upload, so retain the earlier Added reason.
@@ -277,10 +276,12 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                 } else {
                     if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
                         extracted_assets.emplace_back(id, source);
+                        added.insert(id);
                     } else {
                         auto payload = render_asset_impl.extract(source, id, reason, previous_asset);
                         if (payload) {
                             extracted_assets.emplace_back(id, std::move(*payload));
+                            added.insert(id);
                         } else {
                             spdlog::error("Asset [{}] compact extraction failed: {}", id.to_string(),
                                           detail::extraction_error_message(payload.error()));
@@ -298,10 +299,12 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                         if (data) {
                             if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
                                 extracted_assets.emplace_back(id, std::move(*data));
+                                added.insert(id);
                             } else {
                                 auto payload = render_asset_impl.extract(*data, id, reason, previous_asset);
                                 if (payload) {
                                     extracted_assets.emplace_back(id, std::move(*payload));
+                                    added.insert(id);
                                 } else {
                                     spdlog::error("Asset [{}] compact extraction failed: {}", id.to_string(),
                                                   detail::extraction_error_message(payload.error()));
