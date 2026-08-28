@@ -9,6 +9,7 @@
 #include <epix/ecs.hpp>
 #include <expected>
 #include <memory>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -84,8 +85,10 @@ struct Edges {
     Edges& operator=(Edges&&)      = default;
 
     NodeLabel label() const noexcept { return m_label; }
-    const std::vector<Edge>& input_edges() const noexcept { return m_input_edges; }
-    const std::vector<Edge>& output_edges() const noexcept { return m_output_edges; }
+    /** @brief Borrow the incoming edge list as a standard range view. */
+    auto input_edges() const noexcept { return std::views::all(m_input_edges); }
+    /** @brief Borrow the outgoing edge list as a standard range view. */
+    auto output_edges() const noexcept { return std::views::all(m_output_edges); }
     bool has_input_edge(const Edge& edge) const;
     bool has_output_edge(const Edge& edge) const;
     void remove_input_edge(const Edge& edge);

@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <ranges>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 
@@ -47,7 +48,8 @@ TEST(RenderLayers, Intersects) {
     const auto dynamic = ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 3>{0, 64, 130});
     EXPECT_TRUE(dynamic.contains(130));
     EXPECT_TRUE(dynamic.intersects(::epix::camera::RenderLayers::layer(130)));
-    EXPECT_EQ(dynamic.iter(), (std::vector<std::size_t>{0, 64, 130}));
+    static_assert(std::ranges::view<decltype(dynamic.iter())>);
+    EXPECT_TRUE(std::ranges::equal(dynamic.iter(), std::array<std::size_t, 3>{0, 64, 130}));
     EXPECT_EQ(dynamic.without(130).without(64).without(0), none);
     EXPECT_EQ(dynamic & ::epix::camera::RenderLayers::layer(64), ::epix::camera::RenderLayers::layer(64));
     EXPECT_EQ(dynamic | layer1, ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 4>{0, 1, 64, 130}));

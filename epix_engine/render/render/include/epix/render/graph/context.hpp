@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <epix/common.hpp>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -31,8 +32,8 @@ EPIX_EXPORT struct GraphContext {
    private:
     const RenderGraph& m_graph;
     const NodeState& m_node_state;
-    const std::vector<SlotValue>& m_inputs;
-    std::vector<std::optional<SlotValue>>& m_outputs;
+    std::span<const SlotValue> m_inputs;
+    std::span<std::optional<SlotValue>> m_outputs;
     std::vector<RunSubGraph> m_sub_graphs;
     std::optional<epix::ecs::Entity> m_view_entity;
 
@@ -44,14 +45,14 @@ EPIX_EXPORT struct GraphContext {
      * @param outputs Mutable output slot storage. */
     GraphContext(const RenderGraph& graph,
                  const NodeState& node_state,
-                 const std::vector<SlotValue>& inputs,
-                 std::vector<std::optional<SlotValue>>& outputs) noexcept
+                 std::span<const SlotValue> inputs,
+                 std::span<std::optional<SlotValue>> outputs) noexcept
         : m_graph(graph), m_node_state(node_state), m_inputs(inputs), m_outputs(outputs) {}
     /** @brief The label of the node being run (Bevy
      * RenderGraphContext::label). */
     const NodeLabel& label() const noexcept { return m_node_state.label; }
-    /** @brief Get all input slot values. */
-    const std::vector<SlotValue>& inputs() const noexcept { return m_inputs; }
+    /** @brief Borrow all input slot values as a standard range view. */
+    auto inputs() const noexcept { return std::views::all(m_inputs); }
     /** @brief Get the input slot declarations. */
     const SlotInfos& input_info() const noexcept { return m_node_state.inputs; }
     /** @brief Get the output slot declarations. */

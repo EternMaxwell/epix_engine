@@ -8,6 +8,7 @@
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <optional>
+#include <span>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -667,7 +668,7 @@ class BinnedRenderPhase {
     void render_dynamic_uniform_batches(const wgpu::RenderPassEncoder& render_pass,
                                         const epix::ecs::World& world,
                                         epix::ecs::Entity view,
-                                        const std::vector<std::vector<BinnedRenderPhaseBatch>>& batches) const {
+                                        std::span<const std::vector<BinnedRenderPhaseBatch>> batches) const {
         if constexpr (!has_item_factory) return;
         auto key = batchable_meshes.iter().begin();
         for (const auto& bin_batches : batches) {
@@ -684,7 +685,7 @@ class BinnedRenderPhase {
     void render_direct_batches(const wgpu::RenderPassEncoder& render_pass,
                                const epix::ecs::World& world,
                                epix::ecs::Entity view,
-                               const std::vector<BinnedRenderPhaseBatch>& batches) const {
+                               std::span<const BinnedRenderPhaseBatch> batches) const {
         if constexpr (!has_item_factory) return;
         auto key = batchable_meshes.iter().begin();
         for (const auto& batch : batches) {
@@ -699,7 +700,7 @@ class BinnedRenderPhase {
     void render_multidraw_batches(const wgpu::RenderPassEncoder& render_pass,
                                   const epix::ecs::World& world,
                                   epix::ecs::Entity view,
-                                  const std::vector<BinnedRenderPhaseBatchSet<BinKey>>& batches) const {
+                                  std::span<const BinnedRenderPhaseBatchSet<BinKey>> batches) const {
         if constexpr (!has_item_factory) return;
         const bool multi_draw_indirect_count_supported = [&world] {
             const auto device = world.get_resource<wgpu::Device>();

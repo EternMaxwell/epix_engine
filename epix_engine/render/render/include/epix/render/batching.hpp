@@ -255,20 +255,20 @@ struct InstanceInputUniformBuffer {
         if (!free_uniform_indices.empty()) {
             const auto index = free_uniform_indices.back();
             free_uniform_indices.pop_back();
-            buffer.values_mut()[index] = value;
+            buffer.set(index, value);
             return index;
         }
         return static_cast<std::uint32_t>(buffer.push(value));
     }
     void remove(std::uint32_t index) { free_uniform_indices.push_back(index); }
     std::optional<InputData> get(std::uint32_t index) const {
-        if (index >= buffer.values().size() ||
+        if (index >= buffer.len() ||
             std::ranges::find(free_uniform_indices, index) != free_uniform_indices.end())
             return std::nullopt;
-        return buffer.values()[index];
+        return *buffer.get(index);
     }
-    InputData get_unchecked(std::uint32_t index) const { return buffer.values().at(index); }
-    void set(std::uint32_t index, const InputData& value) { buffer.values_mut().at(index) = value; }
+    InputData get_unchecked(std::uint32_t index) const { return *buffer.get(index); }
+    void set(std::uint32_t index, const InputData& value) { buffer.set(index, value); }
     void ensure_nonempty() {
         if (buffer.is_empty()) buffer.push(InputData{});
     }
@@ -397,15 +397,15 @@ EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
     std::uint32_t allocate(bool indexed, std::uint32_t count) {
         if (indexed) {
             const auto first = static_cast<std::uint32_t>(indexed_data.len());
-            indexed_data.values_mut().resize(indexed_data.len() + count);
-            indexed_cpu_metadata.values_mut().resize(indexed_cpu_metadata.len() + count);
-            indexed_gpu_metadata.values_mut().resize(indexed_gpu_metadata.len() + count);
+            indexed_data.resize(indexed_data.len() + count);
+            indexed_cpu_metadata.resize(indexed_cpu_metadata.len() + count);
+            indexed_gpu_metadata.resize(indexed_gpu_metadata.len() + count);
             return first;
         }
         const auto first = static_cast<std::uint32_t>(non_indexed_data.len());
-        non_indexed_data.values_mut().resize(non_indexed_data.len() + count);
-        non_indexed_cpu_metadata.values_mut().resize(non_indexed_cpu_metadata.len() + count);
-        non_indexed_gpu_metadata.values_mut().resize(non_indexed_gpu_metadata.len() + count);
+        non_indexed_data.resize(non_indexed_data.len() + count);
+        non_indexed_cpu_metadata.resize(non_indexed_cpu_metadata.len() + count);
+        non_indexed_gpu_metadata.resize(non_indexed_gpu_metadata.len() + count);
         return first;
     }
     /** @brief Number of allocated indirect commands for one mesh class. */
@@ -432,7 +432,7 @@ EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
     /** @brief Store metadata generated while a phase is batched. */
     void set_cpu_metadata(bool indexed, std::uint32_t index, IndirectParametersCpuMetadata value) {
         auto& metadata            = indexed ? indexed_cpu_metadata : non_indexed_cpu_metadata;
-        metadata.values_mut().at(index) = value;
+        metadata.set(index, value);
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> data_buffer(bool indexed) const noexcept {
         const auto* data = indexed ? indexed_data.buffer() : non_indexed_data.buffer();

@@ -151,8 +151,11 @@ struct render::batching::GetFullBatchData<binned_phase_geometry::Adapter> {
                                                   std::optional<std::uint32_t>,
                                                   render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
-        buffers.non_indexed_data.values_mut().at(command_index) = {
-            .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+        buffers.non_indexed_data.set(command_index,
+                                     {.vertex_count    = 3,
+                                      .instance_count  = 0,
+                                      .first_vertex    = 0,
+                                      .first_instance  = output_index});
         buffers.set_cpu_metadata(false, command_index, {.base_output_index = output_index, .batch_set_index = 0});
     }
 };

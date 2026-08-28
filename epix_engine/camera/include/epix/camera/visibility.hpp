@@ -206,19 +206,12 @@ EPIX_EXPORT struct RenderLayers {
         result.trim();
         return result;
     }
-    /** @brief Return the finite stored layers. For an inverted Epix mask these
-     * are the exclusions, since its included infinite set cannot be iterated. */
-    std::vector<Layer> iter() const {
-        std::vector<Layer> result;
-        for (std::size_t block = 0; block < blocks_.size(); ++block) {
-            auto value = blocks_[block];
-            while (value != 0) {
-                const auto bit = static_cast<std::size_t>(std::countr_zero(value));
-                result.push_back(block * 64 + bit);
-                value &= value - 1;
-            }
-        }
-        return result;
+    /** @brief Lazily iterate finite stored layers. For an inverted Epix mask
+     * these are the exclusions, since its included infinite set cannot be
+     * iterated. This maps Bevy's `RenderLayers::iter` iterator. */
+    auto iter() const {
+        return std::views::iota(Layer{0}, blocks_.size() * 64) |
+               std::views::filter([this](const Layer layer) { return inverted_ ? !contains(layer) : contains(layer); });
     }
     std::span<const std::uint64_t> bits() const noexcept { return blocks_; }
     bool is_inverted() const noexcept { return inverted_; }
@@ -574,17 +567,17 @@ EPIX_EXPORT struct VisibleEntities {
 
     /** @brief Entities visible for the given type id; empty when absent
      * (Bevy VisibleEntities::get). */
-    const std::vector<epix::ecs::Entity>& get(const meta::type_index& type_id) const {
+    auto get(const meta::type_index& type_id) const {
         static const std::vector<epix::ecs::Entity> kEmpty;
-        if (auto it = entities.find(type_id); it != entities.end()) return it->second;
-        return kEmpty;
+        if (auto it = entities.find(type_id); it != entities.end()) return std::views::all(it->second);
+        return std::views::all(kEmpty);
     }
-    /** @brief Mutable access, inserting an empty list if absent (Bevy
-     * VisibleEntities::get_mut). */
+    /** @brief Mutable owned-list access, inserting an empty list if absent
+     * (Bevy `VisibleEntities::get_mut` returns `&mut Vec<Entity>`). */
     std::vector<epix::ecs::Entity>& get_mut(const meta::type_index& type_id) { return entities[type_id]; }
     /** @brief Iterate the visible entities of the given type (Bevy
      * VisibleEntities::iter). */
-    std::span<const epix::ecs::Entity> iter(const meta::type_index& type_id) const { return get(type_id); }
+    auto iter(const meta::type_index& type_id) const { return get(type_id); }
     /** @brief Number of visible entities of the given type (Bevy
      * VisibleEntities::len). */
     std::size_t len(const meta::type_index& type_id) const { return get(type_id).size(); }
@@ -593,7 +586,7 @@ EPIX_EXPORT struct VisibleEntities {
     bool is_empty(const meta::type_index& type_id) const { return get(type_id).empty(); }
     /** @brief Clear the given type's list, keeping the allocation (Bevy
      * VisibleEntities::clear). */
-    void clear(const meta::type_index& type_id) { get_mut(type_id).clear(); }
+    void clear(const meta::type_index& type_id) { entities[type_id].clear(); }
     /** @brief Clear all lists, keeping allocations (Bevy
      * VisibleEntities::clear_all). */
     void clear_all() {
@@ -604,7 +597,7 @@ EPIX_EXPORT struct VisibleEntities {
     }
     /** @brief Append an entity to a visibility class (Bevy
      * `VisibleEntities::push`). */
-    void push(epix::ecs::Entity entity, const meta::type_index& type_id) { get_mut(type_id).push_back(entity); }
+    void push(epix::ecs::Entity entity, const meta::type_index& type_id) { entities[type_id].push_back(entity); }
 };
 
 /** @brief Mesh entities visible from one light/view (Bevy
@@ -623,10 +616,8 @@ EPIX_EXPORT struct CubemapVisibleEntities {
     std::array<VisibleMeshEntities, 6> data{};
     const VisibleMeshEntities& get(std::size_t index) const { return data.at(index); }
     VisibleMeshEntities& get_mut(std::size_t index) { return data.at(index); }
-    auto begin() const noexcept { return data.begin(); }
-    auto end() const noexcept { return data.end(); }
-    auto begin() noexcept { return data.begin(); }
-    auto end() noexcept { return data.end(); }
+    auto iter() const noexcept { return std::views::all(data); }
+    auto iter_mut() noexcept { return std::views::all(data); }
 };
 
 /** @brief Visible mesh entities for each shadow cascade (Bevy

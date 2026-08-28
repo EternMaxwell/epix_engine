@@ -98,8 +98,11 @@ EPIX_EXPORT struct RenderGraph {
                 edge_error && std::holds_alternative<EdgeAlreadyExists>(*edge_error)) {
                 continue;
             }
-            spdlog::error("[render.graph] Failed to add edge '{}' -> '{}': {}", node.type_index().short_name(),
-                          next_node.type_index().short_name(), res.error().to_string());
+            // Bevy ignores duplicates but panics for every other setup error.
+            throw std::runtime_error(std::format("Failed to add node edge {} -> {}: {}",
+                                                 node.type_index().short_name(),
+                                                 next_node.type_index().short_name(),
+                                                 res.error().to_string()));
         }
     }
 
@@ -140,6 +143,35 @@ EPIX_EXPORT struct RenderGraph {
     NodeState& node_state(const NodeLabel& id);
     /** @brief Get a const node state reference. Throws if not found. */
     const NodeState& node_state(const NodeLabel& id) const;
+
+    /** @brief Return input edges paired with their output nodes (Bevy
+     * RenderGraph::iter_node_inputs). */
+    auto iter_node_inputs(const NodeLabel& id) const {
+        std::expected<std::reference_wrapper<const NodeState>, GraphError> node = std::unexpected(NodeNotPresent{id});
+        if (const auto state = get_node_state(id)) node = *state;
+        return node.transform([this](const std::reference_wrapper<const NodeState>& state) {
+            return state.get().edges.input_edges() | std::views::transform([this](const Edge& edge) {
+                       const auto endpoint = get_node_state(edge.output_node);
+                       // Bevy unwraps this internal-invariant lookup.
+                       if (!endpoint) throw std::runtime_error("Render graph edge references a missing endpoint node.");
+                       return std::pair{std::cref(edge), std::cref(endpoint->get())};
+                   });
+        });
+    }
+    /** @brief Return output edges paired with their input nodes (Bevy
+     * RenderGraph::iter_node_outputs). */
+    auto iter_node_outputs(const NodeLabel& id) const {
+        std::expected<std::reference_wrapper<const NodeState>, GraphError> node = std::unexpected(NodeNotPresent{id});
+        if (const auto state = get_node_state(id)) node = *state;
+        return node.transform([this](const std::reference_wrapper<const NodeState>& state) {
+            return state.get().edges.output_edges() | std::views::transform([this](const Edge& edge) {
+                       const auto endpoint = get_node_state(edge.input_node);
+                       // Bevy unwraps this internal-invariant lookup.
+                       if (!endpoint) throw std::runtime_error("Render graph edge references a missing endpoint node.");
+                       return std::pair{std::cref(edge), std::cref(endpoint->get())};
+                   });
+        });
+    }
 
     /** @brief Add a named sub-graph, replacing a graph with the same label
      * (Bevy RenderGraph::add_sub_graph). */

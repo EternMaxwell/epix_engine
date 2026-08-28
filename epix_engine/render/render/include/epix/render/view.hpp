@@ -641,6 +641,10 @@ EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 /** @brief Node that drives each camera's render graph in sorted order (Bevy
  * CameraDriverNode, renderer/camera_driver_node.rs). Defined in view.cpp. */
 EPIX_EXPORT struct CameraDriverNode : graph::Node {
+    /** Persistent query state, matching Bevy CameraDriverNode::cameras. */
+    std::optional<epix::ecs::QueryState<epix::ecs::Item<const ExtractedCamera&>>> cameras;
+
+    void update(epix::ecs::World& world) override;
     std::expected<void, graph::NodeRunError> run(graph::GraphContext& graph,
                                                  graph::RenderContext& render_ctx,
                                                  const epix::ecs::World& world) override;
@@ -684,17 +688,15 @@ EPIX_EXPORT struct RenderVisibleEntities {
     /** @brief Entities visible to the view for the given query-filter type
      * (Bevy RenderVisibleEntities::get<QF>, empty slice when absent). */
     template <typename QF>
-    const std::vector<std::pair<epix::ecs::Entity, sync_world::MainEntity>>& get() const {
+    auto get() const {
         static const std::vector<std::pair<epix::ecs::Entity, sync_world::MainEntity>> kEmpty;
-        if (auto it = entities.find(meta::type_index(meta::type_id<QF>())); it != entities.end()) return it->second;
-        return kEmpty;
+        if (auto it = entities.find(meta::type_index(meta::type_id<QF>())); it != entities.end()) return std::views::all(it->second);
+        return std::views::all(kEmpty);
     }
     /** @brief Span over the visible entities for the given type (Bevy
      * RenderVisibleEntities::iter<QF>, DoubleEndedIterator). */
     template <typename QF>
-    std::span<const std::pair<epix::ecs::Entity, sync_world::MainEntity>> iter() const {
-        return get<QF>();
-    }
+    auto iter() const { return get<QF>(); }
     /** @brief Number of visible entities for the given type (Bevy
      * RenderVisibleEntities::len<QF>). */
     template <typename QF>

@@ -109,13 +109,12 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
 
     // check if the input's input slot has not been connected to any other
     // node if should_exist is false
-    if (auto to_input_edge_it =
-            std::find_if(input_node->get().edges.input_edges().begin(), input_node->get().edges.input_edges().end(),
-                         [&edge](const Edge& e) -> bool {
-                             if (!e.is_slot_edge()) return false;
-                             return e.input_index == edge.input_index;
-                         });
-        to_input_edge_it != input_node->get().edges.input_edges().end()) {
+    const auto input_edges = input_node->get().edges.input_edges();
+    if (auto to_input_edge_it = std::ranges::find_if(input_edges, [&edge](const Edge& e) -> bool {
+            if (!e.is_slot_edge()) return false;
+            return e.input_index == edge.input_index;
+        });
+        to_input_edge_it != input_edges.end()) {
         if (!should_exist) {
             return std::unexpected(InputSlotOccupied{
                 .input_node            = edge.input_node,

@@ -648,28 +648,68 @@ void camera::extract_cameras(
     }
 }
 
+void epix::render::camera::CameraDriverNode::update(World& world) {
+    if (!cameras) {
+        cameras = world.try_query<Item<const ExtractedCamera&>>();
+    } else {
+        cameras->update_archetypes(world);
+    }
+}
+
 std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode::run(graph::GraphContext& graph,
                                                                                      graph::RenderContext& render_ctx,
                                                                                      const World& world) {
-    // Iterate cameras in sorted order (Bevy CameraDriverNode uses SortedCameras).
+    // Bevy CameraDriverNode owns this persistent query state instead of
+    // recreating an ad-hoc query for every graph run.
     auto sorted = world.get_resource<SortedCameras>();
-    if (!sorted) return {};
-    // A camera with RenderTarget::none has no ViewTarget, but Bevy's camera
-    // driver still runs its graph.  Individual view nodes opt out through
-    // their own query requirements.
-    auto cameras = world.try_query<Item<Entity, const ExtractedCamera&>>();
-    if (!cameras) return {};
+    auto windows = world.get_resource<window::ExtractedWindows>();
+    if (!sorted || !windows || !cameras) return {};
+
+    std::unordered_set<Entity> camera_windows;
     for (const auto& sorted_camera : sorted->get().cameras) {
         auto opt = cameras->query(world).get(sorted_camera.entity);
         if (!opt) continue;
-        auto&& [entity, camera] = *opt;
-        // Bevy CameraDriverNode only runs the camera graph. The first core
-        // main-pass attachment clears (and resolves MSAA) through ViewTarget.
-        if (!graph.run_sub_graph(camera.render_graph, {}, entity)) {
-            spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}", entity.index,
+        const auto& [camera] = *opt;
+
+        bool run_graph = true;
+        if (const auto* window_ref = camera.target
+                                         .transform([](const auto& target) {
+                                             return std::get_if<::epix::window::NormalizedWindowRef>(&target);
+                                         })
+                                         .value_or(nullptr)) {
+            const auto window = windows->get().windows.find(window_ref->entity());
+            if (window != windows->get().windows.end() && window->second.physical_width > 0 &&
+                window->second.physical_height > 0) {
+                camera_windows.insert(window_ref->entity());
+            } else {
+                run_graph = false;
+            }
+        }
+        if (run_graph && !graph.run_sub_graph(camera.render_graph, {}, sorted_camera.entity)) {
+            spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}",
+                         sorted_camera.entity.index,
                          camera.render_graph.type_index().short_name());
             return std::unexpected(graph::NodeRunError::RunSubGraphError);
         }
+    }
+
+    // Bevy also clears every acquired swapchain image that no camera graph
+    // will touch. WGPU requires work before a presented acquired frame.
+    const auto global_clear_color = world.get_resource<::epix::camera::ClearColor>();
+    if (!global_clear_color) return {};
+    for (const auto& [entity, window] : windows->get().windows) {
+        if (camera_windows.contains(entity) && render_ctx.has_command_encoder()) continue;
+        if (!window.swapchain_texture_view) continue;
+        auto attachment = wgpu::RenderPassColorAttachment()
+                              .setView(window.swapchain_texture_view)
+                              .setDepthSlice(~0u)
+                              .setLoadOp(wgpu::LoadOp::eClear)
+                              .setStoreOp(wgpu::StoreOp::eStore)
+                              .setClearValue(wgpu::Color(global_clear_color->get().r, global_clear_color->get().g,
+                                                          global_clear_color->get().b, global_clear_color->get().a));
+        auto pass = render_ctx.command_encoder().beginRenderPass(
+            wgpu::RenderPassDescriptor().setColorAttachments(std::array{attachment}));
+        pass.end();
     }
     return {};
 }

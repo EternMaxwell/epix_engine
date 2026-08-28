@@ -11,6 +11,7 @@
 #include <epix/render/screenshot.hpp>
 #include <epix/render/view.hpp>
 #include <epix/task.hpp>
+#include <span>
 #include <unordered_set>
 #include <webgpu/webgpu.hpp>
 
@@ -319,7 +320,7 @@ static void trigger_legacy_screenshots(Res<LegacyCapturedScreenshots> completed,
 }
 
 static std::optional<image::Image> image_from_readback(const ScreenshotState::InFlightCapture& capture,
-                                                       const std::vector<std::uint8_t>& data) {
+                                                       std::span<const std::uint8_t> data) {
     const auto info = capture_format(capture.format);
     if (info.bytes_per_pixel == 0) return std::nullopt;
     const std::size_t packed_row  = static_cast<std::size_t>(capture.size.x) * info.bytes_per_pixel;

@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstring>
+#include <ranges>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <type_traits>
@@ -33,6 +34,9 @@ struct GpuWrittenOnlyBufferValue {
 
 template <typename T>
 concept HasCpuBufferValues = requires(T value) { value.values(); };
+
+static_assert(std::ranges::view<decltype(std::declval<render_resource::RawBufferVec<std::uint32_t>&>().values())>);
+static_assert(std::ranges::view<decltype(std::declval<render_resource::RawBufferVec<std::uint32_t>&>().values_mut())>);
 
 template <typename T>
 concept ExposesUniformBufferState = requires(T value) {
@@ -207,7 +211,8 @@ TEST(RenderLayers, Intersects) {
     const auto dynamic = ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 3>{0, 64, 130});
     EXPECT_TRUE(dynamic.contains(130));
     EXPECT_TRUE(dynamic.intersects(::epix::camera::RenderLayers::layer(130)));
-    EXPECT_EQ(dynamic.iter(), (std::vector<std::size_t>{0, 64, 130}));
+    static_assert(std::ranges::view<decltype(dynamic.iter())>);
+    EXPECT_TRUE(std::ranges::equal(dynamic.iter(), std::array<std::size_t, 3>{0, 64, 130}));
     EXPECT_EQ(dynamic.without(130).without(64).without(0), none);
     EXPECT_EQ(dynamic & ::epix::camera::RenderLayers::layer(64), ::epix::camera::RenderLayers::layer(64));
     EXPECT_EQ(dynamic | layer1, ::epix::camera::RenderLayers::from_layers(std::array<std::size_t, 4>{0, 1, 64, 130}));
@@ -718,14 +723,17 @@ struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
                                                   batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
         if (indexed) {
-            buffers.indexed_data.values_mut().at(command_index) = {.index_count    = 3,
-                                                             .instance_count = 0,
-                                                             .first_index    = 0,
-                                                             .base_vertex    = 0,
-                                                             .first_instance = output_index};
+            buffers.indexed_data.set(command_index, {.index_count    = 3,
+                                                     .instance_count = 0,
+                                                     .first_index    = 0,
+                                                     .base_vertex    = 0,
+                                                     .first_instance = output_index});
         } else {
-            buffers.non_indexed_data.values_mut().at(command_index) = {
-                .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+            buffers.non_indexed_data.set(command_index,
+                                         {.vertex_count    = 3,
+                                          .instance_count  = 0,
+                                          .first_vertex    = 0,
+                                          .first_instance  = output_index});
         }
         buffers.set_cpu_metadata(indexed, command_index,
                                  {.base_output_index = output_index, .batch_set_index = batch_set_index.value_or(0)});
@@ -870,14 +878,17 @@ struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
                                                   batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
         if (indexed) {
-            buffers.indexed_data.values_mut().at(command_index) = {.index_count    = 3,
-                                                             .instance_count = 0,
-                                                             .first_index    = 0,
-                                                             .base_vertex    = 0,
-                                                             .first_instance = output_index};
+            buffers.indexed_data.set(command_index, {.index_count    = 3,
+                                                     .instance_count = 0,
+                                                     .first_index    = 0,
+                                                     .base_vertex    = 0,
+                                                     .first_instance = output_index});
         } else {
-            buffers.non_indexed_data.values_mut().at(command_index) = {
-                .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
+            buffers.non_indexed_data.set(command_index,
+                                         {.vertex_count    = 3,
+                                          .instance_count  = 0,
+                                          .first_vertex    = 0,
+                                          .first_instance  = output_index});
         }
         buffers.set_cpu_metadata(indexed, command_index,
                                  {.base_output_index = output_index, .batch_set_index = batch_set_index.value_or(0)});
@@ -989,8 +1000,8 @@ TEST(PhaseIndirectParametersBuffers, ClearsPhaseLocalBuffers) {
     World world(WorldId(103));
     world.insert_resource(batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>{});
     auto& buffers = world.resource_mut<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>().buffers;
-    buffers.indexed_data.values_mut().push_back({.index_count = 3, .instance_count = 2});
-    buffers.non_indexed_gpu_metadata.values_mut().push_back({.mesh_index = 7});
+    buffers.indexed_data.push({.index_count = 3, .instance_count = 2});
+    buffers.non_indexed_gpu_metadata.push({.mesh_index = 7});
 
     auto system = make_system_unique(&batching::clear_phase_indirect_parameters_buffers<CpuBatchTestItem>);
     system->initialize(world);
@@ -2226,6 +2237,44 @@ TEST(RenderGraph, RemoveMissingNodeIsNoOp) {
     graph.add_node<ProbeGraphNode>(GraphTestNodeA{});
     EXPECT_TRUE(graph.remove_node(GraphTestNodeA{}).has_value());
     EXPECT_TRUE(graph.remove_node(GraphTestNodeA{}).has_value());
+}
+
+// Bevy graph.rs:547-574 exposes neighbouring graph edges and their nodes.
+TEST(RenderGraph, IterNodeConnections) {
+    graph::RenderGraph graph;
+    graph.add_node<ProbeGraphNode>(GraphTestNodeA{});
+    graph.add_node<ProbeGraphNode>(GraphTestNodeB{});
+    graph.add_node<ProbeGraphNode>(GraphTestNodeC{});
+    ASSERT_TRUE(graph.try_add_node_edge(GraphTestNodeA{}, GraphTestNodeB{}).has_value());
+    ASSERT_TRUE(graph.try_add_node_edge(GraphTestNodeB{}, GraphTestNodeC{}).has_value());
+
+    const auto inputs = graph.iter_node_inputs(GraphTestNodeB{});
+    ASSERT_TRUE(inputs.has_value());
+    ASSERT_EQ(std::ranges::distance(*inputs), 1);
+    const auto input = *inputs->begin();
+    EXPECT_EQ(input.first.get().output_node, graph::NodeLabel(GraphTestNodeA{}));
+    EXPECT_EQ(input.second.get().label, graph::NodeLabel(GraphTestNodeA{}));
+
+    const auto outputs = graph.iter_node_outputs(GraphTestNodeB{});
+    ASSERT_TRUE(outputs.has_value());
+    ASSERT_EQ(std::ranges::distance(*outputs), 1);
+    const auto output = *outputs->begin();
+    EXPECT_EQ(output.first.get().input_node, graph::NodeLabel(GraphTestNodeC{}));
+    EXPECT_EQ(output.second.get().label, graph::NodeLabel(GraphTestNodeC{}));
+
+    const auto missing = graph.iter_node_inputs(GraphTestNodeD{});
+    ASSERT_FALSE(missing.has_value());
+    EXPECT_TRUE(std::holds_alternative<graph::NodeNotPresent>(missing.error()));
+}
+
+// Bevy add_node_edges ignores duplicate edges but panics for invalid chains.
+TEST(RenderGraph, AddNodeEdgesThrowsOnInvalidChain) {
+    graph::RenderGraph graph;
+    graph.add_node<ProbeGraphNode>(GraphTestNodeA{});
+    graph.add_node<ProbeGraphNode>(GraphTestNodeB{});
+    EXPECT_NO_THROW(graph.add_node_edges(GraphTestNodeA{}, GraphTestNodeB{}));
+    EXPECT_NO_THROW(graph.add_node_edges(GraphTestNodeA{}, GraphTestNodeB{}));
+    EXPECT_THROW(graph.add_node_edges(GraphTestNodeB{}, GraphTestNodeC{}), std::runtime_error);
 }
 
 // Bevy graph.rs add_edge -> validate_edge_duplicates: duplicate edge errors.
@@ -3887,12 +3936,11 @@ struct epix::render::batching::GetFullBatchData<BatchingTestAdapter> {
         epix::render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
         std::uint32_t indirect_parameters_offset) const {
         if (buffers.indexed_cpu_metadata.values().size() <= indirect_parameters_offset) {
-            buffers.indexed_cpu_metadata.values_mut().resize(indirect_parameters_offset + 1);
+            buffers.indexed_cpu_metadata.resize(indirect_parameters_offset + 1);
         }
-        buffers.indexed_cpu_metadata.values_mut()[indirect_parameters_offset] = {
-            .base_output_index = base_output_index,
-            .batch_set_index   = batch_set_index.value_or(0),
-        };
+        buffers.indexed_cpu_metadata.set(indirect_parameters_offset,
+                                         {.base_output_index = base_output_index,
+                                          .batch_set_index   = batch_set_index.value_or(0)});
     }
 };
 
@@ -3949,10 +3997,12 @@ TEST(VisibleEntities, PerClassAccessors) {
     EXPECT_EQ(visible.get(class_a).front(), epix::ecs::Entity::from_index(42));
     visible.clear(class_a);
 
-    // get_mut inserts and populates per class.
-    visible.get_mut(class_a).push_back(epix::ecs::Entity::from_index(1));
-    visible.get_mut(class_a).push_back(epix::ecs::Entity::from_index(2));
-    visible.get_mut(class_b).push_back(epix::ecs::Entity::from_index(3));
+    // get_mut inserts an empty class and exposes the mutable owned list, as
+    // Bevy's `&mut Vec<Entity>` API does.
+    EXPECT_TRUE(visible.get_mut(class_a).empty());
+    visible.push(epix::ecs::Entity::from_index(1), class_a);
+    visible.push(epix::ecs::Entity::from_index(2), class_a);
+    visible.push(epix::ecs::Entity::from_index(3), class_b);
     EXPECT_EQ(visible.len(class_a), 2u);
     EXPECT_EQ(visible.len(class_b), 1u);
     EXPECT_FALSE(visible.is_empty(class_a));
@@ -3966,6 +4016,15 @@ TEST(VisibleEntities, PerClassAccessors) {
     visible.clear_all();
     EXPECT_TRUE(visible.is_empty(class_a));
     EXPECT_TRUE(visible.is_empty(class_b));
+}
+
+TEST(CubemapVisibleEntities, IteratorsAreLazyViews) {
+    ::epix::camera::CubemapVisibleEntities cubemap;
+    static_assert(std::ranges::view<decltype(cubemap.iter())>);
+    static_assert(std::ranges::view<decltype(cubemap.iter_mut())>);
+    EXPECT_EQ(std::ranges::distance(cubemap.iter()), 6);
+    cubemap.get_mut(2).entities.push_back(epix::ecs::Entity::from_index(9));
+    EXPECT_EQ(cubemap.get(2).entities.front(), epix::ecs::Entity::from_index(9));
 }
 
 TEST(VisibilityClass, AddHookAppendsTheComponentType) {

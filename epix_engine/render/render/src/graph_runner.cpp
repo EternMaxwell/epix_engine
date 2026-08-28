@@ -120,7 +120,8 @@ std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run_graph(const R
                 return std::unexpected(RunnerNodeRunError{.node = node_state.label, .error = result.error()});
             }
 
-            for (auto&& run_sub_graph : context.finish()) {
+            auto sub_graphs = context.finish();
+            for (auto&& run_sub_graph : sub_graphs) {
                 auto sub_graph = graph.get_sub_graph(run_sub_graph.id);
                 if (sub_graph) {
                     // Bevy graph_runner.rs:284-287: debug marker around each

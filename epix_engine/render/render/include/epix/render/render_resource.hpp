@@ -12,6 +12,7 @@
 #include <glm/glm.hpp>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -606,8 +607,10 @@ public:
         if (!label) return std::nullopt;
         return *label;
     }
-    const std::vector<T>& values() const noexcept { return data; }
-    std::vector<T>& values_mut() noexcept { return data; }
+    /** @brief Borrow CPU values as a standard range view. */
+    auto values() const noexcept { return std::views::all(data); }
+    /** @brief Borrow mutable CPU values as a standard range view. */
+    auto values_mut() noexcept { return std::views::all(data); }
 
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
         if (requested_capacity <= gpu_capacity && (!label_changed || requested_capacity == 0)) return;
@@ -634,6 +637,7 @@ public:
         return {};
     }
     void truncate(std::size_t length) { data.resize(length); }
+    void resize(std::size_t length) requires std::default_initializable<T> { data.resize(length); }
     std::optional<T> pop() {
         if (data.empty()) return std::nullopt;
         auto value = std::move(data.back());
