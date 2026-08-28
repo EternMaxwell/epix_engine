@@ -285,8 +285,11 @@ void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
             auto config =
                 wgpu::SurfaceConfiguration()
                     .setDevice(*device)
-                    .setUsage(wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc |
-                              wgpu::TextureUsage::eCopyDst)
+                    // Bevy's window surface is an output attachment only.
+                    // Screenshot/readback paths render into a separate
+                    // copyable texture, so requesting copy usage here is both
+                    // unnecessary and incompatible with that contract.
+                    .setUsage(wgpu::TextureUsage::eRenderAttachment)
                     .setFormat(format)
                     .setWidth(window.physical_width)
                     .setHeight(window.physical_height)
