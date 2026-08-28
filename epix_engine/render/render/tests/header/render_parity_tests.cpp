@@ -25,6 +25,15 @@ struct ExplicitShaderValue {
     bool enabled = false;
 };
 
+struct GpuWrittenOnlyBufferValue {
+    std::uint32_t value;
+    GpuWrittenOnlyBufferValue() = delete;
+    explicit GpuWrittenOnlyBufferValue(std::uint32_t value) : value(value) {}
+};
+
+template <typename T>
+concept HasCpuBufferValues = requires(T value) { value.values(); };
+
 namespace epix::render::render_resource {
 template <>
 struct ShaderTypeInfo<::EarlyExtractInstance> : RawShaderType<::EarlyExtractInstance> {};
@@ -47,6 +56,8 @@ struct ShaderTypeInfo<::ExplicitShaderValue> {
         return ::ExplicitShaderValue{*value, *enabled};
     }
 };
+template <>
+struct ShaderTypeInfo<::GpuWrittenOnlyBufferValue> : RawShaderType<::GpuWrittenOnlyBufferValue> {};
 }  // namespace epix::render::render_resource
 
 struct IncrementalExtractSource {
@@ -655,13 +666,13 @@ struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
                                                   batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
         if (indexed) {
-            buffers.indexed_data.values.at(command_index) = {.index_count    = 3,
+            buffers.indexed_data.values_mut().at(command_index) = {.index_count    = 3,
                                                              .instance_count = 0,
                                                              .first_index    = 0,
                                                              .base_vertex    = 0,
                                                              .first_instance = output_index};
         } else {
-            buffers.non_indexed_data.values.at(command_index) = {
+            buffers.non_indexed_data.values_mut().at(command_index) = {
                 .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
         }
         buffers.set_cpu_metadata(indexed, command_index,
@@ -807,13 +818,13 @@ struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
                                                   batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
         if (indexed) {
-            buffers.indexed_data.values.at(command_index) = {.index_count    = 3,
+            buffers.indexed_data.values_mut().at(command_index) = {.index_count    = 3,
                                                              .instance_count = 0,
                                                              .first_index    = 0,
                                                              .base_vertex    = 0,
                                                              .first_instance = output_index};
         } else {
-            buffers.non_indexed_data.values.at(command_index) = {
+            buffers.non_indexed_data.values_mut().at(command_index) = {
                 .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
         }
         buffers.set_cpu_metadata(indexed, command_index,
@@ -926,16 +937,16 @@ TEST(PhaseIndirectParametersBuffers, ClearsPhaseLocalBuffers) {
     World world(WorldId(103));
     world.insert_resource(batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>{});
     auto& buffers = world.resource_mut<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>().buffers;
-    buffers.indexed_data.values.push_back({.index_count = 3, .instance_count = 2});
-    buffers.non_indexed_gpu_metadata.values.push_back({.mesh_index = 7});
+    buffers.indexed_data.values_mut().push_back({.index_count = 3, .instance_count = 2});
+    buffers.non_indexed_gpu_metadata.values_mut().push_back({.mesh_index = 7});
 
     auto system = make_system_unique(&batching::clear_phase_indirect_parameters_buffers<CpuBatchTestItem>);
     system->initialize(world);
     ASSERT_TRUE(system->run({}, world).has_value());
 
     const auto& cleared = world.resource<batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>>().buffers;
-    EXPECT_TRUE(cleared.indexed_data.values.empty());
-    EXPECT_TRUE(cleared.non_indexed_gpu_metadata.values.empty());
+    EXPECT_TRUE(cleared.indexed_data.values().empty());
+    EXPECT_TRUE(cleared.non_indexed_gpu_metadata.values().empty());
 }
 
 TEST(PhaseIndirectParametersBuffers, AllocatesMatchingIndirectMetadataAndBatchSets) {
@@ -951,9 +962,9 @@ TEST(PhaseIndirectParametersBuffers, AllocatesMatchingIndirectMetadataAndBatchSe
     buffers.add_batch_set(true, 2);
     EXPECT_EQ(buffers.next_batch_set_index(true), 1u);
     ASSERT_EQ(buffers.indexed_batch_sets.len(), 1u);
-    EXPECT_EQ(buffers.indexed_batch_sets.values[0].indirect_parameters_base, 2u);
+    EXPECT_EQ(buffers.indexed_batch_sets.values()[0].indirect_parameters_base, 2u);
     buffers.set_cpu_metadata(true, 1, {.base_output_index = 17, .batch_set_index = 0});
-    EXPECT_EQ(buffers.indexed_cpu_metadata.values[1].base_output_index, 17u);
+    EXPECT_EQ(buffers.indexed_cpu_metadata.values()[1].base_output_index, 17u);
 }
 
 TEST(GpuPreprocessCollection, MovesPhaseBuffersIntoSharedLookupTables) {
@@ -1040,8 +1051,8 @@ TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
     const auto& work   = phase_buffers.work_item_buffers.at(view);
     const auto& direct = std::get<batching::PreprocessWorkItemBuffers::Direct>(work.storage);
     ASSERT_EQ(direct.items.len(), 3u);
-    EXPECT_EQ(direct.items.values[0].input_index, 3u);
-    EXPECT_EQ(direct.items.values[2].output_or_indirect_parameters_index, 2u);
+    EXPECT_EQ(direct.items.values()[0].input_index, 3u);
+    EXPECT_EQ(direct.items.values()[2].output_or_indirect_parameters_index, 2u);
     const auto& batches = std::get<1>(render_phase.batch_sets);
     ASSERT_EQ(batches.size(), 1u);
     EXPECT_EQ(batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
@@ -1065,8 +1076,8 @@ TEST(GpuBinnedPreprocessing, ReservesGpuOutputForNonDefaultConstructibleData) {
         render_phase, phase_buffers, indirect, view, true, false, world);
 
     EXPECT_EQ(phase_buffers.data_buffer.len(), 1u);
-    EXPECT_EQ(phase_buffers.data_buffer.capacity, 0u);
-    EXPECT_FALSE(phase_buffers.data_buffer.buffer);
+    EXPECT_EQ(phase_buffers.data_buffer.capacity(), 0u);
+    EXPECT_EQ(phase_buffers.data_buffer.buffer(), nullptr);
 }
 
 TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
@@ -1093,10 +1104,10 @@ TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
     ASSERT_EQ(indirect.indexed_data.len(), 2u);
     ASSERT_EQ(indirect.indexed_cpu_metadata.len(), 2u);
     ASSERT_EQ(indirect.indexed_batch_sets.len(), 1u);
-    EXPECT_EQ(indirect.indexed_data.values[0].index_count, 3u);
-    EXPECT_EQ(indirect.indexed_data.values[0].instance_count, 0u);
-    EXPECT_EQ(indirect.indexed_data.values[0].first_instance, 0u);
-    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].base_output_index, 1u);
+    EXPECT_EQ(indirect.indexed_data.values()[0].index_count, 3u);
+    EXPECT_EQ(indirect.indexed_data.values()[0].instance_count, 0u);
+    EXPECT_EQ(indirect.indexed_data.values()[0].first_instance, 0u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values()[1].base_output_index, 1u);
     const auto& batch_sets = std::get<2>(render_phase.batch_sets);
     ASSERT_EQ(batch_sets.size(), 1u);
     EXPECT_EQ(batch_sets[0].batch_count, 2u);
@@ -1128,8 +1139,8 @@ TEST(GpuSortedPreprocessing, BuildsIndirectRunsAndCommandMetadata) {
         std::get<batching::PreprocessWorkItemBuffers::Indirect>(phase_buffers.work_item_buffers.at(view).storage);
     EXPECT_EQ(work.non_indexed.len(), 3u);
     ASSERT_EQ(indirect.non_indexed_data.len(), 2u);
-    EXPECT_EQ(indirect.non_indexed_data.values[0].vertex_count, 3u);
-    EXPECT_EQ(indirect.non_indexed_data.values[1].first_instance, 2u);
+    EXPECT_EQ(indirect.non_indexed_data.values()[0].vertex_count, 3u);
+    EXPECT_EQ(indirect.non_indexed_data.values()[1].first_instance, 2u);
     EXPECT_EQ(render_phase.items[0].batch_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(render_phase.items[0].extra_index().indirect_range, (std::pair<std::uint32_t, std::uint32_t>{0, 1}));
     EXPECT_EQ(render_phase.items[2].batch_range, (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
@@ -1159,13 +1170,13 @@ TEST(CpuBatching, SharedBufferRequiresExplicitFrameClear) {
     world.insert_resource(batching::BatchedInstanceBuffer<std::uint32_t>{limits});
     auto& shared = world.resource_mut<batching::BatchedInstanceBuffer<std::uint32_t>>().buffer;
     shared.push(7u);
-    ASSERT_EQ(std::get<1>(shared.storage).values.size(), 1u);
+    ASSERT_EQ(std::get<1>(shared.storage).len(), 1u);
 
     auto system = make_system_unique(&batching::clear_batched_cpu_instance_buffers<CpuBatchSystemAdapter>);
     system->initialize(world);
     ASSERT_TRUE(system->run({}, world).has_value());
     EXPECT_TRUE(
-        std::get<1>(world.resource<batching::BatchedInstanceBuffer<std::uint32_t>>().buffer.storage).values.empty());
+        std::get<1>(world.resource<batching::BatchedInstanceBuffer<std::uint32_t>>().buffer.storage).is_empty());
 }
 
 namespace {
@@ -1451,7 +1462,7 @@ TEST(RenderVisibilityRanges, InsertDedupAndAccessors) {
 // (STORAGE|UNIFORM|VERTEX) plus COPY_DST for queue.writeBuffer.
 TEST(RenderVisibilityRanges, BufferUsageMatchesBevy) {
     view::RenderVisibilityRanges ranges;
-    const auto usage = static_cast<std::uint64_t>(ranges.buffer.buffer_usage);
+    const auto usage = static_cast<std::uint64_t>(ranges.buffer.usage());
     EXPECT_NE((usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage)), 0ull);
     EXPECT_NE((usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eUniform)), 0ull);
     EXPECT_NE((usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eVertex)), 0ull);
@@ -3130,11 +3141,12 @@ TEST(ViewDepthTexture, FirstCallClearSemantics) {
     EXPECT_EQ(a2.depthLoadOp, wgpu::LoadOp::eLoad);
 }
 
-// BufferVec::write_buffer_range matches Bevy buffer_vec.rs:196-215:
-// NoValuesToUpload when empty, RangeBiggerThanBuffer on overflow,
-// BufferNotInitialized when no GPU buffer exists.
+// BufferVec::write_buffer_range matches Bevy buffer_vec.rs:
+// NoValuesToUpload when empty. Bevy checks GPU capacity before initialization,
+// so both a byte-range overflow and an uninitialized zero-capacity buffer are
+// RangeBiggerThanBuffer.
 TEST(BufferVec, WriteBufferRangeErrors) {
-    render_resource::BufferVec<float> vec;
+    render_resource::BufferVec<float> vec{wgpu::BufferUsage::eStorage};
     auto empty = vec.write_buffer_range(wgpu::Queue{}, {0, 1});
     EXPECT_FALSE(empty.has_value());
     EXPECT_EQ(empty.error(), render_resource::WriteBufferRangeError::NoValuesToUpload);
@@ -3147,7 +3159,38 @@ TEST(BufferVec, WriteBufferRangeErrors) {
 
     auto uninit = vec.write_buffer_range(wgpu::Queue{}, {0, 1});
     EXPECT_FALSE(uninit.has_value());
-    EXPECT_EQ(uninit.error(), render_resource::WriteBufferRangeError::BufferNotInitialized);
+    EXPECT_EQ(uninit.error(), render_resource::WriteBufferRangeError::RangeBiggerThanBuffer);
+}
+
+TEST(RawBufferVec, KeepsCpuAccessAndRequiresExplicitNoUninitContract) {
+    struct PlainPod {
+        std::uint32_t value = 0;
+    };
+    static_assert(!render_resource::RawBufferElement<PlainPod>);
+    static_assert(render_resource::RawBufferElement<std::uint32_t>);
+    static_assert(render_resource::RawBufferElement<float>);
+    static_assert(!HasCpuBufferValues<render_resource::BufferVec<float>>);
+
+    render_resource::RawBufferVec<std::uint32_t> values{wgpu::BufferUsage::eStorage};
+    EXPECT_TRUE(values.is_empty());
+    EXPECT_FALSE(values.binding().has_value());
+    EXPECT_EQ(values.get_label(), std::nullopt);
+    values.set_label("raw-data");
+    EXPECT_EQ(values.get_label(), std::optional<std::string_view>{"raw-data"});
+    EXPECT_EQ(values.push(3u), 0u);
+    values.grow_set(2, 9u);
+    ASSERT_EQ(values.values().size(), 3u);
+    EXPECT_EQ(values.values()[0], 3u);
+    EXPECT_EQ(values.values()[1], 0u);
+    EXPECT_EQ(*values.get(2), 9u);
+
+    render_resource::RawBufferVec<std::uint32_t> appended{wgpu::BufferUsage::eStorage};
+    appended.push(11u);
+    values.append(appended);
+    EXPECT_TRUE(appended.is_empty());
+    EXPECT_EQ(values.pop(), 11u);
+    values.truncate(1);
+    EXPECT_EQ(values.len(), 1u);
 }
 
 TEST(ShaderType, RequiresExplicitLayoutAndEncodesFields) {
@@ -3176,20 +3219,16 @@ TEST(ShaderType, RequiresExplicitLayoutAndEncodesFields) {
 // values (Bevy buffer_vec.rs:472-552). This is essential for preprocessing
 // payloads that intentionally have no default constructor.
 TEST(UninitBufferVec, ReservesSlotsWithoutCpuValues) {
-    struct GpuWrittenOnly {
-        std::uint32_t value;
-        GpuWrittenOnly() = delete;
-        explicit GpuWrittenOnly(std::uint32_t value) : value(value) {}
-    };
-    static_assert(!std::default_initializable<GpuWrittenOnly>);
+    static_assert(!std::default_initializable<GpuWrittenOnlyBufferValue>);
+    static_assert(render_resource::GpuArrayBufferable<GpuWrittenOnlyBufferValue>);
 
-    render_resource::UninitBufferVec<GpuWrittenOnly> vec{wgpu::BufferUsage::eStorage};
+    render_resource::UninitBufferVec<GpuWrittenOnlyBufferValue> vec{wgpu::BufferUsage::eStorage};
     EXPECT_TRUE(vec.is_empty());
     EXPECT_EQ(vec.add_multiple(3), 0u);
     EXPECT_EQ(vec.add(), 3u);
     EXPECT_EQ(vec.len(), 4u);
-    EXPECT_EQ(vec.capacity, 0u);
-    EXPECT_FALSE(vec.buffer);
+    EXPECT_EQ(vec.capacity(), 0u);
+    EXPECT_EQ(vec.buffer(), nullptr);
 
     vec.clear();
     EXPECT_TRUE(vec.is_empty());
@@ -3746,6 +3785,10 @@ template <>
 struct epix::render::render_resource::ShaderTypeInfo<BatchingTestInputData>
     : epix::render::render_resource::RawShaderType<BatchingTestInputData> {};
 template <>
+struct epix::render::render_resource::RawBufferElementInfo<BatchingTestInputData> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
 struct epix::render::batching::GetBatchData<BatchingTestAdapter> {
     using Param       = std::tuple<>;
     using CompareData = BatchingTestCompare;
@@ -3776,10 +3819,10 @@ struct epix::render::batching::GetFullBatchData<BatchingTestAdapter> {
         std::optional<std::uint32_t> batch_set_index,
         epix::render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
         std::uint32_t indirect_parameters_offset) const {
-        if (buffers.indexed_cpu_metadata.values.size() <= indirect_parameters_offset) {
-            buffers.indexed_cpu_metadata.values.resize(indirect_parameters_offset + 1);
+        if (buffers.indexed_cpu_metadata.values().size() <= indirect_parameters_offset) {
+            buffers.indexed_cpu_metadata.values_mut().resize(indirect_parameters_offset + 1);
         }
-        buffers.indexed_cpu_metadata.values[indirect_parameters_offset] = {
+        buffers.indexed_cpu_metadata.values_mut()[indirect_parameters_offset] = {
             .base_output_index = base_output_index,
             .batch_set_index   = batch_set_index.value_or(0),
         };
@@ -3816,9 +3859,9 @@ TEST(GetBatchData, ConceptsAndData) {
 
     epix::render::batching::UntypedPhaseIndirectParametersBuffers indirect;
     full.write_batch_indirect_parameters_metadata(true, 9, 3, indirect, 1);
-    ASSERT_EQ(indirect.indexed_cpu_metadata.values.size(), 2u);
-    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].base_output_index, 9u);
-    EXPECT_EQ(indirect.indexed_cpu_metadata.values[1].batch_set_index, 3u);
+    ASSERT_EQ(indirect.indexed_cpu_metadata.values().size(), 2u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values()[1].base_output_index, 9u);
+    EXPECT_EQ(indirect.indexed_cpu_metadata.values()[1].batch_set_index, 3u);
 }
 
 // World-side VisibleEntities is per-visibility-class (Bevy bevy_camera

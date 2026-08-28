@@ -8,11 +8,14 @@
 #include <cstdint>
 #include <cstring>
 #include <expected>
+#include <functional>
 #include <glm/glm.hpp>
+#include <iterator>
 #include <optional>
 #include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
@@ -355,105 +358,207 @@ EPIX_EXPORT enum class WriteBufferRangeError {
     NoValuesToUpload,
 };
 
+/** @brief Temporary explicit no-uninitialized-bytes contract for `RawBufferVec`.
+ *
+ * This is the C++ counterpart to Bevy's `bytemuck::NoUninit`. C++ has no
+ * standard trait that proves padding bytes are initialized, so aggregate
+ * element types must opt in deliberately through `RawBufferElementInfo`.
+ *
+ * @todo Replace this marker once C++26 static reflection is available in our
+ * supported toolchain. The reflected check must verify that a type has a
+ * constructor, every reflected data member has an initializer, and every
+ * member type is itself free of uninitialized bytes. That will let Epix infer
+ * the equivalent of `bytemuck::NoUninit` instead of requiring this temporary
+ * manual declaration. */
+template <typename T>
+struct RawBufferElementInfo;
+
+template <typename T>
+concept RawBufferElement = std::is_trivially_copyable_v<T> && requires {
+    { RawBufferElementInfo<T>::has_no_uninit } -> std::convertible_to<bool>;
+} && RawBufferElementInfo<T>::has_no_uninit;
+
+template <std::integral T>
+struct RawBufferElementInfo<T> {
+    static constexpr bool has_no_uninit = true;
+};
+template <std::floating_point T>
+struct RawBufferElementInfo<T> {
+    static constexpr bool has_no_uninit = true;
+};
+
 /**
- * @brief CPU vector of `T` with a lazily-created GPU buffer (Bevy `BufferVec<T>`).
+ * @brief GPU-layout encoded vector with a lazily-created GPU buffer (Bevy
+ * `BufferVec<T>`).
+ *
+ * Unlike `RawBufferVec`, values are encoded at `push` time and cannot be
+ * accessed as C++ objects afterward. This is required for layouts whose GPU
+ * representation differs from their object representation (notably WGSL
+ * booleans and padded structs).
  */
 template <ShaderWritable T>
 struct BufferVec {
-    /** @brief CPU-side values. */
-    std::vector<T> values;
-    /** @brief GPU buffer; created lazily by `write_buffer`. */
-    wgpu::Buffer buffer;
-    /** @brief Allocated GPU size in bytes. */
-    std::size_t capacity = 0;
-    /** @brief Buffer usages; must be supplied at construction. */
-    wgpu::BufferUsage buffer_usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst;
-    /** @brief Debug label used when creating the GPU buffer. */
-    std::string label = "BufferVec";
+private:
+    std::vector<std::uint8_t> data;
+    wgpu::Buffer gpu_buffer;
+    std::size_t gpu_capacity = 0;
+    wgpu::BufferUsage buffer_usage;
+    std::optional<std::string> label;
+    bool label_changed = false;
 
-    BufferVec(wgpu::BufferUsage usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
-        : buffer_usage(usage) {}
+public:
+    explicit BufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
+
+    const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    wgpu::Buffer* buffer() noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (const auto* value = buffer()) return std::cref(*value);
+        return std::nullopt;
+    }
+    std::size_t capacity() const noexcept { return gpu_capacity; }
+    wgpu::BufferUsage usage() const noexcept { return buffer_usage; }
 
     /** @brief Number of stored elements. */
-    std::size_t len() const noexcept { return values.size(); }
-    bool is_empty() const noexcept { return values.empty(); }
-    void clear() noexcept { values.clear(); }
+    std::size_t len() const noexcept { return data.size() / ShaderTypeInfo<T>::shader_size; }
+    bool is_empty() const noexcept { return data.empty(); }
+    void clear() noexcept { data.clear(); }
     /** @brief Append one element; returns its index. */
     std::size_t push(const T& item) {
-        values.push_back(item);
-        return values.size() - 1;
+        const auto index = len();
+        const auto offset = data.size();
+        data.resize(offset + ShaderTypeInfo<T>::shader_size, 0);
+        ShaderTypeInfo<T>::write_into(item,
+                                      std::span<std::uint8_t>{data.data() + offset, ShaderTypeInfo<T>::shader_size});
+        return index;
     }
-    void reserve(std::size_t extra) { values.reserve(values.size() + extra); }
-    std::vector<T>& get_mut() noexcept { return values; }
+
+    void set_label(std::optional<std::string_view> new_label) {
+        auto updated = new_label.transform([](std::string_view value) { return std::string(value); });
+        if (updated != label) label_changed = true;
+        label = std::move(updated);
+    }
+    std::optional<std::string_view> get_label() const noexcept {
+        if (!label) return std::nullopt;
+        return *label;
+    }
+
+    void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
+        if (requested_capacity <= gpu_capacity && !label_changed) return;
+        gpu_capacity = requested_capacity;
+        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                             .setLabel(label ? label->c_str() : "")
+                                             .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                             .setSize(gpu_capacity * ShaderTypeInfo<T>::shader_size));
+        label_changed = false;
+    }
 
     /** @brief Create (if needed) and upload the values into a GPU buffer. */
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        if (values.empty()) return;
-        auto encoded            = encode_shader_values<T>(values);
-        const std::size_t size = encoded.size();
-        if (!buffer || capacity < size) {
-            capacity = size;
-            buffer   = device.createBuffer(
-                wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(buffer_usage).setSize(capacity));
-        }
-        if (buffer) {
-            queue.writeBuffer(buffer, 0, encoded.data(), size);
-        }
+        if (data.empty()) return;
+        reserve(len(), device);
+        if (gpu_buffer) queue.writeBuffer(gpu_buffer, 0, data.data(), data.size());
     }
 
     /** @brief Upload only a range of elements (Bevy
-     * BufferVec::write_buffer_range, buffer_vec.rs:196-215). */
+     * BufferVec::write_buffer_range). */
     std::expected<void, WriteBufferRangeError> write_buffer_range(const wgpu::Queue& queue,
                                                                   std::pair<std::size_t, std::size_t> range) {
-        if (values.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
-        if (range.second > values.size()) return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
-        if (!buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
+        if (data.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
         const std::size_t item_size = ShaderTypeInfo<T>::shader_size;
-        auto encoded = encode_shader_values<T>(std::span<const T>{values.data() + range.first, range.second - range.first});
-        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * item_size), encoded.data(), encoded.size());
+        if (range.first > range.second || range.second > item_size * gpu_capacity)
+            return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
+        if (!gpu_buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
+        queue.writeBuffer(gpu_buffer, static_cast<std::uint64_t>(range.first * item_size), data.data() + range.first,
+                          range.second - range.first);
         return {};
     }
+
+    void truncate(std::size_t length) { data.resize(length * ShaderTypeInfo<T>::shader_size); }
 };
 
-/** @brief Raw byte-vec buffer (Bevy `RawBufferVec<T>`). This intentionally
- * uses the in-memory representation and is therefore separate from typed
- * shader buffers. */
-template <typename T>
-    requires(std::is_trivially_copyable_v<T>)
+/** @brief CPU-readable raw byte buffer (Bevy `RawBufferVec<T>`).
+ *
+ * Raw uploads use a representation explicitly marked as having no
+ * uninitialized bytes. Use `BufferVec` for shader-encoded values instead. */
+template <RawBufferElement T>
 struct RawBufferVec {
-    std::vector<T> values;
-    wgpu::Buffer buffer;
-    std::size_t capacity = 0;
-    wgpu::BufferUsage buffer_usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst;
-    std::string label = "RawBufferVec";
+private:
+    std::vector<T> data;
+    wgpu::Buffer gpu_buffer;
+    std::size_t gpu_capacity = 0;
+    wgpu::BufferUsage buffer_usage;
+    std::optional<std::string> label;
+    bool label_changed = false;
 
-    explicit RawBufferVec(wgpu::BufferUsage usage = wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst)
-        : buffer_usage(usage) {}
-    std::size_t len() const noexcept { return values.size(); }
-    bool is_empty() const noexcept { return values.empty(); }
-    void clear() noexcept { values.clear(); }
-    std::size_t push(const T& item) { values.push_back(item); return values.size() - 1; }
-    void reserve(std::size_t extra) { values.reserve(values.size() + extra); }
-    std::vector<T>& get_mut() noexcept { return values; }
+public:
+    explicit RawBufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
+    const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    wgpu::Buffer* buffer() noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (const auto* value = buffer()) return std::cref(*value);
+        return std::nullopt;
+    }
+    std::size_t capacity() const noexcept { return gpu_capacity; }
+    std::size_t len() const noexcept { return data.size(); }
+    bool is_empty() const noexcept { return data.empty(); }
+    void clear() noexcept { data.clear(); }
+    std::size_t push(const T& item) { data.push_back(item); return data.size() - 1; }
+    void append(RawBufferVec& other) { data.insert(data.end(), std::make_move_iterator(other.data.begin()), std::make_move_iterator(other.data.end())); other.data.clear(); }
+    const T* get(std::uint32_t index) const noexcept { return index < data.size() ? std::addressof(data[index]) : nullptr; }
+    void set(std::uint32_t index, const T& value) { data.at(index) = value; }
+    void reserve_internal(std::size_t count) { data.reserve(data.size() + count); }
+    void set_label(std::optional<std::string_view> new_label) {
+        auto updated = new_label.transform([](std::string_view value) { return std::string(value); });
+        if (updated != label) label_changed = true;
+        label = std::move(updated);
+    }
+    std::optional<std::string_view> get_label() const noexcept {
+        if (!label) return std::nullopt;
+        return *label;
+    }
+    const std::vector<T>& values() const noexcept { return data; }
+    std::vector<T>& values_mut() noexcept { return data; }
+
+    void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
+        if (requested_capacity <= gpu_capacity && (!label_changed || requested_capacity == 0)) return;
+        gpu_capacity = requested_capacity;
+        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                             .setLabel(label ? label->c_str() : "")
+                                             .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                             .setSize(gpu_capacity * sizeof(T)));
+        label_changed = false;
+    }
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        if (values.empty()) return;
-        const std::size_t size = values.size() * sizeof(T);
-        if (!buffer || capacity < size) {
-            capacity = size;
-            buffer = device.createBuffer(wgpu::BufferDescriptor().setLabel(label.c_str()).setUsage(buffer_usage).setSize(capacity));
-        }
-        if (buffer) queue.writeBuffer(buffer, 0, values.data(), size);
+        if (data.empty()) return;
+        reserve(data.size(), device);
+        if (gpu_buffer) queue.writeBuffer(gpu_buffer, 0, data.data(), data.size() * sizeof(T));
     }
     std::expected<void, WriteBufferRangeError> write_buffer_range(const wgpu::Queue& queue,
                                                                    std::pair<std::size_t, std::size_t> range) {
-        if (values.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
-        if (range.second > values.size()) return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
-        if (!buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
-        queue.writeBuffer(buffer, static_cast<std::uint64_t>(range.first * sizeof(T)), values.data() + range.first,
+        if (data.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
+        if (range.first > range.second || range.second > sizeof(T) * gpu_capacity)
+            return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
+        if (!gpu_buffer) return std::unexpected(WriteBufferRangeError::BufferNotInitialized);
+        queue.writeBuffer(gpu_buffer, static_cast<std::uint64_t>(range.first * sizeof(T)), data.data() + range.first,
                           (range.second - range.first) * sizeof(T));
         return {};
     }
+    void truncate(std::size_t length) { data.resize(length); }
+    std::optional<T> pop() {
+        if (data.empty()) return std::nullopt;
+        auto value = std::move(data.back());
+        data.pop_back();
+        return value;
+    }
+    void grow_set(std::uint32_t index, const T& value) requires std::default_initializable<T> {
+        while (index >= data.size()) data.emplace_back();
+        data[index] = value;
+    }
 };
+
+/** @brief Concept for types that can live in a `GpuArrayBuffer` (Bevy `GpuArrayBufferable`). */
+template <typename T>
+concept GpuArrayBufferable = ShaderWritable<T> && std::is_copy_constructible_v<T>;
 
 /**
  * @brief GPU-only allocation vector (Bevy `UninitBufferVec<T>`).
@@ -463,20 +568,25 @@ struct RawBufferVec {
  * requiring `T` to be default constructible (or uploading zero-initialized
  * placeholder values) is both unnecessary and contrary to Bevy's contract.
  */
-template <typename T>
+template <GpuArrayBufferable T>
 struct UninitBufferVec {
-    /** @brief GPU buffer, materialized lazily by `write_buffer`. */
-    wgpu::Buffer buffer;
-    /** @brief Number of reserved elements for this frame. */
+private:
+    wgpu::Buffer gpu_buffer;
     std::size_t length = 0;
-    /** @brief Allocated element capacity. */
-    std::size_t capacity = 0;
-    /** @brief Required usages excluding the internally added copy-destination bit. */
-    wgpu::BufferUsage buffer_usage = wgpu::BufferUsage::eStorage;
-    /** @brief Debug label used for materialized buffers. */
-    std::string label = "UninitBufferVec";
+    std::size_t gpu_capacity = 0;
+    wgpu::BufferUsage buffer_usage;
+    std::optional<std::string> label;
+    bool label_changed = false;
 
-    explicit UninitBufferVec(wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage) : buffer_usage(usage) {}
+public:
+    explicit UninitBufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
+    const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    wgpu::Buffer* buffer() noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (const auto* value = buffer()) return std::cref(*value);
+        return std::nullopt;
+    }
+    std::size_t capacity() const noexcept { return gpu_capacity; }
 
     /** @brief Reserve one output element and return its index. */
     std::size_t add() noexcept { return add_multiple(1); }
@@ -492,23 +602,29 @@ struct UninitBufferVec {
 
     /** @brief Ensure GPU storage for at least `requested_capacity` elements. */
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
-        if (requested_capacity <= capacity && buffer) return;
-        capacity = requested_capacity;
-        buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                           .setLabel(label.c_str())
+        if (requested_capacity <= gpu_capacity && !label_changed) return;
+        gpu_capacity = requested_capacity;
+        gpu_buffer   = device.createBuffer(wgpu::BufferDescriptor()
+                                           .setLabel(label ? label->c_str() : "")
                                            .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
-                                           .setSize(capacity * sizeof(T)));
+                                           .setSize(gpu_capacity * sizeof(T)));
+        label_changed = false;
     }
 
     /** @brief Materialize storage for all slots reserved this frame. */
     void write_buffer(const wgpu::Device& device) {
         if (!is_empty()) reserve(length, device);
     }
+    void set_label(std::optional<std::string_view> new_label) {
+        auto updated = new_label.transform([](std::string_view value) { return std::string(value); });
+        if (updated != label) label_changed = true;
+        label = std::move(updated);
+    }
+    std::optional<std::string_view> get_label() const noexcept {
+        if (!label) return std::nullopt;
+        return *label;
+    }
 };
-
-/** @brief Concept for types that can live in a `GpuArrayBuffer` (Bevy `GpuArrayBufferable`). */
-template <typename T>
-concept GpuArrayBufferable = ShaderWritable<T> && std::is_copy_constructible_v<T>;
 
 template <GpuArrayBufferable T>
 struct GpuArrayBufferIndex {
@@ -688,8 +804,14 @@ struct GpuArrayBuffer {
     std::optional<wgpu::Buffer> binding() const {
         return std::visit(
             [](const auto& s) -> std::optional<wgpu::Buffer> {
-                if (!s.buffer) return std::nullopt;
-                return s.buffer;
+                using Storage = std::decay_t<decltype(s)>;
+                if constexpr (std::same_as<Storage, BufferVec<T>>) {
+                    if (const auto* buffer = s.buffer()) return *buffer;
+                    return std::nullopt;
+                } else {
+                    if (!s.buffer) return std::nullopt;
+                    return s.buffer;
+                }
             },
             storage);
     }

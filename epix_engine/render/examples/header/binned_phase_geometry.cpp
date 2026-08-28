@@ -151,7 +151,7 @@ struct render::batching::GetFullBatchData<binned_phase_geometry::Adapter> {
                                                   std::optional<std::uint32_t>,
                                                   render::batching::UntypedPhaseIndirectParametersBuffers& buffers,
                                                   std::uint32_t command_index) const {
-        buffers.non_indexed_data.values.at(command_index) = {
+        buffers.non_indexed_data.values_mut().at(command_index) = {
             .vertex_count = 3, .instance_count = 0, .first_vertex = 0, .first_instance = output_index};
         buffers.set_cpu_metadata(false, command_index, {.base_output_index = output_index, .batch_set_index = 0});
     }
@@ -310,12 +310,12 @@ struct BinnedGeometryNode : render::graph::Node {
         indirect_parameters.write_buffers(device->get(), world.resource<wgpu::Queue>());
         const auto& work_item_storage = phase_buffers.work_item_buffers.at(retained_view).storage;
         const auto& work_items = std::get<render::batching::PreprocessWorkItemBuffers::Indirect>(work_item_storage);
-        const auto& work_items_buffer        = work_items.non_indexed.buffer;
+        const auto& work_items_buffer        = *work_items.non_indexed.buffer();
         preprocess_work_item_count           = static_cast<std::uint32_t>(work_items.non_indexed.len());
-        pipeline->input_indices_buffer       = input_indices.buffer.buffer;
+        pipeline->input_indices_buffer       = *input_indices.buffer.buffer();
         pipeline->work_items_buffer          = work_items_buffer;
-        pipeline->output_indices_buffer      = phase_buffers.data_buffer.buffer;
-        pipeline->indirect_parameters_buffer = indirect_parameters.non_indexed_data.buffer;
+        pipeline->output_indices_buffer      = *phase_buffers.data_buffer.buffer();
+        pipeline->indirect_parameters_buffer = *indirect_parameters.non_indexed_data.buffer();
         const auto preprocess_layout         = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("binned-phase-geometry-preprocess-layout")
@@ -379,7 +379,7 @@ struct BinnedGeometryNode : render::graph::Node {
                         .setSize(phase_buffers.data_buffer.len() * sizeof(std::uint32_t)),
                     wgpu::BindGroupEntry()
                         .setBinding(3)
-                        .setBuffer(indirect_parameters.non_indexed_cpu_metadata.buffer)
+                        .setBuffer(*indirect_parameters.non_indexed_cpu_metadata.buffer())
                         .setSize(indirect_parameters.non_indexed_cpu_metadata.len() *
                                  sizeof(render::batching::IndirectParametersCpuMetadata)),
                     wgpu::BindGroupEntry()

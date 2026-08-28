@@ -89,6 +89,46 @@ EPIX_EXPORT struct IndirectBatchSet {
     std::uint32_t indirect_parameters_base  = 0;
 };
 
+}  // namespace epix::render::batching
+
+namespace epix::render::render_resource {
+
+template <>
+struct RawBufferElementInfo<::epix::render::batching::IndirectParametersIndexed> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::IndirectParametersNonIndexed> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::IndirectParametersCpuMetadata> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::IndirectParametersGpuMetadata> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::PreprocessWorkItem> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::LatePreprocessWorkItemIndirectParameters> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct RawBufferElementInfo<::epix::render::batching::IndirectBatchSet> {
+    static constexpr bool has_no_uninit = true;
+};
+template <>
+struct ShaderTypeInfo<::epix::render::batching::PreprocessWorkItem>
+    : RawShaderType<::epix::render::batching::PreprocessWorkItem> {};
+
+}  // namespace epix::render::render_resource
+
+namespace epix::render::batching {
+
 /** @brief Per-view late-work-item storage used when GPU occlusion culling is
  * enabled (Bevy `GpuOcclusionCullingWorkItemBuffers`). */
 EPIX_EXPORT struct GpuOcclusionCullingWorkItemBuffers {
@@ -201,7 +241,8 @@ inline void init_work_item_buffers(
 
 /** @brief CPU-owned input-buffer allocator used by a GPU preprocessing
  * pipeline (Bevy `InstanceInputUniformBuffer`). */
-template <render_resource::ShaderWritable InputData>
+template <render_resource::RawBufferElement InputData>
+    requires std::default_initializable<InputData>
 struct InstanceInputUniformBuffer {
     render_resource::RawBufferVec<InputData> buffer{wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst};
     std::vector<std::uint32_t> free_uniform_indices;
@@ -214,22 +255,22 @@ struct InstanceInputUniformBuffer {
         if (!free_uniform_indices.empty()) {
             const auto index = free_uniform_indices.back();
             free_uniform_indices.pop_back();
-            buffer.values[index] = value;
+            buffer.values_mut()[index] = value;
             return index;
         }
         return static_cast<std::uint32_t>(buffer.push(value));
     }
     void remove(std::uint32_t index) { free_uniform_indices.push_back(index); }
     std::optional<InputData> get(std::uint32_t index) const {
-        if (index >= buffer.values.size() ||
+        if (index >= buffer.values().size() ||
             std::ranges::find(free_uniform_indices, index) != free_uniform_indices.end())
             return std::nullopt;
-        return buffer.values[index];
+        return buffer.values()[index];
     }
-    InputData get_unchecked(std::uint32_t index) const { return buffer.values.at(index); }
-    void set(std::uint32_t index, const InputData& value) { buffer.values.at(index) = value; }
+    InputData get_unchecked(std::uint32_t index) const { return buffer.values().at(index); }
+    void set(std::uint32_t index, const InputData& value) { buffer.values_mut().at(index) = value; }
     void ensure_nonempty() {
-        if (buffer.values.empty()) buffer.push(InputData{});
+        if (buffer.is_empty()) buffer.push(InputData{});
     }
     std::size_t len() const noexcept { return buffer.len(); }
     bool is_empty() const noexcept { return buffer.is_empty(); }
@@ -247,8 +288,8 @@ struct UntypedPhaseBatchedInstanceBuffers {
         wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eIndirect | wgpu::BufferUsage::eCopyDst};
 
     std::optional<std::reference_wrapper<const wgpu::Buffer>> instance_data_binding() const noexcept {
-        if (!data_buffer.buffer) return std::nullopt;
-        return std::cref(data_buffer.buffer);
+        if (const auto* buffer = data_buffer.buffer()) return std::cref(*buffer);
+        return std::nullopt;
     }
     /** @brief Reset the frame's storage while preserving per-view allocations. */
     void clear() {
@@ -296,7 +337,8 @@ struct PhaseBatchedInstanceBuffers {
  * preprocessing adapter data (Bevy `BatchedInstanceBuffers`). Phase-local
  * buffers are moved into this table after parallel preparation so concrete
  * preprocessing passes can look them up by phase type. */
-template <render_resource::GpuArrayBufferable BufferData, render_resource::ShaderWritable BufferInputData>
+template <render_resource::GpuArrayBufferable BufferData, render_resource::RawBufferElement BufferInputData>
+    requires std::default_initializable<BufferInputData>
 struct BatchedInstanceBuffers {
     InstanceInputUniformBuffer<BufferInputData> current_input_buffer;
     InstanceInputUniformBuffer<BufferInputData> previous_input_buffer;
@@ -355,15 +397,15 @@ EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
     std::uint32_t allocate(bool indexed, std::uint32_t count) {
         if (indexed) {
             const auto first = static_cast<std::uint32_t>(indexed_data.len());
-            indexed_data.values.resize(indexed_data.len() + count);
-            indexed_cpu_metadata.values.resize(indexed_cpu_metadata.len() + count);
-            indexed_gpu_metadata.values.resize(indexed_gpu_metadata.len() + count);
+            indexed_data.values_mut().resize(indexed_data.len() + count);
+            indexed_cpu_metadata.values_mut().resize(indexed_cpu_metadata.len() + count);
+            indexed_gpu_metadata.values_mut().resize(indexed_gpu_metadata.len() + count);
             return first;
         }
         const auto first = static_cast<std::uint32_t>(non_indexed_data.len());
-        non_indexed_data.values.resize(non_indexed_data.len() + count);
-        non_indexed_cpu_metadata.values.resize(non_indexed_cpu_metadata.len() + count);
-        non_indexed_gpu_metadata.values.resize(non_indexed_gpu_metadata.len() + count);
+        non_indexed_data.values_mut().resize(non_indexed_data.len() + count);
+        non_indexed_cpu_metadata.values_mut().resize(non_indexed_cpu_metadata.len() + count);
+        non_indexed_gpu_metadata.values_mut().resize(non_indexed_gpu_metadata.len() + count);
         return first;
     }
     /** @brief Number of allocated indirect commands for one mesh class. */
@@ -390,27 +432,27 @@ EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
     /** @brief Store metadata generated while a phase is batched. */
     void set_cpu_metadata(bool indexed, std::uint32_t index, IndirectParametersCpuMetadata value) {
         auto& metadata            = indexed ? indexed_cpu_metadata : non_indexed_cpu_metadata;
-        metadata.values.at(index) = value;
+        metadata.values_mut().at(index) = value;
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> data_buffer(bool indexed) const noexcept {
-        const auto& data = indexed ? indexed_data.buffer : non_indexed_data.buffer;
+        const auto* data = indexed ? indexed_data.buffer() : non_indexed_data.buffer();
         if (!data) return std::nullopt;
-        return std::cref(data);
+        return std::cref(*data);
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> cpu_metadata_buffer(bool indexed) const noexcept {
-        const auto& metadata = indexed ? indexed_cpu_metadata.buffer : non_indexed_cpu_metadata.buffer;
+        const auto* metadata = indexed ? indexed_cpu_metadata.buffer() : non_indexed_cpu_metadata.buffer();
         if (!metadata) return std::nullopt;
-        return std::cref(metadata);
+        return std::cref(*metadata);
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> gpu_metadata_buffer(bool indexed) const noexcept {
-        const auto& metadata = indexed ? indexed_gpu_metadata.buffer : non_indexed_gpu_metadata.buffer;
+        const auto* metadata = indexed ? indexed_gpu_metadata.buffer() : non_indexed_gpu_metadata.buffer();
         if (!metadata) return std::nullopt;
-        return std::cref(metadata);
+        return std::cref(*metadata);
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> batch_sets_buffer(bool indexed) const noexcept {
-        const auto& batch_sets = indexed ? indexed_batch_sets.buffer : non_indexed_batch_sets.buffer;
+        const auto* batch_sets = indexed ? indexed_batch_sets.buffer() : non_indexed_batch_sets.buffer();
         if (!batch_sets) return std::nullopt;
-        return std::cref(batch_sets);
+        return std::cref(*batch_sets);
     }
     void clear() noexcept {
         indexed_data.clear();

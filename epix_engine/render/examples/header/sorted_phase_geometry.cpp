@@ -209,9 +209,9 @@ struct SortedGeometryNode : render::graph::Node {
                                               phase_buffers.work_item_buffers.at(retained_view).storage)
                                               .items;
         work_item_count                 = static_cast<std::uint32_t>(work_items.len());
-        pipeline->input_indices_buffer  = inputs.buffer.buffer;
-        pipeline->work_items_buffer     = work_items.buffer;
-        pipeline->output_indices_buffer = phase_buffers.data_buffer.buffer;
+        pipeline->input_indices_buffer  = *inputs.buffer.buffer();
+        pipeline->work_items_buffer     = *work_items.buffer();
+        pipeline->output_indices_buffer = *phase_buffers.data_buffer.buffer();
         const auto preprocess_layout    = device->get().createBindGroupLayout(
             wgpu::BindGroupLayoutDescriptor()
                 .setLabel("sorted-phase-geometry-preprocess-layout")
