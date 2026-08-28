@@ -34,6 +34,27 @@ struct GpuWrittenOnlyBufferValue {
 template <typename T>
 concept HasCpuBufferValues = requires(T value) { value.values(); };
 
+template <typename T>
+concept ExposesUniformBufferState = requires(T value) {
+    value.value;
+    value.gpu_buffer;
+    value.capacity;
+    value.label;
+    value.usage;
+    value.changed;
+};
+
+template <typename T>
+concept ExposesDynamicUniformBufferState = requires(T value) {
+    value.values;
+    value.gpu_buffer;
+    value.capacity;
+    value.dynamic_offset_alignment;
+    value.label;
+    value.usage;
+    value.changed;
+};
+
 namespace epix::render::render_resource {
 template <>
 struct ShaderTypeInfo<::EarlyExtractInstance> : RawShaderType<::EarlyExtractInstance> {};
@@ -204,15 +225,18 @@ TEST(TextureCache, EvictsAfterThreeFrames) {
 }
 
 TEST(DynamicUniformBuffer, AlignmentAndPush) {
-    render_resource::DynamicUniformBuffer<view::ViewUniform> buf;
-    buf.dynamic_offset_alignment = 256;
+    static_assert(!ExposesDynamicUniformBufferState<render_resource::DynamicUniformBuffer<view::ViewUniform>>);
+    auto buf = render_resource::DynamicUniformBuffer<view::ViewUniform>::new_with_alignment(256);
     // Bevy 0.18 ViewUniform is 768 bytes (view.wgsl std140 layout).
-    EXPECT_EQ(buf.element_stride(), 768u);  // align_up(768, 256)
     view::ViewUniform u;
     std::size_t idx = buf.push(u);
     EXPECT_EQ(idx, 0u);
-    EXPECT_EQ(buf.len(), 1u);
-    EXPECT_EQ(buf.values.size(), 768u);
+    EXPECT_EQ(buf.push(u), 768u);
+    EXPECT_FALSE(buf.is_empty());
+    EXPECT_EQ(buf.get_label(), std::nullopt);
+    buf.set_label("views");
+    EXPECT_EQ(buf.get_label(), std::optional<std::string_view>{"views"});
+    buf.add_usages(wgpu::BufferUsage::eStorage);
     buf.clear();
     EXPECT_TRUE(buf.is_empty());
 }
@@ -343,29 +367,28 @@ TEST(GlobalsUniform, CpuFields) {
 // creation, and write_buffer recreates when missing/changed or uploads into
 // the existing buffer.
 TEST(UniformBuffer, BevySemantics) {
+    static_assert(!ExposesUniformBufferState<render_resource::UniformBuffer<GlobalsUniform>>);
     render_resource::UniformBuffer<GlobalsUniform> ub;
-    EXPECT_FALSE(ub.has_buffer());
-    EXPECT_FALSE(ub.changed);
+    EXPECT_EQ(ub.buffer(), nullptr);
+    EXPECT_FALSE(ub.binding().has_value());
+    EXPECT_EQ(ub.get_label(), std::nullopt);
 
     ub.set(GlobalsUniform{1.0f, 0.016f, 3u});
     EXPECT_EQ(ub.get().frame_count, 3u);
     ub.get_mut().time = 2.0f;
     EXPECT_FLOAT_EQ(ub.get().time, 2.0f);
 
-    // add_usages adds flags and marks changed (Bevy add_usages).
-    const auto base_usage = ub.usage;
+    // set_label/add_usages alter the next backing-buffer allocation (Bevy).
+    ub.set_label("globals");
+    EXPECT_EQ(ub.get_label(), std::optional<std::string_view>{"globals"});
     ub.add_usages(wgpu::BufferUsage::eStorage);
-    EXPECT_TRUE(ub.changed);
-    EXPECT_NE(static_cast<std::uint64_t>(ub.usage) & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0ull);
-    EXPECT_NE(static_cast<std::uint64_t>(ub.usage) & static_cast<std::uint64_t>(base_usage), 0ull);
 
-    // set()/get_mut() do NOT set the changed flag (Bevy only
-    // set_label/add_usages do; write_buffer always uploads the value).
+    // set()/get_mut() preserve the existing backing-buffer allocation; each
+    // write_buffer call still uploads the current value.
     render_resource::UniformBuffer<GlobalsUniform> ub2;
     ub2.set(GlobalsUniform{});
-    EXPECT_FALSE(ub2.changed);
     ub2.get_mut().time = 9.0f;
-    EXPECT_FALSE(ub2.changed);
+    EXPECT_FLOAT_EQ(ub2.get().time, 9.0f);
 }
 TEST(RetainedViewEntity, Equality) {
     view::RetainedViewEntity a{sync_world::MainEntity{Entity{1}}, std::nullopt, 0};
@@ -1909,7 +1932,7 @@ TEST(CameraCoordinates, ReportsMissingViewportSize) {
 // is pushed into the dynamic buffer and gets a sequential index.
 TEST(ComponentUniforms, IndexAssignment) {
     ComponentUniforms<view::ViewUniform> cu;
-    cu.uniforms_mut().dynamic_offset_alignment = 256;
+    cu.uniforms_mut() = render_resource::DynamicUniformBuffer<view::ViewUniform>::new_with_alignment(256);
     const std::size_t i0                       = cu.uniforms_mut().push(view::ViewUniform{});
     const std::size_t i1                       = cu.uniforms_mut().push(view::ViewUniform{});
     // Bevy: push returns the byte offset (stride 256 here), and
@@ -1917,7 +1940,6 @@ TEST(ComponentUniforms, IndexAssignment) {
     EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i0)}.uniform_index(), 0u);
     // Bevy 0.18 ViewUniform is 768 bytes; stride = align_up(768, 256) = 768.
     EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i1)}.uniform_index(), 768u);
-    EXPECT_EQ(cu.uniforms_mut().len(), 2u);
 }
 // GpuArrayBuffer selects the storage-buffer path when the device supports
 // storage buffers and the uniform fallback otherwise (Bevy
@@ -1941,6 +1963,7 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     // Uniform fallback (no storage buffers): dynamic offsets present.
     wgpu::Limits uniform_limits;
     uniform_limits.maxStorageBuffersPerShaderStage = 0;
+    uniform_limits.maxUniformBufferBindingSize     = sizeof(view::ViewUniform);
     render_resource::GpuArrayBuffer<view::ViewUniform> uniform_buf(uniform_limits);
     EXPECT_TRUE(std::holds_alternative<render_resource::BatchedUniformBuffer<view::ViewUniform>>(uniform_buf.storage));
     const auto uniform_layout = render_resource::GpuArrayBuffer<view::ViewUniform>::binding_layout(uniform_limits);
@@ -1963,20 +1986,13 @@ TEST(GpuArrayBuffer, SelectsBackingAndIndexes) {
     EXPECT_GT(*idx1.dynamic_offset, *idx0.dynamic_offset);
 }
 
-// prepare_uniform_components resolves the per-element stride from the device
-// limits when the alignment was never set (Bevy uniform_buffer.rs:281-289).
-TEST(ComponentUniforms, AlignmentResolvedFromLimits) {
+// DynamicUniformBuffer defaults to the standard 256-byte WebGPU alignment and
+// can be constructed with the device-specific alignment when it differs.
+TEST(ComponentUniforms, AlignmentConfiguredAtConstruction) {
     ComponentUniforms<view::ViewUniform> cu;
-    EXPECT_EQ(cu.uniforms_mut().dynamic_offset_alignment, 0u);
-    // Default fallback alignment is 256 (uniform_buffer.rs default); stride is
-    // align_up(sizeof(ViewUniform)=768, 256) = 768.
-    EXPECT_EQ(cu.uniforms_mut().element_stride(), 768u);
-
-    wgpu::Limits limits;
-    limits.minUniformBufferOffsetAlignment = 256;
-    cu.uniforms_mut().update_alignment(limits);
-    EXPECT_EQ(cu.uniforms_mut().dynamic_offset_alignment, 256u);
-    EXPECT_EQ(cu.uniforms_mut().element_stride(), 768u);  // align_up(768, 256)
+    cu.uniforms_mut() = render_resource::DynamicUniformBuffer<view::ViewUniform>::new_with_alignment(512);
+    EXPECT_EQ(cu.uniforms_mut().push(view::ViewUniform{}), 0u);
+    EXPECT_EQ(cu.uniforms_mut().push(view::ViewUniform{}), 1024u);
 }
 
 // ViewUniform matches Bevy 0.18's WGSL std140 layout exactly (view.wgsl).
@@ -3216,9 +3232,9 @@ TEST(ShaderType, RequiresExplicitLayoutAndEncodesFields) {
     EXPECT_EQ(encoded[7], 0u);
 
     render_resource::DynamicUniformBuffer<ExplicitShaderValue> dynamic;
-    dynamic.dynamic_offset_alignment = 8;
+    dynamic = render_resource::DynamicUniformBuffer<ExplicitShaderValue>::new_with_alignment(8);
     EXPECT_EQ(dynamic.push(input), 0u);
-    EXPECT_EQ(dynamic.values, encoded);
+    EXPECT_EQ(dynamic.push(input), 8u);
 }
 
 // UninitBufferVec reserves GPU-written output slots without constructing CPU

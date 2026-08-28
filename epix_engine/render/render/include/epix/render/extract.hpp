@@ -403,14 +403,6 @@ void prepare_uniform_components(ecs::Commands cmd,
                                 ecs::Res<wgpu::Queue> queue,
                                 ecs::Query<ecs::Item<ecs::Entity, const C&>> components) {
     auto& uniforms = component_uniforms->uniforms;
-    // Bevy resolves the per-element stride from the device's
-    // min_uniform_buffer_offset_alignment (uniform_buffer.rs:281-289) instead
-    // of the 256-byte default.
-    if (uniforms.dynamic_offset_alignment == 0) {
-        wgpu::Limits limits;
-        device->getLimits(&limits);
-        uniforms.update_alignment(limits);
-    }
     const std::size_t count = components.iter().max_remaining();
     if (count == 0) {
         // Bevy get_writer returns None when there is no GPU buffer and

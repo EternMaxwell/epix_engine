@@ -326,12 +326,10 @@ void create_uniform_for_view(Commands cmd,
                              Res<ViewUniformBindingLayout> uniform_layout,
                              Res<wgpu::Queue> queue,
                              Res<FrameCount> frame_count) {
-    std::size_t uniform_size = sizeof(ViewUniform);
-    std::size_t alignment    = limits->minUniformBufferOffsetAlignment;
     // Populate the ViewUniforms dynamic uniform buffer (Bevy prepare_view_uniforms,
-    // view/mod.rs:906-969).
-    view_uniforms->uniforms.dynamic_offset_alignment = alignment;
-    view_uniforms->uniforms.values.clear();
+    // view/mod.rs:906-969). Its device alignment is established when the
+    // ViewUniforms resource is initialized in ViewPlugin::attach.
+    view_uniforms->uniforms.clear();
     view_uniforms->offsets.clear();
     // Bevy get_writer returns None when there are no views: nothing to upload
     // (uniform_buffer.rs:270) 鈥?skip silently instead of logging an error.
@@ -381,7 +379,7 @@ void create_uniform_for_view(Commands cmd,
     // Create (if needed) and upload the GPU buffer, then build per-view bind
     // groups with dynamic offsets into it.
     view_uniforms->uniforms.write_buffer(device.get(), queue.get());
-    wgpu::Buffer buffer = view_uniforms->uniforms.buffer;
+    const auto* buffer = view_uniforms->uniforms.buffer();
     if (!buffer) {
         spdlog::error("Failed to create uniform buffer for views");
         return;
@@ -398,7 +396,7 @@ void create_uniform_for_view(Commands cmd,
             wgpu::BindGroupDescriptor()
                 .setLayout(uniform_layout->layout)
                 .setEntries(std::array{
-                    wgpu::BindGroupEntry().setBinding(0).setBuffer(buffer).setOffset(offset).setSize(
+                    wgpu::BindGroupEntry().setBinding(0).setBuffer(*buffer).setOffset(offset).setSize(
                         sizeof(ViewUniform)),
                 })
                 .setLabel("ViewUniformBindGroup"));
@@ -454,10 +452,14 @@ void view::ViewPlugin::attach(App& app) {
         // conditional STORAGE usage when storage buffers are available.
         {
             view::ViewUniforms view_uniforms;
-            view_uniforms.uniforms.label = "view_uniforms_buffer";
+            if (auto limits = sub_app->get().world().get_resource<wgpu::Limits>()) {
+                view_uniforms.uniforms = render_resource::DynamicUniformBuffer<view::ViewUniform>::new_with_alignment(
+                    limits->get().minUniformBufferOffsetAlignment);
+            }
+            view_uniforms.uniforms.set_label("view_uniforms_buffer");
             if (auto limits = sub_app->get().world().get_resource<wgpu::Limits>();
                 limits && limits->get().maxStorageBuffersPerShaderStage > 0) {
-                view_uniforms.uniforms.usage = view_uniforms.uniforms.usage | wgpu::BufferUsage::eStorage;
+                view_uniforms.uniforms.add_usages(wgpu::BufferUsage::eStorage);
             }
             sub_app->get().world_mut().insert_resource(std::move(view_uniforms));
         }
