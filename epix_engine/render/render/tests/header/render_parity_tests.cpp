@@ -55,6 +55,29 @@ concept ExposesDynamicUniformBufferState = requires(T value) {
     value.changed;
 };
 
+template <typename T>
+concept ExposesStorageBufferState = requires(T value) {
+    value.value;
+    value.gpu_buffer;
+    value.capacity;
+    value.label;
+    value.usage;
+    value.changed;
+    value.last_written_size;
+};
+
+template <typename T>
+concept ExposesDynamicStorageBufferState = requires(T value) {
+    value.bytes;
+    value.gpu_buffer;
+    value.capacity;
+    value.dynamic_offset_alignment;
+    value.label;
+    value.usage;
+    value.changed;
+    value.last_written_size;
+};
+
 namespace epix::render::render_resource {
 template <>
 struct ShaderTypeInfo<::EarlyExtractInstance> : RawShaderType<::EarlyExtractInstance> {};
@@ -3090,23 +3113,34 @@ TEST(RenderGraph, IterAndRemoveAccessors) {
 // DynamicStorageBuffer::push returns per-element BYTE OFFSETS with alignment
 // (Bevy storage_buffer.rs:226-228), like DynamicUniformBuffer.
 TEST(DynamicStorageBuffer, PushReturnsByteOffsets) {
+    static_assert(!ExposesDynamicStorageBufferState<render_resource::DynamicStorageBuffer<GlobalsUniform>>);
     render_resource::DynamicStorageBuffer<GlobalsUniform> buf;
-    EXPECT_EQ(buf.element_stride(), 256u);  // default fallback alignment
     const std::size_t o0 = buf.push(GlobalsUniform{1.0f, 0.0f, 1u});
     const std::size_t o1 = buf.push(GlobalsUniform{2.0f, 0.0f, 2u});
     EXPECT_EQ(o0, 0u);
     EXPECT_EQ(o1, 256u);  // stride 256
-    EXPECT_EQ(buf.len(), 2u);
-
-    wgpu::Limits limits;
-    limits.minStorageBufferOffsetAlignment = 16;
-    buf.update_alignment(limits);
-    EXPECT_EQ(buf.element_stride(), 16u);  // align_up(12, 16)
-
-    const std::size_t o2 = buf.push(GlobalsUniform{3.0f, 0.0f, 3u});
-    EXPECT_EQ(o2, 512u);  // 2 * 256 from previous alignment
+    EXPECT_FALSE(buf.is_empty());
+    EXPECT_EQ(buf.get_label(), std::nullopt);
+    buf.set_label("storage");
+    EXPECT_EQ(buf.get_label(), std::optional<std::string_view>{"storage"});
+    buf.add_usages(wgpu::BufferUsage::eCopySrc);
     buf.clear();
     EXPECT_TRUE(buf.is_empty());
+}
+
+TEST(StorageBuffer, BevySemantics) {
+    static_assert(!ExposesStorageBufferState<render_resource::StorageBuffer<GlobalsUniform>>);
+    render_resource::StorageBuffer<GlobalsUniform> buffer;
+    EXPECT_EQ(buffer.buffer(), nullptr);
+    EXPECT_FALSE(buffer.binding().has_value());
+    EXPECT_EQ(buffer.get_label(), std::nullopt);
+    buffer.set(GlobalsUniform{1.0f, 0.016f, 3u});
+    EXPECT_EQ(buffer.get().frame_count, 3u);
+    buffer.get_mut().time = 2.0f;
+    EXPECT_FLOAT_EQ(buffer.get().time, 2.0f);
+    buffer.set_label("globals-storage");
+    EXPECT_EQ(buffer.get_label(), std::optional<std::string_view>{"globals-storage"});
+    buffer.add_usages(wgpu::BufferUsage::eCopySrc);
 }
 
 // RenderDebugFlags matches Bevy lib.rs:133-144: one bit

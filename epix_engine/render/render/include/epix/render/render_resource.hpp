@@ -296,11 +296,17 @@ public:
  */
 template <ShaderWritable T>
 struct StorageBuffer {
+private:
     T value{};
-    wgpu::Buffer buffer;
+    wgpu::Buffer gpu_buffer;
     std::size_t capacity = 0;
-    std::string label    = "StorageBuffer";
+    std::optional<std::string> label;
+    bool changed = false;
+    wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst;
+    /** @brief Byte count of the most recent upload (Bevy last_written_size). */
+    std::optional<std::size_t> last_written_size;
 
+public:
     StorageBuffer() = default;
     explicit StorageBuffer(T v) : value(std::move(v)) {}
 
@@ -308,20 +314,42 @@ struct StorageBuffer {
     const T& get() const noexcept { return value; }
     void set(T v) { value = std::move(v); }
 
+    const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    /** @brief Native WGPU equivalent of Bevy StorageBuffer::binding. */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (const auto* value = buffer()) return std::cref(*value);
+        return std::nullopt;
+    }
+    void set_label(std::optional<std::string_view> new_label) {
+        auto updated = new_label.transform([](std::string_view value) { return std::string(value); });
+        if (updated != label) changed = true;
+        label = std::move(updated);
+    }
+    std::optional<std::string_view> get_label() const noexcept {
+        if (!label) return std::nullopt;
+        return *label;
+    }
+    void add_usages(wgpu::BufferUsage extra) {
+        usage = usage | extra;
+        changed = true;
+    }
+
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         const std::size_t size = ShaderTypeInfo<T>::shader_size;
-        if (!buffer || capacity < size) {
+        if (!gpu_buffer || capacity < size || changed) {
             capacity = size;
-            buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                               .setLabel(label.c_str())
-                                               .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
-                                               .setSize(capacity));
+            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                                 .setLabel(label ? label->c_str() : "")
+                                                 .setUsage(usage)
+                                                 .setSize(capacity));
+            changed = false;
         }
-        if (buffer) {
+        if (gpu_buffer) {
             std::vector<std::uint8_t> encoded(size);
             ShaderTypeInfo<T>::write_into(value, encoded);
-            queue.writeBuffer(buffer, 0, encoded.data(), encoded.size());
+            queue.writeBuffer(gpu_buffer, 0, encoded.data(), encoded.size());
         }
+        last_written_size = size;
     }
 };
 
@@ -331,61 +359,82 @@ struct StorageBuffer {
  */
 template <ShaderWritable T>
 struct DynamicStorageBuffer {
+private:
     /** @brief Raw byte storage, one aligned element per T (Bevy
      * DynamicStorageBuffer uses an encase std430 scratch). */
     std::vector<std::uint8_t> bytes;
-    wgpu::Buffer buffer;
+    wgpu::Buffer gpu_buffer;
     std::size_t capacity = 0;
-    /** @brief Per-element alignment; 0 means query the device limits. */
-    std::size_t dynamic_offset_alignment = 0;
-    std::string label                    = "DynamicStorageBuffer";
+    /** @brief Default dynamic-offset alignment used by Bevy's scratch. */
+    std::size_t dynamic_offset_alignment = 256;
+    std::optional<std::string> label;
+    bool changed = false;
+    wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst;
+    /** @brief Byte count of the most recent upload (Bevy last_written_size). */
+    std::optional<std::size_t> last_written_size;
 
+public:
     DynamicStorageBuffer() = default;
 
-    /** @brief Number of stored elements. */
-    std::size_t len() const noexcept { return bytes.size() / element_stride(); }
+    const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
+    /** @brief Native WGPU equivalent of Bevy DynamicStorageBuffer::binding. */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const noexcept {
+        if (const auto* value = buffer()) return std::cref(*value);
+        return std::nullopt;
+    }
     bool is_empty() const noexcept { return bytes.empty(); }
     void clear() noexcept { bytes.clear(); }
 
+private:
     /** @brief Per-element byte stride (Bevy encase std430 alignment for the
      * element type; storage-buffer offset alignment fallback 256). */
-    std::size_t element_stride() const noexcept {
-        const std::size_t alignment = dynamic_offset_alignment ? dynamic_offset_alignment : 256;
-        return align_up(ShaderTypeInfo<T>::shader_size, alignment);
+    std::size_t stride() const noexcept {
+        return align_up(ShaderTypeInfo<T>::shader_size, dynamic_offset_alignment);
     }
 
+public:
     /** @brief Append one element; returns its byte offset (Bevy
      * DynamicStorageBuffer::push returns a u32 byte offset,
      * storage_buffer.rs:226-228). */
-    std::size_t push(const T& item) {
-        const std::size_t index = len();
-        bytes.resize((index + 1) * element_stride());
+    std::size_t push(T item) {
+        const std::size_t stride = this->stride();
+        const std::size_t index = bytes.size() / stride;
+        bytes.resize((index + 1) * stride);
         ShaderTypeInfo<T>::write_into(item,
-                                      std::span<std::uint8_t>{bytes.data() + index * element_stride(),
+                                      std::span<std::uint8_t>{bytes.data() + index * stride,
                                                               ShaderTypeInfo<T>::shader_size});
-        return index * element_stride();
+        return index * stride;
     }
 
-    /** @brief Resolve the alignment from the device limits (Bevy
-     * min_storage_buffer_offset_alignment). */
-    void update_alignment(const wgpu::Limits& limits) {
-        dynamic_offset_alignment = static_cast<std::size_t>(limits.minStorageBufferOffsetAlignment);
-        if (dynamic_offset_alignment == 0) dynamic_offset_alignment = 256;
+    void set_label(std::optional<std::string_view> new_label) {
+        auto updated = new_label.transform([](std::string_view value) { return std::string(value); });
+        if (updated != label) changed = true;
+        label = std::move(updated);
+    }
+    std::optional<std::string_view> get_label() const noexcept {
+        if (!label) return std::nullopt;
+        return *label;
+    }
+    void add_usages(wgpu::BufferUsage extra) {
+        usage = usage | extra;
+        changed = true;
     }
 
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         if (bytes.empty()) return;
         const std::size_t size = bytes.size();
-        if (!buffer || capacity < size) {
+        if (!gpu_buffer || capacity < size || changed) {
             capacity = size;
-            buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                               .setLabel(label.c_str())
-                                               .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst)
-                                               .setSize(capacity));
+            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                                 .setLabel(label ? label->c_str() : "")
+                                                 .setUsage(usage)
+                                                 .setSize(capacity));
+            changed = false;
         }
-        if (buffer) {
-            queue.writeBuffer(buffer, 0, bytes.data(), size);
+        if (gpu_buffer) {
+            queue.writeBuffer(gpu_buffer, 0, bytes.data(), size);
         }
+        last_written_size = size;
     }
 };
 
