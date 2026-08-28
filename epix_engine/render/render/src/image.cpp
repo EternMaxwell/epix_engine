@@ -176,10 +176,8 @@ wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDesc
 }
 }  // namespace
 
-texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
-                                                           assets::AssetId<image::Image> id,
-                                                           Param param,
-                                                           const texture::GpuImage* previous) {
+std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<image::Image>::prepare_asset(
+    image::Image&& asset, assets::AssetId<image::Image> id, Param param, const texture::GpuImage* previous) {
     (void)id;
     auto& [device, queue, default_sampler] = param;
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
@@ -196,7 +194,7 @@ texture::GpuImage RenderAsset<image::Image>::prepare_asset(image::Image&& asset,
         .setSampleCount(1);
 
     if (desc.format == wgpu::TextureFormat::eUndefined) {
-        throw std::runtime_error("Unsupported image format for GPU upload");
+        return std::unexpected(render_resource::AsBindGroupError::CreateTexture);
     }
 
     texture::GpuImage gpu_image;

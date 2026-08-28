@@ -7,10 +7,8 @@ using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::render;
 
-GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderStorageBuffer&& asset,
-                                                                        assets::AssetId<ShaderStorageBuffer> id,
-                                                                        Param param,
-                                                                        const ProcessedAsset* previous) {
+std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> RenderAsset<ShaderStorageBuffer>::prepare_asset(
+    ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param, const ProcessedAsset* previous) {
     (void)id;
     (void)previous;
     auto& [device, queue] = param;
@@ -27,7 +25,7 @@ GpuShaderStorageBuffer RenderAsset<ShaderStorageBuffer>::prepare_asset(ShaderSto
     desc.setLabel(asset.label.c_str()).setUsage(usage).setSize(size);
     result.buffer = device.get().createBuffer(desc);
     if (!result.buffer) {
-        throw std::runtime_error("Failed to create GPU storage buffer for ShaderStorageBuffer");
+        return std::unexpected(render_resource::AsBindGroupError::CreateBuffer);
     }
     if (asset.data && !asset.data->empty()) {
         queue.get().writeBuffer(result.buffer, 0, asset.data->data(), asset.data->size());

@@ -86,10 +86,8 @@ struct RenderAsset<ShaderStorageBuffer> {
     using ProcessedAsset = GpuShaderStorageBuffer;
     using ExtractedAsset = ShaderStorageBuffer;
 
-    ProcessedAsset prepare_asset(ShaderStorageBuffer&& asset,
-                                 assets::AssetId<ShaderStorageBuffer> id,
-                                 Param param,
-                                 const ProcessedAsset* previous);
+    std::expected<ProcessedAsset, PrepareAssetError<ShaderStorageBuffer>> prepare_asset(
+        ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param, const ProcessedAsset* previous);
     RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
 
     /** @brief Move the data out of the stored asset so it stays in Assets<T>

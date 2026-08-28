@@ -35,33 +35,14 @@ namespace epix::render::erased_render_asset {
  * update, or report a bind-group construction failure.
  */
 template <typename E>
-struct PrepareAssetError {
-    enum class Kind { RetryNextUpdate, AsBindGroupError };
-    Kind kind;
-    std::variant<E, render_resource::AsBindGroupError> payload;
-
-    static PrepareAssetError retry_next_update(E asset) {
-        PrepareAssetError error;
-        error.kind    = Kind::RetryNextUpdate;
-        error.payload = std::move(asset);
-        return error;
-    }
-    static PrepareAssetError as_bind_group_error(render_resource::AsBindGroupError error) {
-        PrepareAssetError result;
-        result.kind    = Kind::AsBindGroupError;
-        result.payload = error;
-        return result;
-    }
-
-    bool is_retry_next_update() const noexcept { return kind == Kind::RetryNextUpdate; }
-    bool is_as_bind_group_error() const noexcept { return kind == Kind::AsBindGroupError; }
-
-    E& retry_asset() { return std::get<E>(payload); }
-    const E& retry_asset() const { return std::get<E>(payload); }
-    render_resource::AsBindGroupError bind_group_error() const {
-        return std::get<render_resource::AsBindGroupError>(payload);
-    }
+struct RetryNextUpdate {
+    E asset;
 };
+
+/** @brief Bevy's tagged preparation error, represented directly as a variant.
+ * No parallel discriminator is necessary. */
+template <typename E>
+using PrepareAssetError = std::variant<RetryNextUpdate<E>, render_resource::AsBindGroupError>;
 
 /** @brief Trait type to specialize for enabling erased render asset processing.
 
@@ -317,11 +298,11 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
             render_assets->insert(assets::UntypedAssetId(id), std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } else if (result.error().is_retry_next_update()) {
-            prepare_next_frame->assets.emplace_back(id, std::move(result).error().retry_asset());
+        } else if (auto* retry = std::get_if<RetryNextUpdate<typename ErasedRenderAsset<A>::SourceAsset>>(&result.error())) {
+            prepare_next_frame->assets.emplace_back(id, std::move(retry->asset));
         } else {
             spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}", meta::type_id<A>().short_name(),
-                          static_cast<int>(result.error().bind_group_error()));
+                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
 
@@ -347,11 +328,11 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
             render_assets->insert(assets::UntypedAssetId(id), std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } else if (result.error().is_retry_next_update()) {
-            prepare_next_frame->assets.emplace_back(id, std::move(result).error().retry_asset());
+        } else if (auto* retry = std::get_if<RetryNextUpdate<typename ErasedRenderAsset<A>::SourceAsset>>(&result.error())) {
+            prepare_next_frame->assets.emplace_back(id, std::move(retry->asset));
         } else {
             spdlog::error("ErasedRenderAsset<{}> bind group construction failed: {}", meta::type_id<A>().short_name(),
-                          static_cast<int>(result.error().bind_group_error()));
+                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
 

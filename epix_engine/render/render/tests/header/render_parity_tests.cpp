@@ -23,6 +23,11 @@ struct UniformPluginProbe {
 struct IncrementalExtractSource {
     std::vector<std::uint32_t> resident_data;
     std::vector<std::uint32_t> dirty_region;
+    bool fail_extraction = false;
+};
+
+struct IncrementalExtractError : std::runtime_error {
+    using std::runtime_error::runtime_error;
 };
 
 struct IncrementalExtractPayload {
@@ -35,30 +40,37 @@ struct IncrementalExtractPayload {
 struct IncrementalExtractIdShiftA {};
 struct IncrementalExtractIdShiftB {};
 struct IncrementalExtractIdShiftC {};
+static bool g_incremental_prepare_already_retried = false;
 
 template <>
 struct epix::render::RenderAsset<IncrementalExtractSource> {
     using ExtractedAsset = IncrementalExtractPayload;
     using ProcessedAsset = std::vector<std::uint32_t>;
     using Param          = std::tuple<>;
+    using ExtractError   = IncrementalExtractError;
 
-    ExtractedAsset extract(const IncrementalExtractSource& source,
-                           epix::assets::AssetId<IncrementalExtractSource>,
-                           RenderAssetExtractionReason reason,
-                           const ProcessedAsset* previous_asset) const {
+    std::expected<ExtractedAsset, ExtractError> extract(const IncrementalExtractSource& source,
+                                                         epix::assets::AssetId<IncrementalExtractSource>,
+                                                         RenderAssetExtractionReason reason,
+                                                         const ProcessedAsset* previous_asset) const {
+        if (source.fail_extraction) {
+            return std::unexpected(ExtractError{"incremental extraction rejected"});
+        }
         const bool full_snapshot = reason == RenderAssetExtractionReason::Added ||
                                    reason == RenderAssetExtractionReason::Reextract || previous_asset == nullptr;
-        return {
+        return ExtractedAsset{
             .values             = full_snapshot ? source.resident_data : source.dirty_region,
             .full_snapshot      = full_snapshot,
             .reason             = reason,
             .had_previous_asset = previous_asset != nullptr,
         };
     }
-    ProcessedAsset prepare_asset(ExtractedAsset&& payload,
-                                 epix::assets::AssetId<IncrementalExtractSource>,
-                                 Param,
-                                 const ProcessedAsset*) const {
+    std::expected<ProcessedAsset, PrepareAssetError<ExtractedAsset>> prepare_asset(
+        ExtractedAsset&& payload, epix::assets::AssetId<IncrementalExtractSource>, Param, const ProcessedAsset*) const {
+        if (payload.values == std::vector<std::uint32_t>{99} && !g_incremental_prepare_already_retried) {
+            g_incremental_prepare_already_retried = true;
+            return std::unexpected(PrepareAssetError<ExtractedAsset>{RetryNextAssetUpdate<ExtractedAsset>{std::move(payload)}});
+        }
         return std::move(payload.values);
     }
     RenderAssetUsages usage(const IncrementalExtractSource&) const {
@@ -2575,10 +2587,11 @@ TEST(RenderAsset, ExtractsCompactPayloadFromDualWorldSource) {
                                        RenderAssetExtractionReason::Modified,
                                        &previous);
 
-    EXPECT_EQ(payload.values, (std::vector<std::uint32_t>{17, 19, 23}));
-    EXPECT_FALSE(payload.full_snapshot);
-    EXPECT_EQ(payload.reason, RenderAssetExtractionReason::Modified);
-    EXPECT_TRUE(payload.had_previous_asset);
+    ASSERT_TRUE(payload.has_value());
+    EXPECT_EQ(payload->values, (std::vector<std::uint32_t>{17, 19, 23}));
+    EXPECT_FALSE(payload->full_snapshot);
+    EXPECT_EQ(payload->reason, RenderAssetExtractionReason::Modified);
+    EXPECT_TRUE(payload->had_previous_asset);
     EXPECT_EQ(source.resident_data.size(), 4096u);
     EXPECT_EQ(source.resident_data.front(), 7u);
 }
@@ -2594,10 +2607,60 @@ TEST(RenderAsset, ReextractsCompletePayloadAfterDeviceRecovery) {
                                        RenderAssetExtractionReason::Reextract,
                                        nullptr);
 
-    EXPECT_EQ(payload.values, source.resident_data);
-    EXPECT_TRUE(payload.full_snapshot);
-    EXPECT_EQ(payload.reason, RenderAssetExtractionReason::Reextract);
-    EXPECT_FALSE(payload.had_previous_asset);
+    ASSERT_TRUE(payload.has_value());
+    EXPECT_EQ(payload->values, source.resident_data);
+    EXPECT_TRUE(payload->full_snapshot);
+    EXPECT_EQ(payload->reason, RenderAssetExtractionReason::Reextract);
+    EXPECT_FALSE(payload->had_previous_asset);
+}
+
+TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
+    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
+
+    main_world.insert_resource(IncrementalExtractIdShiftA{});
+    main_world.insert_resource(IncrementalExtractIdShiftB{});
+    main_world.insert_resource(IncrementalExtractIdShiftC{});
+    main_world.insert_resource(epix::assets::Assets<IncrementalExtractSource>{});
+    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
+    const auto handle = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>().emplace(
+        IncrementalExtractSource{.resident_data = {1, 2, 3}, .fail_extraction = true});
+    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>>().push(
+        epix::assets::AssetEvent<IncrementalExtractSource>::added(handle.id()));
+
+    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    EXPECT_TRUE(render_world.resource<ExtractedAssets<IncrementalExtractSource>>().extracted.empty());
+}
+
+TEST(RenderAsset, PrepareSystemRetriesRetryNextUpdatePayload) {
+    g_incremental_prepare_already_retried = false;
+    epix::ecs::World world(2);
+    world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
+    world.insert_resource(RenderAssets<IncrementalExtractSource>{});
+    world.insert_resource(PrepareNextFrameAssets<IncrementalExtractSource>{});
+    world.insert_resource(RenderAssetBytesPerFrameLimiter{});
+
+    epix::assets::Assets<IncrementalExtractSource> store;
+    const auto id = store.emplace(IncrementalExtractSource{}).id();
+    world.resource_mut<ExtractedAssets<IncrementalExtractSource>>().extracted.emplace_back(
+        id, IncrementalExtractPayload{.values = {99}});
+
+    auto system = make_system_unique(prepare_assets<IncrementalExtractSource>);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+    EXPECT_EQ(world.resource<RenderAssets<IncrementalExtractSource>>().get(id), nullptr);
+    ASSERT_EQ(world.resource<PrepareNextFrameAssets<IncrementalExtractSource>>().pending.size(), 1u);
+
+    ASSERT_TRUE(system->run({}, world).has_value());
+    const auto* prepared = world.resource<RenderAssets<IncrementalExtractSource>>().get(id);
+    ASSERT_NE(prepared, nullptr);
+    EXPECT_EQ(*prepared, (std::vector<std::uint32_t>{99}));
+    EXPECT_TRUE(world.resource<PrepareNextFrameAssets<IncrementalExtractSource>>().pending.empty());
 }
 
 TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
@@ -3183,9 +3246,8 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapt
         ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
         if (source.value == 99 && !g_erased_retry_already_retried) {
             g_erased_retry_already_retried = true;
-            return std::unexpected(
-                epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(
-                    std::move(source)));
+            return std::unexpected(epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>{
+                epix::render::erased_render_asset::RetryNextUpdate<ErasedTestSource>{std::move(source)}});
         }
         return ErasedTestGpu{source.value};
     }
@@ -3248,16 +3310,16 @@ TEST(ErasedRenderAsset, ContainerAccessors) {
 
 // PrepareAssetError variants (Bevy erased_render_asset.rs:20-26).
 TEST(ErasedRenderAsset, PrepareAssetErrorVariants) {
-    auto retry = erased_render_asset::PrepareAssetError<ErasedTestSource>::retry_next_update(ErasedTestSource{7});
-    EXPECT_TRUE(retry.is_retry_next_update());
-    EXPECT_FALSE(retry.is_as_bind_group_error());
-    EXPECT_EQ(retry.retry_asset().value, 7);
+    erased_render_asset::PrepareAssetError<ErasedTestSource> retry{
+        erased_render_asset::RetryNextUpdate<ErasedTestSource>{ErasedTestSource{7}}};
+    ASSERT_TRUE((std::holds_alternative<erased_render_asset::RetryNextUpdate<ErasedTestSource>>(retry)));
+    EXPECT_EQ(std::get<erased_render_asset::RetryNextUpdate<ErasedTestSource>>(retry).asset.value, 7);
 
-    auto bind = erased_render_asset::PrepareAssetError<ErasedTestSource>::as_bind_group_error(
-        epix::render::render_resource::AsBindGroupError::CreateBindGroup);
-    EXPECT_FALSE(bind.is_retry_next_update());
-    EXPECT_TRUE(bind.is_as_bind_group_error());
-    EXPECT_EQ(bind.bind_group_error(), epix::render::render_resource::AsBindGroupError::CreateBindGroup);
+    erased_render_asset::PrepareAssetError<ErasedTestSource> bind{
+        epix::render::render_resource::AsBindGroupError::CreateBindGroup};
+    ASSERT_TRUE((std::holds_alternative<epix::render::render_resource::AsBindGroupError>(bind)));
+    EXPECT_EQ(std::get<epix::render::render_resource::AsBindGroupError>(bind),
+              epix::render::render_resource::AsBindGroupError::CreateBindGroup);
 }
 
 // extract_erased_render_asset (Bevy erased_render_asset.rs:244-312): RENDER_WORLD-only

@@ -23,8 +23,10 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
 #include <vector>
 #endif
+#include <epix/render/as_bind_group.hpp>
 #include <epix/render/extract.hpp>
 
 namespace epix::render {
@@ -68,6 +70,18 @@ EPIX_EXPORT enum class RenderAssetExtractionReason {
     Reextract,
 };
 
+/** @brief Retains an extracted payload for a later preparation attempt
+ * (Bevy `PrepareAssetError::RetryNextUpdate`). */
+template <typename E>
+struct RetryNextAssetUpdate {
+    E asset;
+};
+
+/** @brief Bevy-shaped preparation failure. The variant itself is the tagged
+ * union: no parallel enum discriminator is required. */
+template <typename E>
+using PrepareAssetError = std::variant<RetryNextAssetUpdate<E>, render_resource::AsBindGroupError>;
+
 /** @brief True when the RenderAsset specialization provides a take_gpu_data
  * hook (Bevy RenderAsset::take_gpu_data): moves heavy data out of the stored
  * asset while retaining its metadata in Assets<T>. Bevy supplies the previous
@@ -86,7 +100,9 @@ concept HasExtractAsset = requires(RenderAsset<T> asset,
                                    assets::AssetId<T> id,
                                    RenderAssetExtractionReason reason,
                                    const typename RenderAsset<T>::ProcessedAsset* previous_asset) {
-    { asset.extract(source, id, reason, previous_asset) } -> std::same_as<typename RenderAsset<T>::ExtractedAsset>;
+    typename RenderAsset<T>::ExtractError;
+    { asset.extract(source, id, reason, previous_asset) }
+        -> std::same_as<std::expected<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::ExtractError>>;
 };
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
@@ -101,7 +117,8 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
                             std::declval<assets::AssetId<T>>(),
                             std::declval<typename RenderAsset<T>::Param&>(),
                             std::declval<const typename RenderAsset<T>::ProcessedAsset*>())
-    } -> std::same_as<typename RenderAsset<T>::ProcessedAsset>;
+    } -> std::same_as<std::expected<typename RenderAsset<T>::ProcessedAsset,
+                                    PrepareAssetError<typename RenderAsset<T>::ExtractedAsset>>>;
     { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsages>;
     requires std::same_as<typename RenderAsset<T>::ExtractedAsset, T> || HasExtractAsset<T>;
 };
@@ -113,6 +130,17 @@ template <typename T>
 concept HasUnloadAsset = requires(RenderAsset<T> asset, assets::AssetId<T> id, typename RenderAsset<T>::Param& param) {
     { asset.unload_asset(id, param) };
 };
+
+namespace detail {
+template <typename E>
+std::string extraction_error_message(const E& error) {
+    if constexpr (std::derived_from<std::remove_cvref_t<E>, std::exception>) {
+        return error.what();
+    } else {
+        return std::format("error type {}", meta::type_id<std::remove_cvref_t<E>>().short_name());
+    }
+}
+}  // namespace detail
 
 /** @brief Storage for processed GPU-ready render assets, keyed by asset
  * ID.
@@ -232,7 +260,6 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     }
     std::vector<std::pair<assets::AssetId<T>, typename RenderAsset<T>::ExtractedAsset>> extracted_assets;
     RenderAsset<T> render_asset_impl;
-    std::vector<std::string> errors;
     for (const auto& [id, reason] : changed_assets) {
         if (auto asset = assets->get(id)) {
             const T& source = asset->get();
@@ -244,15 +271,20 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                 // ExtractedAsset avoids copying the complete source asset.
                 if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T> &&
                               !std::is_copy_constructible_v<T>) {
-                    errors.emplace_back(
-                        std::format("Asset [{}] is not copyable; a dual-world RenderAsset with ExtractedAsset == T "
-                                    "must be copyable or define a compact ExtractedAsset",
-                                    id.to_string()));
+                    spdlog::error("Asset [{}] is not copyable; a dual-world RenderAsset with ExtractedAsset == T must be "
+                                  "copyable or define a compact ExtractedAsset",
+                                  id.to_string());
                 } else {
                     if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
                         extracted_assets.emplace_back(id, source);
                     } else {
-                        extracted_assets.emplace_back(id, render_asset_impl.extract(source, id, reason, previous_asset));
+                        auto payload = render_asset_impl.extract(source, id, reason, previous_asset);
+                        if (payload) {
+                            extracted_assets.emplace_back(id, std::move(*payload));
+                        } else {
+                            spdlog::error("Asset [{}] compact extraction failed: {}", id.to_string(),
+                                          detail::extraction_error_message(payload.error()));
+                        }
                     }
                 }
             } else {
@@ -267,20 +299,23 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                             if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T>) {
                                 extracted_assets.emplace_back(id, std::move(*data));
                             } else {
-                                extracted_assets.emplace_back(
-                                    id, render_asset_impl.extract(*data, id, reason, previous_asset));
+                                auto payload = render_asset_impl.extract(*data, id, reason, previous_asset);
+                                if (payload) {
+                                    extracted_assets.emplace_back(id, std::move(*payload));
+                                } else {
+                                    spdlog::error("Asset [{}] compact extraction failed: {}", id.to_string(),
+                                                  detail::extraction_error_message(payload.error()));
+                                }
                             }
                         } else {
-                            errors.emplace_back(std::format("Asset [{}] with RENDER_WORLD usage cannot be extracted: {}",
-                                                            id.to_string(),
-                                                            data.error() == AssetExtractionError::AlreadyExtracted
-                                                                ? "already extracted"
-                                                                : "no extraction implementation"));
+                            spdlog::error("Asset [{}] with RENDER_WORLD usage cannot be extracted: {}", id.to_string(),
+                                          data.error() == AssetExtractionError::AlreadyExtracted
+                                              ? "already extracted"
+                                              : "no extraction implementation");
                         }
                     }
                 } else {
-                    errors.emplace_back(std::format("Asset [{}] with RENDER_WORLD usage has no take_gpu_data implementation",
-                                                    id.to_string()));
+                    spdlog::error("Asset [{}] with RENDER_WORLD usage has no take_gpu_data implementation", id.to_string());
                 }
             }
         }
@@ -291,13 +326,6 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     cache->added     = std::move(added);
     cache->modified  = std::move(modified);
 
-    if (!errors.empty()) {
-        std::stringstream ss;
-        for (const auto& error : errors) {
-            ss << "\t" << error << "\n";
-        }
-        throw std::runtime_error("Errors occurred while extracting render assets:\n" + ss.str());
-    }
 }
 
 /**
@@ -443,16 +471,18 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             prepare_next_frame_assets->pending.emplace_back(id, std::move(asset));
             continue;
         }
-        try {
-            // Bevy passes the previous GPU asset to prepare_asset.
-            auto previous = render_assets->get(id);
-            render_assets->insert(id, render_asset_impl.prepare_asset(std::move(asset), id, param, previous));
+        // Bevy passes the previous GPU asset to prepare_asset.
+        auto previous = render_assets->get(id);
+        auto result   = render_asset_impl.prepare_asset(std::move(asset), id, param, previous);
+        if (result) {
+            render_assets->insert(id, std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } catch (const std::exception& e) {
-            spdlog::error("Error processing render asset {}: {}", id.to_string(), e.what());
-        } catch (...) {
-            spdlog::error("Unknown error processing render asset {}", id.to_string());
+        } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
+            prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
+        } else {
+            spdlog::error("Render asset {} bind-group construction failed: {}", id.to_string(),
+                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
 
@@ -479,17 +509,17 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             prepare_next_frame_assets->pending.emplace_back(id, std::move(asset));
             continue;
         }
-        try {
-            render_assets->insert(
-                id, render_asset_impl.prepare_asset(std::move(asset), id, param, previous_asset ? &*previous_asset : nullptr));
+        auto result = render_asset_impl.prepare_asset(std::move(asset), id, param,
+                                                      previous_asset ? &*previous_asset : nullptr);
+        if (result) {
+            render_assets->insert(id, std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } catch (const std::exception& e) {
-            // Bevy logs AsBindGroupError and continues; only RetryNextUpdate
-            // defers. Without an error enum we log and drop (render_asset.rs:398-407).
-            spdlog::error("Error processing render asset {}: {}", id.to_string(), e.what());
-        } catch (...) {
-            spdlog::error("Unknown error processing render asset {}", id.to_string());
+        } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
+            prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
+        } else {
+            spdlog::error("Render asset {} bind-group construction failed: {}", id.to_string(),
+                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
     extracted_assets->extracted.clear();

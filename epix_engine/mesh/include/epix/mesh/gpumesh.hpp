@@ -91,10 +91,8 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     using ExtractedAsset = epix::mesh::Mesh;
     using Param          = epix::ecs::ParamSet<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Limits>>;
 
-    ProcessedAsset prepare_asset(const epix::mesh::Mesh& mesh,
-                                 epix::assets::AssetId<epix::mesh::Mesh>,
-                                 Param params,
-                                 const ProcessedAsset*) {
+    std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
+        epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
         auto&& [device, limits] = params.get();
         return ProcessedAsset::create_from_mesh(mesh, *device, *limits);
     }
