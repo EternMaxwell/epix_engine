@@ -13,12 +13,31 @@
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 
+#include <optional>
+
 using namespace epix;
 
 #include "cam_controll.hpp"
 
 namespace {
+struct SpriteReextractVisualState {
+    std::optional<assets::AssetId<image::Image>> image;
+    bool requested = false;
+};
+
+void request_sprite_image_reextract(std::optional<ecs::ResMut<SpriteReextractVisualState>> state,
+                                    std::optional<ecs::ResMut<render::RenderAssetReextract<image::Image>>> reextract) {
+    if (!state || !reextract || state->get().requested || !state->get().image) return;
+    reextract->get_mut().request(*state->get().image);
+    state->get_mut().requested = true;
+}
+
 struct BasicSpriteVisualTestPlugin {
+    void attach(app::App& app) {
+        app.add_systems(app::Update,
+                        ecs::into(request_sprite_image_reextract).set_name("request sprite image render-asset reextract"));
+    }
+
     void ready(app::App& app) {
         auto& world  = app.world_mut();
         auto& images = world.resource_mut<assets::Assets<image::Image>>();
@@ -30,6 +49,12 @@ struct BasicSpriteVisualTestPlugin {
         };
         auto texture = image::Image::create2d(2, 2, image::Format::RGBA8, texture_data).value();
         auto handle  = images.emplace(std::move(texture));
+
+        // The first normal update explicitly asks the render-asset pipeline to
+        // re-extract this unchanged image. The request is intentionally made
+        // after plugin initialization so the example exercises the public
+        // recovery hook rather than depending on AssetEvent delivery.
+        world.insert_resource(SpriteReextractVisualState{.image = handle.id()});
 
         world.spawn(sprite::SpriteBundle{
             .sprite =

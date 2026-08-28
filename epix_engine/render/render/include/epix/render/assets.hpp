@@ -231,10 +231,30 @@ struct ExtractedAssets {
     ExtractedAssets& operator=(ExtractedAssets&&)      = default;
 };
 
+/** @brief Main-world request queue for intentionally re-extracting render
+ * assets. This is an Epix extension: Bevy's render-asset pipeline reacts only
+ * to asset events. Requests are consumed in the extract schedule and invoke a
+ * compact extractor with `RenderAssetExtractionReason::Reextract`. */
+template <RenderAssetImpl T>
+struct RenderAssetReextract {
+    /** @brief Re-extract every currently stored source asset. */
+    bool all = false;
+    /** @brief Individually requested source assets. Ignored when `all` is set. */
+    std::unordered_set<assets::AssetId<T>> ids;
+
+    void request(const assets::AssetId<T>& id) { ids.insert(id); }
+    void request_all() noexcept { all = true; }
+    void clear() noexcept {
+        all = false;
+        ids.clear();
+    }
+};
+
 template <RenderAssetImpl T>
 void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                           app::Extract<ecs::ResMut<assets::Assets<T>>> assets,
                           app::Extract<ecs::EventReader<assets::AssetEvent<T>>> events,
+                          app::Extract<std::optional<ecs::ResMut<RenderAssetReextract<T>>>> reextract,
                           ecs::Res<RenderAssets<T>> render_assets) {
     std::unordered_map<assets::AssetId<T>, RenderAssetExtractionReason> changed_assets;
     std::unordered_set<assets::AssetId<T>> removed;
@@ -256,6 +276,19 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
             modified.erase(event.id);
             removed.insert(event.id);
         }
+    }
+    if (reextract) {
+        auto& requests = reextract->get_mut();
+        if (requests.all) {
+            for (const auto& id : assets->ids()) {
+                changed_assets.insert_or_assign(id, RenderAssetExtractionReason::Reextract);
+            }
+        } else {
+            for (const auto& id : requests.ids) {
+                changed_assets.insert_or_assign(id, RenderAssetExtractionReason::Reextract);
+            }
+        }
+        requests.clear();
     }
     std::vector<std::pair<assets::AssetId<T>, typename RenderAsset<T>::ExtractedAsset>> extracted_assets;
     RenderAsset<T> render_asset_impl;
@@ -543,6 +576,10 @@ EPIX_EXPORT struct AssetExtractionSystems {};
 EPIX_EXPORT template <RenderAssetImpl T, typename AFTER = void>
 struct RenderAssetPlugin {
     void attach(app::App& app) {
+        // Unlike Bevy's event-only pipeline, Epix intentionally exposes an
+        // explicit re-extraction integration point for device/resource
+        // recovery and compact incremental assets.
+        app.world_mut().init_resource<RenderAssetReextract<T>>();
         if (auto render_app = app.get_sub_app_mut(Render)) {
             render_app->get().world_mut().init_resource<RenderAssets<T>>();
             render_app->get().world_mut().init_resource<ExtractedAssets<T>>();
