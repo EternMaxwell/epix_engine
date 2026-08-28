@@ -76,20 +76,20 @@ EPIX_EXPORT struct RenderVisibilityRanges {
             range_to_index.emplace(visibility_range, buffer_index);
             buffer_dirty = true;
         }
-        entities.emplace(entity.entity, detail::RenderVisibilityEntityInfo{buffer_index, visibility_range.is_abrupt()});
+        entities.emplace(entity, detail::RenderVisibilityEntityInfo{buffer_index, visibility_range.is_abrupt()});
     }
 
     /** @brief GPU buffer index of the entity's visible range, if any (Bevy
      * lod_index_for_entity). */
     std::optional<std::uint16_t> lod_index_for_entity(sync_world::MainEntity entity) const {
-        if (auto it = entities.find(entity.entity); it != entities.end()) return it->second.buffer_index;
+        if (auto it = entities.find(entity); it != entities.end()) return it->second.buffer_index;
         return std::nullopt;
     }
 
     /** @brief True if the entity has a visibility range and it isn't abrupt,
      * i.e. it has a crossfade (Bevy entity_has_crossfading_visibility_ranges). */
     bool entity_has_crossfading_visibility_ranges(sync_world::MainEntity entity) const {
-        if (auto it = entities.find(entity.entity); it != entities.end()) return !it->second.is_abrupt;
+        if (auto it = entities.find(entity); it != entities.end()) return !it->second.is_abrupt;
         return false;
     }
 

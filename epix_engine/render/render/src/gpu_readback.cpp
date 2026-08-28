@@ -168,7 +168,7 @@ void epix::render::prepare_buffers(
     ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles) {
     for (auto&& [render_entity, main_entity, readback] : handles.iter()) {
         (void)render_entity;
-        const auto entity = main_entity.entity;  // Bevy main_entity.id()
+        const auto entity = main_entity.id();
         if (const auto* texture = std::get_if<Readback::Texture>(&readback.value)) {
             if (auto gpu_image = gpu_images.get().try_get(texture->image.id())) {
                 const std::uint32_t pixel_size = readback::texture_format_pixel_size(gpu_image->texture_format);

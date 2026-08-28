@@ -589,7 +589,7 @@ void camera::extract_cameras(
                 const Entity render_entity =
                     mapper.get(main_entity)
                         .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
-                            return re.get().entity;
+                            return re.get().id();
                         })
                         .value_or(Entity::PLACEHOLDER);
                 render_entities.emplace_back(render_entity, sync_world::MainEntity{main_entity});

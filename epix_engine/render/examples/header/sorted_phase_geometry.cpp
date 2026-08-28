@@ -89,14 +89,14 @@ template <>
 struct render::batching::GetFullBatchData<sorted_phase_geometry::Adapter> {
     using BufferInputData = std::uint32_t;
     std::optional<std::uint32_t> get_binned_batch_data(World&, render::sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         World&, render::sync_world::MainEntity entity) const {
-        return std::pair{entity.entity.index, entity.entity.index < 3 ? std::optional{1u} : std::optional{2u}};
+        return std::pair{entity.id().index, entity.id().index < 3 ? std::optional{1u} : std::optional{2u}};
     }
     std::optional<std::uint32_t> get_binned_index(World&, render::sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     void write_batch_indirect_parameters_metadata(bool,
                                                   std::uint32_t,

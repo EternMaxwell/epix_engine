@@ -201,7 +201,7 @@ EPIX_EXPORT class RenderBin {
 
     /** @brief Insert an entity (main-world id) with its input uniform index.
      * Replaces any existing entry for the same entity. */
-    void insert(epix::ecs::Entity main_entity, InputUniformIndex uniform_index) {
+    void insert(sync_world::MainEntity main_entity, InputUniformIndex uniform_index) {
         if (auto existing = m_indices.find(main_entity); existing != m_indices.end()) {
             m_entries[existing->second].second = uniform_index;
             return;
@@ -211,7 +211,7 @@ EPIX_EXPORT class RenderBin {
         m_entries.emplace_back(main_entity, uniform_index);
     }
     /** @brief Remove an entity, preserving order of the rest. */
-    bool remove(epix::ecs::Entity main_entity) {
+    bool remove(sync_world::MainEntity main_entity) {
         auto it = m_indices.find(main_entity);
         if (it == m_indices.end()) {
             return false;
@@ -228,9 +228,9 @@ EPIX_EXPORT class RenderBin {
         return true;
     }
     /** @brief Whether the entity is in this bin. */
-    bool contains(epix::ecs::Entity main_entity) const { return m_indices.contains(main_entity); }
+    bool contains(sync_world::MainEntity main_entity) const { return m_indices.contains(main_entity); }
     /** @brief Get the input uniform index of an entity. */
-    InputUniformIndex* get(epix::ecs::Entity main_entity) {
+    InputUniformIndex* get(sync_world::MainEntity main_entity) {
         if (auto it = m_indices.find(main_entity); it != m_indices.end()) {
             return &m_entries[it->second].second;
         }
@@ -246,8 +246,8 @@ EPIX_EXPORT class RenderBin {
     void clear_batches() noexcept { batches.clear(); }
 
    private:
-    std::vector<std::pair<epix::ecs::Entity, InputUniformIndex>> m_entries;
-    std::unordered_map<epix::ecs::Entity, std::size_t> m_indices;
+    std::vector<std::pair<sync_world::MainEntity, InputUniformIndex>> m_entries;
+    std::unordered_map<sync_world::MainEntity, std::size_t> m_indices;
 };
 
 /** @brief The unbatchable entities in a bin (Bevy `UnbatchableBinnedEntities`);
@@ -408,22 +408,22 @@ class BinnedRenderPhase {
             case BinnedRenderPhaseType::MultidrawableMesh: {
                 auto& batch_set = multidrawable_meshes[batch_set_key];
                 auto& bin       = batch_set[bin_key];
-                bin.insert(main_entity.entity, input_uniform_index);
+                bin.insert(main_entity, input_uniform_index);
                 break;
             }
             case BinnedRenderPhaseType::BatchableMesh: {
                 auto& bin = batchable_meshes[{batch_set_key, bin_key}];
-                bin.insert(main_entity.entity, input_uniform_index);
+                bin.insert(main_entity, input_uniform_index);
                 break;
             }
             case BinnedRenderPhaseType::UnbatchableMesh: {
                 auto& unbatchable                        = unbatchable_meshes[{batch_set_key, bin_key}];
-                unbatchable.entities[main_entity.entity] = render_entity;
+                unbatchable.entities[main_entity] = render_entity;
                 break;
             }
             case BinnedRenderPhaseType::NonMesh: {
                 auto& non_mesh                        = non_mesh_items[{batch_set_key, bin_key}];
-                non_mesh.entities[main_entity.entity] = render_entity;
+                non_mesh.entities[main_entity] = render_entity;
                 break;
             }
         }
@@ -440,12 +440,12 @@ class BinnedRenderPhase {
                       ecs::Tick change_tick) {
         CachedBinnedEntity<BPI> new_entry{cached_bin_key, change_tick};
         std::optional<CachedBinnedEntity<BPI>> old_entry;
-        if (auto existing = cached_entity_bin_keys.get(main_entity.entity)) {
+        if (auto existing = cached_entity_bin_keys.get(main_entity)) {
             old_entry                = *existing;
             existing->cached_bin_key = cached_bin_key;
             existing->change_tick    = change_tick;
         } else {
-            cached_entity_bin_keys[main_entity.entity] = new_entry;
+            cached_entity_bin_keys[main_entity] = new_entry;
         }
         // If the entity changed bins, record its old bin so that we can
         // remove the entity from it during sweep.
@@ -453,7 +453,7 @@ class BinnedRenderPhase {
             entities_that_changed_bins.push_back(EntityThatChangedBins<BPI>{main_entity, *old_entry});
         }
         // Mark the entity as valid (validity flags align with insertion order).
-        if (auto idx = cached_entity_bin_keys.index_of(main_entity.entity)) {
+        if (auto idx = cached_entity_bin_keys.index_of(main_entity)) {
             if (valid_cached_entity_bin_keys.size() <= *idx) {
                 valid_cached_entity_bin_keys.resize(*idx + 1, false);
             }
@@ -486,8 +486,8 @@ class BinnedRenderPhase {
      * valid and return true (Bevy `validate_cached_entity`).
      */
     bool validate_cached_entity(sync_world::MainEntity visible_entity, ecs::Tick current_change_tick) {
-        if (auto idx = cached_entity_bin_keys.index_of(visible_entity.entity)) {
-            auto& entry = *cached_entity_bin_keys.get(visible_entity.entity);
+        if (auto idx = cached_entity_bin_keys.index_of(visible_entity)) {
+            auto& entry = *cached_entity_bin_keys.get(visible_entity);
             if (entry.change_tick == current_change_tick) {
                 if (valid_cached_entity_bin_keys.size() <= *idx) {
                     valid_cached_entity_bin_keys.resize(*idx + 1, false);
@@ -553,7 +553,7 @@ class BinnedRenderPhase {
         // If an entity changed bins, remove it from its old bin.
         for (auto& changed : entities_that_changed_bins) {
             if (changed.old_cached_binned_entity.cached_bin_key) {
-                remove_entity_from_bin(changed.main_entity.entity, *changed.old_cached_binned_entity.cached_bin_key);
+                remove_entity_from_bin(changed.main_entity, *changed.old_cached_binned_entity.cached_bin_key);
             }
         }
         entities_that_changed_bins.clear();
@@ -572,7 +572,7 @@ class BinnedRenderPhase {
         std::unreachable();
     }
 
-    void remove_entity_from_bin(epix::ecs::Entity main_entity, const CachedBinKey<BPI>& key) {
+    void remove_entity_from_bin(sync_world::MainEntity main_entity, const CachedBinKey<BPI>& key) {
         switch (key.phase_type) {
             case BinnedRenderPhaseType::MultidrawableMesh: {
                 if (auto* batch_set = multidrawable_meshes.get(key.batch_set_key)) {
@@ -636,7 +636,7 @@ class BinnedRenderPhase {
                          sync_world::MainEntity representative_entity,
                          std::pair<std::uint32_t, std::uint32_t> instance_range,
                          PhaseItemExtraIndex extra_index) {
-        auto item = BPI::create(batch_set_key, bin_key, representative_entity.entity, instance_range.first,
+        auto item = BPI::create(batch_set_key, bin_key, representative_entity.id(), instance_range.first,
                                 instance_range.second);
         if constexpr (MutablePhaseItemExtraIndex<BPI>) {
             item.set_extra_index(extra_index);

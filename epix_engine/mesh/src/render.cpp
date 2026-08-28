@@ -664,7 +664,7 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
                 continue;
             }
             if (std::ranges::find(visible, extracted_mesh.source_entity,
-                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
+                                  [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
                 continue;
             }
 
@@ -731,7 +731,7 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
                 continue;
             }
             if (std::ranges::find(visible, extracted_mesh.source_entity,
-                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
+                                  [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
                 continue;
             }
 

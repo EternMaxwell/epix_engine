@@ -472,7 +472,7 @@ void queue_texts_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::T
             }
             if (const auto& visible = visible_entities.template get<Text2d>();
                 std::ranges::find(visible, text.source_entity,
-                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
+                                  [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
                 continue;
             }
 

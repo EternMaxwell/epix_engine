@@ -9,6 +9,8 @@
 #include <epix/meta.hpp>
 #include <format>
 #include <optional>
+#include <ranges>
+#include <vector>
 #endif
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>
@@ -23,12 +25,13 @@ EPIX_EXPORT inline struct ExtractScheduleT {
 template <std::copyable T>
 void extract_fn(
     epix::ecs::Commands cmd,
-    epix::ecs::ParamSet<std::optional<epix::ecs::ResMut<T>>, epix::app::Extract<epix::ecs::ResMut<T>>> resources) {
-    auto&& [res, extract] = resources.get();
-    if (!res) {
-        cmd.insert_resource(extract.get());
-    } else if (extract.is_modified()) {
-        res.value().get_mut() = extract.get();
+    epix::app::Extract<std::optional<epix::ecs::Res<T>>> main_resource,
+    std::optional<epix::ecs::ResMut<T>> target_resource) {
+    if (!main_resource) return;
+    if (!target_resource) {
+        cmd.insert_resource(main_resource->get());
+    } else if (main_resource->is_modified()) {
+        target_resource->get_mut() = main_resource->get();
     }
 }
 
@@ -52,6 +55,7 @@ concept ExtractComponentImpl = requires {
     typename ExtractComponent<C>::QueryFilter;
     requires ecs::query_filter<typename ExtractComponent<C>::QueryFilter>;
     typename ExtractComponent<C>::Out;
+    requires std::movable<typename ExtractComponent<C>::Out>;
     requires std::same_as<decltype(ExtractComponent<C>::extract_component(
                               std::declval<typename ExtractComponent<C>::QueryData>())),
                           std::optional<typename ExtractComponent<C>::Out>>;
@@ -65,49 +69,46 @@ concept ExtractComponentImpl = requires {
 template <ExtractComponentImpl C>
 void extract_component_system(
     ecs::Commands cmd,
-    app::Extract<
-        ecs::Query<ecs::Item<ecs::Entity, const sync_world::RenderEntity&, typename ExtractComponent<C>::QueryData>>>
+    ecs::Local<std::size_t> previous_len,
+    app::Extract<ecs::Query<ecs::Item<const sync_world::RenderEntity&, typename ExtractComponent<C>::QueryData>>>
         query) {
-    for (auto&& [entity, render_entity, item] : query.iter()) {
+    std::vector<std::pair<ecs::Entity, typename ExtractComponent<C>::Out>> values;
+    values.reserve(*previous_len);
+    for (auto&& [render_entity, item] : query.iter()) {
         auto out = ExtractComponent<C>::extract_component(item);
         if (out) {
-            cmd.entity(render_entity.entity).insert(std::move(*out));
+            values.emplace_back(render_entity.id(), std::move(*out));
         } else {
             // Bevy removes the previously-extracted component when extraction
             // returns None (extract_component.rs:208-212).
-            cmd.entity(render_entity.entity).template remove<typename ExtractComponent<C>::Out>();
+            cmd.entity(render_entity.id()).template remove<typename ExtractComponent<C>::Out>();
         }
     }
+    *previous_len = values.size();
+    cmd.try_insert_batch(std::move(values));
 }
 
 /** @brief System that extracts component C only for entities visible to at
  * least one view (Bevy extract_visible_components, extract_component.rs:219-236). */
 template <ExtractComponentImpl C>
-void extract_visible_components_system(ecs::Commands cmd,
-                                       app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                                                         const sync_world::RenderEntity&,
+void extract_visible_components_system(ecs::Commands cmd, ecs::Local<std::size_t> previous_len,
+                                       app::Extract<ecs::Query<ecs::Item<const sync_world::RenderEntity&,
                                                                          const ::epix::camera::ViewVisibility&,
                                                                          typename ExtractComponent<C>::QueryData>,
                                                                typename ExtractComponent<C>::QueryFilter>> query) {
-    for (auto&& [entity, render_entity, view_visibility, item] : query.iter()) {
+    std::vector<std::pair<ecs::Entity, typename ExtractComponent<C>::Out>> values;
+    values.reserve(*previous_len);
+    for (auto&& [render_entity, view_visibility, item] : query.iter()) {
         if (!view_visibility.get()) continue;
         auto out = ExtractComponent<C>::extract_component(item);
         if (out) {
-            cmd.entity(render_entity.entity).insert(std::move(*out));
+            values.emplace_back(render_entity.id(), std::move(*out));
         } else {
-            cmd.entity(render_entity.entity).template remove<typename ExtractComponent<C>::Out>();
+            cmd.entity(render_entity.id()).template remove<typename ExtractComponent<C>::Out>();
         }
     }
-}
-
-/** @brief System that records main-world entities whose synced component `C`
- * was removed, so `entity_sync_system` can despawn+respawn the render entity
- * (Bevy `on_remove` hook on `C`, sync_component.rs:35-40). */
-template <typename C>
-void record_component_removed(ecs::ResMut<sync_world::PendingSyncEntity> pending, ecs::RemovedComponents<C> removed) {
-    for (auto entity : removed.read()) {
-        pending.get_mut().component_removed.push_back(entity);
-    }
+    *previous_len = values.size();
+    cmd.try_insert_batch(std::move(values));
 }
 
 /** @brief Plugin that synchronizes a component's presence with the render world
@@ -120,9 +121,9 @@ struct SyncComponentPlugin {
         // Bevy on_remove hook (sync_component.rs:35-40): record removed
         // components so entity_sync_system clears derived render data.
         app.world_mut().init_resource<sync_world::PendingSyncEntity>();
-        app.add_systems(app::Update,
-                        ecs::into(record_component_removed<C>)
-                            .set_name(std::format("record removed component '{}'", meta::type_id<C>().short_name())));
+        // Epix component hooks are registered on the component metadata; this
+        // is the direct counterpart of Bevy's register_component_hooks().
+        app.world_mut().registrator().register_on_remove_hook<C>(sync_world::record_component_removed);
     }
 };
 
@@ -131,12 +132,19 @@ struct SyncComponentPlugin {
  * extract_visible_components (Bevy ExtractComponentPlugin::extract_visible()). */
 template <ExtractComponentImpl C>
 struct ExtractComponentPlugin {
+   private:
     /** @brief Only extract entities visible to at least one view when true. */
     bool only_extract_visible = false;
 
+   public:
+
     /** @brief Returns a plugin configured to extract only visible entities
      * (Bevy ExtractComponentPlugin::extract_visible()). */
-    static ExtractComponentPlugin extract_visible() { return ExtractComponentPlugin{true}; }
+    static ExtractComponentPlugin extract_visible() {
+        ExtractComponentPlugin plugin;
+        plugin.only_extract_visible = true;
+        return plugin;
+    }
 
     void attach(app::App& app) {
         // Bevy auto-registers SyncComponentPlugin so entities with C are
@@ -183,16 +191,22 @@ struct ExtractedInstances {
     sync_world::MainEntityHashMap<EI> instances;
 
     void clear() noexcept { instances.clear(); }
-    void insert(ecs::Entity entity, EI value) { instances.emplace(entity, std::move(value)); }
-    bool contains(ecs::Entity entity) const { return instances.contains(entity); }
+    void insert(ecs::Entity entity, EI value) { instances.emplace(sync_world::MainEntity{entity}, std::move(value)); }
+    bool contains(ecs::Entity entity) const { return instances.contains(sync_world::MainEntity{entity}); }
     const EI* get(ecs::Entity entity) const {
-        if (auto it = instances.find(entity); it != instances.end()) return &it->second;
+        if (auto it = instances.find(sync_world::MainEntity{entity}); it != instances.end()) return &it->second;
         return nullptr;
     }
     EI* get_mut(ecs::Entity entity) {
-        if (auto it = instances.find(entity); it != instances.end()) return &it->second;
+        if (auto it = instances.find(sync_world::MainEntity{entity}); it != instances.end()) return &it->second;
         return nullptr;
     }
+    /** @brief Lazily iterate the extracted main-entity/instance pairs. This
+     * is the C++ range counterpart of Bevy's `Deref<Target =
+     * MainEntityHashMap<EI>>`. */
+    auto iter() const noexcept { return std::views::all(instances); }
+    /** @brief Lazily iterate mutable extracted main-entity/instance pairs. */
+    auto iter_mut() noexcept { return std::views::all(instances); }
 };
 
 template <ExtractInstanceImpl EI>
@@ -211,8 +225,19 @@ void extract_visible_instances(
  * each frame (Bevy `ExtractInstancesPlugin<EI>`). */
 template <ExtractInstanceImpl EI>
 struct ExtractInstancesPlugin {
+   private:
     /** @brief Only extract entities marked visible when true. */
     bool only_extract_visible = false;
+
+   public:
+
+    /** @brief Construct the visible-only extractor (Bevy
+     * `ExtractInstancesPlugin::extract_visible`). */
+    static ExtractInstancesPlugin extract_visible() {
+        ExtractInstancesPlugin plugin;
+        plugin.only_extract_visible = true;
+        return plugin;
+    }
 
     void attach(app::App& app) {
         auto render_app = app.get_sub_app_mut(Render);
@@ -279,21 +304,20 @@ concept ExtractResourceImpl = requires {
 template <ExtractResourceImpl R>
 void extract_resource_system(
     ecs::Commands cmd,
-    app::Extract<ecs::ParamSet<std::optional<ecs::Res<typename ExtractResource<R>::Source>>>> source,
+    app::Extract<std::optional<ecs::Res<typename ExtractResource<R>::Source>>> source,
     std::optional<ecs::ResMut<R>> target) {
-    auto&& [src] = source.get();
-    if (!src) return;
+    if (!source) return;
     if (target) {
         // Bevy only overwrites the render-world copy when the source changed
         // this frame (extract_resource.rs:59-66).
-        if (src->is_modified()) {
-            target.value().get_mut() = ExtractResource<R>::extract_resource(src->get());
+        if (source->is_modified()) {
+            target.value().get_mut() = ExtractResource<R>::extract_resource(source->get());
         }
     } else {
         // Bevy always (re)inserts when the render-world target is missing,
         // regardless of change, so a manually removed resource reappears
         // (extract_resource.rs:67-69).
-        cmd.insert_resource(ExtractResource<R>::extract_resource(src->get()));
+        cmd.insert_resource(ExtractResource<R>::extract_resource(source->get()));
     }
 }
 
@@ -324,11 +348,13 @@ struct ExtractResourcePlugin {
  */
 template <typename C>
 struct DynamicUniformIndex {
-    /** @brief Index into the dynamic uniform buffer. */
-    std::uint32_t index = 0;
+   private:
+    std::uint32_t m_index = 0;
 
+   public:
+    explicit DynamicUniformIndex(std::uint32_t index = 0) noexcept : m_index(index) {}
     /** @brief The stored uniform index. */
-    std::uint32_t uniform_index() const noexcept { return index; }
+    std::uint32_t index() const noexcept { return m_index; }
 };
 
 /**
@@ -337,11 +363,16 @@ struct DynamicUniformIndex {
  */
 template <render_resource::ShaderWritable C>
 struct ComponentUniforms {
+   private:
     /** @brief Dynamic uniform buffer containing one entry per entity. */
-    render_resource::DynamicUniformBuffer<C> uniforms;
+    render_resource::DynamicUniformBuffer<C> m_uniforms;
 
+   public:
+    /** @brief Access the underlying dynamic uniform buffer (Bevy
+     * `ComponentUniforms::uniforms`). */
+    const render_resource::DynamicUniformBuffer<C>& uniforms() const noexcept { return m_uniforms; }
     /** @brief Access the underlying dynamic uniform buffer. */
-    render_resource::DynamicUniformBuffer<C>& uniforms_mut() noexcept { return uniforms; }
+    render_resource::DynamicUniformBuffer<C>& uniforms_mut() noexcept { return m_uniforms; }
 };
 
 /**
@@ -398,11 +429,11 @@ struct GpuComponentArrayBufferPlugin {
 
 template <render_resource::ShaderWritable C>
 void prepare_uniform_components(ecs::Commands cmd,
-                                ecs::ResMut<ComponentUniforms<C>> component_uniforms,
                                 ecs::Res<wgpu::Device> device,
                                 ecs::Res<wgpu::Queue> queue,
+                                ecs::ResMut<ComponentUniforms<C>> component_uniforms,
                                 ecs::Query<ecs::Item<ecs::Entity, const C&>> components) {
-    auto& uniforms = component_uniforms->uniforms;
+    auto& uniforms = component_uniforms->uniforms_mut();
     const std::size_t count = components.iter().max_remaining();
     if (count == 0) {
         // Bevy get_writer returns None when there is no GPU buffer and

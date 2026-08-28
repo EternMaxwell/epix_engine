@@ -1,7 +1,7 @@
 #include <spdlog/spdlog.h>
 
-#include <algorithm>
 #include <epix/render.hpp>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -11,100 +11,76 @@ using namespace epix::render;
 
 namespace epix::render::sync_world {
 
+void SyncToRenderWorld::on_add(World& world, HookContext context) {
+    if (auto pending = world.get_resource_mut<PendingSyncEntity>()) {
+        pending->get().records.emplace_back(EntityAdded{context.entity});
+    }
+}
+
+void SyncToRenderWorld::on_remove(World& world, HookContext context) {
+    auto render_entity = world.get_entity(context.entity).and_then([](const EntityRef& entity) {
+        return entity.get<RenderEntity>().transform(
+            [](const std::reference_wrapper<const RenderEntity>& value) { return value.get(); });
+    });
+    if (render_entity) {
+        if (auto pending = world.get_resource_mut<PendingSyncEntity>()) {
+            pending->get().records.emplace_back(EntityRemoved{*render_entity});
+        }
+    }
+}
+
+void record_component_removed(World& world, HookContext context) {
+    if (auto pending = world.get_resource_mut<PendingSyncEntity>()) {
+        pending->get().records.emplace_back(ComponentRemoved{context.entity});
+    }
+}
+
 void entity_sync_system(World& main_world, World& render_world) {
-    // Ensure the sync components are registered in both worlds (idempotent).
-    main_world.registrator().register_component<SyncToRenderWorld>();
-    main_world.registrator().register_component<RenderEntity>();
-    render_world.registrator().register_component<SyncToRenderWorld>();
-    render_world.registrator().register_component<RenderEntity>();
-    render_world.registrator().register_component<MainEntity>();
-    render_world.registrator().register_component<TemporaryRenderEntity>();
-
-    // 0. Bevy ComponentRemoved handling (sync_world.rs:238-250): when a synced
-    //    component was removed from a main entity, despawn its render entity
-    //    and drop the RenderEntity link so the scan below respawns a fresh one
-    //    (clearing derived/extracted components).
+    std::vector<EntityRecord> records;
     if (auto pending = main_world.get_resource_mut<PendingSyncEntity>()) {
-        for (const Entity main_entity : pending->get().component_removed) {
-            auto render_entity =
-                main_world.get_entity(main_entity).and_then([](const EntityRef& e) -> std::optional<Entity> {
-                    return e.get<RenderEntity>().transform(
-                        [](const std::reference_wrapper<const RenderEntity>& re) { return re.get().entity; });
-                });
-            if (render_entity && render_world.get_entity(*render_entity)) {
-                render_world.get_entity_mut(*render_entity).transform([](EntityWorldMut&& ew) -> int {
-                    ew.despawn();
-                    return 0;
-                });
-                main_world.get_entity_mut(main_entity).transform([](EntityWorldMut&& ew) -> int {
-                    ew.remove<RenderEntity>();
-                    return 0;
-                });
-            }
-        }
-        pending->get().component_removed.clear();
+        records = std::move(pending->get().records);
+    } else {
+        return;
     }
 
-    // 1. Despawn render-world entities whose main-world counterpart is gone or
-    //    no longer marked for synchronization.
-    {
-        auto query = render_world.try_query<Item<Entity, const MainEntity&>>();
-        if (query) {
-            std::vector<Entity> to_despawn;
-            for (auto&& [render_entity, main_entity] : query->iter(render_world)) {
-                bool keep =
-                    main_world.get_entity(main_entity.entity)
-                        .transform([](const EntityRef& e) { return e.template get<SyncToRenderWorld>().has_value(); })
-                        .value_or(false);
-                if (!keep) {
-                    to_despawn.push_back(render_entity);
+    // Bevy sync_world.rs:220-252: process exactly the lifecycle changes
+    // observed since the preceding extraction, without a world-wide scan.
+    for (const auto& record : records) {
+        std::visit(
+            [&]<typename T>(const T& value) {
+                if constexpr (std::same_as<T, EntityAdded>) {
+                    if (!main_world.get_entity(value.entity)) return;
+                    if (main_world.get_entity(value.entity)->contains<RenderEntity>()) {
+                        throw std::logic_error("attempting to synchronize an entity that is already synchronized");
+                    }
+                    const Entity render_entity = render_world.spawn(MainEntity{value.entity}).id();
+                    main_world.get_entity_mut(value.entity).transform([&](EntityWorldMut&& entity) -> int {
+                        entity.insert(RenderEntity{render_entity});
+                        return 0;
+                    });
+                } else if constexpr (std::same_as<T, EntityRemoved>) {
+                    render_world.get_entity_mut(value.entity.id()).transform([](EntityWorldMut&& entity) -> int {
+                        entity.despawn();
+                        return 0;
+                    });
+                } else {
+                    auto current_render = main_world.get_entity(value.entity).and_then([](const EntityRef& entity) {
+                        return entity.get<RenderEntity>().transform(
+                            [](const std::reference_wrapper<const RenderEntity>& render) { return render.get().id(); });
+                    });
+                    if (!current_render) return;
+                    render_world.get_entity_mut(*current_render).transform([](EntityWorldMut&& entity) -> int {
+                        entity.despawn();
+                        return 0;
+                    });
+                    const Entity replacement = render_world.spawn(MainEntity{value.entity}).id();
+                    main_world.get_entity_mut(value.entity).transform([&](EntityWorldMut&& entity) -> int {
+                        entity.get_mut<RenderEntity>()->get_mut() = RenderEntity{replacement};
+                        return 0;
+                    });
                 }
-            }
-            for (const Entity entity : to_despawn) {
-                render_world.get_entity_mut(entity).transform([](EntityWorldMut&& ew) -> int {
-                    ew.despawn();
-                    return 0;
-                });
-            }
-        }
-    }
-    // 2. Spawn render-world entities for main-world entities with
-    //    SyncToRenderWorld that lack a valid RenderEntity mapping.
-    {
-        auto query = main_world.try_query<Item<Entity, const SyncToRenderWorld&>>();
-        if (query) {
-            std::vector<std::pair<Entity, Entity>> to_sync;  // (main_entity, render_entity)
-            for (auto&& [main_entity, sync] : query->iter(main_world)) {
-                (void)sync;
-                bool already_synced =
-                    main_world.get_entity(main_entity)
-                        .and_then([](const EntityRef& e) -> std::optional<Entity> {
-                            return e.get<RenderEntity>().transform(
-                                [](const std::reference_wrapper<const RenderEntity>& re) { return re.get().entity; });
-                        })
-                        .transform([&](Entity render_entity) {
-                            return render_world.get_entity(render_entity)
-                                .and_then([&](const EntityRef& re) -> std::optional<bool> {
-                                    return re.get<MainEntity>().transform(
-                                        [&](const std::reference_wrapper<const MainEntity>& me) {
-                                            return me.get().entity == main_entity;
-                                        });
-                                })
-                                .value_or(false);
-                        })
-                        .value_or(false);
-                if (!already_synced) {
-                    Entity render_entity = render_world.spawn(MainEntity{main_entity}).id();
-                    to_sync.emplace_back(main_entity, render_entity);
-                }
-            }
-            for (auto&& [main_entity, render_entity] : to_sync) {
-                main_world.get_entity_mut(main_entity).transform([&](EntityWorldMut&& ew) -> int {
-                    ew.insert(RenderEntity{render_entity});
-                    return 0;
-                });
-            }
-        }
+            },
+            record);
     }
 }
 

@@ -6,10 +6,13 @@
 #include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <optional>
+#include <ranges>
+#include <spdlog/spdlog.h>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 #endif
 
 #include <epix/ecs/hierarchy/hierarchy.hpp>
@@ -91,6 +94,43 @@ EPIX_EXPORT struct Commands {
         requires std::movable<std::decay_t<T>> && std::constructible_from<std::decay_t<T>, T>
     Commands& try_insert_resource(T&& value) {
         return try_emplace_resource<std::decay_t<T>>(std::forward<T>(value));
+    }
+    /** @brief Insert a range of `(Entity, bundle-or-component)` pairs through
+     * one deferred command. This is the C++ counterpart of Bevy
+     * `Commands::try_insert_batch`. A standalone component is the C++
+     * counterpart of Rust's blanket `Component: Bundle` implementation.
+     * Missing entities are reported at warning level when the command is
+     * applied, like Bevy's fallible command. */
+    template <std::ranges::input_range R>
+        requires requires(std::ranges::range_value_t<R>& entry) {
+            { entry.first } -> std::convertible_to<Entity>;
+            requires std::movable<std::remove_cvref_t<decltype(entry.second)>>;
+        }
+    Commands& try_insert_batch(R&& entries) {
+        using Entry = std::ranges::range_value_t<R>;
+        std::vector<Entry> batch;
+        if constexpr (std::ranges::sized_range<R>) batch.reserve(std::ranges::size(entries));
+        for (auto& entry : entries) batch.emplace_back(std::move(entry));
+        command_queue->push([batch = std::move(batch)](World& world) mutable {
+            std::vector<Entity> missing_entities;
+            for (auto& [entity, bundle] : batch) {
+                auto entity_world = world.get_entity_mut(entity);
+                if (!entity_world) {
+                    missing_entities.push_back(entity);
+                    continue;
+                }
+                if constexpr (is_bundle<decltype(bundle)>) {
+                    entity_world->insert_bundle(std::move(bundle));
+                } else {
+                    entity_world->insert(std::move(bundle));
+                }
+            }
+            if (!missing_entities.empty()) {
+                spdlog::warn("[ecs] Could not insert a batch because {} target entities no longer exist.",
+                             missing_entities.size());
+            }
+        });
+        return *this;
     }
     /** @brief Remove a resource by type via deferred command. */
     template <typename T>

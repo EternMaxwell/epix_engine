@@ -69,6 +69,21 @@ EPIX_EXPORT struct ComponentsRegistrator {
                                           &ComponentHooks::update_from_component<T>);
     }
 
+    /** @brief Register an `on_remove` lifecycle hook for an already-known
+     * component. Mirrors Bevy's component-hook registration and rejects a
+     * competing hook rather than silently replacing it. */
+    template <typename T>
+    void register_on_remove_hook(ComponentHooks::HookFunc hook) {
+        const TypeId id = register_component<T>();
+        auto info        = m_components->get_info_mut(id);
+        if (!info) throw std::logic_error("registered component metadata is missing");
+        auto& hooks = info->get().hooks_mut();
+        if (hooks.on_remove && hooks.on_remove != hook) {
+            throw std::logic_error(std::format("component '{}' already has an on_remove hook", meta::type_id<T>().name()));
+        }
+        hooks.on_remove = hook;
+    }
+
     /** Register a resource component with IsResource as a required component. */
     template <typename T>
         requires std::movable<T>

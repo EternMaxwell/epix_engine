@@ -98,7 +98,7 @@ namespace {
 std::optional<Entity> get_render_entity(const World& world, Entity main_entity) {
     return world.get_entity(main_entity)
         .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
-        .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; });
+        .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().id(); });
 }
 
 std::optional<int> get_extracted_value(const World& render_world, Entity render_entity) {
@@ -110,7 +110,7 @@ std::optional<int> get_extracted_value(const World& render_world, Entity render_
 std::optional<Entity> get_main_entity(const World& render_world, Entity render_entity) {
     return render_world.get_entity(render_entity)
         .and_then([](const EntityRef& e) { return e.get<sync_world::MainEntity>(); })
-        .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) { return me.get().entity; });
+        .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) { return me.get().id(); });
 }
 
 }  // namespace

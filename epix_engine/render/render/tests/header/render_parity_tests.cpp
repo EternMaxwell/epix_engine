@@ -526,6 +526,7 @@ TEST(GpuReadback, BufferPoolEviction) {
 TEST(SyncWorld, EntitySyncAndDespawn) {
     World main_world(WorldId(0));
     World render_world(WorldId(1));
+    main_world.init_resource<sync_world::PendingSyncEntity>();
 
     Entity main_entity = main_world.spawn(sync_world::SyncToRenderWorld{}).id();
     sync_world::entity_sync_system(main_world, render_world);
@@ -535,7 +536,7 @@ TEST(SyncWorld, EntitySyncAndDespawn) {
         return main_world.get_entity(e)
             .and_then([](const EntityRef& ref) {
                 return ref.get<sync_world::RenderEntity>().transform(
-                    [](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; });
+                    [](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().id(); });
             })
             .value();
     };
@@ -544,7 +545,7 @@ TEST(SyncWorld, EntitySyncAndDespawn) {
     auto main_back =
         render_world.get_entity(render_entity)
             .and_then([](const EntityRef& ref) { return ref.get<sync_world::MainEntity>(); })
-            .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) { return me.get().entity; })
+            .transform([](const std::reference_wrapper<const sync_world::MainEntity>& me) { return me.get().id(); })
             .value();
     EXPECT_EQ(main_back, main_entity);
 
@@ -581,13 +582,14 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
     main_world.registrator().register_component<int>();
     render_world.registrator().register_component<int>();
     main_world.init_resource<sync_world::PendingSyncEntity>();
+    main_world.registrator().register_on_remove_hook<int>(sync_world::record_component_removed);
 
     Entity main_entity = main_world.spawn(sync_world::SyncToRenderWorld{}, 42).id();
     sync_world::entity_sync_system(main_world, render_world);
     auto first_render =
         main_world.get_entity(main_entity)
             .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
-            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; })
+            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().id(); })
             .value();
     // simulate a stale derived/extracted artifact on the render entity
     render_world.get_entity_mut(first_render).transform([](EntityWorldMut&& ew) -> int {
@@ -595,12 +597,11 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
         return 0;
     });
 
-    // remove the synced component and record it (as record_component_removed does)
+    // Removing the synced component invokes the registered lifecycle hook.
     main_world.get_entity_mut(main_entity).transform([](EntityWorldMut&& ew) -> int {
         ew.remove<int>();
         return 0;
     });
-    main_world.get_resource_mut<sync_world::PendingSyncEntity>()->get().component_removed.push_back(main_entity);
     sync_world::entity_sync_system(main_world, render_world);
 
     // the old render entity is gone; a fresh one is linked with no stale artifact
@@ -608,7 +609,7 @@ TEST(SyncWorld, ComponentRemovedRespawnsRenderEntity) {
     auto second_render =
         main_world.get_entity(main_entity)
             .and_then([](const EntityRef& e) { return e.get<sync_world::RenderEntity>(); })
-            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().entity; })
+            .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) { return re.get().id(); })
             .value();
     EXPECT_NE(second_render, first_render);
     EXPECT_FALSE(
@@ -687,7 +688,7 @@ struct epix::render::batching::GetBatchData<CpuBatchTestAdapter> {
 
     std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
         World&, std::pair<Entity, sync_world::MainEntity> entity) const {
-        const auto index = entity.second.entity.index;
+        const auto index = entity.second.id().index;
         return std::pair<BufferData, std::optional<CompareData>>{index, index < 3 ? 1u : 2u};
     }
 };
@@ -700,7 +701,7 @@ struct epix::render::batching::GetBatchData<CpuBatchSystemAdapter> {
 
     std::optional<std::pair<BufferData, std::optional<CompareData>>> get_batch_data(
         Param&, std::pair<Entity, sync_world::MainEntity> entity) const {
-        return std::pair<BufferData, std::optional<CompareData>>{entity.second.entity.index, 1u};
+        return std::pair<BufferData, std::optional<CompareData>>{entity.second.id().index, 1u};
     }
 };
 
@@ -708,14 +709,14 @@ template <>
 struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
     using BufferInputData = std::uint32_t;
     std::optional<std::uint32_t> get_binned_batch_data(Res<CpuBatchSystemParam>&, sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         Res<CpuBatchSystemParam>&, sync_world::MainEntity entity) const {
-        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, 1u};
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.id().index, 1u};
     }
     std::optional<std::uint32_t> get_binned_index(Res<CpuBatchSystemParam>&, sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     void write_batch_indirect_parameters_metadata(bool indexed,
                                                   std::uint32_t output_index,
@@ -862,15 +863,15 @@ template <>
 struct epix::render::batching::GetFullBatchData<CpuBinnedBatchTestAdapter> {
     using BufferInputData = std::uint32_t;
     std::optional<std::uint32_t> get_binned_batch_data(World&, sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         World&, sync_world::MainEntity entity) const {
         return std::pair<std::uint32_t, std::optional<std::uint32_t>>{
-            entity.entity.index, entity.entity.index < 3 ? std::optional{1u} : std::optional{2u}};
+            entity.id().index, entity.id().index < 3 ? std::optional{1u} : std::optional{2u}};
     }
     std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     void write_batch_indirect_parameters_metadata(bool indexed,
                                                   std::uint32_t output_index,
@@ -908,14 +909,14 @@ template <>
 struct epix::render::batching::GetFullBatchData<GpuWrittenBinnedBatchTestAdapter> {
     using BufferInputData = std::uint32_t;
     std::optional<GpuWrittenBinnedBatchData> get_binned_batch_data(World&, sync_world::MainEntity entity) const {
-        return GpuWrittenBinnedBatchData{entity.entity.index};
+        return GpuWrittenBinnedBatchData{entity.id().index};
     }
     std::optional<std::pair<std::uint32_t, std::optional<std::uint32_t>>> get_index_and_compare_data(
         World&, sync_world::MainEntity entity) const {
-        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.entity.index, entity.entity.index};
+        return std::pair<std::uint32_t, std::optional<std::uint32_t>>{entity.id().index, entity.id().index};
     }
     std::optional<std::uint32_t> get_binned_index(World&, sync_world::MainEntity entity) const {
-        return entity.entity.index;
+        return entity.id().index;
     }
     void write_batch_indirect_parameters_metadata(bool,
                                                   std::uint32_t,
@@ -949,7 +950,7 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     const auto* bin = render_phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
     ASSERT_EQ(bin->batches.size(), 1u);
-    EXPECT_EQ(bin->batches[0].representative_entity.entity, Entity::from_index(1));
+    EXPECT_EQ(bin->batches[0].representative_entity.id(), Entity::from_index(1));
     EXPECT_EQ(bin->batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(bin->batches[0].extra_index, phase::PhaseItemExtraIndex::None);
     const auto& batch_sets = std::get<0>(render_phase.batch_sets);
@@ -1840,6 +1841,23 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
 }
 
+TEST(ExtractedInstances, MapAccessUsesLazyRanges) {
+    ExtractedInstances<EarlyExtractInstance> instances;
+    const Entity entity = Entity::from_index(42);
+    instances.insert(entity, EarlyExtractInstance{.value = 7});
+
+    static_assert(std::ranges::view<decltype(instances.iter())>);
+    static_assert(std::ranges::view<decltype(instances.iter_mut())>);
+    EXPECT_EQ(std::ranges::distance(instances.iter()), 1);
+    ASSERT_NE(instances.get(entity), nullptr);
+    EXPECT_EQ(instances.get(entity)->value, 7);
+    ASSERT_NE(instances.get_mut(entity), nullptr);
+    instances.get_mut(entity)->value = 9;
+    EXPECT_EQ(instances.get(entity)->value, 9);
+
+    EXPECT_NO_THROW(ExtractInstancesPlugin<EarlyExtractInstance>::extract_visible());
+}
+
 TEST(GlobalsPlugin, LeavesRenderFrameCountToExtraction) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);
@@ -1971,9 +1989,9 @@ TEST(ComponentUniforms, IndexAssignment) {
     const std::size_t i1                       = cu.uniforms_mut().push(view::ViewUniform{});
     // Bevy: push returns the byte offset (stride 256 here), and
     // DynamicUniformIndex stores that byte offset.
-    EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i0)}.uniform_index(), 0u);
+    EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i0)}.index(), 0u);
     // Bevy 0.18 ViewUniform is 768 bytes; stride = align_up(768, 256) = 768.
-    EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i1)}.uniform_index(), 768u);
+    EXPECT_EQ(DynamicUniformIndex<view::ViewUniform>{static_cast<std::uint32_t>(i1)}.index(), 768u);
 }
 // GpuArrayBuffer selects the storage-buffer path when the device supports
 // storage buffers and the uniform fallback otherwise (Bevy
@@ -2884,7 +2902,7 @@ TEST(RenderVisibleEntities, AccessorsMatchBevy) {
     std::size_t seen = 0;
     for (auto&& [render_entity, main_entity] : rve.iter<SomeQueryFilter>()) {
         EXPECT_EQ(render_entity.index, static_cast<std::uint32_t>(seen + 1));
-        EXPECT_EQ(main_entity.entity.index, static_cast<std::uint32_t>((seen + 1) * 10));
+        EXPECT_EQ(main_entity.id().index, static_cast<std::uint32_t>((seen + 1) * 10));
         ++seen;
     }
     EXPECT_EQ(seen, 2u);
@@ -4063,7 +4081,28 @@ static_assert(epix::render::phase::CachedRenderPipelinePhaseItem<CachedPipelineT
 struct ExtractTestResource {
     int value = 0;
 };
+
+struct ExtractComponentSource {
+    int value = 0;
+};
+
+struct ExtractComponentOutput {
+    int value = 0;
+};
 }  // namespace
+
+template <>
+struct epix::render::ExtractComponent<ExtractComponentSource> {
+    using QueryData   = const ExtractComponentSource&;
+    using QueryFilter = epix::ecs::Filter<>;
+    using Out         = ExtractComponentOutput;
+
+    static std::optional<Out> extract_component(QueryData source) {
+        if (source.value < 0) return std::nullopt;
+        return Out{source.value};
+    }
+};
+static_assert(epix::render::ExtractComponentImpl<ExtractComponentSource>);
 
 // SetItemPipeline: ANY pipeline-cache miss (not ready / invalid id / creation
 // failure) is a Skip — the item is simply not drawn this frame (Bevy
@@ -4108,6 +4147,27 @@ TEST(ExtractResource, InsertsWhenMissingAndUpdatesWhenModified) {
     main_world.resource_mut<ExtractTestResource>().value = 9;
     ASSERT_TRUE(system->run({}, render_world).has_value());
     EXPECT_EQ(render_world.resource<ExtractTestResource>().value, 9);
+}
+
+TEST(ExtractComponent, UsesRenderEntityQueryAndBatchInsertion) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    const auto render_entity = render_world.spawn().id();
+    const auto main_entity = main_world
+                                 .spawn(ExtractComponentSource{7}, sync_world::RenderEntity{render_entity})
+                                 .id();
+
+    auto system = make_system_unique(epix::render::extract_component_system<ExtractComponentSource>);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    auto output = render_world.get_entity(render_entity)->get<ExtractComponentOutput>();
+    ASSERT_TRUE(output.has_value());
+    EXPECT_EQ(output->get().value, 7);
+
+    main_world.get_entity_mut(main_entity)->get_mut<ExtractComponentSource>()->get_mut().value = -1;
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    EXPECT_FALSE(render_world.get_entity(render_entity)->contains<ExtractComponentOutput>());
 }
 
 namespace {

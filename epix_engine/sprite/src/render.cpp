@@ -376,7 +376,7 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
             }
             if (const auto& visible = visible_entities.template get<Sprite>();
                 std::ranges::find(visible, sprite.source_entity,
-                                  [](const auto& entity) { return entity.second.entity; }) == visible.end()) {
+                                  [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
                 continue;
             }
 
