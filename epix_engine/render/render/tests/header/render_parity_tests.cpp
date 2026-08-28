@@ -56,8 +56,7 @@ struct epix::render::RenderAsset<IncrementalExtractSource> {
         if (source.fail_extraction) {
             return std::unexpected(ExtractError{"incremental extraction rejected"});
         }
-        const bool full_snapshot = reason == RenderAssetExtractionReason::Added ||
-                                   reason == RenderAssetExtractionReason::Reextract || previous_asset == nullptr;
+        const bool full_snapshot = reason == RenderAssetExtractionReason::Added || previous_asset == nullptr;
         return ExtractedAsset{
             .values             = full_snapshot ? source.resident_data : source.dirty_region,
             .full_snapshot      = full_snapshot,
@@ -2596,7 +2595,7 @@ TEST(RenderAsset, ExtractsCompactPayloadFromDualWorldSource) {
     EXPECT_EQ(source.resident_data.front(), 7u);
 }
 
-TEST(RenderAsset, ReextractsCompletePayloadAfterDeviceRecovery) {
+TEST(RenderAsset, NewAssetExtractsCompletePayload) {
     IncrementalExtractSource source{
         .resident_data = std::vector<std::uint32_t>(4096, 7),
         .dirty_region  = {17, 19, 23},
@@ -2604,82 +2603,14 @@ TEST(RenderAsset, ReextractsCompletePayloadAfterDeviceRecovery) {
     RenderAsset<IncrementalExtractSource> asset;
     const auto payload = asset.extract(source,
                                        epix::assets::AssetId<IncrementalExtractSource>::invalid(),
-                                       RenderAssetExtractionReason::Reextract,
+                                       RenderAssetExtractionReason::Added,
                                        nullptr);
 
     ASSERT_TRUE(payload.has_value());
     EXPECT_EQ(payload->values, source.resident_data);
     EXPECT_TRUE(payload->full_snapshot);
-    EXPECT_EQ(payload->reason, RenderAssetExtractionReason::Reextract);
+    EXPECT_EQ(payload->reason, RenderAssetExtractionReason::Added);
     EXPECT_FALSE(payload->had_previous_asset);
-}
-
-TEST(RenderAsset, ReextractRequestRebuildsOneAssetWithoutAnAssetEvent) {
-    epix::ecs::World main_world(2);
-    epix::ecs::World render_world(2);
-    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
-    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
-
-    main_world.insert_resource(IncrementalExtractIdShiftA{});
-    main_world.insert_resource(IncrementalExtractIdShiftB{});
-    main_world.insert_resource(IncrementalExtractIdShiftC{});
-    main_world.insert_resource(epix::assets::Assets<IncrementalExtractSource>{});
-    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
-    main_world.insert_resource(RenderAssetReextract<IncrementalExtractSource>{});
-    const auto handle = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>().emplace(
-        IncrementalExtractSource{.resident_data = {7, 11, 13}, .dirty_region = {17}});
-    render_world.resource_mut<RenderAssets<IncrementalExtractSource>>().emplace(handle.id(), std::vector<std::uint32_t>{1});
-    main_world.resource_mut<RenderAssetReextract<IncrementalExtractSource>>().request(handle.id());
-
-    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
-    system->initialize(render_world);
-    ASSERT_TRUE(system->run({}, render_world).has_value());
-
-    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
-    ASSERT_EQ(extracted.extracted.size(), 1u);
-    EXPECT_EQ(extracted.extracted.front().first, handle.id());
-    EXPECT_EQ(extracted.extracted.front().second.values, (std::vector<std::uint32_t>{7, 11, 13}));
-    EXPECT_EQ(extracted.extracted.front().second.reason, RenderAssetExtractionReason::Reextract);
-    EXPECT_TRUE(extracted.extracted.front().second.full_snapshot);
-    EXPECT_TRUE(extracted.added.contains(handle.id()));
-    EXPECT_TRUE(extracted.modified.empty());
-    const auto& requests = main_world.resource<RenderAssetReextract<IncrementalExtractSource>>();
-    EXPECT_FALSE(requests.all);
-    EXPECT_TRUE(requests.ids.empty());
-}
-
-TEST(RenderAsset, ReextractAllRequestRebuildsEveryAsset) {
-    epix::ecs::World main_world(2);
-    epix::ecs::World render_world(2);
-    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
-    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
-
-    main_world.insert_resource(IncrementalExtractIdShiftA{});
-    main_world.insert_resource(IncrementalExtractIdShiftB{});
-    main_world.insert_resource(IncrementalExtractIdShiftC{});
-    main_world.insert_resource(epix::assets::Assets<IncrementalExtractSource>{});
-    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
-    main_world.insert_resource(RenderAssetReextract<IncrementalExtractSource>{});
-    auto& assets = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>();
-    const auto first = assets.emplace(IncrementalExtractSource{.resident_data = {1, 2}, .dirty_region = {3}}).id();
-    const auto second = assets.emplace(IncrementalExtractSource{.resident_data = {5, 8}, .dirty_region = {13}}).id();
-    main_world.resource_mut<RenderAssetReextract<IncrementalExtractSource>>().request_all();
-
-    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
-    system->initialize(render_world);
-    ASSERT_TRUE(system->run({}, render_world).has_value());
-
-    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
-    ASSERT_EQ(extracted.extracted.size(), 2u);
-    EXPECT_TRUE(extracted.added.contains(first));
-    EXPECT_TRUE(extracted.added.contains(second));
-    for (const auto& [id, payload] : extracted.extracted) {
-        EXPECT_EQ(payload.reason, RenderAssetExtractionReason::Reextract);
-        EXPECT_TRUE(payload.full_snapshot);
-        EXPECT_TRUE(id == first || id == second);
-    }
 }
 
 TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
