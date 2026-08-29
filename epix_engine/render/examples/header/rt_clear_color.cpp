@@ -108,9 +108,15 @@ struct ClearGraphPlugin {
 
 // Animates the render-world ClearColor (the one extract_cameras reads) from
 // the extracted render-world Time. Runs in the Render schedule each frame.
-void animate_clear_color(ResMut<::epix::camera::ClearColor> color, Res<time::Time<>> time) {
+void animate_clear_color(std::optional<ResMut<::epix::camera::ClearColor>> color, Res<time::Time<>> time) {
+    // ExtractResourcePlugin inserts the render-world resource through the
+    // Extract schedule's deferred commands. On its first frame it is not
+    // available until the later ExtractCommands set, so simply wait for the
+    // following render update instead of turning that normal timing into a
+    // scheduler validation error.
+    if (!color) return;
     const float t = time->elapsed_secs();
-    auto& c       = *color;
+    auto& c       = *color.value();
     c.r           = 0.5f + 0.5f * std::sin(t * 0.8f);
     c.g           = 0.5f + 0.5f * std::sin(t * 1.3f + 2.0f);
     c.b           = 0.5f + 0.5f * std::sin(t * 1.9f + 4.0f);

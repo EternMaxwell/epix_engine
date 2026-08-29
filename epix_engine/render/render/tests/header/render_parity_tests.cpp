@@ -3097,6 +3097,18 @@ TEST(WgpuSettings, DefaultsAndEnvOverrides) {
     EXPECT_EQ(settings.dx12_shader_compiler, wgpu::Dx12Compiler::eFxc);
     EXPECT_EQ(settings.gles3_minor_version, wgpu::Gles3MinorVersion::eAutomatic);
     EXPECT_TRUE(settings.instance_flags.contains(InstanceFlags::ValidationIndirectCall));
+    EXPECT_EQ(settings.memory_hints, MemoryHints::performance());
+    EXPECT_EQ(settings.instance_memory_budget_thresholds, MemoryBudgetThresholds{});
+
+    const auto manual_hints = MemoryHints::manual(4ull << 20, 64ull << 20);
+    ASSERT_TRUE(std::holds_alternative<MemoryHints::Manual>(manual_hints.value));
+    EXPECT_EQ(std::get<MemoryHints::Manual>(manual_hints.value).suballocated_device_memory_block_size_start,
+              4ull << 20);
+    EXPECT_EQ(std::get<MemoryHints::Manual>(manual_hints.value).suballocated_device_memory_block_size_end,
+              64ull << 20);
+    EXPECT_EQ(MemoryHints::memory_usage(), MemoryHints{MemoryHints::MemoryUsage{}});
+    const MemoryBudgetThresholds budget_thresholds{.for_resource_creation = 85, .for_device_loss = 95};
+    EXPECT_EQ(budget_thresholds, (MemoryBudgetThresholds{.for_resource_creation = 85, .for_device_loss = 95}));
 
     // No env vars set: defaults remain untouched.
     EXPECT_EQ(settings.power_preference, wgpu::PowerPreference::eHighPerformance);

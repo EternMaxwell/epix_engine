@@ -233,10 +233,13 @@ void RenderPlugin::attach(App& app) {
     if (auto* settings = render_creation.automatic_settings()) {
         // TEMPORARY wgpu-native workaround: this vendored runtime corrupts an
         // InstanceExtras chain when an instance owns a window surface. Keep
-        // WgpuSettings Bevy-shaped, but construct the native instance with
-        // its defaults until that runtime bug is fixed. The renderer-local
-        // Vulkan adapter coercion below is still what preserves Slang's
-        // SPIR-V passthrough requirement.
+        // WgpuSettings is Bevy-shaped, but construct the native instance with
+        // its defaults until that runtime bug is fixed. The current native
+        // v25 C API also has no `memory_budget_thresholds` instance field or
+        // `memory_hints` device field. Keep both settings in the public
+        // creation path so updating that API only replaces this local native
+        // descriptor construction. The renderer-local Vulkan adapter coercion
+        // below is still what preserves Slang's SPIR-V passthrough requirement.
         instance = wgpu::createInstance();
         spdlog::debug("[render] WebGPU instance created.");
         wgpu::Surface surface = app.world()

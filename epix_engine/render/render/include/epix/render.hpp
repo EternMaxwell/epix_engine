@@ -230,6 +230,52 @@ EPIX_EXPORT struct InstanceFlags {
     std::uint32_t bits_ = 0;
 };
 
+/** @brief Device-allocation policy hints (Bevy/wgpu `MemoryHints`).
+ *
+ * `Manual` preserves wgpu's half-open range for progressively sized,
+ * sub-allocated device-memory blocks.  Backends are allowed to ignore the
+ * hint. */
+EPIX_EXPORT struct MemoryHints {
+    struct Performance {
+        friend constexpr bool operator==(Performance, Performance) = default;
+    };
+    struct MemoryUsage {
+        friend constexpr bool operator==(MemoryUsage, MemoryUsage) = default;
+    };
+    struct Manual {
+        std::uint64_t suballocated_device_memory_block_size_start = 0;
+        std::uint64_t suballocated_device_memory_block_size_end   = 0;
+
+        friend constexpr bool operator==(Manual, Manual) = default;
+    };
+
+    /** @brief Performance is wgpu's default allocation policy. */
+    std::variant<Performance, MemoryUsage, Manual> value{Performance{}};
+
+    constexpr MemoryHints() = default;
+    constexpr MemoryHints(Performance hint) : value(hint) {}
+    constexpr MemoryHints(MemoryUsage hint) : value(hint) {}
+    constexpr MemoryHints(Manual hint) : value(hint) {}
+
+    [[nodiscard]] static constexpr MemoryHints performance() noexcept { return MemoryHints{Performance{}}; }
+    [[nodiscard]] static constexpr MemoryHints memory_usage() noexcept { return MemoryHints{MemoryUsage{}}; }
+    [[nodiscard]] static constexpr MemoryHints manual(std::uint64_t start, std::uint64_t end) noexcept {
+        return MemoryHints{Manual{start, end}};
+    }
+
+    friend constexpr bool operator==(const MemoryHints&, const MemoryHints&) = default;
+};
+
+/** @brief Backend memory-budget pressure thresholds (Bevy/wgpu
+ * `MemoryBudgetThresholds`).  Values are percentages of the native memory
+ * budget; `std::nullopt` leaves the corresponding threshold unspecified. */
+EPIX_EXPORT struct MemoryBudgetThresholds {
+    std::optional<std::uint8_t> for_resource_creation;
+    std::optional<std::uint8_t> for_device_loss;
+
+    friend constexpr bool operator==(const MemoryBudgetThresholds&, const MemoryBudgetThresholds&) = default;
+};
+
 /**
  * @brief Renderer configuration for adapter/device creation (Bevy
  * WgpuSettings). The env vars
@@ -303,6 +349,12 @@ EPIX_EXPORT struct WgpuSettings {
     wgpu::Gles3MinorVersion gles3_minor_version = wgpu::Gles3MinorVersion::eAutomatic;
     /** @brief wgpu instance debug/validation flags. */
     InstanceFlags instance_flags = InstanceFlags::from_build_config();
+    /** @brief Preferred device-memory allocation policy (Bevy
+     * `WgpuSettings::memory_hints`). */
+    MemoryHints memory_hints;
+    /** @brief Instance memory-budget pressure thresholds (Bevy
+     * `WgpuSettings::instance_memory_budget_thresholds`). */
+    MemoryBudgetThresholds instance_memory_budget_thresholds;
 
     /** @brief Matches Bevy `WgpuSettings::default`: environment overrides
      * participate in construction, including WebGL2's lower default limits. */
