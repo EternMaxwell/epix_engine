@@ -1,0 +1,123 @@
+# Bevy 0.18 render/camera match registry
+
+This is the authoritative, tracked registry for matching Epix render and
+camera with `bevy_render` and `bevy_camera` 0.18.  It records the original
+audit as supplied by the project owner and the project-specific decisions
+which qualify that match.
+
+The original IDs are stable: a newly discovered mismatch is appended in a
+separate section and must not be numbered as though it were part of R1-R18.
+No item is considered complete from a broad module-level claim alone; its
+listed interface and implementation behavior must be checked against Bevy.
+
+## Status terms
+
+| Status | Meaning |
+| --- | --- |
+| FIXED | The relevant Epix interface and behavior now match Bevy, with tests. |
+| OPEN | A known mismatch still needs an approved implementation checkpoint. |
+| INTENTIONAL | An owner-approved Epix divergence. |
+| EXTERNAL | Match is blocked by the current native wgpu API; retain the integration point. |
+| DEFERRED | Out of the current feature scope, but must be revisited when its integration point is used. |
+
+## Project decisions that constrain the match
+
+- `PipelineServer` is the intentional `PipelineCache` replacement.  It has
+  shared state because it lives in both main and render worlds.  The app
+  scheduler guarantees that const and mutable access cannot occur at once;
+  mutation is permitted during extraction.  Its default compilation is
+  asynchronous; callers may opt into synchronous creation.
+- Slang, rather than WGSL, and direct wgpu resource use are accepted
+  divergences.  Direct resource ownership must not conceal unrelated Bevy
+  API/behavior mismatches.
+- Epix's parallel render-subapp execution is the accepted replacement for
+  Bevy pipelined rendering.  It does not automatically satisfy a separate
+  Bevy render-graph command-generation API.
+- General camera updates belong to Epix's public camera plugin so cameras can
+  work without the render module.  Renderer-specific extraction/graph work
+  remains in the render module.
+- Until wgpu-native accepts Slang-produced SPIR-V without the current bug,
+  renderer creation forces the chosen backend to Vulkan in implementation
+  code.  Remove only those local workaround lines once the upstream problem
+  is fixed; otherwise keep Bevy-shaped settings and behavior.
+- `RenderAsset::asset_usage` deliberately has no default.  Other render-asset
+  behavior, including fallible preparation/retry and extraction results,
+  should match Bevy.
+- Bindless support is intentionally absent while the current wgpu-native C
+  API lacks the required functionality.
+- `ExtractedAsset` compact extraction is an intentional Epix extension.
+  There is no `Reextract` reason or extension: re-extracting unchanged input
+  has no useful semantic meaning.
+
+## Original R1-R18 audit
+
+### Owner-directed resolution requirements
+
+These requirements are authoritative for the corresponding original IDs,
+including where the current native wgpu API lacks an implementation call.
+
+| IDs | Required resolution |
+| --- | --- |
+| R1 | Current wgpu-native C API has no bindless support, so do not support bindless now. |
+| R2-R6 | Match Bevy. |
+| R7 | The lack of a default `asset_usage` is intentional. `prepare_asset` must match Bevy. The separated extract API returns `std::expected`; extract and prepare may have different errors, but tagged errors use `std::variant`, never an enum-kind payload. |
+| R8 | Match Bevy, updating as necessary for separated extraction and preparation. |
+| R9 | Intentional Epix feature; add the missing supporting counterpart where needed. |
+| R10 | Match Bevy. |
+| R11 | Keep general camera update in the public camera plugin so it works without render. |
+| R12 | Match Bevy. |
+| R13 | Match Bevy; app/ECS support for fallible system return values is part of the required solution. |
+| R14 | Match Bevy. |
+| R15 | Match Bevy even though the current wgpu API does not expose the final backend call. |
+| R16 | Match Bevy. |
+| R17 | Match Bevy. |
+| R18 | Not the current main focus, but preserve integration points needed by other work. |
+
+| ID | Area | Status | Current evidence / required next action |
+| --- | --- | --- | --- |
+| R1 | Bindless | INTENTIONAL | Not supported until the native wgpu C API exposes the needed functionality. |
+| R2 | GPU struct layout | FIXED | Layout-aware `ShaderType` serialization replaced raw standard-layout `memcpy`; `RawBufferElementInfo` is explicitly documented as a temporary C++26-reflection workaround. |
+| R3 | GPU readback | FIXED | `ReadbackComplete::to_shader_type` uses the shader-layout reader rather than raw `memcpy`, with readback coverage. |
+| R4 | Render-graph errors and slots | FIXED | Typed graph run errors, slot/input/subgraph validation, and fallible node execution are preserved through the runner. |
+| R5 | View nodes | FIXED | `ViewNodeRunner` owns and updates `QueryState<N::ViewQuery>`, supplies the read-only matching query item, and skips an unset/non-matching view. Automated coverage exercises both branches; the binned-phase renderer window is a direct `ViewNodeRunner` visual example. |
+| R6 | Render-graph parallel command work | OPEN | `RenderContext` has immediate command-buffer insertion but no Bevy-equivalent `add_command_buffer_generation_task`.  Existing render-subapp parallelism does not close this item. |
+| R7 | Render-asset base contract | INTENTIONAL | No-default `asset_usage` is approved.  Fallible preparation/retry behavior is matched and must remain so. |
+| R8 | Render-asset extraction semantics | FIXED | Extraction failures log/continue and successfully extracted modified assets are included in `added`. |
+| R9 | Compact asset extraction | INTENTIONAL | `ExtractedAsset` extension is retained; `Reextract` support and reason were removed. |
+| R10 | Wgpu settings API | OPEN | Add Bevy-shaped settings/API and preserve their creation path now. Current native wgpu v25 lacks the final memory-hint, memory-budget-threshold, and newer instance-flag calls, so isolate those calls for later activation rather than treating the item as complete. |
+| R11 | Camera-system ownership | INTENTIONAL | General update remains in `epix::camera` so it works without renderer attachment; render-side work remains renderer-owned. |
+| R12 | Camera projection contract | OPEN | The `CameraProjection` concept still requires near/far getters/setters and frustum corners, and `Projection::is_perspective()` is absent.  Match the Bevy contract without broad `#undef` workarounds. |
+| R13 | Camera update logic | OPEN | `camera_system` is still `void`, projection-type templated, and updates every valid camera.  It needs Bevy-equivalent fallible/change-sensitive behavior. |
+| R14 | Manual texture-view helpers | OPEN | `ManualTextureView::with_default_format` and Bevy-shaped wrapper/collection access are absent.  Handle ownership remains correctly camera-side and views render-side. |
+| R15 | Window maximum frame latency | OPEN | Add the Bevy-shaped window/extracted-window setting and configuration flow. Current native wgpu lacks the final surface-configuration call, so retain an isolated integration point rather than a hard-coded public behavior. |
+| R16 | Surface usage | FIXED | Window surfaces no longer unconditionally request `COPY_SRC`; usage follows the Bevy-aligned configuration. |
+| R17 | Screenshot integration | OPEN | Screenshot behavior exists, but `ScreenshotPlugin` is still separate and not installed by `WindowRenderPlugin` as in Bevy. |
+| R18 | Render diagnostics | DEFERRED | Render diagnostics/timestamp instrumentation and Tracy/erased-asset diagnostic plugin parity are not the current focus.  Preserve feature/integration boundaries. |
+
+The source audit supplied R1 through R18 only.  There is no original R19;
+future findings belong below and receive a separate `N*` identifier.
+
+## Subsequent findings
+
+| ID | Area | Status | Notes |
+| --- | --- | --- | --- |
+| N1 | Collection/range API parity | FIXED | Bevy iterator-style APIs use C++ lazy ranges or spans/views rather than eager vectors/references where Bevy borrows/slices. |
+| N2 | Binned phase retained identity | FIXED | Cached entities and representative pairs preserve `MainEntity`; covered by native visual captures. |
+| N3 | Binned `IndexMap` / `RenderBin` removal | OPEN | Epix preserves entry order and reindexes after removal. Bevy uses `IndexMap::swap_remove` / `swap_remove_index` for bins, batch sets, cached entity keys, and `RenderBin` entities. The earlier unapproved implementation was reverted, so this mismatch remains open and needs focused tests for moved-entry index bookkeeping and stale-entity sweeping. |
+| N4 | Mutable extraction parameters | INTENTIONAL | `Extract<ResMut<...>>` is valid when scheduler access proves exclusivity; this is not a parity defect and must not be “fixed” by rejecting mutable extraction. |
+
+## Completion and verification policy
+
+- Work one approved checkpoint at a time.  Before committing, present the
+  concrete changes and verification results for review; commit only after
+  approval.  A meaningful checkpoint may be committed before every registry
+  row is complete.
+- Each new render/camera feature needs automated tests and a proper runnable
+  example.  Earlier session features are held to the same standard.
+- Visual verification captures the actual rendering window, never the
+  terminal.  Capture several frames/runs to check both rendering and
+  stability; a green success indicator alone is not evidence of correct
+  pixels.
+- Rebuild/reconfigure as needed after interface changes.  If CMake download
+  or configuration fails transiently, retry it.
+- Do not track runtime artifacts such as `imgui.ini`.

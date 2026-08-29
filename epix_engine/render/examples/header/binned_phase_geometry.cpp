@@ -238,24 +238,18 @@ fn fragmentMain() -> @location(0) vec4<f32> {
 constexpr struct BinnedGeometryGraphLabel {
 } kBinnedGeometryGraph;
 
-struct BinnedGeometryNode : render::graph::Node {
-    std::optional<QueryState<epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>>
-        views;
+struct BinnedGeometryNode {
+    using ViewQuery = epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>;
+
     std::shared_ptr<binned_phase_geometry::PipelineState> pipeline =
         std::make_shared<binned_phase_geometry::PipelineState>();
-    render::phase::BinnedRenderPhase<Item> phase;
+    render::phase::BinnedRenderPhase<Item> phase{render::batching::GpuPreprocessingMode::None};
     wgpu::ShaderModule shader_module;
     wgpu::ShaderModule preprocess_shader_module;
     std::uint32_t preprocess_work_item_count = 0;
     bool prepared                            = false;
 
-    void update(World& world) override {
-        if (!views) {
-            views = world.try_query<
-                epix::ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>();
-        } else {
-            views->update_archetypes(world);
-        }
+    void update(World& world) {
         if (prepared) return;
 
         render::phase::DrawFunctions<Item> draw_functions;
@@ -406,12 +400,10 @@ struct BinnedGeometryNode : render::graph::Node {
 
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& context,
                                                          render::graph::RenderContext& render_context,
-                                                         const World& world) override {
-        if (!views || !shader_module || !preprocess_shader_module) return {};
-        const auto view =
-            views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(context.view_entity());
-        if (!view) return {};
-        const auto& target = std::get<1>(*view);
+                                                         const typename QueryData<ViewQuery>::Item& view,
+                                                         const World& world) const {
+        if (!shader_module || !preprocess_shader_module) return {};
+        const auto& target = std::get<1>(view);
         if (!pipeline->pipeline || pipeline->format != target.output_attachment.view_format) {
             const auto format = target.output_attachment.view_format;
             auto layout       = world.resource<wgpu::Device>().createPipelineLayout(
@@ -465,12 +457,14 @@ struct BinnedGeometryPlugin {
     void attach(App& app) {
         auto render_app = app.get_sub_app_mut(render::Render);
         if (!render_app) return;
+        auto& render_world = render_app->get().world_mut();
         render::graph::RenderGraph graph;
         constexpr struct BinnedGeometryNodeLabel {
         } kBinnedGeometryNode;
-        graph.add_node(render::graph::NodeLabel(kBinnedGeometryNode), BinnedGeometryNode{});
-        render_app->get().world_mut().resource_mut<render::graph::RenderGraph>().add_sub_graph(
-            render::graph::GraphLabel(kBinnedGeometryGraph), std::move(graph));
+        graph.add_node(render::graph::NodeLabel(kBinnedGeometryNode),
+                       render::graph::ViewNodeRunner{BinnedGeometryNode{}, render_world});
+        render_world.resource_mut<render::graph::RenderGraph>().add_sub_graph(render::graph::GraphLabel(kBinnedGeometryGraph),
+                                                                                std::move(graph));
     }
 };
 

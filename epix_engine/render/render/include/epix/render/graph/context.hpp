@@ -175,17 +175,23 @@ EPIX_EXPORT struct RenderContext {
 
 /**
  * @brief A render graph node that runs on a specific view entity (Bevy
- * `ViewNode`). The `run` receives the view entity associated with the
- * current graph execution.
+ * `ViewNode`). A view node declares a read-only query data type and receives
+ * the matching item for the view entity associated with the current graph
+ * execution.
  */
 EPIX_EXPORT template <typename T>
-concept ViewNode = std::derived_from<T, Node> && requires(T& node,
-                                                          GraphContext& graph,
-                                                          RenderContext& render_ctx,
-                                                          epix::ecs::World& world,
-                                                          epix::ecs::Entity view_entity) {
-    { node.run(graph, render_ctx, world, view_entity) } -> std::same_as<std::expected<void, NodeRunError>>;
-    { node.update(world) };
+concept ViewNode = requires {
+    typename T::ViewQuery;
+} && epix::ecs::readonly_query_data<typename T::ViewQuery> && requires(
+    T& node,
+    const T& readonly_node,
+    GraphContext& graph,
+    RenderContext& render_ctx,
+    epix::ecs::World& mutable_world,
+    const epix::ecs::World& world,
+    typename epix::ecs::QueryData<typename T::ViewQuery>::Item view) {
+    { node.update(mutable_world) } -> std::same_as<void>;
+    { readonly_node.run(graph, render_ctx, view, world) } -> std::same_as<std::expected<void, NodeRunError>>;
 };
 
 /**
@@ -194,26 +200,35 @@ concept ViewNode = std::derived_from<T, Node> && requires(T& node,
  */
 template <ViewNode N>
 struct ViewNodeRunner : public Node {
+    /** @brief Cached Bevy-style query state for the view entity. It is mutable
+     * only because `QueryState::get_manual` is not yet const; `run` never
+     * updates archetypes. */
+    mutable epix::ecs::QueryState<typename N::ViewQuery> view_query;
     /** @brief The wrapped view node. */
     N node;
 
-    template <typename... Args>
-    explicit ViewNodeRunner(Args&&... args) : node(std::forward<Args>(args)...) {}
+    /** @brief Construct a view-node runner and cache its query state (Bevy
+     * `ViewNodeRunner::new`). */
+    explicit ViewNodeRunner(N value, epix::ecs::World& world)
+        : view_query(world.template query<typename N::ViewQuery>()), node(std::move(value)) {}
 
-    std::vector<SlotInfo> input() override { return node.input(); }
-    std::vector<SlotInfo> output() override { return node.output(); }
-    void update(epix::ecs::World& world) override { node.update(world); }
+    /** @brief Update cached archetypes before the node's own per-frame update
+     * (Bevy `ViewNodeRunner::update`). */
+    void update(epix::ecs::World& world) override {
+        view_query.update_archetypes(world);
+        node.update(world);
+    }
 
     std::expected<void, NodeRunError> run(GraphContext& graph,
                                           RenderContext& render_ctx,
                                           const epix::ecs::World& world) override {
-        // Bevy ViewNodeRunner::run (node.rs:413-425): when the view entity has
-        // no matching component (here: the view entity is unset or does not
-        // exist), the node is skipped instead of failing.
+        // Bevy ViewNodeRunner::run (node.rs:404-425): when the view entity has
+        // no matching query item, the node is skipped instead of failing.
         auto view_entity = graph.get_view_entity();
         if (!view_entity) return {};
-        if (!world.get_entity(*view_entity).has_value()) return {};
-        return node.run(graph, render_ctx, world, *view_entity);
+        auto view = view_query.get_manual(world, *view_entity);
+        if (!view) return {};
+        return node.run(graph, render_ctx, *view, world);
     }
 };
 

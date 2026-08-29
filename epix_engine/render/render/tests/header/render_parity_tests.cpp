@@ -2179,6 +2179,27 @@ struct FailingGraphNode : graph::Node {
         return std::unexpected(graph::NodeRunError::DrawError);
     }
 };
+struct ViewNodeTestComponent {
+    int value = 0;
+};
+struct QueryingViewNode {
+    using ViewQuery = const ViewNodeTestComponent&;
+
+    int* update_count = nullptr;
+    int* run_count    = nullptr;
+    int* seen_value   = nullptr;
+
+    void update(epix::ecs::World&) { ++*update_count; }
+    std::expected<void, graph::NodeRunError> run(graph::GraphContext&,
+                                                 graph::RenderContext&,
+                                                 const ViewNodeTestComponent& view,
+                                                 const epix::ecs::World&) const {
+        ++*run_count;
+        *seen_value = view.value;
+        return {};
+    }
+};
+static_assert(graph::ViewNode<QueryingViewNode>);
 }  // namespace
 
 // Bevy graph.rs:98-104 PANICS when set_input is called twice.
@@ -2216,6 +2237,32 @@ TEST(RenderGraphRunner, ReportsMissingGraphInput) {
     ASSERT_NE(error, nullptr);
     EXPECT_EQ(error->slot_index, 0u);
     EXPECT_EQ(error->slot_name, "source");
+}
+
+// Bevy ViewNodeRunner owns a QueryState for ViewNode::ViewQuery, refreshes it
+// in update(), and skips a view entity that does not match the query.
+TEST(ViewNodeRunner, UsesTypedViewQueryAndSkipsNonMatchingViews) {
+    epix::ecs::World world(WorldId(112));
+    const Entity view_entity = world.spawn().id();
+    int update_count         = 0;
+    int run_count            = 0;
+    int seen_value           = -1;
+
+    graph::RenderGraph graph;
+    graph.add_node(GraphTestNodeC{}, graph::ViewNodeRunner{QueryingViewNode{&update_count, &run_count, &seen_value}, world});
+    graph.update(world);
+
+    graph::RenderContext context(wgpu::Device{});
+    EXPECT_TRUE(graph::RenderGraphRunner::run_graph(graph, std::nullopt, context, world, {}, view_entity).has_value());
+    EXPECT_EQ(update_count, 1);
+    EXPECT_EQ(run_count, 0);
+
+    world.entity_mut(view_entity).insert(ViewNodeTestComponent{42});
+    graph.update(world);
+    EXPECT_TRUE(graph::RenderGraphRunner::run_graph(graph, std::nullopt, context, world, {}, view_entity).has_value());
+    EXPECT_EQ(update_count, 2);
+    EXPECT_EQ(run_count, 1);
+    EXPECT_EQ(seen_value, 42);
 }
 
 // Bevy graph.rs:135-142: add_node with a duplicate label REPLACES the node.
