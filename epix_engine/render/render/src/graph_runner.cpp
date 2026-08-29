@@ -21,7 +21,7 @@ std::expected<void, RenderGraphRunnerError> RenderGraphRunner::run(
     // finalize the command encoder
     if (finalizer) finalizer(render_context.command_encoder());
     // submit generated cmd buffers
-    auto command_buffers = render_context.finish();
+    auto command_buffers = std::move(render_context).finish();
     if (command_buffers.size()) queue.submit(command_buffers);
     return {};
 }

@@ -24,7 +24,10 @@ namespace sorted_phase_geometry {
 
 struct Item {
     Entity render_entity{};
-    render::sync_world::MainEntity main{};
+    // MainEntity intentionally has no default constructor. A placeholder keeps
+    // this visual-test phase item aggregate-initializable until it is populated
+    // with the corresponding main-world entity below.
+    render::sync_world::MainEntity main{Entity::PLACEHOLDER};
     render::CachedPipelineId pipeline_id{};
     render::phase::DrawFunctionId draw_id{};
     std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};

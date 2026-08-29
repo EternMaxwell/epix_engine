@@ -2,10 +2,18 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <atomic>
+#include <chrono>
 #include <cstring>
+#include <future>
 #include <ranges>
+#include <thread>
+#include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/render.hpp>
+#include <epix/time.hpp>
 #include <type_traits>
 
 using namespace epix::ecs;
@@ -2265,6 +2273,51 @@ TEST(ViewNodeRunner, UsesTypedViewQueryAndSkipsNonMatchingViews) {
     EXPECT_EQ(seen_value, 42);
 }
 
+// Bevy RenderContext defers command-buffer generators until finish(), runs
+// them through ComputeTaskPool, and waits for all of them. Two generators wait
+// for one another here: reaching both proves they were not executed eagerly
+// and that finish() dispatched them in parallel rather than serially.
+TEST(RenderContext, DefersAndParallelizesCommandBufferGenerationTasks) {
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(FrameCountPlugin{});
+    try {
+        RenderPlugin{}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+
+    graph::RenderContext context(app.world().resource<wgpu::Device>().clone());
+    std::atomic<unsigned> started{0};
+    std::atomic<bool> release{false};
+    const auto task = [&started, &release](wgpu::Device) {
+        started.fetch_add(1, std::memory_order_release);
+        while (!release.load(std::memory_order_acquire)) std::this_thread::yield();
+        return wgpu::CommandBuffer{};
+    };
+    context.add_command_buffer_generation_task(task);
+    context.add_command_buffer_generation_task(task);
+    EXPECT_EQ(started.load(std::memory_order_acquire), 0u);
+
+    auto finish =
+        std::async(std::launch::async, [context = std::move(context)]() mutable { return std::move(context).finish(); });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    while (started.load(std::memory_order_acquire) != 2 && std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::yield();
+    }
+    const bool ran_in_parallel = started.load(std::memory_order_acquire) == 2;
+    release.store(true, std::memory_order_release);
+
+    const auto command_buffers = finish.get();
+    EXPECT_TRUE(ran_in_parallel);
+    EXPECT_EQ(command_buffers.size(), 2u);
+}
+
 // Bevy graph.rs:135-142: add_node with a duplicate label REPLACES the node.
 TEST(RenderGraph, AddNodeReplaces) {
     graph::RenderGraph g;
@@ -3533,13 +3586,42 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapt
     static void reset() { g_erased_retry_already_retried = false; }
 };
 
-// Resource ids are per-world dense ids. The extract systems below take BOTH a
-// render-world ResMut and main-world Extract<Res> params; the shared access
-// set indexes by those per-world ids, so the main world's ids must not overlap
-// the render world's (here: ExtractedWorld=0, ExtractedAssets=1). Registering
-// two dummy resources first shifts the main world's Assets/Events ids to 2/3.
-struct ErasedTestIdShiftA {};
-struct ErasedTestIdShiftB {};
+struct ExtractAccessSource {
+    int value = 0;
+};
+
+TEST(Extract, UsesExtractedWorldProxyAccessForReadAndMutation) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    main_world.insert_resource(ExtractAccessSource{42});
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+
+    std::vector<bool> observed_changes;
+    auto read_extract = make_system_unique([&observed_changes](epix::app::Extract<epix::ecs::Res<ExtractAccessSource>> source) {
+        observed_changes.push_back(source.is_modified());
+    });
+    auto write_extract = make_system_unique([](epix::app::Extract<epix::ecs::ResMut<ExtractAccessSource>> source) {
+        source->value = 43;
+    });
+    auto direct_main_world = make_system_unique([](epix::ecs::ResMut<epix::app::ExtractedWorld>) {});
+
+    const auto read_access   = read_extract->initialize(render_world);
+    const auto write_access  = write_extract->initialize(render_world);
+    const auto direct_access = direct_main_world->initialize(render_world);
+
+    EXPECT_FALSE(read_access.get_conflicts(write_access).empty());
+    EXPECT_FALSE(read_access.get_conflicts(direct_access).empty());
+    EXPECT_TRUE(read_extract->run({}, render_world).has_value());
+    EXPECT_TRUE(read_extract->run({}, render_world).has_value());
+    main_world.resource_mut<ExtractAccessSource>().value = 42;
+    EXPECT_TRUE(read_extract->run({}, render_world).has_value());
+    EXPECT_TRUE(write_extract->run({}, render_world).has_value());
+    ASSERT_EQ(observed_changes.size(), 3u);
+    EXPECT_TRUE(observed_changes[0]);
+    EXPECT_FALSE(observed_changes[1]);
+    EXPECT_TRUE(observed_changes[2]);
+    EXPECT_EQ(main_world.resource<ExtractAccessSource>().value, 43);
+}
 
 // ErasedRenderAssets container accessors (Bevy erased_render_asset.rs:192-224).
 TEST(ErasedRenderAsset, ContainerAccessors) {
@@ -3608,9 +3690,6 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestAdapter>{});
-    // Shift main-world resource ids above the render world's (see note above).
-    main_world.insert_resource(ErasedTestIdShiftA{});
-    main_world.insert_resource(ErasedTestIdShiftB{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
@@ -3643,9 +3722,6 @@ TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestCloneAdapter>{});
-    // Shift main-world resource ids above the render world's (see note above).
-    main_world.insert_resource(ErasedTestIdShiftA{});
-    main_world.insert_resource(ErasedTestIdShiftB{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
@@ -3671,9 +3747,6 @@ TEST(ErasedRenderAsset, ExtractSystemSkipsMainWorldOnly) {
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestMainOnlyAdapter>{});
-    // Shift main-world resource ids above the render world's (see note above).
-    main_world.insert_resource(ErasedTestIdShiftA{});
-    main_world.insert_resource(ErasedTestIdShiftB{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 

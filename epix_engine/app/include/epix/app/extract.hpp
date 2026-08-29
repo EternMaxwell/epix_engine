@@ -38,36 +38,52 @@ struct ExtractedWorld {
 }  // namespace epix::app
 template <typename T>
 struct epix::ecs::SystemParam<epix::app::Extract<T>> : epix::ecs::SystemParam<T> {
-    using Base  = SystemParam<T>;
-    using State = typename Base::State;
-    using Item  = epix::app::Extract<typename Base::Item>;
+    using Base = SystemParam<T>;
+    using Item = epix::app::Extract<typename Base::Item>;
 
     using ExtractedWorld = epix::app::ExtractedWorld;
 
-    static State init_state(World& world) { return Base::init_state(world.resource_mut<ExtractedWorld>().world); }
-    static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
-        // This is a workaround to initialize access for ensuring no conflicts. But the access should be separated for
-        // each world. Affects some performance but for readonly extract it is zero-cost.
-        Base::init_access(state, meta, access, world.resource<ExtractedWorld>().world);
-        SystemMeta temp;
-        FilteredAccessSet temp_access;
-        Base::init_access(state, temp, temp_access, world.resource<ExtractedWorld>().world);
-        if (temp.is_deferred())
-            throw std::runtime_error(
-                std::format("Extract<T> with deferred param T=[{}] is not allowed.", meta::type_id<T>::short_name()));
+    struct State {
+        typename Base::State source;
+        TypeId extracted_world;
+        SystemMeta source_meta;
+    };
+
+    static constexpr bool readonly = Base::readonly;
+
+    static State init_state(World& world) {
+        const TypeId extracted_world = internal::world_registrator(world).template register_resource<ExtractedWorld>();
+        auto& source_world           = world.resource_mut<ExtractedWorld>().world.get();
+        return State{
+            .source          = Base::init_state(source_world),
+            .extracted_world = extracted_world,
+            .source_meta     = SystemMeta{
+                .name     = std::string(meta::type_id<T>().short_name()),
+                .last_run = source_world.change_tick().relative_to(Tick::max()),
+            },
+        };
     }
+    static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
+        // Source-world component ids never enter the render scheduler: the
+        // ExtractedWorld proxy is the complete cross-world access contract.
+        if constexpr (readonly) {
+            access.add_unfiltered_component_read(state.extracted_world);
+        } else {
+            access.add_unfiltered_component_write(state.extracted_world);
+        }
+    }
+    static void new_archetype(State&, const Archetype&, SystemMeta&) noexcept {}
     static void apply(State& state, const SystemMeta& meta, World& world) noexcept {}
     static void queue(State& state, const SystemMeta& meta, DeferredWorld deferred_world) noexcept {}
     static std::expected<void, ValidateParamError> validate_param(State& state, const SystemMeta& meta, World& world) {
-        return Base::validate_param(state, meta, world.resource_mut<ExtractedWorld>().world);
+        return Base::validate_param(state.source, state.source_meta, world.resource_mut<ExtractedWorld>().world);
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        // return Item(Base::get_param(state, meta, world.resource_mut<ExtractedWorld>().world, tick));
-        SystemMeta temp;
-        temp.flags            = meta.flags;
         auto& extracted_world = world.resource_mut<ExtractedWorld>().world.get();
-        temp.last_run         = extracted_world.last_change_tick();
-        return Item(Base::get_param(state, temp, extracted_world, extracted_world.change_tick()));
+        const Tick source_tick = extracted_world.increment_change_tick();
+        auto item = Base::get_param(state.source, state.source_meta, extracted_world, source_tick);
+        state.source_meta.last_run = source_tick;
+        return Item(std::move(item));
     }
 };
 static_assert(epix::ecs::system_param<epix::app::Extract<epix::ecs::ResMut<int>>>);

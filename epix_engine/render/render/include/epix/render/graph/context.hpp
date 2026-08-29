@@ -1,16 +1,20 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <cstdint>
 #include <epix/common.hpp>
+#include <functional>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <utility>
+#include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
+#include <epix/task/usages.hpp>
 #include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/node.hpp>
 #include <epix/render/graph/slot.hpp>
@@ -129,9 +133,15 @@ EPIX_EXPORT struct GraphContext {
  */
 EPIX_EXPORT struct RenderContext {
    private:
+    /** @brief A command buffer ready for submission, or Bevy's deferred
+     * `CommandBufferGenerationTask`. The latter is run by ComputeTaskPool in
+     * finish(), after the render graph has stopped borrowing its world. */
+    using CommandBufferGenerationTask = std::move_only_function<wgpu::CommandBuffer(wgpu::Device)>;
+    using QueuedCommandBuffer         = std::variant<wgpu::CommandBuffer, CommandBufferGenerationTask>;
+
     wgpu::Device m_device;
     std::optional<wgpu::CommandEncoder> m_command_encoder;
-    std::vector<wgpu::CommandBuffer> m_queued_commands;
+    std::vector<QueuedCommandBuffer> m_queued_commands;
 
    public:
     /** @brief Construct a render context with the given WebGPU device. */
@@ -159,6 +169,19 @@ EPIX_EXPORT struct RenderContext {
         flush_encoder();
         m_queued_commands.emplace_back(std::move(buffer));
     }
+    /** @brief Queue command-buffer generation work for ComputeTaskPool.
+     *
+     * Mirrors Bevy `RenderContext::add_command_buffer_generation_task`: any
+     * active encoder is flushed first, then all queued tasks run in parallel
+     * at finish(). Their results are sorted back into enqueue order before
+     * the renderer submits them. */
+    template <typename Task>
+        requires std::move_constructible<std::remove_cvref_t<Task>> &&
+                 std::same_as<std::invoke_result_t<std::remove_cvref_t<Task>&, wgpu::Device>, wgpu::CommandBuffer>
+    void add_command_buffer_generation_task(Task&& task) {
+        flush_encoder();
+        m_queued_commands.emplace_back(CommandBufferGenerationTask(std::forward<Task>(task)));
+    }
     /** @brief Finish the current command encoder (if any) and enqueue it. */
     void flush_encoder() {
         if (m_command_encoder) {
@@ -166,10 +189,52 @@ EPIX_EXPORT struct RenderContext {
             m_command_encoder.reset();
         }
     }
-    /** @brief Flush and return all command buffers for submission. */
-    std::vector<wgpu::CommandBuffer> finish() {
+    /** @brief Flush and return all command buffers for submission.
+     *
+     * Deferred generators run on the app ComputeTaskPool where available,
+     * matching Bevy's `RenderContext::finish`. Ready command buffers are not
+     * delayed, and generated buffers are restored to their original queue
+     * positions after the parallel scope completes. */
+    std::vector<wgpu::CommandBuffer> finish() && {
         flush_encoder();
-        return std::move(m_queued_commands);
+
+        std::vector<std::pair<std::size_t, wgpu::CommandBuffer>> ordered_buffers;
+        ordered_buffers.reserve(m_queued_commands.size());
+        bool has_generation_tasks = false;
+        for (const auto& queued : m_queued_commands) {
+            has_generation_tasks |= std::holds_alternative<CommandBufferGenerationTask>(queued);
+        }
+
+        std::vector<std::pair<std::size_t, wgpu::CommandBuffer>> generated_buffers;
+        if (has_generation_tasks) {
+            generated_buffers = epix::task::ComputeTaskPool::get().scope<std::pair<std::size_t, wgpu::CommandBuffer>>(
+                [this, &ordered_buffers](epix::task::Scope<std::pair<std::size_t, wgpu::CommandBuffer>>& scope) {
+                    for (auto&& [index, queued] : std::views::enumerate(m_queued_commands)) {
+                        std::visit(
+                            [&]<typename T>(T&& value) {
+                                using Value = std::remove_cvref_t<T>;
+                                if constexpr (std::same_as<Value, wgpu::CommandBuffer>) {
+                                    ordered_buffers.emplace_back(index, std::move(value));
+                                } else {
+                                    auto device = m_device.clone();
+                                    scope.spawn([index, device = std::move(device), task = std::move(value)]() mutable {
+                                        return std::pair{index, std::move(task)(std::move(device))};
+                                    });
+                                }
+                            },
+                            std::move(queued));
+                    }
+                });
+        } else {
+            for (auto&& [index, queued] : std::views::enumerate(m_queued_commands)) {
+                ordered_buffers.emplace_back(index, std::get<wgpu::CommandBuffer>(std::move(queued)));
+            }
+        }
+
+        ordered_buffers.insert(ordered_buffers.end(), std::make_move_iterator(generated_buffers.begin()),
+                               std::make_move_iterator(generated_buffers.end()));
+        std::ranges::sort(ordered_buffers, {}, &std::pair<std::size_t, wgpu::CommandBuffer>::first);
+        return ordered_buffers | std::views::values | std::ranges::to<std::vector<wgpu::CommandBuffer>>();
     }
 };
 

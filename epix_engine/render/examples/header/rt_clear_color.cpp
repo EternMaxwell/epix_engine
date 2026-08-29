@@ -64,10 +64,30 @@ struct ClearPassNode : render::graph::Node {
             return world.get_resource<::epix::camera::ClearColor>().transform(
                 [](const auto& color) { return color.get().to_vec4(); });
         }();
-        auto pass = render_ctx.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
-            std::array{target.out_texture_color_attachment(clear_color)}));
-        pass.end();
-        render_ctx.flush_encoder();
+        // Generate the clear buffer after graph execution on ComputeTaskPool.
+        // The task owns a cloned view, so no render-world borrow crosses the
+        // async boundary. This exercises the same deferred command-buffer
+        // path Bevy exposes to render graph nodes.
+        // Preserve OutputColorAttachment's first-write and presentation state
+        // before the task outlives this render-world query item.
+        const bool first_write = !target.needs_present();
+        target.output_attachment.mark_as_cleared();
+        auto output_view = target.out_texture().clone();
+        render_ctx.add_command_buffer_generation_task(
+            [first_write, clear_color, output_view = std::move(output_view)](wgpu::Device device) mutable {
+                wgpu::RenderPassColorAttachment attachment;
+                attachment.setView(output_view)
+                    .setDepthSlice(~0u)
+                    .setLoadOp(first_write && clear_color ? wgpu::LoadOp::eClear : wgpu::LoadOp::eLoad)
+                    .setStoreOp(wgpu::StoreOp::eStore);
+                if (first_write && clear_color) {
+                    attachment.setClearValue(wgpu::Color(clear_color->r, clear_color->g, clear_color->b, clear_color->a));
+                }
+                auto encoder = device.createCommandEncoder();
+                auto pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(std::array{attachment}));
+                pass.end();
+                return encoder.finish();
+            });
         return {};
     }
 };

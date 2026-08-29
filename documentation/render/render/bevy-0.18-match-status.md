@@ -80,7 +80,7 @@ including where the current native wgpu API lacks an implementation call.
 | R3 | GPU readback | FIXED | `ReadbackComplete::to_shader_type` uses the shader-layout reader rather than raw `memcpy`, with readback coverage. |
 | R4 | Render-graph errors and slots | FIXED | Typed graph run errors, slot/input/subgraph validation, and fallible node execution are preserved through the runner. |
 | R5 | View nodes | FIXED | `ViewNodeRunner` owns and updates `QueryState<N::ViewQuery>`, supplies the read-only matching query item, and skips an unset/non-matching view. Automated coverage exercises both branches; the binned-phase renderer window is a direct `ViewNodeRunner` visual example. |
-| R6 | Render-graph parallel command work | OPEN | `RenderContext` has immediate command-buffer insertion but no Bevy-equivalent `add_command_buffer_generation_task`.  Existing render-subapp parallelism does not close this item. |
+| R6 | Render-graph parallel command work | FIXED | `RenderContext` queues ready buffers and deferred generation tasks. `finish() &&` dispatches generators through `ComputeTaskPool`, restores enqueue order, and submits the completed buffers. Automated coverage proves deferral and parallel execution; RT clear, binned phase, and sorted phase examples have multi-frame GLFW captures. |
 | R7 | Render-asset base contract | INTENTIONAL | No-default `asset_usage` is approved.  Fallible preparation/retry behavior is matched and must remain so. |
 | R8 | Render-asset extraction semantics | FIXED | Extraction failures log/continue and successfully extracted modified assets are included in `added`. |
 | R9 | Compact asset extraction | INTENTIONAL | `ExtractedAsset` extension is retained; `Reextract` support and reason were removed. |
@@ -104,7 +104,7 @@ future findings belong below and receive a separate `N*` identifier.
 | N1 | Collection/range API parity | FIXED | Bevy iterator-style APIs use C++ lazy ranges or spans/views rather than eager vectors/references where Bevy borrows/slices. |
 | N2 | Binned phase retained identity | FIXED | Cached entities and representative pairs preserve `MainEntity`; covered by native visual captures. |
 | N3 | Binned `IndexMap` / `RenderBin` removal | OPEN | Epix preserves entry order and reindexes after removal. Bevy uses `IndexMap::swap_remove` / `swap_remove_index` for bins, batch sets, cached entity keys, and `RenderBin` entities. The earlier unapproved implementation was reverted, so this mismatch remains open and needs focused tests for moved-entry index bookkeeping and stale-entity sweeping. |
-| N4 | Mutable extraction parameters | INTENTIONAL | `Extract<ResMut<...>>` is valid when scheduler access proves exclusivity; this is not a parity defect and must not be “fixed” by rejecting mutable extraction. |
+| N4 | Mutable extraction parameters | INTENTIONAL | `Extract<ResMut<...>>` remains valid. `Extract` registers only the render-side `ExtractedWorld` proxy: read for read-only parameters and write for mutable ones. Its source parameter state owns a separate main-world change tick/last-run pair, matching Bevy `SystemState` timing without mixing world-local component access ids. |
 
 ## Completion and verification policy
 

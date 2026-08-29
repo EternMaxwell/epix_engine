@@ -7,6 +7,7 @@ target_link_libraries(epix_render PUBLIC epix_image)
 target_link_libraries(epix_render PUBLIC epix_transform)
 target_link_libraries(epix_render PUBLIC epix_time)
 target_link_libraries(epix_render PUBLIC epix_shader)
+target_link_libraries(epix_render PUBLIC epix_task)
 # target_link_libraries(epix_render PUBLIC Vulkan-Headers)
 target_link_libraries(epix_render PUBLIC webgpu)
 
