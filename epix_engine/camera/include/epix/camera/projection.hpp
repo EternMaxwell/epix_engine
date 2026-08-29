@@ -13,11 +13,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <memory>
 #include <optional>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #endif
 
+namespace epix::transform {
+struct GlobalTransform;
+}
+
 namespace epix::camera {
+
+struct Frustum;
 
 /** @brief A viewport-sized slice of a larger camera image (Bevy
  * SubCameraView). */
@@ -128,9 +135,6 @@ EPIX_EXPORT struct OrthographicProjection {
         return crop_to_sub_view(get_clip_from_view(), sub_view);
     }
     float get_far() const { return far_plane; }
-    float get_near() const { return near_plane; }
-    void set_far(float far_value) { far_plane = far_value; }
-    void set_near(float near_value) { near_plane = near_value; }
     /** @brief Compute frustum corners at the caller-provided view-space depths. */
     std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
         return {glm::vec3(rect.right, rect.bottom, z_near), glm::vec3(rect.right, rect.top, z_near),
@@ -138,6 +142,9 @@ EPIX_EXPORT struct OrthographicProjection {
                 glm::vec3(rect.right, rect.bottom, z_far), glm::vec3(rect.right, rect.top, z_far),
                 glm::vec3(rect.left, rect.top, z_far),     glm::vec3(rect.left, rect.bottom, z_far)};
     }
+    /** @brief Compute this projection's world-space frustum (Bevy
+     * `CameraProjection::compute_frustum`). */
+    Frustum compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const;
 };
 
 /** @brief Perspective camera projection with field of view, aspect ratio,
@@ -219,9 +226,6 @@ EPIX_EXPORT struct PerspectiveProjection {
         return matrix;
     }
     float get_far() const { return far_plane; }
-    float get_near() const { return near_plane; }
-    void set_far(float far_value) { far_plane = far_value; }
-    void set_near(float near_value) { near_plane = near_value; }
     /** @brief Compute frustum corners at the caller-provided view-space depths. */
     std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
         float tan_half_fov = glm::tan(fov / 2.0f);
@@ -235,6 +239,9 @@ EPIX_EXPORT struct PerspectiveProjection {
                 glm::vec3(far_width, -far_height, z_far),    glm::vec3(far_width, far_height, z_far),
                 glm::vec3(-far_width, far_height, z_far),    glm::vec3(-far_width, -far_height, z_far)};
     }
+    /** @brief Compute this projection's world-space frustum (Bevy
+     * `CameraProjection::compute_frustum`). */
+    Frustum compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const;
 };
 
 template <typename T>
@@ -243,9 +250,6 @@ concept CameraProjection = requires(T t) {
     { t.get_clip_from_view_for_sub(std::declval<const SubCameraView&>()) } -> std::convertible_to<glm::mat4>;
     { t.get_frustum_corners(std::declval<float>(), std::declval<float>()) } -> std::convertible_to<std::array<glm::vec3, 8>>;
     { t.get_far() } -> std::convertible_to<float>;
-    { t.get_near() } -> std::convertible_to<float>;
-    { t.set_far(std::declval<float>()) } -> std::same_as<void>;
-    { t.set_near(std::declval<float>()) } -> std::same_as<void>;
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
 
@@ -259,9 +263,6 @@ struct DynCameraProjection {
     virtual glm::mat4 clip_from_view_for_sub(const SubCameraView&) const    = 0;
     virtual std::array<glm::vec3, 8> frustum_corners(float, float) const    = 0;
     virtual float far_value() const                                         = 0;
-    virtual float near_value() const                                        = 0;
-    virtual void set_far_value(float)                                       = 0;
-    virtual void set_near_value(float)                                      = 0;
     virtual void update_projection(float, float)                            = 0;
 };
 
@@ -281,9 +282,6 @@ struct DynCameraProjectionImpl final : DynCameraProjection {
         return value.get_frustum_corners(z_near, z_far);
     }
     float far_value() const override { return value.get_far(); }
-    float near_value() const override { return value.get_near(); }
-    void set_far_value(float far_value) override { value.set_far(far_value); }
-    void set_near_value(float near_value) override { value.set_near(near_value); }
     void update_projection(float width, float height) override { value.update(width, height); }
 };
 
@@ -326,10 +324,10 @@ EPIX_EXPORT struct CustomProjection {
         return dyn_projection->frustum_corners(z_near, z_far);
     }
     float get_far() const { return dyn_projection->far_value(); }
-    float get_near() const { return dyn_projection->near_value(); }
-    void set_far(float far_value) { dyn_projection->set_far_value(far_value); }
-    void set_near(float near_value) { dyn_projection->set_near_value(near_value); }
     void update(float width, float height) { dyn_projection->update_projection(width, height); }
+    /** @brief Compute this projection's world-space frustum (Bevy's default
+     * `CameraProjection::compute_frustum`). */
+    Frustum compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const;
 };
 
 /** @brief Variant projection type wrapping orthographic, perspective, or a
@@ -365,9 +363,6 @@ EPIX_EXPORT struct Projection {
     }
     /** @brief Get the far clipping plane distance. */
     float get_far() const { return std::visit([](const auto& proj) { return proj.get_far(); }, projection); }
-    float get_near() const { return std::visit([](const auto& proj) { return proj.get_near(); }, projection); }
-    void set_far(float far_value) { std::visit([=](auto& proj) { proj.set_far(far_value); }, projection); }
-    void set_near(float near_value) { std::visit([=](auto& proj) { proj.set_near(near_value); }, projection); }
     /** @brief Update the active projection for new viewport dimensions. */
     void update(float width, float height) {
         std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);
@@ -375,6 +370,25 @@ EPIX_EXPORT struct Projection {
     /** @brief Compute the 8 frustum corner points. */
     std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
         return std::visit([=](const auto& proj) { return proj.get_frustum_corners(z_near, z_far); }, projection);
+    }
+    /** @brief Compute this projection's world-space frustum (Bevy's default
+     * `CameraProjection::compute_frustum`). */
+    Frustum compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const;
+    /** @brief True for perspective projections. Custom projections follow
+     * Bevy and are perspective when their clip matrix's w-axis has `w == 0`. */
+    bool is_perspective() const {
+        return std::visit(
+            [](const auto& proj) {
+                using ProjectionType = std::remove_cvref_t<decltype(proj)>;
+                if constexpr (std::same_as<ProjectionType, PerspectiveProjection>) {
+                    return true;
+                } else if constexpr (std::same_as<ProjectionType, OrthographicProjection>) {
+                    return false;
+                } else {
+                    return proj.get_clip_from_view()[3][3] == 0.0f;
+                }
+            },
+            projection);
     }
     /** @brief Try to get a mutable pointer to the orthographic projection. */
     std::optional<OrthographicProjection*> as_orthographic() {

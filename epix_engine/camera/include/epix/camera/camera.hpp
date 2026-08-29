@@ -443,8 +443,7 @@ EPIX_EXPORT struct Camera2d {
             [] { return Projection::orthographic(OrthographicProjection::default_2d()); });
         registrator.template register_required<Frustum>([] {
             const auto projection = OrthographicProjection::default_2d();
-            return Frustum::from_clip_from_world_custom_far(projection.get_clip_from_view(), glm::vec3(0.0f),
-                                                            glm::vec3(0.0f, 0.0f, 1.0f), projection.get_far());
+            return projection.compute_frustum(::epix::transform::GlobalTransform{});
         });
     }
 };

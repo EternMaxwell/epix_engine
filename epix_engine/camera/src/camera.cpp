@@ -16,6 +16,39 @@ using namespace epix::ecs;
 using namespace epix::app;
 
 namespace epix::camera {
+namespace {
+Frustum compute_camera_projection_frustum(const glm::mat4& clip_from_view,
+                                          const ::epix::transform::GlobalTransform& camera_transform,
+                                          float far_distance) {
+    const glm::mat4 clip_from_world = clip_from_view * glm::inverse(camera_transform.matrix);
+    const glm::vec3 translation     = glm::vec3(camera_transform.matrix[3]);
+    glm::vec3 backward              = glm::vec3(camera_transform.matrix[2]);
+    const float backward_length     = glm::length(backward);
+    if (backward_length > 0.0f && std::isfinite(backward_length)) {
+        backward /= backward_length;
+    } else {
+        backward = glm::vec3(0.0f, 0.0f, 1.0f);
+    }
+    return Frustum::from_clip_from_world_custom_far(clip_from_world, translation, backward, far_distance);
+}
+}  // namespace
+
+Frustum OrthographicProjection::compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const {
+    return compute_camera_projection_frustum(get_clip_from_view(), camera_transform, get_far());
+}
+
+Frustum PerspectiveProjection::compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const {
+    return compute_camera_projection_frustum(get_clip_from_view(), camera_transform, get_far());
+}
+
+Frustum CustomProjection::compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const {
+    return compute_camera_projection_frustum(get_clip_from_view(), camera_transform, get_far());
+}
+
+Frustum Projection::compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const {
+    return compute_camera_projection_frustum(get_clip_from_view(), camera_transform, get_far());
+}
+
 void Camera::register_required_components(RequiredComponentsRegistrator& registrator) {
     // ComputedCameraValues starts at a defined 0x0 target until this system's
     // first target-resolution pass; target resolution reads the current
@@ -266,21 +299,8 @@ void VisibilityRangePlugin::attach(App& app) {
 
 void update_frusta(
     Query<Item<const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&, Mut<Frustum>>> cameras) {
-    // Bevy Projection::compute_frustum uses the explicit far distance even
-    // when the projection matrix is infinite reverse-Z.  The matrix alone
-    // cannot recover that finite culling bound.
     for (auto&& [gtransform, projection, frustum] : cameras.iter()) {
-        const glm::mat4 clip_from_world = projection.get_clip_from_view() * glm::inverse(gtransform.matrix);
-        const glm::vec3 translation     = glm::vec3(gtransform.matrix[3]);
-        glm::vec3 backward              = glm::vec3(gtransform.matrix[2]);
-        const float backward_length     = glm::length(backward);
-        if (backward_length > 0.0f && std::isfinite(backward_length)) {
-            backward /= backward_length;
-        } else {
-            backward = glm::vec3(0.0f, 0.0f, 1.0f);
-        }
-        frustum.get_mut() =
-            Frustum::from_clip_from_world_custom_far(clip_from_world, translation, backward, projection.get_far());
+        frustum.get_mut() = projection.compute_frustum(gtransform);
     }
 }
 

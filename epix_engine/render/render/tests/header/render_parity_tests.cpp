@@ -1800,6 +1800,38 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     EXPECT_NE(projection.get_clip_from_view()[0][0], 0.0f);
 }
 
+TEST(CameraProjection, MatchesBevyContractAndDefaultFrustumBehavior) {
+    // Bevy's trait has no near-plane accessors or setters. This custom
+    // projection intentionally supplies only the required trait operations.
+    struct MinimalProjection {
+        glm::mat4 get_clip_from_view() const { return glm::mat4(1.0f); }
+        glm::mat4 get_clip_from_view_for_sub(const ::epix::camera::SubCameraView&) const {
+            return get_clip_from_view();
+        }
+        void update(float, float) {}
+        float get_far() const { return 42.0f; }
+        std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
+            return {glm::vec3(1.0f, -1.0f, z_near), glm::vec3(1.0f, 1.0f, z_near),
+                    glm::vec3(-1.0f, 1.0f, z_near), glm::vec3(-1.0f, -1.0f, z_near),
+                    glm::vec3(1.0f, -1.0f, z_far),  glm::vec3(1.0f, 1.0f, z_far),
+                    glm::vec3(-1.0f, 1.0f, z_far),  glm::vec3(-1.0f, -1.0f, z_far)};
+        }
+    };
+    static_assert(::epix::camera::CameraProjection<MinimalProjection>);
+
+    const ::epix::transform::GlobalTransform transform{};
+    const ::epix::camera::PerspectiveProjection perspective{};
+    const auto expected = ::epix::camera::Frustum::from_clip_from_world_custom_far(
+        perspective.get_clip_from_view(), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f), perspective.get_far());
+    const auto actual = perspective.compute_frustum(transform);
+    EXPECT_EQ(actual.planes, expected.planes);
+
+    EXPECT_TRUE(::epix::camera::Projection::perspective().is_perspective());
+    EXPECT_FALSE(::epix::camera::Projection::orthographic().is_perspective());
+    EXPECT_FALSE(::epix::camera::Projection::custom(MinimalProjection{}).is_perspective());
+    EXPECT_TRUE(::epix::camera::Projection::custom(::epix::camera::PerspectiveProjection{}).is_perspective());
+}
+
 TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);

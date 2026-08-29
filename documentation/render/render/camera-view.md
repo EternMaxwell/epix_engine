@@ -116,10 +116,11 @@ struct Projection {
     static Projection orthographic(const OrthographicProjection& = {});
     static Projection perspective(const PerspectiveProjection& = {});
 
-    glm::mat4 get_projection_matrix() const;
-    std::array<glm::vec3, 8> get_frustum_corners() const;
-    float get_near() / get_far() const;
-    void  set_near(float) / set_far(float);
+    glm::mat4 get_clip_from_view() const;
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const;
+    float get_far() const;
+    Frustum compute_frustum(const transform::GlobalTransform&) const;
+    bool is_perspective() const;
     void  update(float width, float height);
 
     optional<OrthographicProjection*> as_orthographic();
@@ -139,7 +140,11 @@ struct OrthographicProjection {
     struct { float left, right, bottom, top; } rect;
 
     void update(float width, float height); // recomputes rect
-    glm::mat4 get_projection_matrix() const;
+    glm::mat4 get_clip_from_view() const;
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView&) const;
+    float get_far() const;
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const;
+    Frustum compute_frustum(const transform::GlobalTransform&) const;
 };
 ```
 
@@ -153,7 +158,11 @@ struct PerspectiveProjection {
     float far_plane    = 1000.0f;
 
     void update(float width, float height);  // recomputes aspect
-    glm::mat4 get_projection_matrix() const;
+    glm::mat4 get_clip_from_view() const;
+    glm::mat4 get_clip_from_view_for_sub(const SubCameraView&) const;
+    float get_far() const;
+    std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const;
+    Frustum compute_frustum(const transform::GlobalTransform&) const;
 };
 ```
 
@@ -190,9 +199,10 @@ camera drives.  Set on the `CameraBundle` and extracted each frame.
 
 ## Camera projection extension point
 
-`CameraProjection` accepts projection types that provide projection/frustum
-queries, near/far getters and setters, and `update(width, height)`. Register a
-custom projection component with `CameraProjectionPlugin<MyProjection>`:
+`CameraProjection` accepts projection types that provide clip-matrix
+generation (including sub-views), the far distance, cascade frustum corners,
+and `update(width, height)`.  Near-plane getters/setters are not required.
+Register a custom projection component with `CameraProjectionPlugin<MyProjection>`:
 
 ```cpp
 app.add_plugins(render::camera::CameraProjectionPlugin<MyProjection>{});
