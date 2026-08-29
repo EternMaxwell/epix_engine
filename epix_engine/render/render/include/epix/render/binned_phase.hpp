@@ -159,7 +159,8 @@ EPIX_EXPORT struct InputUniformIndex {
  * several draws when the
  * dynamic-uniform fallback changes offset. */
 EPIX_EXPORT struct BinnedRenderPhaseBatch {
-    sync_world::MainEntity representative_entity;
+    /** Render-world and main-world identifiers for an entity in this batch. */
+    std::pair<epix::ecs::Entity, sync_world::MainEntity> representative_entity;
     std::pair<std::uint32_t, std::uint32_t> instance_range{0, 0};
     PhaseItemExtraIndex extra_index{};
 };
@@ -258,7 +259,7 @@ EPIX_EXPORT struct UnbatchableBinnedEntities {
     /** @brief Instance index range [start, end) of this bin's entities. */
     std::optional<std::pair<std::uint32_t, std::uint32_t>> instance_range;
     /** @brief Per-entity CPU-prepared range and dynamic/indirect index. */
-    std::unordered_map<epix::ecs::Entity, BinnedRenderPhaseBatch> batches;
+    sync_world::MainEntityHashMap<BinnedRenderPhaseBatch> batches;
     bool empty() const noexcept { return entities.empty(); }
 };
 
@@ -625,7 +626,7 @@ class BinnedRenderPhase {
      * named `create` because `new` is a C++ keyword). */
     static constexpr bool has_item_factory = requires(typename BPI::BatchSetKey batch_set_key,
                                                       typename BPI::BinKey bin_key,
-                                                      epix::ecs::Entity representative_entity,
+                                                      std::pair<epix::ecs::Entity, sync_world::MainEntity> representative_entity,
                                                       std::uint32_t instance_start,
                                                       std::uint32_t instance_end) {
         BPI::create(batch_set_key, bin_key, representative_entity, instance_start, instance_end);
@@ -633,10 +634,10 @@ class BinnedRenderPhase {
 
     static BPI make_item(const BatchSetKey& batch_set_key,
                          const BinKey& bin_key,
-                         sync_world::MainEntity representative_entity,
+                         std::pair<epix::ecs::Entity, sync_world::MainEntity> representative_entity,
                          std::pair<std::uint32_t, std::uint32_t> instance_range,
                          PhaseItemExtraIndex extra_index) {
-        auto item = BPI::create(batch_set_key, bin_key, representative_entity.id(), instance_range.first,
+        auto item = BPI::create(batch_set_key, bin_key, representative_entity, instance_range.first,
                                 instance_range.second);
         if constexpr (MutablePhaseItemExtraIndex<BPI>) {
             item.set_extra_index(extra_index);
@@ -749,7 +750,7 @@ class BinnedRenderPhase {
                 const auto prepared = unbatchable.batches.find(main_entity);
                 if (prepared == unbatchable.batches.end()) continue;
                 draw_item(render_pass, world, view,
-                          make_item(key.first, key.second, sync_world::MainEntity{main_entity},
+                          make_item(key.first, key.second, {render_entity, main_entity},
                                     prepared->second.instance_range, prepared->second.extra_index));
             }
         }
@@ -764,14 +765,14 @@ class BinnedRenderPhase {
         for (auto&& [key, non_mesh] : non_mesh_items.iter()) {
             for (auto&& [main_entity, render_entity] : non_mesh.entities) {
                 (void)render_entity;
-                BPI item = BPI::create(key.first, key.second, main_entity, 0u, 1u);
+                BPI item = BPI::create(key.first, key.second, {render_entity, main_entity}, 0u, 1u);
                 draw_item(render_pass, world, view, item);
             }
         }
     }
 
     /** @brief main entity -> cached bin keys + change tick. */
-    IndexMap<epix::ecs::Entity, CachedBinnedEntity<BPI>> cached_entity_bin_keys;
+    IndexMap<sync_world::MainEntity, CachedBinnedEntity<BPI>> cached_entity_bin_keys;
     /** @brief Validity flag per cached entry (aligned with insertion order). */
     std::vector<bool> valid_cached_entity_bin_keys;
     /** @brief Entities that changed bins this frame. */

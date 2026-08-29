@@ -661,7 +661,7 @@ void batch_and_prepare_gpu_binned_phase(
                 }
                 indirect_parameters.add_batch_set(indexed, command_base);
                 multidraw_sets->push_back({
-                    .first_batch = {.representative_entity = sync_world::MainEntity{first_entity},
+                    .first_batch = {.representative_entity = {ecs::Entity::PLACEHOLDER, first_entity},
                                     .instance_range        = {output_base, output_base + first_count},
                                     .extra_index           = phase::PhaseItemExtraIndex::indirect_parameters_range(
                                         command_base, command_index, batch_set_index)},
@@ -691,7 +691,7 @@ void batch_and_prepare_gpu_binned_phase(
             GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(indexed, output_base, batch_set_index,
                                                                                  indirect_parameters, *indirect_index);
         }
-        const auto representative = sync_world::MainEntity{bin.iter().begin()->first};
+        const auto representative = bin.iter().begin()->first;
         for (std::uint32_t offset = 0; const auto& entry : bin.iter()) {
             const auto& input_index = entry.second;
             work_items.push(indexed,
@@ -700,7 +700,7 @@ void batch_and_prepare_gpu_binned_phase(
             ++offset;
         }
         phase::BinnedRenderPhaseBatch batch{
-            .representative_entity = representative,
+            .representative_entity = {ecs::Entity::PLACEHOLDER, representative},
             .instance_range        = {output_base, output_base + static_cast<std::uint32_t>(bin.size())},
             .extra_index           = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
                                                           *indirect_index, *indirect_index + 1, batch_set_index)
@@ -721,9 +721,8 @@ void batch_and_prepare_gpu_binned_phase(
         const bool indexed = key.first.indexed();
         unbatchable.batches.clear();
         for (const auto& [main_entity, render_entity] : unbatchable.entities) {
-            (void)render_entity;
             const auto input_index =
-                GetFullBatchData<Adapter>{}.get_binned_index(batch_param, sync_world::MainEntity{main_entity});
+                GetFullBatchData<Adapter>{}.get_binned_index(batch_param, main_entity);
             if (!input_index) continue;
             const std::uint32_t output = reserve_output(1);
             const std::optional<std::uint32_t> indirect_index =
@@ -737,7 +736,7 @@ void batch_and_prepare_gpu_binned_phase(
                                       .output_or_indirect_parameters_index = indirect_index.value_or(output)});
             unbatchable.batches.emplace(
                 main_entity, phase::BinnedRenderPhaseBatch{
-                                 .representative_entity = sync_world::MainEntity{main_entity},
+                                 .representative_entity = {render_entity, main_entity},
                                  .instance_range        = {output, output + 1},
                                  .extra_index = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
                                                                      *indirect_index, *indirect_index + 1)
@@ -1095,7 +1094,7 @@ void batch_and_prepare_binned_phase(
         for (const auto& [main_entity, input_uniform_index] : bin.iter()) {
             (void)input_uniform_index;
             auto buffer_data =
-                GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, sync_world::MainEntity{main_entity});
+                GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
             if (!buffer_data) continue;
             const auto index = instance_buffer.push(*buffer_data);
             const auto extra = index.dynamic_offset ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)
@@ -1103,7 +1102,7 @@ void batch_and_prepare_binned_phase(
             if (bin.batches.empty() || bin.batches.back().instance_range.second != index.index ||
                 bin.batches.back().extra_index != extra) {
                 bin.batches.push_back(phase::BinnedRenderPhaseBatch{
-                    .representative_entity = sync_world::MainEntity{main_entity},
+                    .representative_entity = {ecs::Entity::PLACEHOLDER, main_entity},
                     .instance_range        = {index.index, index.index},
                     .extra_index           = extra,
                 });
@@ -1117,14 +1116,12 @@ void batch_and_prepare_binned_phase(
         (void)key;
         unbatchable.batches.clear();
         for (const auto& [main_entity, render_entity] : unbatchable.entities) {
-            (void)render_entity;
-            auto buffer_data =
-                GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, sync_world::MainEntity{main_entity});
+            auto buffer_data = GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
             if (!buffer_data) continue;
             const auto index = instance_buffer.push(*buffer_data);
             unbatchable.batches.emplace(
                 main_entity, phase::BinnedRenderPhaseBatch{
-                                 .representative_entity = sync_world::MainEntity{main_entity},
+                                 .representative_entity = {render_entity, main_entity},
                                  .instance_range        = {index.index, index.index + 1},
                                  .extra_index = index.dynamic_offset
                                                     ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)

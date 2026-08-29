@@ -950,7 +950,7 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     const auto* bin = render_phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
     ASSERT_EQ(bin->batches.size(), 1u);
-    EXPECT_EQ(bin->batches[0].representative_entity.id(), Entity::from_index(1));
+    EXPECT_EQ(bin->batches[0].representative_entity.second.id(), Entity::from_index(1));
     EXPECT_EQ(bin->batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(bin->batches[0].extra_index, phase::PhaseItemExtraIndex::None);
     const auto& batch_sets = std::get<0>(render_phase.batch_sets);
@@ -961,7 +961,7 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(unbatchable, nullptr);
     ASSERT_EQ(unbatchable->batches.size(), 1u);
-    EXPECT_EQ(unbatchable->batches.at(Entity::from_index(3)).instance_range,
+    EXPECT_EQ(unbatchable->batches.at(sync_world::MainEntity{Entity::from_index(3)}).instance_range,
               (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
 }
 
@@ -1121,7 +1121,9 @@ TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
     ASSERT_EQ(batches.size(), 1u);
     EXPECT_EQ(batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(
-        render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})->batches.at(Entity::from_index(3)).instance_range,
+        render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})
+            ->batches.at(sync_world::MainEntity{Entity::from_index(3)})
+            .instance_range,
         (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
     EXPECT_TRUE(indirect.indexed_data.is_empty());
 }
@@ -1286,15 +1288,15 @@ TEST(BinnedRenderPhase, BinsByKey) {
     auto* bin0 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin0, nullptr);
     EXPECT_EQ(bin0->size(), 2u);
-    EXPECT_TRUE(bin0->contains(m1.entity));
-    EXPECT_TRUE(bin0->contains(m2.entity));
-    EXPECT_EQ(bin0->get(m1.entity)->index, 0u);
-    EXPECT_EQ(bin0->get(m2.entity)->index, 1u);
+    EXPECT_TRUE(bin0->contains(m1));
+    EXPECT_TRUE(bin0->contains(m2));
+    EXPECT_EQ(bin0->get(m1)->index, 0u);
+    EXPECT_EQ(bin0->get(m2)->index, 1u);
 
     auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(bin1, nullptr);
     EXPECT_EQ(bin1->size(), 1u);
-    EXPECT_TRUE(bin1->contains(m3.entity));
+    EXPECT_TRUE(bin1->contains(m3));
     EXPECT_FALSE(phase.is_empty());
 }
 
@@ -1318,14 +1320,14 @@ TEST(BinnedRenderPhase, PreservesMultidrawableItemsOutsideDirectPreprocessing) {
     auto* multidrawable_bin = multidrawable->get(0);
     ASSERT_NE(multidrawable_bin, nullptr);
     EXPECT_EQ(multidrawable_bin->size(), 1u);
-    EXPECT_TRUE(multidrawable_bin->contains(m1.entity));
+    EXPECT_TRUE(multidrawable_bin->contains(m1));
     EXPECT_TRUE(phase.batchable_meshes.empty());
     auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(unbatchable, nullptr);
-    EXPECT_EQ(unbatchable->entities.at(m2.entity), Entity::from_index(11));
+    EXPECT_EQ(unbatchable->entities.at(m2), Entity::from_index(11));
     auto* non_mesh = phase.non_mesh_items.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(non_mesh, nullptr);
-    EXPECT_EQ(non_mesh->entities.at(m3.entity), Entity::from_index(12));
+    EXPECT_EQ(non_mesh->entities.at(m3), Entity::from_index(12));
 }
 
 TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
@@ -1350,7 +1352,9 @@ TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
                 phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
     ASSERT_NE(culling.multidrawable_meshes.get(0), nullptr);
     EXPECT_EQ(culling.multidrawable_meshes.get(0)->get(0)->size(), 1u);
-    std::get<2>(culling.batch_sets).push_back({});
+    std::get<2>(culling.batch_sets).push_back({
+        .first_batch = {.representative_entity = {Entity::PLACEHOLDER, entity}},
+    });
     culling.prepare_for_new_frame();
     EXPECT_TRUE(std::get<2>(culling.batch_sets).empty());
 }
@@ -1389,8 +1393,8 @@ TEST(BinnedRenderPhase, SweepRemovesUnqueued) {
     auto* bin = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
     EXPECT_EQ(bin->size(), 1u);
-    EXPECT_TRUE(bin->contains(e1.entity));
-    EXPECT_FALSE(bin->contains(e2.entity));
+    EXPECT_TRUE(bin->contains(e1));
+    EXPECT_FALSE(bin->contains(e2));
 }
 
 // An entity that moved to a different bin is removed from its old bin on
@@ -2536,11 +2540,11 @@ struct RenderableBinnedItem {
 
     static RenderableBinnedItem create(TestBatchSetKey batch_set_key,
                                        int bin_key,
-                                       Entity representative,
+                                       std::pair<Entity, sync_world::MainEntity> representative,
                                        std::uint32_t instance_start,
                                        std::uint32_t instance_end) {
         RenderableBinnedItem item;
-        item.m_entity        = representative;
+        item.m_entity        = representative.first;
         item.m_bin_key       = bin_key;
         item.m_batch_set_key = batch_set_key;
         item.batch_range     = std::pair<std::uint32_t, std::uint32_t>{instance_start, instance_end};
@@ -2597,12 +2601,12 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
     // Binned rendering consumes the mode-owned prepared representation. The
     // CPU batcher would normally populate this before the render node runs.
     std::get<0>(phase.batch_sets) = {
-        {{.representative_entity = sync_world::MainEntity{Entity{1}}, .instance_range = {0, 2}}},
-        {{.representative_entity = sync_world::MainEntity{Entity{3}}, .instance_range = {2, 3}}},
+        {{.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{1}}}, .instance_range = {0, 2}}},
+        {{.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{3}}}, .instance_range = {2, 3}}},
     };
     phase.unbatchable_meshes.get({TestBatchSetKey{0}, 11})
         ->batches.emplace(Entity{4},
-                          phase::BinnedRenderPhaseBatch{.representative_entity = sync_world::MainEntity{Entity{4}},
+                          phase::BinnedRenderPhaseBatch{.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{4}}},
                                                         .instance_range        = {3, 4}});
 
     // One draw call per batchable BIN (2 bins) + one per unbatchable entity
@@ -2630,8 +2634,8 @@ TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
     direct.add(1, 9, Entity{2}, sync_world::MainEntity{Entity{2}}, phase::InputUniformIndex{1},
                phase::BinnedRenderPhaseType::BatchableMesh, tick);
     std::get<1>(direct.batch_sets) = {
-        {.representative_entity = sync_world::MainEntity{Entity{1}}, .instance_range = {4, 6}},
-        {.representative_entity = sync_world::MainEntity{Entity{2}}, .instance_range = {6, 9}},
+        {.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{1}}}, .instance_range = {4, 6}},
+        {.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{2}}}, .instance_range = {6, 9}},
     };
     direct.render(null_pass, world, Entity{100});
     EXPECT_EQ(CountingBinnedDraw::calls, 2);
@@ -2644,7 +2648,7 @@ TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
                   phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
     std::get<2>(multidraw.batch_sets)
         .push_back({
-            .first_batch = {.representative_entity = sync_world::MainEntity{Entity{3}},
+            .first_batch = {.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{3}}},
                             .instance_range        = {9, 12},
                             .extra_index           = phase::PhaseItemExtraIndex::indirect_parameters_range(4, 5, 0)},
             .bin_key     = 3,

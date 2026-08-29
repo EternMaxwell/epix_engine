@@ -38,6 +38,7 @@ struct BatchSetKey {
 
 struct Item {
     Entity render_entity{};
+    render::sync_world::MainEntity main_entity_value{Entity::PLACEHOLDER};
     render::phase::DrawFunctionId draw_id{0};
     int bin = 0;
     BatchSetKey batch_set{};
@@ -45,7 +46,7 @@ struct Item {
     render::phase::PhaseItemExtraIndex extra{};
 
     Entity entity() const noexcept { return render_entity; }
-    render::sync_world::MainEntity main_entity() const noexcept { return {render_entity}; }
+    render::sync_world::MainEntity main_entity() const noexcept { return main_entity_value; }
     int sort_key() const noexcept { return bin; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
     render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra; }
@@ -58,10 +59,11 @@ struct Item {
 
     static Item create(BatchSetKey batch_set,
                        int bin,
-                       Entity representative,
+                       std::pair<Entity, render::sync_world::MainEntity> representative,
                        std::uint32_t instance_start,
                        std::uint32_t instance_end) {
-        return {.render_entity = representative,
+        return {.render_entity      = representative.first,
+                .main_entity_value = representative.second,
                 .draw_id       = render::phase::DrawFunctionId{0},
                 .bin           = bin,
                 .batch_set     = batch_set,
