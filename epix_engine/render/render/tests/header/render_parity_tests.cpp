@@ -1383,26 +1383,39 @@ TEST(BinnedRenderPhase, MultidrawExtraIndexOnlyUsesGpuCountWhenSupported) {
 
 // Entities not re-queued after prepare_for_new_frame are swept from their
 // bins (Bevy sweep_old_entities).
-TEST(BinnedRenderPhase, SweepRemovesUnqueued) {
+TEST(BinnedRenderPhase, SweepSwapRemovesUnqueuedAndRetainsMovedValidEntries) {
     phase::BinnedRenderPhase<TestBinnedItem> phase;
     const sync_world::MainEntity e1{Entity::from_index(1)};
     const sync_world::MainEntity e2{Entity::from_index(2)};
+    const sync_world::MainEntity e3{Entity::from_index(3)};
     phase.add(0, 0, Entity::from_index(10), e1, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
     phase.add(0, 0, Entity::from_index(11), e2, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
+    phase.add(0, 0, Entity::from_index(12), e3, phase::InputUniformIndex{2},
+              phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
 
-    // frame 2: only e1 is re-queued (with a newer change tick)
+    // Frame two leaves the first cached entity stale. The valid final entry
+    // moves into its cache and RenderBin slot during Bevy-style swap removal.
     phase.prepare_for_new_frame();
-    phase.add(0, 0, Entity::from_index(10), e1, phase::InputUniformIndex{0},
+    phase.add(0, 0, Entity::from_index(11), e2, phase::InputUniformIndex{1},
+              phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
+    phase.add(0, 0, Entity::from_index(12), e3, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
     phase.sweep_old_entities();
 
     auto* bin = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
-    EXPECT_EQ(bin->size(), 1u);
-    EXPECT_TRUE(bin->contains(e1));
-    EXPECT_FALSE(bin->contains(e2));
+    EXPECT_EQ(bin->size(), 2u);
+    EXPECT_FALSE(bin->contains(e1));
+    EXPECT_TRUE(bin->contains(e2));
+    EXPECT_TRUE(bin->contains(e3));
+    std::vector<sync_world::MainEntity> retained;
+    for (const auto& [entity, uniform] : bin->iter()) {
+        (void)uniform;
+        retained.push_back(entity);
+    }
+    EXPECT_EQ(retained, (std::vector<sync_world::MainEntity>{e3, e2}));
 }
 
 // An entity that moved to a different bin is removed from its old bin on

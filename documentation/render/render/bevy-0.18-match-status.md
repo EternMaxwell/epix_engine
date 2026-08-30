@@ -103,7 +103,7 @@ future findings belong below and receive a separate `N*` identifier.
 | --- | --- | --- | --- |
 | N1 | Collection/range API parity | FIXED | Bevy iterator-style APIs use C++ lazy ranges or spans/views rather than eager vectors/references where Bevy borrows/slices. |
 | N2 | Binned phase retained identity | FIXED | Cached entities and representative pairs preserve `MainEntity`; covered by native visual captures. |
-| N3 | Binned `IndexMap` / `RenderBin` removal | OPEN | Epix preserves entry order and reindexes after removal. Bevy uses `IndexMap::swap_remove` / `swap_remove_index` for bins, batch sets, cached entity keys, and `RenderBin` entities. The earlier unapproved implementation was reverted, so this mismatch remains open and needs focused tests for moved-entry index bookkeeping and stale-entity sweeping. |
+| N3 | Binned `IndexMap` / `RenderBin` removal | FIXED | Shared `utils::IndexMap` implements Bevy-style `swap_remove` / `swap_remove_index`. Bins, batch sets, cached entity keys, and `RenderBin` use it; reverse stale sweeping preserves moved valid entries. Focused utility and binned-phase tests cover moved-entry lookup bookkeeping and stale-entity sweeping. |
 | N4 | Mutable extraction parameters | INTENTIONAL | `Extract<ResMut<...>>` remains valid. `Extract` registers only the render-side `ExtractedWorld` proxy: read for read-only parameters and write for mutable ones. Its source parameter state owns a separate main-world change tick/last-run pair, matching Bevy `SystemState` timing without mixing world-local component access ids. |
 
 ## Completion and verification policy

@@ -21,6 +21,7 @@
 #include <epix/render/schedule.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/view.hpp>
+#include <epix/utils/index_map.hpp>
 
 namespace epix::render::phase {
 
@@ -39,110 +40,6 @@ EPIX_EXPORT constexpr PhaseItemExtraIndex multidraw_extra_index(PhaseItemExtraIn
     extra_index.batch_set_index = multi_draw_indirect_count_supported ? std::optional{batch_set_index} : std::nullopt;
     return extra_index;
 }
-
-/**
- * @brief Map with insertion-ordered iteration and O(1) lookup (Bevy
- * `indexmap::IndexMap`). Used by the binned phase machinery so that bin and
- * instance ordering is deterministic.
- * @tparam K Key type (must be hashable and equality-comparable).
- * @tparam V Value type.
- */
-EPIX_EXPORT template <typename K, typename V>
-class IndexMap {
-   public:
-    using value_type = std::pair<K, V>;
-
-    V& operator[](const K& key) {
-        if (auto it = m_indices.find(key); it != m_indices.end()) {
-            return m_entries[it->second].second;
-        }
-        const std::size_t idx = m_entries.size();
-        m_indices.emplace(key, idx);
-        m_entries.emplace_back(key, V{});
-        return m_entries.back().second;
-    }
-    V* get(const K& key) {
-        if (auto it = m_indices.find(key); it != m_indices.end()) {
-            return &m_entries[it->second].second;
-        }
-        return nullptr;
-    }
-    const V* get(const K& key) const {
-        if (auto it = m_indices.find(key); it != m_indices.end()) {
-            return &m_entries[it->second].second;
-        }
-        return nullptr;
-    }
-    bool contains(const K& key) const { return m_indices.contains(key); }
-    bool empty() const noexcept { return m_entries.empty(); }
-    std::size_t size() const noexcept { return m_entries.size(); }
-    void clear() noexcept {
-        m_entries.clear();
-        m_indices.clear();
-    }
-    /** @brief Remove the entry with the given key, preserving order of the
-     * remaining entries. Returns true if an entry was removed. */
-    bool remove(const K& key) {
-        auto it = m_indices.find(key);
-        if (it == m_indices.end()) {
-            return false;
-        }
-        const std::size_t idx = it->second;
-        m_entries.erase(m_entries.begin() + static_cast<std::ptrdiff_t>(idx));
-        m_indices.erase(it);
-        // fix up indices after the removed position
-        for (auto& [k, i] : m_indices) {
-            (void)k;
-            if (i > idx) {
-                --i;
-            }
-        }
-        return true;
-    }
-    /** @brief Position of the key in the insertion order, if present. */
-    std::optional<std::size_t> index_of(const K& key) const {
-        if (auto it = m_indices.find(key); it != m_indices.end()) {
-            return it->second;
-        }
-        return std::nullopt;
-    }
-    /** @brief Sort entries by key (Bevy `IndexMap::sort_unstable_keys`). */
-    void sort_unstable_keys()
-        requires std::totally_ordered<K>
-    {
-        std::sort(m_entries.begin(), m_entries.end(),
-                  [](const value_type& lhs, const value_type& rhs) { return lhs.first < rhs.first; });
-        m_indices.clear();
-        for (std::size_t index = 0; index < m_entries.size(); ++index) {
-            m_indices.emplace(m_entries[index].first, index);
-        }
-    }
-    /** @brief Remove the entry at the given insertion position, preserving the
-     * order of the rest. Returns the removed pair. */
-    value_type remove_at(std::size_t idx) {
-        value_type removed = std::move(m_entries[idx]);
-        m_entries.erase(m_entries.begin() + static_cast<std::ptrdiff_t>(idx));
-        m_indices.erase(removed.first);
-        for (auto& [k, i] : m_indices) {
-            (void)k;
-            if (i > idx) {
-                --i;
-            }
-        }
-        return removed;
-    }
-    /** @brief Iterate entries in insertion order. */
-    auto begin() { return m_entries.begin(); }
-    auto end() { return m_entries.end(); }
-    auto begin() const { return m_entries.begin(); }
-    auto end() const { return m_entries.end(); }
-    auto iter() { return std::views::all(m_entries); }
-    auto iter() const { return std::views::all(m_entries); }
-
-   private:
-    std::vector<value_type> m_entries;
-    std::unordered_map<K, std::size_t> m_indices;
-};
 
 /**
  * @brief The index of the uniform describing an object in the GPU buffer
@@ -211,21 +108,19 @@ EPIX_EXPORT class RenderBin {
         m_indices.emplace(main_entity, idx);
         m_entries.emplace_back(main_entity, uniform_index);
     }
-    /** @brief Remove an entity, preserving order of the rest. */
+    /** @brief Remove an entity by moving the final entry into its position
+     * (Bevy `RenderBin::remove` -> `IndexMap::swap_remove`). */
     bool remove(sync_world::MainEntity main_entity) {
         auto it = m_indices.find(main_entity);
-        if (it == m_indices.end()) {
-            return false;
-        }
+        if (it == m_indices.end()) return false;
         const std::size_t idx = it->second;
-        m_entries.erase(m_entries.begin() + static_cast<std::ptrdiff_t>(idx));
         m_indices.erase(it);
-        for (auto& [k, i] : m_indices) {
-            (void)k;
-            if (i > idx) {
-                --i;
-            }
+        const std::size_t last = m_entries.size() - 1;
+        if (idx != last) {
+            m_entries[idx] = std::move(m_entries[last]);
+            m_indices.at(m_entries[idx].first) = idx;
         }
+        m_entries.pop_back();
         return true;
     }
     /** @brief Whether the entity is in this bin. */
@@ -363,13 +258,13 @@ class BinnedRenderPhase {
         : batch_sets(make_batch_sets(gpu_preprocessing_mode)), gpu_preprocessing_mode(gpu_preprocessing_mode) {}
 
     /** @brief Batch set -> (bin -> entities) for multidrawable meshes. */
-    IndexMap<BatchSetKey, IndexMap<BinKey, RenderBin>> multidrawable_meshes;
+    utils::IndexMap<BatchSetKey, utils::IndexMap<BinKey, RenderBin>> multidrawable_meshes;
     /** @brief (batch set, bin) -> entities for batchable non-multidrawable meshes. */
-    IndexMap<BinKeyPair<BatchSetKey, BinKey>, RenderBin> batchable_meshes;
+    utils::IndexMap<BinKeyPair<BatchSetKey, BinKey>, RenderBin> batchable_meshes;
     /** @brief (batch set, bin) -> entities for unbatchable meshes. */
-    IndexMap<BinKeyPair<BatchSetKey, BinKey>, UnbatchableBinnedEntities> unbatchable_meshes;
+    utils::IndexMap<BinKeyPair<BatchSetKey, BinKey>, UnbatchableBinnedEntities> unbatchable_meshes;
     /** @brief (batch set, bin) -> entities for non-mesh items. */
-    IndexMap<BinKeyPair<BatchSetKey, BinKey>, NonMeshEntities> non_mesh_items;
+    utils::IndexMap<BinKeyPair<BatchSetKey, BinKey>, NonMeshEntities> non_mesh_items;
     /** @brief Per-frame prepared batches. Its alternative is fixed by
      * `gpu_preprocessing_mode`. */
     BinnedRenderPhaseBatchSets<BinKey> batch_sets;
@@ -537,17 +432,16 @@ class BinnedRenderPhase {
      * `sweep_old_entities`).
      */
     void sweep_old_entities() {
-        // Remove entities not marked as valid; iterate in reverse so that
-        // index fixups do not disturb positions we have not visited yet.
+        // Remove entities not marked as valid in reverse. This is the order
+        // Bevy requires because `swap_remove_index` moves a previously checked
+        // final entry into the removed position.
         for (std::size_t i = cached_entity_bin_keys.size(); i-- > 0;) {
             if (!valid_cached_entity_bin_keys[i]) {
-                auto [entity, cached] = cached_entity_bin_keys.remove_at(i);
+                auto removed = cached_entity_bin_keys.swap_remove_index(i);
+                if (!removed) continue;
+                auto [entity, cached] = std::move(*removed);
                 if (cached.cached_bin_key) {
                     remove_entity_from_bin(entity, *cached.cached_bin_key);
-                }
-                if (i < valid_cached_entity_bin_keys.size()) {
-                    valid_cached_entity_bin_keys.erase(valid_cached_entity_bin_keys.begin() +
-                                                       static_cast<std::ptrdiff_t>(i));
                 }
             }
         }
@@ -580,11 +474,11 @@ class BinnedRenderPhase {
                     if (auto* bin = batch_set->get(key.bin_key)) {
                         bin->remove(main_entity);
                         if (bin->empty()) {
-                            batch_set->remove(key.bin_key);
+                            batch_set->swap_remove(key.bin_key);
                         }
                     }
                     if (batch_set->empty()) {
-                        multidrawable_meshes.remove(key.batch_set_key);
+                        multidrawable_meshes.swap_remove(key.batch_set_key);
                     }
                 }
                 break;
@@ -594,7 +488,7 @@ class BinnedRenderPhase {
                 if (auto* bin = batchable_meshes.get(key_pair)) {
                     bin->remove(main_entity);
                     if (bin->empty()) {
-                        batchable_meshes.remove(key_pair);
+                        batchable_meshes.swap_remove(key_pair);
                     }
                 }
                 break;
@@ -604,7 +498,7 @@ class BinnedRenderPhase {
                 if (auto* unbatchable = unbatchable_meshes.get(key_pair)) {
                     unbatchable->entities.erase(main_entity);
                     if (unbatchable->empty()) {
-                        unbatchable_meshes.remove(key_pair);
+                        unbatchable_meshes.swap_remove(key_pair);
                     }
                 }
                 break;
@@ -614,7 +508,7 @@ class BinnedRenderPhase {
                 if (auto* non_mesh = non_mesh_items.get(key_pair)) {
                     non_mesh->entities.erase(main_entity);
                     if (non_mesh->empty()) {
-                        non_mesh_items.remove(key_pair);
+                        non_mesh_items.swap_remove(key_pair);
                     }
                 }
                 break;
@@ -772,7 +666,7 @@ class BinnedRenderPhase {
     }
 
     /** @brief main entity -> cached bin keys + change tick. */
-    IndexMap<sync_world::MainEntity, CachedBinnedEntity<BPI>> cached_entity_bin_keys;
+    utils::IndexMap<sync_world::MainEntity, CachedBinnedEntity<BPI>> cached_entity_bin_keys;
     /** @brief Validity flag per cached entry (aligned with insertion order). */
     std::vector<bool> valid_cached_entity_bin_keys;
     /** @brief Entities that changed bins this frame. */
