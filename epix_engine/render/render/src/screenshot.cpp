@@ -3,7 +3,6 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
-#include <epix/input.hpp>
 #include <epix/render.hpp>
 #include <epix/render/gpu_readback.hpp>
 #include <epix/render/graph.hpp>
@@ -56,8 +55,6 @@ struct ScreenshotState {
     std::vector<PreparedCapture> prepared;
     std::vector<CompletedCapture> completed;
     std::unordered_map<Entity, InFlightCapture> in_flight;
-    std::uint32_t next_legacy_capture = 0;
-    std::optional<std::filesystem::path> save_path;
 };
 
 struct ScreenshotBlitHandles {
@@ -106,16 +103,9 @@ struct ScreenshotRequests {
     std::vector<ScreenshotState::PendingCapture> pending;
 };
 
-/** @brief Render-to-main completion senders. Component captures use the
- * public Bevy-shaped receiver; legacy event captures use a private channel. */
+/** @brief Render-to-main completion sender for component captures. */
 struct ScreenshotDeliverySenders {
     async_channel::Sender<ScreenshotCaptured> component;
-    async_channel::Sender<image::Image> legacy;
-};
-
-/** @brief Private main-world receiver for Epix's legacy ScreenCapture event. */
-struct LegacyCapturedScreenshots {
-    async_channel::Receiver<image::Image> receiver;
 };
 
 /** @brief Retains delivered request entities for exactly one main-world frame. */
@@ -180,98 +170,23 @@ std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::pat
     };
 }
 
-/** @brief ExtractSchedule system — delivers completed images to the main world and
- *  queues new capture requests from the main world's ScreenCapture events. */
+/** @brief ExtractSchedule system — delivers completed images and queues component requests. */
 static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
-                                         Extract<EventReader<ScreenCapture>> captures,
                                          Extract<ResMut<ScreenshotRequests>> component_captures,
                                          Res<ScreenshotDeliverySenders> delivery,
                                          ResMut<readback::GpuReadbacks> readbacks,
                                          ResMut<readback::GpuReadbackBufferPool> buffer_pool) {
     collect_completed_readbacks(state, readbacks, buffer_pool);
-    // Deliver results from previous frame into main world
     for (auto& completed : state->completed) {
         auto& img = completed.image;
-        // Auto-save to disk if an output directory was configured
-        if (state->save_path.has_value()) {
-            auto now  = std::chrono::time_point_cast<std::chrono::seconds>(std::chrono::system_clock::now());
-            auto name = std::format("screenshot_{:%Y%m%d_%H%M%S}.png", now);
-            auto abs  = std::filesystem::absolute(*state->save_path / name);
-
-            std::error_code ec;
-            std::filesystem::create_directories(abs.parent_path(), ec);
-            if (ec) {
-                spdlog::warn("[render.screenshot] Could not create directory '{}': {}", abs.parent_path().string(),
-                             ec.message());
-            }
-
-            auto* io_pool = epix::task::IoTaskPool::try_get();
-            if (io_pool) {
-                io_pool
-                    ->spawn([img_copy = img, abs]() mutable {
-                        auto result = image::Image::save(abs, img_copy);
-                        if (!result) {
-                            spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", abs.string());
-                        } else {
-                            spdlog::info("[render.screenshot] Screenshot saved to '{}' through `ScreenshotPlugin`",
-                                         abs.string());
-                        }
-                    })
-                    .detach();
-            } else {
-                // IoTaskPool not initialised — fall back to synchronous save
-                auto result = image::Image::save(abs, img);
-                if (!result) {
-                    spdlog::warn("[render.screenshot] Failed to save screenshot to '{}'", abs.string());
-                } else {
-                    spdlog::info("[render.screenshot] Screenshot saved to '{}' through `ScreenshotPlugin`",
-                                 abs.string());
-                }
-            }
-        }
-        // Do not borrow main-world resources in ExtractSchedule. This is the
-        // same channel hand-off Bevy uses for ScreenshotCaptured; the legacy
-        // Epix event is delivered through its own private receiver.
         if (completed.entity.has_value()) {
             if (!delivery->component.try_send(
                     ScreenshotCaptured{.entity = *completed.entity, .image = std::move(img)})) {
-                spdlog::warn("[render.screenshot] Dropped component screenshot because its delivery receiver closed");
-            }
-        } else {
-            if (!delivery->legacy.try_send(std::move(img))) {
-                spdlog::warn("[render.screenshot] Dropped legacy screenshot because its delivery receiver closed");
+                spdlog::warn("[render.screenshot] Dropped screenshot because its delivery receiver closed");
             }
         }
     }
     state->completed.clear();
-
-    // Collect new ScreenCapture requests from main world
-    for (auto&& cap : captures.read()) {
-        state->pending.push_back(ScreenshotState::PendingCapture{.target = cap.target});
-        spdlog::info("[render.screenshot] Capture requested for target '{}' through ScreenCapture event",
-                     std::visit(epix::utils::visitor{
-                                    [](const ::epix::window::WindowRef& win_ref) {
-                                        return std::visit(epix::utils::visitor{
-                                                              [](const ::epix::window::WindowRef::Primary&) {
-                                                                  return std::string("primary window");
-                                                              },
-                                                              [](const ::epix::window::WindowRef::Entity& window) {
-                                                                  return std::format("window entity {}",
-                                                                                     window.entity.index);
-                                                              },
-                                                          },
-                                                          win_ref);
-                                    },
-                                    [](const ::epix::camera::ImageRenderTarget& image) {
-                                        return std::format("wgpu texture {}", static_cast<void*>(image.texture.raw()));
-                                    },
-                                    [](const ::epix::camera::ManualTextureViewHandle& handle) {
-                                        return std::format("manual texture view {}", handle.id);
-                                    },
-                                    [](const ::epix::camera::NoColorTarget&) { return std::string("no color target"); },
-                                },
-                                cap.target));
-    }
 
     for (auto& capture : component_captures->pending) state->pending.push_back(std::move(capture));
     component_captures->pending.clear();
@@ -307,15 +222,6 @@ static CaptureFormatInfo capture_format(wgpu::TextureFormat format) {
             return {16, image::Format::RGBA32F, false};
         default:
             return {};
-    }
-}
-
-static void trigger_legacy_screenshots(Res<LegacyCapturedScreenshots> completed,
-                                       ResMut<assets::Assets<image::Image>> images,
-                                       ResMut<Events<ScreenCaptureResult>> result_events) {
-    while (auto image = completed->receiver.try_recv()) {
-        auto handle = images->add(std::move(*image));
-        result_events->push(ScreenCaptureResult{.handle = std::move(handle)});
     }
 }
 
@@ -448,14 +354,12 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
             spdlog::warn("[render.screenshot] Could not resolve screenshot render target");
             continue;
         }
-        std::optional<wgpu::Texture> direct_texture;
         std::optional<wgpu::TextureView> output_view;
         glm::uvec2 size{};
         wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
         std::visit(epix::utils::visitor{
                        [&](const ::epix::camera::ImageRenderTarget& image) {
                            if (!image.texture) return;
-                           direct_texture = image.texture;
                            output_view    = image.texture.createView();
                            size           = {image.texture.getWidth(), image.texture.getHeight()};
                            format         = image.texture.getFormat();
@@ -464,7 +368,6 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                            if (auto it = windows->windows.find(window.entity()); it != windows->windows.end()) {
                                const auto& extracted = it->second;
                                if (!extracted.swapchain_texture_view || !extracted.swapchain_texture.texture) return;
-                               direct_texture = extracted.swapchain_texture.texture;
                                output_view    = extracted.swapchain_texture_view;
                                size           = {static_cast<uint32_t>(extracted.physical_width),
                                                  static_cast<uint32_t>(extracted.physical_height)};
@@ -485,20 +388,8 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
             spdlog::warn("[render.screenshot] Could not resolve a readable screenshot target");
             continue;
         }
-        const Entity readback_entity =
-            request.entity.value_or(Entity::from_parts(UINT32_MAX - 1u, ++state->next_legacy_capture));
-        if (!request.entity) {
-            // Legacy ScreenCapture retains direct-texture semantics, but now
-            // uses the shared asynchronous readback pool after graph output.
-            if (!direct_texture) {
-                spdlog::warn(
-                    "[render.screenshot] Legacy ScreenCapture cannot read a ManualTextureView; use Screenshot");
-                continue;
-            }
-            state->prepared.push_back(
-                {readback_entity, std::nullopt, *direct_texture, *output_view, size, format, false});
-            continue;
-        }
+        if (!request.entity) continue;
+        const Entity readback_entity = *request.entity;
         // Bevy Screenshot always redirects the target to a temporary texture:
         // it is safe to COPY_SRC and works for ManualTextureView, whose source
         // texture is intentionally not part of the public camera API.
@@ -581,33 +472,18 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
     state.prepared.clear();
 }
 
-static void screenshot_capture_on_key(Res<ScreenshotHotkey> hotkey,
-                                      Res<epix::input::ButtonInput<epix::input::KeyCode>> keys,
-                                      ResMut<Events<ScreenCapture>> captures) {
-    if (keys->just_pressed(hotkey->key)) {
-        captures->push(ScreenCapture{});
-        // spdlog::info("[render.screenshot] Capture requested through hotkey '{}'",
-        // epix::input::key_name(hotkey->key));
-    }
-}
-
 void ScreenshotPlugin::attach(epix::app::App& app) {
-    app.add_event<ScreenCapture>();
-    app.add_event<ScreenCaptureResult>();
     app.add_event<ScreenshotCaptured>();
     app.world_mut().insert_resource(ScreenshotRequests{});
     app.world_mut().insert_resource(ScreenshotCleanupState{});
 
     auto [component_sender, component_receiver] = async_channel::unbounded<ScreenshotCaptured>();
-    auto [legacy_sender, legacy_receiver]       = async_channel::unbounded<image::Image>();
     app.world_mut().insert_resource(CapturedScreenshots{std::move(component_receiver)});
-    app.world_mut().insert_resource(LegacyCapturedScreenshots{std::move(legacy_receiver)});
 
     auto& render_app = app.sub_app_mut(Render);
-    render_app.world_mut().insert_resource(ScreenshotState{.save_path = save_path});
+    render_app.world_mut().insert_resource(ScreenshotState{});
     render_app.world_mut().init_resource<ScreenshotBlitPipelines>();
-    render_app.world_mut().insert_resource(
-        ScreenshotDeliverySenders{std::move(component_sender), std::move(legacy_sender)});
+    render_app.world_mut().insert_resource(ScreenshotDeliverySenders{std::move(component_sender)});
 
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
@@ -617,9 +493,7 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
             .vertex_shader   = server->get().load<shader::Shader>("embedded://screenshot/blit_vert.slang"),
             .fragment_shader = server->get().load<shader::Shader>("embedded://screenshot/blit_frag.slang"),
         });
-    } else {
-        throw std::runtime_error("ScreenshotPlugin requires AssetServer and EmbeddedAssetRegistry");
-    }
+    } else return;
 
     render_app.add_systems(
         ExtractSchedule,
@@ -633,17 +507,9 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
                                        .set_name("screenshot: prepare targets"));
     render_app.world_mut().resource_mut<graph::RenderGraphFinalizers>().callbacks.push_back(submit_screenshot_commands);
 
-    if (capture_key.has_value()) {
-        app.world_mut().insert_resource(ScreenshotHotkey{.key = *capture_key});
-    }
     app.add_systems(PreUpdate,
-                    into(request_component_screenshots, trigger_component_screenshots, trigger_legacy_screenshots)
-                        .set_names(std::array{"screenshot: component request", "screenshot: component delivery",
-                                              "screenshot: legacy delivery"}));
-    app.add_systems(PreUpdate,
-                    into(screenshot_capture_on_key)
-                        .set_name("screenshot: hotkey capture")
-                        .run_if([](std::optional<Res<ScreenshotHotkey>> hotkey) { return hotkey.has_value(); }));
+                    into(request_component_screenshots, trigger_component_screenshots)
+                        .set_names(std::array{"screenshot: component request", "screenshot: component delivery"}));
     app.add_systems(Last, into(clear_captured_screenshots).set_name("screenshot: cleanup captured requests"));
 }
 }  // namespace epix::render::screenshot

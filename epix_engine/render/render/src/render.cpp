@@ -454,8 +454,10 @@ void RenderPlugin::attach(App& app) {
                              .set_name("apply extract commands"));
     });
 
-    app.add_plugins(render::window::WindowRenderPlugin{});
     app.add_plugins(shader::ShaderPlugin{});
+    // WindowRenderPlugin owns ScreenshotPlugin, whose embedded blit shaders
+    // require ShaderPlugin's loader to be registered first.
+    app.add_plugins(render::window::WindowRenderPlugin{});
     // This is Bevy's render::camera::CameraPlugin. The public main-world
     // epix::camera::CameraPlugin is deliberately a separate application
     // plugin, just as bevy_camera::CameraPlugin is outside RenderPlugin.

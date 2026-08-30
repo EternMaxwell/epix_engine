@@ -50,7 +50,7 @@ struct BasicSpriteVisualTestPlugin {
 
         // Component-oriented screenshot example: the request entity is marked
         // Capturing, emits ScreenshotCaptured, then is cleaned up by the
-        // plugin. The saved file is the same real swapchain image displayed
+        // plugin. Its readback source is the real swapchain image displayed
         // by this visual example (rather than a synthetic success color).
         world.spawn(render::screenshot::Screenshot::primary_window());
     }
@@ -78,7 +78,6 @@ int main() {
         .add_plugins(camera::CameraPlugin{})
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
-        .add_plugins(render::screenshot::ScreenshotPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(CamControllPlugin{})

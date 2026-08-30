@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
+#include <epix/render/screenshot.hpp>
 #include <epix/render/window.hpp>
 
 using namespace epix::render::window;
@@ -24,6 +25,9 @@ void epix::render::window::WindowSurfaces::remove(const Entity& entity) {
 }
 
 void WindowRenderPlugin::attach(App& app) {
+    // Bevy window/mod.rs installs ScreenshotPlugin as part of the window
+    // renderer rather than requiring a separate opt-in rendering module.
+    app.add_plugins(screenshot::ScreenshotPlugin{});
     auto& render_app = app.sub_app_mut(epix::render::Render);
     render_app.world_mut().insert_resource(ExtractedWindows{});
     render_app.world_mut().insert_resource(WindowSurfaces{});

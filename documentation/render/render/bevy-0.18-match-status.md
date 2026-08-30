@@ -91,7 +91,7 @@ including where the current native wgpu API lacks an implementation call.
 | R14 | Manual texture-view helpers | FIXED | `ManualTextureView::with_default_format` now uses Bevy's sRGB RGBA8 default, and `ManualTextureViews` directly exposes its map collection API. Handle ownership remains correctly camera-side and views render-side. |
 | R15 | Window maximum frame latency | FIXED | `Window` and `ExtractedWindow` carry Bevy's optional desired frame-latency setting; surface setup uses it or Bevy's default of two through wgpu-native's `SurfaceConfigurationExtras`. As in Bevy, it is extracted when the render-side window is created rather than dynamically reconfiguring an existing surface. |
 | R16 | Surface usage | FIXED | Window surfaces no longer unconditionally request `COPY_SRC`; usage follows the Bevy-aligned configuration. |
-| R17 | Screenshot integration | OPEN | Screenshot behavior exists, but `ScreenshotPlugin` is still separate and not installed by `WindowRenderPlugin` as in Bevy. |
+| R17 | Screenshot integration | FIXED | `ScreenshotPlugin` is render-owned and installed by `WindowRenderPlugin`. The API is Bevy-shaped and component/event based; the retired event/hotkey API is removed. |
 | R18 | Render diagnostics | DEFERRED | Render diagnostics/timestamp instrumentation and Tracy/erased-asset diagnostic plugin parity are not the current focus.  Preserve feature/integration boundaries. |
 
 The source audit supplied R1 through R18 only.  There is no original R19;

@@ -8,4 +8,4 @@ target_link_libraries(epix_sprite PUBLIC epix_render)
 target_link_libraries(epix_sprite PUBLIC epix_core_graph)
 target_link_libraries(epix_sprite PUBLIC webgpu)
 
-epix_add_examples(sprite LINK_LIBS epix_sprite epix_glfw epix_glfw_render epix_input epix_screenshot)
+epix_add_examples(sprite LINK_LIBS epix_sprite epix_glfw epix_glfw_render epix_input)

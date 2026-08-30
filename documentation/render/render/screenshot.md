@@ -1,43 +1,36 @@
 # Screenshots
 
-`epix.render.screenshot` captures a window swapchain or supplied WebGPU texture into an
-`image::Image` asset.
+`ScreenshotPlugin` is installed by `WindowRenderPlugin` as part of
+`RenderPlugin`. It follows Bevy's component-based screenshot lifecycle: spawn
+a `Screenshot` request entity, then observe `ScreenshotCaptured`.
 
 ```cpp
-import epix.render.screenshot;
+#include <epix/render/screenshot.hpp>
+
 using namespace epix::render::screenshot;
 
-app.add_plugins(ScreenshotPlugin{}); // add after RenderPlugin
-```
-
-`ScreenshotPlugin` registers `ScreenCapture` and `ScreenCaptureResult`. Its defaults save PNGs to
-`screenshots/` and request the primary window when F12 is just pressed. Configure
-`save_path = nullopt` to disable automatic saving or `capture_key = nullopt` to disable the hotkey.
-The hotkey path requires `InputPlugin` so `ButtonInput<KeyCode>` exists.
-
-## Event-driven capture
-
-```cpp
-void request(EventWriter<ScreenCapture> out) {
-    out.write(ScreenCapture{}); // primary window
+void request(ecs::World& world) {
+    world.spawn(Screenshot::primary_window());
 }
 
-void receive(EventReader<ScreenCaptureResult> results) {
-    for (const auto& result : results.read()) {
-        assets::Handle<image::Image> image = result.handle;
-        // Retain the strong handle if the image is needed after this system.
+void receive(EventReader<ScreenshotCaptured> captures) {
+    for (const auto& capture : captures.read()) {
+        // capture.entity identifies the request entity.
+        const image::Image& image = capture.image;
     }
 }
 ```
 
-Set `ScreenCapture::target` with the same `camera::RenderTarget` constructors used by cameras to
-capture a particular window or a `wgpu::Texture`. Requests are extracted to the render world,
-copied during `RenderSet::Cleanup`, and delivered to the main world on the following extract pass.
+The plugin adds `Capturing` while the GPU readback is in flight, then emits
+`ScreenshotCaptured`, adds `Captured`, and despawns the request entity on the
+following frame. Duplicate requests for the same render target are coalesced.
 
-Supported source formats are RGBA8/BGRA8 (including sRGB), R8, RG8, RGBA16 integer/float, and
-RGBA32Float. BGRA is converted to RGBA and row padding is stripped. The resulting image has
-`ImageUsage::Main`.
+`Screenshot::primary_window()`, `Screenshot::window(entity)`,
+`Screenshot::image(texture)`, and `Screenshot::texture_view(handle)` select a
+render target. Captures use the final graph output; source formats supported by
+the readback path are RGBA8/BGRA8 (including sRGB), R8, RG8, RGBA16
+integer/float, and RGBA32Float. BGRA is converted to RGBA and row padding is
+stripped.
 
-If auto-save is enabled, saving uses `IoTaskPool` when initialized and otherwise falls back to a
-synchronous save. `ScreenshotHotkey {key}` is the mutable resource controlling the active hotkey.
-
+Use `save_to_disk(path)` in a `ScreenshotCaptured` observer if disk output is
+desired. There is no built-in hotkey or automatic file-writing policy.

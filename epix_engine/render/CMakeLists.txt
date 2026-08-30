@@ -41,20 +41,6 @@ target_link_libraries(epix_imgui PUBLIC epix_input)
 target_link_libraries(epix_imgui PUBLIC webgpu)
 target_link_libraries(epix_imgui PUBLIC imgui)
 
-epix_add_module_subdir(epix_screenshot screen_shot)
-target_link_libraries(epix_screenshot PUBLIC epix_render)
-target_link_libraries(epix_screenshot PUBLIC epix_image)
-target_link_libraries(epix_screenshot PUBLIC epix_assets)
-target_link_libraries(epix_screenshot PUBLIC epix_ecs)
-target_link_libraries(epix_screenshot PUBLIC epix_task)
-target_link_libraries(epix_screenshot PUBLIC epix_input)
-target_link_libraries(epix_screenshot PUBLIC webgpu)
-
-epix_add_tests(screenshot
-  TESTS_DIR screen_shot/tests
-  LINK_LIBS epix_screenshot epix_render epix_ecs epix_image epix_assets epix_task
-)
-
 epix_add_tests(render
   TESTS_DIR render/tests
   LINK_LIBS epix_render epix_ecs epix_app
