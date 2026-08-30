@@ -353,19 +353,22 @@ void create_uniform_for_view(Commands cmd,
                                         Opt<const camera::TemporalJitter&>,
                                         Opt<const ::epix::camera::MainPassResolutionOverride&>>> views,
                              Res<wgpu::Device> device,
-                             Res<wgpu::Limits> limits,
                              ResMut<view::ViewUniforms> view_uniforms,
                              Res<ViewUniformBindingLayout> uniform_layout,
                              Res<wgpu::Queue> queue,
                              Res<FrameCount> frame_count) {
     // Populate the ViewUniforms dynamic uniform buffer (Bevy prepare_view_uniforms,
-    // view/mod.rs:906-969). Its device alignment is established when the
-    // ViewUniforms resource is initialized in ViewPlugin::attach.
+    // view/mod.rs:906-969) through the direct writer path.
     view_uniforms->uniforms.clear();
     view_uniforms->offsets.clear();
     // Bevy get_writer returns None when there are no views: nothing to upload
     // (uniform_buffer.rs:270) 鈥?skip silently instead of logging an error.
     if (views.iter().max_remaining() == 0) {
+        return;
+    }
+    auto writer = view_uniforms->uniforms.get_writer(views.iter().max_remaining(), device.get(), queue.get());
+    if (!writer) {
+        spdlog::error("Failed to create direct uniform writer for views");
         return;
     }
     for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum, opt_temporal_jitter, opt_resolution_override] :
@@ -404,13 +407,14 @@ void create_uniform_for_view(Commands cmd,
             .mip_bias                   = opt_mip_bias ? opt_mip_bias->get().bias : 0.0f,
             .frame_count                = frame_count.get().count,
         };
-        std::size_t offset = view_uniforms->uniforms.push(uniform);
-        view_uniforms->offsets.push_back(static_cast<std::uint32_t>(offset));
-        cmd.entity(entity).insert(ViewUniformOffset{static_cast<std::uint32_t>(offset)});
+        const std::uint32_t offset = writer->write(uniform);
+        view_uniforms->offsets.push_back(offset);
+        cmd.entity(entity).insert(ViewUniformOffset{offset});
     }
-    // Create (if needed) and upload the GPU buffer, then build per-view bind
-    // groups with dynamic offsets into it.
-    view_uniforms->uniforms.write_buffer(device.get(), queue.get());
+    // wgpu-native lacks wgpu's mapped write-buffer view. Releasing the
+    // writer queues the one staged upload before bind-group construction.
+    writer.reset();
+    // Build per-view bind groups with dynamic offsets into the uploaded buffer.
     const auto* buffer = view_uniforms->uniforms.buffer();
     if (!buffer) {
         spdlog::error("Failed to create uniform buffer for views");

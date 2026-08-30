@@ -11,6 +11,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include <iterator>
+#include <limits>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -203,6 +204,9 @@ public:
  * is a byte vector laid out with std140 element alignment.
  */
 template <ShaderWritable T>
+class DynamicUniformBufferWriter;
+
+template <ShaderWritable T>
 struct DynamicUniformBuffer {
 private:
     /** @brief Raw byte storage, one aligned element per `T`. */
@@ -289,7 +293,119 @@ public:
             queue.writeBuffer(gpu_buffer, 0, values.data(), size);
         }
     }
+
+    /** @brief Create a writer that directly accumulates encoded elements for
+     * the GPU buffer (Bevy `DynamicUniformBuffer::get_writer`).
+     *
+     * `max_count` must cover every subsequent writer `write` call. The native
+     * wgpu C API does not expose wgpu's mapped `write_buffer_with` view, so
+     * the writer stages exactly the encoded bytes on the CPU and submits one
+     * `Queue::writeBuffer` operation when it is destroyed. */
+    std::optional<DynamicUniformBufferWriter<T>> get_writer(std::size_t max_count,
+                                                             const wgpu::Device& device,
+                                                             const wgpu::Queue& queue);
 };
+
+/** @brief RAII writer returned by `DynamicUniformBuffer::get_writer` (Bevy
+ * `DynamicUniformBufferWriter`). Destruction queues its completed upload. */
+template <ShaderWritable T>
+class DynamicUniformBufferWriter {
+    wgpu::Buffer buffer;
+    wgpu::Queue queue;
+    std::vector<std::uint8_t> staging;
+    std::size_t capacity = 0;
+    std::size_t alignment = 1;
+    bool submitted        = false;
+
+    void submit() noexcept {
+        if (submitted) return;
+        submitted = true;
+        if (buffer && queue && !staging.empty()) {
+            queue.writeBuffer(buffer, 0, staging.data(), staging.size());
+        }
+    }
+
+    DynamicUniformBufferWriter(wgpu::Buffer buffer,
+                               wgpu::Queue queue,
+                               std::size_t capacity,
+                               std::size_t alignment) noexcept
+        : buffer(buffer),
+          queue(queue),
+          capacity(capacity),
+          alignment(alignment) {}
+
+    friend struct DynamicUniformBuffer<T>;
+
+public:
+    DynamicUniformBufferWriter(const DynamicUniformBufferWriter&)            = delete;
+    DynamicUniformBufferWriter& operator=(const DynamicUniformBufferWriter&) = delete;
+
+    DynamicUniformBufferWriter(DynamicUniformBufferWriter&& other) noexcept
+        : buffer(other.buffer),
+          queue(other.queue),
+          staging(std::move(other.staging)),
+          capacity(other.capacity),
+          alignment(other.alignment),
+          submitted(other.submitted) {
+        other.submitted = true;
+    }
+    DynamicUniformBufferWriter& operator=(DynamicUniformBufferWriter&& other) noexcept {
+        if (this == std::addressof(other)) return *this;
+        submit();
+        buffer          = other.buffer;
+        queue           = other.queue;
+        staging         = std::move(other.staging);
+        capacity        = other.capacity;
+        alignment       = other.alignment;
+        submitted       = other.submitted;
+        other.submitted = true;
+        return *this;
+    }
+    ~DynamicUniformBufferWriter() { submit(); }
+
+    /** @brief Write one encoded value and return its dynamic byte offset
+     * (Bevy `DynamicUniformBufferWriter::write`). */
+    std::uint32_t write(const T& value) {
+        const std::size_t stride = align_up(ShaderTypeInfo<T>::shader_size, alignment);
+        if (stride == 0 || staging.size() > capacity || capacity - staging.size() < stride) {
+            throw std::out_of_range("Dynamic uniform writer exceeded its requested capacity.");
+        }
+        if (staging.size() > std::numeric_limits<std::uint32_t>::max()) {
+            throw std::overflow_error("Dynamic uniform offset exceeds u32.");
+        }
+        const auto offset = static_cast<std::uint32_t>(staging.size());
+        staging.resize(staging.size() + stride);
+        ShaderTypeInfo<T>::write_into(value,
+                                      std::span<std::uint8_t>{staging.data() + offset,
+                                                              ShaderTypeInfo<T>::shader_size});
+        return offset;
+    }
+};
+
+template <ShaderWritable T>
+std::optional<DynamicUniformBufferWriter<T>> DynamicUniformBuffer<T>::get_writer(
+    std::size_t max_count,
+    const wgpu::Device& device,
+    const wgpu::Queue& queue) {
+    wgpu::Limits limits{};
+    if (device.getLimits(&limits) != wgpu::Status::eSuccess) return std::nullopt;
+    const std::size_t alignment = std::max<std::size_t>(1, limits.minUniformBufferOffsetAlignment);
+    const std::size_t stride    = align_up(ShaderTypeInfo<T>::shader_size, alignment);
+    if (max_count != 0 && stride > std::numeric_limits<std::size_t>::max() / max_count) {
+        throw std::length_error("Dynamic uniform writer capacity overflows size_t.");
+    }
+    const std::size_t size = stride * max_count;
+    if (capacity < size || (changed && size > 0)) {
+        capacity = size;
+        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                             .setLabel(label ? label->c_str() : "")
+                                             .setUsage(usage)
+                                             .setSize(capacity));
+        changed = false;
+    }
+    if (!gpu_buffer) return std::nullopt;
+    return DynamicUniformBufferWriter<T>{gpu_buffer, queue, capacity, alignment};
+}
 
 /**
  * @brief Stores a single value accessible to shaders as a storage buffer

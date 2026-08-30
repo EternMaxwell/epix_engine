@@ -249,6 +249,43 @@ TEST(RenderWorld, ManualRenderCreationUsesSuppliedResources) {
     EXPECT_EQ(render_app->get().world().resource<RenderAdapterInfo>().device, resources.adapter_info.device);
 }
 
+TEST(DynamicUniformBuffer, DirectWriterAllocatesAndQueuesUploads) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+        return;
+    }
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    const auto& world  = render_sub->world();
+    const auto& device = world.resource<wgpu::Device>();
+    const auto& queue  = world.resource<wgpu::Queue>();
+
+    render_resource::DynamicUniformBuffer<view::ViewUniform> uniforms;
+    EXPECT_FALSE(uniforms.get_writer(0, device, queue).has_value());
+    {
+        auto writer = uniforms.get_writer(2, device, queue);
+        ASSERT_TRUE(writer.has_value());
+        EXPECT_EQ(writer->write(view::ViewUniform{}), 0u);
+        EXPECT_EQ(writer->write(view::ViewUniform{}), 768u);
+        EXPECT_THROW(writer->write(view::ViewUniform{}), std::out_of_range);
+    }  // RAII destruction queues the staged upload.
+
+    ASSERT_NE(uniforms.buffer(), nullptr);
+    const auto allocated_buffer = uniforms.buffer()->clone();
+    {
+        auto writer = uniforms.get_writer(1, device, queue);
+        ASSERT_TRUE(writer.has_value());
+        EXPECT_EQ(writer->write(view::ViewUniform{}), 0u);
+    }
+    EXPECT_EQ(*uniforms.buffer(), allocated_buffer);
+}
+
 // TrackedRenderPass skips redundant pipeline/bind-group/buffer state changes
 // (Bevy draw_state.rs) and invalidates tracking on wgpu_pass()/pass().
 TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
