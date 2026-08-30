@@ -41,6 +41,9 @@ EPIX_EXPORT struct ExtractedWindow {
     int physical_height;
     /** @brief Requested present mode. */
     epix::window::PresentMode present_mode;
+    /** @brief Optional frame-queue limit extracted from the window. An absent
+     * value uses Bevy's default of two. */
+    std::optional<std::uint32_t> desired_maximum_frame_latency;
     /** @brief Requested composite alpha mode. */
     epix::window::CompositeAlphaMode alpha_mode;
 

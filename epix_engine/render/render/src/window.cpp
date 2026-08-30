@@ -10,6 +10,8 @@ using namespace epix::ecs;
 using namespace epix::app;
 
 namespace {
+constexpr std::uint32_t kDefaultDesiredMaximumFrameLatency = 2;
+
 /** @brief sRGB-suffixed variant of a surface format, or nullopt when the
  * format is already sRGB (Bevy TextureFormat::add_srgb_suffix). Defined below
  * in this namespace alongside resolve_present_mode. */
@@ -72,6 +74,7 @@ void epix::render::window::extract_windows(
                                                            .physical_width  = std::max(1, window.physical_size.first),
                                                            .physical_height = std::max(1, window.physical_size.second),
                                                            .present_mode    = window.present_mode,
+                                                           .desired_maximum_frame_latency = window.desired_maximum_frame_latency,
                                                            .alpha_mode      = window.composite_alpha_mode,
                                                        });
         }
@@ -297,8 +300,9 @@ void epix::render::window::create_surfaces(ResMut<ExtractedWindows> windows,
                     // capabilities with fallbacks (window/mod.rs:439-483).
                     .setPresentMode(resolve_present_mode(window.present_mode, capabilities))
                     .setViewFormats(std::span<const wgpu::TextureFormat>(view_formats.data(), view_format_count))
-                    // Bevy default desired maximum frame latency = 2.
-                    .setNextInChain(wgpu::SurfaceConfigurationExtras().setDesiredMaximumFrameLatency(2))
+                    // Bevy's optional NonZeroU32 setting defaults to two.
+                    .setNextInChain(wgpu::SurfaceConfigurationExtras().setDesiredMaximumFrameLatency(
+                        window.desired_maximum_frame_latency.value_or(kDefaultDesiredMaximumFrameLatency)))
                     .setAlphaMode([&]() {
                         switch (window.alpha_mode) {
                             case CompositeAlphaMode::Auto:

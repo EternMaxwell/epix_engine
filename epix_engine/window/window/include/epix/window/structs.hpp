@@ -252,6 +252,11 @@ EPIX_EXPORT namespace epix::window {
         CompositeAlphaMode composite_alpha_mode = CompositeAlphaMode::Auto;
         /** @brief Presentation/vsync mode. */
         PresentMode present_mode = PresentMode::AutoNoVsync;
+        /** @brief Optional upper limit on frames queued for presentation.
+         * When omitted, the renderer uses Bevy's default of two. A supplied
+         * value must be nonzero, corresponding to Bevy's
+         * `Option<NonZeroU32>`. */
+        std::optional<std::uint32_t> desired_maximum_frame_latency;
 
         /** @brief Z-ordering level relative to other windows. */
         WindowLevel window_level = WindowLevel::Normal;

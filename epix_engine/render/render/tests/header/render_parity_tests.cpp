@@ -1927,6 +1927,43 @@ TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
     EXPECT_TRUE(render_world.get_resource<window::WindowSurfaces>().has_value());
 }
 
+TEST(WindowFrameLatency, ExtractsBevyOptionalSetting) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(window::ExtractedWindows{});
+    render_world.insert_resource(window::WindowSurfaces{});
+    main_world.insert_resource(epix::ecs::Events<::epix::window::WindowClosed>{});
+
+    ::epix::window::Window main_window;
+    EXPECT_FALSE(main_window.desired_maximum_frame_latency.has_value());
+    main_window.desired_maximum_frame_latency = 3;
+    const auto entity = main_world
+                            .spawn(std::move(main_window),
+                                   window::SurfaceCreation{[](const wgpu::Instance&) { return wgpu::Surface{}; }},
+                                   ::epix::window::PrimaryWindow{})
+                            .id();
+    main_world.flush();
+
+    auto system = make_system_unique(window::extract_windows);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    ASSERT_TRUE(render_world.resource<window::ExtractedWindows>().windows.contains(entity));
+    EXPECT_EQ(render_world.resource<window::ExtractedWindows>()
+                  .windows.at(entity)
+                  .desired_maximum_frame_latency,
+              std::optional<std::uint32_t>{3});
+
+    // Bevy only extracts this setting while creating ExtractedWindow; runtime
+    // mutations do not force a surface reconfiguration.
+    main_world.get_entity_mut(entity)->get_mut<::epix::window::Window>()->get_mut().desired_maximum_frame_latency = 4;
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    EXPECT_EQ(render_world.resource<window::ExtractedWindows>()
+                  .windows.at(entity)
+                  .desired_maximum_frame_latency,
+              std::optional<std::uint32_t>{3});
+}
+
 TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     auto app = epix::app::App::create();
     const ::epix::camera::ClearColor configured{0.25f, 0.5f, 0.75f, 1.0f};
