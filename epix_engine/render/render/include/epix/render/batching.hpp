@@ -831,7 +831,7 @@ void write_batched_instance_buffers(
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
     requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P> && phase::MutablePhaseItemExtraIndex<P>)
 void batch_and_prepare_gpu_sorted_phase(
-    phase::RenderPhase<P>& render_phase,
+    phase::SortedRenderPhase<P>& render_phase,
     UntypedPhaseBatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData>& phase_buffers,
     UntypedPhaseIndirectParametersBuffers& indirect_parameters,
     const view::RetainedViewEntity& retained_view,
@@ -910,15 +910,17 @@ template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
 void batch_and_prepare_gpu_sorted_render_phase(
     ecs::ResMut<PhaseBatchedInstanceBuffers<P, typename GetBatchData<Adapter>::BufferData>> phase_buffers,
     ecs::ResMut<PhaseIndirectParametersBuffers<P>> indirect_parameters,
+    ecs::ResMut<phase::ViewSortedRenderPhases<P>> sorted_render_phases,
     ecs::Query<ecs::Item<const view::ExtractedView&,
                          ecs::Has<view::NoIndirectDrawing>,
-                         ecs::Has<experimental::OcclusionCulling>,
-                         phase::RenderPhase<P>&>,
+                         ecs::Has<experimental::OcclusionCulling>>,
                ecs::With<view::ExtractedView>> views,
     typename GetBatchData<Adapter>::Param batch_param) {
-    for (auto&& [extracted_view, no_indirect_drawing, occlusion_culling, render_phase] : views.iter()) {
+    for (auto&& [extracted_view, no_indirect_drawing, occlusion_culling] : views.iter()) {
+        auto it = sorted_render_phases->find(extracted_view.retained_view_entity);
+        if (it == sorted_render_phases->end()) continue;
         batch_and_prepare_gpu_sorted_phase<P, Adapter>(
-            render_phase, phase_buffers->buffers, indirect_parameters->buffers, extracted_view.retained_view_entity,
+            it->second, phase_buffers->buffers, indirect_parameters->buffers, extracted_view.retained_view_entity,
             no_indirect_drawing, occlusion_culling, batch_param);
     }
 }
@@ -967,7 +969,7 @@ inline constexpr bool automatic_batching_enabled = [] {
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
     requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
 void batch_and_prepare_sorted_phase(
-    phase::RenderPhase<P>& render_phase,
+    phase::SortedRenderPhase<P>& render_phase,
     render_resource::GpuArrayBuffer<typename GetBatchData<Adapter>::BufferData>& instance_buffer,
     typename GetBatchData<Adapter>::Param& batch_param) {
     using compare_data = typename GetBatchData<Adapter>::CompareData;
@@ -1016,9 +1018,10 @@ template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
     requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
 void batch_and_prepare_sorted_render_phase(
     ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
-    ecs::Query<ecs::Item<phase::RenderPhase<P>&>> phases,
+    ecs::ResMut<phase::ViewSortedRenderPhases<P>> phases,
     typename GetBatchData<Adapter>::Param batch_param) {
-    for (auto&& [render_phase] : phases.iter()) {
+    for (auto& [retained_view_entity, render_phase] : *phases) {
+        (void)retained_view_entity;
         batch_and_prepare_sorted_phase<P, Adapter>(render_phase, instance_buffer->buffer, batch_param);
     }
 }
@@ -1238,6 +1241,7 @@ void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
     app.add_plugins(batching::CpuSortedRenderPhasePlugin<P, Adapter>{});
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
+        world.init_resource<ViewSortedRenderPhases<P>>();
         world.init_resource<
             batching::PhaseBatchedInstanceBuffers<P, typename batching::GetBatchData<Adapter>::BufferData>>();
         world.insert_resource(

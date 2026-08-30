@@ -39,6 +39,7 @@
 #include <epix/render/graph.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
+#include <epix/render/retained_view_entity.hpp>
 
 namespace epix::render::phase {
 /** @brief Strongly-typed index identifying a registered draw function. */
@@ -423,17 +424,17 @@ struct DrawFunctions {
         std::make_shared<std::pair<std::shared_mutex, DrawFunctionsInternal<P>>>();
 };
 
-/** @brief Component holding sorted phase items and executing their draw
- * functions during rendering.
+/** @brief Sorted phase items and their draw functions for one retained view
+ * (Bevy `SortedRenderPhase`).
  * @tparam T The phase item type. */
 EPIX_EXPORT template <PhaseItem T>
-struct RenderPhase {
+struct SortedRenderPhase {
    public:
-    RenderPhase()                              = default;
-    RenderPhase(const RenderPhase&)            = delete;
-    RenderPhase(RenderPhase&&)                 = default;
-    RenderPhase& operator=(const RenderPhase&) = delete;
-    RenderPhase& operator=(RenderPhase&&)      = default;
+    SortedRenderPhase()                                    = default;
+    SortedRenderPhase(const SortedRenderPhase&)            = delete;
+    SortedRenderPhase(SortedRenderPhase&&)                 = default;
+    SortedRenderPhase& operator=(const SortedRenderPhase&) = delete;
+    SortedRenderPhase& operator=(SortedRenderPhase&&)      = default;
 
    public:
     using SortKey = decltype(std::declval<const T>().sort_key());
@@ -506,6 +507,20 @@ struct RenderPhase {
             }
             i += len;
         }
+    }
+};
+
+/** @brief Retained-view keyed collection of one sorted phase type (Bevy
+ * `ViewSortedRenderPhases`). The resource retains allocations across frames;
+ * `insert_or_clear` resets a live view without reallocating its items. */
+EPIX_EXPORT template <PhaseItem P>
+struct ViewSortedRenderPhases : std::unordered_map<view::RetainedViewEntity, SortedRenderPhase<P>> {
+    using Base = std::unordered_map<view::RetainedViewEntity, SortedRenderPhase<P>>;
+    using Base::Base;
+
+    void insert_or_clear(const view::RetainedViewEntity& retained_view_entity) {
+        auto [it, inserted] = this->try_emplace(retained_view_entity);
+        if (!inserted) it->second.clear();
     }
 };
 /** @brief Error returned by individual render commands within a draw
@@ -685,11 +700,12 @@ DrawFunctionId app_add_render_commands(app::App& app) {
     return draw_functions.template add<RenderCommandSequence<P, R...>>(world);
 }
 
-/** @brief System that sorts all RenderPhase<P> components by their sort
- * keys. */
+/** @brief Sort all retained views for a sorted phase type (Bevy
+ * `sort_phase_system`). */
 EPIX_EXPORT template <PhaseItem P>
-void sort_phase_items(epix::ecs::Query<epix::ecs::Item<RenderPhase<P>&>> phases) {
-    for (auto&& [phase] : phases.iter()) {
+void sort_phase_system(epix::ecs::ResMut<ViewSortedRenderPhases<P>> phases) {
+    for (auto& [retained_view_entity, phase] : *phases) {
+        (void)retained_view_entity;
         phase.sort();
     }
 }

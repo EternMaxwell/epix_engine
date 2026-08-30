@@ -130,16 +130,14 @@ struct Node2D : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::view::ExtractedView&,
                                             const render::camera::ExtractedCamera&,
                                             const render::view::ViewTarget&,
-                                            const render::view::ViewDepthTexture&,
-                                            const render::phase::RenderPhase<P>&>,
+                                            const render::view::ViewDepthTexture&>,
                                   ecs::Filter<>>>
         views;
     void update(ecs::World& world) override {
         if (!views) {
             views =
                 world.try_query<ecs::Item<const render::view::ExtractedView&, const render::camera::ExtractedCamera&,
-                                          const render::view::ViewTarget&, const render::view::ViewDepthTexture&,
-                                          const render::phase::RenderPhase<P>&>>();
+                                          const render::view::ViewTarget&, const render::view::ViewDepthTexture&>>();
         } else {
             views->update_archetypes(world);
         }
@@ -155,7 +153,11 @@ struct Node2D : render::graph::Node {
         auto view_entity = ctx.view_entity();
         auto view_opt = views->query_with_ticks(world, world.last_change_tick(), world.change_tick()).get(view_entity);
         if (!view_opt) return {};
-        auto&& [exview, camera, target, depth, phase] = *view_opt;
+        auto&& [exview, camera, target, depth] = *view_opt;
+        const auto phases = world.get_resource<render::phase::ViewSortedRenderPhases<P>>();
+        if (!phases) return {};
+        const auto phase = phases->get().find(exview.retained_view_entity);
+        if (phase == phases->get().end()) return {};
         auto render_pass                              = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor()
                 // ViewTarget owns the MSAA sample attachment and resolve
@@ -173,7 +175,7 @@ struct Node2D : render::graph::Node {
                                     static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
                                     static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
         }
-        phase.render(render_pass, world, view_entity);
+        phase->second.render(render_pass, world, view_entity);
         render_pass.end();
         render_ctx.flush_encoder();
         return {};

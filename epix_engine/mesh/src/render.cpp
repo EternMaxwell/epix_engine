@@ -559,10 +559,8 @@ struct MeshBatchKey {
     bool operator==(const MeshBatchKey&) const = default;
 };
 
-void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&>,
-                                  With<render::camera::ExtractedCamera, render::view::ExtractedView>> opaque_views,
-                            Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&>,
-                                  With<render::camera::ExtractedCamera, render::view::ExtractedView>> transparent_views,
+void prepare_mesh_instances(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_phases,
+                            ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> transparent_phases,
                             Query<Item<MeshBatch&, const ExtractedMesh2d&>> meshes,
                             Res<render::RenderAssets<image::Image>> images,
                             Res<wgpu::Device> device,
@@ -628,10 +626,12 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
         }
     };
 
-    for (auto&& [phase] : opaque_views.iter()) {
+    for (auto& [retained_view_entity, phase] : *opaque_phases) {
+        (void)retained_view_entity;
         process_phase(phase);
     }
-    for (auto&& [phase] : transparent_views.iter()) {
+    for (auto& [retained_view_entity, phase] : *transparent_phases) {
+        (void)retained_view_entity;
         process_phase(phase);
     }
 
@@ -642,7 +642,7 @@ void prepare_mesh_instances(Query<Item<render::phase::RenderPhase<core_graph::co
     }
 }
 
-void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Opaque2D>&,
+void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                                        const render::view::ViewTarget&,
                                        Opt<const ::epix::camera::RenderLayers&>,
                                        const ::epix::render::view::RenderVisibleEntities&>> views,
@@ -651,8 +651,11 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
                             Res<render::RenderAssets<image::Image>> images,
                             Res<OpaqueMesh2dDrawFunction> draw_function_id,
                             ResMut<Mesh2dPipelineCache> pipeline_cache,
-                            ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target, opt_camera_layers, visible_entities] : views.iter()) {
+                            ResMut<render::PipelineServer> pipeline_server,
+                            ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Opaque2D>> phases) {
+    for (auto&& [view, target, opt_camera_layers, visible_entities] : views.iter()) {
+        auto phase = phases->find(view.retained_view_entity);
+        if (phase == phases->end()) continue;
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         const auto& visible = visible_entities.template get<Mesh2d>();
@@ -694,7 +697,7 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
                 continue;
             }
 
-            phase.add(core_graph::core_2d::Opaque2D{
+            phase->second.add(core_graph::core_2d::Opaque2D{
                 .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
@@ -709,7 +712,7 @@ void queue_meshes_2d_opaque(Query<Item<render::phase::RenderPhase<core_graph::co
     }
 }
 
-void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
+void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
                                             const render::view::ViewTarget&,
                                             Opt<const ::epix::camera::RenderLayers&>,
                                             const ::epix::render::view::RenderVisibleEntities&>> views,
@@ -718,8 +721,11 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
                                  Res<render::RenderAssets<image::Image>> images,
                                  Res<TransparentMesh2dDrawFunction> draw_function_id,
                                  ResMut<Mesh2dPipelineCache> pipeline_cache,
-                                 ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, target, opt_camera_layers, visible_entities] : views.iter()) {
+                                 ResMut<render::PipelineServer> pipeline_server,
+                                 ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases) {
+    for (auto&& [view, target, opt_camera_layers, visible_entities] : views.iter()) {
+        auto phase = phases->find(view.retained_view_entity);
+        if (phase == phases->end()) continue;
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         const auto& visible = visible_entities.template get<Mesh2d>();
@@ -761,7 +767,7 @@ void queue_meshes_2d_transparent(Query<Item<render::phase::RenderPhase<core_grap
                 continue;
             }
 
-            phase.add(core_graph::core_2d::Transparent2D{
+            phase->second.add(core_graph::core_2d::Transparent2D{
                 .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
                 .depth                 = extracted_mesh.depth,
                 .pipeline_id           = *pipeline_id,

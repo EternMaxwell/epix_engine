@@ -8,6 +8,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 using namespace epix::render;
@@ -16,6 +17,35 @@ using namespace epix::ecs;
 using namespace epix::app;
 
 namespace {
+void extract_core2d_camera_phases(
+    ::epix::ecs::ResMut<::epix::render::phase::ViewSortedRenderPhases<::epix::core_graph::core_2d::Transparent2D>>
+        transparent_phases,
+    ::epix::ecs::ResMut<::epix::render::phase::ViewSortedRenderPhases<::epix::core_graph::core_2d::Opaque2D>>
+        opaque_phases,
+    ::epix::ecs::ResMut<::epix::render::phase::ViewSortedRenderPhases<::epix::core_graph::core_2d::UI2DItem>> ui_phases,
+    ::epix::app::Extract<::epix::ecs::Query<::epix::ecs::Item<::epix::ecs::Entity,
+                                                               const ::epix::camera::Camera&,
+                                                               const ::epix::render::camera::CameraRenderGraph&>,
+                                            ::epix::ecs::With<::epix::camera::Camera2d>>>
+                cameras) {
+    std::unordered_set<::epix::render::view::RetainedViewEntity> live_views;
+    for (auto&& [entity, camera, graph] : cameras.iter()) {
+        if (!camera.is_active ||
+            graph != ::epix::render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))
+            continue;
+        const auto retained_view = ::epix::render::view::RetainedViewEntity::create(
+            ::epix::render::sync_world::MainEntity{entity}, std::nullopt, 0);
+        transparent_phases->insert_or_clear(retained_view);
+        opaque_phases->insert_or_clear(retained_view);
+        ui_phases->insert_or_clear(retained_view);
+        live_views.insert(retained_view);
+    }
+    const auto remove_dead_views = [&live_views](const auto& entry) { return !live_views.contains(entry.first); };
+    std::erase_if(*transparent_phases, remove_dead_views);
+    std::erase_if(*opaque_phases, remove_dead_views);
+    std::erase_if(*ui_phases, remove_dead_views);
+}
+
 // Slang blit shaders: sample the view's main texture and write it to the
 // output attachment with a fullscreen triangle (Bevy core_pipeline blit).
 constexpr std::string_view kBlitVertexPath  = "core2d/blit_vert.slang";
@@ -267,36 +297,25 @@ void Core2dPlugin::attach(App& app) {
         render_app.world_mut().insert_resource(phase::DrawFunctions<Transparent2D>{});
         render_app.world_mut().insert_resource(phase::DrawFunctions<Opaque2D>{});
         render_app.world_mut().insert_resource(phase::DrawFunctions<UI2DItem>{});
+        render_app.world_mut().init_resource<phase::ViewSortedRenderPhases<Transparent2D>>();
+        render_app.world_mut().init_resource<phase::ViewSortedRenderPhases<Opaque2D>>();
+        render_app.world_mut().init_resource<phase::ViewSortedRenderPhases<UI2DItem>>();
         render_app.world_mut().init_resource<Core2dBlitPipelines>();
         if (blit_handles) {
             render_app.world_mut().insert_resource(std::move(*blit_handles));
         }
         Core2d.add_to(render_app.resource_mut<graph::RenderGraph>());
 
-        render_app.add_systems(Render, into(phase::sort_phase_items<Transparent2D>, phase::sort_phase_items<UI2DItem>,
-                                            phase::sort_phase_items<Opaque2D>)
+        render_app.add_systems(Render, into(phase::sort_phase_system<Transparent2D>, phase::sort_phase_system<UI2DItem>,
+                                            phase::sort_phase_system<Opaque2D>)
                                            .in_set(RenderSystems::PhaseSort)
                                            .set_names(std::array{"sort transparent 2d phase", "sort ui 2d phase",
                                                                  "sort opaque 2d phase"}));
         render_app.add_systems(
             Render,
             into(queue_core2d_blit_pipelines).in_set(RenderSystems::Queue).set_name("queue core2d blit pipelines"));
-        render_app.add_systems(
-            Render,
-            into([](Commands cmd,
-                    Query<Item<Entity, const render::camera::ExtractedCamera&>, With<view::ExtractedView>> views) {
-                // insert render phases for each view
-                for (auto&& [entity, camera] : views.iter()) {
-                    // only insert for 2d camera render graph
-                    if (camera.render_graph == render::graph::GraphLabel(Core2d)) {
-                        auto entity_commands = cmd.entity(entity);
-                        entity_commands.insert(phase::RenderPhase<Transparent2D>{}, phase::RenderPhase<Opaque2D>{},
-                                               phase::RenderPhase<UI2DItem>{});
-                    }
-                }
-            })
-                .in_set(RenderSystems::ManageViews)
-                .set_name("insert 2d render phases"));
+        render_app.add_systems(ExtractSchedule,
+                               into(extract_core2d_camera_phases).set_name("extract core 2d camera phases"));
         return std::make_optional(std::ref(render_app));
     });
 }

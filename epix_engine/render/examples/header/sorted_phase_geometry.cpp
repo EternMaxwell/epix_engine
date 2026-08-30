@@ -152,7 +152,7 @@ struct SortedGeometryNode : render::graph::Node {
     std::optional<QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>>> views;
     std::shared_ptr<sorted_phase_geometry::PipelineState> pipeline =
         std::make_shared<sorted_phase_geometry::PipelineState>();
-    render::phase::RenderPhase<Item> phase;
+    render::phase::SortedRenderPhase<Item> phase;
     wgpu::ShaderModule render_shader;
     wgpu::ShaderModule preprocess_shader;
     std::uint32_t work_item_count = 0;

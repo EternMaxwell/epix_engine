@@ -755,7 +755,7 @@ static_assert(batching::GetBatchDataImpl<CpuBatchTestAdapter>);
 }  // namespace
 
 TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
-    phase::RenderPhase<CpuBatchTestItem> render_phase;
+    phase::SortedRenderPhase<CpuBatchTestItem> render_phase;
     render_phase.items = {
         {Entity::from_index(1), sync_world::MainEntity{Entity::from_index(1)}, CachedPipelineId{5},
          phase::DrawFunctionId{7}},
@@ -781,7 +781,7 @@ TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
     World system_world(WorldId(101));
     system_world.insert_resource(CpuBatchSystemParam{});
     system_world.insert_resource(batching::BatchedInstanceBuffer<std::uint32_t>{limits});
-    phase::RenderPhase<CpuBatchTestItem> system_phase;
+    phase::SortedRenderPhase<CpuBatchTestItem> system_phase;
     system_phase.items = {
         {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(10)}, CachedPipelineId{5},
          phase::DrawFunctionId{7}},
@@ -1191,7 +1191,7 @@ TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
 TEST(GpuSortedPreprocessing, BuildsIndirectRunsAndCommandMetadata) {
     // The third item changes the adapter comparison key and must begin a new
     // indirect run rather than extending the first two-item batch.
-    phase::RenderPhase<CpuBatchTestItem> render_phase;
+    phase::SortedRenderPhase<CpuBatchTestItem> render_phase;
     render_phase.items = {
         {Entity::from_index(1), sync_world::MainEntity{Entity::from_index(1)}, CachedPipelineId{5},
          phase::DrawFunctionId{7}},
@@ -1306,6 +1306,26 @@ TEST(BinnedRenderPhase, BinsByKey) {
     EXPECT_EQ(bin1->size(), 1u);
     EXPECT_TRUE(bin1->contains(m3));
     EXPECT_FALSE(phase.is_empty());
+}
+
+// Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
+// retained view while clearing its items for the next frame.
+TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {
+    phase::ViewSortedRenderPhases<CpuBatchTestItem> phases;
+    const view::RetainedViewEntity retained{sync_world::MainEntity{Entity::from_index(81)}, std::nullopt, 0};
+
+    phases.insert_or_clear(retained);
+    ASSERT_EQ(phases.size(), 1u);
+    auto& first = phases.at(retained);
+    first.add(CpuBatchTestItem{Entity::from_index(82), sync_world::MainEntity{Entity::from_index(82)},
+                               CachedPipelineId{4}, phase::DrawFunctionId{3}});
+    ASSERT_EQ(first.items.size(), 1u);
+    const auto* allocation = std::addressof(first);
+
+    phases.insert_or_clear(retained);
+    ASSERT_EQ(phases.size(), 1u);
+    EXPECT_EQ(std::addressof(phases.at(retained)), allocation);
+    EXPECT_TRUE(phases.at(retained).items.empty());
 }
 
 // Bevy only downgrades multidrawable items when the view explicitly requests
@@ -1996,6 +2016,7 @@ TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
+    EXPECT_TRUE((render_app->get().world().get_resource<phase::ViewSortedRenderPhases<CpuBatchTestItem>>().has_value()));
     EXPECT_FALSE(render_app->get().world().get_resource<::epix::camera::ClearColor>().has_value());
 
     const Entity camera = app.world_mut().spawn(::epix::camera::Camera{}).id();
@@ -2776,9 +2797,9 @@ TEST(DrawFunctions, AddAppendsAndRemaps) {
     EXPECT_THROW(functions.template id<UnregisteredDrawType>(), std::runtime_error);
 }
 
-// RenderPhase::clear empties the item list (Bevy SortedRenderPhase::clear).
-TEST(RenderPhase, Clear) {
-    phase::RenderPhase<TestBinnedItem> phase;
+// SortedRenderPhase::clear empties the item list (Bevy SortedRenderPhase::clear).
+TEST(SortedRenderPhase, Clear) {
+    phase::SortedRenderPhase<TestBinnedItem> phase;
     phase.add(TestBinnedItem{});
     phase.add(TestBinnedItem{});
     EXPECT_EQ(phase.items.size(), 2u);
@@ -2960,16 +2981,16 @@ struct CountingSortedDraw : phase::DrawFunction<TestBinnedItem> {
 };
 }  // namespace
 
-// RenderPhase::render_range skips batch_range.len() items after a batched
+// SortedRenderPhase::render_range skips batch_range.len() items after a batched
 // draw (Bevy render_phase/mod.rs:1470-1487: index += batch_range.len()).
-TEST(RenderPhase, RenderSkipsBatchedItems) {
+TEST(SortedRenderPhase, RenderSkipsBatchedItems) {
     CountingSortedDraw::calls = 0;
     epix::ecs::World world(WorldId(0));
     phase::DrawFunctions<TestBinnedItem> functions;
     const phase::DrawFunctionId draw_id = functions.template add<CountingSortedDraw>();
     world.insert_resource(std::move(functions));
 
-    phase::RenderPhase<TestBinnedItem> phase;
+    phase::SortedRenderPhase<TestBinnedItem> phase;
     TestBinnedItem batched;
     batched.m_entity        = Entity{1};
     batched.m_draw_function = draw_id;

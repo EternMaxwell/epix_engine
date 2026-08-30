@@ -342,8 +342,7 @@ void extract_sprites(Commands cmd,
     }
 }
 
-void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&,
-                                 const render::view::ExtractedView&,
+void queue_sprites_2d(Query<Item<const render::view::ExtractedView&,
                                  const render::view::ViewTarget&,
                                  Opt<const ::epix::camera::RenderLayers&>,
                                  const ::epix::render::view::Msaa&,
@@ -352,8 +351,11 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
                       Res<render::RenderAssets<image::Image>> images,
                       Res<TransparentSpriteDrawFunction> draw_function_id,
                       ResMut<SpritePipelineCache> pipeline_cache,
-                      ResMut<render::PipelineServer> pipeline_server) {
-    for (auto&& [phase, view, target, opt_camera_layers, msaa, visible_entities] : views.iter()) {
+                      ResMut<render::PipelineServer> pipeline_server,
+                      ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases) {
+    for (auto&& [view, target, opt_camera_layers, msaa, visible_entities] : views.iter()) {
+        auto phase = phases->find(view.retained_view_entity);
+        if (phase == phases->end()) continue;
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         auto pipeline_id =
@@ -380,7 +382,7 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
                 continue;
             }
 
-            phase.add(core_graph::core_2d::Transparent2D{
+            phase->second.add(core_graph::core_2d::Transparent2D{
                 .representative_entity = {entity, render::sync_world::MainEntity{sprite.source_entity}},
                 .depth                 = sprite.depth,
                 .pipeline_id           = *pipeline_id,
@@ -391,8 +393,7 @@ void queue_sprites_2d(Query<Item<render::phase::RenderPhase<core_graph::core_2d:
     }
 }
 
-void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::core_2d::Transparent2D>&>,
-                                  With<render::camera::ExtractedCamera, render::view::ExtractedView>> views,
+void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
                             Query<Item<SpriteBatch&, const ExtractedSprite&>> sprites,
                             Res<render::RenderAssets<image::Image>> images,
                             Res<wgpu::Device> device,
@@ -402,7 +403,8 @@ void prepare_sprite_batches(Query<Item<render::phase::RenderPhase<core_graph::co
     instance_buffer->instances.clear();
     std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
 
-    for (auto&& [phase] : views.iter()) {
+    for (auto& [retained_view_entity, phase] : *phases) {
+        (void)retained_view_entity;
         std::optional<assets::AssetId<image::Image>> current_texture;
         std::size_t batch_head = std::numeric_limits<std::size_t>::max();
 

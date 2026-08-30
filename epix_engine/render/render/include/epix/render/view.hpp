@@ -33,6 +33,7 @@
 #include <epix/render/manual_texture_view.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
+#include <epix/render/retained_view_entity.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/texture_attachment.hpp>
 #include <epix/render/window.hpp>
@@ -132,43 +133,6 @@ EPIX_EXPORT struct NoIndirectDrawing;
 EPIX_EXPORT struct ViewTargetAttachments;
 /** @brief Forward declaration (defined below; used by extract_cameras and
  * prepare_view_target). */
-
-/**
- * @brief Stable cross-frame identifier for a render-world view (Bevy
- * RetainedViewEntity).
- */
-EPIX_EXPORT struct RetainedViewEntity {
-    /** @brief Main-world entity this view corresponds to. */
-    sync_world::MainEntity main_entity;
-    /** @brief Auxiliary entity (e.g. a camera associated with a shadow
-     * cascade).  A missing value is represented
-     * by the stable placeholder,
-     * exactly as Bevy's `RetainedViewEntity` does. */
-    sync_world::MainEntity auxiliary_entity;
-    /** @brief Subview index (0 for cameras; cascade/face index for shadow views). */
-    std::uint32_t subview_index = 0;
-
-    static sync_world::MainEntity placeholder_auxiliary_entity() noexcept {
-        return sync_world::MainEntity{ecs::Entity::PLACEHOLDER};
-    }
-
-    RetainedViewEntity(sync_world::MainEntity main_entity,
-                       std::optional<sync_world::MainEntity> auxiliary_entity = std::nullopt,
-                       std::uint32_t subview_index                            = 0)
-        : main_entity(main_entity),
-          auxiliary_entity(auxiliary_entity.value_or(placeholder_auxiliary_entity())),
-          subview_index(subview_index) {}
-
-    bool operator==(const RetainedViewEntity&) const = default;
-
-    /** @brief Create from main entity, optional auxiliary entity, and subview
-     * index (Bevy RetainedViewEntity::new, view/mod.rs:243-253). */
-    static RetainedViewEntity create(sync_world::MainEntity main_entity,
-                                     std::optional<sync_world::MainEntity> auxiliary_entity,
-                                     std::uint32_t subview_index) {
-        return RetainedViewEntity{main_entity, auxiliary_entity, subview_index};
-    }
-};
 
 /** @brief Extracted view data: projection, transform, viewport and HDR
  * state for a single camera (Bevy ExtractedView).
@@ -626,7 +590,6 @@ EPIX_EXPORT struct CameraDriverNode : graph::Node {
 // specific graph) and the required components (RenderTarget, Projection,
 // Transform, VisibleEntities, Msaa, Frustum) are added automatically.
 }  // namespace epix::render::camera
-
 namespace epix::render::view {
 EPIX_EXPORT struct Hdr {};
 
@@ -961,14 +924,3 @@ EPIX_EXPORT struct MipBias {
 };
 
 }  // namespace epix::render::camera
-
-/** @brief Hash for `RetainedViewEntity` (Bevy derives Hash). */
-template <>
-struct std::hash<::epix::render::view::RetainedViewEntity> {
-    std::size_t operator()(const ::epix::render::view::RetainedViewEntity& r) const noexcept {
-        std::size_t h = std::hash<::epix::render::sync_world::MainEntity>{}(r.main_entity);
-        h ^= std::hash<::epix::render::sync_world::MainEntity>{}(r.auxiliary_entity) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        h ^= std::hash<std::uint32_t>{}(r.subview_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
-        return h;
-    }
-};
