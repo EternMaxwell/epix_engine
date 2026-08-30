@@ -87,6 +87,10 @@ GLFWwindow* GLFWPlugin::create_window(Entity id, Window& desc) {
         auto* user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
         user_data->resized.emplace(width, height);
     });
+    glfwSetWindowContentScaleCallback(window, [](GLFWwindow* window, float xscale, float) {
+        auto* user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
+        user_data->content_scale.emplace(xscale > 0.0f ? xscale : 1.0f);
+    });
     glfwSetKeyCallback(window, [](GLFWwindow* window, int key, int scancode, int action, int mods) {
         auto* user_data = static_cast<UserData*>(glfwGetWindowUserPointer(window));
         user_data->key_input.emplace(key, scancode, action, mods);
@@ -674,6 +678,7 @@ void GLFWPlugin::poll_events() { glfwPollEvents(); }
 void GLFWPlugin::send_cached_events(Query<Item<const CachedWindow&>> cached_windows,
                                     ResMut<GLFWwindows> glfw_windows,
                                     EventWriter<window::WindowResized> window_resized,
+                                    EventWriter<window::WindowScaleFactorChanged> window_scale_factor_changed,
                                     EventWriter<window::WindowCloseRequested> window_close_requested,
                                     EventWriter<window::CursorMoved> cursor_moved,
                                     EventWriter<window::CursorEntered> cursor_entered,
@@ -693,6 +698,9 @@ void GLFWPlugin::send_cached_events(Query<Item<const CachedWindow&>> cached_wind
         while (auto new_size = user_data->resized.try_pop()) {
             // send out
             window_resized.write(WindowResized{id, new_size->width, new_size->height});
+        }
+        while (auto new_scale = user_data->content_scale.try_pop()) {
+            window_scale_factor_changed.write(WindowScaleFactorChanged{id, new_scale->scale_factor});
         }
         {
             if (glfwWindowShouldClose(window)) {

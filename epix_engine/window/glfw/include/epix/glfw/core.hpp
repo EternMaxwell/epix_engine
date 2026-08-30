@@ -50,6 +50,9 @@ struct Resized {
     int width;
     int height;
 };
+struct ContentScale {
+    float scale_factor;
+};
 struct KeyInput {
     int key;
     int scancode;
@@ -89,6 +92,7 @@ EPIX_EXPORT struct ReceivedCharacter {
  */
 struct UserData {
     ConQueue<Resized> resized;
+    ConQueue<ContentScale> content_scale;
     ConQueue<KeyInput> key_input;
     ConQueue<CursorPos> cursor_pos;
     ConQueue<CursorEnter> cursor_enter;
@@ -213,6 +217,7 @@ EPIX_EXPORT struct GLFWPlugin {
     static void send_cached_events(epix::ecs::Query<epix::ecs::Item<const window::CachedWindow&>> cached_windows,
                                    epix::ecs::ResMut<GLFWwindows> glfw_windows,
                                    epix::ecs::EventWriter<window::WindowResized> window_resized,
+                                   epix::ecs::EventWriter<window::WindowScaleFactorChanged> window_scale_factor_changed,
                                    epix::ecs::EventWriter<window::WindowCloseRequested> window_close_requested,
                                    epix::ecs::EventWriter<window::CursorMoved> cursor_moved,
                                    epix::ecs::EventWriter<window::CursorEntered> cursor_entered,

@@ -49,6 +49,109 @@ Frustum Projection::compute_frustum(const ::epix::transform::GlobalTransform& ca
     return compute_camera_projection_frustum(get_clip_from_view(), camera_transform, get_far());
 }
 
+std::expected<void, CameraUpdateError> camera_system(
+    EventReader<::epix::window::WindowResized> window_resized_reader,
+    EventReader<::epix::window::WindowCreated> window_created_reader,
+    EventReader<::epix::window::WindowScaleFactorChanged> window_scale_factor_changed_reader,
+    Query<Item<Entity, const ::epix::window::Window&>, With<::epix::window::PrimaryWindow>> primary_window_query,
+    Query<Item<Entity, const ::epix::window::Window&>> window_query,
+    Query<Item<Mut<Camera>, Ref<RenderTarget>, Mut<Projection>>> cameras) {
+    std::unordered_set<Entity> changed_windows;
+    for (const auto& event : window_created_reader.read()) changed_windows.insert(event.window);
+    for (const auto& event : window_resized_reader.read()) changed_windows.insert(event.window);
+    std::unordered_set<Entity> scale_factor_changed_windows;
+    for (const auto& event : window_scale_factor_changed_reader.read()) {
+        changed_windows.insert(event.window);
+        scale_factor_changed_windows.insert(event.window);
+    }
+
+    const auto primary_window = primary_window_query.single().transform(
+        [](const auto& primary) { return std::get<0>(primary); });
+
+    for (auto&& [camera, target, projection] : cameras.iter()) {
+        const auto normalized_target = target.get().normalize(primary_window);
+        if (!normalized_target) continue;
+
+        const auto viewport_size =
+            camera.get().viewport.transform([](const Viewport& viewport) { return viewport.physical_size; });
+        const bool target_changed = std::visit(
+            utils::visitor{
+                [&](const window::NormalizedWindowRef& window) { return changed_windows.contains(window.entity()); },
+                [&](const ImageRenderTarget&) { return target.is_added() || target.is_modified(); },
+                [](const ManualTextureViewHandle&) { return true; },
+                [&](const NoColorTarget&) { return target.is_added() || target.is_modified(); },
+            },
+            *normalized_target);
+        const auto& camera_ref = camera.get();
+        const bool needs_update = target_changed || camera.is_added() || projection.is_modified() ||
+                                  camera_ref.computed.old_viewport_size != viewport_size ||
+                                  camera_ref.computed.old_sub_camera_view != camera_ref.sub_camera_view;
+        if (!needs_update) continue;
+
+        const auto target_info = std::visit(
+            utils::visitor{
+                [&](const window::NormalizedWindowRef& window)
+                    -> std::expected<RenderTargetInfo, CameraUpdateError> {
+                    if (const auto value = window_query.get(window.entity())) {
+                        const auto& resolved = std::get<1>(*value);
+                        return RenderTargetInfo{{resolved.physical_size.first, resolved.physical_size.second},
+                                                resolved.scale_factor};
+                    }
+                    return std::unexpected(CameraUpdateError{CameraUpdateError::Window{window.entity()}});
+                },
+                [](const ImageRenderTarget& image) -> std::expected<RenderTargetInfo, CameraUpdateError> {
+                    if (image.texture)
+                        return RenderTargetInfo{{image.texture.getWidth(), image.texture.getHeight()}, image.scale_factor};
+                    return std::unexpected(CameraUpdateError{CameraUpdateError::Image{}});
+                },
+                [](const ManualTextureViewHandle&) -> std::expected<RenderTargetInfo, CameraUpdateError> {
+                    // The renderer owns ManualTextureViews. Its correction pass
+                    // resolves this target after the general camera pass.
+                    return RenderTargetInfo{};
+                },
+                [](const NoColorTarget& no_color) -> std::expected<RenderTargetInfo, CameraUpdateError> {
+                    return RenderTargetInfo{no_color.size, 1.0f};
+                },
+            },
+            *normalized_target);
+        if (!target_info) return std::unexpected(std::move(target_info).error());
+        if (std::holds_alternative<ManualTextureViewHandle>(*normalized_target)) continue;
+
+        auto& camera_mut = camera.get_mut();
+        if (const auto* window = std::get_if<window::NormalizedWindowRef>(&*normalized_target);
+            window && scale_factor_changed_windows.contains(window->entity())) {
+            if (const auto old_scale_factor = camera_mut.computed.target_info.transform(
+                    [](const RenderTargetInfo& info) { return info.scale_factor; });
+                old_scale_factor && *old_scale_factor > 0.0f) {
+                const float resize_factor = target_info->scale_factor / *old_scale_factor;
+                if (camera_mut.viewport) {
+                    camera_mut.viewport->physical_position =
+                        glm::uvec2(glm::vec2(camera_mut.viewport->physical_position) * resize_factor);
+                    camera_mut.viewport->physical_size =
+                        glm::uvec2(glm::vec2(camera_mut.viewport->physical_size) * resize_factor);
+                }
+            }
+        }
+        if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_info->physical_size);
+        camera_mut.computed.target_info = *target_info;
+        if (const auto logical_size = camera_mut.logical_viewport_size(); logical_size && logical_size->x != 0.0f &&
+                                                               logical_size->y != 0.0f) {
+            projection.get_mut().update(logical_size->x, logical_size->y);
+            camera_mut.computed.clip_from_view =
+                camera_mut.sub_camera_view ? projection.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
+                                           : projection.get().get_clip_from_view();
+        }
+
+        const auto updated_viewport_size =
+            camera_mut.viewport.transform([](const Viewport& viewport) { return viewport.physical_size; });
+        if (camera_mut.computed.old_viewport_size != updated_viewport_size)
+            camera_mut.computed.old_viewport_size = updated_viewport_size;
+        if (camera_mut.computed.old_sub_camera_view != camera_mut.sub_camera_view)
+            camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
+    }
+    return {};
+}
+
 void Camera::register_required_components(RequiredComponentsRegistrator& registrator) {
     // ComputedCameraValues starts at a defined 0x0 target until this system's
     // first target-resolution pass; target resolution reads the current
@@ -341,8 +444,11 @@ void CameraPlugin::attach(App& app) {
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
     VisibilityPlugin{}.attach(app);
     VisibilityRangePlugin{}.attach(app);
-    app.add_plugins(CameraProjectionPlugin<Projection>{}, CameraProjectionPlugin<OrthographicProjection>{},
-                    CameraProjectionPlugin<PerspectiveProjection>{});
+    // The public camera module can run without the renderer, so it owns the
+    // window messages consumed by its Bevy-compatible update system.
+    app.add_events<::epix::window::WindowResized, ::epix::window::WindowCreated,
+                   ::epix::window::WindowScaleFactorChanged>();
+    app.add_systems(app::PostUpdate, into(camera_system).in_set(CameraUpdateSystems::CameraUpdateSystem));
     // ClearColor extraction to the render world is registered by the render
     // module's RenderPlugin, like bevy_render.
     // Bevy CameraPlugin::build uses init_resource, preserving an application

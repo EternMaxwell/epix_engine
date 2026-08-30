@@ -197,21 +197,20 @@ struct CameraRenderGraph : public graph::GraphLabel {
 A `GraphLabel` that identifies which named sub-graph in the render graph this
 camera drives.  Set on the `CameraBundle` and extracted each frame.
 
-## Camera projection extension point
+## Custom camera projections
 
 `CameraProjection` accepts projection types that provide clip-matrix
 generation (including sub-views), the far distance, cascade frustum corners,
-and `update(width, height)`.  Near-plane getters/setters are not required.
-Register a custom projection component with `CameraProjectionPlugin<MyProjection>`:
+and `update(width, height)`. Near-plane getters/setters are not required.
+Store a custom type through the Bevy-shaped `Projection` wrapper:
 
 ```cpp
-app.add_plugins(render::camera::CameraProjectionPlugin<MyProjection>{});
+cmd.entity(camera).insert(camera::Projection::custom(MyProjection{}));
 ```
 
-Its update system runs in `PostUpdate` under
-`CameraUpdateSystems::CameraUpdateSystem`. `CameraPlugin` installs projection
-plugins for `Projection`, `OrthographicProjection`, and
-`PerspectiveProjection` automatically.
+`CameraPlugin` updates `Projection` in `PostUpdate` under
+`CameraUpdateSystems::CameraUpdateSystem`. This includes the wrapper's
+orthographic, perspective, and custom alternatives.
 
 ---
 

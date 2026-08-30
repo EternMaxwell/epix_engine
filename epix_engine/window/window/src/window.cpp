@@ -11,6 +11,7 @@ void WindowPlugin::attach(App& app) {
     app.add_events<WindowResized>()
         .add_events<WindowMoved>()
         .add_events<WindowCreated>()
+        .add_events<WindowScaleFactorChanged>()
         .add_events<WindowClosed>()
         .add_events<WindowCloseRequested>()
         .add_events<WindowDestroyed>()

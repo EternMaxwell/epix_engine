@@ -13,9 +13,12 @@
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
 #include <epix/window.hpp>
+#include <expected>
+#include <format>
 #include <functional>
 #include <glm/glm.hpp>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <variant>
@@ -506,102 +509,36 @@ EPIX_EXPORT enum class CameraUpdateSystems {
     CameraUpdateSystem = 0,
 };
 
-template <CameraProjection ProjType>
-void camera_system(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Mut<ProjType>, const RenderTarget&>>
-        query,                                                                      // camera and projection query
-    epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>> window_query,  // window query
-    epix::ecs::Query<epix::ecs::Item<const ::epix::window::Window&>,
-                     epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query  // primary window query
-) {
-    for (auto&& [camera, proj, target] : query.iter()) {
-        // update the stored target size, update the projection if needed.
+/** @brief Structured failure from `camera_system` (Bevy's fallible camera
+ * target resolution). */
+EPIX_EXPORT struct CameraUpdateError : std::runtime_error {
+    struct Window {
+        epix::ecs::Entity entity;
+    };
+    struct Image {};
 
-        std::optional<glm::uvec2> viewport_size =
-            camera.get_mut().viewport.transform([](const Viewport& vp) { return glm::uvec2(vp.physical_size); });
+    std::variant<Window, Image> value;
 
-        // A camera can be updated before the native backend has supplied a
-        // target.  Keep that state explicitly invalid instead of permitting
-        // GLM's uninitialised default constructor to reach GPU allocation.
-        glm::uvec2 target_size{0, 0};
-        float target_scale_factor = 1.0f;
-        std::visit(utils::visitor{
-                       [&](const window::WindowRef& window_ref) {
-                           std::visit(utils::visitor{[&](const window::WindowRef::Primary&) {
-                                                         if (auto primary = primary_window_query.single()) {
-                                                             auto&& [win]        = *primary;
-                                                             target_size         = glm::uvec2(win.physical_size.first,
-                                                                                              win.physical_size.second);
-                                                             target_scale_factor = win.scale_factor;
-                                                         }
-                                                     },
-                                                     [&](const window::WindowRef::Entity& window) {
-                                                         if (auto opt_win = window_query.get(window.entity)) {
-                                                             auto [win]          = *opt_win;
-                                                             target_size         = glm::uvec2(win.physical_size.first,
-                                                                                              win.physical_size.second);
-                                                             target_scale_factor = win.scale_factor;
-                                                         }
-                                                     }},
-                                      window_ref);
-                       },
-                       [&](const ImageRenderTarget& image) {
-                           // texture target
-                           if (image.texture) {
-                               target_size         = glm::uvec2(image.texture.getWidth(), image.texture.getHeight());
-                               target_scale_factor = image.scale_factor;
-                           } else {
-                               // null texture, use 0x0 as invalid
-                               target_size = glm::uvec2(0, 0);
-                           }
-                       },
-                       [&](const ManualTextureViewHandle&) { target_size = glm::uvec2(0, 0); },
-                       [&](const NoColorTarget& no_color) { target_size = no_color.size; },
-                   },
-                   target);
-
-        auto& camera_mut = camera.get_mut();
-        // Bevy clamps custom viewports after resolving the target. This also
-        // handles a resize that leaves the previous viewport out of bounds.
-        if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        viewport_size             = camera_mut.viewport.transform([](const Viewport& vp) { return vp.physical_size; });
-        const glm::uvec2 new_size = viewport_size.value_or(target_size);
-        camera_mut.computed.target_info =
-            target_size.x != 0 && target_size.y != 0
-                ? std::optional<RenderTargetInfo>(RenderTargetInfo{target_size, target_scale_factor})
-                : std::nullopt;
-        camera_mut.computed.old_viewport_size   = viewport_size;
-        camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
-
-        // Bevy deliberately leaves the previous projection intact for an
-        // invalid 0-sized target/viewport; updating perspective aspect ratio
-        // here would create NaNs.
-        // Projection parameters (for example OrthographicProjection::scale
-        // changed by mouse-wheel zoom) can change without a target resize.
-        // Rebuild the projection for every valid camera update so the cached
-        // matrix never lags the component. This is the observable behavior of
-        // Bevy's changed-camera / changed-projection update path.
-        if (new_size.x != 0 && new_size.y != 0) {
-            proj.get_mut().update(static_cast<float>(new_size.x), static_cast<float>(new_size.y));
-            camera_mut.computed.clip_from_view =
-                camera_mut.sub_camera_view ? proj.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
-                                           : proj.get().get_clip_from_view();
-        }
-    }
-}
-
-/** @brief Plugin that registers the camera update system for a specific
- * projection type.
- * @tparam ProjType Camera projection type satisfying CameraProjection. */
-EPIX_EXPORT template <CameraProjection ProjType>
-struct CameraProjectionPlugin {
-    void attach(epix::app::App& app) {
-        app.add_systems(epix::app::PostStartup,
-                        into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
-        app.add_systems(epix::app::PostUpdate,
-                        into(camera_system<ProjType>).in_set(CameraUpdateSystems::CameraUpdateSystem));
-    }
+    explicit CameraUpdateError(Window error)
+        : std::runtime_error(std::format("Camera render target window {} is missing", error.entity.index)),
+          value(error) {}
+    explicit CameraUpdateError(Image error)
+        : std::runtime_error("Camera render target image is missing"), value(error) {}
 };
+
+/** Update cameras when their render target, projection, viewport, or
+ * sub-camera view changes (Bevy `camera_system`). Manual texture views are
+ * resolved by the render module because that resource exists only there. */
+EPIX_EXPORT std::expected<void, CameraUpdateError> camera_system(
+    epix::ecs::EventReader<::epix::window::WindowResized> window_resized_reader,
+    epix::ecs::EventReader<::epix::window::WindowCreated> window_created_reader,
+    epix::ecs::EventReader<::epix::window::WindowScaleFactorChanged> window_scale_factor_changed_reader,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ::epix::window::Window&>,
+                     epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ::epix::window::Window&>> window_query,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>,
+                                     epix::ecs::Ref<RenderTarget>,
+                                     epix::ecs::Mut<Projection>>> cameras);
 
 /** @brief Plugin that registers camera_system (projection updates), the
  * visibility systems, the projection plugins, and the ClearColor resource

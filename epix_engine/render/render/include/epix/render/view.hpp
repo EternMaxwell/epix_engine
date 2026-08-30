@@ -463,41 +463,13 @@ void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                          epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
                          epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
 
-/** Update cameras that target a manually supplied texture view.  This runs in
- * the main world after the camera
- * module's general update system, mirroring
- * Bevy's render-side camera_system access to ManualTextureViews. */
-template <::epix::camera::CameraProjection ProjType>
+/** Resolve manual texture-view targets after the general camera pass.  The
+ * renderer owns `ManualTextureViews`, so this is the one accepted split from
+ * Bevy's single camera system. */
 void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
-                                                                         epix::ecs::Mut<ProjType>,
-                                                                         const ::epix::camera::RenderTarget&>> cameras,
-                                        epix::ecs::Res<texture::ManualTextureViews> manual_texture_views) {
-    for (auto&& [camera, projection, target] : cameras.iter()) {
-        const auto* handle = std::get_if<::epix::camera::ManualTextureViewHandle>(&target);
-        if (!handle) continue;
-        const auto view_it = manual_texture_views->views.find(::epix::camera::ManualTextureViewHandle{handle->id});
-        if (view_it == manual_texture_views->views.end()) {
-            // Bevy leaves target information unavailable for an invalid
-            // manual handle.  The camera module already installed this state.
-            continue;
-        }
-        auto& camera_mut             = camera.get_mut();
-        const glm::uvec2 target_size = view_it->second.size;
-        if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
-        const auto viewport_size = camera_mut.viewport.transform(
-            [](const ::epix::camera::Viewport& viewport) { return viewport.physical_size; });
-        camera_mut.computed.target_info         = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
-        camera_mut.computed.old_viewport_size   = viewport_size;
-        camera_mut.computed.old_sub_camera_view = camera_mut.sub_camera_view;
-        const glm::uvec2 projection_size        = viewport_size.value_or(target_size);
-        if (projection_size.x != 0 && projection_size.y != 0) {
-            projection.get_mut().update(static_cast<float>(projection_size.x), static_cast<float>(projection_size.y));
-            camera_mut.computed.clip_from_view =
-                camera_mut.sub_camera_view ? projection.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
-                                           : projection.get().get_clip_from_view();
-        }
-    }
-}
+                                                                          epix::ecs::Mut<::epix::camera::Projection>,
+                                                                          const ::epix::camera::RenderTarget&>> cameras,
+                                         epix::ecs::Res<texture::ManualTextureViews> manual_texture_views);
 
 void create_view_depth(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&, const Msaa&>> views,

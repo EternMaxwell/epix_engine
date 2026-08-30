@@ -1832,6 +1832,79 @@ TEST(CameraProjection, MatchesBevyContractAndDefaultFrustumBehavior) {
     EXPECT_TRUE(::epix::camera::Projection::custom(::epix::camera::PerspectiveProjection{}).is_perspective());
 }
 
+TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
+    struct CountingProjection {
+        std::shared_ptr<int> updates;
+
+        glm::mat4 get_clip_from_view() const { return glm::mat4(1.0f); }
+        glm::mat4 get_clip_from_view_for_sub(const ::epix::camera::SubCameraView&) const {
+            return get_clip_from_view();
+        }
+        void update(float, float) { ++*updates; }
+        float get_far() const { return 1000.0f; }
+        std::array<glm::vec3, 8> get_frustum_corners(float near_depth, float far_depth) const {
+            return {glm::vec3(1.0f, -1.0f, near_depth), glm::vec3(1.0f, 1.0f, near_depth),
+                    glm::vec3(-1.0f, 1.0f, near_depth), glm::vec3(-1.0f, -1.0f, near_depth),
+                    glm::vec3(1.0f, -1.0f, far_depth),  glm::vec3(1.0f, 1.0f, far_depth),
+                    glm::vec3(-1.0f, 1.0f, far_depth),  glm::vec3(-1.0f, -1.0f, far_depth)};
+        }
+    };
+
+    auto app = epix::app::App::create();
+    ::epix::camera::CameraPlugin{}.attach(app);
+    const Entity window = app.world_mut()
+                              .spawn(::epix::window::Window{.physical_size = {400, 200}, .scale_factor = 1.0f},
+                                     ::epix::window::PrimaryWindow{})
+                              .id();
+    auto updates = std::make_shared<int>(0);
+    ::epix::camera::Camera camera;
+    camera.viewport = ::epix::camera::Viewport{.physical_position = {10, 5}, .physical_size = {40, 20}};
+    const Entity camera_entity = app.world_mut()
+                                     .spawn(std::move(camera), ::epix::camera::RenderTarget::from_primary(),
+                                            ::epix::camera::Projection::custom(CountingProjection{updates}))
+                                     .id();
+
+    app.update();
+    EXPECT_EQ(*updates, 1);
+    const auto& initial_camera = app.world().entity(camera_entity).get<::epix::camera::Camera>()->get();
+    ASSERT_TRUE(initial_camera.logical_viewport_size());
+    EXPECT_EQ(*initial_camera.logical_viewport_size(), glm::vec2(40.0f, 20.0f));
+
+    // No target/projection/viewport/sub-view change means no redundant
+    // projection update on the following frame.
+    app.update();
+    EXPECT_EQ(*updates, 1);
+
+    app.world_mut().entity_mut(window).get_mut<::epix::window::Window>()->get_mut().physical_size = {800, 400};
+    app.world_mut().entity_mut(window).get_mut<::epix::window::Window>()->get_mut().scale_factor = 2.0f;
+    app.world_mut().resource_mut<Events<::epix::window::WindowScaleFactorChanged>>().push({window, 2.0f});
+    app.update();
+
+    EXPECT_EQ(*updates, 2);
+    const auto& dpi_camera = app.world().entity(camera_entity).get<::epix::camera::Camera>()->get();
+    ASSERT_TRUE(dpi_camera.viewport);
+    EXPECT_EQ(dpi_camera.viewport->physical_position, glm::uvec2(20, 10));
+    EXPECT_EQ(dpi_camera.viewport->physical_size, glm::uvec2(80, 40));
+    ASSERT_TRUE(dpi_camera.logical_viewport_size());
+    EXPECT_EQ(*dpi_camera.logical_viewport_size(), glm::vec2(40.0f, 20.0f));
+
+    // A normalized explicit window target now fails through the fallible
+    // system result instead of silently clearing camera target information.
+    auto failing_app = epix::app::App::create();
+    failing_app.add_events<::epix::window::WindowResized, ::epix::window::WindowCreated,
+                           ::epix::window::WindowScaleFactorChanged>();
+    failing_app.world_mut().spawn(::epix::camera::Camera{},
+                                  ::epix::camera::RenderTarget::from_window(Entity{.uid = 999}),
+                                  ::epix::camera::Projection::perspective());
+    auto failing_system = make_system_unique(::epix::camera::camera_system);
+    failing_system->initialize(failing_app.world_mut());
+    const auto result = failing_system->run({}, failing_app.world_mut());
+    ASSERT_FALSE(result);
+    ASSERT_TRUE(std::holds_alternative<SystemResultError>(result.error()));
+    EXPECT_NE(std::get<SystemResultError>(result.error()).message.find("Camera render target window"),
+              std::string::npos);
+}
+
 TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);

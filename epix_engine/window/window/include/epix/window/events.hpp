@@ -25,6 +25,16 @@ EPIX_EXPORT namespace epix::window {
         epix::ecs::Entity window;
     };
     /**
+     * @brief This event is sent when a window's DPI/content scale changes.
+     *
+     * This commonly occurs when the window moves to a monitor with a
+     * different scale factor.
+     */
+    struct WindowScaleFactorChanged {
+        epix::ecs::Entity window;
+        float scale_factor;
+    };
+    /**
      * @brief This event is sent when the window is closed.
      *
      * Sent when the entity is despawned or loses its window component.

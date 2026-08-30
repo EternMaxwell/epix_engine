@@ -54,7 +54,6 @@ both foundation modules.
 | [`CameraBundle`](camera-view.md#camerabundle) | Bundle | Spawns a fully configured camera entity |
 | [`CameraRenderGraph`](camera-view.md#camerarendergraph) | Component | Which render graph this camera drives |
 | [`CameraPlugin`](camera-view.md#cameraplugin) | Plugin | Updates/extracts cameras and installs the camera driver node |
-| [`CameraProjectionPlugin<T>`](camera-view.md#camera-projection-extension-point) | Plugin template | Updates a custom camera projection type |
 | [`ViewPlugin`](camera-view.md#viewplugin) | Plugin | Registers view extraction and depth systems |
 | [`ViewTarget`](camera-view.md#viewtarget) | Component | Swapchain texture view + format for a camera |
 | [`ViewDepth`](camera-view.md#viewdepth) | Component | Depth texture + view for a camera |
