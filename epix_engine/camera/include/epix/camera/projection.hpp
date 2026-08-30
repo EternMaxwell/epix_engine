@@ -26,6 +26,12 @@ namespace epix::camera {
 
 struct Frustum;
 
+/** @brief Registers projection-driven frustum updates (Bevy
+ * `CameraProjectionPlugin`). */
+EPIX_EXPORT struct CameraProjectionPlugin {
+    void attach(epix::app::App& app);
+};
+
 /** @brief A viewport-sized slice of a larger camera image (Bevy
  * SubCameraView). */
 EPIX_EXPORT struct SubCameraView {

@@ -1192,7 +1192,7 @@ void BinnedRenderPhasePlugin<BPI, Adapter>::attach(app::App& app) {
                   "BinnedRenderPhasePlugin adapter must specialize GetFullBatchData");
     static_assert(std::totally_ordered<typename BPI::BatchSetKey> && std::totally_ordered<typename BPI::BinKey>,
                   "BinnedRenderPhasePlugin keys must be orderable for Bevy-compatible bin sorting");
-    batching::CpuBinnedRenderPhasePlugin<BPI, Adapter>{}.attach(app);
+    app.add_plugins(batching::CpuBinnedRenderPhasePlugin<BPI, Adapter>{});
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
         world.init_resource<
@@ -1235,7 +1235,7 @@ void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
                   "SortedRenderPhasePlugin phase items must provide indexed() for GPU indirect batching");
     static_assert(MutablePhaseItemExtraIndex<P>,
                   "Automatic sorted batching requires set_extra_index on the phase item");
-    batching::CpuSortedRenderPhasePlugin<P, Adapter>{}.attach(app);
+    app.add_plugins(batching::CpuSortedRenderPhasePlugin<P, Adapter>{});
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
         world.init_resource<

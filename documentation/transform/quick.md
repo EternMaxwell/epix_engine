@@ -13,7 +13,7 @@ using namespace epix::transform;
 - `Transform` and `DTransform` are the `float` and `double` aliases.
 - `GlobalTransform` stores the propagated world-space `glm::mat4`.
 - `TransformPlugin` runs propagation in `app::Last`, in
-  `TransformSets::CalculateGlobalTransform`.
+  `TransformSystems::Propagate`.
 
 ```cpp
 app.add_plugins(TransformPlugin{});

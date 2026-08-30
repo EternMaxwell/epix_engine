@@ -185,9 +185,10 @@ EPIX_EXPORT namespace epix::transform {
         glm::mat4 matrix{1.0f};
     };
 
-    /** @brief System set labels for transform propagation. */
-    enum class TransformSets {
-        CalculateGlobalTransform = 0,
+    /** @brief System set labels for transform propagation (Bevy
+     * `TransformSystems`). */
+    enum class TransformSystems {
+        Propagate = 0,
     };
     /** @brief Plugin that registers transform propagation systems. */
     struct TransformPlugin {

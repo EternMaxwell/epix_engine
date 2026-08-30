@@ -297,7 +297,19 @@ void reset_view_visibility(Query<Item<Mut<ViewVisibility>>> view_visibilities) {
     for (auto&& [view_visibility] : view_visibilities.iter()) {
         // Bevy ViewVisibility::update: current visibility becomes the
         // previous-frame scratch bit and the current bit is cleared.
-        view_visibility.get_mut().update();
+        view_visibility.bypass_change_detection().update();
+    }
+}
+
+void set_view_visible(Mut<ViewVisibility>& visibility) noexcept {
+    // Bevy SetViewVisibility for Mut<ViewVisibility>: a previous-frame
+    // visible entity that remains visible must not spuriously trigger change
+    // detection, even when multiple views mark it during the frame.
+    if (visibility.get().get()) return;
+    if (visibility.get().was_visible_now_hidden()) {
+        visibility.bypass_change_detection().set_visible();
+    } else {
+        visibility.get_mut().set_visible();
     }
 }
 
@@ -382,7 +394,7 @@ void check_visibility_system(Query<Item<Entity,
                     continue;
                 }
             }
-            view_visibility.get_mut().set_visible();
+            set_view_visible(view_visibility);
             if (opt_classes) {
                 for (const auto& visibility_class : opt_classes->get().classes) {
                     visible_entities.get_mut().push(entity, visibility_class);
@@ -407,12 +419,36 @@ void update_frusta(
     }
 }
 
+void CameraProjectionPlugin::attach(App& app) {
+    app.configure_sets(app::PostUpdate,
+                       sets(VisibilitySystems::UpdateFrusta)
+                           .after(::epix::transform::TransformSystems::Propagate)
+                           .after(CameraUpdateSystems::CameraUpdateSystem));
+    app.add_systems(app::PostUpdate, into(update_frusta)
+                                         .in_set(VisibilitySystems::UpdateFrusta)
+                                         .set_name("update frusta"));
+}
+
 void VisibilityPlugin::attach(App& app) {
-    app.configure_sets(sets(VisibilitySystems::CalculateBounds));
-    app.configure_sets(sets(VisibilitySystems::UpdateFrusta));
-    app.configure_sets(sets(VisibilitySystems::VisibilityPropagate));
-    app.configure_sets(sets(VisibilitySystems::CheckVisibility));
-    app.configure_sets(sets(VisibilitySystems::MarkNewlyHidden));
+    // Epix requires every set label to be registered explicitly before it can
+    // participate in another set's ordering edge.
+    app.configure_sets(app::PostUpdate,
+                       sets(VisibilitySystems::CalculateBounds,
+                            VisibilitySystems::UpdateFrusta,
+                            VisibilitySystems::VisibilityPropagate,
+                            VisibilitySystems::CheckVisibility,
+                            VisibilitySystems::MarkNewlyHiddenEntitiesInvisible));
+    app.configure_sets(app::PostUpdate,
+                       sets(VisibilitySystems::UpdateFrusta, VisibilitySystems::VisibilityPropagate)
+                           .before(VisibilitySystems::CheckVisibility)
+                           .after(::epix::transform::TransformSystems::Propagate));
+    app.configure_sets(app::PostUpdate,
+                       sets(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible)
+                           .after(VisibilitySystems::CheckVisibility));
+    app.configure_sets(app::PostUpdate,
+                       sets(VisibilitySystems::CalculateBounds)
+                           .before(VisibilitySystems::CheckVisibility)
+                           .after(::epix::transform::TransformSystems::Propagate));
     // Bevy: Visibility requires InheritedVisibility + ViewVisibility
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
@@ -420,30 +456,22 @@ void VisibilityPlugin::attach(App& app) {
     app.add_systems(app::PostUpdate, into(visibility_propagate_system)
                                          .in_set(VisibilitySystems::VisibilityPropagate)
                                          .set_name("visibility propagate"));
-    app.add_systems(
-        app::PostUpdate,
-        into(reset_view_visibility).in_set(VisibilitySystems::CheckVisibility).set_name("reset view visibility"));
-    app.add_systems(app::PostUpdate, into(update_frusta)
-                                         .after(CameraUpdateSystems::CameraUpdateSystem)
-                                         .in_set(VisibilitySystems::UpdateFrusta)
-                                         .set_name("update frusta"));
+    app.add_systems(app::PostUpdate,
+                    into(reset_view_visibility)
+                        .in_set(VisibilitySystems::VisibilityPropagate)
+                        .set_name("reset view visibility"));
     app.add_systems(app::PostUpdate, into(check_visibility_system)
-                                         .after(update_frusta)
-                                         .after(visibility_propagate_system)
-                                         .after(reset_view_visibility)
                                          .in_set(VisibilitySystems::CheckVisibility)
                                          .set_name("check visibility"));
     app.add_systems(app::PostUpdate, into(mark_newly_hidden_entities_invisible)
-                                         .after(check_visibility_system)
-                                         .in_set(VisibilitySystems::MarkNewlyHidden)
+                                         .in_set(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible)
                                          .set_name("mark newly hidden entities invisible"));
 }
 
 void CameraPlugin::attach(App& app) {
     // Camera projection updates include Bevy-compatible sub-camera cropping.
     app.configure_sets(sets(CameraUpdateSystems::CameraUpdateSystem));
-    VisibilityPlugin{}.attach(app);
-    VisibilityRangePlugin{}.attach(app);
+    app.add_plugins(CameraProjectionPlugin{}, VisibilityPlugin{}, VisibilityRangePlugin{});
     // The public camera module can run without the renderer, so it owns the
     // window messages consumed by its Bevy-compatible update system.
     app.add_events<::epix::window::WindowResized, ::epix::window::WindowCreated,

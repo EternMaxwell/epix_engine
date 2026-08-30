@@ -58,6 +58,12 @@ struct Mut {
         ticks.set_modified();
         return *value;
     }
+    /** @brief Mutably access the value without marking it modified.
+     *
+     * This matches Bevy `Mut::bypass_change_detection`. Use it only when a
+     * system updates private bookkeeping without a semantic component change.
+     */
+    T& bypass_change_detection() noexcept { return *value; }
     const T* operator->() const noexcept { return value; }
     T* operator->() noexcept {
         ticks.set_modified();

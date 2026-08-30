@@ -95,8 +95,7 @@ void calculate_global_transform(
 
 void TransformPlugin::attach(App& app) {
     spdlog::debug("[transform] Attaching TransformPlugin.");
-    app.configure_sets(sets(TransformSets::CalculateGlobalTransform));
-    app.add_systems(Last, into(calculate_global_transform)
-                              .in_set(TransformSets::CalculateGlobalTransform)
-                              .set_name("calculate global transform"));
+    app.configure_sets(PostUpdate, sets(TransformSystems::Propagate));
+    app.add_systems(PostUpdate,
+                    into(calculate_global_transform).in_set(TransformSystems::Propagate).set_name("propagate"));
 }

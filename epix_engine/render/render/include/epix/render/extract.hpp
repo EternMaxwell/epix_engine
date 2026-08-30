@@ -149,7 +149,7 @@ struct ExtractComponentPlugin {
     void attach(app::App& app) {
         // Bevy auto-registers SyncComponentPlugin so entities with C are
         // synced to the render world (extract_component.rs:188).
-        SyncComponentPlugin<C>{}.attach(app);
+        app.add_plugins(SyncComponentPlugin<C>{});
         auto render_app = app.get_sub_app_mut(Render);
         if (!render_app) return;
         if (only_extract_visible) {

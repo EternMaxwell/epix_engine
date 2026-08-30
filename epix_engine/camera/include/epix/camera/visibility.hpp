@@ -53,13 +53,19 @@ EPIX_EXPORT struct ViewVisibility {
     bool was_visible_now_hidden() const noexcept { return flags == 0b10u; }
     friend void reset_view_visibility(
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
+    friend void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
     friend void mark_newly_hidden_entities_invisible(
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 };
 
+/** @brief Bevy `SetViewVisibility` implementation for an ECS mutable
+ * `ViewVisibility` reference. It only marks the component changed when its
+ * aggregate visibility actually changes. */
+EPIX_EXPORT void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
+
 /** @brief C++ equivalent of Bevy's `SetViewVisibility` trait. */
 EPIX_EXPORT template <typename T>
-concept SetViewVisibility = requires(T& visibility) { visibility.set_visible(); };
+concept SetViewVisibility = requires(T& visibility) { set_view_visible(visibility); };
 
 /** @brief User indication of whether an entity is visible (Bevy
  * bevy_camera::visibility::Visibility). Propagates down the entity hierarchy;
@@ -632,7 +638,7 @@ EPIX_EXPORT enum class VisibilitySystems {
     UpdateFrusta,
     VisibilityPropagate,
     CheckVisibility,
-    MarkNewlyHidden,
+    MarkNewlyHiddenEntitiesInvisible,
 };
 
 // ==== Visibility systems (Bevy bevy_camera::visibility) ====

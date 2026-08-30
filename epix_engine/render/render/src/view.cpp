@@ -469,7 +469,7 @@ void view::ViewPlugin::attach(App& app) {
         }
     }
     // Bevy ViewPlugin adds RenderVisibilityRangePlugin (view/mod.rs:105-110).
-    RenderVisibilityRangePlugin{}.attach(app);
+    app.add_plugins(RenderVisibilityRangePlugin{});
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {
         // Bevy creates this render-device-dependent state only in the
         // RenderApp. Keeping it out of the main world also permits ViewPlugin
