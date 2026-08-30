@@ -21,6 +21,8 @@
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/assets.hpp>
 #include <epix/render/binned_phase.hpp>
+#include <epix/render/bind_group_entries.hpp>
+#include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/erased_render_asset.hpp>
 #include <epix/render/extract.hpp>

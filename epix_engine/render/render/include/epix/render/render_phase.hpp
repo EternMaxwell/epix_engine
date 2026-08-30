@@ -518,6 +518,12 @@ struct ViewSortedRenderPhases : std::unordered_map<view::RetainedViewEntity, Sor
     using Base = std::unordered_map<view::RetainedViewEntity, SortedRenderPhase<P>>;
     using Base::Base;
 
+    ViewSortedRenderPhases()                                         = default;
+    ViewSortedRenderPhases(const ViewSortedRenderPhases&)            = delete;
+    ViewSortedRenderPhases(ViewSortedRenderPhases&&)                 = default;
+    ViewSortedRenderPhases& operator=(const ViewSortedRenderPhases&) = delete;
+    ViewSortedRenderPhases& operator=(ViewSortedRenderPhases&&)      = default;
+
     void insert_or_clear(const view::RetainedViewEntity& retained_view_entity) {
         auto [it, inserted] = this->try_emplace(retained_view_entity);
         if (!inserted) it->second.clear();

@@ -788,7 +788,12 @@ TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
         {Entity::from_index(11), sync_world::MainEntity{Entity::from_index(11)}, CachedPipelineId{5},
          phase::DrawFunctionId{7}},
     };
-    system_world.spawn(std::move(system_phase));
+    phase::ViewSortedRenderPhases<CpuBatchTestItem> system_phases;
+    const auto retained_view = view::RetainedViewEntity::create(sync_world::MainEntity{Entity::from_index(100)},
+                                                                 std::nullopt, 0);
+    system_phases.insert_or_clear(retained_view);
+    system_phases.at(retained_view) = std::move(system_phase);
+    system_world.insert_resource(std::move(system_phases));
     auto system =
         make_system_unique(&batching::batch_and_prepare_sorted_render_phase<CpuBatchTestItem, CpuBatchSystemAdapter>);
     system->initialize(system_world);
@@ -1003,6 +1008,7 @@ TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
                      .world()
                      .get_resource<batching::PhaseIndirectParametersBuffers<CpuBinnedBatchTestItem>>()
                      .has_value()));
+    EXPECT_TRUE((render_app->get().world().get_resource<phase::ViewSortedRenderPhases<CpuBatchTestItem>>().has_value()));
 }
 
 TEST(PhaseIndirectParametersBuffers, ClearsPhaseLocalBuffers) {
@@ -1311,6 +1317,8 @@ TEST(BinnedRenderPhase, BinsByKey) {
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {
+    static_assert(!std::copy_constructible<phase::ViewSortedRenderPhases<CpuBatchTestItem>>);
+    static_assert(std::movable<phase::ViewSortedRenderPhases<CpuBatchTestItem>>);
     phase::ViewSortedRenderPhases<CpuBatchTestItem> phases;
     const view::RetainedViewEntity retained{sync_world::MainEntity{Entity::from_index(81)}, std::nullopt, 0};
 
@@ -2016,7 +2024,6 @@ TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
-    EXPECT_TRUE((render_app->get().world().get_resource<phase::ViewSortedRenderPhases<CpuBatchTestItem>>().has_value()));
     EXPECT_FALSE(render_app->get().world().get_resource<::epix::camera::ClearColor>().has_value());
 
     const Entity camera = app.world_mut().spawn(::epix::camera::Camera{}).id();
@@ -2337,6 +2344,100 @@ TEST(AsBindGroup, EntryBuilders) {
         2, wgpu::ShaderStage::eCompute, wgpu::StorageTextureAccess::eWriteOnly, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(tex.entry.storageTexture.access, wgpu::StorageTextureAccess::eWriteOnly);
     EXPECT_EQ(tex.entry.storageTexture.format, wgpu::TextureFormat::eRGBA8Unorm);
+}
+
+// Bevy BindGroupEntries and DynamicBindGroupEntries assign sequential indices
+// and preserve explicitly indexed raw entries.
+TEST(BindGroupEntries, FixedAndDynamicConstruction) {
+    auto first = render_resource::BindGroupEntries<>::buffer_binding(wgpu::Buffer{}, 4, 16);
+    auto second = render_resource::BindGroupEntries<>::buffer_binding(wgpu::Buffer{}, 8, 32);
+
+    const auto sequential = render_resource::BindGroupEntries<>::sequential(first, second);
+    ASSERT_EQ(sequential.entries().size(), 2u);
+    EXPECT_EQ(sequential.entries()[0].binding, 0u);
+    EXPECT_EQ(sequential.entries()[0].offset, 4u);
+    EXPECT_EQ(sequential.entries()[1].binding, 1u);
+    EXPECT_EQ(sequential.entries()[1].size, 32u);
+
+    const auto indexed = render_resource::BindGroupEntries<>::with_indices(std::pair{4u, first},
+                                                                             std::pair{9u, second});
+    ASSERT_EQ(indexed.entries().size(), 2u);
+    EXPECT_EQ(indexed.entries()[0].binding, 4u);
+    EXPECT_EQ(indexed.entries()[1].binding, 9u);
+
+    const auto single = render_resource::BindGroupEntries<>::single(first);
+    ASSERT_EQ(single.size(), 1u);
+    EXPECT_EQ(single[0].binding, 0u);
+
+    const auto texture = render_resource::BindGroupEntries<>::texture_binding(wgpu::TextureView{});
+    const auto sampler = render_resource::BindGroupEntries<>::sampler_binding(wgpu::Sampler{});
+    const auto resource_entries = render_resource::BindGroupEntries<>::sequential(texture, sampler);
+    EXPECT_EQ(resource_entries.entries()[0].binding, 0u);
+    EXPECT_EQ(resource_entries.entries()[1].binding, 1u);
+
+    auto dynamic = render_resource::DynamicBindGroupEntries::sequential(first);
+    dynamic.extend_sequential(second);
+    dynamic.extend_with_indices(std::pair{14u, first});
+    ASSERT_EQ(dynamic.entries().size(), 3u);
+    EXPECT_EQ(dynamic.entries()[0].binding, 0u);
+    EXPECT_EQ(dynamic.entries()[1].binding, 1u);
+    EXPECT_EQ(dynamic.entries()[2].binding, 14u);
+
+    const auto dynamic_indexed = render_resource::DynamicBindGroupEntries::new_with_indices(std::pair{21u, second});
+    ASSERT_EQ(dynamic_indexed.entries().size(), 1u);
+    EXPECT_EQ(dynamic_indexed.entries()[0].binding, 21u);
+}
+
+// Bevy BindGroupLayoutEntries applies default visibility, honors explicit
+// builder/raw visibility, and assigns sequential or explicit bindings.
+TEST(BindGroupLayoutEntries, FixedAndDynamicConstruction) {
+    const auto uniform = render_resource::binding_types::uniform_buffer(true, 64);
+    const auto sampler = render_resource::binding_types::sampler(wgpu::SamplerBindingType::eFiltering)
+                             .visibility(wgpu::ShaderStage::eVertex);
+    const auto sequential = render_resource::BindGroupLayoutEntries<>::sequential(
+        wgpu::ShaderStage::eFragment, uniform, sampler);
+    ASSERT_EQ(sequential.entries().size(), 2u);
+    EXPECT_EQ(sequential.entries()[0].binding, 0u);
+    EXPECT_EQ(sequential.entries()[0].visibility, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(sequential.entries()[0].buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_TRUE(sequential.entries()[0].buffer.hasDynamicOffset);
+    EXPECT_EQ(sequential.entries()[0].buffer.minBindingSize, 64u);
+    EXPECT_EQ(sequential.entries()[1].binding, 1u);
+    EXPECT_EQ(sequential.entries()[1].visibility, wgpu::ShaderStage::eVertex);
+
+    auto raw = wgpu::BindGroupLayoutEntry().setBinding(77).setVisibility(wgpu::ShaderStage::eCompute).setTexture(
+        wgpu::TextureBindingLayout().setSampleType(wgpu::TextureSampleType::eDepth)
+            .setViewDimension(wgpu::TextureViewDimension::e2D).setMultisampled(wgpu::Bool(false)));
+    const auto indexed = render_resource::BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eFragment,
+                                                                                     std::pair{5u, raw});
+    ASSERT_EQ(indexed.entries().size(), 1u);
+    EXPECT_EQ(indexed.entries()[0].binding, 5u);
+    EXPECT_EQ(indexed.entries()[0].visibility, wgpu::ShaderStage::eCompute);
+    EXPECT_EQ(indexed.entries()[0].texture.sampleType, wgpu::TextureSampleType::eDepth);
+
+    const auto single = render_resource::BindGroupLayoutEntries<>::single(
+        wgpu::ShaderStage::eVertex, render_resource::binding_types::texture_depth_2d());
+    ASSERT_EQ(single.size(), 1u);
+    EXPECT_EQ(single[0].binding, 0u);
+    EXPECT_EQ(single[0].visibility, wgpu::ShaderStage::eVertex);
+    EXPECT_EQ(single[0].texture.sampleType, wgpu::TextureSampleType::eDepth);
+
+    auto dynamic = render_resource::DynamicBindGroupLayoutEntries::sequential(
+        wgpu::ShaderStage::eCompute, render_resource::binding_types::texture_2d(wgpu::TextureSampleType::eFloat));
+    dynamic.extend_with_indices(std::pair{
+        12u, render_resource::binding_types::texture_storage_3d(wgpu::TextureFormat::eRGBA8Unorm,
+                                                                   wgpu::StorageTextureAccess::eWriteOnly)});
+    ASSERT_EQ(dynamic.entries().size(), 2u);
+    EXPECT_EQ(dynamic.entries()[0].binding, 0u);
+    EXPECT_EQ(dynamic.entries()[1].binding, 12u);
+    EXPECT_EQ(dynamic.entries()[1].storageTexture.viewDimension, wgpu::TextureViewDimension::e3D);
+
+    const auto dynamic_indexed = render_resource::DynamicBindGroupLayoutEntries::new_with_indices(
+        wgpu::ShaderStage::eFragment,
+        std::pair{23u, render_resource::binding_types::texture_cube(wgpu::TextureSampleType::eFloat)});
+    ASSERT_EQ(dynamic_indexed.entries().size(), 1u);
+    EXPECT_EQ(dynamic_indexed.entries()[0].binding, 23u);
+    EXPECT_EQ(dynamic_indexed.entries()[0].texture.viewDimension, wgpu::TextureViewDimension::eCube);
 }
 
 // FrameCountPlugin mirrors bevy_diagnostic::FrameCountPlugin: FrameCount is
