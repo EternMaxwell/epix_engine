@@ -472,8 +472,7 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
                            }
                        },
                        [&](const ::epix::camera::ManualTextureViewHandle& handle) {
-                           if (auto it = manual_texture_views->views.find(handle);
-                               it != manual_texture_views->views.end()) {
+                           if (auto it = manual_texture_views->find(handle); it != manual_texture_views->end()) {
                                output_view = it->second.texture_view;
                                size        = it->second.size;
                                format      = it->second.view_format;

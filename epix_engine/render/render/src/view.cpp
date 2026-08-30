@@ -91,8 +91,8 @@ void epix::render::view::update_manual_texture_view_cameras(
     for (auto&& [camera, projection, target] : cameras.iter()) {
         const auto* handle = std::get_if<::epix::camera::ManualTextureViewHandle>(&target);
         if (!handle) continue;
-        const auto view_it = manual_texture_views->views.find(::epix::camera::ManualTextureViewHandle{handle->id});
-        if (view_it == manual_texture_views->views.end()) continue;
+        const auto view_it = manual_texture_views->find(::epix::camera::ManualTextureViewHandle{handle->id});
+        if (view_it == manual_texture_views->end()) continue;
 
         // Bevy's NormalizedRenderTarget::TextureView reports changed on every
         // camera pass: the caller owns this view and may replace it without a

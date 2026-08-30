@@ -7,6 +7,7 @@
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
+#include <utility>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -22,15 +23,24 @@ struct ManualTextureView {
     glm::uvec2 size = glm::uvec2(0, 0);
     /** @brief Format of the view. */
     wgpu::TextureFormat view_format = wgpu::TextureFormat::eRGBA8Unorm;
+
+    /** @brief Construct a view using Bevy's default sRGB texture format. */
+    [[nodiscard]] static ManualTextureView with_default_format(wgpu::TextureView texture_view,
+                                                                glm::uvec2 size) noexcept {
+        return ManualTextureView{
+            .texture_view = std::move(texture_view),
+            .size         = size,
+            .view_format  = wgpu::TextureFormat::eRGBA8UnormSrgb,
+        };
+    }
 };
 
 /**
  * @brief Resource storing manually managed texture views keyed by handle
  * (Bevy ManualTextureViews).
  */
-struct ManualTextureViews {
-    /** @brief Stored views. */
-    std::unordered_map<::epix::camera::ManualTextureViewHandle, ManualTextureView> views;
+struct ManualTextureViews : std::unordered_map<::epix::camera::ManualTextureViewHandle, ManualTextureView> {
+    using std::unordered_map<::epix::camera::ManualTextureViewHandle, ManualTextureView>::unordered_map;
 };
 
 }  // namespace epix::render::texture

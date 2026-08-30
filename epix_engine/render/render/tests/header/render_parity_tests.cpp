@@ -359,7 +359,7 @@ TEST(RenderTarget, VariantsNormalizeAndKeepDistinctIdentities) {
 TEST(NormalizedRenderTargetExt, ResolvesManualAndNoColorTargets) {
     const ::epix::camera::ManualTextureViewHandle handle{7};
     texture::ManualTextureViews manual_views;
-    manual_views.views.emplace(handle, texture::ManualTextureView{
+    manual_views.emplace(handle, texture::ManualTextureView{
                                            .size        = glm::uvec2(320, 180),
                                            .view_format = wgpu::TextureFormat::eRGBA8UnormSrgb,
                                        });
@@ -1798,6 +1798,19 @@ TEST(CameraProjection, CustomProjectionRoundTripsConcreteType) {
     custom->scale = 2.0f;
     projection.update(400.0f, 200.0f);
     EXPECT_NE(projection.get_clip_from_view()[0][0], 0.0f);
+}
+
+TEST(ManualTextureView, MatchesBevyDefaultFormatAndMapWrapper) {
+    const auto view = texture::ManualTextureView::with_default_format({}, glm::uvec2(320, 180));
+    EXPECT_FALSE(view.texture_view);
+    EXPECT_EQ(view.size, glm::uvec2(320, 180));
+    EXPECT_EQ(view.view_format, wgpu::TextureFormat::eRGBA8UnormSrgb);
+
+    texture::ManualTextureViews views;
+    const ::epix::camera::ManualTextureViewHandle handle{9};
+    views.emplace(handle, view);
+    EXPECT_EQ(views.size(), 1u);
+    EXPECT_EQ(views.find(handle)->second.size, glm::uvec2(320, 180));
 }
 
 TEST(CameraProjection, MatchesBevyContractAndDefaultFrustumBehavior) {

@@ -772,8 +772,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
                     return image.texture ? std::optional<wgpu::TextureView>{image.texture.createView()} : std::nullopt;
                 },
                 [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureView> {
-                    auto it = manual_texture_views.views.find(handle);
-                    return it != manual_texture_views.views.end() && it->second.texture_view
+                    auto it = manual_texture_views.find(handle);
+                    return it != manual_texture_views.end() && it->second.texture_view
                                ? std::optional<wgpu::TextureView>{it->second.texture_view}
                                : std::nullopt;
                 },
@@ -798,8 +798,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
                     return image.texture ? std::optional<wgpu::TextureFormat>{image.texture.getFormat()} : std::nullopt;
                 },
                 [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureFormat> {
-                    auto it = manual_texture_views.views.find(handle);
-                    return it != manual_texture_views.views.end()
+                    auto it = manual_texture_views.find(handle);
+                    return it != manual_texture_views.end()
                                ? std::optional<wgpu::TextureFormat>{it->second.view_format}
                                : std::nullopt;
                 },
@@ -835,8 +835,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
                 },
                 [&](const ::epix::camera::ManualTextureViewHandle& handle)
                     -> std::expected<::epix::camera::RenderTargetInfo, MissingRenderTargetInfoError> {
-                    auto it = manual_texture_views.views.find(handle);
-                    if (it != manual_texture_views.views.end())
+                    auto it = manual_texture_views.find(handle);
+                    if (it != manual_texture_views.end())
                         return ::epix::camera::RenderTargetInfo{it->second.size, 1.0f};
                     return std::unexpected(
                         MissingRenderTargetInfoError{MissingRenderTargetInfoError::TextureView{handle}});
