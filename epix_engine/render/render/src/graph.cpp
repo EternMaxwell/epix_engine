@@ -62,7 +62,7 @@ std::expected<void, GraphError> RenderGraph::remove_node(const NodeLabel& id) {
     return {};
 }
 
-std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool should_exist) {
+std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, EdgeExistence should_exist) {
     // this is a slot edge, check if the slot matches.
     auto output_node = get_node_state(edge.output_node);
     auto input_node  = get_node_state(edge.input_node);
@@ -77,7 +77,7 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
     // Bevy checks edge existence first (graph.rs:438-504): a duplicate add
     // errors with EdgeAlreadyExists and a missing removal with EdgeDoesNotExist.
     const bool exists = has_edge(edge);
-    if (exists && !should_exist) {
+    if (exists && should_exist == EdgeExistence::DoesNotExist) {
         return std::unexpected(EdgeAlreadyExists{
             .output_node  = edge.output_node,
             .output_index = edge.output_index,
@@ -85,7 +85,7 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
             .input_index  = edge.input_index,
         });
     }
-    if (!exists && should_exist) {
+    if (!exists && should_exist == EdgeExistence::Exists) {
         return std::unexpected(EdgeDoesNotExist{
             .output_node  = edge.output_node,
             .output_index = edge.output_index,
@@ -108,14 +108,14 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
     }
 
     // check if the input's input slot has not been connected to any other
-    // node if should_exist is false
+    // node when the edge is required not to exist.
     const auto input_edges = input_node->get().edges.input_edges();
     if (auto to_input_edge_it = std::ranges::find_if(input_edges, [&edge](const Edge& e) -> bool {
             if (!e.is_slot_edge()) return false;
             return e.input_index == edge.input_index;
         });
         to_input_edge_it != input_edges.end()) {
-        if (!should_exist) {
+        if (should_exist == EdgeExistence::DoesNotExist) {
             return std::unexpected(InputSlotOccupied{
                 .input_node            = edge.input_node,
                 .input_index           = edge.input_index,
@@ -145,7 +145,7 @@ std::expected<void, EdgeError> RenderGraph::validate_edge(const Edge& edge, bool
 std::expected<void, GraphError> RenderGraph::try_add_node_edge(const NodeLabel& output_node,
                                                                const NodeLabel& input_node) {
     auto edge  = Edge::node_edge(output_node, input_node);
-    auto valid = validate_edge(edge, false);
+    auto valid = validate_edge(edge, EdgeExistence::DoesNotExist);
     if (!valid) {
         return std::unexpected(valid.error());
     }
@@ -201,7 +201,7 @@ std::expected<void, GraphError> RenderGraph::try_add_slot_edge(const NodeLabel& 
         }};
     }
     auto edge  = Edge::slot_edge(output_node, *output_index, input_node, *input_index);
-    auto valid = validate_edge(edge, false);
+    auto valid = validate_edge(edge, EdgeExistence::DoesNotExist);
     if (!valid) {
         return std::unexpected(std::move(valid.error()));
     }
@@ -249,7 +249,7 @@ std::expected<void, GraphError> RenderGraph::remove_slot_edge(const NodeLabel& o
         });
     }
     auto edge = Edge::slot_edge(output_node, *output_index, input_node, *input_index);
-    return validate_edge(edge, true).and_then([&]() -> std::expected<void, EdgeError> {
+    return validate_edge(edge, EdgeExistence::Exists).and_then([&]() -> std::expected<void, EdgeError> {
         output_node_state->get().edges.remove_output_edge(edge);
         input_node_state->get().edges.remove_input_edge(edge);
         return {};
@@ -258,7 +258,7 @@ std::expected<void, GraphError> RenderGraph::remove_slot_edge(const NodeLabel& o
 std::expected<void, GraphError> RenderGraph::remove_node_edge(const NodeLabel& output_node,
                                                               const NodeLabel& input_node) {
     auto edge = Edge::node_edge(output_node, input_node);
-    return validate_edge(edge, true).and_then([&, edge]() -> std::expected<void, EdgeError> {
+    return validate_edge(edge, EdgeExistence::Exists).and_then([&, edge]() -> std::expected<void, EdgeError> {
         auto output_node_state = get_node_state(output_node);
         auto input_node_state  = get_node_state(input_node);
         if (output_node_state && input_node_state) {

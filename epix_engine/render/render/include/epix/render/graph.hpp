@@ -130,8 +130,9 @@ EPIX_EXPORT struct RenderGraph {
     /** @brief Remove an execution-order edge. */
     std::expected<void, GraphError> remove_node_edge(const NodeLabel& output_node, const NodeLabel& input_node);
 
-    /** @brief Validate that an edge exists or does not exist as expected. */
-    std::expected<void, EdgeError> validate_edge(const Edge& edge, bool should_exist);
+    /** @brief Validate that an edge has the requested existence and that its
+     * slots are connected correctly (Bevy `RenderGraph::validate_edge`). */
+    std::expected<void, EdgeError> validate_edge(const Edge& edge, EdgeExistence should_exist);
     /** @brief Check whether the graph contains the given edge. */
     bool has_edge(const Edge& edge) const;
 

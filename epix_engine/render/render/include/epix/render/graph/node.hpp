@@ -71,6 +71,14 @@ struct Edge {
     bool operator!=(const Edge& other) const = default;
     bool is_slot_edge() const noexcept { return input_index != -1 && output_index != -1; }
 };
+
+/** @brief Expected presence of an edge during graph validation (Bevy
+ * `EdgeExistence`). */
+enum class EdgeExistence {
+    Exists,
+    DoesNotExist,
+};
+
 struct Edges {
    private:
     NodeLabel m_label;

@@ -2593,19 +2593,19 @@ TEST(RenderGraph, RemoveMissingEdgeDoesNotExist) {
     EXPECT_TRUE(std::holds_alternative<graph::EdgeDoesNotExist>(std::get<graph::EdgeError>(r4.error())));
 }
 
-// validate_edge: should_exist=false + existing edge -> EdgeAlreadyExists;
-// should_exist=true + missing edge -> EdgeDoesNotExist.
+// validate_edge: DoesNotExist + existing edge -> EdgeAlreadyExists;
+// Exists + missing edge -> EdgeDoesNotExist.
 TEST(RenderGraph, ValidateEdgeExistence) {
     graph::RenderGraph g;
     g.add_node<ProbeGraphNode>(GraphTestNodeA{});
     g.add_node<ProbeGraphNode>(GraphTestNodeB{});
     auto e = graph::Edge::node_edge(GraphTestNodeA{}, GraphTestNodeB{});
-    EXPECT_TRUE(g.validate_edge(e, false).has_value());
-    auto r = g.validate_edge(e, true);
+    EXPECT_TRUE(g.validate_edge(e, graph::EdgeExistence::DoesNotExist).has_value());
+    auto r = g.validate_edge(e, graph::EdgeExistence::Exists);
     ASSERT_FALSE(r.has_value());
     EXPECT_TRUE(std::holds_alternative<graph::EdgeDoesNotExist>(r.error()));
     EXPECT_TRUE(g.try_add_node_edge(GraphTestNodeA{}, GraphTestNodeB{}).has_value());
-    auto r2 = g.validate_edge(e, false);
+    auto r2 = g.validate_edge(e, graph::EdgeExistence::DoesNotExist);
     ASSERT_FALSE(r2.has_value());
     EXPECT_TRUE(std::holds_alternative<graph::EdgeAlreadyExists>(r2.error()));
 }
