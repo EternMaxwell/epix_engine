@@ -40,6 +40,15 @@ struct GpuWrittenOnlyBufferValue {
     explicit GpuWrittenOnlyBufferValue(std::uint32_t value) : value(value) {}
 };
 
+struct ImageAwareShaderSource {
+    epix::assets::AssetId<epix::image::Image> image_id = epix::assets::AssetId<epix::image::Image>::invalid();
+    float missing_image_value                           = 0.0f;
+};
+
+struct ImageAwareShaderValue {
+    float value = 0.0f;
+};
+
 template <typename T>
 concept HasCpuBufferValues = requires(T value) { value.values(); };
 
@@ -114,7 +123,19 @@ struct ShaderTypeInfo<::ExplicitShaderValue> {
 };
 template <>
 struct ShaderTypeInfo<::GpuWrittenOnlyBufferValue> : RawShaderType<::GpuWrittenOnlyBufferValue> {};
+
+template <>
+struct ShaderTypeInfo<::ImageAwareShaderValue> : RawShaderType<::ImageAwareShaderValue> {};
 }  // namespace epix::render::render_resource
+
+template <>
+struct epix::render::render_resource::AsBindGroupShaderType<ImageAwareShaderSource, ImageAwareShaderValue> {
+    static ImageAwareShaderValue as_bind_group_shader_type(
+        const ImageAwareShaderSource& source,
+        const epix::render::RenderAssets<epix::image::Image>& images) {
+        return {.value = images.contains(source.image_id) ? 1.0f : source.missing_image_value};
+    }
+};
 
 struct IncrementalExtractSource {
     std::vector<std::uint32_t> resident_data;
@@ -2414,6 +2435,22 @@ TEST(AsBindGroup, DefaultPreparationPropagatesUnpreparedError) {
     const auto prepared = render_resource::as_bind_group<TestMaterial>(wgpu::Device{}, wgpu::BindGroupLayout{}, material, param);
     ASSERT_FALSE(prepared.has_value());
     EXPECT_TRUE(std::holds_alternative<render_resource::RetryBindGroupNextUpdate>(prepared.error()));
+}
+
+// Bevy's AsBindGroupShaderType accepts processed image assets so an otherwise
+// ordinary CPU value can derive its shader value from render-world metadata.
+TEST(AsBindGroupShaderType, DefaultAndImageAwareConversions) {
+    RenderAssets<epix::image::Image> images;
+    const auto image_id = epix::assets::AssetId<epix::image::Image>::invalid();
+
+    const float converted = render_resource::as_bind_group_shader_type<float>(3.5f, images);
+    EXPECT_FLOAT_EQ(converted, 3.5f);
+
+    const ImageAwareShaderSource source{.image_id = image_id, .missing_image_value = -2.0f};
+    EXPECT_FLOAT_EQ(render_resource::as_bind_group_shader_type<ImageAwareShaderValue>(source, images).value, -2.0f);
+
+    images.emplace(image_id, epix::render::texture::GpuImage{});
+    EXPECT_FLOAT_EQ(render_resource::as_bind_group_shader_type<ImageAwareShaderValue>(source, images).value, 1.0f);
 }
 
 // Bevy BindGroupEntries and DynamicBindGroupEntries assign sequential indices

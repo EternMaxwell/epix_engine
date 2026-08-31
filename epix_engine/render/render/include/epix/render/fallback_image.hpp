@@ -234,3 +234,7 @@ struct epix::render::RenderAsset<epix::image::Image> {
         const epix::render::texture::GpuImage* previous);
     epix::render::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
 };
+
+// This conversion contract needs the complete image RenderAsset specialization,
+// while AsBindGroup itself intentionally remains independent of render assets.
+#include <epix/render/as_bind_group_shader_type.hpp>
