@@ -194,11 +194,14 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
         .setSampleCount(1);
 
     if (desc.format == wgpu::TextureFormat::eUndefined) {
-        return std::unexpected(render_resource::AsBindGroupError::CreateTexture);
+        return std::unexpected(GpuAssetCreationError::CreateTexture);
     }
 
     texture::GpuImage gpu_image;
     gpu_image.texture      = device->createTexture(desc);
+    if (!gpu_image.texture) {
+        return std::unexpected(GpuAssetCreationError::CreateTexture);
+    }
     auto view_desc         = wgpu::TextureViewDescriptor()
                                  .setDimension(view_dimension_cast(asset.type()))
                                  .setMipLevelCount(1)
@@ -207,10 +210,16 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
                                  .setBaseArrayLayer(0)
                                  .setArrayLayerCount(asset.layers());
     gpu_image.texture_view = gpu_image.texture.createView(view_desc);
+    if (!gpu_image.texture_view) {
+        return std::unexpected(GpuAssetCreationError::CreateTextureView);
+    }
     // Bevy gpu_image.rs:119-122: ImageSampler::Default uses the global
     // DefaultImageSampler; ImageSampler::Descriptor creates a custom sampler.
     if (asset.sampler() == image::ImageSampler::Descriptor) {
         gpu_image.sampler = device->createSampler(to_wgpu_sampler_descriptor(asset.sampler_descriptor()));
+        if (!gpu_image.sampler) {
+            return std::unexpected(GpuAssetCreationError::CreateSampler);
+        }
     } else {
         gpu_image.sampler = default_sampler->sampler;
     }

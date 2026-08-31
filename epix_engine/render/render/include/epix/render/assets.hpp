@@ -72,10 +72,36 @@ struct RetryNextAssetUpdate {
     E asset;
 };
 
+/** @brief Direct-WebGPU resource creation failures. This remains a compact
+ * error code because it has no payload; unlike `AsBindGroupError`, it is not
+ * a Bevy bind-group state. */
+EPIX_EXPORT enum class GpuAssetCreationError {
+    CreateTexture,
+    CreateTextureView,
+    CreateSampler,
+    CreateBuffer,
+};
+
+[[nodiscard]] inline std::string_view gpu_asset_creation_error_message(GpuAssetCreationError error) noexcept {
+    switch (error) {
+        case GpuAssetCreationError::CreateTexture:
+            return "failed to create texture";
+        case GpuAssetCreationError::CreateTextureView:
+            return "failed to create texture view";
+        case GpuAssetCreationError::CreateSampler:
+            return "failed to create sampler";
+        case GpuAssetCreationError::CreateBuffer:
+            return "failed to create buffer";
+    }
+    return "unknown GPU asset creation failure";
+}
+
 /** @brief Bevy-shaped preparation failure. The variant itself is the tagged
- * union: no parallel enum discriminator is required. */
+ * union: no parallel enum discriminator is required. The separate compact
+ * creation-error alternative is required for direct nullable wgpu handles. */
 template <typename E>
-using PrepareAssetError = std::variant<RetryNextAssetUpdate<E>, render_resource::AsBindGroupError>;
+using PrepareAssetError =
+    std::variant<RetryNextAssetUpdate<E>, GpuAssetCreationError, render_resource::AsBindGroupError>;
 
 /** @brief True when the RenderAsset specialization provides a take_gpu_data
  * hook (Bevy RenderAsset::take_gpu_data): moves heavy data out of the stored
@@ -478,9 +504,13 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             ++wrote_asset_count;
         } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
             prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
+        } else if (const auto* creation_error = std::get_if<GpuAssetCreationError>(&result.error())) {
+            spdlog::error("Render asset {} GPU creation failed: {}", id.to_string(),
+                          gpu_asset_creation_error_message(*creation_error));
         } else {
             spdlog::error("Render asset {} bind-group construction failed: {}", id.to_string(),
-                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
+                          render_resource::as_bind_group_error_message(
+                              std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
 
@@ -515,9 +545,13 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             ++wrote_asset_count;
         } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
             prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
+        } else if (const auto* creation_error = std::get_if<GpuAssetCreationError>(&result.error())) {
+            spdlog::error("Render asset {} GPU creation failed: {}", id.to_string(),
+                          gpu_asset_creation_error_message(*creation_error));
         } else {
             spdlog::error("Render asset {} bind-group construction failed: {}", id.to_string(),
-                          static_cast<int>(std::get<render_resource::AsBindGroupError>(result.error())));
+                          render_resource::as_bind_group_error_message(
+                              std::get<render_resource::AsBindGroupError>(result.error())));
         }
     }
     extracted_assets->extracted.clear();

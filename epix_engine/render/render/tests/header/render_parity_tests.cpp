@@ -2296,6 +2296,7 @@ template <>
 struct epix::render::render_resource::AsBindGroup<TestMaterial> {
     using Data  = TestMaterialData;
     using Param = std::tuple<>;
+    static constexpr std::string_view label() { return "TestMaterial"; }
     static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() {
         const auto entries = render_resource::BindGroupLayoutEntries<>::sequential(
             wgpu::ShaderStage::eFragment,
@@ -2311,15 +2312,7 @@ struct epix::render::render_resource::AsBindGroup<TestMaterial> {
         (void)layout;
         (void)material;
         (void)param;
-        return render_resource::UnpreparedBindGroup{};
-    }
-    static std::expected<render_resource::PreparedBindGroup, render_resource::AsBindGroupError> as_bind_group(
-        const wgpu::Device& device, const wgpu::BindGroupLayout& layout, const TestMaterial& material, Param& param) {
-        (void)device;
-        (void)layout;
-        (void)material;
-        (void)param;
-        return render_resource::PreparedBindGroup{};
+        return std::unexpected(render_resource::RetryBindGroupNextUpdate{});
     }
 };
 static_assert(epix::render::render_resource::AsBindGroupImpl<TestMaterial>);
@@ -2341,7 +2334,7 @@ TEST(AsBindGroup, LayoutEntries) {
     EXPECT_EQ(entries[0].visibility, wgpu::ShaderStage::eFragment);
     const TestMaterial material;
     static_assert(std::same_as<render_resource::PreparedBindGroup,
-                               std::remove_cvref_t<decltype(*render_resource::AsBindGroup<TestMaterial>::as_bind_group(
+                               std::remove_cvref_t<decltype(*render_resource::as_bind_group<TestMaterial>(
                                    std::declval<const wgpu::Device&>(), std::declval<const wgpu::BindGroupLayout&>(),
                                    std::declval<const TestMaterial&>(),
                                    std::declval<render_resource::AsBindGroup<TestMaterial>::Param&>()))>>);
@@ -2382,13 +2375,45 @@ TEST(BindingResources, PreservesOrderAndMaterializesDirectWgpuEntries) {
     data_resources.push_back(3, render_resource::BindingResources::data(std::move(data)));
     const auto data_entries = data_resources.entries();
     EXPECT_FALSE(data_entries.has_value());
-    EXPECT_EQ(data_entries.error(), "OwnedData must be materialized in a GPU buffer before bind-group creation");
+    EXPECT_TRUE(std::holds_alternative<render_resource::CreateBindGroupDirectly>(data_entries.error()));
 
     render_resource::UnpreparedBindGroup unprepared{std::move(resources)};
     EXPECT_EQ(unprepared.bindings.resources().size(), 3u);
     render_resource::PreparedBindGroup prepared;
     prepared.bindings = std::move(unprepared.bindings);
     EXPECT_EQ(prepared.bindings.resources().size(), 3u);
+}
+
+// AsBindGroup errors are payload-carrying alternatives, rather than a lossy
+// enum. This is the Bevy retry/direct/sampler contract expressed in C++.
+TEST(AsBindGroup, ErrorVariantsPreserveCause) {
+    render_resource::AsBindGroupError retry = render_resource::RetryBindGroupNextUpdate{};
+    EXPECT_TRUE(std::holds_alternative<render_resource::RetryBindGroupNextUpdate>(retry));
+
+    render_resource::AsBindGroupError directly = render_resource::CreateBindGroupDirectly{};
+    EXPECT_TRUE(std::holds_alternative<render_resource::CreateBindGroupDirectly>(directly));
+
+    render_resource::AsBindGroupError sampler = render_resource::InvalidSamplerType{
+        .binding = 4, .provided_sampler_type = "non-filtering", .required_sampler_types = "filtering"};
+    ASSERT_TRUE(std::holds_alternative<render_resource::InvalidSamplerType>(sampler));
+    EXPECT_EQ(std::get<render_resource::InvalidSamplerType>(sampler).binding, 4u);
+    EXPECT_NE(render_resource::as_bind_group_error_message(sampler).find("non-filtering"), std::string::npos);
+
+    PrepareAssetError<TestMaterial> creation = GpuAssetCreationError::CreateTexture;
+    ASSERT_TRUE(std::holds_alternative<GpuAssetCreationError>(creation));
+    EXPECT_EQ(gpu_asset_creation_error_message(std::get<GpuAssetCreationError>(creation)), "failed to create texture");
+
+}
+
+// The C++ free default helper propagates the specialization's unprepared
+// result without requiring every specialization to duplicate Bevy's default
+// as_bind_group implementation. This path does not need a live device.
+TEST(AsBindGroup, DefaultPreparationPropagatesUnpreparedError) {
+    TestMaterial material;
+    render_resource::AsBindGroup<TestMaterial>::Param param;
+    const auto prepared = render_resource::as_bind_group<TestMaterial>(wgpu::Device{}, wgpu::BindGroupLayout{}, material, param);
+    ASSERT_FALSE(prepared.has_value());
+    EXPECT_TRUE(std::holds_alternative<render_resource::RetryBindGroupNextUpdate>(prepared.error()));
 }
 
 // Bevy BindGroupEntries and DynamicBindGroupEntries assign sequential indices
@@ -3868,12 +3893,13 @@ struct ErasedTestAdapter;
 template <>
 struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestAdapter> {
     using SourceAsset = ErasedTestSource;
+    using ExtractedAsset = ErasedTestSource;
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
-        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -3883,6 +3909,7 @@ struct ErasedTestCloneAdapter;
 template <>
 struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestCloneAdapter> {
     using SourceAsset = ErasedTestSource;
+    using ExtractedAsset = ErasedTestSource;
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
@@ -3890,7 +3917,7 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestCloneAdapt
         return static_cast<RenderAssetUsages>(RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
     }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
-        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -3900,12 +3927,13 @@ struct ErasedTestMainOnlyAdapter;
 template <>
 struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestMainOnlyAdapter> {
     using SourceAsset = ErasedTestSource;
+    using ExtractedAsset = ErasedTestSource;
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::MAIN_WORLD; }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
-        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         return ErasedTestGpu{source.value};
     }
 };
@@ -3917,12 +3945,13 @@ struct ErasedTestRetryAdapter;
 template <>
 struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapter> {
     using SourceAsset = ErasedTestSource;
+    using ExtractedAsset = ErasedTestSource;
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
     RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
-        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&) const {
+        ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         if (source.value == 99 && !g_erased_retry_already_retried) {
             g_erased_retry_already_retried = true;
             return std::unexpected(epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>{
@@ -3931,6 +3960,49 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapt
         return ErasedTestGpu{source.value};
     }
     static void reset() { g_erased_retry_already_retried = false; }
+};
+
+// Adapter with an intentionally compact render-world payload. It verifies the
+// Epix compact-extraction extension on top of Bevy's erased asset pipeline.
+struct ErasedCompactSource {
+    int value = 0;
+    std::array<int, 64> unused_cpu_data{};
+};
+struct ErasedCompactPayload {
+    int value = 0;
+};
+struct ErasedCompactGpu {
+    int value = 0;
+};
+struct ErasedCompactAdapter;
+template <>
+struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedCompactAdapter> {
+    using SourceAsset    = ErasedCompactSource;
+    using ExtractedAsset = ErasedCompactPayload;
+    using ErasedAsset    = ErasedCompactGpu;
+    using ExtractError   = std::string;
+    using Param          = std::tuple<>;
+
+    inline static RenderAssetExtractionReason last_reason = RenderAssetExtractionReason::Added;
+    inline static int previous_value = -1;
+    inline static int prepare_previous_value = -1;
+
+    RenderAssetUsages asset_usage(const SourceAsset&) const {
+        return static_cast<RenderAssetUsages>(RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
+    }
+    std::expected<ExtractedAsset, ExtractError> extract(const SourceAsset& source,
+                                                         epix::assets::AssetId<SourceAsset>,
+                                                         RenderAssetExtractionReason reason,
+                                                         const ErasedAsset* previous) const {
+        last_reason   = reason;
+        previous_value = previous ? previous->value : -1;
+        return ExtractedAsset{source.value};
+    }
+    std::expected<ErasedAsset, epix::render::erased_render_asset::PrepareAssetError<ExtractedAsset>> prepare_asset(
+        ExtractedAsset&& extracted, const epix::assets::AssetId<SourceAsset>&, Param&, const ErasedAsset* previous) const {
+        prepare_previous_value = previous ? previous->value : -1;
+        return ErasedAsset{extracted.value};
+    }
 };
 
 struct ExtractAccessSource {
@@ -4024,10 +4096,10 @@ TEST(ErasedRenderAsset, PrepareAssetErrorVariants) {
     EXPECT_EQ(std::get<erased_render_asset::RetryNextUpdate<ErasedTestSource>>(retry).asset.value, 7);
 
     erased_render_asset::PrepareAssetError<ErasedTestSource> bind{
-        epix::render::render_resource::AsBindGroupError::CreateBindGroup};
+        epix::render::render_resource::CreateBindGroupDirectly{}};
     ASSERT_TRUE((std::holds_alternative<epix::render::render_resource::AsBindGroupError>(bind)));
-    EXPECT_EQ(std::get<epix::render::render_resource::AsBindGroupError>(bind),
-              epix::render::render_resource::AsBindGroupError::CreateBindGroup);
+    EXPECT_TRUE(std::holds_alternative<epix::render::render_resource::CreateBindGroupDirectly>(
+        std::get<epix::render::render_resource::AsBindGroupError>(bind)));
 }
 
 // extract_erased_render_asset (Bevy erased_render_asset.rs:244-312): RENDER_WORLD-only
@@ -4037,6 +4109,7 @@ TEST(ErasedRenderAsset, ExtractSystemMovesRenderWorldOnlyAssets) {
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestAdapter>{});
+    render_world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
@@ -4069,6 +4142,7 @@ TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestCloneAdapter>{});
+    render_world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 
@@ -4088,12 +4162,56 @@ TEST(ErasedRenderAsset, ExtractSystemClonesSharedUsage) {
     EXPECT_TRUE(main_world.resource<epix::assets::Assets<ErasedTestSource>>().get(handle_a.id()).has_value());
 }
 
+// Compact erased extraction transfers only ExtractedAsset, preserves the
+// source in the main world, and exposes add/modify reason plus prior GPU data.
+TEST(ErasedRenderAsset, ExtractSystemTransfersCompactPayloadAndPreviousAsset) {
+    epix::ecs::World main_world(2);
+    epix::ecs::World render_world(2);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedCompactAdapter>{});
+    render_world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedCompactGpu>{});
+    render_world.insert_resource(erased_render_asset::PrepareNextFrameAssets<ErasedCompactAdapter>{});
+    render_world.insert_resource(RenderAssetBytesPerFrameLimiter{});
+    main_world.insert_resource(epix::assets::Assets<ErasedCompactSource>{});
+    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedCompactSource>>{});
+
+    auto& store = main_world.resource_mut<epix::assets::Assets<ErasedCompactSource>>();
+    auto handle = store.emplace(ErasedCompactSource{.value = 73});
+    render_world.resource_mut<erased_render_asset::ErasedRenderAssets<ErasedCompactGpu>>().insert(
+        epix::assets::UntypedAssetId(handle.id()), ErasedCompactGpu{42});
+    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<ErasedCompactSource>>>().push(
+        epix::assets::AssetEvent<ErasedCompactSource>::modified(handle.id()));
+
+    auto extract = make_system_unique(erased_render_asset::extract_erased_render_asset<ErasedCompactAdapter>);
+    extract->initialize(render_world);
+    ASSERT_TRUE(extract->run({}, render_world).has_value());
+
+    const auto& extracted = render_world.resource<erased_render_asset::ExtractedAssets<ErasedCompactAdapter>>();
+    ASSERT_EQ(extracted.extracted.size(), 1u);
+    EXPECT_EQ(extracted.extracted[0].first, handle.id());
+    EXPECT_EQ(extracted.extracted[0].second.value, 73);
+    EXPECT_EQ(erased_render_asset::ErasedRenderAsset<ErasedCompactAdapter>::last_reason,
+              RenderAssetExtractionReason::Modified);
+    EXPECT_EQ(erased_render_asset::ErasedRenderAsset<ErasedCompactAdapter>::previous_value, 42);
+    EXPECT_TRUE(main_world.resource<epix::assets::Assets<ErasedCompactSource>>().get(handle.id()).has_value());
+
+    auto prepare = make_system_unique(erased_render_asset::prepare_erased_assets<ErasedCompactAdapter>);
+    prepare->initialize(render_world);
+    ASSERT_TRUE(prepare->run({}, render_world).has_value());
+    const auto* prepared = render_world.resource<erased_render_asset::ErasedRenderAssets<ErasedCompactGpu>>().get(
+        epix::assets::UntypedAssetId(handle.id()));
+    ASSERT_NE(prepared, nullptr);
+    EXPECT_EQ(prepared->value, 73);
+    EXPECT_EQ(erased_render_asset::ErasedRenderAsset<ErasedCompactAdapter>::prepare_previous_value, 42);
+}
+
 // extract_erased_render_asset: MAIN_WORLD-only assets are never extracted.
 TEST(ErasedRenderAsset, ExtractSystemSkipsMainWorldOnly) {
     epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
     render_world.insert_resource(erased_render_asset::ExtractedAssets<ErasedTestMainOnlyAdapter>{});
+    render_world.insert_resource(erased_render_asset::ErasedRenderAssets<ErasedTestGpu>{});
     main_world.insert_resource(epix::assets::Assets<ErasedTestSource>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<ErasedTestSource>>{});
 

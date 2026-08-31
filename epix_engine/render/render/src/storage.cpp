@@ -25,7 +25,7 @@ std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> Re
     desc.setLabel(asset.label.c_str()).setUsage(usage).setSize(size);
     result.buffer = device.get().createBuffer(desc);
     if (!result.buffer) {
-        return std::unexpected(render_resource::AsBindGroupError::CreateBuffer);
+        return std::unexpected(GpuAssetCreationError::CreateBuffer);
     }
     if (asset.data && !asset.data->empty()) {
         queue.get().writeBuffer(result.buffer, 0, asset.data->data(), asset.data->size());
