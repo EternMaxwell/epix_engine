@@ -3,97 +3,20 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <cstddef>
 #include <cstdint>
 #include <epix/ecs.hpp>
+#include <expected>
+#include <limits>
 #include <span>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
 namespace epix::render::render_resource {
-
-/**
- * @brief One declared binding of an AsBindGroup: binding index + layout entry.
- */
-EPIX_EXPORT struct BindGroupLayoutEntryInfo {
-    /** @brief The binding index (matches the shader's binding). */
-    std::uint32_t binding = 0;
-    /** @brief The layout entry for this binding. */
-    wgpu::BindGroupLayoutEntry entry;
-};
-
-/** @brief Build a uniform-buffer layout entry (Bevy #[uniform(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo uniform_binding(std::uint32_t binding,
-                                                            wgpu::ShaderStage stage,
-                                                            std::uint64_t min_binding_size = 0) {
-    BindGroupLayoutEntryInfo info;
-    info.binding = binding;
-    info.entry.setBinding(binding).setVisibility(stage).setBuffer(
-        wgpu::BufferBindingLayout()
-            .setType(wgpu::BufferBindingType::eUniform)
-            .setHasDynamicOffset(wgpu::Bool(false))  // Bevy derive default
-            .setMinBindingSize(min_binding_size));
-    return info;
-}
-
-/** @brief Build a storage-buffer layout entry (Bevy #[storage(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_binding(std::uint32_t binding,
-                                                            wgpu::ShaderStage stage,
-                                                            bool read_only                 = false,
-                                                            std::uint64_t min_binding_size = 0) {
-    BindGroupLayoutEntryInfo info;
-    info.binding = binding;
-    // Bevy derive default: read_only = false (eStorage); callers pass true
-    // for the read-only variant.
-    info.entry.setBinding(binding).setVisibility(stage).setBuffer(
-        wgpu::BufferBindingLayout()
-            .setType(read_only ? wgpu::BufferBindingType::eReadOnlyStorage : wgpu::BufferBindingType::eStorage)
-            .setHasDynamicOffset(wgpu::Bool(false))
-            .setMinBindingSize(min_binding_size));
-    return info;
-}
-
-/** @brief Build a texture layout entry (Bevy #[texture(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo texture_binding(
-    std::uint32_t binding,
-    wgpu::ShaderStage stage,
-    wgpu::TextureSampleType sample_type  = wgpu::TextureSampleType::eFloat,
-    wgpu::TextureViewDimension dimension = wgpu::TextureViewDimension::e2D) {
-    BindGroupLayoutEntryInfo info;
-    info.binding = binding;
-    info.entry.setBinding(binding).setVisibility(stage).setTexture(wgpu::TextureBindingLayout()
-                                                                       .setSampleType(sample_type)
-                                                                       .setViewDimension(dimension)
-                                                                       .setMultisampled(wgpu::Bool(false)));
-    return info;
-}
-
-/** @brief Build a sampler layout entry (Bevy #[sampler(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo sampler_binding(
-    std::uint32_t binding,
-    wgpu::ShaderStage stage,
-    wgpu::SamplerBindingType type = wgpu::SamplerBindingType::eFiltering) {
-    BindGroupLayoutEntryInfo info;
-    info.binding = binding;
-    info.entry.setBinding(binding).setVisibility(stage).setSampler(wgpu::SamplerBindingLayout().setType(type));
-    return info;
-}
-
-/** @brief Build a storage-texture layout entry (Bevy #[storage_texture(..)]). */
-EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_texture_binding(
-    std::uint32_t binding,
-    wgpu::ShaderStage stage,
-    wgpu::StorageTextureAccess access,
-    wgpu::TextureFormat format,
-    wgpu::TextureViewDimension dimension = wgpu::TextureViewDimension::e2D) {
-    BindGroupLayoutEntryInfo info;
-    info.binding = binding;
-    info.entry.setBinding(binding).setVisibility(stage).setStorageTexture(
-        wgpu::StorageTextureBindingLayout().setAccess(access).setFormat(format).setViewDimension(dimension));
-    return info;
-}
 
 /**
  * @brief Trait to specialize for a bind-group-compatible type (Bevy
@@ -102,65 +25,95 @@ EPIX_EXPORT inline BindGroupLayoutEntryInfo storage_texture_binding(
  * Specialize with:
  * - `Data`      - associated data carried by the prepared bind group.
  * - `Param`     - system-param tuple of resources needed to build the group.
- * - `layout_entries()`  - the declared bindings, in binding order.
+ * - `layout_entries()`  - raw declared layout entries, in binding order.
  * - `as_bind_group(device, layout, component, param)` - builds the group.
  * @tparam C The component type.
  */
 EPIX_EXPORT template <typename C>
 struct AsBindGroup;
 
-/**
- * @brief A prepared bind group plus per-binding resources (Bevy
- * `PreparedBindGroup`).
- */
-EPIX_EXPORT template <typename C>
-struct PreparedBindGroup {
-    /** @brief The created bind group. */
-    wgpu::BindGroup bind_group;
-    /** @brief Associated data (e.g. uniform buffers kept alive). */
-    typename AsBindGroup<C>::Data data{};
-    /** @brief Late-bound buffer resources per binding index. */
-    std::vector<std::pair<std::uint32_t, wgpu::Buffer>> buffer_bindings;
-    /** @brief Late-bound texture view resources per binding index. */
-    std::vector<std::pair<std::uint32_t, wgpu::TextureView>> texture_bindings;
-    /** @brief Late-bound sampler resources per binding index. */
-    std::vector<std::pair<std::uint32_t, wgpu::Sampler>> sampler_bindings;
+/** @brief Bytes owned by an AsBindGroup binding. This is not directly a
+ * WebGPU binding; a higher-level allocator must first materialize it in a
+ * buffer, as with Bevy's `OwnedData`. */
+EPIX_EXPORT class OwnedData {
+   public:
+    OwnedData() = default;
+    explicit OwnedData(std::vector<std::byte> bytes) : m_bytes(std::move(bytes)) {}
+
+    [[nodiscard]] std::span<const std::byte> bytes() const noexcept { return m_bytes; }
+    [[nodiscard]] std::span<std::byte> bytes_mut() noexcept { return m_bytes; }
+
+   private:
+    std::vector<std::byte> m_bytes;
 };
 
-/** @brief Concept satisfied by valid `AsBindGroup` specializations. */
-EPIX_EXPORT template <typename C>
-concept AsBindGroupImpl = requires {
-    typename AsBindGroup<C>::Data;
-    typename AsBindGroup<C>::Param;
-    { AsBindGroup<C>::layout_entries() } -> std::same_as<std::vector<BindGroupLayoutEntryInfo>>;
-    {
-        AsBindGroup<C>::as_bind_group(std::declval<const wgpu::Device&>(), std::declval<const wgpu::BindGroupLayout&>(),
-                                      std::declval<const C&>(), std::declval<typename AsBindGroup<C>::Param&>())
-    } -> std::same_as<PreparedBindGroup<C>>;
-};
+/** @brief An owned resource for one bind-group binding (Bevy's
+ * `OwnedBindingResource`). Direct wgpu handles are used where C++ WebGPU has
+ * no borrowed `BindingResource` counterpart. */
+EPIX_EXPORT using OwnedBindingResource =
+    std::variant<wgpu::Buffer, std::pair<wgpu::TextureViewDimension, wgpu::TextureView>,
+                 std::pair<wgpu::SamplerBindingType, wgpu::Sampler>, OwnedData>;
 
-/** @brief Create a bind group layout from the declared entries. */
-EPIX_EXPORT inline wgpu::BindGroupLayout create_bind_group_layout(const wgpu::Device& device,
-                                                                  std::span<const BindGroupLayoutEntryInfo> entries,
-                                                                  std::string_view label = "AsBindGroup Layout") {
-    std::vector<wgpu::BindGroupLayoutEntry> raw_entries;
-    raw_entries.reserve(entries.size());
-    for (const auto& info : entries) {
-        raw_entries.push_back(info.entry);
+/** @brief Ordered binding-index/resource ownership shared by prepared and
+ * unprepared bind groups (Bevy's `BindingResources`). */
+EPIX_EXPORT class BindingResources {
+   public:
+    using value_type = std::pair<std::uint32_t, OwnedBindingResource>;
+
+    BindingResources() = default;
+    explicit BindingResources(std::vector<value_type> resources) : m_resources(std::move(resources)) {}
+
+    [[nodiscard]] static OwnedBindingResource buffer(wgpu::Buffer buffer) { return buffer; }
+    [[nodiscard]] static OwnedBindingResource texture_view(wgpu::TextureViewDimension dimension,
+                                                           wgpu::TextureView texture_view) {
+        return std::pair{dimension, std::move(texture_view)};
     }
-    return device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel(label.data()).setEntries(std::move(raw_entries)));
-}
+    [[nodiscard]] static OwnedBindingResource sampler(wgpu::SamplerBindingType type, wgpu::Sampler sampler) {
+        return std::pair{type, std::move(sampler)};
+    }
+    [[nodiscard]] static OwnedBindingResource data(OwnedData data) { return data; }
 
-/** @brief Create a bind group from per-binding entries. */
-EPIX_EXPORT inline wgpu::BindGroup create_bind_group(const wgpu::Device& device,
-                                                     const wgpu::BindGroupLayout& layout,
-                                                     std::span<const wgpu::BindGroupEntry> entries,
-                                                     std::string_view label = "AsBindGroup") {
-    std::vector<wgpu::BindGroupEntry> raw_entries(entries.begin(), entries.end());
-    return device.createBindGroup(
-        wgpu::BindGroupDescriptor().setLabel(label.data()).setLayout(layout).setEntries(std::move(raw_entries)));
-}
+    void push_back(std::uint32_t binding, OwnedBindingResource resource) {
+        m_resources.emplace_back(binding, std::move(resource));
+    }
+
+    [[nodiscard]] std::span<const value_type> resources() const noexcept { return m_resources; }
+    [[nodiscard]] std::span<value_type> resources_mut() noexcept { return m_resources; }
+
+    /** @brief Materialize WebGPU entries in preserved input order. `OwnedData`
+     * intentionally has no direct entry and returns an explanatory error. */
+    [[nodiscard]] std::expected<std::vector<wgpu::BindGroupEntry>, std::string_view> entries() const {
+        std::vector<wgpu::BindGroupEntry> result;
+        result.reserve(m_resources.size());
+        for (const auto& [binding, resource] : m_resources) {
+            if (const auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
+                result.emplace_back(wgpu::BindGroupEntry()
+                                        .setBinding(binding)
+                                        .setBuffer(*buffer)
+                                        .setOffset(0)
+                                        .setSize(std::numeric_limits<std::uint64_t>::max()));
+            } else if (const auto* texture =
+                           std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
+                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture->second));
+            } else if (const auto* sampler =
+                           std::get_if<std::pair<wgpu::SamplerBindingType, wgpu::Sampler>>(&resource)) {
+                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setSampler(sampler->second));
+            } else {
+                return std::unexpected("OwnedData must be materialized in a GPU buffer before bind-group creation");
+            }
+        }
+        return result;
+    }
+
+   private:
+    std::vector<value_type> m_resources;
+};
+
+/** @brief Binding ownership before a bind group is constructed (Bevy's
+ * `UnpreparedBindGroup`). */
+EPIX_EXPORT struct UnpreparedBindGroup {
+    BindingResources bindings;
+};
 
 /** @brief Errors that can occur while creating bind group data (Bevy
  * `AsBindGroupError`). */
@@ -176,5 +129,52 @@ EPIX_EXPORT enum class AsBindGroupError {
     /** @brief Failed to create the bind group. */
     CreateBindGroup,
 };
+
+/**
+ * @brief A prepared bind group plus per-binding resources (Bevy
+ * `PreparedBindGroup`).
+ */
+EPIX_EXPORT struct PreparedBindGroup {
+    /** @brief The created bind group. */
+    wgpu::BindGroup bind_group;
+    /** @brief Ordered resource ownership for all bindings. */
+    BindingResources bindings;
+};
+
+/** @brief Concept satisfied by valid `AsBindGroup` specializations. */
+EPIX_EXPORT template <typename C>
+concept AsBindGroupImpl = requires {
+    typename AsBindGroup<C>::Data;
+    typename AsBindGroup<C>::Param;
+    { AsBindGroup<C>::layout_entries() } -> std::same_as<std::vector<wgpu::BindGroupLayoutEntry>>;
+    { AsBindGroup<C>::bind_group_data(std::declval<const C&>()) } -> std::same_as<typename AsBindGroup<C>::Data>;
+    {
+        AsBindGroup<C>::unprepared_bind_group(std::declval<const wgpu::Device&>(),
+                                              std::declval<const wgpu::BindGroupLayout&>(), std::declval<const C&>(),
+                                              std::declval<typename AsBindGroup<C>::Param&>())
+    } -> std::same_as<std::expected<UnpreparedBindGroup, AsBindGroupError>>;
+    {
+        AsBindGroup<C>::as_bind_group(std::declval<const wgpu::Device&>(), std::declval<const wgpu::BindGroupLayout&>(),
+                                      std::declval<const C&>(), std::declval<typename AsBindGroup<C>::Param&>())
+    } -> std::same_as<std::expected<PreparedBindGroup, AsBindGroupError>>;
+};
+
+/** @brief Create a bind group layout from the declared entries. */
+EPIX_EXPORT inline wgpu::BindGroupLayout create_bind_group_layout(const wgpu::Device& device,
+                                                                  std::span<const wgpu::BindGroupLayoutEntry> entries,
+                                                                  std::string_view label = "AsBindGroup Layout") {
+    return device.createBindGroupLayout(
+        wgpu::BindGroupLayoutDescriptor().setLabel(label.data()).setEntries(entries));
+}
+
+/** @brief Create a bind group from per-binding entries. */
+EPIX_EXPORT inline wgpu::BindGroup create_bind_group(const wgpu::Device& device,
+                                                     const wgpu::BindGroupLayout& layout,
+                                                     std::span<const wgpu::BindGroupEntry> entries,
+                                                     std::string_view label = "AsBindGroup") {
+    std::vector<wgpu::BindGroupEntry> raw_entries(entries.begin(), entries.end());
+    return device.createBindGroup(
+        wgpu::BindGroupDescriptor().setLabel(label.data()).setLayout(layout).setEntries(std::move(raw_entries)));
+}
 
 }  // namespace epix::render::render_resource

@@ -2296,54 +2296,99 @@ template <>
 struct epix::render::render_resource::AsBindGroup<TestMaterial> {
     using Data  = TestMaterialData;
     using Param = std::tuple<>;
-    static std::vector<render_resource::BindGroupLayoutEntryInfo> layout_entries() {
-        return {
-            render_resource::uniform_binding(0, wgpu::ShaderStage::eFragment, sizeof(glm::vec4)),
-            render_resource::texture_binding(1, wgpu::ShaderStage::eFragment),
-            render_resource::sampler_binding(2, wgpu::ShaderStage::eFragment),
-        };
+    static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() {
+        const auto entries = render_resource::BindGroupLayoutEntries<>::sequential(
+            wgpu::ShaderStage::eFragment,
+            render_resource::binding_types::uniform_buffer(false, sizeof(glm::vec4)),
+            render_resource::binding_types::texture_2d(wgpu::TextureSampleType::eFloat),
+            render_resource::binding_types::sampler(wgpu::SamplerBindingType::eFiltering));
+        return {entries.begin(), entries.end()};
     }
-    static render_resource::PreparedBindGroup<TestMaterial> as_bind_group(const wgpu::Device& device,
-                                                                          const wgpu::BindGroupLayout& layout,
-                                                                          const TestMaterial& material,
-                                                                          Param& param) {
+    static Data bind_group_data(const TestMaterial&) { return {}; }
+    static std::expected<render_resource::UnpreparedBindGroup, render_resource::AsBindGroupError> unprepared_bind_group(
+        const wgpu::Device& device, const wgpu::BindGroupLayout& layout, const TestMaterial& material, Param& param) {
         (void)device;
         (void)layout;
         (void)material;
         (void)param;
-        return render_resource::PreparedBindGroup<TestMaterial>{};
+        return render_resource::UnpreparedBindGroup{};
+    }
+    static std::expected<render_resource::PreparedBindGroup, render_resource::AsBindGroupError> as_bind_group(
+        const wgpu::Device& device, const wgpu::BindGroupLayout& layout, const TestMaterial& material, Param& param) {
+        (void)device;
+        (void)layout;
+        (void)material;
+        (void)param;
+        return render_resource::PreparedBindGroup{};
     }
 };
 static_assert(epix::render::render_resource::AsBindGroupImpl<TestMaterial>);
 
-// AsBindGroup layout entries match the declared bindings (Bevy derive output).
+// AsBindGroup returns raw layout entries, using the shared binding_types API.
 TEST(AsBindGroup, LayoutEntries) {
     const auto entries = epix::render::render_resource::AsBindGroup<TestMaterial>::layout_entries();
     ASSERT_EQ(entries.size(), 3u);
     EXPECT_EQ(entries[0].binding, 0u);
-    EXPECT_EQ(entries[0].entry.binding, 0u);
-    EXPECT_EQ(entries[0].entry.buffer.type, wgpu::BufferBindingType::eUniform);
-    EXPECT_FALSE(entries[0].entry.buffer.hasDynamicOffset);  // Bevy derive default
-    EXPECT_EQ(entries[0].entry.buffer.minBindingSize, sizeof(glm::vec4));
+    EXPECT_EQ(entries[0].buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_FALSE(entries[0].buffer.hasDynamicOffset);  // Bevy derive default
+    EXPECT_EQ(entries[0].buffer.minBindingSize, sizeof(glm::vec4));
     EXPECT_EQ(entries[1].binding, 1u);
-    EXPECT_EQ(entries[1].entry.texture.sampleType, wgpu::TextureSampleType::eFloat);
-    EXPECT_EQ(entries[1].entry.texture.viewDimension, wgpu::TextureViewDimension::e2D);
+    EXPECT_EQ(entries[1].texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(entries[1].texture.viewDimension, wgpu::TextureViewDimension::e2D);
     EXPECT_EQ(entries[2].binding, 2u);
-    EXPECT_EQ(entries[2].entry.sampler.type, wgpu::SamplerBindingType::eFiltering);
+    EXPECT_EQ(entries[2].sampler.type, wgpu::SamplerBindingType::eFiltering);
     // visibility is applied to every entry
-    EXPECT_EQ(entries[0].entry.visibility, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(entries[0].visibility, wgpu::ShaderStage::eFragment);
+    const TestMaterial material;
+    static_assert(std::same_as<render_resource::PreparedBindGroup,
+                               std::remove_cvref_t<decltype(*render_resource::AsBindGroup<TestMaterial>::as_bind_group(
+                                   std::declval<const wgpu::Device&>(), std::declval<const wgpu::BindGroupLayout&>(),
+                                   std::declval<const TestMaterial&>(),
+                                   std::declval<render_resource::AsBindGroup<TestMaterial>::Param&>()))>>);
+    static_assert(std::same_as<TestMaterialData,
+                               decltype(render_resource::AsBindGroup<TestMaterial>::bind_group_data(
+                                   std::declval<const TestMaterial&>()))>);
+    (void)render_resource::AsBindGroup<TestMaterial>::bind_group_data(material);
 }
 
-// Storage and storage-texture builders produce the expected entry types.
-TEST(AsBindGroup, EntryBuilders) {
-    const auto read_only = render_resource::storage_binding(0, wgpu::ShaderStage::eCompute, true);
-    EXPECT_EQ(read_only.entry.buffer.type, wgpu::BufferBindingType::eReadOnlyStorage);
-    const auto read_write = render_resource::storage_binding(1, wgpu::ShaderStage::eCompute);
-    EXPECT_EQ(read_write.entry.buffer.type, wgpu::BufferBindingType::eStorage);  // Bevy derive default: read_only=false
-    const auto tex = render_resource::storage_texture_binding(
-        2, wgpu::ShaderStage::eCompute, wgpu::StorageTextureAccess::eWriteOnly, wgpu::TextureFormat::eRGBA8Unorm);
-    EXPECT_EQ(tex.entry.storageTexture.access, wgpu::StorageTextureAccess::eWriteOnly);
-    EXPECT_EQ(tex.entry.storageTexture.format, wgpu::TextureFormat::eRGBA8Unorm);
+// Bevy keeps prepared and unprepared bind-group resources in one ordered,
+// tagged collection. Epix uses direct WebGPU resource handles in that variant.
+TEST(BindingResources, PreservesOrderAndMaterializesDirectWgpuEntries) {
+    render_resource::BindingResources resources;
+    resources.push_back(7, render_resource::BindingResources::buffer(wgpu::Buffer{}));
+    resources.push_back(2, render_resource::BindingResources::texture_view(wgpu::TextureViewDimension::e2D,
+                                                                             wgpu::TextureView{}));
+    resources.push_back(5, render_resource::BindingResources::sampler(wgpu::SamplerBindingType::eFiltering,
+                                                                         wgpu::Sampler{}));
+    ASSERT_EQ(resources.resources().size(), 3u);
+    EXPECT_EQ(resources.resources()[0].first, 7u);
+    EXPECT_TRUE((std::holds_alternative<wgpu::Buffer>(resources.resources()[0].second)));
+
+    const auto entries = resources.entries();
+    ASSERT_TRUE(entries.has_value());
+    ASSERT_EQ(entries->size(), 3u);
+    EXPECT_EQ((*entries)[0].binding, 7u);
+    EXPECT_EQ((*entries)[0].offset, 0u);
+    EXPECT_EQ((*entries)[0].size, std::numeric_limits<std::uint64_t>::max());
+    EXPECT_EQ((*entries)[1].binding, 2u);
+    EXPECT_EQ((*entries)[2].binding, 5u);
+
+    render_resource::OwnedData data{std::vector<std::byte>{std::byte{0x10}, std::byte{0x20}}};
+    EXPECT_EQ(data.bytes().size(), 2u);
+    resources.resources_mut()[0].first = 11;
+    EXPECT_EQ(resources.resources()[0].first, 11u);
+
+    render_resource::BindingResources data_resources;
+    data_resources.push_back(3, render_resource::BindingResources::data(std::move(data)));
+    const auto data_entries = data_resources.entries();
+    EXPECT_FALSE(data_entries.has_value());
+    EXPECT_EQ(data_entries.error(), "OwnedData must be materialized in a GPU buffer before bind-group creation");
+
+    render_resource::UnpreparedBindGroup unprepared{std::move(resources)};
+    EXPECT_EQ(unprepared.bindings.resources().size(), 3u);
+    render_resource::PreparedBindGroup prepared;
+    prepared.bindings = std::move(unprepared.bindings);
+    EXPECT_EQ(prepared.bindings.resources().size(), 3u);
 }
 
 // Bevy BindGroupEntries and DynamicBindGroupEntries assign sequential indices

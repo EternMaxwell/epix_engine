@@ -55,6 +55,8 @@ struct PipelineState {
     wgpu::Buffer input_indices_buffer;
     wgpu::Buffer work_items_buffer;
     wgpu::Buffer output_indices_buffer;
+    render::render_resource::BindingResources preprocess_bindings;
+    render::render_resource::BindingResources render_bindings;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
 };
 
@@ -241,27 +243,26 @@ struct SortedGeometryNode : render::graph::Node {
                 .setLayout(preprocess_pipeline_layout)
                 .setCompute(
                     wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader).setEntryPoint("preprocessMain")));
-        const auto preprocess_entries = render::render_resource::BindGroupEntries<>::sequential(
-            render::render_resource::BindGroupEntries<>::buffer_binding(
-                pipeline->input_indices_buffer, 0, inputs.buffer.len() * sizeof(std::uint32_t)),
-            render::render_resource::BindGroupEntries<>::buffer_binding(
-                pipeline->work_items_buffer, 0, work_items.len() * sizeof(render::batching::PreprocessWorkItem)),
-            render::render_resource::BindGroupEntries<>::buffer_binding(
-                pipeline->output_indices_buffer, 0, phase_buffers.data_buffer.len() * sizeof(std::uint32_t)));
+        pipeline->preprocess_bindings = render::render_resource::BindingResources{std::vector{
+            std::pair{0u, render::render_resource::BindingResources::buffer(pipeline->input_indices_buffer)},
+            std::pair{1u, render::render_resource::BindingResources::buffer(pipeline->work_items_buffer)},
+            std::pair{2u, render::render_resource::BindingResources::buffer(pipeline->output_indices_buffer)}}};
+        const auto preprocess_entries = pipeline->preprocess_bindings.entries();
+        if (!preprocess_entries) throw std::runtime_error(preprocess_entries.error().data());
         pipeline->preprocess_bind_group = device->get().createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel("sorted-phase-geometry-preprocess-bind-group")
                 .setLayout(preprocess_layout)
-                .setEntries(preprocess_entries));
-        const auto render_entries = render::render_resource::BindGroupEntries<>::with_indices(
-            std::pair{2u, render::render_resource::BindGroupEntries<>::buffer_binding(
-                              pipeline->output_indices_buffer, 0,
-                              phase_buffers.data_buffer.len() * sizeof(std::uint32_t))});
+                .setEntries(*preprocess_entries));
+        pipeline->render_bindings = render::render_resource::BindingResources{std::vector{
+            std::pair{2u, render::render_resource::BindingResources::buffer(pipeline->output_indices_buffer)}}};
+        const auto render_entries = pipeline->render_bindings.entries();
+        if (!render_entries) throw std::runtime_error(render_entries.error().data());
         pipeline->render_bind_group = device->get().createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel("sorted-phase-geometry-render-bind-group")
                 .setLayout(pipeline->render_bind_group_layout)
-                .setEntries(render_entries));
+                .setEntries(*render_entries));
         prepared = true;
     }
 
