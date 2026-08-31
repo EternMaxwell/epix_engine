@@ -46,26 +46,6 @@ void extract_core2d_camera_phases(
     std::erase_if(*ui_phases, remove_dead_views);
 }
 
-// Slang blit shaders: sample the view's main texture and write it to the
-// output attachment with a fullscreen triangle (Bevy core_pipeline blit).
-constexpr std::string_view kBlitVertexPath  = "core2d/blit_vert.slang";
-constexpr std::string_view kBlitVertexSlang = R"slang(
-struct VOut {
-    float4 pos : SV_Position;
-    [[vk::location(0)]] float2 uv;
-};
-// Bevy fullscreen_vertex_shader/fullscreen.wgsl:30-31. wgpu clip space is
-// Y-up, so a UV of (0,0) is the TOP-LEFT of the screen: the position mapping
-// flips V (uv.y * -2 + 1) so texture row 0 (v = 0) is presented at the top.
-[shader("vertex")]
-VOut blitVert([[vk::location(0)]] float2 uv : TEXCOORD0) {
-    VOut o;
-    o.uv  = uv;
-    o.pos = float4(uv * float2(2.0f, -2.0f) + float2(-1.0f, 1.0f), 0.0f, 1.0f);
-    return o;
-}
-)slang";
-
 constexpr std::string_view kBlitFragmentPath  = "core2d/blit_frag.slang";
 constexpr std::string_view kBlitFragmentSlang = R"slang(
 [[vk::binding(0, 0)]] SamplerState blit_sampler;
@@ -138,6 +118,7 @@ void Core2dBlitNode::update(World& world) {
 void queue_core2d_blit_pipelines(
     Query<Item<const epix::render::camera::ExtractedCamera&, const epix::render::view::ViewTarget&>> views,
     Res<wgpu::Device> device,
+    Res<epix::core_graph::FullscreenShader> fullscreen_shader,
     Res<Core2dBlitHandles> handles,
     ResMut<PipelineServer> pipeline_server,
     ResMut<Core2dBlitPipelines> pipelines) {
@@ -178,22 +159,7 @@ void queue_core2d_blit_pipelines(
                                                                   .setLodMinClamp(0.0f)
                                                                   .setLodMaxClamp(32.0f)
                                                                   .setMaxAnisotropy(1));
-        constexpr float kBlitVerts[6] = {0.0f, 0.0f, 2.0f, 0.0f, 0.0f, 2.0f};
-        built.vertex_buffer =
-            device->createBuffer(wgpu::BufferDescriptor()
-                                     .setLabel("Core2dBlitVBO")
-                                     .setSize(sizeof(kBlitVerts))
-                                     .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-        device->getQueue().writeBuffer(built.vertex_buffer, 0, kBlitVerts, sizeof(kBlitVerts));
-
-        epix::render::VertexState vs{.shader = handles->vertex_shader, .entry_point = std::string("blitVert")};
-        vs.buffers.push_back(
-            wgpu::VertexBufferLayout()
-                .setArrayStride(sizeof(float) * 2)
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(wgpu::VertexFormat::eFloat32x2),
-                }));
+        epix::render::VertexState vs = fullscreen_shader->to_vertex_state();
         epix::render::FragmentState fs{.shader = handles->fragment_shader, .entry_point = std::string("blitFrag")};
         wgpu::ColorTargetState color_target;
         color_target.setFormat(target.out_texture_view_format()).setWriteMask(wgpu::ColorWriteMask::eAll);
@@ -264,7 +230,6 @@ std::expected<void, graph::NodeRunError> Core2dBlitNode::run(graph::GraphContext
                                    vp.physical_size.y);
     }
     render_pass.setPipeline(pipeline->get().pipeline());
-    render_pass.setVertexBuffer(0, blit->vertex_buffer, 0, sizeof(float) * 6);
     render_pass.setBindGroup(0, bind_group, std::span<const uint32_t>{});
     render_pass.draw(3, 1, 0, 0);
     render_pass.end();
@@ -277,16 +242,13 @@ void Core2dPlugin::attach(App& app) {
     // render-graph requirement, as Bevy's Core2dPlugin does.
     app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
         [] { return render::camera::CameraRenderGraph{Core2d}; });
-    // Register the embedded blit shaders (Bevy core_pipeline blit). The
-    // handles must live in the RENDER world (the blit node reads them there);
-    // asset handles are plain ids so they are safe to copy across worlds.
+    // Register the Core2D-specific output fragment shader. Its handle lives
+    // in the render world because queued output pipelines consume it there.
     std::optional<Core2dBlitHandles> blit_handles;
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
-        registry->get().insert_asset_static(kBlitVertexPath, shader_bytes(kBlitVertexSlang));
         registry->get().insert_asset_static(kBlitFragmentPath, shader_bytes(kBlitFragmentSlang));
         blit_handles = Core2dBlitHandles{
-            .vertex_shader   = server->get().load<shader::Shader>("embedded://core2d/blit_vert.slang"),
             .fragment_shader = server->get().load<shader::Shader>("embedded://core2d/blit_frag.slang"),
         };
     } else {

@@ -10,6 +10,7 @@
 #include <thread>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
@@ -1333,6 +1334,23 @@ TEST(BinnedRenderPhase, BinsByKey) {
     EXPECT_EQ(bin1->size(), 1u);
     EXPECT_TRUE(bin1->contains(m3));
     EXPECT_FALSE(phase.is_empty());
+}
+
+// Bevy core_pipeline::FullscreenShader provides the common generated
+// fullscreen-triangle state: the vertex stage has no user vertex buffers and
+// uses the canonical entry point.
+TEST(FullscreenShader, BuildsGeneratedFullscreenTriangleState) {
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    const epix::core_graph::FullscreenShader fullscreen{handle};
+
+    const auto state = fullscreen.to_vertex_state();
+    EXPECT_EQ(fullscreen.shader(), handle);
+    EXPECT_EQ(state.shader, handle);
+    EXPECT_TRUE(state.shader_defs.empty());
+    EXPECT_TRUE(state.buffers.empty());
+    ASSERT_TRUE(state.entry_point.has_value());
+    EXPECT_EQ(*state.entry_point, "fullscreen_vertex_shader");
 }
 
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per

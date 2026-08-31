@@ -188,10 +188,10 @@ EPIX_EXPORT inline struct Core2dGraph {
     void add_to(render::graph::RenderGraph& g);
 } Core2d;
 
-/** @brief Embedded slang shaders for the final output blit (Bevy
- * core_pipeline upscaling: samples the main texture, writes to the output). */
+/** @brief Embedded fragment shader for the final output blit (Bevy
+ * core_pipeline upscaling: samples the main texture, writes to the output).
+ * The shared vertex shader is `core_graph::FullscreenShader`. */
 EPIX_EXPORT struct Core2dBlitHandles {
-    assets::Handle<shader::Shader> vertex_shader;
     assets::Handle<shader::Shader> fragment_shader;
 };
 
@@ -199,7 +199,6 @@ EPIX_EXPORT struct Core2dBlitHandles {
 EPIX_EXPORT struct Core2dBlitPipeline {
     wgpu::BindGroupLayout layout;
     wgpu::Sampler sampler;
-    wgpu::Buffer vertex_buffer;  // 3 float2 UVs of a fullscreen triangle
     render::CachedPipelineId pipeline_id;
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
     /** @brief Exact output blend configuration used to specialize this
