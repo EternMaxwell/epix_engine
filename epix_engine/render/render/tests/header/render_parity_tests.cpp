@@ -1584,6 +1584,17 @@ TEST(Core2dGraph, MatchesBevyDefaultNodesAndChain) {
     EXPECT_TRUE(core2d->get().has_edge(graph::Edge::node_edge(Node::EndMainPassPostProcessing, Node::Upscaling)));
 }
 
+TEST(Transparent2D, CarriesIndexedDrawDiscriminator) {
+    static_assert(phase::SortedPhaseItem<epix::core_graph::core_2d::Transparent2D>);
+    const auto entity = Entity::from_index(1);
+    epix::core_graph::core_2d::Transparent2D indexed{
+        .representative_entity = {entity, sync_world::MainEntity{entity}}, .indexed_value = true};
+    epix::core_graph::core_2d::Transparent2D non_indexed{
+        .representative_entity = {entity, sync_world::MainEntity{entity}}, .indexed_value = false};
+    EXPECT_TRUE(indexed.indexed());
+    EXPECT_FALSE(non_indexed.indexed());
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {

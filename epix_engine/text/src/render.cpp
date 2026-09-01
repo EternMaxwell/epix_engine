@@ -484,6 +484,7 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
                 .batch_range           = {0, 1},
+                .indexed_value         = false,
             });
         }
     }

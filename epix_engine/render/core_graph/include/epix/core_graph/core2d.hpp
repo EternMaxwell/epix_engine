@@ -75,16 +75,21 @@ EPIX_EXPORT struct Transparent2D {
     std::pair<std::uint32_t, std::uint32_t> batch_range;
     /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
     render::phase::PhaseItemExtraIndex extra_index_value{};
+    /** @brief Whether this item draws with a mesh index buffer (Bevy
+     * `Transparent2d::indexed`). */
+    bool indexed_value = false;
 
     ecs::Entity entity() const noexcept { return representative_entity.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
     float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    bool indexed() const noexcept { return indexed_value; }
     render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
     void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Transparent2D>);
+static_assert(render::phase::SortedPhaseItem<Transparent2D>);
 
 /** @brief An opaque 2D render phase item.
  *
