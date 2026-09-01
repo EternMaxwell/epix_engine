@@ -1395,6 +1395,53 @@ TEST(FullscreenShader, BuildsGeneratedFullscreenTriangleState) {
     EXPECT_EQ(*state.entry_point, "fullscreen_vertex_shader");
 }
 
+// Bevy core_pipeline::BlitPipeline specializes a reusable fullscreen texture
+// copy by target format, blend state, and sample count.
+TEST(BlitPipeline, SpecializesFormatBlendAndSamples) {
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    const epix::core_graph::BlitPipeline pipeline{
+        .layout            = {},
+        .sampler           = {},
+        .fullscreen_shader = epix::core_graph::FullscreenShader{handle},
+        .fragment_shader   = handle,
+    };
+    const auto alpha = wgpu::BlendState()
+                           .setColor(wgpu::BlendComponent()
+                                         .setOperation(wgpu::BlendOperation::eAdd)
+                                         .setSrcFactor(wgpu::BlendFactor::eSrcAlpha)
+                                         .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha))
+                           .setAlpha(wgpu::BlendComponent()
+                                         .setOperation(wgpu::BlendOperation::eAdd)
+                                         .setSrcFactor(wgpu::BlendFactor::eOne)
+                                         .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha));
+    const epix::core_graph::BlitPipelineKey key{.texture_format = wgpu::TextureFormat::eBGRA8Unorm,
+                                                 .blend_state    = alpha,
+                                                 .samples        = 4};
+    const epix::core_graph::BlitPipelineKey equivalent = key;
+    const epix::core_graph::BlitPipelineKey different_samples{.texture_format = wgpu::TextureFormat::eBGRA8Unorm,
+                                                               .blend_state    = alpha,
+                                                               .samples        = 1};
+    static_assert(epix::render::SpecializedRenderPipeline<epix::core_graph::BlitPipeline>);
+    EXPECT_EQ(key, equivalent);
+    EXPECT_NE(key, different_samples);
+    EXPECT_EQ(std::hash<epix::core_graph::BlitPipelineKey>{}(key),
+              std::hash<epix::core_graph::BlitPipelineKey>{}(equivalent));
+
+    const auto descriptor = pipeline.specialize(key);
+    EXPECT_EQ(descriptor.layouts.size(), 1u);
+    EXPECT_EQ(descriptor.vertex.shader, handle);
+    ASSERT_TRUE(descriptor.fragment.has_value());
+    ASSERT_EQ(descriptor.fragment->targets.size(), 1u);
+    EXPECT_EQ(descriptor.fragment->targets.front().format, key.texture_format);
+    EXPECT_EQ(descriptor.multisample.count, key.samples);
+    EXPECT_EQ(descriptor.multisample.mask, ~0u);
+    EXPECT_EQ(descriptor.primitive.frontFace, wgpu::FrontFace::eCCW);
+    EXPECT_EQ(descriptor.primitive.cullMode, wgpu::CullMode::eNone);
+    ASSERT_TRUE(descriptor.fragment->targets.front().blend.has_value());
+    EXPECT_EQ(descriptor.fragment->targets.front().blend->color.srcFactor, wgpu::BlendFactor::eSrcAlpha);
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {
