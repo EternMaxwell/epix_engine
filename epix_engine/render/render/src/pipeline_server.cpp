@@ -77,52 +77,49 @@ std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Devi
     }
 }
 
-PipelineServerData::PipelineServerData(wgpu::Device dev, bool synchronous_pipeline_compilation)
+PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation)
     : layout_cache(std::make_shared<utils::Mutex<LayoutCache>>()),
-      shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(dev, load_module)),
-      device(std::move(dev)),
+      shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(device, load_module)),
+      device(std::move(device)),
       pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())),
       synchronous_pipeline_compilation(synchronous_pipeline_compilation) {}
 
-PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation)
-    : m_data(std::make_shared<PipelineServerData>(std::move(device), synchronous_pipeline_compilation)) {}
-
 auto PipelineServer::get_pipeline_state(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const CachedPipelineState>> {
-    if (m_data->pipelines.size() <= id.get()) {
+    if (pipelines.size() <= id.get()) {
         return std::nullopt;
     }
-    return std::cref(m_data->pipelines[id].state);
+    return std::cref(pipelines[id].state);
 }
 auto PipelineServer::get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>> {
-    if (m_data->pipelines.size() <= id.get()) {
+    if (pipelines.size() <= id.get()) {
         return std::nullopt;
     }
-    if (std::holds_alternative<RenderPipelineDescriptor>(m_data->pipelines[id].descriptor)) {
-        return std::cref(std::get<RenderPipelineDescriptor>(m_data->pipelines[id].descriptor));
+    if (std::holds_alternative<RenderPipelineDescriptor>(pipelines[id].descriptor)) {
+        return std::cref(std::get<RenderPipelineDescriptor>(pipelines[id].descriptor));
     }
     return std::nullopt;
 }
 auto PipelineServer::get_compute_pipeline_descriptor(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const ComputePipelineDescriptor>> {
-    if (m_data->pipelines.size() <= id.get()) {
+    if (pipelines.size() <= id.get()) {
         return std::nullopt;
     }
-    if (std::holds_alternative<ComputePipelineDescriptor>(m_data->pipelines[id].descriptor)) {
-        return std::cref(std::get<ComputePipelineDescriptor>(m_data->pipelines[id].descriptor));
+    if (std::holds_alternative<ComputePipelineDescriptor>(pipelines[id].descriptor)) {
+        return std::cref(std::get<ComputePipelineDescriptor>(pipelines[id].descriptor));
     }
     return std::nullopt;
 }
 auto PipelineServer::get_render_pipeline(CachedPipelineId id) const noexcept
     -> std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError> {
-    if (m_data->pipelines.size() <= id.get()) {
-        if (m_data->new_pipelines.lock()->size() > (id.get() - m_data->pipelines.size())) {
+    if (pipelines.size() <= id.get()) {
+        if (new_pipelines.lock()->size() > (id.get() - pipelines.size())) {
             return std::unexpected(GetPipelineNotReady{});
         }
         return std::unexpected(GetPipelineInvalidId{});
     }
-    const auto& state = m_data->pipelines[id].state;
+    const auto& state = pipelines[id].state;
     if (std::holds_alternative<Pipeline>(state)) {
         const Pipeline& pipeline = std::get<Pipeline>(state);
         if (std::holds_alternative<RenderPipeline>(pipeline)) {
@@ -137,13 +134,13 @@ auto PipelineServer::get_render_pipeline(CachedPipelineId id) const noexcept
 }
 auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const noexcept
     -> std::expected<std::reference_wrapper<const ComputePipeline>, GetPipelineError> {
-    if (m_data->pipelines.size() <= id.get()) {
-        if (m_data->new_pipelines.lock()->size() > (id.get() - m_data->pipelines.size())) {
+    if (pipelines.size() <= id.get()) {
+        if (new_pipelines.lock()->size() > (id.get() - pipelines.size())) {
             return std::unexpected(GetPipelineNotReady{});
         }
         return std::unexpected(GetPipelineInvalidId{});
     }
-    const auto& state = m_data->pipelines[id].state;
+    const auto& state = pipelines[id].state;
     if (std::holds_alternative<Pipeline>(state)) {
         const Pipeline& pipeline = std::get<Pipeline>(state);
         if (std::holds_alternative<ComputePipeline>(pipeline)) {
@@ -157,71 +154,86 @@ auto PipelineServer::get_compute_pipeline(CachedPipelineId id) const noexcept
     return std::unexpected(GetPipelineNotReady{});
 }
 CachedPipelineId PipelineServer::queue_render_pipeline(RenderPipelineDescriptor descriptor) const {
-    auto new_pipelines  = m_data->new_pipelines.lock();
-    CachedPipelineId id = static_cast<CachedPipelineId>(m_data->pipelines.size() + new_pipelines->size());
-    new_pipelines->push_back(CachedPipeline{std::move(descriptor), PipelineStateQueued{}});
+    auto queued_pipelines = new_pipelines.lock();
+    CachedPipelineId id   = static_cast<CachedPipelineId>(pipelines.size() + queued_pipelines->size());
+    queued_pipelines->push_back(CachedPipeline{std::move(descriptor), PipelineStateQueued{}});
     return id;
 }
 CachedPipelineId PipelineServer::queue_compute_pipeline(ComputePipelineDescriptor descriptor) const {
-    auto new_pipelines  = m_data->new_pipelines.lock();
-    CachedPipelineId id = static_cast<CachedPipelineId>(m_data->pipelines.size() + new_pipelines->size());
-    new_pipelines->push_back(CachedPipeline{std::move(descriptor), PipelineStateQueued{}});
+    auto queued_pipelines = new_pipelines.lock();
+    CachedPipelineId id   = static_cast<CachedPipelineId>(pipelines.size() + queued_pipelines->size());
+    queued_pipelines->push_back(CachedPipeline{std::move(descriptor), PipelineStateQueued{}});
     return id;
+}
+void PipelineServer::block_on_render_pipeline(CachedPipelineId id) {
+    // Match PipelineCache: only an id that has not yet entered the processed
+    // vector requires a queue pass; only a creating task is synchronously
+    // joined. This is safe because this resource has one owning world.
+    if (pipelines.size() <= id.get()) {
+        process_queue();
+    }
+    if (pipelines.size() <= id.get()) {
+        return;
+    }
+    auto& state = pipelines[id].state;
+    if (auto* creating = std::get_if<PipelineStateCreating>(&state)) {
+        auto result = creating->get();
+        state       = result ? CachedPipelineState{std::move(*result)} : CachedPipelineState{std::move(result.error())};
+    }
 }
 void PipelineServer::set_shader(assets::AssetId<Shader> id, Shader shader) {
     // TODO: MSVC partial specialization workaround - cast AssetId<T> to UntypedAssetId
     spdlog::debug("[render.pipeline] Setting shader '{}' (path: {}).", assets::UntypedAssetId(id),
                   shader.path.string());
-    auto shader_cache       = m_data->shader_cache->lock();
+    auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->set_shader(id, std::move(shader));
     for (CachedPipelineId pipeline_id : affected_pipelines) {
-        m_data->pipelines[pipeline_id].state = PipelineStateQueued{};
-        m_data->waiting_pipelines.insert(pipeline_id);
+        pipelines[pipeline_id].state = PipelineStateQueued{};
+        waiting_pipelines_.insert(pipeline_id);
     }
 }
 void PipelineServer::remove_shader(assets::AssetId<Shader> id) {
     spdlog::debug("[render.pipeline] Removing shader '{}'.", assets::UntypedAssetId(id));
-    auto shader_cache       = m_data->shader_cache->lock();
+    auto shader_cache       = this->shader_cache->lock();
     auto affected_pipelines = shader_cache->remove(id);
     for (CachedPipelineId pipeline_id : affected_pipelines) {
-        m_data->pipelines[pipeline_id].state = PipelineStateQueued{};
-        m_data->waiting_pipelines.insert(pipeline_id);
+        pipelines[pipeline_id].state = PipelineStateQueued{};
+        waiting_pipelines_.insert(pipeline_id);
     }
 }
 
 void PipelineServer::process_queue() {
-    auto waiting_pipelines = std::move(m_data->waiting_pipelines);
+    auto waiting_pipelines = std::move(waiting_pipelines_);
     {
-        auto new_pipelines = std::move(*m_data->new_pipelines.lock());
-        if (!new_pipelines.empty()) {
-            spdlog::debug("[render.pipeline] Processing {} new pipelines.", new_pipelines.size());
+        auto queued_pipelines = std::move(*new_pipelines.lock());
+        if (!queued_pipelines.empty()) {
+            spdlog::debug("[render.pipeline] Processing {} new pipelines.", queued_pipelines.size());
         }
-        for (auto&& pipeline : new_pipelines) {
-            CachedPipelineId id = static_cast<CachedPipelineId>(m_data->pipelines.size());
-            m_data->pipelines.push_back(std::move(pipeline));
+        for (auto&& pipeline : queued_pipelines) {
+            CachedPipelineId id = static_cast<CachedPipelineId>(pipelines.size());
+            pipelines.push_back(std::move(pipeline));
             waiting_pipelines.insert(id);
         }
     }
     for (auto id : waiting_pipelines) {
         // processing pipeline
-        process_pipeline(m_data->pipelines[id], id);
+        process_pipeline(pipelines[id], id);
     }
 }
 
 void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPipelineId id) {
     auto schedule_creation = [&](auto task) {
-        if (m_data->synchronous_pipeline_compilation) {
+        if (synchronous_pipeline_compilation) {
             auto result           = task();
             cached_pipeline.state = result ? CachedPipelineState{std::move(result.value())}
                                            : CachedPipelineState{std::move(result.error())};
         } else {
-            cached_pipeline.state =
-                PipelineStateCreating{m_data->pipeline_create_task_pool->submit_task(std::move(task))};
+            cached_pipeline.state = PipelineStateCreating{pipeline_create_task_pool->submit_task(std::move(task))};
         }
     };
     auto create_render_pipeline = [&](const RenderPipelineDescriptor& descriptor) mutable {
-        auto task = [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
-                     shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+        auto task = [device = this->device, descriptor, layout_cache_ptr = layout_cache,
+                     shader_cache_ptr = shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
             wgpu::RenderPipelineDescriptor pipelineDesc;
             wgpu::ShaderModule vertex_module;
             std::optional<wgpu::ShaderModule> fragment_module;
@@ -268,8 +280,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         schedule_creation(std::move(task));
     };
     auto create_compute_pipeline = [&](const ComputePipelineDescriptor& descriptor) mutable {
-        auto task = [device = m_data->device, descriptor, layout_cache_ptr = m_data->layout_cache,
-                     shader_cache_ptr = m_data->shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+        auto task = [device = this->device, descriptor, layout_cache_ptr = layout_cache,
+                     shader_cache_ptr = shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
             wgpu::ComputePipelineDescriptor desc;
             wgpu::PipelineLayout layout;
             wgpu::ShaderModule module;
@@ -353,7 +365,7 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
         }
     }
 
-    m_data->waiting_pipelines.insert(id);
+    waiting_pipelines_.insert(id);
 }
 void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_server) {
     pipeline_server->process_queue();
@@ -361,11 +373,21 @@ void PipelineServer::process_pipeline_system(ResMut<PipelineServer> pipeline_ser
 void PipelineServer::extract_shaders(ResMut<PipelineServer> pipeline_server,
                                      Extract<Res<assets::Assets<Shader>>> shaders,
                                      Extract<EventReader<assets::AssetEvent<Shader>>> shader_events) {
-    auto shader_cache = pipeline_server->m_data->shader_cache->lock();
+    auto shader_cache = pipeline_server->shader_cache->lock();
     auto affected     = shader_cache->sync(shader_events.read(), *shaders);
     for (CachedPipelineId id : affected) {
-        pipeline_server->m_data->pipelines[id].state = PipelineStateQueued{};
-        pipeline_server->m_data->waiting_pipelines.insert(id);
+        pipeline_server->pipelines[id].state = PipelineStateQueued{};
+        pipeline_server->waiting_pipelines_.insert(id);
+    }
+}
+void PipelineServer::sync_main_world_shaders(ResMut<PipelineServer> pipeline_server,
+                                             Res<assets::Assets<Shader>> shaders,
+                                             EventReader<assets::AssetEvent<Shader>> shader_events) {
+    auto shader_cache = pipeline_server->shader_cache->lock();
+    auto affected     = shader_cache->sync(shader_events.read(), *shaders);
+    for (CachedPipelineId id : affected) {
+        pipeline_server->pipelines[id].state = PipelineStateQueued{};
+        pipeline_server->waiting_pipelines_.insert(id);
     }
 }
 }  // namespace epix::render

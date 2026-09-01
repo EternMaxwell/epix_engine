@@ -1442,6 +1442,63 @@ TEST(BlitPipeline, SpecializesFormatBlendAndSamples) {
     EXPECT_EQ(descriptor.fragment->targets.front().blend->color.srcFactor, wgpu::BlendFactor::eSrcAlpha);
 }
 
+// Bevy's UpscalingPlugin owns the per-view selected pipeline and installs a
+// typed view node in Core2D.  This verifies the public registration contract;
+// the GLFW mesh-rendering example verifies the resulting output path.
+TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
+    static_assert(epix::render::graph::ViewNode<epix::core_graph::UpscalingNode>);
+    static_assert(!std::copy_constructible<PipelineServer>);
+    static_assert(std::movable<PipelineServer>);
+    static_assert(std::ranges::view<decltype(std::declval<const PipelineServer&>().waiting_pipelines())>);
+
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        RenderPlugin{}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    app.add_plugins(epix::core_graph::CoreGraphPlugin{});
+
+    auto render_app = app.get_sub_app_mut(Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto main_pipeline_server = app.world().get_resource<PipelineServer>();
+    const auto render_pipeline_server = render_app->get().world().get_resource<PipelineServer>();
+    ASSERT_TRUE(main_pipeline_server.has_value());
+    ASSERT_TRUE(render_pipeline_server.has_value());
+    EXPECT_NE(std::addressof(main_pipeline_server->get()), std::addressof(render_pipeline_server->get()));
+    auto& render_instance = render_app->get();
+    render_instance.run_schedule(RenderStartup);
+    auto& world = render_instance.world_mut();
+    EXPECT_TRUE(world.get_resource<epix::render::SpecializedRenderPipelines<epix::core_graph::BlitPipeline>>().has_value());
+
+    // Bevy calls specialize from prepare_view_upscaling_pipelines every
+    // Prepare frame. The cache must therefore return the existing ID rather
+    // than queueing a new render pipeline for the same output key.
+    const auto pipeline_server = world.get_resource<PipelineServer>();
+    const auto blit_pipeline   = world.get_resource<epix::core_graph::BlitPipeline>();
+    auto specialized_pipelines = world.get_resource_mut<epix::render::SpecializedRenderPipelines<epix::core_graph::BlitPipeline>>();
+    ASSERT_TRUE(pipeline_server.has_value());
+    ASSERT_TRUE(blit_pipeline.has_value());
+    ASSERT_TRUE(specialized_pipelines.has_value());
+    const epix::core_graph::BlitPipelineKey key{.texture_format = wgpu::TextureFormat::eBGRA8Unorm, .samples = 1};
+    const auto first = specialized_pipelines->get().specialize(pipeline_server->get(), blit_pipeline->get(), key);
+    const auto again = specialized_pipelines->get().specialize(pipeline_server->get(), blit_pipeline->get(), key);
+    EXPECT_EQ(first, again);
+    EXPECT_EQ(specialized_pipelines->get().cache.size(), 1u);
+
+    const auto graph = world.get_resource<epix::render::graph::RenderGraph>();
+    ASSERT_TRUE(graph.has_value());
+    const auto core2d = graph->get().get_sub_graph(epix::core_graph::core_2d::Core2d);
+    ASSERT_TRUE(core2d.has_value());
+    EXPECT_TRUE(core2d->get().get_node_state(epix::core_graph::core_2d::Core2dNodes::Upscaling).has_value());
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {

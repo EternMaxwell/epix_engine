@@ -50,7 +50,7 @@ void CoreGraphPlugin::attach(App& app) {
         spdlog::warn("[core_graph] EmbeddedAssetRegistry or AssetServer not available; fullscreen passes disabled.");
     }
 
-    app.add_plugins(core_graph::core_2d::Core2dPlugin{}, BlitPlugin{});
+    app.add_plugins(core_graph::core_2d::Core2dPlugin{}, BlitPlugin{}, UpscalingPlugin{});
     if (auto render_app = app.get_sub_app_mut(render::Render); render_app && fullscreen_shader &&
         !render_app->get().world().get_resource<FullscreenShader>()) {
         render_app->get().world_mut().insert_resource(std::move(*fullscreen_shader));

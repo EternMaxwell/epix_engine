@@ -5,14 +5,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
-#include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
-#include <optional>
-#include <span>
 #include <utility>
-#include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -28,10 +24,8 @@ EPIX_EXPORT enum class Core2dNodes {
     MainOpaquePass,
     /** @brief Node that ends the main render pass. */
     EndMainPass,
-    /** @brief Node for the screen-space UI pass. */
-    ScreenUIPass,
-    /** @brief Final node that blits the main texture to the output. */
-    BlitToOutput,
+    /** @brief Final output pass (Bevy `Node2d::Upscaling`). */
+    Upscaling,
 };
 
 /**
@@ -96,35 +90,6 @@ EPIX_EXPORT struct Opaque2D {
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
 
-/** @brief A UI 2D render phase item.
- *
- * Sorted by `order` for z-ordering of UI elements.
- */
-EPIX_EXPORT struct UI2DItem {
-    /** @brief The render entity and its main-world entity (Bevy
-     * representative_entity: (Entity, MainEntity)). */
-    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
-    /** @brief Z-order for UI stacking (higher = on top). */
-    int order;
-    /** @brief Cached render pipeline ID. */
-    render::CachedPipelineId pipeline_id;
-    /** @brief Draw function ID for rendering this item. */
-    render::phase::DrawFunctionId draw_func;
-    /** @brief Instance range covered by this item's batch (Bevy batch_range:
-     * Range<u32>). */
-    std::pair<std::uint32_t, std::uint32_t> batch_range;
-    /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
-    render::phase::PhaseItemExtraIndex extra_index_value{};
-
-    ecs::Entity entity() const noexcept { return representative_entity.first; }
-    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
-    int sort_key() const noexcept { return order; }
-    render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
-    render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
-    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
-};
-
 template <typename P>
 struct Node2D : render::graph::Node {
     std::optional<ecs::QueryState<ecs::Item<const render::view::ExtractedView&,
@@ -185,47 +150,8 @@ struct Node2D : render::graph::Node {
 /** @brief Singleton struct for initializing the core 2D render graph. */
 EPIX_EXPORT inline struct Core2dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
-    void add_to(render::graph::RenderGraph& g);
+    void add_to(render::graph::RenderGraph& g, ecs::World& world);
 } Core2d;
-
-/** @brief Embedded fragment shader for the final output blit (Bevy
- * core_pipeline upscaling: samples the main texture, writes to the output).
- * The shared vertex shader is `core_graph::FullscreenShader`. */
-EPIX_EXPORT struct Core2dBlitHandles {
-    assets::Handle<shader::Shader> fragment_shader;
-};
-
-/** @brief Per-format blit pipeline resources (Bevy BlitPipeline). */
-EPIX_EXPORT struct Core2dBlitPipeline {
-    wgpu::BindGroupLayout layout;
-    wgpu::Sampler sampler;
-    render::CachedPipelineId pipeline_id;
-    wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-    /** @brief Exact output blend configuration used to specialize this
-     * pipeline (including Bevy's automatic
-     * later-camera alpha blend). */
-    std::optional<wgpu::BlendState> output_blend;
-};
-
-/** @brief Render-world cache of Core2D output pipelines. Pipelines are
- * created/queued by the Queue stage, never by
- * the render graph. */
-EPIX_EXPORT struct Core2dBlitPipelines {
-    std::vector<Core2dBlitPipeline> pipelines;
-};
-
-/** @brief Final node of the 2D graph: copies the main texture to the view's
- * output attachment (the swapchain for window cameras) and marks it for
- * present (Bevy core_pipeline `upscaling`). */
-EPIX_EXPORT struct Core2dBlitNode : render::graph::Node {
-    std::optional<ecs::QueryState<ecs::Item<const render::camera::ExtractedCamera&, const render::view::ViewTarget&>,
-                                  ecs::Filter<>>>
-        views;
-    void update(ecs::World& world) override;
-    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext& ctx,
-                                                         render::graph::RenderContext& render_ctx,
-                                                         const ecs::World& world) override;
-};
 
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */

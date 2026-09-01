@@ -410,6 +410,7 @@ void RenderPlugin::attach(App& app) {
     if (automatic_device_descriptor) {
         app.world_mut().insert_resource(std::move(*automatic_device_descriptor));
     }
+    app.world_mut().insert_resource(PipelineServer(device.clone(), synchronous_pipeline_compilation));
 
     app.sub_app_mut(Render).then([&](App& render_app) {
         render_app.world_mut().insert_resource(instance.clone());
@@ -422,9 +423,7 @@ void RenderPlugin::attach(App& app) {
         // Bevy lib.rs:384: RenderAssetBytesPerFrameLimiter is a render-app
         // resource (required by prepare_assets / extract/reset systems).
         render_app.world_mut().init_resource<RenderAssetBytesPerFrameLimiter>();
-        PipelineServer pipeline_server(device.clone(), synchronous_pipeline_compilation);
-        app.world_mut().insert_resource(pipeline_server);
-        render_app.world_mut().insert_resource(std::move(pipeline_server));
+        render_app.world_mut().insert_resource(PipelineServer(device.clone(), synchronous_pipeline_compilation));
         render_app
             // Bevy lib.rs:383-390: the byte limiter is initialized in the render
             // app; extract_render_asset_bytes_per_frame runs in ExtractSchedule,
@@ -453,6 +452,11 @@ void RenderPlugin::attach(App& app) {
                              .in_set(RenderSystems::ExtractCommands)
                              .set_name("apply extract commands"));
     });
+
+    app.add_systems(app::Last, into(PipelineServer::sync_main_world_shaders, PipelineServer::process_pipeline_system)
+                                   .chain()
+                                   .after(assets::AssetSystems::WriteEvents)
+                                   .set_names(std::array{"sync main pipeline shaders", "process main pipeline"}));
 
     app.add_plugins(shader::ShaderPlugin{});
     // WindowRenderPlugin owns ScreenshotPlugin, whose embedded blit shaders

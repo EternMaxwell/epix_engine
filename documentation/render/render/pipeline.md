@@ -121,6 +121,7 @@ struct PipelineServer {
     // Queue a pipeline for async compilation
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor) const;
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor) const;
+    void block_on_render_pipeline(CachedPipelineId id);
 
     // Retrieve a compiled pipeline
     std::expected<std::reference_wrapper<const RenderPipeline>, GetPipelineError>
@@ -138,14 +139,15 @@ struct PipelineServer {
 };
 ```
 
-`PipelineServer` is value-copyable; all copies share the same underlying
-`shared_ptr<PipelineServerData>`.  It exists both in the main app (for queuing
-pipelines) and in the render app (for executing them).
+`PipelineServer` is move-only and owns its cache state directly. The main and
+render worlds each contain an independent server: pipeline IDs and queued
+descriptors never cross the world boundary. The render-world instance handles
+render extraction and graph execution; the main-world instance supports
+explicit main-world GPU work.
 
-Queue methods may be called through either copy. At the extraction boundary,
-new descriptors are moved into the render-side state, shader asset events are
-synchronized, and queued/requeued pipelines are submitted for background
-creation.
+`waiting_pipelines()` returns a non-owning C++ range over the private waiting
+set. `block_on_render_pipeline` is intentionally the only blocking operation,
+matching Bevy; there is no compute equivalent.
 
 ### Pipeline Lifecycle
 
@@ -166,7 +168,8 @@ error state and is returned by retrieval.
 ### Usage
 
 ```cpp
-// This may run in the main or render world; queue once and retain the ID.
+// This queues in the current world's PipelineServer; retain the ID in that
+// same world rather than extracting it to the other world.
 void my_system(Res<render::PipelineServer> server, ResMut<MyPipelines> ids, ...) {
     if (!my_pipeline_id) {
         ids->main = server->queue_render_pipeline(

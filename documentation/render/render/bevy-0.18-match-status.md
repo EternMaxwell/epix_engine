@@ -22,11 +22,12 @@ listed interface and implementation behavior must be checked against Bevy.
 
 ## Project decisions that constrain the match
 
-- `PipelineServer` is the intentional `PipelineCache` replacement.  It has
-  shared state because it lives in both main and render worlds.  The app
-  scheduler guarantees that const and mutable access cannot occur at once;
-  mutation is permitted during extraction.  Its default compilation is
-  asynchronous; callers may opt into synchronous creation.
+- `PipelineServer` is the intentional `PipelineCache` replacement. It is
+  move-only and owns its cache state directly; the main and render worlds each
+  receive a separate instance. Its default compilation is asynchronous;
+  callers may opt into synchronous creation. The render-world instance also
+  exposes Bevy's render-only `block_on_render_pipeline` for preparation paths
+  that must wait for a selected render pipeline.
 - Slang, rather than WGSL, and direct wgpu resource use are accepted
   divergences.  Direct resource ownership must not conceal unrelated Bevy
   API/behavior mismatches.

@@ -167,41 +167,20 @@ struct CachedPipeline {
         return std::nullopt;
     }
 };
-/** @brief Internal data shared between all copies of a PipelineServer. */
-struct PipelineServerData {
-    PipelineServerData(const PipelineServerData&)            = delete;
-    PipelineServerData& operator=(const PipelineServerData&) = delete;
-
-    std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
-    std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
-    wgpu::Device device;
-    std::vector<CachedPipeline> pipelines;
-    std::unordered_set<CachedPipelineId> waiting_pipelines;
-    utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
-    std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
-    bool synchronous_pipeline_compilation = false;
-
-    PipelineServerData(wgpu::Device device, bool synchronous_pipeline_compilation);
-};
 /** @brief Central server that manages pipeline creation, caching, and
  * shader dependency tracking.
  *
  * Pipelines are queued via `queue_render_pipeline()` /
  * `queue_compute_pipeline()` and by default compiled asynchronously in a
  * thread pool; synchronous compilation is an explicit constructor opt-in.
- * The underlying data is shared across copies via a shared_ptr,
- * allowing PipelineServer to exist in both the main app and render app.
- * Mutation is private and driven by the render schedule. The shared state
- * deliberately lets the main and render
- * worlds observe the same server, but
- * render-graph nodes are read-only consumers: they must never synchronously
- *
- * advance pipeline creation.
+ * It is move-only: the main and render worlds receive distinct resources and
+ * never share cached state. Render-graph nodes are read-only consumers;
+ * mutable operations are scheduled in their owning world.
  */
 EPIX_EXPORT struct PipelineServer {
    public:
-    PipelineServer(const PipelineServer&)            = default;
-    PipelineServer& operator=(const PipelineServer&) = default;
+    PipelineServer(const PipelineServer&)            = delete;
+    PipelineServer& operator=(const PipelineServer&) = delete;
     PipelineServer(PipelineServer&&)                 = default;
     PipelineServer& operator=(PipelineServer&&)      = default;
 
@@ -211,13 +190,13 @@ EPIX_EXPORT struct PipelineServer {
     auto get_pipeline_state(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const CachedPipelineState>>;
     /** @brief Number of cached pipelines (Bevy pipelines().count()). */
-    std::size_t pipeline_count() const noexcept { return m_data->pipelines.size(); }
+    std::size_t pipeline_count() const noexcept { return pipelines.size(); }
     /** @brief Number of pipelines currently waiting to be processed (Bevy
      * waiting_pipelines().count()). */
-    std::size_t waiting_pipeline_count() const noexcept { return m_data->waiting_pipelines.size(); }
-    /** @brief The set of pipeline ids currently waiting to be processed (Bevy
-     * waiting_pipelines()). */
-    const std::unordered_set<CachedPipelineId>& waiting_pipelines() const noexcept { return m_data->waiting_pipelines; }
+    std::size_t waiting_pipeline_count() const noexcept { return waiting_pipelines_.size(); }
+    /** @brief Non-owning view of ids currently waiting to be processed (Bevy
+     * `waiting_pipelines()`). The underlying set remains private. */
+    auto waiting_pipelines() const noexcept { return std::views::all(waiting_pipelines_); }
     /** @brief Get the render pipeline descriptor for a cached pipeline. */
     auto get_render_pipeline_descriptor(CachedPipelineId id) const noexcept
         -> std::optional<std::reference_wrapper<const RenderPipelineDescriptor>>;
@@ -234,6 +213,9 @@ EPIX_EXPORT struct PipelineServer {
     CachedPipelineId queue_render_pipeline(RenderPipelineDescriptor descriptor) const;
     /** @brief Queue a compute pipeline for creation. */
     CachedPipelineId queue_compute_pipeline(ComputePipelineDescriptor descriptor) const;
+    /** @brief Process a newly queued render pipeline and wait for its
+     * in-flight creation task (Bevy `PipelineCache::block_on_render_pipeline`). */
+    void block_on_render_pipeline(CachedPipelineId id);
 
    private:
     friend struct RenderPlugin;
@@ -248,7 +230,17 @@ EPIX_EXPORT struct PipelineServer {
         epix::ecs::ResMut<PipelineServer> pipeline_server,
         epix::app::Extract<epix::ecs::Res<assets::Assets<shader::Shader>>> shaders,
         epix::app::Extract<epix::ecs::EventReader<assets::AssetEvent<shader::Shader>>> shader_events);
+    static void sync_main_world_shaders(epix::ecs::ResMut<PipelineServer> pipeline_server,
+                                        epix::ecs::Res<assets::Assets<shader::Shader>> shaders,
+                                        epix::ecs::EventReader<assets::AssetEvent<shader::Shader>> shader_events);
 
-    std::shared_ptr<PipelineServerData> m_data;
+    std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
+    std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
+    wgpu::Device device;
+    std::vector<CachedPipeline> pipelines;
+    std::unordered_set<CachedPipelineId> waiting_pipelines_;
+    utils::Mutex<std::vector<CachedPipeline>> new_pipelines;
+    std::unique_ptr<BS::thread_pool<BS::tp::none>> pipeline_create_task_pool;
+    bool synchronous_pipeline_compilation = false;
 };
 }  // namespace epix::render

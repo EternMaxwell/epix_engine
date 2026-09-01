@@ -140,7 +140,7 @@ root.add_sub_graph(my_graph, std::move(camera_graph)).value();
 ### 4. Queue a render pipeline
 
 ```cpp
-// PipelineServer is shared between the main and render worlds.
+// This queues in the current world's independent PipelineServer.
 void setup(Res<render::PipelineServer> server,
            Res<MyShaderHandles> shader_handles,
            ResMut<MyPipelineIds> pipeline_ids) {
