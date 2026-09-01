@@ -42,6 +42,11 @@ namespace epix::render::batching {
 struct GpuPreprocessingSupport;
 }
 
+namespace epix::render {
+template <typename C>
+struct ExtractComponent;
+}
+
 namespace epix::render::camera {
 /** @brief Label identifying the render graph assigned to a camera. */
 EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
@@ -92,6 +97,18 @@ EPIX_EXPORT struct ExtractedCamera {
     ::epix::camera::MsaaWriteback msaa_writeback = ::epix::camera::MsaaWriteback::Auto;
 };
 }  // namespace epix::render::camera
+
+// Bevy render::camera extracts Camera2d only from camera entities so Core2D
+// render systems can query the marker in the render world.
+template <>
+struct epix::render::ExtractComponent<epix::camera::Camera2d> {
+    using QueryData   = const epix::camera::Camera2d&;
+    using QueryFilter = epix::ecs::With<epix::camera::Camera>;
+    using Out         = epix::camera::Camera2d;
+
+    static std::optional<Out> extract_component(QueryData item) { return item; }
+};
+
 namespace epix::render::view {
 /** @brief Number of samples for multisample anti-aliasing (Bevy
  * `bevy_render::view::Msaa`). The render-side camera

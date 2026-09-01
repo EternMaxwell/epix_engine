@@ -51,13 +51,18 @@ void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
 }
 
 void Core2dPlugin::attach(App& app) {
-    // `Camera2d` belongs to the camera module. Core2d only supplies the
-    // render-graph requirement, as Bevy's Core2dPlugin does.
+    // Mirror Core2dPlugin::build: Camera2d gets the Core2D graph plus the
+    // component defaults that define a plain 2D camera output path.
+    app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
+        [] { return DebandDither::Disabled; });
     app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
         [] { return render::camera::CameraRenderGraph{Core2d}; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
+        [] { return Tonemapping::None; });
+    app.add_plugins(render::ExtractComponentPlugin<::epix::camera::Camera2d>{});
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {
-        render_app.world_mut().insert_resource(phase::DrawFunctions<Transparent2D>{});
-        render_app.world_mut().insert_resource(phase::DrawFunctions<Opaque2D>{});
+        render_app.world_mut().init_resource<phase::DrawFunctions<Transparent2D>>();
+        render_app.world_mut().init_resource<phase::DrawFunctions<Opaque2D>>();
         render_app.world_mut().init_resource<phase::ViewSortedRenderPhases<Transparent2D>>();
         render_app.world_mut().init_resource<phase::ViewSortedRenderPhases<Opaque2D>>();
         Core2d.add_to(render_app.resource_mut<graph::RenderGraph>(), render_app.world_mut());

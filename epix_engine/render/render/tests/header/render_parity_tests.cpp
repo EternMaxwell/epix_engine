@@ -1499,6 +1499,58 @@ TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
     EXPECT_TRUE(core2d->get().get_node_state(epix::core_graph::core_2d::Core2dNodes::Upscaling).has_value());
 }
 
+// Bevy Core2dPlugin supplies these three Camera2d requirements and extracts
+// the marker into the render world for its Core2D-only queries.
+TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::render::FrameCountPlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        RenderPlugin{}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    app.add_plugins(epix::core_graph::core_2d::Core2dPlugin{});
+    ASSERT_TRUE(app.world().get_resource<FrameCount>().has_value());
+
+    const Entity camera = app.world_mut().spawn(::epix::camera::Camera2d{}).id();
+    const auto main = app.world().get_entity(camera);
+    ASSERT_TRUE(main.has_value());
+    EXPECT_TRUE(main->contains<::epix::camera::Camera>());
+    EXPECT_TRUE(main->contains<epix::core_graph::DebandDither>());
+    EXPECT_TRUE(main->contains<epix::core_graph::Tonemapping>());
+    EXPECT_TRUE(main->contains<epix::render::camera::CameraRenderGraph>());
+    EXPECT_EQ(main->get<epix::core_graph::DebandDither>()->get(),
+              epix::core_graph::DebandDither::Disabled);
+    EXPECT_EQ(main->get<epix::core_graph::Tonemapping>()->get(), epix::core_graph::Tonemapping::None);
+    EXPECT_EQ(main->get<epix::render::camera::CameraRenderGraph>()->get(),
+              epix::render::graph::GraphLabel(epix::core_graph::core_2d::Core2d));
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->extract(app);
+    // RenderPlugin deliberately defers ExtractSchedule commands until the
+    // RenderSystems::ExtractCommands stage. Apply that stage's source
+    // schedule here rather than assuming extraction inserts immediately.
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+    const auto render_entity = app.world()
+                                   .get_entity(camera)
+                                   .and_then([](const EntityRef& entity) { return entity.get<sync_world::RenderEntity>(); })
+                                   .transform([](const auto& value) { return value.get().id(); });
+    ASSERT_TRUE(render_entity.has_value());
+    const auto extracted = render_sub->world().get_entity(*render_entity);
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_TRUE(extracted->contains<::epix::camera::Camera2d>());
+    app.insert_sub_app(Render, std::move(render_sub));
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {
