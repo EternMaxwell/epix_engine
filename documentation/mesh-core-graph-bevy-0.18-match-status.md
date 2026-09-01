@@ -48,8 +48,9 @@ intentional, deferred, or out of scope.
 | --- | --- | --- | --- | --- |
 | C1 | `CorePipelinePlugin`: installs 2D, 3D, blit, tonemapping, upscaling, OIT, mip generation, deferred-copy plugins | `CoreGraphPlugin` | ❌ | Epix installs only the 2D graph. All constituent features must be audited individually. |
 | C2 | `FullscreenShader`: shared embedded fullscreen-triangle vertex shader and `to_vertex_state()` | `core_graph::FullscreenShader`, initialized by `CoreGraphPlugin` | ✅ | CoreGraphPlugin directly mirrors Bevy CorePipelinePlugin ownership: embeds the shared shader, installs core plugins, then initializes the render-world resource. Core2D only consumes it. Slang remains the accepted shader-language divergence. |
-| C3 | `FullscreenMaterial` and `FullscreenMaterialPlugin` | none | 🚫 | Full-screen custom-material pipeline absent. |
-| C4 | General `BlitPlugin`, `BlitPipeline`, and `BlitPipelineKey` | `Core2dBlit*` | REVIEW | Epix has a 2D-specific output blit; inspect API/logic against general Bevy blit. |
+| C3 | `FullscreenMaterial<T>` and `FullscreenMaterialPlugin<T>`: extracted uniform component, two HDR/non-HDR pipelines, a typed view node, and explicit graph edges | none | 🚫 | Epix has the generic extraction, uniform, view-node, and A/B post-process primitives, but no corresponding generic core-pipeline facility. |
+| C4 | General `BlitPlugin`, `BlitPipeline`, and `BlitPipelineKey` | `Core2dBlit*` | ❌ | Core2D owns a private output blit pipeline. Bevy exposes a reusable specialized blit pipeline with texture format, blend state, and sample-count key. |
+| C4a | `SpecializedRenderPipeline` / `SpecializedComputePipeline` specialize from `&self` | `render::SpecializedRenderPipeline` / `render::SpecializedComputePipeline` concepts | ✅ | Pipeline instances own `Key` and `specialize(key)`, and cache methods receive the specialization instance exactly as in Bevy. |
 
 ## Core 2D Pipeline
 
@@ -84,3 +85,4 @@ intentional, deferred, or out of scope.
 | 2026-08-31 | Read all source-file inventories, `bevy_render::mesh`, `bevy_core_pipeline::lib`, and `core_2d` public declarations directly from local Bevy 0.18.0 source. | Initial numbered inventory created. |
 | 2026-08-31 | C2: full no-modules reconfigure/rebuild; `tests_header_render_render_parity_tests` and `tests_header_mesh_module_test`; three actual GLFW client-area captures of `examples_header_mesh_rendering`. | Shared `FullscreenShader` fixed and visually verified. |
 | 2026-08-31 | C2 ownership and shader-coordinate correction: targeted no-modules rebuild, the same two focused tests, and three fresh GLFW client-area captures of `examples_header_mesh_rendering`. | `CoreGraphPlugin` owns initialization exactly as Bevy `CorePipelinePlugin`; fullscreen-triangle UV and clip-space mapping match Bevy. |
+| 2026-09-01 | C3/C4 source audit against Bevy `fullscreen_material.rs` and `blit/mod.rs`; C4a targeted no-modules build and `tests_header_render_render_parity_tests`. | Documented the absent generic facilities and corrected the shared specialized-pipeline instance contract. |

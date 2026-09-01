@@ -50,6 +50,48 @@ struct ImageAwareShaderValue {
     float value = 0.0f;
 };
 
+struct InstanceSpecializedRenderPipeline {
+    using Key = std::uint32_t;
+
+    std::uint32_t marker = 0;
+
+    RenderPipelineDescriptor specialize(Key key) const {
+        const auto shader = epix::assets::Handle<epix::shader::Shader>{
+            epix::assets::AssetId<epix::shader::Shader>::invalid()};
+        return RenderPipelineDescriptor{
+            .label  = std::to_string(marker + key),
+            .vertex = VertexState{.shader = shader},
+        };
+    }
+};
+
+struct InstanceSpecializedComputePipeline {
+    using Key = std::uint32_t;
+
+    std::uint32_t marker = 0;
+
+    ComputePipelineDescriptor specialize(Key key) const {
+        return ComputePipelineDescriptor{
+            .label = std::to_string(marker + key),
+            .shader = epix::assets::Handle<epix::shader::Shader>{
+                epix::assets::AssetId<epix::shader::Shader>::invalid()},
+        };
+    }
+};
+
+static_assert(SpecializedRenderPipeline<InstanceSpecializedRenderPipeline>);
+static_assert(SpecializedComputePipeline<InstanceSpecializedComputePipeline>);
+
+TEST(SpecializedPipelines, CallThePipelineInstance) {
+    const InstanceSpecializedRenderPipeline render_pipeline{.marker = 10};
+    const InstanceSpecializedComputePipeline compute_pipeline{.marker = 20};
+
+    EXPECT_EQ(render_pipeline.specialize(3).label, "13");
+    EXPECT_EQ(compute_pipeline.specialize(4).label, "24");
+    [[maybe_unused]] SpecializedRenderPipelines<InstanceSpecializedRenderPipeline> render_cache;
+    [[maybe_unused]] SpecializedComputePipelines<InstanceSpecializedComputePipeline> compute_cache;
+}
+
 template <typename T>
 concept HasCpuBufferValues = requires(T value) { value.values(); };
 

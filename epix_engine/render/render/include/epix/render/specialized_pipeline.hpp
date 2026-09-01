@@ -16,16 +16,13 @@
 namespace epix::render {
 /**
  * @brief Trait specialization pattern for render pipelines that can be
- * specialized by key (Bevy `SpecializedRenderPipeline`). Specialize
- * `SpecializedRenderPipeline<S>` with `Key` and the static `specialize`
- * function returning a `RenderPipelineDescriptor`.
+ * specialized by key (Bevy `SpecializedRenderPipeline`). A pipeline exposes
+ * `Key` and an instance `specialize` function returning a
+ * `RenderPipelineDescriptor`.
  */
 template <typename S>
-struct SpecializedRenderPipeline;
-
-template <typename S>
-concept SpecializedRenderPipelineImpl = requires(typename SpecializedRenderPipeline<S>::Key key) {
-    { SpecializedRenderPipeline<S>::specialize(key) } -> std::same_as<RenderPipelineDescriptor>;
+concept SpecializedRenderPipeline = requires(const S& pipeline, typename S::Key key) {
+    { pipeline.specialize(key) } -> std::same_as<RenderPipelineDescriptor>;
 };
 
 /**
@@ -33,17 +30,19 @@ concept SpecializedRenderPipelineImpl = requires(typename SpecializedRenderPipel
  * `SpecializedRenderPipelines<S>`).
  */
 template <typename S>
-    requires SpecializedRenderPipelineImpl<S>
+    requires SpecializedRenderPipeline<S>
 struct SpecializedRenderPipelines {
     /** @brief Cached pipeline ids keyed by specialization key. */
-    std::unordered_map<typename SpecializedRenderPipeline<S>::Key, CachedPipelineId> cache;
+    std::unordered_map<typename S::Key, CachedPipelineId> cache;
 
     /** @brief Get the cached pipeline for `key`, queueing a new pipeline if absent. */
-    CachedPipelineId specialize(const PipelineServer& server, typename SpecializedRenderPipeline<S>::Key key) {
+    CachedPipelineId specialize(const PipelineServer& server,
+                                const S& specialized_pipeline,
+                                typename S::Key key) {
         if (auto it = cache.find(key); it != cache.end()) {
             return it->second;
         }
-        CachedPipelineId id = server.queue_render_pipeline(SpecializedRenderPipeline<S>::specialize(key));
+        CachedPipelineId id = server.queue_render_pipeline(specialized_pipeline.specialize(key));
         cache.emplace(std::move(key), id);
         return id;
     }
@@ -51,14 +50,12 @@ struct SpecializedRenderPipelines {
 
 /**
  * @brief Trait specialization pattern for compute pipelines (Bevy
- * `SpecializedComputePipeline`).
+ * `SpecializedComputePipeline`). A pipeline exposes `Key` and an instance
+ * `specialize` function returning a `ComputePipelineDescriptor`.
  */
 template <typename S>
-struct SpecializedComputePipeline;
-
-template <typename S>
-concept SpecializedComputePipelineImpl = requires(typename SpecializedComputePipeline<S>::Key key) {
-    { SpecializedComputePipeline<S>::specialize(key) } -> std::same_as<ComputePipelineDescriptor>;
+concept SpecializedComputePipeline = requires(const S& pipeline, typename S::Key key) {
+    { pipeline.specialize(key) } -> std::same_as<ComputePipelineDescriptor>;
 };
 
 /**
@@ -66,16 +63,18 @@ concept SpecializedComputePipelineImpl = requires(typename SpecializedComputePip
  * `SpecializedComputePipelines<S>`).
  */
 template <typename S>
-    requires SpecializedComputePipelineImpl<S>
+    requires SpecializedComputePipeline<S>
 struct SpecializedComputePipelines {
     /** @brief Cached pipeline ids keyed by specialization key. */
-    std::unordered_map<typename SpecializedComputePipeline<S>::Key, CachedPipelineId> cache;
+    std::unordered_map<typename S::Key, CachedPipelineId> cache;
 
-    CachedPipelineId specialize(const PipelineServer& server, typename SpecializedComputePipeline<S>::Key key) {
+    CachedPipelineId specialize(const PipelineServer& server,
+                                const S& specialized_pipeline,
+                                typename S::Key key) {
         if (auto it = cache.find(key); it != cache.end()) {
             return it->second;
         }
-        CachedPipelineId id = server.queue_compute_pipeline(SpecializedComputePipeline<S>::specialize(key));
+        CachedPipelineId id = server.queue_compute_pipeline(specialized_pipeline.specialize(key));
         cache.emplace(std::move(key), id);
         return id;
     }
