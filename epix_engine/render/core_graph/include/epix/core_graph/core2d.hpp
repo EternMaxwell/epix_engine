@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <string_view>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -14,18 +15,43 @@
 
 namespace epix::core_graph::core_2d {
 
+/** @brief Names exposed by Bevy's `core_2d::graph::input` module. */
+namespace input {
+inline constexpr std::string_view ViewEntity = "view_entity";
+}
+
 /** @brief Node labels for the 2D render graph passes. */
 EPIX_EXPORT enum class Core2dNodes {
+    /** @brief Optional MSAA resolve pass supplied by the MSAA plugin. */
+    MsaaWriteback,
     /** @brief Node that begins the main render pass. */
     StartMainPass,
-    /** @brief Node for rendering transparent 2D items. */
-    MainTransparentPass,
     /** @brief Node for rendering opaque 2D items. */
     MainOpaquePass,
+    /** @brief Node for rendering transparent 2D items. */
+    MainTransparentPass,
     /** @brief Node that ends the main render pass. */
     EndMainPass,
-    /** @brief Final output pass (Bevy `Node2d::Upscaling`). */
+    /** @brief Optional wireframe pass supplied by the wireframe plugin. */
+    Wireframe,
+    /** @brief Start of the extensible post-processing segment. */
+    StartMainPassPostProcessing,
+    /** @brief Optional bloom pass supplied by the bloom plugin. */
+    Bloom,
+    /** @brief Optional general post-processing pass. */
+    PostProcessing,
+    /** @brief Tone-mapping pass. */
+    Tonemapping,
+    /** @brief Optional FXAA pass supplied by the FXAA plugin. */
+    Fxaa,
+    /** @brief Optional SMAA pass supplied by the SMAA plugin. */
+    Smaa,
+    /** @brief Final output pass. */
     Upscaling,
+    /** @brief Optional contrast-adaptive-sharpening pass. */
+    ContrastAdaptiveSharpening,
+    /** @brief End of the extensible post-processing segment. */
+    EndMainPassPostProcessing,
 };
 
 /**

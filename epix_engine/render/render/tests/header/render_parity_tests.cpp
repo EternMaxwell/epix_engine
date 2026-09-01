@@ -1551,6 +1551,39 @@ TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
     app.insert_sub_app(Render, std::move(render_sub));
 }
 
+// Bevy core_2d::graph exposes a complete label set, while Core2dPlugin owns
+// only the default main-pass and post-processing endpoints. Optional plugins
+// add their own labeled nodes later.
+TEST(Core2dGraph, MatchesBevyDefaultNodesAndChain) {
+    epix::ecs::World world(1);
+    epix::render::graph::RenderGraph root_graph;
+    epix::core_graph::core_2d::Core2d.add_to(root_graph, world);
+    const auto core2d = root_graph.get_sub_graph(epix::core_graph::core_2d::Core2d);
+    ASSERT_TRUE(core2d.has_value());
+
+    using Node = epix::core_graph::core_2d::Core2dNodes;
+    for (const auto node : {Node::StartMainPass, Node::MainOpaquePass, Node::MainTransparentPass,
+                            Node::EndMainPass, Node::StartMainPassPostProcessing, Node::Tonemapping,
+                            Node::EndMainPassPostProcessing, Node::Upscaling}) {
+        EXPECT_TRUE(core2d->get().get_node_state(node).has_value());
+    }
+    for (const auto node : {Node::MsaaWriteback, Node::Wireframe, Node::Bloom, Node::PostProcessing, Node::Fxaa,
+                            Node::Smaa, Node::ContrastAdaptiveSharpening}) {
+        EXPECT_FALSE(core2d->get().get_node_state(node).has_value());
+    }
+
+    EXPECT_TRUE(core2d->get().has_edge(graph::Edge::node_edge(Node::StartMainPass, Node::MainOpaquePass)));
+    EXPECT_TRUE(core2d->get().has_edge(graph::Edge::node_edge(Node::MainOpaquePass, Node::MainTransparentPass)));
+    EXPECT_TRUE(core2d->get().has_edge(graph::Edge::node_edge(Node::MainTransparentPass, Node::EndMainPass)));
+    EXPECT_TRUE(core2d->get().has_edge(
+        graph::Edge::node_edge(Node::EndMainPass, Node::StartMainPassPostProcessing)));
+    EXPECT_TRUE(core2d->get().has_edge(
+        graph::Edge::node_edge(Node::StartMainPassPostProcessing, Node::Tonemapping)));
+    EXPECT_TRUE(core2d->get().has_edge(
+        graph::Edge::node_edge(Node::Tonemapping, Node::EndMainPassPostProcessing)));
+    EXPECT_TRUE(core2d->get().has_edge(graph::Edge::node_edge(Node::EndMainPassPostProcessing, Node::Upscaling)));
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {

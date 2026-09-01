@@ -44,9 +44,17 @@ void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
     g2d.add_node(Core2dNodes::MainTransparentPass, Node2D<Transparent2D>{});
     g2d.add_node(Core2dNodes::MainOpaquePass, Node2D<Opaque2D>{});
     g2d.add_node(Core2dNodes::EndMainPass, graph::EmptyNode{});
+    // These endpoints are intentionally installed by Core2dPlugin: Bevy does
+    // the same so optional post-processing plugins can insert work between
+    // them. Tonemapping itself remains a no-op placeholder until C16 supplies
+    // its Bevy-shaped GPU implementation.
+    g2d.add_node(Core2dNodes::StartMainPassPostProcessing, graph::EmptyNode{});
+    g2d.add_node(Core2dNodes::Tonemapping, graph::EmptyNode{});
+    g2d.add_node(Core2dNodes::EndMainPassPostProcessing, graph::EmptyNode{});
     g2d.add_node(Core2dNodes::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
     g2d.add_node_edges(Core2dNodes::StartMainPass, Core2dNodes::MainOpaquePass, Core2dNodes::MainTransparentPass,
-                       Core2dNodes::EndMainPass, Core2dNodes::Upscaling);
+                       Core2dNodes::EndMainPass, Core2dNodes::StartMainPassPostProcessing,
+                       Core2dNodes::Tonemapping, Core2dNodes::EndMainPassPostProcessing, Core2dNodes::Upscaling);
     g.add_sub_graph(Core2d, std::move(g2d));
 }
 
