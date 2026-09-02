@@ -720,7 +720,6 @@ void batch_and_prepare_gpu_binned_phase(
     // retains an individual draw/indirect-command range.
     for (auto& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {
         const bool indexed = key.first.indexed();
-        unbatchable.batches.clear();
         for (const auto& [main_entity, render_entity] : unbatchable.entities) {
             const auto input_index =
                 GetFullBatchData<Adapter>{}.get_binned_index(batch_param, main_entity);
@@ -735,14 +734,12 @@ void batch_and_prepare_gpu_binned_phase(
             }
             work_items.push(indexed, {.input_index                         = *input_index,
                                       .output_or_indirect_parameters_index = indirect_index.value_or(output)});
-            unbatchable.batches.emplace(
-                main_entity, phase::BinnedRenderPhaseBatch{
-                                 .representative_entity = {render_entity, main_entity},
-                                 .instance_range        = {output, output + 1},
-                                 .extra_index = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
-                                                                     *indirect_index, *indirect_index + 1)
-                                                               : phase::PhaseItemExtraIndex::None,
-                             });
+            unbatchable.buffer_indices.add({
+                .instance_index = output,
+                .extra_index = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                                   *indirect_index, *indirect_index + 1)
+                                             : phase::PhaseItemExtraIndex::None,
+            });
         }
     }
 }
@@ -1122,19 +1119,15 @@ void batch_and_prepare_binned_phase(
 
     for (auto&& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {
         (void)key;
-        unbatchable.batches.clear();
         for (const auto& [main_entity, render_entity] : unbatchable.entities) {
             auto buffer_data = GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
             if (!buffer_data) continue;
             const auto index = instance_buffer.push(*buffer_data);
-            unbatchable.batches.emplace(
-                main_entity, phase::BinnedRenderPhaseBatch{
-                                 .representative_entity = {render_entity, main_entity},
-                                 .instance_range        = {index.index, index.index + 1},
-                                 .extra_index = index.dynamic_offset
-                                                    ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)
+            unbatchable.buffer_indices.add({
+                .instance_index = index.index,
+                .extra_index = index.dynamic_offset ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)
                                                     : phase::PhaseItemExtraIndex::None,
-                             });
+            });
         }
     }
 }

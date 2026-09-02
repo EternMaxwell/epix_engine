@@ -117,15 +117,108 @@ EPIX_EXPORT class RenderBin {
     utils::IndexMap<sync_world::MainEntity, InputUniformIndex> m_entities;
 };
 
-/** @brief The unbatchable entities in a bin (Bevy `UnbatchableBinnedEntities`);
- * storage-buffer path: entities plus a contiguous instance range. */
+/** @brief One unbatchable entity's prepared instance and indirect/dynamic
+ * index (Bevy `UnbatchableBinnedEntityIndices`). */
+EPIX_EXPORT struct UnbatchableBinnedEntityIndices {
+    std::uint32_t instance_index = 0;
+    PhaseItemExtraIndex extra_index{};
+};
+
+/** @brief Compact prepared-index storage for unbatchable binned entities
+ * (Bevy `UnbatchableBinnedEntityIndexSet`). The common contiguous path uses
+ * no per-entity allocation; dynamic offsets and irregular indices use the
+ * dense fallback. */
+EPIX_EXPORT class UnbatchableBinnedEntityIndexSet {
+   public:
+    struct NoEntities {};
+    struct Sparse {
+        std::pair<std::uint32_t, std::uint32_t> instance_range{0, 0};
+        std::optional<std::uint32_t> first_indirect_parameters_index;
+    };
+    using Dense = std::vector<UnbatchableBinnedEntityIndices>;
+
+    void add(UnbatchableBinnedEntityIndices indices) {
+        if (std::holds_alternative<NoEntities>(m_storage)) {
+            switch (indices.extra_index.type) {
+                case PhaseItemExtraIndex::Type::DynamicOffset:
+                    m_storage = Dense{std::move(indices)};
+                    return;
+                case PhaseItemExtraIndex::Type::None:
+                    m_storage = Sparse{{indices.instance_index, indices.instance_index + 1}, std::nullopt};
+                    return;
+                case PhaseItemExtraIndex::Type::IndirectParametersIndex:
+                    m_storage = Sparse{{indices.instance_index, indices.instance_index + 1},
+                                       indices.extra_index.indirect_range.first};
+                    return;
+            }
+        }
+
+        if (auto* sparse = std::get_if<Sparse>(&m_storage)) {
+            const auto expected_indirect_index = sparse->first_indirect_parameters_index
+                                                     ? *sparse->first_indirect_parameters_index +
+                                                           sparse->instance_range.second - sparse->instance_range.first
+                                                     : 0;
+            const bool consecutive = sparse->instance_range.second == indices.instance_index;
+            const bool matches_none = !sparse->first_indirect_parameters_index &&
+                                      indices.extra_index.type == PhaseItemExtraIndex::Type::None;
+            const bool matches_indirect = sparse->first_indirect_parameters_index &&
+                                          indices.extra_index.type == PhaseItemExtraIndex::Type::IndirectParametersIndex &&
+                                          indices.extra_index.indirect_range.first == expected_indirect_index;
+            if (consecutive && (matches_none || matches_indirect)) {
+                ++sparse->instance_range.second;
+                return;
+            }
+
+            Dense dense;
+            dense.reserve(sparse->instance_range.second - sparse->instance_range.first + 1);
+            for (std::uint32_t entity_index = 0;
+                 entity_index < sparse->instance_range.second - sparse->instance_range.first; ++entity_index) {
+                if (const auto existing = indices_for_entity_index(entity_index)) dense.push_back(*existing);
+            }
+            dense.push_back(std::move(indices));
+            m_storage = std::move(dense);
+            return;
+        }
+
+        std::get<Dense>(m_storage).push_back(std::move(indices));
+    }
+
+    std::optional<UnbatchableBinnedEntityIndices> indices_for_entity_index(std::uint32_t entity_index) const {
+        if (std::holds_alternative<NoEntities>(m_storage)) return std::nullopt;
+        if (const auto* sparse = std::get_if<Sparse>(&m_storage)) {
+            const auto count = sparse->instance_range.second - sparse->instance_range.first;
+            if (entity_index >= count) return std::nullopt;
+            const auto extra_index = sparse->first_indirect_parameters_index
+                                         ? PhaseItemExtraIndex::indirect_parameters_index(
+                                               *sparse->first_indirect_parameters_index + entity_index)
+                                         : PhaseItemExtraIndex::None;
+            return UnbatchableBinnedEntityIndices{.instance_index = sparse->instance_range.first + entity_index,
+                                                   .extra_index = extra_index};
+        }
+        const auto& dense = std::get<Dense>(m_storage);
+        if (entity_index >= dense.size()) return std::nullopt;
+        return dense[entity_index];
+    }
+
+    void clear() noexcept {
+        if (auto* dense = std::get_if<Dense>(&m_storage)) {
+            dense->clear();
+        } else {
+            m_storage = NoEntities{};
+        }
+    }
+
+   private:
+    std::variant<NoEntities, Sparse, Dense> m_storage{NoEntities{}};
+};
+
+/** @brief The unbatchable entities in a bin (Bevy
+ * `UnbatchableBinnedEntities`). */
 EPIX_EXPORT struct UnbatchableBinnedEntities {
     /** @brief main entity -> render entity. */
     sync_world::MainEntityHashMap<epix::ecs::Entity> entities;
-    /** @brief Instance index range [start, end) of this bin's entities. */
-    std::optional<std::pair<std::uint32_t, std::uint32_t>> instance_range;
-    /** @brief Per-entity CPU-prepared range and dynamic/indirect index. */
-    sync_world::MainEntityHashMap<BinnedRenderPhaseBatch> batches;
+    /** @brief Prepared indices, stored compactly when possible. */
+    UnbatchableBinnedEntityIndexSet buffer_indices;
     bool empty() const noexcept { return entities.empty(); }
 };
 
@@ -351,8 +444,7 @@ class BinnedRenderPhase {
         entities_that_changed_bins.clear();
         for (auto& [key, unbatchable] : unbatchable_meshes.iter()) {
             (void)key;
-            unbatchable.instance_range.reset();
-            unbatchable.batches.clear();
+            unbatchable.buffer_indices.clear();
         }
         for (auto& [key, bin] : batchable_meshes.iter()) {
             (void)key;
@@ -603,13 +695,14 @@ class BinnedRenderPhase {
                                    const epix::ecs::World& world,
                                    epix::ecs::Entity view) const {
         for (auto&& [key, unbatchable] : unbatchable_meshes.iter()) {
+            std::uint32_t entity_index = 0;
             for (auto&& [main_entity, render_entity] : unbatchable.entities) {
                 (void)render_entity;
-                const auto prepared = unbatchable.batches.find(main_entity);
-                if (prepared == unbatchable.batches.end()) continue;
+                const auto prepared = unbatchable.buffer_indices.indices_for_entity_index(entity_index++);
+                if (!prepared) continue;
                 draw_item(render_pass, world, view,
                           make_item(key.first, key.second, {render_entity, main_entity},
-                                    prepared->second.instance_range, prepared->second.extra_index));
+                                    {prepared->instance_index, prepared->instance_index + 1}, prepared->extra_index));
             }
         }
     }

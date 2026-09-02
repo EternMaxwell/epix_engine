@@ -3,8 +3,8 @@
 // This intentionally does not encode a pass/fail color. The graph clears the
 // output to a neutral background, then `BinnedRenderPhase::render` invokes a
 // real draw function. Compute preprocessing writes both the instance output
-// and indirect command counts; the two prepared commands issue triangle draws,
-// so a bad preparation/render path leaves geometry missing.
+// and indirect command counts for multidrawable and unbatchable bins, so a bad
+// preparation/render path leaves geometry missing.
 
 #include <array>
 #include <cstdint>
@@ -279,7 +279,7 @@ struct BinnedGeometryNode {
             phase.add(0, 1, Entity::from_index(200 + index),
                       render::sync_world::MainEntity{Entity::from_index(index + 3)},
                       render::phase::InputUniformIndex{index + 3},
-                      render::phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
+                      render::phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
         }
         render::batching::batch_and_prepare_gpu_binned_phase<Item, Adapter>(phase, phase_buffers, indirect_parameters,
                                                                             retained_view, false, false, world);

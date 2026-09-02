@@ -1039,9 +1039,33 @@ TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
 
     const auto* unbatchable = render_phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(unbatchable, nullptr);
-    ASSERT_EQ(unbatchable->batches.size(), 1u);
-    EXPECT_EQ(unbatchable->batches.at(sync_world::MainEntity{Entity::from_index(3)}).instance_range,
-              (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    const auto unbatchable_indices = unbatchable->buffer_indices.indices_for_entity_index(0);
+    ASSERT_TRUE(unbatchable_indices.has_value());
+    EXPECT_EQ(unbatchable_indices->instance_index, 2u);
+    EXPECT_EQ(unbatchable_indices->extra_index, phase::PhaseItemExtraIndex::None);
+}
+
+TEST(UnbatchableBinnedEntityIndexSet, CompressesContiguousIndicesAndPreservesDenseFallback) {
+    phase::UnbatchableBinnedEntityIndexSet indices;
+    EXPECT_FALSE(indices.indices_for_entity_index(0).has_value());
+
+    indices.add({.instance_index = 4, .extra_index = phase::PhaseItemExtraIndex::None});
+    indices.add({.instance_index = 5, .extra_index = phase::PhaseItemExtraIndex::None});
+    ASSERT_EQ(indices.indices_for_entity_index(0)->instance_index, 4u);
+    ASSERT_EQ(indices.indices_for_entity_index(1)->instance_index, 5u);
+    EXPECT_FALSE(indices.indices_for_entity_index(2).has_value());
+
+    indices.clear();
+    indices.add({.instance_index = 8, .extra_index = phase::PhaseItemExtraIndex::indirect_parameters_index(12)});
+    indices.add({.instance_index = 9, .extra_index = phase::PhaseItemExtraIndex::indirect_parameters_index(13)});
+    ASSERT_EQ(indices.indices_for_entity_index(1)->extra_index,
+              phase::PhaseItemExtraIndex::indirect_parameters_index(13));
+
+    indices.clear();
+    indices.add({.instance_index = 20, .extra_index = phase::PhaseItemExtraIndex::dynamic_offset(64)});
+    indices.add({.instance_index = 24, .extra_index = phase::PhaseItemExtraIndex::None});
+    ASSERT_EQ(indices.indices_for_entity_index(0)->extra_index, phase::PhaseItemExtraIndex::dynamic_offset(64));
+    ASSERT_EQ(indices.indices_for_entity_index(1)->instance_index, 24u);
 }
 
 TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
@@ -1200,11 +1224,10 @@ TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
     const auto& batches = std::get<1>(render_phase.batch_sets);
     ASSERT_EQ(batches.size(), 1u);
     EXPECT_EQ(batches[0].instance_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
-    EXPECT_EQ(
-        render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})
-            ->batches.at(sync_world::MainEntity{Entity::from_index(3)})
-            .instance_range,
-        (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    const auto unbatchable_indices = render_phase.unbatchable_meshes.get({TestBatchSetKey{0}, 1})
+                                         ->buffer_indices.indices_for_entity_index(0);
+    ASSERT_TRUE(unbatchable_indices.has_value());
+    EXPECT_EQ(unbatchable_indices->instance_index, 2u);
     EXPECT_TRUE(indirect.indexed_data.is_empty());
 }
 
@@ -3403,9 +3426,7 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
         {{.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{3}}}, .instance_range = {2, 3}}},
     };
     phase.unbatchable_meshes.get({TestBatchSetKey{0}, 11})
-        ->batches.emplace(Entity{4},
-                          phase::BinnedRenderPhaseBatch{.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{4}}},
-                                                        .instance_range        = {3, 4}});
+        ->buffer_indices.add({.instance_index = 3, .extra_index = phase::PhaseItemExtraIndex::None});
 
     // One draw call per batchable BIN (2 bins) + one per unbatchable entity
     // + one per non-mesh entity = 4 (Bevy storage-buffer path).
