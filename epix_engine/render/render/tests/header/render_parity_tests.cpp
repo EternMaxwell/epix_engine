@@ -734,17 +734,19 @@ struct CpuBatchTestItem {
     sync_world::MainEntity main;
     CachedPipelineId pipeline_id;
     phase::DrawFunctionId draw_id;
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
     phase::PhaseItemExtraIndex extra_index_value{};
 
     Entity entity() const noexcept { return render_entity; }
     sync_world::MainEntity main_entity() const noexcept { return main; }
     std::uint32_t sort_key() const noexcept { return render_entity.index; }
     phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
-    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
     bool indexed() const noexcept { return false; }
-    phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
-    void set_extra_index(phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra_index_value; }
+    phase::PhaseItemExtraIndex& extra_index() noexcept { return extra_index_value; }
 };
 
 struct CpuBatchTestAdapter {};
@@ -814,7 +816,7 @@ struct epix::render::batching::GetFullBatchData<CpuBatchSystemAdapter> {
 };
 
 namespace {
-static_assert(phase::MutablePhaseItemExtraIndex<CpuBatchTestItem>);
+static_assert(phase::PhaseItem<CpuBatchTestItem>);
 static_assert(batching::GetBatchDataImpl<CpuBatchTestAdapter>);
 }  // namespace
 
@@ -836,9 +838,9 @@ TEST(CpuSortedBatching, JoinsOnlyCompatibleConsecutiveItems) {
     batching::batch_and_prepare_sorted_phase<CpuBatchTestItem, CpuBatchTestAdapter>(render_phase, instance_buffer,
                                                                                     world);
 
-    EXPECT_EQ(render_phase.items[0].batch_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
-    EXPECT_EQ(render_phase.items[1].batch_range, (std::pair<std::uint32_t, std::uint32_t>{1, 2}));
-    EXPECT_EQ(render_phase.items[2].batch_range, (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    EXPECT_EQ(render_phase.items[0].batch_range(), (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(render_phase.items[1].batch_range(), (std::pair<std::uint32_t, std::uint32_t>{1, 2}));
+    EXPECT_EQ(render_phase.items[2].batch_range(), (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
     EXPECT_EQ(render_phase.items[0].extra_index(), phase::PhaseItemExtraIndex::None);
     EXPECT_EQ(render_phase.items[2].extra_index(), phase::PhaseItemExtraIndex::None);
 
@@ -889,27 +891,26 @@ struct CpuBinnedBatchTestItem {
     sync_world::MainEntity main;
     CachedPipelineId pipeline_id;
     phase::DrawFunctionId draw_id;
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
     phase::PhaseItemExtraIndex extra_index_value{};
     using BinKey      = int;
     using BatchSetKey = TestBatchSetKey;
 
     Entity entity() const noexcept { return render_entity; }
     sync_world::MainEntity main_entity() const noexcept { return main; }
-    std::uint32_t sort_key() const noexcept { return render_entity.index; }
     phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
-    CachedPipelineId pipeline() const noexcept { return pipeline_id; }
-    phase::PhaseItemExtraIndex extra_index() const noexcept { return extra_index_value; }
-    void set_extra_index(phase::PhaseItemExtraIndex value) noexcept { extra_index_value = value; }
-    const BinKey& bin_key() const {
-        static const BinKey key = 0;
-        return key;
+    CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra_index_value; }
+    phase::PhaseItemExtraIndex& extra_index() noexcept { return extra_index_value; }
+    static CpuBinnedBatchTestItem create(BatchSetKey,
+                                         BinKey,
+                                         std::pair<Entity, sync_world::MainEntity> representative,
+                                         std::pair<std::uint32_t, std::uint32_t> range,
+                                         phase::PhaseItemExtraIndex extra_index) {
+        return {representative.first, representative.second, {}, {}, range, extra_index};
     }
-    const BatchSetKey& batch_set_key() const {
-        static const BatchSetKey key = 0;
-        return key;
-    }
-    bool batchable() const noexcept { return true; }
 };
 struct CpuBinnedBatchTestAdapter {};
 struct GpuWrittenBinnedBatchData {
@@ -1004,6 +1005,7 @@ struct epix::render::batching::GetFullBatchData<GpuWrittenBinnedBatchTestAdapter
 
 namespace {
 static_assert(phase::BinnedPhaseItem<CpuBinnedBatchTestItem>);
+static_assert(!phase::SortedPhaseItem<CpuBinnedBatchTestItem>);
 static_assert(batching::GetFullBatchDataImpl<CpuBinnedBatchTestAdapter>);
 }  // namespace
 
@@ -1285,9 +1287,9 @@ TEST(GpuSortedPreprocessing, BuildsIndirectRunsAndCommandMetadata) {
     ASSERT_EQ(indirect.non_indexed_data.len(), 2u);
     EXPECT_EQ(indirect.non_indexed_data.values()[0].vertex_count, 3u);
     EXPECT_EQ(indirect.non_indexed_data.values()[1].first_instance, 2u);
-    EXPECT_EQ(render_phase.items[0].batch_range, (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
+    EXPECT_EQ(render_phase.items[0].batch_range(), (std::pair<std::uint32_t, std::uint32_t>{0, 2}));
     EXPECT_EQ(render_phase.items[0].extra_index().indirect_range, (std::pair<std::uint32_t, std::uint32_t>{0, 1}));
-    EXPECT_EQ(render_phase.items[2].batch_range, (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
+    EXPECT_EQ(render_phase.items[2].batch_range(), (std::pair<std::uint32_t, std::uint32_t>{2, 3}));
     EXPECT_EQ(render_phase.items[2].extra_index().indirect_range, (std::pair<std::uint32_t, std::uint32_t>{1, 2}));
 }
 
@@ -1328,24 +1330,31 @@ namespace {
 struct TestBinnedItem {
     Entity m_entity;
     phase::DrawFunctionId m_draw_function;
-    int m_sort_key = 0;
     int m_bin_key  = 0;
     TestBatchSetKey m_batch_set_key{};
-    bool m_batchable = true;
+    phase::PhaseItemExtraIndex m_extra_index{};
 
     Entity entity() const { return m_entity; }
     sync_world::MainEntity main_entity() const { return sync_world::MainEntity{m_entity}; }
-    int sort_key() const { return m_sort_key; }
     phase::DrawFunctionId draw_function() const { return m_draw_function; }
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
-    phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
+    bool indexed() const { return m_batch_set_key.indexed(); }
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const phase::PhaseItemExtraIndex& extra_index() const noexcept { return m_extra_index; }
+    phase::PhaseItemExtraIndex& extra_index() noexcept { return m_extra_index; }
     using BinKey      = int;
     using BatchSetKey = TestBatchSetKey;
-    const int& bin_key() const { return m_bin_key; }
-    const TestBatchSetKey& batch_set_key() const { return m_batch_set_key; }
-    bool batchable() const { return m_batchable; }
+    static TestBinnedItem create(TestBatchSetKey batch_set_key,
+                                 int bin_key,
+                                 std::pair<Entity, sync_world::MainEntity> representative,
+                                 std::pair<std::uint32_t, std::uint32_t> range,
+                                 phase::PhaseItemExtraIndex extra_index) {
+        return {representative.first, phase::DrawFunctionId{}, bin_key, batch_set_key, extra_index, range};
+    }
 };
 static_assert(epix::render::phase::BinnedPhaseItem<TestBinnedItem>);
+static_assert(!epix::render::phase::SortedPhaseItem<TestBinnedItem>);
 }  // namespace
 
 // Entities with the same (batch set, bin) key land in the same bin; distinct
@@ -1365,16 +1374,16 @@ TEST(BinnedRenderPhase, BinsByKey) {
 
     auto* bin0 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin0, nullptr);
-    EXPECT_EQ(bin0->size(), 2u);
-    EXPECT_TRUE(bin0->contains(m1));
-    EXPECT_TRUE(bin0->contains(m2));
-    EXPECT_EQ(bin0->get(m1)->index, 0u);
-    EXPECT_EQ(bin0->get(m2)->index, 1u);
+    EXPECT_EQ(bin0->entities().size(), 2u);
+    EXPECT_TRUE(bin0->entities().contains(m1));
+    EXPECT_TRUE(bin0->entities().contains(m2));
+    EXPECT_EQ(bin0->entities().get(m1)->index, 0u);
+    EXPECT_EQ(bin0->entities().get(m2)->index, 1u);
 
     auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(bin1, nullptr);
-    EXPECT_EQ(bin1->size(), 1u);
-    EXPECT_TRUE(bin1->contains(m3));
+    EXPECT_EQ(bin1->entities().size(), 1u);
+    EXPECT_TRUE(bin1->entities().contains(m3));
     EXPECT_FALSE(phase.is_empty());
 }
 
@@ -1595,6 +1604,36 @@ TEST(Transparent2D, CarriesIndexedDrawDiscriminator) {
     EXPECT_FALSE(non_indexed.indexed());
 }
 
+TEST(Core2dBinnedPhases, MatchBevyOpaqueAndAlphaMaskKeys) {
+    using namespace epix::core_graph::core_2d;
+    static_assert(phase::BinnedPhaseItem<Opaque2D>);
+    static_assert(phase::BinnedPhaseItem<AlphaMask2D>);
+
+    const auto entity = Entity::from_index(92);
+    const auto asset = epix::assets::UntypedAssetId(epix::assets::AssetId<std::uint32_t>::invalid());
+    const BatchSetKey2D indexed{.indexed_value = true};
+    EXPECT_TRUE(indexed.indexed());
+
+    const Opaque2DBinKey opaque_key{.pipeline_id = CachedPipelineId{4},
+                                    .draw_func = phase::DrawFunctionId{2},
+                                    .asset_id = asset};
+    const auto opaque_extra = phase::PhaseItemExtraIndex::dynamic_offset(12);
+    const auto opaque = Opaque2D::create(indexed, opaque_key, {entity, sync_world::MainEntity{entity}}, {7, 9},
+                                         opaque_extra);
+    EXPECT_EQ(opaque.cached_pipeline(), CachedPipelineId{4});
+    EXPECT_EQ(opaque.draw_function(), phase::DrawFunctionId{2});
+    EXPECT_EQ(opaque.batch_range(), (std::pair<std::uint32_t, std::uint32_t>{7, 9}));
+    EXPECT_EQ(opaque.extra_index(), opaque_extra);
+
+    const AlphaMask2DBinKey mask_key{.pipeline_id = CachedPipelineId{5},
+                                      .draw_func = phase::DrawFunctionId{3},
+                                      .asset_id = asset};
+    const auto mask = AlphaMask2D::create(indexed, mask_key, {entity, sync_world::MainEntity{entity}}, {1, 2},
+                                           phase::PhaseItemExtraIndex::None);
+    EXPECT_EQ(mask.cached_pipeline(), CachedPipelineId{5});
+    EXPECT_EQ(mask.draw_function(), phase::DrawFunctionId{3});
+}
+
 // Bevy ViewSortedRenderPhases::insert_or_clear keeps one phase allocation per
 // retained view while clearing its items for the next frame.
 TEST(ViewSortedRenderPhases, InsertOrClearResetsExistingRetainedView) {
@@ -1636,8 +1675,8 @@ TEST(BinnedRenderPhase, PreservesMultidrawableItemsOutsideDirectPreprocessing) {
     ASSERT_NE(multidrawable, nullptr);
     auto* multidrawable_bin = multidrawable->get(0);
     ASSERT_NE(multidrawable_bin, nullptr);
-    EXPECT_EQ(multidrawable_bin->size(), 1u);
-    EXPECT_TRUE(multidrawable_bin->contains(m1));
+    EXPECT_EQ(multidrawable_bin->entities().size(), 1u);
+    EXPECT_TRUE(multidrawable_bin->entities().contains(m1));
     EXPECT_TRUE(phase.batchable_meshes.empty());
     auto* unbatchable = phase.unbatchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(unbatchable, nullptr);
@@ -1663,12 +1702,12 @@ TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
     EXPECT_TRUE(direct.multidrawable_meshes.empty());
     auto* direct_bin = direct.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(direct_bin, nullptr);
-    EXPECT_EQ(direct_bin->size(), 1u);
+    EXPECT_EQ(direct_bin->entities().size(), 1u);
 
     culling.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
                 phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
     ASSERT_NE(culling.multidrawable_meshes.get(0), nullptr);
-    EXPECT_EQ(culling.multidrawable_meshes.get(0)->get(0)->size(), 1u);
+    EXPECT_EQ(culling.multidrawable_meshes.get(0)->get(0)->entities().size(), 1u);
     std::get<2>(culling.batch_sets).push_back({
         .first_batch = {.representative_entity = {Entity::PLACEHOLDER, entity}},
     });
@@ -1715,12 +1754,12 @@ TEST(BinnedRenderPhase, SweepSwapRemovesUnqueuedAndRetainsMovedValidEntries) {
 
     auto* bin = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(bin, nullptr);
-    EXPECT_EQ(bin->size(), 2u);
-    EXPECT_FALSE(bin->contains(e1));
-    EXPECT_TRUE(bin->contains(e2));
-    EXPECT_TRUE(bin->contains(e3));
+    EXPECT_EQ(bin->entities().size(), 2u);
+    EXPECT_FALSE(bin->entities().contains(e1));
+    EXPECT_TRUE(bin->entities().contains(e2));
+    EXPECT_TRUE(bin->entities().contains(e3));
     std::vector<sync_world::MainEntity> retained;
-    for (const auto& [entity, uniform] : bin->iter()) {
+    for (const auto& [entity, uniform] : bin->entities().iter()) {
         (void)uniform;
         retained.push_back(entity);
     }
@@ -1742,7 +1781,7 @@ TEST(BinnedRenderPhase, ChangedBinMoved) {
     EXPECT_EQ(phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0}), nullptr);
     auto* bin1 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 1});
     ASSERT_NE(bin1, nullptr);
-    EXPECT_EQ(bin1->size(), 1u);
+    EXPECT_EQ(bin1->entities().size(), 1u);
 }
 
 // ViewBinnedRenderPhases retains one phase per view and is idempotent.
@@ -3267,9 +3306,11 @@ TEST(DrawFunctions, AddAppendsAndRemaps) {
 
 // SortedRenderPhase::clear empties the item list (Bevy SortedRenderPhase::clear).
 TEST(SortedRenderPhase, Clear) {
-    phase::SortedRenderPhase<TestBinnedItem> phase;
-    phase.add(TestBinnedItem{});
-    phase.add(TestBinnedItem{});
+    phase::SortedRenderPhase<CpuBatchTestItem> phase;
+    phase.add(CpuBatchTestItem{.render_entity = Entity::from_index(1),
+                               .main = sync_world::MainEntity{Entity::from_index(1)}});
+    phase.add(CpuBatchTestItem{.render_entity = Entity::from_index(2),
+                               .main = sync_world::MainEntity{Entity::from_index(2)}});
     EXPECT_EQ(phase.items.size(), 2u);
     phase.clear();
     EXPECT_TRUE(phase.items.empty());
@@ -3282,29 +3323,29 @@ struct RenderableBinnedItem {
     phase::DrawFunctionId m_draw_function;
     int m_bin_key = 0;
     TestBatchSetKey m_batch_set_key{};
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};  // stored range (Bevy batch_range: Range<u32>)
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
+    phase::PhaseItemExtraIndex m_extra_index{};
 
     Entity entity() const { return m_entity; }
     sync_world::MainEntity main_entity() const { return sync_world::MainEntity{m_entity}; }
-    int sort_key() const { return 0; }
     phase::DrawFunctionId draw_function() const { return m_draw_function; }
-    phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const phase::PhaseItemExtraIndex& extra_index() const noexcept { return m_extra_index; }
+    phase::PhaseItemExtraIndex& extra_index() noexcept { return m_extra_index; }
     using BinKey      = int;
     using BatchSetKey = TestBatchSetKey;
-    const int& bin_key() const { return m_bin_key; }
-    const TestBatchSetKey& batch_set_key() const { return m_batch_set_key; }
-    bool batchable() const { return true; }
-
     static RenderableBinnedItem create(TestBatchSetKey batch_set_key,
                                        int bin_key,
                                        std::pair<Entity, sync_world::MainEntity> representative,
-                                       std::uint32_t instance_start,
-                                       std::uint32_t instance_end) {
+                                       std::pair<std::uint32_t, std::uint32_t> range,
+                                       phase::PhaseItemExtraIndex extra_index) {
         RenderableBinnedItem item;
         item.m_entity        = representative.first;
         item.m_bin_key       = bin_key;
         item.m_batch_set_key = batch_set_key;
-        item.batch_range     = std::pair<std::uint32_t, std::uint32_t>{instance_start, instance_end};
+        item.batch_range_value = range;
+        item.m_extra_index   = extra_index;
         return item;
     }
 };
@@ -3322,7 +3363,7 @@ struct CountingBinnedDraw : phase::DrawFunction<RenderableBinnedItem> {
                                                const RenderableBinnedItem& item) override {
         ++calls;
         last_bin_key   = item.m_bin_key;
-        last_range_end = static_cast<int>(item.batch_range.second);
+        last_range_end = static_cast<int>(item.batch_range().second);
         return {};
     }
 };
@@ -3436,13 +3477,13 @@ TEST(BinnedRenderPhase, EmptyPreparedSetDoesNotFallbackToRawBins) {
 namespace {
 // Sorted-phase draw function that counts invocations (Bevy draw functions
 // return Result<(), DrawError>).
-struct CountingSortedDraw : phase::DrawFunction<TestBinnedItem> {
+struct CountingSortedDraw : phase::DrawFunction<CpuBatchTestItem> {
     static inline int calls = 0;
     void prepare(const epix::ecs::World&) override {}
     std::expected<void, phase::DrawError> draw(const epix::ecs::World&,
                                                const wgpu::RenderPassEncoder&,
                                                epix::ecs::Entity,
-                                               const TestBinnedItem&) override {
+                                               const CpuBatchTestItem&) override {
         ++calls;
         return {};
     }
@@ -3454,19 +3495,19 @@ struct CountingSortedDraw : phase::DrawFunction<TestBinnedItem> {
 TEST(SortedRenderPhase, RenderSkipsBatchedItems) {
     CountingSortedDraw::calls = 0;
     epix::ecs::World world(WorldId(0));
-    phase::DrawFunctions<TestBinnedItem> functions;
+    phase::DrawFunctions<CpuBatchTestItem> functions;
     const phase::DrawFunctionId draw_id = functions.template add<CountingSortedDraw>();
     world.insert_resource(std::move(functions));
 
-    phase::SortedRenderPhase<TestBinnedItem> phase;
-    TestBinnedItem batched;
-    batched.m_entity        = Entity{1};
-    batched.m_draw_function = draw_id;
-    batched.batch_range = std::pair<std::uint32_t, std::uint32_t>{4, 6};  // 2 instances: draw once, skip the next item
-    TestBinnedItem next;
-    next.m_entity        = Entity{2};
-    next.m_draw_function = draw_id;
-    next.batch_range     = std::pair<std::uint32_t, std::uint32_t>{6, 7};
+    phase::SortedRenderPhase<CpuBatchTestItem> phase;
+    CpuBatchTestItem batched{.render_entity = Entity{1},
+                             .main          = sync_world::MainEntity{Entity{1}},
+                             .draw_id       = draw_id};
+    batched.batch_range() = std::pair<std::uint32_t, std::uint32_t>{4, 6};  // 2 instances: draw once, skip the next item
+    CpuBatchTestItem next{.render_entity = Entity{2},
+                          .main          = sync_world::MainEntity{Entity{2}},
+                          .draw_id       = draw_id};
+    next.batch_range() = std::pair<std::uint32_t, std::uint32_t>{6, 7};
     phase.add(batched);
     phase.add(next);
 
@@ -4753,6 +4794,22 @@ TEST(GpuPreprocessingSupport, CapsRequestedMode) {
     EXPECT_EQ(preprocess.min(GpuPreprocessingMode::Culling), GpuPreprocessingMode::PreprocessingOnly);
 }
 
+TEST(BinnedRenderPhaseType, SelectsMeshStorageFromBatchingSupport) {
+    using namespace ::epix::render;
+    const batching::GpuPreprocessingSupport unavailable{};
+    const batching::GpuPreprocessingSupport preprocessing{batching::GpuPreprocessingMode::PreprocessingOnly};
+    const batching::GpuPreprocessingSupport culling{batching::GpuPreprocessingMode::Culling};
+
+    EXPECT_EQ(phase::binned_render_phase_type_for_mesh(false, culling),
+              phase::BinnedRenderPhaseType::UnbatchableMesh);
+    EXPECT_EQ(phase::binned_render_phase_type_for_mesh(true, unavailable),
+              phase::BinnedRenderPhaseType::BatchableMesh);
+    EXPECT_EQ(phase::binned_render_phase_type_for_mesh(true, preprocessing),
+              phase::BinnedRenderPhaseType::BatchableMesh);
+    EXPECT_EQ(phase::binned_render_phase_type_for_mesh(true, culling),
+              phase::BinnedRenderPhaseType::MultidrawableMesh);
+}
+
 TEST(ColorGrading, SectionsFollowBevyOrder) {
     view::ColorGrading grading;
     grading.shadows.saturation    = 0.2f;
@@ -4952,14 +5009,17 @@ struct CachedPipelineTestItem {
     epix::ecs::Entity m_entity;
     phase::DrawFunctionId m_draw_function;
     CachedPipelineId m_pipeline;
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
+    phase::PhaseItemExtraIndex m_extra_index{};
 
     epix::ecs::Entity entity() const { return m_entity; }
     sync_world::MainEntity main_entity() const { return sync_world::MainEntity{m_entity}; }
-    int sort_key() const { return 0; }
     phase::DrawFunctionId draw_function() const { return m_draw_function; }
-    phase::PhaseItemExtraIndex extra_index() const { return phase::PhaseItemExtraIndex::None; }
-    CachedPipelineId pipeline() const { return m_pipeline; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const phase::PhaseItemExtraIndex& extra_index() const noexcept { return m_extra_index; }
+    phase::PhaseItemExtraIndex& extra_index() noexcept { return m_extra_index; }
+    CachedPipelineId cached_pipeline() const { return m_pipeline; }
 };
 static_assert(epix::render::phase::CachedRenderPipelinePhaseItem<CachedPipelineTestItem>);
 

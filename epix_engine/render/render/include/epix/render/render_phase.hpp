@@ -157,32 +157,31 @@ EPIX_EXPORT inline std::uint32_t batch_range_len(const std::pair<std::uint32_t, 
 }
 
 /** @brief Concept for a render phase item providing entity, main entity,
- * sort key, draw function, batch range and extra index (Bevy 0.18
- * `PhaseItem`, render_phase/mod.rs:1517-1548). */
+ * draw function, batch range, and extra index. Epix intentionally exposes
+ * ordinary const/non-const overloads instead of Bevy's separate `_mut` and
+ * paired mutable-access methods. */
 EPIX_EXPORT template <typename T>
-concept PhaseItem = requires(const T item) {
+concept PhaseItem = requires(T item, const T const_item) {
     // the render entity associated with this item
-    { item.entity() } -> std::same_as<epix::ecs::Entity>;
+    { const_item.entity() } -> std::same_as<epix::ecs::Entity>;
     // the main-world entity represented by this item
-    { item.main_entity() } -> std::same_as<sync_world::MainEntity>;
-    // the sort key for this item, the smaller the key, the earlier it is rendered
-    { item.sort_key() } -> std::three_way_comparable;
+    { const_item.main_entity() } -> std::same_as<sync_world::MainEntity>;
     // the draw function index for this item
-    { item.draw_function() } -> std::convertible_to<DrawFunctionId>;
-    // the stored instance range covered by this item's batch (Bevy
-    // batch_range: Range<u32>; C++ cannot share a field and a method name,
-    // so the field is accessed directly)
-    { item.batch_range } -> std::convertible_to<const std::pair<std::uint32_t, std::uint32_t>&>;
+    { const_item.draw_function() } -> std::convertible_to<DrawFunctionId>;
+    // the stored instance range covered by this item's batch
+    { const_item.batch_range() } -> std::same_as<const std::pair<std::uint32_t, std::uint32_t>&>;
+    { item.batch_range() } -> std::same_as<std::pair<std::uint32_t, std::uint32_t>&>;
     // the extra index (dynamic offset / indirect parameters)
-    { item.extra_index() } -> std::same_as<PhaseItemExtraIndex>;
+    { const_item.extra_index() } -> std::same_as<const PhaseItemExtraIndex&>;
+    { item.extra_index() } -> std::same_as<PhaseItemExtraIndex&>;
 };
 
-/** @brief Extends a phase item with Bevy's mutable extra-index contract,
- * used by automatic CPU batching and GPU
- * preprocessing. */
-EPIX_EXPORT template <typename T>
-concept MutablePhaseItemExtraIndex = PhaseItem<T> && requires(T item, PhaseItemExtraIndex extra_index) {
-    { item.set_extra_index(extra_index) } -> std::same_as<void>;
+/** @brief Phase item that is globally sorted before rendering (Bevy
+ * `SortedPhaseItem`, render_phase/mod.rs:1677-1713). */
+EPIX_EXPORT template <typename P>
+concept SortedPhaseItem = PhaseItem<P> && requires(const P item) {
+    requires std::totally_ordered<decltype(item.sort_key())>;
+    { item.indexed() } -> std::convertible_to<bool>;
 };
 
 /** @brief Concept extending PhaseItem with a cached pipeline ID for
@@ -190,7 +189,7 @@ concept MutablePhaseItemExtraIndex = PhaseItem<T> && requires(T item, PhaseItemE
 EPIX_EXPORT template <typename P>
 concept CachedRenderPipelinePhaseItem = PhaseItem<P> && requires(const P item) {
     // the pipeline cache key for this item
-    { item.pipeline() } -> std::convertible_to<CachedPipelineId>;
+    { item.cached_pipeline() } -> std::convertible_to<CachedPipelineId>;
 };
 
 /** @brief Error returned by draw functions, with type indicating whether
@@ -427,7 +426,7 @@ struct DrawFunctions {
 /** @brief Sorted phase items and their draw functions for one retained view
  * (Bevy `SortedRenderPhase`).
  * @tparam T The phase item type. */
-EPIX_EXPORT template <PhaseItem T>
+EPIX_EXPORT template <SortedPhaseItem T>
 struct SortedRenderPhase {
    public:
     SortedRenderPhase()                                    = default;
@@ -443,7 +442,7 @@ struct SortedRenderPhase {
 
     /** @brief Length of the item's batch range, at least 1 (Bevy
      * batch_range().len()). */
-    std::size_t batch_size(const T& item) const { return std::max<std::size_t>(1, batch_range_len(item.batch_range)); }
+    std::size_t batch_size(const T& item) const { return std::max<std::size_t>(1, batch_range_len(item.batch_range())); }
 
    public:
     void add(const T& item) { items.push_back(item); }
@@ -454,9 +453,10 @@ struct SortedRenderPhase {
         if constexpr (requires { T::sort(items); }) {
             T::sort(items);
         } else {
-            // Bevy sorts with a stable sort (sort_by_key on the IndexMap); equal
-            // keys keep their insertion order so same-depth sprites don't flicker.
-            std::ranges::stable_sort(items, [](const T& a, const T& b) { return a.sort_key() < b.sort_key(); });
+            // Bevy's default `SortedPhaseItem::sort` uses unstable key
+            // ordering. Item types that need a different policy may provide
+            // their own static `sort` implementation.
+            std::ranges::sort(items, [](const T& a, const T& b) { return a.sort_key() < b.sort_key(); });
         }
     }
     auto iter_entities() const { return std::views::transform(items, T::entity); }
@@ -478,7 +478,7 @@ struct SortedRenderPhase {
         // batched draw (render_phase/mod.rs:1470-1487).
         for (std::size_t i = start; i < end;) {
             auto& item            = items[i];
-            const std::size_t len = batch_range_len(item.batch_range);
+            const std::size_t len = batch_range_len(item.batch_range());
             if (len == 0) {
                 ++i;
                 continue;
@@ -513,7 +513,7 @@ struct SortedRenderPhase {
 /** @brief Retained-view keyed collection of one sorted phase type (Bevy
  * `ViewSortedRenderPhases`). The resource retains allocations across frames;
  * `insert_or_clear` resets a live view without reallocating its items. */
-EPIX_EXPORT template <PhaseItem P>
+EPIX_EXPORT template <SortedPhaseItem P>
 struct ViewSortedRenderPhases : std::unordered_map<view::RetainedViewEntity, SortedRenderPhase<P>> {
     using Base = std::unordered_map<view::RetainedViewEntity, SortedRenderPhase<P>>;
     using Base::Base;
@@ -643,14 +643,14 @@ struct SetItemPipeline {
                                                    epix::ecs::ParamSet<epix::ecs::Res<PipelineServer>> params,
                                                    const wgpu::RenderPassEncoder& encoder) {
         auto&& [pipeline_server] = params.get();
-        auto pipeline            = pipeline_server->get_render_pipeline(item.pipeline());
+        auto pipeline            = pipeline_server->get_render_pipeline(item.cached_pipeline());
         if (!pipeline) {
             // Bevy: ANY cache miss (not ready, invalid id, or creation failure)
             // is a Skip — the item is simply not drawn this frame
             // (mod.rs:1740-1748).
             return std::unexpected(RenderCommandError{
                 .type    = RenderCommandError::Type::Skip,
-                .message = std::format("Render pipeline {} is not ready for item {:#x}.", item.pipeline().get(),
+                .message = std::format("Render pipeline {} is not ready for item {:#x}.", item.cached_pipeline().get(),
                                        item.entity().index),
             });
         }
@@ -708,7 +708,7 @@ DrawFunctionId app_add_render_commands(app::App& app) {
 
 /** @brief Sort all retained views for a sorted phase type (Bevy
  * `sort_phase_system`). */
-EPIX_EXPORT template <PhaseItem P>
+EPIX_EXPORT template <SortedPhaseItem P>
 void sort_phase_system(epix::ecs::ResMut<ViewSortedRenderPhases<P>> phases) {
     for (auto& [retained_view_entity, phase] : *phases) {
         (void)retained_view_entity;
@@ -727,26 +727,19 @@ concept PhaseItemBatchSetKey = std::equality_comparable<T> && std::totally_order
 };
 
 /** @brief Concept extending PhaseItem for binned (data-oriented) phases (Bevy
- * `BinnedPhaseItem`). Requires `BinKey`/`BatchSetKey` types plus `bin_key()`,
- * `batch_set_key()` and `batchable()` accessors (0.18 semantics); BatchSetKey
- * must satisfy PhaseItemBatchSetKey. */
+ * `BinnedPhaseItem`). Bins own the key data; a phase item is constructed only
+ * at draw time from the selected key pair and representative entity. */
 EPIX_EXPORT template <typename P>
-concept BinnedPhaseItem = PhaseItem<P> && requires(const P item) {
+concept BinnedPhaseItem = PhaseItem<P> && requires(typename P::BatchSetKey batch_set_key,
+                                                    typename P::BinKey bin_key,
+                                                    std::pair<epix::ecs::Entity, sync_world::MainEntity>
+                                                        representative_entity,
+                                                    std::pair<std::uint32_t, std::uint32_t> batch_range,
+                                                    PhaseItemExtraIndex extra_index) {
     typename P::BinKey;
     typename P::BatchSetKey;
     requires PhaseItemBatchSetKey<typename P::BatchSetKey>;
-    { item.bin_key() } -> std::same_as<const typename P::BinKey&>;
-    { item.batch_set_key() } -> std::same_as<const typename P::BatchSetKey&>;
-    { item.batchable() } -> std::convertible_to<bool>;
-};
-
-/** @brief Concept for a phase item that participates in the sorted phase path
- * (Bevy `SortedPhaseItem`). `indexed()`
- * selects the correct indirect-command
- * layout when GPU preprocessing is active. */
-EPIX_EXPORT template <typename P>
-concept SortedPhaseItem = PhaseItem<P> && requires(const P item) {
-    { item.indexed() } -> std::convertible_to<bool>;
+    { P::create(batch_set_key, bin_key, representative_entity, batch_range, extra_index) } -> std::same_as<P>;
 };
 
 /**

@@ -30,17 +30,19 @@ struct Item {
     render::sync_world::MainEntity main{Entity::PLACEHOLDER};
     render::CachedPipelineId pipeline_id{};
     render::phase::DrawFunctionId draw_id{};
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
     render::phase::PhaseItemExtraIndex extra{};
 
     Entity entity() const noexcept { return render_entity; }
     render::sync_world::MainEntity main_entity() const noexcept { return main; }
     std::uint32_t sort_key() const noexcept { return render_entity.index; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
-    render::CachedPipelineId pipeline() const noexcept { return pipeline_id; }
+    render::CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
     bool indexed() const noexcept { return false; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra; }
-    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra = value; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const render::phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra; }
+    render::phase::PhaseItemExtraIndex& extra_index() noexcept { return extra; }
 };
 
 struct Adapter {};
@@ -85,7 +87,8 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
         pass.setPipeline(state->render_pipeline);
         pass.setBindGroup(0, state->render_bind_group.bind_group, std::span<const std::uint32_t>{});
         pass.setVertexBuffer(0, state->vertex_buffer, 0, 6 * sizeof(float));
-        pass.draw(3, item.batch_range.second - item.batch_range.first, 0, item.batch_range.first);
+        const auto& batch_range = item.batch_range();
+        pass.draw(3, batch_range.second - batch_range.first, 0, batch_range.first);
         return {};
     }
 };

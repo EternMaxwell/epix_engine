@@ -20,6 +20,7 @@
 #endif
 #include <epix/render/binned_phase.hpp>
 #include <epix/render/gpu_preprocessing_mode.hpp>
+#include <epix/render/gpu_preprocessing_support.hpp>
 #include <epix/render/occlusion_culling.hpp>
 #include <epix/render/render_phase.hpp>
 #include <epix/render/render_resource.hpp>
@@ -643,16 +644,16 @@ void batch_and_prepare_gpu_binned_phase(
                 const std::uint32_t batch_set_index = indirect_parameters.next_batch_set_index(indexed).value_or(0);
                 const std::uint32_t output_base     = static_cast<std::uint32_t>(output_data.len());
                 const auto first_bin                = bins.iter().begin();
-                const auto first_entity             = first_bin->second.iter().begin()->first;
-                const std::uint32_t first_count     = static_cast<std::uint32_t>(first_bin->second.size());
+                const auto first_entity             = first_bin->second.entities().iter().begin()->first;
+                const std::uint32_t first_count     = static_cast<std::uint32_t>(first_bin->second.entities().size());
                 std::uint32_t command_index         = command_base;
 
                 for (const auto& [bin_key, bin] : bins.iter()) {
                     (void)bin_key;
-                    const std::uint32_t first_output = reserve_output(static_cast<std::uint32_t>(bin.size()));
+                    const std::uint32_t first_output = reserve_output(static_cast<std::uint32_t>(bin.entities().size()));
                     GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
                         indexed, first_output, batch_set_index, indirect_parameters, command_index);
-                    for (const auto& [main_entity, input_index] : bin.iter()) {
+                    for (const auto& [main_entity, input_index] : bin.entities().iter()) {
                         (void)main_entity;
                         work_items.push(indexed, {.input_index                         = input_index.index,
                                                   .output_or_indirect_parameters_index = command_index});
@@ -676,9 +677,9 @@ void batch_and_prepare_gpu_binned_phase(
     // Prepare regular mesh bins. Direct preprocessing uses output indices;
     // indirect preprocessing uses one command per bin.
     for (const auto& [key, bin] : render_phase.batchable_meshes.iter()) {
-        if (bin.empty()) continue;
+        if (bin.is_empty()) continue;
         const bool indexed              = key.first.indexed();
-        const std::uint32_t output_base = reserve_output(static_cast<std::uint32_t>(bin.size()));
+        const std::uint32_t output_base = reserve_output(static_cast<std::uint32_t>(bin.entities().size()));
         const std::optional<std::uint32_t> indirect_index =
             no_indirect_drawing ? std::nullopt : std::optional{indirect_parameters.allocate(indexed, 1)};
         const std::optional<std::uint32_t> batch_set_index =
@@ -691,8 +692,8 @@ void batch_and_prepare_gpu_binned_phase(
             GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(indexed, output_base, batch_set_index,
                                                                                  indirect_parameters, *indirect_index);
         }
-        const auto representative = bin.iter().begin()->first;
-        for (std::uint32_t offset = 0; const auto& entry : bin.iter()) {
+        const auto representative = bin.entities().iter().begin()->first;
+        for (std::uint32_t offset = 0; const auto& entry : bin.entities().iter()) {
             const auto& input_index = entry.second;
             work_items.push(indexed,
                             {.input_index                         = input_index.index,
@@ -701,7 +702,7 @@ void batch_and_prepare_gpu_binned_phase(
         }
         phase::BinnedRenderPhaseBatch batch{
             .representative_entity = {ecs::Entity::PLACEHOLDER, representative},
-            .instance_range        = {output_base, output_base + static_cast<std::uint32_t>(bin.size())},
+            .instance_range        = {output_base, output_base + static_cast<std::uint32_t>(bin.entities().size())},
             .extra_index           = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
                                                           *indirect_index, *indirect_index + 1, batch_set_index)
                                                     : phase::PhaseItemExtraIndex::None,
@@ -829,7 +830,7 @@ void write_batched_instance_buffers(
  * skips the remaining items in that range, exactly like Bevy's sorted phase.
  */
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
-    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P> && phase::MutablePhaseItemExtraIndex<P>)
+    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P>)
 void batch_and_prepare_gpu_sorted_phase(
     phase::SortedRenderPhase<P>& render_phase,
     UntypedPhaseBatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData>& phase_buffers,
@@ -858,12 +859,13 @@ void batch_and_prepare_gpu_sorted_phase(
     std::optional<ActiveBatch> active;
     const auto flush = [&](std::optional<std::uint32_t> instance_end = std::nullopt) {
         if (!active) return;
-        auto& item       = render_phase.items[active->phase_item_start];
-        item.batch_range = {active->instance_start,
-                            instance_end.value_or(static_cast<std::uint32_t>(output_data.len()))};
-        item.set_extra_index(active->indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
-                                                          *active->indirect_index, *active->indirect_index + 1)
-                                                    : phase::PhaseItemExtraIndex::None);
+        auto& item        = render_phase.items[active->phase_item_start];
+        auto& batch_range = item.batch_range();
+        auto& extra_index = item.extra_index();
+        batch_range = {active->instance_start, instance_end.value_or(static_cast<std::uint32_t>(output_data.len()))};
+        extra_index = active->indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                                  *active->indirect_index, *active->indirect_index + 1)
+                                            : phase::PhaseItemExtraIndex::None;
         if (active->indirect_index) indirect_parameters.add_batch_set(active->indexed, *active->indirect_index);
         active.reset();
     };
@@ -878,7 +880,7 @@ void batch_and_prepare_gpu_sorted_phase(
         }
         const auto& [input_index, compare_data] = *input_and_compare;
         const std::optional<BatchMeta> current_meta =
-            compare_data ? std::optional{BatchMeta{item.pipeline(), item.draw_function(), *compare_data}}
+            compare_data ? std::optional{BatchMeta{item.cached_pipeline(), item.draw_function(), *compare_data}}
                          : std::nullopt;
         const bool can_batch    = active && current_meta && active->meta && *current_meta == *active->meta;
         const auto output_index = static_cast<std::uint32_t>(output_data.add());
@@ -906,7 +908,7 @@ void batch_and_prepare_gpu_sorted_phase(
 
 /** @brief ECS wrapper for GPU sorted-phase batching. */
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
-    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P> && phase::MutablePhaseItemExtraIndex<P>)
+    requires(GetFullBatchDataImpl<Adapter> && phase::SortedPhaseItem<P>)
 void batch_and_prepare_gpu_sorted_render_phase(
     ecs::ResMut<PhaseBatchedInstanceBuffers<P, typename GetBatchData<Adapter>::BufferData>> phase_buffers,
     ecs::ResMut<PhaseIndirectParametersBuffers<P>> indirect_parameters,
@@ -967,7 +969,7 @@ inline constexpr bool automatic_batching_enabled = [] {
  * pipeline, draw function, dynamic offset, and adapter comparison data all
  * agree. */
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
-    requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+    requires GetBatchDataImpl<Adapter>
 void batch_and_prepare_sorted_phase(
     phase::SortedRenderPhase<P>& render_phase,
     render_resource::GpuArrayBuffer<typename GetBatchData<Adapter>::BufferData>& instance_buffer,
@@ -979,8 +981,10 @@ void batch_and_prepare_sorted_phase(
     for (auto& item : render_phase.items) {
         auto batch_data = GetBatchData<Adapter>{}.get_batch_data(batch_param, {item.entity(), item.main_entity()});
         if (!batch_data) {
-            item.batch_range = {0, 0};
-            item.set_extra_index(phase::PhaseItemExtraIndex::None);
+            auto& batch_range = item.batch_range();
+            auto& extra_index = item.extra_index();
+            batch_range = {0, 0};
+            extra_index = phase::PhaseItemExtraIndex::None;
             previous_meta.reset();
             batch_head = nullptr;
             continue;
@@ -988,15 +992,16 @@ void batch_and_prepare_sorted_phase(
 
         auto&& [buffer_data, optional_compare_data] = *batch_data;
         const auto buffer_index                     = instance_buffer.push(buffer_data);
-        item.batch_range                            = {buffer_index.index, buffer_index.index + 1};
-        item.set_extra_index(buffer_index.dynamic_offset
-                                 ? phase::PhaseItemExtraIndex::dynamic_offset(*buffer_index.dynamic_offset)
-                                 : phase::PhaseItemExtraIndex::None);
+        auto& batch_range = item.batch_range();
+        auto& extra_index = item.extra_index();
+        batch_range = {buffer_index.index, buffer_index.index + 1};
+        extra_index = buffer_index.dynamic_offset ? phase::PhaseItemExtraIndex::dynamic_offset(*buffer_index.dynamic_offset)
+                                                  : phase::PhaseItemExtraIndex::None;
 
         const std::optional<CpuBatchMeta<typename GetBatchData<Adapter>::CompareData>> current_meta =
             automatic_batching_enabled<P> && optional_compare_data
                 ? std::optional{CpuBatchMeta<typename GetBatchData<Adapter>::CompareData>{
-                      .pipeline       = item.pipeline(),
+                      .pipeline       = item.cached_pipeline(),
                       .draw_function  = item.draw_function(),
                       .dynamic_offset = buffer_index.dynamic_offset,
                       .compare_data   = std::move(*optional_compare_data),
@@ -1004,7 +1009,7 @@ void batch_and_prepare_sorted_phase(
                 : std::nullopt;
 
         if (current_meta && previous_meta && *current_meta == *previous_meta) {
-            batch_head->batch_range.second = item.batch_range.second;
+            batch_head->batch_range().second = item.batch_range().second;
         } else {
             batch_head = &item;
         }
@@ -1015,7 +1020,7 @@ void batch_and_prepare_sorted_phase(
 /** @brief ECS wrapper for CPU sorted-phase batching. The buffer is shared by
  * all views of the phase, exactly as Bevy's `BatchedInstanceBuffer`. */
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
-    requires(GetBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+    requires GetBatchDataImpl<Adapter>
 void batch_and_prepare_sorted_render_phase(
     ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
     ecs::ResMut<phase::ViewSortedRenderPhases<P>> phases,
@@ -1051,7 +1056,7 @@ void write_batched_cpu_instance_buffer(
  * C++ counterpart of Bevy's sorted-phase batching path when GPU
  * preprocessing is unavailable. */
 template <phase::CachedRenderPipelinePhaseItem P, typename Adapter>
-    requires(GetFullBatchDataImpl<Adapter> && phase::MutablePhaseItemExtraIndex<P>)
+    requires GetFullBatchDataImpl<Adapter>
 struct CpuSortedRenderPhasePlugin {
     void attach(app::App& app) const {
         auto render_app = app.get_sub_app_mut(Render);
@@ -1094,7 +1099,7 @@ void batch_and_prepare_binned_phase(
     for (auto&& [key, bin] : render_phase.batchable_meshes.iter()) {
         (void)key;
         bin.clear_batches();
-        for (const auto& [main_entity, input_uniform_index] : bin.iter()) {
+        for (const auto& [main_entity, input_uniform_index] : bin.entities().iter()) {
             (void)input_uniform_index;
             auto buffer_data =
                 GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
@@ -1236,8 +1241,6 @@ void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
                   "SortedRenderPhasePlugin adapter must specialize GetFullBatchData");
     static_assert(SortedPhaseItem<P>,
                   "SortedRenderPhasePlugin phase items must provide indexed() for GPU indirect batching");
-    static_assert(MutablePhaseItemExtraIndex<P>,
-                  "Automatic sorted batching requires set_extra_index on the phase item");
     app.add_plugins(batching::CpuSortedRenderPhasePlugin<P, Adapter>{});
     if (auto render_app = app.get_sub_app_mut(epix::render::Render)) {
         auto& world = render_app->get().world_mut();
@@ -1275,42 +1278,6 @@ void SortedRenderPhasePlugin<P, Adapter>::attach(app::App& app) {
 }  // namespace epix::render::phase
 
 namespace epix::render::batching {
-
-/** @brief Adapter capability summary for GPU preprocessing (Bevy
- * `GpuPreprocessingSupport`). */
-EPIX_EXPORT struct GpuPreprocessingSupport {
-    GpuPreprocessingMode max_supported_mode = GpuPreprocessingMode::None;
-
-    bool is_available() const noexcept { return max_supported_mode != GpuPreprocessingMode::None; }
-    bool is_culling_supported() const noexcept { return max_supported_mode == GpuPreprocessingMode::Culling; }
-    GpuPreprocessingMode min(GpuPreprocessingMode mode) const noexcept {
-        if (max_supported_mode == GpuPreprocessingMode::None || mode == GpuPreprocessingMode::None) {
-            return GpuPreprocessingMode::None;
-        }
-        if (max_supported_mode == GpuPreprocessingMode::Culling) return mode;
-        return GpuPreprocessingMode::PreprocessingOnly;
-    }
-    static GpuPreprocessingSupport from_device(const wgpu::Device& device,
-                                               std::optional<wgpu::BackendType> backend_type = std::nullopt) noexcept {
-        // Bevy's gate is based on compute support for preprocessing, then on
-        // indirect-first-instance, push constants, and texture/compute limits
-        // for the stronger occlusion-culling mode. Multi-draw is useful to
-        // render a prepared batch but is not a prerequisite for preprocessing
-        // itself.
-        wgpu::Limits limits;
-        device.getLimits(&limits);
-        const bool compute_supported = limits.maxComputeWorkgroupSizeX != 0;
-        const bool is_gl_backend     = backend_type && *backend_type == wgpu::BackendType::eOpenGL;
-        if (!compute_supported || is_gl_backend) return {};
-
-        const bool culling_features = device.hasFeature(wgpu::FeatureName::eIndirectFirstInstance) &&
-                                      device.hasFeature(wgpu::FeatureName(wgpu::NativeFeature::ePushConstants));
-        const bool culling_limits =
-            limits.maxStorageTexturesPerShaderStage >= 12 && limits.maxComputeWorkgroupStorageSize != 0;
-        return {culling_features && culling_limits ? GpuPreprocessingMode::Culling
-                                                   : GpuPreprocessingMode::PreprocessingOnly};
-    }
-};
 
 /**
  * @brief Plugin enabling automatic batching (Bevy `BatchingPlugin`,

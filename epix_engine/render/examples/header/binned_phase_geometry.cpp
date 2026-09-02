@@ -42,32 +42,30 @@ struct Item {
     render::phase::DrawFunctionId draw_id{0};
     int bin = 0;
     BatchSetKey batch_set{};
-    std::pair<std::uint32_t, std::uint32_t> batch_range{0, 1};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
     render::phase::PhaseItemExtraIndex extra{};
 
     Entity entity() const noexcept { return render_entity; }
     render::sync_world::MainEntity main_entity() const noexcept { return main_entity_value; }
-    int sort_key() const noexcept { return bin; }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
-    render::phase::PhaseItemExtraIndex extra_index() const noexcept { return extra; }
-    void set_extra_index(render::phase::PhaseItemExtraIndex value) noexcept { extra = value; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const render::phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra; }
+    render::phase::PhaseItemExtraIndex& extra_index() noexcept { return extra; }
     using BinKey      = int;
     using BatchSetKey = binned_phase_geometry::BatchSetKey;
-    const int& bin_key() const noexcept { return bin; }
-    const BatchSetKey& batch_set_key() const noexcept { return batch_set; }
-    bool batchable() const noexcept { return true; }
-
     static Item create(BatchSetKey batch_set,
                        int bin,
                        std::pair<Entity, render::sync_world::MainEntity> representative,
-                       std::uint32_t instance_start,
-                       std::uint32_t instance_end) {
+                       std::pair<std::uint32_t, std::uint32_t> batch_range,
+                       render::phase::PhaseItemExtraIndex extra_index) {
         return {.render_entity      = representative.first,
                 .main_entity_value = representative.second,
                 .draw_id       = render::phase::DrawFunctionId{0},
                 .bin           = bin,
                 .batch_set     = batch_set,
-                .batch_range   = {instance_start, instance_end}};
+                .batch_range_value = batch_range,
+                .extra         = extra_index};
     }
 };
 
@@ -107,7 +105,8 @@ struct TriangleDraw : render::phase::DrawFunction<Item> {
                                   command * sizeof(render::batching::IndirectParametersNonIndexed));
             }
         } else {
-            pass.draw(3, item.batch_range.second - item.batch_range.first, 0, item.batch_range.first);
+            const auto& batch_range = item.batch_range();
+            pass.draw(3, batch_range.second - batch_range.first, 0, batch_range.first);
         }
         return {};
     }
