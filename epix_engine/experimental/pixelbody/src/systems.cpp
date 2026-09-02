@@ -708,7 +708,7 @@ void build_pixel_body_meshes(Commands cmd,
                                          .spawn(mesh::Mesh2d{handle},
                                                 mesh::MeshMaterial2d{
                                                     .color      = glm::vec4(1.0f),
-                                                    .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                                                    .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
                                                 },
                                                 transform::Transform{.translation = glm::vec3(0.0f)})
                                          .id();

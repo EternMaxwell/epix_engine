@@ -199,7 +199,7 @@ void setup_chunk_render_children(
                                   .spawn(SandChunkMesh{}, mesh::Mesh2d{empty_mesh},
                                          mesh::MeshMaterial2d{
                                              .color      = glm::vec4(1.0f),
-                                             .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                                             .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
                                          },
                                          transform::Transform{.translation = glm::vec3(0.0f)})
                                   .id();
@@ -391,7 +391,7 @@ void build_body_debug_meshes(
                                            .spawn(SandChunkBodyDebug{}, mesh::Mesh2d{handle},
                                                   mesh::MeshMaterial2d{
                                                       .color      = glm::vec4(1.0f),
-                                                      .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                                                      .alpha_mode = mesh::MeshAlphaMode2dBlend{},
                                                   },
                                                   transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.3f)})
                                            .id();
@@ -429,7 +429,7 @@ void update_chunk_outlines(
                                     .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
                                            mesh::MeshMaterial2d{
                                                .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
-                                               .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                                               .alpha_mode = mesh::MeshAlphaMode2dBlend{},
                                            },
                                            transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.01f)},
                                            ::epix::camera::RenderLayers::layer(2))

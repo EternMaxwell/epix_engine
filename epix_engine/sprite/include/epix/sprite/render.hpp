@@ -238,8 +238,9 @@ EPIX_EXPORT namespace epix::sprite {
             encoder.setVertexBuffer(1, geometry->uv_buffer, 0, geometry->uv_buffer.getSize());
             encoder.setIndexBuffer(geometry->index_buffer, wgpu::IndexFormat::eUint16, 0,
                                    geometry->index_buffer.getSize());
-            encoder.drawIndexed(geometry->index_count, render::phase::batch_range_len(item.batch_range), 0, 0,
-                                item.batch_range.first);
+            const auto& batch_range = item.batch_range();
+            encoder.drawIndexed(geometry->index_count, render::phase::batch_range_len(batch_range), 0, 0,
+                                batch_range.first);
             return {};
         }
     };

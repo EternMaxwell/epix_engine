@@ -347,10 +347,10 @@ struct DrawTextBatch {
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {
             encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
-                                render::phase::batch_range_len(item.batch_range), 0, 0, item.batch_range.first);
+                                render::phase::batch_range_len(item.batch_range()), 0, 0, item.batch_range().first);
         } else {
             encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
-                         render::phase::batch_range_len(item.batch_range), 0, item.batch_range.first);
+                         render::phase::batch_range_len(item.batch_range()), 0, item.batch_range().first);
         }
         return {};
     }
@@ -483,7 +483,7 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
                 .depth                 = text.depth,
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
-                .batch_range           = {0, 1},
+                .batch_range_value     = {0, 1},
                 .indexed_value         = false,
             });
         }
@@ -531,7 +531,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
             }
 
             instance_buffer->instances.push_back(TextInstanceData{.model = text.model, .color = text.color});
-            item.batch_range = {batch.instance_start, static_cast<std::uint32_t>(instance_buffer->instances.size())};
+            item.batch_range() = {batch.instance_start, static_cast<std::uint32_t>(instance_buffer->instances.size())};
         }
     }
 

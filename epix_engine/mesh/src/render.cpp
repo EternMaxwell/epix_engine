@@ -43,6 +43,7 @@ import epix.view;
 struct MeshUniform {
     float4x4 model;
     float4 color;
+    float alpha_cutoff;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
@@ -56,6 +57,7 @@ struct VertexInput {
 struct VertexOutput {
     float4 position : SV_Position;
     [[vk::location(0)]] float4 color;
+    [[vk::location(2)]] float alpha_cutoff;
 };
 
 [shader("vertex")]
@@ -64,6 +66,7 @@ VertexOutput main(VertexInput input) {
     VertexOutput output;
     output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
+    output.alpha_cutoff = mesh.alpha_cutoff;
     return output;
 }
 )";
@@ -74,6 +77,7 @@ import epix.view;
 struct MeshUniform {
     float4x4 model;
     float4 color;
+    float alpha_cutoff;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
@@ -88,6 +92,7 @@ struct VertexInput {
 struct VertexOutput {
     float4 position : SV_Position;
     [[vk::location(0)]] float4 color;
+    [[vk::location(2)]] float alpha_cutoff;
 };
 
 [shader("vertex")]
@@ -96,6 +101,7 @@ VertexOutput main(VertexInput input) {
     VertexOutput output;
     output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
+    output.alpha_cutoff = mesh.alpha_cutoff;
     return output;
 }
 )";
@@ -106,6 +112,7 @@ import epix.view;
 struct MeshUniform {
     float4x4 model;
     float4 color;
+    float alpha_cutoff;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
@@ -121,6 +128,7 @@ struct VertexOutput {
     float4 position : SV_Position;
     [[vk::location(0)]] float4 color;
     [[vk::location(1)]] float2 uv;
+    [[vk::location(2)]] float alpha_cutoff;
 };
 
 [shader("vertex")]
@@ -130,6 +138,7 @@ VertexOutput main(VertexInput input) {
     output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = mesh.color;
     output.uv = input.uv;
+    output.alpha_cutoff = mesh.alpha_cutoff;
     return output;
 }
 )";
@@ -140,6 +149,7 @@ import epix.view;
 struct MeshUniform {
     float4x4 model;
     float4 color;
+    float alpha_cutoff;
 };
 
 [[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
@@ -156,6 +166,7 @@ struct VertexOutput {
     float4 position : SV_Position;
     [[vk::location(0)]] float4 color;
     [[vk::location(1)]] float2 uv;
+    [[vk::location(2)]] float alpha_cutoff;
 };
 
 [shader("vertex")]
@@ -165,6 +176,7 @@ VertexOutput main(VertexInput input) {
     output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(mesh.model, float4(input.position, 1.0))));
     output.color = input.color * mesh.color;
     output.uv = input.uv;
+    output.alpha_cutoff = mesh.alpha_cutoff;
     return output;
 }
 )";
@@ -195,12 +207,45 @@ float4 main(FragmentInput input) : SV_Target {
 }
 )";
 
+constexpr std::string_view kMeshColorMaskFragmentShader = R"(
+struct FragmentInput {
+    [[vk::location(0)]] float4 color;
+    [[vk::location(2)]] float alpha_cutoff;
+};
+
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
+    if (input.color.a < input.alpha_cutoff) discard;
+    return float4(input.color.rgb, 1.0);
+}
+)";
+
+constexpr std::string_view kMeshTexturedMaskFragmentShader = R"(
+[[vk::binding(0, 2)]] SamplerState mesh_sampler;
+[[vk::binding(1, 2)]] Texture2D<float4> mesh_texture;
+
+struct FragmentInput {
+    [[vk::location(0)]] float4 color;
+    [[vk::location(1)]] float2 uv;
+    [[vk::location(2)]] float alpha_cutoff;
+};
+
+[shader("fragment")]
+float4 main(FragmentInput input) : SV_Target {
+    float4 color = mesh_texture.Sample(mesh_sampler, input.uv) * input.color;
+    if (color.a < input.alpha_cutoff) discard;
+    return float4(color.rgb, 1.0);
+}
+)";
+
 constexpr std::string_view kMeshSolidVertexShaderAssetPath         = "mesh/solid_vertex.slang";
 constexpr std::string_view kMeshVertexColorShaderAssetPath         = "mesh/vertex_color_vertex.slang";
 constexpr std::string_view kMeshTexturedVertexShaderAssetPath      = "mesh/textured_vertex.slang";
 constexpr std::string_view kMeshTexturedVertexColorShaderAssetPath = "mesh/textured_vertex_color_vertex.slang";
 constexpr std::string_view kMeshColorFragmentShaderAssetPath       = "mesh/color_fragment.slang";
 constexpr std::string_view kMeshTexturedFragmentShaderAssetPath    = "mesh/textured_fragment.slang";
+constexpr std::string_view kMeshColorMaskFragmentShaderAssetPath   = "mesh/color_mask_fragment.slang";
+constexpr std::string_view kMeshTexturedMaskFragmentShaderAssetPath = "mesh/textured_mask_fragment.slang";
 
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
@@ -213,6 +258,8 @@ struct MeshShaderHandles {
     assets::Handle<shader::Shader> textured_vertex_color_shader;
     assets::Handle<shader::Shader> color_fragment_shader;
     assets::Handle<shader::Shader> textured_fragment_shader;
+    assets::Handle<shader::Shader> color_mask_fragment_shader;
+    assets::Handle<shader::Shader> textured_mask_fragment_shader;
 };
 
 std::optional<MeshShaderHandles> load_mesh_shader_handles(World& world) {
@@ -232,6 +279,9 @@ std::optional<MeshShaderHandles> load_mesh_shader_handles(World& world) {
     registry->get().insert_asset_static(kMeshColorFragmentShaderAssetPath, shader_bytes(kMeshColorFragmentShader));
     registry->get().insert_asset_static(kMeshTexturedFragmentShaderAssetPath,
                                         shader_bytes(kMeshTexturedFragmentShader));
+    registry->get().insert_asset_static(kMeshColorMaskFragmentShaderAssetPath, shader_bytes(kMeshColorMaskFragmentShader));
+    registry->get().insert_asset_static(kMeshTexturedMaskFragmentShaderAssetPath,
+                                        shader_bytes(kMeshTexturedMaskFragmentShader));
 
     return MeshShaderHandles{
         .solid_vertex_shader    = server->get().load<shader::Shader>("embedded://mesh/solid_vertex.slang"),
@@ -241,6 +291,9 @@ std::optional<MeshShaderHandles> load_mesh_shader_handles(World& world) {
             server->get().load<shader::Shader>("embedded://mesh/textured_vertex_color_vertex.slang"),
         .color_fragment_shader    = server->get().load<shader::Shader>("embedded://mesh/color_fragment.slang"),
         .textured_fragment_shader = server->get().load<shader::Shader>("embedded://mesh/textured_fragment.slang"),
+        .color_mask_fragment_shader = server->get().load<shader::Shader>("embedded://mesh/color_mask_fragment.slang"),
+        .textured_mask_fragment_shader =
+            server->get().load<shader::Shader>("embedded://mesh/textured_mask_fragment.slang"),
     };
 }
 
@@ -253,7 +306,11 @@ enum class MeshShaderVariant : std::uint8_t {
 
 struct Mesh2dPipelineKey {
     MeshShaderVariant variant;
-    MeshAlphaMode2d alpha_mode;
+    enum class AlphaMode : std::uint8_t {
+        Opaque,
+        Mask,
+        Blend,
+    } alpha_mode;
     wgpu::PrimitiveTopology primitive_type;
     wgpu::TextureFormat color_format;
     std::uint32_t sample_count;
@@ -290,11 +347,23 @@ constexpr const char* shader_variant_name(MeshShaderVariant variant) {
     }
 }
 
-constexpr const char* alpha_mode_name(MeshAlphaMode2d alpha_mode) {
+Mesh2dPipelineKey::AlphaMode pipeline_alpha_mode(const MeshAlphaMode2d& alpha_mode) noexcept {
+    return std::visit(
+        []<typename Mode>(const Mode&) {
+            if constexpr (std::same_as<Mode, MeshAlphaMode2dOpaque>) return Mesh2dPipelineKey::AlphaMode::Opaque;
+            if constexpr (std::same_as<Mode, MeshAlphaMode2dMask>) return Mesh2dPipelineKey::AlphaMode::Mask;
+            return Mesh2dPipelineKey::AlphaMode::Blend;
+        },
+        alpha_mode);
+}
+
+constexpr const char* alpha_mode_name(Mesh2dPipelineKey::AlphaMode alpha_mode) {
     switch (alpha_mode) {
-        case MeshAlphaMode2d::Opaque:
+        case Mesh2dPipelineKey::AlphaMode::Opaque:
             return "opaque";
-        case MeshAlphaMode2d::Blend:
+        case Mesh2dPipelineKey::AlphaMode::Mask:
+            return "mask";
+        case Mesh2dPipelineKey::AlphaMode::Blend:
             return "blend";
         default:
             return "unknown";
@@ -311,6 +380,8 @@ struct Mesh2dPipelineCache {
     assets::Handle<shader::Shader> textured_vertex_color_shader;
     assets::Handle<shader::Shader> color_fragment_shader;
     assets::Handle<shader::Shader> textured_fragment_shader;
+    assets::Handle<shader::Shader> color_mask_fragment_shader;
+    assets::Handle<shader::Shader> textured_mask_fragment_shader;
     std::unordered_map<Mesh2dPipelineKey, render::CachedPipelineId, Mesh2dPipelineKeyHash> pipelines;
 
     explicit Mesh2dPipelineCache(World& world, const MeshShaderHandles& shader_handles)
@@ -348,13 +419,15 @@ struct Mesh2dPipelineCache {
           textured_vertex_shader(shader_handles.textured_vertex_shader),
           textured_vertex_color_shader(shader_handles.textured_vertex_color_shader),
           color_fragment_shader(shader_handles.color_fragment_shader),
-          textured_fragment_shader(shader_handles.textured_fragment_shader) {}
+          textured_fragment_shader(shader_handles.textured_fragment_shader),
+          color_mask_fragment_shader(shader_handles.color_mask_fragment_shader),
+          textured_mask_fragment_shader(shader_handles.textured_mask_fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
                                                        const MeshAttributeLayout& layout,
                                                        wgpu::TextureFormat color_format,
                                                        std::uint32_t sample_count,
-                                                       MeshAlphaMode2d alpha_mode,
+                                                       const MeshAlphaMode2d& alpha_mode,
                                                        bool textured) {
         if (!layout.get_attribute(Mesh::ATTRIBUTE_POSITION)) {
             spdlog::warn("[mesh] Skip pipeline specialization: mesh layout is missing POSITION. Layout:\n{}",
@@ -379,9 +452,10 @@ struct Mesh2dPipelineCache {
             variant = MeshShaderVariant::VertexColor;
         }
 
+        const auto pipeline_mode = pipeline_alpha_mode(alpha_mode);
         Mesh2dPipelineKey key{
             .variant        = variant,
-            .alpha_mode     = alpha_mode,
+            .alpha_mode     = pipeline_mode,
             .primitive_type = layout.primitive_type,
             .color_format   = color_format,
             .sample_count   = sample_count,
@@ -418,12 +492,13 @@ struct Mesh2dPipelineCache {
         };
         vertex_state.set_buffers(vertex_buffers);
 
-        render::FragmentState fragment_state{
-            .shader = textured ? textured_fragment_shader : color_fragment_shader,
-        };
+        render::FragmentState fragment_state{.shader =
+                                                 pipeline_mode == Mesh2dPipelineKey::AlphaMode::Mask
+                                                     ? (textured ? textured_mask_fragment_shader : color_mask_fragment_shader)
+                                                     : (textured ? textured_fragment_shader : color_fragment_shader)};
 
         auto color_target = wgpu::ColorTargetState().setFormat(color_format).setWriteMask(wgpu::ColorWriteMask::eAll);
-        if (alpha_mode == MeshAlphaMode2d::Blend) {
+        if (pipeline_mode == Mesh2dPipelineKey::AlphaMode::Blend) {
             auto color_blend = wgpu::BlendComponent()
                                    .setOperation(wgpu::BlendOperation::eAdd)
                                    .setSrcFactor(wgpu::BlendFactor::eSrcAlpha)
@@ -442,7 +517,7 @@ struct Mesh2dPipelineCache {
         }
 
         render::RenderPipelineDescriptor pipeline_desc{
-            .label     = std::format("mesh2d-{}-{}-{}", shader_variant_name(variant), alpha_mode_name(alpha_mode),
+            .label     = std::format("mesh2d-{}-{}-{}", shader_variant_name(variant), alpha_mode_name(pipeline_mode),
                                      wgpu::to_string(layout.primitive_type)),
             .layouts   = std::move(layouts),
             .vertex    = std::move(vertex_state),
@@ -453,8 +528,9 @@ struct Mesh2dPipelineCache {
             .depth_stencil =
                 wgpu::DepthStencilState()
                     .setFormat(wgpu::TextureFormat::eDepth32Float)
-                    .setDepthWriteEnabled(alpha_mode == MeshAlphaMode2d::Opaque ? wgpu::OptionalBool::eTrue
-                                                                                : wgpu::OptionalBool::eFalse)
+                    .setDepthWriteEnabled(pipeline_mode == Mesh2dPipelineKey::AlphaMode::Blend
+                                              ? wgpu::OptionalBool::eFalse
+                                              : wgpu::OptionalBool::eTrue)
                     // Core2D clears the Bevy reverse-Z depth buffer to 0.
                     .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
             .multisample =
@@ -472,20 +548,15 @@ struct OpaqueMesh2dDrawFunction {
     render::phase::DrawFunctionId value;
 };
 
+struct AlphaMaskMesh2dDrawFunction {
+    render::phase::DrawFunctionId value;
+};
+
 struct TransparentMesh2dDrawFunction {
     render::phase::DrawFunctionId value;
 };
 
-struct MeshOpaqueBatchKey {
-    std::uint64_t pipeline_id;
-    assets::AssetId<Mesh> mesh_id;
-    std::optional<assets::AssetId<image::Image>> texture_id;
-
-    std::strong_ordering operator<=>(const MeshOpaqueBatchKey& other) const = default;
-    bool operator==(const MeshOpaqueBatchKey&) const                        = default;
-};
-
-void extract_meshes_2d(Commands cmd,
+void extract_meshes_2d(ResMut<RenderMesh2dInstances> render_mesh_instances,
                        Extract<Query<Item<Entity,
                                           const Mesh2d&,
                                           const transform::GlobalTransform&,
@@ -494,6 +565,9 @@ void extract_meshes_2d(Commands cmd,
                                           Opt<const MeshTextureMaterial2d&>,
                                           Opt<const camera::RenderLayers&>>,
                                      Without<render::CustomRendered>>> meshes) {
+    // Bevy keeps these data in a main-entity keyed resource. A batchable
+    // binned phase deliberately has no render entity to query at draw time.
+    render_mesh_instances->clear();
     for (auto&& [entity, mesh_handle, transform, view_visibility, material, texture_material, opt_layer] :
          meshes.iter()) {
         // Bevy extract_meshes gates on ViewVisibility (visibility/mod.rs:448-458).
@@ -504,10 +578,11 @@ void extract_meshes_2d(Commands cmd,
         MeshAlphaMode2d alpha_mode =
             texture_material.transform([](const MeshTextureMaterial2d& value) { return value.alpha_mode; })
                 .value_or(material.transform([](const MeshMaterial2d& value) { return value.alpha_mode; })
-                              .value_or(MeshAlphaMode2d::Opaque));
+                              .value_or(MeshAlphaMode2d{MeshAlphaMode2dOpaque{}}));
 
-        cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
-                  ExtractedMesh2d{
+        render_mesh_instances->instances.emplace(
+            render::sync_world::MainEntity{entity},
+            RenderMesh2dInstance{.extracted = ExtractedMesh2d{
                       .source_entity = entity,
                       .mesh          = mesh_handle.handle.id(),
                       .model         = transform.matrix,
@@ -517,8 +592,7 @@ void extract_meshes_2d(Commands cmd,
                       .texture       = texture_material.transform(
                           [](const MeshTextureMaterial2d& value) { return value.image.id(); }),
                       .render_layer = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
-                  },
-                  MeshBatch{});
+                  }});
     }
 }
 
@@ -559,9 +633,15 @@ struct MeshBatchKey {
     bool operator==(const MeshBatchKey&) const = default;
 };
 
-void prepare_mesh_instances(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_phases,
+float alpha_cutoff(const MeshAlphaMode2d& alpha_mode) noexcept {
+    if (const auto* mask = std::get_if<MeshAlphaMode2dMask>(&alpha_mode)) return mask->cutoff;
+    return 0.0f;
+}
+
+void prepare_mesh_instances(ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_phases,
+                            ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::AlphaMask2D>> alpha_mask_phases,
                             ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> transparent_phases,
-                            Query<Item<MeshBatch&, const ExtractedMesh2d&>> meshes,
+                            ResMut<RenderMesh2dInstances> mesh_instances,
                             Res<render::RenderAssets<image::Image>> images,
                             Res<wgpu::Device> device,
                             Res<wgpu::Queue> queue,
@@ -570,69 +650,99 @@ void prepare_mesh_instances(ResMut<render::phase::ViewSortedRenderPhases<core_gr
     instance_buffer->instances.clear();
     std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
 
-    auto process_phase = [&](auto& phase) {
+    auto configure_batch = [&](MeshBatch& batch, const ExtractedMesh2d& extracted) {
+        batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
+        if (!extracted.texture) {
+            batch.texture_bind_group.reset();
+            return;
+        }
+        if (auto it = texture_bind_group_cache.find(*extracted.texture); it != texture_bind_group_cache.end()) {
+            batch.texture_bind_group = it->second;
+        } else if (auto gpu_image = images->try_get(*extracted.texture); gpu_image) {
+            auto texture_bind_group = device->createBindGroup(
+                wgpu::BindGroupDescriptor()
+                    .setLabel("Mesh2dTextureBindGroup")
+                    .setLayout(pipeline_cache->texture_layout)
+                    .setEntries(std::array{
+                        wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
+                        wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
+                    }));
+            texture_bind_group_cache.emplace(*extracted.texture, texture_bind_group);
+            batch.texture_bind_group = std::move(texture_bind_group);
+        } else {
+            batch.texture_bind_group.reset();
+        }
+    };
+
+    auto process_sorted_phase = [&](auto& phase) {
         std::optional<MeshBatchKey> current_key;
         std::size_t batch_head = std::numeric_limits<std::size_t>::max();
 
         for (std::size_t item_index = 0; item_index < phase.items.size(); ++item_index) {
             auto& item     = phase.items[item_index];
-            auto mesh_item = meshes.get(item.entity());
-            if (!mesh_item) {
+            auto mesh_instance = mesh_instances->find(item.main_entity());
+            if (mesh_instance == mesh_instances->end()) {
                 current_key.reset();
                 batch_head = std::numeric_limits<std::size_t>::max();
                 continue;
             }
 
-            auto&& [batch, extracted] = *mesh_item;
+            auto&& [extracted, batch] = mesh_instance->second;
 
             MeshBatchKey key{
-                .pipeline_id = item.pipeline(),
+                .pipeline_id = item.cached_pipeline(),
                 .mesh_id     = extracted.mesh,
                 .texture_id  = extracted.texture,
             };
 
             if (!current_key || *current_key != key) {
                 batch_head                          = item_index;
-                batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
-                phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
-
-                if (extracted.texture) {
-                    if (auto it = texture_bind_group_cache.find(*extracted.texture);
-                        it != texture_bind_group_cache.end()) {
-                        batch.texture_bind_group = it->second;
-                    } else if (auto gpu_image = images->try_get(*extracted.texture); gpu_image) {
-                        auto tg = device->createBindGroup(
-                            wgpu::BindGroupDescriptor()
-                                .setLabel("Mesh2dTextureBindGroup")
-                                .setLayout(pipeline_cache->texture_layout)
-                                .setEntries(std::array{
-                                    wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                                    wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
-                                }));
-                        texture_bind_group_cache.emplace(*extracted.texture, tg);
-                        batch.texture_bind_group = std::move(tg);
-                    } else {
-                        batch.texture_bind_group.reset();
-                    }
-                } else {
-                    batch.texture_bind_group.reset();
-                }
-
+                configure_batch(batch, extracted);
+                phase.items[batch_head].batch_range() = {batch.instance_start, batch.instance_start};
                 current_key = key;
             }
 
-            instance_buffer->instances.push_back({extracted.model, extracted.color});
-            phase.items[batch_head].batch_range.second = static_cast<std::uint32_t>(instance_buffer->instances.size());
+            instance_buffer->instances.push_back({extracted.model, extracted.color, alpha_cutoff(extracted.alpha_mode)});
+            phase.items[batch_head].batch_range().second =
+                static_cast<std::uint32_t>(instance_buffer->instances.size());
         }
     };
 
-    for (auto& [retained_view_entity, phase] : *opaque_phases) {
-        (void)retained_view_entity;
-        process_phase(phase);
-    }
+    auto process_binned_phases = [&](auto& phases) {
+        for (auto& [retained_view_entity, phase] : phases->phases) {
+            (void)retained_view_entity;
+            auto* batches = std::get_if<0>(&phase.batch_sets);
+            if (!batches) continue;
+            batches->clear();
+            for (auto&& [key, bin] : phase.batchable_meshes.iter()) {
+                (void)key;
+                bin.clear_batches();
+                for (const auto& [main_entity, input_uniform_index] : bin.entities().iter()) {
+                    (void)input_uniform_index;
+                    const auto mesh_instance = mesh_instances->find(main_entity);
+                    if (mesh_instance == mesh_instances->end()) continue;
+                    auto&& [extracted, batch] = mesh_instance->second;
+                    if (bin.batches.empty()) configure_batch(batch, extracted);
+                    const auto instance_index = static_cast<std::uint32_t>(instance_buffer->instances.size());
+                    instance_buffer->instances.push_back(
+                        {extracted.model, extracted.color, alpha_cutoff(extracted.alpha_mode)});
+                    if (bin.batches.empty()) {
+                        bin.batches.push_back({.representative_entity = {ecs::Entity::PLACEHOLDER, main_entity},
+                                               .instance_range        = {instance_index, instance_index},
+                                               .extra_index           = render::phase::PhaseItemExtraIndex::None});
+                    }
+                    bin.batches.back().instance_range.second = instance_index + 1;
+                }
+                batches->push_back(bin.batches);
+            }
+        }
+    };
+
+    process_binned_phases(opaque_phases);
+    process_binned_phases(alpha_mask_phases);
     for (auto& [retained_view_entity, phase] : *transparent_phases) {
         (void)retained_view_entity;
-        process_phase(phase);
+        process_sorted_phase(phase);
     }
 
     auto required_bytes = instance_buffer->instances.size() * sizeof(MeshInstanceData);
@@ -646,21 +756,25 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                                        const render::view::ViewTarget&,
                                        Opt<const ::epix::camera::RenderLayers&>,
                                        const ::epix::render::view::RenderVisibleEntities&>> views,
-                            Query<Item<Entity, const ExtractedMesh2d&>> meshes,
+                            Res<RenderMesh2dInstances> mesh_instances,
                             Res<render::RenderAssets<Mesh>> gpu_meshes,
                             Res<render::RenderAssets<image::Image>> images,
-                            Res<OpaqueMesh2dDrawFunction> draw_function_id,
+                            Res<OpaqueMesh2dDrawFunction> opaque_draw_function_id,
+                            Res<AlphaMaskMesh2dDrawFunction> alpha_mask_draw_function_id,
                             ResMut<Mesh2dPipelineCache> pipeline_cache,
                             ResMut<render::PipelineServer> pipeline_server,
-                            ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Opaque2D>> phases) {
+                            ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_phases,
+                            ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::AlphaMask2D>> alpha_mask_phases) {
     for (auto&& [view, target, opt_camera_layers, visible_entities] : views.iter()) {
-        auto phase = phases->find(view.retained_view_entity);
-        if (phase == phases->end()) continue;
+        auto opaque_phase = opaque_phases->phases.find(view.retained_view_entity);
+        auto alpha_mask_phase = alpha_mask_phases->phases.find(view.retained_view_entity);
+        if (opaque_phase == opaque_phases->phases.end() || alpha_mask_phase == alpha_mask_phases->phases.end()) continue;
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         const auto& visible = visible_entities.template get<Mesh2d>();
-        for (auto&& [entity, extracted_mesh] : meshes.iter()) {
-            if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Opaque) {
+        for (const auto& [main_entity, instance] : mesh_instances->instances) {
+            const auto& extracted_mesh = instance.extracted;
+            if (std::holds_alternative<MeshAlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
                 continue;
             }
             if (!camera_layers.intersects(extracted_mesh.render_layer)) {
@@ -673,18 +787,18 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
 
             auto* gpu_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
             if (!gpu_mesh) {
-                spdlog::warn("[mesh] Skip opaque mesh entity {:#x}: GPU mesh {} is not prepared yet.", entity.index,
+                spdlog::warn("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: GPU mesh {} is not prepared yet.", extracted_mesh.source_entity.index,
                              extracted_mesh.mesh.to_string_short());
                 continue;
             }
             if (gpu_mesh->vertex_count() == 0) {
-                spdlog::debug("[mesh] Skip opaque mesh entity {:#x}: GPU mesh {} is empty.", entity.index,
+                spdlog::debug("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: GPU mesh {} is empty.", extracted_mesh.source_entity.index,
                               extracted_mesh.mesh.to_string_short());
                 continue;
             }
             if (extracted_mesh.texture && !images->try_get(*extracted_mesh.texture)) {
-                spdlog::warn("[mesh] Skip opaque textured mesh entity {:#x}: GPU image {} is not available yet.",
-                             entity.index, extracted_mesh.texture->to_string_short());
+                spdlog::warn("[mesh] Skip opaque/alpha-mask textured mesh entity {:#x}: GPU image {} is not available yet.",
+                             extracted_mesh.source_entity.index, extracted_mesh.texture->to_string_short());
                 continue;
             }
 
@@ -692,22 +806,32 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                 *pipeline_server, gpu_mesh->attribute_layout(), target.format, target.color_attachment_sample_count(),
                 extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
-                spdlog::warn("[mesh] Skip opaque mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
-                             entity.index, gpu_mesh->attribute_layout().to_string());
+                spdlog::warn("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
+                             extracted_mesh.source_entity.index, gpu_mesh->attribute_layout().to_string());
                 continue;
             }
-
-            phase->second.add(core_graph::core_2d::Opaque2D{
-                .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
-                .pipeline_id           = *pipeline_id,
-                .draw_func             = draw_function_id->value,
-                .batch_range           = {0, 1},
-                .batch_key             = render::phase::OpaqueSortKey(MeshOpaqueBatchKey{
-                    .pipeline_id = pipeline_id->get(),
-                    .mesh_id     = extracted_mesh.mesh,
-                    .texture_id  = extracted_mesh.texture,
-                }),
-            });
+            const auto batch_set_key = core_graph::core_2d::BatchSetKey2D{.indexed_value = gpu_mesh->is_indexed()};
+            const auto material_bind_group_id = extracted_mesh.texture.transform(
+                [](const assets::AssetId<image::Image>& id) { return assets::UntypedAssetId(id); });
+            if (std::holds_alternative<MeshAlphaMode2dOpaque>(extracted_mesh.alpha_mode)) {
+                opaque_phase->second.add(
+                    batch_set_key,
+                    core_graph::core_2d::Opaque2DBinKey{.pipeline_id = *pipeline_id,
+                                                        .draw_func = opaque_draw_function_id->value,
+                                                        .asset_id = assets::UntypedAssetId(extracted_mesh.mesh),
+                                                        .material_bind_group_id = material_bind_group_id},
+                    ecs::Entity::PLACEHOLDER, main_entity, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
+                    ecs::Tick{});
+            } else {
+                alpha_mask_phase->second.add(
+                    batch_set_key,
+                    core_graph::core_2d::AlphaMask2DBinKey{.pipeline_id = *pipeline_id,
+                                                           .draw_func = alpha_mask_draw_function_id->value,
+                                                           .asset_id = assets::UntypedAssetId(extracted_mesh.mesh),
+                                                           .material_bind_group_id = material_bind_group_id},
+                    ecs::Entity::PLACEHOLDER, main_entity, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
+                    ecs::Tick{});
+            }
         }
     }
 }
@@ -716,7 +840,7 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
                                             const render::view::ViewTarget&,
                                             Opt<const ::epix::camera::RenderLayers&>,
                                             const ::epix::render::view::RenderVisibleEntities&>> views,
-                                 Query<Item<Entity, const ExtractedMesh2d&>> meshes,
+                                 Res<RenderMesh2dInstances> mesh_instances,
                                  Res<render::RenderAssets<Mesh>> gpu_meshes,
                                  Res<render::RenderAssets<image::Image>> images,
                                  Res<TransparentMesh2dDrawFunction> draw_function_id,
@@ -729,8 +853,9 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
         const auto& visible = visible_entities.template get<Mesh2d>();
-        for (auto&& [entity, extracted_mesh] : meshes.iter()) {
-            if (extracted_mesh.alpha_mode != MeshAlphaMode2d::Blend) {
+        for (const auto& [main_entity, instance] : mesh_instances->instances) {
+            const auto& extracted_mesh = instance.extracted;
+            if (!std::holds_alternative<MeshAlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
                 continue;
             }
             if (!camera_layers.intersects(extracted_mesh.render_layer)) {
@@ -744,17 +869,17 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
             auto* gpu_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
             if (!gpu_mesh) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is not prepared yet.",
-                             entity.index, extracted_mesh.mesh.to_string_short());
+                             extracted_mesh.source_entity.index, extracted_mesh.mesh.to_string_short());
                 continue;
             }
             if (gpu_mesh->vertex_count() == 0) {
-                spdlog::debug("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is empty.", entity.index,
+                spdlog::debug("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is empty.", extracted_mesh.source_entity.index,
                               extracted_mesh.mesh.to_string_short());
                 continue;
             }
             if (extracted_mesh.texture && !images->try_get(*extracted_mesh.texture)) {
                 spdlog::warn("[mesh] Skip transparent textured mesh entity {:#x}: GPU image {} is not available yet.",
-                             entity.index, extracted_mesh.texture->to_string_short());
+                             extracted_mesh.source_entity.index, extracted_mesh.texture->to_string_short());
                 continue;
             }
 
@@ -763,16 +888,16 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
                 extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
-                             entity.index, gpu_mesh->attribute_layout().to_string());
+                             extracted_mesh.source_entity.index, gpu_mesh->attribute_layout().to_string());
                 continue;
             }
 
             phase->second.add(core_graph::core_2d::Transparent2D{
-                .representative_entity = {entity, render::sync_world::MainEntity{extracted_mesh.source_entity}},
+                .representative_entity = {ecs::Entity::PLACEHOLDER, main_entity},
                 .depth                 = extracted_mesh.depth,
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
-                .batch_range           = {0, 1},
+                .batch_range_value     = {0, 1},
                 .indexed_value         = gpu_mesh->is_indexed(),
             });
         }
@@ -828,6 +953,9 @@ void MeshRenderPlugin::ready(app::App& app) {
     if (!world.get_resource<MeshInstanceBuffer>()) {
         world.insert_resource(MeshInstanceBuffer{});
     }
+    if (!world.get_resource<RenderMesh2dInstances>()) {
+        world.insert_resource(RenderMesh2dInstances{});
+    }
     if (!world.get_resource<Mesh2dPipelineCache>()) {
         world.insert_resource(Mesh2dPipelineCache(world, shader_handles->get()));
     }
@@ -837,6 +965,11 @@ void MeshRenderPlugin::ready(app::App& app) {
             core_graph::core_2d::Opaque2D, render::phase::SetItemPipeline, render::view::BindViewUniform<0>::Command,
             mesh::BindMesh2dInstances<1>::Command, mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(
             render_subapp)});
+    world.insert_resource(AlphaMaskMesh2dDrawFunction{
+        .value = render::phase::app_add_render_commands<
+            core_graph::core_2d::AlphaMask2D, render::phase::SetItemPipeline,
+            render::view::BindViewUniform<0>::Command, mesh::BindMesh2dInstances<1>::Command,
+            mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(render_subapp)});
     world.insert_resource(TransparentMesh2dDrawFunction{
         .value = render::phase::app_add_render_commands<
             core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
@@ -847,6 +980,11 @@ void MeshRenderPlugin::ready(app::App& app) {
         .add_systems(render::Render, into(queue_meshes_2d_opaque, queue_meshes_2d_transparent)
                                          .in_set(render::RenderSystems::Queue)
                                          .set_names(std::array{"queue opaque mesh2d", "queue transparent mesh2d"}))
+        .add_systems(render::Render,
+                     into(render::phase::sweep_old_entities<core_graph::core_2d::Opaque2D>,
+                          render::phase::sweep_old_entities<core_graph::core_2d::AlphaMask2D>)
+                         .in_set(render::RenderSystems::QueueSweep)
+                         .set_names(std::array{"sweep opaque mesh2d", "sweep alpha-mask mesh2d"}))
         .add_systems(render::Render, into(prepare_mesh_instances)
                                          .in_set(render::RenderSystems::PrepareResources)
                                          .set_name("prepare mesh2d instances"));

@@ -709,7 +709,7 @@ void freefall_overlay_system(
             auto overlay_ent =
                 cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
                           mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                               .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                               .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
                           camera::RenderLayers::layer(2))
                     .id();
@@ -789,7 +789,7 @@ void dirty_rect_overlay_system(Commands cmd,
             auto handle      = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
             auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
                                          mesh::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
-                                                              .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                                              .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                                          transform::Transform{.translation = {center_x, center_y, 1.0f},
                                                               .scaler      = {width, height, 1.0f}},
                                          camera::RenderLayers::layer(1))

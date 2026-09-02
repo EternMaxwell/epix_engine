@@ -171,7 +171,7 @@ int main() {
             auto bounds_mesh_handle = meshes->emplace(make_rect_outline(-200, 200, -50, 50, {0.0f, 1.0f, 0.0f, 1.0f}));
             auto bounds_outline_entity =
                 cmd.spawn(mesh::Mesh2d{bounds_mesh_handle},
-                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                           transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.1f)}, BoundsOutline{})
                     .id();
 
@@ -179,7 +179,7 @@ int main() {
             auto text_outline_handle = meshes->emplace(make_rect_outline(-100, 100, -25, 25, {1.0f, 1.0f, 0.0f, 1.0f}));
             auto text_outline_entity =
                 cmd.spawn(mesh::Mesh2d{text_outline_handle},
-                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                           transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.1f)}, TextOutline{})
                     .id();
 

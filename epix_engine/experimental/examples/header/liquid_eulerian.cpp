@@ -2688,7 +2688,7 @@ struct Plugin {
         auto mesh_handle = mesh_assets.emplace(build_mesh(sim, thread_pool.get()));
 
         world.spawn(mesh::Mesh2d{mesh_handle},
-                    mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
+                    mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dOpaque{}},
                     transform::Transform{});
 
         world.insert_resource(FluidState{.sim          = std::move(sim),

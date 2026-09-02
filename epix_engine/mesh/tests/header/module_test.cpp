@@ -5,6 +5,16 @@
 
 namespace mesh = epix::mesh;
 
+TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
+    static_assert(std::same_as<mesh::MeshAlphaMode2d,
+                               std::variant<mesh::MeshAlphaMode2dOpaque,
+                                            mesh::MeshAlphaMode2dMask,
+                                            mesh::MeshAlphaMode2dBlend>>);
+    EXPECT_TRUE(std::holds_alternative<mesh::MeshAlphaMode2dOpaque>(mesh::MeshMaterial2d{}.alpha_mode));
+    const mesh::MeshAlphaMode2d mask = mesh::MeshAlphaMode2dMask{.cutoff = 0.35f};
+    EXPECT_EQ(std::get<mesh::MeshAlphaMode2dMask>(mask).cutoff, 0.35f);
+}
+
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh;
     auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});

@@ -74,7 +74,7 @@ struct MeshRenderingVisualTestPlugin {
         world.spawn(mesh::Mesh2d{transparent_circle},
                     mesh::MeshMaterial2d{
                         .color      = glm::vec4(0.16f, 0.62f, 0.96f, 0.55f),
-                        .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                        .alpha_mode = mesh::MeshAlphaMode2dBlend{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(250.0f, 36.0f, 0.1f),
@@ -83,7 +83,7 @@ struct MeshRenderingVisualTestPlugin {
         world.spawn(mesh::Mesh2d{transparent_box},
                     mesh::MeshMaterial2d{
                         .color      = glm::vec4(0.99f, 0.68f, 0.20f, 0.50f),
-                        .alpha_mode = mesh::MeshAlphaMode2d::Blend,
+                        .alpha_mode = mesh::MeshAlphaMode2dBlend{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(300.0f, -18.0f, 0.0f),
@@ -93,7 +93,7 @@ struct MeshRenderingVisualTestPlugin {
                     mesh::MeshTextureMaterial2d{
                         .image      = texture_handle,
                         .color      = glm::vec4(1.0f),
-                        .alpha_mode = mesh::MeshAlphaMode2d::Opaque,
+                        .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(-120.0f, -220.0f, 0.0f),

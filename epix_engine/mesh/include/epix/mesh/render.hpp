@@ -3,6 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
@@ -22,11 +23,17 @@
 #include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
-/** @brief Alpha blending mode for 2D mesh rendering. */
-EPIX_EXPORT enum class MeshAlphaMode2d {
-    Opaque,
-    Blend,
+/** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Opaque`. */
+EPIX_EXPORT struct MeshAlphaMode2dOpaque {};
+/** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Mask(f32)`. */
+EPIX_EXPORT struct MeshAlphaMode2dMask {
+    float cutoff = 0.5f;
+    bool operator==(const MeshAlphaMode2dMask&) const noexcept = default;
 };
+/** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Blend`. */
+EPIX_EXPORT struct MeshAlphaMode2dBlend {};
+/** @brief Alpha mode for 2D meshes (Bevy `AlphaMode2d`). */
+EPIX_EXPORT using MeshAlphaMode2d = std::variant<MeshAlphaMode2dOpaque, MeshAlphaMode2dMask, MeshAlphaMode2dBlend>;
 
 /** @brief Component that associates an entity with a mesh asset for 2D rendering. */
 EPIX_EXPORT struct Mesh2d {
@@ -38,7 +45,7 @@ EPIX_EXPORT struct MeshMaterial2d {
     /** @brief Base color. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Alpha blending mode. */
-    MeshAlphaMode2d alpha_mode = MeshAlphaMode2d::Opaque;
+    MeshAlphaMode2d alpha_mode = MeshAlphaMode2dOpaque{};
 };
 
 /** @brief Textured material for 2D mesh rendering. */
@@ -48,7 +55,7 @@ EPIX_EXPORT struct MeshTextureMaterial2d {
     /** @brief Color tint multiplied with the texture. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Alpha blending mode. */
-    MeshAlphaMode2d alpha_mode = MeshAlphaMode2d::Blend;
+    MeshAlphaMode2d alpha_mode = MeshAlphaMode2dBlend{};
 };
 
 /** @brief Extracted mesh data ready for the render world. */
@@ -79,13 +86,41 @@ EPIX_EXPORT struct MeshBatch {
     std::uint32_t instance_start = 0;
 };
 
+/** @brief Render-world data for one main-world 2D mesh entity (Bevy
+ * `RenderMesh2dInstance`).  Binned phase items intentionally carry only a
+ * `MainEntity`; draw commands recover their mesh and material data here. */
+EPIX_EXPORT struct RenderMesh2dInstance {
+    ExtractedMesh2d extracted;
+    MeshBatch batch;
+};
+
+/** @brief Main-entity keyed render instances (Bevy
+ * `RenderMesh2dInstances`).  This is deliberately a resource rather than
+ * render-entity components: batchable binned items use `Entity::PLACEHOLDER`.
+ */
+EPIX_EXPORT struct RenderMesh2dInstances {
+    render::sync_world::MainEntityHashMap<RenderMesh2dInstance> instances;
+
+    void clear() noexcept { instances.clear(); }
+    auto find(render::sync_world::MainEntity entity) { return instances.find(entity); }
+    auto find(render::sync_world::MainEntity entity) const { return instances.find(entity); }
+    auto end() { return instances.end(); }
+    auto end() const { return instances.end(); }
+};
+
 /** @brief Per-instance data for 2D mesh GPU instancing. */
 EPIX_EXPORT struct MeshInstanceData {
     /** @brief Model transform matrix for this instance. */
     glm::mat4 model;
     /** @brief Tint color for this instance. */
     glm::vec4 color;
+    /** @brief Alpha cutoff for `MeshAlphaMode2dMask`; ignored by other modes. */
+    float alpha_cutoff = 0.0f;
+    /** @brief Explicit storage-buffer tail padding. HLSL lays this element out
+     * at a 16-byte stride after the scalar cutoff. */
+    std::array<float, 3> _padding{};
 };
+static_assert(sizeof(MeshInstanceData) == 96);
 
 /** @brief GPU buffer and bind group for mesh 2D instance data. */
 EPIX_EXPORT struct MeshInstanceBuffer {
@@ -109,7 +144,7 @@ struct BindMesh2dInstances {
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
-            std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>>,
+            std::optional<ecs::Item<>>,
             ecs::ParamSet<ecs::Res<MeshInstanceBuffer>> params,
             const wgpu::RenderPassEncoder& encoder) {
             auto&& [instances] = params.get();
@@ -138,19 +173,20 @@ struct BindMesh2dTexture {
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
-            std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
-            ecs::ParamSet<>,
+            std::optional<ecs::Item<>>,
+            ecs::ParamSet<ecs::Res<RenderMesh2dInstances>> params,
             const wgpu::RenderPassEncoder& encoder) {
-            if (!entity_item) {
+            auto&& [instances] = params.get();
+            const auto instance = instances->find(item.main_entity());
+            if (instance == instances->end()) {
                 return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Failure,
-                    .message =
-                        std::format("[mesh] Mesh entity {:#x} is missing MeshBatch or ExtractedMesh2d during draw.",
-                                    item.entity().index),
+                    .type    = render::phase::RenderCommandError::Type::Skip,
+                    .message = std::format("[mesh] Main entity {:#x} has no RenderMesh2dInstance during draw.",
+                                           item.main_entity().id().index),
                 });
             }
 
-            auto&& [mesh_batch, extracted_mesh] = **entity_item;
+            const auto& [extracted_mesh, mesh_batch] = instance->second;
             if (!extracted_mesh.texture) {
                 return {};
             }
@@ -178,19 +214,20 @@ struct DrawMesh2dBatch {
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
-        std::optional<ecs::Item<const MeshBatch&, const ExtractedMesh2d&>> entity_item,
-        ecs::ParamSet<ecs::Res<render::RenderAssets<Mesh>>> params,
+        std::optional<ecs::Item<>>,
+        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>> params,
         const wgpu::RenderPassEncoder& encoder) {
-        if (!entity_item) {
+        auto&& [instances, gpu_meshes] = params.get();
+        const auto instance = instances->find(item.main_entity());
+        if (instance == instances->end()) {
             return std::unexpected(render::phase::RenderCommandError{
-                .type    = render::phase::RenderCommandError::Type::Failure,
-                .message = std::format("[mesh] Mesh entity {:#x} is missing MeshBatch or ExtractedMesh2d during draw.",
-                                       item.entity().index),
+                .type    = render::phase::RenderCommandError::Type::Skip,
+                .message = std::format("[mesh] Main entity {:#x} has no RenderMesh2dInstance during draw.",
+                                       item.main_entity().id().index),
             });
         }
 
-        auto&& [mesh_batch, extracted_mesh] = **entity_item;
-        auto&& [gpu_meshes]                 = params.get();
+        const auto& extracted_mesh = instance->second.extracted;
         auto* gpu_mesh                      = gpu_meshes->try_get(extracted_mesh.mesh);
         if (!gpu_mesh) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -205,13 +242,14 @@ struct DrawMesh2dBatch {
             return {};
         }
 
-        auto batch_size = render::phase::batch_range_len(item.batch_range);
+        const auto& batch_range = item.batch_range();
+        auto batch_size = render::phase::batch_range_len(batch_range);
         gpu_mesh->bind_to(encoder);
         if (gpu_mesh->is_indexed()) {
             encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
-                                item.batch_range.first);
+                                batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, item.batch_range.first);
+            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, batch_range.first);
         }
         return {};
     }

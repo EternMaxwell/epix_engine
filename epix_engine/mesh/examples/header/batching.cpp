@@ -89,7 +89,7 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.0f);
 
             world.spawn(mesh::Mesh2d{shape_handles[i % 3]},
-                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Opaque},
+                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dOpaque{}},
                         transform::Transform{.translation = translation});
         }
 
@@ -99,7 +99,7 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.01f);
 
             world.spawn(mesh::Mesh2d{box_handle},
-                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                         transform::Transform{.translation = translation});
         }
     }

@@ -509,7 +509,7 @@ void dirty_rect_overlay_system(
             auto handle               = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
             auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
                                                   mesh::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
-                                                                       .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                                                       .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                                                   transform::Transform{.translation = center, .scaler = scaler})
                                             .id();
             st.dirty_rect_overlays[c] = e;
@@ -578,7 +578,7 @@ void freefall_overlay_system(Commands cmd,
         } else {
             auto e = cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
                                mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                                    .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                                    .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                                transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, -0.5f}})
                          .id();
             st.freefall_overlays[c] = e;
@@ -667,7 +667,7 @@ void chunk_chain_overlay_system(
         } else {
             auto handle = meshes->emplace(build_mesh(*entry.ssb));
             auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
-                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                                     transform::Transform{.translation = overlay_tr})
                               .id();
             st.chunk_chain_overlays[entry.entity] = e;
@@ -760,7 +760,7 @@ void body_outline_overlay_system(
         } else {
             auto handle = meshes->emplace(build_mesh(*entry.body));
             auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
-                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2d::Blend},
+                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
                                     transform::Transform{.translation = t, .rotation = entry.rotation})
                               .id();
             st.body_outline_overlays[entry.entity] = e;

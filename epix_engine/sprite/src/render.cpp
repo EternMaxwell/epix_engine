@@ -387,7 +387,7 @@ void queue_sprites_2d(Query<Item<const render::view::ExtractedView&,
                 .depth                 = sprite.depth,
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
-                .batch_range           = {0, 1},
+                .batch_range_value     = {0, 1},
                 .indexed_value         = false,
             });
         }
@@ -429,7 +429,7 @@ void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_gr
             if (!current_texture || *current_texture != sprite.texture) {
                 batch_head                          = item_index;
                 batch.instance_start                = static_cast<std::uint32_t>(instance_buffer->instances.size());
-                phase.items[batch_head].batch_range = {batch.instance_start, batch.instance_start};
+                phase.items[batch_head].batch_range() = {batch.instance_start, batch.instance_start};
                 if (auto it = texture_bind_group_cache.find(sprite.texture); it != texture_bind_group_cache.end()) {
                     batch.texture_bind_group = it->second;
                 } else {
@@ -447,7 +447,8 @@ void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_gr
             }
 
             instance_buffer->instances.push_back(make_instance_data(sprite));
-            phase.items[batch_head].batch_range.second = static_cast<std::uint32_t>(instance_buffer->instances.size());
+            phase.items[batch_head].batch_range().second =
+                static_cast<std::uint32_t>(instance_buffer->instances.size());
         }
     }
 
