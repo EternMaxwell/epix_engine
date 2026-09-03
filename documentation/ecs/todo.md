@@ -15,6 +15,19 @@ requires restoring `set_table` for all built-in query data and filters, exposing
 density metadata, and teaching query iteration to select the table path only
 when every involved component uses dense table storage.
 
+## TaskflowExecutor scheduling bug
+
+`TaskflowExecutor` (in `schedule/taskflow_executor.cpp`) can schedule systems
+incompletely or out of order: it intermittently renders the frame incomplete
+(white window) and produces large startup frame spikes (53–130 ms, the startup
+low-FPS diagnosed on the mesh batching example). It was excluded from
+`AutoExecutor`'s candidates as a stop-gap (commit `332e936a`). Root-cause the
+precedence/topology logic in `build_taskflow`: ordering edges come only from
+`depends` plus access-conflict edges, so systems that are access-compatible with
+`render_system` receive no ordering edge and can race it when the set-chain
+`depends` is incomplete for that pair. Restore `TaskflowExecutor` to the auto
+candidates once fixed.
+
 ## Recently completed
 
 - Required components can be declared through a component's static
