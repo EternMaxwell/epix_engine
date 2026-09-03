@@ -10,7 +10,10 @@ struct AutoExecutor::Impl {
     std::size_t last_index = std::numeric_limits<std::size_t>::max();
 
     Impl() {
-        m_executors.emplace_back(std::make_unique<TaskflowExecutor>(), 0.0);
+        // TaskflowExecutor is excluded from AutoExecutor's candidates: it has a
+        // scheduling/correctness bug that intermittently renders an incomplete
+        // (white-window) frame and produces large startup frame spikes. The
+        // remaining candidates (flat/classic/single) are stable and parallel.
         m_executors.emplace_back(std::make_unique<MultithreadFlatExecutor>(), 0.0);
         m_executors.emplace_back(std::make_unique<MultithreadClassicExecutor>(), 0.0);
         m_executors.emplace_back(std::make_unique<SingleThreadExecutor>(), 0.0);
