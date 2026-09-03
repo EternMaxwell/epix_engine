@@ -17,6 +17,15 @@
 
 #include <epix/mesh/mesh.hpp>
 
+EPIX_EXPORT namespace std {
+    template <>
+    struct hash<epix::assets::AssetId<epix::mesh::Mesh>> {
+        std::size_t operator()(const epix::assets::AssetId<epix::mesh::Mesh>& id) const {
+            return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
+        }
+    };
+}  // namespace std
+
 namespace epix::mesh {
 /** @brief Tunable mesh-allocator parameters (Bevy 0.18 `MeshAllocatorSettings`).
  *
@@ -180,6 +189,16 @@ EPIX_EXPORT struct MeshAllocator {
     std::uint64_t next_slab_id = 0;
     /** @brief General slabs keyed by slab id. */
     std::map<SlabId, GeneralSlab> slabs;
+    /// Mesh asset id -> slab holding its vertex data (Bevy `MeshAllocator::mesh_id_to_vertex_slab`).
+    std::unordered_map<epix::assets::AssetId<Mesh>, SlabId> mesh_id_to_vertex_slab;
+    /// Mesh asset id -> slab holding its index data (Bevy `MeshAllocator::mesh_id_to_index_slab`).
+    std::unordered_map<epix::assets::AssetId<Mesh>, SlabId> mesh_id_to_index_slab;
+
+    /** @brief Record which slab holds a mesh's vertex/index data (Bevy
+     * `MeshAllocator::record_allocation`). */
+    void record_allocation(const epix::assets::AssetId<Mesh>& id, SlabId slab, bool is_vertex) {
+        (is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab)[id] = slab;
+    }
 
     /** @brief Reserve `slot_count` slots for a payload of `layout` in a general
      * slab, creating one if needed. Returns the chosen slab id + allocation, or
@@ -204,8 +223,13 @@ EPIX_EXPORT struct MeshAllocator {
      * `mesh_index_slice`). */
     std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
     /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
-    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(const epix::assets::AssetId<Mesh>&) const {
-        return {std::optional<SlabId>{}, {}};
+    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(
+        const epix::assets::AssetId<Mesh>& id) const {
+        std::optional<SlabId> vertex;
+        if (auto it = mesh_id_to_vertex_slab.find(id); it != mesh_id_to_vertex_slab.end()) vertex = it->second;
+        std::optional<SlabId> index;
+        if (auto it = mesh_id_to_index_slab.find(id); it != mesh_id_to_index_slab.end()) index = it->second;
+        return {vertex, index};
     }
     /** @brief Number of allocated slabs (Bevy `slab_count`). */
     std::size_t slab_count() const noexcept { return slabs.size(); }
@@ -332,11 +356,3 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     }
 };
 
-EPIX_EXPORT namespace std {
-    template <>
-    struct hash<epix::assets::AssetId<epix::mesh::Mesh>> {
-        std::size_t operator()(const epix::assets::AssetId<epix::mesh::Mesh>& id) const {
-            return std::visit([]<typename T>(const T& value) { return std::hash<T>()(value); }, id);
-        }
-    };
-}  // namespace std
