@@ -820,7 +820,7 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                                                         .draw_func = opaque_draw_function_id->value,
                                                         .asset_id = assets::UntypedAssetId(extracted_mesh.mesh),
                                                         .material_bind_group_id = material_bind_group_id},
-                    ecs::Entity::PLACEHOLDER, main_entity, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
+                    {ecs::Entity::PLACEHOLDER, main_entity}, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
                     ecs::Tick{});
             } else {
                 alpha_mask_phase->second.add(
@@ -829,7 +829,7 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                                                            .draw_func = alpha_mask_draw_function_id->value,
                                                            .asset_id = assets::UntypedAssetId(extracted_mesh.mesh),
                                                            .material_bind_group_id = material_bind_group_id},
-                    ecs::Entity::PLACEHOLDER, main_entity, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
+                    {ecs::Entity::PLACEHOLDER, main_entity}, render::phase::InputUniformIndex{}, render::phase::BinnedRenderPhaseType::BatchableMesh,
                     ecs::Tick{});
             }
         }

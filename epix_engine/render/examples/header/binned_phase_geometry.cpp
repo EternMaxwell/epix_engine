@@ -271,13 +271,14 @@ struct BinnedGeometryNode {
                                                              std::nullopt, 0};
         phase = render::phase::BinnedRenderPhase<Item>{render::batching::GpuPreprocessingMode::Culling};
         for (std::uint32_t index = 0; index < 3; ++index) {
-            phase.add(0, 0, Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index)},
+            phase.add(0, 0,
+                      {Entity::from_index(100 + index), render::sync_world::MainEntity{Entity::from_index(index)}},
                       render::phase::InputUniformIndex{index}, render::phase::BinnedRenderPhaseType::MultidrawableMesh,
                       tick);
         }
         for (std::uint32_t index = 0; index < 2; ++index) {
-            phase.add(0, 1, Entity::from_index(200 + index),
-                      render::sync_world::MainEntity{Entity::from_index(index + 3)},
+            phase.add(0, 1,
+                      {Entity::from_index(200 + index), render::sync_world::MainEntity{Entity::from_index(index + 3)}},
                       render::phase::InputUniformIndex{index + 3},
                       render::phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
         }

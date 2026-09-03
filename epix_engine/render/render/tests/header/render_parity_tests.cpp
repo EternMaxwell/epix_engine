@@ -1012,11 +1012,11 @@ static_assert(batching::GetFullBatchDataImpl<CpuBinnedBatchTestAdapter>);
 TEST(CpuBinnedBatching, BuildsContiguousBinAndUnbatchableRanges) {
     phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase;
     const Tick tick{1};
-    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+    render_phase.add(0, 0, {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)}},
                      phase::InputUniformIndex{0}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    render_phase.add(0, 0, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+    render_phase.add(0, 0, {Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)}},
                      phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    render_phase.add(0, 1, Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)},
+    render_phase.add(0, 1, {Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)}},
                      phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
 
     wgpu::Limits limits{};
@@ -1201,11 +1201,11 @@ TEST(GpuPreprocessWorkItems, KeepsPerViewClassStreamsAndLateDispatchSlots) {
 TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
     phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{batching::GpuPreprocessingMode::PreprocessingOnly};
     const Tick tick{1};
-    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+    render_phase.add(0, 0, {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)}},
                      phase::InputUniformIndex{3}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    render_phase.add(0, 0, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+    render_phase.add(0, 0, {Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)}},
                      phase::InputUniformIndex{4}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    render_phase.add(0, 1, Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)},
+    render_phase.add(0, 1, {Entity::from_index(12), sync_world::MainEntity{Entity::from_index(3)}},
                      phase::InputUniformIndex{5}, phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
 
     batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
@@ -1234,7 +1234,7 @@ TEST(GpuBinnedPreprocessing, BuildsDirectWorkItemsAndPreparedBatches) {
 TEST(GpuBinnedPreprocessing, ReservesGpuOutputForNonDefaultConstructibleData) {
     phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{batching::GpuPreprocessingMode::PreprocessingOnly};
     const Tick tick{1};
-    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+    render_phase.add(0, 0, {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)}},
                      phase::InputUniformIndex{3}, phase::BinnedRenderPhaseType::BatchableMesh, tick);
 
     batching::UntypedPhaseBatchedInstanceBuffers<GpuWrittenBinnedBatchData> phase_buffers;
@@ -1252,9 +1252,9 @@ TEST(GpuBinnedPreprocessing, ReservesGpuOutputForNonDefaultConstructibleData) {
 TEST(GpuBinnedPreprocessing, BuildsIndirectMultidrawMetadataAndWorkItems) {
     phase::BinnedRenderPhase<CpuBinnedBatchTestItem> render_phase{batching::GpuPreprocessingMode::Culling};
     const Tick tick{1};
-    render_phase.add(0, 0, Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)},
+    render_phase.add(0, 0, {Entity::from_index(10), sync_world::MainEntity{Entity::from_index(1)}},
                      phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
-    render_phase.add(0, 1, Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)},
+    render_phase.add(0, 1, {Entity::from_index(11), sync_world::MainEntity{Entity::from_index(2)}},
                      phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
 
     batching::UntypedPhaseBatchedInstanceBuffers<std::uint32_t> phase_buffers;
@@ -1388,11 +1388,11 @@ TEST(BinnedRenderPhase, BinsByKey) {
     const sync_world::MainEntity m1{Entity::from_index(1)};
     const sync_world::MainEntity m2{Entity::from_index(2)};
     const sync_world::MainEntity m3{Entity::from_index(3)};
-    phase.add(0, 0, Entity::from_index(10), m1, phase::InputUniformIndex{0},
+    phase.add(0, 0, {Entity::from_index(10), m1}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    phase.add(0, 0, Entity::from_index(11), m2, phase::InputUniformIndex{1},
+    phase.add(0, 0, {Entity::from_index(11), m2}, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    phase.add(0, 1, Entity::from_index(12), m3, phase::InputUniformIndex{2},
+    phase.add(0, 1, {Entity::from_index(12), m3}, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
 
     auto* bin0 = phase.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
@@ -1687,11 +1687,11 @@ TEST(BinnedRenderPhase, PreservesMultidrawableItemsOutsideDirectPreprocessing) {
     const sync_world::MainEntity m1{Entity::from_index(1)};
     const sync_world::MainEntity m2{Entity::from_index(2)};
     const sync_world::MainEntity m3{Entity::from_index(3)};
-    phase.add(0, 0, Entity::from_index(10), m1, phase::InputUniformIndex{0},
+    phase.add(0, 0, {Entity::from_index(10), m1}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
-    phase.add(0, 0, Entity::from_index(11), m2, phase::InputUniformIndex{1},
+    phase.add(0, 0, {Entity::from_index(11), m2}, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
-    phase.add(0, 0, Entity::from_index(12), m3, phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::NonMesh,
+    phase.add(0, 0, {Entity::from_index(12), m3}, phase::InputUniformIndex{2}, phase::BinnedRenderPhaseType::NonMesh,
               tick);
 
     auto* multidrawable = phase.multidrawable_meshes.get(0);
@@ -1720,14 +1720,14 @@ TEST(BinnedRenderPhase, UsesBatchSetsThatMatchGpuPreprocessingMode) {
     EXPECT_EQ(culling.batch_sets.index(), 2u);
 
     const sync_world::MainEntity entity{Entity::from_index(1)};
-    direct.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
+    direct.add(0, 0, {Entity::from_index(10), entity}, phase::InputUniformIndex{0},
                phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
     EXPECT_TRUE(direct.multidrawable_meshes.empty());
     auto* direct_bin = direct.batchable_meshes.get(phase::BinKeyPair<TestBatchSetKey, int>{0, 0});
     ASSERT_NE(direct_bin, nullptr);
     EXPECT_EQ(direct_bin->entities().size(), 1u);
 
-    culling.add(0, 0, Entity::from_index(10), entity, phase::InputUniformIndex{0},
+    culling.add(0, 0, {Entity::from_index(10), entity}, phase::InputUniformIndex{0},
                 phase::BinnedRenderPhaseType::MultidrawableMesh, Tick(1));
     ASSERT_NE(culling.multidrawable_meshes.get(0), nullptr);
     EXPECT_EQ(culling.multidrawable_meshes.get(0)->get(0)->entities().size(), 1u);
@@ -1759,19 +1759,19 @@ TEST(BinnedRenderPhase, SweepSwapRemovesUnqueuedAndRetainsMovedValidEntries) {
     const sync_world::MainEntity e1{Entity::from_index(1)};
     const sync_world::MainEntity e2{Entity::from_index(2)};
     const sync_world::MainEntity e3{Entity::from_index(3)};
-    phase.add(0, 0, Entity::from_index(10), e1, phase::InputUniformIndex{0},
+    phase.add(0, 0, {Entity::from_index(10), e1}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
-    phase.add(0, 0, Entity::from_index(11), e2, phase::InputUniformIndex{1},
+    phase.add(0, 0, {Entity::from_index(11), e2}, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
-    phase.add(0, 0, Entity::from_index(12), e3, phase::InputUniformIndex{2},
+    phase.add(0, 0, {Entity::from_index(12), e3}, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
 
     // Frame two leaves the first cached entity stale. The valid final entry
     // moves into its cache and RenderBin slot during Bevy-style swap removal.
     phase.prepare_for_new_frame();
-    phase.add(0, 0, Entity::from_index(11), e2, phase::InputUniformIndex{1},
+    phase.add(0, 0, {Entity::from_index(11), e2}, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
-    phase.add(0, 0, Entity::from_index(12), e3, phase::InputUniformIndex{2},
+    phase.add(0, 0, {Entity::from_index(12), e3}, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
     phase.sweep_old_entities();
 
@@ -1794,10 +1794,10 @@ TEST(BinnedRenderPhase, SweepSwapRemovesUnqueuedAndRetainsMovedValidEntries) {
 TEST(BinnedRenderPhase, ChangedBinMoved) {
     phase::BinnedRenderPhase<TestBinnedItem> phase;
     const sync_world::MainEntity e1{Entity::from_index(1)};
-    phase.add(0, 0, Entity::from_index(10), e1, phase::InputUniformIndex{0},
+    phase.add(0, 0, {Entity::from_index(10), e1}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
     phase.prepare_for_new_frame();
-    phase.add(0, 1, Entity::from_index(10), e1, phase::InputUniformIndex{0},
+    phase.add(0, 1, {Entity::from_index(10), e1}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, Tick(2));
     phase.sweep_old_entities();
 
@@ -1824,9 +1824,9 @@ TEST(BinnedRenderPhase, SortsKeysBeforePreparation) {
     phases.prepare_for_new_frame(view, batching::GpuPreprocessingMode::None);
     auto& render_phase = phases.phases.at(view);
     // Queue in reverse order: PhaseSort must establish deterministic key order.
-    render_phase.add(2, 3, Entity::from_index(21), sync_world::MainEntity{Entity::from_index(21)},
+    render_phase.add(2, 3, {Entity::from_index(21), sync_world::MainEntity{Entity::from_index(21)}},
                      phase::InputUniformIndex{0}, phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
-    render_phase.add(1, 2, Entity::from_index(22), sync_world::MainEntity{Entity::from_index(22)},
+    render_phase.add(1, 2, {Entity::from_index(22), sync_world::MainEntity{Entity::from_index(22)}},
                      phase::InputUniformIndex{1}, phase::BinnedRenderPhaseType::BatchableMesh, Tick(1));
     world.insert_resource(std::move(phases));
 
@@ -3407,16 +3407,16 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
     phase::BinnedRenderPhase<RenderableBinnedItem> phase;
     const auto tick = world.change_tick();
     // Two batchable bins with different keys.
-    phase.add(0, 7, Entity{1}, sync_world::MainEntity{Entity{1}}, phase::InputUniformIndex{0},
+    phase.add(0, 7, {Entity{1}, sync_world::MainEntity{Entity{1}}}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    phase.add(0, 7, Entity{2}, sync_world::MainEntity{Entity{2}}, phase::InputUniformIndex{1},
+    phase.add(0, 7, {Entity{2}, sync_world::MainEntity{Entity{2}}}, phase::InputUniformIndex{1},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    phase.add(1, 9, Entity{3}, sync_world::MainEntity{Entity{3}}, phase::InputUniformIndex{2},
+    phase.add(1, 9, {Entity{3}, sync_world::MainEntity{Entity{3}}}, phase::InputUniformIndex{2},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
     // One unbatchable mesh and one non-mesh entity.
-    phase.add(0, 11, Entity{4}, sync_world::MainEntity{Entity{4}}, phase::InputUniformIndex{3},
+    phase.add(0, 11, {Entity{4}, sync_world::MainEntity{Entity{4}}}, phase::InputUniformIndex{3},
               phase::BinnedRenderPhaseType::UnbatchableMesh, tick);
-    phase.add(0, 13, Entity{5}, sync_world::MainEntity{Entity{5}}, phase::InputUniformIndex{4},
+    phase.add(0, 13, {Entity{5}, sync_world::MainEntity{Entity{5}}}, phase::InputUniformIndex{4},
               phase::BinnedRenderPhaseType::NonMesh, tick);
 
     // Binned rendering consumes the mode-owned prepared representation. The
@@ -3448,9 +3448,9 @@ TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
 
     CountingBinnedDraw::calls = 0;
     phase::BinnedRenderPhase<RenderableBinnedItem> direct{batching::GpuPreprocessingMode::PreprocessingOnly};
-    direct.add(0, 7, Entity{1}, sync_world::MainEntity{Entity{1}}, phase::InputUniformIndex{0},
+    direct.add(0, 7, {Entity{1}, sync_world::MainEntity{Entity{1}}}, phase::InputUniformIndex{0},
                phase::BinnedRenderPhaseType::BatchableMesh, tick);
-    direct.add(1, 9, Entity{2}, sync_world::MainEntity{Entity{2}}, phase::InputUniformIndex{1},
+    direct.add(1, 9, {Entity{2}, sync_world::MainEntity{Entity{2}}}, phase::InputUniformIndex{1},
                phase::BinnedRenderPhaseType::BatchableMesh, tick);
     std::get<1>(direct.batch_sets) = {
         {.representative_entity = {Entity::PLACEHOLDER, sync_world::MainEntity{Entity{1}}}, .instance_range = {4, 6}},
@@ -3463,7 +3463,7 @@ TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
 
     CountingBinnedDraw::calls = 0;
     phase::BinnedRenderPhase<RenderableBinnedItem> multidraw{batching::GpuPreprocessingMode::Culling};
-    multidraw.add(0, 3, Entity{3}, sync_world::MainEntity{Entity{3}}, phase::InputUniformIndex{2},
+    multidraw.add(0, 3, {Entity{3}, sync_world::MainEntity{Entity{3}}}, phase::InputUniformIndex{2},
                   phase::BinnedRenderPhaseType::MultidrawableMesh, tick);
     std::get<2>(multidraw.batch_sets)
         .push_back({
@@ -3487,7 +3487,7 @@ TEST(BinnedRenderPhase, EmptyPreparedSetDoesNotFallbackToRawBins) {
     world.insert_resource(std::move(functions));
     const auto tick = world.change_tick();
     phase::BinnedRenderPhase<RenderableBinnedItem> phase;
-    phase.add(0, 7, Entity{1}, sync_world::MainEntity{Entity{1}}, phase::InputUniformIndex{0},
+    phase.add(0, 7, {Entity{1}, sync_world::MainEntity{Entity{1}}}, phase::InputUniformIndex{0},
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
 
     CountingBinnedDraw::calls = 0;

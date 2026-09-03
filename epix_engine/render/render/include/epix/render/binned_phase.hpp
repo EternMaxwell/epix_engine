@@ -357,19 +357,18 @@ class BinnedRenderPhase {
      * @brief Bins a new entity (Bevy `BinnedRenderPhase::add`).
      * @param batch_set_key Key of the batch set containing the entity.
      * @param bin_key Key of the bin containing the entity.
-     * @param render_entity The render-world entity.
-     * @param main_entity The main-world entity.
+     * @param representative_entity The render-world/main-world entity pair.
      * @param input_uniform_index Index of the entity's input uniform.
      * @param phase_type How the entity is rendered.
      * @param change_tick The current change tick of the world.
      */
     void add(BatchSetKey batch_set_key,
              BinKey bin_key,
-             epix::ecs::Entity render_entity,
-             sync_world::MainEntity main_entity,
+             std::pair<epix::ecs::Entity, sync_world::MainEntity> representative_entity,
              InputUniformIndex input_uniform_index,
              BinnedRenderPhaseType phase_type,
              ecs::Tick change_tick) {
+        const auto [render_entity, main_entity] = representative_entity;
         // Match Bevy: only the direct preprocessing path overrides indirect
         // drawing. Culling keeps multidrawable bins separate.
         if (gpu_preprocessing_mode == batching::GpuPreprocessingMode::PreprocessingOnly &&
