@@ -99,6 +99,22 @@ EPIX_EXPORT inline std::pair<std::uint32_t, SlabGrowthResultKind> compute_grow_c
     return {capacity, SlabGrowthResultKind::NeededGrowth};
 }
 
+/** @brief Allocation decision for one mesh payload (Bevy
+ * `MeshAllocator::allocate`). Returns the number of slots needed and whether the
+ * payload is large enough to deserve its own slab. */
+EPIX_EXPORT inline std::pair<std::uint32_t, bool> compute_allocation(std::uint64_t data_byte_len,
+                                                                      const ElementLayout& layout,
+                                                                      const MeshAllocatorSettings& settings) {
+    const std::uint32_t data_element_count =
+        static_cast<std::uint32_t>((data_byte_len + layout.size - 1) / layout.size);
+    const std::uint32_t data_slot_count =
+        static_cast<std::uint32_t>((data_element_count + layout.elements_per_slot - 1) / layout.elements_per_slot);
+    const std::uint64_t threshold = settings.large_threshold < settings.max_slab_size ? settings.large_threshold
+                                                                                      : settings.max_slab_size;
+    const bool is_large = static_cast<std::uint64_t>(data_slot_count) * layout.slot_size() >= threshold;
+    return {data_slot_count, is_large};
+}
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,

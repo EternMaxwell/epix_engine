@@ -124,6 +124,24 @@ TEST(MeshModule, ComputeGrowCapacity) {
     EXPECT_EQ(r.first, 4u);
 }
 
+// compute_allocation mirrors Bevy MeshAllocator::allocate decision.
+TEST(MeshModule, ComputeAllocationDecision) {
+    const mesh::MeshAllocatorSettings s;
+    // float3 vertex (size 12, 1 elem/slot), 24 bytes (2 vertices): 2 slots, general.
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    auto r         = mesh::compute_allocation(24, v12, s);
+    EXPECT_EQ(r.first, 2u);
+    EXPECT_FALSE(r.second);
+    // u16 index (size 2, 2 elem/slot), 6 bytes (3 u16): ceil(3/2)=2 slots, general.
+    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
+    r              = mesh::compute_allocation(6, i16, s);
+    EXPECT_EQ(r.first, 2u);
+    EXPECT_FALSE(r.second);
+    // Payload large enough to exceed the 256 MiB large threshold -> own slab.
+    r = mesh::compute_allocation(300ull * 1024 * 1024, v12, s);
+    EXPECT_TRUE(r.second);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
