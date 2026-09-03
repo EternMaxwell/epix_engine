@@ -151,6 +151,68 @@ void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
     g.add_sub_graph(Core2d, std::move(g2d));
 }
 
+void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
+    Commands cmd,
+    ResMut<render::render_resource::TextureCache> texture_cache,
+    Res<wgpu::Device> device,
+    Res<phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
+    Res<phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
+    Query<Item<Entity,
+               const render::camera::ExtractedCamera&,
+               const render::view::ExtractedView&,
+               const render::view::Msaa&>> views) {
+    // Bevy queries `(Entity, &ExtractedCamera, &ExtractedView, &Msaa)` `with
+    // (With<Camera2d>,)`. Epix extracts Camera2d onto the synced render entity
+    // while `extract_cameras` spawns the ExtractedCamera view entity separately,
+    // so the phase-containment checks below (filled by
+    // `extract_core_2d_camera_phases` only for Camera2d views) are the C++
+    // equivalent of the `With<Camera2d>` discriminator.
+    // Bevy caches one depth texture per output target per frame, so cameras
+    // compositing onto the same target share it (prepare_core_2d_depth_textures).
+    std::unordered_map<::epix::camera::RenderTargetId, render::render_resource::CachedTexture,
+                       ::epix::camera::RenderTargetIdHash>
+        textures;
+    for (auto&& [entity, camera, extracted_view, msaa] : views.iter()) {
+        const auto& retained_view = extracted_view.retained_view_entity;
+        if (!opaque_phases->phases.contains(retained_view) || !transparent_phases->contains(retained_view)) {
+            continue;
+        }
+        if (!camera.target || !camera.physical_target_size) {
+            continue;
+        }
+        const auto size = *camera.physical_target_size;
+        if (size.x == 0 || size.y == 0) {
+            continue;
+        }
+
+        const auto sample_count = render::view::samples(msaa);
+        auto it = textures.find(camera.target->identity());
+        if (it == textures.end()) {
+            wgpu::TextureDescriptor descriptor;
+            descriptor.setLabel("view_depth_texture")
+                .setSize({size.x, size.y, 1})
+                .setMipLevelCount(1)
+                .setSampleCount(sample_count)
+                .setDimension(wgpu::TextureDimension::e2D)
+                .setFormat(wgpu::TextureFormat::eDepth32Float)
+                .setUsage(wgpu::TextureUsage::eRenderAttachment);
+            const render::render_resource::TextureCacheKey key{
+                .format = wgpu::TextureFormat::eDepth32Float,
+                .dimension = wgpu::TextureDimension::e2D,
+                .width = size.x,
+                .height = size.y,
+                .depth_or_array_layers = 1,
+                .mip_level_count = 1,
+                .sample_count = sample_count,
+                .usage = wgpu::TextureUsage::eRenderAttachment,
+                .label = "view_depth_texture",
+            };
+            it = textures.emplace(camera.target->identity(), texture_cache->get(*device, key, descriptor)).first;
+        }
+        cmd.entity(entity).insert(render::view::ViewDepthTexture::create(it->second, 0.0f));
+    }
+}
+
 void Core2dPlugin::attach(App& app) {
     // Mirror Core2dPlugin::build: Camera2d gets the Core2D graph plus the
     // component defaults that define a plain 2D camera output path.
@@ -173,6 +235,9 @@ void Core2dPlugin::attach(App& app) {
         render_app.add_systems(Render, into(phase::sort_phase_system<Transparent2D>)
                                            .in_set(RenderSystems::PhaseSort)
                                            .set_name("sort transparent 2d phase"));
+        render_app.add_systems(Render, into(prepare_core_2d_depth_textures)
+                                           .in_set(RenderSystems::PrepareResources)
+                                           .set_name("prepare core 2d depth textures"));
         render_app.add_systems(ExtractSchedule,
                                into(extract_core2d_camera_phases).set_name("extract core 2d camera phases"));
         return std::make_optional(std::ref(render_app));

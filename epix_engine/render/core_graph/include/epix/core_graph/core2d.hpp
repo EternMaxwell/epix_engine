@@ -224,6 +224,20 @@ EPIX_EXPORT struct Core2dPlugin {
     void attach(app::App& app);
 };
 
+/** @brief Prepare depth attachments for live Core2D views (Bevy
+ * `prepare_core_2d_depth_textures`). The general view plugin deliberately
+ * does not allocate depth for arbitrary cameras. */
+void prepare_core_2d_depth_textures(
+    ecs::Commands cmd,
+    ecs::ResMut<render::render_resource::TextureCache> texture_cache,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<render::phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const render::camera::ExtractedCamera&,
+                         const render::view::ExtractedView&,
+                         const render::view::Msaa&>> views);
+
 }  // namespace epix::core_graph::core_2d
 
 template <>

@@ -282,63 +282,6 @@ void view::cleanup_view_targets_for_resize(Commands cmd,
     }
 }
 
-void view::create_view_depth(Query<Item<Entity, const camera::ExtractedCamera&, const view::Msaa&>> views,
-                             Res<wgpu::Device> device,
-                             ResMut<ViewDepthCache> depth_cache,
-                             Commands cmd) {
-    for (auto&& [entity, camera, msaa] : views.iter()) {
-        // Size the depth texture from the camera's full target size (Bevy
-        // core_2d prepare_core_2d_depth_textures); the viewport only clips.
-        if (!camera.physical_target_size) continue;
-        glm::uvec2 size = *camera.physical_target_size;
-        if (size.x == 0 || size.y == 0) {
-            continue;  // invalid size
-        }
-        const ViewDepthCacheKey cache_key{size, samples(msaa)};
-        // Create a depth texture with the same sample count as the main pass.
-        wgpu::Texture texture;
-        if (auto it = depth_cache->cache.find(cache_key); it != depth_cache->cache.end()) {
-            texture = std::move(it->second);
-            depth_cache->cache.erase(it);
-        } else {
-            wgpu::TextureDescriptor desc;
-            desc.setSize({size.x, size.y, 1})
-                .setFormat(wgpu::TextureFormat::eDepth32Float)
-                // Bevy's view depth textures are attachment-only. In
-                // particular, COPY_SRC is invalid/unusable for a
-                // multisampled texture and poisons the command encoder.
-                .setUsage(wgpu::TextureUsage::eRenderAttachment)
-                .setDimension(wgpu::TextureDimension::e2D)
-                .setSampleCount(cache_key.sample_count)
-                .setMipLevelCount(1)
-                .setLabel("ViewDepthTexture");
-            texture = device.get().createTexture(desc);
-            if (!texture) {
-                spdlog::error("Failed to create depth texture for view with size {}x{}", size.x, size.y);
-                continue;
-            }
-        }
-        auto view = texture.createView();
-        // The first main pass clears this attachment (Bevy
-        // ViewDepthTexture::get_attachment); no separate depth-only command
-        // buffer is needed.
-        cmd.entity(entity).insert(
-            view::ViewDepthTexture{std::move(texture), render_resource::DepthAttachment(std::move(view), 0.0f)});
-    }
-}
-
-void clear_cache(ResMut<ViewDepthCache> depth_cache) { depth_cache->cache.clear(); }
-
-void recycle_depth(Query<const view::ViewDepthTexture&> depths, ResMut<ViewDepthCache> depth_cache) {
-    for (auto&& depth : depths.iter()) {
-        if (depth.texture) {
-            const ViewDepthCacheKey key{{depth.texture.getWidth(), depth.texture.getHeight()},
-                                        depth.texture.getSampleCount()};
-            depth_cache->cache[key] = depth.texture;
-        }
-    }
-}
-
 std::size_t getOffsetInUniform(std::size_t index, std::size_t size, std::size_t alignment) {
     std::size_t stride = (size + alignment - 1) / alignment * alignment;
     return index * stride;
@@ -480,7 +423,6 @@ void view::ViewPlugin::attach(App& app) {
         // to be used without a renderer, as Bevy permits.
         auto& render_world = sub_app->get().world_mut();
         render_world.insert_resource(ViewUniformBindingLayout(render_world));
-        render_world.insert_resource(ViewDepthCache{});
         // Bevy view/mod.rs:141-142: ViewUniforms + ViewTargetAttachments are
         // initialized in the render app (clear_view_attachments needs the latter).
         sub_app->get().world_mut().init_resource<ViewTargetAttachments>();
@@ -512,19 +454,13 @@ void view::ViewPlugin::attach(App& app) {
                                                .before(prepare_view_target)
                                                .in_set(RenderSystems::ManageViews)
                                                .set_name("prepare view attachments"));
-        sub_app->get().add_systems(Render, into(prepare_view_target, create_view_depth)
+        sub_app->get().add_systems(Render, into(prepare_view_target)
                                                .after(prepare_view_attachments)
                                                .in_set(RenderSystems::ManageViews)
-                                               .set_names(std::array{"prepare view targets", "create view depths"}));
-        sub_app->get().add_systems(
-            Render, into(clear_cache).after(RenderSystems::ManageViews).set_name("clear view depth cache"));
+                                               .set_name("prepare view targets"));
         sub_app->get().add_systems(Render, into(create_uniform_for_view)
                                                .in_set(render::RenderSystems::PrepareResources)
                                                .set_name("create view uniforms"));
-        sub_app->get().add_systems(Render, into(recycle_depth)
-                                               .after(RenderSystems::Render)
-                                               .before(RenderSystems::Cleanup)
-                                               .set_name("recycle view depths"));
     }
 }
 

@@ -394,41 +394,9 @@ EPIX_EXPORT struct ViewDepthTexture {
     const wgpu::TextureView& view() const noexcept { return attachment.view; }
 };
 
-EPIX_EXPORT struct UVec2Hash {
-    std::size_t operator()(const glm::uvec2& v) const noexcept {
-        std::size_t h = (static_cast<std::size_t>(v.x) << 32) | v.y;
-        h ^= h >> 33;
-        h *= 0xff51afd7ed558ccdULL;
-        h ^= h >> 33;
-        h *= 0xc4ceb9fe1a85ec53ULL;
-        h ^= h >> 33;
-        return h;
-    }
-};
-/** @brief Key for a reusable view-depth texture. Multisample count is part of
- * the key because a 1x depth attachment
- * cannot be paired with a 4x main
- * color attachment. */
-EPIX_EXPORT struct ViewDepthCacheKey {
-    glm::uvec2 size{};
-    std::uint32_t sample_count                               = 1;
-    bool operator==(const ViewDepthCacheKey&) const noexcept = default;
-};
-EPIX_EXPORT struct ViewDepthCacheKeyHash {
-    std::size_t operator()(const ViewDepthCacheKey& key) const noexcept {
-        std::size_t h = UVec2Hash{}(key.size);
-        return h ^ (static_cast<std::size_t>(key.sample_count) + 0x9e3779b9 + (h << 6) + (h >> 2));
-    }
-};
-/** @brief Cache of depth textures keyed by size and sample count to avoid
- * re-creation each frame. */
-EPIX_EXPORT struct ViewDepthCache {
-    /** @brief Map from compatible attachment descriptors to cached depth textures. */
-    std::unordered_map<ViewDepthCacheKey, wgpu::Texture, ViewDepthCacheKeyHash> cache;
-};
-
 /** @brief Plugin that registers view extraction, target preparation, and
- * depth buffer creation systems. */
+ * output-target preparation systems. Core pipeline plugins own depth-texture
+ * preparation for the views they render. */
 EPIX_EXPORT struct ViewPlugin {
     void attach(epix::app::App& app);
 };
@@ -451,12 +419,6 @@ void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::e
                                                                           epix::ecs::Mut<::epix::camera::Projection>,
                                                                           const ::epix::camera::RenderTarget&>> cameras,
                                          epix::ecs::Res<texture::ManualTextureViews> manual_texture_views);
-
-void create_view_depth(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&, const Msaa&>> views,
-    epix::ecs::Res<wgpu::Device> device,
-    epix::ecs::ResMut<ViewDepthCache> depth_cache,
-    epix::ecs::Commands cmd);
 
 /** @brief Uniform buffer data for a view (Bevy 0.18 ViewUniform).
  *
