@@ -1,4 +1,4 @@
-﻿// epix.tasks API tests — header build variant
+// epix.tasks API tests — header build variant
 
 #include <gtest/gtest.h>
 
@@ -93,6 +93,32 @@ TEST(Scope, ManyTasks) {
         for (int i = 0; i < N; ++i) s.spawn([i]() { return i; });
     });
     EXPECT_EQ(results.size(), static_cast<size_t>(N));
+}
+
+// Regression: Scope::spawn previously resized the results vector WITHOUT the
+// results mutex, so a still-running earlier task could write into the buffer
+// freed by a later spawn's resize, corrupting the collected result (surfaced in
+// the render graph as an intermittent wgpu "invalid command buffer" at startup).
+// Verify every slot's value survives concurrent growth while tasks overlap with
+// the spawn loop's resizes.
+TEST(Scope, ConcurrentGrowthPreservesEveryResult) {
+    auto pool = TaskPoolBuilder{}.num_threads(4).build();
+    constexpr int N = 256;
+    auto results    = pool.scope<int>([&](Scope<int>& s) {
+        for (int i = 0; i < N; ++i) {
+            s.spawn([i]() -> int {
+                // Do a little work so earlier tasks are still writing while a
+                // later spawn grows the results vector.
+                auto start = std::chrono::steady_clock::now();
+                while (std::chrono::steady_clock::now() - start < std::chrono::microseconds(200)) {
+                    std::this_thread::yield();
+                }
+                return i;
+            });
+        }
+    });
+    ASSERT_EQ(results.size(), static_cast<size_t>(N));
+    for (int i = 0; i < N; ++i) EXPECT_EQ(results[i], i) << "slot " << i;
 }
 
 // ── ThreadExecutor ───────────────────────────────────────────────────────────

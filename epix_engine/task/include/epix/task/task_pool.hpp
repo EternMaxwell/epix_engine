@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 // ── C++23 adaptation of Bevy's task_pool.rs ────────────────────────────────
 //
@@ -373,7 +373,14 @@ struct Scope {
     void spawn(F&& f) {
         size_t idx = m_index++;
         m_pending->fetch_add(1, std::memory_order_release);
-        if (idx >= m_results->size()) m_results->resize(idx + 1);
+        {
+            // Guard the resize with the same mutex the task threads hold when
+            // they write their result slot. Without this, a later spawn can
+            // reallocate the results vector while an earlier (still-running)
+            // task writes to the freed buffer, corrupting the collected value.
+            std::unique_lock lock(*m_mtx);
+            if (idx >= m_results->size()) m_results->resize(idx + 1);
+        }
 
         auto [runnable, task] = async_task::spawn(
             [fn = std::forward<F>(f), results = m_results, pending = m_pending, mtx = m_mtx, cv = m_cv,
