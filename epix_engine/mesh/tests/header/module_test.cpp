@@ -105,6 +105,25 @@ TEST(MeshModule, ElementLayoutSlotMath) {
     EXPECT_EQ(mesh::ElementLayout::make(mesh::ElementClass::Vertex, 1).slot_size(), 4u);
 }
 
+// compute_grow_capacity mirrors Bevy GeneralSlab::grow_if_necessary.
+TEST(MeshModule, ComputeGrowCapacity) {
+    const mesh::MeshAllocatorSettings s;
+    // 10 -> need 15 with 1.5x growth: 10*1.5 = 15.
+    auto r = mesh::compute_grow_capacity(10, 15, s, 4);
+    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::NeededGrowth);
+    EXPECT_EQ(r.first, 15u);
+    // Already large enough.
+    r = mesh::compute_grow_capacity(10, 5, s, 4);
+    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::NoGrowthNeeded);
+    EXPECT_EQ(r.first, 10u);
+    // Growth capped by max_slab_size: max_cap = 16 / 4 = 4 slots; can't grow past 4.
+    mesh::MeshAllocatorSettings tiny = s;
+    tiny.max_slab_size                = 16;
+    r = mesh::compute_grow_capacity(4, 100, tiny, 4);
+    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::CantGrow);
+    EXPECT_EQ(r.first, 4u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);

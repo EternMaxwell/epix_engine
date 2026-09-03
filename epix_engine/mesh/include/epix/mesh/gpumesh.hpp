@@ -72,6 +72,33 @@ struct ElementLayout {
     bool operator==(const ElementLayout&) const noexcept = default;
 };
 
+/** @brief Result of a slab growth decision (Bevy `SlabGrowthResult`). */
+enum class SlabGrowthResultKind : std::uint8_t { NoGrowthNeeded, NeededGrowth, CantGrow };
+
+/** @brief Compute the grown slot capacity for a slab (Bevy
+ * `GeneralSlab::grow_if_necessary`). Returns the new capacity and whether the
+ * slab had to grow; `max_slot_capacity` is derived from `settings.max_slab_size
+ * / layout.slot_size()`. */
+EPIX_EXPORT inline std::pair<std::uint32_t, SlabGrowthResultKind> compute_grow_capacity(
+    std::uint32_t current_capacity, std::uint32_t new_size_in_slots, const MeshAllocatorSettings& settings,
+    std::uint64_t slot_size) {
+    const std::uint32_t max_slot_capacity = static_cast<std::uint32_t>(settings.max_slab_size / slot_size);
+    if (current_capacity >= new_size_in_slots) {
+        return {current_capacity, SlabGrowthResultKind::NoGrowthNeeded};
+    }
+    std::uint32_t capacity = current_capacity;
+    while (capacity < new_size_in_slots) {
+        const std::uint32_t grown1 =
+            static_cast<std::uint32_t>(std::ceil(static_cast<double>(capacity) * settings.growth_factor));
+        const std::uint32_t grown = grown1 < max_slot_capacity ? grown1 : max_slot_capacity;
+        if (grown == capacity) {
+            return {capacity, SlabGrowthResultKind::CantGrow};
+        }
+        capacity = grown;
+    }
+    return {capacity, SlabGrowthResultKind::NeededGrowth};
+}
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,
