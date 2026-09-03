@@ -142,6 +142,20 @@ TEST(MeshModule, ComputeAllocationDecision) {
     EXPECT_TRUE(r.second);
 }
 
+// General-slab element range (Bevy mesh_slice_in_slab).
+TEST(MeshModule, GeneralSlabElementRange) {
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    // offset 0, 2 slots -> elements [0, 2).
+    auto range = mesh::general_slab_element_range(0, 2, v12);
+    EXPECT_EQ(range.first, 0u);
+    EXPECT_EQ(range.second, 2u);
+    // u16 index layout (2 elem/slot): offset 3, 2 slots -> elements [6, 10).
+    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
+    range          = mesh::general_slab_element_range(3, 2, i16);
+    EXPECT_EQ(range.first, 6u);
+    EXPECT_EQ(range.second, 10u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);

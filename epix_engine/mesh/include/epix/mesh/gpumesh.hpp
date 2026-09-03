@@ -115,6 +115,15 @@ EPIX_EXPORT inline std::pair<std::uint32_t, bool> compute_allocation(std::uint64
     return {data_slot_count, is_large};
 }
 
+/** @brief Element range of a general-slab allocation (Bevy
+ * `mesh_slice_in_slab` for a `Slab::General`): the allocation's slot offset/len
+ * scaled by `elements_per_slot`. Measured in elements. */
+EPIX_EXPORT inline std::pair<std::uint32_t, std::uint32_t> general_slab_element_range(
+    std::uint32_t allocation_offset, std::uint32_t slot_count, const ElementLayout& layout) {
+    return {allocation_offset * layout.elements_per_slot,
+            (allocation_offset + slot_count) * layout.elements_per_slot};
+}
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,
