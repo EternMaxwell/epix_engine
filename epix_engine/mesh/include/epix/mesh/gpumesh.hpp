@@ -153,10 +153,12 @@ struct GeneralSlab {
     std::uint32_t next_slot       = 0;
     std::uint32_t occupied_slots  = 0;
     std::uint32_t allocation_seq  = 0;  // for debugging/order only
+    // Backing GPU buffer (created lazily on the device).
+    wgpu::Buffer buffer = nullptr;
 
     static GeneralSlab make(ElementLayout layout, const MeshAllocatorSettings& settings) {
         std::uint32_t cap = static_cast<std::uint32_t>(settings.min_slab_size / layout.slot_size());
-        return GeneralSlab{layout, cap, 0, 0, 0};
+        return GeneralSlab{layout, cap, 0, 0, 0, nullptr};
     }
     /** @brief Reserve `slot_count` slots, growing the slab if needed.
      * Returns the allocation (offset + slot_count), or nullopt if the slab
@@ -189,15 +191,72 @@ EPIX_EXPORT struct MeshAllocator {
     std::uint64_t next_slab_id = 0;
     /** @brief General slabs keyed by slab id. */
     std::map<SlabId, GeneralSlab> slabs;
-    /// Mesh asset id -> slab holding its vertex data (Bevy `MeshAllocator::mesh_id_to_vertex_slab`).
-    std::unordered_map<epix::assets::AssetId<Mesh>, SlabId> mesh_id_to_vertex_slab;
-    /// Mesh asset id -> slab holding its index data (Bevy `MeshAllocator::mesh_id_to_index_slab`).
-    std::unordered_map<epix::assets::AssetId<Mesh>, SlabId> mesh_id_to_index_slab;
+    /// Mesh asset id -> (slab, allocation) holding its vertex data.
+    std::unordered_map<epix::assets::AssetId<Mesh>, std::pair<SlabId, SlabAllocation>> mesh_id_to_vertex_slab;
+    /// Mesh asset id -> (slab, allocation) holding its index data.
+    std::unordered_map<epix::assets::AssetId<Mesh>, std::pair<SlabId, SlabAllocation>> mesh_id_to_index_slab;
 
-    /** @brief Record which slab holds a mesh's vertex/index data (Bevy
-     * `MeshAllocator::record_allocation`). */
-    void record_allocation(const epix::assets::AssetId<Mesh>& id, SlabId slab, bool is_vertex) {
-        (is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab)[id] = slab;
+    /** @brief Record which slab + allocation holds a mesh's vertex/index data
+     * (Bevy `MeshAllocator::record_allocation`). */
+    void record_allocation(const epix::assets::AssetId<Mesh>& id, SlabId slab, SlabAllocation alloc, bool is_vertex) {
+        (is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab)[id] = {slab, alloc};
+    }
+
+    /** @brief Ensure a slab's backing GPU buffer exists and return it (Bevy
+     * creates slab buffers lazily at allocate time; here it is explicit). */
+    wgpu::Buffer ensure_slab_buffer(const wgpu::Device& device, SlabId slab_id, wgpu::BufferUsage usage) {
+        auto it = slabs.find(slab_id);
+        if (it == slabs.end()) return nullptr;
+        auto& slab = it->second;
+        if (!slab.buffer) {
+            slab.buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                                  .setSize(static_cast<std::uint64_t>(slab.current_slot_capacity) *
+                                                           slab.element_layout.slot_size())
+                                                  .setLabel("MeshAllocator-slab")
+                                                  .setUsage(usage | wgpu::BufferUsage::eCopyDst));
+        }
+        return slab.buffer;
+    }
+    /** @brief Upload fixed bytes into a slab allocation (the caller supplies the
+     * packed element bytes). */
+    void upload_to_slab(const wgpu::Queue& queue, SlabId slab_id, SlabAllocation alloc, const void* data,
+                        std::size_t bytes) {
+        auto it = slabs.find(slab_id);
+        if (it == slabs.end() || !it->second.buffer) return;
+        queue.writeBuffer(it->second.buffer,
+                          static_cast<std::uint64_t>(alloc.offset) * it->second.element_layout.slot_size(), data,
+                          bytes);
+    }
+
+    /** @brief Buffer + element range of the mesh's vertex data (Bevy
+     * `mesh_vertex_slice`). */
+    std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<Mesh>& id) const {
+        return mesh_slice(id, true);
+    }
+    /** @brief Buffer + element range of the mesh's index data (Bevy
+     * `mesh_index_slice`). */
+    std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<Mesh>& id) const {
+        return mesh_slice(id, false);
+    }
+    /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
+    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(
+        const epix::assets::AssetId<Mesh>& id) const {
+        std::optional<SlabId> vertex;
+        if (auto it = mesh_id_to_vertex_slab.find(id); it != mesh_id_to_vertex_slab.end()) vertex = it->second.first;
+        std::optional<SlabId> index;
+        if (auto it = mesh_id_to_index_slab.find(id); it != mesh_id_to_index_slab.end()) index = it->second.first;
+        return {vertex, index};
+    }
+    /** @brief Internal slice computation for a mesh's vertex/index data. */
+    std::optional<MeshBufferSlice> mesh_slice(const epix::assets::AssetId<Mesh>& id, bool is_vertex) const {
+        const auto& map = is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab;
+        auto it         = map.find(id);
+        if (it == map.end()) return std::nullopt;
+        const auto& [slab_id, alloc] = it->second;
+        auto sit                     = slabs.find(slab_id);
+        if (sit == slabs.end() || !sit->second.buffer) return std::nullopt;
+        auto range = general_slab_element_range(alloc.offset, alloc.slot_count, sit->second.element_layout);
+        return MeshBufferSlice{std::addressof(sit->second.buffer), range.first, range.second};
     }
 
     /** @brief Reserve `slot_count` slots for a payload of `layout` in a general
@@ -215,21 +274,6 @@ EPIX_EXPORT struct MeshAllocator {
         const SlabId new_id{static_cast<std::uint32_t>(next_slab_id++)};
         slabs.emplace(new_id, std::move(slab));
         return std::pair{new_id, *a};
-    }
-    /** @brief Buffer + element range of the mesh's vertex data (Bevy
-     * `mesh_vertex_slice`). */
-    std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
-    /** @brief Buffer + element range of the mesh's index data (Bevy
-     * `mesh_index_slice`). */
-    std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
-    /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
-    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(
-        const epix::assets::AssetId<Mesh>& id) const {
-        std::optional<SlabId> vertex;
-        if (auto it = mesh_id_to_vertex_slab.find(id); it != mesh_id_to_vertex_slab.end()) vertex = it->second;
-        std::optional<SlabId> index;
-        if (auto it = mesh_id_to_index_slab.find(id); it != mesh_id_to_index_slab.end()) index = it->second;
-        return {vertex, index};
     }
     /** @brief Number of allocated slabs (Bevy `slab_count`). */
     std::size_t slab_count() const noexcept { return slabs.size(); }
