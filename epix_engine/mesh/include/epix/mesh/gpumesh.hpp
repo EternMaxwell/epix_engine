@@ -30,6 +30,10 @@ namespace epix::mesh {
 /** @brief Per-vertex byte stride of a mesh's packed vertex data (Bevy
  * `MeshVertexBufferLayout::array_stride`): the sum of all attribute sizes. */
 EPIX_EXPORT std::uint32_t vertex_array_stride(const Mesh& mesh);
+/** @brief Pack a mesh's per-attribute arrays into Bevy's interleaved per-vertex
+ * vertex buffer (`Mesh::write_packed_vertex_buffer_data`): each vertex holds its
+ * attributes in slot order. */
+EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const Mesh& mesh);
 
 /** @brief Tunable mesh-allocator parameters (Bevy 0.18 `MeshAllocatorSettings`).
  *

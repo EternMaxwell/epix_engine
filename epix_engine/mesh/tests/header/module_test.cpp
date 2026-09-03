@@ -17,6 +17,21 @@ TEST(MeshModule, VertexArrayStride) {
     EXPECT_EQ(mesh::vertex_array_stride(box), 28u);
 }
 
+// packed_vertex_bytes interleaves per-vertex attributes in slot order (Bevy).
+TEST(MeshModule, PackedVertexBytesInterleave) {
+    const auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
+    const auto packed = mesh::packed_vertex_bytes(box);
+    // 4 verts * (12 pos + 16 color) = 112 bytes.
+    EXPECT_EQ(packed.size(), 112u);
+    // Vertex 0's color begins at byte 12 (position is 12 bytes).
+    float red = 0.0f;
+    std::memcpy(&red, packed.data() + 12, sizeof(float));
+    EXPECT_FLOAT_EQ(red, 1.0f);
+    float green = 0.0f;
+    std::memcpy(&green, packed.data() + 16, sizeof(float));
+    EXPECT_FLOAT_EQ(green, 0.5f);
+}
+
 TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
     static_assert(std::same_as<mesh::MeshAlphaMode2d,
                                std::variant<mesh::MeshAlphaMode2dOpaque,
