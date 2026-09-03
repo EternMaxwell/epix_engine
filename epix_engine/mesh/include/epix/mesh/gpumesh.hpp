@@ -49,6 +49,38 @@ EPIX_EXPORT struct MeshBufferSlice {
     std::uint32_t end          = 0;
 };
 
+/** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
+ *
+ * Tracks which mesh data lives in which slab. The packing/growth/free logic,
+ * the slabs container, and the `PrepareAssets` system are still to be
+ * implemented; the settings, slab identity, and Bevy's public query surface
+ * are provided here so the interface can settle first. */
+EPIX_EXPORT struct MeshAllocator {
+    MeshAllocatorSettings settings;
+    std::uint64_t next_slab_id = 0;
+    /** @brief Number of currently allocated slabs (placeholder until the real
+     * slab container is added with the allocator logic). */
+    std::size_t slab_count_placeholder = 0;
+
+    /** @brief Buffer + element range of the mesh's vertex data (Bevy
+     * `mesh_vertex_slice`). */
+    std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
+    /** @brief Buffer + element range of the mesh's index data (Bevy
+     * `mesh_index_slice`). */
+    std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
+    /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
+    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(
+        const epix::assets::AssetId<Mesh>&) const {
+        return {std::optional<SlabId>{}, {}};
+    }
+    /** @brief Number of allocated slabs (Bevy `slab_count`). */
+    std::size_t slab_count() const noexcept { return slab_count_placeholder; }
+    /** @brief Total size in bytes of all slabs. */
+    std::size_t slabs_size() const noexcept { return 0; }
+    /** @brief Number of mesh allocations. */
+    std::size_t allocations() const noexcept { return 0; }
+};
+
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
  *
  * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.

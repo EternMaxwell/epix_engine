@@ -76,6 +76,14 @@ TEST(MeshModule, SlabIdAndMeshBufferSliceTypes) {
     EXPECT_EQ(slice.end, 9u);
 }
 
+// Empty MeshAllocator exposes Bevy's query surface with no allocations.
+TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
+    const mesh::MeshAllocator allocator;
+    EXPECT_EQ(allocator.slab_count(), 0u);
+    EXPECT_EQ(allocator.slabs_size(), 0u);
+    EXPECT_EQ(allocator.allocations(), 0u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
