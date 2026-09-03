@@ -49,14 +49,36 @@ EPIX_EXPORT struct MeshBufferSlice {
     std::uint32_t end          = 0;
 };
 
+/** @brief Element kind stored in a slab (Bevy `ElementClass`). */
+enum class ElementClass : std::uint8_t { Vertex, Index };
+
+/** @brief Size/layout info for one element stored in a slab (Bevy
+ * `ElementLayout`).
+ *
+ * Slab objects are allocated in *slots* whose byte size is divisible by both
+ * the element size and the 4-byte copy-buffer alignment, so a slot may hold
+ * more than one element when the element size isn't a multiple of 4. */
+struct ElementLayout {
+    ElementClass class_ = ElementClass::Vertex;
+    std::uint64_t size  = 0;
+    std::uint32_t elements_per_slot = 1;
+
+    static ElementLayout make(ElementClass class_, std::uint64_t size) {
+        // 4 / gcd(4, size); equivalently [1,4,2,4][size & 3] (COPY_BUFFER_ALIGNMENT = 4).
+        constexpr std::array<std::uint32_t, 4> eps{1, 4, 2, 4};
+        return ElementLayout{class_, size, eps[size & 3]};
+    }
+    std::uint64_t slot_size() const noexcept { return size * elements_per_slot; }
+    bool operator==(const ElementLayout&) const noexcept = default;
+};
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,
  * the slabs container, and the `PrepareAssets` system are still to be
  * implemented; the settings, slab identity, and Bevy's public query surface
  * are provided here so the interface can settle first. */
-EPIX_EXPORT struct MeshAllocator {
-    MeshAllocatorSettings settings;
+EPIX_EXPORT struct MeshAllocator {    MeshAllocatorSettings settings;
     std::uint64_t next_slab_id = 0;
     /** @brief Number of currently allocated slabs (placeholder until the real
      * slab container is added with the allocator logic). */

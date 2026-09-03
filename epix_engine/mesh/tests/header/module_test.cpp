@@ -84,6 +84,27 @@ TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
     EXPECT_EQ(allocator.allocations(), 0u);
 }
 
+// ElementLayout slot math (Bevy: slot size is a multiple of both the element
+// size and the 4-byte copy-buffer alignment).
+TEST(MeshModule, ElementLayoutSlotMath) {
+    // stride 12 (float3 vertex) -> 1 element/slot, 12-byte slot.
+    const auto v = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    EXPECT_EQ(v.elements_per_slot, 1u);
+    EXPECT_EQ(v.slot_size(), 12u);
+    // stride 2 (u16 index) -> 2 elements/slot (slot 4, divisible by 4).
+    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
+    EXPECT_EQ(i16.elements_per_slot, 2u);
+    EXPECT_EQ(i16.slot_size(), 4u);
+    // stride 4 -> 1 element/slot, 4-byte slot.
+    EXPECT_EQ(mesh::ElementLayout::make(mesh::ElementClass::Index, 4).slot_size(), 4u);
+    // stride 6 -> 2 elements/slot (slot 12, divisible by 4).
+    const auto v6 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 6);
+    EXPECT_EQ(v6.elements_per_slot, 2u);
+    EXPECT_EQ(v6.slot_size(), 12u);
+    // stride 1 (u8) -> 4 elements/slot (slot 4).
+    EXPECT_EQ(mesh::ElementLayout::make(mesh::ElementClass::Vertex, 1).slot_size(), 4u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
