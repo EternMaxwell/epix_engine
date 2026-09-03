@@ -84,6 +84,31 @@ TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
     EXPECT_EQ(allocator.allocations(), 0u);
 }
 
+// MeshAllocator::allocate creates/reuses a general slab by layout.
+TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
+    const mesh::MeshAllocatorSettings s;
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    mesh::MeshAllocator allocator;
+    auto a = allocator.allocate(2, v12);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->first.value, 0u);
+    EXPECT_EQ(a->second.offset, 0u);
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    EXPECT_GT(allocator.slabs_size(), 0u);
+    // Same layout packs into the existing slab at the next slot.
+    auto b = allocator.allocate(3, v12);
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->first, a->first);
+    EXPECT_EQ(b->second.offset, 2u);
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    // Different layout -> a new slab.
+    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
+    auto c         = allocator.allocate(1, i16);
+    ASSERT_TRUE(c.has_value());
+    EXPECT_NE(c->first, a->first);
+    EXPECT_EQ(allocator.slab_count(), 2u);
+}
+
 // ElementLayout slot math (Bevy: slot size is a multiple of both the element
 // size and the 4-byte copy-buffer alignment).
 TEST(MeshModule, ElementLayoutSlotMath) {

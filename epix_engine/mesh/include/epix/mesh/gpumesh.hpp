@@ -39,6 +39,7 @@ EPIX_EXPORT struct SlabId {
     constexpr SlabId() noexcept = default;
     constexpr explicit SlabId(std::uint32_t v) noexcept : value(v) {}
     bool operator==(const SlabId&) const noexcept = default;
+    bool operator<(const SlabId& o) const noexcept { return value < o.value; }
 };
 
 /** @brief Borrowed mesh buffer plus its element range (Bevy
@@ -169,16 +170,33 @@ struct GeneralSlab {
 
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
- * Tracks which mesh data lives in which slab. The packing/growth/free logic,
- * the slabs container, and the `PrepareAssets` system are still to be
- * implemented; the settings, slab identity, and Bevy's public query surface
- * are provided here so the interface can settle first. */
-EPIX_EXPORT struct MeshAllocator {    MeshAllocatorSettings settings;
+ * Tracks which mesh data lives in which slab. This provides the device-free
+ * slab bookkeeping (allocate vertex data into the right general slab, query
+ * slab count/size). Per-mesh asset bookkeeping (`mesh_vertex_slice`,
+ * `mesh_index_slice`, `mesh_slabs`) and the GPU buffer creation + `PrepareAssets`
+ * system are still to be wired up. */
+EPIX_EXPORT struct MeshAllocator {
+    MeshAllocatorSettings settings;
     std::uint64_t next_slab_id = 0;
-    /** @brief Number of currently allocated slabs (placeholder until the real
-     * slab container is added with the allocator logic). */
-    std::size_t slab_count_placeholder = 0;
+    /** @brief General slabs keyed by slab id. */
+    std::map<SlabId, GeneralSlab> slabs;
 
+    /** @brief Reserve `slot_count` slots for a payload of `layout` in a general
+     * slab, creating one if needed. Returns the chosen slab id + allocation, or
+     * nullopt when no existing/created slab can fit (reached max size). */
+    std::optional<std::pair<SlabId, SlabAllocation>> allocate(std::uint32_t slot_count, const ElementLayout& layout) {
+        for (auto& [slab_id, slab] : slabs) {
+            if (slab.element_layout == layout) {
+                if (auto a = slab.allocate(slot_count, settings)) return std::pair{slab_id, *a};
+            }
+        }
+        auto slab = GeneralSlab::make(layout, settings);
+        auto a    = slab.allocate(slot_count, settings);
+        if (!a) return std::nullopt;
+        const SlabId new_id{static_cast<std::uint32_t>(next_slab_id++)};
+        slabs.emplace(new_id, std::move(slab));
+        return std::pair{new_id, *a};
+    }
     /** @brief Buffer + element range of the mesh's vertex data (Bevy
      * `mesh_vertex_slice`). */
     std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
@@ -186,14 +204,20 @@ EPIX_EXPORT struct MeshAllocator {    MeshAllocatorSettings settings;
      * `mesh_index_slice`). */
     std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<Mesh>&) const { return std::nullopt; }
     /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
-    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(
-        const epix::assets::AssetId<Mesh>&) const {
+    std::pair<std::optional<SlabId>, std::optional<SlabId>> mesh_slabs(const epix::assets::AssetId<Mesh>&) const {
         return {std::optional<SlabId>{}, {}};
     }
     /** @brief Number of allocated slabs (Bevy `slab_count`). */
-    std::size_t slab_count() const noexcept { return slab_count_placeholder; }
+    std::size_t slab_count() const noexcept { return slabs.size(); }
     /** @brief Total size in bytes of all slabs. */
-    std::size_t slabs_size() const noexcept { return 0; }
+    std::size_t slabs_size() const noexcept {
+        std::size_t total = 0;
+        for (const auto& [id, slab] : slabs) {
+            (void)id;
+            total += static_cast<std::size_t>(slab.current_slot_capacity) * slab.element_layout.slot_size();
+        }
+        return total;
+    }
     /** @brief Number of mesh allocations. */
     std::size_t allocations() const noexcept { return 0; }
 };
