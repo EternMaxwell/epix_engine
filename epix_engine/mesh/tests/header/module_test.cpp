@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <epix/app.hpp>
 #include <epix/mesh.hpp>
+#include <epix/render.hpp>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
@@ -107,6 +109,42 @@ TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
     ASSERT_TRUE(c.has_value());
     EXPECT_NE(c->first, a->first);
     EXPECT_EQ(allocator.slab_count(), 2u);
+}
+
+// Device-backed: create a real wgpu device and verify the allocator creates a
+// slab GPU buffer and exposes a slice with the correct element range.
+TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    try {
+        epix::render::RenderPlugin{}.attach(app);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test: " << e.what();
+        return;
+    }
+    auto render_sub = app.take_sub_app(epix::render::Render);
+    ASSERT_TRUE(render_sub);
+    const auto& device = render_sub->world().resource<wgpu::Device>();
+    const auto& queue  = render_sub->world().resource<wgpu::Queue>();
+
+    mesh::MeshAllocator allocator;
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    auto a         = allocator.allocate(2, v12);
+    ASSERT_TRUE(a.has_value());
+    const auto buffer =
+        allocator.ensure_slab_buffer(device, a->first, wgpu::BufferUsage::eVertex);
+    EXPECT_TRUE(buffer);
+    EXPECT_GT(buffer.getSize(), 0u);
+
+    const std::uint8_t data[24] = {0};
+    allocator.upload_to_slab(queue, a->first, a->second, data, sizeof(data));
+
+    // Compute the expected element range directly (no per-mesh AssetId needed
+    // in the unit test); verify the range helper matches the allocation.
+    const auto range = mesh::general_slab_element_range(a->second.offset, a->second.slot_count, v12);
+    EXPECT_EQ(range.first, 0u);
+    EXPECT_EQ(range.second, 2u);
+    app.insert_sub_app(epix::render::Render, std::move(render_sub));
 }
 
 // ElementLayout slot math (Bevy: slot size is a multiple of both the element
