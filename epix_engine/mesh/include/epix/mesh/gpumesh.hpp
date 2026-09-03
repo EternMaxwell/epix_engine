@@ -236,6 +236,35 @@ EPIX_EXPORT struct MeshAllocator {
                           bytes);
     }
 
+    /** @brief Allocate + upload a mesh's packed vertex bytes into a vertex slab and
+     * record the allocation (M5 "copy mesh vertex data in"). */
+    std::optional<std::pair<SlabId, SlabAllocation>> allocate_vertex_bytes(
+        const wgpu::Device& device, const wgpu::Queue& queue, const epix::assets::AssetId<Mesh>& id,
+        std::uint32_t vertex_stride, const std::uint8_t* data, std::size_t bytes) {
+        const ElementLayout layout = ElementLayout::make(ElementClass::Vertex, vertex_stride);
+        const auto slot_count      = compute_allocation(bytes, layout, settings).first;
+        auto alloc                 = allocate(slot_count, layout);
+        if (!alloc) return std::nullopt;
+        ensure_slab_buffer(device, alloc->first, wgpu::BufferUsage::eVertex);
+        upload_to_slab(queue, alloc->first, alloc->second, data, bytes);
+        record_allocation(id, alloc->first, alloc->second, true);
+        return alloc;
+    }
+    /** @brief Allocate + upload a mesh's index bytes into an index slab and record
+     * the allocation. */
+    std::optional<std::pair<SlabId, SlabAllocation>> allocate_index_bytes(
+        const wgpu::Device& device, const wgpu::Queue& queue, const epix::assets::AssetId<Mesh>& id,
+        std::uint32_t index_element_size, const std::uint8_t* data, std::size_t bytes) {
+        const ElementLayout layout = ElementLayout::make(ElementClass::Index, index_element_size);
+        const auto slot_count      = compute_allocation(bytes, layout, settings).first;
+        auto alloc                 = allocate(slot_count, layout);
+        if (!alloc) return std::nullopt;
+        ensure_slab_buffer(device, alloc->first, wgpu::BufferUsage::eIndex);
+        upload_to_slab(queue, alloc->first, alloc->second, data, bytes);
+        record_allocation(id, alloc->first, alloc->second, false);
+        return alloc;
+    }
+
     /** @brief Buffer + element range of the mesh's vertex data (Bevy
      * `mesh_vertex_slice`). */
     std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<Mesh>& id) const {
