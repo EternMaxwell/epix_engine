@@ -132,6 +132,41 @@ struct SlabAllocation {
     bool operator==(const SlabAllocation&) const noexcept = default;
 };
 
+/** @brief A growable slab that packs multiple mesh payloads (Bevy
+ * `GeneralSlab`). This is the device-free bookkeeping container; the actual GPU
+ * buffer is created separately. A simple sequential-slot allocator is used in
+ * place of Bevy's offset-allocator until that is ported. */
+struct GeneralSlab {
+    ElementLayout element_layout;
+    std::uint32_t current_slot_capacity = 0;
+    // Sequential allocation cursor (slots).
+    std::uint32_t next_slot       = 0;
+    std::uint32_t occupied_slots  = 0;
+    std::uint32_t allocation_seq  = 0;  // for debugging/order only
+
+    static GeneralSlab make(ElementLayout layout, const MeshAllocatorSettings& settings) {
+        std::uint32_t cap = static_cast<std::uint32_t>(settings.min_slab_size / layout.slot_size());
+        return GeneralSlab{layout, cap, 0, 0, 0};
+    }
+    /** @brief Reserve `slot_count` slots, growing the slab if needed.
+     * Returns the allocation (offset + slot_count), or nullopt if the slab
+     * cannot grow to fit (reached `max_slab_size`). */
+    std::optional<SlabAllocation> allocate(std::uint32_t slot_count, const MeshAllocatorSettings& settings) {
+        auto grow = compute_grow_capacity(current_slot_capacity, next_slot + slot_count, settings,
+                                          element_layout.slot_size());
+        if (grow.second == SlabGrowthResultKind::CantGrow) {
+            return std::nullopt;
+        }
+        current_slot_capacity = grow.first;
+        const SlabAllocation alloc{next_slot, slot_count};
+        next_slot += slot_count;
+        occupied_slots += slot_count;
+        ++allocation_seq;
+        return alloc;
+    }
+    bool is_empty() const noexcept { return occupied_slots == 0; }
+};
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,

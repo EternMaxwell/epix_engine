@@ -164,6 +164,27 @@ TEST(MeshModule, SlabAllocationValueType) {
     EXPECT_EQ(mesh::SlabAllocation{}.slot_count, 0u);
 }
 
+// GeneralSlab packs allocations sequentially and reports emptiness.
+TEST(MeshModule, GeneralSlabPacksAndGrows) {
+    const mesh::MeshAllocatorSettings settings;
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    auto slab      = mesh::GeneralSlab::make(v12, settings);
+    EXPECT_GT(slab.current_slot_capacity, 0u);
+    EXPECT_TRUE(slab.is_empty());
+
+    auto a = slab.allocate(2, settings);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->offset, 0u);
+    EXPECT_EQ(a->slot_count, 2u);
+    EXPECT_FALSE(slab.is_empty());
+
+    auto b = slab.allocate(3, settings);
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->offset, 2u);  // sequential cursor
+    EXPECT_EQ(b->slot_count, 3u);
+    EXPECT_EQ(slab.occupied_slots, 5u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
