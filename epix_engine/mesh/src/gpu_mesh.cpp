@@ -7,10 +7,16 @@
 using namespace epix;
 using namespace epix::mesh;
 
-namespace {
-constexpr std::size_t kBufferWriteAlignment = 4;
+std::uint32_t epix::mesh::vertex_array_stride(const Mesh& mesh) {
+    std::uint32_t stride = 0;
+    for (const auto& data : mesh.iter_attributes()) {
+        stride += vertex_format_size(data.attribute.format);
+    }
+    return stride;
+}
 
-std::size_t align_up(std::size_t value, std::size_t alignment) {
+namespace {
+constexpr std::size_t kBufferWriteAlignment = 4;std::size_t align_up(std::size_t value, std::size_t alignment) {
     if (alignment == 0) {
         return value;
     }

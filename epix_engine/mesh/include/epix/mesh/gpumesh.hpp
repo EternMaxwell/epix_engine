@@ -27,6 +27,10 @@ EPIX_EXPORT namespace std {
 }  // namespace std
 
 namespace epix::mesh {
+/** @brief Per-vertex byte stride of a mesh's packed vertex data (Bevy
+ * `MeshVertexBufferLayout::array_stride`): the sum of all attribute sizes. */
+EPIX_EXPORT std::uint32_t vertex_array_stride(const Mesh& mesh);
+
 /** @brief Tunable mesh-allocator parameters (Bevy 0.18 `MeshAllocatorSettings`).
  *
  * These govern the slab/growth behavior of the mesh GPU memory allocator.

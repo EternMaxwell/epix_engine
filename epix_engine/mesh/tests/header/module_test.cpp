@@ -7,6 +7,16 @@
 
 namespace mesh = epix::mesh;
 
+// Bevy MeshVertexBufferLayout::array_stride: sum of attribute sizes.
+TEST(MeshModule, VertexArrayStride) {
+    // Without a color only the position attribute exists (12).
+    auto plain = mesh::make_box2d(20.0f, 10.0f);
+    EXPECT_EQ(mesh::vertex_array_stride(plain), 12u);
+    // With a color: position (12) + color (16) = 28.
+    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    EXPECT_EQ(mesh::vertex_array_stride(box), 28u);
+}
+
 TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
     static_assert(std::same_as<mesh::MeshAlphaMode2d,
                                std::variant<mesh::MeshAlphaMode2dOpaque,
