@@ -61,6 +61,21 @@ TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
     EXPECT_EQ(settings.growth_factor, 1.5);
 }
 
+// Bevy SlabId / MeshBufferSlice are value types; verify identity + element range.
+TEST(MeshModule, SlabIdAndMeshBufferSliceTypes) {
+    const mesh::SlabId zero;
+    const mesh::SlabId id{42};
+    EXPECT_EQ(zero, mesh::SlabId{});
+    EXPECT_EQ(id, mesh::SlabId{42});
+    EXPECT_NE(id, mesh::SlabId{43});
+    EXPECT_EQ(id.value, 42u);
+
+    const mesh::MeshBufferSlice slice{nullptr, 3u, 9u};
+    EXPECT_EQ(slice.buffer, nullptr);
+    EXPECT_EQ(slice.begin, 3u);
+    EXPECT_EQ(slice.end, 9u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);

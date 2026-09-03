@@ -32,6 +32,23 @@ EPIX_EXPORT struct MeshAllocatorSettings {
     bool operator==(const MeshAllocatorSettings&) const noexcept = default;
 };
 
+/** @brief Identifier of a single mesh slab (Bevy `SlabId`, a `NonMaxU32`
+ * index with a reserved sentinel). */
+EPIX_EXPORT struct SlabId {
+    std::uint32_t value = 0;
+    constexpr SlabId() noexcept = default;
+    constexpr explicit SlabId(std::uint32_t v) noexcept : value(v) {}
+    bool operator==(const SlabId&) const noexcept = default;
+};
+
+/** @brief Borrowed mesh buffer plus its element range (Bevy
+ * `MeshBufferSlice<'a>`). `range` is measured in elements, not bytes. */
+EPIX_EXPORT struct MeshBufferSlice {
+    const wgpu::Buffer* buffer = nullptr;
+    std::uint32_t begin        = 0;
+    std::uint32_t end          = 0;
+};
+
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
  *
  * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
