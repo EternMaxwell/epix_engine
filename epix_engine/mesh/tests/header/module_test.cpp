@@ -52,6 +52,15 @@ TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
     EXPECT_EQ(*len, 62u);
 }
 
+// Bevy 0.18 MeshAllocatorSettings defaults.
+TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
+    const mesh::MeshAllocatorSettings settings;
+    EXPECT_EQ(settings.min_slab_size, 1024ull * 1024);
+    EXPECT_EQ(settings.max_slab_size, 1024ull * 1024 * 512);
+    EXPECT_EQ(settings.large_threshold, 1024ull * 1024 * 256);
+    EXPECT_EQ(settings.growth_factor, 1.5);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);

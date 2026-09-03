@@ -18,6 +18,20 @@
 #include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
+/** @brief Tunable mesh-allocator parameters (Bevy 0.18 `MeshAllocatorSettings`).
+ *
+ * These govern the slab/growth behavior of the mesh GPU memory allocator.
+ * Defaults match Bevy: 1 MiB minimum slab, 512 MiB maximum slab, 256 MiB large
+ * threshold, and 1.5× growth factor. */
+EPIX_EXPORT struct MeshAllocatorSettings {
+    std::uint64_t min_slab_size   = 1024 * 1024;       // 1 MiB
+    std::uint64_t max_slab_size   = 1024 * 1024 * 512; // 512 MiB
+    std::uint64_t large_threshold = 1024 * 1024 * 256; // 256 MiB
+    double growth_factor          = 1.5;
+
+    bool operator==(const MeshAllocatorSettings&) const noexcept = default;
+};
+
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
  *
  * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
