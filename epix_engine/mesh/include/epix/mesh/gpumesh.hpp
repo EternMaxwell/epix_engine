@@ -124,6 +124,14 @@ EPIX_EXPORT inline std::pair<std::uint32_t, std::uint32_t> general_slab_element_
             (allocation_offset + slot_count) * layout.elements_per_slot};
 }
 
+/** @brief A mesh's data allocation within a general slab (Bevy
+ * `SlabAllocation`: an `offset_allocator` handle plus slot count). */
+struct SlabAllocation {
+    std::uint32_t offset     = 0;  // slot offset within the slab
+    std::uint32_t slot_count = 0;
+    bool operator==(const SlabAllocation&) const noexcept = default;
+};
+
 /** @brief Mesh GPU memory allocator (Bevy 0.18 `MeshAllocator`).
  *
  * Tracks which mesh data lives in which slab. The packing/growth/free logic,

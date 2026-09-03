@@ -156,6 +156,14 @@ TEST(MeshModule, GeneralSlabElementRange) {
     EXPECT_EQ(range.second, 10u);
 }
 
+// SlabAllocation is a value type holding slot offset + count.
+TEST(MeshModule, SlabAllocationValueType) {
+    EXPECT_EQ((mesh::SlabAllocation{3, 2}), (mesh::SlabAllocation{3, 2}));
+    EXPECT_NE((mesh::SlabAllocation{3, 2}), (mesh::SlabAllocation{4, 2}));
+    EXPECT_EQ(mesh::SlabAllocation{}.offset, 0u);
+    EXPECT_EQ(mesh::SlabAllocation{}.slot_count, 0u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
