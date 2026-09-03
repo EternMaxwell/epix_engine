@@ -33,6 +33,25 @@ TEST(MeshModule, ComputesAabbFromPositionAttribute) {
     EXPECT_EQ(aabb->max(), glm::vec3(4.0f, 5.0f, 3.0f));
 }
 
+// Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
+// strides * vertex count + index bytes. Used by the render-asset byte limiter.
+TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
+    mesh::Mesh mesh;
+    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{
+                                                                          glm::vec3{0.0f, 0.0f, 0.0f},
+                                                                          glm::vec3{1.0f, 1.0f, 1.0f}}));
+    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, std::array{
+                                                                       glm::vec4{1.0f, 1.0f, 1.0f, 1.0f},
+                                                                       glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}}));
+    mesh.insert_indices<std::uint16_t>(std::array<std::uint16_t, 3>{0, 1, 0});
+
+    const epix::render::RenderAsset<mesh::Mesh> asset{};
+    const auto len = asset.byte_len(mesh);
+    ASSERT_TRUE(len.has_value());
+    // (12 float3 + 16 float4) * 2 vertices + (3 * 2-byte u16 indices) = 62.
+    EXPECT_EQ(*len, 62u);
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);

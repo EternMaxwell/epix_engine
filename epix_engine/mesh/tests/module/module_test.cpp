@@ -44,3 +44,21 @@ TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     EXPECT_EQ(uvs[0], glm::vec2(0.25f, 0.5f));
     EXPECT_EQ(uvs[2], glm::vec2(0.75f, 1.0f));
 }
+
+// Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
+// strides * vertex count + index bytes.
+TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
+    mesh::Mesh mesh;
+    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{
+                                                                          glm::vec3{0.0f, 0.0f, 0.0f},
+                                                                          glm::vec3{1.0f, 1.0f, 1.0f}}));
+    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, std::array{
+                                                                       glm::vec4{1.0f, 1.0f, 1.0f, 1.0f},
+                                                                       glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}}));
+    mesh.insert_indices<std::uint16_t>(std::array<std::uint16_t, 3>{0, 1, 0});
+
+    const epix::render::RenderAsset<mesh::Mesh> asset{};
+    const auto len = asset.byte_len(mesh);
+    ASSERT_TRUE(len.has_value());
+    EXPECT_EQ(*len, 62u);
+}

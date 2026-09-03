@@ -102,6 +102,23 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         return epix::render::RenderAssetUsages::RENDER_WORLD;
     }
 
+    /** @brief Estimated GPU payload in bytes (Bevy `RenderAsset::byte_len` for
+     * `RenderMesh`). Sums the per-vertex attribute stride over the vertex count,
+     * plus the index bytes. Used by the render-asset byte limiter. */
+    std::optional<std::size_t> byte_len(const epix::mesh::Mesh& mesh) const {
+        std::size_t vertex_size = 0;
+        for (const auto& data : mesh.iter_attributes()) {
+            vertex_size += epix::mesh::vertex_format_size(data.attribute.format);
+        }
+        const std::size_t vertex_count = mesh.count_vertices();
+        std::size_t index_bytes        = 0;
+        if (auto indices = mesh.get_indices(); indices) {
+            const auto& index = indices->get();
+            index_bytes       = index.size() * (index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t));
+        }
+        return vertex_size * vertex_count + index_bytes;
+    }
+
     std::expected<epix::mesh::Mesh, epix::render::AssetExtractionError> take_gpu_data(
         epix::mesh::Mesh& source, const ProcessedAsset*) const {
         if (auto extracted = source.take_gpu_data()) {
