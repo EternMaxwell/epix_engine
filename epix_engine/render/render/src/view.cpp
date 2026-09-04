@@ -1,4 +1,4 @@
-
+﻿
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
@@ -305,7 +305,7 @@ void create_uniform_for_view(Commands cmd,
     view_uniforms->uniforms.clear();
     view_uniforms->offsets.clear();
     // Bevy get_writer returns None when there are no views: nothing to upload
-    // (uniform_buffer.rs:270) 鈥?skip silently instead of logging an error.
+    // (uniform_buffer.rs:270) 閳?skip silently instead of logging an error.
     if (views.iter().max_remaining() == 0) {
         return;
     }
@@ -495,6 +495,7 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
 void camera::extract_cameras(
     Commands cmd,
     Extract<Query<Item<Entity,
+                       const sync_world::RenderEntity&,
                        const ::epix::camera::Camera&,
                        const ::epix::camera::RenderTarget&,
                        const CameraRenderGraph&,
@@ -515,21 +516,42 @@ void camera::extract_cameras(
     Res<batching::GpuPreprocessingSupport> gpu_preprocessing_support,
     Extract<Query<const sync_world::RenderEntity&>> mapper,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
-    // extract camera entities to render world, this will spawn an related
-    // entity with ExtractedCamera, ExtractedView and other components.
-
+    // Bevy extract_cameras (bevy_render-0.18.0/src/camera.rs:473-601): cameras
+    // are synchronized to the render world (SyncToRenderWorld) and the extracted
+    // camera components are inserted onto the camera's synced render entity --
+    // the SAME entity that later carries ViewTarget, so the extracted camera
+    // components (e.g. ExtractComponentPlugin's Tonemapping/DebandDither) and
+    // the render targets live on one entity, exactly as Bevy. Epix previously
+    // spawned a separate TemporaryRenderEntity, splitting them.
     auto primary = primary_window.single();
 
-    for (auto&& [entity, camera, target, graph, gtransform, visible_entities, frustum, opt_render_layer, opt_mip_bias,
-                 opt_temporal_jitter, opt_hdr, opt_color_grading, opt_exposure, opt_resolution_override, msaa,
-                 main_texture_usages, opt_projection, opt_no_indirect_drawing] : cameras.iter()) {
-        if (!camera.is_active) continue;
+    for (auto&& [entity, render_entity, camera, target, graph, gtransform, visible_entities, frustum, opt_render_layer,
+                 opt_mip_bias, opt_temporal_jitter, opt_hdr, opt_color_grading, opt_exposure, opt_resolution_override,
+                 msaa, main_texture_usages, opt_projection, opt_no_indirect_drawing] :
+         cameras.iter()) {
+        const auto remove_camera_view = [&] {
+            cmd.entity(render_entity.id()).remove<ExtractedCamera, view::ExtractedView, view::RenderVisibleEntities,
+                                             view::Msaa, ::epix::camera::CameraMainTextureUsages,
+                                             ::epix::camera::Frustum, camera::MipBias, camera::TemporalJitter,
+                                             ::epix::camera::RenderLayers, ::epix::camera::Projection,
+                                             ::epix::camera::MainPassResolutionOverride, view::NoIndirectDrawing>();
+        };
+        if (!camera.is_active) {
+            remove_camera_view();
+            continue;
+        }
         const auto target_size   = camera.physical_target_size();
         const auto viewport_size = camera.physical_viewport_size();
         const auto viewport_rect = camera.physical_viewport_rect();
-        if (!target_size || !viewport_size || !viewport_rect || target_size->x == 0 || target_size->y == 0) continue;
+        if (!target_size || !viewport_size || !viewport_rect || target_size->x == 0 || target_size->y == 0) {
+            remove_camera_view();
+            continue;
+        }
         auto normalized_target = target.normalize(primary);
-        if (!normalized_target.has_value()) continue;
+        if (!normalized_target.has_value()) {
+            remove_camera_view();
+            continue;
+        }
         const auto viewport_origin = viewport_rect->first;
 
         // Bevy represents HDR as a dedicated marker component.
@@ -539,16 +561,16 @@ void camera::extract_cameras(
             auto& render_entities = render_visible_entities.entities[visibility_class];
             render_entities.reserve(main_entities.size());
             for (const Entity main_entity : main_entities) {
-                const Entity render_entity =
+                const Entity mapped =
                     mapper.get(main_entity)
                         .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
                             return re.get().id();
                         })
                         .value_or(Entity::PLACEHOLDER);
-                render_entities.emplace_back(render_entity, sync_world::MainEntity{main_entity});
+                render_entities.emplace_back(mapped, sync_world::MainEntity{main_entity});
             }
         }
-        auto commands = cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{});
+        auto commands = cmd.entity(render_entity.id());
         // single call to insert to reduce overhead
         commands.insert(
             ExtractedCamera{

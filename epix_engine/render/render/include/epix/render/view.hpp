@@ -526,6 +526,7 @@ EPIX_EXPORT void extract_cameras(
     epix::ecs::Commands cmd,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                         const sync_world::RenderEntity&,
                                          const ::epix::camera::Camera&,
                                          const ::epix::camera::RenderTarget&,
                                          const CameraRenderGraph&,
