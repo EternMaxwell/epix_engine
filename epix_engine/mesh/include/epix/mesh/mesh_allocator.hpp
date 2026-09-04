@@ -403,9 +403,19 @@ EPIX_EXPORT struct MeshAllocator {
         }
         auto* general = it->second.general();
         if (!general || !general->buffer) return;
-        queue.writeBuffer(general->buffer,
-                          static_cast<std::uint64_t>(alloc.offset()) * general->element_layout.slot_size(), data,
-                          bytes);
+        // Bevy GeneralSlab::copy_element_data: the write size is rounded up to
+        // the slot size (a multiple of COPY_BUFFER_ALIGNMENT) so wgpu accepts
+        // the copy; only the payload bytes are meaningful.
+        const std::uint64_t slot_size = general->element_layout.slot_size();
+        const std::uint64_t aligned = (bytes + slot_size - 1) / slot_size * slot_size;
+        if (aligned == bytes) {
+            queue.writeBuffer(general->buffer, static_cast<std::uint64_t>(alloc.offset()) * slot_size, data, bytes);
+        } else {
+            std::vector<std::uint8_t> padded(static_cast<std::size_t>(aligned), 0);
+            std::memcpy(padded.data(), data, bytes);
+            queue.writeBuffer(general->buffer, static_cast<std::uint64_t>(alloc.offset()) * slot_size, padded.data(),
+                              padded.size());
+        }
         auto pending = general->pending_allocations.find(id);
         if (pending != general->pending_allocations.end()) {
             general->resident_allocations[id] = pending->second;

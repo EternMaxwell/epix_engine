@@ -123,7 +123,12 @@ class Allocator {
     /** @brief Create an allocator over `size` units with the given maximum
      * allocation count (must be < u32::MAX - 1). */
     Allocator(std::uint32_t size, std::uint32_t max_allocs) {
-        assert(max_allocs < std::numeric_limits<std::uint32_t>::max() - 1);
+        // Bevy offset-allocator `with_max_allocs`: `assert!(max_allocs <
+        // NI::MAX - 1)` is an unconditional panic, so this check must not be
+        // compiled out by NDEBUG.
+        if (max_allocs >= std::numeric_limits<std::uint32_t>::max() - 1) {
+            std::abort();
+        }
         initialize(size, max_allocs);
     }
 
@@ -196,7 +201,12 @@ class Allocator {
         const std::uint32_t node_index = allocation.metadata;
         std::uint32_t offset           = nodes_[node_index].data_offset;
         std::uint32_t size             = nodes_[node_index].data_size;
-        assert(nodes_[node_index].used);
+        // Bevy offset-allocator `free`: `assert!(used)` is an unconditional
+        // panic on double-free, so this check must not be compiled out by
+        // NDEBUG.
+        if (!nodes_[node_index].used) {
+            std::abort();
+        }
 
         // Merge with the previous contiguous free node.
         const std::uint32_t node_neighbor_prev = nodes_[node_index].neighbor_prev;

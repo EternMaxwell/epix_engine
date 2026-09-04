@@ -183,27 +183,34 @@ struct Text2dPipelineCache {
           fragment_shader(shader_handles.fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
+                                                       const mesh::MeshVertexBufferLayoutRef& layout_ref,
                                                        wgpu::TextureFormat color_format,
                                                        std::uint32_t sample_count) {
-        const auto key = (static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count;
+        const std::uint64_t key =
+            (static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(layout_ref.value.get())) << 32) ^
+            ((static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count);
         if (auto it = pipelines.find(key); it != pipelines.end()) {
             return it->second;
         }
 
-        std::array vertex_buffers = {
-            wgpu::VertexBufferLayout()
-                .setArrayStride(sizeof(glm::vec3))
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(0).setFormat(wgpu::VertexFormat::eFloat32x3).setOffset(0),
-                }),
-            wgpu::VertexBufferLayout()
-                .setArrayStride(sizeof(glm::vec3))
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(5).setFormat(wgpu::VertexFormat::eFloat32x3).setOffset(0),
-                }),
-        };
+        // The text pipeline consumes the mesh's interleaved vertex buffer, like
+        // the mesh2d pipeline (position at location 0, text_uv_layer at
+        // location 5 with the mesh layout's stride/offsets).
+        const auto& layout = layout_ref.value->layout;
+        std::vector<wgpu::VertexBufferLayout> vertex_buffers;
+        if (!layout.attributes.empty()) {
+            const auto attributes = std::ranges::to<std::vector<wgpu::VertexAttribute>>(
+                std::views::transform(layout.attributes, [](const mesh::VertexAttributeDescriptor& attribute) {
+                    return wgpu::VertexAttribute()
+                        .setShaderLocation(attribute.shader_location)
+                        .setFormat(attribute.format)
+                        .setOffset(attribute.offset);
+                }));
+            vertex_buffers.push_back(wgpu::VertexBufferLayout()
+                                         .setArrayStride(layout.array_stride)
+                                         .setStepMode(layout.step_mode)
+                                         .setAttributes(attributes));
+        }
 
         render::VertexState vertex_state{.shader = vertex_shader};
         vertex_state.set_buffers(vertex_buffers);
@@ -474,6 +481,7 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
                                const ::epix::render::view::RenderVisibleEntities&>> views,
                     Query<Item<Entity, const ExtractedText2d&>> texts,
                     Res<render::RenderAssets<image::Image>> images,
+                    Res<render::RenderAssets<mesh::Mesh>> gpu_meshes,
                     Res<TransparentTextDrawFunction> draw_function_id,
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server,
@@ -483,13 +491,6 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
         if (phase == phases->end()) continue;
         const auto& camera_layers =
             opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
-        auto pipeline_id =
-            pipeline_cache->specialize(*pipeline_server, target.format, target.color_attachment_sample_count());
-        if (!pipeline_id) {
-            spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
-                         wgpu::to_string(target.format));
-            continue;
-        }
 
         for (auto&& [entity, text] : texts.iter()) {
             if (!images->try_get(text.font_image)) {
@@ -501,6 +502,17 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
             if (const auto& visible = visible_entities.template get<Text2d>();
                 std::ranges::find(visible, text.source_entity,
                                   [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
+                continue;
+            }
+            const auto* render_mesh = gpu_meshes->try_get(text.mesh);
+            if (!render_mesh) {
+                continue;
+            }
+            auto pipeline_id = pipeline_cache->specialize(*pipeline_server, render_mesh->layout, target.format,
+                                                          target.color_attachment_sample_count());
+            if (!pipeline_id) {
+                spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
+                             wgpu::to_string(target.format));
                 continue;
             }
 
