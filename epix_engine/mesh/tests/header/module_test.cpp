@@ -74,6 +74,32 @@ TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
     EXPECT_EQ(store.layouts.size(), 2u);
 }
 
+// RenderMeshBufferInfo mirrors Bevy's Indexed/NonIndexed discriminator.
+TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
+    const auto indexed = mesh::RenderMeshBufferInfo::indexed(6u, wgpu::IndexFormat::eUint16);
+    EXPECT_TRUE(indexed.is_indexed());
+    ASSERT_TRUE(indexed.indexed_info());
+    EXPECT_EQ(indexed.indexed_info()->count, 6u);
+    EXPECT_EQ(indexed.indexed_info()->index_format, wgpu::IndexFormat::eUint16);
+
+    const auto non_indexed = mesh::RenderMeshBufferInfo::non_indexed();
+    EXPECT_FALSE(non_indexed.is_indexed());
+    EXPECT_EQ(non_indexed.indexed_info(), nullptr);
+
+    // RenderMesh carries Bevy's metadata: count, buffer info, interned layout,
+    // and topology; GPU buffers come from the MeshAllocator.
+    mesh::MeshVertexBufferLayouts store;
+    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    auto render = mesh::RenderMesh::from_metadata(static_cast<std::uint32_t>(box.count_vertices()),
+                                                  mesh::RenderMeshBufferInfo::non_indexed(),
+                                                  box.get_mesh_vertex_buffer_layout(store),
+                                                  wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_FALSE(render.indexed());
+    EXPECT_EQ(render.vertex_count, box.count_vertices());
+    EXPECT_EQ(render.primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(render.layout.value->layout.array_stride, 28u);
+}
+
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh;
     auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});
