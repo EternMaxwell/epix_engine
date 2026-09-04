@@ -320,7 +320,7 @@ EPIX_EXPORT struct MeshAllocator {
         const ElementLayout layout = ElementLayout::make(ElementClass::Vertex, vertex_stride);
         auto alloc                 = allocate(id, bytes, layout);
         if (!alloc) return std::nullopt;
-        ensure_slab_buffer(device, alloc->first, wgpu::BufferUsage::eVertex);
+        ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eVertex);
         upload_to_slab(queue, alloc->first, alloc->second, id, data, bytes);
         return alloc;
     }
@@ -332,34 +332,47 @@ EPIX_EXPORT struct MeshAllocator {
         const ElementLayout layout = ElementLayout::make(ElementClass::Index, index_element_size);
         auto alloc                 = allocate(id, bytes, layout);
         if (!alloc) return std::nullopt;
-        ensure_slab_buffer(device, alloc->first, wgpu::BufferUsage::eIndex);
+        ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eIndex);
         upload_to_slab(queue, alloc->first, alloc->second, id, data, bytes);
         return alloc;
     }
 
-    /** @brief Ensure a slab's backing GPU buffer exists and return it. General
-     * slabs create buffers lazily sized to their current capacity; large-object
-     * slabs create their dedicated buffer on first use (Bevy `allocate_meshes`). */
-    wgpu::Buffer ensure_slab_buffer(const wgpu::Device& device, SlabId slab_id, wgpu::BufferUsage usage) {
+    /** @brief Ensure a slab's backing GPU buffer exists at its current capacity
+     * and return it. General slabs create buffers lazily; when a slab has grown
+     * since its buffer was created, the buffer is reallocated and the old
+     * contents copied across (Bevy `reallocate_slab`). */
+    wgpu::Buffer ensure_slab_buffer(const wgpu::Device& device, const wgpu::Queue& queue, SlabId slab_id,
+                                    wgpu::BufferUsage usage) {
         auto it = slabs.find(slab_id);
         if (it == slabs.end()) return nullptr;
-        if (auto* general = it->second.general()) {
-            if (!general->buffer) {
-                general->buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                          .setSize(static_cast<std::uint64_t>(general->current_slot_capacity) *
-                                                                   general->element_layout.slot_size())
-                                                          .setLabel("MeshAllocator-slab")
-                                                          .setUsage(usage | wgpu::BufferUsage::eCopyDst));
-            }
+        auto* general = it->second.general();
+        if (!general) return it->second.large() ? it->second.large()->buffer : nullptr;
+        const std::uint64_t needed_size =
+            static_cast<std::uint64_t>(general->current_slot_capacity) * general->element_layout.slot_size();
+        if (!general->buffer) {
+            general->buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                                      .setSize(needed_size)
+                                                      .setLabel("MeshAllocator-slab")
+                                                      .setUsage(usage | wgpu::BufferUsage::eCopySrc |
+                                                                wgpu::BufferUsage::eCopyDst));
             return general->buffer;
         }
-        if (auto* large = it->second.large()) {
-            // Large-object slabs create their buffer lazily when the payload is
-            // copied (Bevy copy_element_data for Slab::LargeObject); that path
-            // is part of the render-asset integration, so report none here.
-            return large->buffer;
+        if (general->buffer.getSize() < needed_size) {
+            // Bevy reallocate_slab: copy the old (in-use) contents into the new,
+            // larger buffer. The copy is sized to the buffer's previous size.
+            const std::uint64_t old_size = general->buffer.getSize();
+            wgpu::Buffer new_buffer = device.createBuffer(
+                wgpu::BufferDescriptor()
+                    .setSize(needed_size)
+                    .setLabel("MeshAllocator-slab")
+                    .setUsage(usage | wgpu::BufferUsage::eCopySrc | wgpu::BufferUsage::eCopyDst));
+            const auto old_buffer = general->buffer;
+            general->buffer       = new_buffer;
+            auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("slab resize"));
+            encoder.copyBufferToBuffer(old_buffer, 0, new_buffer, 0, old_size);
+            queue.submit(std::array{encoder.finish()});
         }
-        return nullptr;
+        return general->buffer;
     }
 
     /** @brief Upload fixed bytes into a slab allocation, moving it from pending

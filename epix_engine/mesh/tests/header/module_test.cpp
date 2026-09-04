@@ -158,20 +158,34 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     const auto& queue  = render_sub->world().resource<wgpu::Queue>();
 
     mesh::MeshAllocator allocator;
+    allocator.settings.min_slab_size = 1;  // force growth on small payloads
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
     epix::assets::Assets<mesh::Mesh> store;
-    const auto id = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a         = allocator.allocate(id, 24, v12);  // 2 slots
+    const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    auto a         = allocator.allocate(id1, 24, v12);  // 2 slots
     ASSERT_TRUE(a.has_value());
     const auto buffer =
-        allocator.ensure_slab_buffer(device, a->first, wgpu::BufferUsage::eVertex);
+        allocator.ensure_slab_buffer(device, queue, a->first, wgpu::BufferUsage::eVertex);
     EXPECT_TRUE(buffer);
-    EXPECT_GT(buffer.getSize(), 0u);
+    EXPECT_EQ(buffer.getSize(), 24u);  // initial capacity == 2 slots * 12
 
     const std::uint8_t data[24] = {0};
-    allocator.upload_to_slab(queue, a->first, a->second, id, data, sizeof(data));
-    EXPECT_EQ(allocator.mesh_vertex_slice(id)->begin, 0u);
-    EXPECT_EQ(allocator.mesh_vertex_slice(id)->end, 2u);
+    allocator.upload_to_slab(queue, a->first, a->second, id1, data, sizeof(data));
+    EXPECT_EQ(allocator.mesh_vertex_slice(id1)->begin, 0u);
+    EXPECT_EQ(allocator.mesh_vertex_slice(id1)->end, 2u);
+
+    // A second mesh that grows the slab triggers the Bevy reallocate path: a
+    // new, larger buffer is created and the old contents copied across.
+    const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    auto b         = allocator.allocate(id2, 36, v12);  // +3 slots (5 total)
+    ASSERT_TRUE(b.has_value());
+    const auto grown = allocator.ensure_slab_buffer(device, queue, b->first, wgpu::BufferUsage::eVertex);
+    EXPECT_EQ(grown.getSize(), 60u);  // 5 slots * 12
+    allocator.upload_to_slab(queue, b->first, b->second, id2, data, sizeof(data));
+    const auto slice = allocator.mesh_vertex_slice(id1);
+    ASSERT_TRUE(slice.has_value());
+    EXPECT_EQ(slice->begin, 0u);
+    EXPECT_EQ(slice->end, 2u);
 
     // Compute the expected element range directly; verify the range helper
     // matches the allocation.
