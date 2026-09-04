@@ -615,8 +615,13 @@ void camera::extract_cameras(
         if (opt_resolution_override) {
             commands.insert(::epix::camera::MainPassResolutionOverride{opt_resolution_override->get().size});
         }
+        // Bevy insert/remove NoIndirectDrawing based on the culling support
+        // (camera.rs:591-600): insert when the camera requests no indirect
+        // drawing or the platform can't cull, otherwise REMOVE a stale marker.
         if (opt_no_indirect_drawing || !gpu_preprocessing_support->is_culling_supported()) {
             commands.insert(view::NoIndirectDrawing{});
+        } else {
+            commands.remove<view::NoIndirectDrawing>();
         }
     }
 }
