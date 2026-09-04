@@ -172,17 +172,35 @@ struct GeneralSlab {
      * Returns the allocation (offset + slot_count), or nullopt if the slab
      * cannot grow to fit (reached `max_slab_size`). */
     std::optional<SlabAllocation> allocate(std::uint32_t slot_count, const MeshAllocatorSettings& settings) {
-        auto grow = compute_grow_capacity(current_slot_capacity, next_slot + slot_count, settings,
-                                          element_layout.slot_size());
+        const std::uint32_t grow_to = next_slot + slot_count;
+        if (grow_to <= current_slot_capacity) {
+            return allocate_into(grow_to, slot_count);
+        }
+        auto grow = compute_grow_capacity(current_slot_capacity, grow_to, settings, element_layout.slot_size());
         if (grow.second == SlabGrowthResultKind::CantGrow) {
             return std::nullopt;
         }
         current_slot_capacity = grow.first;
+        return allocate_into(grow_to, slot_count);
+    }
+    /** @brief Reserve slots at the cursor once the slab is guaranteed big enough. */
+    SlabAllocation allocate_into(std::uint32_t grow_to, std::uint32_t slot_count) {
+        (void)grow_to;
         const SlabAllocation alloc{next_slot, slot_count};
         next_slot += slot_count;
         occupied_slots += slot_count;
         ++allocation_seq;
         return alloc;
+    }
+    /** @brief Release an allocation's slots, shrinking occupancy and resetting the
+     * cursor to a fresh state if the slab becomes empty (so it can be reused). */
+    void release(std::uint32_t slot_count) {
+        const std::uint32_t freed = slot_count < occupied_slots ? slot_count : occupied_slots;
+        occupied_slots -= freed;
+        if (occupied_slots == 0) {
+            next_slot = 0;
+            ++allocation_seq;
+        }
     }
     bool is_empty() const noexcept { return occupied_slots == 0; }
 };
@@ -199,6 +217,9 @@ EPIX_EXPORT struct MeshAllocator {
     std::uint64_t next_slab_id = 0;
     /** @brief General slabs keyed by slab id. */
     std::map<SlabId, GeneralSlab> slabs;
+    /// Empty slabs awaiting reuse (id + slab), so subsequent allocations recycle
+    /// freed capacity instead of always growing.
+    std::vector<std::pair<SlabId, GeneralSlab>> reusable_slabs;
     /// Mesh asset id -> (slab, allocation) holding its vertex data.
     std::unordered_map<epix::assets::AssetId<Mesh>, std::pair<SlabId, SlabAllocation>> mesh_id_to_vertex_slab;
     /// Mesh asset id -> (slab, allocation) holding its index data.
@@ -300,9 +321,23 @@ EPIX_EXPORT struct MeshAllocator {
      * slab, creating one if needed. Returns the chosen slab id + allocation, or
      * nullopt when no existing/created slab can fit (reached max size). */
     std::optional<std::pair<SlabId, SlabAllocation>> allocate(std::uint32_t slot_count, const ElementLayout& layout) {
+        // Prefer a matching open slab (append at its cursor).
         for (auto& [slab_id, slab] : slabs) {
             if (slab.element_layout == layout) {
                 if (auto a = slab.allocate(slot_count, settings)) return std::pair{slab_id, *a};
+            }
+        }
+        // Reuse a previously-freed empty slab with a matching layout.
+        for (auto it = reusable_slabs.begin(); it != reusable_slabs.end(); ++it) {
+            if (it->second.element_layout == layout) {
+                if (auto a = it->second.allocate(slot_count, settings)) {
+                    auto used = *it;
+                    it->second.buffer = nullptr;  // stale buffer must not be re-created
+                    used.second.buffer = nullptr;
+                    slabs.emplace(used.first, std::move(used.second));
+                    reusable_slabs.erase(it);
+                    return std::pair{used.first, *a};
+                }
             }
         }
         auto slab = GeneralSlab::make(layout, settings);
@@ -312,9 +347,36 @@ EPIX_EXPORT struct MeshAllocator {
         slabs.emplace(new_id, std::move(slab));
         return std::pair{new_id, *a};
     }
+    /** @brief Release a mesh's allocation (vertex or index) and park the slab for
+     * reuse if it becomes empty (Bevy `MeshAllocator::free_all`). */
+    void free(const epix::assets::AssetId<Mesh>& id, bool is_vertex) {
+        auto& map = is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab;
+        auto it   = map.find(id);
+        if (it == map.end()) return;
+        const SlabId slab_id = it->second.first;
+        const auto alloc     = it->second.second;
+        map.erase(it);
+        auto sit = slabs.find(slab_id);
+        if (sit == slabs.end()) return;
+        sit->second.release(alloc.slot_count);
+        if (sit->second.is_empty()) {
+            sit->second.buffer = nullptr;  // discard the buffer; reallocated on reuse
+            reusable_slabs.emplace_back(slab_id, sit->second);
+            slabs.erase(sit);
+        }
+    }
+    /** @brief Free both vertex and index allocations for a mesh. */
+    void free_all(const epix::assets::AssetId<Mesh>& id) {
+        free(id, true);
+        free(id, false);
+    }
+    /** @brief Number of mesh allocations (vertex + index payloads). */
+    std::size_t allocations() const noexcept {
+        return mesh_id_to_vertex_slab.size() + mesh_id_to_index_slab.size();
+    }
     /** @brief Number of allocated slabs (Bevy `slab_count`). */
     std::size_t slab_count() const noexcept { return slabs.size(); }
-    /** @brief Total size in bytes of all slabs. */
+    /** @brief Total size in bytes of all allocated slabs. */
     std::size_t slabs_size() const noexcept {
         std::size_t total = 0;
         for (const auto& [id, slab] : slabs) {
@@ -323,8 +385,6 @@ EPIX_EXPORT struct MeshAllocator {
         }
         return total;
     }
-    /** @brief Number of mesh allocations. */
-    std::size_t allocations() const noexcept { return 0; }
 };
 
 /** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.

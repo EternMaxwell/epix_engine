@@ -273,6 +273,58 @@ TEST(MeshModule, GeneralSlabPacksAndGrows) {
     EXPECT_EQ(slab.occupied_slots, 5u);
 }
 
+// Freeing all of a mesh's allocations returns emptied slabs to a reusable pool so
+// a later allocation reuses the capacity instead of creating a new slab.
+TEST(MeshModule, MeshAllocatorFreeReusesSlabs) {
+    const mesh::MeshAllocatorSettings settings;
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    // 2 vertices (24 bytes) -> 2 slots, general slab.
+    const auto [slot_count, is_large] = mesh::compute_allocation(24, v12, settings);
+    EXPECT_FALSE(is_large);
+    EXPECT_EQ(slot_count, 2u);
+
+    epix::assets::Assets<mesh::Mesh> store;
+    const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+
+    mesh::MeshAllocator allocator;
+    auto a1 = allocator.allocate(slot_count, v12);
+    ASSERT_TRUE(a1.has_value());
+    allocator.record_allocation(id1, a1->first, a1->second, true);
+    auto a2 = allocator.allocate(slot_count, v12);
+    ASSERT_TRUE(a2.has_value());
+    allocator.record_allocation(id2, a2->first, a2->second, true);
+
+    // Both vertex payloads share one general slab (same layout).
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    EXPECT_EQ(allocator.allocations(), 2u);
+
+    // Freeing one mesh leaves the slab live (other allocation still resident).
+    allocator.free_all(id1);
+    EXPECT_EQ(allocator.allocations(), 1u);
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    EXPECT_TRUE(allocator.reusable_slabs.empty());
+
+    // Freeing the last mesh empties the slab and parks it for reuse.
+    allocator.free_all(id2);
+    EXPECT_EQ(allocator.allocations(), 0u);
+    EXPECT_EQ(allocator.slab_count(), 0u);
+    EXPECT_EQ(allocator.reusable_slabs.size(), 1u);
+    EXPECT_TRUE(allocator.reusable_slabs.front().second.is_empty());
+
+    // A new mesh allocation reuses the parked slab (same id/capacity) rather
+    // than creating a second slab.
+    const auto id3 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    auto a3        = allocator.allocate(slot_count, v12);
+    ASSERT_TRUE(a3.has_value());
+    allocator.record_allocation(id3, a3->first, a3->second, true);
+    EXPECT_EQ(allocator.slab_count(), 1u);
+    EXPECT_TRUE(allocator.reusable_slabs.empty());
+    const auto slabs = allocator.mesh_slabs(id3);
+    EXPECT_EQ(slabs.first, a3->first);
+    EXPECT_FALSE(slabs.second.has_value());
+}
+
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(direct_source.count_vertices(), 0u);
