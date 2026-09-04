@@ -39,11 +39,11 @@ extraction/processing.
 
 ## GPU mesh
 
-`GPUMesh::create_from_mesh()` and `update_from_mesh()` upload a CPU mesh. Inspect it through
-`vertex_count()`, `is_indexed()`, `primitive_type()`, `iter_attributes()`,
-`contains_attribute()`, and `attribute_layout()`. `bind_to(render_pass)` binds its vertex and
-optional index buffers.
-`GPUMesh` is the `RenderAsset<Mesh>::ProcessedAsset` used in `RenderAssets<Mesh>`.
+`RenderMesh` is the `RenderAsset<Mesh>::ProcessedAsset` used in `RenderAssets<Mesh>`: lightweight
+CPU metadata only (vertex count, index info, interned vertex-buffer layout, topology). The GPU
+vertex/index buffers live in the shared `MeshAllocator` slabs (`mesh_vertex_slice` /
+`mesh_index_slice`), packed by `allocate_and_free_meshes`; draw commands bind those slices
+directly.
 
 ## Built-in 2D renderer
 
