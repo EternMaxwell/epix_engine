@@ -170,7 +170,7 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     EXPECT_EQ(buffer.getSize(), 24u);  // initial capacity == 2 slots * 12
 
     const std::uint8_t data[24] = {0};
-    allocator.upload_to_slab(queue, a->first, a->second, id1, data, sizeof(data));
+    allocator.upload_to_slab(device, queue, a->first, a->second, id1, data, sizeof(data), wgpu::BufferUsage::eVertex);
     EXPECT_EQ(allocator.mesh_vertex_slice(id1)->begin, 0u);
     EXPECT_EQ(allocator.mesh_vertex_slice(id1)->end, 2u);
 
@@ -181,7 +181,8 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     ASSERT_TRUE(b.has_value());
     const auto grown = allocator.ensure_slab_buffer(device, queue, b->first, wgpu::BufferUsage::eVertex);
     EXPECT_EQ(grown.getSize(), 60u);  // 5 slots * 12
-    allocator.upload_to_slab(queue, b->first, b->second, id2, data, sizeof(data));
+    allocator.upload_to_slab(device, queue, b->first, b->second, id2, data, sizeof(data),
+                             wgpu::BufferUsage::eVertex);
     const auto slice = allocator.mesh_vertex_slice(id1);
     ASSERT_TRUE(slice.has_value());
     EXPECT_EQ(slice->begin, 0u);
@@ -192,6 +193,43 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     const auto range = mesh::general_slab_element_range(a->second.offset(), a->second.slot_count, v12);
     EXPECT_EQ(range.first, 0u);
     EXPECT_EQ(range.second, 2u);
+    app.insert_sub_app(epix::render::Render, std::move(render_sub));
+}
+
+// Device-backed: payloads above the large threshold get their own dedicated
+// slab, created and filled via the mapped-at-creation path (Bevy
+// copy_element_data for Slab::LargeObject).
+TEST(MeshModule, MeshAllocatorLargeObjectSlab) {
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    try {
+        epix::render::RenderPlugin{}.attach(app);
+    } catch (const std::exception& e) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test: " << e.what();
+        return;
+    }
+    auto render_sub = app.take_sub_app(epix::render::Render);
+    ASSERT_TRUE(render_sub);
+    const auto& device = render_sub->world().resource<wgpu::Device>();
+    const auto& queue  = render_sub->world().resource<wgpu::Queue>();
+
+    mesh::MeshAllocator allocator;
+    allocator.settings.large_threshold = 32;  // tiny threshold -> large-object path
+    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    epix::assets::Assets<mesh::Mesh> store;
+    const auto id    = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    const auto alloc = allocator.allocate(id, 48, v12);
+    ASSERT_TRUE(alloc.has_value());
+    const auto* slab = allocator.slabs.at(alloc->first).large();
+    ASSERT_TRUE(slab);  // dedicated large-object slab, not general
+    const std::uint8_t data[48] = {0};
+    allocator.upload_to_slab(device, queue, alloc->first, alloc->second, id, data, sizeof(data),
+                             wgpu::BufferUsage::eVertex);
+    const auto slice = allocator.mesh_vertex_slice(id);
+    ASSERT_TRUE(slice.has_value());
+    EXPECT_EQ(slice->begin, 0u);
+    EXPECT_EQ(slice->end, 4u);  // 48 bytes / 12-byte elements
+    EXPECT_EQ(slice->buffer, std::addressof(allocator.slabs.at(alloc->first).large()->buffer));
     app.insert_sub_app(epix::render::Render, std::move(render_sub));
 }
 

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <epix/assets.hpp>
 #include <functional>
 #include <map>
@@ -321,7 +322,7 @@ EPIX_EXPORT struct MeshAllocator {
         auto alloc                 = allocate(id, bytes, layout);
         if (!alloc) return std::nullopt;
         ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eVertex);
-        upload_to_slab(queue, alloc->first, alloc->second, id, data, bytes);
+        upload_to_slab(device, queue, alloc->first, alloc->second, id, data, bytes, wgpu::BufferUsage::eVertex);
         return alloc;
     }
     /** @brief Allocate + upload a mesh's index bytes into an index slab and record
@@ -333,7 +334,7 @@ EPIX_EXPORT struct MeshAllocator {
         auto alloc                 = allocate(id, bytes, layout);
         if (!alloc) return std::nullopt;
         ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eIndex);
-        upload_to_slab(queue, alloc->first, alloc->second, id, data, bytes);
+        upload_to_slab(device, queue, alloc->first, alloc->second, id, data, bytes, wgpu::BufferUsage::eIndex);
         return alloc;
     }
 
@@ -376,11 +377,30 @@ EPIX_EXPORT struct MeshAllocator {
     }
 
     /** @brief Upload fixed bytes into a slab allocation, moving it from pending
-     * to resident (Bevy `copy_element_data` for general slabs). */
-    void upload_to_slab(const wgpu::Queue& queue, SlabId slab_id, SlabAllocation alloc, const epix::assets::AssetId<Mesh>& id,
-                        const void* data, std::size_t bytes) {
+     * to resident (Bevy `copy_element_data`). General slabs write into the
+     * existing buffer at the allocation's byte offset; large-object slabs create
+     * their dedicated buffer with mapped-at-creation and fill it in one go. */
+    void upload_to_slab(const wgpu::Device& device, const wgpu::Queue& queue, SlabId slab_id, SlabAllocation alloc,
+                        const epix::assets::AssetId<Mesh>& id, const void* data, std::size_t bytes,
+                        wgpu::BufferUsage usage) {
         auto it = slabs.find(slab_id);
         if (it == slabs.end()) return;
+        if (auto* large = it->second.large()) {
+            // Bevy copy_element_data for Slab::LargeObject: create the buffer
+            // and its data in one go.
+            if (!large->buffer) {
+                large->buffer = device.createBuffer(wgpu::BufferDescriptor()
+                                                        .setSize(bytes)
+                                                        .setLabel("MeshAllocator-large-slab")
+                                                        .setUsage(usage | wgpu::BufferUsage::eCopyDst)
+                                                        .setMappedAtCreation(true));
+                if (auto* range = static_cast<std::uint8_t*>(large->buffer.getMappedRange(0, bytes))) {
+                    std::memcpy(range, data, bytes);
+                }
+                large->buffer.unmap();
+            }
+            return;
+        }
         auto* general = it->second.general();
         if (!general || !general->buffer) return;
         queue.writeBuffer(general->buffer,
