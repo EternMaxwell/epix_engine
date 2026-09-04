@@ -26,7 +26,7 @@ MeshVertexBufferLayoutRef Mesh::get_mesh_vertex_buffer_layout(MeshVertexBufferLa
         attributes.push_back(VertexAttributeDescriptor{
             .offset          = accumulated_offset,
             .format          = attribute_data.attribute.format,
-            .shader_location = static_cast<std::uint32_t>(attributes.size()),
+            .shader_location = static_cast<std::uint32_t>(slot),
         });
         accumulated_offset += vertex_format_size(attribute_data.attribute.format);
     }

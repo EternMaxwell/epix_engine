@@ -17,6 +17,8 @@
 
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/mesh_allocator.hpp>
+#include <epix/mesh/render_mesh.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 
 namespace epix::mesh {
 /** @brief Per-vertex byte stride of a mesh's packed vertex data (Bevy
@@ -26,84 +28,35 @@ EPIX_EXPORT std::uint32_t vertex_array_stride(const Mesh& mesh);
  * vertex buffer (`Mesh::write_packed_vertex_buffer_data`): each vertex holds its
  * attributes in slot order. */
 EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const Mesh& mesh);
-
-/** @brief GPU-side mesh storing vertex/index buffers uploaded from a Mesh.
- *
- * Created from a CPU Mesh via create_from_mesh, and can be bound to a render pass.
- */
-EPIX_EXPORT struct GPUMesh {
-   public:
-    /** @brief Create a GPUMesh from a CPU Mesh, using default device limits.
-     *  @param mesh The source mesh.
-     *  @param device The wgpu device for buffer allocation. */
-    static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device);
-    /** @brief Create a GPUMesh from a CPU Mesh with explicit device limits.
-     *  @param mesh The source mesh.
-     *  @param device The wgpu device for buffer allocation.
-     *  @param limits Device limits for alignment constraints. */
-    static GPUMesh create_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
-    /** @brief Re-upload mesh data from a CPU Mesh to existing GPU buffers.
-     *  @param mesh The source mesh.
-     *  @param device The wgpu device.
-     *  @param limits Device limits for alignment constraints. */
-    void update_from_mesh(const Mesh& mesh, const wgpu::Device& device, const wgpu::Limits& limits);
-    /** @brief Check whether this mesh uses indexed drawing. */
-    bool is_indexed() const noexcept { return _index_binding.has_value(); }
-    /** @brief Get the number of vertices (or indices if indexed). */
-    std::size_t vertex_count() const noexcept { return _vertex_count; }
-    /** @brief Get the primitive topology of this mesh. */
-    wgpu::PrimitiveTopology primitive_type() const noexcept { return _primitive_type; }
-    /** @brief Bind vertex and index buffers to a render pass encoder. */
-    void bind_to(const wgpu::RenderPassEncoder& encoder) const;
-    /** @brief Iterate over the mesh attribute descriptors. */
-    auto iter_attributes() const { return std::views::values(_attributes); }
-    /** @brief Check whether this mesh contains a specific attribute. */
-    bool contains_attribute(const MeshAttribute& attribute) const noexcept {
-        auto it = _attributes.find(attribute.slot);
-        return it != _attributes.end() && it->second == attribute;
-    }
-    /** @brief Get the full attribute layout map. */
-    const MeshAttributeLayout& attribute_layout() const noexcept { return _attributes; }
-
-   private:
-    GPUMesh() noexcept
-        : _primitive_type(wgpu::PrimitiveTopology::eTriangleList),
-          _combined_buffer(nullptr),
-          _index_buffer(nullptr),
-          _vertex_count(0) {}
-
-    struct VertexBindingInfo {
-        std::uint32_t shader_location;
-        std::size_t offset;
-        std::size_t size;
-    };
-    struct IndexBindingInfo {
-        wgpu::IndexFormat format;
-        std::uint32_t offset;
-        std::size_t size;
-    };
-
-    MeshAttributeLayout _attributes;
-
-    wgpu::PrimitiveTopology _primitive_type;
-    wgpu::Buffer _combined_buffer;
-    wgpu::Buffer _index_buffer;
-    std::vector<VertexBindingInfo> _attribute_bindings;
-    std::optional<IndexBindingInfo> _index_binding;
-    std::size_t _vertex_count;  // or index count if indexed
-};
 }  // namespace epix::mesh
 
+// Bevy 0.18 `RenderAsset for RenderMesh` (mesh/mod.rs:124-202): the render
+// world representation of a Mesh is lightweight metadata (vertex count, index
+// info, interned vertex-buffer layout, topology). GPU buffers are owned by the
+// MeshAllocator (see allocate_and_free_meshes); RenderAsset preparation here
+// only builds the metadata.
 template <>
 struct epix::render::RenderAsset<epix::mesh::Mesh> {
-    using ProcessedAsset = epix::mesh::GPUMesh;
+    using ProcessedAsset = epix::mesh::RenderMesh;
     using ExtractedAsset = epix::mesh::Mesh;
-    using Param          = epix::ecs::ParamSet<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Limits>>;
+    using Param          = epix::ecs::ParamSet<epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
 
     std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
         epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
-        auto&& [device, limits] = params.get();
-        return ProcessedAsset::create_from_mesh(mesh, *device, *limits);
+        auto&& [layouts] = params.get();
+
+        epix::mesh::RenderMeshBufferInfo buffer_info;
+        if (auto indices = mesh.get_indices(); indices) {
+            const auto& index = indices->get();
+            buffer_info = epix::mesh::RenderMeshBufferInfo::indexed(
+                static_cast<std::uint32_t>(index.size()),
+                index.is_u16() ? wgpu::IndexFormat::eUint16 : wgpu::IndexFormat::eUint32);
+        } else {
+            buffer_info = epix::mesh::RenderMeshBufferInfo::non_indexed();
+        }
+        return epix::mesh::RenderMesh::from_metadata(
+            static_cast<std::uint32_t>(mesh.count_vertices()), std::move(buffer_info),
+            mesh.get_mesh_vertex_buffer_layout(*layouts), mesh.get_primitive_type());
     }
 
     epix::render::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept {

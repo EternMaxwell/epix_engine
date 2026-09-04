@@ -1,4 +1,4 @@
-﻿#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 #include <array>
 #include <bit>
@@ -323,7 +323,7 @@ struct DrawTextBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>> params,
+        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<mesh::MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -334,9 +334,9 @@ struct DrawTextBatch {
         }
 
         auto&& [batch, extracted] = **entity_item;
-        auto&& [gpu_meshes]       = params.get();
-        auto* gpu_mesh            = gpu_meshes->try_get(extracted.mesh);
-        if (!gpu_mesh) {
+        auto&& [render_meshes, mesh_allocator] = params.get();
+        auto* render_mesh = render_meshes->try_get(extracted.mesh);
+        if (!render_mesh) {
             return std::unexpected(render::phase::RenderCommandError{
                 .type    = render::phase::RenderCommandError::Type::Failure,
                 .message = std::format("[text] GPU mesh {} for entity {:#x} is missing at draw time.",
@@ -344,12 +344,38 @@ struct DrawTextBatch {
             });
         }
 
-        gpu_mesh->bind_to(encoder);
-        if (gpu_mesh->is_indexed()) {
-            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
+        const auto vertex_slice = mesh_allocator->mesh_vertex_slice(extracted.mesh);
+        if (!vertex_slice) {
+            return std::unexpected(render::phase::RenderCommandError{
+                .type    = render::phase::RenderCommandError::Type::Failure,
+                .message = std::format("[text] Mesh {} for entity {:#x} has no MeshAllocator vertex slice at draw time.",
+                                       extracted.mesh.to_string_short(), item.entity().index),
+            });
+        }
+        const std::uint64_t stride = render_mesh->layout.value->layout.array_stride;
+        encoder.setVertexBuffer(0, *vertex_slice->buffer,
+                                static_cast<std::uint64_t>(vertex_slice->begin) * stride,
+                                static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);
+
+        if (render_mesh->indexed()) {
+            const auto index_slice = mesh_allocator->mesh_index_slice(extracted.mesh);
+            if (!index_slice) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type    = render::phase::RenderCommandError::Type::Failure,
+                    .message = std::format("[text] Indexed mesh {} for entity {:#x} has no MeshAllocator index slice.",
+                                           extracted.mesh.to_string_short(), item.entity().index),
+                });
+            }
+            const auto* info       = render_mesh->buffer_info.indexed_info();
+            const wgpu::IndexFormat format = info ? info->index_format : wgpu::IndexFormat::eUint16;
+            const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
+            encoder.setIndexBuffer(*index_slice->buffer, format,
+                                   static_cast<std::uint64_t>(index_slice->begin) * element_size,
+                                   static_cast<std::uint64_t>(index_slice->end - index_slice->begin) * element_size);
+            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->end - index_slice->begin),
                                 render::phase::batch_range_len(item.batch_range()), 0, 0, item.batch_range().first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()),
+            encoder.draw(static_cast<std::uint32_t>(vertex_slice->end - vertex_slice->begin),
                          render::phase::batch_range_len(item.batch_range()), 0, item.batch_range().first);
         }
         return {};

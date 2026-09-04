@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <epix/common.hpp>
 
@@ -215,9 +215,10 @@ struct DrawMesh2dBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<>>,
-        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>> params,
+        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>,
+                      ecs::Res<MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
-        auto&& [instances, gpu_meshes] = params.get();
+        auto&& [instances, render_meshes, mesh_allocator] = params.get();
         const auto instance = instances->find(item.main_entity());
         if (instance == instances->end()) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -228,8 +229,8 @@ struct DrawMesh2dBatch {
         }
 
         const auto& extracted_mesh = instance->second.extracted;
-        auto* gpu_mesh                      = gpu_meshes->try_get(extracted_mesh.mesh);
-        if (!gpu_mesh) {
+        auto* render_mesh                    = render_meshes->try_get(extracted_mesh.mesh);
+        if (!render_mesh) {
             return std::unexpected(render::phase::RenderCommandError{
                 .type = render::phase::RenderCommandError::Type::Failure,
                 .message =
@@ -238,21 +239,54 @@ struct DrawMesh2dBatch {
             });
         }
 
-        if (gpu_mesh->vertex_count() == 0) {
-            return {};
+        // Bevy DrawMesh2d: the buffers live in the MeshAllocator; bind the
+        // vertex (and optionally index) slice for this mesh.
+        const auto vertex_slice = mesh_allocator->mesh_vertex_slice(extracted_mesh.mesh);
+        if (!vertex_slice) {
+            return std::unexpected(render::phase::RenderCommandError{
+                .type = render::phase::RenderCommandError::Type::Failure,
+                .message =
+                    std::format("[mesh] Mesh {} for entity {:#x} has no MeshAllocator vertex slice at draw time.",
+                                extracted_mesh.mesh.to_string_short(), item.entity().index),
+            });
         }
+        const auto& layout     = render_mesh->layout.value->layout;
+        const std::uint64_t stride = layout.array_stride;
+        const auto vertex_begin    = static_cast<std::uint64_t>(vertex_slice->begin);
+        encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_begin * stride,
+                                static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);
 
         const auto& batch_range = item.batch_range();
         auto batch_size = render::phase::batch_range_len(batch_range);
-        gpu_mesh->bind_to(encoder);
-        if (gpu_mesh->is_indexed()) {
-            encoder.drawIndexed(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, 0,
+        if (render_mesh->indexed()) {
+            const auto index_slice = mesh_allocator->mesh_index_slice(extracted_mesh.mesh);
+            if (!index_slice) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Failure,
+                    .message = std::format("[mesh] Indexed mesh {} for entity {:#x} has no MeshAllocator index slice.",
+                                           extracted_mesh.mesh.to_string_short(), item.entity().index),
+                });
+            }
+            const auto* info = render_mesh->buffer_info.indexed_info();
+            const wgpu::IndexFormat format = info ? info->index_format : wgpu::IndexFormat::eUint16;
+            const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
+            encoder.setIndexBuffer(*index_slice->buffer, format,
+                                   static_cast<std::uint64_t>(index_slice->begin) * element_size,
+                                   static_cast<std::uint64_t>(index_slice->end - index_slice->begin) * element_size);
+            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->end - index_slice->begin), batch_size, 0, 0,
                                 batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(gpu_mesh->vertex_count()), batch_size, 0, batch_range.first);
+            encoder.draw(static_cast<std::uint32_t>(vertex_slice->end - vertex_slice->begin), batch_size, 0,
+                         batch_range.first);
         }
         return {};
     }
+};
+
+/** @brief Plugin that packs mesh GPU data into shared slab buffers and frees
+ * removed/modified meshes (Bevy `MeshAllocatorPlugin`). */
+EPIX_EXPORT struct MeshAllocatorPlugin {
+    void attach(app::App& app);
 };
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */

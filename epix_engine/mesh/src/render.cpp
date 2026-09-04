@@ -1,4 +1,4 @@
-﻿
+
 #include <spdlog/spdlog.h>
 
 #include <epix/core_graph.hpp>
@@ -314,6 +314,9 @@ struct Mesh2dPipelineKey {
     wgpu::PrimitiveTopology primitive_type;
     wgpu::TextureFormat color_format;
     std::uint32_t sample_count;
+    /// Identity of the interned mesh vertex-buffer layout (Bevy
+    /// Mesh2dPipelineKey's MeshVertexBufferLayoutId).
+    std::uintptr_t layout_id = 0;
 
     bool operator==(const Mesh2dPipelineKey&) const = default;
 };
@@ -328,6 +331,7 @@ struct Mesh2dPipelineKeyHash {
         hash ^= std::hash<std::uint32_t>()(static_cast<std::uint32_t>(key.color_format)) + 0x9e3779b9 + (hash << 6) +
                 (hash >> 2);
         hash ^= std::hash<std::uint32_t>()(key.sample_count) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<std::uintptr_t>()(key.layout_id) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
         return hash;
     }
 };
@@ -424,22 +428,30 @@ struct Mesh2dPipelineCache {
           textured_mask_fragment_shader(shader_handles.textured_mask_fragment_shader) {}
 
     std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
-                                                       const MeshAttributeLayout& layout,
+                                                       const MeshVertexBufferLayoutRef& layout_ref,
+                                                       wgpu::PrimitiveTopology primitive_type,
                                                        wgpu::TextureFormat color_format,
                                                        std::uint32_t sample_count,
                                                        const MeshAlphaMode2d& alpha_mode,
                                                        bool textured) {
-        if (!layout.get_attribute(Mesh::ATTRIBUTE_POSITION)) {
-            spdlog::warn("[mesh] Skip pipeline specialization: mesh layout is missing POSITION. Layout:\n{}",
-                         layout.to_string());
+        if (!layout_ref.value) {
+            spdlog::warn("[mesh] Skip pipeline specialization: mesh has no vertex buffer layout.");
+            return std::nullopt;
+        }
+        const auto& layout = layout_ref.value->layout;
+        const auto has_attribute = [&layout_ref](std::uint64_t slot) {
+            return std::ranges::any_of(layout_ref.value->attribute_ids,
+                                       [slot](const MeshVertexAttributeId& id) { return id.value == slot; });
+        };
+        if (!has_attribute(Mesh::ATTRIBUTE_POSITION.slot)) {
+            spdlog::warn("[mesh] Skip pipeline specialization: mesh layout is missing POSITION.");
             return std::nullopt;
         }
 
-        bool has_color = layout.contains_attribute(Mesh::ATTRIBUTE_COLOR);
-        bool has_uv    = layout.contains_attribute(Mesh::ATTRIBUTE_UV0);
+        const bool has_color = has_attribute(Mesh::ATTRIBUTE_COLOR.slot);
+        const bool has_uv    = has_attribute(Mesh::ATTRIBUTE_UV0.slot);
         if (textured && !has_uv) {
-            spdlog::warn("[mesh] Skip textured pipeline specialization: mesh layout is missing UV0. Layout:\n{}",
-                         layout.to_string());
+            spdlog::warn("[mesh] Skip textured pipeline specialization: mesh layout is missing UV0.");
             return std::nullopt;
         }
 
@@ -456,23 +468,31 @@ struct Mesh2dPipelineCache {
         Mesh2dPipelineKey key{
             .variant        = variant,
             .alpha_mode     = pipeline_mode,
-            .primitive_type = layout.primitive_type,
+            .primitive_type = primitive_type,
             .color_format   = color_format,
             .sample_count   = sample_count,
+            .layout_id      = reinterpret_cast<std::uintptr_t>(layout_ref.value.get()),
         };
         if (auto it = pipelines.find(key); it != pipelines.end()) {
             return it->second;
         }
 
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers = std::ranges::to<
-            std::vector>(std::views::transform(std::views::values(layout), [](const MeshAttribute& attribute) {
-            return wgpu::VertexBufferLayout()
-                .setArrayStride(vertex_format_size(attribute.format))
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(attribute.slot).setFormat(attribute.format).setOffset(0),
-                });
-        }));
+        // Bevy Mesh2dPipeline: ONE interleaved vertex buffer described by the
+        // mesh's MeshVertexBufferLayout (array_stride + interleaved attributes).
+        std::vector<wgpu::VertexBufferLayout> vertex_buffers;
+        if (!layout.attributes.empty()) {
+            const auto attributes = std::ranges::to<std::vector<wgpu::VertexAttribute>>(
+                std::views::transform(layout.attributes, [](const VertexAttributeDescriptor& attribute) {
+                    return wgpu::VertexAttribute()
+                        .setShaderLocation(attribute.shader_location)
+                        .setFormat(attribute.format)
+                        .setOffset(attribute.offset);
+                }));
+            vertex_buffers.push_back(wgpu::VertexBufferLayout()
+                                         .setArrayStride(layout.array_stride)
+                                         .setStepMode(layout.step_mode)
+                                         .setAttributes(attributes));
+        }
 
         render::VertexState vertex_state{
             .shader = [&]() -> assets::Handle<shader::Shader> {
@@ -518,11 +538,11 @@ struct Mesh2dPipelineCache {
 
         render::RenderPipelineDescriptor pipeline_desc{
             .label     = std::format("mesh2d-{}-{}-{}", shader_variant_name(variant), alpha_mode_name(pipeline_mode),
-                                     wgpu::to_string(layout.primitive_type)),
+                                     wgpu::to_string(primitive_type)),
             .layouts   = std::move(layouts),
             .vertex    = std::move(vertex_state),
             .primitive = wgpu::PrimitiveState()
-                             .setTopology(layout.primitive_type)
+                             .setTopology(primitive_type)
                              .setFrontFace(wgpu::FrontFace::eCCW)
                              .setCullMode(wgpu::CullMode::eNone),
             .depth_stencil =
@@ -785,13 +805,13 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
                 continue;
             }
 
-            auto* gpu_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
-            if (!gpu_mesh) {
+            auto* render_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
+            if (!render_mesh) {
                 spdlog::warn("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: GPU mesh {} is not prepared yet.", extracted_mesh.source_entity.index,
                              extracted_mesh.mesh.to_string_short());
                 continue;
             }
-            if (gpu_mesh->vertex_count() == 0) {
+            if (render_mesh->vertex_count == 0) {
                 spdlog::debug("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: GPU mesh {} is empty.", extracted_mesh.source_entity.index,
                               extracted_mesh.mesh.to_string_short());
                 continue;
@@ -803,14 +823,14 @@ void queue_meshes_2d_opaque(Query<Item<const render::view::ExtractedView&,
             }
 
             auto pipeline_id = pipeline_cache->specialize(
-                *pipeline_server, gpu_mesh->attribute_layout(), target.format, target.color_attachment_sample_count(),
-                extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
+                *pipeline_server, render_mesh->layout, render_mesh->primitive_type(), target.format,
+                target.color_attachment_sample_count(), extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
-                spdlog::warn("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
-                             extracted_mesh.source_entity.index, gpu_mesh->attribute_layout().to_string());
+                spdlog::warn("[mesh] Skip opaque/alpha-mask mesh entity {:#x}: failed to specialize pipeline for layout.",
+                             extracted_mesh.source_entity.index);
                 continue;
             }
-            const auto batch_set_key = core_graph::core_2d::BatchSetKey2D{.indexed_value = gpu_mesh->is_indexed()};
+            const auto batch_set_key = core_graph::core_2d::BatchSetKey2D{.indexed_value = render_mesh->indexed()};
             const auto material_bind_group_id = extracted_mesh.texture.transform(
                 [](const assets::AssetId<image::Image>& id) { return assets::UntypedAssetId(id); });
             if (std::holds_alternative<MeshAlphaMode2dOpaque>(extracted_mesh.alpha_mode)) {
@@ -866,13 +886,13 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
                 continue;
             }
 
-            auto* gpu_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
-            if (!gpu_mesh) {
+            auto* render_mesh = gpu_meshes->try_get(extracted_mesh.mesh);
+            if (!render_mesh) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is not prepared yet.",
                              extracted_mesh.source_entity.index, extracted_mesh.mesh.to_string_short());
                 continue;
             }
-            if (gpu_mesh->vertex_count() == 0) {
+            if (render_mesh->vertex_count == 0) {
                 spdlog::debug("[mesh] Skip transparent mesh entity {:#x}: GPU mesh {} is empty.", extracted_mesh.source_entity.index,
                               extracted_mesh.mesh.to_string_short());
                 continue;
@@ -884,11 +904,11 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
             }
 
             auto pipeline_id = pipeline_cache->specialize(
-                *pipeline_server, gpu_mesh->attribute_layout(), target.format, target.color_attachment_sample_count(),
-                extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
+                *pipeline_server, render_mesh->layout, render_mesh->primitive_type(), target.format,
+                target.color_attachment_sample_count(), extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
-                spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout:\n{}",
-                             extracted_mesh.source_entity.index, gpu_mesh->attribute_layout().to_string());
+                spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout.",
+                             extracted_mesh.source_entity.index);
                 continue;
             }
 
@@ -898,12 +918,52 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
                 .pipeline_id           = *pipeline_id,
                 .draw_func             = draw_function_id->value,
                 .batch_range_value     = {0, 1},
-                .indexed_value         = gpu_mesh->is_indexed(),
+                .indexed_value         = render_mesh->indexed(),
             });
         }
     }
 }
+
+// Bevy MeshAllocatorPlugin::allocate_and_free_meshes (allocator.rs:371-390):
+// frees the slots of removed/modified meshes, then packs + uploads the
+// newly-extracted payloads into the shared slab buffers.
+void allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
+                              Res<render::ExtractedAssets<Mesh>> extracted_meshes,
+                              Res<wgpu::Device> device,
+                              Res<wgpu::Queue> queue) {
+    // Process removed or modified meshes (Bevy MeshAllocator::free_meshes).
+    for (const auto& id : extracted_meshes->removed) mesh_allocator->free_all(id);
+    for (const auto& id : extracted_meshes->modified) mesh_allocator->free_all(id);
+
+    // Process newly-added or modified meshes (Bevy MeshAllocator::allocate_meshes
+    // + copy_element_data).
+    for (const auto& [id, mesh] : extracted_meshes->extracted) {
+        const auto packed = packed_vertex_bytes(mesh);
+        if (packed.empty()) continue;
+        mesh_allocator->allocate_vertex_bytes(*device, *queue, id, vertex_array_stride(mesh), packed.data(),
+                                              packed.size());
+        if (auto indices = mesh.get_indices(); indices) {
+            const auto& index       = indices->get();
+            const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
+            mesh_allocator->allocate_index_bytes(*device, *queue, id, static_cast<std::uint32_t>(element_size),
+                                                 static_cast<const std::uint8_t*>(index.data.cdata()),
+                                                 index.size() * element_size);
+        }
+    }
+}
 }  // namespace
+
+void MeshAllocatorPlugin::attach(App& app) {
+    if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        render_app->get().world_mut().init_resource<MeshAllocator>();
+        render_app->get().add_systems(
+            render::Render,
+            into(allocate_and_free_meshes)
+                .before(render::prepare_assets<Mesh>)
+                .in_set(render::RenderSystems::PrepareAssets)
+                .set_name("allocate and free meshes"));
+    }
+}
 
 void MeshRenderPlugin::attach(app::App& app) {
     spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
@@ -918,6 +978,7 @@ void MeshRenderPlugin::attach(app::App& app) {
                                          .set_name("calculate mesh2d bounds"));
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+    app.add_plugins(MeshAllocatorPlugin{});
     app.add_plugins(render::RenderAssetPlugin<Mesh>{});
 
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
@@ -950,6 +1011,11 @@ void MeshRenderPlugin::ready(app::App& app) {
     }
 
     auto& world = render_app->get().world_mut();
+    // Bevy MeshRenderAssetPlugin initializes the shared layout store in the
+    // render world (mesh/mod.rs:39).
+    if (!world.get_resource<MeshVertexBufferLayouts>()) {
+        world.insert_resource(MeshVertexBufferLayouts{});
+    }
     if (!world.get_resource<MeshInstanceBuffer>()) {
         world.insert_resource(MeshInstanceBuffer{});
     }
