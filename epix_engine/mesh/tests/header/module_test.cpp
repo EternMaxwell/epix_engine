@@ -2,6 +2,7 @@
 
 #include <epix/app.hpp>
 #include <epix/mesh.hpp>
+#include <epix/mesh/offset_allocator.hpp>
 #include <epix/render.hpp>
 #include <webgpu/webgpu.hpp>
 
@@ -115,22 +116,26 @@ TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
 TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
     const mesh::MeshAllocatorSettings s;
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    epix::assets::Assets<mesh::Mesh> store;
+    const auto id_a = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    const auto id_b = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     mesh::MeshAllocator allocator;
-    auto a = allocator.allocate(2, v12);
+    auto a = allocator.allocate(id_a, 24, v12);  // 2 slots
     ASSERT_TRUE(a.has_value());
     EXPECT_EQ(a->first.value, 0u);
-    EXPECT_EQ(a->second.offset, 0u);
+    EXPECT_EQ(a->second.offset(), 0u);
     EXPECT_EQ(allocator.slab_count(), 1u);
     EXPECT_GT(allocator.slabs_size(), 0u);
     // Same layout packs into the existing slab at the next slot.
-    auto b = allocator.allocate(3, v12);
+    auto b = allocator.allocate(id_b, 36, v12);  // 3 slots
     ASSERT_TRUE(b.has_value());
     EXPECT_EQ(b->first, a->first);
-    EXPECT_EQ(b->second.offset, 2u);
+    EXPECT_EQ(b->second.offset(), 2u);
     EXPECT_EQ(allocator.slab_count(), 1u);
     // Different layout -> a new slab.
     const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
-    auto c         = allocator.allocate(1, i16);
+    const auto id_c = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    auto c         = allocator.allocate(id_c, 2, i16);
     ASSERT_TRUE(c.has_value());
     EXPECT_NE(c->first, a->first);
     EXPECT_EQ(allocator.slab_count(), 2u);
@@ -154,7 +159,9 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
 
     mesh::MeshAllocator allocator;
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    auto a         = allocator.allocate(2, v12);
+    epix::assets::Assets<mesh::Mesh> store;
+    const auto id = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    auto a         = allocator.allocate(id, 24, v12);  // 2 slots
     ASSERT_TRUE(a.has_value());
     const auto buffer =
         allocator.ensure_slab_buffer(device, a->first, wgpu::BufferUsage::eVertex);
@@ -162,11 +169,13 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     EXPECT_GT(buffer.getSize(), 0u);
 
     const std::uint8_t data[24] = {0};
-    allocator.upload_to_slab(queue, a->first, a->second, data, sizeof(data));
+    allocator.upload_to_slab(queue, a->first, a->second, id, data, sizeof(data));
+    EXPECT_EQ(allocator.mesh_vertex_slice(id)->begin, 0u);
+    EXPECT_EQ(allocator.mesh_vertex_slice(id)->end, 2u);
 
-    // Compute the expected element range directly (no per-mesh AssetId needed
-    // in the unit test); verify the range helper matches the allocation.
-    const auto range = mesh::general_slab_element_range(a->second.offset, a->second.slot_count, v12);
+    // Compute the expected element range directly; verify the range helper
+    // matches the allocation.
+    const auto range = mesh::general_slab_element_range(a->second.offset(), a->second.slot_count, v12);
     EXPECT_EQ(range.first, 0u);
     EXPECT_EQ(range.second, 2u);
     app.insert_sub_app(epix::render::Render, std::move(render_sub));
@@ -244,85 +253,147 @@ TEST(MeshModule, GeneralSlabElementRange) {
     EXPECT_EQ(range.second, 10u);
 }
 
-// SlabAllocation is a value type holding slot offset + count.
+// SlabAllocation is a value type holding the offset-allocator handle + count.
 TEST(MeshModule, SlabAllocationValueType) {
-    EXPECT_EQ((mesh::SlabAllocation{3, 2}), (mesh::SlabAllocation{3, 2}));
-    EXPECT_NE((mesh::SlabAllocation{3, 2}), (mesh::SlabAllocation{4, 2}));
-    EXPECT_EQ(mesh::SlabAllocation{}.offset, 0u);
+    const mesh::offset_allocator::Allocation a0{0u, 1u};
+    const mesh::offset_allocator::Allocation a1{2u, 1u};
+    EXPECT_EQ((mesh::SlabAllocation{a0, 2}), (mesh::SlabAllocation{0u, 1u, 2}));
+    EXPECT_NE((mesh::SlabAllocation{a0, 2}), (mesh::SlabAllocation{a1, 2}));
+    EXPECT_EQ(mesh::SlabAllocation{}.offset(), 0u);
     EXPECT_EQ(mesh::SlabAllocation{}.slot_count, 0u);
 }
 
-// GeneralSlab packs allocations sequentially and reports emptiness.
+// offset_allocator (Bevy 0.18 mesh slab allocator) freed gaps are reused.
+TEST(MeshModule, OffsetAllocatorAllocatesContiguouslyAndFrees) {
+    mesh::offset_allocator::Allocator allocator(64);
+    auto a = allocator.allocate(4);
+    ASSERT_TRUE(a.has_value());
+    EXPECT_EQ(a->offset, 0u);
+    auto b = allocator.allocate(4);
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->offset, 4u);
+    auto report = allocator.storage_report();
+    EXPECT_EQ(report.total_free_space, 56u);
+
+    allocator.free(*a);
+    allocator.free(*b);
+    report = allocator.storage_report();
+    EXPECT_EQ(report.total_free_space, 64u);
+    EXPECT_EQ(report.largest_free_region, 64u);
+    EXPECT_TRUE(allocator.is_empty());
+}
+
+// The key Bevy behavior absent from a sequential cursor: a freed gap inside a
+// slab is reused by the next allocation.
+TEST(MeshModule, OffsetAllocatorReusesFreedGaps) {
+    mesh::offset_allocator::Allocator allocator(64);
+    auto a = allocator.allocate(4);  // offset 0
+    auto b = allocator.allocate(8);  // offset 4
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    EXPECT_EQ(b->offset, 4u);
+
+    allocator.free(*a);
+    auto c = allocator.allocate(4);
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->offset, 0u);  // reuses the freed gap, not the tail
+    allocator.free(*b);
+    allocator.free(*c);
+    EXPECT_TRUE(allocator.is_empty());
+}
+
+// Adjacent freed allocations merge back into one free region, which is then
+// reused before the untouched (larger) tail.
+TEST(MeshModule, OffsetAllocatorMergesNeighbors) {
+    mesh::offset_allocator::Allocator allocator(64);
+    auto a = allocator.allocate(4);  // offset 0
+    auto b = allocator.allocate(8);  // offset 4
+    auto c = allocator.allocate(4);  // offset 12 (kept alive)
+    ASSERT_TRUE(a.has_value());
+    ASSERT_TRUE(b.has_value());
+    ASSERT_TRUE(c.has_value());
+    EXPECT_EQ(c->offset, 12u);
+
+    allocator.free(*a);
+    allocator.free(*b);
+    // a+b merged into one 12-unit region at offset 0; the 48-unit tail is
+    // untouched but sits in a higher size class, so the next fit reuses the
+    // merged gap at offset 0.
+    auto d = allocator.allocate(8);
+    ASSERT_TRUE(d.has_value());
+    EXPECT_EQ(d->offset, 0u);
+    allocator.free(*c);
+    allocator.free(*d);
+    EXPECT_TRUE(allocator.is_empty());
+}
+
+// min_allocator_size mirrors offset-allocator ext::min_allocator_size.
+TEST(MeshModule, OffsetAllocatorMinAllocatorSize) {
+    EXPECT_EQ(mesh::offset_allocator::min_allocator_size(1), 1u);
+    EXPECT_EQ(mesh::offset_allocator::min_allocator_size(8), 8u);
+    // Required to hold N slots: returns the bin's capacity.
+    const auto min = mesh::offset_allocator::min_allocator_size(7);
+    EXPECT_GE(min, 7u);
+}
+
+// GeneralSlab packs allocations and is non-empty while payloads are pending.
 TEST(MeshModule, GeneralSlabPacksAndGrows) {
     const mesh::MeshAllocatorSettings settings;
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    auto slab      = mesh::GeneralSlab::make(v12, settings);
-    EXPECT_GT(slab.current_slot_capacity, 0u);
-    EXPECT_TRUE(slab.is_empty());
-
-    auto a = slab.allocate(2, settings);
+    epix::assets::Assets<mesh::Mesh> store;
+    const auto id1   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    const auto id2   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
+    mesh::MeshAllocator allocator;
+    auto a = allocator.allocate(id1, 24, v12);  // 2 slots
     ASSERT_TRUE(a.has_value());
-    EXPECT_EQ(a->offset, 0u);
-    EXPECT_EQ(a->slot_count, 2u);
-    EXPECT_FALSE(slab.is_empty());
+    const auto* slab = allocator.slabs.at(a->first).general();
+    ASSERT_TRUE(slab);
+    EXPECT_GT(slab->current_slot_capacity, 0u);
+    EXPECT_FALSE(slab->is_empty());  // pending allocation recorded
 
-    auto b = slab.allocate(3, settings);
+    auto b = allocator.allocate(id2, 36, v12);  // 3 slots
     ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->offset, 2u);  // sequential cursor
-    EXPECT_EQ(b->slot_count, 3u);
-    EXPECT_EQ(slab.occupied_slots, 5u);
+    EXPECT_EQ(b->first, a->first);
+    EXPECT_EQ(b->second.offset(), 2u);
+    EXPECT_EQ(allocator.slab_count(), 1u);
 }
 
-// Freeing all of a mesh's allocations returns emptied slabs to a reusable pool so
-// a later allocation reuses the capacity instead of creating a new slab.
-TEST(MeshModule, MeshAllocatorFreeReusesSlabs) {
+// Bevy's offset-allocator semantics at the MeshAllocator level: freed slots
+// inside a still-live slab are reused, and a fully-empty slab is removed.
+TEST(MeshModule, MeshAllocatorFreeReusesFreedSlots) {
     const mesh::MeshAllocatorSettings settings;
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    // 2 vertices (24 bytes) -> 2 slots, general slab.
-    const auto [slot_count, is_large] = mesh::compute_allocation(24, v12, settings);
-    EXPECT_FALSE(is_large);
-    EXPECT_EQ(slot_count, 2u);
-
     epix::assets::Assets<mesh::Mesh> store;
     const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
 
     mesh::MeshAllocator allocator;
-    auto a1 = allocator.allocate(slot_count, v12);
+    auto a1 = allocator.allocate(id1, 24, v12);  // 2 slots at offset 0
     ASSERT_TRUE(a1.has_value());
-    allocator.record_allocation(id1, a1->first, a1->second, true);
-    auto a2 = allocator.allocate(slot_count, v12);
+    auto a2 = allocator.allocate(id2, 24, v12);  // 2 slots right after
     ASSERT_TRUE(a2.has_value());
-    allocator.record_allocation(id2, a2->first, a2->second, true);
-
-    // Both vertex payloads share one general slab (same layout).
+    EXPECT_EQ(a1->second.offset(), 0u);
+    EXPECT_EQ(a2->second.offset(), 2u);
     EXPECT_EQ(allocator.slab_count(), 1u);
-    EXPECT_EQ(allocator.allocations(), 2u);
+    EXPECT_EQ(allocator.allocations(), 0u);  // Bevy counts index allocations only
 
-    // Freeing one mesh leaves the slab live (other allocation still resident).
+    // Freeing one mesh keeps the slab live with id2 still resident.
     allocator.free_all(id1);
-    EXPECT_EQ(allocator.allocations(), 1u);
     EXPECT_EQ(allocator.slab_count(), 1u);
-    EXPECT_TRUE(allocator.reusable_slabs.empty());
 
-    // Freeing the last mesh empties the slab and parks it for reuse.
-    allocator.free_all(id2);
-    EXPECT_EQ(allocator.allocations(), 0u);
-    EXPECT_EQ(allocator.slab_count(), 0u);
-    EXPECT_EQ(allocator.reusable_slabs.size(), 1u);
-    EXPECT_TRUE(allocator.reusable_slabs.front().second.is_empty());
-
-    // A new mesh allocation reuses the parked slab (same id/capacity) rather
-    // than creating a second slab.
+    // A new mesh reuses the freed gap (offset-allocator), no new slab.
     const auto id3 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a3        = allocator.allocate(slot_count, v12);
+    auto a3        = allocator.allocate(id3, 24, v12);
     ASSERT_TRUE(a3.has_value());
-    allocator.record_allocation(id3, a3->first, a3->second, true);
+    EXPECT_EQ(a3->first, a1->first);
+    EXPECT_EQ(a3->second.offset(), 0u);
     EXPECT_EQ(allocator.slab_count(), 1u);
-    EXPECT_TRUE(allocator.reusable_slabs.empty());
-    const auto slabs = allocator.mesh_slabs(id3);
-    EXPECT_EQ(slabs.first, a3->first);
-    EXPECT_FALSE(slabs.second.has_value());
+
+    // Freeing everything removes the empty slab entirely (Bevy keeps no pool).
+    allocator.free_all(id2);
+    allocator.free_all(id3);
+    EXPECT_EQ(allocator.slab_count(), 0u);
+    EXPECT_TRUE(allocator.slab_layouts.empty());
 }
 
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
