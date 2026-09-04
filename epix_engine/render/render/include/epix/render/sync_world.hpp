@@ -133,3 +133,25 @@ struct std::hash<::epix::render::sync_world::RenderEntity> {
         return std::hash<::epix::ecs::Entity>{}(e.id());
     }
 };
+
+namespace epix::ecs {
+// Bevy queries `RenderEntity` by value as a query data item (camera.rs
+// `Query<(Entity, RenderEntity, ...)>`); Epix mirrors that with a by-value
+// `QueryData<RenderEntity>` (Item = RenderEntity), reading the component
+// read-only but returning a copy, so queries can use the value rather than a
+// `const RenderEntity&` reference.
+template <>
+struct WorldQuery<::epix::render::sync_world::RenderEntity>
+    : WorldQuery<const ::epix::render::sync_world::RenderEntity&> {};
+template <>
+struct QueryData<::epix::render::sync_world::RenderEntity> {
+    using Item                            = ::epix::render::sync_world::RenderEntity;
+    using ReadOnly                        = ::epix::render::sync_world::RenderEntity;
+    static inline constexpr bool readonly = true;
+    static Item fetch(typename WorldQuery<const ::epix::render::sync_world::RenderEntity&>::Fetch& fetch,
+                      ::epix::ecs::Entity entity, TableRow row) noexcept {
+        return QueryData<const ::epix::render::sync_world::RenderEntity&>::fetch(fetch, entity, row);
+    }
+};
+static_assert(query_data<::epix::render::sync_world::RenderEntity>);
+}  // namespace epix::ecs

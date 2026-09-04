@@ -526,7 +526,7 @@ EPIX_EXPORT void extract_cameras(
     epix::ecs::Commands cmd,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                         const sync_world::RenderEntity&,
+                                         sync_world::RenderEntity,
                                          const ::epix::camera::Camera&,
                                          const ::epix::camera::RenderTarget&,
                                          const CameraRenderGraph&,
@@ -545,7 +545,7 @@ EPIX_EXPORT void extract_cameras(
                                          epix::ecs::Opt<const ::epix::camera::Projection&>,
                                          epix::ecs::Opt<const view::NoIndirectDrawing&>>>> cameras,
     epix::ecs::Res<batching::GpuPreprocessingSupport> gpu_preprocessing_support,
-    epix::app::Extract<epix::ecs::Query<const sync_world::RenderEntity&>> mapper,
+    epix::app::Extract<epix::ecs::Query<sync_world::RenderEntity>> mapper,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Entity, epix::ecs::With<::epix::window::PrimaryWindow, ::epix::window::Window>>>
         primary_window);

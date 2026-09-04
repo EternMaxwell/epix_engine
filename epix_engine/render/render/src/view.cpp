@@ -1,4 +1,4 @@
-﻿
+
 #include <spdlog/spdlog.h>
 
 #include <epix/render.hpp>
@@ -495,7 +495,7 @@ void epix::render::camera::CameraPlugin::attach(App& app) {
 void camera::extract_cameras(
     Commands cmd,
     Extract<Query<Item<Entity,
-                       const sync_world::RenderEntity&,
+                       sync_world::RenderEntity,
                        const ::epix::camera::Camera&,
                        const ::epix::camera::RenderTarget&,
                        const CameraRenderGraph&,
@@ -514,7 +514,7 @@ void camera::extract_cameras(
                        Opt<const ::epix::camera::Projection&>,
                        Opt<const view::NoIndirectDrawing&>>>> cameras,
     Res<batching::GpuPreprocessingSupport> gpu_preprocessing_support,
-    Extract<Query<const sync_world::RenderEntity&>> mapper,
+    Extract<Query<sync_world::RenderEntity>> mapper,
     Extract<Query<Entity, With<::epix::window::PrimaryWindow, ::epix::window::Window>>> primary_window) {
     // Bevy extract_cameras (bevy_render-0.18.0/src/camera.rs:473-601): cameras
     // are synchronized to the render world (SyncToRenderWorld) and the extracted
@@ -563,9 +563,7 @@ void camera::extract_cameras(
             for (const Entity main_entity : main_entities) {
                 const Entity mapped =
                     mapper.get(main_entity)
-                        .transform([](const std::reference_wrapper<const sync_world::RenderEntity>& re) {
-                            return re.get().id();
-                        })
+                        .transform([](const sync_world::RenderEntity& re) { return re.id(); })
                         .value_or(Entity::PLACEHOLDER);
                 render_entities.emplace_back(mapped, sync_world::MainEntity{main_entity});
             }
