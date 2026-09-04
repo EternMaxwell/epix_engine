@@ -139,10 +139,10 @@ void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
     g2d.add_node(Core2dNodes::EndMainPass, graph::EmptyNode{});
     // These endpoints are intentionally installed by Core2dPlugin: Bevy does
     // the same so optional post-processing plugins can insert work between
-    // them. Tonemapping itself remains a no-op placeholder until C16 supplies
-    // its Bevy-shaped GPU implementation.
+    // them. Tonemapping is the C16 GPU node (Bevy TonemappingNode): it skips
+    // non-HDR views and the None method, so the default 2D camera is unchanged.
     g2d.add_node(Core2dNodes::StartMainPassPostProcessing, graph::EmptyNode{});
-    g2d.add_node(Core2dNodes::Tonemapping, graph::EmptyNode{});
+    g2d.add_node(Core2dNodes::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
     g2d.add_node(Core2dNodes::EndMainPassPostProcessing, graph::EmptyNode{});
     g2d.add_node(Core2dNodes::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
     g2d.add_node_edges(Core2dNodes::StartMainPass, Core2dNodes::MainOpaquePass, Core2dNodes::MainTransparentPass,
