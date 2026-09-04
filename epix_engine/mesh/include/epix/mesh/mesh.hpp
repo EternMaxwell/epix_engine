@@ -26,6 +26,7 @@
 #include <type_traits>
 #include <utility>
 #include <webgpu/webgpu.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 #endif
 
 namespace epix::mesh {
@@ -192,6 +193,12 @@ EPIX_EXPORT struct Mesh {
 
     /** @brief Build a MeshAttributeLayout from the current attributes. */
     MeshAttributeLayout attribute_layout() const;
+
+    /** @brief Get this mesh's interleaved vertex-buffer layout, interning it in
+     * `mesh_vertex_buffer_layouts` (Bevy `Mesh::get_mesh_vertex_buffer_layout`).
+     * The attribute ids are in slot (id) order and each attribute's offset
+     * accumulates the previous attribute sizes. */
+    MeshVertexBufferLayoutRef get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const;
 
     /** @brief Insert a new attribute with given data, or replace existing one at that slot.
      *  Caller must ensure the data type matches the attribute format. */

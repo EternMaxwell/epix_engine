@@ -43,6 +43,37 @@ TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
     EXPECT_EQ(std::get<mesh::MeshAlphaMode2dMask>(mask).cutoff, 0.35f);
 }
 
+// get_mesh_vertex_buffer_layout builds Bevy's interleaved layout (ids in order,
+// accumulated offsets, array_stride) and interns layouts structurally.
+TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
+    mesh::MeshVertexBufferLayouts store;
+    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));  // position(12) + color(16)
+    const auto layout = box.get_mesh_vertex_buffer_layout(store);
+    ASSERT_TRUE(layout.value);
+    EXPECT_EQ(layout.value->layout.array_stride, 28u);
+    ASSERT_EQ(layout.value->layout.attributes.size(), 2u);
+    EXPECT_EQ(layout.value->layout.attributes[0].offset, 0u);
+    EXPECT_EQ(layout.value->layout.attributes[0].shader_location, 0u);
+    EXPECT_EQ(layout.value->layout.attributes[1].offset, 12u);
+    EXPECT_EQ(layout.value->layout.attributes[1].shader_location, 1u);
+    ASSERT_EQ(layout.value->attribute_ids.size(), 2u);
+    EXPECT_EQ(layout.value->attribute_ids[0].value, 0u);  // position slot
+    EXPECT_EQ(layout.value->attribute_ids[1].value, 1u);  // color slot
+
+    // A structurally identical mesh shares the interned layout (pointer
+    // equality on MeshVertexBufferLayoutRef, Bevy Arc semantics).
+    auto box2 = mesh::make_box2d(5.0f, 5.0f, glm::vec4(0.0f));
+    const auto layout2 = box2.get_mesh_vertex_buffer_layout(store);
+    EXPECT_EQ(layout, layout2);
+    EXPECT_EQ(store.layouts.size(), 1u);
+
+    // A different attribute set gets its own interned entry.
+    auto uvbox = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    const auto layout3 = uvbox.get_mesh_vertex_buffer_layout(store);
+    EXPECT_NE(layout, layout3);
+    EXPECT_EQ(store.layouts.size(), 2u);
+}
+
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh;
     auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});

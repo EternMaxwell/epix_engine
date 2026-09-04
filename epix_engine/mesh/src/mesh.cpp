@@ -14,6 +14,30 @@ MeshAttributeLayout Mesh::attribute_layout() const {
     return layout;
 }
 
+MeshVertexBufferLayoutRef Mesh::get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const {
+    // Bevy Mesh::get_mesh_vertex_buffer_layout: the layout's attributes are
+    // built in attribute-id (Bevy) / slot (Epix) order with accumulated byte
+    // offsets and a stride equal to the total size.
+    std::vector<MeshVertexAttributeId> attribute_ids;
+    std::vector<VertexAttributeDescriptor> attributes;
+    std::uint64_t accumulated_offset = 0;
+    for (const auto& [slot, attribute_data] : _attributes) {
+        attribute_ids.push_back(MeshVertexAttributeId{static_cast<std::uint64_t>(slot)});
+        attributes.push_back(VertexAttributeDescriptor{
+            .offset          = accumulated_offset,
+            .format          = attribute_data.attribute.format,
+            .shader_location = static_cast<std::uint32_t>(attributes.size()),
+        });
+        accumulated_offset += vertex_format_size(attribute_data.attribute.format);
+    }
+    return mesh_vertex_buffer_layouts.insert(MeshVertexBufferLayout{
+        .attribute_ids = std::move(attribute_ids),
+        .layout        = VertexBufferLayout{.array_stride = accumulated_offset,
+                                            .step_mode    = wgpu::VertexStepMode::eVertex,
+                                            .attributes   = std::move(attributes)},
+    });
+}
+
 std::optional<epix::camera::Aabb> Mesh::compute_aabb() const {
     const auto attribute = get_attribute(ATTRIBUTE_POSITION);
     if (!attribute || attribute->get().data.type_info() != epix::meta::type_info::of<glm::vec3>()) return std::nullopt;
