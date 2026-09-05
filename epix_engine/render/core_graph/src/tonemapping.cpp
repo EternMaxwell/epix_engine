@@ -59,9 +59,9 @@ struct VIn {
     [[vk::location(0)]] float2 uv;
 };
 
-const float PI = 3.141592653589793;
-const float PI_2 = 6.283185307179586;
-const float FRAC_PI_3 = 1.0471975511965976;
+static const float PI = 3.141592653589793;
+static const float PI_2 = 6.283185307179586;
+static const float FRAC_PI_3 = 1.0471975511965976;
 
 // maths.wgsl powsafe: pow() but safe for NaNs/negatives.
 float3 powsafe(float3 color, float power) {
@@ -87,8 +87,8 @@ float3 rgb_to_hsv(float3 rgb) {
     return float3(h, s, x_max);
 }
 
-const float LEVEL_MARGIN = 0.1;
-const float LEVEL_MARGIN_DIV = 0.5 / LEVEL_MARGIN;
+static const float LEVEL_MARGIN = 0.1;
+static const float LEVEL_MARGIN_DIV = 0.5 / LEVEL_MARGIN;
 
 // lut_bindings.wgsl sample_current_lut: sample the LUT for methods that need
 // it, otherwise return magenta (placeholder).
@@ -203,7 +203,7 @@ float3 screen_space_dither(float2 frag_coord) {
     dither = frac(dither.rgb / float3(103.0, 71.0, 97.0));
     return (dither - 0.5) / 255.0;
 }
-float3 sectional_color_grading(float3 in_color, inout epix::view::ColorGrading color_grading) {
+float3 sectional_color_grading(float3 in_color, inout epix::ColorGrading color_grading) {
     float3 color = in_color;
     float level = (color.r + color.g + color.b) / 3.0;
     float3 levels = float3(0.0);
@@ -233,7 +233,7 @@ float3 sectional_color_grading(float3 in_color, inout epix::view::ColorGrading c
     color = color * powsafe(float3(2.0), color_grading.exposure);
     return max(color, float3(0.0));
 }
-float4 tone_mapping(float4 in_color, inout epix::view::ColorGrading color_grading) {
+float4 tone_mapping(float4 in_color, inout epix::ColorGrading color_grading) {
     float3 color = max(in_color.rgb, float3(0.0));
 #if defined(HUE_ROTATE)
     float3 hsv = rgb_to_hsv(color);
@@ -272,7 +272,11 @@ float4 tone_mapping(float4 in_color, inout epix::view::ColorGrading color_gradin
 [shader("fragment")]
 float4 fs_main(VIn input) : SV_Target {
     float4 hdr_color = hdr_texture.Sample(hdr_sampler, input.uv);
-    float3 output_rgb = tone_mapping(hdr_color, view_uniform.color_grading).rgb;
+    // Copy the color-grading struct out of the constant buffer so it can be
+    // written in-place by tone_mapping (the ConstantBuffer field is a
+    // read-only value, not an l-value).
+    epix::ColorGrading color_grading = view_uniform.color_grading;
+    float3 output_rgb = tone_mapping(hdr_color, color_grading).rgb;
 #ifdef DEBAND_DITHER
     output_rgb = powsafe(output_rgb, 1.0 / 2.2);
     output_rgb = output_rgb + screen_space_dither(input.position.xy);
