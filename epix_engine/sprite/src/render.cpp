@@ -36,7 +36,7 @@ struct SpriteInstance {
     float4 pos_offset_scale;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<SpriteInstance> sprite_instances;
 
 struct VertexInput {

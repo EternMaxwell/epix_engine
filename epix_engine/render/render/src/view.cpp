@@ -50,7 +50,7 @@ struct EpixView {
 constexpr std::string_view kViewShaderSlang = R"(
 module "epix/view";
 
-namespace epix {
+namespace epix::view {
 public struct ColorGrading {
     public float3x3 balance;
     public float3 saturation;

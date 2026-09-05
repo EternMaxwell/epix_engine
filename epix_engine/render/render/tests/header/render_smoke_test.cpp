@@ -8,6 +8,9 @@
 #include <epix/task.hpp>
 #include <epix/time.hpp>
 #include <optional>
+#include <span>
+#include <string_view>
+#include <thread>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 
@@ -31,6 +34,61 @@ void add_render_test_prerequisites(App& app) {
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(FrameCountPlugin{});
+}
+
+// The Slang module identity `epix.view` mirrors Bevy's
+// `bevy_render::view` shader import path. Its public symbols must therefore
+// live under `epix::view`, just like the matching WGSL module, rather than in
+// the flat `epix` namespace.
+TEST(ViewShaderModule, ExportsTypesUnderViewNamespace) {
+    static constexpr std::string_view kProbeSource = R"slang(
+import epix.view;
+
+float namespace_probe_value(epix::view::View view, epix::view::ColorGrading grading) {
+    return view.exposure + grading.exposure;
+}
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void namespace_probe() {}
+)slang";
+
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
+    try {
+        RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto& registry = app.resource_mut<epix::assets::EmbeddedAssetRegistry>();
+    registry.insert_asset_static("render/tests/view_namespace_probe.slang", std::as_bytes(std::span(kProbeSource)));
+
+    auto& asset_server = app.resource<epix::assets::AssetServer>();
+    auto view_shader = asset_server.load<epix::shader::Shader>("embedded://epix/shaders/view.slang");
+    auto probe_shader =
+        asset_server.load<epix::shader::Shader>("embedded://render/tests/view_namespace_probe.slang");
+
+    for (int attempt = 0; attempt < 10000 &&
+                          (!asset_server.is_loaded_with_dependencies(view_shader.id()) ||
+                           !asset_server.is_loaded_with_dependencies(probe_shader.id()));
+         ++attempt) {
+        app.run_schedule(Last);
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(asset_server.is_loaded_with_dependencies(view_shader.id()));
+    ASSERT_TRUE(asset_server.is_loaded_with_dependencies(probe_shader.id()));
+
+    const auto pipeline = app.resource<PipelineServer>().queue_compute_pipeline(ComputePipelineDescriptor{
+        .label       = "view namespace probe",
+        .shader      = probe_shader,
+        .entry_point = std::string("namespace_probe"),
+    });
+    app.run_schedule(Last);
+
+    const auto result = app.resource<PipelineServer>().get_compute_pipeline(pipeline);
+    ASSERT_TRUE(result.has_value()) << "epix.view failed to export epix::view::View and epix::view::ColorGrading";
 }
 
 namespace {

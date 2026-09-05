@@ -49,7 +49,7 @@ constexpr std::string_view kTonemappingFragmentPath  = "core_pipeline/tonemappin
 constexpr std::string_view kTonemappingFragmentSlang = R"slang(
 import epix.view;
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(1, 0)]] Texture2D<float4> hdr_texture;
 [[vk::binding(2, 0)]] SamplerState hdr_sampler;
 [[vk::binding(3, 0)]] Texture3D<float4> dt_lut_texture;
@@ -203,7 +203,7 @@ float3 screen_space_dither(float2 frag_coord) {
     dither = frac(dither.rgb / float3(103.0, 71.0, 97.0));
     return (dither - 0.5) / 255.0;
 }
-float3 sectional_color_grading(float3 in_color, inout epix::ColorGrading color_grading) {
+float3 sectional_color_grading(float3 in_color, inout epix::view::ColorGrading color_grading) {
     float3 color = in_color;
     float level = (color.r + color.g + color.b) / 3.0;
     float3 levels = float3(0.0);
@@ -233,7 +233,7 @@ float3 sectional_color_grading(float3 in_color, inout epix::ColorGrading color_g
     color = color * powsafe(float3(2.0), color_grading.exposure);
     return max(color, float3(0.0));
 }
-float4 tone_mapping(float4 in_color, inout epix::ColorGrading color_grading) {
+float4 tone_mapping(float4 in_color, inout epix::view::ColorGrading color_grading) {
     float3 color = max(in_color.rgb, float3(0.0));
 #if defined(HUE_ROTATE)
     float3 hsv = rgb_to_hsv(color);
@@ -275,7 +275,7 @@ float4 fs_main(VIn input) : SV_Target {
     // Copy the color-grading struct out of the constant buffer so it can be
     // written in-place by tone_mapping (the ConstantBuffer field is a
     // read-only value, not an l-value).
-    epix::ColorGrading color_grading = view_uniform.color_grading;
+    epix::view::ColorGrading color_grading = view_uniform.color_grading;
     float3 output_rgb = tone_mapping(hdr_color, color_grading).rgb;
 #ifdef DEBAND_DITHER
     output_rgb = powsafe(output_rgb, 1.0 / 2.2);

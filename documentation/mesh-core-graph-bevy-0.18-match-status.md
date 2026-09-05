@@ -78,6 +78,7 @@ intentional, deferred, or out of scope.
 | C18 | OIT settings, buffers, resolve pipeline/node | none | 🚫 | No OIT subsystem. |
 | C19 | Experimental depth mip-generation plugin and resources | none | 🚫 | No depth-pyramid/mip-generation subsystem. |
 | C20 | Skybox pipeline and prepass integration | none | 🚫 | No core-pipeline skybox subsystem. |
+| C21 | Shared view shader module namespace follows its import path (`bevy_render::view::{View, ColorGrading}`) | Slang module `epix.view` | ✅ | The Slang module now exports `View` and `ColorGrading` from `epix::view`, matching Bevy's shader-module namespace and Epix's WGSL `epix::view` import path. Mesh, sprite, text, and tonemapping use the qualified names consistently. A real PipelineServer regression compiles an importing Slang entry point; all affected visual pipelines were captured across three stable frames. |
 
 ## Audit Log
 
@@ -87,6 +88,7 @@ an accepted divergence merely because it was previously committed.
 
 | Date | Evidence | Result |
 | --- | --- | --- |
+| 2026-09-05 | C21: compared Bevy's `bevy_render::view::{View, ColorGrading}` imports with Epix's WGSL and Slang view modules, then audited every production `import epix.view` consumer. Built affected no-modules MSVC targets at `--parallel 10`; 195 focused tests passed, including a new real Slang/PipelineServer namespace-compilation regression. | Moved the Slang exports from flat `epix` to `epix::view` and updated mesh, sprite, text, and tonemapping atomically. Three process-owned GLFW client captures each of mesh rendering, sprite basic, text font-image, and fullscreen material were visually inspected and stable; logs contained no shader, validation, panic, or runtime errors. |
 | 2026-09-05 | Resumed from clean HEAD 6d3514b9; re-read local Bevy core_2d functions and audited new tracker claims. | Reopened M4-M6, C3, C16 and render N33-N34 rather than inheriting unsupported accepted labels. Corrected C1's stale plugin inventory. |
 | 2026-09-05 | C9/C10: no-modules reconfigure and affected-target rebuild at --parallel 10; 11 CTest executables (235 Google Tests), zero failures/skips. | Phase/depth regressions pass on the GPU. Tests now live with their owning modules; render tests no longer link core_graph. Three process-owned GLFW client captures inspected for each of mesh rendering/alpha-mask/batching, sprite basic/pressure, text font-image/interactive, ImGui basic, blit, and custom render-plugin examples. Scene content was stable; the live performance overlay varied. Captures/logs: tmp/core2d-depth-20260905. Final public-name/constant rebuild followed by the same tests and three fresh mesh captures also passed. |
 | 2026-09-05 | C3 runtime checks: two capture launches and one no-capture launch of examples_header_render_glfw_fullscreen_material. | All three became unresponsive. Initial capture showed two dark-red frames before stalling; without any capture, the window stopped responding after the first responsiveness sample and continued consuming CPU. Processes were terminated after bounded checks. Root cause remains undiagnosed; C3 stays open. |

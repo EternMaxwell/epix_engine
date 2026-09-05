@@ -41,7 +41,7 @@ struct TextInstance {
     float4 color;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<TextInstance> text_instances;
 
 struct VertexInput {

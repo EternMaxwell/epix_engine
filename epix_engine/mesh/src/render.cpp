@@ -46,7 +46,7 @@ struct MeshUniform {
     float alpha_cutoff;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
@@ -80,7 +80,7 @@ struct MeshUniform {
     float alpha_cutoff;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
@@ -115,7 +115,7 @@ struct MeshUniform {
     float alpha_cutoff;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
@@ -152,7 +152,7 @@ struct MeshUniform {
     float alpha_cutoff;
 };
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::View> view_uniform;
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
 [[vk::binding(0, 1)]] StructuredBuffer<MeshUniform> mesh_instances;
 
 struct VertexInput {
