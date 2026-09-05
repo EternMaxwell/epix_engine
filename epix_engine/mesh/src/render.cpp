@@ -928,6 +928,7 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
 // frees the slots of removed/modified meshes, then packs + uploads the
 // newly-extracted payloads into the shared slab buffers.
 void allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
+                              Res<MeshAllocatorSettings> mesh_allocator_settings,
                               Res<render::ExtractedAssets<Mesh>> extracted_meshes,
                               Res<wgpu::Device> device,
                               Res<wgpu::Queue> queue) {
@@ -941,13 +942,13 @@ void allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
         const auto packed = packed_vertex_bytes(mesh);
         if (packed.empty()) continue;
         mesh_allocator->allocate_vertex_bytes(*device, *queue, id, vertex_array_stride(mesh), packed.data(),
-                                              packed.size());
+                                              packed.size(), *mesh_allocator_settings);
         if (auto indices = mesh.get_indices(); indices) {
             const auto& index       = indices->get();
             const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
             mesh_allocator->allocate_index_bytes(*device, *queue, id, static_cast<std::uint32_t>(element_size),
                                                  static_cast<const std::uint8_t*>(index.data.cdata()),
-                                                 index.size() * element_size);
+                                                 index.size() * element_size, *mesh_allocator_settings);
         }
     }
 }
@@ -955,6 +956,7 @@ void allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
 
 void MeshAllocatorPlugin::attach(App& app) {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        render_app->get().world_mut().init_resource<MeshAllocatorSettings>();
         render_app->get().world_mut().init_resource<MeshAllocator>();
         render_app->get().add_systems(
             render::Render,

@@ -4,6 +4,7 @@
 #include <epix/mesh.hpp>
 #include <epix/mesh/offset_allocator.hpp>
 #include <epix/render.hpp>
+#include <memory>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
@@ -146,6 +147,26 @@ TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
     EXPECT_EQ(settings.growth_factor, 1.5);
 }
 
+// Bevy installs MeshAllocatorSettings as an independently configurable
+// render-world resource; MeshAllocator does not own a private settings copy.
+TEST(MeshModule, MeshAllocatorPluginPreservesSettingsResource) {
+    epix::app::App app = epix::app::App::create();
+    auto render_app = std::make_unique<epix::app::App>(epix::app::App::create());
+    mesh::MeshAllocatorSettings custom;
+    custom.min_slab_size = 4096;
+    render_app->world_mut().insert_resource(custom);
+    app.insert_sub_app(epix::render::Render, std::move(render_app));
+
+    mesh::MeshAllocatorPlugin{}.attach(app);
+
+    const auto render = app.get_sub_app(epix::render::Render);
+    ASSERT_TRUE(render.has_value());
+    const auto settings = render->get().world().get_resource<mesh::MeshAllocatorSettings>();
+    ASSERT_TRUE(settings.has_value());
+    EXPECT_EQ(settings->get().min_slab_size, 4096u);
+    EXPECT_TRUE(render->get().world().get_resource<mesh::MeshAllocator>().has_value());
+}
+
 // Bevy SlabId / MeshBufferSlice are value types; verify identity + element range.
 TEST(MeshModule, SlabIdAndMeshBufferSliceTypes) {
     const mesh::SlabId zero;
@@ -177,14 +198,14 @@ TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
     const auto id_a = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     const auto id_b = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     mesh::MeshAllocator allocator;
-    auto a = allocator.allocate(id_a, 24, v12);  // 2 slots
+    auto a = allocator.allocate(id_a, 24, v12, s);  // 2 slots
     ASSERT_TRUE(a.has_value());
     EXPECT_EQ(a->first.value, 0u);
     EXPECT_EQ(a->second.offset(), 0u);
     EXPECT_EQ(allocator.slab_count(), 1u);
     EXPECT_GT(allocator.slabs_size(), 0u);
     // Same layout packs into the existing slab at the next slot.
-    auto b = allocator.allocate(id_b, 36, v12);  // 3 slots
+    auto b = allocator.allocate(id_b, 36, v12, s);  // 3 slots
     ASSERT_TRUE(b.has_value());
     EXPECT_EQ(b->first, a->first);
     EXPECT_EQ(b->second.offset(), 2u);
@@ -192,7 +213,7 @@ TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
     // Different layout -> a new slab.
     const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
     const auto id_c = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto c         = allocator.allocate(id_c, 2, i16);
+    auto c         = allocator.allocate(id_c, 2, i16, s);
     ASSERT_TRUE(c.has_value());
     EXPECT_NE(c->first, a->first);
     EXPECT_EQ(allocator.slab_count(), 2u);
@@ -215,11 +236,12 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     const auto& queue  = render_sub->world().resource<wgpu::Queue>();
 
     mesh::MeshAllocator allocator;
-    allocator.settings.min_slab_size = 1;  // force growth on small payloads
+    mesh::MeshAllocatorSettings settings;
+    settings.min_slab_size = 1;  // force growth on small payloads
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
     epix::assets::Assets<mesh::Mesh> store;
     const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a         = allocator.allocate(id1, 24, v12);  // 2 slots
+    auto a         = allocator.allocate(id1, 24, v12, settings);  // 2 slots
     ASSERT_TRUE(a.has_value());
     const auto buffer =
         allocator.ensure_slab_buffer(device, queue, a->first, wgpu::BufferUsage::eVertex);
@@ -234,7 +256,7 @@ TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
     // A second mesh that grows the slab triggers the Bevy reallocate path: a
     // new, larger buffer is created and the old contents copied across.
     const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto b         = allocator.allocate(id2, 36, v12);  // +3 slots (5 total)
+    auto b         = allocator.allocate(id2, 36, v12, settings);  // +3 slots (5 total)
     ASSERT_TRUE(b.has_value());
     const auto grown = allocator.ensure_slab_buffer(device, queue, b->first, wgpu::BufferUsage::eVertex);
     EXPECT_EQ(grown.getSize(), 60u);  // 5 slots * 12
@@ -271,11 +293,12 @@ TEST(MeshModule, MeshAllocatorLargeObjectSlab) {
     const auto& queue  = render_sub->world().resource<wgpu::Queue>();
 
     mesh::MeshAllocator allocator;
-    allocator.settings.large_threshold = 32;  // tiny threshold -> large-object path
+    mesh::MeshAllocatorSettings settings;
+    settings.large_threshold = 32;  // tiny threshold -> large-object path
     const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
     epix::assets::Assets<mesh::Mesh> store;
     const auto id    = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto alloc = allocator.allocate(id, 48, v12);
+    const auto alloc = allocator.allocate(id, 48, v12, settings);
     ASSERT_TRUE(alloc.has_value());
     const auto* slab = allocator.slabs.at(alloc->first).large();
     ASSERT_TRUE(slab);  // dedicated large-object slab, not general
@@ -453,14 +476,14 @@ TEST(MeshModule, GeneralSlabPacksAndGrows) {
     const auto id1   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     const auto id2   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     mesh::MeshAllocator allocator;
-    auto a = allocator.allocate(id1, 24, v12);  // 2 slots
+    auto a = allocator.allocate(id1, 24, v12, settings);  // 2 slots
     ASSERT_TRUE(a.has_value());
     const auto* slab = allocator.slabs.at(a->first).general();
     ASSERT_TRUE(slab);
     EXPECT_GT(slab->current_slot_capacity, 0u);
     EXPECT_FALSE(slab->is_empty());  // pending allocation recorded
 
-    auto b = allocator.allocate(id2, 36, v12);  // 3 slots
+    auto b = allocator.allocate(id2, 36, v12, settings);  // 3 slots
     ASSERT_TRUE(b.has_value());
     EXPECT_EQ(b->first, a->first);
     EXPECT_EQ(b->second.offset(), 2u);
@@ -477,9 +500,9 @@ TEST(MeshModule, MeshAllocatorFreeReusesFreedSlots) {
     const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
 
     mesh::MeshAllocator allocator;
-    auto a1 = allocator.allocate(id1, 24, v12);  // 2 slots at offset 0
+    auto a1 = allocator.allocate(id1, 24, v12, settings);  // 2 slots at offset 0
     ASSERT_TRUE(a1.has_value());
-    auto a2 = allocator.allocate(id2, 24, v12);  // 2 slots right after
+    auto a2 = allocator.allocate(id2, 24, v12, settings);  // 2 slots right after
     ASSERT_TRUE(a2.has_value());
     EXPECT_EQ(a1->second.offset(), 0u);
     EXPECT_EQ(a2->second.offset(), 2u);
@@ -492,7 +515,7 @@ TEST(MeshModule, MeshAllocatorFreeReusesFreedSlots) {
 
     // A new mesh reuses the freed gap (offset-allocator), no new slab.
     const auto id3 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a3        = allocator.allocate(id3, 24, v12);
+    auto a3        = allocator.allocate(id3, 24, v12, settings);
     ASSERT_TRUE(a3.has_value());
     EXPECT_EQ(a3->first, a1->first);
     EXPECT_EQ(a3->second.offset(), 0u);

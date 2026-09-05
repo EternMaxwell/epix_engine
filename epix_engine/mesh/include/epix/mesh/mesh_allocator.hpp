@@ -235,7 +235,6 @@ struct Slab {
  * `PrepareAssets` system that drives this from extracted render meshes is the
  * remaining render-path integration. */
 EPIX_EXPORT struct MeshAllocator {
-    MeshAllocatorSettings settings;
     std::uint64_t next_slab_id = 0;
     /// All slabs keyed by slab id (Bevy `slabs`).
     std::map<SlabId, Slab> slabs;
@@ -304,22 +303,24 @@ EPIX_EXPORT struct MeshAllocator {
      * to resident. */
     std::optional<std::pair<SlabId, SlabAllocation>> allocate(const epix::assets::AssetId<Mesh>& id,
                                                               std::uint64_t data_byte_len,
-                                                              const ElementLayout& layout) {
+                                                              const ElementLayout& layout,
+                                                              const MeshAllocatorSettings& settings) {
         const auto [data_slot_count, is_large] = compute_allocation(data_byte_len, layout, settings);
         // Too large for a general slab: give it a slab of its own.
         if (is_large) {
             return allocate_large(id, layout);
         }
-        return allocate_general(id, data_slot_count, layout);
+        return allocate_general(id, data_slot_count, layout, settings);
     }
 
     /** @brief Allocate + upload a mesh's packed vertex bytes into a vertex slab and
      * record the allocation (M5 "copy mesh vertex data in"). */
     std::optional<std::pair<SlabId, SlabAllocation>> allocate_vertex_bytes(
         const wgpu::Device& device, const wgpu::Queue& queue, const epix::assets::AssetId<Mesh>& id,
-        std::uint32_t vertex_stride, const std::uint8_t* data, std::size_t bytes) {
+        std::uint32_t vertex_stride, const std::uint8_t* data, std::size_t bytes,
+        const MeshAllocatorSettings& settings) {
         const ElementLayout layout = ElementLayout::make(ElementClass::Vertex, vertex_stride);
-        auto alloc                 = allocate(id, bytes, layout);
+        auto alloc                 = allocate(id, bytes, layout, settings);
         if (!alloc) return std::nullopt;
         ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eVertex);
         upload_to_slab(device, queue, alloc->first, alloc->second, id, data, bytes, wgpu::BufferUsage::eVertex);
@@ -329,9 +330,10 @@ EPIX_EXPORT struct MeshAllocator {
      * the allocation. */
     std::optional<std::pair<SlabId, SlabAllocation>> allocate_index_bytes(
         const wgpu::Device& device, const wgpu::Queue& queue, const epix::assets::AssetId<Mesh>& id,
-        std::uint32_t index_element_size, const std::uint8_t* data, std::size_t bytes) {
+        std::uint32_t index_element_size, const std::uint8_t* data, std::size_t bytes,
+        const MeshAllocatorSettings& settings) {
         const ElementLayout layout = ElementLayout::make(ElementClass::Index, index_element_size);
-        auto alloc                 = allocate(id, bytes, layout);
+        auto alloc                 = allocate(id, bytes, layout, settings);
         if (!alloc) return std::nullopt;
         ensure_slab_buffer(device, queue, alloc->first, wgpu::BufferUsage::eIndex);
         upload_to_slab(device, queue, alloc->first, alloc->second, id, data, bytes, wgpu::BufferUsage::eIndex);
@@ -430,7 +432,8 @@ EPIX_EXPORT struct MeshAllocator {
      * recorded as pending and the mesh->slab mapping is recorded. */
     std::optional<std::pair<SlabId, SlabAllocation>> allocate_general(const epix::assets::AssetId<Mesh>& id,
                                                                       std::uint32_t data_slot_count,
-                                                                      const ElementLayout& layout) {
+                                                                      const ElementLayout& layout,
+                                                                      const MeshAllocatorSettings& settings) {
         // Loop through the slabs that accept the layout, trying the first one
         // that can fit the payload (Bevy slab_layouts candidate search).
         auto& candidate_slabs = slab_layouts[layout];
