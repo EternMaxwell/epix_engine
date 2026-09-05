@@ -443,8 +443,10 @@ void prepare_uniform_components(ecs::Commands cmd,
     uniforms.clear();
     for (auto&& [entity, component] : components.iter()) {
         // push returns the byte offset (Bevy DynamicUniformBuffer::push);
-        // DynamicUniformIndex stores that byte offset.
-        std::size_t offset = uniforms.push(component.get());
+        // DynamicUniformIndex stores that byte offset. `Item<const C&>` yields
+        // the raw component reference (the change-detection `Ref` is unwrapped
+        // by fetch), so the value is pushed directly.
+        std::size_t offset = uniforms.push(component);
         cmd.entity(entity).insert(DynamicUniformIndex<C>{static_cast<std::uint32_t>(offset)});
     }
     uniforms.write_buffer(device.get(), queue.get());

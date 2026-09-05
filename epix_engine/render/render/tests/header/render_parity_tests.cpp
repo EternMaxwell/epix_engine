@@ -30,6 +30,47 @@ struct UniformPluginProbe {
     UniformPluginProbe get() const noexcept { return *this; }
 };
 
+// C3 FullscreenMaterial probe: a uniform-only material that satisfies the
+// `FullscreenMaterial` concept. Its directive specializations must be defined
+// before its static methods reference the material's own label.
+struct C3FullscreenMaterialProbe {
+    float value = 1.0f;
+
+    static std::string_view fragment_shader();
+    static std::string_view fragment_shader_source();
+    static std::vector<::epix::render::graph::NodeLabel> node_edges();
+    static std::optional<::epix::render::graph::GraphLabel> sub_graph();
+};
+
+template <>
+struct epix::render::ExtractComponent<C3FullscreenMaterialProbe> {
+    using QueryData   = const C3FullscreenMaterialProbe&;
+    using QueryFilter = ::epix::ecs::Filter<>;
+    using Out         = C3FullscreenMaterialProbe;
+
+    static std::optional<Out> extract_component(QueryData value) { return value; }
+};
+
+namespace epix::render::render_resource {
+template <>
+struct ShaderTypeInfo<C3FullscreenMaterialProbe> : RawShaderType<C3FullscreenMaterialProbe> {};
+}  // namespace epix::render::render_resource
+
+std::string_view C3FullscreenMaterialProbe::fragment_shader() { return "core_pipeline/fullscreen_probe.slang"; }
+
+std::string_view C3FullscreenMaterialProbe::fragment_shader_source() { return "void fullscreen_probe_dummy() {}\n"; }
+
+std::vector<::epix::render::graph::NodeLabel> C3FullscreenMaterialProbe::node_edges() {
+    return {::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Core2dNodes::Tonemapping},
+            ::epix::core_graph::fullscreen_material_node_label<C3FullscreenMaterialProbe>(),
+            ::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Core2dNodes::EndMainPassPostProcessing}};
+}
+
+std::optional<::epix::render::graph::GraphLabel> C3FullscreenMaterialProbe::sub_graph() {
+    return ::epix::render::graph::GraphLabel{::epix::core_graph::core_2d::Core2d};
+}
+
+
 struct ExplicitShaderValue {
     float value = 0.0f;
     bool enabled = false;
@@ -2390,6 +2431,22 @@ TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     EXPECT_NO_THROW(ExtractResourcePlugin<FrameCount>{}.attach(app));
     EXPECT_NO_THROW(GpuComponentArrayBufferPlugin<EarlyExtractInstance>{}.attach(app));
     EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
+}
+
+TEST(FullscreenMaterial, StructuredForBevyParity) {
+    // C3: the FullscreenMaterial concept is satisfied by a uniform component,
+    // the material label is a dedicated NodeLabel subtype, and the typed view
+    // node runs through a ViewNodeRunner. Attaching is safe without a render
+    // sub-app (the plugin family contract).
+    static_assert(::epix::core_graph::FullscreenMaterial<C3FullscreenMaterialProbe>);
+    static_assert(std::is_base_of_v<::epix::render::graph::NodeLabel, ::epix::core_graph::FullscreenMaterialLabel>);
+    static_assert(std::is_base_of_v<::epix::render::graph::Node,
+                                    ::epix::core_graph::FullscreenMaterialNodeRunner<C3FullscreenMaterialProbe>>);
+    static_assert(::epix::ecs::readonly_query_data<
+                  typename ::epix::core_graph::FullscreenMaterialNode<C3FullscreenMaterialProbe>::ViewQuery>);
+
+    auto app = epix::app::App::create();
+    EXPECT_NO_THROW(::epix::core_graph::FullscreenMaterialPlugin<C3FullscreenMaterialProbe>{}.attach(app));
 }
 
 TEST(ExtractedInstances, MapAccessUsesLazyRanges) {
