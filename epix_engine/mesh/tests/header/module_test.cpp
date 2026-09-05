@@ -9,6 +9,32 @@
 
 namespace mesh = epix::mesh;
 
+namespace {
+bool initialize_mesh_allocator_test_app(epix::app::App& app) {
+    auto instance = wgpu::createInstance();
+    if (!instance) return false;
+    auto adapter = instance.requestAdapter(
+        wgpu::RequestAdapterOptions().setBackendType(wgpu::BackendType::eVulkan));
+    if (!adapter) return false;
+    auto device = adapter.requestDevice(wgpu::DeviceDescriptor{});
+    if (!device) return false;
+    auto queue = device.getQueue();
+    if (!queue) return false;
+
+    auto& world = app.world_mut();
+    world.insert_resource(instance.clone());
+    world.insert_resource(adapter.clone());
+    world.insert_resource(device.clone());
+    world.insert_resource(queue.clone());
+    world.init_resource<mesh::MeshAllocatorSettings>();
+    world.init_resource<mesh::MeshAllocator>();
+    world.init_resource<mesh::MeshVertexBufferLayouts>();
+    world.init_resource<epix::render::ExtractedAssets<mesh::Mesh>>();
+    app.add_systems(epix::app::Update, epix::ecs::into(mesh::allocate_and_free_meshes));
+    return true;
+}
+}  // namespace
+
 // Bevy MeshVertexBufferLayout::array_stride: sum of attribute sizes.
 TEST(MeshModule, VertexArrayStride) {
     // Without a color only the position attribute exists (12).
@@ -159,11 +185,16 @@ TEST(MeshModule, MeshAllocatorPluginPreservesSettingsResource) {
 
     mesh::MeshAllocatorPlugin{}.attach(app);
 
-    const auto render = app.get_sub_app(epix::render::Render);
+    auto render = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render.has_value());
     const auto settings = render->get().world().get_resource<mesh::MeshAllocatorSettings>();
     ASSERT_TRUE(settings.has_value());
     EXPECT_EQ(settings->get().min_slab_size, 4096u);
+    EXPECT_FALSE(render->get().world().get_resource<mesh::MeshAllocator>().has_value());
+
+    // Bevy creates the allocator during Plugin::finish, after the adapter is
+    // available. Epix's corresponding lifecycle phase is Plugin::ready.
+    mesh::MeshAllocatorPlugin{}.ready(app);
     EXPECT_TRUE(render->get().world().get_resource<mesh::MeshAllocator>().has_value());
 }
 
@@ -184,172 +215,139 @@ TEST(MeshModule, SlabIdAndMeshBufferSliceTypes) {
 
 // Empty MeshAllocator exposes Bevy's query surface with no allocations.
 TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
-    const mesh::MeshAllocator allocator;
+    static_assert(std::movable<mesh::MeshAllocator>);
+    static_assert(!std::copy_constructible<mesh::MeshAllocator>);
+    epix::ecs::World world(1);
+    world.init_resource<mesh::MeshAllocator>();
+    const auto& allocator = world.resource<mesh::MeshAllocator>();
     EXPECT_EQ(allocator.slab_count(), 0u);
     EXPECT_EQ(allocator.slabs_size(), 0u);
     EXPECT_EQ(allocator.allocations(), 0u);
 }
 
-// MeshAllocator::allocate creates/reuses a general slab by layout.
-TEST(MeshModule, MeshAllocatorAllocatePacksByLayout) {
-    const mesh::MeshAllocatorSettings s;
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    epix::assets::Assets<mesh::Mesh> store;
-    const auto id_a = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto id_b = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    mesh::MeshAllocator allocator;
-    auto a = allocator.allocate(id_a, 24, v12, s);  // 2 slots
-    ASSERT_TRUE(a.has_value());
-    EXPECT_EQ(a->first.value, 0u);
-    EXPECT_EQ(a->second.offset(), 0u);
-    EXPECT_EQ(allocator.slab_count(), 1u);
-    EXPECT_GT(allocator.slabs_size(), 0u);
-    // Same layout packs into the existing slab at the next slot.
-    auto b = allocator.allocate(id_b, 36, v12, s);  // 3 slots
-    ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->first, a->first);
-    EXPECT_EQ(b->second.offset(), 2u);
-    EXPECT_EQ(allocator.slab_count(), 1u);
-    // Different layout -> a new slab.
-    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
-    const auto id_c = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto c         = allocator.allocate(id_c, 2, i16, s);
-    ASSERT_TRUE(c.has_value());
-    EXPECT_NE(c->first, a->first);
-    EXPECT_EQ(allocator.slab_count(), 2u);
-}
-
-// Device-backed: create a real wgpu device and verify the allocator creates a
-// slab GPU buffer and exposes a slice with the correct element range.
-TEST(MeshModule, MeshAllocatorDeviceBufferAndSlice) {
+// Device-backed public-system coverage for Bevy's allocate-all → grow-once →
+// upload-all path, public slices, extra usages, and removal handling.
+TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
     epix::app::App app = epix::app::App::create();
-    app.add_events<epix::window::WindowClosed>();
-    try {
-        epix::render::RenderPlugin{}.attach(app);
-    } catch (const std::exception& e) {
-        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test: " << e.what();
+    if (!initialize_mesh_allocator_test_app(app)) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test";
         return;
     }
-    auto render_sub = app.take_sub_app(epix::render::Render);
-    ASSERT_TRUE(render_sub);
-    const auto& device = render_sub->world().resource<wgpu::Device>();
-    const auto& queue  = render_sub->world().resource<wgpu::Queue>();
 
-    mesh::MeshAllocator allocator;
-    mesh::MeshAllocatorSettings settings;
-    settings.min_slab_size = 1;  // force growth on small payloads
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    auto& world = app.world_mut();
+    auto& settings = world.resource_mut<mesh::MeshAllocatorSettings>();
+    settings.min_slab_size = 1;
+    settings.max_slab_size = 1024 * 1024;
+    settings.large_threshold = 1024 * 1024;
+    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages = wgpu::BufferUsage::eStorage;
+
     epix::assets::Assets<mesh::Mesh> store;
     const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a         = allocator.allocate(id1, 24, v12, settings);  // 2 slots
-    ASSERT_TRUE(a.has_value());
-    const auto buffer =
-        allocator.ensure_slab_buffer(device, queue, a->first, wgpu::BufferUsage::eVertex);
-    EXPECT_TRUE(buffer);
-    EXPECT_EQ(buffer.getSize(), 24u);  // initial capacity == 2 slots * 12
+    const auto id2 = store.add(mesh::make_box2d(30.0f, 15.0f, glm::vec4(0.5f))).id();
+    auto first = store.remove_untracked(id1);
+    auto second = store.remove_untracked(id2);
+    ASSERT_TRUE(first.has_value());
+    ASSERT_TRUE(second.has_value());
+    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
+    extracted.extracted.emplace_back(id1, std::move(*first));
+    extracted.extracted.emplace_back(id2, std::move(*second));
+    extracted.added.insert(id1);
+    extracted.added.insert(id2);
 
-    const std::uint8_t data[24] = {0};
-    allocator.upload_to_slab(device, queue, a->first, a->second, id1, data, sizeof(data), wgpu::BufferUsage::eVertex);
-    EXPECT_EQ(allocator.mesh_vertex_slice(id1)->begin, 0u);
-    EXPECT_EQ(allocator.mesh_vertex_slice(id1)->end, 2u);
+    ASSERT_TRUE(app.run_schedule(epix::app::Update));
 
-    // A second mesh that grows the slab triggers the Bevy reallocate path: a
-    // new, larger buffer is created and the old contents copied across.
-    const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto b         = allocator.allocate(id2, 36, v12, settings);  // +3 slots (5 total)
-    ASSERT_TRUE(b.has_value());
-    const auto grown = allocator.ensure_slab_buffer(device, queue, b->first, wgpu::BufferUsage::eVertex);
-    EXPECT_EQ(grown.getSize(), 60u);  // 5 slots * 12
-    allocator.upload_to_slab(device, queue, b->first, b->second, id2, data, sizeof(data),
-                             wgpu::BufferUsage::eVertex);
-    const auto slice = allocator.mesh_vertex_slice(id1);
-    ASSERT_TRUE(slice.has_value());
-    EXPECT_EQ(slice->begin, 0u);
-    EXPECT_EQ(slice->end, 2u);
+    const auto& allocator = world.resource<mesh::MeshAllocator>();
+    const auto vertex1 = allocator.mesh_vertex_slice(id1);
+    const auto vertex2 = allocator.mesh_vertex_slice(id2);
+    ASSERT_TRUE(vertex1.has_value());
+    ASSERT_TRUE(vertex2.has_value());
+    EXPECT_EQ(vertex1->buffer, vertex2->buffer);  // same layout packs together
+    EXPECT_EQ(vertex1->end - vertex1->begin, 4u);
+    EXPECT_EQ(vertex2->end - vertex2->begin, 4u);
+    EXPECT_GT(allocator.slabs_size(), 0u);
+    const auto usage = static_cast<std::uint64_t>(vertex1->buffer->getUsage());
+    EXPECT_NE(usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0u);
 
-    // Compute the expected element range directly; verify the range helper
-    // matches the allocation.
-    const auto range = mesh::general_slab_element_range(a->second.offset(), a->second.slot_count, v12);
-    EXPECT_EQ(range.first, 0u);
-    EXPECT_EQ(range.second, 2u);
-    app.insert_sub_app(epix::render::Render, std::move(render_sub));
+    epix::render::ExtractedAssets<mesh::Mesh> removals;
+    removals.removed.insert(id1);
+    removals.removed.insert(id2);
+    world.insert_resource(std::move(removals));
+    ASSERT_TRUE(app.run_schedule(epix::app::Update));
+    EXPECT_FALSE(world.resource<mesh::MeshAllocator>().mesh_vertex_slice(id1).has_value());
+    EXPECT_FALSE(world.resource<mesh::MeshAllocator>().mesh_vertex_slice(id2).has_value());
+    EXPECT_EQ(world.resource<mesh::MeshAllocator>().slab_count(), 0u);
 }
 
-// Device-backed: payloads above the large threshold get their own dedicated
-// slab, created and filled via the mapped-at-creation path (Bevy
-// copy_element_data for Slab::LargeObject).
-TEST(MeshModule, MeshAllocatorLargeObjectSlab) {
+// Payloads above the threshold receive dedicated buffers; the public API
+// exposes the complete range and carries extra usages to those buffers too.
+TEST(MeshModule, AllocateAndFreeMeshesUsesLargeObjectSlabs) {
     epix::app::App app = epix::app::App::create();
-    app.add_events<epix::window::WindowClosed>();
-    try {
-        epix::render::RenderPlugin{}.attach(app);
-    } catch (const std::exception& e) {
-        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test: " << e.what();
+    if (!initialize_mesh_allocator_test_app(app)) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test";
         return;
     }
-    auto render_sub = app.take_sub_app(epix::render::Render);
-    ASSERT_TRUE(render_sub);
-    const auto& device = render_sub->world().resource<wgpu::Device>();
-    const auto& queue  = render_sub->world().resource<wgpu::Queue>();
+    auto& world = app.world_mut();
+    world.resource_mut<mesh::MeshAllocatorSettings>().large_threshold = 32;
+    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages = wgpu::BufferUsage::eStorage;
 
-    mesh::MeshAllocator allocator;
-    mesh::MeshAllocatorSettings settings;
-    settings.large_threshold = 32;  // tiny threshold -> large-object path
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
     epix::assets::Assets<mesh::Mesh> store;
-    const auto id    = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto alloc = allocator.allocate(id, 48, v12, settings);
-    ASSERT_TRUE(alloc.has_value());
-    const auto* slab = allocator.slabs.at(alloc->first).large();
-    ASSERT_TRUE(slab);  // dedicated large-object slab, not general
-    const std::uint8_t data[48] = {0};
-    allocator.upload_to_slab(device, queue, alloc->first, alloc->second, id, data, sizeof(data),
-                             wgpu::BufferUsage::eVertex);
-    const auto slice = allocator.mesh_vertex_slice(id);
-    ASSERT_TRUE(slice.has_value());
-    EXPECT_EQ(slice->begin, 0u);
-    EXPECT_EQ(slice->end, 4u);  // 48 bytes / 12-byte elements
-    EXPECT_EQ(slice->buffer, std::addressof(allocator.slabs.at(alloc->first).large()->buffer));
-    app.insert_sub_app(epix::render::Render, std::move(render_sub));
+    auto source = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    const auto expected_vertex_count = source.count_vertices();
+    const auto id = store.add(std::move(source)).id();
+    auto extracted_mesh = store.remove_untracked(id);
+    ASSERT_TRUE(extracted_mesh.has_value());
+    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
+    extracted.extracted.emplace_back(id, std::move(*extracted_mesh));
+    extracted.added.insert(id);
+
+    ASSERT_TRUE(app.run_schedule(epix::app::Update));
+    const auto& allocator = world.resource<mesh::MeshAllocator>();
+    const auto vertex = allocator.mesh_vertex_slice(id);
+    ASSERT_TRUE(vertex.has_value());
+    EXPECT_EQ(vertex->begin, 0u);
+    EXPECT_EQ(vertex->end, expected_vertex_count);
+    const auto usage = static_cast<std::uint64_t>(vertex->buffer->getUsage());
+    EXPECT_NE(usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0u);
 }
 
 // ElementLayout slot math (Bevy: slot size is a multiple of both the element
 // size and the 4-byte copy-buffer alignment).
 TEST(MeshModule, ElementLayoutSlotMath) {
     // stride 12 (float3 vertex) -> 1 element/slot, 12-byte slot.
-    const auto v = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    const auto v = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
     EXPECT_EQ(v.elements_per_slot, 1u);
     EXPECT_EQ(v.slot_size(), 12u);
     // stride 2 (u16 index) -> 2 elements/slot (slot 4, divisible by 4).
-    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
+    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
     EXPECT_EQ(i16.elements_per_slot, 2u);
     EXPECT_EQ(i16.slot_size(), 4u);
     // stride 4 -> 1 element/slot, 4-byte slot.
-    EXPECT_EQ(mesh::ElementLayout::make(mesh::ElementClass::Index, 4).slot_size(), 4u);
+    EXPECT_EQ(mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 4).slot_size(), 4u);
     // stride 6 -> 2 elements/slot (slot 12, divisible by 4).
-    const auto v6 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 6);
+    const auto v6 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 6);
     EXPECT_EQ(v6.elements_per_slot, 2u);
     EXPECT_EQ(v6.slot_size(), 12u);
     // stride 1 (u8) -> 4 elements/slot (slot 4).
-    EXPECT_EQ(mesh::ElementLayout::make(mesh::ElementClass::Vertex, 1).slot_size(), 4u);
+    EXPECT_EQ(mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 1).slot_size(), 4u);
 }
 
 // compute_grow_capacity mirrors Bevy GeneralSlab::grow_if_necessary.
 TEST(MeshModule, ComputeGrowCapacity) {
     const mesh::MeshAllocatorSettings s;
     // 10 -> need 15 with 1.5x growth: 10*1.5 = 15.
-    auto r = mesh::compute_grow_capacity(10, 15, s, 4);
-    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::NeededGrowth);
+    auto r = mesh::detail::compute_grow_capacity(10, 15, s, 4);
+    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(r.second));
+    EXPECT_EQ(std::get<mesh::detail::SlabToReallocate>(r.second).old_slot_capacity, 10u);
     EXPECT_EQ(r.first, 15u);
     // Already large enough.
-    r = mesh::compute_grow_capacity(10, 5, s, 4);
-    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::NoGrowthNeeded);
+    r = mesh::detail::compute_grow_capacity(10, 5, s, 4);
+    EXPECT_TRUE(std::holds_alternative<mesh::detail::NoSlabGrowthNeeded>(r.second));
     EXPECT_EQ(r.first, 10u);
     // Growth capped by max_slab_size: max_cap = 16 / 4 = 4 slots; can't grow past 4.
     mesh::MeshAllocatorSettings tiny = s;
     tiny.max_slab_size                = 16;
-    r = mesh::compute_grow_capacity(4, 100, tiny, 4);
-    EXPECT_EQ(r.second, mesh::SlabGrowthResultKind::CantGrow);
+    r = mesh::detail::compute_grow_capacity(4, 100, tiny, 4);
+    EXPECT_TRUE(std::holds_alternative<mesh::detail::SlabCantGrow>(r.second));
     EXPECT_EQ(r.first, 4u);
 }
 
@@ -357,30 +355,30 @@ TEST(MeshModule, ComputeGrowCapacity) {
 TEST(MeshModule, ComputeAllocationDecision) {
     const mesh::MeshAllocatorSettings s;
     // float3 vertex (size 12, 1 elem/slot), 24 bytes (2 vertices): 2 slots, general.
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    auto r         = mesh::compute_allocation(24, v12, s);
+    const auto v12 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
+    auto r         = mesh::detail::compute_allocation(24, v12, s);
     EXPECT_EQ(r.first, 2u);
     EXPECT_FALSE(r.second);
     // u16 index (size 2, 2 elem/slot), 6 bytes (3 u16): ceil(3/2)=2 slots, general.
-    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
-    r              = mesh::compute_allocation(6, i16, s);
+    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
+    r              = mesh::detail::compute_allocation(6, i16, s);
     EXPECT_EQ(r.first, 2u);
     EXPECT_FALSE(r.second);
     // Payload large enough to exceed the 256 MiB large threshold -> own slab.
-    r = mesh::compute_allocation(300ull * 1024 * 1024, v12, s);
+    r = mesh::detail::compute_allocation(300ull * 1024 * 1024, v12, s);
     EXPECT_TRUE(r.second);
 }
 
 // General-slab element range (Bevy mesh_slice_in_slab).
 TEST(MeshModule, GeneralSlabElementRange) {
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
+    const auto v12 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
     // offset 0, 2 slots -> elements [0, 2).
-    auto range = mesh::general_slab_element_range(0, 2, v12);
+    auto range = mesh::detail::general_slab_element_range(0, 2, v12);
     EXPECT_EQ(range.first, 0u);
     EXPECT_EQ(range.second, 2u);
     // u16 index layout (2 elem/slot): offset 3, 2 slots -> elements [6, 10).
-    const auto i16 = mesh::ElementLayout::make(mesh::ElementClass::Index, 2);
-    range          = mesh::general_slab_element_range(3, 2, i16);
+    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
+    range          = mesh::detail::general_slab_element_range(3, 2, i16);
     EXPECT_EQ(range.first, 6u);
     EXPECT_EQ(range.second, 10u);
 }
@@ -389,10 +387,10 @@ TEST(MeshModule, GeneralSlabElementRange) {
 TEST(MeshModule, SlabAllocationValueType) {
     const mesh::offset_allocator::Allocation a0{0u, 1u};
     const mesh::offset_allocator::Allocation a1{2u, 1u};
-    EXPECT_EQ((mesh::SlabAllocation{a0, 2}), (mesh::SlabAllocation{0u, 1u, 2}));
-    EXPECT_NE((mesh::SlabAllocation{a0, 2}), (mesh::SlabAllocation{a1, 2}));
-    EXPECT_EQ(mesh::SlabAllocation{}.offset(), 0u);
-    EXPECT_EQ(mesh::SlabAllocation{}.slot_count, 0u);
+    EXPECT_EQ((mesh::detail::SlabAllocation{a0, 2}), (mesh::detail::SlabAllocation{0u, 1u, 2}));
+    EXPECT_NE((mesh::detail::SlabAllocation{a0, 2}), (mesh::detail::SlabAllocation{a1, 2}));
+    EXPECT_EQ(mesh::detail::SlabAllocation{}.offset(), 0u);
+    EXPECT_EQ(mesh::detail::SlabAllocation{}.slot_count, 0u);
 }
 
 // offset_allocator (Bevy 0.18 mesh slab allocator) freed gaps are reused.
@@ -468,64 +466,43 @@ TEST(MeshModule, OffsetAllocatorMinAllocatorSize) {
     EXPECT_GE(min, 7u);
 }
 
-// GeneralSlab packs allocations and is non-empty while payloads are pending.
-TEST(MeshModule, GeneralSlabPacksAndGrows) {
-    const mesh::MeshAllocatorSettings settings;
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    epix::assets::Assets<mesh::Mesh> store;
-    const auto id1   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto id2   = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    mesh::MeshAllocator allocator;
-    auto a = allocator.allocate(id1, 24, v12, settings);  // 2 slots
-    ASSERT_TRUE(a.has_value());
-    const auto* slab = allocator.slabs.at(a->first).general();
-    ASSERT_TRUE(slab);
-    EXPECT_GT(slab->current_slot_capacity, 0u);
-    EXPECT_FALSE(slab->is_empty());  // pending allocation recorded
+// Bevy retains the slab capacity from the beginning of the frame when one
+// slab grows repeatedly, so the eventual GPU copy is scheduled only once and
+// copies only the old resident range.
+TEST(MeshModule, SlabsToReallocatePreservesInitialCapacity) {
+    mesh::MeshAllocatorSettings settings;
+    settings.min_slab_size = 40;
+    settings.max_slab_size = 4096;
+    const auto layout = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
+    auto slab = mesh::detail::GeneralSlab::make(layout, 1, settings);
+    ASSERT_EQ(slab.current_slot_capacity, 10u);
 
-    auto b = allocator.allocate(id2, 36, v12, settings);  // 3 slots
-    ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->first, a->first);
-    EXPECT_EQ(b->second.offset(), 2u);
-    EXPECT_EQ(allocator.slab_count(), 1u);
+    mesh::detail::SlabsToReallocate pending;
+    const auto first = slab.grow_if_necessary(15, settings);
+    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(first));
+    pending.try_emplace(mesh::SlabId{7}, std::get<mesh::detail::SlabToReallocate>(first));
+    const auto second = slab.grow_if_necessary(22, settings);
+    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(second));
+    pending.try_emplace(mesh::SlabId{7}, std::get<mesh::detail::SlabToReallocate>(second));
+
+    ASSERT_EQ(pending.size(), 1u);
+    EXPECT_EQ(pending.at(mesh::SlabId{7}).old_slot_capacity, 10u);
+    EXPECT_GE(slab.current_slot_capacity, 22u);
 }
 
-// Bevy's offset-allocator semantics at the MeshAllocator level: freed slots
-// inside a still-live slab are reused, and a fully-empty slab is removed.
-TEST(MeshModule, MeshAllocatorFreeReusesFreedSlots) {
-    const mesh::MeshAllocatorSettings settings;
-    const auto v12 = mesh::ElementLayout::make(mesh::ElementClass::Vertex, 12);
-    epix::assets::Assets<mesh::Mesh> store;
-    const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto id2 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-
-    mesh::MeshAllocator allocator;
-    auto a1 = allocator.allocate(id1, 24, v12, settings);  // 2 slots at offset 0
-    ASSERT_TRUE(a1.has_value());
-    auto a2 = allocator.allocate(id2, 24, v12, settings);  // 2 slots right after
-    ASSERT_TRUE(a2.has_value());
-    EXPECT_EQ(a1->second.offset(), 0u);
-    EXPECT_EQ(a2->second.offset(), 2u);
-    EXPECT_EQ(allocator.slab_count(), 1u);
-    EXPECT_EQ(allocator.allocations(), 0u);  // Bevy counts index allocations only
-
-    // Freeing one mesh keeps the slab live with id2 still resident.
-    allocator.free_all(id1);
-    EXPECT_EQ(allocator.slab_count(), 1u);
-
-    // A new mesh reuses the freed gap (offset-allocator), no new slab.
-    const auto id3 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    auto a3        = allocator.allocate(id3, 24, v12, settings);
-    ASSERT_TRUE(a3.has_value());
-    EXPECT_EQ(a3->first, a1->first);
-    EXPECT_EQ(a3->second.offset(), 0u);
-    EXPECT_EQ(allocator.slab_count(), 1u);
-
-    // Freeing everything removes the empty slab entirely (Bevy keeps no pool).
-    allocator.free_all(id2);
-    allocator.free_all(id3);
-    EXPECT_EQ(allocator.slab_count(), 0u);
-    EXPECT_TRUE(allocator.slab_layouts.empty());
+// Bevy rounds byte limits up to slots and guarantees that the backing offset
+// allocator can hold the first payload even when its size-class capacity is
+// larger than the configured maximum.
+TEST(MeshModule, GeneralSlabCapacityMatchesBevyRounding) {
+    mesh::MeshAllocatorSettings settings;
+    settings.min_slab_size = 5;
+    settings.max_slab_size = 5;
+    const auto layout = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
+    auto slab = mesh::detail::GeneralSlab::make(layout, 7, settings);
+    EXPECT_EQ(slab.current_slot_capacity, mesh::offset_allocator::min_allocator_size(7));
+    const auto allocation = slab.allocator.allocate(7);
+    ASSERT_TRUE(allocation.has_value());
+    EXPECT_EQ(allocation->offset, 0u);
 }
 
 TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {

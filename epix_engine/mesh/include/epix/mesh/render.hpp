@@ -287,7 +287,18 @@ struct DrawMesh2dBatch {
  * removed/modified meshes (Bevy `MeshAllocatorPlugin`). */
 EPIX_EXPORT struct MeshAllocatorPlugin {
     void attach(app::App& app);
+    void ready(app::App& app);
 };
+
+/** @brief Process extracted mesh additions/modifications/removals and update
+ * shared GPU slabs (Bevy `allocate_and_free_meshes`). */
+EPIX_EXPORT void allocate_and_free_meshes(
+    ecs::ResMut<MeshAllocator> mesh_allocator,
+    ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
+    ecs::Res<render::ExtractedAssets<Mesh>> extracted_meshes,
+    ecs::ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<wgpu::Queue> queue);
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
 EPIX_EXPORT struct MeshRenderPlugin {

@@ -924,46 +924,115 @@ void queue_meshes_2d_transparent(Query<Item<const render::view::ExtractedView&,
     }
 }
 
-// Bevy MeshAllocatorPlugin::allocate_and_free_meshes (allocator.rs:371-390):
-// frees the slots of removed/modified meshes, then packs + uploads the
-// newly-extracted payloads into the shared slab buffers.
-void allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
-                              Res<MeshAllocatorSettings> mesh_allocator_settings,
-                              Res<render::ExtractedAssets<Mesh>> extracted_meshes,
-                              Res<wgpu::Device> device,
-                              Res<wgpu::Queue> queue) {
-    // Process removed or modified meshes (Bevy MeshAllocator::free_meshes).
-    for (const auto& id : extracted_meshes->removed) mesh_allocator->free_all(id);
-    for (const auto& id : extracted_meshes->modified) mesh_allocator->free_all(id);
+}  // namespace
 
-    // Process newly-added or modified meshes (Bevy MeshAllocator::allocate_meshes
-    // + copy_element_data).
-    for (const auto& [id, mesh] : extracted_meshes->extracted) {
-        const auto packed = packed_vertex_bytes(mesh);
-        if (packed.empty()) continue;
-        mesh_allocator->allocate_vertex_bytes(*device, *queue, id, vertex_array_stride(mesh), packed.data(),
-                                              packed.size(), *mesh_allocator_settings);
-        if (auto indices = mesh.get_indices(); indices) {
-            const auto& index       = indices->get();
-            const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
-            mesh_allocator->allocate_index_bytes(*device, *queue, id, static_cast<std::uint32_t>(element_size),
-                                                 static_cast<const std::uint8_t*>(index.data.cdata()),
-                                                 index.size() * element_size, *mesh_allocator_settings);
+namespace epix::mesh::detail {
+struct MeshAllocatorAccess {
+    static void process(MeshAllocator& allocator,
+                        const MeshAllocatorSettings& settings,
+                        const render::ExtractedAssets<Mesh>& extracted_meshes,
+                        MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
+                        const wgpu::Device& device,
+                        const wgpu::Queue& queue) {
+        // Bevy frees removed and modified assets before allocating their new
+        // payloads.
+        for (const auto& id : extracted_meshes.removed) allocator.free_all(id);
+        for (const auto& id : extracted_meshes.modified) allocator.free_all(id);
+
+        SlabsToReallocate slabs_to_reallocate;
+
+        // Allocate every payload first. Growth is only recorded here; no GPU
+        // buffer is created or copied until the complete frame is known.
+        for (const auto& [id, mesh] : extracted_meshes.extracted) {
+            const auto vertex_layout = mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
+            if (!vertex_layout.value || vertex_layout.value->layout.array_stride == 0) continue;
+            const auto vertex_stride = vertex_layout.value->layout.array_stride;
+            const auto vertex_bytes = static_cast<std::uint64_t>(mesh.count_vertices()) * vertex_stride;
+            if (vertex_bytes == 0) continue;
+
+            const auto element_layout = ElementLayout::make(ElementClass::Vertex, vertex_stride);
+            if (allocator.general_vertex_slabs_supported) {
+                allocator.allocate(id, vertex_bytes, element_layout, slabs_to_reallocate, settings);
+            } else {
+                allocator.allocate_large(id, element_layout);
+            }
+
+            if (const auto indices = mesh.get_indices()) {
+                const auto& index = indices->get();
+                const std::uint32_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
+                allocator.allocate(id, static_cast<std::uint64_t>(index.size()) * element_size,
+                                   ElementLayout::make(ElementClass::Index, element_size), slabs_to_reallocate,
+                                   settings);
+            }
+        }
+
+        // A slab that grew repeatedly above is allocated/reallocated exactly
+        // once, preserving the capacity it had at the beginning of the frame.
+        for (const auto& [slab_id, reallocate] : slabs_to_reallocate) {
+            allocator.reallocate_slab(device, queue, slab_id, reallocate);
+        }
+
+        // Only after final buffer placement is known do uploads become
+        // resident, matching Bevy's third phase.
+        for (const auto& [id, mesh] : extracted_meshes.extracted) {
+            if (const auto vertex_slab = allocator.mesh_id_to_vertex_slab.find(id);
+                vertex_slab != allocator.mesh_id_to_vertex_slab.end()) {
+                const auto packed = packed_vertex_bytes(mesh);
+                if (!packed.empty()) {
+                    allocator.copy_element_data(device, queue, vertex_slab->second, id, packed.data(), packed.size(),
+                                                wgpu::BufferUsage::eVertex);
+                }
+            }
+            if (const auto index_slab = allocator.mesh_id_to_index_slab.find(id);
+                index_slab != allocator.mesh_id_to_index_slab.end()) {
+                if (const auto indices = mesh.get_indices()) {
+                    const auto& index = indices->get();
+                    const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
+                    allocator.copy_element_data(device, queue, index_slab->second, id, index.data.cdata(),
+                                                index.size() * element_size, wgpu::BufferUsage::eIndex);
+                }
+            }
         }
     }
+};
+}  // namespace epix::mesh::detail
+
+epix::mesh::MeshAllocator epix::mesh::MeshAllocator::from_world(epix::ecs::World& world) {
+    (void)world;
+    // wgpu-native's C API does not expose the wgpu-core downlevel-capability
+    // query used by Bevy. Epix currently coerces every selected backend to
+    // Vulkan for Slang SPIR-V passthrough, and Vulkan guarantees BASE_VERTEX.
+    // Remove this local fallback together with that renderer workaround once
+    // the native API can report the capability directly.
+    return MeshAllocator(true);
 }
-}  // namespace
+
+void epix::mesh::allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
+                                          Res<MeshAllocatorSettings> mesh_allocator_settings,
+                                          Res<render::ExtractedAssets<Mesh>> extracted_meshes,
+                                          ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
+                                          Res<wgpu::Device> device,
+                                          Res<wgpu::Queue> queue) {
+    detail::MeshAllocatorAccess::process(mesh_allocator.get_mut(), *mesh_allocator_settings, *extracted_meshes,
+                                         mesh_vertex_buffer_layouts.get_mut(), *device, *queue);
+}
 
 void MeshAllocatorPlugin::attach(App& app) {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<MeshAllocatorSettings>();
-        render_app->get().world_mut().init_resource<MeshAllocator>();
         render_app->get().add_systems(
             render::Render,
             into(allocate_and_free_meshes)
                 .before(render::prepare_assets<Mesh>)
                 .in_set(render::RenderSystems::PrepareAssets)
                 .set_name("allocate and free meshes"));
+    }
+}
+
+void MeshAllocatorPlugin::ready(App& app) {
+    if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        auto& world = render_app->get().world_mut();
+        world.init_resource<MeshAllocator>();
     }
 }
 
