@@ -43,7 +43,7 @@ target_link_libraries(epix_imgui PUBLIC imgui)
 
 epix_add_tests(render
   TESTS_DIR render/tests
-  LINK_LIBS epix_render epix_ecs epix_app epix_core_graph
+  LINK_LIBS epix_render epix_ecs epix_app
 )
 
 epix_add_tests(core_graph

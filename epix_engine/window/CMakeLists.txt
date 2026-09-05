@@ -30,5 +30,7 @@ if(UNIX AND NOT APPLE)
 	target_link_libraries(epix_sfml PRIVATE X11::X11 X11::Xrandr)
 endif()
 
+epix_add_tests(window TESTS_DIR window/tests LINK_LIBS epix_window)
+
 epix_add_examples(window_glfw EXAMPLES_DIR examples/glfw LINK_LIBS epix_window epix_glfw)
 epix_add_examples(window_sfml EXAMPLES_DIR examples/sfml LINK_LIBS epix_window epix_sfml)
