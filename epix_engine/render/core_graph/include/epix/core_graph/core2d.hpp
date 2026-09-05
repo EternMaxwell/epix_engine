@@ -8,6 +8,7 @@
 #include <functional>
 #include <optional>
 #include <string_view>
+#include <unordered_set>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -16,6 +17,8 @@
 #endif
 
 namespace epix::core_graph::core_2d {
+
+EPIX_EXPORT inline constexpr wgpu::TextureFormat CORE_2D_DEPTH_FORMAT = wgpu::TextureFormat::eDepth32Float;
 
 /** @brief Names exposed by Bevy's `core_2d::graph::input` module. */
 namespace input {
@@ -224,10 +227,19 @@ EPIX_EXPORT struct Core2dPlugin {
     void attach(app::App& app);
 };
 
+/** @brief Maintain the three phase collections for active Camera2d entities. */
+EPIX_EXPORT void extract_core_2d_camera_phases(
+    ecs::ResMut<render::phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask2D>> alpha_mask_phases,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::Camera&>,
+                            ecs::With<::epix::camera::Camera2d>>> cameras,
+    ecs::Local<std::unordered_set<render::view::RetainedViewEntity>> live_views);
+
 /** @brief Prepare depth attachments for live Core2D views (Bevy
  * `prepare_core_2d_depth_textures`). The general view plugin deliberately
  * does not allocate depth for arbitrary cameras. */
-void prepare_core_2d_depth_textures(
+EPIX_EXPORT void prepare_core_2d_depth_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
@@ -236,7 +248,7 @@ void prepare_core_2d_depth_textures(
     ecs::Query<ecs::Item<ecs::Entity,
                          const render::camera::ExtractedCamera&,
                          const render::view::ExtractedView&,
-                         const render::view::Msaa&>> views);
+                         const render::view::Msaa&>, ecs::With<::epix::camera::Camera2d>> views);
 
 }  // namespace epix::core_graph::core_2d
 

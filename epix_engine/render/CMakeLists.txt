@@ -46,6 +46,11 @@ epix_add_tests(render
   LINK_LIBS epix_render epix_ecs epix_app epix_core_graph
 )
 
+epix_add_tests(core_graph
+  TESTS_DIR core_graph/tests
+  LINK_LIBS epix_core_graph
+)
+
 if(EPIX_ENABLE_EXAMPLE)
 # GLFW render examples (top-level .cpp files, excluding imgui*)
 epix_add_examples(render_glfw

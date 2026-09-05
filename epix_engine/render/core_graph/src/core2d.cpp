@@ -10,38 +10,28 @@ using namespace epix::core_graph::core_2d;
 using namespace epix::ecs;
 using namespace epix::app;
 
-namespace {
-void extract_core2d_camera_phases(
-    ::epix::ecs::ResMut<::epix::render::phase::ViewSortedRenderPhases<::epix::core_graph::core_2d::Transparent2D>>
-        transparent_phases,
-    ::epix::ecs::ResMut<::epix::render::phase::ViewBinnedRenderPhases<::epix::core_graph::core_2d::Opaque2D>>
-        opaque_phases,
-    ::epix::ecs::ResMut<::epix::render::phase::ViewBinnedRenderPhases<::epix::core_graph::core_2d::AlphaMask2D>>
-        alpha_mask_phases,
-    ::epix::app::Extract<::epix::ecs::Query<::epix::ecs::Item<::epix::ecs::Entity,
-                                                               const ::epix::camera::Camera&,
-                                                               const ::epix::render::camera::CameraRenderGraph&>,
-                                            ::epix::ecs::With<::epix::camera::Camera2d>>>
-                cameras) {
-    std::unordered_set<::epix::render::view::RetainedViewEntity> live_views;
-    for (auto&& [entity, camera, graph] : cameras.iter()) {
-        if (!camera.is_active ||
-            graph != ::epix::render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))
-            continue;
+void epix::core_graph::core_2d::extract_core_2d_camera_phases(
+    ResMut<phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
+    ResMut<phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
+    ResMut<phase::ViewBinnedRenderPhases<AlphaMask2D>> alpha_mask_phases,
+    Extract<Query<Item<Entity, const ::epix::camera::Camera&>, With<::epix::camera::Camera2d>>> cameras,
+    Local<std::unordered_set<::epix::render::view::RetainedViewEntity>> live_views) {
+    live_views->clear();
+    for (auto&& [entity, camera] : cameras.iter()) {
+        if (!camera.is_active) continue;
         const auto retained_view = ::epix::render::view::RetainedViewEntity::create(
             ::epix::render::sync_world::MainEntity{entity}, std::nullopt, 0);
         transparent_phases->insert_or_clear(retained_view);
         opaque_phases->prepare_for_new_frame(retained_view, ::epix::render::batching::GpuPreprocessingMode::None);
         alpha_mask_phases->prepare_for_new_frame(retained_view,
                                                  ::epix::render::batching::GpuPreprocessingMode::None);
-        live_views.insert(retained_view);
+        live_views->insert(retained_view);
     }
-    const auto remove_dead_views = [&live_views](const auto& entry) { return !live_views.contains(entry.first); };
+    const auto remove_dead_views = [&live_views](const auto& entry) { return !live_views->contains(entry.first); };
     std::erase_if(*transparent_phases, remove_dead_views);
     std::erase_if(opaque_phases->phases, remove_dead_views);
     std::erase_if(alpha_mask_phases->phases, remove_dead_views);
 }
-}  // namespace
 
 std::expected<void, graph::NodeRunError> MainOpaquePass2DNode::run(
     graph::GraphContext& graph,
@@ -160,33 +150,27 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
     Query<Item<Entity,
                const render::camera::ExtractedCamera&,
                const render::view::ExtractedView&,
-               const render::view::Msaa&>> views) {
-    // Bevy queries `(Entity, &ExtractedCamera, &ExtractedView, &Msaa)` `with
-    // (With<Camera2d>,)`. Epix extracts Camera2d onto the synced render entity
-    // while `extract_cameras` spawns the ExtractedCamera view entity separately,
-    // so the phase-containment checks below (filled by
-    // `extract_core_2d_camera_phases` only for Camera2d views) are the C++
-    // equivalent of the `With<Camera2d>` discriminator.
+               const render::view::Msaa&>, With<::epix::camera::Camera2d>> views) {
     // Bevy caches one depth texture per output target per frame, so cameras
     // compositing onto the same target share it (prepare_core_2d_depth_textures).
-    std::unordered_map<::epix::camera::RenderTargetId, render::render_resource::CachedTexture,
-                       ::epix::camera::RenderTargetIdHash>
+    const auto target_hash = [](const std::optional<::epix::camera::RenderTargetId>& target) {
+        return target ? ::epix::camera::RenderTargetIdHash{}(*target) : std::size_t{0};
+    };
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, render::render_resource::CachedTexture,
+                       decltype(target_hash)>
         textures;
     for (auto&& [entity, camera, extracted_view, msaa] : views.iter()) {
         const auto& retained_view = extracted_view.retained_view_entity;
         if (!opaque_phases->phases.contains(retained_view) || !transparent_phases->contains(retained_view)) {
             continue;
         }
-        if (!camera.target || !camera.physical_target_size) {
+        if (!camera.physical_target_size) {
             continue;
         }
         const auto size = *camera.physical_target_size;
-        if (size.x == 0 || size.y == 0) {
-            continue;
-        }
-
+        const auto target = camera.target.transform([](const auto& value) { return value.identity(); });
         const auto sample_count = render::view::samples(msaa);
-        auto it = textures.find(camera.target->identity());
+        auto it = textures.find(target);
         if (it == textures.end()) {
             wgpu::TextureDescriptor descriptor;
             descriptor.setLabel("view_depth_texture")
@@ -194,10 +178,10 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
                 .setMipLevelCount(1)
                 .setSampleCount(sample_count)
                 .setDimension(wgpu::TextureDimension::e2D)
-                .setFormat(wgpu::TextureFormat::eDepth32Float)
+                .setFormat(CORE_2D_DEPTH_FORMAT)
                 .setUsage(wgpu::TextureUsage::eRenderAttachment);
             const render::render_resource::TextureCacheKey key{
-                .format = wgpu::TextureFormat::eDepth32Float,
+                .format = CORE_2D_DEPTH_FORMAT,
                 .dimension = wgpu::TextureDimension::e2D,
                 .width = size.x,
                 .height = size.y,
@@ -207,7 +191,7 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
                 .usage = wgpu::TextureUsage::eRenderAttachment,
                 .label = "view_depth_texture",
             };
-            it = textures.emplace(camera.target->identity(), texture_cache->get(*device, key, descriptor)).first;
+            it = textures.emplace(target, texture_cache->get(*device, key, descriptor)).first;
         }
         cmd.entity(entity).insert(render::view::ViewDepthTexture::create(it->second, 0.0f));
     }
@@ -239,7 +223,7 @@ void Core2dPlugin::attach(App& app) {
                                            .in_set(RenderSystems::PrepareResources)
                                            .set_name("prepare core 2d depth textures"));
         render_app.add_systems(ExtractSchedule,
-                               into(extract_core2d_camera_phases).set_name("extract core 2d camera phases"));
+                               into(extract_core_2d_camera_phases).set_name("extract core 2d camera phases"));
         return std::make_optional(std::ref(render_app));
     });
 }
