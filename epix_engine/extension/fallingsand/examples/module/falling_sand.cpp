@@ -678,9 +678,9 @@ void freefall_overlay_system(
             base += 4;
         }
         return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+            .with_inserted_indices<std::uint32_t>(indices);
     };
 
     // Remove overlays for chunks that no longer exist.

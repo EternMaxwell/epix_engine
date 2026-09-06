@@ -553,9 +553,9 @@ void freefall_overlay_system(Commands cmd,
             base += 4;
         }
         return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+            .with_inserted_indices<std::uint32_t>(indices);
     };
 
     std::vector<Entity> to_remove;
@@ -619,8 +619,8 @@ void chunk_chain_overlay_system(
             }
         }
         return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
 
     std::vector<Entity> to_remove;
@@ -707,8 +707,8 @@ void body_outline_overlay_system(
             }
         }
         return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
 
     std::vector<Entity> to_remove;

@@ -13,8 +13,7 @@ namespace {
 bool initialize_mesh_allocator_test_app(epix::app::App& app) {
     auto instance = wgpu::createInstance();
     if (!instance) return false;
-    auto adapter = instance.requestAdapter(
-        wgpu::RequestAdapterOptions().setBackendType(wgpu::BackendType::eVulkan));
+    auto adapter = instance.requestAdapter(wgpu::RequestAdapterOptions().setBackendType(wgpu::BackendType::eVulkan));
     if (!adapter) return false;
     auto device = adapter.requestDevice(wgpu::DeviceDescriptor{});
     if (!device) return false;
@@ -62,7 +61,7 @@ TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
 
 // packed_vertex_bytes interleaves per-vertex attributes in slot order (Bevy).
 TEST(MeshModule, PackedVertexBytesInterleave) {
-    const auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
+    const auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
     const auto packed = mesh::packed_vertex_bytes(box);
     // 4 verts * (12 pos + 16 color) = 112 bytes.
     EXPECT_EQ(packed.size(), 112u);
@@ -76,10 +75,9 @@ TEST(MeshModule, PackedVertexBytesInterleave) {
 }
 
 TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
-    static_assert(std::same_as<mesh::MeshAlphaMode2d,
-                               std::variant<mesh::MeshAlphaMode2dOpaque,
-                                            mesh::MeshAlphaMode2dMask,
-                                            mesh::MeshAlphaMode2dBlend>>);
+    static_assert(
+        std::same_as<mesh::MeshAlphaMode2d,
+                     std::variant<mesh::MeshAlphaMode2dOpaque, mesh::MeshAlphaMode2dMask, mesh::MeshAlphaMode2dBlend>>);
     EXPECT_TRUE(std::holds_alternative<mesh::MeshAlphaMode2dOpaque>(mesh::MeshMaterial2d{}.alpha_mode));
     const mesh::MeshAlphaMode2d mask = mesh::MeshAlphaMode2dMask{.cutoff = 0.35f};
     EXPECT_EQ(std::get<mesh::MeshAlphaMode2dMask>(mask).cutoff, 0.35f);
@@ -89,7 +87,7 @@ TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
 // accumulated offsets, array_stride) and interns layouts structurally.
 TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
     mesh::MeshVertexBufferLayouts store;
-    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));  // position(12) + color(16)
+    auto box          = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));  // position(12) + color(16)
     const auto layout = box.get_mesh_vertex_buffer_layout(store);
     ASSERT_TRUE(layout.value);
     EXPECT_EQ(layout.value->layout.array_stride, 28u);
@@ -104,13 +102,13 @@ TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
 
     // A structurally identical mesh shares the interned layout (pointer
     // equality on MeshVertexBufferLayoutRef, Bevy Arc semantics).
-    auto box2 = mesh::make_box2d(5.0f, 5.0f, glm::vec4(0.0f));
+    auto box2          = mesh::make_box2d(5.0f, 5.0f, glm::vec4(0.0f));
     const auto layout2 = box2.get_mesh_vertex_buffer_layout(store);
     EXPECT_EQ(layout, layout2);
     EXPECT_EQ(store.layouts.size(), 1u);
 
     // A different attribute set gets its own interned entry.
-    auto uvbox = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    auto uvbox         = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
     const auto layout3 = uvbox.get_mesh_vertex_buffer_layout(store);
     EXPECT_NE(layout, layout3);
     EXPECT_EQ(store.layouts.size(), 2u);
@@ -131,11 +129,10 @@ TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
     // RenderMesh carries Bevy's metadata: count, buffer info, interned layout,
     // and topology; GPU buffers come from the MeshAllocator.
     mesh::MeshVertexBufferLayouts store;
-    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
-    auto render = mesh::RenderMesh::from_metadata(static_cast<std::uint32_t>(box.count_vertices()),
-                                                  mesh::RenderMeshBufferInfo::non_indexed(),
-                                                  box.get_mesh_vertex_buffer_layout(store),
-                                                  wgpu::PrimitiveTopology::eTriangleList);
+    auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    auto render = mesh::RenderMesh::from_metadata(
+        static_cast<std::uint32_t>(box.count_vertices()), mesh::RenderMeshBufferInfo::non_indexed(),
+        box.get_mesh_vertex_buffer_layout(store), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_FALSE(render.indexed());
     EXPECT_EQ(render.vertex_count, box.count_vertices());
     EXPECT_EQ(render.primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
@@ -144,15 +141,14 @@ TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});
-    EXPECT_FALSE(result.has_value());
-    EXPECT_EQ(result.error(), mesh::MeshError::TypeIncompatible);
+    EXPECT_THROW(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
+                 std::invalid_argument);
 }
 
 TEST(MeshModule, ComputesAabbFromPositionAttribute) {
     mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                                      std::array{glm::vec3{-2.0f, 1.0f, 3.0f}, glm::vec3{4.0f, 5.0f, -1.0f}}));
+    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                          std::array{glm::vec3{-2.0f, 1.0f, 3.0f}, glm::vec3{4.0f, 5.0f, -1.0f}});
     static_assert(epix::camera::MeshAabb<mesh::Mesh>);
     const auto aabb = mesh.compute_aabb();
     ASSERT_TRUE(aabb.has_value());
@@ -164,12 +160,10 @@ TEST(MeshModule, ComputesAabbFromPositionAttribute) {
 // strides * vertex count + index bytes. Used by the render-asset byte limiter.
 TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
     mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{
-                                                                          glm::vec3{0.0f, 0.0f, 0.0f},
-                                                                          glm::vec3{1.0f, 1.0f, 1.0f}}));
-    ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, std::array{
-                                                                       glm::vec4{1.0f, 1.0f, 1.0f, 1.0f},
-                                                                       glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}}));
+    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                          std::array{glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}});
+    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR,
+                          std::array{glm::vec4{1.0f, 1.0f, 1.0f, 1.0f}, glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}});
     mesh.insert_indices<std::uint16_t>(std::array<std::uint16_t, 3>{0, 1, 0});
 
     const epix::render::RenderAsset<mesh::Mesh> asset{};
@@ -192,7 +186,7 @@ TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
 // render-world resource; MeshAllocator does not own a private settings copy.
 TEST(MeshModule, MeshAllocatorPluginPreservesSettingsResource) {
     epix::app::App app = epix::app::App::create();
-    auto render_app = std::make_unique<epix::app::App>(epix::app::App::create());
+    auto render_app    = std::make_unique<epix::app::App>(epix::app::App::create());
     mesh::MeshAllocatorSettings custom;
     custom.min_slab_size = 4096;
     render_app->world_mut().insert_resource(custom);
@@ -249,18 +243,18 @@ TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
         return;
     }
 
-    auto& world = app.world_mut();
-    auto& settings = world.resource_mut<mesh::MeshAllocatorSettings>();
-    settings.min_slab_size = 1;
-    settings.max_slab_size = 1024 * 1024;
-    settings.large_threshold = 1024 * 1024;
+    auto& world                                                   = app.world_mut();
+    auto& settings                                                = world.resource_mut<mesh::MeshAllocatorSettings>();
+    settings.min_slab_size                                        = 1;
+    settings.max_slab_size                                        = 1024 * 1024;
+    settings.large_threshold                                      = 1024 * 1024;
     world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages = wgpu::BufferUsage::eStorage;
 
     epix::assets::Assets<mesh::Mesh> store;
     const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
     const auto id2 = store.add(mesh::make_box2d(30.0f, 15.0f, glm::vec4(0.5f))).id();
-    auto first = store.remove_untracked(id1);
-    auto second = store.remove_untracked(id2);
+    auto first     = store.remove_untracked(id1);
+    auto second    = store.remove_untracked(id2);
     ASSERT_TRUE(first.has_value());
     ASSERT_TRUE(second.has_value());
     auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
@@ -272,8 +266,8 @@ TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
     ASSERT_TRUE(app.run_schedule(epix::app::Update));
 
     const auto& allocator = world.resource<mesh::MeshAllocator>();
-    const auto vertex1 = allocator.mesh_vertex_slice(id1);
-    const auto vertex2 = allocator.mesh_vertex_slice(id2);
+    const auto vertex1    = allocator.mesh_vertex_slice(id1);
+    const auto vertex2    = allocator.mesh_vertex_slice(id2);
     ASSERT_TRUE(vertex1.has_value());
     ASSERT_TRUE(vertex2.has_value());
     EXPECT_EQ(vertex1->buffer, vertex2->buffer);  // same layout packs together
@@ -301,15 +295,15 @@ TEST(MeshModule, AllocateAndFreeMeshesUsesLargeObjectSlabs) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping device test";
         return;
     }
-    auto& world = app.world_mut();
+    auto& world                                                       = app.world_mut();
     world.resource_mut<mesh::MeshAllocatorSettings>().large_threshold = 32;
-    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages = wgpu::BufferUsage::eStorage;
+    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages     = wgpu::BufferUsage::eStorage;
 
     epix::assets::Assets<mesh::Mesh> store;
-    auto source = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    auto source                      = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
     const auto expected_vertex_count = source.count_vertices();
-    const auto id = store.add(std::move(source)).id();
-    auto extracted_mesh = store.remove_untracked(id);
+    const auto id                    = store.add(std::move(source)).id();
+    auto extracted_mesh              = store.remove_untracked(id);
     ASSERT_TRUE(extracted_mesh.has_value());
     auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
     extracted.extracted.emplace_back(id, std::move(*extracted_mesh));
@@ -317,7 +311,7 @@ TEST(MeshModule, AllocateAndFreeMeshesUsesLargeObjectSlabs) {
 
     ASSERT_TRUE(app.run_schedule(epix::app::Update));
     const auto& allocator = world.resource<mesh::MeshAllocator>();
-    const auto vertex = allocator.mesh_vertex_slice(id);
+    const auto vertex     = allocator.mesh_vertex_slice(id);
     ASSERT_TRUE(vertex.has_value());
     EXPECT_EQ(vertex->begin, 0u);
     EXPECT_EQ(vertex->end, expected_vertex_count);
@@ -360,8 +354,8 @@ TEST(MeshModule, ComputeGrowCapacity) {
     EXPECT_EQ(r.first, 10u);
     // Growth capped by max_slab_size: max_cap = 16 / 4 = 4 slots; can't grow past 4.
     mesh::MeshAllocatorSettings tiny = s;
-    tiny.max_slab_size                = 16;
-    r = mesh::detail::compute_grow_capacity(4, 100, tiny, 4);
+    tiny.max_slab_size               = 16;
+    r                                = mesh::detail::compute_grow_capacity(4, 100, tiny, 4);
     EXPECT_TRUE(std::holds_alternative<mesh::detail::SlabCantGrow>(r.second));
     EXPECT_EQ(r.first, 4u);
 }
@@ -488,8 +482,8 @@ TEST(MeshModule, SlabsToReallocatePreservesInitialCapacity) {
     mesh::MeshAllocatorSettings settings;
     settings.min_slab_size = 40;
     settings.max_slab_size = 4096;
-    const auto layout = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
-    auto slab = mesh::detail::GeneralSlab::make(layout, 1, settings);
+    const auto layout      = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
+    auto slab              = mesh::detail::GeneralSlab::make(layout, 1, settings);
     ASSERT_EQ(slab.current_slot_capacity, 10u);
 
     mesh::detail::SlabsToReallocate pending;
@@ -512,8 +506,8 @@ TEST(MeshModule, GeneralSlabCapacityMatchesBevyRounding) {
     mesh::MeshAllocatorSettings settings;
     settings.min_slab_size = 5;
     settings.max_slab_size = 5;
-    const auto layout = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
-    auto slab = mesh::detail::GeneralSlab::make(layout, 7, settings);
+    const auto layout      = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
+    auto slab              = mesh::detail::GeneralSlab::make(layout, 7, settings);
     EXPECT_EQ(slab.current_slot_capacity, mesh::offset_allocator::min_allocator_size(7));
     const auto allocation = slab.allocator.allocate(7);
     ASSERT_TRUE(allocation.has_value());
@@ -532,11 +526,50 @@ TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     auto extracted = render_asset.take_gpu_data(source, nullptr);
     ASSERT_TRUE(extracted.has_value());
     EXPECT_GT(extracted->count_vertices(), 0u);
-    EXPECT_EQ(source.count_vertices(), 0u);
+    const auto source_attributes = source.try_attributes();
+    ASSERT_FALSE(source_attributes.has_value());
+    EXPECT_EQ(source_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(source.count_vertices(), std::logic_error);
 
     auto repeated = render_asset.take_gpu_data(source, nullptr);
     ASSERT_FALSE(repeated.has_value());
     EXPECT_EQ(repeated.error(), epix::render::AssetExtractionError::AlreadyExtracted);
+}
+
+TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
+    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
+
+    const auto missing_indices = source.try_indices();
+    ASSERT_FALSE(missing_indices.has_value());
+    EXPECT_EQ(missing_indices.error(), mesh::MeshAccessError::NotFound);
+    const auto optional_indices = source.try_indices_option();
+    ASSERT_TRUE(optional_indices.has_value());
+    EXPECT_FALSE(optional_indices->has_value());
+
+    auto extracted = source.take_gpu_data();
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_EQ(extracted->count_vertices(), 0u);
+    const auto extracted_indices = extracted->try_indices_option();
+    ASSERT_TRUE(extracted_indices.has_value());
+    EXPECT_FALSE(extracted_indices->has_value());
+
+    const auto source_attribute = source.try_attribute_option(mesh::Mesh::ATTRIBUTE_POSITION);
+    ASSERT_FALSE(source_attribute.has_value());
+    EXPECT_EQ(source_attribute.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    const auto source_indices = source.try_indices_option();
+    ASSERT_FALSE(source_indices.has_value());
+    EXPECT_EQ(source_indices.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(source.attributes(), std::logic_error);
+    EXPECT_THROW(source.indices(), std::logic_error);
+
+    auto repeated = source.take_gpu_data();
+    ASSERT_FALSE(repeated.has_value());
+    EXPECT_EQ(repeated.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+
+    mesh::Mesh clone(source);
+    const auto clone_attributes = clone.try_attributes();
+    ASSERT_FALSE(clone_attributes.has_value());
+    EXPECT_EQ(clone_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
 }
 
 TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
@@ -558,7 +591,7 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
     main_world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>{});
 
-    auto source_mesh = mesh::make_box2d(24.0f, 12.0f);
+    auto source_mesh        = mesh::make_box2d(24.0f, 12.0f);
     source_mesh.asset_usage = epix::render::RenderAssetUsages::RENDER_WORLD;
     auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(std::move(source_mesh));
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
@@ -575,7 +608,9 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
 
     const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());
     ASSERT_TRUE(source.has_value());
-    EXPECT_EQ(source->get().count_vertices(), 0u);
+    const auto source_attributes = source->get().try_attributes();
+    ASSERT_FALSE(source_attributes.has_value());
+    EXPECT_EQ(source_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
 }
 
 TEST(MeshModule, ExtractSystemClonesDualWorldMesh) {

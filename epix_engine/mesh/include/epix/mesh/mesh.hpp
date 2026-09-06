@@ -12,6 +12,7 @@
 #include <epix/app.hpp>
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/meta.hpp>
 #include <epix/render/assets.hpp>
 #include <expected>
@@ -23,11 +24,12 @@
 #include <ranges>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <utility>
+#include <variant>
 #include <webgpu/webgpu.hpp>
-#include <epix/mesh/vertex_buffer_layout.hpp>
 #endif
 
 namespace epix::mesh {
@@ -45,16 +47,12 @@ constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
             return 0;
     }
 }
-/** @brief Error codes for mesh attribute operations. */
-EPIX_EXPORT enum class MeshError {
-    /** @brief No attribute at given slot. */
-    SlotNotFound,
-    /** @brief Attribute name does not match the current one at given slot. */
-    NameMismatch,
-    /** @brief The type of provided data is incompatible with the attribute format. */
-    TypeIncompatible,
-    /** @brief The format of stored attribute does not match the requested one. */
-    TypeMismatch,
+/** @brief Error from accessing mesh vertex attributes or indices. */
+EPIX_EXPORT enum class MeshAccessError {
+    /** @brief The mesh payload was transferred to the render world. */
+    ExtractedToRenderWorld,
+    /** @brief The requested vertex or index data is absent. */
+    NotFound,
 };
 /** @brief Describes a single vertex attribute in a mesh (name, slot, format). */
 EPIX_EXPORT struct MeshAttribute {
@@ -156,14 +154,109 @@ EPIX_EXPORT struct MeshIndices {
    public:
     ecs::untyped_vector data;
 };
+
+namespace detail {
+struct ExtractedToRenderWorld {};
+
+struct ConstMeshAttributeRefs {
+    auto operator()(const MeshAttributeData& data) const {
+        return std::pair<const MeshAttribute&, const ecs::untyped_vector&>{data.attribute, data.data};
+    }
+};
+
+struct MeshAttributeRefs {
+    auto operator()(MeshAttributeData& data) const {
+        return std::pair<const MeshAttribute&, ecs::untyped_vector&>{data.attribute, data.data};
+    }
+};
+
+/** @brief Storage that distinguishes present, absent, and extracted mesh data.
+ *
+ * This is the C++ counterpart of Bevy 0.18's private
+ * `MeshExtractableData<T>` state machine.
+ */
+template <typename T>
+class MeshExtractableData {
+   public:
+    static MeshExtractableData data(T value) {
+        MeshExtractableData result;
+        result._value.template emplace<1>(std::move(value));
+        return result;
+    }
+
+    static MeshExtractableData extracted_to_render_world() {
+        MeshExtractableData result;
+        result._value.template emplace<2>();
+        return result;
+    }
+
+    std::expected<std::reference_wrapper<const T>, MeshAccessError> as_ref() const {
+        if (const auto* value = std::get_if<T>(&_value)) return std::cref(*value);
+        return std::unexpected(std::holds_alternative<ExtractedToRenderWorld>(_value)
+                                   ? MeshAccessError::ExtractedToRenderWorld
+                                   : MeshAccessError::NotFound);
+    }
+
+    std::expected<std::optional<std::reference_wrapper<const T>>, MeshAccessError> as_ref_option() const {
+        if (const auto* value = std::get_if<T>(&_value)) return std::optional{std::cref(*value)};
+        if (std::holds_alternative<ExtractedToRenderWorld>(_value)) {
+            return std::unexpected(MeshAccessError::ExtractedToRenderWorld);
+        }
+        return std::nullopt;
+    }
+
+    std::expected<std::reference_wrapper<T>, MeshAccessError> as_mut() {
+        if (auto* value = std::get_if<T>(&_value)) return std::ref(*value);
+        return std::unexpected(std::holds_alternative<ExtractedToRenderWorld>(_value)
+                                   ? MeshAccessError::ExtractedToRenderWorld
+                                   : MeshAccessError::NotFound);
+    }
+
+    std::expected<std::optional<std::reference_wrapper<T>>, MeshAccessError> as_mut_option() {
+        if (auto* value = std::get_if<T>(&_value)) return std::optional{std::ref(*value)};
+        if (std::holds_alternative<ExtractedToRenderWorld>(_value)) {
+            return std::unexpected(MeshAccessError::ExtractedToRenderWorld);
+        }
+        return std::nullopt;
+    }
+
+    std::expected<MeshExtractableData, MeshAccessError> extract() {
+        if (std::holds_alternative<ExtractedToRenderWorld>(_value)) {
+            return std::unexpected(MeshAccessError::ExtractedToRenderWorld);
+        }
+        MeshExtractableData extracted = std::move(*this);
+        _value.template emplace<2>();
+        return extracted;
+    }
+
+    std::expected<std::optional<T>, MeshAccessError> replace(std::optional<T> value) {
+        if (std::holds_alternative<ExtractedToRenderWorld>(_value)) {
+            return std::unexpected(MeshAccessError::ExtractedToRenderWorld);
+        }
+        std::optional<T> previous;
+        if (auto* current = std::get_if<T>(&_value)) previous.emplace(std::move(*current));
+        if (value) {
+            _value.template emplace<1>(std::move(*value));
+        } else {
+            _value.template emplace<0>();
+        }
+        return previous;
+    }
+
+   private:
+    std::variant<std::monostate, T, ExtractedToRenderWorld> _value;
+};
+}  // namespace detail
 /** @brief CPU-side mesh asset storing vertex attributes and optional index data.
  *
- * Use insert_attribute/with_attribute to add vertex data and
- * insert_indices/with_indices to add index data. Standard attribute constants
+ * Use insert_attribute/with_inserted_attribute to add vertex data and
+ * insert_indices/with_inserted_indices to add index data. Standard attribute constants
  * (ATTRIBUTE_POSITION, etc.) are provided.
  */
 EPIX_EXPORT struct Mesh {
    public:
+    using AttributeMap = std::map<std::size_t, MeshAttributeData>;
+
     static inline const MeshAttribute ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
     static inline const MeshAttribute ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
     static inline const MeshAttribute ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
@@ -172,11 +265,13 @@ EPIX_EXPORT struct Mesh {
 
    public:
     Mesh(wgpu::PrimitiveTopology primitive_type, render::RenderAssetUsages asset_usage) noexcept
-        : asset_usage(asset_usage), primitive_type(primitive_type) {}
+        : asset_usage(asset_usage),
+          primitive_type(primitive_type),
+          _attributes(detail::MeshExtractableData<AttributeMap>::data({})) {}
     Mesh(const Mesh&);
-    Mesh(Mesh&&)                 = default;
+    Mesh(Mesh&&) = default;
     Mesh& operator=(const Mesh&);
-    Mesh& operator=(Mesh&&)      = default;
+    Mesh& operator=(Mesh&&) = default;
 
     /** @brief Worlds in which this mesh's asset data is retained. */
     render::RenderAssetUsages asset_usage;
@@ -190,10 +285,36 @@ EPIX_EXPORT struct Mesh {
         self.set_primitive_type(type);
         return std::forward<decltype(self)>(self);
     }
-    /** @brief Iterate over all attributes (const). */
-    auto iter_attributes() const { return std::views::values(_attributes); }
-    /** @brief Iterate over all attributes (mutable). */
-    auto iter_attributes_mut() { return std::views::values(_attributes); }
+    /** @brief Fallible attribute iteration (Bevy `Mesh::try_attributes`). */
+    auto try_attributes() const {
+        using View        = decltype(std::views::values(std::declval<const AttributeMap&>()) |
+                                     std::views::transform(detail::ConstMeshAttributeRefs{}));
+        const auto values = _attributes.as_ref();
+        if (!values) return std::expected<View, MeshAccessError>{std::unexpected(values.error())};
+        return std::expected<View, MeshAccessError>{std::views::values(values->get()) |
+                                                    std::views::transform(detail::ConstMeshAttributeRefs{})};
+    }
+    /** @brief Iterate over all attributes. Throws after render-world extraction. */
+    auto attributes() const {
+        auto result = try_attributes();
+        if (!result) throw_access_error(result.error());
+        return std::move(result).value();
+    }
+    /** @brief Fallible mutable attribute iteration (Bevy `Mesh::try_attributes_mut`). */
+    auto try_attributes_mut() {
+        using View  = decltype(std::views::values(std::declval<AttributeMap&>()) |
+                               std::views::transform(detail::MeshAttributeRefs{}));
+        auto values = _attributes.as_mut();
+        if (!values) return std::expected<View, MeshAccessError>{std::unexpected(values.error())};
+        return std::expected<View, MeshAccessError>{std::views::values(values->get()) |
+                                                    std::views::transform(detail::MeshAttributeRefs{})};
+    }
+    /** @brief Iterate mutably over all attributes. Throws after render-world extraction. */
+    auto attributes_mut() {
+        auto result = try_attributes_mut();
+        if (!result) throw_access_error(result.error());
+        return std::move(result).value();
+    }
 
     /** @brief Build a MeshAttributeLayout from the current attributes. */
     MeshAttributeLayout attribute_layout() const;
@@ -204,82 +325,88 @@ EPIX_EXPORT struct Mesh {
      * accumulates the previous attribute sizes. */
     MeshVertexBufferLayoutRef get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const;
 
-    /** @brief Insert a new attribute with given data, or replace existing one at that slot.
-     *  Caller must ensure the data type matches the attribute format. */
+    /** @brief Insert or replace an attribute. Throws on incompatible format or extracted data. */
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    std::expected<void, MeshError> insert_attribute(MeshAttribute attribute, T&& data) {
+    void insert_attribute(MeshAttribute attribute, T&& data) {
+        auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
+        if (!result) throw_access_error(result.error());
+    }
+    /** @brief Fallible insertion. Format mismatch remains a programmer error, as in Bevy. */
+    template <std::ranges::range T>
+        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
+                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
+    std::expected<void, MeshAccessError> try_insert_attribute(MeshAttribute attribute, T&& data) {
         using value_type = std::ranges::range_value_t<T>;
         if (vertex_format_size(attribute.format) != sizeof(value_type)) {
-            return std::unexpected(MeshError::TypeIncompatible);
+            throw std::invalid_argument("Mesh attribute data does not match its vertex format");
         }
         MeshAttributeData attribute_data{
             .attribute = attribute,
             .data      = std::ranges::to<ecs::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
         };
-        auto [it, inserted] = _attributes.insert_or_assign(attribute.slot, std::move(attribute_data));
+        auto attributes = _attributes.as_mut();
+        if (!attributes) return std::unexpected(attributes.error());
+        attributes->get().insert_or_assign(attribute.slot, std::move(attribute_data));
         return {};
     }
-    /** @brief Builder-style insert_attribute with error callback. */
+    /** @brief Builder-style attribute insertion (Bevy `with_inserted_attribute`). */
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    auto&& with_attribute(this auto&& self,
-                          MeshAttribute attribute,
-                          T&& data,
-                          std::invocable<std::expected<void, MeshError>> auto&& callback) {
-        callback(self.insert_attribute(attribute, std::forward<decltype(data)>(data)));
+    auto&& with_inserted_attribute(this auto&& self, MeshAttribute attribute, T&& data) {
+        self.insert_attribute(std::move(attribute), std::forward<T>(data));
         return std::forward<decltype(self)>(self);
     }
-    /** @brief Builder-style insert_attribute (errors silently ignored). */
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    auto&& with_attribute(this auto&& self, MeshAttribute attribute, T&& data) {
-        (void)self.insert_attribute(attribute, std::forward<decltype(data)>(data));
-        return std::forward<decltype(self)>(self);
+    std::expected<Mesh, MeshAccessError> try_with_inserted_attribute(MeshAttribute attribute, T&& data) && {
+        auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
+        if (!result) return std::unexpected(result.error());
+        return std::move(*this);
     }
-    /** @brief Get a const attribute data by descriptor. */
-    std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> get_attribute(
+    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(const MeshAttribute& attribute) const;
+    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(std::size_t slot) const;
+    std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
         const MeshAttribute& attribute) const;
-    /** @brief Get a const attribute data by slot index. */
-    std::expected<std::reference_wrapper<const MeshAttributeData>, MeshError> get_attribute(std::size_t slot) const;
-    /** @brief Get a mutable attribute data by descriptor. */
-    std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> get_attribute_mut(
+    std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
+        std::size_t slot) const;
+    std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+    try_attribute_option(const MeshAttribute& attribute) const;
+    std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+    try_attribute_option(std::size_t slot) const;
+
+    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(const MeshAttribute& attribute);
+    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(std::size_t slot);
+    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(
         const MeshAttribute& attribute);
-    /** @brief Get a mutable attribute data by slot index. */
-    std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> get_attribute_mut(std::size_t slot);
-    /** @brief Remove an attribute by descriptor, returning the data. */
-    std::expected<MeshAttributeData, MeshError> remove_attribute(const MeshAttribute& attribute);
-    /** @brief Remove an attribute by slot, returning the data. */
-    std::expected<MeshAttributeData, MeshError> remove_attribute(std::size_t slot);
-    auto&& with_removed_attribute(this auto&& self,
-                                  const MeshAttribute& attribute,
-                                  std::invocable<std::expected<MeshAttributeData, MeshError>> auto&& callback) {
-        callback(self.remove_attribute(attribute));
-        return std::forward<decltype(self)>(self);
-    }
-    auto&& with_removed_attribute(this auto&& self, MeshAttribute attribute) {
+    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(std::size_t slot);
+    std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
+        const MeshAttribute& attribute);
+    std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
+        std::size_t slot);
+
+    std::optional<ecs::untyped_vector> remove_attribute(const MeshAttribute& attribute);
+    std::optional<ecs::untyped_vector> remove_attribute(std::size_t slot);
+    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(const MeshAttribute& attribute);
+    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(std::size_t slot);
+    auto&& with_removed_attribute(this auto&& self, const MeshAttribute& attribute) {
         self.remove_attribute(attribute);
         return std::forward<decltype(self)>(self);
     }
-    /** @brief Builder-style remove_attribute by slot with callback. */
-    auto&& with_removed_attribute(this auto&& self,
-                                  std::size_t slot,
-                                  std::invocable<std::expected<MeshAttributeData, MeshError>> auto&& callback) {
-        callback(self.remove_attribute(slot));
-        return std::forward<decltype(self)>(self);
-    }
-    /** @brief Builder-style remove_attribute by slot. */
     auto&& with_removed_attribute(this auto&& self, std::size_t slot) {
         self.remove_attribute(slot);
         return std::forward<decltype(self)>(self);
     }
-    /** @brief Check if an attribute matching the descriptor is present. */
-    bool contains_attribute(const MeshAttribute& attribute) const { return get_attribute(attribute).has_value(); }
-    /** @brief Check if an attribute at the given slot is present. */
-    bool contains_attribute(std::size_t slot) const { return get_attribute(slot).has_value(); }
+    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(const MeshAttribute& attribute) &&;
+    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(std::size_t slot) &&;
+
+    bool contains_attribute(const MeshAttribute& attribute) const;
+    bool contains_attribute(std::size_t slot) const;
+    std::expected<bool, MeshAccessError> try_contains_attribute(const MeshAttribute& attribute) const;
+    std::expected<bool, MeshAccessError> try_contains_attribute(std::size_t slot) const;
 
     /** @brief Insert indices, replacing any existing ones.
      *  @tparam V Index type (`std::uint16_t` or `std::uint32_t`). */
@@ -287,54 +414,61 @@ EPIX_EXPORT struct Mesh {
         requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
                  (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
     void insert_indices(T&& data) {
-        using value_type = std::ranges::range_value_t<T>;
-        _indices.emplace(MeshIndices(meta::type_info::of<V>()));
-        if constexpr (std::ranges::sized_range<T>) {
-            _indices->data.reserve(static_cast<std::size_t>(std::ranges::size(data)));
-        }
-        std::ranges::for_each(std::forward<T>(data),
-                              [&](auto&& v) { _indices->data.emplace_back<V>(std::forward<decltype(v)>(v)); });
+        auto result = try_insert_indices<V>(std::forward<T>(data));
+        if (!result) throw_access_error(result.error());
     }
-    /** @brief Builder-style insert indices. */
     template <typename V = std::uint16_t, std::ranges::range T>
         requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
                  (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
-    auto&& with_indices(this auto&& self, T&& data) {
+    std::expected<void, MeshAccessError> try_insert_indices(T&& data) {
+        MeshIndices indices(meta::type_info::of<V>());
+        if constexpr (std::ranges::sized_range<T>) {
+            indices.data.reserve(static_cast<std::size_t>(std::ranges::size(data)));
+        }
+        std::ranges::for_each(std::forward<T>(data),
+                              [&](auto&& v) { indices.data.emplace_back<V>(std::forward<decltype(v)>(v)); });
+        auto replaced = _indices.replace(std::optional<MeshIndices>{std::move(indices)});
+        if (!replaced) return std::unexpected(replaced.error());
+        return {};
+    }
+    /** @brief Builder-style insert indices (Bevy `with_inserted_indices`). */
+    template <typename V = std::uint16_t, std::ranges::range T>
+        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
+                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
+    auto&& with_inserted_indices(this auto&& self, T&& data) {
         self.template insert_indices<V>(std::forward<T>(data));
         return std::forward<decltype(self)>(self);
     }
-    /** @brief Get a const reference to the index data, if present. */
-    std::optional<std::reference_wrapper<const MeshIndices>> get_indices() const noexcept {
-        return _indices.transform([](const MeshIndices& indices) { return std::cref(indices); });
+    template <typename V = std::uint16_t, std::ranges::range T>
+        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
+                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
+    std::expected<Mesh, MeshAccessError> try_with_inserted_indices(T&& data) && {
+        auto result = try_insert_indices<V>(std::forward<T>(data));
+        if (!result) return std::unexpected(result.error());
+        return std::move(*this);
     }
-    /** @brief Get a mutable reference to the index data, if present. */
-    std::optional<std::reference_wrapper<MeshIndices>> get_indices_mut() noexcept {
-        return _indices.transform([](MeshIndices& indices) { return std::ref(indices); });
-    }
-    /** @brief Remove and return the index data. */
-    std::optional<MeshIndices> remove_indices() {
-        std::optional<MeshIndices> res;
-        std::swap(res, _indices);
-        return res;
-    }
-    /** @brief Builder-style remove_indices with callback. */
-    auto&& with_removed_indices(this auto&& self, std::invocable<std::optional<MeshIndices>> auto&& callback) {
-        callback(self.remove_indices());
-        return std::forward<decltype(self)>(self);
-    }
-    /** @brief Builder-style remove_indices (silently discards). */
+
+    std::optional<std::reference_wrapper<const MeshIndices>> indices() const;
+    std::expected<std::reference_wrapper<const MeshIndices>, MeshAccessError> try_indices() const;
+    std::expected<std::optional<std::reference_wrapper<const MeshIndices>>, MeshAccessError> try_indices_option() const;
+    std::optional<std::reference_wrapper<MeshIndices>> indices_mut();
+    std::expected<std::reference_wrapper<MeshIndices>, MeshAccessError> try_indices_mut();
+    std::expected<std::optional<std::reference_wrapper<MeshIndices>>, MeshAccessError> try_indices_mut_option();
+
+    std::optional<MeshIndices> remove_indices();
+    std::expected<std::optional<MeshIndices>, MeshAccessError> try_remove_indices();
     auto&& with_removed_indices(this auto&& self) {
         self.remove_indices();
         return std::forward<decltype(self)>(self);
     }
+    std::expected<Mesh, MeshAccessError> try_with_removed_indices() &&;
 
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {
-        if (_attributes.empty()) {
-            return 0;
-        }
         std::optional<std::size_t> count;
-        for (auto&& [slot, attribute_data] : _attributes) {
+        const auto stored_attributes = _attributes.as_ref();
+        if (!stored_attributes) throw_access_error(stored_attributes.error());
+        for (auto&& [slot, attribute_data] : stored_attributes->get()) {
             std::size_t attribute_count = attribute_data.data.size();
             if (count.has_value() && attribute_count != *count) {
                 spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
@@ -352,15 +486,15 @@ EPIX_EXPORT struct Mesh {
     std::optional<camera::Aabb> compute_aabb() const;
 
     /** @brief Move the vertex/index payload into a render-world copy while
-     * retaining this asset's metadata. This mirrors Bevy `Mesh::take_gpu_data`
-     * for assets whose usage is render-world-only. Returns empty when the
-     * payload was already extracted and has not since been replaced. */
-    std::optional<Mesh> take_gpu_data();
+     * retaining this asset's metadata (Bevy `Mesh::take_gpu_data`). */
+    std::expected<Mesh, MeshAccessError> take_gpu_data();
 
    private:
+    [[noreturn]] static void throw_access_error(MeshAccessError error);
+
     wgpu::PrimitiveTopology primitive_type;
-    std::map<std::size_t, MeshAttributeData> _attributes;
-    std::optional<MeshIndices> _indices;
+    detail::MeshExtractableData<AttributeMap> _attributes;
+    detail::MeshExtractableData<MeshIndices> _indices;
 };
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.

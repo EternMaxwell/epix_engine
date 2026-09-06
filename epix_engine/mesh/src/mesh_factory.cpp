@@ -34,12 +34,11 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
     }
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
-                    .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_indices<std::uint32_t>(indices);
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                    .with_inserted_indices<std::uint32_t>(indices);
     if (color) {
-        [[maybe_unused]] auto result =
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
-                                  std::views::take(std::views::repeat(*color), static_cast<std::size_t>(segments) + 1));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
+                              std::views::take(std::views::repeat(*color), static_cast<std::size_t>(segments) + 1));
     }
     return mesh;
 }
@@ -57,11 +56,10 @@ Mesh mesh::make_box2d(float width, float height, std::optional<glm::vec4> color)
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
-                    .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_indices<std::uint16_t>(indices);
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                    .with_inserted_indices<std::uint16_t>(indices);
     if (color) {
-        [[maybe_unused]] auto result = mesh.insert_attribute(
-            Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
     }
     return mesh;
 }
@@ -85,12 +83,11 @@ Mesh mesh::make_box2d_uv(float width, float height, glm::vec4 uv_rect, std::opti
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
-                    .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_attribute(Mesh::ATTRIBUTE_UV0, uvs)
-                    .with_indices<std::uint16_t>(indices);
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_UV0, uvs)
+                    .with_inserted_indices<std::uint16_t>(indices);
     if (vertex_color) {
-        [[maybe_unused]] auto result =
-            mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*vertex_color), 4));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*vertex_color), 4));
     }
     return mesh;
 }

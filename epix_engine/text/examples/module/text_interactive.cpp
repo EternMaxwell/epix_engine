@@ -132,8 +132,8 @@ mesh::Mesh make_rect_outline(float left, float right, float bottom, float top, g
     };
     std::vector<glm::vec4> colors(5, color);
     auto m = mesh::Mesh(wgpu::PrimitiveTopology::eLineStrip, render::RenderAssetUsages::RENDER_WORLD);
-    m.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions).value();
-    m.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors).value();
+    m.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    m.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     return m;
 }
 

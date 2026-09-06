@@ -2560,9 +2560,9 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
         }
 
         return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-            .with_indices<std::uint32_t>(indices);
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+            .with_inserted_indices<std::uint32_t>(indices);
     }
 
     std::vector<glm::vec3> positions;
@@ -2623,9 +2623,9 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
     }
 
     return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
-        .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-        .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_indices<std::uint32_t>(indices);
+        .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+        .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+        .with_inserted_indices<std::uint32_t>(indices);
 }
 
 void liquid_imgui_ui(imgui::Ctx imgui_ctx, ecs::ResMut<FluidState> state) {

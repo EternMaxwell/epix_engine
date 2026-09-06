@@ -694,11 +694,10 @@ void build_pixel_body_meshes(Commands cmd,
             indices.push_back(base);
             base += 4;
         }
-        auto new_mesh = mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList,
-                                   render::RenderAssetUsages::RENDER_WORLD)
-                            .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
-                            .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-                            .with_indices<std::uint32_t>(indices);
+        auto new_mesh = mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+                            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
+                            .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
+                            .with_inserted_indices<std::uint32_t>(indices);
         auto handle   = meshes->emplace(std::move(new_mesh));
 
         if (body.mesh_child_entity.has_value()) {

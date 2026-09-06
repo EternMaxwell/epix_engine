@@ -66,15 +66,15 @@ struct MeshBatchingTestPlugin {
         // Three shared mesh handles: box, circle, triangle
         auto box_handle    = mesh_assets.emplace(mesh::make_box2d(20.0f, 20.0f));
         auto circle_handle = mesh_assets.emplace(mesh::make_circle(10.0f, std::nullopt, 16));
-        auto tri_handle    = mesh_assets.emplace(mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList,
-                                                            render::RenderAssetUsages::RENDER_WORLD)
-                                                     .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                                                                     std::vector<glm::vec3>{
-                                                                         {0.0f, 12.0f, 0.0f},
-                                                                         {-10.0f, -8.0f, 0.0f},
-                                                                         {10.0f, -8.0f, 0.0f},
-                                                                     })
-                                                     .with_indices<std::uint16_t>(std::vector<std::uint16_t>{0, 1, 2}));
+        auto tri_handle    = mesh_assets.emplace(
+            mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+                .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                                         std::vector<glm::vec3>{
+                                             {0.0f, 12.0f, 0.0f},
+                                             {-10.0f, -8.0f, 0.0f},
+                                             {10.0f, -8.0f, 0.0f},
+                                         })
+                .with_inserted_indices<std::uint16_t>(std::vector<std::uint16_t>{0, 1, 2}));
 
         std::mt19937 rng(1337);
         std::uniform_real_distribution<float> pos_dist(-900.0f, 900.0f);
