@@ -59,10 +59,10 @@ struct Query {
 
     /** @brief Get the first matching entity's data, or std::nullopt if no match. */
     typename internal::AddOptional<typename QueryData<D>::Item>::type single() {
-        QueryIter<D, F> iter = this->iter();
-        bool has_value       = iter.next();
-        if (!has_value) return std::nullopt;
-        return *iter;
+        auto range = iter();
+        auto first = range.begin();
+        if (first == range.end()) return std::nullopt;
+        return *first;
     }
     /** @brief Get the first matching entity's read-only data, or std::nullopt. */
     typename internal::AddOptional<typename QueryData<typename QueryData<D>::ReadOnly>::Item>::type single_ro() const {
@@ -85,7 +85,10 @@ struct Query {
             .value_or(false);
     }
     /** @brief Check whether the query has no matching entities. */
-    bool empty() const { return !iter().next(); }
+    bool empty() const {
+        auto range = iter();
+        return range.begin() == range.end();
+    }
 
    private:
     World* world_;

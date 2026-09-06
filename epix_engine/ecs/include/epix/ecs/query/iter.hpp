@@ -1,17 +1,14 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
-#include <algorithm>
 #include <cstddef>
 #include <epix/common.hpp>
 #include <iterator>
 #include <numeric>
-#include <optional>
 #include <ranges>
 #include <span>
 #include <stdexcept>
 #include <type_traits>
-#include <utility>
 #endif
 
 #include <epix/ecs/query/decl.hpp>
@@ -22,202 +19,186 @@
 #include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs {
-/** @brief Low-level cursor for iterating over query results across archetypes.
+/** @brief Input iterator over query results across matched archetypes.
  *  @tparam D Query data descriptor.
  *  @tparam F Query filter. */
 EPIX_EXPORT template <query_data D, query_filter F>
 struct QueryIterCursor {
-   public:
-    /** @brief Construct a cursor starting at the beginning of matched archetypes. */
-    QueryIterCursor(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
-        : archetype_ids(state->matched_archetype_ids()),
-          archetype_entities(),
-          fetch(WorldQuery<D>::init_fetch(*world, state->fetch_state(), last_run, this_run)),
-          filter(WorldQuery<F>::init_fetch(*world, state->filter_state(), last_run, this_run)),
-          current_idx(0) {}
-    /** @brief Advance the cursor past all remaining elements to the end. */
-    void to_end() noexcept {
-        archetype_ids      = archetype_ids.subspan(archetype_ids.size());
-        archetype_entities = {};
-        current_idx        = 0;
-    }
-    /** @brief Reset the cursor to the beginning of matched archetypes. */
-    void reset(const QueryState<D, F>* state) noexcept {
-        archetype_ids      = state->matched_archetype_ids();
-        archetype_entities = {};
-        current_idx        = 0;
-    }
-
-    /** @brief Fetch the current element's data.
-     *  @return The query data item at the current position. */
-    QueryData<D>::Item retrieve() {
-        if (!current()) {
-            throw std::out_of_range("QueryIterCursor::retrieve() called out of range");
-        }
-        auto entity = archetype_entities[current_idx].entity;
-        auto row    = TableRow(archetype_entities[current_idx].table_idx);
-        return QueryData<D>::fetch(fetch, entity, row);
-    }
-    /** @brief Check whether the cursor points to a valid element. */
-    bool current() const noexcept { return current_idx < archetype_entities.size(); }
-    /** @brief Advance to the next matching entity.
-     *  @return True if a valid element was found, false if exhausted. */
-    bool next(Tables& tables, const Archetypes& archetypes, const QueryState<D, F>& state) {
-        while (true) {
-            if (!archetype_ids.empty() && archetype_entities.data() == nullptr) {
-                // first time initialization
-                auto& archetype = archetypes.get(archetype_ids.front()).value().get();
-                if (archetype.empty()) {
-                    archetype_ids = archetype_ids.subspan(1);
-                    continue;
-                }
-                archetype_entities = archetype.entities();
-                auto& table        = tables.get_mut(archetype.table_id()).value().get();
-                WorldQuery<D>::set_archetype(fetch, state.fetch_state(), archetype, table);
-                WorldQuery<F>::set_archetype(filter, state.filter_state(), archetype, table);
-                current_idx = 0;
-            } else if (current_idx + 1 >= archetype_entities.size()) {
-                // go to next archetype
-                if (archetype_ids.size() > 0) archetype_ids = archetype_ids.subspan(1);
-                if (archetype_ids.empty()) {
-                    archetype_entities = {};
-                    current_idx        = 0;  // reset to 0 for equality comparison at end.
-                    return false;
-                }
-
-                auto& archetype = archetypes.get(archetype_ids.front()).value().get();
-                if (archetype.empty()) continue;
-                archetype_entities = archetype.entities();
-                auto& table        = tables.get_mut(archetype.table_id()).value().get();
-                WorldQuery<D>::set_archetype(fetch, state.fetch_state(), archetype, table);
-                WorldQuery<F>::set_archetype(filter, state.filter_state(), archetype, table);
-                current_idx = 0;
-            } else {
-                ++current_idx;
-            }
-
-            auto archetype_entity = archetype_entities[current_idx];
-            if (!QueryFilter<F>::filter_fetch(filter, archetype_entity.entity, archetype_entity.table_idx)) {
-                continue;
-            }
-            break;
-        }
-        return true;
-    }
-    /** @brief Check whether the cursor has reached the end. */
-    bool end() const noexcept { return archetype_ids.empty() && !current(); }
-    /** @brief Get an upper bound on remaining elements. */
-    std::size_t max_remaining(const Archetypes& archetypes) const {
-        return std::accumulate(
-                   archetype_ids.begin(), archetype_ids.end(), std::size_t(0),
-                   [&](std::size_t acc, ArchetypeId id) { return acc + archetypes.get(id).value().get().size(); }) -
-               current_idx;
-    }
-
-    bool operator==(const QueryIterCursor& other) const noexcept {
-        return archetype_ids.data() == other.archetype_ids.data() && current_idx == other.current_idx;
-    }
-    bool operator!=(const QueryIterCursor& other) const noexcept { return !(*this == other); }
-
-   private:
-    std::span<const ArchetypeId> archetype_ids;
-    std::span<const internal::ArchetypeEntity> archetype_entities;
-    WorldQuery<D>::Fetch fetch;
-    WorldQuery<F>::Fetch filter;
-    std::size_t current_idx;  // index in current archetype_entities
-
-    friend struct QueryIter<D, F>;
-};
-/** @brief Range-compatible iterator over query results.
- *
- *  Supports input_iterator semantics and view_interface for
- *  range-based for loops.
- *  @tparam D Query data descriptor.
- *  @tparam F Query filter. */
-EPIX_EXPORT template <query_data D, query_filter F>
-struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
    public:
     using iterator_concept  = std::input_iterator_tag;
     using iterator_category = std::input_iterator_tag;
     using value_type        = std::remove_cvref_t<typename QueryData<D>::Item>;
     using difference_type   = std::ptrdiff_t;
 
-    /** @brief Construct a query iterator from world, state, and tick range. */
-    QueryIter(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
-        : world(world),
-          tables(&internal::world_storage_mut(*world).tables),
-          archetypes(&internal::world_archetypes(*world)),
-          state(state) {
-        cursor.emplace(world, state, last_run, this_run);
-    }
-    /** @brief Create an iterator positioned at the first matching element. */
-    static QueryIter create_begin(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run) {
-        QueryIter iter(world, state, last_run, this_run);
-        // the iter's cursor is not initialized to the first valid element when constructed
-        iter.cursor->next(*iter.tables, *iter.archetypes, *iter.state);
-        return iter;
-    }
-    /** @brief Create a sentinel iterator positioned at the end. */
-    static QueryIter create_end(World* world, const QueryState<D, F>* state) {
-        QueryIter iter(world, state, Tick(0), Tick(0));
-        iter.cursor->to_end();
-        return iter;
+    /** @brief Fetch the current query item. */
+    QueryData<D>::Item operator*() const {
+        if (!current()) {
+            throw std::out_of_range("QueryIterCursor::operator*() called at the end");
+        }
+        const auto entity = archetype_entities[current_idx].entity;
+        const auto row    = TableRow(archetype_entities[current_idx].table_idx);
+        return QueryData<D>::fetch(fetch, entity, row);
     }
 
-    /** @brief Get a begin iterator (resets cursor to first match). */
-    QueryIter begin() {
-        auto copy_cursor = cursor.value();
-        copy_cursor.reset(state);
-        copy_cursor.next(*tables, *archetypes, *state);  // reset to first valid
-        return QueryIter(world, state, copy_cursor);
-    }
-    /** @brief Get an end sentinel iterator. */
-    QueryIter end() {
-        auto copy_cursor = cursor.value();
-        copy_cursor.to_end();
-        return QueryIter(world, state, copy_cursor);
-    }
-
-    /** @brief Dereference to get the current query data item. */
-    QueryData<D>::Item operator*() { return cursor->retrieve(); }
     /** @brief Advance to the next matching entity. */
-    bool next() { return cursor->next(*tables, *archetypes, *state); }
-    /** @brief Check whether the cursor points to a valid element. */
-    bool current() const noexcept { return cursor->current(); }
-    /** @brief Get an upper bound on remaining elements. */
-    std::size_t max_remaining() const { return cursor->max_remaining(*archetypes); }
-    QueryIter& operator++() {
-        cursor->next(*tables, *archetypes, *state);
+    QueryIterCursor& operator++() {
+        advance();
         return *this;
     }
-    QueryIter operator++(int) {
-        QueryIter temp = *this;
-        ++(*this);
-        return temp;
-    }
-    bool operator==(const QueryIter& other) const noexcept {
-        // tables and archetypes are always the same for the same world
-        return world == other.world && state == other.state && cursor == other.cursor;
-    }
-    bool operator!=(const QueryIter& other) const noexcept { return !(*this == other); }
+    void operator++(int) { advance(); }
 
-    QueryIter() = default;
+    /** @brief Compare this iterator with its lightweight end sentinel. */
+    friend bool operator==(const QueryIterCursor& iter, std::default_sentinel_t) noexcept { return iter.at_end(); }
+    friend bool operator==(std::default_sentinel_t sentinel, const QueryIterCursor& iter) noexcept {
+        return iter == sentinel;
+    }
+
+    /** @brief Check whether the cursor points to a valid element. */
+    bool current() const noexcept { return current_idx < archetype_entities.size(); }
+    /** @brief Get an upper bound on remaining elements, including the current item. */
+    std::size_t max_remaining() const {
+        return std::accumulate(archetype_ids.begin(), archetype_ids.end(), std::size_t(0),
+                               [&](std::size_t count, ArchetypeId id) {
+                                   return count + archetypes->get(id).value().get().size();
+                               }) -
+               current_idx;
+    }
 
    private:
-    QueryIter(World* world, const QueryState<D, F>* state, QueryIterCursor<D, F> cursor)
-        : world(world),
-          tables(&internal::world_storage_mut(*world).tables),
-          archetypes(&internal::world_archetypes(*world)),
-          state(state),
-          cursor(std::move(cursor)) {}
-    World* world;
+    QueryIterCursor(World* world,
+                    Tables* tables,
+                    const Archetypes* archetypes,
+                    const QueryState<D, F>* state,
+                    Tick last_run,
+                    Tick this_run)
+        : archetype_ids(state->matched_archetype_ids()),
+          archetype_entities(),
+          fetch(WorldQuery<D>::init_fetch(*world, state->fetch_state(), last_run, this_run)),
+          filter(WorldQuery<F>::init_fetch(*world, state->filter_state(), last_run, this_run)),
+          current_idx(0),
+          tables(tables),
+          archetypes(archetypes),
+          state(state) {
+        advance();
+    }
+
+    bool advance() {
+        while (true) {
+            if (!archetype_ids.empty() && archetype_entities.data() == nullptr) {
+                const auto& archetype = archetypes->get(archetype_ids.front()).value().get();
+                if (archetype.empty()) {
+                    archetype_ids = archetype_ids.subspan(1);
+                    continue;
+                }
+                archetype_entities = archetype.entities();
+                auto& table        = tables->get_mut(archetype.table_id()).value().get();
+                WorldQuery<D>::set_archetype(fetch, state->fetch_state(), archetype, table);
+                if constexpr (!QueryFilter<F>::archetypal) {
+                    WorldQuery<F>::set_archetype(filter, state->filter_state(), archetype, table);
+                }
+                current_idx = 0;
+            } else if (current_idx + 1 >= archetype_entities.size()) {
+                if (!archetype_ids.empty()) archetype_ids = archetype_ids.subspan(1);
+                if (archetype_ids.empty()) {
+                    archetype_entities = {};
+                    current_idx        = 0;
+                    return false;
+                }
+
+                const auto& archetype = archetypes->get(archetype_ids.front()).value().get();
+                if (archetype.empty()) continue;
+                archetype_entities = archetype.entities();
+                auto& table        = tables->get_mut(archetype.table_id()).value().get();
+                WorldQuery<D>::set_archetype(fetch, state->fetch_state(), archetype, table);
+                if constexpr (!QueryFilter<F>::archetypal) {
+                    WorldQuery<F>::set_archetype(filter, state->filter_state(), archetype, table);
+                }
+                current_idx = 0;
+            } else {
+                ++current_idx;
+            }
+
+            if constexpr (!QueryFilter<F>::archetypal) {
+                const auto archetype_entity = archetype_entities[current_idx];
+                if (!QueryFilter<F>::filter_fetch(filter, archetype_entity.entity, archetype_entity.table_idx)) {
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+    bool at_end() const noexcept { return archetype_ids.empty() && !current(); }
+
+    std::span<const ArchetypeId> archetype_ids;
+    std::span<const internal::ArchetypeEntity> archetype_entities;
+    mutable WorldQuery<D>::Fetch fetch;
+    WorldQuery<F>::Fetch filter;
+    std::size_t current_idx;
     Tables* tables;
     const Archetypes* archetypes;
     const QueryState<D, F>* state;
-    std::optional<QueryIterCursor<D, F>> cursor;  // use optional to allow default construction
-                                                  // this is needed for ranges view
+
+    friend struct QueryIter<D, F>;
+};
+
+/** @brief Non-owning ranges view over query results.
+ *
+ *  `begin()` creates an independent input cursor and `end()` is a lightweight
+ *  sentinel. Archetypal filters are resolved entirely by `QueryState`, so their
+ *  cursors omit per-entity filter evaluation and the view is a sized range.
+ *  @tparam D Query data descriptor.
+ *  @tparam F Query filter. */
+EPIX_EXPORT template <query_data D, query_filter F>
+struct QueryIter : std::ranges::view_interface<QueryIter<D, F>> {
+   public:
+    using iterator = QueryIterCursor<D, F>;
+    using sentinel = std::default_sentinel_t;
+
+    /** @brief Construct a query-result view from world, state, and tick range. */
+    QueryIter(World* world, const QueryState<D, F>* state, Tick last_run, Tick this_run)
+        : world_(world),
+          tables_(&internal::world_storage_mut(*world).tables),
+          archetypes_(&internal::world_archetypes(*world)),
+          state_(state),
+          last_run_(last_run),
+          this_run_(this_run) {}
+
+    /** @brief Create a cursor positioned at the first matching item. */
+    iterator begin() { return iterator(world_, tables_, archetypes_, state_, last_run_, this_run_); }
+    iterator begin() const
+        requires readonly_query_data<D>
+    {
+        return iterator(world_, tables_, archetypes_, state_, last_run_, this_run_);
+    }
+    /** @brief Return the lightweight end sentinel. */
+    sentinel end() const noexcept { return {}; }
+
+    /** @brief Return an upper bound on the number of produced items. */
+    std::size_t max_remaining() const {
+        return std::accumulate(
+            state_->matched_archetype_ids().begin(), state_->matched_archetype_ids().end(), std::size_t(0),
+            [&](std::size_t count, ArchetypeId id) { return count + archetypes_->get(id).value().get().size(); });
+    }
+
+    /** @brief Return the exact number of items for an archetypal query. */
+    std::size_t size() const
+        requires(QueryFilter<F>::archetypal)
+    {
+        return max_remaining();
+    }
+
+   private:
+    World* world_;
+    Tables* tables_;
+    const Archetypes* archetypes_;
+    const QueryState<D, F>* state_;
+    Tick last_run_;
+    Tick this_run_;
 };
 }  // namespace epix::ecs
 
 template <epix::ecs::query_data D, epix::ecs::query_filter F>
 constexpr bool ::std::ranges::enable_view<epix::ecs::QueryIter<D, F>> = true;
+
+template <epix::ecs::query_data D, epix::ecs::query_filter F>
+constexpr bool ::std::ranges::enable_borrowed_range<epix::ecs::QueryIter<D, F>> = true;
