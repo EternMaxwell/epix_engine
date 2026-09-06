@@ -5,6 +5,25 @@
 
 using namespace epix::mesh;
 
+Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(other.primitive_type) {
+    for (const auto& [slot, attribute_data] : other._attributes) {
+        _attributes.emplace(slot, MeshAttributeData{
+                                      .attribute = attribute_data.attribute,
+                                      .data      = attribute_data.data.clone(),
+                                  });
+    }
+    if (other._indices) {
+        _indices.emplace(other._indices->data.clone());
+    }
+}
+
+Mesh& Mesh::operator=(const Mesh& other) {
+    if (this == std::addressof(other)) return *this;
+    Mesh copy(other);
+    *this = std::move(copy);
+    return *this;
+}
+
 MeshAttributeLayout Mesh::attribute_layout() const {
     MeshAttributeLayout layout;
     layout.primitive_type = primitive_type;
@@ -95,7 +114,7 @@ std::expected<std::reference_wrapper<MeshAttributeData>, MeshError> Mesh::get_at
 std::optional<Mesh> Mesh::take_gpu_data() {
     if (_attributes.empty() && (!_indices.has_value() || _indices->empty())) return std::nullopt;
 
-    Mesh extracted{primitive_type};
+    Mesh extracted{primitive_type, asset_usage};
     extracted._attributes = std::move(_attributes);
     extracted._indices    = std::move(_indices);
     return extracted;

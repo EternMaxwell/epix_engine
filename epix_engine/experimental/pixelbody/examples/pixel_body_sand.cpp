@@ -552,8 +552,7 @@ void freefall_overlay_system(Commands cmd,
             indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
             base += 4;
         }
-        return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_indices<std::uint32_t>(indices);
@@ -619,8 +618,7 @@ void chunk_chain_overlay_system(
                 colors.push_back(color);
             }
         }
-        return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
@@ -708,8 +706,7 @@ void body_outline_overlay_system(
                 colors.push_back(c);
             }
         }
-        return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };

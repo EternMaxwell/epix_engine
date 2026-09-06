@@ -66,8 +66,8 @@ struct MeshBatchingTestPlugin {
         // Three shared mesh handles: box, circle, triangle
         auto box_handle    = mesh_assets.emplace(mesh::make_box2d(20.0f, 20.0f));
         auto circle_handle = mesh_assets.emplace(mesh::make_circle(10.0f, std::nullopt, 16));
-        auto tri_handle    = mesh_assets.emplace(mesh::Mesh()
-                                                     .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+        auto tri_handle    = mesh_assets.emplace(mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList,
+                                                            render::RenderAssetUsages::RENDER_WORLD)
                                                      .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
                                                                      std::vector<glm::vec3>{
                                                                          {0.0f, 12.0f, 0.0f},

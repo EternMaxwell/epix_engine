@@ -2559,8 +2559,7 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
             }
         }
 
-        return mesh::Mesh()
-            .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
             .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_indices<std::uint32_t>(indices);
@@ -2623,8 +2622,7 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
         }
     }
 
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint32_t>(indices);

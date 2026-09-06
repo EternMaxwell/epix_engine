@@ -60,8 +60,7 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     }
 
     epix::render::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept {
-        (void)mesh;
-        return epix::render::RenderAssetUsages::RENDER_WORLD;
+        return mesh.asset_usage;
     }
 
     /** @brief Estimated GPU payload in bytes (Bevy `RenderAsset::byte_len` for

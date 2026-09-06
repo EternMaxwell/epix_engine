@@ -6,6 +6,11 @@
 using namespace epix::mesh;
 namespace mesh = epix::mesh;
 
+namespace {
+constexpr auto kDefaultMeshAssetUsage = static_cast<epix::render::RenderAssetUsages>(
+    epix::render::RenderAssetUsages::MAIN_WORLD | epix::render::RenderAssetUsages::RENDER_WORLD);
+}
+
 Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::optional<std::uint32_t> segment_count) {
     auto segments = segment_count.transform([](std::uint32_t count) { return std::clamp(count, 12u, 1024u); })
                         .value_or(static_cast<std::uint32_t>(
@@ -28,8 +33,7 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
         indices.push_back(next);
     }
 
-    auto mesh = Mesh()
-                    .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_indices<std::uint32_t>(indices);
     if (color) {
@@ -52,8 +56,7 @@ Mesh mesh::make_box2d(float width, float height, std::optional<glm::vec4> color)
     };
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-    auto mesh = Mesh()
-                    .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_indices<std::uint16_t>(indices);
     if (color) {
@@ -81,8 +84,7 @@ Mesh mesh::make_box2d_uv(float width, float height, glm::vec4 uv_rect, std::opti
     };
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-    auto mesh = Mesh()
-                    .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_attribute(Mesh::ATTRIBUTE_UV0, uvs)
                     .with_indices<std::uint16_t>(indices);

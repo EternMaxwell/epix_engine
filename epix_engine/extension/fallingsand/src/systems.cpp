@@ -43,8 +43,7 @@ static mesh::Mesh build_chunk_mesh(const ChunkElementGrid& chunk, float cell_siz
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint32_t>(indices);
@@ -70,8 +69,7 @@ static mesh::Mesh build_chunk_body_debug_mesh(const ChunkElementGrid& chunk, flo
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint32_t>(indices);
@@ -106,8 +104,7 @@ static mesh::Mesh build_heat_map_mesh(const ChunkElementGrid& chunk, const Chunk
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint32_t>(indices);
@@ -120,8 +117,7 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
     std::array<glm::vec4, 4> colors{glm::vec4(0.95f, 0.95f, 0.95f, 1.0f), glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
                                     glm::vec4(0.95f, 0.95f, 0.95f, 1.0f), glm::vec4(0.95f, 0.95f, 0.95f, 1.0f)};
     std::array<std::uint16_t, 8> indices{{0, 1, 1, 2, 2, 3, 3, 0}};
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eLineList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint16_t>(indices);
@@ -194,7 +190,8 @@ void setup_chunk_render_children(
 
         if (parent_has_mesh_build) {
             // Spawn an empty mesh child entity now; build_chunk_meshes fills it each tick.
-            auto empty_mesh = meshes->emplace(mesh::Mesh{});
+            auto empty_mesh = meshes->emplace(mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList,
+                                                        render::RenderAssetUsages::RENDER_WORLD});
             auto mesh_ent   = cmd.entity(chunk_entity)
                                   .spawn(SandChunkMesh{}, mesh::Mesh2d{empty_mesh},
                                          mesh::MeshMaterial2d{

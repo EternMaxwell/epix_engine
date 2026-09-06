@@ -34,8 +34,7 @@ mesh::Mesh make_gradient_quad(float width, float height) {
     };
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-    return mesh::Mesh()
-        .with_primitive_type(wgpu::PrimitiveTopology::eTriangleList)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
         .with_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_indices<std::uint16_t>(indices);

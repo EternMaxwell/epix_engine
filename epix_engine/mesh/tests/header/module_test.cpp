@@ -45,6 +45,21 @@ TEST(MeshModule, VertexArrayStride) {
     EXPECT_EQ(mesh::vertex_array_stride(box), 28u);
 }
 
+TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
+    constexpr auto both_worlds = static_cast<epix::render::RenderAssetUsages>(
+        epix::render::RenderAssetUsages::MAIN_WORLD | epix::render::RenderAssetUsages::RENDER_WORLD);
+    auto source = mesh::make_box2d(20.0f, 10.0f);
+    EXPECT_EQ(source.asset_usage, both_worlds);
+    EXPECT_EQ(epix::render::RenderAsset<mesh::Mesh>{}.usage(source), both_worlds);
+
+    mesh::Mesh clone(source);
+    EXPECT_EQ(clone.asset_usage, source.asset_usage);
+    EXPECT_EQ(clone.count_vertices(), source.count_vertices());
+    ASSERT_TRUE(clone.remove_attribute(mesh::Mesh::ATTRIBUTE_POSITION).has_value());
+    EXPECT_FALSE(clone.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_TRUE(source.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+}
+
 // packed_vertex_bytes interleaves per-vertex attributes in slot order (Bevy).
 TEST(MeshModule, PackedVertexBytesInterleave) {
     const auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
@@ -128,14 +143,14 @@ TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
 }
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
-    mesh::Mesh mesh;
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});
     EXPECT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), mesh::MeshError::TypeIncompatible);
 }
 
 TEST(MeshModule, ComputesAabbFromPositionAttribute) {
-    mesh::Mesh mesh;
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
                                       std::array{glm::vec3{-2.0f, 1.0f, 3.0f}, glm::vec3{4.0f, 5.0f, -1.0f}}));
     static_assert(epix::camera::MeshAabb<mesh::Mesh>);
@@ -148,7 +163,7 @@ TEST(MeshModule, ComputesAabbFromPositionAttribute) {
 // Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
 // strides * vertex count + index bytes. Used by the render-asset byte limiter.
 TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
-    mesh::Mesh mesh;
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{
                                                                           glm::vec3{0.0f, 0.0f, 0.0f},
                                                                           glm::vec3{1.0f, 1.0f, 1.0f}}));
@@ -543,7 +558,9 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
     main_world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>{});
 
-    auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(mesh::make_box2d(24.0f, 12.0f));
+    auto source_mesh = mesh::make_box2d(24.0f, 12.0f);
+    source_mesh.asset_usage = epix::render::RenderAssetUsages::RENDER_WORLD;
+    auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(std::move(source_mesh));
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
         epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
 
@@ -559,4 +576,36 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
     const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());
     ASSERT_TRUE(source.has_value());
     EXPECT_EQ(source->get().count_vertices(), 0u);
+}
+
+TEST(MeshModule, ExtractSystemClonesDualWorldMesh) {
+    struct ResourceIdShiftA {};
+    struct ResourceIdShiftB {};
+    struct ResourceIdShiftC {};
+
+    epix::ecs::World main_world(7);
+    epix::ecs::World render_world(7);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(epix::render::ExtractedAssets<mesh::Mesh>{});
+    render_world.insert_resource(epix::render::RenderAssets<mesh::Mesh>{});
+    main_world.insert_resource(ResourceIdShiftA{});
+    main_world.insert_resource(ResourceIdShiftB{});
+    main_world.insert_resource(ResourceIdShiftC{});
+    main_world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
+    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>{});
+
+    auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(mesh::make_box2d(24.0f, 12.0f));
+    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
+        epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
+
+    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<mesh::Mesh>);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+
+    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<mesh::Mesh>>();
+    ASSERT_EQ(extracted.extracted.size(), 1u);
+    EXPECT_GT(extracted.extracted.front().second.count_vertices(), 0u);
+    const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());
+    ASSERT_TRUE(source.has_value());
+    EXPECT_GT(source->get().count_vertices(), 0u);
 }

@@ -13,6 +13,7 @@
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
+#include <epix/render/assets.hpp>
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
@@ -157,8 +158,8 @@ EPIX_EXPORT struct MeshIndices {
 };
 /** @brief CPU-side mesh asset storing vertex attributes and optional index data.
  *
- * Meshes are move-only. Use insert_attribute/with_attribute to add vertex data
- * and insert_indices/with_indices to add index data. Standard attribute constants
+ * Use insert_attribute/with_attribute to add vertex data and
+ * insert_indices/with_indices to add index data. Standard attribute constants
  * (ATTRIBUTE_POSITION, etc.) are provided.
  */
 EPIX_EXPORT struct Mesh {
@@ -170,12 +171,15 @@ EPIX_EXPORT struct Mesh {
     static inline const MeshAttribute ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
 
    public:
-    Mesh() noexcept : primitive_type(wgpu::PrimitiveTopology::eTriangleList) {}
-    Mesh(wgpu::PrimitiveTopology primitive_type) noexcept : primitive_type(primitive_type) {}
-    Mesh(const Mesh&)            = delete;
+    Mesh(wgpu::PrimitiveTopology primitive_type, render::RenderAssetUsages asset_usage) noexcept
+        : asset_usage(asset_usage), primitive_type(primitive_type) {}
+    Mesh(const Mesh&);
     Mesh(Mesh&&)                 = default;
-    Mesh& operator=(const Mesh&) = delete;
+    Mesh& operator=(const Mesh&);
     Mesh& operator=(Mesh&&)      = default;
+
+    /** @brief Worlds in which this mesh's asset data is retained. */
+    render::RenderAssetUsages asset_usage;
 
     /** @brief Get the primitive topology. */
     wgpu::PrimitiveTopology get_primitive_type() const noexcept { return primitive_type; }

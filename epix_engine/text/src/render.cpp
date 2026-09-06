@@ -584,8 +584,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
 TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                                     assets::Assets<mesh::Mesh>& mesh_assets,
                                     font::FontAtlas& atlas) {
-    mesh::Mesh mesh;
-    mesh.set_primitive_type(wgpu::PrimitiveTopology::eTriangleList);
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD);
     (void)mesh.insert_attribute(
         mesh::Mesh::ATTRIBUTE_POSITION,
         std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {

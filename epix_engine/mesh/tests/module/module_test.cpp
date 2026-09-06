@@ -7,7 +7,7 @@ import glm;
 namespace mesh = epix::mesh;
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
-    mesh::Mesh mesh;
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     auto result = mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)});
     EXPECT_FALSE(result.has_value());
     EXPECT_EQ(result.error(), mesh::MeshError::TypeIncompatible);
@@ -19,6 +19,20 @@ TEST(MeshModule, Box2dBuildsIndexedQuad) {
     ASSERT_TRUE(mesh.get_indices().has_value());
     EXPECT_EQ(mesh.get_indices()->get().size(), 6);
     EXPECT_TRUE(mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
+    EXPECT_EQ(mesh.asset_usage,
+              static_cast<epix::render::RenderAssetUsages>(epix::render::RenderAssetUsages::MAIN_WORLD |
+                                                           epix::render::RenderAssetUsages::RENDER_WORLD));
+}
+
+TEST(MeshModule, MeshCloneRetainsIndependentGpuDataAndUsage) {
+    auto source = mesh::make_box2d(20.0f, 10.0f);
+    mesh::Mesh clone(source);
+
+    EXPECT_EQ(clone.asset_usage, source.asset_usage);
+    EXPECT_EQ(clone.count_vertices(), source.count_vertices());
+    ASSERT_TRUE(clone.remove_attribute(mesh::Mesh::ATTRIBUTE_POSITION).has_value());
+    EXPECT_FALSE(clone.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_TRUE(source.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
 }
 
 TEST(MeshModule, CircleBuildsTriangleList) {
@@ -48,7 +62,7 @@ TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
 // Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
 // strides * vertex count + index bytes.
 TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
-    mesh::Mesh mesh;
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     ASSERT_TRUE(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{
                                                                           glm::vec3{0.0f, 0.0f, 0.0f},
                                                                           glm::vec3{1.0f, 1.0f, 1.0f}}));
