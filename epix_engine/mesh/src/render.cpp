@@ -14,28 +14,35 @@ using namespace epix::mesh;
 static_assert(render::HasTakeGpuData<Mesh>,
               "Mesh uses RENDER_WORLD-only extraction and must transfer its GPU payload.");
 
-namespace {
+void epix::mesh::calculate_bounds_2d(
+    Commands commands,
+    Res<assets::Assets<Mesh>> meshes,
+    Query<Item<Entity, const Mesh2d&>,
+          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>, Without<camera::NoAutoAabb>>> new_mesh_aabb,
+    Query<Item<Ref<Mesh2d>, Mut<camera::Aabb>>,
+          Filter<Or<assets::AssetChanged<Mesh2d>, Modified<Mesh2d>>,
+                 Without<camera::NoFrustumCulling>,
+                 Without<camera::NoAutoAabb>>> update_mesh_aabb) {
+    for (auto&& [entity, mesh2d] : new_mesh_aabb.iter()) {
+        if (const auto mesh = meshes->get(mesh2d.handle.id())) {
+            if (const auto aabb = mesh->get().compute_aabb()) {
+                commands.entity(entity).insert_if_new(*aabb);
+            }
+        }
+    }
 
-void calculate_mesh2d_bounds(Commands cmd,
-                             Query<Item<Entity,
-                                        const Mesh2d&,
-                                        Opt<Mut<camera::Aabb>>,
-                                        Opt<const camera::NoAutoAabb&>,
-                                        Opt<const camera::NoFrustumCulling&>>> meshes,
-                             Res<assets::Assets<Mesh>> mesh_assets) {
-    for (auto&& [entity, mesh2d, existing_aabb, no_auto_aabb, no_frustum_culling] : meshes.iter()) {
-        if (no_auto_aabb || no_frustum_culling) continue;
-        const auto mesh = mesh_assets->get(mesh2d.handle.id());
-        if (!mesh) continue;
-        const auto aabb = mesh->get().compute_aabb();
-        if (!aabb) continue;
-        if (existing_aabb) {
-            existing_aabb->get_mut() = *aabb;
-        } else {
-            cmd.entity(entity).insert(*aabb);
+    for (auto&& [mesh2d, old_aabb] : update_mesh_aabb.iter()) {
+        if (const auto mesh = meshes->get(mesh2d->handle.id())) {
+            if (const auto aabb = mesh->get().compute_aabb();
+                aabb && (glm::any(glm::notEqual(old_aabb->center, aabb->center)) ||
+                         glm::any(glm::notEqual(old_aabb->half_extents, aabb->half_extents)))) {
+                old_aabb.get_mut() = *aabb;
+            }
         }
     }
 }
+
+namespace {
 
 constexpr std::string_view kMeshSolidVertexShader = R"(
 import epix.view;
@@ -85,7 +92,7 @@ struct MeshUniform {
 
 struct VertexInput {
     [[vk::location(0)]] float3 position;
-    [[vk::location(1)]] float4 color;
+    [[vk::location(4)]] float4 color;
     uint instance_index : SV_VulkanInstanceID;
 };
 
@@ -120,7 +127,7 @@ struct MeshUniform {
 
 struct VertexInput {
     [[vk::location(0)]] float3 position;
-    [[vk::location(3)]] float2 uv;
+    [[vk::location(2)]] float2 uv;
     uint instance_index : SV_VulkanInstanceID;
 };
 
@@ -157,8 +164,8 @@ struct MeshUniform {
 
 struct VertexInput {
     [[vk::location(0)]] float3 position;
-    [[vk::location(1)]] float4 color;
-    [[vk::location(3)]] float2 uv;
+    [[vk::location(4)]] float4 color;
+    [[vk::location(2)]] float2 uv;
     uint instance_index : SV_VulkanInstanceID;
 };
 
@@ -439,18 +446,16 @@ struct Mesh2dPipelineCache {
             spdlog::warn("[mesh] Skip pipeline specialization: mesh has no vertex buffer layout.");
             return std::nullopt;
         }
-        const auto& layout       = layout_ref.value->layout;
-        const auto has_attribute = [&layout_ref](std::uint64_t slot) {
-            return std::ranges::any_of(layout_ref.value->attribute_ids,
-                                       [slot](const MeshVertexAttributeId& id) { return id.value == slot; });
+        const auto has_attribute = [&layout_ref](const MeshVertexAttribute& attribute) {
+            return layout_ref.value->contains(attribute);
         };
-        if (!has_attribute(Mesh::ATTRIBUTE_POSITION.slot)) {
+        if (!has_attribute(Mesh::ATTRIBUTE_POSITION)) {
             spdlog::warn("[mesh] Skip pipeline specialization: mesh layout is missing POSITION.");
             return std::nullopt;
         }
 
-        const bool has_color = has_attribute(Mesh::ATTRIBUTE_COLOR.slot);
-        const bool has_uv    = has_attribute(Mesh::ATTRIBUTE_UV0.slot);
+        const bool has_color = has_attribute(Mesh::ATTRIBUTE_COLOR);
+        const bool has_uv    = has_attribute(Mesh::ATTRIBUTE_UV_0);
         if (textured && !has_uv) {
             spdlog::warn("[mesh] Skip textured pipeline specialization: mesh layout is missing UV0.");
             return std::nullopt;
@@ -478,12 +483,31 @@ struct Mesh2dPipelineCache {
             return it->second;
         }
 
-        // Bevy Mesh2dPipeline: ONE interleaved vertex buffer described by the
-        // mesh's MeshVertexBufferLayout (array_stride + interleaved attributes).
+        // Bevy Mesh2dPipeline requests supported attributes by stable mesh ID
+        // and assigns the shader locations expected by mesh2d.wgsl.
+        std::vector<VertexAttributeDescriptor> requested_attributes;
+        requested_attributes.push_back(Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
+        if (has_attribute(Mesh::ATTRIBUTE_NORMAL)) {
+            requested_attributes.push_back(Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
+        }
+        if (has_uv) requested_attributes.push_back(Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
+        if (has_attribute(Mesh::ATTRIBUTE_TANGENT)) {
+            requested_attributes.push_back(Mesh::ATTRIBUTE_TANGENT.at_shader_location(3));
+        }
+        if (has_color) requested_attributes.push_back(Mesh::ATTRIBUTE_COLOR.at_shader_location(4));
+
+        const auto specialized_layout = layout_ref.value->get_layout(requested_attributes);
+        if (!specialized_layout) {
+            spdlog::warn("[mesh] Skip pipeline specialization: mesh layout is missing requested attribute {} ({}).",
+                         specialized_layout.error().name, specialized_layout.error().id.value);
+            return std::nullopt;
+        }
+
+        const auto& layout = *specialized_layout;
         std::vector<wgpu::VertexBufferLayout> vertex_buffers;
         if (!layout.attributes.empty()) {
             const auto attributes = std::ranges::to<std::vector<wgpu::VertexAttribute>>(
-                std::views::transform(layout.attributes, [](const VertexAttributeDescriptor& attribute) {
+                std::views::transform(layout.attributes, [](const VertexAttribute& attribute) {
                     return wgpu::VertexAttribute()
                         .setShaderLocation(attribute.shader_location)
                         .setFormat(attribute.format)
@@ -952,8 +976,8 @@ struct MeshAllocatorAccess {
         // buffer is created or copied until the complete frame is known.
         for (const auto& [id, mesh] : extracted_meshes.extracted) {
             const auto vertex_layout = mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
-            if (!vertex_layout.value || vertex_layout.value->layout.array_stride == 0) continue;
-            const auto vertex_stride = vertex_layout.value->layout.array_stride;
+            if (!vertex_layout.value || vertex_layout.value->layout().array_stride == 0) continue;
+            const auto vertex_stride = vertex_layout.value->layout().array_stride;
             const auto vertex_bytes  = static_cast<std::uint64_t>(mesh.count_vertices()) * vertex_stride;
             if (vertex_bytes == 0) continue;
 
@@ -1048,10 +1072,10 @@ void MeshRenderPlugin::attach(app::App& app) {
     app.world_mut().register_required_components<Mesh2d, camera::Visibility>();
     app.world_mut().register_required_components_with<Mesh2d>(
         [] { return camera::VisibilityClass{meta::type_index(meta::type_id<Mesh2d>())}; });
-    app.add_systems(app::PostUpdate, into(calculate_mesh2d_bounds)
+    app.add_systems(app::PostUpdate, into(calculate_bounds_2d)
                                          .in_set(camera::VisibilitySystems::CalculateBounds)
                                          .before(camera::VisibilitySystems::CheckVisibility)
-                                         .set_name("calculate mesh2d bounds"));
+                                         .set_name("calculate bounds 2d"));
     app.add_plugins(MeshPlugin{});
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
     app.add_plugins(MeshAllocatorPlugin{});

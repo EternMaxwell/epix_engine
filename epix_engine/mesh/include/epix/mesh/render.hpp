@@ -27,7 +27,7 @@ namespace epix::mesh {
 EPIX_EXPORT struct MeshAlphaMode2dOpaque {};
 /** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Mask(f32)`. */
 EPIX_EXPORT struct MeshAlphaMode2dMask {
-    float cutoff = 0.5f;
+    float cutoff                                               = 0.5f;
     bool operator==(const MeshAlphaMode2dMask&) const noexcept = default;
 };
 /** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Blend`. */
@@ -39,6 +39,39 @@ EPIX_EXPORT using MeshAlphaMode2d = std::variant<MeshAlphaMode2dOpaque, MeshAlph
 EPIX_EXPORT struct Mesh2d {
     assets::Handle<Mesh> handle;
 };
+
+}  // namespace epix::mesh
+
+namespace epix::assets {
+template <>
+struct AsAssetId<mesh::Mesh2d> {
+    using Asset = mesh::Mesh;
+
+    static AssetId<Asset> as_asset_id(const mesh::Mesh2d& mesh) noexcept { return mesh.handle.id(); }
+};
+static_assert(AsAssetIdImpl<mesh::Mesh2d>);
+}  // namespace epix::assets
+
+namespace epix::mesh {
+
+/** @brief Insert or update local mesh bounds for 2D visibility culling.
+ *
+ * Matches Bevy's mesh portion of
+ * `calculate_bounds_2d`: new entities are
+ * computed once, while existing bounds are recomputed only when either the
+ * handle component or its referenced mesh asset changed.
+ */
+EPIX_EXPORT void calculate_bounds_2d(
+    ecs::Commands commands,
+    ecs::Res<assets::Assets<Mesh>> meshes,
+    ecs::Query<ecs::Item<ecs::Entity, const Mesh2d&>,
+               ecs::Filter<ecs::Without<camera::Aabb>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>>> new_mesh_aabb,
+    ecs::Query<ecs::Item<ecs::Ref<Mesh2d>, ecs::Mut<camera::Aabb>>,
+               ecs::Filter<ecs::Or<assets::AssetChanged<Mesh2d>, ecs::Modified<Mesh2d>>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>>> update_mesh_aabb);
 
 /** @brief Flat-color material for 2D mesh rendering. */
 EPIX_EXPORT struct MeshMaterial2d {
@@ -176,7 +209,7 @@ struct BindMesh2dTexture {
             std::optional<ecs::Item<>>,
             ecs::ParamSet<ecs::Res<RenderMesh2dInstances>> params,
             const wgpu::RenderPassEncoder& encoder) {
-            auto&& [instances] = params.get();
+            auto&& [instances]  = params.get();
             const auto instance = instances->find(item.main_entity());
             if (instance == instances->end()) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -215,11 +248,11 @@ struct DrawMesh2dBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<>>,
-        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>,
-                      ecs::Res<MeshAllocator>> params,
+        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>, ecs::Res<MeshAllocator>>
+            params,
         const wgpu::RenderPassEncoder& encoder) {
         auto&& [instances, render_meshes, mesh_allocator] = params.get();
-        const auto instance = instances->find(item.main_entity());
+        const auto instance                               = instances->find(item.main_entity());
         if (instance == instances->end()) {
             return std::unexpected(render::phase::RenderCommandError{
                 .type    = render::phase::RenderCommandError::Type::Skip,
@@ -229,7 +262,7 @@ struct DrawMesh2dBatch {
         }
 
         const auto& extracted_mesh = instance->second.extracted;
-        auto* render_mesh                    = render_meshes->try_get(extracted_mesh.mesh);
+        auto* render_mesh          = render_meshes->try_get(extracted_mesh.mesh);
         if (!render_mesh) {
             return std::unexpected(render::phase::RenderCommandError{
                 .type = render::phase::RenderCommandError::Type::Failure,
@@ -250,25 +283,25 @@ struct DrawMesh2dBatch {
                                 extracted_mesh.mesh.to_string_short(), item.entity().index),
             });
         }
-        const auto& layout     = render_mesh->layout.value->layout;
+        const auto& layout         = render_mesh->layout.value->layout();
         const std::uint64_t stride = layout.array_stride;
         const auto vertex_begin    = static_cast<std::uint64_t>(vertex_slice->begin);
         encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_begin * stride,
                                 static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);
 
         const auto& batch_range = item.batch_range();
-        auto batch_size = render::phase::batch_range_len(batch_range);
+        auto batch_size         = render::phase::batch_range_len(batch_range);
         if (render_mesh->indexed()) {
             const auto index_slice = mesh_allocator->mesh_index_slice(extracted_mesh.mesh);
             if (!index_slice) {
                 return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Failure,
+                    .type    = render::phase::RenderCommandError::Type::Failure,
                     .message = std::format("[mesh] Indexed mesh {} for entity {:#x} has no MeshAllocator index slice.",
                                            extracted_mesh.mesh.to_string_short(), item.entity().index),
                 });
             }
-            const auto* info = render_mesh->buffer_info.indexed_info();
-            const wgpu::IndexFormat format = info ? info->index_format : wgpu::IndexFormat::eUint16;
+            const auto* info                 = render_mesh->buffer_info.indexed_info();
+            const wgpu::IndexFormat format   = info ? info->index_format : wgpu::IndexFormat::eUint16;
             const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
             encoder.setIndexBuffer(*index_slice->buffer, format,
                                    static_cast<std::uint64_t>(index_slice->begin) * element_size,
@@ -284,21 +317,22 @@ struct DrawMesh2dBatch {
 };
 
 /** @brief Plugin that packs mesh GPU data into shared slab buffers and frees
- * removed/modified meshes (Bevy `MeshAllocatorPlugin`). */
+ * removed/modified meshes (Bevy
+ * `MeshAllocatorPlugin`). */
 EPIX_EXPORT struct MeshAllocatorPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
 };
 
 /** @brief Process extracted mesh additions/modifications/removals and update
- * shared GPU slabs (Bevy `allocate_and_free_meshes`). */
-EPIX_EXPORT void allocate_and_free_meshes(
-    ecs::ResMut<MeshAllocator> mesh_allocator,
-    ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
-    ecs::Res<render::ExtractedAssets<Mesh>> extracted_meshes,
-    ecs::ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
-    ecs::Res<wgpu::Device> device,
-    ecs::Res<wgpu::Queue> queue);
+ * shared GPU slabs (Bevy
+ * `allocate_and_free_meshes`). */
+EPIX_EXPORT void allocate_and_free_meshes(ecs::ResMut<MeshAllocator> mesh_allocator,
+                                          ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
+                                          ecs::Res<render::ExtractedAssets<Mesh>> extracted_meshes,
+                                          ecs::ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
+                                          ecs::Res<wgpu::Device> device,
+                                          ecs::Res<wgpu::Queue> queue);
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
 EPIX_EXPORT struct MeshRenderPlugin {

@@ -6,6 +6,18 @@ import glm;
 
 namespace mesh = epix::mesh;
 
+TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_POSITION.id.value, 0u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_NORMAL.id.value, 1u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_UV_0.id.value, 2u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_UV_1.id.value, 3u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_TANGENT.id.value, 4u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_COLOR.id.value, 5u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT.id.value, 6u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_JOINT_INDEX.id.value, 7u);
+    EXPECT_EQ(mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE, 8u);
+}
+
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
     mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
     EXPECT_THROW(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
@@ -46,10 +58,10 @@ TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto mesh = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
 
     EXPECT_EQ(mesh.count_vertices(), 4);
-    EXPECT_TRUE(mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_UV0));
+    EXPECT_TRUE(mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
     EXPECT_TRUE(mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
 
-    auto uv_attribute = mesh.attribute(mesh::Mesh::ATTRIBUTE_UV0);
+    auto uv_attribute = mesh.attribute(mesh::Mesh::ATTRIBUTE_UV_0);
     ASSERT_TRUE(uv_attribute.has_value());
 
     auto uvs = uv_attribute->get().cspan_as<glm::vec2>();

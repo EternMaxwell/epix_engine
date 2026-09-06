@@ -59,6 +59,26 @@ EPIX_EXPORT struct SystemMeta {
     bool is_deferred() const noexcept { return (SystemFlagBits::DEFERRED & flags) != (SystemFlagBits)0; }
 };
 
+/** @brief Read-only system parameter exposing the previous and current system change ticks.
+ *
+ * `last_run()` is the change tick observed on the previous execution and
+ * `this_run()` is the tick passed to parameters for the current execution.
+ */
+EPIX_EXPORT struct SystemChangeTick {
+   public:
+    /** @brief Return the current world change tick seen by the system. */
+    Tick this_run() const noexcept { return this_run_; }
+    /** @brief Return the world change tick seen by the system on its previous run. */
+    Tick last_run() const noexcept { return last_run_; }
+
+   private:
+    Tick last_run_;
+    Tick this_run_;
+
+    SystemChangeTick(Tick last_run, Tick this_run) noexcept : last_run_(last_run), this_run_(this_run) {}
+    friend struct SystemParam<SystemChangeTick>;
+};
+
 /** @brief Concept for types usable as system parameters.
  *  Requires SystemParam specialization with State, Item, init_state, get_param, etc. */
 EPIX_EXPORT template <typename T>
@@ -115,6 +135,19 @@ EPIX_EXPORT struct ParamBase {
         return {};
     }
 };
+
+template <>
+struct SystemParam<SystemChangeTick> : ParamBase {
+    using State                    = std::tuple<>;
+    using Item                     = SystemChangeTick;
+    static constexpr bool readonly = true;
+
+    static State init_state(World&) { return {}; }
+    static Item get_param(State&, const SystemMeta& meta, World&, Tick tick) {
+        return SystemChangeTick(meta.last_run, tick);
+    }
+};
+static_assert(readonly_system_param<SystemChangeTick>);
 
 template <>
 struct SystemParam<const World&> : ParamBase {

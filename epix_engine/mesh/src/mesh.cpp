@@ -12,11 +12,11 @@ Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(o
         _attributes = detail::MeshExtractableData<AttributeMap>::extracted_to_render_world();
     } else if (*source_attributes) {
         AttributeMap cloned_attributes;
-        for (const auto& [slot, attribute_data] : source_attributes->value().get()) {
-            cloned_attributes.emplace(slot, MeshAttributeData{
-                                                .attribute = attribute_data.attribute,
-                                                .data      = attribute_data.data.clone(),
-                                            });
+        for (const auto& [id, attribute_data] : source_attributes->value().get()) {
+            cloned_attributes.emplace(id, MeshAttributeData{
+                                              .attribute = attribute_data.attribute,
+                                              .data      = attribute_data.data.clone(),
+                                          });
         }
         _attributes = detail::MeshExtractableData<AttributeMap>::data(std::move(cloned_attributes));
     }
@@ -42,36 +42,39 @@ MeshAttributeLayout Mesh::attribute_layout() const {
     layout.primitive_type        = primitive_type;
     const auto stored_attributes = _attributes.as_ref();
     if (!stored_attributes) throw_access_error(stored_attributes.error());
-    for (const auto& [slot, attribute_data] : stored_attributes->get()) {
-        layout.insert_or_assign(slot, attribute_data.attribute);
+    for (const auto& [id, attribute_data] : stored_attributes->get()) {
+        layout.insert_or_assign(id, attribute_data.attribute);
     }
     return layout;
 }
 
 MeshVertexBufferLayoutRef Mesh::get_mesh_vertex_buffer_layout(
     MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const {
-    // Bevy Mesh::get_mesh_vertex_buffer_layout: the layout's attributes are
-    // built in attribute-id (Bevy) / slot (Epix) order with accumulated byte
-    // offsets and a stride equal to the total size.
+    // Bevy Mesh::get_mesh_vertex_buffer_layout: attributes are packed in ID
+    // order, while raw shader locations are their iteration indices. Each
+    // specialized pipeline subsequently remaps the requested IDs.
     std::vector<MeshVertexAttributeId> attribute_ids;
-    std::vector<VertexAttributeDescriptor> attributes;
+    std::vector<VertexAttribute> attributes;
     std::uint64_t accumulated_offset = 0;
+    std::uint32_t shader_location    = 0;
     const auto stored_attributes     = _attributes.as_ref();
     if (!stored_attributes) throw_access_error(stored_attributes.error());
-    for (const auto& [slot, attribute_data] : stored_attributes->get()) {
-        attribute_ids.push_back(MeshVertexAttributeId{static_cast<std::uint64_t>(slot)});
-        attributes.push_back(VertexAttributeDescriptor{
+    for (const auto& [id, attribute_data] : stored_attributes->get()) {
+        attribute_ids.push_back(id);
+        attributes.push_back(VertexAttribute{
             .offset          = accumulated_offset,
             .format          = attribute_data.attribute.format,
-            .shader_location = static_cast<std::uint32_t>(slot),
+            .shader_location = shader_location++,
         });
         accumulated_offset += vertex_format_size(attribute_data.attribute.format);
     }
     return mesh_vertex_buffer_layouts.insert(MeshVertexBufferLayout{
-        .attribute_ids = std::move(attribute_ids),
-        .layout        = VertexBufferLayout{.array_stride = accumulated_offset,
-                                            .step_mode    = wgpu::VertexStepMode::eVertex,
-                                            .attributes   = std::move(attributes)},
+        std::move(attribute_ids),
+        VertexBufferLayout{
+            .array_stride = accumulated_offset,
+            .step_mode    = wgpu::VertexStepMode::eVertex,
+            .attributes   = std::move(attributes),
+        },
     });
 }
 
@@ -93,135 +96,136 @@ std::optional<epix::camera::Aabb> Mesh::compute_aabb() const {
 }
 
 std::optional<std::reference_wrapper<const ecs::untyped_vector>> Mesh::attribute(
-    const MeshAttribute& descriptor) const {
-    return attribute(descriptor.slot);
+    const MeshVertexAttribute& descriptor) const {
+    return attribute(descriptor.id);
 }
 
-std::optional<std::reference_wrapper<const ecs::untyped_vector>> Mesh::attribute(std::size_t slot) const {
-    auto result = try_attribute_option(slot);
+std::optional<std::reference_wrapper<const ecs::untyped_vector>> Mesh::attribute(MeshVertexAttributeId id) const {
+    auto result = try_attribute_option(id);
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
 std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute(
-    const MeshAttribute& descriptor) const {
-    return try_attribute(descriptor.slot);
+    const MeshVertexAttribute& descriptor) const {
+    return try_attribute(descriptor.id);
 }
 
 std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute(
-    std::size_t slot) const {
-    auto result = try_attribute_option(slot);
+    MeshVertexAttributeId id) const {
+    auto result = try_attribute_option(id);
     if (!result) return std::unexpected(result.error());
     if (!*result) return std::unexpected(MeshAccessError::NotFound);
     return result->value();
 }
 
 std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
-Mesh::try_attribute_option(const MeshAttribute& descriptor) const {
-    return try_attribute_option(descriptor.slot);
+Mesh::try_attribute_option(const MeshVertexAttribute& descriptor) const {
+    return try_attribute_option(descriptor.id);
 }
 
 std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
-Mesh::try_attribute_option(std::size_t slot) const {
+Mesh::try_attribute_option(MeshVertexAttributeId id) const {
     const auto stored_attributes = _attributes.as_ref();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
-    const auto it = stored_attributes->get().find(slot);
+    const auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
     return std::optional{std::cref(it->second.data)};
 }
 
-std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(const MeshAttribute& descriptor) {
-    return attribute_mut(descriptor.slot);
+std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(const MeshVertexAttribute& descriptor) {
+    return attribute_mut(descriptor.id);
 }
 
-std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(std::size_t slot) {
-    auto result = try_attribute_mut_option(slot);
+std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(MeshVertexAttributeId id) {
+    auto result = try_attribute_mut_option(id);
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
 std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute_mut(
-    const MeshAttribute& descriptor) {
-    return try_attribute_mut(descriptor.slot);
+    const MeshVertexAttribute& descriptor) {
+    return try_attribute_mut(descriptor.id);
 }
 
-std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute_mut(std::size_t slot) {
-    auto result = try_attribute_mut_option(slot);
+std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute_mut(
+    MeshVertexAttributeId id) {
+    auto result = try_attribute_mut_option(id);
     if (!result) return std::unexpected(result.error());
     if (!*result) return std::unexpected(MeshAccessError::NotFound);
     return result->value();
 }
 
 std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError>
-Mesh::try_attribute_mut_option(const MeshAttribute& descriptor) {
-    return try_attribute_mut_option(descriptor.slot);
+Mesh::try_attribute_mut_option(const MeshVertexAttribute& descriptor) {
+    return try_attribute_mut_option(descriptor.id);
 }
 
 std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError>
-Mesh::try_attribute_mut_option(std::size_t slot) {
+Mesh::try_attribute_mut_option(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
-    auto it = stored_attributes->get().find(slot);
+    auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
     return std::optional{std::ref(it->second.data)};
 }
 
-std::optional<ecs::untyped_vector> Mesh::remove_attribute(const MeshAttribute& descriptor) {
-    return remove_attribute(descriptor.slot);
+std::optional<ecs::untyped_vector> Mesh::remove_attribute(const MeshVertexAttribute& descriptor) {
+    return remove_attribute(descriptor.id);
 }
 
-std::optional<ecs::untyped_vector> Mesh::remove_attribute(std::size_t slot) {
+std::optional<ecs::untyped_vector> Mesh::remove_attribute(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) throw_access_error(stored_attributes.error());
-    auto it = stored_attributes->get().find(slot);
+    auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
     ecs::untyped_vector data = std::move(it->second.data);
     stored_attributes->get().erase(it);
     return data;
 }
 
-std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(const MeshAttribute& descriptor) {
-    return try_remove_attribute(descriptor.slot);
+std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(const MeshVertexAttribute& descriptor) {
+    return try_remove_attribute(descriptor.id);
 }
 
-std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(std::size_t slot) {
+std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
-    auto it = stored_attributes->get().find(slot);
+    auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::unexpected(MeshAccessError::NotFound);
     ecs::untyped_vector data = std::move(it->second.data);
     stored_attributes->get().erase(it);
     return data;
 }
 
-std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_attribute(const MeshAttribute& descriptor) && {
+std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_attribute(const MeshVertexAttribute& descriptor) && {
     auto result = try_remove_attribute(descriptor);
     if (!result) return std::unexpected(result.error());
     return std::move(*this);
 }
 
-std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_attribute(std::size_t slot) && {
-    auto result = try_remove_attribute(slot);
+std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_attribute(MeshVertexAttributeId id) && {
+    auto result = try_remove_attribute(id);
     if (!result) return std::unexpected(result.error());
     return std::move(*this);
 }
 
-bool Mesh::contains_attribute(const MeshAttribute& descriptor) const { return contains_attribute(descriptor.slot); }
+bool Mesh::contains_attribute(const MeshVertexAttribute& descriptor) const { return contains_attribute(descriptor.id); }
 
-bool Mesh::contains_attribute(std::size_t slot) const {
-    auto result = try_contains_attribute(slot);
+bool Mesh::contains_attribute(MeshVertexAttributeId id) const {
+    auto result = try_contains_attribute(id);
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
-std::expected<bool, MeshAccessError> Mesh::try_contains_attribute(const MeshAttribute& descriptor) const {
-    return try_contains_attribute(descriptor.slot);
+std::expected<bool, MeshAccessError> Mesh::try_contains_attribute(const MeshVertexAttribute& descriptor) const {
+    return try_contains_attribute(descriptor.id);
 }
 
-std::expected<bool, MeshAccessError> Mesh::try_contains_attribute(std::size_t slot) const {
+std::expected<bool, MeshAccessError> Mesh::try_contains_attribute(MeshVertexAttributeId id) const {
     const auto stored_attributes = _attributes.as_ref();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
-    return stored_attributes->get().contains(slot);
+    return stored_attributes->get().contains(id);
 }
 
 std::optional<std::reference_wrapper<const MeshIndices>> Mesh::indices() const {

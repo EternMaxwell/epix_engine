@@ -54,59 +54,68 @@ EPIX_EXPORT enum class MeshAccessError {
     /** @brief The requested vertex or index data is absent. */
     NotFound,
 };
-/** @brief Describes a single vertex attribute in a mesh (name, slot, format). */
-EPIX_EXPORT struct MeshAttribute {
-    std::string name;
-    std::uint32_t slot;
+/** @brief Describes one named vertex attribute and its stable mesh ID. */
+EPIX_EXPORT struct MeshVertexAttribute {
+    std::string_view name;
+    MeshVertexAttributeId id;
     wgpu::VertexFormat format;
 
-    bool operator==(const MeshAttribute& other) const noexcept {
-        return name == other.name && slot == other.slot && format == other.format;
+    operator MeshVertexAttributeId() const noexcept { return id; }
+
+    VertexAttributeDescriptor at_shader_location(std::uint32_t shader_location) const noexcept {
+        return VertexAttributeDescriptor{
+            .shader_location = shader_location,
+            .id              = id,
+            .name            = name,
+        };
     }
+
+    bool operator==(const MeshVertexAttribute&) const noexcept = default;
 };
-/** @brief Ordered map of slot->MeshAttribute describing the complete vertex layout. */
-EPIX_EXPORT struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> {
+/** @brief Ordered map of ID to attribute describing the complete vertex layout. */
+EPIX_EXPORT struct MeshAttributeLayout : std::map<MeshVertexAttributeId, MeshVertexAttribute> {
     wgpu::PrimitiveTopology primitive_type = wgpu::PrimitiveTopology::eTriangleList;
 
     bool operator==(const MeshAttributeLayout& other) const noexcept {
         return primitive_type == other.primitive_type &&
-               static_cast<const std::map<std::uint32_t, MeshAttribute>&>(*this) ==
-                   static_cast<const std::map<std::uint32_t, MeshAttribute>&>(other);
+               static_cast<const std::map<MeshVertexAttributeId, MeshVertexAttribute>&>(*this) ==
+                   static_cast<const std::map<MeshVertexAttributeId, MeshVertexAttribute>&>(other);
     }
 
-    bool contains_attribute(const MeshAttribute& attribute) const noexcept {
-        auto it = this->find(attribute.slot);
+    bool contains_attribute(const MeshVertexAttribute& attribute) const noexcept {
+        auto it = this->find(attribute.id);
         return it != this->end() && it->second == attribute;
     }
     /** @brief Add or replace an attribute in the layout. */
-    void add_attribute(const MeshAttribute& attribute) { this->insert_or_assign(attribute.slot, attribute); }
+    void add_attribute(const MeshVertexAttribute& attribute) { this->insert_or_assign(attribute.id, attribute); }
     /** @brief Get a const reference to an attribute by descriptor. */
-    std::optional<std::reference_wrapper<const MeshAttribute>> get_attribute(const MeshAttribute& attribute) const {
-        auto it = this->find(attribute.slot);
+    std::optional<std::reference_wrapper<const MeshVertexAttribute>> get_attribute(
+        const MeshVertexAttribute& attribute) const {
+        auto it = this->find(attribute.id);
         if (it != this->end() && it->second == attribute) {
             return std::cref(it->second);
         }
         return std::nullopt;
     }
-    /** @brief Get a const reference to an attribute by slot index. */
-    std::optional<std::reference_wrapper<const MeshAttribute>> get_attribute(std::uint32_t slot) const {
-        auto it = this->find(slot);
+    /** @brief Get a const reference to an attribute by ID. */
+    std::optional<std::reference_wrapper<const MeshVertexAttribute>> get_attribute(MeshVertexAttributeId id) const {
+        auto it = this->find(id);
         if (it != this->end()) {
             return std::cref(it->second);
         }
         return std::nullopt;
     }
     /** @brief Get a mutable reference to an attribute by descriptor. */
-    std::optional<std::reference_wrapper<MeshAttribute>> get_attribute_mut(const MeshAttribute& attribute) {
-        auto it = this->find(attribute.slot);
+    std::optional<std::reference_wrapper<MeshVertexAttribute>> get_attribute_mut(const MeshVertexAttribute& attribute) {
+        auto it = this->find(attribute.id);
         if (it != this->end() && it->second == attribute) {
             return std::ref(it->second);
         }
         return std::nullopt;
     }
-    /** @brief Get a mutable reference to an attribute by slot index. */
-    std::optional<std::reference_wrapper<MeshAttribute>> get_attribute_mut(std::uint32_t slot) {
-        auto it = this->find(slot);
+    /** @brief Get a mutable reference to an attribute by ID. */
+    std::optional<std::reference_wrapper<MeshVertexAttribute>> get_attribute_mut(MeshVertexAttributeId id) {
+        auto it = this->find(id);
         if (it != this->end()) {
             return std::ref(it->second);
         }
@@ -116,17 +125,17 @@ EPIX_EXPORT struct MeshAttributeLayout : std::map<std::uint32_t, MeshAttribute> 
     std::string to_string() const {
         std::stringstream ss;
         std::println(ss, "MeshAttributeLayout {{ primitive_type = {}", wgpu::to_string(primitive_type));
-        for (const auto& [slot, attribute] : *this) {
-            std::println(ss, "  Slot {}: Name='{}', Format={}", slot, attribute.name,
+        for (const auto& [id, attribute] : *this) {
+            std::println(ss, "  Id {}: Name='{}', Format={}", id.value, attribute.name,
                          wgpu::to_string(attribute.format));
         }
         std::println(ss, "}}");
         return ss.str();
     }
 };
-/** @brief Pairs a MeshAttribute descriptor with its raw vertex data buffer. */
+/** @brief Pairs a MeshVertexAttribute descriptor with its raw vertex data buffer. */
 EPIX_EXPORT struct MeshAttributeData {
-    MeshAttribute attribute;
+    MeshVertexAttribute attribute;
     ecs::untyped_vector data;
 
     std::size_t size() const noexcept { return data.size(); }
@@ -160,13 +169,13 @@ struct ExtractedToRenderWorld {};
 
 struct ConstMeshAttributeRefs {
     auto operator()(const MeshAttributeData& data) const {
-        return std::pair<const MeshAttribute&, const ecs::untyped_vector&>{data.attribute, data.data};
+        return std::pair<const MeshVertexAttribute&, const ecs::untyped_vector&>{data.attribute, data.data};
     }
 };
 
 struct MeshAttributeRefs {
     auto operator()(MeshAttributeData& data) const {
-        return std::pair<const MeshAttribute&, ecs::untyped_vector&>{data.attribute, data.data};
+        return std::pair<const MeshVertexAttribute&, ecs::untyped_vector&>{data.attribute, data.data};
     }
 };
 
@@ -255,13 +264,25 @@ class MeshExtractableData {
  */
 EPIX_EXPORT struct Mesh {
    public:
-    using AttributeMap = std::map<std::size_t, MeshAttributeData>;
+    using AttributeMap = std::map<MeshVertexAttributeId, MeshAttributeData>;
 
-    static inline const MeshAttribute ATTRIBUTE_POSITION{"position", 0, wgpu::VertexFormat::eFloat32x3};
-    static inline const MeshAttribute ATTRIBUTE_COLOR{"color", 1, wgpu::VertexFormat::eFloat32x4};
-    static inline const MeshAttribute ATTRIBUTE_NORMAL{"normal", 2, wgpu::VertexFormat::eFloat32x3};
-    static inline const MeshAttribute ATTRIBUTE_UV0{"uv0", 3, wgpu::VertexFormat::eFloat32x2};
-    static inline const MeshAttribute ATTRIBUTE_UV1{"uv1", 4, wgpu::VertexFormat::eFloat32x2};
+    static inline const MeshVertexAttribute ATTRIBUTE_POSITION{"Vertex_Position", MeshVertexAttributeId{0},
+                                                               wgpu::VertexFormat::eFloat32x3};
+    static inline const MeshVertexAttribute ATTRIBUTE_NORMAL{"Vertex_Normal", MeshVertexAttributeId{1},
+                                                             wgpu::VertexFormat::eFloat32x3};
+    static inline const MeshVertexAttribute ATTRIBUTE_UV_0{"Vertex_Uv", MeshVertexAttributeId{2},
+                                                           wgpu::VertexFormat::eFloat32x2};
+    static inline const MeshVertexAttribute ATTRIBUTE_UV_1{"Vertex_Uv_1", MeshVertexAttributeId{3},
+                                                           wgpu::VertexFormat::eFloat32x2};
+    static inline const MeshVertexAttribute ATTRIBUTE_TANGENT{"Vertex_Tangent", MeshVertexAttributeId{4},
+                                                              wgpu::VertexFormat::eFloat32x4};
+    static inline const MeshVertexAttribute ATTRIBUTE_COLOR{"Vertex_Color", MeshVertexAttributeId{5},
+                                                            wgpu::VertexFormat::eFloat32x4};
+    static inline const MeshVertexAttribute ATTRIBUTE_JOINT_WEIGHT{"Vertex_JointWeight", MeshVertexAttributeId{6},
+                                                                   wgpu::VertexFormat::eFloat32x4};
+    static inline const MeshVertexAttribute ATTRIBUTE_JOINT_INDEX{"Vertex_JointIndex", MeshVertexAttributeId{7},
+                                                                  wgpu::VertexFormat::eUint16x4};
+    static constexpr std::uint64_t FIRST_AVAILABLE_CUSTOM_ATTRIBUTE = 8;
 
    public:
     Mesh(wgpu::PrimitiveTopology primitive_type, render::RenderAssetUsages asset_usage) noexcept
@@ -321,7 +342,7 @@ EPIX_EXPORT struct Mesh {
 
     /** @brief Get this mesh's interleaved vertex-buffer layout, interning it in
      * `mesh_vertex_buffer_layouts` (Bevy `Mesh::get_mesh_vertex_buffer_layout`).
-     * The attribute ids are in slot (id) order and each attribute's offset
+     * The attribute IDs are in ascending ID order and each attribute's offset
      * accumulates the previous attribute sizes. */
     MeshVertexBufferLayoutRef get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const;
 
@@ -329,7 +350,7 @@ EPIX_EXPORT struct Mesh {
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    void insert_attribute(MeshAttribute attribute, T&& data) {
+    void insert_attribute(MeshVertexAttribute attribute, T&& data) {
         auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
         if (!result) throw_access_error(result.error());
     }
@@ -337,7 +358,7 @@ EPIX_EXPORT struct Mesh {
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    std::expected<void, MeshAccessError> try_insert_attribute(MeshAttribute attribute, T&& data) {
+    std::expected<void, MeshAccessError> try_insert_attribute(MeshVertexAttribute attribute, T&& data) {
         using value_type = std::ranges::range_value_t<T>;
         if (vertex_format_size(attribute.format) != sizeof(value_type)) {
             throw std::invalid_argument("Mesh attribute data does not match its vertex format");
@@ -348,65 +369,67 @@ EPIX_EXPORT struct Mesh {
         };
         auto attributes = _attributes.as_mut();
         if (!attributes) return std::unexpected(attributes.error());
-        attributes->get().insert_or_assign(attribute.slot, std::move(attribute_data));
+        attributes->get().insert_or_assign(attribute.id, std::move(attribute_data));
         return {};
     }
     /** @brief Builder-style attribute insertion (Bevy `with_inserted_attribute`). */
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    auto&& with_inserted_attribute(this auto&& self, MeshAttribute attribute, T&& data) {
+    auto&& with_inserted_attribute(this auto&& self, MeshVertexAttribute attribute, T&& data) {
         self.insert_attribute(std::move(attribute), std::forward<T>(data));
         return std::forward<decltype(self)>(self);
     }
     template <std::ranges::range T>
         requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
                  std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    std::expected<Mesh, MeshAccessError> try_with_inserted_attribute(MeshAttribute attribute, T&& data) && {
+    std::expected<Mesh, MeshAccessError> try_with_inserted_attribute(MeshVertexAttribute attribute, T&& data) && {
         auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
         if (!result) return std::unexpected(result.error());
         return std::move(*this);
     }
-    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(const MeshAttribute& attribute) const;
-    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(std::size_t slot) const;
+    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(
+        const MeshVertexAttribute& attribute) const;
+    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(MeshVertexAttributeId id) const;
     std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
-        const MeshAttribute& attribute) const;
+        const MeshVertexAttribute& attribute) const;
     std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
-        std::size_t slot) const;
+        MeshVertexAttributeId id) const;
     std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
-    try_attribute_option(const MeshAttribute& attribute) const;
+    try_attribute_option(const MeshVertexAttribute& attribute) const;
     std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
-    try_attribute_option(std::size_t slot) const;
+    try_attribute_option(MeshVertexAttributeId id) const;
 
-    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(const MeshAttribute& attribute);
-    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(std::size_t slot);
+    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(const MeshVertexAttribute& attribute);
+    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(MeshVertexAttributeId id);
     std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(
-        const MeshAttribute& attribute);
-    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(std::size_t slot);
+        const MeshVertexAttribute& attribute);
+    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(
+        MeshVertexAttributeId id);
     std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
-        const MeshAttribute& attribute);
+        const MeshVertexAttribute& attribute);
     std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
-        std::size_t slot);
+        MeshVertexAttributeId id);
 
-    std::optional<ecs::untyped_vector> remove_attribute(const MeshAttribute& attribute);
-    std::optional<ecs::untyped_vector> remove_attribute(std::size_t slot);
-    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(const MeshAttribute& attribute);
-    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(std::size_t slot);
-    auto&& with_removed_attribute(this auto&& self, const MeshAttribute& attribute) {
+    std::optional<ecs::untyped_vector> remove_attribute(const MeshVertexAttribute& attribute);
+    std::optional<ecs::untyped_vector> remove_attribute(MeshVertexAttributeId id);
+    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(const MeshVertexAttribute& attribute);
+    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(MeshVertexAttributeId id);
+    auto&& with_removed_attribute(this auto&& self, const MeshVertexAttribute& attribute) {
         self.remove_attribute(attribute);
         return std::forward<decltype(self)>(self);
     }
-    auto&& with_removed_attribute(this auto&& self, std::size_t slot) {
-        self.remove_attribute(slot);
+    auto&& with_removed_attribute(this auto&& self, MeshVertexAttributeId id) {
+        self.remove_attribute(id);
         return std::forward<decltype(self)>(self);
     }
-    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(const MeshAttribute& attribute) &&;
-    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(std::size_t slot) &&;
+    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(const MeshVertexAttribute& attribute) &&;
+    std::expected<Mesh, MeshAccessError> try_with_removed_attribute(MeshVertexAttributeId id) &&;
 
-    bool contains_attribute(const MeshAttribute& attribute) const;
-    bool contains_attribute(std::size_t slot) const;
-    std::expected<bool, MeshAccessError> try_contains_attribute(const MeshAttribute& attribute) const;
-    std::expected<bool, MeshAccessError> try_contains_attribute(std::size_t slot) const;
+    bool contains_attribute(const MeshVertexAttribute& attribute) const;
+    bool contains_attribute(MeshVertexAttributeId id) const;
+    std::expected<bool, MeshAccessError> try_contains_attribute(const MeshVertexAttribute& attribute) const;
+    std::expected<bool, MeshAccessError> try_contains_attribute(MeshVertexAttributeId id) const;
 
     /** @brief Insert indices, replacing any existing ones.
      *  @tparam V Index type (`std::uint16_t` or `std::uint32_t`). */
@@ -468,11 +491,11 @@ EPIX_EXPORT struct Mesh {
         std::optional<std::size_t> count;
         const auto stored_attributes = _attributes.as_ref();
         if (!stored_attributes) throw_access_error(stored_attributes.error());
-        for (auto&& [slot, attribute_data] : stored_attributes->get()) {
+        for (auto&& [id, attribute_data] : stored_attributes->get()) {
             std::size_t attribute_count = attribute_data.data.size();
             if (count.has_value() && attribute_count != *count) {
                 spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
-                             slot, attribute_data.attribute.name, *count, attribute_count);
+                             id.value, attribute_data.attribute.name, *count, attribute_count);
             }
             count = count.has_value() ? std::min(*count, attribute_count) : attribute_count;
         }

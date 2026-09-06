@@ -59,7 +59,7 @@ TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
     EXPECT_TRUE(source.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
 }
 
-// packed_vertex_bytes interleaves per-vertex attributes in slot order (Bevy).
+// packed_vertex_bytes interleaves per-vertex attributes in ID order (Bevy).
 TEST(MeshModule, PackedVertexBytesInterleave) {
     const auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
     const auto packed = mesh::packed_vertex_bytes(box);
@@ -90,28 +90,59 @@ TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
     auto box          = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));  // position(12) + color(16)
     const auto layout = box.get_mesh_vertex_buffer_layout(store);
     ASSERT_TRUE(layout.value);
-    EXPECT_EQ(layout.value->layout.array_stride, 28u);
-    ASSERT_EQ(layout.value->layout.attributes.size(), 2u);
-    EXPECT_EQ(layout.value->layout.attributes[0].offset, 0u);
-    EXPECT_EQ(layout.value->layout.attributes[0].shader_location, 0u);
-    EXPECT_EQ(layout.value->layout.attributes[1].offset, 12u);
-    EXPECT_EQ(layout.value->layout.attributes[1].shader_location, 1u);
-    ASSERT_EQ(layout.value->attribute_ids.size(), 2u);
-    EXPECT_EQ(layout.value->attribute_ids[0].value, 0u);  // position slot
-    EXPECT_EQ(layout.value->attribute_ids[1].value, 1u);  // color slot
+    EXPECT_EQ(layout.value->layout().array_stride, 28u);
+    ASSERT_EQ(layout.value->layout().attributes.size(), 2u);
+    EXPECT_EQ(layout.value->layout().attributes[0].offset, 0u);
+    EXPECT_EQ(layout.value->layout().attributes[0].shader_location, 0u);
+    EXPECT_EQ(layout.value->layout().attributes[1].offset, 12u);
+    EXPECT_EQ(layout.value->layout().attributes[1].shader_location, 1u);
+    const auto attribute_ids = layout.value->attribute_ids();
+    ASSERT_EQ(attribute_ids.size(), 2u);
+    EXPECT_EQ(attribute_ids[0], mesh::Mesh::ATTRIBUTE_POSITION.id);
+    EXPECT_EQ(attribute_ids[1], mesh::Mesh::ATTRIBUTE_COLOR.id);
+    EXPECT_TRUE(layout.value->contains(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_FALSE(layout.value->contains(mesh::Mesh::ATTRIBUTE_NORMAL));
+
+    const std::array requested_attributes{
+        mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+        mesh::Mesh::ATTRIBUTE_COLOR.at_shader_location(4),
+    };
+    const auto pipeline_layout = layout.value->get_layout(requested_attributes);
+    ASSERT_TRUE(pipeline_layout.has_value());
+    ASSERT_EQ(pipeline_layout->attributes.size(), 2u);
+    EXPECT_EQ(pipeline_layout->attributes[0].offset, 0u);
+    EXPECT_EQ(pipeline_layout->attributes[0].shader_location, 0u);
+    EXPECT_EQ(pipeline_layout->attributes[1].offset, 12u);
+    EXPECT_EQ(pipeline_layout->attributes[1].shader_location, 4u);
+
+    const std::array missing_attribute{mesh::Mesh::ATTRIBUTE_NORMAL.at_shader_location(1)};
+    const auto missing_layout = layout.value->get_layout(missing_attribute);
+    ASSERT_FALSE(missing_layout.has_value());
+    EXPECT_EQ(missing_layout.error().id, mesh::Mesh::ATTRIBUTE_NORMAL.id);
+    EXPECT_EQ(missing_layout.error().name, mesh::Mesh::ATTRIBUTE_NORMAL.name);
 
     // A structurally identical mesh shares the interned layout (pointer
     // equality on MeshVertexBufferLayoutRef, Bevy Arc semantics).
     auto box2          = mesh::make_box2d(5.0f, 5.0f, glm::vec4(0.0f));
     const auto layout2 = box2.get_mesh_vertex_buffer_layout(store);
     EXPECT_EQ(layout, layout2);
-    EXPECT_EQ(store.layouts.size(), 1u);
 
     // A different attribute set gets its own interned entry.
     auto uvbox         = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
     const auto layout3 = uvbox.get_mesh_vertex_buffer_layout(store);
     EXPECT_NE(layout, layout3);
-    EXPECT_EQ(store.layouts.size(), 2u);
+}
+
+TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_POSITION.id.value, 0u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_NORMAL.id.value, 1u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_UV_0.id.value, 2u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_UV_1.id.value, 3u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_TANGENT.id.value, 4u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_COLOR.id.value, 5u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT.id.value, 6u);
+    EXPECT_EQ(mesh::Mesh::ATTRIBUTE_JOINT_INDEX.id.value, 7u);
+    EXPECT_EQ(mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE, 8u);
 }
 
 // RenderMeshBufferInfo mirrors Bevy's Indexed/NonIndexed discriminator.
@@ -136,7 +167,7 @@ TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
     EXPECT_FALSE(render.indexed());
     EXPECT_EQ(render.vertex_count, box.count_vertices());
     EXPECT_EQ(render.primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
-    EXPECT_EQ(render.layout.value->layout.array_stride, 28u);
+    EXPECT_EQ(render.layout.value->layout().array_stride, 28u);
 }
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
@@ -154,6 +185,64 @@ TEST(MeshModule, ComputesAabbFromPositionAttribute) {
     ASSERT_TRUE(aabb.has_value());
     EXPECT_EQ(aabb->min(), glm::vec3(-2.0f, 1.0f, -1.0f));
     EXPECT_EQ(aabb->max(), glm::vec3(4.0f, 5.0f, 3.0f));
+}
+
+TEST(MeshModule, CalculateBounds2dDoesNotReaccessExtractedRenderOnlyMesh) {
+    epix::ecs::World world(7);
+    world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
+
+    auto source        = mesh::make_box2d(20.0f, 10.0f);
+    source.asset_usage = epix::render::RenderAssetUsages::RENDER_WORLD;
+    auto handle        = world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(std::move(source));
+    const auto entity  = world.spawn(mesh::Mesh2d{handle}).id();
+
+    auto system = epix::ecs::make_system_unique(mesh::calculate_bounds_2d);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+    system->apply_deferred(world);
+
+    const auto entity_ref = world.get_entity(entity);
+    ASSERT_TRUE(entity_ref.has_value());
+    ASSERT_TRUE(entity_ref->get<epix::camera::Aabb>().has_value());
+
+    auto stored = world.resource_mut<epix::assets::Assets<mesh::Mesh>>().get_mut_untracked(handle.id());
+    ASSERT_TRUE(stored.has_value());
+    ASSERT_TRUE(stored->get().take_gpu_data().has_value());
+
+    // The existing Aabb and unchanged Mesh2d exclude this entity from both
+    // Bevy-shaped queries, so extracted CPU data is not accessed again.
+    EXPECT_TRUE(system->run({}, world).has_value());
+}
+
+TEST(MeshModule, CalculateBounds2dUpdatesWhenReferencedMeshChanges) {
+    epix::app::App app = epix::app::App::create();
+    app.world_mut().insert_resource(epix::assets::Assets<mesh::Mesh>{});
+    app.add_events<epix::assets::AssetEvent<mesh::Mesh>>();
+
+    auto handle =
+        app.world_mut().resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(mesh::make_box2d(20.0f, 10.0f));
+    const auto entity   = app.world_mut().spawn(mesh::Mesh2d{handle}).id();
+    const auto excluded = app.world_mut().spawn(mesh::Mesh2d{handle}, epix::camera::NoAutoAabb{}).id();
+
+    app.add_systems(epix::app::Update,
+                    epix::ecs::into(epix::assets::Assets<mesh::Mesh>::asset_events, mesh::calculate_bounds_2d).chain());
+    app.update();
+
+    auto initial = app.world().get_entity(entity)->get<epix::camera::Aabb>();
+    ASSERT_TRUE(initial.has_value());
+    EXPECT_EQ(initial->get().half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
+    EXPECT_FALSE(app.world().get_entity(excluded)->contains<epix::camera::Aabb>());
+
+    auto stored = app.world_mut().resource_mut<epix::assets::Assets<mesh::Mesh>>().get_mut(handle.id());
+    ASSERT_TRUE(stored.has_value());
+    stored->get().insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                                   std::array{glm::vec3{-30.0f, -20.0f, 0.0f}, glm::vec3{30.0f, -20.0f, 0.0f},
+                                              glm::vec3{30.0f, 20.0f, 0.0f}, glm::vec3{-30.0f, 20.0f, 0.0f}});
+    app.update();
+
+    const auto updated = app.world().get_entity(entity)->get<epix::camera::Aabb>();
+    ASSERT_TRUE(updated.has_value());
+    EXPECT_EQ(updated->get().half_extents, glm::vec3(30.0f, 20.0f, 0.0f));
 }
 
 // Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute

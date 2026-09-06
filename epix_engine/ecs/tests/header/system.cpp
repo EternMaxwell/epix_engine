@@ -104,3 +104,24 @@ TEST(ecs, system) {
     EXPECT_EQ(res.value(), 123);
     EXPECT_EQ(counter, 1);
 }
+
+TEST(ecs, SystemChangeTickMatchesFunctionSystemTicks) {
+    World world(WorldId(1));
+    std::vector<std::pair<Tick, Tick>> observed;
+    auto system = make_system_unique([&](SystemChangeTick ticks) {
+        observed.emplace_back(ticks.last_run(), ticks.this_run());
+    });
+
+    system->initialize(world);
+    const auto initial_last_run = system->get_last_run();
+
+    ASSERT_TRUE(system->run({}, world).has_value());
+    ASSERT_EQ(observed.size(), 1u);
+    EXPECT_EQ(observed[0].first.get(), initial_last_run.get());
+    EXPECT_EQ(system->get_last_run().get(), observed[0].second.get());
+
+    ASSERT_TRUE(system->run({}, world).has_value());
+    ASSERT_EQ(observed.size(), 2u);
+    EXPECT_EQ(observed[1].first.get(), observed[0].second.get());
+    EXPECT_EQ(system->get_last_run().get(), observed[1].second.get());
+}

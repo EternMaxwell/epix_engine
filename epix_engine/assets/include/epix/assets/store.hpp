@@ -25,6 +25,7 @@
 #include <variant>
 #include <vector>
 #endif
+#include <epix/assets/asset_changed.hpp>
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/handle.hpp>
 
@@ -825,7 +826,20 @@ struct Assets {
     }
 
     /** @brief System that flushes cached asset events to the event writer. */
-    static void asset_events(ecs::ResMut<Assets<T>> assets, ecs::EventWriter<AssetEvent<T>> writer) {
+    static void asset_events(ecs::ResMut<Assets<T>> assets,
+                             ecs::EventWriter<AssetEvent<T>> writer,
+                             std::optional<ecs::ResMut<detail::AssetChanges<T>>> asset_changes,
+                             ecs::SystemChangeTick ticks) {
+        if (asset_changes && !assets->m_cached_events.empty()) {
+            auto& changes = asset_changes->get_mut();
+            for (const auto& event : assets->m_cached_events) {
+                if (event.is_removed() || event.is_unused()) {
+                    changes.remove(event.id);
+                } else {
+                    changes.insert(event.id, ticks.this_run());
+                }
+            }
+        }
         for (auto&& event : assets->m_cached_events) {
             writer.write(event);
         }

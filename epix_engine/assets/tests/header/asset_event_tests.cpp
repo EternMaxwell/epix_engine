@@ -5,6 +5,20 @@
 
 using namespace epix::assets;
 
+namespace {
+struct StringAssetRef {
+    Handle<std::string> handle;
+};
+}  // namespace
+
+template <>
+struct epix::assets::AsAssetId<StringAssetRef> {
+    using Asset = std::string;
+
+    static AssetId<Asset> as_asset_id(const StringAssetRef& value) noexcept { return value.handle.id(); }
+};
+static_assert(AsAssetIdImpl<StringAssetRef>);
+
 // ===========================================================================
 // AssetEvent<T> - construction and predicates
 // ===========================================================================
@@ -100,4 +114,62 @@ TEST(AssetEvent, IsRemoved_ButActuallyAdded) {
     EXPECT_FALSE(ev.is_modified(id));
     EXPECT_FALSE(ev.is_unused(id));
     EXPECT_FALSE(ev.is_loaded_with_dependencies(id));
+}
+
+TEST(AssetChanged, TracksReferencedAssetChangesAndIgnoresRemoval) {
+    epix::app::App app = epix::app::App::create();
+    app.world_mut().insert_resource(Assets<std::string>{});
+    app.add_events<AssetEvent<std::string>>();
+
+    auto handle = app.world_mut().resource_mut<Assets<std::string>>().emplace("initial");
+    app.world_mut().spawn(StringAssetRef{handle});
+
+    std::size_t matches = 0;
+    app.add_systems(
+        epix::app::Update,
+        epix::ecs::into(
+            Assets<std::string>::asset_events,
+            [&matches](epix::ecs::Query<epix::ecs::Item<const StringAssetRef&>, AssetChanged<StringAssetRef>> query) {
+                matches += std::ranges::distance(query.iter());
+            })
+            .chain());
+
+    app.update();
+    EXPECT_EQ(matches, 1u);
+
+    app.update();
+    EXPECT_EQ(matches, 1u);
+
+    auto stored = app.world_mut().resource_mut<Assets<std::string>>().get_mut(handle.id());
+    ASSERT_TRUE(stored.has_value());
+    stored->get() = "modified";
+    app.update();
+    EXPECT_EQ(matches, 2u);
+
+    EXPECT_TRUE(app.world_mut().resource_mut<Assets<std::string>>().remove(handle.id()).has_value());
+    app.update();
+    EXPECT_EQ(matches, 2u);
+}
+
+TEST(AssetChanged, FilterReadDoesNotConflictWithMutableQueryItem) {
+    epix::app::App app = epix::app::App::create();
+    app.world_mut().insert_resource(Assets<std::string>{});
+    app.add_events<AssetEvent<std::string>>();
+
+    auto handle = app.world_mut().resource_mut<Assets<std::string>>().emplace("initial");
+    app.world_mut().spawn(StringAssetRef{handle});
+
+    std::size_t matches = 0;
+    app.add_systems(
+        epix::app::Update,
+        epix::ecs::into(
+            Assets<std::string>::asset_events,
+            [&matches](epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<StringAssetRef>>,
+                                        AssetChanged<StringAssetRef>> query) {
+                matches += std::ranges::distance(query.iter());
+            })
+            .chain());
+
+    app.update();
+    EXPECT_EQ(matches, 1u);
 }

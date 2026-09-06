@@ -84,7 +84,7 @@ Mesh mesh::make_box2d_uv(float width, float height, glm::vec4 uv_rect, std::opti
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_inserted_attribute(Mesh::ATTRIBUTE_UV0, uvs)
+                    .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
                     .with_inserted_indices<std::uint16_t>(indices);
     if (vertex_color) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*vertex_color), 4));

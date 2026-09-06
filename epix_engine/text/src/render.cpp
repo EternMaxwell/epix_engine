@@ -46,7 +46,7 @@ struct TextInstance {
 
 struct VertexInput {
     [[vk::location(0)]] float3 position;
-    [[vk::location(5)]] float3 uv_layer;
+    [[vk::location(1)]] float3 uv_layer;
     uint instance_index : SV_VulkanInstanceID;
 };
 
@@ -113,7 +113,11 @@ std::optional<TextShaderHandles> load_text_shader_handles(World& world) {
     };
 }
 
-const mesh::MeshAttribute kTextUvLayerAttribute{"text_uv_layer", 5, wgpu::VertexFormat::eFloat32x3};
+const mesh::MeshVertexAttribute kTextUvLayerAttribute{
+    "Text_UvLayer",
+    mesh::MeshVertexAttributeId{mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE},
+    wgpu::VertexFormat::eFloat32x3,
+};
 
 struct ExtractedText2d {
     Entity source_entity;
@@ -186,6 +190,7 @@ struct Text2dPipelineCache {
                                                        const mesh::MeshVertexBufferLayoutRef& layout_ref,
                                                        wgpu::TextureFormat color_format,
                                                        std::uint32_t sample_count) {
+        if (!layout_ref.value) return std::nullopt;
         const std::uint64_t key =
             (static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(layout_ref.value.get())) << 32) ^
             ((static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count);
@@ -193,14 +198,22 @@ struct Text2dPipelineCache {
             return it->second;
         }
 
-        // The text pipeline consumes the mesh's interleaved vertex buffer, like
-        // the mesh2d pipeline (position at location 0, text_uv_layer at
-        // location 5 with the mesh layout's stride/offsets).
-        const auto& layout = layout_ref.value->layout;
+        const std::array requested_attributes{
+            mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
+            kTextUvLayerAttribute.at_shader_location(1),
+        };
+        const auto specialized_layout = layout_ref.value->get_layout(requested_attributes);
+        if (!specialized_layout) {
+            spdlog::warn("[text] Skip pipeline specialization: mesh layout is missing requested attribute {} ({}).",
+                         specialized_layout.error().name, specialized_layout.error().id.value);
+            return std::nullopt;
+        }
+
+        const auto& layout = *specialized_layout;
         std::vector<wgpu::VertexBufferLayout> vertex_buffers;
         if (!layout.attributes.empty()) {
             const auto attributes = std::ranges::to<std::vector<wgpu::VertexAttribute>>(
-                std::views::transform(layout.attributes, [](const mesh::VertexAttributeDescriptor& attribute) {
+                std::views::transform(layout.attributes, [](const mesh::VertexAttribute& attribute) {
                     return wgpu::VertexAttribute()
                         .setShaderLocation(attribute.shader_location)
                         .setFormat(attribute.format)
@@ -359,7 +372,7 @@ struct DrawTextBatch {
                                        extracted.mesh.to_string_short(), item.entity().index),
             });
         }
-        const std::uint64_t stride = render_mesh->layout.value->layout.array_stride;
+        const std::uint64_t stride = render_mesh->layout.value->layout().array_stride;
         encoder.setVertexBuffer(0, *vertex_slice->buffer,
                                 static_cast<std::uint64_t>(vertex_slice->begin) * stride,
                                 static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);

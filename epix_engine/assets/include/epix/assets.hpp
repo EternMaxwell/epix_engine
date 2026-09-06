@@ -18,6 +18,7 @@
 #include <vector>
 #endif
 
+#include <epix/assets/asset_changed.hpp>
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/handle.hpp>
 #include <epix/assets/id.hpp>
