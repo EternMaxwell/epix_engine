@@ -7,12 +7,14 @@
 #include <compare>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
 #include <string_view>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
@@ -127,17 +129,74 @@ struct MeshVertexBufferLayouts {
     /** @brief Insert a layout, reusing the existing instance when one with the
      * same contents is already stored (Bevy `insert`, structural compare). */
     MeshVertexBufferLayoutRef insert(MeshVertexBufferLayout layout) {
-        for (const auto& existing : _layouts) {
-            if (*existing == layout) {
-                return MeshVertexBufferLayoutRef{existing};
-            }
+        if (const auto existing = _layouts.find(layout); existing != _layouts.end()) {
+            return MeshVertexBufferLayoutRef{*existing};
         }
-        _layouts.push_back(std::make_shared<MeshVertexBufferLayout>(std::move(layout)));
-        return MeshVertexBufferLayoutRef{_layouts.back()};
+        auto value = std::make_shared<const MeshVertexBufferLayout>(std::move(layout));
+        const auto [inserted, _] = _layouts.insert(std::move(value));
+        return MeshVertexBufferLayoutRef{*inserted};
     }
 
    private:
-    std::vector<std::shared_ptr<const MeshVertexBufferLayout>> _layouts;
+    struct StructuralHash {
+        using is_transparent = void;
+
+        static std::size_t combine(std::size_t seed, std::size_t value) noexcept {
+            return seed ^ (value + 0x9e3779b9u + (seed << 6u) + (seed >> 2u));
+        }
+
+        static std::size_t hash(const MeshVertexBufferLayout& value) noexcept {
+            std::size_t result = 0;
+            for (const auto id : value.attribute_ids()) {
+                result = combine(result, std::hash<std::uint64_t>{}(id.value));
+            }
+            const auto& layout = value.layout();
+            result = combine(result, std::hash<std::uint64_t>{}(layout.array_stride));
+            result = combine(result, std::hash<std::underlying_type_t<wgpu::VertexStepMode>>{}(
+                                         static_cast<std::underlying_type_t<wgpu::VertexStepMode>>(layout.step_mode)));
+            for (const auto& attribute : layout.attributes) {
+                result = combine(result, std::hash<std::uint64_t>{}(attribute.offset));
+                result = combine(result, std::hash<std::underlying_type_t<wgpu::VertexFormat>>{}(
+                                             static_cast<std::underlying_type_t<wgpu::VertexFormat>>(attribute.format)));
+                result = combine(result, std::hash<std::uint32_t>{}(attribute.shader_location));
+            }
+            return result;
+        }
+
+        std::size_t operator()(const MeshVertexBufferLayout& value) const noexcept { return hash(value); }
+        std::size_t operator()(const std::shared_ptr<const MeshVertexBufferLayout>& value) const noexcept {
+            return hash(*value);
+        }
+    };
+
+    struct StructuralEqual {
+        using is_transparent = void;
+
+        bool operator()(const MeshVertexBufferLayout& lhs, const MeshVertexBufferLayout& rhs) const noexcept {
+            return lhs == rhs;
+        }
+        bool operator()(const std::shared_ptr<const MeshVertexBufferLayout>& lhs,
+                        const std::shared_ptr<const MeshVertexBufferLayout>& rhs) const noexcept {
+            return *lhs == *rhs;
+        }
+        bool operator()(const std::shared_ptr<const MeshVertexBufferLayout>& lhs,
+                        const MeshVertexBufferLayout& rhs) const noexcept {
+            return *lhs == rhs;
+        }
+        bool operator()(const MeshVertexBufferLayout& lhs,
+                        const std::shared_ptr<const MeshVertexBufferLayout>& rhs) const noexcept {
+            return lhs == *rhs;
+        }
+    };
+
+    std::unordered_set<std::shared_ptr<const MeshVertexBufferLayout>, StructuralHash, StructuralEqual> _layouts;
 };
 
 }  // namespace epix::mesh
+
+template <>
+struct std::hash<epix::mesh::MeshVertexBufferLayoutRef> {
+    std::size_t operator()(const epix::mesh::MeshVertexBufferLayoutRef& value) const noexcept {
+        return std::hash<const epix::mesh::MeshVertexBufferLayout*>{}(value.value.get());
+    }
+};

@@ -5,6 +5,7 @@
 #include <epix/mesh/offset_allocator.hpp>
 #include <epix/render.hpp>
 #include <memory>
+#include <unordered_set>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
@@ -131,6 +132,13 @@ TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
     auto uvbox         = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
     const auto layout3 = uvbox.get_mesh_vertex_buffer_layout(store);
     EXPECT_NE(layout, layout3);
+
+    // MeshVertexBufferLayoutRef hashes by interned pointer identity, while
+    // MeshVertexBufferLayouts itself interns by the layout's structure.
+    EXPECT_EQ(std::hash<mesh::MeshVertexBufferLayoutRef>{}(layout),
+              std::hash<mesh::MeshVertexBufferLayoutRef>{}(layout2));
+    std::unordered_set<mesh::MeshVertexBufferLayoutRef> references{layout, layout2, layout3};
+    EXPECT_EQ(references.size(), 2u);
 }
 
 TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
