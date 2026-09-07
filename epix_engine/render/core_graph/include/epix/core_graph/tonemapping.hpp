@@ -3,14 +3,15 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/core_graph/fullscreen.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
-#include <memory>
-#include <mutex>
+#include <epix/utils/async.hpp>
 #include <optional>
+#include <tuple>
 #include <utility>
 #include <webgpu/webgpu.hpp>
 #endif
@@ -42,10 +43,9 @@ EPIX_EXPORT enum class DebandDither { Disabled, Enabled };
 /** @brief 3D LUT textures used for tonemapping (Bevy 0.18
  * `TonemappingLuts`).
  *
- * Bevy bundles three KTX2 LUTs (tony_mc_mapface, AgX, BlenderFilmic) behind
- * the optional `tonemapping_luts` cargo feature; without it (Bevy's default
- * build), all three handles point at a single magenta placeholder. Epix
- * follows the default-build semantics until a KTX2/BasisLZ decoder lands. */
+ * Like Bevy's default feature set, Epix bundles the Tony McMapface, AgX, and
+ * Blender Filmic KTX2 LUTs. The source KTX2 payloads are Zstandard compressed
+ * and decoded into filterable 3D float images during plugin setup. */
 EPIX_EXPORT struct TonemappingLuts {
     /** @brief Blender filmic LUT (Bevy `blender_filmic`). */
     assets::Handle<image::Image> blender_filmic;
@@ -58,18 +58,32 @@ EPIX_EXPORT struct TonemappingLuts {
 /** @brief Flags describing which color-grading steps the tonemapping shader
  * must perform (Bevy `TonemappingPipelineKeyFlags`). */
 enum class TonemappingPipelineKeyFlags : std::uint8_t {
+    None                  = 0x00,
     HueRotate             = 0x01,
     WhiteBalance          = 0x02,
     SectionalColorGrading = 0x04,
 };
 
+constexpr TonemappingPipelineKeyFlags operator|(TonemappingPipelineKeyFlags lhs,
+                                                 TonemappingPipelineKeyFlags rhs) noexcept {
+    return static_cast<TonemappingPipelineKeyFlags>(static_cast<std::uint8_t>(lhs) |
+                                                     static_cast<std::uint8_t>(rhs));
+}
+constexpr TonemappingPipelineKeyFlags& operator|=(TonemappingPipelineKeyFlags& lhs,
+                                                   TonemappingPipelineKeyFlags rhs) noexcept {
+    lhs = lhs | rhs;
+    return lhs;
+}
+constexpr bool contains(TonemappingPipelineKeyFlags flags, TonemappingPipelineKeyFlags value) noexcept {
+    return (static_cast<std::uint8_t>(flags) & static_cast<std::uint8_t>(value)) != 0;
+}
+
 /** @brief Specialization key for `TonemappingPipeline` (Bevy
  * `TonemappingPipelineKey`). */
 EPIX_EXPORT struct TonemappingPipelineKey {
-    wgpu::TextureFormat target_format = wgpu::TextureFormat::eUndefined;
     DebandDither deband_dither        = DebandDither::Disabled;
     Tonemapping tonemapping           = Tonemapping::None;
-    std::uint8_t flags                = 0;
+    TonemappingPipelineKeyFlags flags = TonemappingPipelineKeyFlags::None;
 
     bool operator==(const TonemappingPipelineKey& other) const noexcept;
 };
@@ -100,6 +114,23 @@ EPIX_EXPORT struct ViewTonemappingPipeline {
     render::CachedPipelineId pipeline_id;
 };
 
+/** @brief Resolve the method's LUT texture and sampler, falling back to the
+ * render module's 3D fallback image while the selected LUT is unavailable
+ * (Bevy `get_lut_bindings`). */
+EPIX_EXPORT std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
+    const render::RenderAssets<image::Image>& images,
+    const TonemappingLuts& tonemapping_luts,
+    Tonemapping tonemapping,
+    const render::texture::FallbackImage& fallback_image);
+
+/** @brief Return the filterable 3D texture and sampler layout builders used
+ * for LUT bindings 3 and 4 (Bevy `get_lut_bind_group_layout_entries`). */
+EPIX_EXPORT std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2>
+get_lut_bind_group_layout_entries();
+
+/** @brief Create Bevy's magenta 1x1x1 render-world-only fallback LUT. */
+EPIX_EXPORT image::Image lut_placeholder();
+
 /** @brief Typed HDR->display tone-mapping render-graph node (Bevy
  * `TonemappingNode`). */
 EPIX_EXPORT struct TonemappingNode {
@@ -113,6 +144,12 @@ EPIX_EXPORT struct TonemappingNode {
                                                          render::graph::RenderContext& render_context,
                                                          typename ecs::QueryData<ViewQuery>::Item view,
                                                          const ecs::World& world) const;
+
+   private:
+    using CachedBindGroup =
+        std::tuple<wgpu::Buffer, wgpu::TextureView, wgpu::TextureView, wgpu::BindGroup>;
+    mutable utils::Mutex<std::optional<CachedBindGroup>> cached_bind_group{};
+    mutable utils::Mutex<std::optional<Tonemapping>> last_tonemapping{};
 };
 
 /** @brief Installs tonemapping resources, per-view pipeline preparation, and

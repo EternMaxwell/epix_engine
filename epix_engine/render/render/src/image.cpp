@@ -228,12 +228,12 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     gpu_image.mip_level_count = 1;
 
     auto view          = asset.raw_view();
-    gpu_image.had_data = view.size_bytes() > 0;
+    gpu_image.had_data = asset.has_data();
 
     // Bevy copy_on_resize (gpu_image.rs:80-108): when the upload has no data
     // and the previous GPU image exists, copy min(old, new) extents from it
     // so a resize preserves the previous frame's content.
-    if (view.size_bytes() == 0 && asset.copy_on_resize() && previous && previous->texture) {
+    if (!asset.has_data() && asset.copy_on_resize() && previous && previous->texture) {
         const wgpu::Extent3D copy_size{std::min(asset.width(), previous->size.width),
                                        std::min(asset.height(), previous->size.height),
                                        std::min(asset.depth_or_layers(), previous->size.depthOrArrayLayers)};
@@ -254,37 +254,39 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     // Bevy pads every row to COPY_BYTES_PER_ROW_ALIGNMENT (256) via
     // create_texture_with_data (render_device.rs:219-230); wgpu validation
     // requires bytesPerRow % 256 == 0 for multi-row copies.
-    const std::uint32_t pixel_size  = asset.format_info().pixelSize();
-    const std::uint32_t width       = asset.width();
-    const std::uint32_t height      = asset.height();
-    const std::uint32_t raw_row     = width * pixel_size;
-    const std::uint32_t aligned_row = epix::render::readback::align_byte_size(raw_row);
-    wgpu::TexelCopyBufferLayout layout;
-    layout.setBytesPerRow(aligned_row).setRowsPerImage(height);
-    if (aligned_row == raw_row) {
-        queue->writeTexture(wgpu::TexelCopyTextureInfo()
-                                .setTexture(gpu_image.texture)
-                                .setOrigin({0, 0, 0})
-                                .setAspect(wgpu::TextureAspect::eAll),
-                            view.data(), view.size_bytes(), layout,
-                            wgpu::Extent3D{width, height, asset.depth_or_layers()});
-    } else {
-        // stage a row-padded copy so the upload passes validation; the copy
-        // extent covers depth_or_layers slices, so every row of every layer
-        // must be padded (a single-slice buffer would overflow the copy).
-        const std::uint32_t layers = asset.depth_or_layers();
-        std::vector<std::uint8_t> padded(static_cast<std::size_t>(aligned_row) * height * layers);
-        for (std::uint32_t layer = 0; layer < layers; ++layer) {
-            for (std::uint32_t y = 0; y < height; ++y) {
-                std::size_t row = static_cast<std::size_t>(layer) * height + y;
-                std::memcpy(padded.data() + row * aligned_row, view.data() + row * raw_row, raw_row);
+    if (asset.has_data()) {
+        const std::uint32_t pixel_size  = asset.format_info().pixelSize();
+        const std::uint32_t width       = asset.width();
+        const std::uint32_t height      = asset.height();
+        const std::uint32_t raw_row     = width * pixel_size;
+        const std::uint32_t aligned_row = epix::render::readback::align_byte_size(raw_row);
+        wgpu::TexelCopyBufferLayout layout;
+        layout.setBytesPerRow(aligned_row).setRowsPerImage(height);
+        if (aligned_row == raw_row) {
+            queue->writeTexture(wgpu::TexelCopyTextureInfo()
+                                    .setTexture(gpu_image.texture)
+                                    .setOrigin({0, 0, 0})
+                                    .setAspect(wgpu::TextureAspect::eAll),
+                                view.data(), view.size_bytes(), layout,
+                                wgpu::Extent3D{width, height, asset.depth_or_layers()});
+        } else {
+            // stage a row-padded copy so the upload passes validation; the copy
+            // extent covers depth_or_layers slices, so every row of every layer
+            // must be padded (a single-slice buffer would overflow the copy).
+            const std::uint32_t layers = asset.depth_or_layers();
+            std::vector<std::uint8_t> padded(static_cast<std::size_t>(aligned_row) * height * layers);
+            for (std::uint32_t layer = 0; layer < layers; ++layer) {
+                for (std::uint32_t y = 0; y < height; ++y) {
+                    std::size_t row = static_cast<std::size_t>(layer) * height + y;
+                    std::memcpy(padded.data() + row * aligned_row, view.data() + row * raw_row, raw_row);
+                }
             }
+            queue->writeTexture(wgpu::TexelCopyTextureInfo()
+                                    .setTexture(gpu_image.texture)
+                                    .setOrigin({0, 0, 0})
+                                    .setAspect(wgpu::TextureAspect::eAll),
+                                padded.data(), padded.size(), layout, wgpu::Extent3D{width, height, layers});
         }
-        queue->writeTexture(wgpu::TexelCopyTextureInfo()
-                                .setTexture(gpu_image.texture)
-                                .setOrigin({0, 0, 0})
-                                .setAspect(wgpu::TextureAspect::eAll),
-                            padded.data(), padded.size(), layout, wgpu::Extent3D{width, height, layers});
     }
 
     return gpu_image;

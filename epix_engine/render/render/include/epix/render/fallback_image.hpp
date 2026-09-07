@@ -233,6 +233,21 @@ struct epix::render::RenderAsset<epix::image::Image> {
         Param param,
         const epix::render::texture::GpuImage* previous);
     epix::render::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
+    std::optional<std::size_t> byte_len(const epix::image::Image& asset) const noexcept {
+        return asset.has_data() ? std::optional{asset.raw_view().size_bytes()} : std::nullopt;
+    }
+    /** @brief Move render-only pixel data out of the stored image while
+     * retaining its metadata in the main-world asset (Bevy
+     * `GpuImage::take_gpu_data`). */
+    std::expected<epix::image::Image, epix::render::AssetExtractionError> take_gpu_data(
+        epix::image::Image& source,
+        const epix::render::texture::GpuImage* previous_gpu_asset) const {
+        const bool valid_upload = source.has_data() || !previous_gpu_asset || !previous_gpu_asset->had_data;
+        if (!valid_upload) {
+            return std::unexpected(epix::render::AssetExtractionError::AlreadyExtracted);
+        }
+        return source.take_data();
+    }
 };
 
 // This conversion contract needs the complete image RenderAsset specialization,

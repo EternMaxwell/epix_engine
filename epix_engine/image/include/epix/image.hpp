@@ -244,6 +244,11 @@ EPIX_EXPORT class Image {
     ImageSamplerDescriptor m_sampler_descriptor;
 
     std::vector<std::byte> data;
+    // Bevy stores Image::data as Option<Vec<u8>>. Keep the existing C++
+    // vector representation while preserving the same present/absent state,
+    // including the distinction between an empty payload and one that was
+    // already transferred to the render world.
+    bool m_has_data = true;
 
     template <typename T>
     T* raw() noexcept {
@@ -397,6 +402,14 @@ EPIX_EXPORT class Image {
     /** @brief Get a read-only byte span of the raw pixel data. */
     std::span<const std::byte> raw_view() const noexcept { return std::as_bytes(std::span(data)); }
     std::span<std::byte> raw_view_mut() noexcept { return std::as_writable_bytes(std::span(data)); }
+    /** @brief Whether this image still owns a CPU pixel payload (Bevy
+     * `Image::data.is_some()`). An empty-but-present payload is distinct from
+     * data transferred by `take_data`. */
+    bool has_data() const noexcept { return m_has_data; }
+    /** @brief Move the CPU pixel payload and metadata into a new image while
+     * retaining the metadata in this image (Bevy `Image::data.take()` used by
+     * `GpuImage::take_gpu_data`). */
+    Image take_data();
 
     /**
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels

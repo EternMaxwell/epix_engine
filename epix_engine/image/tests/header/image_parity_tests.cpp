@@ -57,3 +57,44 @@ TEST(Image, SamplerAccessors) {
     image.set_sampler(epix::image::ImageSampler::Default);
     EXPECT_EQ(image.sampler(), epix::image::ImageSampler::Default);
 }
+
+// Image keeps Bevy's Option<Vec<u8>> distinction when render-only pixel data
+// is transferred: metadata stays in the source and an empty present payload
+// remains distinguishable from an absent payload.
+TEST(Image, TakeDataPreservesMetadataAndPresence) {
+    auto source = epix::image::Image::create3d(2, 3, 4, epix::image::Format::RGBA8);
+    source.set_usage(epix::image::ImageUsage::Render);
+    source.set_copy_on_resize(true);
+    auto descriptor = epix::image::ImageSamplerDescriptor::nearest();
+    descriptor.label = "take-data sampler";
+    source.set_sampler_descriptor(std::move(descriptor));
+    ASSERT_TRUE(source.has_data());
+    ASSERT_EQ(source.raw_view().size(), 2u * 3u * 4u * 4u);
+
+    auto extracted = source.take_data();
+    EXPECT_FALSE(source.has_data());
+    EXPECT_TRUE(source.raw_view().empty());
+    EXPECT_EQ(source.width(), 2u);
+    EXPECT_EQ(source.height(), 3u);
+    EXPECT_EQ(source.depth(), 4u);
+    EXPECT_EQ(source.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(source.usage(), epix::image::ImageUsage::Render);
+    EXPECT_TRUE(source.copy_on_resize());
+    EXPECT_EQ(source.sampler(), epix::image::ImageSampler::Descriptor);
+    EXPECT_EQ(source.sampler_descriptor().label, "take-data sampler");
+
+    EXPECT_TRUE(extracted.has_data());
+    EXPECT_EQ(extracted.raw_view().size(), 2u * 3u * 4u * 4u);
+    EXPECT_EQ(extracted.width(), source.width());
+    EXPECT_EQ(extracted.height(), source.height());
+    EXPECT_EQ(extracted.depth(), source.depth());
+    EXPECT_EQ(extracted.sampler_descriptor().label, "take-data sampler");
+
+    auto empty = epix::image::Image::create2d(0, 0, epix::image::Format::RGBA8);
+    ASSERT_TRUE(empty.has_data());
+    ASSERT_TRUE(empty.raw_view().empty());
+    auto extracted_empty = empty.take_data();
+    EXPECT_TRUE(extracted_empty.has_data());
+    EXPECT_TRUE(extracted_empty.raw_view().empty());
+    EXPECT_FALSE(empty.has_data());
+}

@@ -159,6 +159,25 @@ Image Image::transparent() {
     return image;
 }
 
+Image Image::take_data() {
+    Image extracted;
+    extracted.m_width              = m_width;
+    extracted.m_height             = m_height;
+    extracted.m_depth_or_layers    = m_depth_or_layers;
+    extracted.m_type               = m_type;
+    extracted.m_format             = m_format;
+    extracted.m_usage              = m_usage;
+    extracted.m_copy_on_resize     = m_copy_on_resize;
+    extracted.m_sampler            = m_sampler;
+    extracted.m_sampler_descriptor = m_sampler_descriptor;
+    extracted.data                 = std::move(data);
+    extracted.m_has_data           = m_has_data;
+
+    data.clear();
+    m_has_data = false;
+    return extracted;
+}
+
 Image Image::create1d(std::uint32_t w, Format fmt) {
     Image img;
     img.m_width           = w;

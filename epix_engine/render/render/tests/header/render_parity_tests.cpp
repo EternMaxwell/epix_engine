@@ -3283,6 +3283,40 @@ TEST(GpuImage, AspectRatioAndSize2d) {
     EXPECT_FLOAT_EQ(image.aspect_ratio(), 640.0f / 480.0f);
 }
 
+// GpuImage's RenderAsset moves render-only Image data exactly once while the
+// source metadata remains resident (Bevy gpu_image.rs::take_gpu_data).
+TEST(GpuImage, TakeGpuData) {
+    static_assert(RenderAssetImpl<epix::image::Image>);
+    static_assert(HasTakeGpuData<epix::image::Image>);
+
+    auto stored = epix::image::Image::create2d(3, 2, epix::image::Format::RGBA8);
+    stored.set_usage(epix::image::ImageUsage::Render);
+    RenderAsset<epix::image::Image> impl;
+    EXPECT_EQ(impl.byte_len(stored), std::optional<std::size_t>{24});
+
+    auto extracted = impl.take_gpu_data(stored, nullptr);
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_TRUE(extracted->has_data());
+    EXPECT_EQ(extracted->raw_view().size(), 24u);
+    EXPECT_FALSE(stored.has_data());
+    EXPECT_TRUE(stored.raw_view().empty());
+    EXPECT_EQ(stored.width(), 3u);
+    EXPECT_EQ(stored.height(), 2u);
+    EXPECT_EQ(stored.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(stored.usage(), epix::image::ImageUsage::Render);
+    EXPECT_FALSE(impl.byte_len(stored).has_value());
+
+    texture::GpuImage previous{.had_data = true};
+    auto repeated = impl.take_gpu_data(stored, &previous);
+    ASSERT_FALSE(repeated.has_value());
+    EXPECT_EQ(repeated.error(), AssetExtractionError::AlreadyExtracted);
+
+    previous.had_data = false;
+    auto metadata_only = impl.take_gpu_data(stored, &previous);
+    ASSERT_TRUE(metadata_only.has_value());
+    EXPECT_FALSE(metadata_only->has_data());
+}
+
 // ReadbackComplete::to_shader_type decodes the raw bytes (Bevy
 // gpu_readback.rs:122-129).
 TEST(ReadbackComplete, ToShaderType) {

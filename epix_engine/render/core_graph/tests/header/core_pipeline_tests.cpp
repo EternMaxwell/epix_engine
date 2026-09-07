@@ -117,6 +117,99 @@ TEST(BlitPipeline, SpecializesFormatBlendAndSamples) {
     EXPECT_EQ(descriptor.fragment->targets.front().blend->color.srcFactor, wgpu::BlendFactor::eSrcAlpha);
 }
 
+// Bevy's tonemapping specialization is independent of the current view-target
+// format: the pass always writes ViewTarget::TEXTURE_FORMAT_HDR. Its LUT
+// helpers expose a filterable 3D texture/sampler pair, and the no-LUT fallback
+// is a render-world-only magenta 1x1x1 image.
+TEST(TonemappingPipeline, MatchesBevyKeyAndPlaceholderContracts) {
+    using namespace epix::core_graph;
+    static_assert(epix::render::SpecializedRenderPipeline<TonemappingPipeline>);
+    static_assert(epix::render::graph::ViewNode<TonemappingNode>);
+    static_assert(std::movable<TonemappingNode>);
+    static_assert(!std::copy_constructible<TonemappingNode>);
+
+    const auto handle = epix::assets::Handle<epix::shader::Shader>{
+        epix::assets::AssetId<epix::shader::Shader>::invalid()};
+    const TonemappingPipeline pipeline{
+        .layout            = {},
+        .sampler           = {},
+        .fullscreen_shader = FullscreenShader{handle},
+        .fragment_shader   = handle,
+    };
+    const TonemappingPipelineKey key{
+        .deband_dither = DebandDither::Enabled,
+        .tonemapping   = Tonemapping::Reinhard,
+        .flags = TonemappingPipelineKeyFlags::HueRotate | TonemappingPipelineKeyFlags::WhiteBalance,
+    };
+    const auto descriptor = pipeline.specialize(key);
+    ASSERT_TRUE(descriptor.fragment.has_value());
+    ASSERT_EQ(descriptor.fragment->targets.size(), 1u);
+    EXPECT_EQ(descriptor.fragment->targets.front().format, epix::render::view::ViewTarget::TEXTURE_FORMAT_HDR);
+    EXPECT_TRUE(std::ranges::any_of(descriptor.fragment->shader_defs,
+                                    [](const auto& def) { return def.name == "TONEMAP_METHOD_REINHARD"; }));
+    EXPECT_TRUE(std::ranges::any_of(descriptor.fragment->shader_defs,
+                                    [](const auto& def) { return def.name == "DEBAND_DITHER"; }));
+    EXPECT_TRUE(std::ranges::any_of(descriptor.fragment->shader_defs,
+                                    [](const auto& def) { return def.name == "HUE_ROTATE"; }));
+    EXPECT_TRUE(std::ranges::any_of(descriptor.fragment->shader_defs,
+                                    [](const auto& def) { return def.name == "WHITE_BALANCE"; }));
+    EXPECT_EQ(std::hash<TonemappingPipelineKey>{}(key), std::hash<TonemappingPipelineKey>{}(key));
+
+    const auto lut_entries = get_lut_bind_group_layout_entries();
+    const auto texture = lut_entries[0].build(3, wgpu::ShaderStage::eFragment);
+    const auto sampler = lut_entries[1].build(4, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(texture.binding, 3u);
+    EXPECT_EQ(texture.texture.viewDimension, wgpu::TextureViewDimension::e3D);
+    EXPECT_EQ(texture.texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(sampler.binding, 4u);
+    EXPECT_EQ(sampler.sampler.type, wgpu::SamplerBindingType::eFiltering);
+
+    const auto placeholder = lut_placeholder();
+    EXPECT_EQ(placeholder.type(), epix::image::ImageType::e3D);
+    EXPECT_EQ(placeholder.width(), 1u);
+    EXPECT_EQ(placeholder.height(), 1u);
+    EXPECT_EQ(placeholder.depth(), 1u);
+    EXPECT_EQ(placeholder.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(placeholder.usage(), epix::image::ImageUsage::Render);
+    ASSERT_EQ(placeholder.raw_view().size(), 4u);
+    EXPECT_EQ(placeholder.raw_view()[0], std::byte{255});
+    EXPECT_EQ(placeholder.raw_view()[1], std::byte{0});
+    EXPECT_EQ(placeholder.raw_view()[2], std::byte{255});
+    EXPECT_EQ(placeholder.raw_view()[3], std::byte{255});
+}
+
+// Bevy's default feature set installs the three real KTX2 LUTs, not the
+// feature-disabled magenta placeholder. Epix decodes the same embedded files
+// to its existing filterable RGBA32F image representation.
+TEST(TonemappingPlugin, InstallsBundledBevyLuts) {
+    epix::app::App app = epix::app::App::create();
+    app.add_plugins(epix::assets::AssetPlugin{}).add_plugins(epix::image::ImagePlugin{});
+    app.add_plugins(epix::core_graph::TonemappingPlugin{});
+
+    const auto& luts = app.world().resource<epix::core_graph::TonemappingLuts>();
+    const auto& images = app.world().resource<epix::assets::Assets<epix::image::Image>>();
+    const auto expect_lut = [&](const auto& handle, std::uint32_t extent) {
+        const auto lut = images.get(handle.id());
+        ASSERT_TRUE(lut.has_value());
+        EXPECT_EQ(lut->get().type(), epix::image::ImageType::e3D);
+        EXPECT_EQ(lut->get().width(), extent);
+        EXPECT_EQ(lut->get().height(), extent);
+        EXPECT_EQ(lut->get().depth(), extent);
+        EXPECT_EQ(lut->get().format(), epix::image::Format::RGBA32F);
+        EXPECT_EQ(lut->get().usage(), epix::image::ImageUsage::Render);
+        EXPECT_EQ(lut->get().sampler(), epix::image::ImageSampler::Descriptor);
+        EXPECT_EQ(lut->get().sampler_descriptor().min_filter, epix::image::ImageFilterMode::Linear);
+        EXPECT_EQ(lut->get().sampler_descriptor().address_mode_w, epix::image::ImageAddressMode::ClampToEdge);
+        EXPECT_EQ(lut->get().raw_view().size(), static_cast<std::size_t>(extent) * extent * extent * 4 * sizeof(float));
+    };
+
+    expect_lut(luts.agx, 32);
+    expect_lut(luts.tony_mc_mapface, 48);
+    expect_lut(luts.blender_filmic, 64);
+    EXPECT_NE(luts.agx.id(), luts.tony_mc_mapface.id());
+    EXPECT_NE(luts.agx.id(), luts.blender_filmic.id());
+}
+
 // Bevy's UpscalingPlugin owns the per-view selected pipeline and installs a
 // typed view node in Core2D.  This verifies the public registration contract;
 // the GLFW mesh-rendering example verifies the resulting output path.
