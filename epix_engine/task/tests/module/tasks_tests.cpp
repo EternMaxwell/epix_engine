@@ -102,7 +102,7 @@ TEST(Scope, ManyTasks) {
 // Verify every slot's value survives concurrent growth while tasks overlap with
 // the spawn loop's resizes.
 TEST(Scope, ConcurrentGrowthPreservesEveryResult) {
-    auto pool = TaskPoolBuilder{}.num_threads(4).build();
+    auto pool       = TaskPoolBuilder{}.num_threads(4).build();
     constexpr int N = 256;
     auto results    = pool.scope<int>([&](Scope<int>& s) {
         for (int i = 0; i < N; ++i) {
@@ -305,6 +305,24 @@ TEST(Behavior, IdleSingleTask) {
         });
     });
     // Single task should complete fine
+}
+
+TEST(Behavior, RepeatedFastScopesDoNotLoseCompletionWakeups) {
+    auto pool = TaskPoolBuilder{}.num_threads(2).build();
+    for (int iteration = 0; iteration < 10'000; ++iteration) {
+        auto results =
+            pool.scope<int>([iteration](Scope<int>& scope) { scope.spawn([iteration] { return iteration; }); });
+        ASSERT_EQ(results.size(), 1u);
+        EXPECT_EQ(results.front(), iteration);
+    }
+}
+
+TEST(Behavior, ScopePropagatesTaskExceptions) {
+    auto pool = TaskPoolBuilder{}.num_threads(2).build();
+    EXPECT_THROW(pool.scope<int>([](Scope<int>& scope) {
+        scope.spawn([]() -> int { throw std::runtime_error("scoped task failure"); });
+    }),
+                 std::runtime_error);
 }
 
 // ── Sender-based tasks via TaskPool ────────────────────────────────────────

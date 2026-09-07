@@ -9,7 +9,6 @@
 #include <asio/io_context.hpp>
 #include <asio/post.hpp>
 #include <atomic>
-#include <condition_variable>
 #include <cstdint>
 #include <epix/async_task.hpp>
 #include <epix/common.hpp>
@@ -383,16 +382,18 @@ struct Scope {
         }
 
         auto [runnable, task] = async_task::spawn(
-            [fn = std::forward<F>(f), results = m_results, pending = m_pending, mtx = m_mtx, cv = m_cv,
-             idx]() mutable -> T {
-                T val = std::invoke(std::move(fn));
-                {
+            [fn = std::forward<F>(f), results = m_results, pending = m_pending, mtx = m_mtx, exception = m_exception,
+             idx]() mutable {
+                try {
+                    T val = std::invoke(std::move(fn));
                     std::unique_lock lock(*mtx);
                     (*results)[idx] = std::move(val);
+                } catch (...) {
+                    std::unique_lock lock(*mtx);
+                    if (!*exception) *exception = std::current_exception();
                 }
-                pending->fetch_sub(1, std::memory_order_release);
-                cv->notify_one();
-                return val;
+                (void)pending->fetch_sub(1, std::memory_order_release);
+                pending->notify_one();
             },
             [backend = std::weak_ptr<void>(m_backend), kind = m_backend_kind](async_task::Runnable r,
                                                                               async_task::ScheduleInfo) {
@@ -403,8 +404,13 @@ struct Scope {
     }
 
     std::vector<T> collect_results() {
+        auto pending = m_pending->load(std::memory_order_acquire);
+        while (pending != 0) {
+            m_pending->wait(pending, std::memory_order_acquire);
+            pending = m_pending->load(std::memory_order_acquire);
+        }
         std::unique_lock lock(*m_mtx);
-        m_cv->wait(lock, [&] { return m_pending->load(std::memory_order_acquire) == 0; });
+        if (*m_exception) std::rethrow_exception(*m_exception);
         return std::move(*m_results);
     }
 
@@ -417,14 +423,14 @@ struct Scope {
           m_results(std::make_shared<std::vector<T>>()),
           m_pending(std::make_shared<std::atomic<size_t>>(0)),
           m_mtx(std::make_shared<std::mutex>()),
-          m_cv(std::make_shared<std::condition_variable>()) {}
+          m_exception(std::make_shared<std::exception_ptr>()) {}
 
     std::shared_ptr<void> m_backend;
     TaskPoolBackend m_backend_kind = TaskPoolBackend::AsioThreadPool;
     std::shared_ptr<std::vector<T>> m_results;
     std::shared_ptr<std::atomic<size_t>> m_pending;
     std::shared_ptr<std::mutex> m_mtx;
-    std::shared_ptr<std::condition_variable> m_cv;
+    std::shared_ptr<std::exception_ptr> m_exception;
     size_t m_index = 0;
 };
 
