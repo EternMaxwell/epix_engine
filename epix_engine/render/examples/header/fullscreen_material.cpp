@@ -26,8 +26,7 @@ using namespace epix;
 struct ScreenTintMaterial {
     glm::vec4 tint{0.9f, 0.15f, 0.15f, 1.0f};
 
-    static std::string_view fragment_shader();
-    static std::string_view fragment_shader_source();
+    static shader::ShaderRef fragment_shader();
     // Bevy node_edges: run after tonemapping, before the end of
     // post-processing. The material's own label sits between the two.
     static std::vector<render::graph::NodeLabel> node_edges();
@@ -50,12 +49,7 @@ template <>
 struct ShaderTypeInfo<ScreenTintMaterial> : RawShaderType<ScreenTintMaterial> {};
 }  // namespace epix::render::render_resource
 
-std::string_view ScreenTintMaterial::fragment_shader() {
-    return "core_pipeline/fullscreen_screen_tint.slang";
-}
-
-std::string_view ScreenTintMaterial::fragment_shader_source() {
-    return R"slang(
+constexpr std::string_view kScreenTintShader = R"slang(
 [[vk::binding(0, 0)]] Texture2D<float4> screen_texture;
 [[vk::binding(1, 0)]] SamplerState screen_sampler;
 struct Settings { float4 tint; };
@@ -70,6 +64,9 @@ float4 fs_main(VIn input) : SV_Target {
     return float4(color.rgb * settings.tint.rgb, color.a);
 }
 )slang";
+
+shader::ShaderRef ScreenTintMaterial::fragment_shader() {
+    return shader::ShaderRef::from_str("embedded://core_pipeline/fullscreen_screen_tint.slang");
 }
 
 std::vector<render::graph::NodeLabel> ScreenTintMaterial::node_edges() {
@@ -83,6 +80,11 @@ std::optional<render::graph::GraphLabel> ScreenTintMaterial::sub_graph() {
 }
 
 struct FullscreenMaterialVisualTestPlugin {
+    void attach(app::App& app) {
+        app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static(
+            "core_pipeline/fullscreen_screen_tint.slang", std::as_bytes(std::span(kScreenTintShader)));
+    }
+
     void ready(app::App& app) {
         // A Camera2d drives the Core2D graph; attaching the material component
         // makes the FullscreenMaterialPlugin register and run the node.

@@ -12,6 +12,7 @@
 #include <epix/core_graph/fullscreen.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
+#include <epix/shader.hpp>
 #include <format>
 #include <memory>
 #include <optional>
@@ -38,9 +39,9 @@ namespace epix::core_graph {
  */
 template <typename T>
 concept FullscreenMaterial = render::render_resource::ShaderWritable<T> && std::is_copy_constructible_v<T> &&
-                             std::is_copy_assignable_v<T> && requires {
-    { T::fragment_shader() } -> std::convertible_to<std::string_view>;
-    { T::fragment_shader_source() } -> std::convertible_to<std::string_view>;
+                             std::is_copy_assignable_v<T> && std::default_initializable<T> &&
+                             render::ExtractComponentImpl<T> && requires {
+    { T::fragment_shader() } -> std::same_as<shader::ShaderRef>;
     { T::node_edges() } -> std::convertible_to<std::vector<render::graph::NodeLabel>>;
 };
 
@@ -189,9 +190,8 @@ std::expected<void, render::graph::NodeRunError> FullscreenMaterialNode<T>::run(
             auto color   = wgpu::RenderPassColorAttachment()
                               .setView(destination)
                               .setDepthSlice(~0u)
-                              .setLoadOp(wgpu::LoadOp::eClear)
-                              .setStoreOp(wgpu::StoreOp::eStore)
-                              .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 0.0));
+                              .setLoadOp(wgpu::LoadOp::eLoad)
+                              .setStoreOp(wgpu::StoreOp::eStore);
             auto pass = encoder.beginRenderPass(
                 wgpu::RenderPassDescriptor()
                     .setLabel("fullscreen_material")
@@ -210,20 +210,6 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
     // Bevy FullscreenMaterialPlugin::build (fullscreen_material.rs:53-99):
     // component extraction + uniform buffering, then the render-world pipeline
     // and typed view node.
-    const auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
-    const auto server   = app.world_mut().get_resource<assets::AssetServer>();
-    if (!registry || !server) return;
-    // Bevy embedded assets: the material's fragment_shader() is the
-    // source-relative path; the loader adds the "embedded://" source prefix.
-    // Register via the relative path (EmbeddedAssetRegistry) and load via the
-    // fully-qualified path, exactly like the tonemapping plugin.
-    const auto source = T::fragment_shader_source();
-    registry->get().insert_asset_static(
-        T::fragment_shader(), std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()),
-                                                         source.size()));
-    const auto fragment_shader =
-        server->get().load<shader::Shader>(std::string("embedded://") + std::string(T::fragment_shader()));
-
     app.add_plugins(render::ExtractComponentPlugin<T>{}, render::UniformComponentPlugin<T>{});
 
     auto render_app = app.get_sub_app_mut(render::Render);
@@ -231,9 +217,24 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
     auto& render_app_ref = render_app->get();
     render_app_ref.add_systems(
         render::RenderStartup,
-        ecs::into([fragment_shader](ecs::Commands commands, ecs::Res<wgpu::Device> device,
-                                    ecs::Res<render::PipelineServer> pipeline_server,
-                                    ecs::Res<FullscreenShader> fullscreen_shader) {
+        ecs::into([](ecs::Commands commands, ecs::Res<wgpu::Device> device,
+                     ecs::Res<assets::AssetServer> asset_server,
+                     ecs::Res<render::PipelineServer> pipeline_server,
+                     ecs::Res<FullscreenShader> fullscreen_shader) {
+            const auto shader_ref = T::fragment_shader();
+            const auto fragment_shader = std::visit(
+                utils::visitor{
+                    [](const shader::ShaderRef::Default&) -> assets::Handle<shader::Shader> {
+                        throw std::logic_error(
+                            "FullscreenMaterial::fragment_shader() must not return ShaderRef::Default");
+                    },
+                    [](const shader::ShaderRef::ByHandle& reference) { return reference.handle; },
+                    [&asset_server](const shader::ShaderRef::ByPath& reference) {
+                        return asset_server->template load<shader::Shader>(
+                            assets::AssetPath(reference.path.generic_string()));
+                    },
+                },
+                shader_ref.value);
             using render::render_resource::BindGroupLayoutEntries;
             using namespace render::render_resource::binding_types;
             const auto entries = BindGroupLayoutEntries<>::with_indices(
@@ -269,7 +270,7 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
             };
             // Bevy: non-HDR target uses TextureFormat::bevy_default() and HDR
             // uses ViewTarget::TEXTURE_FORMAT_HDR.
-            const auto pipeline_id     = build(wgpu::TextureFormat::eRGBA8Unorm);
+            const auto pipeline_id     = build(wgpu::TextureFormat::eRGBA8UnormSrgb);
             const auto pipeline_id_hdr = build(render::view::ViewTarget::TEXTURE_FORMAT_HDR);
             commands.insert_resource(
                 FullscreenMaterialPipeline{layout, sampler, pipeline_id, pipeline_id_hdr});

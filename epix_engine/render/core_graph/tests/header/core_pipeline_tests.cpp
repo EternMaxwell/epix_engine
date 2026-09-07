@@ -20,8 +20,7 @@ using namespace epix::render;
 struct C3FullscreenMaterialProbe {
     float value = 1.0f;
 
-    static std::string_view fragment_shader();
-    static std::string_view fragment_shader_source();
+    static ::epix::shader::ShaderRef fragment_shader();
     static std::vector<::epix::render::graph::NodeLabel> node_edges();
     static std::optional<::epix::render::graph::GraphLabel> sub_graph();
 };
@@ -40,9 +39,9 @@ template <>
 struct ShaderTypeInfo<C3FullscreenMaterialProbe> : RawShaderType<C3FullscreenMaterialProbe> {};
 }  // namespace epix::render::render_resource
 
-std::string_view C3FullscreenMaterialProbe::fragment_shader() { return "core_pipeline/fullscreen_probe.slang"; }
-
-std::string_view C3FullscreenMaterialProbe::fragment_shader_source() { return "void fullscreen_probe_dummy() {}\n"; }
+::epix::shader::ShaderRef C3FullscreenMaterialProbe::fragment_shader() {
+    return ::epix::shader::ShaderRef::from_str("core_pipeline/fullscreen_probe.slang");
+}
 
 std::vector<::epix::render::graph::NodeLabel> C3FullscreenMaterialProbe::node_edges() {
     return {::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Core2dNodes::Tonemapping},
@@ -409,6 +408,8 @@ TEST(FullscreenMaterial, StructuredForBevyParity) {
     // node runs through a ViewNodeRunner. Attaching is safe without a render
     // sub-app (the plugin family contract).
     static_assert(::epix::core_graph::FullscreenMaterial<C3FullscreenMaterialProbe>);
+    static_assert(std::same_as<decltype(C3FullscreenMaterialProbe::fragment_shader()),
+                               ::epix::shader::ShaderRef>);
     static_assert(std::is_base_of_v<::epix::render::graph::NodeLabel, ::epix::core_graph::FullscreenMaterialLabel>);
     static_assert(std::is_base_of_v<::epix::render::graph::Node,
                                     ::epix::core_graph::FullscreenMaterialNodeRunner<C3FullscreenMaterialProbe>>);
