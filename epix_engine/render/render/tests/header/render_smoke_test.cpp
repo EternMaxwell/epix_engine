@@ -155,6 +155,9 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     const auto texture_render_app = app.get_sub_app(Render);
     ASSERT_TRUE(texture_render_app.has_value());
     const auto& texture_world = texture_render_app->get().world();
+    const auto render_asset_server = texture_world.get_resource<epix::assets::AssetServer>();
+    ASSERT_TRUE(render_asset_server.has_value());
+    EXPECT_EQ(render_asset_server->get().mode(), app.world().resource<epix::assets::AssetServer>().mode());
     EXPECT_TRUE(texture_world.get_resource<render_resource::TextureCache>().has_value());
     EXPECT_TRUE(texture_world.get_resource<DefaultImageSampler>().has_value());
     const auto fallback = texture_world.get_resource<texture::FallbackImage>();
@@ -224,6 +227,50 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
     render_sub->update();
     EXPECT_FALSE(render_sub->world().get_entity(*render_entity).has_value())
         << "Render entity should be despawned after its main entity is gone";
+
+    app.insert_sub_app(Render, std::move(render_sub));
+}
+
+// Bevy prepare_view_targets uses TextureFormat::bevy_default() for LDR, which
+// is Rgba8UnormSrgb in Bevy 0.18.
+TEST(ViewTarget, LdrMainTextureUsesBevyDefaultSrgbFormat) {
+    App app = App::create();
+    app.add_events<epix::window::WindowClosed>();
+    add_render_test_prerequisites(app);
+    try {
+        RenderPlugin{}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    auto& world = render_sub->world_mut();
+    world.insert_resource(epix::camera::ClearColor{});
+
+    const epix::camera::NormalizedRenderTarget normalized_target{epix::camera::NoColorTarget{{8, 8}}};
+    view::ViewTargetAttachments attachments;
+    attachments.attachments.emplace(normalized_target.identity(), view::OutputColorAttachment{});
+    world.insert_resource(std::move(attachments));
+
+    const Entity camera_entity =
+        world.spawn(camera::ExtractedCamera{.target = normalized_target, .physical_target_size = glm::uvec2{8, 8}},
+                    view::ExtractedView{
+                        .retained_view_entity = view::RetainedViewEntity{
+                            sync_world::MainEntity{Entity::PLACEHOLDER}},
+                        .hdr = false,
+                    },
+                    epix::camera::CameraMainTextureUsages{}, view::Msaa::Off)
+            .id();
+    auto system = make_system_unique(view::prepare_view_target);
+    system->initialize(world);
+    ASSERT_TRUE(system->run({}, world).has_value());
+    system->apply_deferred(world);
+
+    const auto target = world.entity(camera_entity).get<view::ViewTarget>();
+    ASSERT_TRUE(target.has_value());
+    EXPECT_EQ(target->get().main_texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(target->get().main_texture().getFormat(), wgpu::TextureFormat::eRGBA8UnormSrgb);
 
     app.insert_sub_app(Render, std::move(render_sub));
 }

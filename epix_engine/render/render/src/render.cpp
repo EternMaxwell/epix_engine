@@ -412,7 +412,11 @@ void RenderPlugin::attach(App& app) {
     }
     app.world_mut().insert_resource(PipelineServer(device.clone(), synchronous_pipeline_compilation));
 
-    app.sub_app_mut(Render).then([&](App& render_app) {
+    // Bevy initialize_render_app inserts a clone of AssetServer into the
+    // render world so RenderStartup systems can resolve ShaderRef::Path.
+    const auto asset_server = app.world().resource<assets::AssetServer>();
+    app.sub_app_mut(Render).then([&, asset_server](App& render_app) {
+        render_app.world_mut().insert_resource(asset_server);
         render_app.world_mut().insert_resource(instance.clone());
         render_app.world_mut().insert_resource(adapter.clone());
         render_app.world_mut().insert_resource(adapter_info);

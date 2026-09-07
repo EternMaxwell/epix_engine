@@ -157,11 +157,11 @@ void view::prepare_view_target(Query<Item<Entity,
         // clips the render, it does not resize the target.
         const glm::uvec2 size = *camera.physical_target_size;
         // Bevy prepare_view_targets: the main texture format is Rgba16Float
-        // when hdr, else TextureFormat::bevy_default() = Rgba8Unorm - NOT the
+        // when hdr, else TextureFormat::bevy_default() = Rgba8UnormSrgb - NOT the
         // output format (the post-process blit converts in the fragment
         // shader, view/mod.rs:1061-1093).
         const wgpu::TextureFormat main_format =
-            camera.hdr ? wgpu::TextureFormat::eRGBA16Float : wgpu::TextureFormat::eRGBA8Unorm;
+            camera.hdr ? wgpu::TextureFormat::eRGBA16Float : wgpu::TextureFormat::eRGBA8UnormSrgb;
         // View formats: the sRGB-suffixed twin when the main format is
         // non-sRGB (Bevy descriptor.view_formats).
         std::array<wgpu::TextureFormat, 1> view_formats{main_format};
