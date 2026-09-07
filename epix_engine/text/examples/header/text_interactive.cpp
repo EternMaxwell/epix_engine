@@ -117,7 +117,12 @@ mesh::Mesh make_rect_outline(float left, float right, float bottom, float top, g
         {left, top, 0.0f},    {left, bottom, 0.0f},  // Close the loop
     };
     std::vector<glm::vec4> colors(5, color);
-    auto m = mesh::Mesh(wgpu::PrimitiveTopology::eLineStrip, render::RenderAssetUsages::RENDER_WORLD);
+    // The outline is replaced every frame and calculate_bounds_2d reads it in
+    // the main world, so its CPU payload must remain available after extraction.
+    auto m = mesh::Mesh(
+        wgpu::PrimitiveTopology::eLineStrip,
+        static_cast<render::RenderAssetUsages>(render::RenderAssetUsages::MAIN_WORLD |
+                                               render::RenderAssetUsages::RENDER_WORLD));
     m.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
     m.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     return m;
