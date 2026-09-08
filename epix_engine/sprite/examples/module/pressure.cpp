@@ -47,15 +47,11 @@ struct SpritePressureVisualTestPlugin {
         std::uniform_real_distribution<float> tint(0.45f, 1.0f);
 
         for ([[maybe_unused]] auto i : std::views::iota(0, 5000)) {
-            world.spawn(sprite::SpriteBundle{
-                .sprite =
-                    sprite::Sprite{
-                        .color = glm::vec4(tint(generator), tint(generator), tint(generator), 1.0f),
-                        .size  = glm::vec2(24.0f, 24.0f),
-                    },
-                .transform = transform::Transform::from_xyz(position(generator), position(generator), 0.0f),
-                .texture   = handle,
-            });
+            auto sprite        = sprite::Sprite::from_image(handle);
+            sprite.color       = glm::vec4(tint(generator), tint(generator), tint(generator), 1.0f);
+            sprite.custom_size = glm::vec2(24.0f, 24.0f);
+            world.spawn(std::move(sprite),
+                        transform::Transform::from_xyz(position(generator), position(generator), 0.0f));
         }
     }
 };

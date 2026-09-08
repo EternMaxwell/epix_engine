@@ -9,10 +9,12 @@ module;
 #include <expected>
 #include <filesystem>
 #include <functional>
+#include <glm/glm.hpp>
 #include <optional>
 #include <span>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>

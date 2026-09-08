@@ -1,9 +1,9 @@
-# Bevy Mesh, Core Pipeline, and Sprite — Epix Match Status
+# Bevy Mesh, Core Pipeline, Sprite, and Image — Epix Match Status
 
 Reference: Bevy tag `v0.18.0` (commit
 `5f8270f2e049f90139a503d1e930070d926f9427`) in `tmp/bevy-0.18.0`, compared
 with `epix_engine/mesh`, `epix_engine/render/core_graph`,
-`epix_engine/sprite`, and `epix_engine/sprite_render` (C++23 no-modules
+`epix_engine/sprite`, `epix_engine/sprite_render`, and `epix_engine/image` (C++23 no-modules
 build). The sprite audit covers both
 Bevy's `bevy_sprite` and `bevy_sprite_render` crates.
 
@@ -65,21 +65,45 @@ intentional, deferred, or out of scope.
 | ID | Bevy entity / behavior | Epix counterpart | Status | Notes |
 | --- | --- | --- | --- | --- |
 | S1 | Separate `SpritePlugin` (CPU sprite facilities) and `SpriteRenderPlugin` (render composition); render plugin installs `Mesh2dRenderPlugin`, color material, and tilemap plugins | separate `epix_sprite` and `epix_sprite_render` targets/modules with matching plugin roles | ❌ | Physical ownership and the dependency DAG now match Bevy: CPU sprite is below render; sprite and Mesh2d rendering are in the higher sprite-render module. `SpriteRenderPlugin` installs `Mesh2dRenderPlugin` through `app.add_plugins`. Color-material and tilemap plugin composition remain missing under S10/S14, so S1 is not yet complete. |
-| S2 | `Sprite`: image handle, optional texture atlas, color, flips, `custom_size`, optional `rect`, `image_mode`; constructors, `compute_pixel_space_point`, required components, visibility-class hook, and `AsAssetId` | reduced `Sprite` plus separate image handle in `SpriteBundle` | ❌ | Field/API shape and entity component contract differ substantially. Match Bevy without retaining the bundle-era split as compatibility API. |
-| S3 | `Anchor` component with nine constants, default center, and vector conversion | raw `glm::vec2 Sprite::anchor` | ❌ | Add the component/API and make it a required Sprite component. |
-| S4 | `SpriteImageMode` and `SpriteScalingMode`, including scale/uses-slices helpers | none | 🚫 | Missing auto/scale/sliced/tiled behavior and scaling modes. |
-| S5 | `BorderRect`, `TextureSlice`, `TextureSlicer`, `SliceScaleMode`, computed slices, and asset/change-driven slice systems | none | 🚫 | Missing 9-slice/tile CPU model, slicing algorithms, computed render data, and update scheduling. |
-| S6 | `calculate_bounds_2d` jointly handles new/changed Mesh2d and Sprite entities in `SpritePlugin` | mesh-only implementation now owned by CPU `SpritePlugin` | ❌ | Ownership/scheduling are corrected. Add the Sprite/image/atlas/anchor branches while preserving Bevy's disjoint queries and exclusions. |
+| S2 | `Sprite`: image handle, optional texture atlas, color, flips, `custom_size`, optional `rect`, `image_mode`; constructors, `compute_pixel_space_point`, required components, visibility-class hook, and `AsAssetId` | matching CPU `Sprite` contract | ✅ | The bundle-era image/component split was removed. Fields, constructors, pixel-space mapping, required components, visibility class, and `AsAssetId` now follow Bevy and have direct tests. |
+| S3 | `Anchor` component with nine constants, default center, and vector conversion | `Anchor` component with matching constants and center default | ✅ | Required by `Sprite`; constants and AABB effects are tested. |
+| S4 | `SpriteImageMode` and `SpriteScalingMode`, including scale/uses-slices helpers | matching tagged-union/type surface; render processing incomplete | ❌ | The public modes and helpers now exist and are tested. Proportional scale, sliced, and tiled modes still need Bevy-matching computed render behavior. |
+| S5 | `BorderRect`, `TextureSlice`, `TextureSlicer`, `SliceScaleMode`, computed slices, and asset/change-driven slice systems | matching CPU slicing types and algorithms; computed component/systems absent | ❌ | Nine-slice and tiling algorithms are ported and tested, including partial tiles and invalid insets. `ComputedTextureSlices` plus asset/change-driven maintenance and render consumption remain. |
+| S6 | `calculate_bounds_2d` jointly handles new/changed Mesh2d and Sprite entities in `SpritePlugin` | joint Mesh2d/Sprite bounds system | ✅ | Sprite image/rect/atlas/custom-size/anchor branches and Bevy's disjoint query exclusions are implemented; creation and changed-component updates are tested. |
 | S7 | `Text2d`, text layout/update/bounds/shadow API in `bevy_sprite`, plus render extraction integration when text is enabled | text facilities live in `epix_text` | REVIEW | Audit Epix text ownership and public API before deciding the exact C++ module mapping; do not introduce cross-module declarations. Render integration points must remain available. |
 | S8 | Optional sprite picking backend, settings, camera marker/mode, hit testing, and plugin | none | 🚫 | Missing. Feature gating/module integration must be assessed against Epix's picking support. |
 | S9 | `Mesh2dRenderPlugin`, view specialization caches/ticks, batched instance buffer, exact extracted instance model, bind groups, and draw commands | custom `MeshRenderPlugin` / simplified instance pipeline | ❌ | Physical ownership is being corrected to sprite-render. Public names, resources, extraction shape, specialization invalidation, scheduling, and batching still require a source-level audit and match. |
 | S10 | Generic `Material2d`, `Material2dPlugin`, specialization caches, prepared material properties, `MeshMaterial2d<M>`, and `ColorMaterial` | fixed `MeshMaterial2d` / `MeshTextureMaterial2d` structs | ❌ | The current fixed materials are not Bevy's generic material asset pipeline. |
 | S11 | `Wireframe2dPlugin`, phase/item/keys, material/extraction/specialization, config and marker components | none | 🚫 | Missing full 2D wireframe facility. |
 | S12 | Sprite render extraction, events, batching, image/view bind groups, phase queueing, and draw commands | custom sprite renderer | REVIEW | Existing rendering works visually, but fields, resources, event handling, batching keys, visibility inputs, schedules, and shader contracts have not yet been compared line by line. |
-| S13 | Texture-atlas-aware sprite sizing, UV selection, extraction, and pixel-space conversion | direct optional UV rectangle only | ❌ | Missing `TextureAtlas`/`TextureAtlasLayout` integration throughout CPU and render paths. |
+| S13 | Texture-atlas-aware sprite sizing, UV selection, extraction, and pixel-space conversion | image-owned atlas types consumed by CPU and render sprite paths | ✅ | Atlas region sizing, extraction UV selection, optional sprite rect offset, and pixel-space conversion are implemented and covered by unit and stable three-frame visual checks. |
 | S14 | `TilemapChunk`, tile data/storage, mesh cache, material, packing/image creation, plugin systems, and rendering | none | 🚫 | Missing. |
 | S15 | `extract_text2d_sprite` emits glyph sprites into the shared sprite render pipeline | separate text mesh renderer | REVIEW | Audit against Bevy's feature-gated integration; preserve direct module dependencies for any cross-module types. |
 | S16 | Bevy sprite/mesh2d shader libraries, pipeline layouts, tonemapping/debanding keys, and per-view bind-group contracts | embedded Slang shaders and custom layouts | REVIEW | Slang is intentional, but shader-visible layouts, specialization flags, binding ownership, and processing logic must otherwise match Bevy. |
+
+## Image
+
+The image loader may use Epix's selected C++ decoding libraries and need not
+copy Bevy's Rust `image`/Basis/KTX2/DDS implementation. That exception covers
+the decoder backend and the set of formats the backend can actually decode;
+it does not waive Bevy-facing asset, settings, image-data, atlas, or render
+preparation semantics.
+
+| ID | Bevy entity / behavior | Epix counterpart | Status | Notes |
+| --- | --- | --- | --- | --- |
+| I1 | `Image` owns optional bytes, `TextureDataOrder`, full texture descriptor, optional view descriptor, `RenderAssetUsages`, sampler, and copy-on-resize | private width/height/type/format fields, byte vector plus presence flag, `ImageUsage`, no texture/view descriptors or data order | ❌ | Core data and descriptor shape must match. Direct C++ wgpu descriptor types are allowed, but the represented fields and behavior are not optional. |
+| I2 | `Image` constructors and size/resize/reinterpret surface: `new`, `new_uninit`, `new_fill`, target texture, `size`, `size_f32`, aspect ratio, resize-in-place, reinterpret size/stacked arrays, compression query | custom `create*`, value-returning resize, and partial accessors | ❌ | Match Bevy behavior while retaining only clearly useful Epix convenience overloads as extensions. |
+| I3 | Pixel offset/byte/color access, clear, typed `TextureAccessError`, conversion errors, and exact dimensional/layer behavior | separate sample/write errors and custom float-array conversion | ❌ | Existing accessors are not equivalent for layers, compressed/unsupported formats, edge bounds, or typed errors. |
+| I4 | `ImageSampler` tagged union: `Default` or descriptor payload, linear/nearest helpers, mutable descriptor initialization | enum discriminator plus descriptor stored separately on every `Image` | ❌ | Replace with a payload-carrying C++ tagged union and match `get_or_init_descriptor`. |
+| I5 | Full sampler descriptor and conversion surface, including anisotropic helper and `OpaqueWhite`/`Zero` border variants | mostly matching fields and filter/address helpers | ❌ | Add missing variants/helper and exact conversion behavior; direct wgpu C++ types are the accepted translation. |
+| I6 | `TextureAtlasPlugin`, `TextureAtlasLayout`, `TextureAtlas`, and `TextureAtlasSources` with grid/layout/look-up helpers | image-owned matching atlas facilities | ✅ | Grid ordering/extents, layout mutation, selected rectangles, source index/rect/UV/handle lookup, plugin installation, and actual sprite rendering are tested. |
+| I7 | `TextureAtlasBuilder`, typed packing errors, format conversion, padding, atlas-source mapping, and output image | none | 🚫 | Requires a faithful packing implementation or an equivalent C++ packing dependency; do not invent a different packing contract. |
+| I8 | `DynamicTextureAtlasBuilder`, incremental allocator, padding, copy placement, and typed errors | none | 🚫 | Needed for procedural/font atlas parity. |
+| I9 | `ImagePlugin` registers images/fallbacks and preregisters the loader; render-side image preparation remains composed by the render layer | registers images, loader, and fallbacks directly | ❌ | Preserve the existing explicit `AssetPlugin` prerequisite. Match plugin ownership and registration timing supported by Epix's asset architecture. |
+| I10 | `ImageLoaderSettings`: format selection/guessing, optional texture format, sRGB, sampler, asset usage, and array layout; typed loader errors | empty settings and a fixed stb-based decode path | ⚠️ | Decoder implementation and actually supported file formats intentionally differ. The settings and post-decode behavior still need to match wherever the selected backend can support them. |
+| I11 | Public format/MIME/extension mapping, texture errors, compressed-format capability selection, and optional EXR/HDR/KTX2/DDS/Basis paths | smaller runtime `Format` enum and stb extension list | ⚠️ | Loading-library/capability divergence accepted. Keep explicit, typed unsupported-format results and retain integration points for formats the chosen backend cannot decode. |
+| I12 | `SerializedImage` feature for short-lived cross-process transmission | none | REVIEW | Optional feature; retain an integration point if serialization support is not implemented in the current pass. |
+| I13 | Render extraction/preparation respects descriptors, view descriptors, data order, mip/layer layout, previous-image copy-on-resize, and retry errors | `RenderAsset<Image>` / `GpuImage` with simplified metadata | ❌ | Re-audit after I1-I5 because changing the CPU contract changes the prepared GPU-image inputs. Direct wgpu resource ownership remains intentional. |
 
 ## Core Pipeline Plugin and Shared Facilities
 

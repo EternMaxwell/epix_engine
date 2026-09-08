@@ -9,6 +9,7 @@ module;
 #include <optional>
 #include <span>
 #include <vector>
+#include <variant>
 #endif
 
 export module epix.sprite;

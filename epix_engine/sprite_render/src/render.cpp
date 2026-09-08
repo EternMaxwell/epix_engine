@@ -257,32 +257,31 @@ void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
 }
 
 SpriteInstanceData make_instance_data(const ExtractedSprite& sprite) {
-    auto uv_rect = sprite.sprite.uv_rect.value_or(glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
+    auto uv_min = sprite.texture_rect.min / sprite.image_size;
+    auto uv_max = sprite.texture_rect.max / sprite.image_size;
     if (sprite.sprite.flip_x) {
-        std::swap(uv_rect.x, uv_rect.z);
+        std::swap(uv_min.x, uv_max.x);
     }
     if (sprite.sprite.flip_y) {
-        std::swap(uv_rect.y, uv_rect.w);
+        std::swap(uv_min.y, uv_max.y);
     }
 
-    auto uv_size = glm::vec2(std::abs(uv_rect.z - uv_rect.x), std::abs(uv_rect.w - uv_rect.y));
-    auto size    = sprite.sprite.size.value_or(sprite.image_size * uv_size);
+    const auto size = sprite.sprite.custom_size.value_or(sprite.texture_rect.size());
 
     return SpriteInstanceData{
         .model            = sprite.model,
-        .uv_offset_scale  = glm::vec4(uv_rect.x, uv_rect.y, uv_rect.z - uv_rect.x, uv_rect.w - uv_rect.y),
+        .uv_offset_scale  = glm::vec4(uv_min, uv_max - uv_min),
         .color            = sprite.sprite.color,
-        .pos_offset_scale = glm::vec4(-sprite.sprite.anchor.x, -sprite.sprite.anchor.y, size.x, size.y),
+        .pos_offset_scale = glm::vec4(-sprite.anchor.as_vec(), size),
     };
 }
 
 bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::ExtractedView& view) {
-    auto uv_rect = sprite.sprite.uv_rect.value_or(glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
-    auto uv_size = glm::vec2(std::abs(uv_rect.z - uv_rect.x), std::abs(uv_rect.w - uv_rect.y));
-    auto size    = sprite.sprite.size.value_or(sprite.image_size * uv_size);
+    const auto size   = sprite.sprite.custom_size.value_or(sprite.texture_rect.size());
+    const auto anchor = sprite.anchor.as_vec();
 
-    glm::vec2 min_corner     = (-glm::vec2(0.5f) - sprite.sprite.anchor) * size;
-    glm::vec2 max_corner     = (glm::vec2(0.5f) - sprite.sprite.anchor) * size;
+    glm::vec2 min_corner     = (-glm::vec2(0.5f) - anchor) * size;
+    glm::vec2 max_corner     = (glm::vec2(0.5f) - anchor) * size;
     std::array local_corners = {
         glm::vec4(min_corner.x, min_corner.y, 0.0f, 1.0f),
         glm::vec4(max_corner.x, min_corner.y, 0.0f, 1.0f),
@@ -315,28 +314,42 @@ bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::Ex
 void extract_sprites(Commands cmd,
                      Extract<Query<Item<Entity,
                                         const sprite::Sprite&,
+                                        const sprite::Anchor&,
                                         const transform::GlobalTransform&,
-                                        const assets::Handle<image::Image>&,
                                         const camera::ViewVisibility&,
                                         Opt<const camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
-                     Extract<Res<assets::Assets<image::Image>>> images) {
-    for (auto&& [entity, sprite, global_transform, texture, view_visibility, opt_layer] : sprites.iter()) {
+                     Extract<Res<assets::Assets<image::Image>>> images,
+                     Extract<Res<assets::Assets<image::TextureAtlasLayout>>> atlases) {
+    for (auto&& [entity, sprite, anchor, global_transform, view_visibility, opt_layer] : sprites.iter()) {
         // Bevy extract_sprites gates on ViewVisibility (visibility/mod.rs:448-458).
         if (!view_visibility.get()) continue;
         glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
-        if (auto image = images->get(texture.id()); image) {
+        if (auto image = images->get(sprite.image.id()); image) {
             image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
+        }
+        image::Rect texture_rect{glm::vec2(0.0f), image_size};
+        if (sprite.texture_atlas) {
+            if (const auto atlas_rect = sprite.texture_atlas->texture_rect(*atlases)) {
+                texture_rect = atlas_rect->as_rect();
+            }
+        }
+        if (sprite.rect) {
+            texture_rect = sprite.texture_atlas
+                               ? image::Rect{texture_rect.min + sprite.rect->min, texture_rect.min + sprite.rect->max}
+                               : *sprite.rect;
         }
 
         cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
                   ExtractedSprite{
                       .source_entity = entity,
                       .sprite        = sprite,
+                      .anchor        = anchor,
                       .model         = global_transform.matrix,
                       .depth         = global_transform.matrix[3][2],
-                      .texture       = texture.id(),
+                      .texture       = sprite.image.id(),
                       .image_size    = image_size,
+                      .texture_rect  = texture_rect,
                       .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
                   },
                   SpriteBatch{});

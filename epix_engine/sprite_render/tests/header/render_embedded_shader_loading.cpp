@@ -2,17 +2,15 @@
 
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/ecs.hpp>
 #include <epix/shader.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/task.hpp>
-#include <epix/text.hpp>
 
-using namespace epix::assets;
-using namespace epix::ecs;
 using namespace epix::app;
+using namespace epix::assets;
 using namespace epix::shader;
 
-namespace text   = epix::text;
+namespace sprite_render = epix::sprite_render;
 
 namespace {
 
@@ -61,13 +59,26 @@ void expect_embedded_shader_loaded(App& app, std::string_view asset_path) {
 
 }  // namespace
 
-TEST(TextRenderPlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
+TEST(Mesh2dRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     auto app = make_shader_asset_app();
 
-    text::TextRenderPlugin plugin;
-    plugin.attach(app);
+    app.add_plugins(sprite_render::Mesh2dRenderPlugin{});
     flush_load_tasks(app);
 
-    expect_embedded_shader_loaded(app, "embedded://text/text_vertex.slang");
-    expect_embedded_shader_loaded(app, "embedded://text/text_fragment.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/solid_vertex.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/vertex_color_vertex.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/textured_vertex.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/textured_vertex_color_vertex.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/color_fragment.slang");
+    expect_embedded_shader_loaded(app, "embedded://mesh/textured_fragment.slang");
+}
+
+TEST(SpriteRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
+    auto app = make_shader_asset_app();
+
+    app.add_plugins(sprite_render::SpriteRenderPlugin{});
+    flush_load_tasks(app);
+
+    expect_embedded_shader_loaded(app, "embedded://sprite/sprite_vertex.slang");
+    expect_embedded_shader_loaded(app, "embedded://sprite/sprite_fragment.slang");
 }

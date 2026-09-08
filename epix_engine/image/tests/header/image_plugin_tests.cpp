@@ -57,3 +57,11 @@ TEST(ImagePlugin, RequiresExplicitAssetPlugin) {
     App app = App::create();
     EXPECT_THROW(epix::image::ImagePlugin{}.attach(app), std::bad_optional_access);
 }
+
+TEST(TextureAtlasPlugin, RegistersLayoutAssets) {
+    App app = App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
+    app.add_plugins(epix::image::TextureAtlasPlugin{});
+
+    EXPECT_TRUE(app.world().get_resource<epix::assets::Assets<epix::image::TextureAtlasLayout>>().has_value());
+}

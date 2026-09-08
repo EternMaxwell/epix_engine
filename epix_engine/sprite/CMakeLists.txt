@@ -6,3 +6,5 @@ target_link_libraries(epix_sprite PUBLIC epix_image)
 target_link_libraries(epix_sprite PUBLIC epix_mesh)
 target_link_libraries(epix_sprite PUBLIC epix_camera)
 target_link_libraries(epix_sprite PUBLIC epix_transform)
+
+epix_add_tests(sprite LINK_LIBS epix_sprite epix_task)

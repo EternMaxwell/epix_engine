@@ -33,6 +33,8 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Entity source_entity;
         /** @brief Copy of the sprite's visual properties. */
         sprite::Sprite sprite;
+        /** @brief Copy of the separately stored sprite anchor component. */
+        sprite::Anchor anchor;
         /** @brief Model matrix representing the sprite's world transform. */
         glm::mat4 model;
         /** @brief Depth value used for sorting transparent sprites. */
@@ -41,6 +43,8 @@ EPIX_EXPORT namespace epix::sprite_render {
         assets::AssetId<image::Image> texture;
         /** @brief Pixel dimensions of the source image. */
         glm::vec2 image_size;
+        /** @brief Selected image/atlas rectangle in source-image pixels. */
+        image::Rect texture_rect;
         /** @brief Render layers this entity belongs to. Default: layer 0. */
         camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
     };

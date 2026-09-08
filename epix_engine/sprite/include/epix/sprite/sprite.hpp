@@ -3,8 +3,6 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <array>
-#include <cstddef>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
@@ -12,95 +10,147 @@
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/transform.hpp>
+#include <expected>
 #include <glm/glm.hpp>
 #include <optional>
-#include <span>
-#include <utility>
-#include <vector>
+#include <variant>
 #endif
 
+#include <epix/sprite/texture_slice.hpp>
+
 EPIX_EXPORT namespace epix::sprite {
-    /** @brief Visual sprite component with color, flipping, UV region, and anchor
-     * settings.
-     *
-     * Attach to an entity along with a texture handle to render a 2D image. When
-     * `uv_rect` is unset the full texture is used; when `size` is unset the
-     * texture's native size is used.
-     */
-    struct Sprite {
-        /** @brief Tint color multiplied with the texture. Defaults to opaque
-         * white. */
-        glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-        /** @brief Whether to mirror the sprite horizontally. */
-        bool flip_x = false;
-        /** @brief Whether to mirror the sprite vertically. */
-        bool flip_y = false;
-        /** @brief Optional UV sub-rectangle (x, y, width, height) within the
-         * texture. */
-        std::optional<glm::vec4> uv_rect;
-        /** @brief Optional override for the sprite's display size in world
-         * units. */
-        std::optional<glm::vec2> size;
-        /** @brief Anchor point offset from the sprite center. (0,0) is center. */
-        glm::vec2 anchor{0.0f, 0.0f};
-    };
 
-    /** @brief Convenience bundle that groups a Sprite, Transform, and texture
-     * Handle for spawning a complete sprite entity. */
-    struct SpriteBundle {
-        /** @brief The sprite visual properties. */
-        Sprite sprite{};
-        /** @brief The transform positioning the sprite in world space. */
-        transform::Transform transform{};
-        /** @brief Handle to the Image asset used as the sprite texture. */
-        assets::Handle<image::Image> texture;
-    };
+/** @brief Proportional image scaling modes (Bevy `SpriteScalingMode`). */
+enum class SpriteScalingMode {
+    FillCenter,
+    FillStart,
+    FillEnd,
+    FitCenter,
+    FitStart,
+    FitEnd,
+};
 
-    /** @brief Installs CPU-side sprite components and bounds maintenance
-     * (Bevy `bevy_sprite::SpritePlugin`). */
-    struct SpritePlugin {
-        void attach(app::App& app);
-    };
+struct SpriteImageModeAuto {
+    bool operator==(const SpriteImageModeAuto&) const = default;
+};
+struct SpriteImageModeScale {
+    SpriteScalingMode mode = SpriteScalingMode::FillCenter;
+    bool operator==(const SpriteImageModeScale&) const = default;
+};
+struct SpriteImageModeSliced {
+    TextureSlicer slicer;
+    bool operator==(const SpriteImageModeSliced&) const = default;
+};
+struct SpriteImageModeTiled {
+    bool tile_x         = true;
+    bool tile_y         = true;
+    float stretch_value = 1.0f;
+    bool operator==(const SpriteImageModeTiled&) const = default;
+};
 
-    /** @brief Insert or update local mesh bounds for 2D visibility culling
-     * (the mesh portion of Bevy `bevy_sprite::calculate_bounds_2d`). */
-    EPIX_EXPORT void calculate_bounds_2d(
-        ecs::Commands commands,
-        ecs::Res<assets::Assets<mesh::Mesh>> meshes,
-        ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&>,
-                   ecs::Filter<ecs::Without<camera::Aabb>,
-                               ecs::Without<camera::NoFrustumCulling>,
-                               ecs::Without<camera::NoAutoAabb>>> new_mesh_aabb,
-        ecs::Query<ecs::Item<ecs::Ref<mesh::Mesh2d>, ecs::Mut<camera::Aabb>>,
-                   ecs::Filter<ecs::Or<assets::AssetChanged<mesh::Mesh2d>, ecs::Modified<mesh::Mesh2d>>,
-                               ecs::Without<camera::NoFrustumCulling>,
-                               ecs::Without<camera::NoAutoAabb>>> update_mesh_aabb);
-}  // namespace epix::sprite
+/** @brief Controls how a sprite image is altered when scaled. */
+struct SpriteImageMode
+    : std::variant<SpriteImageModeAuto, SpriteImageModeScale, SpriteImageModeSliced, SpriteImageModeTiled> {
+    using Auto   = SpriteImageModeAuto;
+    using Scale  = SpriteImageModeScale;
+    using Sliced = SpriteImageModeSliced;
+    using Tiled  = SpriteImageModeTiled;
+    using Base   = std::variant<Auto, Scale, Sliced, Tiled>;
+    using Base::Base;
 
-template <>
-struct epix::ecs::Bundle<epix::sprite::SpriteBundle> {
-    static void get_components(sprite::SpriteBundle& bundle,
-                               std::invocable<utils::function_ref<void(void*)>> auto&& write_component) noexcept {
-        write_component([&](void* ptr) { new (ptr) sprite::Sprite(std::move(bundle.sprite)); });
-        write_component([&](void* ptr) { new (ptr) transform::Transform(std::move(bundle.transform)); });
-        write_component([&](void* ptr) { new (ptr) assets::Handle<image::Image>(std::move(bundle.texture)); });
+    SpriteImageMode() : Base(Auto{}) {}
+    bool uses_slices() const noexcept {
+        return std::holds_alternative<Sliced>(*this) || std::holds_alternative<Tiled>(*this);
     }
-
-    static std::array<std::optional<TypeId>, 3> type_ids(const ecs::Components& components) {
-        return std::array{
-            components.get_id<sprite::Sprite>(),
-            components.get_id<transform::Transform>(),
-            components.get_id<assets::Handle<image::Image>>(),
-        };
-    }
-
-    static std::vector<TypeId> register_components(ecs::ComponentsRegistrator& components) {
-        std::vector<TypeId> ids;
-        ids.push_back(components.template register_component<sprite::Sprite>());
-        ids.push_back(components.template register_component<transform::Transform>());
-        ids.push_back(components.template register_component<assets::Handle<image::Image>>());
-        return ids;
+    std::optional<SpriteScalingMode> scale() const noexcept {
+        if (const auto* value = std::get_if<Scale>(this)) return value->mode;
+        return std::nullopt;
     }
 };
 
-static_assert(epix::ecs::is_bundle<epix::sprite::SpriteBundle>);
+/** @brief Normalized pivot offset of a 2D renderable from its Transform. */
+struct Anchor {
+    glm::vec2 value{0.0f};
+
+    static const Anchor BOTTOM_LEFT;
+    static const Anchor BOTTOM_CENTER;
+    static const Anchor BOTTOM_RIGHT;
+    static const Anchor CENTER_LEFT;
+    static const Anchor CENTER;
+    static const Anchor CENTER_RIGHT;
+    static const Anchor TOP_LEFT;
+    static const Anchor TOP_CENTER;
+    static const Anchor TOP_RIGHT;
+
+    constexpr Anchor() noexcept = default;
+    constexpr Anchor(glm::vec2 value) noexcept : value(value) {}
+    constexpr glm::vec2 as_vec() const noexcept { return value; }
+    bool operator==(const Anchor&) const = default;
+};
+
+/** @brief Visual sprite component matching Bevy's CPU-side `Sprite`. */
+struct Sprite {
+    assets::Handle<image::Image> image{image::DEFAULT_IMAGE_HANDLE};
+    std::optional<image::TextureAtlas> texture_atlas;
+    glm::vec4 color{1.0f};
+    bool flip_x = false;
+    bool flip_y = false;
+    std::optional<glm::vec2> custom_size;
+    std::optional<image::Rect> rect;
+    SpriteImageMode image_mode{};
+
+    static Sprite sized(glm::vec2 custom_size);
+    static Sprite from_image(assets::Handle<image::Image> image);
+    static Sprite from_atlas_image(assets::Handle<image::Image> image, image::TextureAtlas atlas);
+    static Sprite from_color(glm::vec4 color, glm::vec2 size);
+
+    std::expected<glm::vec2, glm::vec2> compute_pixel_space_point(
+        glm::vec2 point_relative_to_sprite,
+        Anchor anchor,
+        const assets::Assets<image::Image>& images,
+        const assets::Assets<image::TextureAtlasLayout>& texture_atlases) const;
+};
+
+/** @brief Installs CPU-side sprite components and bounds maintenance. */
+struct SpritePlugin {
+    void attach(app::App& app);
+};
+
+/** @brief Insert or update local bounds for 2D mesh and sprite visibility. */
+EPIX_EXPORT void calculate_bounds_2d(
+    ecs::Commands commands,
+    ecs::Res<assets::Assets<mesh::Mesh>> meshes,
+    ecs::Res<assets::Assets<image::Image>> images,
+    ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlases,
+    ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&>,
+               ecs::Filter<ecs::Without<camera::Aabb>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>>> new_mesh_aabb,
+    ecs::Query<ecs::Item<ecs::Ref<mesh::Mesh2d>, ecs::Mut<camera::Aabb>>,
+               ecs::Filter<ecs::Or<assets::AssetChanged<mesh::Mesh2d>, ecs::Modified<mesh::Mesh2d>>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>,
+                           ecs::Without<Sprite>>> update_mesh_aabb,
+    ecs::Query<ecs::Item<ecs::Entity, const Sprite&, const Anchor&>,
+               ecs::Filter<ecs::Without<camera::Aabb>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>>> new_sprite_aabb,
+    ecs::Query<ecs::Item<const Sprite&, ecs::Mut<camera::Aabb>, const Anchor&>,
+               ecs::Filter<ecs::Or<ecs::Modified<Sprite>, ecs::Modified<Anchor>>,
+                           ecs::Without<camera::NoFrustumCulling>,
+                           ecs::Without<camera::NoAutoAabb>,
+                           ecs::Without<mesh::Mesh2d>>> update_sprite_aabb);
+
+}  // namespace epix::sprite
+
+namespace epix::assets {
+
+template <>
+struct AsAssetId<sprite::Sprite> {
+    using Asset = image::Image;
+
+    static AssetId<Asset> as_asset_id(const sprite::Sprite& sprite) noexcept { return sprite.image.id(); }
+};
+static_assert(AsAssetIdImpl<sprite::Sprite>);
+
+}  // namespace epix::assets

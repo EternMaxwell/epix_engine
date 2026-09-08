@@ -41,13 +41,9 @@ struct BasicSpriteVisualTestPlugin {
         auto texture = image::Image::create2d(2, 2, image::Format::RGBA8, texture_data).value();
         auto handle  = images.emplace(std::move(texture));
 
-        world.spawn(sprite::SpriteBundle{
-            .sprite =
-                sprite::Sprite{
-                    .size = glm::vec2(160.0f, 160.0f),
-                },
-            .texture = handle,
-        });
+        auto sprite        = sprite::Sprite::from_image(handle);
+        sprite.custom_size = glm::vec2(160.0f, 160.0f);
+        world.spawn(std::move(sprite));
 
         // Component-oriented screenshot example: the request entity is marked
         // Capturing, emits ScreenshotCaptured, then is cleaned up by the
