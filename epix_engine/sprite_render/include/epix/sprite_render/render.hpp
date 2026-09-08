@@ -15,7 +15,10 @@
 #include <format>
 #include <glm/glm.hpp>
 #include <optional>
+#include <ranges>
 #include <span>
+#include <utility>
+#include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
@@ -23,6 +26,53 @@
 #include <epix/sprite/sprite.hpp>
 
 EPIX_EXPORT namespace epix::sprite_render {
+    /** @brief Slice data copied into the render world for one rendered quad. */
+    struct ExtractedSlice {
+        glm::vec2 offset{0.0f};
+        image::Rect rect{};
+        glm::vec2 size{0.0f};
+    };
+
+    /** @brief Sprite slices maintained in the main world for sliced and tiled sprites. */
+    class ComputedTextureSlices {
+        std::vector<sprite::TextureSlice> values_;
+
+       public:
+        explicit ComputedTextureSlices(std::vector<sprite::TextureSlice> values) : values_(std::move(values)) {}
+
+        auto extract_slices(const sprite::Sprite& value, glm::vec2 anchor) const {
+            const auto flip = glm::vec2(value.flip_x ? -1.0f : 1.0f, value.flip_y ? -1.0f : 1.0f);
+            const auto anchor_offset =
+                anchor * value.custom_size.value_or(value.rect.value_or(image::Rect{}).size());
+            return values_ | std::views::transform([flip, anchor_offset](const sprite::TextureSlice& slice) {
+                       return ExtractedSlice{
+                           .offset = slice.offset * flip - anchor_offset,
+                           .rect   = slice.texture_rect,
+                           .size   = slice.draw_size,
+                       };
+                   });
+        }
+    };
+
+    struct ExtractedSpriteSingle {
+        glm::vec2 anchor{0.0f};
+        std::optional<image::Rect> rect;
+        std::optional<sprite::SpriteScalingMode> scaling_mode;
+        std::optional<glm::vec2> custom_size;
+    };
+
+    struct ExtractedSpriteSlices {
+        std::size_t begin = 0;
+        std::size_t end   = 0;
+    };
+
+    using ExtractedSpriteKind = std::variant<ExtractedSpriteSingle, ExtractedSpriteSlices>;
+
+    /** @brief Per-frame extracted slice storage, matching Bevy's `ExtractedSlices`. */
+    struct ExtractedSlices {
+        std::vector<ExtractedSlice> slices;
+    };
+
     /** @brief Snapshot of a sprite extracted from the main world for rendering.
      *
      * Created during the extract phase so the render world has an immutable
@@ -31,20 +81,17 @@ EPIX_EXPORT namespace epix::sprite_render {
     struct ExtractedSprite {
         /** @brief Entity in the main world this sprite was extracted from. */
         ecs::Entity source_entity;
-        /** @brief Copy of the sprite's visual properties. */
-        sprite::Sprite sprite;
-        /** @brief Copy of the separately stored sprite anchor component. */
-        sprite::Anchor anchor;
+        /** @brief Linear tint copied from the sprite. */
+        glm::vec4 color{1.0f};
         /** @brief Model matrix representing the sprite's world transform. */
         glm::mat4 model;
         /** @brief Depth value used for sorting transparent sprites. */
         float depth;
         /** @brief Asset ID of the sprite's texture image. */
         assets::AssetId<image::Image> texture;
-        /** @brief Pixel dimensions of the source image. */
-        glm::vec2 image_size;
-        /** @brief Selected image/atlas rectangle in source-image pixels. */
-        image::Rect texture_rect;
+        bool flip_x = false;
+        bool flip_y = false;
+        ExtractedSpriteKind kind{ExtractedSpriteSingle{}};
         /** @brief Render layers this entity belongs to. Default: layer 0. */
         camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
     };
@@ -255,4 +302,26 @@ EPIX_EXPORT namespace epix::sprite_render {
         void attach(app::App& app);
         void ready(app::App& app);
     };
+
+    /** @brief Main-world sprite-render system sets. */
+    enum class SpriteSystems {
+        ExtractSprites,
+        ComputeSlices,
+    };
+
+    /** @brief Recompute sliced/tiled sprites whose source image changed. */
+    void compute_slices_on_asset_event(
+        ecs::Commands commands,
+        ecs::EventReader<assets::AssetEvent<image::Image>> events,
+        ecs::Res<assets::Assets<image::Image>> images,
+        ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+        ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>> sprites);
+
+    /** @brief Recompute slices after the Sprite component changes. */
+    void compute_slices_on_sprite_change(
+        ecs::Commands commands,
+        ecs::Res<assets::Assets<image::Image>> images,
+        ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+        ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>, ecs::Filter<ecs::Modified<sprite::Sprite>>>
+            changed_sprites);
 }  // namespace epix::sprite_render

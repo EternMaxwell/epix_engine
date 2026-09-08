@@ -18,6 +18,7 @@
 #include <span>
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -55,7 +56,7 @@ struct VertexOutput {
 [shader("vertex")]
 VertexOutput main(VertexInput input) {
     SpriteInstance instance = sprite_instances[input.instance_index];
-    float4 local_position = float4((input.position + instance.pos_offset_scale.xy) * instance.pos_offset_scale.zw,
+    float4 local_position = float4(input.position * instance.pos_offset_scale.zw + instance.pos_offset_scale.xy,
                                    0.0,
                                    1.0);
 
@@ -256,100 +257,194 @@ void ensure_instance_buffer(SpriteInstanceBuffer& instance_buffer,
     }
 }
 
-SpriteInstanceData make_instance_data(const ExtractedSprite& sprite) {
-    auto uv_min = sprite.texture_rect.min / sprite.image_size;
-    auto uv_max = sprite.texture_rect.max / sprite.image_size;
-    if (sprite.sprite.flip_x) {
+glm::vec4 sprite_uv(image::Rect rect, glm::vec2 image_size, bool flip_x, bool flip_y) {
+    auto uv_min = rect.min / image_size;
+    auto uv_max = rect.max / image_size;
+    if (flip_x) {
         std::swap(uv_min.x, uv_max.x);
     }
-    if (sprite.sprite.flip_y) {
+    if (flip_y) {
         std::swap(uv_min.y, uv_max.y);
     }
+    return glm::vec4(uv_min, uv_max - uv_min);
+}
 
-    const auto size = sprite.sprite.custom_size.value_or(sprite.texture_rect.size());
+void apply_scaling(sprite::SpriteScalingMode mode,
+                   glm::vec2 texture_size,
+                   glm::vec2& quad_size,
+                   glm::vec2& quad_translation,
+                   glm::vec4& uv_offset_scale) {
+    if (texture_size.x == 0.0f || texture_size.y == 0.0f || quad_size.x == 0.0f || quad_size.y == 0.0f) return;
+    const auto quad_ratio     = quad_size.x / quad_size.y;
+    const auto texture_ratio  = texture_size.x / texture_size.y;
+    const auto tex_quad_scale = texture_ratio / quad_ratio;
+    const auto quad_tex_scale = quad_ratio / texture_ratio;
 
+    switch (mode) {
+        case sprite::SpriteScalingMode::FillCenter:
+            if (quad_ratio > texture_ratio) {
+                uv_offset_scale.y += (uv_offset_scale.w - uv_offset_scale.w * tex_quad_scale) * 0.5f;
+                uv_offset_scale.w *= tex_quad_scale;
+            } else {
+                uv_offset_scale.x += (uv_offset_scale.z - uv_offset_scale.z * quad_tex_scale) * 0.5f;
+                uv_offset_scale.z *= quad_tex_scale;
+            }
+            break;
+        case sprite::SpriteScalingMode::FillStart:
+            if (quad_ratio > texture_ratio) {
+                uv_offset_scale.y += uv_offset_scale.w - uv_offset_scale.w * tex_quad_scale;
+                uv_offset_scale.w *= tex_quad_scale;
+            } else {
+                uv_offset_scale.z *= quad_tex_scale;
+            }
+            break;
+        case sprite::SpriteScalingMode::FillEnd:
+            if (quad_ratio > texture_ratio) {
+                uv_offset_scale.w *= tex_quad_scale;
+            } else {
+                uv_offset_scale.x += uv_offset_scale.z - uv_offset_scale.z * quad_tex_scale;
+                uv_offset_scale.z *= quad_tex_scale;
+            }
+            break;
+        case sprite::SpriteScalingMode::FitCenter:
+            if (texture_ratio > quad_ratio) quad_size.y *= quad_tex_scale;
+            else quad_size.x *= tex_quad_scale;
+            break;
+        case sprite::SpriteScalingMode::FitStart: {
+            const auto next = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
+                                                         : quad_size * glm::vec2(tex_quad_scale, 1.0f);
+            const auto offset = quad_size - next;
+            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, -offset.y)
+                                                           : glm::vec2(offset.x, 0.0f);
+            quad_size = next;
+            break;
+        }
+        case sprite::SpriteScalingMode::FitEnd: {
+            const auto next = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
+                                                         : quad_size * glm::vec2(tex_quad_scale, 1.0f);
+            const auto offset = quad_size - next;
+            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, offset.y)
+                                                           : glm::vec2(-offset.x, 0.0f);
+            quad_size = next;
+            break;
+        }
+    }
+}
+
+SpriteInstanceData make_single_instance_data(const ExtractedSprite& sprite,
+                                             const ExtractedSpriteSingle& single,
+                                             glm::vec2 image_size) {
+    const auto rect   = single.rect.value_or(image::Rect{glm::vec2(0.0f), image_size});
+    auto quad_size    = single.custom_size.value_or(rect.size());
+    auto uv           = sprite_uv(rect, image_size, sprite.flip_x, sprite.flip_y);
+    glm::vec2 translation{0.0f};
+    if (single.scaling_mode) apply_scaling(*single.scaling_mode, rect.size(), quad_size, translation, uv);
+
+    const auto center = -single.anchor * quad_size - (single.anchor + glm::vec2(0.5f)) * translation;
     return SpriteInstanceData{
         .model            = sprite.model,
-        .uv_offset_scale  = glm::vec4(uv_min, uv_max - uv_min),
-        .color            = sprite.sprite.color,
-        .pos_offset_scale = glm::vec4(-sprite.anchor.as_vec(), size),
+        .uv_offset_scale  = uv,
+        .color            = sprite.color,
+        .pos_offset_scale = glm::vec4(center, quad_size),
     };
 }
 
-bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::ExtractedView& view) {
-    const auto size   = sprite.sprite.custom_size.value_or(sprite.texture_rect.size());
-    const auto anchor = sprite.anchor.as_vec();
-
-    glm::vec2 min_corner     = (-glm::vec2(0.5f) - anchor) * size;
-    glm::vec2 max_corner     = (glm::vec2(0.5f) - anchor) * size;
-    std::array local_corners = {
-        glm::vec4(min_corner.x, min_corner.y, 0.0f, 1.0f),
-        glm::vec4(max_corner.x, min_corner.y, 0.0f, 1.0f),
-        glm::vec4(max_corner.x, max_corner.y, 0.0f, 1.0f),
-        glm::vec4(min_corner.x, max_corner.y, 0.0f, 1.0f),
+SpriteInstanceData make_slice_instance_data(const ExtractedSprite& sprite,
+                                            const ExtractedSlice& slice,
+                                            glm::vec2 image_size) {
+    return SpriteInstanceData{
+        .model            = sprite.model,
+        .uv_offset_scale  = sprite_uv(slice.rect, image_size, sprite.flip_x, sprite.flip_y),
+        .color            = sprite.color,
+        .pos_offset_scale = glm::vec4(slice.offset, slice.size),
     };
+}
 
-    glm::mat4 mvp = view.clip_from_world_or_derived() * sprite.model;
-
-    bool outside_left   = true;
-    bool outside_right  = true;
-    bool outside_bottom = true;
-    bool outside_top    = true;
-    bool outside_near   = true;
-    bool outside_far    = true;
-
-    for (const auto& corner : local_corners) {
-        glm::vec4 clip = mvp * corner;
-        outside_left   = outside_left && (clip.x < -clip.w);
-        outside_right  = outside_right && (clip.x > clip.w);
-        outside_bottom = outside_bottom && (clip.y < -clip.w);
-        outside_top    = outside_top && (clip.y > clip.w);
-        outside_near   = outside_near && (clip.z < 0.0f);
-        outside_far    = outside_far && (clip.z > clip.w);
+std::optional<ComputedTextureSlices> compute_sprite_slices(
+    const sprite::Sprite& value,
+    const assets::Assets<image::Image>& images,
+    const assets::Assets<image::TextureAtlasLayout>& atlas_layouts) {
+    glm::vec2 image_size;
+    image::Rect texture_rect;
+    if (value.texture_atlas) {
+        const auto layout = atlas_layouts.get(value.texture_atlas->layout.id());
+        if (!layout || value.texture_atlas->index >= layout->get().textures.size()) return std::nullopt;
+        image_size   = glm::vec2(layout->get().size);
+        texture_rect = layout->get().textures[value.texture_atlas->index].as_rect();
+    } else {
+        const auto source = images.get(value.image.id());
+        if (!source) return std::nullopt;
+        image_size = glm::vec2(static_cast<float>(source->get().width()), static_cast<float>(source->get().height()));
+        texture_rect = value.rect.value_or(image::Rect{glm::vec2(0.0f), image_size});
     }
 
-    return !(outside_left || outside_right || outside_bottom || outside_top || outside_near || outside_far);
+    if (const auto* sliced = std::get_if<sprite::SpriteImageMode::Sliced>(&value.image_mode)) {
+        return ComputedTextureSlices{sliced->slicer.compute_slices(texture_rect, value.custom_size)};
+    }
+    if (const auto* tiled = std::get_if<sprite::SpriteImageMode::Tiled>(&value.image_mode)) {
+        const sprite::TextureSlice whole{
+            .texture_rect = texture_rect,
+            .draw_size    = value.custom_size.value_or(image_size),
+            .offset       = glm::vec2(0.0f),
+        };
+        return ComputedTextureSlices{whole.tiled(tiled->stretch_value, {tiled->tile_x, tiled->tile_y})};
+    }
+    return std::nullopt;
 }
 
 void extract_sprites(Commands cmd,
+                     ResMut<ExtractedSlices> extracted_slices,
                      Extract<Query<Item<Entity,
                                         const sprite::Sprite&,
                                         const sprite::Anchor&,
                                         const transform::GlobalTransform&,
                                         const camera::ViewVisibility&,
+                                        Opt<const ComputedTextureSlices&>,
                                         Opt<const camera::RenderLayers&>>,
                                    Without<render::CustomRendered>>> sprites,
-                     Extract<Res<assets::Assets<image::Image>>> images,
                      Extract<Res<assets::Assets<image::TextureAtlasLayout>>> atlases) {
-    for (auto&& [entity, sprite, anchor, global_transform, view_visibility, opt_layer] : sprites.iter()) {
+    extracted_slices->slices.clear();
+    for (auto&& [entity, sprite, anchor, global_transform, view_visibility, computed, opt_layer] : sprites.iter()) {
         // Bevy extract_sprites gates on ViewVisibility (visibility/mod.rs:448-458).
         if (!view_visibility.get()) continue;
-        glm::vec2 image_size = glm::vec2(1.0f, 1.0f);
-        if (auto image = images->get(sprite.image.id()); image) {
-            image_size = glm::vec2(static_cast<float>(image->get().width()), static_cast<float>(image->get().height()));
-        }
-        image::Rect texture_rect{glm::vec2(0.0f), image_size};
+        std::optional<image::Rect> texture_rect;
         if (sprite.texture_atlas) {
             if (const auto atlas_rect = sprite.texture_atlas->texture_rect(*atlases)) {
                 texture_rect = atlas_rect->as_rect();
             }
         }
         if (sprite.rect) {
-            texture_rect = sprite.texture_atlas
-                               ? image::Rect{texture_rect.min + sprite.rect->min, texture_rect.min + sprite.rect->max}
+            texture_rect = sprite.texture_atlas && texture_rect
+                               ? image::Rect{texture_rect->min + sprite.rect->min, texture_rect->min + sprite.rect->max}
                                : *sprite.rect;
+        }
+
+        ExtractedSpriteKind kind;
+        if (computed) {
+            const auto begin = extracted_slices->slices.size();
+            for (const auto& slice : computed->get().extract_slices(sprite, anchor.as_vec())) {
+                extracted_slices->slices.push_back(slice);
+            }
+            kind = ExtractedSpriteSlices{begin, extracted_slices->slices.size()};
+        } else {
+            kind = ExtractedSpriteSingle{
+                .anchor       = anchor.as_vec(),
+                .rect         = texture_rect,
+                .scaling_mode = sprite.image_mode.scale(),
+                .custom_size  = sprite.custom_size,
+            };
         }
 
         cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
                   ExtractedSprite{
                       .source_entity = entity,
-                      .sprite        = sprite,
-                      .anchor        = anchor,
+                      .color         = sprite.color,
                       .model         = global_transform.matrix,
                       .depth         = global_transform.matrix[3][2],
                       .texture       = sprite.image.id(),
-                      .image_size    = image_size,
-                      .texture_rect  = texture_rect,
+                      .flip_x        = sprite.flip_x,
+                      .flip_y        = sprite.flip_y,
+                      .kind          = std::move(kind),
                       .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
                   },
                   SpriteBatch{});
@@ -384,9 +479,6 @@ void queue_sprites_2d(Query<Item<const render::view::ExtractedView&,
             if (!images->try_get(sprite.texture)) {
                 continue;
             }
-            if (!sprite_may_be_visible(sprite, view)) {
-                continue;
-            }
             if (!camera_layers.intersects(sprite.render_layer)) {
                 continue;
             }
@@ -410,6 +502,7 @@ void queue_sprites_2d(Query<Item<const render::view::ExtractedView&,
 
 void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
                             Query<Item<SpriteBatch&, const ExtractedSprite&>> sprites,
+                            Res<ExtractedSlices> extracted_slices,
                             Res<render::RenderAssets<image::Image>> images,
                             Res<wgpu::Device> device,
                             Res<wgpu::Queue> queue,
@@ -460,7 +553,16 @@ void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_gr
                 current_texture = sprite.texture;
             }
 
-            instance_buffer->instances.push_back(make_instance_data(sprite));
+            const auto image_size = glm::vec2(gpu_image->size_2d());
+            if (const auto* single = std::get_if<ExtractedSpriteSingle>(&sprite.kind)) {
+                instance_buffer->instances.push_back(make_single_instance_data(sprite, *single, image_size));
+            } else {
+                const auto& slices = std::get<ExtractedSpriteSlices>(sprite.kind);
+                for (auto index = slices.begin; index < slices.end; ++index) {
+                    instance_buffer->instances.push_back(
+                        make_slice_instance_data(sprite, extracted_slices->slices[index], image_size));
+                }
+            }
             phase.items[batch_head].batch_range().second =
                 static_cast<std::uint32_t>(instance_buffer->instances.size());
         }
@@ -474,9 +576,53 @@ void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_gr
 }
 }  // namespace
 
+void sprite_render::compute_slices_on_asset_event(
+    Commands commands,
+    EventReader<assets::AssetEvent<image::Image>> events,
+    Res<assets::Assets<image::Image>> images,
+    Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+    Query<Item<Entity, const sprite::Sprite&>> sprites) {
+    std::unordered_set<assets::AssetId<image::Image>> changed;
+    for (const auto& event : events.read()) {
+        if (event.type == assets::AssetEvent<image::Image>::Type::Added ||
+            event.type == assets::AssetEvent<image::Image>::Type::Modified) {
+            changed.insert(event.id);
+        }
+    }
+    if (changed.empty()) return;
+
+    for (auto&& [entity, value] : sprites.iter()) {
+        if (!value.image_mode.uses_slices() || !changed.contains(value.image.id())) continue;
+        if (auto slices = compute_sprite_slices(value, *images, *atlas_layouts)) {
+            commands.entity(entity).insert(std::move(*slices));
+        }
+    }
+}
+
+void sprite_render::compute_slices_on_sprite_change(
+    Commands commands,
+    Res<assets::Assets<image::Image>> images,
+    Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+    Query<Item<Entity, const sprite::Sprite&>, Filter<Modified<sprite::Sprite>>> changed_sprites) {
+    for (auto&& [entity, value] : changed_sprites.iter()) {
+        if (!value.image_mode.uses_slices()) continue;
+        if (auto slices = compute_sprite_slices(value, *images, *atlas_layouts)) {
+            commands.entity(entity).insert(std::move(*slices));
+        }
+    }
+}
+
 void SpriteRenderPlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpriteRenderPlugin.");
     app.add_plugins(Mesh2dRenderPlugin{});
+    app.add_systems(app::PostUpdate,
+                    into(sprite_render::compute_slices_on_asset_event)
+                        .in_set(SpriteSystems::ComputeSlices)
+                        .set_name("compute slices on image event"));
+    app.add_systems(app::PostUpdate,
+                    into(sprite_render::compute_slices_on_sprite_change)
+                        .in_set(SpriteSystems::ComputeSlices)
+                        .set_name("compute slices on sprite change"));
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
@@ -511,6 +657,9 @@ void SpriteRenderPlugin::ready(app::App& app) {
     }
     if (!world.get_resource<SpriteInstanceBuffer>()) {
         world.insert_resource(SpriteInstanceBuffer{});
+    }
+    if (!world.get_resource<ExtractedSlices>()) {
+        world.insert_resource(ExtractedSlices{});
     }
     if (!world.get_resource<SpritePipelineCache>()) {
         world.insert_resource(SpritePipelineCache(world, shader_handles->get()));
