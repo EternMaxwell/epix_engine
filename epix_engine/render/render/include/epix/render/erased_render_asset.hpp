@@ -63,7 +63,7 @@ struct ErasedRenderAsset;
 template <typename A>
 concept HasErasedAssetUsage =
     requires(ErasedRenderAsset<A> asset, const typename ErasedRenderAsset<A>::SourceAsset& source) {
-        { asset.asset_usage(source) } -> std::same_as<RenderAssetUsages>;
+        { asset.asset_usage(source) } -> std::same_as<assets::RenderAssetUsages>;
     };
 
 /** @brief True when the specialization overrides byte_len (Bevy
@@ -121,15 +121,15 @@ concept ErasedRenderAssetImpl = requires(ErasedRenderAsset<A> asset) {
 
 namespace detail {
 template <typename A>
-RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset,
-                                     const typename ErasedRenderAsset<A>::SourceAsset& source) {
+assets::RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset,
+                                             const typename ErasedRenderAsset<A>::SourceAsset& source) {
     if constexpr (HasErasedAssetUsage<A>) {
         return asset.asset_usage(source);
     } else {
         // Bevy default: RenderAssetUsages::default() (empty).
         (void)asset;
         (void)source;
-        return RenderAssetUsages{};
+        return assets::RenderAssetUsages{};
     }
 }
 
@@ -259,10 +259,10 @@ void extract_erased_render_asset(
     ErasedRenderAsset<A> impl;
     for (const auto& [id, reason] : changed_assets) {
         if (auto asset = assets->get(id)) {
-            const RenderAssetUsages asset_usage = detail::erased_asset_usage(impl, *asset);
+            const assets::RenderAssetUsages asset_usage = detail::erased_asset_usage(impl, *asset);
             const ErasedAsset* previous_asset = render_assets->get(assets::UntypedAssetId(id));
-            if (asset_usage & RenderAssetUsages::RENDER_WORLD) {
-                if (asset_usage == RenderAssetUsages::RENDER_WORLD) {
+            if (asset_usage & assets::RenderAssetUsages::RENDER_WORLD) {
+                if (asset_usage == assets::RenderAssetUsages::RENDER_WORLD) {
                     // Bevy's RENDER_WORLD-only erased asset semantics move
                     // the source out of Assets. A compact payload is then
                     // derived from that moved source before it is discarded.
@@ -439,8 +439,8 @@ struct ErasedRenderAssetPlugin {
             // prepare_erased_assets runs first (erased_render_asset.rs:142-156).
             if constexpr (!std::is_void_v<AFTER>) {
                 static_assert(ErasedRenderAssetImpl<AFTER>, "AFTER must be an erased render asset type");
-                render_app->get().add_systems(Render,
-                                              std::move(prepare).after(ecs::into(prepare_erased_assets<AFTER>)));
+                    render_app->get().add_systems(
+                        Render, std::move(prepare).after(prepare_erased_assets<AFTER>));
             } else {
                 render_app->get().add_systems(Render, std::move(prepare));
             }

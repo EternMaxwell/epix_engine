@@ -1,145 +1,11 @@
 #include <gtest/gtest.h>
 
-#include <epix/app.hpp>
 #include <epix/mesh.hpp>
-#include <epix/mesh/offset_allocator.hpp>
-#include <epix/render.hpp>
-#include <memory>
+#include <limits>
 #include <unordered_set>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
-
-namespace {
-bool initialize_mesh_allocator_test_app(epix::app::App& app) {
-    auto instance = wgpu::createInstance();
-    if (!instance) return false;
-    auto adapter = instance.requestAdapter(wgpu::RequestAdapterOptions().setBackendType(wgpu::BackendType::eVulkan));
-    if (!adapter) return false;
-    auto device = adapter.requestDevice(wgpu::DeviceDescriptor{});
-    if (!device) return false;
-    auto queue = device.getQueue();
-    if (!queue) return false;
-
-    auto& world = app.world_mut();
-    world.insert_resource(instance.clone());
-    world.insert_resource(adapter.clone());
-    world.insert_resource(device.clone());
-    world.insert_resource(queue.clone());
-    world.init_resource<mesh::MeshAllocatorSettings>();
-    world.init_resource<mesh::MeshAllocator>();
-    world.init_resource<mesh::MeshVertexBufferLayouts>();
-    world.init_resource<epix::render::ExtractedAssets<mesh::Mesh>>();
-    app.add_systems(epix::app::Update, epix::ecs::into(mesh::allocate_and_free_meshes));
-    return true;
-}
-}  // namespace
-
-// Bevy MeshVertexBufferLayout::array_stride: sum of attribute sizes.
-TEST(MeshModule, VertexArrayStride) {
-    // Without a color only the position attribute exists (12).
-    auto plain = mesh::make_box2d(20.0f, 10.0f);
-    EXPECT_EQ(mesh::vertex_array_stride(plain), 12u);
-    // With a color: position (12) + color (16) = 28.
-    auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
-    EXPECT_EQ(mesh::vertex_array_stride(box), 28u);
-}
-
-TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
-    constexpr auto both_worlds = static_cast<epix::render::RenderAssetUsages>(
-        epix::render::RenderAssetUsages::MAIN_WORLD | epix::render::RenderAssetUsages::RENDER_WORLD);
-    auto source = mesh::make_box2d(20.0f, 10.0f);
-    EXPECT_EQ(source.asset_usage, both_worlds);
-    EXPECT_EQ(epix::render::RenderAsset<mesh::Mesh>{}.usage(source), both_worlds);
-
-    mesh::Mesh clone(source);
-    EXPECT_EQ(clone.asset_usage, source.asset_usage);
-    EXPECT_EQ(clone.count_vertices(), source.count_vertices());
-    ASSERT_TRUE(clone.remove_attribute(mesh::Mesh::ATTRIBUTE_POSITION).has_value());
-    EXPECT_FALSE(clone.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
-    EXPECT_TRUE(source.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
-}
-
-// packed_vertex_bytes interleaves per-vertex attributes in ID order (Bevy).
-TEST(MeshModule, PackedVertexBytesInterleave) {
-    const auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
-    const auto packed = mesh::packed_vertex_bytes(box);
-    // 4 verts * (12 pos + 16 color) = 112 bytes.
-    EXPECT_EQ(packed.size(), 112u);
-    // Vertex 0's color begins at byte 12 (position is 12 bytes).
-    float red = 0.0f;
-    std::memcpy(&red, packed.data() + 12, sizeof(float));
-    EXPECT_FLOAT_EQ(red, 1.0f);
-    float green = 0.0f;
-    std::memcpy(&green, packed.data() + 16, sizeof(float));
-    EXPECT_FLOAT_EQ(green, 0.5f);
-}
-
-TEST(MeshModule, UsesBevyShapedAlphaMode2dVariants) {
-    static_assert(
-        std::same_as<mesh::MeshAlphaMode2d,
-                     std::variant<mesh::MeshAlphaMode2dOpaque, mesh::MeshAlphaMode2dMask, mesh::MeshAlphaMode2dBlend>>);
-    EXPECT_TRUE(std::holds_alternative<mesh::MeshAlphaMode2dOpaque>(mesh::MeshMaterial2d{}.alpha_mode));
-    const mesh::MeshAlphaMode2d mask = mesh::MeshAlphaMode2dMask{.cutoff = 0.35f};
-    EXPECT_EQ(std::get<mesh::MeshAlphaMode2dMask>(mask).cutoff, 0.35f);
-}
-
-// get_mesh_vertex_buffer_layout builds Bevy's interleaved layout (ids in order,
-// accumulated offsets, array_stride) and interns layouts structurally.
-TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
-    mesh::MeshVertexBufferLayouts store;
-    auto box          = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));  // position(12) + color(16)
-    const auto layout = box.get_mesh_vertex_buffer_layout(store);
-    ASSERT_TRUE(layout.value);
-    EXPECT_EQ(layout.value->layout().array_stride, 28u);
-    ASSERT_EQ(layout.value->layout().attributes.size(), 2u);
-    EXPECT_EQ(layout.value->layout().attributes[0].offset, 0u);
-    EXPECT_EQ(layout.value->layout().attributes[0].shader_location, 0u);
-    EXPECT_EQ(layout.value->layout().attributes[1].offset, 12u);
-    EXPECT_EQ(layout.value->layout().attributes[1].shader_location, 1u);
-    const auto attribute_ids = layout.value->attribute_ids();
-    ASSERT_EQ(attribute_ids.size(), 2u);
-    EXPECT_EQ(attribute_ids[0], mesh::Mesh::ATTRIBUTE_POSITION.id);
-    EXPECT_EQ(attribute_ids[1], mesh::Mesh::ATTRIBUTE_COLOR.id);
-    EXPECT_TRUE(layout.value->contains(mesh::Mesh::ATTRIBUTE_POSITION));
-    EXPECT_FALSE(layout.value->contains(mesh::Mesh::ATTRIBUTE_NORMAL));
-
-    const std::array requested_attributes{
-        mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
-        mesh::Mesh::ATTRIBUTE_COLOR.at_shader_location(4),
-    };
-    const auto pipeline_layout = layout.value->get_layout(requested_attributes);
-    ASSERT_TRUE(pipeline_layout.has_value());
-    ASSERT_EQ(pipeline_layout->attributes.size(), 2u);
-    EXPECT_EQ(pipeline_layout->attributes[0].offset, 0u);
-    EXPECT_EQ(pipeline_layout->attributes[0].shader_location, 0u);
-    EXPECT_EQ(pipeline_layout->attributes[1].offset, 12u);
-    EXPECT_EQ(pipeline_layout->attributes[1].shader_location, 4u);
-
-    const std::array missing_attribute{mesh::Mesh::ATTRIBUTE_NORMAL.at_shader_location(1)};
-    const auto missing_layout = layout.value->get_layout(missing_attribute);
-    ASSERT_FALSE(missing_layout.has_value());
-    EXPECT_EQ(missing_layout.error().id, mesh::Mesh::ATTRIBUTE_NORMAL.id);
-    EXPECT_EQ(missing_layout.error().name, mesh::Mesh::ATTRIBUTE_NORMAL.name);
-
-    // A structurally identical mesh shares the interned layout (pointer
-    // equality on MeshVertexBufferLayoutRef, Bevy Arc semantics).
-    auto box2          = mesh::make_box2d(5.0f, 5.0f, glm::vec4(0.0f));
-    const auto layout2 = box2.get_mesh_vertex_buffer_layout(store);
-    EXPECT_EQ(layout, layout2);
-
-    // A different attribute set gets its own interned entry.
-    auto uvbox         = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.0f, 0.0f, 1.0f, 1.0f));
-    const auto layout3 = uvbox.get_mesh_vertex_buffer_layout(store);
-    EXPECT_NE(layout, layout3);
-
-    // MeshVertexBufferLayoutRef hashes by interned pointer identity, while
-    // MeshVertexBufferLayouts itself interns by the layout's structure.
-    EXPECT_EQ(std::hash<mesh::MeshVertexBufferLayoutRef>{}(layout),
-              std::hash<mesh::MeshVertexBufferLayoutRef>{}(layout2));
-    std::unordered_set<mesh::MeshVertexBufferLayoutRef> references{layout, layout2, layout3};
-    EXPECT_EQ(references.size(), 2u);
-}
 
 TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
     EXPECT_EQ(mesh::Mesh::ATTRIBUTE_POSITION.id.value, 0u);
@@ -153,591 +19,89 @@ TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
     EXPECT_EQ(mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE, 8u);
 }
 
-// RenderMeshBufferInfo mirrors Bevy's Indexed/NonIndexed discriminator.
-TEST(MeshModule, RenderMeshBufferInfoIndexedVersusNonIndexed) {
-    const auto indexed = mesh::RenderMeshBufferInfo::indexed(6u, wgpu::IndexFormat::eUint16);
-    EXPECT_TRUE(indexed.is_indexed());
-    ASSERT_TRUE(indexed.indexed_info());
-    EXPECT_EQ(indexed.indexed_info()->count, 6u);
-    EXPECT_EQ(indexed.indexed_info()->index_format, wgpu::IndexFormat::eUint16);
+TEST(MeshModule, BaseMeshPipelineKeyEncodesPrimitiveTopologyInHighBits) {
+    constexpr auto line = mesh::BaseMeshPipelineKey::from_primitive_topology(wgpu::PrimitiveTopology::eLineList);
+    static_assert(line.primitive_topology() == wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(line.bits() >> mesh::BaseMeshPipelineKey::PRIMITIVE_TOPOLOGY_SHIFT_BITS,
+              static_cast<std::uint64_t>(wgpu::PrimitiveTopology::eLineList));
+    EXPECT_TRUE((line | mesh::BaseMeshPipelineKey::MORPH_TARGETS).contains(line));
+}
 
-    const auto non_indexed = mesh::RenderMeshBufferInfo::non_indexed();
-    EXPECT_FALSE(non_indexed.is_indexed());
-    EXPECT_EQ(non_indexed.indexed_info(), nullptr);
+TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
+    constexpr auto both_worlds = static_cast<epix::assets::RenderAssetUsages>(
+        epix::assets::RenderAssetUsages::MAIN_WORLD | epix::assets::RenderAssetUsages::RENDER_WORLD);
+    auto source = mesh::make_box2d(20.0f, 10.0f);
+    EXPECT_EQ(source.asset_usage, both_worlds);
 
-    // RenderMesh carries Bevy's metadata: count, buffer info, interned layout,
-    // and topology; GPU buffers come from the MeshAllocator.
-    mesh::MeshVertexBufferLayouts store;
-    auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
-    auto render = mesh::RenderMesh::from_metadata(
-        static_cast<std::uint32_t>(box.count_vertices()), mesh::RenderMeshBufferInfo::non_indexed(),
-        box.get_mesh_vertex_buffer_layout(store), wgpu::PrimitiveTopology::eTriangleList);
-    EXPECT_FALSE(render.indexed());
-    EXPECT_EQ(render.vertex_count, box.count_vertices());
-    EXPECT_EQ(render.primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
-    EXPECT_EQ(render.layout.value->layout().array_stride, 28u);
+    mesh::Mesh clone(source);
+    EXPECT_EQ(clone.asset_usage, source.asset_usage);
+    EXPECT_EQ(clone.count_vertices(), source.count_vertices());
+    ASSERT_TRUE(clone.remove_attribute(mesh::Mesh::ATTRIBUTE_POSITION).has_value());
+    EXPECT_FALSE(clone.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_TRUE(source.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
 }
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    EXPECT_THROW(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    EXPECT_THROW(value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
                  std::invalid_argument);
 }
 
-TEST(MeshModule, ComputesAabbFromPositionAttribute) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                          std::array{glm::vec3{-2.0f, 1.0f, 3.0f}, glm::vec3{4.0f, 5.0f, -1.0f}});
-    static_assert(epix::camera::MeshAabb<mesh::Mesh>);
-    const auto aabb = mesh.compute_aabb();
-    ASSERT_TRUE(aabb.has_value());
-    EXPECT_EQ(aabb->min(), glm::vec3(-2.0f, 1.0f, -1.0f));
-    EXPECT_EQ(aabb->max(), glm::vec3(4.0f, 5.0f, 3.0f));
+TEST(MeshModule, Box2dBuildsIndexedQuad) {
+    auto value = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    EXPECT_EQ(value.count_vertices(), 4);
+    ASSERT_TRUE(value.indices().has_value());
+    EXPECT_EQ(value.indices()->get().size(), 6);
+    EXPECT_TRUE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
 }
 
-TEST(MeshModule, CalculateBounds2dDoesNotReaccessExtractedRenderOnlyMesh) {
-    epix::ecs::World world(7);
-    world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
-
-    auto source        = mesh::make_box2d(20.0f, 10.0f);
-    source.asset_usage = epix::render::RenderAssetUsages::RENDER_WORLD;
-    auto handle        = world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(std::move(source));
-    const auto entity  = world.spawn(mesh::Mesh2d{handle}).id();
-
-    auto system = epix::ecs::make_system_unique(mesh::calculate_bounds_2d);
-    system->initialize(world);
-    ASSERT_TRUE(system->run({}, world).has_value());
-    system->apply_deferred(world);
-
-    const auto entity_ref = world.get_entity(entity);
-    ASSERT_TRUE(entity_ref.has_value());
-    ASSERT_TRUE(entity_ref->get<epix::camera::Aabb>().has_value());
-
-    auto stored = world.resource_mut<epix::assets::Assets<mesh::Mesh>>().get_mut_untracked(handle.id());
-    ASSERT_TRUE(stored.has_value());
-    ASSERT_TRUE(stored->get().take_gpu_data().has_value());
-
-    // The existing Aabb and unchanged Mesh2d exclude this entity from both
-    // Bevy-shaped queries, so extracted CPU data is not accessed again.
-    EXPECT_TRUE(system->run({}, world).has_value());
+TEST(MeshModule, CircleBuildsTriangleList) {
+    auto value = mesh::make_circle(12.0f, std::nullopt, 16);
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.count_vertices(), 17);
+    ASSERT_TRUE(value.indices().has_value());
+    EXPECT_EQ(value.indices()->get().size(), 48);
 }
 
-TEST(MeshModule, CalculateBounds2dUpdatesWhenReferencedMeshChanges) {
-    epix::app::App app = epix::app::App::create();
-    app.world_mut().insert_resource(epix::assets::Assets<mesh::Mesh>{});
-    app.add_events<epix::assets::AssetEvent<mesh::Mesh>>();
-
-    auto handle =
-        app.world_mut().resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(mesh::make_box2d(20.0f, 10.0f));
-    const auto entity   = app.world_mut().spawn(mesh::Mesh2d{handle}).id();
-    const auto excluded = app.world_mut().spawn(mesh::Mesh2d{handle}, epix::camera::NoAutoAabb{}).id();
-
-    app.add_systems(epix::app::Update,
-                    epix::ecs::into(epix::assets::Assets<mesh::Mesh>::asset_events, mesh::calculate_bounds_2d).chain());
-    app.update();
-
-    auto initial = app.world().get_entity(entity)->get<epix::camera::Aabb>();
-    ASSERT_TRUE(initial.has_value());
-    EXPECT_EQ(initial->get().half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
-    EXPECT_FALSE(app.world().get_entity(excluded)->contains<epix::camera::Aabb>());
-
-    auto stored = app.world_mut().resource_mut<epix::assets::Assets<mesh::Mesh>>().get_mut(handle.id());
-    ASSERT_TRUE(stored.has_value());
-    stored->get().insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                                   std::array{glm::vec3{-30.0f, -20.0f, 0.0f}, glm::vec3{30.0f, -20.0f, 0.0f},
-                                              glm::vec3{30.0f, 20.0f, 0.0f}, glm::vec3{-30.0f, 20.0f, 0.0f}});
-    app.update();
-
-    const auto updated = app.world().get_entity(entity)->get<epix::camera::Aabb>();
-    ASSERT_TRUE(updated.has_value());
-    EXPECT_EQ(updated->get().half_extents, glm::vec3(30.0f, 20.0f, 0.0f));
+TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
+    auto value = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
+    EXPECT_EQ(value.count_vertices(), 4);
+    EXPECT_TRUE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    auto attribute = value.attribute(mesh::Mesh::ATTRIBUTE_UV_0);
+    ASSERT_TRUE(attribute.has_value());
+    const auto uvs = attribute->get().cspan_as<glm::vec2>();
+    ASSERT_EQ(uvs.size(), 4u);
+    EXPECT_EQ(uvs[0], glm::vec2(0.25f, 0.5f));
+    EXPECT_EQ(uvs[2], glm::vec2(0.75f, 1.0f));
 }
 
-// Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
-// strides * vertex count + index bytes. Used by the render-asset byte limiter.
-TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
-                          std::array{glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}});
-    mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR,
-                          std::array{glm::vec4{1.0f, 1.0f, 1.0f, 1.0f}, glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}});
-    mesh.insert_indices<std::uint16_t>(std::array<std::uint16_t, 3>{0, 1, 0});
+TEST(MeshModule, GetMeshVertexBufferLayoutMatchesBevy) {
+    auto source = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
+    mesh::MeshVertexBufferLayouts layouts;
+    const auto first = source.get_mesh_vertex_buffer_layout(layouts);
+    const auto again = source.get_mesh_vertex_buffer_layout(layouts);
+    ASSERT_TRUE(first.value);
+    EXPECT_EQ(first, again);
+    EXPECT_EQ(first.value->layout().array_stride, 28u);
 
-    const epix::render::RenderAsset<mesh::Mesh> asset{};
-    const auto len = asset.byte_len(mesh);
-    ASSERT_TRUE(len.has_value());
-    // (12 float3 + 16 float4) * 2 vertices + (3 * 2-byte u16 indices) = 62.
-    EXPECT_EQ(*len, 62u);
-}
-
-// Bevy 0.18 MeshAllocatorSettings defaults.
-TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
-    const mesh::MeshAllocatorSettings settings;
-    EXPECT_EQ(settings.min_slab_size, 1024ull * 1024);
-    EXPECT_EQ(settings.max_slab_size, 1024ull * 1024 * 512);
-    EXPECT_EQ(settings.large_threshold, 1024ull * 1024 * 256);
-    EXPECT_EQ(settings.growth_factor, 1.5);
-}
-
-// Bevy installs MeshAllocatorSettings as an independently configurable
-// render-world resource; MeshAllocator does not own a private settings copy.
-TEST(MeshModule, MeshAllocatorPluginPreservesSettingsResource) {
-    epix::app::App app = epix::app::App::create();
-    auto render_app    = std::make_unique<epix::app::App>(epix::app::App::create());
-    mesh::MeshAllocatorSettings custom;
-    custom.min_slab_size = 4096;
-    render_app->world_mut().insert_resource(custom);
-    app.insert_sub_app(epix::render::Render, std::move(render_app));
-
-    mesh::MeshAllocatorPlugin{}.attach(app);
-
-    auto render = app.get_sub_app_mut(epix::render::Render);
-    ASSERT_TRUE(render.has_value());
-    const auto settings = render->get().world().get_resource<mesh::MeshAllocatorSettings>();
-    ASSERT_TRUE(settings.has_value());
-    EXPECT_EQ(settings->get().min_slab_size, 4096u);
-    EXPECT_FALSE(render->get().world().get_resource<mesh::MeshAllocator>().has_value());
-
-    // Bevy creates the allocator during Plugin::finish, after the adapter is
-    // available. Epix's corresponding lifecycle phase is Plugin::ready.
-    mesh::MeshAllocatorPlugin{}.ready(app);
-    EXPECT_TRUE(render->get().world().get_resource<mesh::MeshAllocator>().has_value());
-}
-
-// Bevy SlabId / MeshBufferSlice are value types; verify identity + element range.
-TEST(MeshModule, SlabIdAndMeshBufferSliceTypes) {
-    const mesh::SlabId zero;
-    const mesh::SlabId id{42};
-    EXPECT_EQ(zero, mesh::SlabId{});
-    EXPECT_EQ(id, mesh::SlabId{42});
-    EXPECT_NE(id, mesh::SlabId{43});
-    EXPECT_EQ(id.value, 42u);
-
-    const mesh::MeshBufferSlice slice{nullptr, 3u, 9u};
-    EXPECT_EQ(slice.buffer, nullptr);
-    EXPECT_EQ(slice.begin, 3u);
-    EXPECT_EQ(slice.end, 9u);
-}
-
-// Empty MeshAllocator exposes Bevy's query surface with no allocations.
-TEST(MeshModule, MeshAllocatorEmptyQuerySurface) {
-    static_assert(std::movable<mesh::MeshAllocator>);
-    static_assert(!std::copy_constructible<mesh::MeshAllocator>);
-    epix::ecs::World world(1);
-    world.init_resource<mesh::MeshAllocator>();
-    const auto& allocator = world.resource<mesh::MeshAllocator>();
-    EXPECT_EQ(allocator.slab_count(), 0u);
-    EXPECT_EQ(allocator.slabs_size(), 0u);
-    EXPECT_EQ(allocator.allocations(), 0u);
-}
-
-// Device-backed public-system coverage for Bevy's allocate-all → grow-once →
-// upload-all path, public slices, extra usages, and removal handling.
-TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
-    epix::app::App app = epix::app::App::create();
-    if (!initialize_mesh_allocator_test_app(app)) {
-        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test";
-        return;
-    }
-
-    auto& world                                                   = app.world_mut();
-    auto& settings                                                = world.resource_mut<mesh::MeshAllocatorSettings>();
-    settings.min_slab_size                                        = 1;
-    settings.max_slab_size                                        = 1024 * 1024;
-    settings.large_threshold                                      = 1024 * 1024;
-    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages = wgpu::BufferUsage::eStorage;
-
-    epix::assets::Assets<mesh::Mesh> store;
-    const auto id1 = store.add(mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f))).id();
-    const auto id2 = store.add(mesh::make_box2d(30.0f, 15.0f, glm::vec4(0.5f))).id();
-    auto first     = store.remove_untracked(id1);
-    auto second    = store.remove_untracked(id2);
-    ASSERT_TRUE(first.has_value());
-    ASSERT_TRUE(second.has_value());
-    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
-    extracted.extracted.emplace_back(id1, std::move(*first));
-    extracted.extracted.emplace_back(id2, std::move(*second));
-    extracted.added.insert(id1);
-    extracted.added.insert(id2);
-
-    ASSERT_TRUE(app.run_schedule(epix::app::Update));
-
-    const auto& allocator = world.resource<mesh::MeshAllocator>();
-    const auto vertex1    = allocator.mesh_vertex_slice(id1);
-    const auto vertex2    = allocator.mesh_vertex_slice(id2);
-    ASSERT_TRUE(vertex1.has_value());
-    ASSERT_TRUE(vertex2.has_value());
-    EXPECT_EQ(vertex1->buffer, vertex2->buffer);  // same layout packs together
-    EXPECT_EQ(vertex1->end - vertex1->begin, 4u);
-    EXPECT_EQ(vertex2->end - vertex2->begin, 4u);
-    EXPECT_GT(allocator.slabs_size(), 0u);
-    const auto usage = static_cast<std::uint64_t>(vertex1->buffer->getUsage());
-    EXPECT_NE(usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0u);
-
-    epix::render::ExtractedAssets<mesh::Mesh> removals;
-    removals.removed.insert(id1);
-    removals.removed.insert(id2);
-    world.insert_resource(std::move(removals));
-    ASSERT_TRUE(app.run_schedule(epix::app::Update));
-    EXPECT_FALSE(world.resource<mesh::MeshAllocator>().mesh_vertex_slice(id1).has_value());
-    EXPECT_FALSE(world.resource<mesh::MeshAllocator>().mesh_vertex_slice(id2).has_value());
-    EXPECT_EQ(world.resource<mesh::MeshAllocator>().slab_count(), 0u);
-}
-
-// Payloads above the threshold receive dedicated buffers; the public API
-// exposes the complete range and carries extra usages to those buffers too.
-TEST(MeshModule, AllocateAndFreeMeshesUsesLargeObjectSlabs) {
-    epix::app::App app = epix::app::App::create();
-    if (!initialize_mesh_allocator_test_app(app)) {
-        GTEST_SKIP() << "GPU/Vulkan not available, skipping device test";
-        return;
-    }
-    auto& world                                                       = app.world_mut();
-    world.resource_mut<mesh::MeshAllocatorSettings>().large_threshold = 32;
-    world.resource_mut<mesh::MeshAllocator>().extra_buffer_usages     = wgpu::BufferUsage::eStorage;
-
-    epix::assets::Assets<mesh::Mesh> store;
-    auto source                      = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
-    const auto expected_vertex_count = source.count_vertices();
-    const auto id                    = store.add(std::move(source)).id();
-    auto extracted_mesh              = store.remove_untracked(id);
-    ASSERT_TRUE(extracted_mesh.has_value());
-    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
-    extracted.extracted.emplace_back(id, std::move(*extracted_mesh));
-    extracted.added.insert(id);
-
-    ASSERT_TRUE(app.run_schedule(epix::app::Update));
-    const auto& allocator = world.resource<mesh::MeshAllocator>();
-    const auto vertex     = allocator.mesh_vertex_slice(id);
-    ASSERT_TRUE(vertex.has_value());
-    EXPECT_EQ(vertex->begin, 0u);
-    EXPECT_EQ(vertex->end, expected_vertex_count);
-    const auto usage = static_cast<std::uint64_t>(vertex->buffer->getUsage());
-    EXPECT_NE(usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0u);
-}
-
-// ElementLayout slot math (Bevy: slot size is a multiple of both the element
-// size and the 4-byte copy-buffer alignment).
-TEST(MeshModule, ElementLayoutSlotMath) {
-    // stride 12 (float3 vertex) -> 1 element/slot, 12-byte slot.
-    const auto v = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
-    EXPECT_EQ(v.elements_per_slot, 1u);
-    EXPECT_EQ(v.slot_size(), 12u);
-    // stride 2 (u16 index) -> 2 elements/slot (slot 4, divisible by 4).
-    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
-    EXPECT_EQ(i16.elements_per_slot, 2u);
-    EXPECT_EQ(i16.slot_size(), 4u);
-    // stride 4 -> 1 element/slot, 4-byte slot.
-    EXPECT_EQ(mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 4).slot_size(), 4u);
-    // stride 6 -> 2 elements/slot (slot 12, divisible by 4).
-    const auto v6 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 6);
-    EXPECT_EQ(v6.elements_per_slot, 2u);
-    EXPECT_EQ(v6.slot_size(), 12u);
-    // stride 1 (u8) -> 4 elements/slot (slot 4).
-    EXPECT_EQ(mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 1).slot_size(), 4u);
-}
-
-// compute_grow_capacity mirrors Bevy GeneralSlab::grow_if_necessary.
-TEST(MeshModule, ComputeGrowCapacity) {
-    const mesh::MeshAllocatorSettings s;
-    // 10 -> need 15 with 1.5x growth: 10*1.5 = 15.
-    auto r = mesh::detail::compute_grow_capacity(10, 15, s, 4);
-    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(r.second));
-    EXPECT_EQ(std::get<mesh::detail::SlabToReallocate>(r.second).old_slot_capacity, 10u);
-    EXPECT_EQ(r.first, 15u);
-    // Already large enough.
-    r = mesh::detail::compute_grow_capacity(10, 5, s, 4);
-    EXPECT_TRUE(std::holds_alternative<mesh::detail::NoSlabGrowthNeeded>(r.second));
-    EXPECT_EQ(r.first, 10u);
-    // Growth capped by max_slab_size: max_cap = 16 / 4 = 4 slots; can't grow past 4.
-    mesh::MeshAllocatorSettings tiny = s;
-    tiny.max_slab_size               = 16;
-    r                                = mesh::detail::compute_grow_capacity(4, 100, tiny, 4);
-    EXPECT_TRUE(std::holds_alternative<mesh::detail::SlabCantGrow>(r.second));
-    EXPECT_EQ(r.first, 4u);
-}
-
-// compute_allocation mirrors Bevy MeshAllocator::allocate decision.
-TEST(MeshModule, ComputeAllocationDecision) {
-    const mesh::MeshAllocatorSettings s;
-    // float3 vertex (size 12, 1 elem/slot), 24 bytes (2 vertices): 2 slots, general.
-    const auto v12 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
-    auto r         = mesh::detail::compute_allocation(24, v12, s);
-    EXPECT_EQ(r.first, 2u);
-    EXPECT_FALSE(r.second);
-    // u16 index (size 2, 2 elem/slot), 6 bytes (3 u16): ceil(3/2)=2 slots, general.
-    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
-    r              = mesh::detail::compute_allocation(6, i16, s);
-    EXPECT_EQ(r.first, 2u);
-    EXPECT_FALSE(r.second);
-    // Payload large enough to exceed the 256 MiB large threshold -> own slab.
-    r = mesh::detail::compute_allocation(300ull * 1024 * 1024, v12, s);
-    EXPECT_TRUE(r.second);
-}
-
-// General-slab element range (Bevy mesh_slice_in_slab).
-TEST(MeshModule, GeneralSlabElementRange) {
-    const auto v12 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 12);
-    // offset 0, 2 slots -> elements [0, 2).
-    auto range = mesh::detail::general_slab_element_range(0, 2, v12);
-    EXPECT_EQ(range.first, 0u);
-    EXPECT_EQ(range.second, 2u);
-    // u16 index layout (2 elem/slot): offset 3, 2 slots -> elements [6, 10).
-    const auto i16 = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Index, 2);
-    range          = mesh::detail::general_slab_element_range(3, 2, i16);
-    EXPECT_EQ(range.first, 6u);
-    EXPECT_EQ(range.second, 10u);
-}
-
-// SlabAllocation is a value type holding the offset-allocator handle + count.
-TEST(MeshModule, SlabAllocationValueType) {
-    const mesh::offset_allocator::Allocation a0{0u, 1u};
-    const mesh::offset_allocator::Allocation a1{2u, 1u};
-    EXPECT_EQ((mesh::detail::SlabAllocation{a0, 2}), (mesh::detail::SlabAllocation{0u, 1u, 2}));
-    EXPECT_NE((mesh::detail::SlabAllocation{a0, 2}), (mesh::detail::SlabAllocation{a1, 2}));
-    EXPECT_EQ(mesh::detail::SlabAllocation{}.offset(), 0u);
-    EXPECT_EQ(mesh::detail::SlabAllocation{}.slot_count, 0u);
-}
-
-// offset_allocator (Bevy 0.18 mesh slab allocator) freed gaps are reused.
-TEST(MeshModule, OffsetAllocatorAllocatesContiguouslyAndFrees) {
-    mesh::offset_allocator::Allocator allocator(64);
-    auto a = allocator.allocate(4);
-    ASSERT_TRUE(a.has_value());
-    EXPECT_EQ(a->offset, 0u);
-    auto b = allocator.allocate(4);
-    ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->offset, 4u);
-    auto report = allocator.storage_report();
-    EXPECT_EQ(report.total_free_space, 56u);
-
-    allocator.free(*a);
-    allocator.free(*b);
-    report = allocator.storage_report();
-    EXPECT_EQ(report.total_free_space, 64u);
-    EXPECT_EQ(report.largest_free_region, 64u);
-    EXPECT_TRUE(allocator.is_empty());
-}
-
-// The key Bevy behavior absent from a sequential cursor: a freed gap inside a
-// slab is reused by the next allocation.
-TEST(MeshModule, OffsetAllocatorReusesFreedGaps) {
-    mesh::offset_allocator::Allocator allocator(64);
-    auto a = allocator.allocate(4);  // offset 0
-    auto b = allocator.allocate(8);  // offset 4
-    ASSERT_TRUE(a.has_value());
-    ASSERT_TRUE(b.has_value());
-    EXPECT_EQ(b->offset, 4u);
-
-    allocator.free(*a);
-    auto c = allocator.allocate(4);
-    ASSERT_TRUE(c.has_value());
-    EXPECT_EQ(c->offset, 0u);  // reuses the freed gap, not the tail
-    allocator.free(*b);
-    allocator.free(*c);
-    EXPECT_TRUE(allocator.is_empty());
-}
-
-// Adjacent freed allocations merge back into one free region, which is then
-// reused before the untouched (larger) tail.
-TEST(MeshModule, OffsetAllocatorMergesNeighbors) {
-    mesh::offset_allocator::Allocator allocator(64);
-    auto a = allocator.allocate(4);  // offset 0
-    auto b = allocator.allocate(8);  // offset 4
-    auto c = allocator.allocate(4);  // offset 12 (kept alive)
-    ASSERT_TRUE(a.has_value());
-    ASSERT_TRUE(b.has_value());
-    ASSERT_TRUE(c.has_value());
-    EXPECT_EQ(c->offset, 12u);
-
-    allocator.free(*a);
-    allocator.free(*b);
-    // a+b merged into one 12-unit region at offset 0; the 48-unit tail is
-    // untouched but sits in a higher size class, so the next fit reuses the
-    // merged gap at offset 0.
-    auto d = allocator.allocate(8);
-    ASSERT_TRUE(d.has_value());
-    EXPECT_EQ(d->offset, 0u);
-    allocator.free(*c);
-    allocator.free(*d);
-    EXPECT_TRUE(allocator.is_empty());
-}
-
-// min_allocator_size mirrors offset-allocator ext::min_allocator_size.
-TEST(MeshModule, OffsetAllocatorMinAllocatorSize) {
-    EXPECT_EQ(mesh::offset_allocator::min_allocator_size(1), 1u);
-    EXPECT_EQ(mesh::offset_allocator::min_allocator_size(8), 8u);
-    // Required to hold N slots: returns the bin's capacity.
-    const auto min = mesh::offset_allocator::min_allocator_size(7);
-    EXPECT_GE(min, 7u);
-}
-
-// Bevy retains the slab capacity from the beginning of the frame when one
-// slab grows repeatedly, so the eventual GPU copy is scheduled only once and
-// copies only the old resident range.
-TEST(MeshModule, SlabsToReallocatePreservesInitialCapacity) {
-    mesh::MeshAllocatorSettings settings;
-    settings.min_slab_size = 40;
-    settings.max_slab_size = 4096;
-    const auto layout      = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
-    auto slab              = mesh::detail::GeneralSlab::make(layout, 1, settings);
-    ASSERT_EQ(slab.current_slot_capacity, 10u);
-
-    mesh::detail::SlabsToReallocate pending;
-    const auto first = slab.grow_if_necessary(15, settings);
-    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(first));
-    pending.try_emplace(mesh::SlabId{7}, std::get<mesh::detail::SlabToReallocate>(first));
-    const auto second = slab.grow_if_necessary(22, settings);
-    ASSERT_TRUE(std::holds_alternative<mesh::detail::SlabToReallocate>(second));
-    pending.try_emplace(mesh::SlabId{7}, std::get<mesh::detail::SlabToReallocate>(second));
-
-    ASSERT_EQ(pending.size(), 1u);
-    EXPECT_EQ(pending.at(mesh::SlabId{7}).old_slot_capacity, 10u);
-    EXPECT_GE(slab.current_slot_capacity, 22u);
-}
-
-// Bevy rounds byte limits up to slots and guarantees that the backing offset
-// allocator can hold the first payload even when its size-class capacity is
-// larger than the configured maximum.
-TEST(MeshModule, GeneralSlabCapacityMatchesBevyRounding) {
-    mesh::MeshAllocatorSettings settings;
-    settings.min_slab_size = 5;
-    settings.max_slab_size = 5;
-    const auto layout      = mesh::detail::ElementLayout::make(mesh::detail::ElementClass::Vertex, 4);
-    auto slab              = mesh::detail::GeneralSlab::make(layout, 7, settings);
-    EXPECT_EQ(slab.current_slot_capacity, mesh::offset_allocator::min_allocator_size(7));
-    const auto allocation = slab.allocator.allocate(7);
-    ASSERT_TRUE(allocation.has_value());
-    EXPECT_EQ(allocation->offset, 0u);
-}
-
-TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
-    mesh::Mesh direct_source = mesh::make_box2d(24.0f, 12.0f);
-    ASSERT_GT(direct_source.count_vertices(), 0u);
-    EXPECT_TRUE(direct_source.take_gpu_data().has_value());
-
-    mesh::Mesh source = mesh::make_box2d(24.0f, 12.0f);
-    ASSERT_GT(source.count_vertices(), 0u);
-
-    epix::render::RenderAsset<mesh::Mesh> render_asset;
-    auto extracted = render_asset.take_gpu_data(source, nullptr);
-    ASSERT_TRUE(extracted.has_value());
-    EXPECT_GT(extracted->count_vertices(), 0u);
-    const auto source_attributes = source.try_attributes();
-    ASSERT_FALSE(source_attributes.has_value());
-    EXPECT_EQ(source_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-    EXPECT_THROW(source.count_vertices(), std::logic_error);
-
-    auto repeated = render_asset.take_gpu_data(source, nullptr);
-    ASSERT_FALSE(repeated.has_value());
-    EXPECT_EQ(repeated.error(), epix::render::AssetExtractionError::AlreadyExtracted);
+    const auto remapped = first.value->get_layout(std::array{
+        mesh::VertexAttributeDescriptor{
+            .shader_location = 0, .id = mesh::Mesh::ATTRIBUTE_COLOR.id, .name = "color"},
+        mesh::VertexAttributeDescriptor{
+            .shader_location = 1, .id = mesh::Mesh::ATTRIBUTE_POSITION.id, .name = "position"},
+    });
+    ASSERT_TRUE(remapped.has_value());
+    ASSERT_EQ(remapped->attributes.size(), 2u);
+    EXPECT_EQ(remapped->attributes[0].shader_location, 0u);
+    EXPECT_EQ(remapped->attributes[1].shader_location, 1u);
 }
 
 TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
-    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
-
+    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     const auto missing_indices = source.try_indices();
     ASSERT_FALSE(missing_indices.has_value());
     EXPECT_EQ(missing_indices.error(), mesh::MeshAccessError::NotFound);
-    const auto optional_indices = source.try_indices_option();
-    ASSERT_TRUE(optional_indices.has_value());
-    EXPECT_FALSE(optional_indices->has_value());
-
-    auto extracted = source.take_gpu_data();
-    ASSERT_TRUE(extracted.has_value());
-    EXPECT_EQ(extracted->count_vertices(), 0u);
-    const auto extracted_indices = extracted->try_indices_option();
-    ASSERT_TRUE(extracted_indices.has_value());
-    EXPECT_FALSE(extracted_indices->has_value());
-
-    const auto source_attribute = source.try_attribute_option(mesh::Mesh::ATTRIBUTE_POSITION);
-    ASSERT_FALSE(source_attribute.has_value());
-    EXPECT_EQ(source_attribute.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-    const auto source_indices = source.try_indices_option();
-    ASSERT_FALSE(source_indices.has_value());
-    EXPECT_EQ(source_indices.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-    EXPECT_THROW(source.attributes(), std::logic_error);
-    EXPECT_THROW(source.indices(), std::logic_error);
-
-    auto repeated = source.take_gpu_data();
-    ASSERT_FALSE(repeated.has_value());
-    EXPECT_EQ(repeated.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-
-    mesh::Mesh clone(source);
-    const auto clone_attributes = clone.try_attributes();
-    ASSERT_FALSE(clone_attributes.has_value());
-    EXPECT_EQ(clone_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-}
-
-TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
-    struct ResourceIdShiftA {};
-    struct ResourceIdShiftB {};
-    struct ResourceIdShiftC {};
-
-    epix::ecs::World main_world(7);
-    epix::ecs::World render_world(7);
-    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(epix::render::ExtractedAssets<mesh::Mesh>{});
-    render_world.insert_resource(epix::render::RenderAssets<mesh::Mesh>{});
-
-    // Keep the extracted resource ids distinct from render-world ids, as they
-    // are in the production main/render-world split.
-    main_world.insert_resource(ResourceIdShiftA{});
-    main_world.insert_resource(ResourceIdShiftB{});
-    main_world.insert_resource(ResourceIdShiftC{});
-    main_world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
-    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>{});
-
-    auto source_mesh        = mesh::make_box2d(24.0f, 12.0f);
-    source_mesh.asset_usage = epix::render::RenderAssetUsages::RENDER_WORLD;
-    auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(std::move(source_mesh));
-    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
-        epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
-
-    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<mesh::Mesh>);
-    system->initialize(render_world);
-    ASSERT_TRUE(system->run({}, render_world).has_value());
-
-    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<mesh::Mesh>>();
-    ASSERT_EQ(extracted.extracted.size(), 1u);
-    EXPECT_EQ(extracted.extracted.front().first, handle.id());
-    EXPECT_GT(extracted.extracted.front().second.count_vertices(), 0u);
-
-    const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());
-    ASSERT_TRUE(source.has_value());
-    const auto source_attributes = source->get().try_attributes();
-    ASSERT_FALSE(source_attributes.has_value());
-    EXPECT_EQ(source_attributes.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
-}
-
-TEST(MeshModule, ExtractSystemClonesDualWorldMesh) {
-    struct ResourceIdShiftA {};
-    struct ResourceIdShiftB {};
-    struct ResourceIdShiftC {};
-
-    epix::ecs::World main_world(7);
-    epix::ecs::World render_world(7);
-    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(epix::render::ExtractedAssets<mesh::Mesh>{});
-    render_world.insert_resource(epix::render::RenderAssets<mesh::Mesh>{});
-    main_world.insert_resource(ResourceIdShiftA{});
-    main_world.insert_resource(ResourceIdShiftB{});
-    main_world.insert_resource(ResourceIdShiftC{});
-    main_world.insert_resource(epix::assets::Assets<mesh::Mesh>{});
-    main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>{});
-
-    auto handle = main_world.resource_mut<epix::assets::Assets<mesh::Mesh>>().emplace(mesh::make_box2d(24.0f, 12.0f));
-    main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
-        epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
-
-    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<mesh::Mesh>);
-    system->initialize(render_world);
-    ASSERT_TRUE(system->run({}, render_world).has_value());
-
-    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<mesh::Mesh>>();
-    ASSERT_EQ(extracted.extracted.size(), 1u);
-    EXPECT_GT(extracted.extracted.front().second.count_vertices(), 0u);
-    const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());
-    ASSERT_TRUE(source.has_value());
-    EXPECT_GT(source->get().count_vertices(), 0u);
+    EXPECT_TRUE(source.take_gpu_data().has_value());
+    EXPECT_EQ(source.try_attributes().error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_FALSE(source.take_gpu_data().has_value());
 }

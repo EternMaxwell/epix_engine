@@ -453,6 +453,10 @@ void VisibilityPlugin::attach(App& app) {
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
+    app.world_mut().register_required_components<::epix::mesh::Mesh2d, Visibility>();
+    app.world_mut().register_required_components_with<::epix::mesh::Mesh2d>([] {
+        return VisibilityClass{meta::type_index(meta::type_id<::epix::mesh::Mesh2d>())};
+    });
     app.add_systems(app::PostUpdate, into(visibility_propagate_system)
                                          .in_set(VisibilitySystems::VisibilityPropagate)
                                          .set_name("visibility propagate"));

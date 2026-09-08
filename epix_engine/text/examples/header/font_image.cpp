@@ -6,6 +6,7 @@
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/sprite.hpp>
 #include <epix/text.hpp>
@@ -87,8 +88,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
     app.add_systems(app::Update, ecs::into(input::log_inputs, window::log_events));

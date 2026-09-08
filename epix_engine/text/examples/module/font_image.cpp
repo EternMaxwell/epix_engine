@@ -14,10 +14,11 @@ import epix.app;
 import epix.core_graph;
 import epix.input;
 import epix.mesh;
+import epix.sprite;
+import epix.sprite_render;
 import epix.render;
 import epix.image;
 import epix.camera;
-import epix.sprite;
 import epix.text;
 import epix.transform;
 import epix.window;
@@ -98,8 +99,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
     app.add_systems(app::Update, ecs::into(input::log_inputs, window::log_events));

@@ -589,3 +589,30 @@ TEST(VisibilityClass, AddHookAppendsTheComponentType) {
     ASSERT_EQ(visibility_class->get().classes.size(), 1u);
     EXPECT_EQ(visibility_class->get().classes.front(), epix::meta::type_index(epix::meta::type_id<CustomRenderable>()));
 }
+
+TEST(MeshAabb, MeshSpecializationIsOwnedByCameraAndComputesBounds) {
+    static_assert(::epix::camera::MeshAabbImpl<::epix::mesh::Mesh>);
+    auto value = ::epix::mesh::make_box2d(20.0f, 10.0f);
+    const auto aabb = ::epix::camera::MeshAabb<::epix::mesh::Mesh>::compute_aabb(value);
+    ASSERT_TRUE(aabb.has_value());
+    EXPECT_EQ(aabb->center, glm::vec3(0.0f));
+    EXPECT_EQ(aabb->half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
+}
+
+TEST(VisibilityPlugin, Mesh2dReceivesRequiredVisibilityComponents) {
+    ::epix::app::App app = ::epix::app::App::create();
+    ::epix::camera::VisibilityPlugin{}.attach(app);
+    const auto entity = app.world_mut()
+                            .spawn(::epix::mesh::Mesh2d{::epix::assets::Handle<::epix::mesh::Mesh>{
+                                ::epix::assets::AssetId<::epix::mesh::Mesh>::invalid()}})
+                            .id();
+    const auto value = app.world().get_entity(entity);
+    ASSERT_TRUE(value.has_value());
+    EXPECT_TRUE(value->contains<::epix::camera::Visibility>());
+    EXPECT_TRUE(value->contains<::epix::camera::InheritedVisibility>());
+    EXPECT_TRUE(value->contains<::epix::camera::ViewVisibility>());
+    const auto classes = value->get<::epix::camera::VisibilityClass>();
+    ASSERT_TRUE(classes.has_value());
+    const auto mesh2d_type = ::epix::meta::type_index(::epix::meta::type_id<::epix::mesh::Mesh2d>());
+    EXPECT_NE(std::ranges::find(classes->get().classes, mesh2d_type), classes->get().classes.end());
+}

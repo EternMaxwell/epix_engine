@@ -30,7 +30,8 @@ EPIX_EXPORT struct ShaderStorageBuffer {
     /** @brief Debug label. */
     std::string label = "ShaderStorageBuffer";
     /** @brief Asset usage flags (Bevy RenderAssetUsages::default() = MAIN_WORLD | RENDER_WORLD). */
-    RenderAssetUsages asset_usage = static_cast<RenderAssetUsages>(MAIN_WORLD | RENDER_WORLD);
+    assets::RenderAssetUsages asset_usage = static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD |
+                                                                                   assets::RENDER_WORLD);
 
     ShaderStorageBuffer() = default;
 
@@ -52,7 +53,7 @@ EPIX_EXPORT struct ShaderStorageBuffer {
     }
 
     /** @brief Create from raw bytes. */
-    static ShaderStorageBuffer with_data(std::span<const std::uint8_t> bytes, RenderAssetUsages usage) {
+    static ShaderStorageBuffer with_data(std::span<const std::uint8_t> bytes, assets::RenderAssetUsages usage) {
         ShaderStorageBuffer s;
         s.data        = std::vector<std::uint8_t>(bytes.begin(), bytes.end());
         s.size        = bytes.size();
@@ -61,7 +62,7 @@ EPIX_EXPORT struct ShaderStorageBuffer {
     }
 
     /** @brief Create with a size but no data. */
-    static ShaderStorageBuffer with_size(std::uint64_t size_bytes, RenderAssetUsages usage) {
+    static ShaderStorageBuffer with_size(std::uint64_t size_bytes, assets::RenderAssetUsages usage) {
         ShaderStorageBuffer s;
         s.size        = size_bytes;
         s.asset_usage = usage;
@@ -88,7 +89,7 @@ struct RenderAsset<ShaderStorageBuffer> {
 
     std::expected<ProcessedAsset, PrepareAssetError<ShaderStorageBuffer>> prepare_asset(
         ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param, const ProcessedAsset* previous);
-    RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
+    assets::RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
 
     /** @brief Move the data out of the stored asset so it stays in Assets<T>
      * (Bevy RenderAsset::take_gpu_data).

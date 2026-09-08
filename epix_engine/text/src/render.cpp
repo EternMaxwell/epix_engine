@@ -343,7 +343,7 @@ struct DrawTextBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<mesh::MeshAllocator>> params,
+        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -374,8 +374,9 @@ struct DrawTextBatch {
         }
         const std::uint64_t stride = render_mesh->layout.value->layout().array_stride;
         encoder.setVertexBuffer(0, *vertex_slice->buffer,
-                                static_cast<std::uint64_t>(vertex_slice->begin) * stride,
-                                static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);
+                                static_cast<std::uint64_t>(vertex_slice->range.first) * stride,
+                                static_cast<std::uint64_t>(vertex_slice->range.second - vertex_slice->range.first) *
+                                    stride);
 
         if (render_mesh->indexed()) {
             const auto index_slice = mesh_allocator->mesh_index_slice(extracted.mesh);
@@ -390,12 +391,13 @@ struct DrawTextBatch {
             const wgpu::IndexFormat format = info ? info->index_format : wgpu::IndexFormat::eUint16;
             const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
             encoder.setIndexBuffer(*index_slice->buffer, format,
-                                   static_cast<std::uint64_t>(index_slice->begin) * element_size,
-                                   static_cast<std::uint64_t>(index_slice->end - index_slice->begin) * element_size);
-            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->end - index_slice->begin),
+                                   static_cast<std::uint64_t>(index_slice->range.first) * element_size,
+                                   static_cast<std::uint64_t>(index_slice->range.second - index_slice->range.first) *
+                                       element_size);
+            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->range.second - index_slice->range.first),
                                 render::phase::batch_range_len(item.batch_range()), 0, 0, item.batch_range().first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(vertex_slice->end - vertex_slice->begin),
+            encoder.draw(static_cast<std::uint32_t>(vertex_slice->range.second - vertex_slice->range.first),
                          render::phase::batch_range_len(item.batch_range()), 0, item.batch_range().first);
         }
         return {};
@@ -597,7 +599,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
 TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
                                     assets::Assets<mesh::Mesh>& mesh_assets,
                                     font::FontAtlas& atlas) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD);
     (void)mesh.insert_attribute(
         mesh::Mesh::ATTRIBUTE_POSITION,
         std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {

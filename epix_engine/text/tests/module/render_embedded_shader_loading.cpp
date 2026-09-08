@@ -1,11 +1,12 @@
-﻿#include <gtest/gtest.h>
+#include <gtest/gtest.h>
 
 import epix.assets;
 import epix.ecs;
 import epix.app;
 import epix.mesh;
-import epix.shader;
 import epix.sprite;
+import epix.sprite_render;
+import epix.shader;
 import epix.task;
 import epix.text;
 
@@ -68,7 +69,7 @@ void expect_embedded_shader_loaded(App& app, std::string_view asset_path) {
 TEST(MeshRenderPlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     auto app = make_shader_asset_app();
 
-    mesh::MeshRenderPlugin plugin;
+    sprite_render::Mesh2dRenderPlugin plugin;
     plugin.attach(app);
     flush_load_tasks(app);
 

@@ -3,44 +3,17 @@
 
 #include <epix/core_graph.hpp>
 #include <epix/image.hpp>
-#include <epix/mesh.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
 using namespace epix;
 using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::mesh;
+using namespace epix::sprite_render;
 
 static_assert(render::HasTakeGpuData<Mesh>,
               "Mesh uses RENDER_WORLD-only extraction and must transfer its GPU payload.");
-
-void epix::mesh::calculate_bounds_2d(
-    Commands commands,
-    Res<assets::Assets<Mesh>> meshes,
-    Query<Item<Entity, const Mesh2d&>,
-          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>, Without<camera::NoAutoAabb>>> new_mesh_aabb,
-    Query<Item<Ref<Mesh2d>, Mut<camera::Aabb>>,
-          Filter<Or<assets::AssetChanged<Mesh2d>, Modified<Mesh2d>>,
-                 Without<camera::NoFrustumCulling>,
-                 Without<camera::NoAutoAabb>>> update_mesh_aabb) {
-    for (auto&& [entity, mesh2d] : new_mesh_aabb.iter()) {
-        if (const auto mesh = meshes->get(mesh2d.handle.id())) {
-            if (const auto aabb = mesh->get().compute_aabb()) {
-                commands.entity(entity).insert_if_new(*aabb);
-            }
-        }
-    }
-
-    for (auto&& [mesh2d, old_aabb] : update_mesh_aabb.iter()) {
-        if (const auto mesh = meshes->get(mesh2d->handle.id())) {
-            if (const auto aabb = mesh->get().compute_aabb();
-                aabb && (glm::any(glm::notEqual(old_aabb->center, aabb->center)) ||
-                         glm::any(glm::notEqual(old_aabb->half_extents, aabb->half_extents)))) {
-                old_aabb.get_mut() = *aabb;
-            }
-        }
-    }
-}
 
 namespace {
 
@@ -359,11 +332,11 @@ constexpr const char* shader_variant_name(MeshShaderVariant variant) {
     }
 }
 
-Mesh2dPipelineKey::AlphaMode pipeline_alpha_mode(const MeshAlphaMode2d& alpha_mode) noexcept {
+Mesh2dPipelineKey::AlphaMode pipeline_alpha_mode(const AlphaMode2d& alpha_mode) noexcept {
     return std::visit(
         []<typename Mode>(const Mode&) {
-            if constexpr (std::same_as<Mode, MeshAlphaMode2dOpaque>) return Mesh2dPipelineKey::AlphaMode::Opaque;
-            if constexpr (std::same_as<Mode, MeshAlphaMode2dMask>) return Mesh2dPipelineKey::AlphaMode::Mask;
+            if constexpr (std::same_as<Mode, AlphaMode2dOpaque>) return Mesh2dPipelineKey::AlphaMode::Opaque;
+            if constexpr (std::same_as<Mode, AlphaMode2dMask>) return Mesh2dPipelineKey::AlphaMode::Mask;
             return Mesh2dPipelineKey::AlphaMode::Blend;
         },
         alpha_mode);
@@ -440,7 +413,7 @@ struct Mesh2dPipelineCache {
                                                        wgpu::PrimitiveTopology primitive_type,
                                                        wgpu::TextureFormat color_format,
                                                        std::uint32_t sample_count,
-                                                       const MeshAlphaMode2d& alpha_mode,
+                                                       const AlphaMode2d& alpha_mode,
                                                        bool textured) {
         if (!layout_ref.value) {
             spdlog::warn("[mesh] Skip pipeline specialization: mesh has no vertex buffer layout.");
@@ -619,10 +592,10 @@ void extract_meshes_2d(ResMut<RenderMesh2dInstances> render_mesh_instances,
         glm::vec4 color = texture_material.transform([](const MeshTextureMaterial2d& value) { return value.color; })
                               .value_or(material.transform([](const MeshMaterial2d& value) { return value.color; })
                                             .value_or(glm::vec4(1.0f)));
-        MeshAlphaMode2d alpha_mode =
+        AlphaMode2d alpha_mode =
             texture_material.transform([](const MeshTextureMaterial2d& value) { return value.alpha_mode; })
                 .value_or(material.transform([](const MeshMaterial2d& value) { return value.alpha_mode; })
-                              .value_or(MeshAlphaMode2d{MeshAlphaMode2dOpaque{}}));
+                              .value_or(AlphaMode2d{AlphaMode2dOpaque{}}));
 
         render_mesh_instances->instances.emplace(
             render::sync_world::MainEntity{entity},
@@ -677,8 +650,8 @@ struct MeshBatchKey {
     bool operator==(const MeshBatchKey&) const = default;
 };
 
-float alpha_cutoff(const MeshAlphaMode2d& alpha_mode) noexcept {
-    if (const auto* mask = std::get_if<MeshAlphaMode2dMask>(&alpha_mode)) return mask->cutoff;
+float alpha_cutoff(const AlphaMode2d& alpha_mode) noexcept {
+    if (const auto* mask = std::get_if<AlphaMode2dMask>(&alpha_mode)) return mask->cutoff;
     return 0.0f;
 }
 
@@ -822,7 +795,7 @@ void queue_meshes_2d_opaque(
         const auto& visible = visible_entities.template get<Mesh2d>();
         for (const auto& [main_entity, instance] : mesh_instances->instances) {
             const auto& extracted_mesh = instance.extracted;
-            if (std::holds_alternative<MeshAlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
+            if (std::holds_alternative<AlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
                 continue;
             }
             if (!camera_layers.intersects(extracted_mesh.render_layer)) {
@@ -852,7 +825,7 @@ void queue_meshes_2d_opaque(
             }
 
             auto pipeline_id = pipeline_cache->specialize(
-                *pipeline_server, render_mesh->layout, render_mesh->primitive_type(), target.format,
+                *pipeline_server, render_mesh->layout, render_mesh->primitive_topology(), target.format,
                 target.color_attachment_sample_count(), extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn(
@@ -863,7 +836,7 @@ void queue_meshes_2d_opaque(
             const auto batch_set_key = core_graph::core_2d::BatchSetKey2D{.indexed_value = render_mesh->indexed()};
             const auto material_bind_group_id = extracted_mesh.texture.transform(
                 [](const assets::AssetId<image::Image>& id) { return assets::UntypedAssetId(id); });
-            if (std::holds_alternative<MeshAlphaMode2dOpaque>(extracted_mesh.alpha_mode)) {
+            if (std::holds_alternative<AlphaMode2dOpaque>(extracted_mesh.alpha_mode)) {
                 opaque_phase->second.add(
                     batch_set_key,
                     core_graph::core_2d::Opaque2DBinKey{.pipeline_id = *pipeline_id,
@@ -906,7 +879,7 @@ void queue_meshes_2d_transparent(
         const auto& visible = visible_entities.template get<Mesh2d>();
         for (const auto& [main_entity, instance] : mesh_instances->instances) {
             const auto& extracted_mesh = instance.extracted;
-            if (!std::holds_alternative<MeshAlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
+            if (!std::holds_alternative<AlphaMode2dBlend>(extracted_mesh.alpha_mode)) {
                 continue;
             }
             if (!camera_layers.intersects(extracted_mesh.render_layer)) {
@@ -935,7 +908,7 @@ void queue_meshes_2d_transparent(
             }
 
             auto pipeline_id = pipeline_cache->specialize(
-                *pipeline_server, render_mesh->layout, render_mesh->primitive_type(), target.format,
+                *pipeline_server, render_mesh->layout, render_mesh->primitive_topology(), target.format,
                 target.color_attachment_sample_count(), extracted_mesh.alpha_mode, extracted_mesh.texture.has_value());
             if (!pipeline_id) {
                 spdlog::warn("[mesh] Skip transparent mesh entity {:#x}: failed to specialize pipeline for layout.",
@@ -957,129 +930,8 @@ void queue_meshes_2d_transparent(
 
 }  // namespace
 
-namespace epix::mesh::detail {
-struct MeshAllocatorAccess {
-    static void process(MeshAllocator& allocator,
-                        const MeshAllocatorSettings& settings,
-                        const render::ExtractedAssets<Mesh>& extracted_meshes,
-                        MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
-                        const wgpu::Device& device,
-                        const wgpu::Queue& queue) {
-        // Bevy frees removed and modified assets before allocating their new
-        // payloads.
-        for (const auto& id : extracted_meshes.removed) allocator.free_all(id);
-        for (const auto& id : extracted_meshes.modified) allocator.free_all(id);
-
-        SlabsToReallocate slabs_to_reallocate;
-
-        // Allocate every payload first. Growth is only recorded here; no GPU
-        // buffer is created or copied until the complete frame is known.
-        for (const auto& [id, mesh] : extracted_meshes.extracted) {
-            const auto vertex_layout = mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
-            if (!vertex_layout.value || vertex_layout.value->layout().array_stride == 0) continue;
-            const auto vertex_stride = vertex_layout.value->layout().array_stride;
-            const auto vertex_bytes  = static_cast<std::uint64_t>(mesh.count_vertices()) * vertex_stride;
-            if (vertex_bytes == 0) continue;
-
-            const auto element_layout = ElementLayout::make(ElementClass::Vertex, vertex_stride);
-            if (allocator.general_vertex_slabs_supported) {
-                allocator.allocate(id, vertex_bytes, element_layout, slabs_to_reallocate, settings);
-            } else {
-                allocator.allocate_large(id, element_layout);
-            }
-
-            if (const auto indices = mesh.indices()) {
-                const auto& index                = indices->get();
-                const std::uint32_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
-                allocator.allocate(id, static_cast<std::uint64_t>(index.size()) * element_size,
-                                   ElementLayout::make(ElementClass::Index, element_size), slabs_to_reallocate,
-                                   settings);
-            }
-        }
-
-        // A slab that grew repeatedly above is allocated/reallocated exactly
-        // once, preserving the capacity it had at the beginning of the frame.
-        for (const auto& [slab_id, reallocate] : slabs_to_reallocate) {
-            allocator.reallocate_slab(device, queue, slab_id, reallocate);
-        }
-
-        // Only after final buffer placement is known do uploads become
-        // resident, matching Bevy's third phase.
-        for (const auto& [id, mesh] : extracted_meshes.extracted) {
-            if (const auto vertex_slab = allocator.mesh_id_to_vertex_slab.find(id);
-                vertex_slab != allocator.mesh_id_to_vertex_slab.end()) {
-                const auto packed = packed_vertex_bytes(mesh);
-                if (!packed.empty()) {
-                    allocator.copy_element_data(device, queue, vertex_slab->second, id, packed.data(), packed.size(),
-                                                wgpu::BufferUsage::eVertex);
-                }
-            }
-            if (const auto index_slab = allocator.mesh_id_to_index_slab.find(id);
-                index_slab != allocator.mesh_id_to_index_slab.end()) {
-                if (const auto indices = mesh.indices()) {
-                    const auto& index              = indices->get();
-                    const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
-                    allocator.copy_element_data(device, queue, index_slab->second, id, index.data.cdata(),
-                                                index.size() * element_size, wgpu::BufferUsage::eIndex);
-                }
-            }
-        }
-    }
-};
-}  // namespace epix::mesh::detail
-
-epix::mesh::MeshAllocator epix::mesh::MeshAllocator::from_world(epix::ecs::World& world) {
-    (void)world;
-    // wgpu-native's C API does not expose the wgpu-core downlevel-capability
-    // query used by Bevy. Epix currently coerces every selected backend to
-    // Vulkan for Slang SPIR-V passthrough, and Vulkan guarantees BASE_VERTEX.
-    // Remove this local fallback together with that renderer workaround once
-    // the native API can report the capability directly.
-    return MeshAllocator(true);
-}
-
-void epix::mesh::allocate_and_free_meshes(ResMut<MeshAllocator> mesh_allocator,
-                                          Res<MeshAllocatorSettings> mesh_allocator_settings,
-                                          Res<render::ExtractedAssets<Mesh>> extracted_meshes,
-                                          ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
-                                          Res<wgpu::Device> device,
-                                          Res<wgpu::Queue> queue) {
-    detail::MeshAllocatorAccess::process(mesh_allocator.get_mut(), *mesh_allocator_settings, *extracted_meshes,
-                                         mesh_vertex_buffer_layouts.get_mut(), *device, *queue);
-}
-
-void MeshAllocatorPlugin::attach(App& app) {
-    if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        render_app->get().world_mut().init_resource<MeshAllocatorSettings>();
-        render_app->get().add_systems(render::Render, into(allocate_and_free_meshes)
-                                                          .before(render::prepare_assets<Mesh>)
-                                                          .in_set(render::RenderSystems::PrepareAssets)
-                                                          .set_name("allocate and free meshes"));
-    }
-}
-
-void MeshAllocatorPlugin::ready(App& app) {
-    if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        auto& world = render_app->get().world_mut();
-        world.init_resource<MeshAllocator>();
-    }
-}
-
-void MeshRenderPlugin::attach(app::App& app) {
-    spdlog::debug("[mesh] Attaching MeshRenderPlugin.");
-    // Bevy Mesh2d requires Visibility, pulling in InheritedVisibility +
-    // ViewVisibility so hidden/layer culling works.
-    app.world_mut().register_required_components<Mesh2d, camera::Visibility>();
-    app.world_mut().register_required_components_with<Mesh2d>(
-        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<Mesh2d>())}; });
-    app.add_systems(app::PostUpdate, into(calculate_bounds_2d)
-                                         .in_set(camera::VisibilitySystems::CalculateBounds)
-                                         .before(camera::VisibilitySystems::CheckVisibility)
-                                         .set_name("calculate bounds 2d"));
-    app.add_plugins(MeshPlugin{});
-    app.add_plugins(core_graph::core_2d::Core2dPlugin{});
-    app.add_plugins(MeshAllocatorPlugin{});
-    app.add_plugins(render::RenderAssetPlugin<Mesh>{});
+void Mesh2dRenderPlugin::attach(app::App& app) {
+    spdlog::debug("[sprite] Attaching Mesh2dRenderPlugin.");
 
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
@@ -1088,8 +940,8 @@ void MeshRenderPlugin::attach(app::App& app) {
     }
 }
 
-void MeshRenderPlugin::ready(app::App& app) {
-    spdlog::debug("[mesh] Readying MeshRenderPlugin.");
+void Mesh2dRenderPlugin::ready(app::App& app) {
+    spdlog::debug("[sprite] Readying Mesh2dRenderPlugin.");
     if (!app.world_mut().get_resource<MeshShaderHandles>()) {
         if (auto shader_handles = load_mesh_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));
@@ -1098,24 +950,19 @@ void MeshRenderPlugin::ready(app::App& app) {
 
     auto shader_handles = app.world_mut().get_resource<MeshShaderHandles>();
     if (!shader_handles) {
-        spdlog::error("[mesh] MeshRenderPlugin could not load internal mesh shaders through AssetServer.");
+        spdlog::error("[sprite] Mesh2dRenderPlugin could not load internal mesh shaders through AssetServer.");
         return;
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
     if (!render_app) {
         spdlog::error(
-            "[mesh] MeshRenderPlugin requires the render sub-app, but it was not found. Did you add "
-            "render::RenderPlugin before MeshRenderPlugin?");
+            "[sprite] Mesh2dRenderPlugin requires the render sub-app, but it was not found. Did you add "
+            "render::RenderPlugin before Mesh2dRenderPlugin?");
         return;
     }
 
     auto& world = render_app->get().world_mut();
-    // Bevy MeshRenderAssetPlugin initializes the shared layout store in the
-    // render world (mesh/mod.rs:39).
-    if (!world.get_resource<MeshVertexBufferLayouts>()) {
-        world.insert_resource(MeshVertexBufferLayouts{});
-    }
     if (!world.get_resource<MeshInstanceBuffer>()) {
         world.insert_resource(MeshInstanceBuffer{});
     }
@@ -1129,18 +976,18 @@ void MeshRenderPlugin::ready(app::App& app) {
     world.insert_resource(OpaqueMesh2dDrawFunction{
         .value = render::phase::app_add_render_commands<
             core_graph::core_2d::Opaque2D, render::phase::SetItemPipeline, render::view::BindViewUniform<0>::Command,
-            mesh::BindMesh2dInstances<1>::Command, mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(
+            sprite_render::BindMesh2dInstances<1>::Command, sprite_render::BindMesh2dTexture<2>::Command, sprite_render::DrawMesh2dBatch>(
             render_subapp)});
     world.insert_resource(AlphaMaskMesh2dDrawFunction{
         .value = render::phase::app_add_render_commands<
             core_graph::core_2d::AlphaMask2D, render::phase::SetItemPipeline, render::view::BindViewUniform<0>::Command,
-            mesh::BindMesh2dInstances<1>::Command, mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(
+            sprite_render::BindMesh2dInstances<1>::Command, sprite_render::BindMesh2dTexture<2>::Command, sprite_render::DrawMesh2dBatch>(
             render_subapp)});
     world.insert_resource(TransparentMesh2dDrawFunction{
         .value = render::phase::app_add_render_commands<
             core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-            render::view::BindViewUniform<0>::Command, mesh::BindMesh2dInstances<1>::Command,
-            mesh::BindMesh2dTexture<2>::Command, mesh::DrawMesh2dBatch>(render_subapp)});
+            render::view::BindViewUniform<0>::Command, sprite_render::BindMesh2dInstances<1>::Command,
+            sprite_render::BindMesh2dTexture<2>::Command, sprite_render::DrawMesh2dBatch>(render_subapp)});
 
     render_subapp.add_systems(render::ExtractSchedule, into(extract_meshes_2d).set_name("extract mesh2d"))
         .add_systems(render::Render, into(queue_meshes_2d_opaque, queue_meshes_2d_transparent)

@@ -22,7 +22,7 @@
 // and `min_allocator_size`. Only the u32 node-index instantiation is ported,
 // which is what Bevy uses.
 
-namespace epix::mesh::offset_allocator {
+namespace epix::render::mesh::offset_allocator {
 
 /** @brief Bin-class constants (offset-allocator small_float.rs). */
 inline constexpr std::uint32_t kMantissaBits         = 3;
@@ -395,4 +395,4 @@ class Allocator {
     std::uint32_t free_offset_ = 0;
 };
 
-}  // namespace epix::mesh::offset_allocator
+}  // namespace epix::render::mesh::offset_allocator

@@ -23,9 +23,11 @@ export module epix.render;
 import std;
 #endif
 import epix.ecs;
+import epix.app;
 import epix.assets;
 import epix.shader;
 import epix.image;
+import epix.mesh;
 import epix.window;
 import epix.transform;
 import epix.time;

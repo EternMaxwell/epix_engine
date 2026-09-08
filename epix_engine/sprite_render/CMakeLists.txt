@@ -1,0 +1,17 @@
+epix_add_module(epix_sprite_render)
+target_link_libraries(epix_sprite_render PUBLIC epix_ecs)
+target_link_libraries(epix_sprite_render PUBLIC epix_app)
+target_link_libraries(epix_sprite_render PUBLIC epix_assets)
+target_link_libraries(epix_sprite_render PUBLIC epix_image)
+target_link_libraries(epix_sprite_render PUBLIC epix_mesh)
+target_link_libraries(epix_sprite_render PUBLIC epix_camera)
+target_link_libraries(epix_sprite_render PUBLIC epix_transform)
+target_link_libraries(epix_sprite_render PUBLIC epix_render)
+target_link_libraries(epix_sprite_render PUBLIC epix_core_graph)
+target_link_libraries(epix_sprite_render PUBLIC epix_sprite)
+target_link_libraries(epix_sprite_render PUBLIC webgpu)
+
+epix_add_examples(sprite EXAMPLES_DIR ../sprite/examples
+  LINK_LIBS epix_sprite_render epix_glfw epix_glfw_render epix_input)
+epix_add_examples(mesh EXAMPLES_DIR ../mesh/examples
+  LINK_LIBS epix_sprite_render epix_glfw epix_glfw_render epix_input)

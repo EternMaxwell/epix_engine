@@ -17,6 +17,7 @@ import std;
 #endif
 import epix.ecs;
 import epix.app;
+import epix.mesh;
 import epix.transform;
 import epix.window;
 import epix.utils;

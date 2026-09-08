@@ -10,6 +10,7 @@
 #include <epix/render.hpp>
 #include <epix/render/screenshot.hpp>
 #include <epix/sprite.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
 
@@ -71,7 +72,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::SpriteRenderPlugin{})
         .add_plugins(CamControllPlugin{})
         .add_plugins(BasicSpriteVisualTestPlugin{});
 

@@ -10,6 +10,6 @@ target_link_libraries(epix_text PRIVATE freetype)
 target_link_libraries(epix_text PRIVATE harfbuzz)
 target_link_libraries(epix_text PRIVATE webgpu)
 
-epix_add_tests(text LINK_LIBS epix_text epix_sprite epix_mesh freetype harfbuzz)
+epix_add_tests(text LINK_LIBS epix_text epix_sprite epix_sprite_render epix_mesh freetype harfbuzz)
 
-epix_add_examples(text LINK_LIBS epix_text epix_sprite epix_mesh freetype harfbuzz epix_window epix_input epix_glfw epix_glfw_render epix_core_graph)
+epix_add_examples(text LINK_LIBS epix_text epix_sprite epix_sprite_render epix_mesh freetype harfbuzz epix_window epix_input epix_glfw epix_glfw_render epix_core_graph)

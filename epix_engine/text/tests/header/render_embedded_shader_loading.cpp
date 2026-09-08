@@ -4,6 +4,7 @@
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/shader.hpp>
 #include <epix/sprite.hpp>
 #include <epix/task.hpp>
@@ -68,7 +69,7 @@ void expect_embedded_shader_loaded(App& app, std::string_view asset_path) {
 TEST(MeshRenderPlugin, Build_RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     auto app = make_shader_asset_app();
 
-    mesh::MeshRenderPlugin plugin;
+    sprite_render::Mesh2dRenderPlugin plugin;
     plugin.attach(app);
     flush_load_tasks(app);
 

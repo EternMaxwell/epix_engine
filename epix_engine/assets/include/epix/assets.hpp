@@ -36,6 +36,7 @@
 #include <epix/assets/processor.hpp>
 #include <epix/assets/processor/log.hpp>
 #include <epix/assets/processor/process.hpp>
+#include <epix/assets/render_asset_usages.hpp>
 #include <epix/assets/saver.hpp>
 #include <epix/assets/server.hpp>
 #include <epix/assets/server/info.hpp>

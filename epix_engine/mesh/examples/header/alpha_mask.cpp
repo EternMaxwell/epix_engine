@@ -11,6 +11,8 @@
 #include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
@@ -41,11 +43,11 @@ struct AlphaMaskVisualTestPlugin {
         const auto foreground = meshes.emplace(mesh::make_box2d_uv(440.0f, 300.0f));
 
         world.spawn(mesh::Mesh2d{background},
-                    mesh::MeshMaterial2d{.color = glm::vec4(0.98f, 0.35f, 0.08f, 1.0f)},
+                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.98f, 0.35f, 0.08f, 1.0f)},
                     transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.1f)});
         world.spawn(mesh::Mesh2d{foreground},
-                    mesh::MeshTextureMaterial2d{.image = image,
-                                                 .alpha_mode = mesh::MeshAlphaMode2dMask{.cutoff = 0.5f}},
+                    sprite_render::MeshTextureMaterial2d{.image = image,
+                                                 .alpha_mode = sprite_render::AlphaMode2dMask{.cutoff = 0.5f}},
                     transform::Transform{});
     }
 };
@@ -71,7 +73,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(AlphaMaskVisualTestPlugin{});
     app.run();
 }

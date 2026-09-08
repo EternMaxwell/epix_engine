@@ -292,8 +292,8 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     return gpu_image;
 }
 
-RenderAssetUsages RenderAsset<image::Image>::usage(const image::Image& asset) noexcept {
-    return static_cast<RenderAssetUsages>(asset.usage());
+epix::assets::RenderAssetUsages RenderAsset<image::Image>::usage(const image::Image& asset) noexcept {
+    return static_cast<assets::RenderAssetUsages>(asset.usage());
 }
 
 }  // namespace epix::render

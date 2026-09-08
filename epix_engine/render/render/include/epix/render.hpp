@@ -33,6 +33,10 @@
 #include <epix/render/image.hpp>
 #include <epix/render/label.hpp>
 #include <epix/render/manual_texture_view.hpp>
+#include <epix/render/mesh/offset_allocator.hpp>
+#include <epix/render/mesh/render_mesh.hpp>
+#include <epix/render/mesh/render_asset.hpp>
+#include <epix/render/mesh_allocator.hpp>
 #include <epix/render/occlusion_culling.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>

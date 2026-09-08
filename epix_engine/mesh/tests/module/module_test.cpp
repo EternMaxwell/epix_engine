@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 import epix.mesh;
+import epix.render;
 import webgpu;
 import glm;
 
@@ -18,8 +19,16 @@ TEST(MeshModule, BuiltInVertexAttributeIdsMatchBevy) {
     EXPECT_EQ(mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE, 8u);
 }
 
+TEST(MeshModule, BaseMeshPipelineKeyEncodesPrimitiveTopologyInHighBits) {
+    constexpr auto line =
+        mesh::BaseMeshPipelineKey::from_primitive_topology(wgpu::PrimitiveTopology::eLineList);
+    static_assert(line.primitive_topology() == wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(line.bits() >> mesh::BaseMeshPipelineKey::PRIMITIVE_TOPOLOGY_SHIFT_BITS,
+              static_cast<std::uint64_t>(wgpu::PrimitiveTopology::eLineList));
+}
+
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_THROW(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
                  std::invalid_argument);
 }
@@ -31,8 +40,8 @@ TEST(MeshModule, Box2dBuildsIndexedQuad) {
     EXPECT_EQ(mesh.indices()->get().size(), 6);
     EXPECT_TRUE(mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
     EXPECT_EQ(mesh.asset_usage,
-              static_cast<epix::render::RenderAssetUsages>(epix::render::RenderAssetUsages::MAIN_WORLD |
-                                                           epix::render::RenderAssetUsages::RENDER_WORLD));
+              static_cast<epix::assets::RenderAssetUsages>(epix::assets::RenderAssetUsages::MAIN_WORLD |
+                                                           epix::assets::RenderAssetUsages::RENDER_WORLD));
 }
 
 TEST(MeshModule, MeshCloneRetainsIndependentGpuDataAndUsage) {
@@ -73,7 +82,7 @@ TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
 // Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
 // strides * vertex count + index bytes.
 TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
                           std::array{glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}});
     mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR,
@@ -87,7 +96,7 @@ TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
 }
 
 TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
-    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::render::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     const auto missing_indices = source.try_indices();
     ASSERT_FALSE(missing_indices.has_value());
     EXPECT_EQ(missing_indices.error(), mesh::MeshAccessError::NotFound);

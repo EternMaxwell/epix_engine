@@ -1,20 +1,21 @@
 
 
 #include <cstring>
-#include <epix/mesh.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/render/mesh/render_asset.hpp>
 
 using namespace epix;
-using namespace epix::mesh;
+using namespace epix::render::mesh;
 
-std::uint32_t epix::mesh::vertex_array_stride(const Mesh& mesh) {
+std::uint32_t epix::render::mesh::vertex_array_stride(const epix::mesh::Mesh& mesh) {
     std::uint32_t stride = 0;
     for (const auto& [attribute, values] : mesh.attributes()) {
-        stride += vertex_format_size(attribute.format);
+        stride += epix::mesh::vertex_format_size(attribute.format);
     }
     return stride;
 }
 
-std::vector<std::uint8_t> epix::mesh::packed_vertex_bytes(const Mesh& mesh) {
+std::vector<std::uint8_t> epix::render::mesh::packed_vertex_bytes(const epix::mesh::Mesh& mesh) {
     const auto count  = mesh.count_vertices();
     const auto stride = vertex_array_stride(mesh);
     std::vector<std::uint8_t> out(static_cast<std::size_t>(stride) * count, 0);

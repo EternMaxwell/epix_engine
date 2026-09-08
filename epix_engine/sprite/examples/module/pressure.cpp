@@ -21,6 +21,7 @@ import epix.transform;
 import epix.input;
 import epix.image;
 import epix.sprite;
+import epix.sprite_render;
 import epix.assets;
 
 using namespace epix;
@@ -82,7 +83,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::SpriteRenderPlugin{})
         .add_plugins(CamControllPlugin{})
         .add_plugins(SpritePressureVisualTestPlugin{});
 

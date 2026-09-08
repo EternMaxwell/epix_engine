@@ -233,8 +233,8 @@ struct epix::render::RenderAsset<IncrementalExtractSource> {
         }
         return std::move(payload.values);
     }
-    RenderAssetUsages usage(const IncrementalExtractSource&) const {
-        return static_cast<RenderAssetUsages>(MAIN_WORLD | RENDER_WORLD);
+    assets::RenderAssetUsages usage(const IncrementalExtractSource&) const {
+        return static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD | assets::RENDER_WORLD);
     }
 };
 
@@ -3630,7 +3630,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestAdapter> {
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
-    RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
+    assets::RenderAssetUsages asset_usage(const ErasedTestSource&) const {
+        return assets::RenderAssetUsages::RENDER_WORLD;
+    }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
         ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         return ErasedTestGpu{source.value};
@@ -3646,8 +3648,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestCloneAdapt
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
-    RenderAssetUsages asset_usage(const ErasedTestSource&) const {
-        return static_cast<RenderAssetUsages>(RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
+    assets::RenderAssetUsages asset_usage(const ErasedTestSource&) const {
+        return static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::RENDER_WORLD |
+                                                      assets::RenderAssetUsages::MAIN_WORLD);
     }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
         ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
@@ -3664,7 +3667,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestMainOnlyAd
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
-    RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::MAIN_WORLD; }
+    assets::RenderAssetUsages asset_usage(const ErasedTestSource&) const {
+        return assets::RenderAssetUsages::MAIN_WORLD;
+    }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
         ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         return ErasedTestGpu{source.value};
@@ -3682,7 +3687,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedTestRetryAdapt
     using ErasedAsset = ErasedTestGpu;
     using Param       = std::tuple<>;
 
-    RenderAssetUsages asset_usage(const ErasedTestSource&) const { return RenderAssetUsages::RENDER_WORLD; }
+    assets::RenderAssetUsages asset_usage(const ErasedTestSource&) const {
+        return assets::RenderAssetUsages::RENDER_WORLD;
+    }
     std::expected<ErasedTestGpu, epix::render::erased_render_asset::PrepareAssetError<ErasedTestSource>> prepare_asset(
         ErasedTestSource&& source, const epix::assets::AssetId<ErasedTestSource>&, Param&, const ErasedAsset*) const {
         if (source.value == 99 && !g_erased_retry_already_retried) {
@@ -3720,8 +3727,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ErasedCompactAdapter
     inline static int previous_value = -1;
     inline static int prepare_previous_value = -1;
 
-    RenderAssetUsages asset_usage(const SourceAsset&) const {
-        return static_cast<RenderAssetUsages>(RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD);
+    assets::RenderAssetUsages asset_usage(const SourceAsset&) const {
+        return static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::RENDER_WORLD |
+                                                      assets::RenderAssetUsages::MAIN_WORLD);
     }
     std::expected<ExtractedAsset, ExtractError> extract(const SourceAsset& source,
                                                          epix::assets::AssetId<SourceAsset>,

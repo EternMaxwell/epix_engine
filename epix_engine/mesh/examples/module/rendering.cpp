@@ -20,6 +20,8 @@ import epix.image;
 import epix.camera;
 import epix.core_graph;
 import epix.mesh;
+import epix.sprite;
+import epix.sprite_render;
 import epix.transform;
 import epix.input;
 import epix.image;
@@ -45,7 +47,7 @@ mesh::Mesh make_gradient_quad(float width, float height) {
     };
     std::vector<std::uint16_t> indices = {0, 1, 2, 2, 3, 0};
 
-    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint16_t>(indices);
@@ -71,39 +73,39 @@ struct MeshRenderingVisualTestPlugin {
         auto transparent_box    = mesh_assets.emplace(mesh::make_box2d(160.0f, 160.0f));
         auto textured_box       = mesh_assets.emplace(mesh::make_box2d_uv(160.0f, 160.0f));
 
-        world.spawn(mesh::Mesh2d{solid_box}, mesh::MeshMaterial2d{.color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f)},
+        world.spawn(mesh::Mesh2d{solid_box}, sprite_render::MeshMaterial2d{.color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f)},
                     transform::Transform{
                         .translation = glm::vec3(-300.0f, 0.0f, 0.0f),
                     });
 
-        world.spawn(mesh::Mesh2d{gradient_quad}, mesh::MeshMaterial2d{.color = glm::vec4(1.0f)},
+        world.spawn(mesh::Mesh2d{gradient_quad}, sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f)},
                     transform::Transform{
                         .translation = glm::vec3(0.0f, 0.0f, 0.0f),
                     });
 
         world.spawn(mesh::Mesh2d{transparent_circle},
-                    mesh::MeshMaterial2d{
+                    sprite_render::MeshMaterial2d{
                         .color      = glm::vec4(0.16f, 0.62f, 0.96f, 0.55f),
-                        .alpha_mode = mesh::MeshAlphaMode2dBlend{},
+                        .alpha_mode = sprite_render::AlphaMode2dBlend{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(250.0f, 36.0f, 0.1f),
                     });
 
         world.spawn(mesh::Mesh2d{transparent_box},
-                    mesh::MeshMaterial2d{
+                    sprite_render::MeshMaterial2d{
                         .color      = glm::vec4(0.99f, 0.68f, 0.20f, 0.50f),
-                        .alpha_mode = mesh::MeshAlphaMode2dBlend{},
+                        .alpha_mode = sprite_render::AlphaMode2dBlend{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(300.0f, -18.0f, 0.0f),
                     });
 
         world.spawn(mesh::Mesh2d{textured_box},
-                    mesh::MeshTextureMaterial2d{
+                    sprite_render::MeshTextureMaterial2d{
                         .image      = texture_handle,
                         .color      = glm::vec4(1.0f),
-                        .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
+                        .alpha_mode = sprite_render::AlphaMode2dOpaque{},
                     },
                     transform::Transform{
                         .translation = glm::vec3(-120.0f, -220.0f, 0.0f),
@@ -134,7 +136,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(MeshRenderingVisualTestPlugin{});
 
     app.run();

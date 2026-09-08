@@ -19,66 +19,31 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
-#include <epix/mesh/gpumesh.hpp>
 #include <epix/mesh/mesh.hpp>
+#include <epix/render/mesh/render_asset.hpp>
 
-namespace epix::mesh {
+namespace epix::sprite_render {
+using mesh::Mesh;
+using mesh::Mesh2d;
+
 /** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Opaque`. */
-EPIX_EXPORT struct MeshAlphaMode2dOpaque {};
+EPIX_EXPORT struct AlphaMode2dOpaque {};
 /** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Mask(f32)`. */
-EPIX_EXPORT struct MeshAlphaMode2dMask {
+EPIX_EXPORT struct AlphaMode2dMask {
     float cutoff                                               = 0.5f;
-    bool operator==(const MeshAlphaMode2dMask&) const noexcept = default;
+    bool operator==(const AlphaMode2dMask&) const noexcept = default;
 };
 /** @brief C++ tagged-union counterpart to Bevy `AlphaMode2d::Blend`. */
-EPIX_EXPORT struct MeshAlphaMode2dBlend {};
+EPIX_EXPORT struct AlphaMode2dBlend {};
 /** @brief Alpha mode for 2D meshes (Bevy `AlphaMode2d`). */
-EPIX_EXPORT using MeshAlphaMode2d = std::variant<MeshAlphaMode2dOpaque, MeshAlphaMode2dMask, MeshAlphaMode2dBlend>;
-
-/** @brief Component that associates an entity with a mesh asset for 2D rendering. */
-EPIX_EXPORT struct Mesh2d {
-    assets::Handle<Mesh> handle;
-};
-
-}  // namespace epix::mesh
-
-namespace epix::assets {
-template <>
-struct AsAssetId<mesh::Mesh2d> {
-    using Asset = mesh::Mesh;
-
-    static AssetId<Asset> as_asset_id(const mesh::Mesh2d& mesh) noexcept { return mesh.handle.id(); }
-};
-static_assert(AsAssetIdImpl<mesh::Mesh2d>);
-}  // namespace epix::assets
-
-namespace epix::mesh {
-
-/** @brief Insert or update local mesh bounds for 2D visibility culling.
- *
- * Matches Bevy's mesh portion of
- * `calculate_bounds_2d`: new entities are
- * computed once, while existing bounds are recomputed only when either the
- * handle component or its referenced mesh asset changed.
- */
-EPIX_EXPORT void calculate_bounds_2d(
-    ecs::Commands commands,
-    ecs::Res<assets::Assets<Mesh>> meshes,
-    ecs::Query<ecs::Item<ecs::Entity, const Mesh2d&>,
-               ecs::Filter<ecs::Without<camera::Aabb>,
-                           ecs::Without<camera::NoFrustumCulling>,
-                           ecs::Without<camera::NoAutoAabb>>> new_mesh_aabb,
-    ecs::Query<ecs::Item<ecs::Ref<Mesh2d>, ecs::Mut<camera::Aabb>>,
-               ecs::Filter<ecs::Or<assets::AssetChanged<Mesh2d>, ecs::Modified<Mesh2d>>,
-                           ecs::Without<camera::NoFrustumCulling>,
-                           ecs::Without<camera::NoAutoAabb>>> update_mesh_aabb);
+EPIX_EXPORT using AlphaMode2d = std::variant<AlphaMode2dOpaque, AlphaMode2dMask, AlphaMode2dBlend>;
 
 /** @brief Flat-color material for 2D mesh rendering. */
 EPIX_EXPORT struct MeshMaterial2d {
     /** @brief Base color. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Alpha blending mode. */
-    MeshAlphaMode2d alpha_mode = MeshAlphaMode2dOpaque{};
+    AlphaMode2d alpha_mode = AlphaMode2dOpaque{};
 };
 
 /** @brief Textured material for 2D mesh rendering. */
@@ -88,7 +53,7 @@ EPIX_EXPORT struct MeshTextureMaterial2d {
     /** @brief Color tint multiplied with the texture. */
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Alpha blending mode. */
-    MeshAlphaMode2d alpha_mode = MeshAlphaMode2dBlend{};
+    AlphaMode2d alpha_mode = AlphaMode2dBlend{};
 };
 
 /** @brief Extracted mesh data ready for the render world. */
@@ -104,7 +69,7 @@ EPIX_EXPORT struct ExtractedMesh2d {
     /** @brief Depth value for sorting. */
     float depth;
     /** @brief Alpha blending mode. */
-    MeshAlphaMode2d alpha_mode;
+    AlphaMode2d alpha_mode;
     /** @brief Optional texture asset ID. */
     std::optional<assets::AssetId<image::Image>> texture;
     /** @brief Render layers this entity belongs to. Default: layer 0. */
@@ -147,7 +112,7 @@ EPIX_EXPORT struct MeshInstanceData {
     glm::mat4 model;
     /** @brief Tint color for this instance. */
     glm::vec4 color;
-    /** @brief Alpha cutoff for `MeshAlphaMode2dMask`; ignored by other modes. */
+    /** @brief Alpha cutoff for `AlphaMode2d::Mask`; ignored by other modes. */
     float alpha_cutoff = 0.0f;
     /** @brief Explicit storage-buffer tail padding. HLSL lays this element out
      * at a 16-byte stride after the scalar cutoff. */
@@ -248,7 +213,8 @@ struct DrawMesh2dBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<>>,
-        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>, ecs::Res<MeshAllocator>>
+        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>,
+                      ecs::Res<render::mesh::MeshAllocator>>
             params,
         const wgpu::RenderPassEncoder& encoder) {
         auto&& [instances, render_meshes, mesh_allocator] = params.get();
@@ -285,9 +251,10 @@ struct DrawMesh2dBatch {
         }
         const auto& layout         = render_mesh->layout.value->layout();
         const std::uint64_t stride = layout.array_stride;
-        const auto vertex_begin    = static_cast<std::uint64_t>(vertex_slice->begin);
+        const auto vertex_begin    = static_cast<std::uint64_t>(vertex_slice->range.first);
         encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_begin * stride,
-                                static_cast<std::uint64_t>(vertex_slice->end - vertex_slice->begin) * stride);
+                                static_cast<std::uint64_t>(vertex_slice->range.second - vertex_slice->range.first) *
+                                    stride);
 
         const auto& batch_range = item.batch_range();
         auto batch_size         = render::phase::batch_range_len(batch_range);
@@ -304,39 +271,23 @@ struct DrawMesh2dBatch {
             const wgpu::IndexFormat format   = info ? info->index_format : wgpu::IndexFormat::eUint16;
             const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
             encoder.setIndexBuffer(*index_slice->buffer, format,
-                                   static_cast<std::uint64_t>(index_slice->begin) * element_size,
-                                   static_cast<std::uint64_t>(index_slice->end - index_slice->begin) * element_size);
-            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->end - index_slice->begin), batch_size, 0, 0,
-                                batch_range.first);
+                                   static_cast<std::uint64_t>(index_slice->range.first) * element_size,
+                                   static_cast<std::uint64_t>(index_slice->range.second - index_slice->range.first) *
+                                       element_size);
+            encoder.drawIndexed(
+                static_cast<std::uint32_t>(index_slice->range.second - index_slice->range.first), batch_size, 0, 0,
+                batch_range.first);
         } else {
-            encoder.draw(static_cast<std::uint32_t>(vertex_slice->end - vertex_slice->begin), batch_size, 0,
-                         batch_range.first);
+            encoder.draw(static_cast<std::uint32_t>(vertex_slice->range.second - vertex_slice->range.first),
+                         batch_size, 0, batch_range.first);
         }
         return {};
     }
 };
 
-/** @brief Plugin that packs mesh GPU data into shared slab buffers and frees
- * removed/modified meshes (Bevy
- * `MeshAllocatorPlugin`). */
-EPIX_EXPORT struct MeshAllocatorPlugin {
-    void attach(app::App& app);
-    void ready(app::App& app);
-};
-
-/** @brief Process extracted mesh additions/modifications/removals and update
- * shared GPU slabs (Bevy
- * `allocate_and_free_meshes`). */
-EPIX_EXPORT void allocate_and_free_meshes(ecs::ResMut<MeshAllocator> mesh_allocator,
-                                          ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
-                                          ecs::Res<render::ExtractedAssets<Mesh>> extracted_meshes,
-                                          ecs::ResMut<MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
-                                          ecs::Res<wgpu::Device> device,
-                                          ecs::Res<wgpu::Queue> queue);
-
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
-EPIX_EXPORT struct MeshRenderPlugin {
+EPIX_EXPORT struct Mesh2dRenderPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
 };
-}  // namespace epix::mesh
+}  // namespace epix::sprite_render

@@ -111,8 +111,9 @@ struct epix::render::erased_render_asset::ErasedRenderAsset<ClearColorAdapter> {
     using ExtractError   = std::string;
     using Param          = std::tuple<>;
 
-    RenderAssetUsages asset_usage(const SourceAsset&) const {
-        return static_cast<RenderAssetUsages>(RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD);
+    assets::RenderAssetUsages asset_usage(const SourceAsset&) const {
+        return static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                      assets::RenderAssetUsages::RENDER_WORLD);
     }
     std::expected<ExtractedAsset, ExtractError> extract(const SourceAsset& source,
                                                          assets::AssetId<SourceAsset>,

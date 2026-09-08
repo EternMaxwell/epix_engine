@@ -10,6 +10,8 @@
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
 #include <epix/time.hpp>
@@ -656,7 +658,7 @@ void freefall_overlay_system(
             indices.push_back(base);
             base += 4;
         }
-        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_inserted_indices<std::uint32_t>(indices);
@@ -686,8 +688,8 @@ void freefall_overlay_system(
             // Spawn new overlay as sibling with same world position.
             auto overlay_ent =
                 cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
-                          mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                               .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                          sprite_render::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
+                                               .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
                           camera::RenderLayers::layer(2))
                     .id();
@@ -766,8 +768,8 @@ void dirty_rect_overlay_system(Commands cmd,
             // Spawn a new overlay entity (unit quad scaled to dirty-rect size).
             auto handle      = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
             auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                         mesh::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
-                                                              .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                                         sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
+                                                              .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                                          transform::Transform{.translation = {center_x, center_y, 1.0f},
                                                               .scaler      = {width, height, 1.0f}},
                                          camera::RenderLayers::layer(1))
@@ -1236,7 +1238,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{
             .enable_docking   = true,
             .enable_viewports = true,

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <epix/common.hpp>
 
@@ -22,7 +22,7 @@
 
 #include <epix/sprite/sprite.hpp>
 
-EPIX_EXPORT namespace epix::sprite {
+EPIX_EXPORT namespace epix::sprite_render {
     /** @brief Snapshot of a sprite extracted from the main world for rendering.
      *
      * Created during the extract phase so the render world has an immutable
@@ -32,7 +32,7 @@ EPIX_EXPORT namespace epix::sprite {
         /** @brief Entity in the main world this sprite was extracted from. */
         ecs::Entity source_entity;
         /** @brief Copy of the sprite's visual properties. */
-        Sprite sprite;
+        sprite::Sprite sprite;
         /** @brief Model matrix representing the sprite's world transform. */
         glm::mat4 model;
         /** @brief Depth value used for sorting transparent sprites. */
@@ -247,8 +247,8 @@ EPIX_EXPORT namespace epix::sprite {
 
     /** @brief Plugin that registers the sprite rendering pipeline, including
      * extraction, batching, and draw commands. */
-    struct SpritePlugin {
+    struct SpriteRenderPlugin {
         void attach(app::App& app);
         void ready(app::App& app);
     };
-}  // namespace epix::sprite
+}  // namespace epix::sprite_render

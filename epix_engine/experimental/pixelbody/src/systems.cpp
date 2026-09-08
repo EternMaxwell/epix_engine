@@ -15,6 +15,7 @@
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
@@ -694,7 +695,7 @@ void build_pixel_body_meshes(Commands cmd,
             indices.push_back(base);
             base += 4;
         }
-        auto new_mesh = mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+        auto new_mesh = mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
                             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
                             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
                             .with_inserted_indices<std::uint32_t>(indices);
@@ -705,9 +706,9 @@ void build_pixel_body_meshes(Commands cmd,
         } else {
             auto child             = cmd.entity(body_ent)
                                          .spawn(mesh::Mesh2d{handle},
-                                                mesh::MeshMaterial2d{
+                                                sprite_render::MeshMaterial2d{
                                                     .color      = glm::vec4(1.0f),
-                                                    .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
+                                                    .alpha_mode = sprite_render::AlphaMode2dOpaque{},
                                                 },
                                                 transform::Transform{.translation = glm::vec3(0.0f)})
                                          .id();

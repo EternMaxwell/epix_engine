@@ -1,4 +1,4 @@
-﻿#include <spdlog/spdlog.h>
+#include <spdlog/spdlog.h>
 
 #include <array>
 #include <bit>
@@ -10,6 +10,7 @@
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/sprite.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/transform.hpp>
 #include <format>
 #include <limits>
@@ -23,7 +24,7 @@
 using namespace epix;
 using namespace epix::ecs;
 using namespace epix::app;
-using namespace epix::sprite;
+using namespace epix::sprite_render;
 
 namespace {
 constexpr std::string_view kSpriteVertexShader = R"(
@@ -313,7 +314,7 @@ bool sprite_may_be_visible(const ExtractedSprite& sprite, const render::view::Ex
 
 void extract_sprites(Commands cmd,
                      Extract<Query<Item<Entity,
-                                        const Sprite&,
+                                        const sprite::Sprite&,
                                         const transform::GlobalTransform&,
                                         const assets::Handle<image::Image>&,
                                         const camera::ViewVisibility&,
@@ -376,7 +377,7 @@ void queue_sprites_2d(Query<Item<const render::view::ExtractedView&,
             if (!camera_layers.intersects(sprite.render_layer)) {
                 continue;
             }
-            if (const auto& visible = visible_entities.template get<Sprite>();
+            if (const auto& visible = visible_entities.template get<sprite::Sprite>();
                 std::ranges::find(visible, sprite.source_entity,
                                   [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
                 continue;
@@ -460,15 +461,9 @@ void prepare_sprite_batches(ResMut<render::phase::ViewSortedRenderPhases<core_gr
 }
 }  // namespace
 
-void SpritePlugin::attach(app::App& app) {
-    spdlog::debug("[sprite] Attaching SpritePlugin.");
-    // Bevy Sprite requires Visibility, which in turn requires
-    // InheritedVisibility + ViewVisibility. Epix propagates those required
-    // components transitively, so Sprite declares only the direct edge.
-    app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
-    app.world_mut().register_required_components_with<sprite::Sprite>(
-        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<sprite::Sprite>())}; });
-    app.add_plugins(core_graph::core_2d::Core2dPlugin{});
+void SpriteRenderPlugin::attach(app::App& app) {
+    spdlog::debug("[sprite] Attaching SpriteRenderPlugin.");
+    app.add_plugins(Mesh2dRenderPlugin{});
 
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
@@ -477,8 +472,8 @@ void SpritePlugin::attach(app::App& app) {
     }
 }
 
-void SpritePlugin::ready(app::App& app) {
-    spdlog::debug("[sprite] Readying SpritePlugin.");
+void SpriteRenderPlugin::ready(app::App& app) {
+    spdlog::debug("[sprite] Readying SpriteRenderPlugin.");
     if (!app.world_mut().get_resource<SpriteShaderHandles>()) {
         if (auto shader_handles = load_sprite_shader_handles(app.world_mut())) {
             app.world_mut().insert_resource(std::move(*shader_handles));
@@ -487,13 +482,13 @@ void SpritePlugin::ready(app::App& app) {
 
     auto shader_handles = app.world_mut().get_resource<SpriteShaderHandles>();
     if (!shader_handles) {
-        spdlog::error("[sprite] SpritePlugin could not load internal sprite shaders through AssetServer.");
+        spdlog::error("[sprite] SpriteRenderPlugin could not load internal sprite shaders through AssetServer.");
         return;
     }
 
     auto render_app = app.get_sub_app_mut(render::Render);
     if (!render_app) {
-        spdlog::error("[sprite] SpritePlugin requires render::RenderPlugin to be added before it.");
+        spdlog::error("[sprite] SpriteRenderPlugin requires render::RenderPlugin to be added before it.");
         return;
     }
 
@@ -511,8 +506,8 @@ void SpritePlugin::ready(app::App& app) {
     world.insert_resource(TransparentSpriteDrawFunction{
         .value = render::phase::app_add_render_commands<
             core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-            render::view::BindViewUniform<0>::Command, sprite::BindSpriteInstances<1>::Command,
-            sprite::BindSpriteTexture<2>::Command, sprite::DrawSpriteBatch>(render_subapp)});
+            render::view::BindViewUniform<0>::Command, sprite_render::BindSpriteInstances<1>::Command,
+            sprite_render::BindSpriteTexture<2>::Command, sprite_render::DrawSpriteBatch>(render_subapp)});
 
     render_subapp.add_systems(render::ExtractSchedule, into(extract_sprites).set_name("extract sprites"))
         .add_systems(render::Render,

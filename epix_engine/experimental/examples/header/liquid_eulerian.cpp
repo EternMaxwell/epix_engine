@@ -16,6 +16,8 @@
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
+#include <epix/sprite.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
 #include <epix/shader.hpp>
@@ -2557,7 +2559,7 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
             }
         }
 
-        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_inserted_indices<std::uint32_t>(indices);
@@ -2620,7 +2622,7 @@ mesh::Mesh build_mesh(const Fluid& sim, BS::thread_pool<>* pool = nullptr) {
         }
     }
 
-    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint32_t>(indices);
@@ -2686,7 +2688,7 @@ struct Plugin {
         auto mesh_handle = mesh_assets.emplace(build_mesh(sim, thread_pool.get()));
 
         world.spawn(mesh::Mesh2d{mesh_handle},
-                    mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dOpaque{}},
+                    sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = sprite_render::AlphaMode2dOpaque{}},
                     transform::Transform{});
 
         world.insert_resource(FluidState{.sim          = std::move(sim),
@@ -2811,7 +2813,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(Plugin{});
 

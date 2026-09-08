@@ -5,9 +5,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <optional>
@@ -52,6 +55,26 @@ EPIX_EXPORT namespace epix::sprite {
         /** @brief Handle to the Image asset used as the sprite texture. */
         assets::Handle<image::Image> texture;
     };
+
+    /** @brief Installs CPU-side sprite components and bounds maintenance
+     * (Bevy `bevy_sprite::SpritePlugin`). */
+    struct SpritePlugin {
+        void attach(app::App& app);
+    };
+
+    /** @brief Insert or update local mesh bounds for 2D visibility culling
+     * (the mesh portion of Bevy `bevy_sprite::calculate_bounds_2d`). */
+    EPIX_EXPORT void calculate_bounds_2d(
+        ecs::Commands commands,
+        ecs::Res<assets::Assets<mesh::Mesh>> meshes,
+        ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&>,
+                   ecs::Filter<ecs::Without<camera::Aabb>,
+                               ecs::Without<camera::NoFrustumCulling>,
+                               ecs::Without<camera::NoAutoAabb>>> new_mesh_aabb,
+        ecs::Query<ecs::Item<ecs::Ref<mesh::Mesh2d>, ecs::Mut<camera::Aabb>>,
+                   ecs::Filter<ecs::Or<assets::AssetChanged<mesh::Mesh2d>, ecs::Modified<mesh::Mesh2d>>,
+                               ecs::Without<camera::NoFrustumCulling>,
+                               ecs::Without<camera::NoAutoAabb>>> update_mesh_aabb);
 }  // namespace epix::sprite
 
 template <>

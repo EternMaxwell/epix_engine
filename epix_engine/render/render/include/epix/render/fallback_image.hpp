@@ -232,7 +232,7 @@ struct epix::render::RenderAsset<epix::image::Image> {
         epix::assets::AssetId<epix::image::Image> id,
         Param param,
         const epix::render::texture::GpuImage* previous);
-    epix::render::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
+    epix::assets::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
     std::optional<std::size_t> byte_len(const epix::image::Image& asset) const noexcept {
         return asset.has_data() ? std::optional{asset.raw_view().size_bytes()} : std::nullopt;
     }

@@ -7,8 +7,8 @@ using namespace epix::mesh;
 namespace mesh = epix::mesh;
 
 namespace {
-constexpr auto kDefaultMeshAssetUsage = static_cast<epix::render::RenderAssetUsages>(
-    epix::render::RenderAssetUsages::MAIN_WORLD | epix::render::RenderAssetUsages::RENDER_WORLD);
+constexpr auto kDefaultMeshAssetUsage = static_cast<epix::assets::RenderAssetUsages>(
+    epix::assets::RenderAssetUsages::MAIN_WORLD | epix::assets::RenderAssetUsages::RENDER_WORLD);
 }
 
 Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::optional<std::uint32_t> segment_count) {

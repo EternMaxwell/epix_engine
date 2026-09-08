@@ -19,10 +19,9 @@ import epix.ecs;
 import epix.app;
 import epix.assets;
 import epix.image;
+import epix.mesh;
+import epix.camera;
 import epix.transform;
-import epix.render;
-import epix.core_graph;
-import webgpu;
 extern "C++" {
 #include <epix/sprite.hpp>
 }

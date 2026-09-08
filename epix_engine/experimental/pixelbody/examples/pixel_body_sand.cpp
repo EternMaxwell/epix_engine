@@ -34,6 +34,8 @@ import epix.camera;
 import epix.render.imgui;
 import epix.core_graph;
 import epix.mesh;
+import epix.sprite;
+import epix.sprite_render;
 import epix.transform;
 import epix.input;
 import epix.extension.grid;
@@ -508,8 +510,8 @@ void dirty_rect_overlay_system(
         } else {
             auto handle               = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
             auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                                  mesh::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
-                                                                       .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                                                  sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
+                                                                       .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                                                   transform::Transform{.translation = center, .scaler = scaler})
                                             .id();
             st.dirty_rect_overlays[c] = e;
@@ -552,7 +554,7 @@ void freefall_overlay_system(Commands cmd,
             indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
             base += 4;
         }
-        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_inserted_indices<std::uint32_t>(indices);
@@ -576,8 +578,8 @@ void freefall_overlay_system(Commands cmd,
             }
         } else {
             auto e = cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
-                               mesh::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                                    .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                               sprite_render::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
+                                                    .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                                transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, -0.5f}})
                          .id();
             st.freefall_overlays[c] = e;
@@ -618,7 +620,7 @@ void chunk_chain_overlay_system(
                 colors.push_back(color);
             }
         }
-        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, assets::RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
@@ -665,7 +667,7 @@ void chunk_chain_overlay_system(
         } else {
             auto handle = meshes->emplace(build_mesh(*entry.ssb));
             auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
-                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                                    sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                                     transform::Transform{.translation = overlay_tr})
                               .id();
             st.chunk_chain_overlays[entry.entity] = e;
@@ -678,7 +680,7 @@ void body_outline_overlay_system(
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
     ParamSet<Query<Item<Entity, Ref<pb::PixelBody>, const transform::Transform&>>,
-             Query<Item<Mut<mesh::Mesh2d>, Mut<mesh::MeshMaterial2d>, Mut<transform::Transform>>,
+             Query<Item<Mut<mesh::Mesh2d>, Mut<sprite_render::MeshMaterial2d>, Mut<transform::Transform>>,
                    With<BodyOutlineOverlay>>> qs) {
     auto& st = *app_state;
     if (!st.show_body_outlines) {
@@ -706,7 +708,7 @@ void body_outline_overlay_system(
                 colors.push_back(c);
             }
         }
-        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
+        return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, assets::RenderAssetUsages::RENDER_WORLD)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     };
@@ -757,7 +759,7 @@ void body_outline_overlay_system(
         } else {
             auto handle = meshes->emplace(build_mesh(*entry.body));
             auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
-                                    mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                                    sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                                     transform::Transform{.translation = t, .rotation = entry.rotation})
                               .id();
             st.body_outline_overlays[entry.entity] = e;
@@ -785,7 +787,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(fs::FallingSandPlugin{})

@@ -10,11 +10,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
-#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/meta.hpp>
-#include <epix/render/assets.hpp>
+#include <epix/assets/render_asset_usages.hpp>
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
@@ -285,7 +284,7 @@ EPIX_EXPORT struct Mesh {
     static constexpr std::uint64_t FIRST_AVAILABLE_CUSTOM_ATTRIBUTE = 8;
 
    public:
-    Mesh(wgpu::PrimitiveTopology primitive_type, render::RenderAssetUsages asset_usage) noexcept
+    Mesh(wgpu::PrimitiveTopology primitive_type, assets::RenderAssetUsages asset_usage) noexcept
         : asset_usage(asset_usage),
           primitive_type(primitive_type),
           _attributes(detail::MeshExtractableData<AttributeMap>::data({})) {}
@@ -295,7 +294,7 @@ EPIX_EXPORT struct Mesh {
     Mesh& operator=(Mesh&&) = default;
 
     /** @brief Worlds in which this mesh's asset data is retained. */
-    render::RenderAssetUsages asset_usage;
+    assets::RenderAssetUsages asset_usage;
 
     /** @brief Get the primitive topology. */
     wgpu::PrimitiveTopology get_primitive_type() const noexcept { return primitive_type; }
@@ -501,12 +500,6 @@ EPIX_EXPORT struct Mesh {
         }
         return count.value_or(0);
     };
-
-    /** @brief Compute local-space bounds from the position attribute (Bevy
-     * `MeshAabb::compute_aabb`). Returns
-     * empty when no float3 position data
-     * is available. */
-    std::optional<camera::Aabb> compute_aabb() const;
 
     /** @brief Move the vertex/index payload into a render-world copy while
      * retaining this asset's metadata (Bevy `Mesh::take_gpu_data`). */

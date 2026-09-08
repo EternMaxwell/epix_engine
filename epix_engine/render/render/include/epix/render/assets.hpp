@@ -42,15 +42,6 @@ namespace epix::render {
 EPIX_EXPORT template <typename T>
 struct RenderAsset;
 
-/** @brief Bit flags controlling where a render asset is used
- * (Bevy 0.18 `RenderAssetUsages`). */
-EPIX_EXPORT enum RenderAssetUsages : std::uint8_t {
-    /** @brief Asset is used in the main world (e.g. CPU access). */
-    MAIN_WORLD = 1 << 0,
-    /** @brief Asset is used in the render world (e.g. GPU access). */
-    RENDER_WORLD = 1 << 1,
-};
-
 /** @brief Bevy-compatible failure returned by `take_gpu_data`. */
 EPIX_EXPORT enum class AssetExtractionError {
     /** @brief The source's GPU data has already been transferred. */
@@ -140,7 +131,7 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
                             std::declval<const typename RenderAsset<T>::ProcessedAsset*>())
     } -> std::same_as<std::expected<typename RenderAsset<T>::ProcessedAsset,
                                     PrepareAssetError<typename RenderAsset<T>::ExtractedAsset>>>;
-    { asset.usage(std::declval<const T&>()) } -> std::same_as<RenderAssetUsages>;
+    { asset.usage(std::declval<const T&>()) } -> std::same_as<assets::RenderAssetUsages>;
     requires std::same_as<typename RenderAsset<T>::ExtractedAsset, T> || HasExtractAsset<T>;
 };
 
@@ -285,8 +276,8 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
             const T& source = asset->get();
             const auto usage = render_asset_impl.usage(source);
             const auto previous_asset = render_assets->get(id);
-            if (!(usage & RENDER_WORLD)) continue;
-            if (usage & MAIN_WORLD) {
+            if (!(usage & assets::RENDER_WORLD)) continue;
+            if (usage & assets::MAIN_WORLD) {
                 // This asset remains in the main world. A compact
                 // ExtractedAsset avoids copying the complete source asset.
                 if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, T> &&
@@ -591,7 +582,7 @@ struct RenderAssetPlugin {
             // first (render_asset.rs:101-108).
             if constexpr (!std::is_void_v<AFTER>) {
                 static_assert(RenderAssetImpl<AFTER>, "AFTER must be a render asset type");
-                render_app->get().add_systems(Render, std::move(prepare).after(ecs::into(prepare_assets<AFTER>)));
+                render_app->get().add_systems(Render, std::move(prepare).after(prepare_assets<AFTER>));
             } else {
                 render_app->get().add_systems(Render, std::move(prepare));
             }

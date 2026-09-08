@@ -33,7 +33,7 @@ std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> Re
     return result;
 }
 
-RenderAssetUsages RenderAsset<ShaderStorageBuffer>::usage(const ShaderStorageBuffer& asset) noexcept {
+epix::assets::RenderAssetUsages RenderAsset<ShaderStorageBuffer>::usage(const ShaderStorageBuffer& asset) noexcept {
     return asset.asset_usage;
 }
 

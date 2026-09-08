@@ -17,10 +17,11 @@ import epix.app;
 import epix.core_graph;
 import epix.input;
 import epix.mesh;
+import epix.sprite;
+import epix.sprite_render;
 import epix.render;
 import epix.image;
 import epix.camera;
-import epix.sprite;
 import epix.text;
 import epix.transform;
 import epix.window;
@@ -135,8 +136,8 @@ mesh::Mesh make_rect_outline(float left, float right, float bottom, float top, g
     // the main world, so its CPU payload must remain available after extraction.
     auto m = mesh::Mesh(
         wgpu::PrimitiveTopology::eLineStrip,
-        static_cast<render::RenderAssetUsages>(render::RenderAssetUsages::MAIN_WORLD |
-                                               render::RenderAssetUsages::RENDER_WORLD));
+        static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                               assets::RenderAssetUsages::RENDER_WORLD));
     m.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
     m.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
     return m;
@@ -157,8 +158,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(text::TextPlugin{})
         .add_plugins(text::TextRenderPlugin{});
 
@@ -189,7 +191,7 @@ int main() {
             auto bounds_mesh_handle = meshes->emplace(make_rect_outline(-200, 200, -50, 50, {0.0f, 1.0f, 0.0f, 1.0f}));
             auto bounds_outline_entity =
                 cmd.spawn(mesh::Mesh2d{bounds_mesh_handle},
-                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                          sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                           transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.1f)}, BoundsOutline{})
                     .id();
 
@@ -197,7 +199,7 @@ int main() {
             auto text_outline_handle = meshes->emplace(make_rect_outline(-100, 100, -25, 25, {1.0f, 1.0f, 0.0f, 1.0f}));
             auto text_outline_entity =
                 cmd.spawn(mesh::Mesh2d{text_outline_handle},
-                          mesh::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                          sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                           transform::Transform{.translation = glm::vec3(0.0f, 0.0f, 0.1f)}, TextOutline{})
                     .id();
 

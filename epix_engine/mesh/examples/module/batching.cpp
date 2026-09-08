@@ -21,6 +21,8 @@ import epix.image;
 import epix.camera;
 import epix.core_graph;
 import epix.mesh;
+import epix.sprite;
+import epix.sprite_render;
 import epix.transform;
 import epix.input;
 import epix.image;
@@ -79,7 +81,7 @@ struct MeshBatchingTestPlugin {
         auto box_handle    = mesh_assets.emplace(mesh::make_box2d(20.0f, 20.0f));
         auto circle_handle = mesh_assets.emplace(mesh::make_circle(10.0f, std::nullopt, 16));
         auto tri_handle    = mesh_assets.emplace(
-            mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+            mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
                 .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
                                          std::vector<glm::vec3>{
                                              {0.0f, 12.0f, 0.0f},
@@ -101,7 +103,7 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.0f);
 
             world.spawn(mesh::Mesh2d{shape_handles[i % 3]},
-                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dOpaque{}},
+                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dOpaque{}},
                         transform::Transform{.translation = translation});
         }
 
@@ -111,7 +113,7 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.01f);
 
             world.spawn(mesh::Mesh2d{box_handle},
-                        mesh::MeshMaterial2d{.color = color, .alpha_mode = mesh::MeshAlphaMode2dBlend{}},
+                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
                         transform::Transform{.translation = translation});
         }
     }
@@ -141,7 +143,9 @@ int main() {
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
-        .add_plugins(mesh::MeshRenderPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
+        .add_plugins(sprite::SpritePlugin{})
+        .add_plugins(sprite_render::Mesh2dRenderPlugin{})
         .add_plugins(CamControlPlugin{})
         .add_plugins(MeshBatchingTestPlugin{});
 

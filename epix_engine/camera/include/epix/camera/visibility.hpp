@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
+#include <epix/transform.hpp>
 #include <functional>
 #include <glm/glm.hpp>
 #include <limits>
@@ -20,6 +21,8 @@
 #include <utility>
 #include <vector>
 #endif
+
+#include <epix/camera/projection.hpp>
 
 namespace epix::camera {
 
@@ -396,7 +399,14 @@ EPIX_EXPORT struct Aabb {
     }
     bool is_in_half_space(const HalfSpace& half_space, const glm::mat4& world_from_local) const noexcept {
         const glm::vec3 normal = half_space.normal();
-        const float radius = glm::dot(glm::abs(glm::mat3(world_from_local)) * glm::abs(half_extents), glm::abs(normal));
+        glm::mat3 absolute_world_from_local = glm::mat3(world_from_local);
+        for (glm::length_t column = 0; column < 3; ++column) {
+            for (glm::length_t row = 0; row < 3; ++row) {
+                absolute_world_from_local[column][row] = glm::abs(absolute_world_from_local[column][row]);
+            }
+        }
+        const float radius =
+            glm::dot(absolute_world_from_local * glm::abs(half_extents), glm::abs(normal));
         const glm::vec3 transformed_center = glm::vec3(world_from_local * glm::vec4(center, 1.0f));
         return glm::dot(normal, transformed_center) + half_space.d() > radius;
     }
@@ -406,10 +416,14 @@ EPIX_EXPORT struct Aabb {
     }
 };
 
-/** @brief C++ equivalent of Bevy's `MeshAabb` trait. */
+/** @brief C++ specialization point equivalent to Bevy's `MeshAabb` trait. */
 EPIX_EXPORT template <typename T>
-concept MeshAabb = requires(const T& mesh) {
-    { mesh.compute_aabb() } -> std::same_as<std::optional<Aabb>>;
+struct MeshAabb;
+
+/** @brief True when `MeshAabb<T>` supplies the Bevy-shaped AABB operation. */
+EPIX_EXPORT template <typename T>
+concept MeshAabbImpl = requires(const T& mesh) {
+    { MeshAabb<T>::compute_aabb(mesh) } -> std::same_as<std::optional<Aabb>>;
 };
 
 /** @brief Bounding sphere primitive (Bevy `Sphere`). */

@@ -472,10 +472,11 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(render::camera::CameraPlugin{});
     app.add_plugins(render::view::ViewPlugin{});
     // Keep the remaining directly comparable plugin order aligned with Bevy
-    // RenderPlugin: Globals, Texture, Batching, SyncWorld, Storage,
-    // GpuReadback, then OcclusionCulling. Mesh is a separate Epix module.
+    // RenderPlugin: Globals, Texture, Mesh, Batching, SyncWorld, Storage,
+    // GpuReadback, then OcclusionCulling.
     app.add_plugins(render::GlobalsPlugin{});
     app.add_plugins(render::TexturePlugin{});
+    app.add_plugins(render::mesh::MeshRenderAssetPlugin{});
     app.add_plugins(render::batching::BatchingPlugin{debug_flags});
     app.add_plugins(sync_world::SyncWorldPlugin{});
     app.add_plugins(render::StoragePlugin{});

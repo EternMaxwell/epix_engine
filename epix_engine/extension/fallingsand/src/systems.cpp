@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/extension/fallingsand.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <future>
 #include <optional>
 #include <ranges>
@@ -43,7 +44,7 @@ static mesh::Mesh build_chunk_mesh(const ChunkElementGrid& chunk, float cell_siz
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint32_t>(indices);
@@ -69,7 +70,7 @@ static mesh::Mesh build_chunk_body_debug_mesh(const ChunkElementGrid& chunk, flo
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint32_t>(indices);
@@ -104,7 +105,7 @@ static mesh::Mesh build_heat_map_mesh(const ChunkElementGrid& chunk, const Chunk
         indices.insert(indices.end(), {base, base + 1, base + 2, base + 2, base + 3, base});
         base += 4;
     }
-    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint32_t>(indices);
@@ -117,7 +118,7 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
     std::array<glm::vec4, 4> colors{glm::vec4(0.95f, 0.95f, 0.95f, 1.0f), glm::vec4(0.95f, 0.95f, 0.95f, 1.0f),
                                     glm::vec4(0.95f, 0.95f, 0.95f, 1.0f), glm::vec4(0.95f, 0.95f, 0.95f, 1.0f)};
     std::array<std::uint16_t, 8> indices{{0, 1, 1, 2, 2, 3, 3, 0}};
-    return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, render::RenderAssetUsages::RENDER_WORLD)
+    return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
         .with_inserted_indices<std::uint16_t>(indices);
@@ -191,12 +192,12 @@ void setup_chunk_render_children(
         if (parent_has_mesh_build) {
             // Spawn an empty mesh child entity now; build_chunk_meshes fills it each tick.
             auto empty_mesh = meshes->emplace(
-                mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList, render::RenderAssetUsages::RENDER_WORLD});
+                mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD});
             auto mesh_ent = cmd.entity(chunk_entity)
                                 .spawn(SandChunkMesh{}, mesh::Mesh2d{empty_mesh},
-                                       mesh::MeshMaterial2d{
+                                       sprite_render::MeshMaterial2d{
                                            .color      = glm::vec4(1.0f),
-                                           .alpha_mode = mesh::MeshAlphaMode2dOpaque{},
+                                           .alpha_mode = sprite_render::AlphaMode2dOpaque{},
                                        },
                                        transform::Transform{.translation = glm::vec3(0.0f)})
                                 .id();
@@ -386,9 +387,9 @@ void build_body_debug_meshes(
             } else {
                 auto de              = cmd.entity(chunk_entity)
                                            .spawn(SandChunkBodyDebug{}, mesh::Mesh2d{handle},
-                                                  mesh::MeshMaterial2d{
+                                                  sprite_render::MeshMaterial2d{
                                                       .color      = glm::vec4(1.0f),
-                                                      .alpha_mode = mesh::MeshAlphaMode2dBlend{},
+                                                      .alpha_mode = sprite_render::AlphaMode2dBlend{},
                                                   },
                                                   transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.3f)})
                                            .id();
@@ -424,9 +425,9 @@ void update_chunk_outlines(
             auto outline_mesh = meshes->emplace(build_chunk_outline_mesh(cwidth, current_cell_size));
             auto oe           = cmd.entity(chunk_entity)
                                     .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
-                                           mesh::MeshMaterial2d{
+                                           sprite_render::MeshMaterial2d{
                                                .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
-                                               .alpha_mode = mesh::MeshAlphaMode2dBlend{},
+                                               .alpha_mode = sprite_render::AlphaMode2dBlend{},
                                            },
                                            transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.01f)},
                                            ::epix::camera::RenderLayers::layer(2))

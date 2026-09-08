@@ -5,30 +5,37 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/render.hpp>
+#include <epix/image.hpp>
+#include <epix/render/assets.hpp>
+#include <epix/render/fallback_image.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
+#include <epix/render/mesh/render_mesh.hpp>
 #endif
 
-#include <epix/mesh/mesh.hpp>
-#include <epix/mesh/mesh_allocator.hpp>
-#include <epix/mesh/render_mesh.hpp>
-#include <epix/mesh/vertex_buffer_layout.hpp>
-
-namespace epix::mesh {
+namespace epix::render::mesh {
 /** @brief Per-vertex byte stride of a mesh's packed vertex data (Bevy
  * `MeshVertexBufferLayout::array_stride`): the sum of all attribute sizes. */
-EPIX_EXPORT std::uint32_t vertex_array_stride(const Mesh& mesh);
+EPIX_EXPORT std::uint32_t vertex_array_stride(const epix::mesh::Mesh& mesh);
 /** @brief Pack a mesh's per-attribute arrays into Bevy's interleaved per-vertex
  * vertex buffer (`Mesh::write_packed_vertex_buffer_data`): each vertex holds its
  * attributes in slot order. */
-EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const Mesh& mesh);
-}  // namespace epix::mesh
+EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const epix::mesh::Mesh& mesh);
+
+/** @brief Installs `RenderAsset<Mesh>`, the mesh allocator, and the render-world
+ * vertex-layout interner (Bevy `MeshRenderAssetPlugin`). */
+EPIX_EXPORT struct MeshRenderAssetPlugin {
+    void attach(epix::app::App& app);
+};
+}  // namespace epix::render::mesh
 
 // Bevy 0.18 `RenderAsset for RenderMesh` (mesh/mod.rs:124-202): the render
 // world representation of a Mesh is lightweight metadata (vertex count, index
@@ -37,29 +44,34 @@ EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const Mesh& mesh);
 // only builds the metadata.
 template <>
 struct epix::render::RenderAsset<epix::mesh::Mesh> {
-    using ProcessedAsset = epix::mesh::RenderMesh;
+    using ProcessedAsset = epix::render::mesh::RenderMesh;
     using ExtractedAsset = epix::mesh::Mesh;
-    using Param          = epix::ecs::ParamSet<epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
+    using Param = epix::ecs::ParamSet<epix::ecs::Res<epix::render::RenderAssets<epix::image::Image>>,
+                                      epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
 
     std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
         epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
-        auto&& [layouts] = params.get();
+        auto&& [images, layouts] = params.get();
+        (void)images;
 
-        epix::mesh::RenderMeshBufferInfo buffer_info;
+        epix::render::mesh::RenderMeshBufferInfo buffer_info;
         if (auto indices = mesh.indices(); indices) {
             const auto& index = indices->get();
-            buffer_info       = epix::mesh::RenderMeshBufferInfo::indexed(
+            buffer_info       = epix::render::mesh::RenderMeshBufferInfo::indexed(
                 static_cast<std::uint32_t>(index.size()),
                 index.is_u16() ? wgpu::IndexFormat::eUint16 : wgpu::IndexFormat::eUint32);
         } else {
-            buffer_info = epix::mesh::RenderMeshBufferInfo::non_indexed();
+            buffer_info = epix::render::mesh::RenderMeshBufferInfo::non_indexed();
         }
-        return epix::mesh::RenderMesh::from_metadata(
-            static_cast<std::uint32_t>(mesh.count_vertices()), std::move(buffer_info),
-            mesh.get_mesh_vertex_buffer_layout(*layouts), mesh.get_primitive_type());
+        return epix::render::mesh::RenderMesh{
+            .vertex_count = static_cast<std::uint32_t>(mesh.count_vertices()),
+            .buffer_info = std::move(buffer_info),
+            .key_bits = epix::mesh::BaseMeshPipelineKey::from_primitive_topology(mesh.get_primitive_type()),
+            .layout = mesh.get_mesh_vertex_buffer_layout(*layouts),
+        };
     }
 
-    epix::render::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept { return mesh.asset_usage; }
+    epix::assets::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept { return mesh.asset_usage; }
 
     /** @brief Estimated GPU payload in bytes (Bevy `RenderAsset::byte_len` for
      * `RenderMesh`). Sums the per-vertex attribute stride over the vertex count,
