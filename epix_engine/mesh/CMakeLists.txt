@@ -3,6 +3,7 @@ target_link_libraries(epix_mesh PUBLIC epix_common)
 target_link_libraries(epix_mesh PUBLIC epix_ecs)
 target_link_libraries(epix_mesh PUBLIC epix_app)
 target_link_libraries(epix_mesh PUBLIC epix_assets)
+target_link_libraries(epix_mesh PUBLIC epix_transform)
 target_link_libraries(epix_mesh PUBLIC glm::glm)
 target_link_libraries(epix_mesh PUBLIC webgpu)
 

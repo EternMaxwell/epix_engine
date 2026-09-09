@@ -2,6 +2,7 @@
 
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
+#include <unordered_set>
 
 using namespace epix::mesh;
 namespace ecs = epix::ecs;
@@ -276,4 +277,28 @@ std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {
     throw std::out_of_range("The requested mesh data was not found");
 }
 
-void MeshPlugin::attach(app::App& app) { assets::app_register_asset<Mesh>(app); }
+namespace epix::mesh {
+
+void mark_3d_meshes_as_changed_if_their_assets_changed(ecs::Query<ecs::Item<ecs::Mut<Mesh3d>>> meshes_3d,
+                                                       ecs::EventReader<assets::AssetEvent<Mesh>> mesh_asset_events) {
+    std::unordered_set<assets::AssetId<Mesh>> changed_meshes;
+    for (const auto& event : mesh_asset_events.read()) {
+        if (event.type == assets::AssetEvent<Mesh>::Type::Modified) changed_meshes.insert(event.id);
+    }
+    if (changed_meshes.empty()) return;
+
+    for (auto&& [mesh_3d] : meshes_3d.iter()) {
+        if (changed_meshes.contains(mesh_3d.get().handle.id())) {
+            (void)mesh_3d.get_mut();
+        }
+    }
+}
+
+void MeshPlugin::attach(app::App& app) {
+    assets::app_register_asset<Mesh>(app);
+    app.add_systems(app::PostUpdate, ecs::into(mark_3d_meshes_as_changed_if_their_assets_changed)
+                                         .after(assets::AssetSystems::WriteEvents)
+                                         .set_name("mark 3d meshes changed after mesh asset changes"));
+}
+
+}  // namespace epix::mesh

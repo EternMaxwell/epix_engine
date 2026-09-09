@@ -30,6 +30,7 @@ import epix.ecs;
 import epix.utils.core;
 import epix.app;
 import epix.assets;
+import epix.transform;
 import webgpu;
 import glm;
 extern "C++" {
