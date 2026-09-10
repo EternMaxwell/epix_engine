@@ -1,7 +1,6 @@
 
 
 #include <array>
-#include <cstring>
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
 #include <unordered_set>
@@ -30,8 +29,7 @@ std::optional<Triangle3d> detail::MeshTriangleAt::operator()(std::size_t triangl
 
     Triangle3d triangle;
     for (std::size_t vertex_index = 0; vertex_index < triangle.vertices.size(); ++vertex_index) {
-        std::array<float, 3> components{};
-        std::memcpy(components.data(), vertices->cget(triangle_indices[vertex_index]), sizeof(components));
+        const auto& components          = (*vertices)[triangle_indices[vertex_index]];
         triangle.vertices[vertex_index] = glm::vec3{components[0], components[1], components[2]};
     }
     return triangle;
@@ -42,14 +40,7 @@ Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(o
     if (!source_attributes) {
         _attributes = detail::MeshExtractableData<AttributeMap>::extracted_to_render_world();
     } else if (*source_attributes) {
-        AttributeMap cloned_attributes;
-        for (const auto& [id, attribute_data] : source_attributes->value().get()) {
-            cloned_attributes.emplace(id, MeshAttributeData{
-                                              .attribute = attribute_data.attribute,
-                                              .data      = attribute_data.data.clone(),
-                                          });
-        }
-        _attributes = detail::MeshExtractableData<AttributeMap>::data(std::move(cloned_attributes));
+        _attributes = detail::MeshExtractableData<AttributeMap>::data(source_attributes->value().get());
     }
 
     const auto source_indices = other._indices.as_ref_option();
@@ -71,10 +62,8 @@ std::expected<MeshTriangles, MeshTrianglesError> Mesh::triangles() const {
     const auto position_data = try_attribute(ATTRIBUTE_POSITION);
     if (!position_data) return std::unexpected(MeshTrianglesError{position_data.error()});
 
-    const auto attributes = _attributes.as_ref();
-    if (!attributes) return std::unexpected(MeshTrianglesError{attributes.error()});
-    const auto position = attributes->get().find(ATTRIBUTE_POSITION.id);
-    if (position == attributes->get().end() || position->second.attribute.format != wgpu::VertexFormat::eFloat32x3) {
+    const auto* vertices = position_data->get().as_float3();
+    if (!vertices) {
         return std::unexpected(MeshTrianglesError{mesh_triangles_error::PositionsFormat{}});
     }
 
@@ -89,7 +78,7 @@ std::expected<MeshTriangles, MeshTrianglesError> Mesh::triangles() const {
     const auto triangle_count = primitive_type == wgpu::PrimitiveTopology::eTriangleList ? index_data->get().len() / 3
                                 : index_data->get().len() >= 3                           ? index_data->get().len() - 2
                                                                                          : 0;
-    return detail::mesh_triangles_view(position_data->get(), index_data->get(), primitive_type, triangle_count);
+    return detail::mesh_triangles_view(*vertices, index_data->get(), primitive_type, triangle_count);
 }
 
 MeshAttributeLayout Mesh::attribute_layout() const {
@@ -133,23 +122,23 @@ MeshVertexBufferLayoutRef Mesh::get_mesh_vertex_buffer_layout(
     });
 }
 
-std::optional<std::reference_wrapper<const ecs::untyped_vector>> Mesh::attribute(
+std::optional<std::reference_wrapper<const VertexAttributeValues>> Mesh::attribute(
     const MeshVertexAttribute& descriptor) const {
     return attribute(descriptor.id);
 }
 
-std::optional<std::reference_wrapper<const ecs::untyped_vector>> Mesh::attribute(MeshVertexAttributeId id) const {
+std::optional<std::reference_wrapper<const VertexAttributeValues>> Mesh::attribute(MeshVertexAttributeId id) const {
     auto result = try_attribute_option(id);
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
-std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute(
+std::expected<std::reference_wrapper<const VertexAttributeValues>, MeshAccessError> Mesh::try_attribute(
     const MeshVertexAttribute& descriptor) const {
     return try_attribute(descriptor.id);
 }
 
-std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute(
+std::expected<std::reference_wrapper<const VertexAttributeValues>, MeshAccessError> Mesh::try_attribute(
     MeshVertexAttributeId id) const {
     auto result = try_attribute_option(id);
     if (!result) return std::unexpected(result.error());
@@ -157,36 +146,37 @@ std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError
     return result->value();
 }
 
-std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+std::expected<std::optional<std::reference_wrapper<const VertexAttributeValues>>, MeshAccessError>
 Mesh::try_attribute_option(const MeshVertexAttribute& descriptor) const {
     return try_attribute_option(descriptor.id);
 }
 
-std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+std::expected<std::optional<std::reference_wrapper<const VertexAttributeValues>>, MeshAccessError>
 Mesh::try_attribute_option(MeshVertexAttributeId id) const {
     const auto stored_attributes = _attributes.as_ref();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
     const auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
-    return std::optional{std::cref(it->second.data)};
+    return std::optional{std::cref(it->second.values)};
 }
 
-std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(const MeshVertexAttribute& descriptor) {
+std::optional<std::reference_wrapper<VertexAttributeValues>> Mesh::attribute_mut(
+    const MeshVertexAttribute& descriptor) {
     return attribute_mut(descriptor.id);
 }
 
-std::optional<std::reference_wrapper<ecs::untyped_vector>> Mesh::attribute_mut(MeshVertexAttributeId id) {
+std::optional<std::reference_wrapper<VertexAttributeValues>> Mesh::attribute_mut(MeshVertexAttributeId id) {
     auto result = try_attribute_mut_option(id);
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
-std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute_mut(
+std::expected<std::reference_wrapper<VertexAttributeValues>, MeshAccessError> Mesh::try_attribute_mut(
     const MeshVertexAttribute& descriptor) {
     return try_attribute_mut(descriptor.id);
 }
 
-std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh::try_attribute_mut(
+std::expected<std::reference_wrapper<VertexAttributeValues>, MeshAccessError> Mesh::try_attribute_mut(
     MeshVertexAttributeId id) {
     auto result = try_attribute_mut_option(id);
     if (!result) return std::unexpected(result.error());
@@ -194,46 +184,47 @@ std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> Mesh
     return result->value();
 }
 
-std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError>
+std::expected<std::optional<std::reference_wrapper<VertexAttributeValues>>, MeshAccessError>
 Mesh::try_attribute_mut_option(const MeshVertexAttribute& descriptor) {
     return try_attribute_mut_option(descriptor.id);
 }
 
-std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError>
+std::expected<std::optional<std::reference_wrapper<VertexAttributeValues>>, MeshAccessError>
 Mesh::try_attribute_mut_option(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
     auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
-    return std::optional{std::ref(it->second.data)};
+    return std::optional{std::ref(it->second.values)};
 }
 
-std::optional<ecs::untyped_vector> Mesh::remove_attribute(const MeshVertexAttribute& descriptor) {
+std::optional<VertexAttributeValues> Mesh::remove_attribute(const MeshVertexAttribute& descriptor) {
     return remove_attribute(descriptor.id);
 }
 
-std::optional<ecs::untyped_vector> Mesh::remove_attribute(MeshVertexAttributeId id) {
+std::optional<VertexAttributeValues> Mesh::remove_attribute(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) throw_access_error(stored_attributes.error());
     auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::nullopt;
-    ecs::untyped_vector data = std::move(it->second.data);
+    VertexAttributeValues values = std::move(it->second.values);
     stored_attributes->get().erase(it);
-    return data;
+    return values;
 }
 
-std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(const MeshVertexAttribute& descriptor) {
+std::expected<VertexAttributeValues, MeshAccessError> Mesh::try_remove_attribute(
+    const MeshVertexAttribute& descriptor) {
     return try_remove_attribute(descriptor.id);
 }
 
-std::expected<ecs::untyped_vector, MeshAccessError> Mesh::try_remove_attribute(MeshVertexAttributeId id) {
+std::expected<VertexAttributeValues, MeshAccessError> Mesh::try_remove_attribute(MeshVertexAttributeId id) {
     auto stored_attributes = _attributes.as_mut();
     if (!stored_attributes) return std::unexpected(stored_attributes.error());
     auto it = stored_attributes->get().find(id);
     if (it == stored_attributes->get().end()) return std::unexpected(MeshAccessError::NotFound);
-    ecs::untyped_vector data = std::move(it->second.data);
+    VertexAttributeValues values = std::move(it->second.values);
     stored_attributes->get().erase(it);
-    return data;
+    return values;
 }
 
 std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_attribute(const MeshVertexAttribute& descriptor) && {
@@ -322,14 +313,17 @@ std::expected<void, MeshAccessError> Mesh::try_duplicate_vertices() {
     if (!attributes) return std::unexpected(attributes.error());
 
     for (auto& attribute : std::views::values(attributes->get())) {
-        ecs::untyped_vector duplicated(attribute.data.type_info(), removed_indices->value().len());
-        for (const auto index : removed_indices->value().iter()) {
-            if (index >= attribute.data.size()) {
-                throw std::out_of_range("Mesh index references a vertex that does not exist");
-            }
-            duplicated.push_back_from(attribute.data.cget(index));
-        }
-        attribute.data = std::move(duplicated);
+        std::visit(
+            [&](auto& alternative) {
+                using Element = typename std::remove_cvref_t<decltype(alternative)>::value_type;
+                std::vector<Element> duplicated;
+                duplicated.reserve(removed_indices->value().len());
+                for (const auto index : removed_indices->value().iter()) {
+                    duplicated.push_back(alternative.values.at(index));
+                }
+                alternative.values = std::move(duplicated);
+            },
+            attribute.values.variant());
     }
     return {};
 }

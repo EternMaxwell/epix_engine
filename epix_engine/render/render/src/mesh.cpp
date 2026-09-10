@@ -1,5 +1,6 @@
 
 
+#include <algorithm>
 #include <cstring>
 #include <epix/mesh/mesh.hpp>
 #include <epix/render/mesh/render_asset.hpp>
@@ -21,10 +22,11 @@ std::vector<std::uint8_t> epix::render::mesh::packed_vertex_bytes(const epix::me
     std::vector<std::uint8_t> out(static_cast<std::size_t>(stride) * count, 0);
     std::uint32_t attr_offset = 0;
     for (const auto& [attribute, values] : mesh.attributes()) {
-        const auto elem_size = values.type_info().size;
-        const auto* base     = static_cast<const std::uint8_t*>(values.cdata());
-        for (std::size_t v = 0; v < count; ++v) {
-            std::memcpy(out.data() + v * stride + attr_offset, base + v * elem_size, elem_size);
+        const auto elem_size  = epix::mesh::vertex_format_size(attribute.format);
+        const auto bytes      = values.get_bytes();
+        const auto copy_count = elem_size == 0 ? 0 : std::min(count, bytes.size() / elem_size);
+        for (std::size_t v = 0; v < copy_count; ++v) {
+            std::memcpy(out.data() + v * stride + attr_offset, bytes.data() + v * elem_size, elem_size);
         }
         attr_offset += static_cast<std::uint32_t>(elem_size);
     }

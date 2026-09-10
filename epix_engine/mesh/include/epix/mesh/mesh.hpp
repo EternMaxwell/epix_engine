@@ -15,8 +15,8 @@
 #include <epix/ecs.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
-#include <epix/meta.hpp>
 #include <expected>
+#include <format>
 #include <functional>
 #include <glm/glm.hpp>
 #include <limits>
@@ -275,14 +275,6 @@ EPIX_EXPORT struct MeshAttributeLayout : std::map<MeshVertexAttributeId, MeshVer
         return ss.str();
     }
 };
-/** @brief Pairs a MeshVertexAttribute descriptor with its raw vertex data buffer. */
-EPIX_EXPORT struct MeshAttributeData {
-    MeshVertexAttribute attribute;
-    ecs::untyped_vector data;
-
-    std::size_t size() const noexcept { return data.size(); }
-    bool empty() const noexcept { return data.empty(); }
-};
 /** @brief An index buffer stored as either 16-bit or 32-bit values (Bevy
  * `Indices`). */
 EPIX_EXPORT class Indices {
@@ -371,7 +363,7 @@ EPIX_EXPORT class Indices {
 
 namespace detail {
 struct MeshTriangleAt {
-    const ecs::untyped_vector* vertices;
+    const std::vector<VertexAttributeValues::Float32x3Value>* vertices;
     const Indices* indices;
     wgpu::PrimitiveTopology topology;
 
@@ -386,7 +378,7 @@ struct UnwrapMeshTriangle {
     Triangle3d operator()(std::optional<Triangle3d> triangle) const { return *std::move(triangle); }
 };
 
-inline auto mesh_triangles_view(const ecs::untyped_vector& vertices,
+inline auto mesh_triangles_view(const std::vector<VertexAttributeValues::Float32x3Value>& vertices,
                                 const Indices& indices,
                                 wgpu::PrimitiveTopology topology,
                                 std::size_t triangle_count) {
@@ -399,24 +391,30 @@ inline auto mesh_triangles_view(const ecs::untyped_vector& vertices,
 
 /** @brief Lazy range returned by `Mesh::triangles`. */
 EPIX_EXPORT using MeshTriangles = std::invoke_result_t<decltype(detail::mesh_triangles_view),
-                                                       const ecs::untyped_vector&,
+                                                       const std::vector<VertexAttributeValues::Float32x3Value>&,
                                                        const Indices&,
                                                        wgpu::PrimitiveTopology,
                                                        std::size_t>;
 
 namespace detail {
 
+/** @brief Internal descriptor/value pair matching Bevy's crate-private `MeshAttributeData`. */
+struct MeshAttributeData {
+    MeshVertexAttribute attribute;
+    VertexAttributeValues values;
+};
+
 struct ExtractedToRenderWorld {};
 
 struct ConstMeshAttributeRefs {
     auto operator()(const MeshAttributeData& data) const {
-        return std::pair<const MeshVertexAttribute&, const ecs::untyped_vector&>{data.attribute, data.data};
+        return std::pair<const MeshVertexAttribute&, const VertexAttributeValues&>{data.attribute, data.values};
     }
 };
 
 struct MeshAttributeRefs {
     auto operator()(MeshAttributeData& data) const {
-        return std::pair<const MeshVertexAttribute&, ecs::untyped_vector&>{data.attribute, data.data};
+        return std::pair<const MeshVertexAttribute&, VertexAttributeValues&>{data.attribute, data.values};
     }
 };
 
@@ -504,9 +502,10 @@ class MeshExtractableData {
  * (ATTRIBUTE_POSITION, etc.) are provided.
  */
 EPIX_EXPORT struct Mesh {
-   public:
-    using AttributeMap = std::map<MeshVertexAttributeId, MeshAttributeData>;
+   private:
+    using AttributeMap = std::map<MeshVertexAttributeId, detail::MeshAttributeData>;
 
+   public:
     static inline const MeshVertexAttribute ATTRIBUTE_POSITION{"Vertex_Position", MeshVertexAttributeId{0},
                                                                wgpu::VertexFormat::eFloat32x3};
     static inline const MeshVertexAttribute ATTRIBUTE_NORMAL{"Vertex_Normal", MeshVertexAttributeId{1},
@@ -587,75 +586,91 @@ EPIX_EXPORT struct Mesh {
      * accumulates the previous attribute sizes. */
     MeshVertexBufferLayoutRef get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const;
 
-    /** @brief Insert or replace an attribute. Throws on incompatible format or extracted data. */
-    template <std::ranges::range T>
-        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
-                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    void insert_attribute(MeshVertexAttribute attribute, T&& data) {
-        auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
+    /** @brief Insert or replace semantically tagged attribute values. */
+    void insert_attribute(MeshVertexAttribute attribute, VertexAttributeValues values) {
+        auto result = try_insert_attribute(std::move(attribute), std::move(values));
         if (!result) throw_access_error(result.error());
     }
     /** @brief Fallible insertion. Format mismatch remains a programmer error, as in Bevy. */
-    template <std::ranges::range T>
-        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
-                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    std::expected<void, MeshAccessError> try_insert_attribute(MeshVertexAttribute attribute, T&& data) {
-        using value_type = std::ranges::range_value_t<T>;
-        if (vertex_format_size(attribute.format) != sizeof(value_type)) {
-            throw std::invalid_argument("Mesh attribute data does not match its vertex format");
+    std::expected<void, MeshAccessError> try_insert_attribute(MeshVertexAttribute attribute,
+                                                              VertexAttributeValues values) {
+        if (values.format() != attribute.format) {
+            throw std::invalid_argument(std::format(
+                "Failed to insert attribute. Invalid attribute format for {}. Given format is {} but expected {}",
+                attribute.name, wgpu::to_string(values.format()), wgpu::to_string(attribute.format)));
         }
-        MeshAttributeData attribute_data{
+        detail::MeshAttributeData attribute_data{
             .attribute = attribute,
-            .data      = std::ranges::to<ecs::untyped_vector>(std::forward<T>(data), meta::type_info::of<value_type>()),
+            .values    = std::move(values),
         };
         auto attributes = _attributes.as_mut();
         if (!attributes) return std::unexpected(attributes.error());
         attributes->get().insert_or_assign(attribute.id, std::move(attribute_data));
         return {};
     }
-    /** @brief Builder-style attribute insertion (Bevy `with_inserted_attribute`). */
-    template <std::ranges::range T>
-        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
-                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    auto&& with_inserted_attribute(this auto&& self, MeshVertexAttribute attribute, T&& data) {
-        self.insert_attribute(std::move(attribute), std::forward<T>(data));
-        return std::forward<decltype(self)>(self);
+    /** @brief C++ range adaptation for Bevy's `Into<VertexAttributeValues>` input. */
+    template <std::ranges::input_range Range>
+        requires std::constructible_from<VertexAttributeValues, std::vector<std::ranges::range_value_t<Range>>>
+    void insert_attribute(MeshVertexAttribute attribute, Range&& values) {
+        insert_attribute(std::move(attribute),
+                         VertexAttributeValues{std::ranges::to<std::vector<std::ranges::range_value_t<Range>>>(
+                             std::forward<Range>(values))});
     }
-    template <std::ranges::range T>
-        requires(std::is_trivially_copyable_v<std::ranges::range_value_t<T>> &&
-                 std::is_trivially_destructible_v<std::ranges::range_value_t<T>>)
-    std::expected<Mesh, MeshAccessError> try_with_inserted_attribute(MeshVertexAttribute attribute, T&& data) && {
-        auto result = try_insert_attribute(std::move(attribute), std::forward<T>(data));
+    template <std::ranges::input_range Range>
+        requires std::constructible_from<VertexAttributeValues, std::vector<std::ranges::range_value_t<Range>>>
+    std::expected<void, MeshAccessError> try_insert_attribute(MeshVertexAttribute attribute, Range&& values) {
+        return try_insert_attribute(
+            std::move(attribute), VertexAttributeValues{std::ranges::to<std::vector<std::ranges::range_value_t<Range>>>(
+                                      std::forward<Range>(values))});
+    }
+    /** @brief Builder-style attribute insertion (Bevy `with_inserted_attribute`). */
+    Mesh with_inserted_attribute(MeshVertexAttribute attribute, VertexAttributeValues values) && {
+        insert_attribute(std::move(attribute), std::move(values));
+        return std::move(*this);
+    }
+    template <std::ranges::input_range Range>
+        requires std::constructible_from<VertexAttributeValues, std::vector<std::ranges::range_value_t<Range>>>
+    Mesh with_inserted_attribute(MeshVertexAttribute attribute, Range&& values) && {
+        insert_attribute(std::move(attribute), std::forward<Range>(values));
+        return std::move(*this);
+    }
+    template <typename Values>
+        requires requires(Mesh& mesh, MeshVertexAttribute descriptor, Values&& values) {
+            mesh.try_insert_attribute(std::move(descriptor), std::forward<Values>(values));
+        }
+    std::expected<Mesh, MeshAccessError> try_with_inserted_attribute(MeshVertexAttribute attribute,
+                                                                     Values&& values) && {
+        auto result = try_insert_attribute(std::move(attribute), std::forward<Values>(values));
         if (!result) return std::unexpected(result.error());
         return std::move(*this);
     }
-    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(
+    std::optional<std::reference_wrapper<const VertexAttributeValues>> attribute(
         const MeshVertexAttribute& attribute) const;
-    std::optional<std::reference_wrapper<const ecs::untyped_vector>> attribute(MeshVertexAttributeId id) const;
-    std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
+    std::optional<std::reference_wrapper<const VertexAttributeValues>> attribute(MeshVertexAttributeId id) const;
+    std::expected<std::reference_wrapper<const VertexAttributeValues>, MeshAccessError> try_attribute(
         const MeshVertexAttribute& attribute) const;
-    std::expected<std::reference_wrapper<const ecs::untyped_vector>, MeshAccessError> try_attribute(
+    std::expected<std::reference_wrapper<const VertexAttributeValues>, MeshAccessError> try_attribute(
         MeshVertexAttributeId id) const;
-    std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+    std::expected<std::optional<std::reference_wrapper<const VertexAttributeValues>>, MeshAccessError>
     try_attribute_option(const MeshVertexAttribute& attribute) const;
-    std::expected<std::optional<std::reference_wrapper<const ecs::untyped_vector>>, MeshAccessError>
+    std::expected<std::optional<std::reference_wrapper<const VertexAttributeValues>>, MeshAccessError>
     try_attribute_option(MeshVertexAttributeId id) const;
 
-    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(const MeshVertexAttribute& attribute);
-    std::optional<std::reference_wrapper<ecs::untyped_vector>> attribute_mut(MeshVertexAttributeId id);
-    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(
+    std::optional<std::reference_wrapper<VertexAttributeValues>> attribute_mut(const MeshVertexAttribute& attribute);
+    std::optional<std::reference_wrapper<VertexAttributeValues>> attribute_mut(MeshVertexAttributeId id);
+    std::expected<std::reference_wrapper<VertexAttributeValues>, MeshAccessError> try_attribute_mut(
         const MeshVertexAttribute& attribute);
-    std::expected<std::reference_wrapper<ecs::untyped_vector>, MeshAccessError> try_attribute_mut(
+    std::expected<std::reference_wrapper<VertexAttributeValues>, MeshAccessError> try_attribute_mut(
         MeshVertexAttributeId id);
-    std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
-        const MeshVertexAttribute& attribute);
-    std::expected<std::optional<std::reference_wrapper<ecs::untyped_vector>>, MeshAccessError> try_attribute_mut_option(
-        MeshVertexAttributeId id);
+    std::expected<std::optional<std::reference_wrapper<VertexAttributeValues>>, MeshAccessError>
+    try_attribute_mut_option(const MeshVertexAttribute& attribute);
+    std::expected<std::optional<std::reference_wrapper<VertexAttributeValues>>, MeshAccessError>
+    try_attribute_mut_option(MeshVertexAttributeId id);
 
-    std::optional<ecs::untyped_vector> remove_attribute(const MeshVertexAttribute& attribute);
-    std::optional<ecs::untyped_vector> remove_attribute(MeshVertexAttributeId id);
-    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(const MeshVertexAttribute& attribute);
-    std::expected<ecs::untyped_vector, MeshAccessError> try_remove_attribute(MeshVertexAttributeId id);
+    std::optional<VertexAttributeValues> remove_attribute(const MeshVertexAttribute& attribute);
+    std::optional<VertexAttributeValues> remove_attribute(MeshVertexAttributeId id);
+    std::expected<VertexAttributeValues, MeshAccessError> try_remove_attribute(const MeshVertexAttribute& attribute);
+    std::expected<VertexAttributeValues, MeshAccessError> try_remove_attribute(MeshVertexAttributeId id);
     auto&& with_removed_attribute(this auto&& self, const MeshVertexAttribute& attribute) {
         self.remove_attribute(attribute);
         return std::forward<decltype(self)>(self);
@@ -731,7 +746,7 @@ EPIX_EXPORT struct Mesh {
         const auto stored_attributes = _attributes.as_ref();
         if (!stored_attributes) throw_access_error(stored_attributes.error());
         for (auto&& [id, attribute_data] : stored_attributes->get()) {
-            std::size_t attribute_count = attribute_data.data.size();
+            std::size_t attribute_count = attribute_data.values.len();
             if (count.has_value() && attribute_count != *count) {
                 spdlog::warn("Mesh::count_vertices(): attribute [{}:{}] has different count with previous ({} vs {})",
                              id.value, attribute_data.attribute.name, *count, attribute_count);

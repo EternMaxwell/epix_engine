@@ -7,6 +7,7 @@ module;
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <functional>
 #include <limits>
 #include <map>

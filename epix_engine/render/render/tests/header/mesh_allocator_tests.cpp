@@ -1,5 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <array>
+#include <cstdint>
+#include <cstring>
 #include <epix/app.hpp>
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
@@ -59,6 +62,19 @@ TEST(MeshModule, PackedVertexBytesInterleave) {
     float green = 0.0f;
     std::memcpy(&green, packed.data() + 16, sizeof(float));
     EXPECT_FLOAT_EQ(green, 0.5f);
+}
+
+TEST(MeshModule, PackedVertexBytesPreservesSemanticIntegerValues) {
+    constexpr mesh::MeshVertexAttribute custom{"Vertex_Custom_Snorm16x2", mesh::MeshVertexAttributeId{8},
+                                               wgpu::VertexFormat::eSnorm16x2};
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    value.insert_attribute(custom, mesh::VertexAttributeValues::Snorm16x2{{{1, -2}, {3, -4}}});
+
+    const auto packed = mesh_allocator::packed_vertex_bytes(value);
+    ASSERT_EQ(packed.size(), 4u * sizeof(std::int16_t));
+    std::array<std::int16_t, 4> components{};
+    std::memcpy(components.data(), packed.data(), packed.size());
+    EXPECT_EQ(components, (std::array<std::int16_t, 4>{1, -2, 3, -4}));
 }
 
 // RenderMeshBufferInfo mirrors Bevy's Indexed/NonIndexed discriminator.

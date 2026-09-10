@@ -1,9 +1,7 @@
 #include <epix/camera/mesh.hpp>
-
 #include <stdexcept>
 
-std::optional<epix::camera::Aabb> epix::camera::MeshAabb<epix::mesh::Mesh>::compute_aabb(
-    const epix::mesh::Mesh& mesh) {
+std::optional<epix::camera::Aabb> epix::camera::MeshAabb<epix::mesh::Mesh>::compute_aabb(const epix::mesh::Mesh& mesh) {
     const auto position = mesh.try_attribute_option(epix::mesh::Mesh::ATTRIBUTE_POSITION);
     if (!position) {
         if (position.error() == epix::mesh::MeshAccessError::ExtractedToRenderWorld) {
@@ -11,14 +9,13 @@ std::optional<epix::camera::Aabb> epix::camera::MeshAabb<epix::mesh::Mesh>::comp
         }
         return std::nullopt;
     }
-    if (!*position || position->value().get().type_info() != epix::meta::type_info::of<glm::vec3>()) {
-        return std::nullopt;
-    }
-    const auto positions = position->value().get().cspan_as<glm::vec3>();
-    if (positions.empty()) return std::nullopt;
-    glm::vec3 minimum = positions.front();
-    glm::vec3 maximum = positions.front();
-    for (const glm::vec3& position_value : positions) {
+    if (!*position) return std::nullopt;
+    const auto* positions = position->value().get().as_float3();
+    if (!positions || positions->empty()) return std::nullopt;
+    glm::vec3 minimum{positions->front()[0], positions->front()[1], positions->front()[2]};
+    glm::vec3 maximum = minimum;
+    for (const auto& components : *positions) {
+        const glm::vec3 position_value{components[0], components[1], components[2]};
         minimum = glm::min(minimum, position_value);
         maximum = glm::max(maximum, position_value);
     }

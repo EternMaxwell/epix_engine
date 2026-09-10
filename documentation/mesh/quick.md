@@ -9,17 +9,17 @@ using namespace epix::mesh;
 
 ## CPU meshes
 
-`Mesh` stores a WebGPU primitive topology, vertex attributes keyed by slot, and optional `uint16`
-or `uint32` indices. Standard descriptors are `ATTRIBUTE_POSITION`, `ATTRIBUTE_COLOR`,
-`ATTRIBUTE_NORMAL`, `ATTRIBUTE_UV0`, and `ATTRIBUTE_UV1`.
+`Mesh` stores a WebGPU primitive topology, vertex attributes keyed by stable attribute ID, and optional
+`uint16` or `uint32` indices. Each attribute pairs its descriptor with a `VertexAttributeValues` value.
+Standard descriptors are `ATTRIBUTE_POSITION`, `ATTRIBUTE_COLOR`, `ATTRIBUTE_NORMAL`, `ATTRIBUTE_UV0`,
+and `ATTRIBUTE_UV1`.
 
 `VertexAttributeValues` provides Bevy's 28 semantically distinct vertex-value alternatives. It
 preserves distinctions such as `Sint16x2` versus `Snorm16x2` even though both use the same C++
 element representation, reports the matching WebGPU format, exposes borrowed float3 and raw-byte
 views, and supports fallible conversion back to scalar, `std::array`, and GLM vector collections.
 Epix uses `glm::vec3` for both of Bevy's `Vec3`/`Vec3A` conversion roles because GLM has one standard
-three-component float-vector type. Integration of this value type into `Mesh` storage is tracked
-separately.
+three-component float-vector type.
 
 ```cpp
 Mesh mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::all())
@@ -29,11 +29,14 @@ Mesh mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAss
 auto handle = meshes.emplace(std::move(mesh));
 ```
 
-The element byte size must equal `vertex_format_size(attribute.format)` or insertion returns
-`MeshError::TypeIncompatible`. Attribute APIs include `insert_attribute`, `get_attribute[_mut]`,
-`remove_attribute`, `iter_attributes[_mut]`, and builder-style `with_attribute` /
-`with_removed_attribute`. `attribute_layout()` produces `MeshAttributeLayout`, whose lookup and
-mutation methods operate on `MeshAttribute {name, slot, format}`.
+Insertion converts supported C++ ranges to `VertexAttributeValues` and requires its semantic format to
+equal the descriptor format. Thus identically sized formats such as `Sint32x3` and `Float32x3` are not
+interchangeable; a mismatch is a programmer error and throws `std::invalid_argument`, as in Bevy.
+Attribute APIs include `insert_attribute`, `attribute` / `attribute_mut`, `remove_attribute`,
+`attributes` / `attributes_mut`, and their fallible `try_` forms. Accessors and removals expose
+`VertexAttributeValues`, while the rvalue-qualified `with_inserted_attribute` builder returns the
+completed mesh by value. `attribute_layout()` produces `MeshAttributeLayout`, whose lookup and mutation
+methods operate on `MeshAttribute {name, slot, format}`.
 
 Index APIs include `insert_indices`, `with_inserted_indices`, `indices`, `indices_mut`, `remove_indices`,
 and `with_removed_indices`. `Indices` stores either a `std::vector<std::uint16_t>` or

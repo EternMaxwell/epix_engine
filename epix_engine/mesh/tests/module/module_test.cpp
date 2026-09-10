@@ -214,13 +214,24 @@ TEST(MeshAlgorithms, DuplicateVerticesMatchesBevyIndexedExpansion) {
     value.duplicate_vertices();
 
     EXPECT_FALSE(value.indices().has_value());
-    const auto duplicated_positions = value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().cspan_as<glm::vec3>();
-    const auto duplicated_colors    = value.attribute(mesh::Mesh::ATTRIBUTE_COLOR)->get().cspan_as<glm::vec4>();
-    EXPECT_EQ(
-        (std::vector<glm::vec3>{duplicated_positions.begin(), duplicated_positions.end()}),
-        (std::vector<glm::vec3>{positions[0], positions[2], positions[1], positions[2], positions[3], positions[1]}));
-    EXPECT_EQ((std::vector<glm::vec4>{duplicated_colors.begin(), duplicated_colors.end()}),
-              (std::vector<glm::vec4>{colors[0], colors[2], colors[1], colors[2], colors[3], colors[1]}));
+    const auto* duplicated_positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* duplicated_colors =
+        value.attribute(mesh::Mesh::ATTRIBUTE_COLOR)->get().get_if<mesh::VertexAttributeValues::Float32x4>();
+    ASSERT_NE(duplicated_positions, nullptr);
+    ASSERT_NE(duplicated_colors, nullptr);
+    EXPECT_EQ(*duplicated_positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 0.0f},
+                                                                                               {1.0f, 1.0f, 0.0f},
+                                                                                               {1.0f, 0.0f, 0.0f},
+                                                                                               {1.0f, 1.0f, 0.0f},
+                                                                                               {0.0f, 1.0f, 0.0f},
+                                                                                               {1.0f, 0.0f, 0.0f}}));
+    EXPECT_EQ(*duplicated_colors, (std::vector<mesh::VertexAttributeValues::Float32x4Value>{{1.0f, 0.0f, 0.0f, 1.0f},
+                                                                                            {0.0f, 0.0f, 1.0f, 1.0f},
+                                                                                            {0.0f, 1.0f, 0.0f, 1.0f},
+                                                                                            {0.0f, 0.0f, 1.0f, 1.0f},
+                                                                                            {1.0f, 1.0f, 1.0f, 1.0f},
+                                                                                            {0.0f, 1.0f, 0.0f, 1.0f}}));
 
     mesh::Mesh without_indices(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     auto unchanged = std::move(without_indices).try_with_duplicated_vertices();
@@ -468,9 +479,46 @@ TEST(MeshModule, BaseMeshPipelineKeyEncodesPrimitiveTopologyInHighBits) {
 }
 
 TEST(MeshModule, RejectsIncompatibleAttributeType) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
-    EXPECT_THROW(mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    EXPECT_THROW(value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::array{glm::vec2(0.0f, 0.0f)}),
                  std::invalid_argument);
+
+    // Equal byte width is not enough: Bevy checks semantic VertexFormat.
+    try {
+        value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, mesh::VertexAttributeValues::Sint32x3{{{1, 2, 3}}});
+        FAIL() << "semantic format mismatch did not throw";
+    } catch (const std::invalid_argument& error) {
+        EXPECT_EQ(error.what(),
+                  std::string{"Failed to insert attribute. Invalid attribute format for Vertex_Position. Given "
+                              "format is Sint32x3 but expected Float32x3"});
+    }
+    EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+}
+
+TEST(MeshModule, AttributesStoreAndReturnSemanticVertexValues) {
+    constexpr mesh::MeshVertexAttribute custom{"Vertex_Custom_Snorm16x2", mesh::MeshVertexAttributeId{8},
+                                               wgpu::VertexFormat::eSnorm16x2};
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(custom, mesh::VertexAttributeValues::Snorm16x2{{{1, -2}, {3, -4}}});
+
+    auto stored = value.attribute(custom);
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->get().format(), wgpu::VertexFormat::eSnorm16x2);
+    ASSERT_NE(stored->get().get_if<mesh::VertexAttributeValues::Snorm16x2>(), nullptr);
+    EXPECT_EQ(value.count_vertices(), 2u);
+
+    auto mutable_stored = value.attribute_mut(custom);
+    ASSERT_TRUE(mutable_stored.has_value());
+    mutable_stored->get().get_if<mesh::VertexAttributeValues::Snorm16x2>()->front() = {5, -6};
+
+    value.insert_indices(mesh::Indices{std::vector<std::uint16_t>{1, 0}});
+    value.duplicate_vertices();
+
+    auto removed = value.remove_attribute(custom);
+    ASSERT_TRUE(removed.has_value());
+    EXPECT_EQ(removed->format(), wgpu::VertexFormat::eSnorm16x2);
+    EXPECT_EQ(*removed->get_if<mesh::VertexAttributeValues::Snorm16x2>(),
+              (std::vector<mesh::VertexAttributeValues::Sint16x2Value>{{3, -4}, {5, -6}}));
 }
 
 TEST(MeshModule, Box2dBuildsIndexedQuad) {
@@ -513,10 +561,11 @@ TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto uv_attribute = mesh.attribute(mesh::Mesh::ATTRIBUTE_UV_0);
     ASSERT_TRUE(uv_attribute.has_value());
 
-    auto uvs = uv_attribute->get().cspan_as<glm::vec2>();
-    ASSERT_EQ(uvs.size(), 4);
-    EXPECT_EQ(uvs[0], glm::vec2(0.25f, 0.5f));
-    EXPECT_EQ(uvs[2], glm::vec2(0.75f, 1.0f));
+    const auto* uvs = uv_attribute->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(uvs, nullptr);
+    ASSERT_EQ(uvs->size(), 4u);
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.25f, 0.5f}));
+    EXPECT_EQ((*uvs)[2], (mesh::VertexAttributeValues::Float32x2Value{0.75f, 1.0f}));
 }
 
 // Bevy RenderAsset::byte_len for RenderMesh: sum of per-vertex attribute
