@@ -144,7 +144,18 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     // Bevy pads every row to COPY_BYTES_PER_ROW_ALIGNMENT (256) via
     // create_texture_with_data (render_device.rs:219-230); wgpu validation
     // requires bytesPerRow % 256 == 0 for multi-row copies.
+    //
+    // Bevy passes `image.data_order` to `create_texture_with_data`, which uses it
+    // to decide whether the mip or the layer index is the outer loop of the upload
+    // (LayerMajor vs MipMajor). Epix images are always created with
+    // `mipLevelCount == 1` and only mip 0 is written here, so with a single mip
+    // level the two orders produce the identical byte sequence and the field has
+    // no observable effect. The layered path below therefore walks layers as the
+    // outer loop, which is LayerMajor, and the invariant is asserted rather than
+    // silently assumed so that adding mip support cannot forget this.
     if (asset.has_data()) {
+        assert(asset.texture_descriptor.mipLevelCount == 1 &&
+               "layered upload assumes a single mip level; data_order must be honoured once mips exist");
         const std::uint32_t pixel_size  = asset.format_info().pixelSize();
         const std::uint32_t width       = asset.width();
         const std::uint32_t height      = asset.height();
