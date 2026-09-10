@@ -88,7 +88,7 @@ struct MeshBatchingTestPlugin {
                                              {-10.0f, -8.0f, 0.0f},
                                              {10.0f, -8.0f, 0.0f},
                                          })
-                .with_inserted_indices<std::uint16_t>(std::vector<std::uint16_t>{0, 1, 2}));
+                .with_inserted_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}}));
 
         std::mt19937 rng(1337);
         std::uniform_real_distribution<float> pos_dist(-900.0f, 900.0f);

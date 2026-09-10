@@ -57,9 +57,8 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         epix::render::mesh::RenderMeshBufferInfo buffer_info;
         if (auto indices = mesh.indices(); indices) {
             const auto& index = indices->get();
-            buffer_info       = epix::render::mesh::RenderMeshBufferInfo::indexed(
-                static_cast<std::uint32_t>(index.size()),
-                index.is_u16() ? wgpu::IndexFormat::eUint16 : wgpu::IndexFormat::eUint32);
+            buffer_info = epix::render::mesh::RenderMeshBufferInfo::indexed(static_cast<std::uint32_t>(index.len()),
+                                                                            static_cast<wgpu::IndexFormat>(index));
         } else {
             buffer_info = epix::render::mesh::RenderMeshBufferInfo::non_indexed();
         }
@@ -83,10 +82,7 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         }
         const std::size_t vertex_count = mesh.count_vertices();
         std::size_t index_bytes        = 0;
-        if (auto indices = mesh.indices(); indices) {
-            const auto& index = indices->get();
-            index_bytes       = index.size() * (index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t));
-        }
+        if (const auto bytes = mesh.get_index_buffer_bytes()) index_bytes = bytes->size();
         return vertex_size * vertex_count + index_bytes;
     }
 

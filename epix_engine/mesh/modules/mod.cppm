@@ -7,6 +7,7 @@ module;
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <limits>
 #include <map>
 #include <optional>
 #include <ostream>
@@ -18,6 +19,7 @@ module;
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 #endif
 
 #include <spdlog/spdlog.h>

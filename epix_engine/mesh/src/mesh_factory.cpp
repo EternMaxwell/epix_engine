@@ -35,7 +35,7 @@ Mesh mesh::make_circle(float radius, std::optional<glm::vec4> color, std::option
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_inserted_indices<std::uint32_t>(indices);
+                    .with_inserted_indices(Indices{std::move(indices)});
     if (color) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR,
                               std::views::take(std::views::repeat(*color), static_cast<std::size_t>(segments) + 1));
@@ -57,7 +57,7 @@ Mesh mesh::make_box2d(float width, float height, std::optional<glm::vec4> color)
 
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-                    .with_inserted_indices<std::uint16_t>(indices);
+                    .with_inserted_indices(Indices{std::move(indices)});
     if (color) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*color), positions.size()));
     }
@@ -85,7 +85,7 @@ Mesh mesh::make_box2d_uv(float width, float height, glm::vec4 uv_rect, std::opti
     auto mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
                     .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
                     .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
-                    .with_inserted_indices<std::uint16_t>(indices);
+                    .with_inserted_indices(Indices{std::move(indices)});
     if (vertex_color) {
         mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, std::views::take(std::views::repeat(*vertex_color), 4));
     }

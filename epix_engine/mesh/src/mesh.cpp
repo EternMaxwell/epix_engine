@@ -24,10 +24,9 @@ Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(o
 
     const auto source_indices = other._indices.as_ref_option();
     if (!source_indices) {
-        _indices = detail::MeshExtractableData<MeshIndices>::extracted_to_render_world();
+        _indices = detail::MeshExtractableData<Indices>::extracted_to_render_world();
     } else if (*source_indices) {
-        _indices =
-            detail::MeshExtractableData<MeshIndices>::data(MeshIndices(source_indices->value().get().data.clone()));
+        _indices = detail::MeshExtractableData<Indices>::data(source_indices->value().get());
     }
 }
 
@@ -212,42 +211,42 @@ std::expected<bool, MeshAccessError> Mesh::try_contains_attribute(MeshVertexAttr
     return stored_attributes->get().contains(id);
 }
 
-std::optional<std::reference_wrapper<const MeshIndices>> Mesh::indices() const {
+std::optional<std::reference_wrapper<const Indices>> Mesh::indices() const {
     auto result = try_indices_option();
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
-std::expected<std::reference_wrapper<const MeshIndices>, MeshAccessError> Mesh::try_indices() const {
+std::expected<std::reference_wrapper<const Indices>, MeshAccessError> Mesh::try_indices() const {
     return _indices.as_ref();
 }
 
-std::expected<std::optional<std::reference_wrapper<const MeshIndices>>, MeshAccessError> Mesh::try_indices_option()
+std::expected<std::optional<std::reference_wrapper<const Indices>>, MeshAccessError> Mesh::try_indices_option()
     const {
     return _indices.as_ref_option();
 }
 
-std::optional<std::reference_wrapper<MeshIndices>> Mesh::indices_mut() {
+std::optional<std::reference_wrapper<Indices>> Mesh::indices_mut() {
     auto result = try_indices_mut_option();
     if (!result) throw_access_error(result.error());
     return *result;
 }
 
-std::expected<std::reference_wrapper<MeshIndices>, MeshAccessError> Mesh::try_indices_mut() {
+std::expected<std::reference_wrapper<Indices>, MeshAccessError> Mesh::try_indices_mut() {
     return _indices.as_mut();
 }
 
-std::expected<std::optional<std::reference_wrapper<MeshIndices>>, MeshAccessError> Mesh::try_indices_mut_option() {
+std::expected<std::optional<std::reference_wrapper<Indices>>, MeshAccessError> Mesh::try_indices_mut_option() {
     return _indices.as_mut_option();
 }
 
-std::optional<MeshIndices> Mesh::remove_indices() {
+std::optional<Indices> Mesh::remove_indices() {
     auto result = try_remove_indices();
     if (!result) throw_access_error(result.error());
     return std::move(result).value();
 }
 
-std::expected<std::optional<MeshIndices>, MeshAccessError> Mesh::try_remove_indices() {
+std::expected<std::optional<Indices>, MeshAccessError> Mesh::try_remove_indices() {
     return _indices.replace(std::nullopt);
 }
 
@@ -255,6 +254,18 @@ std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_indices() && {
     auto result = try_remove_indices();
     if (!result) return std::unexpected(result.error());
     return std::move(*this);
+}
+
+std::optional<std::span<const std::uint8_t>> Mesh::get_index_buffer_bytes() const {
+    const auto stored_indices = indices();
+    if (!stored_indices) return std::nullopt;
+    if (const auto* values = stored_indices->get().as_u16()) {
+        return std::span<const std::uint8_t>{reinterpret_cast<const std::uint8_t*>(values->data()),
+                                             values->size() * sizeof(std::uint16_t)};
+    }
+    const auto* values = stored_indices->get().as_u32();
+    return std::span<const std::uint8_t>{reinterpret_cast<const std::uint8_t*>(values->data()),
+                                         values->size() * sizeof(std::uint32_t)};
 }
 
 std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {

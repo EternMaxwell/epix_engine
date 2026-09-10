@@ -17,6 +17,7 @@
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
+#include <limits>
 #include <map>
 #include <optional>
 #include <print>
@@ -140,27 +141,90 @@ EPIX_EXPORT struct MeshAttributeData {
     std::size_t size() const noexcept { return data.size(); }
     bool empty() const noexcept { return data.empty(); }
 };
-/** @brief Index buffer data, stored as either uint16 or uint32 values. */
-EPIX_EXPORT struct MeshIndices {
+/** @brief An index buffer stored as either 16-bit or 32-bit values (Bevy
+ * `Indices`). */
+EPIX_EXPORT class Indices {
    public:
-    MeshIndices(const meta::type_info& desc) noexcept : data(desc) {}
-    MeshIndices(ecs::untyped_vector&& vec) noexcept : data(std::move(vec)) {}
+    explicit Indices(std::vector<std::uint16_t> values) : values_(std::move(values)) {}
+    explicit Indices(std::vector<std::uint32_t> values) : values_(std::move(values)) {}
 
-    /** @brief Check if this is a uint16 index buffer. */
-    bool is_u16() const noexcept { return data.type_info() == meta::type_info::of<std::uint16_t>(); }
-    /** @brief Check if this is a uint32 index buffer. */
-    bool is_u32() const noexcept { return data.type_info() == meta::type_info::of<std::uint32_t>(); }
-    /** @brief Get the index data as a span of uint16 values. */
-    std::span<const std::uint16_t> as_u16() const noexcept { return data.cspan_as<std::uint16_t>(); }
-    /** @brief Get the index data as a span of uint32 values. */
-    std::span<const std::uint32_t> as_u32() const noexcept { return data.cspan_as<std::uint32_t>(); }
-    /** @brief Number of indices. */
-    std::size_t size() const noexcept { return data.size(); }
-    /** @brief Whether the index buffer is empty. */
-    bool empty() const noexcept { return data.empty(); }
+    /** @brief Lazily iterate over every index as `std::size_t`. */
+    auto iter() const {
+        return std::views::iota(std::size_t{0}, len()) | std::views::transform([this](std::size_t index) {
+                   return std::visit([index](const auto& values) { return static_cast<std::size_t>(values[index]); },
+                                     values_);
+               });
+    }
 
-   public:
-    ecs::untyped_vector data;
+    /** @brief Return the number of indices. */
+    std::size_t len() const noexcept {
+        return std::visit([](const auto& values) { return values.size(); }, values_);
+    }
+    /** @brief Return whether the index buffer is empty. */
+    bool is_empty() const noexcept {
+        return std::visit([](const auto& values) { return values.empty(); }, values_);
+    }
+
+    /** @brief Append an index, promoting U16 storage to U32 when necessary. */
+    void push(std::uint32_t index) { extend(std::views::single(index)); }
+
+    /** @brief Append a range of indices, promoting U16 storage to U32 when
+     * necessary. */
+    template <std::ranges::input_range Range>
+        requires std::same_as<std::ranges::range_value_t<Range>, std::uint32_t>
+    void extend(Range&& range) {
+        auto iterator = std::ranges::begin(range);
+        auto sentinel = std::ranges::end(range);
+        if (auto* values = std::get_if<std::vector<std::uint32_t>>(&values_)) {
+            if constexpr (std::ranges::sized_range<Range>) {
+                values->reserve(values->size() + static_cast<std::size_t>(std::ranges::size(range)));
+            }
+            for (; iterator != sentinel; ++iterator) values->push_back(static_cast<std::uint32_t>(*iterator));
+            return;
+        }
+
+        auto* values = std::get_if<std::vector<std::uint16_t>>(&values_);
+        if constexpr (std::ranges::sized_range<Range>) {
+            values->reserve(values->size() + static_cast<std::size_t>(std::ranges::size(range)));
+        }
+        for (; iterator != sentinel; ++iterator) {
+            const auto index = static_cast<std::uint32_t>(*iterator);
+            if (index <= std::numeric_limits<std::uint16_t>::max()) {
+                values->push_back(static_cast<std::uint16_t>(index));
+                continue;
+            }
+
+            std::vector<std::uint32_t> promoted;
+            promoted.reserve(values->size() + 1);
+            promoted.insert(promoted.end(), values->begin(), values->end());
+            promoted.push_back(index);
+            for (++iterator; iterator != sentinel; ++iterator) {
+                promoted.push_back(static_cast<std::uint32_t>(*iterator));
+            }
+            values_ = std::move(promoted);
+            return;
+        }
+    }
+
+    /** @brief Return the WebGPU index format matching the active alternative. */
+    explicit operator wgpu::IndexFormat() const noexcept {
+        return std::holds_alternative<std::vector<std::uint16_t>>(values_) ? wgpu::IndexFormat::eUint16
+                                                                           : wgpu::IndexFormat::eUint32;
+    }
+
+    const std::vector<std::uint16_t>* as_u16() const noexcept {
+        return std::get_if<std::vector<std::uint16_t>>(&values_);
+    }
+    std::vector<std::uint16_t>* as_u16() noexcept { return std::get_if<std::vector<std::uint16_t>>(&values_); }
+    const std::vector<std::uint32_t>* as_u32() const noexcept {
+        return std::get_if<std::vector<std::uint32_t>>(&values_);
+    }
+    std::vector<std::uint32_t>* as_u32() noexcept { return std::get_if<std::vector<std::uint32_t>>(&values_); }
+
+    bool operator==(const Indices&) const = default;
+
+   private:
+    std::variant<std::vector<std::uint16_t>, std::vector<std::uint32_t>> values_;
 };
 
 namespace detail {
@@ -430,60 +494,45 @@ EPIX_EXPORT struct Mesh {
     std::expected<bool, MeshAccessError> try_contains_attribute(const MeshVertexAttribute& attribute) const;
     std::expected<bool, MeshAccessError> try_contains_attribute(MeshVertexAttributeId id) const;
 
-    /** @brief Insert indices, replacing any existing ones.
-     *  @tparam V Index type (`std::uint16_t` or `std::uint32_t`). */
-    template <typename V = std::uint16_t, std::ranges::range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
-                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
-    void insert_indices(T&& data) {
-        auto result = try_insert_indices<V>(std::forward<T>(data));
+    /** @brief Insert indices, replacing any existing ones. */
+    void insert_indices(Indices indices) {
+        auto result = try_insert_indices(std::move(indices));
         if (!result) throw_access_error(result.error());
     }
-    template <typename V = std::uint16_t, std::ranges::range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
-                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
-    std::expected<void, MeshAccessError> try_insert_indices(T&& data) {
-        MeshIndices indices(meta::type_info::of<V>());
-        if constexpr (std::ranges::sized_range<T>) {
-            indices.data.reserve(static_cast<std::size_t>(std::ranges::size(data)));
-        }
-        std::ranges::for_each(std::forward<T>(data),
-                              [&](auto&& v) { indices.data.emplace_back<V>(std::forward<decltype(v)>(v)); });
-        auto replaced = _indices.replace(std::optional<MeshIndices>{std::move(indices)});
+    std::expected<void, MeshAccessError> try_insert_indices(Indices indices) {
+        auto replaced = _indices.replace(std::optional<Indices>{std::move(indices)});
         if (!replaced) return std::unexpected(replaced.error());
         return {};
     }
     /** @brief Builder-style insert indices (Bevy `with_inserted_indices`). */
-    template <typename V = std::uint16_t, std::ranges::range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
-                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
-    auto&& with_inserted_indices(this auto&& self, T&& data) {
-        self.template insert_indices<V>(std::forward<T>(data));
-        return std::forward<decltype(self)>(self);
+    Mesh with_inserted_indices(Indices indices) && {
+        insert_indices(std::move(indices));
+        return std::move(*this);
     }
-    template <typename V = std::uint16_t, std::ranges::range T>
-        requires std::convertible_to<std::ranges::range_value_t<T>, V> &&
-                 (std::same_as<V, std::uint16_t> || std::same_as<V, std::uint32_t>)
-    std::expected<Mesh, MeshAccessError> try_with_inserted_indices(T&& data) && {
-        auto result = try_insert_indices<V>(std::forward<T>(data));
+    std::expected<Mesh, MeshAccessError> try_with_inserted_indices(Indices indices) && {
+        auto result = try_insert_indices(std::move(indices));
         if (!result) return std::unexpected(result.error());
         return std::move(*this);
     }
 
-    std::optional<std::reference_wrapper<const MeshIndices>> indices() const;
-    std::expected<std::reference_wrapper<const MeshIndices>, MeshAccessError> try_indices() const;
-    std::expected<std::optional<std::reference_wrapper<const MeshIndices>>, MeshAccessError> try_indices_option() const;
-    std::optional<std::reference_wrapper<MeshIndices>> indices_mut();
-    std::expected<std::reference_wrapper<MeshIndices>, MeshAccessError> try_indices_mut();
-    std::expected<std::optional<std::reference_wrapper<MeshIndices>>, MeshAccessError> try_indices_mut_option();
+    std::optional<std::reference_wrapper<const Indices>> indices() const;
+    std::expected<std::reference_wrapper<const Indices>, MeshAccessError> try_indices() const;
+    std::expected<std::optional<std::reference_wrapper<const Indices>>, MeshAccessError> try_indices_option() const;
+    std::optional<std::reference_wrapper<Indices>> indices_mut();
+    std::expected<std::reference_wrapper<Indices>, MeshAccessError> try_indices_mut();
+    std::expected<std::optional<std::reference_wrapper<Indices>>, MeshAccessError> try_indices_mut_option();
 
-    std::optional<MeshIndices> remove_indices();
-    std::expected<std::optional<MeshIndices>, MeshAccessError> try_remove_indices();
+    std::optional<Indices> remove_indices();
+    std::expected<std::optional<Indices>, MeshAccessError> try_remove_indices();
     auto&& with_removed_indices(this auto&& self) {
         self.remove_indices();
         return std::forward<decltype(self)>(self);
     }
     std::expected<Mesh, MeshAccessError> try_with_removed_indices() &&;
+
+    /** @brief Return the raw index-buffer bytes, or no value for a non-indexed
+     * mesh (Bevy `Mesh::get_index_buffer_bytes`). */
+    std::optional<std::span<const std::uint8_t>> get_index_buffer_bytes() const;
 
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {
@@ -510,7 +559,7 @@ EPIX_EXPORT struct Mesh {
 
     wgpu::PrimitiveTopology primitive_type;
     detail::MeshExtractableData<AttributeMap> _attributes;
-    detail::MeshExtractableData<MeshIndices> _indices;
+    detail::MeshExtractableData<Indices> _indices;
 };
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.

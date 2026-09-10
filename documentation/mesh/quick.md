@@ -14,11 +14,11 @@ or `uint32` indices. Standard descriptors are `ATTRIBUTE_POSITION`, `ATTRIBUTE_C
 `ATTRIBUTE_NORMAL`, `ATTRIBUTE_UV0`, and `ATTRIBUTE_UV1`.
 
 ```cpp
-Mesh mesh;
-mesh.with_attribute(Mesh::ATTRIBUTE_POSITION, positions)
-    .with_attribute(Mesh::ATTRIBUTE_UV0, uvs)
-    .with_indices(indices);
-auto handle = meshes.add(std::move(mesh));
+Mesh mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::all())
+                .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
+                .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, uvs)
+                .with_inserted_indices(Indices{std::vector<std::uint16_t>{0, 1, 2}});
+auto handle = meshes.emplace(std::move(mesh));
 ```
 
 The element byte size must equal `vertex_format_size(attribute.format)` or insertion returns
@@ -27,8 +27,11 @@ The element byte size must equal `vertex_format_size(attribute.format)` or inser
 `with_removed_attribute`. `attribute_layout()` produces `MeshAttributeLayout`, whose lookup and
 mutation methods operate on `MeshAttribute {name, slot, format}`.
 
-Index APIs include `insert_indices`, `with_indices`, `get_indices`, `get_indices_mut`, `remove_indices`,
-and `with_removed_indices`. `MeshIndices` exposes `is_u16/u32`, `as_u16/u32`, `size`, and `empty`.
+Index APIs include `insert_indices`, `with_inserted_indices`, `indices`, `indices_mut`, `remove_indices`,
+and `with_removed_indices`. `Indices` stores either a `std::vector<std::uint16_t>` or
+`std::vector<std::uint32_t>`, exposes a lazy `iter()` range plus `len()` and `is_empty()`, and promotes
+16-bit storage to 32-bit when `push()` or `extend()` receives an index above `UINT16_MAX`.
+`get_index_buffer_bytes()` returns a borrowed byte span over the active index storage.
 `count_vertices()` returns the shortest attribute length and warns when attribute counts disagree.
 `MeshError` also reports missing slots, name mismatches, and requested type mismatches.
 

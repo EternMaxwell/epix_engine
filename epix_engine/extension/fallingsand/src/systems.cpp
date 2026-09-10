@@ -47,7 +47,7 @@ static mesh::Mesh build_chunk_mesh(const ChunkElementGrid& chunk, float cell_siz
     return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_inserted_indices<std::uint32_t>(indices);
+        .with_inserted_indices(mesh::Indices{std::move(indices)});
 }
 
 /// Build a debug mesh that highlights Body-type sentinel elements (alpha == 0)
@@ -73,7 +73,7 @@ static mesh::Mesh build_chunk_body_debug_mesh(const ChunkElementGrid& chunk, flo
     return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_inserted_indices<std::uint32_t>(indices);
+        .with_inserted_indices(mesh::Indices{std::move(indices)});
 }
 
 static glm::vec4 heat_map_color(float t) {
@@ -108,7 +108,7 @@ static mesh::Mesh build_heat_map_mesh(const ChunkElementGrid& chunk, const Chunk
     return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_inserted_indices<std::uint32_t>(indices);
+        .with_inserted_indices(mesh::Indices{std::move(indices)});
 }
 
 static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_size) {
@@ -121,7 +121,7 @@ static mesh::Mesh build_chunk_outline_mesh(std::size_t chunk_width, float cell_s
     return mesh::Mesh(wgpu::PrimitiveTopology::eLineList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_inserted_indices<std::uint16_t>(indices);
+        .with_inserted_indices(mesh::Indices{std::vector<std::uint16_t>{indices.begin(), indices.end()}});
 }
 // ──────────────────────────────────────────────────────────────────────────────
 // setup_chunk_dirty_rects

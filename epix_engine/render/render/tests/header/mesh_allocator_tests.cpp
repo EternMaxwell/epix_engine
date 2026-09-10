@@ -97,7 +97,7 @@ TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
                           std::array{glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{1.0f, 1.0f, 1.0f}});
     mesh.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR,
                           std::array{glm::vec4{1.0f, 1.0f, 1.0f, 1.0f}, glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}});
-    mesh.insert_indices<std::uint16_t>(std::array<std::uint16_t, 3>{0, 1, 0});
+    mesh.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 0}});
 
     const epix::render::RenderAsset<mesh::Mesh> asset{};
     const auto len = asset.byte_len(mesh);

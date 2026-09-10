@@ -29,8 +29,10 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
 
         if (const auto indices = source_mesh.indices()) {
             const auto& index                = indices->get();
-            const std::uint32_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
-            allocate(id, static_cast<std::uint64_t>(index.size()) * element_size,
+            const std::uint32_t element_size = static_cast<wgpu::IndexFormat>(index) == wgpu::IndexFormat::eUint16
+                                                   ? sizeof(std::uint16_t)
+                                                   : sizeof(std::uint32_t);
+            allocate(id, static_cast<std::uint64_t>(index.len()) * element_size,
                      detail::ElementLayout::make(detail::ElementClass::Index, element_size),
                      slabs_to_reallocate, settings);
         }
@@ -51,11 +53,9 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
         }
         if (const auto index_slab = mesh_id_to_index_slab.find(id);
             index_slab != mesh_id_to_index_slab.end()) {
-            if (const auto indices = source_mesh.indices()) {
-                const auto& index              = indices->get();
-                const std::size_t element_size = index.is_u16() ? sizeof(std::uint16_t) : sizeof(std::uint32_t);
-                copy_element_data(device, queue, index_slab->second, id, index.data.cdata(),
-                                  index.size() * element_size, wgpu::BufferUsage::eIndex);
+            if (const auto index_bytes = source_mesh.get_index_buffer_bytes()) {
+                copy_element_data(device, queue, index_slab->second, id, index_bytes->data(), index_bytes->size(),
+                                  wgpu::BufferUsage::eIndex);
             }
         }
     }

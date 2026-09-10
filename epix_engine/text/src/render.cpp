@@ -626,11 +626,12 @@ TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
             uvs[3]  = glm::vec3{uv[0], uv[3], uv[4]};
             return uvs;
         })));
-    mesh.insert_indices<std::uint32_t>(std::views::join(std::views::transform(
-        std::views::iota(0u, static_cast<std::uint32_t>(shaped.glyphs().size())), [](std::uint32_t glyph_index) {
-            auto base = glyph_index * 4;
-            return std::array<std::uint32_t, 6>{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0};
-        })));
+    mesh.insert_indices(
+        mesh::Indices{std::ranges::to<std::vector<std::uint32_t>>(std::views::join(std::views::transform(
+            std::views::iota(0u, static_cast<std::uint32_t>(shaped.glyphs().size())), [](std::uint32_t glyph_index) {
+                auto base = glyph_index * 4;
+                return std::array<std::uint32_t, 6>{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0};
+            })))});
     auto mesh_handle = mesh_assets.emplace(std::move(mesh));
     return TextMesh(mesh_handle, shaped.left(), shaped.right(), shaped.top(), shaped.bottom(), shaped.ascent(),
                     shaped.descent());

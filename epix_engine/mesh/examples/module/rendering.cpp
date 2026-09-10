@@ -50,7 +50,7 @@ mesh::Mesh make_gradient_quad(float width, float height) {
     return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
         .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
-        .with_inserted_indices<std::uint16_t>(indices);
+        .with_inserted_indices(mesh::Indices{std::move(indices)});
 }
 
 struct MeshRenderingVisualTestPlugin {

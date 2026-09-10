@@ -1,11 +1,43 @@
 #include <gtest/gtest.h>
 
+#include <cstring>
 #include <epix/mesh.hpp>
 #include <limits>
 #include <unordered_set>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
+
+TEST(Indices, PushAndExtendPromoteU16StorageWithoutLosingValues) {
+    mesh::Indices indices{std::vector<std::uint16_t>{}};
+    static_assert(std::ranges::view<decltype(std::declval<const mesh::Indices&>().iter())>);
+
+    indices.push(10);
+    EXPECT_EQ(static_cast<wgpu::IndexFormat>(indices), wgpu::IndexFormat::eUint16);
+    EXPECT_EQ(std::ranges::to<std::vector<std::size_t>>(indices.iter()), (std::vector<std::size_t>{10}));
+
+    indices.extend(std::array<std::uint32_t, 3>{11, 0x10012, 0x10013});
+    EXPECT_EQ(static_cast<wgpu::IndexFormat>(indices), wgpu::IndexFormat::eUint32);
+    EXPECT_EQ(std::ranges::to<std::vector<std::size_t>>(indices.iter()),
+              (std::vector<std::size_t>{10, 11, 0x10012, 0x10013}));
+
+    indices.push(20);
+    EXPECT_EQ(indices.len(), 5u);
+    EXPECT_FALSE(indices.is_empty());
+    ASSERT_NE(indices.as_u32(), nullptr);
+    EXPECT_EQ(*indices.as_u32(), (std::vector<std::uint32_t>{10, 11, 0x10012, 0x10013, 20}));
+}
+
+TEST(Indices, MeshExposesExactIndexBytes) {
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    value.insert_indices(mesh::Indices{std::vector<std::uint16_t>{1, 0x203, 4}});
+    const auto bytes = value.get_index_buffer_bytes();
+    ASSERT_TRUE(bytes.has_value());
+    ASSERT_EQ(bytes->size(), 3u * sizeof(std::uint16_t));
+    std::uint16_t middle = 0;
+    std::memcpy(&middle, bytes->data() + sizeof(std::uint16_t), sizeof(middle));
+    EXPECT_EQ(middle, 0x203u);
+}
 
 TEST(MeshComponents, Mesh2dAndMesh3dMatchBevyNewtypeContracts) {
     const auto id = epix::assets::AssetId<mesh::Mesh>::invalid();
@@ -111,7 +143,7 @@ TEST(MeshModule, Box2dBuildsIndexedQuad) {
     auto value = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
     EXPECT_EQ(value.count_vertices(), 4);
     ASSERT_TRUE(value.indices().has_value());
-    EXPECT_EQ(value.indices()->get().size(), 6);
+    EXPECT_EQ(value.indices()->get().len(), 6);
     EXPECT_TRUE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
 }
 
@@ -120,7 +152,7 @@ TEST(MeshModule, CircleBuildsTriangleList) {
     EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_EQ(value.count_vertices(), 17);
     ASSERT_TRUE(value.indices().has_value());
-    EXPECT_EQ(value.indices()->get().size(), 48);
+    EXPECT_EQ(value.indices()->get().len(), 48);
 }
 
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
