@@ -88,13 +88,17 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     if (!gpu_image.texture) {
         return std::unexpected(GpuAssetCreationError::CreateTexture);
     }
-    auto view_desc         = wgpu::TextureViewDescriptor()
-                                 .setDimension(view_dimension_cast(asset.type()))
-                                 .setMipLevelCount(1)
-                                 .setBaseMipLevel(0)
-                                 .setFormat(desc.format)
-                                 .setBaseArrayLayer(0)
-                                 .setArrayLayerCount(asset.layers());
+    // Bevy builds the view from the image's optional `texture_view_descriptor`,
+    // falling back to a descriptor derived from the texture itself. An explicit
+    // override therefore wins, which is how a distinct view format is requested.
+    wgpu::TextureViewDescriptor view_desc = asset.texture_view_descriptor.value_or(
+        wgpu::TextureViewDescriptor()
+            .setDimension(view_dimension_cast(asset.type()))
+            .setMipLevelCount(1)
+            .setBaseMipLevel(0)
+            .setFormat(desc.format)
+            .setBaseArrayLayer(0)
+            .setArrayLayerCount(asset.layers()));
     gpu_image.texture_view = gpu_image.texture.createView(view_desc);
     if (!gpu_image.texture_view) {
         return std::unexpected(GpuAssetCreationError::CreateTextureView);
