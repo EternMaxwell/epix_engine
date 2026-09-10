@@ -17,15 +17,19 @@
 
 namespace epix::mesh {
 
+struct AnnulusMeshBuilder;
+struct Capsule2dMeshBuilder;
 struct CircleMeshBuilder;
 struct CircularSectorMeshBuilder;
 struct CircularSegmentMeshBuilder;
 struct ConvexPolygonMeshBuilder;
 struct EllipseMeshBuilder;
 class Polyline2dMeshBuilder;
-class RegularPolygonMeshBuilder;
-class RectangleMeshBuilder;
+struct RegularPolygonMeshBuilder;
+struct RectangleMeshBuilder;
+struct RhombusMeshBuilder;
 struct Segment2dMeshBuilder;
+struct Triangle2dMeshBuilder;
 
 /** @brief Circle primitive accepted by `CircleMeshBuilder`. */
 EPIX_EXPORT struct Circle {
@@ -187,6 +191,69 @@ EPIX_EXPORT class ConvexPolygon {
     std::vector<glm::vec2> vertices_;
 };
 
+/** @brief Triangle in 2D space described by its three vertices. */
+EPIX_EXPORT struct Triangle2d {
+    std::array<glm::vec2, 3> vertices{glm::vec2(0.0f, 0.5f), glm::vec2(-0.5f, -0.5f), glm::vec2(0.5f, -0.5f)};
+
+    constexpr Triangle2d() = default;
+    constexpr Triangle2d(glm::vec2 a, glm::vec2 b, glm::vec2 c) : vertices{a, b, c} {}
+    WindingOrder winding_order() const noexcept;
+    float area() const noexcept;
+    float perimeter() const noexcept;
+    bool is_degenerate() const noexcept;
+    bool is_acute() const noexcept;
+    bool is_obtuse() const noexcept;
+    void reverse() noexcept { std::swap(vertices[0], vertices[2]); }
+    Triangle2d reversed() const noexcept {
+        Triangle2d value = *this;
+        value.reverse();
+        return value;
+    }
+    Triangle2dMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Triangle2d&) const = default;
+};
+
+/** @brief Rhombus (diamond) primitive described by its half diagonals. */
+EPIX_EXPORT struct Rhombus {
+    glm::vec2 half_diagonals{0.5f};
+
+    constexpr Rhombus() = default;
+    constexpr Rhombus(float horizontal_diagonal, float vertical_diagonal)
+        : half_diagonals(horizontal_diagonal * 0.5f, vertical_diagonal * 0.5f) {}
+    static constexpr Rhombus from_side(float side) {
+        const float half_diagonal = side * 0.5f * std::numbers::sqrt2_v<float>;
+        return Rhombus{half_diagonal * 2.0f, half_diagonal * 2.0f};
+    }
+    static constexpr Rhombus from_inradius(float inradius) {
+        const float half_diagonal = inradius * 2.0f / std::numbers::sqrt2_v<float>;
+        return Rhombus{half_diagonal * 2.0f, half_diagonal * 2.0f};
+    }
+    float side() const noexcept;
+    constexpr float circumradius() const noexcept { return std::max(half_diagonals.x, half_diagonals.y); }
+    float inradius() const noexcept;
+    glm::vec2 closest_point(glm::vec2 point) const noexcept;
+    RhombusMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Rhombus&) const = default;
+};
+
+/** @brief Annulus primitive described by its inner and outer circle. */
+EPIX_EXPORT struct Annulus {
+    Circle inner_circle{0.5f};
+    Circle outer_circle{1.0f};
+
+    constexpr Annulus() = default;
+    constexpr Annulus(float inner_radius, float outer_radius)
+        : inner_circle(inner_radius), outer_circle(outer_radius) {}
+    constexpr float diameter() const noexcept { return outer_circle.diameter(); }
+    constexpr float thickness() const noexcept { return outer_circle.radius - inner_circle.radius; }
+    glm::vec2 closest_point(glm::vec2 point) const noexcept;
+    AnnulusMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Annulus&) const = default;
+};
+
 /** @brief Ellipse primitive described by its perpendicular half extents. */
 EPIX_EXPORT struct Ellipse {
     glm::vec2 half_size{1.0f, 0.5f};
@@ -227,6 +294,19 @@ EPIX_EXPORT struct Rectangle {
     RectangleMeshBuilder mesh() const noexcept;
 
     bool operator==(const Rectangle&) const = default;
+};
+
+/** @brief Capsule (stadium) primitive described by its radius and half length. */
+EPIX_EXPORT struct Capsule2d {
+    float radius      = 0.5f;
+    float half_length = 0.5f;
+
+    constexpr Capsule2d() = default;
+    constexpr Capsule2d(float radius, float length) : radius(radius), half_length(length * 0.5f) {}
+    constexpr Rectangle to_inner_rectangle() const { return Rectangle{radius * 2.0f, half_length * 2.0f}; }
+    Capsule2dMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Capsule2d&) const = default;
 };
 
 /** @brief Builder used to create a circle mesh. */
@@ -288,6 +368,56 @@ EPIX_EXPORT struct ConvexPolygonMeshBuilder {
     Mesh build() const;
 };
 
+/** @brief Builder used to create an annulus mesh. */
+EPIX_EXPORT struct AnnulusMeshBuilder {
+    Annulus annulus{};
+    std::uint32_t resolution = 32;
+
+    constexpr AnnulusMeshBuilder() = default;
+    constexpr AnnulusMeshBuilder(float inner_radius, float outer_radius, std::uint32_t resolution)
+        : annulus(inner_radius, outer_radius), resolution(resolution) {}
+    AnnulusMeshBuilder with_resolution(std::uint32_t value) && noexcept {
+        resolution = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a rhombus (diamond) mesh. */
+EPIX_EXPORT struct RhombusMeshBuilder {
+    glm::vec2 half_diagonals{0.5f};
+
+    constexpr RhombusMeshBuilder() = default;
+    constexpr explicit RhombusMeshBuilder(glm::vec2 half_diagonals) : half_diagonals(half_diagonals) {}
+    RhombusMeshBuilder(float horizontal_diagonal, float vertical_diagonal);
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a triangle mesh. */
+EPIX_EXPORT struct Triangle2dMeshBuilder {
+    Triangle2d triangle{};
+
+    constexpr Triangle2dMeshBuilder() = default;
+    constexpr explicit Triangle2dMeshBuilder(Triangle2d triangle) : triangle(triangle) {}
+    constexpr Triangle2dMeshBuilder(glm::vec2 a, glm::vec2 b, glm::vec2 c) : triangle(a, b, c) {}
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a capsule (stadium) mesh. */
+EPIX_EXPORT struct Capsule2dMeshBuilder {
+    Capsule2d capsule{};
+    std::uint32_t resolution = 16;
+
+    constexpr Capsule2dMeshBuilder() = default;
+    constexpr Capsule2dMeshBuilder(float radius, float length, std::uint32_t resolution)
+        : capsule(radius, length), resolution(resolution) {}
+    Capsule2dMeshBuilder with_resolution(std::uint32_t value) && noexcept {
+        resolution = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
 /** @brief Builder used to create an ellipse mesh. */
 EPIX_EXPORT struct EllipseMeshBuilder {
     Ellipse ellipse{};
@@ -324,34 +454,27 @@ EPIX_EXPORT class Polyline2dMeshBuilder {
 };
 
 /** @brief Builder used to create a regular polygon mesh. */
-EPIX_EXPORT class RegularPolygonMeshBuilder {
-   public:
+EPIX_EXPORT struct RegularPolygonMeshBuilder {
+    float circumradius  = 0.5f;
+    std::uint32_t sides = 6;
+
     constexpr RegularPolygonMeshBuilder() = default;
     RegularPolygonMeshBuilder(float circumradius, std::uint32_t sides);
     Mesh build() const;
-
-    constexpr float circumradius() const noexcept { return circumradius_; }
-    constexpr std::uint32_t sides() const noexcept { return sides_; }
-
-   private:
-    float circumradius_  = 0.5f;
-    std::uint32_t sides_ = 6;
 };
 
 /** @brief Builder used to create a rectangle mesh. */
-EPIX_EXPORT class RectangleMeshBuilder {
-   public:
+EPIX_EXPORT struct RectangleMeshBuilder {
+    glm::vec2 half_size{0.5f};
+
     constexpr RectangleMeshBuilder() = default;
     RectangleMeshBuilder(float width, float height);
-    constexpr explicit RectangleMeshBuilder(glm::vec2 half_size) : half_size_(half_size) {}
+    constexpr explicit RectangleMeshBuilder(glm::vec2 half_size) : half_size(half_size) {}
     Mesh build() const;
-
-    constexpr glm::vec2 half_size() const noexcept { return half_size_; }
-
-   private:
-    glm::vec2 half_size_{0.5f};
 };
 
+static_assert(MeshBuilder<AnnulusMeshBuilder>);
+static_assert(MeshBuilder<Capsule2dMeshBuilder>);
 static_assert(MeshBuilder<CircleMeshBuilder>);
 static_assert(MeshBuilder<CircularSectorMeshBuilder>);
 static_assert(MeshBuilder<CircularSegmentMeshBuilder>);
@@ -360,7 +483,11 @@ static_assert(MeshBuilder<EllipseMeshBuilder>);
 static_assert(MeshBuilder<Polyline2dMeshBuilder>);
 static_assert(MeshBuilder<RegularPolygonMeshBuilder>);
 static_assert(MeshBuilder<RectangleMeshBuilder>);
+static_assert(MeshBuilder<RhombusMeshBuilder>);
 static_assert(MeshBuilder<Segment2dMeshBuilder>);
+static_assert(MeshBuilder<Triangle2dMeshBuilder>);
+static_assert(Meshable<Annulus>);
+static_assert(Meshable<Capsule2d>);
 static_assert(Meshable<Circle>);
 static_assert(Meshable<CircularSector>);
 static_assert(Meshable<CircularSegment>);
@@ -369,6 +496,8 @@ static_assert(Meshable<Ellipse>);
 static_assert(Meshable<Polyline2d>);
 static_assert(Meshable<RegularPolygon>);
 static_assert(Meshable<Rectangle>);
+static_assert(Meshable<Rhombus>);
 static_assert(Meshable<Segment2d>);
+static_assert(Meshable<Triangle2d>);
 
 }  // namespace epix::mesh

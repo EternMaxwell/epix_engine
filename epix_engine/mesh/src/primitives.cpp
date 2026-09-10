@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <cassert>
 #include <cmath>
 #include <epix/mesh/primitives.hpp>
@@ -84,6 +85,106 @@ ConvexPolygon ConvexPolygon::new_unchecked(std::vector<glm::vec2> vertices) {
 ConvexPolygonMeshBuilder ConvexPolygon::mesh() const {
     return ConvexPolygonMeshBuilder{std::vector<glm::vec2>(vertices_.begin(), vertices_.end())};
 }
+
+WindingOrder Triangle2d::winding_order() const noexcept {
+    const auto area = (vertices[1].x - vertices[0].x) * (vertices[2].y - vertices[0].y) -
+                      (vertices[1].y - vertices[0].y) * (vertices[2].x - vertices[0].x);
+    if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
+    if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
+    return WindingOrder::Invalid;
+}
+
+float Triangle2d::area() const noexcept {
+    const auto& a = vertices[0];
+    const auto& b = vertices[1];
+    const auto& c = vertices[2];
+    return std::abs(a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)) * 0.5f;
+}
+
+float Triangle2d::perimeter() const noexcept {
+    return glm::distance(vertices[0], vertices[1]) + glm::distance(vertices[1], vertices[2]) +
+           glm::distance(vertices[2], vertices[0]);
+}
+
+bool Triangle2d::is_degenerate() const noexcept {
+    const auto ab = glm::vec3(vertices[1] - vertices[0], 0.0f);
+    const auto ac = glm::vec3(vertices[2] - vertices[0], 0.0f);
+    return glm::length(glm::cross(ab, ac)) < 10e-7f;
+}
+
+bool Triangle2d::is_acute() const noexcept {
+    const std::array<float, 3> side_lengths{
+        glm::dot(vertices[1] - vertices[0], vertices[1] - vertices[0]),
+        glm::dot(vertices[2] - vertices[1], vertices[2] - vertices[1]),
+        glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]),
+    };
+    const float sum = side_lengths[0] + side_lengths[1] + side_lengths[2];
+    const float max = std::max({side_lengths[0], side_lengths[1], side_lengths[2]});
+    return sum - max > max;
+}
+
+bool Triangle2d::is_obtuse() const noexcept {
+    const std::array<float, 3> side_lengths{
+        glm::dot(vertices[1] - vertices[0], vertices[1] - vertices[0]),
+        glm::dot(vertices[2] - vertices[1], vertices[2] - vertices[1]),
+        glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]),
+    };
+    const float sum = side_lengths[0] + side_lengths[1] + side_lengths[2];
+    const float max = std::max({side_lengths[0], side_lengths[1], side_lengths[2]});
+    return sum - max < max;
+}
+
+Triangle2dMeshBuilder Triangle2d::mesh() const noexcept { return Triangle2dMeshBuilder{*this}; }
+
+float Rhombus::side() const noexcept { return glm::length(half_diagonals); }
+
+float Rhombus::inradius() const noexcept {
+    const float side_length = side();
+    if (side_length == 0.0f) return 0.0f;
+    return (half_diagonals.x * half_diagonals.y) / side_length;
+}
+
+glm::vec2 Rhombus::closest_point(glm::vec2 point) const noexcept {
+    // Fold the problem into the positive quadrant, exactly as Bevy does.
+    const glm::vec2 point_abs            = glm::abs(point);
+    const glm::vec2 folded_diagons       = glm::abs(half_diagonals);
+    const glm::vec2 normal               = {folded_diagons.y, folded_diagons.x};
+    const float normal_magnitude_squared = glm::dot(normal, normal);
+    if (normal_magnitude_squared == 0.0f) return glm::vec2(0.0f);
+
+    const float distance_unnormalised = glm::dot(normal, point_abs) - folded_diagons.x * folded_diagons.y;
+    if (distance_unnormalised <= 0.0f) return point;
+
+    glm::vec2 result = point_abs - normal * (distance_unnormalised / normal_magnitude_squared);
+    if (result.x <= 0.0f) {
+        result = {0.0f, folded_diagons.y};
+    } else if (result.y <= 0.0f) {
+        result = {folded_diagons.x, 0.0f};
+    }
+    return {std::copysign(result.x, point.x), std::copysign(result.y, point.y)};
+}
+
+RhombusMeshBuilder Rhombus::mesh() const noexcept { return RhombusMeshBuilder{half_diagonals}; }
+
+glm::vec2 Annulus::closest_point(glm::vec2 point) const noexcept {
+    const float distance_squared = glm::dot(point, point);
+    if (inner_circle.radius * inner_circle.radius <= distance_squared) {
+        if (distance_squared <= outer_circle.radius * outer_circle.radius) {
+            // The point is inside the annulus.
+            return point;
+        }
+        // Outside the annulus and closer to the outer perimeter.
+        return outer_circle.radius * (point / std::sqrt(distance_squared));
+    }
+    // Inside the hole and closer to the inner perimeter.
+    return inner_circle.radius * (point / std::sqrt(distance_squared));
+}
+
+AnnulusMeshBuilder Annulus::mesh() const noexcept {
+    return AnnulusMeshBuilder{inner_circle.radius, outer_circle.radius, 32};
+}
+
+Capsule2dMeshBuilder Capsule2d::mesh() const noexcept { return Capsule2dMeshBuilder{radius, half_length * 2.0f, 16}; }
 
 EllipseMeshBuilder Ellipse::mesh() const noexcept { return EllipseMeshBuilder{half_size.x, half_size.y, 32}; }
 
@@ -200,6 +301,199 @@ Mesh ConvexPolygonMeshBuilder::build() const {
         .with_inserted_indices(Indices{std::move(indices)});
 }
 
+namespace {
+/** @brief Unskewed UV coordinates for a triangle (Bevy `triangle3d::uv_coords`). */
+std::array<glm::vec2, 3> triangle_uv_coords(const std::array<glm::vec3, 3>& vertices) {
+    const auto& a = vertices[0];
+    const auto& b = vertices[1];
+    const auto& c = vertices[2];
+
+    const float main_length = glm::distance(a, b);
+    const auto direction    = b - a;
+    if (glm::dot(direction, direction) == 0.0f) {
+        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
+    }
+    const auto x = glm::normalize(direction);
+    const auto y = c - a;
+
+    // `x` is one UV axis; the second direction is `y` orthogonalized against it, so the
+    // triangle is mapped without skew into the rectangle that contains it.
+    const auto y_proj  = x * glm::dot(y, x);
+    const float offset = glm::dot(y_proj, x) / main_length;
+
+    if (offset < 0.0f) {
+        // Obtuse triangle leaning left: the x direction extends left, shifting `a` from 0.
+        const float total_length = 1.0f - offset;
+        return {glm::vec2(std::abs(offset) / total_length, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
+    }
+    if (offset > 1.0f) {
+        // Obtuse triangle leaning right: the x direction extends right, shifting `b` from 1.
+        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f / offset, 0.0f), glm::vec2(1.0f, 1.0f)};
+    }
+    // Acute triangle: no extension needed, `a` stays at 0 and `b` stays at 1.
+    return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(offset, 1.0f)};
+}
+}  // namespace
+
+Mesh AnnulusMeshBuilder::build() const {
+    const float inner_radius = annulus.inner_circle.radius;
+    const float outer_radius = annulus.outer_circle.radius;
+
+    const std::size_t num_vertices = (static_cast<std::size_t>(resolution) + 1) * 2;
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals(num_vertices, {0.0f, 0.0f, 1.0f});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(num_vertices);
+    uvs.reserve(num_vertices);
+    indices.reserve(static_cast<std::size_t>(resolution) * 6);
+
+    // One more set of vertices than might be expected: the vertices at `start_angle` are
+    // duplicated so the UV rectangle's top and bottom can meet as the circle closes.
+    constexpr float start_angle = std::numbers::pi_v<float> * 0.5f;
+    const float step            = std::numbers::pi_v<float> * 2.0f / static_cast<float>(resolution);
+    for (std::uint32_t index = 0; index <= resolution; ++index) {
+        const float theta  = start_angle + static_cast<float>(index % resolution) * step;
+        const float sine   = std::sin(theta);
+        const float cosine = std::cos(theta);
+        positions.push_back({cosine * inner_radius, sine * inner_radius, 0.0f});
+        positions.push_back({cosine * outer_radius, sine * outer_radius, 0.0f});
+
+        // The first UV direction is radial and the second angular: lines of constant U map to
+        // circles and lines of constant V map to radial segments.
+        const float v = static_cast<float>(index) / static_cast<float>(resolution);
+        uvs.push_back({0.0f, v});
+        uvs.push_back({1.0f, v});
+    }
+
+    for (std::uint32_t index = 0; index < resolution; ++index) {
+        const std::uint32_t inner_vertex = 2 * index;
+        const std::uint32_t outer_vertex = 2 * index + 1;
+        const std::uint32_t next_inner   = inner_vertex + 2;
+        const std::uint32_t next_outer   = outer_vertex + 2;
+        indices.insert(indices.end(), {inner_vertex, outer_vertex, next_outer});
+        indices.insert(indices.end(), {next_outer, next_inner, inner_vertex});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
+RhombusMeshBuilder::RhombusMeshBuilder(float horizontal_diagonal, float vertical_diagonal)
+    : half_diagonals(horizontal_diagonal * 0.5f, vertical_diagonal * 0.5f) {
+    assert(horizontal_diagonal >= 0.0f && "rhombus has a negative horizontal size");
+    assert(vertical_diagonal >= 0.0f && "rhombus has a negative vertical size");
+}
+
+Mesh RhombusMeshBuilder::build() const {
+    const float half_horizontal = half_diagonals.x;
+    const float half_vertical   = half_diagonals.y;
+    std::vector<VertexAttributeValues::Float32x3Value> positions{
+        {half_horizontal, 0.0f, 0.0f},
+        {0.0f, half_vertical, 0.0f},
+        {-half_horizontal, 0.0f, 0.0f},
+        {0.0f, -half_vertical, 0.0f},
+    };
+    std::vector<VertexAttributeValues::Float32x3Value> normals(4, {0.0f, 0.0f, 1.0f});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs{{1.0f, 0.5f}, {0.5f, 0.0f}, {0.0f, 0.5f}, {0.5f, 1.0f}};
+    std::vector<std::uint32_t> indices{2, 0, 1, 2, 3, 0};
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh Triangle2dMeshBuilder::build() const {
+    const std::array<glm::vec3, 3> vertices_3d{
+        glm::vec3(triangle.vertices[0], 0.0f),
+        glm::vec3(triangle.vertices[1], 0.0f),
+        glm::vec3(triangle.vertices[2], 0.0f),
+    };
+    std::vector<VertexAttributeValues::Float32x3Value> positions{
+        {vertices_3d[0].x, vertices_3d[0].y, vertices_3d[0].z},
+        {vertices_3d[1].x, vertices_3d[1].y, vertices_3d[1].z},
+        {vertices_3d[2].x, vertices_3d[2].y, vertices_3d[2].z},
+    };
+    std::vector<VertexAttributeValues::Float32x3Value> normals(3, {0.0f, 0.0f, 1.0f});
+    const auto triangle_uvs = triangle_uv_coords(vertices_3d);
+    std::vector<VertexAttributeValues::Float32x2Value> uvs{
+        {triangle_uvs[0].x, triangle_uvs[0].y},
+        {triangle_uvs[1].x, triangle_uvs[1].y},
+        {triangle_uvs[2].x, triangle_uvs[2].y},
+    };
+    const bool is_counter_clockwise = triangle.winding_order() == WindingOrder::CounterClockwise;
+    std::vector<std::uint32_t> indices =
+        is_counter_clockwise ? std::vector<std::uint32_t>{0, 1, 2} : std::vector<std::uint32_t>{2, 1, 0};
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh Capsule2dMeshBuilder::build() const {
+    // The resolution is the number of vertices for one semicircle.
+    const std::uint32_t vertex_count = 2 * resolution;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals(vertex_count, {0.0f, 0.0f, 1.0f});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(vertex_count);
+    uvs.reserve(vertex_count);
+    // Six extra indices for the two triangles between the semicircles.
+    if (resolution > 2) indices.reserve((static_cast<std::size_t>(resolution) - 2) * 6 + 6);
+
+    const float radius = capsule.radius;
+    const float step   = std::numbers::pi_v<float> * 2.0f / static_cast<float>(vertex_count);
+
+    // With an even vertex count the top semicircle starts half a step in so the vertices are
+    // positioned evenly around the capsule.
+    const float start_angle = vertex_count % 2 == 0 ? step * 0.5f : 0.0f;
+
+    // How much of the capsule's total half-height the hemicircle radius covers; used to stop
+    // the UVs from stretching between the semicircles.
+    const float radius_fraction = capsule.radius / (capsule.half_length + capsule.radius);
+
+    for (std::uint32_t index = 0; index < resolution; ++index) {
+        const float theta  = start_angle + static_cast<float>(index) * step;
+        const float sine   = std::sin(theta);
+        const float cosine = std::cos(theta);
+        positions.push_back({cosine * radius, sine * radius + capsule.half_length, 0.0f});
+        uvs.push_back({0.5f * (cosine + 1.0f), radius_fraction * (1.0f - 0.5f * (sine + 1.0f))});
+    }
+    for (std::uint32_t index = 1; index + 1 < resolution; ++index) {
+        indices.insert(indices.end(), {0, index, index + 1});
+    }
+    // Top left triangle of the band between the semicircles.
+    if (resolution >= 1) indices.insert(indices.end(), {0, resolution - 1, resolution});
+
+    for (std::uint32_t index = resolution; index < vertex_count; ++index) {
+        const float theta  = start_angle + static_cast<float>(index) * step;
+        const float sine   = std::sin(theta);
+        const float cosine = std::cos(theta);
+        positions.push_back({cosine * radius, sine * radius - capsule.half_length, 0.0f});
+        uvs.push_back({0.5f * (cosine + 1.0f), 1.0f - radius_fraction * 0.5f * (sine + 1.0f)});
+    }
+    for (std::uint32_t index = 1; index + 1 < resolution; ++index) {
+        indices.insert(indices.end(), {resolution, resolution + index, resolution + index + 1});
+    }
+    // Bottom right triangle of the band between the semicircles.
+    if (vertex_count >= 1) indices.insert(indices.end(), {resolution, vertex_count - 1, 0});
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
 Mesh EllipseMeshBuilder::build() const {
     const auto vertex_count = static_cast<std::size_t>(resolution);
     std::vector<VertexAttributeValues::Float32x3Value> positions;
@@ -258,23 +552,21 @@ Mesh Polyline2dMeshBuilder::build() const {
 }
 
 RegularPolygonMeshBuilder::RegularPolygonMeshBuilder(float circumradius, std::uint32_t sides)
-    : circumradius_(circumradius), sides_(sides) {
+    : circumradius(circumradius), sides(sides) {
     assert(!std::signbit(circumradius) && "polygon has a negative radius");
     assert(sides > 2 && "polygon has less than 3 sides");
 }
 
-Mesh RegularPolygonMeshBuilder::build() const {
-    return EllipseMeshBuilder{circumradius_, circumradius_, sides_}.build();
-}
+Mesh RegularPolygonMeshBuilder::build() const { return EllipseMeshBuilder{circumradius, circumradius, sides}.build(); }
 
-RectangleMeshBuilder::RectangleMeshBuilder(float width, float height) : half_size_(width * 0.5f, height * 0.5f) {
+RectangleMeshBuilder::RectangleMeshBuilder(float width, float height) : half_size(width * 0.5f, height * 0.5f) {
     assert(width >= 0.0f && "rectangle has a negative width");
     assert(height >= 0.0f && "rectangle has a negative height");
 }
 
 Mesh RectangleMeshBuilder::build() const {
-    const auto half_width  = half_size_.x;
-    const auto half_height = half_size_.y;
+    const auto half_width  = half_size.x;
+    const auto half_height = half_size.y;
     std::vector<VertexAttributeValues::Float32x3Value> positions{
         {half_width, half_height, 0.0f},
         {-half_width, half_height, 0.0f},

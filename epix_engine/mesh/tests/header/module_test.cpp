@@ -831,6 +831,201 @@ TEST(MeshPrimitives, LineListPrimitivesEmitOnlyBevyPositionAttribute) {
     EXPECT_EQ(*subdivided.mesh().build().indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
 }
 
+TEST(MeshPrimitives, Triangle2dMatchesBevyShapeMeasurementAndWinding) {
+    static_assert(mesh::Meshable<mesh::Triangle2d>);
+    static_assert(mesh::MeshBuilder<mesh::Triangle2dMeshBuilder>);
+
+    const mesh::Triangle2d default_triangle{};
+    EXPECT_EQ(default_triangle.vertices,
+              (std::array{glm::vec2(0.0f, 0.5f), glm::vec2(-0.5f, -0.5f), glm::vec2(0.5f, -0.5f)}));
+    EXPECT_EQ(default_triangle.winding_order(), mesh::WindingOrder::CounterClockwise);
+
+    const mesh::Triangle2d clockwise{{-1.0f, 0.0f}, {0.0f, 2.0f}, {1.0f, 0.0f}};
+    EXPECT_EQ(clockwise.winding_order(), mesh::WindingOrder::Clockwise);
+    EXPECT_FLOAT_EQ(clockwise.area(), 2.0f);
+    EXPECT_NEAR(clockwise.perimeter(), 2.0f + 2.0f * std::sqrt(5.0f), 1e-5f);
+    EXPECT_TRUE(clockwise.is_acute());
+    EXPECT_FALSE(clockwise.is_obtuse());
+    // The angle at the origin is obtuse (ab . ac = -3), so squared sides 9, 17, 2 satisfy 17 > 9 + 2.
+    const mesh::Triangle2d obtuse{{0.0f, 0.0f}, {3.0f, 0.0f}, {-1.0f, 1.0f}};
+    EXPECT_TRUE(obtuse.is_obtuse());
+    EXPECT_FALSE(obtuse.is_acute());
+    EXPECT_FALSE(clockwise.is_degenerate());
+
+    // Collinear vertices fall inside the `��f32::EPSILON` dead band and classify as Invalid.
+    const mesh::Triangle2d collinear{{0.0f, 0.0f}, {1.0f, 0.0f}, {2.0f, 0.0f}};
+    EXPECT_EQ(collinear.winding_order(), mesh::WindingOrder::Invalid);
+    EXPECT_TRUE(collinear.is_degenerate());
+    EXPECT_FLOAT_EQ(collinear.area(), 0.0f);
+
+    EXPECT_EQ(clockwise.reversed().winding_order(), mesh::WindingOrder::CounterClockwise);
+    mesh::Triangle2d mutable_triangle = clockwise;
+    mutable_triangle.reverse();
+    EXPECT_EQ(mutable_triangle.vertices,
+              (std::array{glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 2.0f), glm::vec2(-1.0f, 0.0f)}));
+}
+
+TEST(MeshPrimitives, Triangle2dMeshBuilderMatchesBevyUvAndIndexWinding) {
+    // Bevy keeps the authored vertex order and only flips the index winding.
+    const auto clockwise = mesh::Triangle2d{{-1.0f, 0.0f}, {0.0f, 2.0f}, {1.0f, 0.0f}}.mesh().build();
+    EXPECT_EQ(clockwise.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        clockwise.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        clockwise.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {-1.0f, 0.0f, 0.0f}, {0.0f, 2.0f, 0.0f}, {1.0f, 0.0f, 0.0f}}));
+    EXPECT_EQ(*normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>(3, {0.0f, 0.0f, 1.0f})));
+    ASSERT_NE(clockwise.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*clockwise.indices()->get().as_u32(), (std::vector<std::uint32_t>{2, 1, 0}));
+
+    const auto counter_clockwise = mesh::Triangle2d{{-1.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 2.0f}}.mesh().build();
+    ASSERT_NE(counter_clockwise.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*counter_clockwise.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2}));
+
+    // Unskewed UV projection: the acute case keeps `a` at 0, `b` at 1, and shifts `c` by the
+    // projection of `ac` onto `ab`.
+    const auto acute = mesh::Triangle2d{{0.0f, 0.0f}, {4.0f, 0.0f}, {1.0f, 3.0f}}.mesh().build();
+    const auto* uvs =
+        acute.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ(*uvs,
+              (std::vector<mesh::VertexAttributeValues::Float32x2Value>{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.25f, 1.0f}}));
+
+    // Degenerate triangles take Bevy's fixed fallback UVs instead of dividing by zero.
+    const auto degenerate = mesh::Triangle2d{{1.0f, 1.0f}, {1.0f, 1.0f}, {2.0f, 2.0f}}.mesh().build();
+    const auto* degenerate_uvs =
+        degenerate.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(degenerate_uvs, nullptr);
+    EXPECT_EQ(*degenerate_uvs,
+              (std::vector<mesh::VertexAttributeValues::Float32x2Value>{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}}));
+}
+
+TEST(MeshPrimitives, RhombusMatchesBevyMeasurementClosestPointAndMesh) {
+    static_assert(mesh::Meshable<mesh::Rhombus>);
+    static_assert(mesh::MeshBuilder<mesh::RhombusMeshBuilder>);
+
+    const mesh::Rhombus default_rhombus{};
+    EXPECT_EQ(default_rhombus.half_diagonals, glm::vec2(0.5f));
+
+    const mesh::Rhombus rhombus{4.0f, 6.0f};
+    EXPECT_EQ(rhombus.half_diagonals, glm::vec2(2.0f, 3.0f));
+    EXPECT_FLOAT_EQ(rhombus.side(), std::sqrt(13.0f));
+    EXPECT_FLOAT_EQ(rhombus.circumradius(), 3.0f);
+    EXPECT_NEAR(rhombus.inradius(), 6.0f / std::sqrt(13.0f), 1e-5f);
+    EXPECT_EQ(rhombus.closest_point({0.0f, 0.0f}), glm::vec2(0.0f));
+    EXPECT_EQ(rhombus.closest_point({1.0f, 1.0f}), glm::vec2(1.0f, 1.0f));
+    // Outside the top-right edge: folded back onto the edge line.
+    EXPECT_NEAR(rhombus.closest_point({2.0f, 3.0f}).x, 8.0f / 13.0f, 1e-5f);
+    EXPECT_NEAR(rhombus.closest_point({2.0f, 3.0f}).y, 27.0f / 13.0f, 1e-5f);
+
+    EXPECT_EQ(mesh::Rhombus::from_side(2.0f).half_diagonals, glm::vec2(2.0f * 0.5f * std::numbers::sqrt2_v<float>));
+    EXPECT_NEAR(mesh::Rhombus::from_inradius(4.0f).half_diagonals.x, 4.0f * std::numbers::sqrt2_v<float>, 1e-6f);
+    EXPECT_EQ(mesh::Rhombus::from_inradius(4.0f).half_diagonals.x, mesh::Rhombus::from_inradius(4.0f).half_diagonals.y);
+
+    const auto value = rhombus.mesh().build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {2.0f, 0.0f, 0.0f}, {0.0f, 3.0f, 0.0f}, {-2.0f, 0.0f, 0.0f}, {0.0f, -3.0f, 0.0f}}));
+    EXPECT_EQ(*uvs, (std::vector<mesh::VertexAttributeValues::Float32x2Value>{
+                        {1.0f, 0.5f}, {0.5f, 0.0f}, {0.0f, 0.5f}, {0.5f, 1.0f}}));
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(), (std::vector<std::uint32_t>{2, 0, 1, 2, 3, 0}));
+}
+
+TEST(MeshPrimitives, AnnulusMatchesBevySeamDuplicationAndUvs) {
+    static_assert(mesh::Meshable<mesh::Annulus>);
+    static_assert(mesh::MeshBuilder<mesh::AnnulusMeshBuilder>);
+
+    const mesh::Annulus default_annulus{};
+    EXPECT_FLOAT_EQ(default_annulus.inner_circle.radius, 0.5f);
+    EXPECT_FLOAT_EQ(default_annulus.outer_circle.radius, 1.0f);
+    EXPECT_FLOAT_EQ(default_annulus.diameter(), 2.0f);
+    EXPECT_FLOAT_EQ(default_annulus.thickness(), 0.5f);
+
+    const mesh::Annulus annulus{1.0f, 2.0f};
+    EXPECT_EQ(annulus.closest_point({1.5f, 0.0f}), glm::vec2(1.5f, 0.0f));
+    EXPECT_EQ(annulus.closest_point({3.0f, 0.0f}), glm::vec2(2.0f, 0.0f));
+    EXPECT_EQ(annulus.closest_point({0.25f, 0.0f}), glm::vec2(1.0f, 0.0f));
+    EXPECT_EQ(mesh::Annulus{}.closest_point({4.0f, 0.0f}), glm::vec2(1.0f, 0.0f));
+
+    const auto value = annulus.mesh().with_resolution(4).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // 2 * (resolution + 1) vertices; the seam vertex at `FRAC_PI_2` is duplicated for UV wrapping.
+    EXPECT_EQ(positions->size(), 10u);
+    EXPECT_NEAR((*positions)[0][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[0][1], 1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[1][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[1][1], 2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[2][0], -1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[2][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[3][0], -2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[3][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[8][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[8][1], 1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[9][1], 2.0f, 1e-6f);
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[1], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[2], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.25f}));
+    EXPECT_EQ((*uvs)[8], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 1.0f}));
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0, 1, 3, 3, 2, 0, 2, 3, 5, 5, 4, 2, 4, 5, 7, 7, 6, 4, 6, 7, 9, 9, 8, 6}));
+}
+
+TEST(MeshPrimitives, Capsule2dMatchesBevySemicircleFanAndRadiusFractionUvs) {
+    static_assert(mesh::Meshable<mesh::Capsule2d>);
+    static_assert(mesh::MeshBuilder<mesh::Capsule2dMeshBuilder>);
+
+    const mesh::Capsule2d default_capsule{};
+    EXPECT_FLOAT_EQ(default_capsule.radius, 0.5f);
+    EXPECT_FLOAT_EQ(default_capsule.half_length, 0.5f);
+
+    const mesh::Capsule2d capsule{2.0f, 2.0f};
+    EXPECT_FLOAT_EQ(capsule.radius, 2.0f);
+    EXPECT_FLOAT_EQ(capsule.half_length, 1.0f);
+    EXPECT_FLOAT_EQ(capsule.to_inner_rectangle().half_size.x, 2.0f);
+    EXPECT_FLOAT_EQ(capsule.to_inner_rectangle().half_size.y, 1.0f);
+
+    const auto value = capsule.mesh().with_resolution(4).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ(positions->size(), 8u);
+    // Even vertex counts start half a step in, so no vertex sits on the seam.
+    const float step = std::numbers::pi_v<float> * 2.0f / 8.0f;
+    EXPECT_NEAR((*positions)[0][0], 2.0f * std::cos(step * 0.5f), 1e-5f);
+    EXPECT_NEAR((*positions)[0][1], 1.0f + 2.0f * std::sin(step * 0.5f), 1e-5f);
+    EXPECT_NEAR((*positions)[4][0], 2.0f * std::cos(step * 4.5f), 1e-5f);
+    EXPECT_NEAR((*positions)[4][1], -1.0f + 2.0f * std::sin(step * 4.5f), 1e-5f);
+    // `radius_frac = radius / (half_length + radius)` compresses the UVs so the hemicircles do
+    // not stretch across the capsule.
+    const float radius_fraction = 2.0f / 3.0f;
+    EXPECT_NEAR((*uvs)[0][1], radius_fraction * (1.0f - 0.5f * (std::sin(step * 0.5f) + 1.0f)), 1e-5f);
+    EXPECT_NEAR((*uvs)[4][1], 1.0f - radius_fraction * 0.5f * (std::sin(step * 4.5f) + 1.0f), 1e-5f);
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3, 0, 3, 4, 4, 5, 6, 4, 6, 7, 4, 7, 0}));
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto value = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
     EXPECT_EQ(value.count_vertices(), 4);
