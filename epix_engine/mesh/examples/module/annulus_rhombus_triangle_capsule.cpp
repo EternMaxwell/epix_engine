@@ -43,36 +43,43 @@ struct AnnulusRhombusTriangleCapsuleExamplePlugin {
 
         // Every shape uses its Bevy-facing primitive default plus an explicit resolution, so the
         // generated vertex counts and attribute sets are the ones Bevy would produce.
-        mesh::Mesh annulus  = mesh::Annulus{0.35f, 0.7f};
-        mesh::Mesh rhombus  = mesh::Rhombus{1.0f, 1.4f};
-        mesh::Mesh triangle = mesh::Triangle2d{{-0.5f, -0.5f}, {0.5f, -0.5f}, {0.0f, 0.6f}};
-        mesh::Mesh capsule  = mesh::Capsule2d{0.3f, 0.6f};
+        mesh::Mesh annulus  = mesh::Annulus{0.30f, 0.58f};
+        mesh::Mesh rhombus  = mesh::Rhombus{0.62f, 0.98f};
+        mesh::Mesh triangle = mesh::Triangle2d{{-0.34f, -0.44f}, {0.34f, -0.44f}, {0.0f, 0.46f}};
+        mesh::Mesh capsule  = mesh::Capsule2d{0.22f, 0.40f};
+        // `Ring` keeps the ring in the shape API as a pair of insetted shapes; the mesh builder
+        // stitches them into one closed mesh with a continuous radial UV mapping.
+        const auto ring      = mesh::Ring<mesh::Circle>::from_primitive_and_thickness(mesh::Circle{0.42f}, 0.18f);
+        mesh::Mesh ring_mesh = ring.mesh().build();
 
-        std::println("Annulus/Rhombus/Triangle2d/Capsule2d: {} {} {} {} vertices", annulus.count_vertices(),
-                     rhombus.count_vertices(), triangle.count_vertices(), capsule.count_vertices());
-        std::println("Bevy-aligned attributes: annulus=[{}] rhombus=[{}] triangle=[{}] capsule=[{}]",
+        std::println("Annulus/Rhombus/Triangle2d/Capsule2d/Ring: {} {} {} {} {} vertices", annulus.count_vertices(),
+                     rhombus.count_vertices(), triangle.count_vertices(), capsule.count_vertices(),
+                     ring_mesh.count_vertices());
+        std::println("Bevy-aligned attributes: annulus=[{}] rhombus=[{}] triangle=[{}] capsule=[{}] ring=[{}]",
                      attribute_names(annulus), attribute_names(rhombus), attribute_names(triangle),
-                     attribute_names(capsule));
+                     attribute_names(capsule), attribute_names(ring_mesh));
 
         const auto annulus_handle  = mesh_assets.emplace(std::move(annulus));
         const auto rhombus_handle  = mesh_assets.emplace(std::move(rhombus));
         const auto triangle_handle = mesh_assets.emplace(std::move(triangle));
         const auto capsule_handle  = mesh_assets.emplace(std::move(capsule));
+        const auto ring_handle     = mesh_assets.emplace(std::move(ring_mesh));
 
         // The Bevy primitives have unit-scale dimensions, so the camera fixes a 5-unit tall
         // viewport instead of the default 1-world-unit-per-pixel window projection.
         camera::OrthographicProjection orthographic{};
-        orthographic.scaling_mode = camera::ScalingMode{camera::ScalingMode::FixedVertical{.viewport_height = 2.0f}};
+        orthographic.scaling_mode = camera::ScalingMode{camera::ScalingMode::FixedVertical{.viewport_height = 2.4f}};
         world.spawn(camera::Camera2d{}, transform::Transform{}, camera::Projection::orthographic(orthographic));
 
         const auto place = [&world](const assets::Handle<mesh::Mesh>& handle, glm::vec3 translation, glm::vec4 color) {
             world.spawn(mesh::Mesh2d{handle}, sprite_render::MeshMaterial2d{.color = color},
                         transform::Transform{.translation = translation});
         };
-        place(annulus_handle, {-1.45f, 0.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));
-        place(rhombus_handle, {-0.47f, 0.0f, 0.0f}, glm::vec4(0.42f, 0.80f, 0.98f, 1.0f));
-        place(triangle_handle, {0.47f, 0.0f, 0.0f}, glm::vec4(0.55f, 0.92f, 0.60f, 1.0f));
-        place(capsule_handle, {1.45f, 0.0f, 0.0f}, glm::vec4(0.90f, 0.52f, 0.88f, 1.0f));
+        place(annulus_handle, {-1.30f, 0.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));
+        place(rhombus_handle, {-0.62f, 0.0f, 0.0f}, glm::vec4(0.42f, 0.80f, 0.98f, 1.0f));
+        place(triangle_handle, {0.0f, 0.0f, 0.0f}, glm::vec4(0.55f, 0.92f, 0.60f, 1.0f));
+        place(capsule_handle, {0.60f, 0.0f, 0.0f}, glm::vec4(0.90f, 0.52f, 0.88f, 1.0f));
+        place(ring_handle, {1.35f, 0.0f, 0.0f}, glm::vec4(0.72f, 0.86f, 0.98f, 1.0f));
     }
 };
 }  // namespace

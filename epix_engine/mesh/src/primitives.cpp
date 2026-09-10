@@ -13,6 +13,14 @@ constexpr auto kDefaultMeshAssetUsage = static_cast<assets::RenderAssetUsages>(a
                                                                                assets::RenderAssetUsages::RENDER_WORLD);
 
 glm::vec2 unit_from_angle(float angle) { return {std::cos(angle), std::sin(angle)}; }
+
+/** @brief Bevy's `Triangle2d::winding_order` cross product for one vertex triple. */
+WindingOrder winding_order(const glm::vec2& a, const glm::vec2& b, const glm::vec2& c) noexcept {
+    const float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+    if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
+    if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
+    return WindingOrder::Invalid;
+}
 }  // namespace
 
 CircleMeshBuilder Circle::mesh() const noexcept { return CircleMeshBuilder{radius, 32}; }
@@ -59,19 +67,13 @@ std::string_view to_string(ConvexPolygonError) noexcept { return "The created po
 
 std::expected<ConvexPolygon, ConvexPolygonError> ConvexPolygon::create(std::vector<glm::vec2> vertices) {
     if (vertices.size() < 3) return std::unexpected(ConvexPolygonError::Concave);
-    const auto winding = [&vertices](std::size_t first, std::size_t second, std::size_t third) {
-        const auto a    = vertices[first];
-        const auto b    = vertices[second];
-        const auto c    = vertices[third];
-        const auto area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
-        if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
-        if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
-        return WindingOrder::Invalid;
+    const auto triple_winding = [&vertices](std::size_t first, std::size_t second, std::size_t third) {
+        return winding_order(vertices[first], vertices[second], vertices[third]);
     };
 
-    const auto reference = winding(vertices.size() - 1, 0, 1);
+    const auto reference = triple_winding(vertices.size() - 1, 0, 1);
     for (std::size_t index = 1; index < vertices.size(); ++index) {
-        if (winding(index - 1, index, (index + 1) % vertices.size()) != reference) {
+        if (triple_winding(index - 1, index, (index + 1) % vertices.size()) != reference) {
             return std::unexpected(ConvexPolygonError::Concave);
         }
     }
@@ -87,11 +89,7 @@ ConvexPolygonMeshBuilder ConvexPolygon::mesh() const {
 }
 
 WindingOrder Triangle2d::winding_order() const noexcept {
-    const auto area = (vertices[1].x - vertices[0].x) * (vertices[2].y - vertices[0].y) -
-                      (vertices[1].y - vertices[0].y) * (vertices[2].x - vertices[0].x);
-    if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
-    if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
-    return WindingOrder::Invalid;
+    return ::epix::mesh::winding_order(vertices[0], vertices[1], vertices[2]);
 }
 
 float Triangle2d::area() const noexcept {
@@ -186,6 +184,150 @@ AnnulusMeshBuilder Annulus::mesh() const noexcept {
 
 Capsule2dMeshBuilder Capsule2d::mesh() const noexcept { return Capsule2dMeshBuilder{radius, half_length * 2.0f, 16}; }
 
+// ─── Inset implementations (Bevy `bevy_math/src/primitives/inset.rs`) ───────────────────────────
+
+Rhombus InsetImpl<Rhombus>::inset(const Rhombus& shape, float distance) {
+    const float half_width  = shape.half_diagonals.x;
+    const float half_height = shape.half_diagonals.y;
+    const float angle       = std::atan(half_height / half_width);
+    const glm::vec2 offset{distance / std::sin(angle), distance / std::cos(angle)};
+    Rhombus result = shape;
+    result.half_diagonals -= offset;
+    return result;
+}
+
+CircularSegment InsetImpl<CircularSegment>::inset(const CircularSegment& shape, float distance) {
+    const auto old_arc  = shape.arc;
+    const float radius  = old_arc.radius - distance;
+    const float apothem = old_arc.apothem() + distance;
+    // https://en.wikipedia.org/wiki/Circular_segment
+    const float half_angle = std::acos(apothem / radius);
+    return CircularSegment{radius, half_angle};
+}
+
+RegularPolygon InsetImpl<RegularPolygon>::inset(const RegularPolygon& shape, float distance) {
+    const float half_angle = shape.internal_angle_radians() * 0.5f;
+    const float offset     = distance / std::sin(half_angle);
+    RegularPolygon result  = shape;
+    result.circumcircle.radius -= offset;
+    return result;
+}
+
+namespace {
+/** @brief Move one triangle vertex inward by `distance` along its angle bisector. */
+glm::vec2 find_inset_point(glm::vec2 a, glm::vec2 b, glm::vec2 c, float distance) {
+    const auto unit_vector_ab  = glm::normalize(b - a);
+    const auto unit_vector_ac  = glm::normalize(c - a);
+    const float half_angle_bac = std::acos(glm::clamp(glm::dot(unit_vector_ab, unit_vector_ac), -1.0f, 1.0f)) * 0.5f;
+    const auto mean            = (unit_vector_ab + unit_vector_ac) * 0.5f;
+    const auto direction       = glm::normalize(mean);
+    const float magnitude      = distance / std::sin(half_angle_bac);
+    return a + direction * magnitude;
+}
+}  // namespace
+
+Triangle2d InsetImpl<Triangle2d>::inset(const Triangle2d& shape, float distance) {
+    const auto& a = shape.vertices[0];
+    const auto& b = shape.vertices[1];
+    const auto& c = shape.vertices[2];
+    return Triangle2d{find_inset_point(a, b, c, distance), find_inset_point(b, c, a, distance),
+                      find_inset_point(c, a, b, distance)};
+}
+template <Inset P>
+RingMeshBuilder<P> Ring<P>::mesh() const {
+    return RingMeshBuilder<P>{outer_shape.mesh(), inner_shape.mesh()};
+}
+
+template <Inset P>
+std::expected<Mesh, MeshAccessError> RingMeshBuilder<P>::try_build() const {
+    Mesh outer = outer_shape_builder.build();
+    Mesh inner = inner_shape_builder.build();
+
+    if (outer.get_primitive_type() != wgpu::PrimitiveTopology::eTriangleList ||
+        inner.get_primitive_type() != wgpu::PrimitiveTopology::eTriangleList) {
+        return std::unexpected{MeshAccessError::NotFound};
+    }
+
+    const auto outer_positions = outer.try_attribute(Mesh::ATTRIBUTE_POSITION);
+    const auto inner_positions = inner.try_attribute(Mesh::ATTRIBUTE_POSITION);
+    const auto outer_normals   = outer.try_attribute(Mesh::ATTRIBUTE_NORMAL);
+    const auto inner_normals   = inner.try_attribute(Mesh::ATTRIBUTE_NORMAL);
+    const auto outer_uvs       = outer.try_attribute(Mesh::ATTRIBUTE_UV_0);
+    const auto inner_uvs       = inner.try_attribute(Mesh::ATTRIBUTE_UV_0);
+    if (!outer_positions || !inner_positions || !outer_normals || !inner_normals || !outer_uvs || !inner_uvs) {
+        return std::unexpected{MeshAccessError::NotFound};
+    }
+
+    const auto* outer_position_values = outer_positions->get().get_if<VertexAttributeValues::Float32x3>();
+    const auto* inner_position_values = inner_positions->get().get_if<VertexAttributeValues::Float32x3>();
+    const auto* outer_normal_values   = outer_normals->get().get_if<VertexAttributeValues::Float32x3>();
+    const auto* inner_normal_values   = inner_normals->get().get_if<VertexAttributeValues::Float32x3>();
+    const auto* outer_uv_values       = outer_uvs->get().get_if<VertexAttributeValues::Float32x2>();
+    const auto* inner_uv_values       = inner_uvs->get().get_if<VertexAttributeValues::Float32x2>();
+    if (!outer_position_values || !inner_position_values || !outer_normal_values || !inner_normal_values ||
+        !outer_uv_values || !inner_uv_values) {
+        return std::unexpected{MeshAccessError::NotFound};
+    }
+
+    const auto point_count = outer_position_values->size();
+    if (outer_uv_values->size() != inner_uv_values->size() ||
+        outer_position_values->size() != inner_position_values->size() ||
+        outer_normal_values->size() != inner_normal_values->size()) {
+        return std::unexpected{MeshAccessError::NotFound};
+    }
+
+    // The inner UVs are radially rescaled so they continue the outer mesh's UV mapping.
+    std::vector<VertexAttributeValues::Float32x2Value> uvs = *outer_uv_values;
+    for (std::size_t index = 0; index < point_count; ++index) {
+        const auto& inner_position = (*inner_position_values)[index];
+        const auto& outer_position = (*outer_position_values)[index];
+        const auto& inner_uv       = (*inner_uv_values)[index];
+        const float inner_length   = glm::length(glm::vec3(inner_position[0], inner_position[1], inner_position[2]));
+        const float outer_length   = glm::length(glm::vec3(outer_position[0], outer_position[1], outer_position[2]));
+        const float scale          = outer_length == 0.0f ? 0.0f : inner_length / outer_length;
+        const glm::vec2 uv         = glm::vec2(inner_uv[0], inner_uv[1]) - glm::vec2(0.5f);
+        const auto result_uv       = uv * scale + glm::vec2(0.5f);
+        uvs.push_back({result_uv.x, result_uv.y});
+    }
+
+    std::vector<VertexAttributeValues::Float32x3Value> normals = *outer_normal_values;
+    normals.insert(normals.end(), inner_normal_values->begin(), inner_normal_values->end());
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions = *outer_position_values;
+    positions.insert(positions.end(), inner_position_values->begin(), inner_position_values->end());
+
+    const auto points = static_cast<std::uint32_t>(point_count);
+    std::vector<std::uint32_t> indices;
+    indices.reserve(point_count * 6);
+    for (std::uint32_t index = 0; index < points; ++index) {
+        indices.push_back(index);
+        indices.push_back(index + 1);
+        indices.push_back(points + index);
+        indices.push_back(points + index);
+        indices.push_back(index + 1);
+        indices.push_back(points + index + 1);
+    }
+    // Rewire the final triangle pair back to the first vertex so the ring closes.
+    if (indices.size() >= 6) {
+        const auto base   = indices.size() - 6;
+        indices[base + 1] = 0;
+        indices[base + 4] = 0;
+        indices[base + 5] = points;
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
+template <Inset P>
+Mesh RingMeshBuilder<P>::build() const {
+    auto result = try_build();
+    if (!result) throw std::runtime_error("ring inner and outer meshes must match in vertex count and attributes");
+    return std::move(*result);
+}
 EllipseMeshBuilder Ellipse::mesh() const noexcept { return EllipseMeshBuilder{half_size.x, half_size.y, 32}; }
 
 RegularPolygon::RegularPolygon(float circumradius, std::uint32_t sides) : circumcircle(circumradius), sides(sides) {
@@ -584,4 +726,21 @@ Mesh RectangleMeshBuilder::build() const {
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
 }
 
+// The ring builder is defined in this translation unit, so the shape combinations that Epix
+// supports are instantiated here to keep template bodies out of the header.
+template struct RingMeshBuilder<Circle>;
+template struct RingMeshBuilder<Capsule2d>;
+template struct RingMeshBuilder<CircularSegment>;
+template struct RingMeshBuilder<Rectangle>;
+template struct RingMeshBuilder<RegularPolygon>;
+template struct RingMeshBuilder<Rhombus>;
+template struct RingMeshBuilder<Triangle2d>;
+
+template RingMeshBuilder<Circle> Ring<Circle>::mesh() const;
+template RingMeshBuilder<Capsule2d> Ring<Capsule2d>::mesh() const;
+template RingMeshBuilder<CircularSegment> Ring<CircularSegment>::mesh() const;
+template RingMeshBuilder<Rectangle> Ring<Rectangle>::mesh() const;
+template RingMeshBuilder<RegularPolygon> Ring<RegularPolygon>::mesh() const;
+template RingMeshBuilder<Rhombus> Ring<Rhombus>::mesh() const;
+template RingMeshBuilder<Triangle2d> Ring<Triangle2d>::mesh() const;
 }  // namespace epix::mesh

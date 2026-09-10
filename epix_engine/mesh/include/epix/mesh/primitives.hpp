@@ -277,6 +277,15 @@ EPIX_EXPORT struct RegularPolygon {
     float circumradius() const noexcept { return circumcircle.radius; }
     RegularPolygonMeshBuilder mesh() const noexcept;
 
+    /** @brief Internal angle of the regular polygon (Bevy `internal_angle_radians`). */
+    constexpr float internal_angle_radians() const noexcept {
+        return static_cast<float>(sides - 2) * std::numbers::pi_v<float> / static_cast<float>(sides);
+    }
+    /** @brief External angle of the regular polygon (Bevy `external_angle_radians`). */
+    constexpr float external_angle_radians() const noexcept {
+        return 2.0f * std::numbers::pi_v<float> / static_cast<float>(sides);
+    }
+
     bool operator==(const RegularPolygon&) const = default;
 };
 
@@ -307,6 +316,120 @@ EPIX_EXPORT struct Capsule2d {
     Capsule2dMeshBuilder mesh() const noexcept;
 
     bool operator==(const Capsule2d&) const = default;
+};
+
+/**
+ * @brief A primitive that can be resized uniformly (Bevy `Inset`).
+ *
+ * The customization point is `InsetImpl<T>`, mirroring the `AsAssetIdImpl` pattern used for
+ * generic asset access elsewhere in this module.
+ */
+template <typename T>
+struct InsetImpl;
+
+/** @brief Satisfied when `InsetImpl<T>` provides the Bevy `inset` operation. */
+template <typename T>
+concept Inset = requires(const T& shape, float distance) {
+    { InsetImpl<T>::inset(shape, distance) } -> std::same_as<T>;
+};
+
+/** @brief Create a uniformly inset copy of `shape` (Bevy `Inset::inset`). */
+template <Inset T>
+constexpr T inset(const T& shape, float distance) {
+    return InsetImpl<T>::inset(shape, distance);
+}
+
+template <>
+struct InsetImpl<Circle> {
+    static constexpr Circle inset(const Circle& shape, float distance) { return Circle{shape.radius - distance}; }
+};
+
+template <>
+struct InsetImpl<Capsule2d> {
+    static constexpr Capsule2d inset(const Capsule2d& shape, float distance) {
+        return Capsule2d{shape.radius - distance, shape.half_length * 2.0f};
+    }
+};
+
+template <>
+struct InsetImpl<Rectangle> {
+    static constexpr Rectangle inset(const Rectangle& shape, float distance) {
+        return Rectangle{shape.half_size - glm::vec2(distance)};
+    }
+};
+
+template <>
+struct InsetImpl<Rhombus> {
+    static Rhombus inset(const Rhombus& shape, float distance);
+};
+
+template <>
+struct InsetImpl<Triangle2d> {
+    static Triangle2d inset(const Triangle2d& shape, float distance);
+};
+
+template <>
+struct InsetImpl<CircularSegment> {
+    static CircularSegment inset(const CircularSegment& shape, float distance);
+};
+
+template <>
+struct InsetImpl<RegularPolygon> {
+    static RegularPolygon inset(const RegularPolygon& shape, float distance);
+};
+
+/**
+ * @brief Builder used to create a ring mesh from an outer and an inner shape, both meshed with the
+ * same builder type (Bevy `RingMeshBuilder<P>`).
+ *
+ * The inner mesh is remapped so its UVs continue the outer mesh's radial mapping, and the last
+ * triangle pair is rewired back to the first vertex.
+ */
+template <Inset P>
+struct RingMeshBuilder {
+    using ShapeMeshBuilder = decltype(std::declval<const P&>().mesh());
+
+    ShapeMeshBuilder outer_shape_builder{};
+    ShapeMeshBuilder inner_shape_builder{};
+
+    constexpr RingMeshBuilder() = default;
+    constexpr RingMeshBuilder(ShapeMeshBuilder outer, ShapeMeshBuilder inner)
+        : outer_shape_builder(outer), inner_shape_builder(inner) {}
+
+    /** @brief Apply `func` to both the inner and the outer builder (Bevy `with_inner`). */
+    template <typename Func>
+    RingMeshBuilder with_inner(Func func) const {
+        return RingMeshBuilder{func(outer_shape_builder), func(inner_shape_builder)};
+    }
+
+    /**
+     * @brief Build the ring mesh.
+     *
+     * Bevy asserts that both meshes are triangle lists with Position, Normal, and UV attributes and
+     * that they have the same vertex count. Epix reports that through an `std::expected` instead of
+     * a Rust panic.
+     */
+    std::expected<Mesh, MeshAccessError> try_build() const;
+    Mesh build() const;
+};
+
+/** @brief A 2D shape hollowed into a ring, keeping the inner and outer shapes (Bevy `Ring`). */
+template <Inset P>
+struct Ring {
+    P outer_shape{};
+    P inner_shape{};
+
+    constexpr Ring() = default;
+    constexpr Ring(P outer, P inner) : outer_shape(outer), inner_shape(inner) {}
+
+    /** @brief Build a ring by insetting `primitive` by `thickness` (Bevy `from_primitive_and_thickness`). */
+    static constexpr Ring from_primitive_and_thickness(P primitive, float thickness) {
+        return Ring{primitive, inset(primitive, thickness)};
+    }
+
+    bool operator==(const Ring&) const = default;
+
+    RingMeshBuilder<P> mesh() const;
 };
 
 /** @brief Builder used to create a circle mesh. */
@@ -499,5 +622,14 @@ static_assert(Meshable<Rectangle>);
 static_assert(Meshable<Rhombus>);
 static_assert(Meshable<Segment2d>);
 static_assert(Meshable<Triangle2d>);
+static_assert(Inset<Circle>);
+static_assert(Inset<Capsule2d>);
+static_assert(Inset<CircularSegment>);
+static_assert(Inset<Rectangle>);
+static_assert(Inset<RegularPolygon>);
+static_assert(Inset<Rhombus>);
+static_assert(Inset<Triangle2d>);
+static_assert(Meshable<Ring<Circle>>);
+static_assert(MeshBuilder<RingMeshBuilder<Circle>>);
 
 }  // namespace epix::mesh

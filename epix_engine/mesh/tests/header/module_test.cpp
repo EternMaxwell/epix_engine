@@ -1026,6 +1026,139 @@ TEST(MeshPrimitives, Capsule2dMatchesBevySemicircleFanAndRadiusFractionUvs) {
               (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3, 0, 3, 4, 4, 5, 6, 4, 6, 7, 4, 7, 0}));
 }
 
+TEST(MeshPrimitives, InsetMatchesBevyForEverySupportedShape) {
+    static_assert(mesh::Inset<mesh::Circle>);
+    static_assert(mesh::Inset<mesh::Capsule2d>);
+    static_assert(mesh::Inset<mesh::CircularSegment>);
+    static_assert(mesh::Inset<mesh::Rectangle>);
+    static_assert(mesh::Inset<mesh::RegularPolygon>);
+    static_assert(mesh::Inset<mesh::Rhombus>);
+    static_assert(mesh::Inset<mesh::Triangle2d>);
+
+    // Radius-bearing shapes simply lose the inset distance.
+    EXPECT_FLOAT_EQ(mesh::inset(mesh::Circle{2.0f}, 0.5f).radius, 1.5f);
+    EXPECT_FLOAT_EQ(mesh::inset(mesh::Capsule2d{1.0f, 2.0f}, 0.25f).radius, 0.75f);
+    EXPECT_FLOAT_EQ(mesh::inset(mesh::Capsule2d{1.0f, 2.0f}, 0.25f).half_length, 1.0f);
+
+    EXPECT_EQ(mesh::inset(mesh::Rectangle{4.0f, 2.0f}, 0.5f).half_size, glm::vec2(1.5f, 0.5f));
+
+    // RegularPolygon insets the circumradius by distance / sin(internal_angle / 2).
+    const mesh::RegularPolygon hexagon{2.0f, 6};
+    EXPECT_FLOAT_EQ(hexagon.internal_angle_radians(), std::numbers::pi_v<float> * 2.0f / 3.0f);
+    EXPECT_FLOAT_EQ(hexagon.external_angle_radians(), std::numbers::pi_v<float> / 3.0f);
+    const float hexagon_half_angle = hexagon.internal_angle_radians() * 0.5f;
+    EXPECT_NEAR(mesh::inset(hexagon, 0.5f).circumcircle.radius, 2.0f - 0.5f / std::sin(hexagon_half_angle), 1e-5f);
+
+    // Rhombus offsets each half diagonal by distance / sin(angle) and distance / cos(angle).
+    const mesh::Rhombus rhombus{4.0f, 6.0f};
+    const float rhombus_angle = std::atan(rhombus.half_diagonals.y / rhombus.half_diagonals.x);
+    const auto inset_rhombus  = mesh::inset(rhombus, 0.2f);
+    EXPECT_NEAR(inset_rhombus.half_diagonals.x, 2.0f - 0.2f / std::sin(rhombus_angle), 1e-5f);
+    EXPECT_NEAR(inset_rhombus.half_diagonals.y, 3.0f - 0.2f / std::cos(rhombus_angle), 1e-5f);
+
+    // Triangle2d moves each vertex along its angle bisector by distance / sin(half_angle).
+    // The geometric contract is that every inset edge is parallel to its original edge and
+    // exactly `distance` inside it, so the test checks that property rather than raw coordinates.
+    const mesh::Triangle2d triangle{{0.0f, 1.0f}, {-0.8660254f, -0.5f}, {0.8660254f, -0.5f}};
+    constexpr float inset_distance = 0.1f;
+    const auto inset_triangle      = mesh::inset(triangle, inset_distance);
+    const auto edge_distance       = [](glm::vec2 point, glm::vec2 first, glm::vec2 second) {
+        const auto direction = second - first;
+        const auto length    = glm::length(direction);
+        return std::abs((point.x - first.x) * direction.y - (point.y - first.y) * direction.x) / length;
+    };
+    // Every inset vertex sits exactly `inset_distance` inside its original edge.
+    for (std::size_t edge = 0; edge < 3; ++edge) {
+        const auto first  = triangle.vertices[edge];
+        const auto second = triangle.vertices[(edge + 1) % 3];
+        EXPECT_NEAR(edge_distance(inset_triangle.vertices[edge], first, second), inset_distance, 2e-5f);
+    }
+    // An inset of zero is the identity, and two half insets compose into one whole inset.
+    EXPECT_EQ(mesh::inset(triangle, 0.0f).vertices, triangle.vertices);
+    const auto twice = mesh::inset(mesh::inset(triangle, 0.05f), 0.05f);
+    for (std::size_t vertex = 0; vertex < 3; ++vertex) {
+        const auto first  = triangle.vertices[vertex];
+        const auto second = triangle.vertices[(vertex + 1) % 3];
+        EXPECT_NEAR(edge_distance(twice.vertices[vertex], first, second), 0.1f, 3e-5f);
+    }
+
+    // CircularSegment raises the apothem by the inset distance and lowers the radius by it.
+    // The inset amount must stay small enough for `apothem + distance` to remain within the new
+    // radius, which is the domain `acos` needs; larger amounts are undefined in Bevy too.
+    const mesh::CircularSegment segment = mesh::CircularSegment{2.0f, 0.5f};
+    constexpr float segment_inset       = 0.1f;
+    const auto inset_segment            = mesh::inset(segment, segment_inset);
+    EXPECT_FLOAT_EQ(inset_segment.radius(), segment.radius() - segment_inset);
+    const float expected_half_angle = std::acos((segment.apothem() + segment_inset) / inset_segment.radius());
+    EXPECT_NEAR(inset_segment.half_angle(), expected_half_angle, 1e-5f);
+    // The chord stays parallel to the original one and one inset distance closer in.
+    EXPECT_NEAR(inset_segment.apothem(), segment.apothem() + segment_inset, 1e-4f);
+}
+
+TEST(MeshPrimitives, RingBuildsBevyInsetShapePairAndMesh) {
+    static_assert(mesh::Meshable<mesh::Ring<mesh::Circle>>);
+    static_assert(mesh::MeshBuilder<mesh::RingMeshBuilder<mesh::Circle>>);
+
+    // `Ring::new` stores the outer shape first, exactly as Bevy declares the fields.
+    const mesh::Ring<mesh::Circle> explicit_ring{mesh::Circle{2.0f}, mesh::Circle{1.0f}};
+    EXPECT_FLOAT_EQ(explicit_ring.outer_shape.radius, 2.0f);
+    EXPECT_FLOAT_EQ(explicit_ring.inner_shape.radius, 1.0f);
+
+    // `from_primitive_and_thickness` insets the outer shape by the requested thickness.
+    const auto ring = mesh::Ring<mesh::Circle>::from_primitive_and_thickness(mesh::Circle{2.0f}, 0.5f);
+    EXPECT_FLOAT_EQ(ring.outer_shape.radius, 2.0f);
+    EXPECT_FLOAT_EQ(ring.inner_shape.radius, 1.5f);
+
+    const auto value = ring.mesh().build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // Both circles default to resolution 32, so the ring carries 33 outer + 33 inner vertices.
+    ASSERT_EQ(positions->size(), 64u);
+    EXPECT_EQ(normals->size(), 64u);
+    EXPECT_EQ(uvs->size(), 64u);
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    const auto& indices = *value.indices()->get().as_u32();
+    ASSERT_EQ(indices.size(), 32u * 6u);
+    // The last triangle pair closes back onto vertex 0 and the first inner vertex.
+    EXPECT_EQ(indices[indices.size() - 6], 31u);
+    EXPECT_EQ(indices[indices.size() - 5], 0u);
+    EXPECT_EQ(indices[indices.size() - 4], 63u);
+    EXPECT_EQ(indices[indices.size() - 3], 63u);
+    EXPECT_EQ(indices[indices.size() - 2], 0u);
+    EXPECT_EQ(indices[indices.size() - 1], 32u);
+    // Inner vertices are appended after the outer ones.
+    EXPECT_NEAR((*positions)[0][1], 2.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[32][1], 1.5f, 1e-5f);
+    // Outer UVs pass through and inner UVs are radially rescaled about the UV center.
+    const auto outer_mesh = ring.outer_shape.mesh().build();
+    const auto* outer_uvs =
+        outer_mesh.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(outer_uvs, nullptr);
+    EXPECT_EQ((*uvs)[0], (*outer_uvs)[0]);
+    EXPECT_EQ((*uvs)[1], (*outer_uvs)[1]);
+    const glm::vec2 outer_uv{(*outer_uvs)[0][0], (*outer_uvs)[0][1]};
+    const glm::vec2 inner_uv{(*uvs)[32][0], (*uvs)[32][1]};
+    EXPECT_LT(glm::length(inner_uv - glm::vec2(0.5f)), glm::length(outer_uv - glm::vec2(0.5f)));
+}
+
+TEST(MeshPrimitives, RingBuilderReportsMismatchedShapesInsteadOfPanicking) {
+    const mesh::Ring<mesh::Circle> ring{mesh::Circle{2.0f}, mesh::Circle{1.5f}};
+    auto builder                = ring.mesh();
+    builder.inner_shape_builder = std::move(builder.inner_shape_builder).with_resolution(8);
+    // Bevy asserts the two vertex counts match; Epix reports the mismatch instead.
+    const auto result = builder.try_build();
+    EXPECT_FALSE(result.has_value());
+    EXPECT_THROW(builder.build(), std::runtime_error);
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto value = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
     EXPECT_EQ(value.count_vertices(), 4);
