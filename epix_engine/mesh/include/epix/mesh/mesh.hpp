@@ -623,6 +623,16 @@ EPIX_EXPORT struct Mesh {
     }
     std::expected<Mesh, MeshAccessError> try_with_removed_indices() &&;
 
+    /** @brief Duplicate attributes according to the index buffer and remove the indices. */
+    void duplicate_vertices();
+    std::expected<void, MeshAccessError> try_duplicate_vertices();
+    Mesh with_duplicated_vertices() &&;
+    std::expected<Mesh, MeshAccessError> try_with_duplicated_vertices() &&;
+
+    /** @brief Reverse the index winding according to the primitive topology. */
+    std::expected<void, MeshWindingInvertError> invert_winding();
+    std::expected<Mesh, MeshWindingInvertError> with_inverted_winding() &&;
+
     /** @brief Return the raw index-buffer bytes, or no value for a non-indexed
      * mesh (Bevy `Mesh::get_index_buffer_bytes`). */
     std::optional<std::span<const std::uint8_t>> get_index_buffer_bytes() const;

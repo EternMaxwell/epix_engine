@@ -37,6 +37,95 @@ TEST(MeshErrors, WindingAndTriangleErrorsPreserveBevyVariantsAndMessages) {
     EXPECT_EQ(triangle_access.to_string(), "mesh access error: The requested mesh data wasn't found in this mesh");
 }
 
+TEST(MeshAlgorithms, DuplicateVerticesMatchesBevyIndexedExpansion) {
+    const std::vector<glm::vec3> positions{
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {1.0f, 1.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+    };
+    const std::vector<glm::vec4> colors{
+        {1.0f, 0.0f, 0.0f, 1.0f},
+        {0.0f, 1.0f, 0.0f, 1.0f},
+        {0.0f, 0.0f, 1.0f, 1.0f},
+        {1.0f, 1.0f, 1.0f, 1.0f},
+    };
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors);
+    value.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 2, 1, 2, 3, 1}});
+
+    value.duplicate_vertices();
+
+    EXPECT_FALSE(value.indices().has_value());
+    const auto duplicated_positions = value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().cspan_as<glm::vec3>();
+    const auto duplicated_colors    = value.attribute(mesh::Mesh::ATTRIBUTE_COLOR)->get().cspan_as<glm::vec4>();
+    EXPECT_EQ((std::vector<glm::vec3>{duplicated_positions.begin(), duplicated_positions.end()}),
+              (std::vector<glm::vec3>{positions[0], positions[2], positions[1],
+                                      positions[2], positions[3], positions[1]}));
+    EXPECT_EQ((std::vector<glm::vec4>{duplicated_colors.begin(), duplicated_colors.end()}),
+              (std::vector<glm::vec4>{colors[0], colors[2], colors[1], colors[2], colors[3], colors[1]}));
+
+    mesh::Mesh without_indices(wgpu::PrimitiveTopology::eTriangleList,
+                               epix::assets::RenderAssetUsages::MAIN_WORLD);
+    auto unchanged = std::move(without_indices).try_with_duplicated_vertices();
+    ASSERT_TRUE(unchanged.has_value());
+    EXPECT_FALSE(unchanged->indices().has_value());
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto inaccessible = extracted.try_duplicate_vertices();
+    ASSERT_FALSE(inaccessible.has_value());
+    EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
+TEST(MeshAlgorithms, InvertWindingMatchesEveryBevyTopologyAndError) {
+    mesh::Mesh triangles(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    triangles.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 2, 3, 0}});
+    ASSERT_TRUE(triangles.invert_winding().has_value());
+    EXPECT_EQ(*triangles.indices()->get().as_u16(), (std::vector<std::uint16_t>{0, 2, 1, 2, 0, 3}));
+
+    mesh::Mesh lines(wgpu::PrimitiveTopology::eLineList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    lines.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 3}});
+    ASSERT_TRUE(lines.invert_winding().has_value());
+    EXPECT_EQ(*lines.indices()->get().as_u32(), (std::vector<std::uint32_t>{3, 2, 1, 0}));
+
+    mesh::Mesh strip(wgpu::PrimitiveTopology::eTriangleStrip, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    strip.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 3}});
+    auto inverted_strip = std::move(strip).with_inverted_winding();
+    ASSERT_TRUE(inverted_strip.has_value());
+    EXPECT_EQ(*inverted_strip->indices()->get().as_u32(), (std::vector<std::uint32_t>{3, 2, 1, 0}));
+
+    mesh::Mesh abrupt(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    abrupt.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 3}});
+    const auto abrupt_result = abrupt.invert_winding();
+    ASSERT_FALSE(abrupt_result.has_value());
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::AbruptIndicesEnd>(
+        abrupt_result.error()));
+    EXPECT_EQ(*abrupt.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 3}));
+
+    mesh::Mesh points(wgpu::PrimitiveTopology::ePointList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    points.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0}});
+    const auto point_result = points.invert_winding();
+    ASSERT_FALSE(point_result.has_value());
+    EXPECT_TRUE(
+        std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(point_result.error()));
+
+    mesh::Mesh unindexed_points(wgpu::PrimitiveTopology::ePointList,
+                                epix::assets::RenderAssetUsages::MAIN_WORLD);
+    EXPECT_TRUE(unindexed_points.invert_winding().has_value());
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto extracted_result = extracted.invert_winding();
+    ASSERT_FALSE(extracted_result.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(extracted_result.error()));
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(extracted_result.error()),
+              mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
 TEST(Indices, PushAndExtendPromoteU16StorageWithoutLosingValues) {
     mesh::Indices indices{std::vector<std::uint16_t>{}};
     static_assert(std::ranges::view<decltype(std::declval<const mesh::Indices&>().iter())>);

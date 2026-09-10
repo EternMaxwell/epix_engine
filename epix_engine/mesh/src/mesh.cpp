@@ -256,6 +256,92 @@ std::expected<Mesh, MeshAccessError> Mesh::try_with_removed_indices() && {
     return std::move(*this);
 }
 
+void Mesh::duplicate_vertices() {
+    auto result = try_duplicate_vertices();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_duplicate_vertices() {
+    auto removed_indices = _indices.replace(std::nullopt);
+    if (!removed_indices) return std::unexpected(removed_indices.error());
+    if (!*removed_indices) return {};
+
+    auto attributes = _attributes.as_mut();
+    if (!attributes) return std::unexpected(attributes.error());
+
+    for (auto& attribute : std::views::values(attributes->get())) {
+        ecs::untyped_vector duplicated(attribute.data.type_info(), removed_indices->value().len());
+        for (const auto index : removed_indices->value().iter()) {
+            if (index >= attribute.data.size()) {
+                throw std::out_of_range("Mesh index references a vertex that does not exist");
+            }
+            duplicated.push_back_from(attribute.data.cget(index));
+        }
+        attribute.data = std::move(duplicated);
+    }
+    return {};
+}
+
+Mesh Mesh::with_duplicated_vertices() && {
+    duplicate_vertices();
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_duplicated_vertices() && {
+    auto result = try_duplicate_vertices();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+namespace {
+template <typename Index>
+std::expected<void, MeshWindingInvertError> invert_indices(std::vector<Index>& indices,
+                                                           wgpu::PrimitiveTopology topology) {
+    switch (topology) {
+        case wgpu::PrimitiveTopology::eTriangleList:
+            if (indices.size() % 3 != 0) {
+                return std::unexpected(
+                    MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
+            }
+            for (std::size_t index = 0; index < indices.size(); index += 3) {
+                std::swap(indices[index + 1], indices[index + 2]);
+            }
+            return {};
+        case wgpu::PrimitiveTopology::eLineList:
+            if (indices.size() % 2 != 0) {
+                return std::unexpected(
+                    MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
+            }
+            std::ranges::reverse(indices);
+            return {};
+        case wgpu::PrimitiveTopology::eTriangleStrip:
+        case wgpu::PrimitiveTopology::eLineStrip:
+            std::ranges::reverse(indices);
+            return {};
+        default:
+            return std::unexpected(MeshWindingInvertError{mesh_winding_invert_error::WrongTopology{}});
+    }
+}
+}  // namespace
+
+std::expected<void, MeshWindingInvertError> Mesh::invert_winding() {
+    auto stored_indices = try_indices_mut_option();
+    if (!stored_indices) {
+        return std::unexpected(MeshWindingInvertError{stored_indices.error()});
+    }
+    if (!*stored_indices) return {};
+
+    auto& indices = stored_indices->value().get();
+    if (auto* values = indices.as_u16()) return invert_indices(*values, primitive_type);
+    return invert_indices(*indices.as_u32(), primitive_type);
+}
+
+std::expected<Mesh, MeshWindingInvertError> Mesh::with_inverted_winding() && {
+    auto result = invert_winding();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
 std::optional<std::span<const std::uint8_t>> Mesh::get_index_buffer_bytes() const {
     const auto stored_indices = indices();
     if (!stored_indices) return std::nullopt;
