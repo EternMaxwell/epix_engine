@@ -10,6 +10,7 @@ module;
 #include <functional>
 #include <limits>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <print>
@@ -17,6 +18,7 @@ module;
 #include <span>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>

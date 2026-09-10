@@ -9,6 +9,162 @@ import glm;
 
 namespace mesh = epix::mesh;
 
+TEST(VertexAttributeValues, CoversEveryBevyAlternativeAndMetadataContract) {
+    std::size_t expected_index = 0;
+    const auto check           = [&]<typename Alternative>(Alternative alternative, std::string_view name,
+                                                           wgpu::VertexFormat format) {
+        const mesh::VertexAttributeValues values{std::move(alternative)};
+        EXPECT_EQ(values.enum_variant_index(), expected_index++);
+        EXPECT_EQ(values.enum_variant_name(), name);
+        EXPECT_EQ(values.format(), format);
+        EXPECT_EQ(static_cast<wgpu::VertexFormat>(values), format);
+        EXPECT_EQ(values.len(), 1u);
+        EXPECT_FALSE(values.is_empty());
+        EXPECT_EQ(values.get_bytes().size(), mesh::vertex_format_size(format));
+        EXPECT_EQ(values, values);
+    };
+
+    // Every alternative below contains one element, so its byte count must
+    // equal the matching WebGPU vertex-format size.
+    using Values = mesh::VertexAttributeValues;
+    check(Values::Float32{{1.0f}}, "Float32", wgpu::VertexFormat::eFloat32);
+    check(Values::Sint32{{1}}, "Sint32", wgpu::VertexFormat::eSint32);
+    check(Values::Uint32{{1}}, "Uint32", wgpu::VertexFormat::eUint32);
+    check(Values::Float32x2{{{1.0f, 2.0f}}}, "Float32x2", wgpu::VertexFormat::eFloat32x2);
+    check(Values::Sint32x2{{{1, 2}}}, "Sint32x2", wgpu::VertexFormat::eSint32x2);
+    check(Values::Uint32x2{{{1, 2}}}, "Uint32x2", wgpu::VertexFormat::eUint32x2);
+    check(Values::Float32x3{{{1.0f, 2.0f, 3.0f}}}, "Float32x3", wgpu::VertexFormat::eFloat32x3);
+    check(Values::Sint32x3{{{1, 2, 3}}}, "Sint32x3", wgpu::VertexFormat::eSint32x3);
+    check(Values::Uint32x3{{{1, 2, 3}}}, "Uint32x3", wgpu::VertexFormat::eUint32x3);
+    check(Values::Float32x4{{{1.0f, 2.0f, 3.0f, 4.0f}}}, "Float32x4", wgpu::VertexFormat::eFloat32x4);
+    check(Values::Sint32x4{{{1, 2, 3, 4}}}, "Sint32x4", wgpu::VertexFormat::eSint32x4);
+    check(Values::Uint32x4{{{1, 2, 3, 4}}}, "Uint32x4", wgpu::VertexFormat::eUint32x4);
+    check(Values::Sint16x2{{{1, 2}}}, "Sint16x2", wgpu::VertexFormat::eSint16x2);
+    check(Values::Snorm16x2{{{1, 2}}}, "Snorm16x2", wgpu::VertexFormat::eSnorm16x2);
+    check(Values::Uint16x2{{{1, 2}}}, "Uint16x2", wgpu::VertexFormat::eUint16x2);
+    check(Values::Unorm16x2{{{1, 2}}}, "Unorm16x2", wgpu::VertexFormat::eUnorm16x2);
+    check(Values::Sint16x4{{{1, 2, 3, 4}}}, "Sint16x4", wgpu::VertexFormat::eSint16x4);
+    check(Values::Snorm16x4{{{1, 2, 3, 4}}}, "Snorm16x4", wgpu::VertexFormat::eSnorm16x4);
+    check(Values::Uint16x4{{{1, 2, 3, 4}}}, "Uint16x4", wgpu::VertexFormat::eUint16x4);
+    check(Values::Unorm16x4{{{1, 2, 3, 4}}}, "Unorm16x4", wgpu::VertexFormat::eUnorm16x4);
+    check(Values::Sint8x2{{{1, 2}}}, "Sint8x2", wgpu::VertexFormat::eSint8x2);
+    check(Values::Snorm8x2{{{1, 2}}}, "Snorm8x2", wgpu::VertexFormat::eSnorm8x2);
+    check(Values::Uint8x2{{{1, 2}}}, "Uint8x2", wgpu::VertexFormat::eUint8x2);
+    check(Values::Unorm8x2{{{1, 2}}}, "Unorm8x2", wgpu::VertexFormat::eUnorm8x2);
+    check(Values::Sint8x4{{{1, 2, 3, 4}}}, "Sint8x4", wgpu::VertexFormat::eSint8x4);
+    check(Values::Snorm8x4{{{1, 2, 3, 4}}}, "Snorm8x4", wgpu::VertexFormat::eSnorm8x4);
+    check(Values::Uint8x4{{{1, 2, 3, 4}}}, "Uint8x4", wgpu::VertexFormat::eUint8x4);
+    check(Values::Unorm8x4{{{1, 2, 3, 4}}}, "Unorm8x4", wgpu::VertexFormat::eUnorm8x4);
+    EXPECT_EQ(expected_index, 28u);
+
+    const Values empty{std::vector<float>{}};
+    EXPECT_TRUE(empty.is_empty());
+    EXPECT_TRUE(empty.get_bytes().empty());
+
+    const Values float3{std::vector<Values::Float32x3Value>{{1.0f, 2.0f, 3.0f}}};
+    ASSERT_NE(float3.as_float3(), nullptr);
+    EXPECT_EQ(float3.as_float3()->front(), (Values::Float32x3Value{1.0f, 2.0f, 3.0f}));
+    EXPECT_EQ(empty.as_float3(), nullptr);
+}
+
+TEST(VertexAttributeValues, MatchesBevyInputAndFallibleOutputConversions) {
+    using Values = mesh::VertexAttributeValues;
+
+    const Values from_float{std::vector<float>{1.0f, 2.0f}};
+    EXPECT_EQ(from_float.enum_variant_name(), "Float32");
+    const Values from_vec2{std::vector{glm::vec2(1.0f, 2.0f)}};
+    const Values from_vec3{std::vector{glm::vec3(1.0f, 2.0f, 3.0f)}};
+    const Values from_vec4{std::vector{glm::vec4(1.0f, 2.0f, 3.0f, 4.0f)}};
+    const Values from_ivec2{std::vector{glm::ivec2(1, 2)}};
+    const Values from_ivec3{std::vector{glm::ivec3(1, 2, 3)}};
+    const Values from_ivec4{std::vector{glm::ivec4(1, 2, 3, 4)}};
+    const Values from_uvec2{std::vector{glm::uvec2(1, 2)}};
+    const Values from_uvec3{std::vector{glm::uvec3(1, 2, 3)}};
+    const Values from_uvec4{std::vector{glm::uvec4(1, 2, 3, 4)}};
+    EXPECT_EQ(from_vec2.enum_variant_name(), "Float32x2");
+    EXPECT_EQ(from_vec3.enum_variant_name(), "Float32x3");
+    EXPECT_EQ(from_vec4.enum_variant_name(), "Float32x4");
+    EXPECT_EQ(from_ivec2.enum_variant_name(), "Sint32x2");
+    EXPECT_EQ(from_ivec3.enum_variant_name(), "Sint32x3");
+    EXPECT_EQ(from_ivec4.enum_variant_name(), "Sint32x4");
+    EXPECT_EQ(from_uvec2.enum_variant_name(), "Uint32x2");
+    EXPECT_EQ(from_uvec3.enum_variant_name(), "Uint32x3");
+    EXPECT_EQ(from_uvec4.enum_variant_name(), "Uint32x4");
+
+    auto float_result = Values{std::vector<float>{1.0f, 2.0f}}.try_into<float>();
+    ASSERT_TRUE(float_result.has_value());
+    EXPECT_EQ(*float_result, (std::vector<float>{1.0f, 2.0f}));
+    auto vec3_result = Values{std::vector{glm::vec3(1.0f, 2.0f, 3.0f)}}.try_into<glm::vec3>();
+    ASSERT_TRUE(vec3_result.has_value());
+    EXPECT_EQ(*vec3_result, (std::vector{glm::vec3(1.0f, 2.0f, 3.0f)}));
+
+    EXPECT_TRUE(
+        (Values{std::vector<Values::Float32x2Value>{{1.0f, 2.0f}}}.try_into<Values::Float32x2Value>().has_value()));
+    EXPECT_TRUE((Values{std::vector<Values::Float32x3Value>{{1.0f, 2.0f, 3.0f}}}
+                     .try_into<Values::Float32x3Value>()
+                     .has_value()));
+    EXPECT_TRUE((Values{std::vector<Values::Float32x4Value>{{1.0f, 2.0f, 3.0f, 4.0f}}}
+                     .try_into<Values::Float32x4Value>()
+                     .has_value()));
+    EXPECT_TRUE(Values{std::vector<std::int32_t>{1}}.try_into<std::int32_t>().has_value());
+    EXPECT_TRUE((Values{std::vector<Values::Sint32x2Value>{{1, 2}}}.try_into<Values::Sint32x2Value>().has_value()));
+    EXPECT_TRUE((Values{std::vector<Values::Sint32x3Value>{{1, 2, 3}}}.try_into<Values::Sint32x3Value>().has_value()));
+    EXPECT_TRUE(
+        (Values{std::vector<Values::Sint32x4Value>{{1, 2, 3, 4}}}.try_into<Values::Sint32x4Value>().has_value()));
+    EXPECT_TRUE(Values{std::vector<std::uint32_t>{1}}.try_into<std::uint32_t>().has_value());
+    EXPECT_TRUE((Values{std::vector<Values::Uint32x2Value>{{1, 2}}}.try_into<Values::Uint32x2Value>().has_value()));
+    EXPECT_TRUE((Values{std::vector<Values::Uint32x3Value>{{1, 2, 3}}}.try_into<Values::Uint32x3Value>().has_value()));
+    EXPECT_TRUE(
+        (Values{std::vector<Values::Uint32x4Value>{{1, 2, 3, 4}}}.try_into<Values::Uint32x4Value>().has_value()));
+
+    EXPECT_TRUE(Values{from_vec2}.try_into<glm::vec2>().has_value());
+    EXPECT_TRUE(Values{from_vec4}.try_into<glm::vec4>().has_value());
+    EXPECT_TRUE(Values{from_ivec2}.try_into<glm::ivec2>().has_value());
+    EXPECT_TRUE(Values{from_ivec3}.try_into<glm::ivec3>().has_value());
+    EXPECT_TRUE(Values{from_ivec4}.try_into<glm::ivec4>().has_value());
+    EXPECT_TRUE(Values{from_uvec2}.try_into<glm::uvec2>().has_value());
+    EXPECT_TRUE(Values{from_uvec3}.try_into<glm::uvec3>().has_value());
+    EXPECT_TRUE(Values{from_uvec4}.try_into<glm::uvec4>().has_value());
+
+    EXPECT_TRUE((Values{Values::Sint16x2{{{1, 2}}}}.try_into<Values::Sint16x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Snorm16x2{{{1, 2}}}}.try_into<Values::Sint16x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Sint16x4{{{1, 2, 3, 4}}}}.try_into<Values::Sint16x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Snorm16x4{{{1, 2, 3, 4}}}}.try_into<Values::Sint16x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Uint16x2{{{1, 2}}}}.try_into<Values::Uint16x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Unorm16x2{{{1, 2}}}}.try_into<Values::Uint16x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Uint16x4{{{1, 2, 3, 4}}}}.try_into<Values::Uint16x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Unorm16x4{{{1, 2, 3, 4}}}}.try_into<Values::Uint16x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Sint8x2{{{1, 2}}}}.try_into<Values::Sint8x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Snorm8x2{{{1, 2}}}}.try_into<Values::Sint8x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Sint8x4{{{1, 2, 3, 4}}}}.try_into<Values::Sint8x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Snorm8x4{{{1, 2, 3, 4}}}}.try_into<Values::Sint8x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Uint8x2{{{1, 2}}}}.try_into<Values::Uint8x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Unorm8x2{{{1, 2}}}}.try_into<Values::Uint8x2Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Uint8x4{{{1, 2, 3, 4}}}}.try_into<Values::Uint8x4Value>().has_value()));
+    EXPECT_TRUE((Values{Values::Unorm8x4{{{1, 2, 3, 4}}}}.try_into<Values::Uint8x4Value>().has_value()));
+
+    auto snorm16 = Values{Values::Snorm16x2{{{1, -2}}}}.try_into<Values::Sint16x2Value>();
+    auto unorm16 = Values{Values::Unorm16x4{{{1, 2, 3, 4}}}}.try_into<Values::Uint16x4Value>();
+    auto snorm8  = Values{Values::Snorm8x4{{{1, -2, 3, -4}}}}.try_into<Values::Sint8x4Value>();
+    auto unorm8  = Values{Values::Unorm8x2{{{1, 2}}}}.try_into<Values::Uint8x2Value>();
+    ASSERT_TRUE(snorm16.has_value());
+    ASSERT_TRUE(unorm16.has_value());
+    ASSERT_TRUE(snorm8.has_value());
+    ASSERT_TRUE(unorm8.has_value());
+    EXPECT_EQ(snorm16->front(), (Values::Sint16x2Value{1, -2}));
+    EXPECT_EQ(unorm16->front(), (Values::Uint16x4Value{1, 2, 3, 4}));
+    EXPECT_EQ(snorm8->front(), (Values::Sint8x4Value{1, -2, 3, -4}));
+    EXPECT_EQ(unorm8->front(), (Values::Uint8x2Value{1, 2}));
+
+    const Values rejected{std::vector<float>{3.0f}};
+    auto error = Values{rejected}.try_into<std::uint32_t>();
+    ASSERT_FALSE(error.has_value());
+    ASSERT_TRUE(error.error().from);
+    EXPECT_EQ(*error.error().from, rejected);
+    EXPECT_EQ(error.error().variant, "Float32");
+    EXPECT_NE(error.error().to_string().find("cannot convert VertexAttributeValues::Float32 to"), std::string::npos);
+}
+
 TEST(MeshErrors, WindingAndTriangleErrorsPreserveBevyVariantsAndMessages) {
     const mesh::MeshWindingInvertError wrong_winding{mesh::mesh_winding_invert_error::WrongTopology{}};
     EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(wrong_winding));

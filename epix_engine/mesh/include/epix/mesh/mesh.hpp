@@ -13,6 +13,7 @@
 #include <epix/app.hpp>
 #include <epix/assets/render_asset_usages.hpp>
 #include <epix/ecs.hpp>
+#include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/meta.hpp>
 #include <expected>
@@ -36,14 +37,53 @@
 namespace epix::mesh {
 constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
     switch (format) {
+        case wgpu::VertexFormat::eUint8:
+        case wgpu::VertexFormat::eSint8:
+        case wgpu::VertexFormat::eUnorm8:
+        case wgpu::VertexFormat::eSnorm8:
+            return 1;
+        case wgpu::VertexFormat::eUint8x2:
+        case wgpu::VertexFormat::eSint8x2:
+        case wgpu::VertexFormat::eUnorm8x2:
+        case wgpu::VertexFormat::eSnorm8x2:
+        case wgpu::VertexFormat::eUint16:
+        case wgpu::VertexFormat::eSint16:
+        case wgpu::VertexFormat::eUnorm16:
+        case wgpu::VertexFormat::eSnorm16:
+        case wgpu::VertexFormat::eFloat16:
+            return 2;
+        case wgpu::VertexFormat::eUint8x4:
+        case wgpu::VertexFormat::eSint8x4:
+        case wgpu::VertexFormat::eUnorm8x4:
+        case wgpu::VertexFormat::eSnorm8x4:
+        case wgpu::VertexFormat::eUint16x2:
+        case wgpu::VertexFormat::eSint16x2:
+        case wgpu::VertexFormat::eUnorm16x2:
+        case wgpu::VertexFormat::eSnorm16x2:
+        case wgpu::VertexFormat::eFloat16x2:
         case wgpu::VertexFormat::eFloat32:
-            return sizeof(float);
+        case wgpu::VertexFormat::eUint32:
+        case wgpu::VertexFormat::eSint32:
+        case wgpu::VertexFormat::eUnorm10_10_10_2:
+        case wgpu::VertexFormat::eUnorm8x4BGRA:
+            return 4;
+        case wgpu::VertexFormat::eUint16x4:
+        case wgpu::VertexFormat::eSint16x4:
+        case wgpu::VertexFormat::eUnorm16x4:
+        case wgpu::VertexFormat::eSnorm16x4:
+        case wgpu::VertexFormat::eFloat16x4:
         case wgpu::VertexFormat::eFloat32x2:
-            return sizeof(float) * 2;
+        case wgpu::VertexFormat::eUint32x2:
+        case wgpu::VertexFormat::eSint32x2:
+            return 8;
         case wgpu::VertexFormat::eFloat32x3:
-            return sizeof(float) * 3;
+        case wgpu::VertexFormat::eUint32x3:
+        case wgpu::VertexFormat::eSint32x3:
+            return 12;
         case wgpu::VertexFormat::eFloat32x4:
-            return sizeof(float) * 4;
+        case wgpu::VertexFormat::eUint32x4:
+        case wgpu::VertexFormat::eSint32x4:
+            return 16;
         default:
             return 0;
     }

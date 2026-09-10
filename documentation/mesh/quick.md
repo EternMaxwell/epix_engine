@@ -13,6 +13,14 @@ using namespace epix::mesh;
 or `uint32` indices. Standard descriptors are `ATTRIBUTE_POSITION`, `ATTRIBUTE_COLOR`,
 `ATTRIBUTE_NORMAL`, `ATTRIBUTE_UV0`, and `ATTRIBUTE_UV1`.
 
+`VertexAttributeValues` provides Bevy's 28 semantically distinct vertex-value alternatives. It
+preserves distinctions such as `Sint16x2` versus `Snorm16x2` even though both use the same C++
+element representation, reports the matching WebGPU format, exposes borrowed float3 and raw-byte
+views, and supports fallible conversion back to scalar, `std::array`, and GLM vector collections.
+Epix uses `glm::vec3` for both of Bevy's `Vec3`/`Vec3A` conversion roles because GLM has one standard
+three-component float-vector type. Integration of this value type into `Mesh` storage is tracked
+separately.
+
 ```cpp
 Mesh mesh = Mesh(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::all())
                 .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, positions)
