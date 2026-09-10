@@ -9,6 +9,35 @@ import glm;
 
 namespace mesh = epix::mesh;
 
+TEST(MeshErrors, WindingAndTriangleErrorsPreserveBevyVariantsAndMessages) {
+    const mesh::MeshWindingInvertError wrong_winding{mesh::mesh_winding_invert_error::WrongTopology{}};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(wrong_winding));
+    EXPECT_EQ(wrong_winding.to_string(),
+              "Mesh winding inversion does not work for primitive topology `PointList`");
+
+    const mesh::MeshWindingInvertError abrupt{mesh::mesh_winding_invert_error::AbruptIndicesEnd{}};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::AbruptIndicesEnd>(abrupt));
+    EXPECT_EQ(abrupt.to_string(), "Indices weren't in chunks according to topology");
+
+    const mesh::MeshWindingInvertError winding_access{mesh::MeshAccessError::ExtractedToRenderWorld};
+    EXPECT_TRUE(std::holds_alternative<mesh::MeshAccessError>(winding_access));
+    EXPECT_EQ(winding_access.to_string(),
+              "Mesh access error: The mesh vertex/index data has been extracted to the RenderWorld (via "
+              "`Mesh::asset_usage`)");
+
+    const mesh::MeshTrianglesError positions{mesh::mesh_triangles_error::PositionsFormat{}};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_triangles_error::PositionsFormat>(positions));
+    EXPECT_EQ(positions.to_string(), "Source mesh position data is not Float32x3");
+
+    const mesh::MeshTrianglesError bad_indices{mesh::mesh_triangles_error::BadIndices{}};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_triangles_error::BadIndices>(bad_indices));
+    EXPECT_EQ(bad_indices.to_string(), "Face index data references vertices that do not exist");
+
+    const mesh::MeshTrianglesError triangle_access{mesh::MeshAccessError::NotFound};
+    EXPECT_TRUE(std::holds_alternative<mesh::MeshAccessError>(triangle_access));
+    EXPECT_EQ(triangle_access.to_string(), "mesh access error: The requested mesh data wasn't found in this mesh");
+}
+
 TEST(Indices, PushAndExtendPromoteU16StorageWithoutLosingValues) {
     mesh::Indices indices{std::vector<std::uint16_t>{}};
     static_assert(std::ranges::view<decltype(std::declval<const mesh::Indices&>().iter())>);

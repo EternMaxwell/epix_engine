@@ -32,6 +32,8 @@ and `with_removed_indices`. `Indices` stores either a `std::vector<std::uint16_t
 `std::vector<std::uint32_t>`, exposes a lazy `iter()` range plus `len()` and `is_empty()`, and promotes
 16-bit storage to 32-bit when `push()` or `extend()` receives an index above `UINT16_MAX`.
 `get_index_buffer_bytes()` returns a borrowed byte span over the active index storage.
+`MeshWindingInvertError` and `MeshTrianglesError` are tagged variants that preserve their specific
+failure cause, including nested `MeshAccessError` values, and expose Bevy-compatible display text.
 `count_vertices()` returns the shortest attribute length and warns when attribute counts disagree.
 `MeshError` also reports missing slots, name mismatches, and requested type mismatches.
 

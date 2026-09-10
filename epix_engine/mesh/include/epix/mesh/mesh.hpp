@@ -54,6 +54,99 @@ EPIX_EXPORT enum class MeshAccessError {
     /** @brief The requested vertex or index data is absent. */
     NotFound,
 };
+
+/** @brief Return Bevy's display text for a mesh access error. */
+EPIX_EXPORT constexpr std::string_view to_string(MeshAccessError error) noexcept {
+    switch (error) {
+        case MeshAccessError::ExtractedToRenderWorld:
+            return "The mesh vertex/index data has been extracted to the RenderWorld (via `Mesh::asset_usage`)";
+        case MeshAccessError::NotFound:
+            return "The requested mesh data wasn't found in this mesh";
+    }
+    std::unreachable();
+}
+
+EPIX_EXPORT namespace mesh_winding_invert_error {
+    /** @brief Winding inversion is unsupported for the mesh topology. */
+    struct WrongTopology {
+        bool operator==(const WrongTopology&) const = default;
+    };
+    /** @brief The index count is not a complete set of topology primitives. */
+    struct AbruptIndicesEnd {
+        bool operator==(const AbruptIndicesEnd&) const = default;
+    };
+}  // namespace mesh_winding_invert_error
+
+/** @brief Error returned while inverting a mesh's index winding. */
+EPIX_EXPORT struct MeshWindingInvertError
+    : std::variant<mesh_winding_invert_error::WrongTopology,
+                   mesh_winding_invert_error::AbruptIndicesEnd,
+                   MeshAccessError> {
+    using Base = std::variant<mesh_winding_invert_error::WrongTopology,
+                              mesh_winding_invert_error::AbruptIndicesEnd,
+                              MeshAccessError>;
+    using Base::Base;
+
+    std::string to_string() const {
+        return std::visit(
+            [](const auto& error) -> std::string {
+                using Error = std::remove_cvref_t<decltype(error)>;
+                if constexpr (std::same_as<Error, mesh_winding_invert_error::WrongTopology>) {
+                    return "Mesh winding inversion does not work for primitive topology `PointList`";
+                } else if constexpr (std::same_as<Error, mesh_winding_invert_error::AbruptIndicesEnd>) {
+                    return "Indices weren't in chunks according to topology";
+                } else {
+                    return "Mesh access error: " + std::string(epix::mesh::to_string(error));
+                }
+            },
+            static_cast<const Base&>(*this));
+    }
+};
+
+EPIX_EXPORT namespace mesh_triangles_error {
+    /** @brief The mesh is neither a triangle list nor a triangle strip. */
+    struct WrongTopology {
+        bool operator==(const WrongTopology&) const = default;
+    };
+    /** @brief Position data is not stored as Float32x3 values. */
+    struct PositionsFormat {
+        bool operator==(const PositionsFormat&) const = default;
+    };
+    /** @brief An index references a vertex that does not exist. */
+    struct BadIndices {
+        bool operator==(const BadIndices&) const = default;
+    };
+}  // namespace mesh_triangles_error
+
+/** @brief Error returned while iterating over a mesh's triangles. */
+EPIX_EXPORT struct MeshTrianglesError
+    : std::variant<mesh_triangles_error::WrongTopology,
+                   mesh_triangles_error::PositionsFormat,
+                   mesh_triangles_error::BadIndices,
+                   MeshAccessError> {
+    using Base = std::variant<mesh_triangles_error::WrongTopology,
+                              mesh_triangles_error::PositionsFormat,
+                              mesh_triangles_error::BadIndices,
+                              MeshAccessError>;
+    using Base::Base;
+
+    std::string to_string() const {
+        return std::visit(
+            [](const auto& error) -> std::string {
+                using Error = std::remove_cvref_t<decltype(error)>;
+                if constexpr (std::same_as<Error, mesh_triangles_error::WrongTopology>) {
+                    return "Source mesh does not have primitive topology TriangleList or TriangleStrip";
+                } else if constexpr (std::same_as<Error, mesh_triangles_error::PositionsFormat>) {
+                    return "Source mesh position data is not Float32x3";
+                } else if constexpr (std::same_as<Error, mesh_triangles_error::BadIndices>) {
+                    return "Face index data references vertices that do not exist";
+                } else {
+                    return "mesh access error: " + std::string(epix::mesh::to_string(error));
+                }
+            },
+            static_cast<const Base&>(*this));
+    }
+};
 /** @brief Describes one named vertex attribute and its stable mesh ID. */
 EPIX_EXPORT struct MeshVertexAttribute {
     std::string_view name;
