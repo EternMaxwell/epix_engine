@@ -103,6 +103,37 @@ EPIX_EXPORT enum class ImageSampleError { OutOfBounds };
 /** @brief Error codes returned when writing pixel data to an image. */
 EPIX_EXPORT enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
 
+/** @brief Error returned when a texture cannot be reinterpreted as requested
+ * (Bevy `TextureReinterpretationError`). */
+EPIX_EXPORT struct TextureReinterpretationError {
+    /** @brief C++ counterpart to `TextureReinterpretationError::IncompatibleSizes`. */
+    struct IncompatibleSizes {
+        wgpu::Extent3D old{};
+        wgpu::Extent3D new_size{};
+        bool operator==(const IncompatibleSizes&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureReinterpretationError::WrongDimension`. */
+    struct WrongDimension {
+        bool operator==(const WrongDimension&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureReinterpretationError::InvalidLayerCount`. */
+    struct InvalidLayerCount {
+        bool operator==(const InvalidLayerCount&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureReinterpretationError::HeightNotDivisibleByLayers`. */
+    struct HeightNotDivisibleByLayers {
+        std::uint32_t height                                     = 0;
+        std::uint32_t layer_count                                = 0;
+        bool operator==(const HeightNotDivisibleByLayers&) const = default;
+    };
+
+    std::variant<IncompatibleSizes, WrongDimension, InvalidLayerCount, HeightNotDivisibleByLayers> value{
+        WrongDimension{}};
+
+    bool operator==(const TextureReinterpretationError&) const = default;
+};
+
 template <typename T>
 struct span_type {
     using span = decltype(std::span(std::declval<T>()));
@@ -565,6 +596,47 @@ EPIX_EXPORT class Image {
      * @brief Apply Gaussian blur to the image and return the blurred image.
      */
     Image blur(std::uint32_t radius) const;
+
+    // ─── Bevy `Image` size and reinterpretation surface (I2) ───────────────────────────────────
+
+    /** @brief Returns the size of a 2D image (Bevy `Image::size`). */
+    glm::uvec2 size() const noexcept { return {width(), height()}; }
+    /** @brief Returns the size of a 2D image as f32 (Bevy `Image::size_f32`). */
+    glm::vec2 size_f32() const noexcept { return {static_cast<float>(width()), static_cast<float>(height())}; }
+    /** @brief Returns the aspect ratio (width / height) of a 2D image (Bevy
+     * `Image::aspect_ratio`).
+     *
+     * Bevy returns an `AspectRatio` value type; Epix has no color/aspect value
+     * types, so the ratio is returned as the equivalent `f32`. */
+    float aspect_ratio() const;
+
+    /** @brief Resizes the image to the new size, removing data or appending zeros.
+     * Does not scale the contents (Bevy `Image::resize`).
+     *
+     * Use `resize_in_place` to keep pixel data intact. */
+    void resize_size(const wgpu::Extent3D& new_size);
+
+    /** @brief Changes the size if the total pixel count stays the same, otherwise
+     * returns `TextureReinterpretationError::IncompatibleSizes` (Bevy
+     * `Image::reinterpret_size`). */
+    std::expected<void, TextureReinterpretationError> reinterpret_size(const wgpu::Extent3D& new_size);
+
+    /** @brief Resizes the image keeping pixel data anchored at the top-left,
+     * growing with zeros or clipping (Bevy `Image::resize_in_place`). */
+    void resize_in_place(const wgpu::Extent3D& new_size);
+
+    /** @brief Reinterprets a vertically stacked 2D image as a 2D array texture
+     * (Bevy `Image::reinterpret_stacked_2d_as_array`). */
+    std::expected<void, TextureReinterpretationError> reinterpret_stacked_2d_as_array(std::uint32_t layers);
+
+    /** @brief True when the image's texture format is compressed (Bevy
+     * `Image::is_compressed`). */
+    bool is_compressed() const noexcept;
+
+    /** @brief The byte offset of the given pixel, or `std::nullopt` when the
+     * coordinates are outside the image or the format has no known pixel size
+     * (Bevy `Image::pixel_data_offset`). */
+    std::optional<std::size_t> pixel_data_offset(const glm::uvec3& coords) const noexcept;
 };
 
 /** @brief The persistent opaque-white fallback image installed by

@@ -16,6 +16,61 @@
 
 namespace epix::image {
 namespace {
+std::optional<Format> format_from_texture_format(wgpu::TextureFormat format) noexcept;
+
+/** @brief True when `format` is a block-compressed format (Bevy
+ * `Image::is_compressed`).
+ *
+ * The generated WebGPU bindings spell these with an uppercase block family name
+ * (`eBC1RGBAUnorm`), unlike Bevy's `wgpu` re-export (`Bc1RgbaUnorm`). */
+bool is_compressed_texture_format(wgpu::TextureFormat format) noexcept {
+    switch (format) {
+        case wgpu::TextureFormat::eBC1RGBAUnorm:
+        case wgpu::TextureFormat::eBC1RGBAUnormSrgb:
+        case wgpu::TextureFormat::eBC2RGBAUnorm:
+        case wgpu::TextureFormat::eBC2RGBAUnormSrgb:
+        case wgpu::TextureFormat::eBC3RGBAUnorm:
+        case wgpu::TextureFormat::eBC3RGBAUnormSrgb:
+        case wgpu::TextureFormat::eBC4RUnorm:
+        case wgpu::TextureFormat::eBC4RSnorm:
+        case wgpu::TextureFormat::eBC5RGUnorm:
+        case wgpu::TextureFormat::eBC5RGSnorm:
+        case wgpu::TextureFormat::eBC6HRGBUfloat:
+        case wgpu::TextureFormat::eBC6HRGBFloat:
+        case wgpu::TextureFormat::eBC7RGBAUnorm:
+        case wgpu::TextureFormat::eBC7RGBAUnormSrgb:
+        case wgpu::TextureFormat::eETC2RGB8Unorm:
+        case wgpu::TextureFormat::eETC2RGB8UnormSrgb:
+        case wgpu::TextureFormat::eETC2RGB8A1Unorm:
+        case wgpu::TextureFormat::eETC2RGB8A1UnormSrgb:
+        case wgpu::TextureFormat::eETC2RGBA8Unorm:
+        case wgpu::TextureFormat::eETC2RGBA8UnormSrgb:
+        case wgpu::TextureFormat::eEACR11Unorm:
+        case wgpu::TextureFormat::eEACR11Snorm:
+        case wgpu::TextureFormat::eEACRG11Unorm:
+        case wgpu::TextureFormat::eEACRG11Snorm:
+        case wgpu::TextureFormat::eASTC4x4Unorm:
+        case wgpu::TextureFormat::eASTC4x4UnormSrgb:
+            return true;
+        default:
+            return false;
+    }
+}
+
+/** @brief The number of bytes one pixel of `format` occupies, or `std::nullopt`
+ * for formats Epix has no size for (Bevy `TextureFormat::pixel_size`).
+ *
+ * Epix already tracks per-`Format` metadata for the formats it can decode, so the
+ * size comes from that table via the descriptor's format. */
+std::optional<std::size_t> pixel_size_of(wgpu::TextureFormat format) noexcept {
+    if (is_compressed_texture_format(format)) return std::nullopt;
+    const auto decoded = format_from_texture_format(format);
+    if (!decoded) return std::nullopt;
+    const auto& info = getFormatInfo(*decoded);
+    if (info.pixelSize() == 0) return std::nullopt;
+    return info.pixelSize();
+}
+
 /** @brief The WebGPU texture format for a decoded pixel format (Bevy's
  * `ImageFormat` to `TextureFormat` mapping).
  *
@@ -331,6 +386,102 @@ ImageType Image::type() const noexcept {
 Format Image::format() const noexcept {
     const auto mapped = format_from_texture_format(texture_descriptor.format);
     return mapped.value_or(Format::Unknown);
+}
+
+float Image::aspect_ratio() const {
+    if (width() == 0 || height() == 0) {
+        throw std::invalid_argument(
+            "Failed to calculate aspect ratio: Image dimensions must be positive, non-zero values");
+    }
+    return static_cast<float>(width()) / static_cast<float>(height());
+}
+
+bool Image::is_compressed() const noexcept { return is_compressed_texture_format(texture_descriptor.format); }
+
+std::optional<std::size_t> Image::pixel_data_offset(const glm::uvec3& coords) const noexcept {
+    if (coords.x >= width() || coords.y >= height() || coords.z >= depth_or_layers()) return std::nullopt;
+    const auto pixel_size = pixel_size_of(texture_descriptor.format);
+    if (!pixel_size) return std::nullopt;
+    const std::size_t row_stride   = static_cast<std::size_t>(width()) * *pixel_size;
+    const std::size_t layer_stride = static_cast<std::size_t>(height()) * row_stride;
+    return coords.z * layer_stride + coords.y * row_stride + coords.x * *pixel_size;
+}
+
+void Image::resize_size(const wgpu::Extent3D& new_size) {
+    texture_descriptor.size = new_size;
+    if (!m_has_data) return;
+    if (const auto pixel_size = pixel_size_of(texture_descriptor.format)) {
+        const std::size_t volume =
+            static_cast<std::size_t>(new_size.width) * new_size.height * new_size.depthOrArrayLayers;
+        data.resize(volume * *pixel_size, std::byte{0});
+    }
+}
+
+std::expected<void, TextureReinterpretationError> Image::reinterpret_size(const wgpu::Extent3D& new_size) {
+    const auto& old_size = texture_descriptor.size;
+    const std::size_t old_volume =
+        static_cast<std::size_t>(old_size.width) * old_size.height * old_size.depthOrArrayLayers;
+    const std::size_t new_volume =
+        static_cast<std::size_t>(new_size.width) * new_size.height * new_size.depthOrArrayLayers;
+    if (new_volume != old_volume) {
+        return std::unexpected(TextureReinterpretationError{
+            TextureReinterpretationError::IncompatibleSizes{.old = old_size, .new_size = new_size}});
+    }
+    texture_descriptor.size = new_size;
+    return {};
+}
+
+void Image::resize_in_place(const wgpu::Extent3D& new_size) {
+    const auto pixel_size = pixel_size_of(texture_descriptor.format);
+    if (!pixel_size) return;
+    const wgpu::Extent3D old_size = texture_descriptor.size;
+    texture_descriptor.size       = new_size;
+
+    if (!m_has_data) {
+        // Bevy defers to the GPU copy path when the payload is already gone.
+        m_copy_on_resize = true;
+        return;
+    }
+
+    std::vector<std::byte> resized(
+        static_cast<std::size_t>(new_size.width) * new_size.height * new_size.depthOrArrayLayers * *pixel_size,
+        std::byte{0});
+    const std::size_t copy_width  = std::min(old_size.width, new_size.width);
+    const std::size_t copy_height = std::min(old_size.height, new_size.height);
+    const std::size_t copy_depth  = std::min(old_size.depthOrArrayLayers, new_size.depthOrArrayLayers);
+
+    const std::size_t old_row_stride   = static_cast<std::size_t>(old_size.width) * *pixel_size;
+    const std::size_t old_layer_stride = static_cast<std::size_t>(old_size.height) * old_row_stride;
+    const std::size_t new_row_stride   = static_cast<std::size_t>(new_size.width) * *pixel_size;
+    const std::size_t new_layer_stride = static_cast<std::size_t>(new_size.height) * new_row_stride;
+    const std::size_t copy_bytes       = copy_width * *pixel_size;
+
+    for (std::size_t z = 0; z < copy_depth; ++z) {
+        for (std::size_t y = 0; y < copy_height; ++y) {
+            const std::size_t old_offset = z * old_layer_stride + y * old_row_stride;
+            const std::size_t new_offset = z * new_layer_stride + y * new_row_stride;
+            if (old_offset + copy_bytes > data.size()) break;
+            std::copy_n(data.begin() + static_cast<std::ptrdiff_t>(old_offset), static_cast<std::ptrdiff_t>(copy_bytes),
+                        resized.begin() + static_cast<std::ptrdiff_t>(new_offset));
+        }
+    }
+
+    data = std::move(resized);
+}
+
+std::expected<void, TextureReinterpretationError> Image::reinterpret_stacked_2d_as_array(std::uint32_t layers) {
+    if (texture_descriptor.dimension != wgpu::TextureDimension::e2D) {
+        return std::unexpected(TextureReinterpretationError{TextureReinterpretationError::WrongDimension{}});
+    }
+    if (texture_descriptor.size.depthOrArrayLayers != 1) {
+        return std::unexpected(TextureReinterpretationError{TextureReinterpretationError::InvalidLayerCount{}});
+    }
+    if (layers == 0 || height() % layers != 0) {
+        return std::unexpected(TextureReinterpretationError{
+            TextureReinterpretationError::HeightNotDivisibleByLayers{.height = height(), .layer_count = layers}});
+    }
+
+    return reinterpret_size(wgpu::Extent3D{width(), height() / layers, layers});
 }
 
 Image Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt) {
