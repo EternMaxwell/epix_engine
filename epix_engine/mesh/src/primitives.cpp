@@ -2,6 +2,7 @@
 #include <cassert>
 #include <cmath>
 #include <epix/mesh/primitives.hpp>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 
@@ -28,6 +29,61 @@ glm::vec2 Arc2d::chord_midpoint() const noexcept { return {0.0f, apothem()}; }
 CircularSectorMeshBuilder CircularSector::mesh() const noexcept { return CircularSectorMeshBuilder{*this}; }
 
 CircularSegmentMeshBuilder CircularSegment::mesh() const noexcept { return CircularSegmentMeshBuilder{*this}; }
+
+Segment2d Segment2d::from_direction_and_length(glm::vec2 direction, float length) {
+    const float direction_length = glm::length(direction);
+    if (direction_length == 0.0f) throw std::invalid_argument("segment direction must be nonzero");
+    const auto endpoint = direction / direction_length * (length * 0.5f);
+    return Segment2d{-endpoint, endpoint};
+}
+
+float Segment2d::length() const noexcept { return glm::length(vertices[1] - vertices[0]); }
+
+Segment2dMeshBuilder Segment2d::mesh() const noexcept { return Segment2dMeshBuilder{*this}; }
+
+Polyline2d Polyline2d::with_subdivisions(glm::vec2 start, glm::vec2 end, std::size_t subdivisions) {
+    const auto vertex_count = subdivisions + 2;
+    std::vector<glm::vec2> vertices;
+    vertices.reserve(vertex_count);
+    const auto step = (end - start) / static_cast<float>(subdivisions + 1);
+    for (std::size_t index = 0; index < vertex_count; ++index) {
+        vertices.push_back(start + step * static_cast<float>(index));
+    }
+    return Polyline2d{std::move(vertices)};
+}
+
+Polyline2dMeshBuilder Polyline2d::mesh() const { return Polyline2dMeshBuilder{*this}; }
+
+std::string_view to_string(ConvexPolygonError) noexcept { return "The created polygon is not convex"; }
+
+std::expected<ConvexPolygon, ConvexPolygonError> ConvexPolygon::create(std::vector<glm::vec2> vertices) {
+    if (vertices.size() < 3) return std::unexpected(ConvexPolygonError::Concave);
+    const auto winding = [&vertices](std::size_t first, std::size_t second, std::size_t third) {
+        const auto a    = vertices[first];
+        const auto b    = vertices[second];
+        const auto c    = vertices[third];
+        const auto area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+        if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
+        if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
+        return WindingOrder::Invalid;
+    };
+
+    const auto reference = winding(vertices.size() - 1, 0, 1);
+    for (std::size_t index = 1; index < vertices.size(); ++index) {
+        if (winding(index - 1, index, (index + 1) % vertices.size()) != reference) {
+            return std::unexpected(ConvexPolygonError::Concave);
+        }
+    }
+    return ConvexPolygon{std::move(vertices)};
+}
+
+ConvexPolygon ConvexPolygon::new_unchecked(std::vector<glm::vec2> vertices) {
+    return ConvexPolygon{std::move(vertices)};
+}
+
+ConvexPolygonMeshBuilder ConvexPolygon::mesh() const {
+    return ConvexPolygonMeshBuilder{std::vector<glm::vec2>(vertices_.begin(), vertices_.end())};
+}
 
 EllipseMeshBuilder Ellipse::mesh() const noexcept { return EllipseMeshBuilder{half_size.x, half_size.y, 32}; }
 
@@ -125,6 +181,25 @@ Mesh CircularSegmentMeshBuilder::build() const {
         .with_inserted_indices(Indices{std::move(indices)});
 }
 
+Mesh ConvexPolygonMeshBuilder::build() const {
+    const auto vertex_count = vertices.size();
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(vertex_count);
+    if (vertex_count >= 2) indices.reserve((vertex_count - 2) * 3);
+
+    for (const auto vertex : vertices) {
+        positions.push_back({vertex.x, vertex.y, 0.0f});
+    }
+    for (std::uint32_t index = 2; index < static_cast<std::uint32_t>(vertex_count); ++index) {
+        indices.insert(indices.end(), {0, index - 1, index});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
 Mesh EllipseMeshBuilder::build() const {
     const auto vertex_count = static_cast<std::size_t>(resolution);
     std::vector<VertexAttributeValues::Float32x3Value> positions;
@@ -153,6 +228,33 @@ Mesh EllipseMeshBuilder::build() const {
         .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
         .with_inserted_indices(Indices{std::move(indices)});
+}
+
+Mesh Segment2dMeshBuilder::build() const {
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    positions.reserve(2);
+    for (const auto vertex : segment.vertices) positions.push_back({vertex.x, vertex.y, 0.0f});
+    std::vector<std::uint32_t> indices{0, 1};
+
+    return Mesh(wgpu::PrimitiveTopology::eLineList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
+Mesh Polyline2dMeshBuilder::build() const {
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    positions.reserve(polyline_.vertices.size());
+    for (const auto vertex : polyline_.vertices) positions.push_back({vertex.x, vertex.y, 0.0f});
+
+    std::vector<std::uint32_t> indices;
+    if (polyline_.vertices.size() >= 2) indices.reserve((polyline_.vertices.size() - 1) * 2);
+    for (std::uint32_t index = 0; index + 1 < static_cast<std::uint32_t>(polyline_.vertices.size()); ++index) {
+        indices.insert(indices.end(), {index, index + 1});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eLineList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
 }
 
 RegularPolygonMeshBuilder::RegularPolygonMeshBuilder(float circumradius, std::uint32_t sides)

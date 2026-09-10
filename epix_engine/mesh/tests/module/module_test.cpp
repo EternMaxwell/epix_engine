@@ -707,6 +707,126 @@ TEST(MeshPrimitives, CircularSegmentMatchesBevyChordFanAndRotatedMaskUvs) {
     EXPECT_EQ(*segment.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
 }
 
+TEST(MeshPrimitives, SegmentAndPolylineMatchBevyLineListData) {
+    const auto segment = mesh::Segment2d::from_direction_and_length({3.0f, 4.0f}, 10.0f);
+    EXPECT_EQ(segment.vertices, (std::array{glm::vec2(-3.0f, -4.0f), glm::vec2(3.0f, 4.0f)}));
+    EXPECT_FLOAT_EQ(segment.length(), 10.0f);
+
+    const mesh::Mesh segment_mesh = segment;
+    EXPECT_EQ(segment_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    const auto* segment_positions =
+        segment_mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(segment_positions, nullptr);
+    EXPECT_EQ(*segment_positions,
+              (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{-3.0f, -4.0f, 0.0f}, {3.0f, 4.0f, 0.0f}}));
+    ASSERT_NE(segment_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*segment_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
+
+    const auto polyline = mesh::Polyline2d::with_subdivisions({0.0f, 0.0f}, {3.0f, 0.0f}, 2);
+    EXPECT_EQ(polyline.vertices, (std::vector{glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(2.0f, 0.0f),
+                                              glm::vec2(3.0f, 0.0f)}));
+    const auto polyline_mesh = polyline.mesh().build();
+    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 1, 2, 2, 3}));
+}
+
+TEST(MeshPrimitives, ConvexPolygonMatchesBevyValidationAndFanData) {
+    auto polygon = mesh::ConvexPolygon::create({
+        {-2.0f, -1.0f},
+        {2.0f, -1.0f},
+        {2.0f, 1.0f},
+        {-2.0f, 1.0f},
+    });
+    ASSERT_TRUE(polygon.has_value());
+    EXPECT_EQ(polygon->vertices().size(), 4u);
+
+    const auto concave = mesh::ConvexPolygon::create({
+        {-2.0f, -1.0f},
+        {0.0f, 0.0f},
+        {2.0f, -1.0f},
+        {0.0f, 2.0f},
+    });
+    ASSERT_FALSE(concave.has_value());
+    EXPECT_EQ(concave.error(), mesh::ConvexPolygonError::Concave);
+    EXPECT_EQ(mesh::to_string(concave.error()), "The created polygon is not convex");
+
+    const auto collinear = mesh::ConvexPolygon::create({
+        {-1.0f, 0.0f},
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+    });
+    ASSERT_TRUE(collinear.has_value());
+
+    const auto value = polygon->mesh().build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {-2.0f, -1.0f, 0.0f}, {2.0f, -1.0f, 0.0f}, {2.0f, 1.0f, 0.0f}, {-2.0f, 1.0f, 0.0f}}));
+    ASSERT_TRUE(value.indices().has_value());
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
+
+    const auto pentagon      = mesh::ConvexPolygon::new_unchecked({
+        {0.0f, 110.0f},
+        {-105.0f, 35.0f},
+        {-65.0f, -90.0f},
+        {65.0f, -90.0f},
+        {105.0f, 35.0f},
+    });
+    const auto pentagon_mesh = pentagon.mesh().build();
+    ASSERT_NE(pentagon_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*pentagon_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3, 0, 3, 4}));
+    EXPECT_EQ(pentagon_mesh.count_vertices(), 5);
+}
+
+TEST(MeshPrimitives, ConvexPolygonRejectsDegenerateVertexCountsWithoutPanicking) {
+    EXPECT_FALSE(mesh::ConvexPolygon::create({}).has_value());
+    EXPECT_FALSE(mesh::ConvexPolygon::create({{0.0f, 0.0f}}).has_value());
+    EXPECT_FALSE(mesh::ConvexPolygon::create({{0.0f, 0.0f}, {1.0f, 1.0f}}).has_value());
+    EXPECT_EQ(mesh::ConvexPolygon::create({{0.0f, 0.0f}, {1.0f, 1.0f}}).error(), mesh::ConvexPolygonError::Concave);
+
+    const auto single = mesh::ConvexPolygon::new_unchecked({{1.0f, 2.0f}}).mesh().build();
+    EXPECT_EQ(single.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_FALSE(single.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    EXPECT_FALSE(single.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    const auto* positions =
+        single.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{1.0f, 2.0f, 0.0f}}));
+    ASSERT_TRUE(single.indices().has_value());
+    EXPECT_TRUE(single.indices()->get().as_u32()->empty());
+}
+
+TEST(MeshPrimitives, LineListPrimitivesEmitOnlyBevyPositionAttribute) {
+    static_assert(mesh::Meshable<mesh::Segment2d>);
+    static_assert(mesh::Meshable<mesh::Polyline2d>);
+
+    const mesh::Mesh segment = mesh::Segment2d{};
+    EXPECT_TRUE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_FALSE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    EXPECT_FALSE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    EXPECT_EQ(segment.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+
+    const auto polyline_mesh = mesh::Polyline2d{}.mesh().build();
+    EXPECT_TRUE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
+
+    const auto subdivided = mesh::Polyline2d::with_subdivisions({0.0f, 0.0f}, {4.0f, 0.0f}, 0);
+    EXPECT_EQ(subdivided.vertices, (std::vector{glm::vec2(0.0f, 0.0f), glm::vec2(4.0f, 0.0f)}));
+    EXPECT_EQ(*subdivided.mesh().build().indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto mesh = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
 
