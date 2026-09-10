@@ -35,6 +35,20 @@
 #endif
 
 namespace epix::mesh {
+struct Mesh;
+
+/** @brief C++ counterpart of Bevy's `MeshBuilder` trait. */
+template <typename T>
+concept MeshBuilder = requires(const T& builder) {
+    { builder.build() } -> std::same_as<Mesh>;
+};
+
+/** @brief C++ counterpart of Bevy's `Meshable` trait. */
+template <typename T>
+concept Meshable = requires(const T& shape) {
+    { shape.mesh() } -> MeshBuilder;
+};
+
 constexpr std::size_t vertex_format_size(wgpu::VertexFormat format) noexcept {
     switch (format) {
         case wgpu::VertexFormat::eUint8:
@@ -533,6 +547,10 @@ EPIX_EXPORT struct Mesh {
     Mesh(Mesh&&) = default;
     Mesh& operator=(const Mesh&);
     Mesh& operator=(Mesh&&) = default;
+    template <MeshBuilder Builder>
+    Mesh(const Builder& builder) : Mesh(builder.build()) {}
+    template <Meshable Shape>
+    Mesh(const Shape& shape) : Mesh(shape.mesh().build()) {}
 
     /** @brief Worlds in which this mesh's asset data is retained. */
     assets::RenderAssetUsages asset_usage;

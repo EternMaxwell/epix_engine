@@ -555,6 +555,93 @@ TEST(MeshModule, CircleBuildsTriangleList) {
     EXPECT_EQ(value.indices()->get().len(), 48);
 }
 
+TEST(MeshPrimitives, FoundationalTraitsDefaultsAndConversionsMatchBevy) {
+    static_assert(mesh::MeshBuilder<mesh::CircleMeshBuilder>);
+    static_assert(mesh::MeshBuilder<mesh::EllipseMeshBuilder>);
+    static_assert(mesh::Meshable<mesh::Circle>);
+    static_assert(mesh::Meshable<mesh::Ellipse>);
+    static_assert(mesh::Meshable<mesh::RegularPolygon>);
+    static_assert(mesh::Meshable<mesh::Rectangle>);
+
+    EXPECT_FLOAT_EQ(mesh::Circle{}.radius, 0.5f);
+    EXPECT_EQ(mesh::Ellipse{}.half_size, glm::vec2(1.0f, 0.5f));
+    EXPECT_FLOAT_EQ(mesh::RegularPolygon{}.circumradius(), 0.5f);
+    EXPECT_EQ(mesh::RegularPolygon{}.sides, 6u);
+    EXPECT_EQ(mesh::Rectangle{}.half_size, glm::vec2(0.5f));
+    EXPECT_THROW((mesh::RegularPolygon{-1.0f, 6}), std::invalid_argument);
+    EXPECT_THROW((mesh::RegularPolygon{1.0f, 2}), std::invalid_argument);
+
+    const mesh::Mesh from_builder = mesh::RectangleMeshBuilder{2.0f, 4.0f};
+    const mesh::Mesh from_shape   = mesh::Circle{2.0f};
+    EXPECT_EQ(from_builder.count_vertices(), 4u);
+    EXPECT_EQ(from_shape.count_vertices(), 32u);
+}
+
+TEST(MeshPrimitives, EllipseAndCircleBuildersMatchBevyVertexContract) {
+    const auto ellipse = mesh::EllipseMeshBuilder{2.0f, 1.0f, 4}.build();
+    EXPECT_EQ(ellipse.count_vertices(), 4u);
+    EXPECT_TRUE(ellipse.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    EXPECT_TRUE(ellipse.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+
+    const auto* positions =
+        ellipse.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        ellipse.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        ellipse.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    ASSERT_EQ(positions->size(), 4u);
+    EXPECT_NEAR((*positions)[0][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[0][1], 1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[1][0], -2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[2][1], -1.0f, 1e-6f);
+    EXPECT_EQ(*normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>(4, {0.0f, 0.0f, 1.0f})));
+    EXPECT_NEAR((*uvs)[0][0], 0.5f, 1e-6f);
+    EXPECT_NEAR((*uvs)[0][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*uvs)[1][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*uvs)[2][1], 1.0f, 1e-6f);
+
+    ASSERT_TRUE(ellipse.indices().has_value());
+    const auto* indices = ellipse.indices()->get().as_u32();
+    ASSERT_NE(indices, nullptr);
+    EXPECT_EQ(*indices, (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
+
+    const auto circle = mesh::Circle{3.0f}.mesh().with_resolution(8).build();
+    EXPECT_EQ(circle.count_vertices(), 8u);
+    EXPECT_EQ(circle.indices()->get().len(), 18u);
+}
+
+TEST(MeshPrimitives, RegularPolygonAndRectangleBuildersMatchBevyTopologyAndUvs) {
+    const auto polygon = mesh::RegularPolygon{2.0f, 6}.mesh().build();
+    EXPECT_EQ(polygon.count_vertices(), 6u);
+    ASSERT_TRUE(polygon.indices().has_value());
+    EXPECT_EQ(polygon.indices()->get().len(), 12u);
+
+    const auto rectangle = mesh::RectangleMeshBuilder{4.0f, 2.0f}.build();
+    const auto* positions =
+        rectangle.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        rectangle.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {2.0f, 1.0f, 0.0f},
+                              {-2.0f, 1.0f, 0.0f},
+                              {-2.0f, -1.0f, 0.0f},
+                              {2.0f, -1.0f, 0.0f},
+                          }));
+    EXPECT_EQ(*uvs, (std::vector<mesh::VertexAttributeValues::Float32x2Value>{
+                        {1.0f, 0.0f}, {0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}}));
+    ASSERT_TRUE(rectangle.indices().has_value());
+    ASSERT_NE(rectangle.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*rectangle.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
+
+    EXPECT_EQ(mesh::Rectangle::from_size({8.0f, 6.0f}).half_size, glm::vec2(4.0f, 3.0f));
+    EXPECT_EQ(mesh::Rectangle::from_corners({-2.0f, -4.0f}, {6.0f, 2.0f}).half_size, glm::vec2(4.0f, 3.0f));
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto value = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
     EXPECT_EQ(value.count_vertices(), 4);

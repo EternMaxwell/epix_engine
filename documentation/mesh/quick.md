@@ -54,7 +54,27 @@ indexed, duplicated, and inverted results side by side.
 `count_vertices()` returns the shortest attribute length and warns when attribute counts disagree.
 `MeshError` also reports missing slots, name mismatches, and requested type mismatches.
 
-Factories `make_circle()`, `make_box2d()`, and `make_box2d_uv()` cover common 2D geometry.
+## Primitive builders
+
+`MeshBuilder` and `Meshable` are C++ concepts corresponding to Bevy's mesh-construction traits. A
+builder supplies `build()`, a shape supplies `mesh()`, and either converts directly to `Mesh`.
+The foundational 2D set includes `Circle`, `Ellipse`, `RegularPolygon`, and `Rectangle` with their
+matching builders:
+
+```cpp
+Mesh circle = Circle{80.0f};
+Mesh ellipse = Ellipse{105.0f, 70.0f}.mesh().with_resolution(48);
+Mesh hexagon = RegularPolygon{85.0f, 6};
+Mesh rectangle = Rectangle{170.0f, 120.0f};
+```
+
+These builders match Bevy's defaults and generated position, +Z normal, UV, and U32 index data.
+Shapes live in `epix::mesh` because Epix has no separate math-primitives module. Circle and ellipse
+builders retain Bevy's public `resolution` field; their consuming fluent method is named
+`with_resolution()` because C++ cannot declare a field and method with the same name.
+
+The older convenience factories `make_circle()`, `make_box2d()`, and `make_box2d_uv()` remain available
+for existing Epix code.
 
 `MeshPlugin` registers `Mesh` as an asset. `MeshRenderPlugin` adds render-asset
 extraction/processing.
