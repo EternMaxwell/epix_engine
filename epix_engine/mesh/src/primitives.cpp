@@ -214,6 +214,38 @@ RegularPolygon InsetImpl<RegularPolygon>::inset(const RegularPolygon& shape, flo
 }
 
 namespace {
+/** @brief Unskewed UV coordinates for a triangle (Bevy `triangle3d::uv_coords`). */
+std::array<glm::vec2, 3> triangle_uv_coords(const std::array<glm::vec3, 3>& vertices) {
+    const auto& a = vertices[0];
+    const auto& b = vertices[1];
+    const auto& c = vertices[2];
+
+    const float main_length = glm::distance(a, b);
+    const auto direction    = b - a;
+    if (glm::dot(direction, direction) == 0.0f) {
+        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
+    }
+    const auto x = glm::normalize(direction);
+    const auto y = c - a;
+
+    // `x` is one UV axis; the second direction is `y` orthogonalized against it, so the
+    // triangle is mapped without skew into the rectangle that contains it.
+    const auto y_proj  = x * glm::dot(y, x);
+    const float offset = glm::dot(y_proj, x) / main_length;
+
+    if (offset < 0.0f) {
+        // Obtuse triangle leaning left: the x direction extends left, shifting `a` from 0.
+        const float total_length = 1.0f - offset;
+        return {glm::vec2(std::abs(offset) / total_length, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
+    }
+    if (offset > 1.0f) {
+        // Obtuse triangle leaning right: the x direction extends right, shifting `b` from 1.
+        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f / offset, 0.0f), glm::vec2(1.0f, 1.0f)};
+    }
+    // Acute triangle: no extension needed, `a` stays at 0 and `b` stays at 1.
+    return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(offset, 1.0f)};
+}
+
 /** @brief Move one triangle vertex inward by `distance` along its angle bisector. */
 glm::vec2 find_inset_point(glm::vec2 a, glm::vec2 b, glm::vec2 c, float distance) {
     const auto unit_vector_ab  = glm::normalize(b - a);
@@ -327,6 +359,347 @@ Mesh RingMeshBuilder<P>::build() const {
     auto result = try_build();
     if (!result) throw std::runtime_error("ring inner and outer meshes must match in vertex count and attributes");
     return std::move(*result);
+}
+// ─── 3D shapes and their mesh builders ─────────────────────────────────────────────────────────
+
+Cuboid Cuboid::from_corners(glm::vec3 point1, glm::vec3 point2) noexcept {
+    return Cuboid{glm::abs(point2 - point1) * 0.5f};
+}
+
+CuboidMeshBuilder Cuboid::mesh() const noexcept { return CuboidMeshBuilder{half_size}; }
+
+Plane3d Plane3d::from_points(glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+    const auto normal = glm::cross(b - a, c - a);
+    if (glm::dot(normal, normal) == 0.0f) {
+        throw std::invalid_argument(
+            "finite plane must be defined by three finite points that don't lie on the same line");
+    }
+    return Plane3d{glm::normalize(normal), glm::vec2(0.5f)};
+}
+
+PlaneMeshBuilder Plane3d::mesh() const noexcept { return PlaneMeshBuilder(Plane3d{*this}); }
+
+Segment3d Segment3d::from_direction_and_length(glm::vec3 direction, float length) {
+    const float direction_length = glm::length(direction);
+    if (direction_length == 0.0f) throw std::invalid_argument("segment direction must be nonzero");
+    const auto endpoint = direction / direction_length * (length * 0.5f);
+    return Segment3d{-endpoint, endpoint};
+}
+
+float Segment3d::length() const noexcept { return glm::length(vertices[1] - vertices[0]); }
+
+Segment3dMeshBuilder Segment3d::mesh() const noexcept { return Segment3dMeshBuilder{*this}; }
+
+Polyline3d Polyline3d::with_subdivisions(glm::vec3 start, glm::vec3 end, std::size_t subdivisions) {
+    const auto vertex_count = subdivisions + 2;
+    std::vector<glm::vec3> vertices;
+    vertices.reserve(vertex_count);
+    const auto step = (end - start) / static_cast<float>(subdivisions + 1);
+    for (std::size_t index = 0; index < vertex_count; ++index) {
+        vertices.push_back(start + step * static_cast<float>(index));
+    }
+    return Polyline3d{std::move(vertices)};
+}
+
+Polyline3dMeshBuilder Polyline3d::mesh() const { return Polyline3dMeshBuilder{*this}; }
+
+std::optional<glm::vec3> Triangle3d::normal() const noexcept {
+    const auto ab    = vertices[1] - vertices[0];
+    const auto ac    = vertices[2] - vertices[0];
+    const auto cross = glm::cross(ab, ac);
+    if (glm::dot(cross, cross) == 0.0f) return std::nullopt;
+    return glm::normalize(cross);
+}
+
+bool Triangle3d::is_degenerate() const noexcept {
+    const auto ab = vertices[1] - vertices[0];
+    const auto ac = vertices[2] - vertices[0];
+    return glm::length(glm::cross(ab, ac)) < 10e-7f;
+}
+
+bool Triangle3d::is_acute() const noexcept {
+    const std::array<float, 3> side_lengths{
+        glm::dot(vertices[1] - vertices[0], vertices[1] - vertices[0]),
+        glm::dot(vertices[2] - vertices[1], vertices[2] - vertices[1]),
+        glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]),
+    };
+    const float sum = side_lengths[0] + side_lengths[1] + side_lengths[2];
+    const float max = std::max({side_lengths[0], side_lengths[1], side_lengths[2]});
+    return sum - max > max;
+}
+
+bool Triangle3d::is_obtuse() const noexcept {
+    const std::array<float, 3> side_lengths{
+        glm::dot(vertices[1] - vertices[0], vertices[1] - vertices[0]),
+        glm::dot(vertices[2] - vertices[1], vertices[2] - vertices[1]),
+        glm::dot(vertices[0] - vertices[2], vertices[0] - vertices[2]),
+    };
+    const float sum = side_lengths[0] + side_lengths[1] + side_lengths[2];
+    const float max = std::max({side_lengths[0], side_lengths[1], side_lengths[2]});
+    return sum - max < max;
+}
+
+Triangle3dMeshBuilder Triangle3d::mesh() const noexcept { return Triangle3dMeshBuilder{*this}; }
+
+float Tetrahedron::signed_volume() const noexcept {
+    const auto ab = vertices[1] - vertices[0];
+    const auto ac = vertices[2] - vertices[0];
+    const auto ad = vertices[3] - vertices[0];
+    return glm::dot(ab, glm::cross(ac, ad)) / 6.0f;
+}
+
+std::array<Triangle3d, 4> Tetrahedron::faces() const noexcept {
+    const auto& a = vertices[0];
+    const auto& b = vertices[1];
+    const auto& c = vertices[2];
+    const auto& d = vertices[3];
+    return {
+        Triangle3d{b, c, d},
+        Triangle3d{a, c, d}.reversed(),
+        Triangle3d{a, b, d},
+        Triangle3d{a, b, c}.reversed(),
+    };
+}
+
+TetrahedronMeshBuilder Tetrahedron::mesh() const noexcept { return TetrahedronMeshBuilder{*this}; }
+
+Mesh CuboidMeshBuilder::build() const {
+    const glm::vec3 minimum = -half_size;
+    const glm::vec3 maximum = half_size;
+
+    // Bevy's vertex table: position, face normal, and face UV, six faces of four vertices each.
+    struct FaceVertex {
+        glm::vec3 position;
+        glm::vec3 normal;
+        glm::vec2 uv;
+    };
+    const std::array<FaceVertex, 24> vertices{{
+        // Front
+        {{minimum.x, minimum.y, maximum.z}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+        {{maximum.x, minimum.y, maximum.z}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+        {{maximum.x, maximum.y, maximum.z}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+        {{minimum.x, maximum.y, maximum.z}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+        // Back
+        {{minimum.x, maximum.y, minimum.z}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+        {{maximum.x, maximum.y, minimum.z}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+        {{maximum.x, minimum.y, minimum.z}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+        {{minimum.x, minimum.y, minimum.z}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+        // Right
+        {{maximum.x, minimum.y, minimum.z}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{maximum.x, maximum.y, minimum.z}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{maximum.x, maximum.y, maximum.z}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+        {{maximum.x, minimum.y, maximum.z}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+        // Left
+        {{minimum.x, minimum.y, maximum.z}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{minimum.x, maximum.y, maximum.z}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+        {{minimum.x, maximum.y, minimum.z}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+        {{minimum.x, minimum.y, minimum.z}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+        // Top
+        {{maximum.x, maximum.y, minimum.z}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{minimum.x, maximum.y, minimum.z}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{minimum.x, maximum.y, maximum.z}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+        {{maximum.x, maximum.y, maximum.z}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+        // Bottom
+        {{maximum.x, minimum.y, maximum.z}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}},
+        {{minimum.x, minimum.y, maximum.z}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+        {{minimum.x, minimum.y, minimum.z}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+        {{maximum.x, minimum.y, minimum.z}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+    }};
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    positions.reserve(vertices.size());
+    normals.reserve(vertices.size());
+    uvs.reserve(vertices.size());
+    for (const auto& vertex : vertices) {
+        positions.push_back({vertex.position.x, vertex.position.y, vertex.position.z});
+        normals.push_back({vertex.normal.x, vertex.normal.y, vertex.normal.z});
+        uvs.push_back({vertex.uv.x, vertex.uv.y});
+    }
+
+    std::vector<std::uint32_t> indices{
+        0,  1,  2,  2,  3,  0,   // front
+        4,  5,  6,  6,  7,  4,   // back
+        8,  9,  10, 10, 11, 8,   // right
+        12, 13, 14, 14, 15, 12,  // left
+        16, 17, 18, 18, 19, 16,  // top
+        20, 21, 22, 22, 23, 20,  // bottom
+    };
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
+PlaneMeshBuilder::PlaneMeshBuilder(glm::vec3 normal, glm::vec2 size)
+    : plane(Plane3d{normal, size * 0.5f}), subdivisions(0) {}
+
+PlaneMeshBuilder PlaneMeshBuilder::from_size(glm::vec2 size) {
+    PlaneMeshBuilder builder{};
+    builder.plane.half_size = size * 0.5f;
+    return builder;
+}
+
+PlaneMeshBuilder PlaneMeshBuilder::from_length(float length) {
+    PlaneMeshBuilder builder{};
+    builder.plane.half_size = glm::vec2(length) * 0.5f;
+    return builder;
+}
+
+Mesh PlaneMeshBuilder::build() const {
+    const std::uint32_t z_vertex_count = subdivisions + 2;
+    const std::uint32_t x_vertex_count = subdivisions + 2;
+    const std::size_t num_vertices     = static_cast<std::size_t>(z_vertex_count) * x_vertex_count;
+    const std::size_t num_indices      = static_cast<std::size_t>(z_vertex_count - 1) * (x_vertex_count - 1) * 6;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(num_vertices);
+    normals.reserve(num_vertices);
+    uvs.reserve(num_vertices);
+    indices.reserve(num_indices);
+
+    // The default normal is +Y; every other normal rotates the XZ plane onto it with Bevy's
+    // `Quat::from_rotation_arc` (shortest arc). Epix builds the rotation directly so the mesh
+    // module keeps its plain `glm/glm.hpp` math dependency.
+    const glm::vec3 from    = {0.0f, 1.0f, 0.0f};
+    const glm::vec3 to      = glm::normalize(plane.normal);
+    const float cos_angle   = glm::dot(from, to);
+    const glm::vec3 axis_in = glm::cross(from, to);
+    const float axis_length = glm::length(axis_in);
+    const glm::vec3 axis    = axis_length > 1e-6f ? axis_in / axis_length : axis_in;
+    const float angle       = std::atan2(axis_length, cos_angle);
+    const float sin_angle   = std::sin(angle);
+    const float cos_rot     = std::cos(angle);
+    const auto rotate       = [&](glm::vec3 value) {
+        if (axis_length <= 1e-6f) {
+            // Parallel or anti-parallel: a 180 degree rotation flips the other two axes.
+            return cos_angle > 0.0f ? value : glm::vec3(value.x, -value.y, -value.z);
+        }
+        // Rodrigues' rotation formula.
+        return value * cos_rot + glm::cross(axis, value) * sin_angle +
+               axis * (glm::dot(axis, value) * (1.0f - cos_rot));
+    };
+    const glm::vec2 size = plane.half_size * 2.0f;
+
+    for (std::uint32_t z = 0; z < z_vertex_count; ++z) {
+        for (std::uint32_t x = 0; x < x_vertex_count; ++x) {
+            const float tx      = static_cast<float>(x) / static_cast<float>(x_vertex_count - 1);
+            const float tz      = static_cast<float>(z) / static_cast<float>(z_vertex_count - 1);
+            const auto position = rotate(glm::vec3((-0.5f + tx) * size.x, 0.0f, (-0.5f + tz) * size.y));
+            positions.push_back({position.x, position.y, position.z});
+            normals.push_back({plane.normal.x, plane.normal.y, plane.normal.z});
+            uvs.push_back({tx, tz});
+        }
+    }
+
+    for (std::uint32_t z = 0; z + 1 < z_vertex_count; ++z) {
+        for (std::uint32_t x = 0; x + 1 < x_vertex_count; ++x) {
+            const std::uint32_t quad = z * x_vertex_count + x;
+            indices.push_back(quad + x_vertex_count + 1);
+            indices.push_back(quad + 1);
+            indices.push_back(quad + x_vertex_count);
+            indices.push_back(quad);
+            indices.push_back(quad + x_vertex_count);
+            indices.push_back(quad + 1);
+        }
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh Segment3dMeshBuilder::build() const {
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    positions.reserve(2);
+    for (const auto& vertex : segment.vertices) positions.push_back({vertex.x, vertex.y, vertex.z});
+    std::vector<std::uint32_t> indices{0, 1};
+
+    return Mesh(wgpu::PrimitiveTopology::eLineList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
+}
+
+Mesh Polyline3dMeshBuilder::build() const {
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    positions.reserve(polyline_.vertices.size());
+    for (const auto& vertex : polyline_.vertices) positions.push_back({vertex.x, vertex.y, vertex.z});
+
+    std::vector<std::uint32_t> indices;
+    if (polyline_.vertices.size() >= 2) indices.reserve((polyline_.vertices.size() - 1) * 2);
+    for (std::uint32_t index = 0; index + 1 < static_cast<std::uint32_t>(polyline_.vertices.size()); ++index) {
+        indices.insert(indices.end(), {index, index + 1});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eLineList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
+}
+
+Mesh Triangle3dMeshBuilder::build() const {
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    positions.reserve(3);
+    for (const auto& vertex : triangle.vertices) positions.push_back({vertex.x, vertex.y, vertex.z});
+
+    // A degenerate triangle takes Bevy's zero normal instead of an undefined direction.
+    const auto normal       = triangle.normal().value_or(glm::vec3(0.0f));
+    const auto triangle_uvs = triangle_uv_coords(triangle.vertices);
+    std::vector<VertexAttributeValues::Float32x3Value> normals(3, {normal.x, normal.y, normal.z});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs{
+        {triangle_uvs[0].x, triangle_uvs[0].y},
+        {triangle_uvs[1].x, triangle_uvs[1].y},
+        {triangle_uvs[2].x, triangle_uvs[2].y},
+    };
+    std::vector<std::uint32_t> indices{0, 1, 2};
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh TetrahedronMeshBuilder::build() const {
+    auto faces = tetrahedron.faces();
+    // A negative signed volume means the face normals point inward, so reverse every face.
+    if (tetrahedron.signed_volume() < 0.0f) {
+        for (auto& face : faces) face.reverse();
+    }
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    positions.reserve(12);
+    normals.reserve(12);
+    uvs.reserve(12);
+
+    // Each face is meshed as its own triangle and the data is appended in order.
+    for (const auto& face : faces) {
+        const auto face_normal = face.normal().value_or(glm::vec3(0.0f));
+        const auto face_uvs    = triangle_uv_coords(face.vertices);
+        for (std::size_t index = 0; index < 3; ++index) {
+            positions.push_back({face.vertices[index].x, face.vertices[index].y, face.vertices[index].z});
+            normals.push_back({face_normal.x, face_normal.y, face_normal.z});
+            uvs.push_back({face_uvs[index].x, face_uvs[index].y});
+        }
+    }
+
+    // Four faces sharing no vertices.
+    std::vector<std::uint32_t> indices{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
 }
 EllipseMeshBuilder Ellipse::mesh() const noexcept { return EllipseMeshBuilder{half_size.x, half_size.y, 32}; }
 
@@ -442,40 +815,6 @@ Mesh ConvexPolygonMeshBuilder::build() const {
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
         .with_inserted_indices(Indices{std::move(indices)});
 }
-
-namespace {
-/** @brief Unskewed UV coordinates for a triangle (Bevy `triangle3d::uv_coords`). */
-std::array<glm::vec2, 3> triangle_uv_coords(const std::array<glm::vec3, 3>& vertices) {
-    const auto& a = vertices[0];
-    const auto& b = vertices[1];
-    const auto& c = vertices[2];
-
-    const float main_length = glm::distance(a, b);
-    const auto direction    = b - a;
-    if (glm::dot(direction, direction) == 0.0f) {
-        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
-    }
-    const auto x = glm::normalize(direction);
-    const auto y = c - a;
-
-    // `x` is one UV axis; the second direction is `y` orthogonalized against it, so the
-    // triangle is mapped without skew into the rectangle that contains it.
-    const auto y_proj  = x * glm::dot(y, x);
-    const float offset = glm::dot(y_proj, x) / main_length;
-
-    if (offset < 0.0f) {
-        // Obtuse triangle leaning left: the x direction extends left, shifting `a` from 0.
-        const float total_length = 1.0f - offset;
-        return {glm::vec2(std::abs(offset) / total_length, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(0.0f, 1.0f)};
-    }
-    if (offset > 1.0f) {
-        // Obtuse triangle leaning right: the x direction extends right, shifting `b` from 1.
-        return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f / offset, 0.0f), glm::vec2(1.0f, 1.0f)};
-    }
-    // Acute triangle: no extension needed, `a` stays at 0 and `b` stays at 1.
-    return {glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(offset, 1.0f)};
-}
-}  // namespace
 
 Mesh AnnulusMeshBuilder::build() const {
     const float inner_radius = annulus.inner_circle.radius;

@@ -1155,6 +1155,250 @@ TEST(MeshPrimitives, RingBuilderReportsMismatchedShapesInsteadOfPanicking) {
     EXPECT_THROW(builder.build(), std::runtime_error);
 }
 
+TEST(MeshPrimitives, CuboidMatchesBevyFaceVertexTableAndIndices) {
+    static_assert(mesh::Meshable<mesh::Cuboid>);
+    static_assert(mesh::MeshBuilder<mesh::CuboidMeshBuilder>);
+
+    const mesh::Cuboid default_cuboid{};
+    EXPECT_EQ(default_cuboid.half_size, glm::vec3(0.5f));
+    EXPECT_EQ((mesh::Cuboid{2.0f, 4.0f, 6.0f}.half_size), glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_EQ((mesh::Cuboid::from_size({2.0f, 4.0f, 6.0f}).half_size), glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_EQ(mesh::Cuboid::from_length(3.0f).half_size, glm::vec3(1.5f));
+    EXPECT_EQ((mesh::Cuboid::from_corners({-1.0f, -2.0f, -3.0f}, {1.0f, 2.0f, 3.0f}).half_size),
+              glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_EQ(default_cuboid.size(), glm::vec3(1.0f));
+
+    const auto value = mesh::Cuboid{2.0f, 2.0f, 2.0f}.mesh().build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // Six faces of four unshared vertices each.
+    ASSERT_EQ(positions->size(), 24u);
+    EXPECT_EQ(normals->size(), 24u);
+    EXPECT_EQ(uvs->size(), 24u);
+
+    // Front face: min/max corners with the +Z normal and Bevy's corner UV order.
+    EXPECT_EQ((*positions)[0], (mesh::VertexAttributeValues::Float32x3Value{-1.0f, -1.0f, 1.0f}));
+    EXPECT_EQ((*positions)[2], (mesh::VertexAttributeValues::Float32x3Value{1.0f, 1.0f, 1.0f}));
+    EXPECT_EQ((*normals)[0], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.0f, 1.0f}));
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[2], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 1.0f}));
+    // Back face starts at index 4 with the -Z normal.
+    EXPECT_EQ((*normals)[4], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.0f, -1.0f}));
+    // Right, left, top, and bottom face normals land at their Bevy-ordered offsets.
+    EXPECT_EQ((*normals)[8], (mesh::VertexAttributeValues::Float32x3Value{1.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*normals)[12], (mesh::VertexAttributeValues::Float32x3Value{-1.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*normals)[16], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f}));
+    EXPECT_EQ((*normals)[20], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0,  1,  2,  2,  3,  0,  4,  5,  6,  6,  7,  4,  8,  9,  10, 10, 11, 8,
+                                          12, 13, 14, 14, 15, 12, 16, 17, 18, 18, 19, 16, 20, 21, 22, 22, 23, 20}));
+}
+
+TEST(MeshPrimitives, PlaneMatchesBevySubdivisionGridAndRotation) {
+    static_assert(mesh::Meshable<mesh::Plane3d>);
+    static_assert(mesh::MeshBuilder<mesh::PlaneMeshBuilder>);
+
+    const mesh::Plane3d default_plane{};
+    EXPECT_EQ(default_plane.normal, glm::vec3(0.0f, 1.0f, 0.0f));
+    EXPECT_EQ(default_plane.half_size, glm::vec2(0.5f));
+    EXPECT_EQ((mesh::PlaneMeshBuilder::from_size({4.0f, 2.0f}).plane.half_size), glm::vec2(2.0f, 1.0f));
+    EXPECT_EQ(mesh::PlaneMeshBuilder::from_length(3.0f).plane.half_size, glm::vec2(1.5f));
+    EXPECT_EQ((mesh::PlaneMeshBuilder(glm::vec3(0.0f, 0.0f, 1.0f), {1.0f, 1.0f}).plane.half_size), glm::vec2(0.5f));
+
+    // The default +Y plane spans the XZ axes with 2x2 vertices and one quad.
+    const auto flat = mesh::Plane3d{}.mesh().build();
+    const auto* flat_positions =
+        flat.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* flat_normals =
+        flat.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* flat_uvs =
+        flat.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(flat_positions, nullptr);
+    ASSERT_NE(flat_normals, nullptr);
+    ASSERT_NE(flat_uvs, nullptr);
+    ASSERT_EQ(flat_positions->size(), 4u);
+    EXPECT_EQ((*flat_positions)[0], (mesh::VertexAttributeValues::Float32x3Value{-0.5f, 0.0f, -0.5f}));
+    EXPECT_EQ((*flat_positions)[3], (mesh::VertexAttributeValues::Float32x3Value{0.5f, 0.0f, 0.5f}));
+    EXPECT_EQ((*flat_normals)[0], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f}));
+    // UVs are the normalized grid coordinates in (x, z) order.
+    EXPECT_EQ((*flat_uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*flat_uvs)[1], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 0.0f}));
+    EXPECT_EQ((*flat_uvs)[2], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 1.0f}));
+    EXPECT_EQ((*flat_uvs)[3], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 1.0f}));
+    ASSERT_NE(flat.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*flat.indices()->get().as_u32(), (std::vector<std::uint32_t>{3, 1, 2, 0, 2, 1}));
+
+    // `subdivisions = n` produces (n + 2)^2 vertices and (n + 1)^2 quads.
+    const auto subdivided = std::move(mesh::Plane3d{}.mesh()).with_subdivisions(1).build();
+    const auto* positions =
+        subdivided.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    EXPECT_EQ(positions->size(), 9u);
+    ASSERT_NE(subdivided.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(subdivided.indices()->get().as_u32()->size(), 4u * 6u);
+    // The middle vertex sits at the plane center.
+    EXPECT_EQ((*positions)[4], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.0f, 0.0f}));
+
+    // A +Z normal rotates the XZ grid onto the XY plane.
+    auto vertical_builder         = mesh::PlaneMeshBuilder::from_size({2.0f, 2.0f});
+    vertical_builder.plane.normal = glm::vec3(0.0f, 0.0f, 1.0f);
+    const auto vertical           = vertical_builder.build();
+    const auto* vertical_positions =
+        vertical.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* vertical_normals =
+        vertical.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(vertical_positions, nullptr);
+    ASSERT_NE(vertical_normals, nullptr);
+    EXPECT_NEAR((*vertical_normals)[0][2], 1.0f, 1e-5f);
+    // Every rotated vertex keeps a zero Z extent in the rotated frame's normal axis.
+    for (const auto& position : *vertical_positions) {
+        EXPECT_NEAR(position[2], 0.0f, 1e-5f);
+    }
+}
+
+TEST(MeshPrimitives, SegmentAndPolyline3dMatchBevyLineListData) {
+    static_assert(mesh::Meshable<mesh::Segment3d>);
+    static_assert(mesh::Meshable<mesh::Polyline3d>);
+
+    EXPECT_EQ(mesh::Segment3d{}.vertices, (std::array{glm::vec3(-0.5f, 0.0f, 0.0f), glm::vec3(0.5f, 0.0f, 0.0f)}));
+    EXPECT_FLOAT_EQ((mesh::Segment3d{{0.0f, 0.0f, 0.0f}, {0.0f, 3.0f, 4.0f}}.length()), 5.0f);
+    const auto scaled = mesh::Segment3d::from_scaled_direction({2.0f, 0.0f, 0.0f});
+    EXPECT_EQ(scaled.vertices, (std::array{glm::vec3(-1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f)}));
+    EXPECT_EQ((mesh::Segment3d::from_direction_and_length({0.0f, 0.0f, 2.0f}, 4.0f).vertices),
+              (std::array{glm::vec3(0.0f, 0.0f, -2.0f), glm::vec3(0.0f, 0.0f, 2.0f)}));
+
+    const mesh::Segment3d segment_shape{{0.0f, 0.0f, 0.0f}, {1.0f, 2.0f, 3.0f}};
+    const auto segment_mesh = segment_shape.mesh().build();
+    EXPECT_EQ(segment_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    const auto* segment_positions =
+        segment_mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(segment_positions, nullptr);
+    EXPECT_EQ(*segment_positions,
+              (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 0.0f}, {1.0f, 2.0f, 3.0f}}));
+    ASSERT_NE(segment_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*segment_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
+    EXPECT_FALSE(segment_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+
+    const auto polyline = mesh::Polyline3d::with_subdivisions({0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 3.0f}, 2);
+    EXPECT_EQ(polyline.vertices, (std::vector{glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
+                                              glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 3.0f)}));
+    const auto polyline_mesh = polyline.mesh().build();
+    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
+    ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 1, 2, 2, 3}));
+}
+
+TEST(MeshPrimitives, Triangle3dMatchesBevyFaceNormalUvAndClassification) {
+    static_assert(mesh::Meshable<mesh::Triangle3d>);
+    static_assert(mesh::MeshBuilder<mesh::Triangle3dMeshBuilder>);
+
+    EXPECT_EQ(mesh::Triangle3d{}.vertices,
+              (std::array{glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec3(0.5f, -0.5f, 0.0f)}));
+
+    // `ab x ac` gives the right-hand-rule face normal.
+    const mesh::Triangle3d flat{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    ASSERT_TRUE(flat.normal().has_value());
+    EXPECT_EQ(*flat.normal(), glm::vec3(0.0f, 0.0f, 1.0f));
+    EXPECT_FALSE(flat.is_degenerate());
+    EXPECT_EQ(flat.reversed().vertices,
+              (std::array{glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f)}));
+
+    // Collinear vertices have no direction and are reported as degenerate.
+    const mesh::Triangle3d collinear{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}};
+    EXPECT_FALSE(collinear.normal().has_value());
+    EXPECT_TRUE(collinear.is_degenerate());
+
+    const auto value = flat.mesh().build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}));
+    // Every vertex carries the face normal, and the unskewed UVs put `a` at the origin.
+    EXPECT_EQ(*normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>(3, {0.0f, 0.0f, 1.0f})));
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[1], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 0.0f}));
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*value.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2}));
+
+    // A degenerate triangle gets Bevy's zero normal rather than an undefined direction.
+    const auto degenerate = collinear.mesh().build();
+    const auto* degenerate_normals =
+        degenerate.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(degenerate_normals, nullptr);
+    EXPECT_EQ(*degenerate_normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>(3, {0.0f, 0.0f, 0.0f})));
+}
+
+TEST(MeshPrimitives, TetrahedronMatchesBevyFaceOrientationAndVertexData) {
+    static_assert(mesh::Meshable<mesh::Tetrahedron>);
+    static_assert(mesh::MeshBuilder<mesh::TetrahedronMeshBuilder>);
+
+    const mesh::Tetrahedron default_tetrahedron{};
+    // Bevy's default vertex order has a negative signed volume, so its faces point inward and
+    // the mesh builder reverses them to face outward.
+    EXPECT_NEAR(default_tetrahedron.signed_volume(), -1.0f / 3.0f, 1e-5f);
+    EXPECT_EQ(default_tetrahedron.centroid(), glm::vec3(0.0f));
+
+    // Faces are (b,c,d), (a,c,d) reversed, (a,b,d), and (a,b,c) reversed.
+    const auto faces = default_tetrahedron.faces();
+    EXPECT_EQ((faces[0].vertices), (std::array{default_tetrahedron.vertices[1], default_tetrahedron.vertices[2],
+                                               default_tetrahedron.vertices[3]}));
+    EXPECT_EQ((faces[1].vertices), (std::array{default_tetrahedron.vertices[3], default_tetrahedron.vertices[2],
+                                               default_tetrahedron.vertices[0]}));
+    EXPECT_EQ((faces[2].vertices), (std::array{default_tetrahedron.vertices[0], default_tetrahedron.vertices[1],
+                                               default_tetrahedron.vertices[3]}));
+    EXPECT_EQ((faces[3].vertices), (std::array{default_tetrahedron.vertices[2], default_tetrahedron.vertices[1],
+                                               default_tetrahedron.vertices[0]}));
+
+    // A negative orientation is detected and its faces are reversed so they still face outward.
+    // Swapping the first two vertices flips the sign without moving any point, so this
+    // orientation is already outward and must not be reversed.
+    const mesh::Tetrahedron inverted{default_tetrahedron.vertices[1], default_tetrahedron.vertices[0],
+                                     default_tetrahedron.vertices[2], default_tetrahedron.vertices[3]};
+    EXPECT_GT(inverted.signed_volume(), 0.0f);
+    const auto outward = inverted.mesh().build();
+    const auto* positions =
+        outward.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        outward.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    // Four faces of three unshared vertices each.
+    ASSERT_EQ(positions->size(), 12u);
+    EXPECT_EQ(normals->size(), 12u);
+    ASSERT_NE(outward.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*outward.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}));
+
+    // Every face normal points away from the tetrahedron centroid.
+    for (std::size_t face = 0; face < 4; ++face) {
+        const glm::vec3 face_center =
+            (glm::vec3{(*positions)[face * 3][0], (*positions)[face * 3][1], (*positions)[face * 3][2]} +
+             glm::vec3{(*positions)[face * 3 + 1][0], (*positions)[face * 3 + 1][1], (*positions)[face * 3 + 1][2]} +
+             glm::vec3{(*positions)[face * 3 + 2][0], (*positions)[face * 3 + 2][1], (*positions)[face * 3 + 2][2]}) /
+            3.0f;
+        const glm::vec3 face_normal{(*normals)[face * 3][0], (*normals)[face * 3][1], (*normals)[face * 3][2]};
+        EXPECT_GT(glm::dot(face_normal, face_center - inverted.centroid()), 0.0f);
+    }
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto mesh = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
 

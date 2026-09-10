@@ -17,19 +17,25 @@
 
 namespace epix::mesh {
 
+class Polyline2dMeshBuilder;
+class Polyline3dMeshBuilder;
 struct AnnulusMeshBuilder;
 struct Capsule2dMeshBuilder;
 struct CircleMeshBuilder;
 struct CircularSectorMeshBuilder;
 struct CircularSegmentMeshBuilder;
 struct ConvexPolygonMeshBuilder;
+struct CuboidMeshBuilder;
 struct EllipseMeshBuilder;
-class Polyline2dMeshBuilder;
-struct RegularPolygonMeshBuilder;
+struct PlaneMeshBuilder;
 struct RectangleMeshBuilder;
+struct RegularPolygonMeshBuilder;
 struct RhombusMeshBuilder;
 struct Segment2dMeshBuilder;
+struct Segment3dMeshBuilder;
+struct TetrahedronMeshBuilder;
 struct Triangle2dMeshBuilder;
+struct Triangle3dMeshBuilder;
 
 /** @brief Circle primitive accepted by `CircleMeshBuilder`. */
 EPIX_EXPORT struct Circle {
@@ -432,6 +438,167 @@ struct Ring {
     RingMeshBuilder<P> mesh() const;
 };
 
+// ─── 3D shapes (Bevy `bevy_math::primitives::dim3`) ────────────────────────────────────────────
+
+/** @brief Cuboid primitive described by its half extents. */
+EPIX_EXPORT struct Cuboid {
+    glm::vec3 half_size{0.5f};
+
+    constexpr Cuboid() = default;
+    constexpr Cuboid(float x_length, float y_length, float z_length)
+        : half_size(x_length * 0.5f, y_length * 0.5f, z_length * 0.5f) {}
+    constexpr explicit Cuboid(glm::vec3 half_size) : half_size(half_size) {}
+    static constexpr Cuboid from_size(glm::vec3 size) { return Cuboid{size * 0.5f}; }
+    static constexpr Cuboid from_length(float length) { return Cuboid{glm::vec3(length * 0.5f)}; }
+    static Cuboid from_corners(glm::vec3 point1, glm::vec3 point2) noexcept;
+    constexpr glm::vec3 size() const noexcept { return half_size * 2.0f; }
+    CuboidMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Cuboid&) const = default;
+};
+
+/** @brief Plane primitive described by its normal and half extents in the XZ plane. */
+EPIX_EXPORT struct Plane3d {
+    glm::vec3 normal{0.0f, 1.0f, 0.0f};
+    glm::vec2 half_size{0.5f};
+
+    constexpr Plane3d() = default;
+    constexpr Plane3d(glm::vec3 normal, glm::vec2 half_size) : normal(normal), half_size(half_size) {}
+    static Plane3d from_points(glm::vec3 a, glm::vec3 b, glm::vec3 c);
+    PlaneMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Plane3d&) const = default;
+};
+
+/** @brief Three-dimensional line segment. */
+EPIX_EXPORT struct Segment3d {
+    std::array<glm::vec3, 2> vertices{glm::vec3(-0.5f, 0.0f, 0.0f), glm::vec3(0.5f, 0.0f, 0.0f)};
+
+    constexpr Segment3d() = default;
+    constexpr Segment3d(glm::vec3 point1, glm::vec3 point2) : vertices{point1, point2} {}
+    static Segment3d from_direction_and_length(glm::vec3 direction, float length);
+    static constexpr Segment3d from_scaled_direction(glm::vec3 scaled_direction) {
+        const auto endpoint = scaled_direction * 0.5f;
+        return Segment3d{-endpoint, endpoint};
+    }
+    constexpr glm::vec3 point1() const noexcept { return vertices[0]; }
+    constexpr glm::vec3 point2() const noexcept { return vertices[1]; }
+    constexpr glm::vec3 center() const noexcept { return (vertices[0] + vertices[1]) * 0.5f; }
+    float length() const noexcept;
+    Segment3dMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Segment3d&) const = default;
+};
+
+/** @brief Series of connected line segments in 3D space. */
+EPIX_EXPORT struct Polyline3d {
+    std::vector<glm::vec3> vertices{glm::vec3(-0.5f, 0.0f, 0.0f), glm::vec3(0.5f, 0.0f, 0.0f)};
+
+    Polyline3d() = default;
+    explicit Polyline3d(std::vector<glm::vec3> vertices) : vertices(std::move(vertices)) {}
+    static Polyline3d with_subdivisions(glm::vec3 start, glm::vec3 end, std::size_t subdivisions);
+    Polyline3dMeshBuilder mesh() const;
+
+    bool operator==(const Polyline3d&) const = default;
+};
+
+/** @brief Tetrahedron described by its four vertices. */
+EPIX_EXPORT struct Tetrahedron {
+    std::array<glm::vec3, 4> vertices{
+        glm::vec3(0.5f, 0.5f, 0.5f),
+        glm::vec3(-0.5f, 0.5f, -0.5f),
+        glm::vec3(-0.5f, -0.5f, 0.5f),
+        glm::vec3(0.5f, -0.5f, -0.5f),
+    };
+
+    constexpr Tetrahedron() = default;
+    constexpr Tetrahedron(glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d) : vertices{a, b, c, d} {}
+    /** @brief Signed volume; negative means the first face normal points toward the fourth vertex. */
+    float signed_volume() const noexcept;
+    constexpr glm::vec3 centroid() const noexcept {
+        return (vertices[0] + vertices[1] + vertices[2] + vertices[3]) * 0.25f;
+    }
+    std::array<Triangle3d, 4> faces() const noexcept;
+    TetrahedronMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Tetrahedron&) const = default;
+};
+
+/** @brief Builder used to create a cuboid mesh. */
+EPIX_EXPORT struct CuboidMeshBuilder {
+    glm::vec3 half_size{0.5f};
+
+    constexpr CuboidMeshBuilder() = default;
+    constexpr explicit CuboidMeshBuilder(glm::vec3 half_size) : half_size(half_size) {}
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a plane mesh. */
+EPIX_EXPORT struct PlaneMeshBuilder {
+    Plane3d plane{};
+    /** @brief Number of interior splits along each axis; `0` keeps the four XZ-plane corners. */
+    std::uint32_t subdivisions = 0;
+
+    constexpr PlaneMeshBuilder() = default;
+    /** @brief Non-explicit so `shape.mesh()` and `Mesh mesh = shape;` work like the other builders. */
+    constexpr PlaneMeshBuilder(Plane3d plane, std::uint32_t subdivisions = 0)
+        : plane(plane), subdivisions(subdivisions) {}
+    PlaneMeshBuilder(glm::vec3 normal, glm::vec2 size);
+    static PlaneMeshBuilder from_size(glm::vec2 size);
+    static PlaneMeshBuilder from_length(float length);
+    PlaneMeshBuilder with_normal(glm::vec3 normal) && noexcept {
+        plane.normal = normal;
+        return std::move(*this);
+    }
+    PlaneMeshBuilder with_size(float width, float height) && noexcept {
+        plane.half_size = glm::vec2(width, height) * 0.5f;
+        return std::move(*this);
+    }
+    PlaneMeshBuilder with_subdivisions(std::uint32_t value) && noexcept {
+        subdivisions = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a 3D segment mesh. */
+EPIX_EXPORT struct Segment3dMeshBuilder {
+    Segment3d segment{};
+
+    constexpr Segment3dMeshBuilder() = default;
+    constexpr explicit Segment3dMeshBuilder(Segment3d segment) : segment(segment) {}
+    Mesh build() const;
+};
+
+/** @brief Owning builder used to create a connected 3D line-list mesh. */
+EPIX_EXPORT class Polyline3dMeshBuilder {
+   public:
+    Polyline3dMeshBuilder() = default;
+    explicit Polyline3dMeshBuilder(Polyline3d polyline) : polyline_(std::move(polyline)) {}
+    Mesh build() const;
+
+   private:
+    Polyline3d polyline_{};
+};
+
+/** @brief Builder used to create a 3D triangle mesh. */
+EPIX_EXPORT struct Triangle3dMeshBuilder {
+    Triangle3d triangle{};
+
+    constexpr Triangle3dMeshBuilder() = default;
+    constexpr explicit Triangle3dMeshBuilder(Triangle3d triangle) : triangle(triangle) {}
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a tetrahedron mesh. */
+EPIX_EXPORT struct TetrahedronMeshBuilder {
+    Tetrahedron tetrahedron{};
+
+    constexpr TetrahedronMeshBuilder() = default;
+    constexpr explicit TetrahedronMeshBuilder(Tetrahedron tetrahedron) : tetrahedron(tetrahedron) {}
+    Mesh build() const;
+};
+
 /** @brief Builder used to create a circle mesh. */
 EPIX_EXPORT struct CircleMeshBuilder {
     Circle circle{};
@@ -629,6 +796,18 @@ static_assert(Inset<Rectangle>);
 static_assert(Inset<RegularPolygon>);
 static_assert(Inset<Rhombus>);
 static_assert(Inset<Triangle2d>);
+static_assert(Meshable<Cuboid>);
+static_assert(Meshable<Plane3d>);
+static_assert(Meshable<Segment3d>);
+static_assert(Meshable<Polyline3d>);
+static_assert(Meshable<Triangle3d>);
+static_assert(Meshable<Tetrahedron>);
+static_assert(MeshBuilder<CuboidMeshBuilder>);
+static_assert(MeshBuilder<PlaneMeshBuilder>);
+static_assert(MeshBuilder<Segment3dMeshBuilder>);
+static_assert(MeshBuilder<Polyline3dMeshBuilder>);
+static_assert(MeshBuilder<Triangle3dMeshBuilder>);
+static_assert(MeshBuilder<TetrahedronMeshBuilder>);
 static_assert(Meshable<Ring<Circle>>);
 static_assert(MeshBuilder<RingMeshBuilder<Circle>>);
 

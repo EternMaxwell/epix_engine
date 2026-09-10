@@ -176,8 +176,31 @@ EPIX_EXPORT namespace mesh_triangles_error {
  * Epix uses GLM directly as its math layer, so the primitive required by
  * `Mesh::triangles` is exposed by the mesh module.
  */
+struct Triangle3dMeshBuilder;
+
+/** @brief Three vertices forming a 3D triangle (Bevy `Triangle3d`). */
 EPIX_EXPORT struct Triangle3d {
-    std::array<glm::vec3, 3> vertices;
+    /** @brief Bevy's default triangle `[+Y * 0.5, (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0)]`. */
+    std::array<glm::vec3, 3> vertices{glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(-0.5f, -0.5f, 0.0f),
+                                      glm::vec3(0.5f, -0.5f, 0.0f)};
+
+    constexpr Triangle3d() = default;
+    constexpr Triangle3d(glm::vec3 a, glm::vec3 b, glm::vec3 c) : vertices{a, b, c} {}
+    /** @brief Face normal, or `std::nullopt` for a degenerate triangle (Bevy `Triangle3d::normal`). */
+    std::optional<glm::vec3> normal() const noexcept;
+    /** @brief Degenerate when the `ab x ac` cross product is shorter than `10e-7`. */
+    bool is_degenerate() const noexcept;
+    bool is_acute() const noexcept;
+    bool is_obtuse() const noexcept;
+    /** @brief Reverse the winding by swapping the first and last vertices. */
+    void reverse() noexcept { std::swap(vertices[0], vertices[2]); }
+    Triangle3d reversed() const noexcept {
+        Triangle3d value = *this;
+        value.reverse();
+        return value;
+    }
+    /** @brief Build a triangle mesh from this shape (defined in `primitives.hpp`). */
+    Triangle3dMeshBuilder mesh() const noexcept;
 
     bool operator==(const Triangle3d&) const = default;
 };
