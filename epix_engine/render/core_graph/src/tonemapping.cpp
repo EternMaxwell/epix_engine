@@ -414,7 +414,7 @@ image::Image setup_tonemapping_lut_image(std::span<const std::byte> ktx2) {
     sampler.label = "Tonemapping LUT sampler";
     sampler.set_address_mode(image::ImageAddressMode::ClampToEdge);
     lut_image.set_sampler_descriptor(std::move(sampler));
-    lut_image.set_usage(image::ImageUsage::Render);
+    lut_image.set_usage(assets::RenderAssetUsages::RENDER_WORLD);
     return lut_image;
 }
 }  // namespace
@@ -445,7 +445,7 @@ get_lut_bind_group_layout_entries() {
 image::Image lut_placeholder() {
     const std::array<std::uint8_t, 4> magenta{255, 0, 255, 255};
     auto placeholder = image::Image::create3d(1, 1, 1, image::Format::RGBA8, magenta).value();
-    placeholder.set_usage(image::ImageUsage::Render);
+    placeholder.set_usage(assets::RenderAssetUsages::RENDER_WORLD);
     return placeholder;
 }
 

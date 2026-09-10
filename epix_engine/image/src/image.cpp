@@ -16,6 +16,95 @@
 
 namespace epix::image {
 namespace {
+/** @brief The WebGPU texture format for a decoded pixel format (Bevy's
+ * `ImageFormat` to `TextureFormat` mapping).
+ *
+ * Formats with no direct WebGPU equivalent report `Undefined`; `image_loader`
+ * converts 3-channel data to the 4-channel equivalent before it reaches a
+ * texture, so those cases are unreachable for prepared images. */
+wgpu::TextureFormat texture_format_cast(Format format) noexcept {
+    switch (format) {
+        case Format::Grey8:
+            return wgpu::TextureFormat::eR8Unorm;
+        case Format::GreyAlpha8:
+            return wgpu::TextureFormat::eRG8Unorm;
+        case Format::RGB8:
+            return wgpu::TextureFormat::eUndefined;
+        case Format::RGBA8:
+            return wgpu::TextureFormat::eRGBA8Unorm;
+        case Format::Grey16:
+            return wgpu::TextureFormat::eR16Uint;
+        case Format::RGB16:
+            return wgpu::TextureFormat::eUndefined;
+        case Format::RGBA16:
+            return wgpu::TextureFormat::eRGBA16Uint;
+        case Format::Grey32F:
+            return wgpu::TextureFormat::eR32Float;
+        case Format::RGB32F:
+            return wgpu::TextureFormat::eUndefined;
+        case Format::RGBA32F:
+            return wgpu::TextureFormat::eRGBA32Float;
+        default:
+            return wgpu::TextureFormat::eUndefined;
+    }
+}
+
+/** @brief The reverse of `texture_format_cast`, used by `Image::format`. */
+std::optional<Format> format_from_texture_format(wgpu::TextureFormat format) noexcept {
+    switch (format) {
+        case wgpu::TextureFormat::eR8Unorm:
+            return Format::Grey8;
+        case wgpu::TextureFormat::eRG8Unorm:
+            return Format::GreyAlpha8;
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            return Format::RGBA8;
+        case wgpu::TextureFormat::eR16Uint:
+            return Format::Grey16;
+        case wgpu::TextureFormat::eRGBA16Uint:
+            return Format::RGBA16;
+        case wgpu::TextureFormat::eR32Float:
+            return Format::Grey32F;
+        case wgpu::TextureFormat::eRGBA32Float:
+            return Format::RGBA32F;
+        default:
+            return std::nullopt;
+    }
+}
+
+/** @brief The WebGPU texture dimension for an image type. */
+wgpu::TextureDimension dimension_cast(ImageType type) noexcept {
+    switch (type) {
+        case ImageType::e1D:
+            return wgpu::TextureDimension::e1D;
+        case ImageType::e3D:
+            return wgpu::TextureDimension::e3D;
+        case ImageType::e2D:
+        case ImageType::e2DArray:
+        default:
+            return wgpu::TextureDimension::e2D;
+    }
+}
+
+/** @brief Fill in the Bevy-default texture descriptor for an image. */
+void set_descriptor(Image& image,
+                    ImageType type,
+                    std::uint32_t width,
+                    std::uint32_t height,
+                    std::uint32_t depth_or_layers,
+                    Format format) {
+    image.texture_descriptor.size.width              = width;
+    image.texture_descriptor.size.height             = height;
+    image.texture_descriptor.size.depthOrArrayLayers = depth_or_layers;
+    image.texture_descriptor.dimension               = dimension_cast(type);
+    image.texture_descriptor.format                  = texture_format_cast(format);
+    image.texture_descriptor.mipLevelCount           = 1;
+    image.texture_descriptor.sampleCount             = 1;
+    // Bevy's `Image::new_uninit` sets TEXTURE_BINDING | COPY_DST | COPY_SRC.
+    image.texture_descriptor.usage = static_cast<wgpu::TextureUsage>(
+        wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eCopySrc);
+}
+
 Image create_like(const Image& image, Format format) {
     switch (image.type()) {
         case ImageType::e1D: {
@@ -130,7 +219,10 @@ Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint3
     }
 }
 
-Image::Image() : m_format(Format::RGBA8), data(4, std::byte{0xFF}) {}
+Image::Image() : data(4, std::byte{0xFF}) {
+    // Bevy's default image is an opaque white 1x1 RGBA8 image.
+    set_descriptor(*this, ImageType::e2D, 1, 1, 1, Format::RGBA8);
+}
 
 Image Image::transparent() {
     auto image    = Image{};
@@ -140,17 +232,15 @@ Image Image::transparent() {
 
 Image Image::take_data() {
     Image extracted;
-    extracted.m_width              = m_width;
-    extracted.m_height             = m_height;
-    extracted.m_depth_or_layers    = m_depth_or_layers;
-    extracted.m_type               = m_type;
-    extracted.m_format             = m_format;
-    extracted.m_usage              = m_usage;
-    extracted.m_copy_on_resize     = m_copy_on_resize;
-    extracted.m_sampler            = m_sampler;
-    extracted.m_sampler_descriptor = m_sampler_descriptor;
-    extracted.data                 = std::move(data);
-    extracted.m_has_data           = m_has_data;
+    extracted.texture_descriptor      = texture_descriptor;
+    extracted.data_order              = data_order;
+    extracted.texture_view_descriptor = texture_view_descriptor;
+    extracted.m_usage                 = m_usage;
+    extracted.m_copy_on_resize        = m_copy_on_resize;
+    extracted.m_sampler               = m_sampler;
+    extracted.m_sampler_descriptor    = m_sampler_descriptor;
+    extracted.data                    = std::move(data);
+    extracted.m_has_data              = m_has_data;
 
     data.clear();
     m_has_data = false;
@@ -159,47 +249,48 @@ Image Image::take_data() {
 
 Image Image::create1d(std::uint32_t w, Format fmt) {
     Image img;
-    img.m_width           = w;
-    img.m_height          = 1;
-    img.m_depth_or_layers = 1;
-    img.m_type            = ImageType::e1D;
-    img.m_format          = fmt;
+    set_descriptor(img, ImageType::e1D, w, 1, 1, fmt);
     img.data.assign(static_cast<std::size_t>(w) * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
+ImageType Image::type() const noexcept {
+    switch (texture_descriptor.dimension) {
+        case wgpu::TextureDimension::e1D:
+            return ImageType::e1D;
+        case wgpu::TextureDimension::e3D:
+            return ImageType::e3D;
+        case wgpu::TextureDimension::e2D:
+        default:
+            return texture_descriptor.size.depthOrArrayLayers > 1 ? ImageType::e2DArray : ImageType::e2D;
+    }
+}
+
+Format Image::format() const noexcept {
+    const auto mapped = format_from_texture_format(texture_descriptor.format);
+    return mapped.value_or(Format::Unknown);
+}
+
 Image Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt) {
     Image img;
-    img.m_width           = w;
-    img.m_height          = h;
-    img.m_depth_or_layers = 1;
-    img.m_type            = ImageType::e2D;
-    img.m_format          = fmt;
+    set_descriptor(img, ImageType::e2D, w, h, 1, fmt);
     img.data.assign(static_cast<std::size_t>(w) * h * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
 Image Image::create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt) {
     Image img;
-    img.m_width           = w;
-    img.m_height          = h;
-    img.m_depth_or_layers = std::max(layers, 1u);
-    img.m_type            = ImageType::e2DArray;
-    img.m_format          = fmt;
-    img.data.assign(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
-                    std::byte(0));
+    const std::uint32_t layer_count = std::max(layers, 1u);
+    set_descriptor(img, ImageType::e2DArray, w, h, layer_count, fmt);
+    img.data.assign(static_cast<std::size_t>(w) * h * layer_count * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
 Image Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt) {
     Image img;
-    img.m_width           = w;
-    img.m_height          = h;
-    img.m_depth_or_layers = std::max(depth, 1u);
-    img.m_type            = ImageType::e3D;
-    img.m_format          = fmt;
-    img.data.assign(static_cast<std::size_t>(w) * h * img.m_depth_or_layers * getFormatInfo(fmt).pixelSize(),
-                    std::byte(0));
+    const std::uint32_t slice_count = std::max(depth, 1u);
+    set_descriptor(img, ImageType::e3D, w, h, slice_count, fmt);
+    img.data.assign(static_cast<std::size_t>(w) * h * slice_count * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }
 
@@ -214,11 +305,11 @@ std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_
                                                                     std::uint32_t z) const {
     const FormatInfo& inf = format_info();
     std::array<float, 4> result{0};
-    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageSampleError::OutOfBounds);
+    if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageSampleError::OutOfBounds);
 
-    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(width()) * height() * inf.pixelSize();
     const std::byte* pixelPtr =
-        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
+        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * inf.pixelSize();
 
     for (std::uint32_t c = 0; c < inf.channels; c++) {
         float value = 0.0f;
@@ -255,12 +346,12 @@ std::expected<void, ImageWriteError> Image::write(std::uint32_t x,
                                                   std::uint32_t z,
                                                   std::span<const float> values) {
     const FormatInfo& inf = format_info();
-    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageWriteError::OutOfBounds);
+    if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageWriteError::OutOfBounds);
     if (values.size() < inf.channels) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(width()) * height() * inf.pixelSize();
     std::byte* pixelPtr =
-        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
+        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * inf.pixelSize();
 
     for (std::uint32_t c = 0; c < inf.channels; c++) {
         float value = values[c];
@@ -283,8 +374,8 @@ std::expected<void, ImageWriteError> Image::write(std::uint32_t x,
     return {};
 }
 Image Image::convert(Format targetFmt) const {
-    if (targetFmt == m_format) {
-        auto result = create_like(*this, m_format);
+    if (targetFmt == format()) {
+        auto result = create_like(*this, format());
         std::memcpy(result.data.data(), data.data(), data.size());
         return result;
     }
@@ -296,7 +387,7 @@ Image Image::convert(Format targetFmt) const {
     // A more optimized version would have switch-cases for specific conversions.
 
     Image result     = create_like(*this, targetFmt);
-    auto pixel_count = static_cast<std::size_t>(m_width) * m_height * m_depth_or_layers;
+    auto pixel_count = static_cast<std::size_t>(width()) * height() * depth_or_layers();
 
     for (std::size_t i = 0; i < pixel_count; ++i) {
         float r = 0, g = 0, b = 0, a = 1.0f;
@@ -370,17 +461,17 @@ Image Image::convert(Format targetFmt) const {
 }
 Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
     auto& inf          = format_info();
-    auto target_height = m_type == ImageType::e1D ? 1u : newH;
+    auto target_height = type() == ImageType::e1D ? 1u : newH;
 
-    Image result = create_resized_like(*this, newW, target_height, m_format);
+    Image result = create_resized_like(*this, newW, target_height, format());
 
     stbir_datatype type = inf.isFloat ? STBIR_TYPE_FLOAT : (inf.is16Bit ? STBIR_TYPE_UINT16 : STBIR_TYPE_UINT8);
 
-    auto src_slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    auto src_slice_stride = static_cast<std::size_t>(width()) * height() * inf.pixelSize();
     auto dst_slice_stride = static_cast<std::size_t>(newW) * target_height * inf.pixelSize();
 
-    for (std::uint32_t z = 0; z < m_depth_or_layers; ++z) {
-        stbir_resize(data.data() + z * src_slice_stride, m_width, m_height, 0,
+    for (std::uint32_t z = 0; z < depth_or_layers(); ++z) {
+        stbir_resize(data.data() + z * src_slice_stride, width(), height(), 0,
                      result.data.data() + z * dst_slice_stride, newW, target_height, 0,
                      static_cast<stbir_pixel_layout>(inf.channels),  // works because enum matches channel count mostly
                      type, STBIR_EDGE_CLAMP, STBIR_FILTER_DEFAULT);
@@ -453,7 +544,7 @@ Image Image::blur(std::uint32_t radius) const {
     }
 
     if (needsConvert) {
-        return result.convert(m_format);
+        return result.convert(format());
     }
     return result;
 }

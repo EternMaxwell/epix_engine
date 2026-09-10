@@ -21,6 +21,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <webgpu/webgpu.hpp>
 #endif
 
 namespace epix::image {
@@ -108,15 +109,19 @@ struct span_type {
     using type = typename span::value_type;
 };
 
-/** @brief Bitmask specifying how an image is used (main world, render
- * world, or both). */
-EPIX_EXPORT enum ImageUsage : std::uint8_t {
-    /** @brief Used in the main world only. */
-    Main = 0x1,
-    /** @brief Used in the render world only. */
-    Render = 0x2,
-    /** @brief Used in both main and render worlds. */
-    Both = Main | Render,
+/** @brief Bitmask specifying how an image is used (Bevy `RenderAssetUsages`).
+ *
+ * Bevy's `Image` carries the same `RenderAssetUsages` type as every other render
+ * asset, so image no longer defines its own `Main`/`Render`/`Both` enum. */
+using ImageUsage = assets::RenderAssetUsages;
+
+/** @brief How wgpu interprets the bytes of an image with layers and mips
+ * (Bevy `TextureDataOrder`). */
+EPIX_EXPORT enum class TextureDataOrder {
+    /** @brief Data is laid out as texture layers, then mips. */
+    LayerMajor,
+    /** @brief Data is laid out as mips, then texture layers. */
+    MipMajor,
 };
 
 /** @brief Image dimension type. */
@@ -260,14 +265,13 @@ EPIX_EXPORT enum class ImageSampler {
  */
 EPIX_EXPORT class Image {
    private:
-    std::uint32_t m_width           = 1;
-    std::uint32_t m_height          = 1;
-    std::uint32_t m_depth_or_layers = 1;
-    ImageType m_type                = ImageType::e2D;
-    Format m_format                 = Format::Unknown;
-    ImageUsage m_usage              = ImageUsage::Both;
-    bool m_copy_on_resize           = false;
-    ImageSampler m_sampler          = ImageSampler::Default;
+    // Bevy derives the image's size, dimension, and texture format from
+    // `texture_descriptor` instead of storing them as separate intrinsics, so the
+    // descriptor above is the source of truth and no duplicate fields are kept.
+    assets::RenderAssetUsages m_usage = static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                                               assets::RenderAssetUsages::RENDER_WORLD);
+    bool m_copy_on_resize             = false;
+    ImageSampler m_sampler            = ImageSampler::Default;
     ImageSamplerDescriptor m_sampler_descriptor;
 
     std::vector<std::byte> data;
@@ -384,27 +388,47 @@ EPIX_EXPORT class Image {
      * @return Void on success or an ImageSaveError. */
     static std::expected<void, ImageSaveError> save(const std::filesystem::path& path, const Image& image);
 
-    /** @brief Get the image width in pixels. */
-    std::uint32_t width() const noexcept { return m_width; }
-    /** @brief Get the image height in pixels. */
-    std::uint32_t height() const noexcept { return m_height; }
-    /** @brief Get the raw depth-or-layers value. */
-    std::uint32_t depth_or_layers() const noexcept { return m_depth_or_layers; }
+    /** @brief The texture descriptor that describes this image's GPU texture
+     * (Bevy `Image::texture_descriptor`).
+     *
+     * This is the single source of truth for the image's size, dimension, and
+     * texture format, exactly as in Bevy. */
+    wgpu::TextureDescriptor texture_descriptor{};
+    /** @brief For texture data with layers and mips, controls how wgpu
+     * interprets the buffer layout (Bevy `Image::data_order`). */
+    TextureDataOrder data_order = TextureDataOrder::LayerMajor;
+    /** @brief Optional view descriptor override (Bevy
+     * `Image::texture_view_descriptor`). */
+    std::optional<wgpu::TextureViewDescriptor> texture_view_descriptor{};
+
+    /** @brief Get the image width in pixels (Bevy `Image::width`). */
+    std::uint32_t width() const noexcept { return texture_descriptor.size.width; }
+    /** @brief Get the image height in pixels (Bevy `Image::height`). */
+    std::uint32_t height() const noexcept { return texture_descriptor.size.height; }
+    /** @brief Get the raw depth-or-layers value (Bevy `Image::depth_or_array_layers`). */
+    std::uint32_t depth_or_layers() const noexcept { return texture_descriptor.size.depthOrArrayLayers; }
     /** @brief Get the depth (1 if not a 3D image). */
-    std::uint32_t depth() const noexcept { return m_type == ImageType::e3D ? m_depth_or_layers : 1; }
+    std::uint32_t depth() const noexcept {
+        return type() == ImageType::e3D ? texture_descriptor.size.depthOrArrayLayers : 1;
+    }
     /** @brief Get the layer count (1 if not a 2D array image). */
-    std::uint32_t layers() const noexcept { return m_type == ImageType::e2DArray ? m_depth_or_layers : 1; }
-    /** @brief Get the image dimension type. */
-    ImageType type() const noexcept { return m_type; }
-    /** @brief Get the pixel format. */
-    Format format() const noexcept { return m_format; }
+    std::uint32_t layers() const noexcept {
+        return type() == ImageType::e2DArray ? texture_descriptor.size.depthOrArrayLayers : 1;
+    }
+    /** @brief Get the image dimension type, derived from the descriptor. */
+    ImageType type() const noexcept;
+    /** @brief Get the pixel format (Bevy `Image::texture_descriptor.format`). */
+    Format format() const noexcept;
+    /** @brief Get the WebGPU texture format (Bevy
+     * `Image::texture_descriptor.format`). */
+    wgpu::TextureFormat texture_format() const noexcept { return texture_descriptor.format; }
     /** @brief Get the format metadata for this image's pixel format. */
-    const FormatInfo& format_info() const noexcept { return getFormatInfo(m_format); }
-    /** @brief Get the usage flags for this image. */
-    ImageUsage usage() const noexcept { return m_usage; }
-    /** @brief Set the usage flags.
+    const FormatInfo& format_info() const noexcept { return getFormatInfo(format()); }
+    /** @brief Get the usage flags for this image (Bevy `Image::asset_usage`). */
+    assets::RenderAssetUsages usage() const noexcept { return m_usage; }
+    /** @brief Set the usage flags (Bevy `Image::asset_usage`).
      * @param usage New usage bitmask. */
-    void set_usage(ImageUsage usage) noexcept { m_usage = usage; }
+    void set_usage(assets::RenderAssetUsages usage) noexcept { m_usage = usage; }
     /** @brief True when a GPU upload without data copies min(old, new)
      * extents from the previous GPU image (Bevy Image::copy_on_resize). */
     bool copy_on_resize() const noexcept { return m_copy_on_resize; }
@@ -627,12 +651,12 @@ template <typename T>
 std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint32_t y, std::uint32_t z, T&& data) {
     const FormatInfo& inf = format_info();
     auto bytes            = std::as_bytes(std::span(std::forward<T>(data)));
-    if (x >= m_width || y >= m_height || z >= m_depth_or_layers) return std::unexpected(ImageWriteError::OutOfBounds);
+    if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageWriteError::OutOfBounds);
     if (bytes.size() != inf.pixelSize()) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    auto slice_stride = static_cast<std::size_t>(m_width) * m_height * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(width()) * height() * inf.pixelSize();
     std::byte* pixelPtr =
-        this->data.data() + z * slice_stride + (static_cast<std::size_t>(y) * m_width + x) * inf.pixelSize();
+        this->data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * inf.pixelSize();
     std::memcpy(pixelPtr, bytes.data(), inf.pixelSize());
     return {};
 }

@@ -1,5 +1,3 @@
-#include <epix/image/image_loader.hpp>
-
 #include <spdlog/spdlog.h>
 #include <stb_image.h>
 #include <stb_image_write.h>
@@ -10,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/image/image_loader.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -30,7 +29,7 @@ std::expected<Image, ImageLoadError> load_image_from_memory(const unsigned char*
         float* pixels = stbi_loadf_from_memory(buffer, size, &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
-        const Format format = channels == 4 ? Format::RGBA32F : channels == 3 ? Format::RGB32F : Format::Grey32F;
+        const Format format  = channels == 4 ? Format::RGBA32F : channels == 3 ? Format::RGB32F : Format::Grey32F;
         const auto byte_size = static_cast<std::size_t>(w) * h * channels * sizeof(float);
         std::vector<std::byte> output(byte_size);
         std::memcpy(output.data(), pixels, byte_size);
@@ -42,7 +41,7 @@ std::expected<Image, ImageLoadError> load_image_from_memory(const unsigned char*
         unsigned short* pixels = stbi_load_16_from_memory(buffer, size, &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
-        const Format format = channels == 4 ? Format::RGBA16 : channels == 3 ? Format::RGB16 : Format::Grey16;
+        const Format format  = channels == 4 ? Format::RGBA16 : channels == 3 ? Format::RGB16 : Format::Grey16;
         const auto byte_size = static_cast<std::size_t>(w) * h * channels * sizeof(unsigned short);
         std::vector<std::byte> output(byte_size);
         std::memcpy(output.data(), pixels, byte_size);
@@ -53,10 +52,10 @@ std::expected<Image, ImageLoadError> load_image_from_memory(const unsigned char*
     stbi_uc* pixels = stbi_load_from_memory(buffer, size, &w, &h, &channels, 0);
     if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
 
-    const Format format = channels == 4   ? Format::RGBA8
-                          : channels == 3 ? Format::RGB8
-                          : channels == 2 ? Format::GreyAlpha8
-                                          : Format::Grey8;
+    const Format format  = channels == 4   ? Format::RGBA8
+                           : channels == 3 ? Format::RGB8
+                           : channels == 2 ? Format::GreyAlpha8
+                                           : Format::Grey8;
     const auto byte_size = static_cast<std::size_t>(w) * h * channels;
     std::vector<std::byte> output(byte_size);
     std::memcpy(output.data(), pixels, byte_size);
@@ -87,7 +86,7 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
     if (stbi_is_hdr(path_string.c_str())) {
         float* pixels = stbi_loadf(path_string.c_str(), &width, &height, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
-        const Format format = channels == 4 ? Format::RGBA32F : channels == 3 ? Format::RGB32F : Format::Grey32F;
+        const Format format  = channels == 4 ? Format::RGBA32F : channels == 3 ? Format::RGB32F : Format::Grey32F;
         const auto byte_size = static_cast<std::size_t>(width) * height * channels * sizeof(float);
         std::vector<std::byte> bytes(byte_size);
         std::memcpy(bytes.data(), pixels, byte_size);
@@ -97,7 +96,7 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
     if (stbi_is_16_bit(path_string.c_str())) {
         unsigned short* pixels = stbi_load_16(path_string.c_str(), &width, &height, &channels, 0);
         if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
-        const Format format = channels == 4 ? Format::RGBA16 : channels == 3 ? Format::RGB16 : Format::Grey16;
+        const Format format  = channels == 4 ? Format::RGBA16 : channels == 3 ? Format::RGB16 : Format::Grey16;
         const auto byte_size = static_cast<std::size_t>(width) * height * channels * sizeof(unsigned short);
         std::vector<std::byte> bytes(byte_size);
         std::memcpy(bytes.data(), pixels, byte_size);
@@ -107,10 +106,10 @@ std::expected<Image, ImageLoadError> Image::load(const std::filesystem::path& pa
 
     stbi_uc* pixels = stbi_load(path_string.c_str(), &width, &height, &channels, 0);
     if (!pixels) return std::unexpected(ImageLoadError::LoadFailed);
-    const Format format = channels == 4   ? Format::RGBA8
-                          : channels == 3 ? Format::RGB8
-                          : channels == 2 ? Format::GreyAlpha8
-                                          : Format::Grey8;
+    const Format format  = channels == 4   ? Format::RGBA8
+                           : channels == 3 ? Format::RGB8
+                           : channels == 2 ? Format::GreyAlpha8
+                                           : Format::Grey8;
     const auto byte_size = static_cast<std::size_t>(width) * height * channels;
     std::vector<std::byte> bytes(byte_size);
     std::memcpy(bytes.data(), pixels, byte_size);
@@ -123,27 +122,27 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
         return std::unexpected(ImageSaveError::SaveFailed);
     }
 
-    const auto& info = image.format_info();
-    auto extension   = path.extension().string();
+    const auto& info       = image.format_info();
+    auto extension         = path.extension().string();
     const auto path_string = path.string();
     std::ranges::transform(extension, extension.begin(), [](unsigned char value) { return std::tolower(value); });
 
     bool success = false;
     if (info.isFloat) {
-        success = stbi_write_hdr(path_string.c_str(), image.m_width, image.m_height, info.channels, image.raw<float>());
+        success = stbi_write_hdr(path_string.c_str(), image.width(), image.height(), info.channels, image.raw<float>());
     } else {
         if (info.is16Bit && extension == ".png") {
             std::cerr << "Warning: Saving 16-bit directly might not be supported by all formats.\n";
         }
         if (extension == ".png") {
-            success = stbi_write_png(path_string.c_str(), image.m_width, image.m_height, info.channels,
-                                     image.data.data(), image.m_width * info.pixelSize());
+            success = stbi_write_png(path_string.c_str(), image.width(), image.height(), info.channels,
+                                     image.data.data(), image.width() * info.pixelSize());
         } else if (extension == ".jpg" || extension == ".jpeg") {
-            success = stbi_write_jpg(path_string.c_str(), image.m_width, image.m_height, info.channels,
+            success = stbi_write_jpg(path_string.c_str(), image.width(), image.height(), info.channels,
                                      image.data.data(), 90);
         } else if (extension == ".bmp") {
-            success = stbi_write_bmp(path_string.c_str(), image.m_width, image.m_height, info.channels,
-                                     image.data.data());
+            success =
+                stbi_write_bmp(path_string.c_str(), image.width(), image.height(), info.channels, image.data.data());
         }
     }
     if (!success) return std::unexpected(ImageSaveError::SaveFailed);
@@ -184,7 +183,7 @@ STDEXEC::task<std::expected<Image, ImageLoadError>> ImageLoader::load(assets::Re
         default:
             break;
     }
-    result.set_usage(ImageUsage::Render);
+    result.set_usage(assets::RenderAssetUsages::RENDER_WORLD);
     co_return result;
 }
 

@@ -226,7 +226,9 @@ std::expected<AtlasRect, FontAtlas::FontAtlasError> FontAtlas::place_char_bitmap
 
 image::Image FontAtlas::make_atlas_image() {
     auto img = image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, image::Format::RGBA8);
-    img.set_usage(image::ImageUsage::Both);
+    // Bevy's default asset usage keeps the image in both worlds.
+    img.set_usage(static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                         assets::RenderAssetUsages::RENDER_WORLD));
     return img;
 }
 

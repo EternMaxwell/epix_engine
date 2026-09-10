@@ -53,47 +53,6 @@ void TexturePlugin::attach(app::App& app) {
     });
 }
 
-wgpu::TextureFormat format_cast(image::Format format) noexcept {
-    switch (format) {
-        case image::Format::Grey8:
-            return wgpu::TextureFormat::eR8Unorm;
-        case image::Format::GreyAlpha8:
-            return wgpu::TextureFormat::eRG8Unorm;
-        case image::Format::RGB8:
-            return wgpu::TextureFormat::eUndefined;  // no direct mapping, need to convert to RGBA8
-        case image::Format::RGBA8:
-            return wgpu::TextureFormat::eRGBA8Unorm;
-        case image::Format::Grey16:
-            return wgpu::TextureFormat::eR16Uint;
-        case image::Format::RGB16:
-            return wgpu::TextureFormat::eUndefined;  // no direct mapping, need to convert to RGBA16
-        case image::Format::RGBA16:
-            return wgpu::TextureFormat::eRGBA16Uint;
-        case image::Format::Grey32F:
-            return wgpu::TextureFormat::eR32Float;
-        case image::Format::RGB32F:
-            return wgpu::TextureFormat::eUndefined;  // no direct mapping, need to convert to RGBA32F
-        case image::Format::RGBA32F:
-            return wgpu::TextureFormat::eRGBA32Float;
-        default:
-            return wgpu::TextureFormat::eUndefined;
-    }
-}
-
-wgpu::TextureDimension dimension_cast(image::ImageType type) noexcept {
-    switch (type) {
-        case image::ImageType::e1D:
-            return wgpu::TextureDimension::e1D;
-        case image::ImageType::e2D:
-        case image::ImageType::e2DArray:
-            return wgpu::TextureDimension::e2D;
-        case image::ImageType::e3D:
-            return wgpu::TextureDimension::e3D;
-        default:
-            return wgpu::TextureDimension::e2D;
-    }
-}
-
 wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) noexcept {
     switch (type) {
         case image::ImageType::e1D:
@@ -182,23 +141,17 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     auto& [device, queue, default_sampler] = param;
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
                   asset.depth_or_layers(), static_cast<int>(asset.format()));
-    wgpu::TextureDescriptor desc;
-    // Bevy default Image usage (image.rs:1138-1140): TEXTURE_BINDING |
-    // COPY_DST | COPY_SRC. COPY_SRC is required for copy_on_resize
-    // (copyTextureToTexture from the previous texture) and texture readbacks.
-    desc.setUsage(wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopySrc)
-        .setDimension(dimension_cast(asset.type()))
-        .setFormat(format_cast(asset.format()))
-        .setSize({asset.width(), asset.height(), asset.depth_or_layers()})
-        .setMipLevelCount(1)
-        .setSampleCount(1);
+    // The image owns its texture descriptor (Bevy `Image::texture_descriptor`), so
+    // preparation consumes the declared descriptor instead of reconstructing the
+    // dimension and format from image intrinsics.
+    wgpu::TextureDescriptor desc = asset.texture_descriptor;
 
     if (desc.format == wgpu::TextureFormat::eUndefined) {
         return std::unexpected(GpuAssetCreationError::CreateTexture);
     }
 
     texture::GpuImage gpu_image;
-    gpu_image.texture      = device->createTexture(desc);
+    gpu_image.texture = device->createTexture(desc);
     if (!gpu_image.texture) {
         return std::unexpected(GpuAssetCreationError::CreateTexture);
     }

@@ -63,7 +63,7 @@ TEST(Image, SamplerAccessors) {
 // remains distinguishable from an absent payload.
 TEST(Image, TakeDataPreservesMetadataAndPresence) {
     auto source = epix::image::Image::create3d(2, 3, 4, epix::image::Format::RGBA8);
-    source.set_usage(epix::image::ImageUsage::Render);
+    source.set_usage(epix::assets::RenderAssetUsages::RENDER_WORLD);
     source.set_copy_on_resize(true);
     auto descriptor = epix::image::ImageSamplerDescriptor::nearest();
     descriptor.label = "take-data sampler";
@@ -78,7 +78,7 @@ TEST(Image, TakeDataPreservesMetadataAndPresence) {
     EXPECT_EQ(source.height(), 3u);
     EXPECT_EQ(source.depth(), 4u);
     EXPECT_EQ(source.format(), epix::image::Format::RGBA8);
-    EXPECT_EQ(source.usage(), epix::image::ImageUsage::Render);
+    EXPECT_EQ(source.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_TRUE(source.copy_on_resize());
     EXPECT_EQ(source.sampler(), epix::image::ImageSampler::Descriptor);
     EXPECT_EQ(source.sampler_descriptor().label, "take-data sampler");

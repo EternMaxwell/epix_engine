@@ -248,7 +248,7 @@ static std::optional<image::Image> image_from_readback(const ScreenshotState::In
         }
     }
     auto result = image::Image::create2d(capture.size.x, capture.size.y, info.image_format, pixels);
-    if (result) result->set_usage(image::ImageUsage::Main);
+    if (result) result->set_usage(assets::RenderAssetUsages::MAIN_WORLD);
     return result;
 }
 
@@ -360,18 +360,18 @@ static void prepare_screenshots(ResMut<ScreenshotState> state,
         std::visit(epix::utils::visitor{
                        [&](const ::epix::camera::ImageRenderTarget& image) {
                            if (!image.texture) return;
-                           output_view    = image.texture.createView();
-                           size           = {image.texture.getWidth(), image.texture.getHeight()};
-                           format         = image.texture.getFormat();
+                           output_view = image.texture.createView();
+                           size        = {image.texture.getWidth(), image.texture.getHeight()};
+                           format      = image.texture.getFormat();
                        },
                        [&](const ::epix::window::NormalizedWindowRef& window) {
                            if (auto it = windows->windows.find(window.entity()); it != windows->windows.end()) {
                                const auto& extracted = it->second;
                                if (!extracted.swapchain_texture_view || !extracted.swapchain_texture.texture) return;
-                               output_view    = extracted.swapchain_texture_view;
-                               size           = {static_cast<uint32_t>(extracted.physical_width),
-                                                 static_cast<uint32_t>(extracted.physical_height)};
-                               format         = extracted.swapchain_texture_view_format;
+                               output_view = extracted.swapchain_texture_view;
+                               size        = {static_cast<uint32_t>(extracted.physical_width),
+                                              static_cast<uint32_t>(extracted.physical_height)};
+                               format      = extracted.swapchain_texture_view_format;
                            }
                        },
                        [&](const ::epix::camera::ManualTextureViewHandle& handle) {
@@ -493,7 +493,8 @@ void ScreenshotPlugin::attach(epix::app::App& app) {
             .vertex_shader   = server->get().load<shader::Shader>("embedded://screenshot/blit_vert.slang"),
             .fragment_shader = server->get().load<shader::Shader>("embedded://screenshot/blit_frag.slang"),
         });
-    } else return;
+    } else
+        return;
 
     render_app.add_systems(
         ExtractSchedule,
