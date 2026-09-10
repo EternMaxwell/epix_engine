@@ -105,6 +105,53 @@ void set_descriptor(Image& image,
         wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eCopySrc);
 }
 
+wgpu::AddressMode address_mode_cast(ImageAddressMode mode) noexcept {
+    switch (mode) {
+        case ImageAddressMode::ClampToEdge:
+            return wgpu::AddressMode::eClampToEdge;
+        case ImageAddressMode::Repeat:
+            return wgpu::AddressMode::eRepeat;
+        case ImageAddressMode::MirrorRepeat:
+            return wgpu::AddressMode::eMirrorRepeat;
+        case ImageAddressMode::ClampToBorder:
+        default:
+            // wgpu-native's C API has no `AddressMode::ClampToBorder` (Bevy's wgpu
+            // does), so the address mode falls back to edge clamping. Recorded as
+            // an intentional wgpu-native FFI gap in the tracker.
+            return wgpu::AddressMode::eClampToEdge;
+    }
+}
+
+wgpu::FilterMode filter_mode_cast(ImageFilterMode mode) noexcept {
+    return mode == ImageFilterMode::Linear ? wgpu::FilterMode::eLinear : wgpu::FilterMode::eNearest;
+}
+
+wgpu::MipmapFilterMode mipmap_filter_mode_cast(ImageFilterMode mode) noexcept {
+    return mode == ImageFilterMode::Linear ? wgpu::MipmapFilterMode::eLinear : wgpu::MipmapFilterMode::eNearest;
+}
+
+wgpu::CompareFunction compare_function_cast(ImageCompareFunction function) noexcept {
+    switch (function) {
+        case ImageCompareFunction::Never:
+            return wgpu::CompareFunction::eNever;
+        case ImageCompareFunction::Less:
+            return wgpu::CompareFunction::eLess;
+        case ImageCompareFunction::Equal:
+            return wgpu::CompareFunction::eEqual;
+        case ImageCompareFunction::LessEqual:
+            return wgpu::CompareFunction::eLessEqual;
+        case ImageCompareFunction::Greater:
+            return wgpu::CompareFunction::eGreater;
+        case ImageCompareFunction::NotEqual:
+            return wgpu::CompareFunction::eNotEqual;
+        case ImageCompareFunction::GreaterEqual:
+            return wgpu::CompareFunction::eGreaterEqual;
+        case ImageCompareFunction::Always:
+        default:
+            return wgpu::CompareFunction::eAlways;
+    }
+}
+
 Image create_like(const Image& image, Format format) {
     switch (image.type()) {
         case ImageType::e1D: {
@@ -238,7 +285,6 @@ Image Image::take_data() {
     extracted.m_usage                 = m_usage;
     extracted.m_copy_on_resize        = m_copy_on_resize;
     extracted.m_sampler               = m_sampler;
-    extracted.m_sampler_descriptor    = m_sampler_descriptor;
     extracted.data                    = std::move(data);
     extracted.m_has_data              = m_has_data;
 
@@ -252,6 +298,22 @@ Image Image::create1d(std::uint32_t w, Format fmt) {
     set_descriptor(img, ImageType::e1D, w, 1, 1, fmt);
     img.data.assign(static_cast<std::size_t>(w) * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
+}
+
+wgpu::SamplerDescriptor ImageSamplerDescriptor::as_wgpu() const noexcept {
+    wgpu::SamplerDescriptor out;
+    if (!label.empty()) out.setLabel(wgpu::StringView(label));
+    out.setAddressModeU(address_mode_cast(address_mode_u))
+        .setAddressModeV(address_mode_cast(address_mode_v))
+        .setAddressModeW(address_mode_cast(address_mode_w))
+        .setMagFilter(filter_mode_cast(mag_filter))
+        .setMinFilter(filter_mode_cast(min_filter))
+        .setMipmapFilter(mipmap_filter_mode_cast(mipmap_filter))
+        .setLodMinClamp(lod_min_clamp)
+        .setLodMaxClamp(lod_max_clamp)
+        .setMaxAnisotropy(anisotropy_clamp);
+    if (compare.has_value()) out.setCompare(compare_function_cast(*compare));
+    return out;
 }
 
 ImageType Image::type() const noexcept {

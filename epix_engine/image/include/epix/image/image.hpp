@@ -246,16 +246,65 @@ EPIX_EXPORT struct ImageSamplerDescriptor {
         address_mode_w = mode;
         return *this;
     }
+    /** @brief Set the anisotropy clamp and force linear filters, which anisotropy
+     * requires (Bevy `ImageSamplerDescriptor::set_anisotropic_filter`). */
+    ImageSamplerDescriptor& set_anisotropic_filter(std::uint16_t anisotropy_clamp) noexcept {
+        mag_filter             = ImageFilterMode::Linear;
+        min_filter             = ImageFilterMode::Linear;
+        mipmap_filter          = ImageFilterMode::Linear;
+        this->anisotropy_clamp = anisotropy_clamp;
+        return *this;
+    }
+    /** @brief Convert to the WebGPU sampler descriptor (Bevy
+     * `ImageSamplerDescriptor::as_wgpu`). */
+    wgpu::SamplerDescriptor as_wgpu() const noexcept;
 };
 
 /** @brief The sampler to use during rendering (Bevy `ImageSampler`).
- * `Default` reads the sampler from the ImagePlugin at setup; `Descriptor`
- * overrides the global default for this image. */
-EPIX_EXPORT enum class ImageSampler {
-    /** @brief Use the global default image sampler. */
-    Default,
-    /** @brief Use a custom sampler descriptor. */
-    Descriptor,
+ *
+ * As in Bevy, the `Descriptor` alternative *carries* its descriptor, so a custom
+ * descriptor cannot exist without the matching alternative and an image using the
+ * global default carries no descriptor at all. */
+EPIX_EXPORT struct ImageSampler {
+    /** @brief C++ counterpart to the payloadless `ImageSampler::Default`. */
+    struct DefaultAlternative {};
+    /** @brief C++ counterpart to `ImageSampler::Descriptor(ImageSamplerDescriptor)`. */
+    struct DescriptorAlternative {
+        ImageSamplerDescriptor value;
+        bool operator==(const DescriptorAlternative&) const = default;
+    };
+
+    std::variant<DefaultAlternative, DescriptorAlternative> alternatives{DefaultAlternative{}};
+
+    constexpr ImageSampler() = default;
+    constexpr ImageSampler(DefaultAlternative value) : alternatives(value) {}
+    constexpr ImageSampler(DescriptorAlternative value) : alternatives(std::move(value)) {}
+    constexpr ImageSampler(ImageSamplerDescriptor descriptor)
+        : alternatives(DescriptorAlternative{std::move(descriptor)}) {}
+
+    /** @brief A sampler using linear min/mag filters (Bevy `ImageSampler::linear`). */
+    static ImageSampler linear() { return ImageSampler{ImageSamplerDescriptor::linear()}; }
+    /** @brief A sampler using nearest min/mag filters (Bevy `ImageSampler::nearest`). */
+    static ImageSampler nearest() { return ImageSampler{ImageSamplerDescriptor::nearest()}; }
+
+    /** @brief True when this is the payloadless `Default` alternative. */
+    bool is_default() const noexcept { return std::holds_alternative<DefaultAlternative>(alternatives); }
+    /** @brief The carried descriptor, or `nullptr` when this is `Default` (Bevy's
+     * `ImageSampler::Descriptor(..)` pattern match). */
+    const ImageSamplerDescriptor* descriptor() const noexcept {
+        const auto* alternative = std::get_if<DescriptorAlternative>(&alternatives);
+        return alternative ? &alternative->value : nullptr;
+    }
+    /** @brief Initialize the descriptor if it is not already initialized (Bevy
+     * `ImageSampler::get_or_init_descriptor`). */
+    ImageSamplerDescriptor& get_or_init_descriptor() {
+        if (!std::holds_alternative<DescriptorAlternative>(alternatives)) {
+            alternatives = DescriptorAlternative{};
+        }
+        return std::get<DescriptorAlternative>(alternatives).value;
+    }
+
+    bool operator==(const ImageSampler&) const = default;
 };
 
 /** @brief Multi-dimensional image with runtime pixel format.
@@ -271,8 +320,9 @@ EPIX_EXPORT class Image {
     assets::RenderAssetUsages m_usage = static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
                                                                                assets::RenderAssetUsages::RENDER_WORLD);
     bool m_copy_on_resize             = false;
-    ImageSampler m_sampler            = ImageSampler::Default;
-    ImageSamplerDescriptor m_sampler_descriptor;
+    // Bevy stores the sampler as a payload-carrying alternative, so no separate
+    // descriptor member exists here.
+    ImageSampler m_sampler = ImageSampler{};
 
     std::vector<std::byte> data;
     // Bevy stores Image::data as Option<Vec<u8>>. Keep the existing C++
@@ -436,18 +486,19 @@ EPIX_EXPORT class Image {
      * resizing without data. */
     void set_copy_on_resize(bool value) noexcept { m_copy_on_resize = value; }
     /** @brief The sampler to use during rendering (Bevy Image::sampler). */
-    ImageSampler sampler() const noexcept { return m_sampler; }
-    /** @brief Set the sampler mode (Bevy Image::sampler). */
-    void set_sampler(ImageSampler sampler) noexcept { m_sampler = sampler; }
-    /** @brief The custom sampler descriptor used when sampler() ==
-     * ImageSampler::Descriptor (Bevy ImageSampler::Descriptor). */
-    const ImageSamplerDescriptor& sampler_descriptor() const noexcept { return m_sampler_descriptor; }
-    ImageSamplerDescriptor& sampler_descriptor_mut() noexcept { return m_sampler_descriptor; }
-    /** @brief Set a custom sampler descriptor and switch to
-     * ImageSampler::Descriptor (Bevy ImageSampler::Descriptor). */
+    const ImageSampler& sampler() const noexcept { return m_sampler; }
+    /** @brief Set the sampler alternative (Bevy Image::sampler). */
+    void set_sampler(ImageSampler sampler) noexcept { m_sampler = std::move(sampler); }
+    /** @brief The carried custom sampler descriptor, or `nullptr` when the sampler
+     * is the payloadless default (Bevy `ImageSampler::Descriptor`). */
+    const ImageSamplerDescriptor* sampler_descriptor() const noexcept { return m_sampler.descriptor(); }
+    /** @brief Initialize and return the custom sampler descriptor (Bevy
+     * `ImageSampler::get_or_init_descriptor`). */
+    ImageSamplerDescriptor& get_or_init_sampler_descriptor() { return m_sampler.get_or_init_descriptor(); }
+    /** @brief Set a custom sampler descriptor and select the `Descriptor`
+     * alternative (Bevy `ImageSampler::Descriptor`). */
     void set_sampler_descriptor(ImageSamplerDescriptor descriptor) noexcept {
-        m_sampler_descriptor = std::move(descriptor);
-        m_sampler            = ImageSampler::Descriptor;
+        m_sampler = ImageSampler{std::move(descriptor)};
     }
 
     /** @brief Get a read-only byte span of the raw pixel data. */

@@ -6,10 +6,6 @@
 
 namespace epix::render {
 
-namespace {
-wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDescriptor& descriptor);
-}
-
 void TexturePlugin::attach(app::App& app) {
     // Bevy texture::TexturePlugin owns image render-asset extraction and the
     // manually managed texture-view resource.
@@ -39,7 +35,7 @@ void TexturePlugin::attach(app::App& app) {
         // after render resources are available. Epix initializes them during
         // attachment because RenderPlugin creates its device synchronously
         // before child plugins are attached.
-        auto sampler_descriptor = to_wgpu_sampler_descriptor(default_sampler_descriptor);
+        auto sampler_descriptor = default_sampler_descriptor.as_wgpu();
         sampler_descriptor.setLabel("DefaultImageSampler");
         wgpu::Sampler sampler = device.createSampler(sampler_descriptor);
         world.insert_resource(DefaultImageSampler{.sampler = std::move(sampler)});
@@ -53,6 +49,9 @@ void TexturePlugin::attach(app::App& app) {
     });
 }
 
+namespace {
+/** @brief The texture view dimension for an image type (Bevy derives this from
+ * `texture_descriptor.dimension` plus the layer count). */
 wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) noexcept {
     switch (type) {
         case image::ImageType::e1D:
@@ -66,72 +65,6 @@ wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) noexcept {
         default:
             return wgpu::TextureViewDimension::e2D;
     }
-}
-
-namespace {
-wgpu::AddressMode address_mode_cast(image::ImageAddressMode mode) noexcept {
-    switch (mode) {
-        case image::ImageAddressMode::ClampToEdge:
-            return wgpu::AddressMode::eClampToEdge;
-        case image::ImageAddressMode::Repeat:
-            return wgpu::AddressMode::eRepeat;
-        case image::ImageAddressMode::MirrorRepeat:
-            return wgpu::AddressMode::eMirrorRepeat;
-        case image::ImageAddressMode::ClampToBorder:
-            // The bundled wgpu-native (25.0.2.2) has no
-            // WGPUAddressMode_ClampToBorder; fall back to ClampToEdge
-            // (documented wrapper gap).
-            return wgpu::AddressMode::eClampToEdge;
-    }
-    return wgpu::AddressMode::eClampToEdge;
-}
-wgpu::FilterMode filter_mode_cast(image::ImageFilterMode mode) noexcept {
-    return mode == image::ImageFilterMode::Linear ? wgpu::FilterMode::eLinear : wgpu::FilterMode::eNearest;
-}
-wgpu::MipmapFilterMode mipmap_filter_mode_cast(image::ImageFilterMode mode) noexcept {
-    return mode == image::ImageFilterMode::Linear ? wgpu::MipmapFilterMode::eLinear : wgpu::MipmapFilterMode::eNearest;
-}
-wgpu::CompareFunction compare_function_cast(image::ImageCompareFunction fn) noexcept {
-    switch (fn) {
-        case image::ImageCompareFunction::Never:
-            return wgpu::CompareFunction::eNever;
-        case image::ImageCompareFunction::Less:
-            return wgpu::CompareFunction::eLess;
-        case image::ImageCompareFunction::Equal:
-            return wgpu::CompareFunction::eEqual;
-        case image::ImageCompareFunction::LessEqual:
-            return wgpu::CompareFunction::eLessEqual;
-        case image::ImageCompareFunction::Greater:
-            return wgpu::CompareFunction::eGreater;
-        case image::ImageCompareFunction::NotEqual:
-            return wgpu::CompareFunction::eNotEqual;
-        case image::ImageCompareFunction::GreaterEqual:
-            return wgpu::CompareFunction::eGreaterEqual;
-        case image::ImageCompareFunction::Always:
-            return wgpu::CompareFunction::eAlways;
-    }
-    return wgpu::CompareFunction::eAlways;
-}
-/** @brief Map an epix ImageSamplerDescriptor to a wgpu SamplerDescriptor
- * (Bevy ImageSamplerDescriptor::as_wgpu). Note: the generated webgpu wrapper
- * omits SamplerDescriptor.borderColor, so ClampToBorder with a border color
- * cannot be expressed (wgpu-native FFI gap, documented in the tracker). */
-wgpu::SamplerDescriptor to_wgpu_sampler_descriptor(const image::ImageSamplerDescriptor& descriptor) {
-    wgpu::SamplerDescriptor out;
-    if (!descriptor.label.empty()) out.setLabel(wgpu::StringView(descriptor.label));
-    out.setAddressModeU(address_mode_cast(descriptor.address_mode_u))
-        .setAddressModeV(address_mode_cast(descriptor.address_mode_v))
-        .setAddressModeW(address_mode_cast(descriptor.address_mode_w))
-        .setMagFilter(filter_mode_cast(descriptor.mag_filter))
-        .setMinFilter(filter_mode_cast(descriptor.min_filter))
-        .setMipmapFilter(mipmap_filter_mode_cast(descriptor.mipmap_filter))
-        .setLodMinClamp(descriptor.lod_min_clamp)
-        .setLodMaxClamp(descriptor.lod_max_clamp)
-        .setMaxAnisotropy(descriptor.anisotropy_clamp);
-    if (descriptor.compare.has_value()) {
-        out.setCompare(compare_function_cast(*descriptor.compare));
-    }
-    return out;
 }
 }  // namespace
 
@@ -168,8 +101,8 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     }
     // Bevy gpu_image.rs:119-122: ImageSampler::Default uses the global
     // DefaultImageSampler; ImageSampler::Descriptor creates a custom sampler.
-    if (asset.sampler() == image::ImageSampler::Descriptor) {
-        gpu_image.sampler = device->createSampler(to_wgpu_sampler_descriptor(asset.sampler_descriptor()));
+    if (const auto* sampler_descriptor = asset.sampler().descriptor()) {
+        gpu_image.sampler = device->createSampler(sampler_descriptor->as_wgpu());
         if (!gpu_image.sampler) {
             return std::unexpected(GpuAssetCreationError::CreateSampler);
         }

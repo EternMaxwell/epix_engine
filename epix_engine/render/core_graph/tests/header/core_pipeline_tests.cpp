@@ -197,9 +197,9 @@ TEST(TonemappingPlugin, InstallsBundledBevyLuts) {
         EXPECT_EQ(lut->get().depth(), extent);
         EXPECT_EQ(lut->get().format(), epix::image::Format::RGBA32F);
         EXPECT_EQ(lut->get().usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
-        EXPECT_EQ(lut->get().sampler(), epix::image::ImageSampler::Descriptor);
-        EXPECT_EQ(lut->get().sampler_descriptor().min_filter, epix::image::ImageFilterMode::Linear);
-        EXPECT_EQ(lut->get().sampler_descriptor().address_mode_w, epix::image::ImageAddressMode::ClampToEdge);
+        ASSERT_NE(lut->get().sampler_descriptor(), nullptr);
+        EXPECT_EQ(lut->get().sampler_descriptor()->min_filter, epix::image::ImageFilterMode::Linear);
+        EXPECT_EQ(lut->get().sampler_descriptor()->address_mode_w, epix::image::ImageAddressMode::ClampToEdge);
         EXPECT_EQ(lut->get().raw_view().size(), static_cast<std::size_t>(extent) * extent * extent * 4 * sizeof(float));
     };
 
