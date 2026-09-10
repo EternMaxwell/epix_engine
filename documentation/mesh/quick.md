@@ -73,6 +73,19 @@ Shapes live in `epix::mesh` because Epix has no separate math-primitives module.
 builders retain Bevy's public `resolution` field; their consuming fluent method is named
 `with_resolution()` because C++ cannot declare a field and method with the same name.
 
+`CircularSector` and `CircularSegment` provide the matching +Y-symmetric arc and chord inputs.
+Their builders support `CircularMeshUvMode::Mask`, including UV rotation:
+
+```cpp
+Mesh sector = CircularSector::from_degrees(100.0f, 240.0f).mesh().with_resolution(48);
+Mesh segment = CircularSegment::from_degrees(100.0f, 120.0f)
+                   .mesh()
+                   .with_resolution(48)
+                   .with_uv_mode(CircularMeshUvMode::Mask{.angle = 0.35f});
+```
+
+The fluent UV setter is `with_uv_mode()` for the same C++ field/method naming reason.
+
 The older convenience factories `make_circle()`, `make_box2d()`, and `make_box2d_uv()` remain available
 for existing Epix code.
 

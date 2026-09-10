@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <cstring>
+#include <numbers>
 
 import epix.mesh;
 import epix.render;
@@ -636,6 +637,74 @@ TEST(MeshPrimitives, RegularPolygonAndRectangleBuildersMatchBevyTopologyAndUvs) 
 
     EXPECT_EQ(mesh::Rectangle::from_size({8.0f, 6.0f}).half_size, glm::vec2(4.0f, 3.0f));
     EXPECT_EQ(mesh::Rectangle::from_corners({-2.0f, -4.0f}, {6.0f, 2.0f}).half_size, glm::vec2(4.0f, 3.0f));
+}
+
+TEST(MeshPrimitives, CircularSectorMatchesBevyArcFanAndMaskUvs) {
+    static_assert(mesh::Meshable<mesh::CircularSector>);
+    static_assert(mesh::MeshBuilder<mesh::CircularSectorMeshBuilder>);
+
+    EXPECT_FLOAT_EQ(mesh::Arc2d{}.radius, 0.5f);
+    EXPECT_FLOAT_EQ(mesh::Arc2d{}.half_angle, 2.0f * std::numbers::pi_v<float> / 3.0f);
+    EXPECT_EQ(mesh::CircularMeshUvMode{}, mesh::CircularMeshUvMode{mesh::CircularMeshUvMode::Mask{.angle = 0.0f}});
+
+    const auto sector =
+        mesh::CircularSector::from_radians(2.0f, std::numbers::pi_v<float>).mesh().with_resolution(3).build();
+    const auto* positions =
+        sector.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        sector.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    ASSERT_EQ(positions->size(), 4u);
+    EXPECT_EQ((*positions)[0], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.0f, 0.0f}));
+    EXPECT_NEAR((*positions)[1][0], 2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[1][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[2][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[2][1], 2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[3][0], -2.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[3][1], 0.0f, 1e-6f);
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.5f, 0.5f}));
+    EXPECT_NEAR((*uvs)[1][0], 1.0f, 1e-6f);
+    EXPECT_NEAR((*uvs)[1][1], 0.5f, 1e-6f);
+    EXPECT_NEAR((*uvs)[2][0], 0.5f, 1e-6f);
+    EXPECT_NEAR((*uvs)[2][1], 0.0f, 1e-6f);
+    ASSERT_TRUE(sector.indices().has_value());
+    ASSERT_NE(sector.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*sector.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
+}
+
+TEST(MeshPrimitives, CircularSegmentMatchesBevyChordFanAndRotatedMaskUvs) {
+    static_assert(mesh::Meshable<mesh::CircularSegment>);
+    static_assert(mesh::MeshBuilder<mesh::CircularSegmentMeshBuilder>);
+
+    const auto shape = mesh::CircularSegment::from_radians(2.0f, std::numbers::pi_v<float> * 0.5f);
+    EXPECT_NEAR(shape.apothem(), std::numbers::sqrt2_v<float>, 1e-6f);
+    EXPECT_EQ(shape.chord_midpoint(), glm::vec2(0.0f, shape.apothem()));
+
+    const auto segment = shape.mesh()
+                             .with_resolution(3)
+                             .with_uv_mode(mesh::CircularMeshUvMode::Mask{
+                                 .angle = std::numbers::pi_v<float> * 0.5f,
+                             })
+                             .build();
+    const auto* positions =
+        segment.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        segment.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    ASSERT_EQ(positions->size(), 4u);
+    EXPECT_NEAR((*positions)[0][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[0][1], std::numbers::sqrt2_v<float>, 1e-6f);
+    EXPECT_NEAR((*positions)[1][0], std::numbers::sqrt2_v<float>, 1e-6f);
+    EXPECT_NEAR((*positions)[1][1], std::numbers::sqrt2_v<float>, 1e-6f);
+    EXPECT_NEAR((*uvs)[0][0], 0.5f - std::numbers::sqrt2_v<float> * 0.25f, 1e-6f);
+    EXPECT_NEAR((*uvs)[0][1], 0.5f, 1e-6f);
+    EXPECT_NEAR((*uvs)[1][0], 0.5f - std::numbers::sqrt2_v<float> * 0.25f, 1e-6f);
+    EXPECT_NEAR((*uvs)[1][1], 0.5f - std::numbers::sqrt2_v<float> * 0.25f, 1e-6f);
+    ASSERT_TRUE(segment.indices().has_value());
+    ASSERT_NE(segment.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(*segment.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3}));
 }
 
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {

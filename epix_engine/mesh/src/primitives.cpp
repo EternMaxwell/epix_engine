@@ -9,9 +9,25 @@ namespace epix::mesh {
 namespace {
 constexpr auto kDefaultMeshAssetUsage = static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
                                                                                assets::RenderAssetUsages::RENDER_WORLD);
-}
+
+glm::vec2 unit_from_angle(float angle) { return {std::cos(angle), std::sin(angle)}; }
+}  // namespace
 
 CircleMeshBuilder Circle::mesh() const noexcept { return CircleMeshBuilder{radius, 32}; }
+
+float Arc2d::half_chord_length() const noexcept { return radius * std::sin(half_angle); }
+
+float Arc2d::apothem() const noexcept {
+    const float half_chord = half_chord_length();
+    const float sign       = is_minor() ? 1.0f : -1.0f;
+    return sign * std::sqrt(radius * radius - half_chord * half_chord);
+}
+
+glm::vec2 Arc2d::chord_midpoint() const noexcept { return {0.0f, apothem()}; }
+
+CircularSectorMeshBuilder CircularSector::mesh() const noexcept { return CircularSectorMeshBuilder{*this}; }
+
+CircularSegmentMeshBuilder CircularSegment::mesh() const noexcept { return CircularSegmentMeshBuilder{*this}; }
 
 EllipseMeshBuilder Ellipse::mesh() const noexcept { return EllipseMeshBuilder{half_size.x, half_size.y, 32}; }
 
@@ -32,6 +48,82 @@ Rectangle Rectangle::from_corners(glm::vec2 first, glm::vec2 second) noexcept {
 RectangleMeshBuilder Rectangle::mesh() const noexcept { return RectangleMeshBuilder{half_size}; }
 
 Mesh CircleMeshBuilder::build() const { return EllipseMeshBuilder{circle.radius, circle.radius, resolution}.build(); }
+
+Mesh CircularSectorMeshBuilder::build() const {
+    const auto arc_vertex_count = static_cast<std::size_t>(resolution);
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals(arc_vertex_count + 1, {0.0f, 0.0f, 1.0f});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(arc_vertex_count + 1);
+    uvs.reserve(arc_vertex_count + 1);
+    if (resolution >= 1) indices.reserve(static_cast<std::size_t>(resolution - 1) * 3);
+
+    positions.push_back({0.0f, 0.0f, 0.0f});
+    uvs.push_back({0.5f, 0.5f});
+
+    constexpr float half_pi = std::numbers::pi_v<float> * 0.5f;
+    const float first_angle = half_pi - sector.half_angle();
+    const float last_angle  = half_pi + sector.half_angle();
+    const float last_index  = static_cast<float>(resolution - 1);
+    const float uv_angle    = uv_mode.value.angle;
+    for (std::uint32_t index = 0; index < resolution; ++index) {
+        const float angle = std::lerp(first_angle, last_angle, static_cast<float>(index) / last_index);
+        const auto vertex = sector.radius() * unit_from_angle(angle);
+        const auto uv     = unit_from_angle(-(angle + uv_angle)) * 0.5f + glm::vec2(0.5f);
+        positions.push_back({vertex.x, vertex.y, 0.0f});
+        uvs.push_back({uv.x, uv.y});
+    }
+    for (std::uint32_t index = 1; index < resolution; ++index) {
+        indices.insert(indices.end(), {0, index, index + 1});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
+
+Mesh CircularSegmentMeshBuilder::build() const {
+    const auto arc_vertex_count = static_cast<std::size_t>(resolution);
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals(arc_vertex_count + 1, {0.0f, 0.0f, 1.0f});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    positions.reserve(arc_vertex_count + 1);
+    uvs.reserve(arc_vertex_count + 1);
+    if (resolution >= 1) indices.reserve(static_cast<std::size_t>(resolution - 1) * 3);
+
+    const auto midpoint = segment.chord_midpoint();
+    positions.push_back({midpoint.x, midpoint.y, 0.0f});
+
+    constexpr float half_pi = std::numbers::pi_v<float> * 0.5f;
+    const float uv_angle    = uv_mode.value.angle;
+    const auto midpoint_uv =
+        unit_from_angle(-uv_angle - half_pi) * (0.5f * segment.apothem() / segment.radius()) + glm::vec2(0.5f);
+    uvs.push_back({midpoint_uv.x, midpoint_uv.y});
+
+    const float first_angle = half_pi - segment.half_angle();
+    const float last_angle  = half_pi + segment.half_angle();
+    const float last_index  = static_cast<float>(resolution - 1);
+    for (std::uint32_t index = 0; index < resolution; ++index) {
+        const float angle = std::lerp(first_angle, last_angle, static_cast<float>(index) / last_index);
+        const auto vertex = segment.radius() * unit_from_angle(angle);
+        const auto uv     = unit_from_angle(-(angle + uv_angle)) * 0.5f + glm::vec2(0.5f);
+        positions.push_back({vertex.x, vertex.y, 0.0f});
+        uvs.push_back({uv.x, uv.y});
+    }
+    for (std::uint32_t index = 1; index < resolution; ++index) {
+        indices.insert(indices.end(), {0, index, index + 1});
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(indices)});
+}
 
 Mesh EllipseMeshBuilder::build() const {
     const auto vertex_count = static_cast<std::size_t>(resolution);
