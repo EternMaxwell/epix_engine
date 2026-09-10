@@ -333,3 +333,116 @@ TEST(Image, ReinterpretStacked2dAsArrayMatchesBevyErrors) {
     EXPECT_NE(std::get_if<epix::image::TextureReinterpretationError::InvalidLayerCount>(&already_layered.error().value),
               nullptr);
 }
+
+// pixel_bytes exposes one pixel's raw bytes and rejects out-of-range coordinates
+// or a missing payload (Bevy Image::pixel_bytes, image.rs:1457).
+TEST(Image, PixelBytesExposeOnePixelsBytes) {
+    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    ASSERT_TRUE(image.write(1, 0, 0, std::array{1.0f, 0.0f, 0.0f, 1.0f}).has_value());
+
+    const auto first = image.pixel_bytes({1u, 0u, 0u});
+    ASSERT_TRUE(first.has_value());
+    EXPECT_EQ(first->size(), 4u);
+    EXPECT_EQ((*first)[0], std::byte(255));
+    EXPECT_EQ((*first)[1], std::byte(0));
+
+    EXPECT_FALSE(image.pixel_bytes({2u, 0u, 0u}).has_value());
+    EXPECT_FALSE(image.pixel_bytes({0u, 2u, 0u}).has_value());
+
+    auto mutable_bytes = image.pixel_bytes_mut({0u, 1u, 0u});
+    ASSERT_TRUE(mutable_bytes.has_value());
+    ASSERT_EQ(mutable_bytes->size(), 4u);
+    (*mutable_bytes)[2] = std::byte(64);
+    EXPECT_EQ(image.pixel_bytes({0u, 1u, 0u}).value()[2], std::byte(64));
+
+    // A transferred payload has no accessible bytes.
+    auto extracted = image.take_data();
+    EXPECT_FALSE(image.pixel_bytes({0u, 0u, 0u}).has_value());
+}
+
+// clear repeats the fill data across the whole payload (Bevy Image::clear,
+// image.rs:1477).
+TEST(Image, ClearRepeatsFillAcrossPayload) {
+    auto image = epix::image::Image::create2d(3, 2, epix::image::Format::RGBA8);
+    const std::array<std::byte, 4> fill{std::byte(1), std::byte(2), std::byte(3), std::byte(4)};
+    image.clear(fill);
+    ASSERT_EQ(image.raw_view().size(), 3u * 2u * 4u);
+    for (std::size_t index = 0; index < image.raw_view().size(); ++index) {
+        EXPECT_EQ(image.raw_view()[index], fill[index % fill.size()]);
+    }
+}
+
+// get_color_at/set_color_at round-trip through the texture format, reporting Bevy's
+// typed access errors (Bevy Image::get_color_at / set_color_at, image.rs:1504-1610).
+TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
+    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    ASSERT_TRUE(image.set_color_at(1, 1, glm::vec4(1.0f, 0.5f, 0.25f, 1.0f)).has_value());
+
+    const auto read_back = image.get_color_at(1, 1);
+    ASSERT_TRUE(read_back.has_value());
+    EXPECT_NEAR((*read_back)[0], 1.0f, 1.0f / 255.0f);
+    EXPECT_NEAR((*read_back)[1], 0.5f, 1.0f / 255.0f);
+    EXPECT_NEAR((*read_back)[2], 0.25f, 1.0f / 255.0f);
+    EXPECT_NEAR((*read_back)[3], 1.0f, 1.0f / 255.0f);
+
+    // Out-of-range coordinates report the offending coordinate in the error.
+    const auto out_of_bounds = image.get_color_at(9, 0);
+    ASSERT_FALSE(out_of_bounds.has_value());
+    const auto* bounds = std::get_if<epix::image::TextureAccessError::OutOfBounds>(&out_of_bounds.error().value);
+    ASSERT_NE(bounds, nullptr);
+    EXPECT_EQ(bounds->x, 9u);
+    EXPECT_EQ(bounds->y, 0u);
+
+    // The 2D accessor rejects a 3D image with WrongDimension.
+    auto volumetric            = epix::image::Image::create3d(2, 2, 2, epix::image::Format::RGBA8);
+    const auto wrong_dimension = volumetric.get_color_at(0, 0);
+    ASSERT_FALSE(wrong_dimension.has_value());
+    EXPECT_NE(std::get_if<epix::image::TextureAccessError::WrongDimension>(&wrong_dimension.error().value), nullptr);
+
+    // The 3D accessor works on layered 2D images and 3D images alike. The last
+    // valid layer index is depth - 1, so this exercises the boundary.
+    ASSERT_TRUE(volumetric.set_color_at_3d(1, 1, 1, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f)).has_value());
+    const auto layer_read = volumetric.get_color_at_3d(1, 1, 1);
+    ASSERT_TRUE(layer_read.has_value());
+    EXPECT_NEAR((*layer_read)[1], 1.0f, 1.0f / 255.0f);
+    // One layer past the end is reported as out of bounds.
+    const auto beyond = volumetric.get_color_at_3d(0, 0, 2);
+    ASSERT_FALSE(beyond.has_value());
+    const auto* beyond_bounds = std::get_if<epix::image::TextureAccessError::OutOfBounds>(&beyond.error().value);
+    ASSERT_NE(beyond_bounds, nullptr);
+    EXPECT_EQ(beyond_bounds->z, 2u);
+}
+
+// A BGRA8 image stores its channels in B, G, R, A order while the accessor still
+// returns linear RGBA (Bevy Image::set_color_at's documented format support).
+TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
+    auto image                      = epix::image::Image::create2d(1, 1, epix::image::Format::RGBA8);
+    image.texture_descriptor.format = wgpu::TextureFormat::eBGRA8Unorm;
+    ASSERT_TRUE(image.set_color_at(0, 0, glm::vec4(1.0f, 0.0f, 0.5f, 1.0f)).has_value());
+
+    const auto bytes = image.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(bytes.has_value());
+    EXPECT_EQ((*bytes)[0], std::byte(128));  // blue
+    EXPECT_EQ((*bytes)[1], std::byte(0));    // green
+    EXPECT_EQ((*bytes)[2], std::byte(255));  // red
+    const auto read_back = image.get_color_at(0, 0);
+    ASSERT_TRUE(read_back.has_value());
+    EXPECT_NEAR((*read_back)[0], 1.0f, 1.0f / 255.0f);
+    EXPECT_NEAR((*read_back)[2], 0.5f, 1.0f / 255.0f);
+}
+
+// A compressed format has no per-pixel size, so pixel access reports
+// UnsupportedTextureFormat rather than an out-of-bounds error
+// (Bevy TextureAccessError::UnsupportedTextureFormat, image.rs:1968).
+TEST(Image, CompressedFormatReportsUnsupportedAccess) {
+    auto image                      = epix::image::Image::create2d(4, 4, epix::image::Format::RGBA8);
+    image.texture_descriptor.format = wgpu::TextureFormat::eBC7RGBAUnorm;
+
+    EXPECT_FALSE(image.pixel_bytes({0u, 0u, 0u}).has_value());
+    const auto color = image.get_color_at(0, 0);
+    ASSERT_FALSE(color.has_value());
+    const auto* unsupported =
+        std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(&color.error().value);
+    ASSERT_NE(unsupported, nullptr);
+    EXPECT_EQ(unsupported->format, wgpu::TextureFormat::eBC7RGBAUnorm);
+}

@@ -134,6 +134,32 @@ EPIX_EXPORT struct TextureReinterpretationError {
     bool operator==(const TextureReinterpretationError&) const = default;
 };
 
+/** @brief Error returned when accessing a specific pixel in a texture (Bevy
+ * `TextureAccessError`). */
+EPIX_EXPORT struct TextureAccessError {
+    /** @brief C++ counterpart to `TextureAccessError::OutOfBounds { x, y, z }`. */
+    struct OutOfBounds {
+        std::uint32_t x                           = 0;
+        std::uint32_t y                           = 0;
+        std::uint32_t z                           = 0;
+        bool operator==(const OutOfBounds&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureAccessError::UnsupportedTextureFormat(TextureFormat)`. */
+    struct UnsupportedTextureFormat {
+        wgpu::TextureFormat format                             = wgpu::TextureFormat::eUndefined;
+        bool operator==(const UnsupportedTextureFormat&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureAccessError::WrongDimension`. */
+    struct WrongDimension {
+        bool operator==(const WrongDimension&) const = default;
+    };
+
+    std::variant<OutOfBounds, UnsupportedTextureFormat, WrongDimension> value{OutOfBounds{}};
+
+    bool operator==(const TextureAccessError&) const = default;
+};
+
 template <typename T>
 struct span_type {
     using span = decltype(std::span(std::declval<T>()));
@@ -637,6 +663,47 @@ EPIX_EXPORT class Image {
      * coordinates are outside the image or the format has no known pixel size
      * (Bevy `Image::pixel_data_offset`). */
     std::optional<std::size_t> pixel_data_offset(const glm::uvec3& coords) const noexcept;
+
+    // ─── Bevy `Image` pixel access surface (I3) ────────────────────────────────────────────────
+
+    /** @brief The raw bytes of one pixel, or `std::nullopt` when the coordinates
+     * are outside the image or the format has no known pixel size (Bevy
+     * `Image::pixel_bytes`). */
+    std::optional<std::span<const std::byte>> pixel_bytes(const glm::uvec3& coords) const noexcept;
+    /** @brief Mutable raw bytes of one pixel (Bevy `Image::pixel_bytes_mut`). */
+    std::optional<std::span<std::byte>> pixel_bytes_mut(const glm::uvec3& coords) noexcept;
+
+    /** @brief Overwrite every pixel with `pixel` repeated, ignoring any leftover
+     * partial copy when the payload is shorter than one pixel (Bevy
+     * `Image::clear`). */
+    void clear(std::span<const std::byte> pixel);
+
+    /** @brief Read a pixel as linear RGBA (Bevy `Image::get_color_at`, which
+     * returns a `Color`).
+     *
+     * Epix has no `Color` value type and uses `glm::vec4` for colors throughout,
+     * so the components are returned directly as linear RGBA. */
+    std::expected<glm::vec4, TextureAccessError> get_color_at(std::uint32_t x, std::uint32_t y) const;
+    /** @brief Read a pixel from a layered 2D or 3D texture (Bevy
+     * `Image::get_color_at_3d`). */
+    std::expected<glm::vec4, TextureAccessError> get_color_at_3d(std::uint32_t x,
+                                                                 std::uint32_t y,
+                                                                 std::uint32_t z) const;
+    /** @brief Read a pixel from a 1D texture (Bevy `Image::get_color_at_1d`). */
+    std::expected<glm::vec4, TextureAccessError> get_color_at_1d(std::uint32_t x) const;
+
+    /** @brief Write linear RGBA into a pixel, encoded into the image's texture
+     * format (Bevy `Image::set_color_at`). */
+    std::expected<void, TextureAccessError> set_color_at(std::uint32_t x, std::uint32_t y, const glm::vec4& color);
+    /** @brief Write linear RGBA into a pixel of a layered 2D or 3D texture (Bevy
+     * `Image::set_color_at_3d`). */
+    std::expected<void, TextureAccessError> set_color_at_3d(std::uint32_t x,
+                                                            std::uint32_t y,
+                                                            std::uint32_t z,
+                                                            const glm::vec4& color);
+    /** @brief Write linear RGBA into a pixel of a 1D texture (Bevy
+     * `Image::set_color_at_1d`). */
+    std::expected<void, TextureAccessError> set_color_at_1d(std::uint32_t x, const glm::vec4& color);
 };
 
 /** @brief The persistent opaque-white fallback image installed by

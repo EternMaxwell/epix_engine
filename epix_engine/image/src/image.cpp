@@ -114,6 +114,9 @@ std::optional<Format> format_from_texture_format(wgpu::TextureFormat format) noe
         case wgpu::TextureFormat::eRGBA8Unorm:
         case wgpu::TextureFormat::eRGBA8UnormSrgb:
             return Format::RGBA8;
+        case wgpu::TextureFormat::eBGRA8Unorm:
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+            return Format::RGBA8;
         case wgpu::TextureFormat::eR16Uint:
             return Format::Grey16;
         case wgpu::TextureFormat::eRGBA16Uint:
@@ -482,6 +485,223 @@ std::expected<void, TextureReinterpretationError> Image::reinterpret_stacked_2d_
     }
 
     return reinterpret_size(wgpu::Extent3D{width(), height() / layers, layers});
+}
+
+std::optional<std::span<const std::byte>> Image::pixel_bytes(const glm::uvec3& coords) const noexcept {
+    const auto offset = pixel_data_offset(coords);
+    if (!offset) return std::nullopt;
+    const auto pixel_size = pixel_size_of(texture_descriptor.format);
+    if (!pixel_size || *offset + *pixel_size > data.size()) return std::nullopt;
+    return std::span<const std::byte>(data.data() + *offset, *pixel_size);
+}
+
+std::optional<std::span<std::byte>> Image::pixel_bytes_mut(const glm::uvec3& coords) noexcept {
+    const auto offset = pixel_data_offset(coords);
+    if (!offset) return std::nullopt;
+    const auto pixel_size = pixel_size_of(texture_descriptor.format);
+    if (!pixel_size || *offset + *pixel_size > data.size()) return std::nullopt;
+    return std::span<std::byte>(data.data() + *offset, *pixel_size);
+}
+
+void Image::clear(std::span<const std::byte> pixel) {
+    const auto pixel_size = pixel_size_of(texture_descriptor.format);
+    if (!pixel_size || *pixel_size == 0 || pixel.empty()) return;
+    // Bevy cycles the fill data across the whole payload, so a shorter `pixel`
+    // repeats and a longer one fills what fits.
+    for (std::size_t index = 0; index < data.size(); ++index) {
+        data[index] = pixel[index % pixel.size()];
+    }
+}
+
+namespace {
+/** @brief Read the linear RGBA value of one pixel from raw bytes. */
+glm::vec4 read_pixel_color(wgpu::TextureFormat format, std::span<const std::byte> bytes) noexcept {
+    const auto channels = static_cast<std::size_t>(bytes.size());
+    glm::vec4 color{0.0f, 0.0f, 0.0f, 1.0f};
+    if (channels == 0) return color;
+    const unsigned char* raw = reinterpret_cast<const unsigned char*>(bytes.data());
+    switch (format) {
+        case wgpu::TextureFormat::eR8Unorm:
+            color.r = static_cast<float>(raw[0]) / 255.0f;
+            color.g = color.r;
+            color.b = color.r;
+            return color;
+        case wgpu::TextureFormat::eRG8Unorm:
+            color.r = static_cast<float>(raw[0]) / 255.0f;
+            color.g = static_cast<float>(raw[1]) / 255.0f;
+            color.b = 0.0f;
+            return color;
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            color.r = static_cast<float>(raw[0]) / 255.0f;
+            color.g = static_cast<float>(raw[1]) / 255.0f;
+            color.b = static_cast<float>(raw[2]) / 255.0f;
+            color.a = static_cast<float>(raw[3]) / 255.0f;
+            return color;
+        case wgpu::TextureFormat::eBGRA8Unorm:
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+            color.r = static_cast<float>(raw[2]) / 255.0f;
+            color.g = static_cast<float>(raw[1]) / 255.0f;
+            color.b = static_cast<float>(raw[0]) / 255.0f;
+            color.a = static_cast<float>(raw[3]) / 255.0f;
+            return color;
+        default: {
+            // 16-bit and 32-bit channel formats are read through the generic path.
+            const auto info = format_from_texture_format(format);
+            if (!info) return color;
+            const auto& meta              = getFormatInfo(*info);
+            const std::size_t per_channel = meta.bytesPerChannel;
+            if (per_channel * meta.channels > channels) return color;
+            for (std::size_t channel = 0; channel < meta.channels && channel < 4; ++channel) {
+                const unsigned char* channel_bytes = raw + channel * per_channel;
+                float value                        = 0.0f;
+                if (per_channel == 2) {
+                    std::uint16_t bits = 0;
+                    std::memcpy(&bits, channel_bytes, sizeof(bits));
+                    value = static_cast<float>(bits) / 65535.0f;
+                } else {
+                    std::memcpy(&value, channel_bytes, sizeof(value));
+                }
+                color[channel] = value;
+            }
+            if (meta.channels < 4) color.a = 1.0f;
+            return color;
+        }
+    }
+}
+
+/** @brief Encode linear RGBA into one pixel's raw bytes. */
+void write_pixel_color(wgpu::TextureFormat format, std::span<std::byte> bytes, const glm::vec4& color) noexcept {
+    unsigned char* raw  = reinterpret_cast<unsigned char*>(bytes.data());
+    const auto quantize = [](float value) {
+        return static_cast<unsigned char>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
+    };
+    switch (format) {
+        case wgpu::TextureFormat::eR8Unorm:
+            raw[0] = quantize(color.r);
+            return;
+        case wgpu::TextureFormat::eRG8Unorm:
+            raw[0] = quantize(color.r);
+            raw[1] = quantize(color.g);
+            return;
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            raw[0] = quantize(color.r);
+            raw[1] = quantize(color.g);
+            raw[2] = quantize(color.b);
+            raw[3] = quantize(color.a);
+            return;
+        case wgpu::TextureFormat::eBGRA8Unorm:
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+            raw[0] = quantize(color.b);
+            raw[1] = quantize(color.g);
+            raw[2] = quantize(color.r);
+            raw[3] = quantize(color.a);
+            return;
+        default: {
+            const auto info = format_from_texture_format(format);
+            if (!info) return;
+            const auto& meta         = getFormatInfo(*info);
+            const std::size_t stride = meta.bytesPerChannel;
+            if (stride * meta.channels > bytes.size()) return;
+            for (std::size_t channel = 0; channel < meta.channels && channel < 4; ++channel) {
+                unsigned char* channel_bytes = raw + channel * stride;
+                if (stride == 2) {
+                    const auto bits = static_cast<std::uint16_t>(
+                        std::clamp(color[static_cast<glm::length_t>(channel)], 0.0f, 1.0f) * 65535.0f + 0.5f);
+                    std::memcpy(channel_bytes, &bits, sizeof(bits));
+                } else if (stride == 4) {
+                    const float value = color[static_cast<glm::length_t>(channel)];
+                    std::memcpy(channel_bytes, &value, sizeof(value));
+                }
+            }
+            return;
+        }
+    }
+}
+}  // namespace
+
+namespace {
+/** @brief Read the pixel at `coords`, mapping the failure to a typed access error. */
+std::expected<glm::vec4, TextureAccessError> read_color_at(const Image& image, const glm::uvec3& coords) {
+    const auto bytes = image.pixel_bytes(coords);
+    if (!bytes) {
+        if (!pixel_size_of(image.texture_descriptor.format)) {
+            return std::unexpected(
+                TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
+        }
+        return std::unexpected(TextureAccessError{TextureAccessError::OutOfBounds{coords.x, coords.y, coords.z}});
+    }
+    return read_pixel_color(image.texture_descriptor.format, *bytes);
+}
+
+/** @brief Write the pixel at `coords`, mapping the failure to a typed access error. */
+std::expected<void, TextureAccessError> write_color_at(Image& image, const glm::uvec3& coords, const glm::vec4& color) {
+    const auto bytes = image.pixel_bytes_mut(coords);
+    if (!bytes) {
+        if (!pixel_size_of(image.texture_descriptor.format)) {
+            return std::unexpected(
+                TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
+        }
+        return std::unexpected(TextureAccessError{TextureAccessError::OutOfBounds{coords.x, coords.y, coords.z}});
+    }
+    write_pixel_color(image.texture_descriptor.format, *bytes, color);
+    return {};
+}
+
+/** @brief True when the image is a 2D texture with a single layer (Bevy's
+ * `get_color_at`/`set_color_at` dimension requirement). */
+bool is_plain_2d(const Image& image) noexcept {
+    return image.texture_descriptor.dimension == wgpu::TextureDimension::e2D &&
+           image.texture_descriptor.size.depthOrArrayLayers == 1;
+}
+
+/** @brief True when the image is a 3D texture or a layered 2D texture (Bevy's
+ * `*_at_3d` dimension requirement). */
+bool is_3d_or_layered(const Image& image) noexcept {
+    return image.texture_descriptor.dimension == wgpu::TextureDimension::e3D ||
+           (image.texture_descriptor.dimension == wgpu::TextureDimension::e2D &&
+            image.texture_descriptor.size.depthOrArrayLayers > 1);
+}
+}  // namespace
+
+std::expected<glm::vec4, TextureAccessError> Image::get_color_at(std::uint32_t x, std::uint32_t y) const {
+    if (!is_plain_2d(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    return read_color_at(*this, glm::uvec3{x, y, 0});
+}
+
+std::expected<glm::vec4, TextureAccessError> Image::get_color_at_1d(std::uint32_t x) const {
+    if (texture_descriptor.dimension != wgpu::TextureDimension::e1D) {
+        return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    }
+    return read_color_at(*this, glm::uvec3{x, 0, 0});
+}
+
+std::expected<glm::vec4, TextureAccessError> Image::get_color_at_3d(std::uint32_t x,
+                                                                    std::uint32_t y,
+                                                                    std::uint32_t z) const {
+    if (!is_3d_or_layered(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    return read_color_at(*this, glm::uvec3{x, y, z});
+}
+
+std::expected<void, TextureAccessError> Image::set_color_at(std::uint32_t x, std::uint32_t y, const glm::vec4& color) {
+    if (!is_plain_2d(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    return write_color_at(*this, glm::uvec3{x, y, 0}, color);
+}
+
+std::expected<void, TextureAccessError> Image::set_color_at_1d(std::uint32_t x, const glm::vec4& color) {
+    if (texture_descriptor.dimension != wgpu::TextureDimension::e1D) {
+        return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    }
+    return write_color_at(*this, glm::uvec3{x, 0, 0}, color);
+}
+
+std::expected<void, TextureAccessError> Image::set_color_at_3d(std::uint32_t x,
+                                                               std::uint32_t y,
+                                                               std::uint32_t z,
+                                                               const glm::vec4& color) {
+    if (!is_3d_or_layered(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    return write_color_at(*this, glm::uvec3{x, y, z}, color);
 }
 
 Image Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt) {
