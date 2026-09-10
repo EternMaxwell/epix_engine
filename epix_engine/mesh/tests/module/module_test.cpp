@@ -1399,6 +1399,157 @@ TEST(MeshPrimitives, TetrahedronMatchesBevyFaceOrientationAndVertexData) {
     }
 }
 
+TEST(MeshPrimitives, CylinderMatchesBevyRingsBarrelSkinAndCaps) {
+    static_assert(mesh::Meshable<mesh::Cylinder>);
+    static_assert(mesh::MeshBuilder<mesh::CylinderMeshBuilder>);
+
+    const mesh::Cylinder default_cylinder{};
+    EXPECT_FLOAT_EQ(default_cylinder.radius, 0.5f);
+    EXPECT_FLOAT_EQ(default_cylinder.half_height, 0.5f);
+    EXPECT_FLOAT_EQ((mesh::Cylinder{2.0f, 3.0f}.half_height), 1.5f);
+    EXPECT_FLOAT_EQ(default_cylinder.base().radius, 0.5f);
+    EXPECT_FLOAT_EQ((mesh::Cylinder{2.0f, 4.0f}.lateral_area()), 4.0f * std::numbers::pi_v<float> * 2.0f * 2.0f);
+    EXPECT_FLOAT_EQ((mesh::Cylinder{2.0f, 1.0f}.base_area()), std::numbers::pi_v<float> * 4.0f);
+
+    // Default builder: resolution 32, one segment, caps enabled, midpoint anchor.
+    const auto value = mesh::Cylinder{1.0f, 2.0f}.mesh().with_resolution(4).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // resolution * 2 cap vertices + (segments + 1) rings of (resolution + 1) seam-duplicated vertices.
+    ASSERT_EQ(positions->size(), 4u * 2u + 2u * 5u);
+    EXPECT_EQ(normals->size(), 18u);
+    EXPECT_EQ(uvs->size(), 18u);
+
+    // The first ring sits at the bottom cap height with a radial normal and wrapping UVs.
+    EXPECT_NEAR((*positions)[0][1], -1.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[0][0], 1.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[4][0], 1.0f, 1e-5f);
+    EXPECT_EQ((*normals)[0], (mesh::VertexAttributeValues::Float32x3Value{1.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[1], (mesh::VertexAttributeValues::Float32x2Value{0.25f, 0.0f}));
+    // The second ring is the top cap height.
+    EXPECT_NEAR((*positions)[5][1], 1.0f, 1e-5f);
+    // Cap vertices carry the +-Y normals and polar UVs.
+    EXPECT_EQ((*normals)[10], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f}));
+    EXPECT_EQ((*normals)[14], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[10], (mesh::VertexAttributeValues::Float32x2Value{1.0f, 0.5f}));
+
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    // One segment: 4 barrel quads of 2 triangles each, plus 2 caps of (resolution - 2) triangles.
+    EXPECT_EQ(value.indices()->get().as_u32()->size(), 4u * 2u * 3u + 2u * 2u * 3u);
+    // The first barrel triangle uses the ring and next-ring seam layout.
+    const auto& indices = *value.indices()->get().as_u32();
+    EXPECT_EQ((std::vector<std::uint32_t>{indices[0], indices[1], indices[2]}), (std::vector<std::uint32_t>{0, 5, 1}));
+}
+
+TEST(MeshPrimitives, CylinderAnchorAndWithoutCapsMatchBevy) {
+    // `without_caps` drops both cap fans, leaving only the barrel.
+    const auto tube = std::move(mesh::Cylinder{1.0f, 2.0f}.mesh()).with_resolution(4).without_caps().build();
+    const auto* tube_positions =
+        tube.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(tube_positions, nullptr);
+    EXPECT_EQ(tube_positions->size(), 10u);
+    ASSERT_NE(tube.indices()->get().as_u32(), nullptr);
+    EXPECT_EQ(tube.indices()->get().as_u32()->size(), 4u * 2u * 3u);
+
+    // `Top` moves the top cap to Y = 0, `Bottom` moves the bottom cap to Y = 0.
+    const auto top =
+        std::move(mesh::Cylinder{1.0f, 2.0f}.mesh()).with_resolution(4).with_anchor(mesh::CylinderAnchor::Top).build();
+    const auto* top_positions =
+        top.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(top_positions, nullptr);
+    // Cap vertices are appended after the rings, so indices 10..13 are the top cap and 14..17 the bottom cap.
+    for (std::size_t i = 10; i < 14; ++i) EXPECT_NEAR((*top_positions)[i][1], 0.0f, 1e-5f);
+    for (std::size_t i = 14; i < 18; ++i) EXPECT_NEAR((*top_positions)[i][1], -2.0f, 1e-5f);
+
+    const auto bottom = std::move(mesh::Cylinder{1.0f, 2.0f}.mesh())
+                            .with_resolution(4)
+                            .with_anchor(mesh::CylinderAnchor::Bottom)
+                            .build();
+    const auto* bottom_positions =
+        bottom.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(bottom_positions, nullptr);
+    for (std::size_t i = 10; i < 14; ++i) EXPECT_NEAR((*bottom_positions)[i][1], 2.0f, 1e-5f);
+    for (std::size_t i = 14; i < 18; ++i) EXPECT_NEAR((*bottom_positions)[i][1], 0.0f, 1e-5f);
+
+    // Two segments add one interior ring, so the ring vertex count grows by resolution + 1.
+    const auto segmented = std::move(mesh::Cylinder{1.0f, 2.0f}.mesh()).with_resolution(4).with_segments(2).build();
+    const auto* segmented_positions =
+        segmented.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(segmented_positions, nullptr);
+    EXPECT_EQ(segmented_positions->size(), 4u * 2u + 3u * 5u);
+}
+
+TEST(MeshPrimitives, TorusMatchesBevyTubeGridAndAngleRange) {
+    static_assert(mesh::Meshable<mesh::Torus>);
+    static_assert(mesh::MeshBuilder<mesh::TorusMeshBuilder>);
+
+    const mesh::Torus default_torus{};
+    EXPECT_FLOAT_EQ(default_torus.minor_radius, 0.25f);
+    EXPECT_FLOAT_EQ(default_torus.major_radius, 0.75f);
+    // `Torus::new` takes the hole radius and the overall outer radius.
+    const auto derived = mesh::Torus::from_inner_and_outer(0.5f, 1.5f);
+    EXPECT_FLOAT_EQ(derived.minor_radius, 0.5f);
+    EXPECT_FLOAT_EQ(derived.major_radius, 1.0f);
+
+    const auto value =
+        std::move(mesh::Torus{0.25f, 0.75f}.mesh()).with_minor_resolution(4).with_major_resolution(6).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // (major + 1) * (minor + 1) vertices, closed in both directions.
+    ASSERT_EQ(positions->size(), 7u * 5u);
+    EXPECT_EQ(normals->size(), 35u);
+    EXPECT_EQ(uvs->size(), 35u);
+
+    // The first vertex sits at angle zero on the outer tube with a +X radial normal.
+    EXPECT_NEAR((*positions)[0][0], 1.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[0][1], 0.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[0][2], 0.0f, 1e-5f);
+    EXPECT_EQ((*normals)[0], (mesh::VertexAttributeValues::Float32x3Value{1.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[1], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.25f}));
+    // The second ring row starts one major step around the ring.
+    EXPECT_NEAR((*uvs)[5][0], 1.0f / 6.0f, 1e-5f);
+    // The second tube vertex is a quarter turn round the tube, i.e. the top of the torus.
+    EXPECT_NEAR((*positions)[1][1], 0.25f, 1e-5f);
+
+    ASSERT_NE(value.indices()->get().as_u32(), nullptr);
+    // major * minor quads, two triangles each.
+    EXPECT_EQ(value.indices()->get().as_u32()->size(), 6u * 4u * 6u);
+    const auto& indices = *value.indices()->get().as_u32();
+    EXPECT_EQ((std::vector<std::uint32_t>{indices[0], indices[1], indices[2]}), (std::vector<std::uint32_t>{0, 1, 5}));
+    EXPECT_EQ((std::vector<std::uint32_t>{indices[3], indices[4], indices[5]}), (std::vector<std::uint32_t>{1, 6, 5}));
+
+    // A partial angle range still emits a closed grid of major + 1 rows.
+    const auto partial = std::move(mesh::Torus{0.25f, 0.75f}.mesh())
+                             .with_minor_resolution(3)
+                             .with_major_resolution(4)
+                             .with_angle_range(0.0f, std::numbers::pi_v<float>)
+                             .build();
+    const auto* partial_positions =
+        partial.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(partial_positions, nullptr);
+    EXPECT_EQ(partial_positions->size(), 5u * 4u);
+    // The last row sits a half turn round, i.e. on the -X side.
+    EXPECT_NEAR((*partial_positions)[4u * 4u][0], -1.0f, 1e-5f);
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto mesh = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
 

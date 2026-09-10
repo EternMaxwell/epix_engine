@@ -463,6 +463,157 @@ std::array<Triangle3d, 4> Tetrahedron::faces() const noexcept {
 
 TetrahedronMeshBuilder Tetrahedron::mesh() const noexcept { return TetrahedronMeshBuilder{*this}; }
 
+float Cylinder::base_area() const noexcept { return std::numbers::pi_v<float> * radius * radius; }
+
+CylinderMeshBuilder Cylinder::mesh() const noexcept { return CylinderMeshBuilder{Cylinder{*this}}; }
+
+TorusMeshBuilder::TorusMeshBuilder(float inner_radius, float outer_radius)
+    : torus(Torus::from_inner_and_outer(inner_radius, outer_radius)) {}
+
+TorusMeshBuilder Torus::mesh() const noexcept { return TorusMeshBuilder{Torus{*this}}; }
+
+Mesh CylinderMeshBuilder::build() const {
+    // Bevy asserts these in debug builds; Epix keeps the same contract.
+    assert(resolution > 2 && "cylinder resolution must be greater than 2");
+    assert(segments > 0 && "cylinder segments must be greater than 0");
+
+    const std::uint32_t num_rings = segments + 1;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    const std::size_t vertex_capacity =
+        static_cast<std::size_t>(resolution) * 2 + static_cast<std::size_t>(num_rings) * (resolution + 1);
+    positions.reserve(vertex_capacity);
+    normals.reserve(vertex_capacity);
+    uvs.reserve(vertex_capacity);
+
+    const float step_theta = std::numbers::pi_v<float> * 2.0f / static_cast<float>(resolution);
+    const float step_y     = 2.0f * cylinder.half_height / static_cast<float>(segments);
+
+    // Rings, each with a duplicated seam vertex so the UVs can wrap.
+    for (std::uint32_t ring = 0; ring < num_rings; ++ring) {
+        const float y = -cylinder.half_height + static_cast<float>(ring) * step_y;
+        for (std::uint32_t step = 0; step <= resolution; ++step) {
+            const float theta = static_cast<float>(step) * step_theta;
+            const float sine  = std::sin(theta);
+            const float cosin = std::cos(theta);
+            positions.push_back({cylinder.radius * cosin, y, cylinder.radius * sine});
+            normals.push_back({cosin, 0.0f, sine});
+            uvs.push_back({static_cast<float>(step) / static_cast<float>(resolution),
+                           static_cast<float>(ring) / static_cast<float>(segments)});
+        }
+    }
+
+    // Barrel skin.
+    for (std::uint32_t i = 0; i < segments; ++i) {
+        const std::uint32_t ring      = i * (resolution + 1);
+        const std::uint32_t next_ring = (i + 1) * (resolution + 1);
+        for (std::uint32_t j = 0; j < resolution; ++j) {
+            indices.insert(indices.end(),
+                           {ring + j, next_ring + j, ring + j + 1, next_ring + j, next_ring + j + 1, ring + j + 1});
+        }
+    }
+
+    if (caps) {
+        const auto build_cap = [&](bool top) {
+            const auto offset    = static_cast<std::uint32_t>(positions.size());
+            const float y        = top ? cylinder.half_height : -cylinder.half_height;
+            const float normal_y = top ? 1.0f : -1.0f;
+            // The winding offsets keep both caps facing outward.
+            const std::uint32_t first  = top ? 1u : 0u;
+            const std::uint32_t second = top ? 0u : 1u;
+
+            for (std::uint32_t i = 0; i < resolution; ++i) {
+                const float theta = static_cast<float>(i) * step_theta;
+                const float sine  = std::sin(theta);
+                const float cosin = std::cos(theta);
+                positions.push_back({cosin * cylinder.radius, y, sine * cylinder.radius});
+                normals.push_back({0.0f, normal_y, 0.0f});
+                uvs.push_back({0.5f * (cosin + 1.0f), 1.0f - 0.5f * (sine + 1.0f)});
+            }
+
+            for (std::uint32_t i = 1; i + 1 < resolution; ++i) {
+                indices.insert(indices.end(), {offset, offset + i + first, offset + i + second});
+            }
+        };
+
+        build_cap(true);
+        build_cap(false);
+    }
+
+    // Offset the vertex Y positions to match the anchor.
+    if (anchor != CylinderAnchor::MidPoint) {
+        const float offset = anchor == CylinderAnchor::Top ? -cylinder.half_height : cylinder.half_height;
+        for (auto& position : positions) position[1] += offset;
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh TorusMeshBuilder::build() const {
+    // Adapted from Bevy, which adapted it from
+    // http://apparat-engine.blogspot.com/2013/04/procedural-meshes-torus.html
+    const std::size_t n_vertices = static_cast<std::size_t>(major_resolution + 1) * (minor_resolution + 1);
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    positions.reserve(n_vertices);
+    normals.reserve(n_vertices);
+    uvs.reserve(n_vertices);
+
+    const float segment_stride = (end_angle - start_angle) / static_cast<float>(major_resolution);
+    const float side_stride    = std::numbers::pi_v<float> * 2.0f / static_cast<float>(minor_resolution);
+
+    for (std::uint32_t segment = 0; segment <= major_resolution; ++segment) {
+        const float theta = start_angle + segment_stride * static_cast<float>(segment);
+        for (std::uint32_t side = 0; side <= minor_resolution; ++side) {
+            const float phi         = side_stride * static_cast<float>(side);
+            const float sin_theta   = std::sin(theta);
+            const float cos_theta   = std::cos(theta);
+            const float sin_phi     = std::sin(phi);
+            const float cos_phi     = std::cos(phi);
+            const float tube_radius = torus.major_radius + torus.minor_radius * cos_phi;
+
+            const glm::vec3 position{cos_theta * tube_radius, torus.minor_radius * sin_phi, sin_theta * tube_radius};
+            const glm::vec3 center{torus.major_radius * cos_theta, 0.0f, torus.major_radius * sin_theta};
+            const glm::vec3 normal = glm::normalize(position - center);
+
+            positions.push_back({position.x, position.y, position.z});
+            normals.push_back({normal.x, normal.y, normal.z});
+            uvs.push_back({static_cast<float>(segment) / static_cast<float>(major_resolution),
+                           static_cast<float>(side) / static_cast<float>(minor_resolution)});
+        }
+    }
+
+    std::vector<std::uint32_t> indices;
+    indices.reserve(static_cast<std::size_t>(major_resolution) * minor_resolution * 6);
+
+    const std::uint32_t vertices_per_row = minor_resolution + 1;
+    for (std::uint32_t segment = 0; segment < major_resolution; ++segment) {
+        for (std::uint32_t side = 0; side < minor_resolution; ++side) {
+            const std::uint32_t left_top     = side + segment * vertices_per_row;
+            const std::uint32_t right_top    = (side + 1) + segment * vertices_per_row;
+            const std::uint32_t left_bottom  = side + (segment + 1) * vertices_per_row;
+            const std::uint32_t right_bottom = (side + 1) + (segment + 1) * vertices_per_row;
+
+            indices.insert(indices.end(), {left_top, right_top, left_bottom});
+            indices.insert(indices.end(), {right_top, right_bottom, left_bottom});
+        }
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
 Mesh CuboidMeshBuilder::build() const {
     const glm::vec3 minimum = -half_size;
     const glm::vec3 maximum = half_size;

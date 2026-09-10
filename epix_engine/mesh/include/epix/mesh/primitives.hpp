@@ -26,6 +26,7 @@ struct CircularSectorMeshBuilder;
 struct CircularSegmentMeshBuilder;
 struct ConvexPolygonMeshBuilder;
 struct CuboidMeshBuilder;
+struct CylinderMeshBuilder;
 struct EllipseMeshBuilder;
 struct PlaneMeshBuilder;
 struct RectangleMeshBuilder;
@@ -34,6 +35,7 @@ struct RhombusMeshBuilder;
 struct Segment2dMeshBuilder;
 struct Segment3dMeshBuilder;
 struct TetrahedronMeshBuilder;
+struct TorusMeshBuilder;
 struct Triangle2dMeshBuilder;
 struct Triangle3dMeshBuilder;
 
@@ -599,6 +601,110 @@ EPIX_EXPORT struct TetrahedronMeshBuilder {
     Mesh build() const;
 };
 
+/** @brief Cylinder primitive described by its radius and half height. */
+EPIX_EXPORT struct Cylinder {
+    float radius      = 0.5f;
+    float half_height = 0.5f;
+
+    constexpr Cylinder() = default;
+    constexpr Cylinder(float radius, float height) : radius(radius), half_height(height * 0.5f) {}
+    constexpr Circle base() const noexcept { return Circle{radius}; }
+    /** @brief Surface area of the cylinder side (Bevy `lateral_area`). */
+    constexpr float lateral_area() const noexcept { return 4.0f * std::numbers::pi_v<float> * radius * half_height; }
+    /** @brief Surface area of one base (Bevy `base_area`). */
+    float base_area() const noexcept;
+    CylinderMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Cylinder&) const = default;
+};
+
+/** @brief Torus primitive described by its tube and ring radii. */
+EPIX_EXPORT struct Torus {
+    float minor_radius = 0.25f;
+    float major_radius = 0.75f;
+
+    constexpr Torus() = default;
+    constexpr Torus(float minor_radius, float major_radius) : minor_radius(minor_radius), major_radius(major_radius) {}
+    /** @brief Create from the hole radius and the overall outer radius (Bevy `Torus::new`). */
+    static constexpr Torus from_inner_and_outer(float inner_radius, float outer_radius) {
+        const float minor = (outer_radius - inner_radius) * 0.5f;
+        return Torus{minor, outer_radius - minor};
+    }
+    TorusMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Torus&) const = default;
+};
+
+/** @brief Anchor point of a cylinder mesh (Bevy `CylinderAnchor`). */
+EPIX_EXPORT enum class CylinderAnchor : std::uint8_t { MidPoint, Top, Bottom };
+
+/** @brief Builder used to create a cylinder mesh. */
+EPIX_EXPORT struct CylinderMeshBuilder {
+    Cylinder cylinder{};
+    /** @brief Vertices around the top and bottom circles. Default: 32. */
+    std::uint32_t resolution = 32;
+    /** @brief Segments along the height; must be greater than 0 for geometry to be generated. */
+    std::uint32_t segments = 1;
+    /** @brief When false the caps are skipped and the mesh is a shallow tube. */
+    bool caps             = true;
+    CylinderAnchor anchor = CylinderAnchor::MidPoint;
+
+    constexpr CylinderMeshBuilder() = default;
+    constexpr CylinderMeshBuilder(float radius, float height, std::uint32_t resolution)
+        : cylinder(radius, height), resolution(resolution) {}
+    constexpr explicit CylinderMeshBuilder(Cylinder cylinder) : cylinder(cylinder) {}
+    CylinderMeshBuilder with_resolution(std::uint32_t value) && noexcept {
+        resolution = value;
+        return std::move(*this);
+    }
+    CylinderMeshBuilder with_segments(std::uint32_t value) && noexcept {
+        segments = value;
+        return std::move(*this);
+    }
+    /** @brief Ignore the caps, making the mesh a shallow tube instead. */
+    CylinderMeshBuilder without_caps() && noexcept {
+        caps = false;
+        return std::move(*this);
+    }
+    CylinderMeshBuilder with_anchor(CylinderAnchor value) && noexcept {
+        anchor = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
+/** @brief Builder used to create a torus mesh. */
+EPIX_EXPORT struct TorusMeshBuilder {
+    Torus torus{};
+    /** @brief Vertices per circular segment of the tube. Default: 24. */
+    std::uint32_t minor_resolution = 24;
+    /** @brief Segments around the main ring. Default: 32. */
+    std::uint32_t major_resolution = 32;
+    /** @brief Start of the swept angle range in radians. Default: 0. */
+    float start_angle = 0.0f;
+    /** @brief End of the swept angle range in radians. Default: `TAU`. */
+    float end_angle = 2.0f * std::numbers::pi_v<float>;
+
+    constexpr TorusMeshBuilder() = default;
+    TorusMeshBuilder(float inner_radius, float outer_radius);
+    constexpr explicit TorusMeshBuilder(Torus torus) : torus(torus) {}
+    TorusMeshBuilder with_minor_resolution(std::uint32_t value) && noexcept {
+        minor_resolution = value;
+        return std::move(*this);
+    }
+    TorusMeshBuilder with_major_resolution(std::uint32_t value) && noexcept {
+        major_resolution = value;
+        return std::move(*this);
+    }
+    /** @brief Set the swept angle range in radians instead of a full circle. */
+    TorusMeshBuilder with_angle_range(float start, float end) && noexcept {
+        start_angle = start;
+        end_angle   = end;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
 /** @brief Builder used to create a circle mesh. */
 EPIX_EXPORT struct CircleMeshBuilder {
     Circle circle{};
@@ -802,6 +908,10 @@ static_assert(Meshable<Segment3d>);
 static_assert(Meshable<Polyline3d>);
 static_assert(Meshable<Triangle3d>);
 static_assert(Meshable<Tetrahedron>);
+static_assert(Meshable<Cylinder>);
+static_assert(Meshable<Torus>);
+static_assert(MeshBuilder<CylinderMeshBuilder>);
+static_assert(MeshBuilder<TorusMeshBuilder>);
 static_assert(MeshBuilder<CuboidMeshBuilder>);
 static_assert(MeshBuilder<PlaneMeshBuilder>);
 static_assert(MeshBuilder<Segment3dMeshBuilder>);
