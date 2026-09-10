@@ -6,14 +6,15 @@
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
+#include <epix/assets/render_asset_usages.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/meta.hpp>
-#include <epix/assets/render_asset_usages.hpp>
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
@@ -78,13 +79,11 @@ EPIX_EXPORT namespace mesh_winding_invert_error {
 }  // namespace mesh_winding_invert_error
 
 /** @brief Error returned while inverting a mesh's index winding. */
-EPIX_EXPORT struct MeshWindingInvertError
-    : std::variant<mesh_winding_invert_error::WrongTopology,
-                   mesh_winding_invert_error::AbruptIndicesEnd,
-                   MeshAccessError> {
-    using Base = std::variant<mesh_winding_invert_error::WrongTopology,
-                              mesh_winding_invert_error::AbruptIndicesEnd,
-                              MeshAccessError>;
+EPIX_EXPORT struct MeshWindingInvertError : std::variant<mesh_winding_invert_error::WrongTopology,
+                                                         mesh_winding_invert_error::AbruptIndicesEnd,
+                                                         MeshAccessError> {
+    using Base = std::
+        variant<mesh_winding_invert_error::WrongTopology, mesh_winding_invert_error::AbruptIndicesEnd, MeshAccessError>;
     using Base::Base;
 
     std::string to_string() const {
@@ -118,12 +117,22 @@ EPIX_EXPORT namespace mesh_triangles_error {
     };
 }  // namespace mesh_triangles_error
 
+/** @brief Three vertices forming a 3D triangle (Bevy `Triangle3d`).
+ *
+ * Epix uses GLM directly as its math layer, so the primitive required by
+ * `Mesh::triangles` is exposed by the mesh module.
+ */
+EPIX_EXPORT struct Triangle3d {
+    std::array<glm::vec3, 3> vertices;
+
+    bool operator==(const Triangle3d&) const = default;
+};
+
 /** @brief Error returned while iterating over a mesh's triangles. */
-EPIX_EXPORT struct MeshTrianglesError
-    : std::variant<mesh_triangles_error::WrongTopology,
-                   mesh_triangles_error::PositionsFormat,
-                   mesh_triangles_error::BadIndices,
-                   MeshAccessError> {
+EPIX_EXPORT struct MeshTrianglesError : std::variant<mesh_triangles_error::WrongTopology,
+                                                     mesh_triangles_error::PositionsFormat,
+                                                     mesh_triangles_error::BadIndices,
+                                                     MeshAccessError> {
     using Base = std::variant<mesh_triangles_error::WrongTopology,
                               mesh_triangles_error::PositionsFormat,
                               mesh_triangles_error::BadIndices,
@@ -321,6 +330,42 @@ EPIX_EXPORT class Indices {
 };
 
 namespace detail {
+struct MeshTriangleAt {
+    const ecs::untyped_vector* vertices;
+    const Indices* indices;
+    wgpu::PrimitiveTopology topology;
+
+    std::optional<Triangle3d> operator()(std::size_t triangle_index) const;
+};
+
+struct HasMeshTriangle {
+    bool operator()(const std::optional<Triangle3d>& triangle) const noexcept { return triangle.has_value(); }
+};
+
+struct UnwrapMeshTriangle {
+    Triangle3d operator()(std::optional<Triangle3d> triangle) const { return *std::move(triangle); }
+};
+
+inline auto mesh_triangles_view(const ecs::untyped_vector& vertices,
+                                const Indices& indices,
+                                wgpu::PrimitiveTopology topology,
+                                std::size_t triangle_count) {
+    return std::views::iota(std::size_t{0}, triangle_count) |
+           std::views::transform(MeshTriangleAt{&vertices, &indices, topology}) |
+           std::views::filter(HasMeshTriangle{}) | std::views::transform(UnwrapMeshTriangle{});
+}
+
+}  // namespace detail
+
+/** @brief Lazy range returned by `Mesh::triangles`. */
+EPIX_EXPORT using MeshTriangles = std::invoke_result_t<decltype(detail::mesh_triangles_view),
+                                                       const ecs::untyped_vector&,
+                                                       const Indices&,
+                                                       wgpu::PrimitiveTopology,
+                                                       std::size_t>;
+
+namespace detail {
+
 struct ExtractedToRenderWorld {};
 
 struct ConstMeshAttributeRefs {
@@ -632,6 +677,9 @@ EPIX_EXPORT struct Mesh {
     /** @brief Reverse the index winding according to the primitive topology. */
     std::expected<void, MeshWindingInvertError> invert_winding();
     std::expected<Mesh, MeshWindingInvertError> with_inverted_winding() &&;
+
+    /** @brief Lazily iterate indexed triangle-list or triangle-strip faces. */
+    std::expected<MeshTriangles, MeshTrianglesError> triangles() const;
 
     /** @brief Return the raw index-buffer bytes, or no value for a non-indexed
      * mesh (Bevy `Mesh::get_index_buffer_bytes`). */

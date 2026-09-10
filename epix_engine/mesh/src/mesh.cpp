@@ -1,11 +1,41 @@
 
 
+#include <array>
+#include <cstring>
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
 #include <unordered_set>
 
 using namespace epix::mesh;
 namespace ecs = epix::ecs;
+
+std::optional<Triangle3d> detail::MeshTriangleAt::operator()(std::size_t triangle_index) const {
+    const auto index_at = [this](std::size_t index) -> std::size_t {
+        if (const auto* values = indices->as_u16()) return (*values)[index];
+        return (*indices->as_u32())[index];
+    };
+
+    const auto first_index = topology == wgpu::PrimitiveTopology::eTriangleList ? triangle_index * 3 : triangle_index;
+    std::array triangle_indices{
+        index_at(first_index),
+        index_at(first_index + 1),
+        index_at(first_index + 2),
+    };
+    if (topology == wgpu::PrimitiveTopology::eTriangleStrip && triangle_index % 2 != 0) {
+        std::swap(triangle_indices[0], triangle_indices[1]);
+    }
+    if (std::ranges::any_of(triangle_indices, [this](std::size_t index) { return index >= vertices->size(); })) {
+        return std::nullopt;
+    }
+
+    Triangle3d triangle;
+    for (std::size_t vertex_index = 0; vertex_index < triangle.vertices.size(); ++vertex_index) {
+        std::array<float, 3> components{};
+        std::memcpy(components.data(), vertices->cget(triangle_indices[vertex_index]), sizeof(components));
+        triangle.vertices[vertex_index] = glm::vec3{components[0], components[1], components[2]};
+    }
+    return triangle;
+}
 
 Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(other.primitive_type) {
     const auto source_attributes = other._attributes.as_ref_option();
@@ -35,6 +65,31 @@ Mesh& Mesh::operator=(const Mesh& other) {
     Mesh copy(other);
     *this = std::move(copy);
     return *this;
+}
+
+std::expected<MeshTriangles, MeshTrianglesError> Mesh::triangles() const {
+    const auto position_data = try_attribute(ATTRIBUTE_POSITION);
+    if (!position_data) return std::unexpected(MeshTrianglesError{position_data.error()});
+
+    const auto attributes = _attributes.as_ref();
+    if (!attributes) return std::unexpected(MeshTrianglesError{attributes.error()});
+    const auto position = attributes->get().find(ATTRIBUTE_POSITION.id);
+    if (position == attributes->get().end() || position->second.attribute.format != wgpu::VertexFormat::eFloat32x3) {
+        return std::unexpected(MeshTrianglesError{mesh_triangles_error::PositionsFormat{}});
+    }
+
+    const auto index_data = try_indices();
+    if (!index_data) return std::unexpected(MeshTrianglesError{index_data.error()});
+
+    if (primitive_type != wgpu::PrimitiveTopology::eTriangleList &&
+        primitive_type != wgpu::PrimitiveTopology::eTriangleStrip) {
+        return std::unexpected(MeshTrianglesError{mesh_triangles_error::WrongTopology{}});
+    }
+
+    const auto triangle_count = primitive_type == wgpu::PrimitiveTopology::eTriangleList ? index_data->get().len() / 3
+                                : index_data->get().len() >= 3                           ? index_data->get().len() - 2
+                                                                                         : 0;
+    return detail::mesh_triangles_view(position_data->get(), index_data->get(), primitive_type, triangle_count);
 }
 
 MeshAttributeLayout Mesh::attribute_layout() const {
@@ -221,8 +276,7 @@ std::expected<std::reference_wrapper<const Indices>, MeshAccessError> Mesh::try_
     return _indices.as_ref();
 }
 
-std::expected<std::optional<std::reference_wrapper<const Indices>>, MeshAccessError> Mesh::try_indices_option()
-    const {
+std::expected<std::optional<std::reference_wrapper<const Indices>>, MeshAccessError> Mesh::try_indices_option() const {
     return _indices.as_ref_option();
 }
 
@@ -232,9 +286,7 @@ std::optional<std::reference_wrapper<Indices>> Mesh::indices_mut() {
     return *result;
 }
 
-std::expected<std::reference_wrapper<Indices>, MeshAccessError> Mesh::try_indices_mut() {
-    return _indices.as_mut();
-}
+std::expected<std::reference_wrapper<Indices>, MeshAccessError> Mesh::try_indices_mut() { return _indices.as_mut(); }
 
 std::expected<std::optional<std::reference_wrapper<Indices>>, MeshAccessError> Mesh::try_indices_mut_option() {
     return _indices.as_mut_option();
@@ -300,8 +352,7 @@ std::expected<void, MeshWindingInvertError> invert_indices(std::vector<Index>& i
     switch (topology) {
         case wgpu::PrimitiveTopology::eTriangleList:
             if (indices.size() % 3 != 0) {
-                return std::unexpected(
-                    MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
+                return std::unexpected(MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
             }
             for (std::size_t index = 0; index < indices.size(); index += 3) {
                 std::swap(indices[index + 1], indices[index + 2]);
@@ -309,8 +360,7 @@ std::expected<void, MeshWindingInvertError> invert_indices(std::vector<Index>& i
             return {};
         case wgpu::PrimitiveTopology::eLineList:
             if (indices.size() % 2 != 0) {
-                return std::unexpected(
-                    MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
+                return std::unexpected(MeshWindingInvertError{mesh_winding_invert_error::AbruptIndicesEnd{}});
             }
             std::ranges::reverse(indices);
             return {};

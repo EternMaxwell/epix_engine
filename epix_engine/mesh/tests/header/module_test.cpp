@@ -11,8 +11,7 @@ namespace mesh = epix::mesh;
 TEST(MeshErrors, WindingAndTriangleErrorsPreserveBevyVariantsAndMessages) {
     const mesh::MeshWindingInvertError wrong_winding{mesh::mesh_winding_invert_error::WrongTopology{}};
     EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(wrong_winding));
-    EXPECT_EQ(wrong_winding.to_string(),
-              "Mesh winding inversion does not work for primitive topology `PointList`");
+    EXPECT_EQ(wrong_winding.to_string(), "Mesh winding inversion does not work for primitive topology `PointList`");
 
     const mesh::MeshWindingInvertError abrupt{mesh::mesh_winding_invert_error::AbruptIndicesEnd{}};
     EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::AbruptIndicesEnd>(abrupt));
@@ -60,14 +59,13 @@ TEST(MeshAlgorithms, DuplicateVerticesMatchesBevyIndexedExpansion) {
     EXPECT_FALSE(value.indices().has_value());
     const auto duplicated_positions = value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().cspan_as<glm::vec3>();
     const auto duplicated_colors    = value.attribute(mesh::Mesh::ATTRIBUTE_COLOR)->get().cspan_as<glm::vec4>();
-    EXPECT_EQ((std::vector<glm::vec3>{duplicated_positions.begin(), duplicated_positions.end()}),
-              (std::vector<glm::vec3>{positions[0], positions[2], positions[1],
-                                      positions[2], positions[3], positions[1]}));
+    EXPECT_EQ(
+        (std::vector<glm::vec3>{duplicated_positions.begin(), duplicated_positions.end()}),
+        (std::vector<glm::vec3>{positions[0], positions[2], positions[1], positions[2], positions[3], positions[1]}));
     EXPECT_EQ((std::vector<glm::vec4>{duplicated_colors.begin(), duplicated_colors.end()}),
               (std::vector<glm::vec4>{colors[0], colors[2], colors[1], colors[2], colors[3], colors[1]}));
 
-    mesh::Mesh without_indices(wgpu::PrimitiveTopology::eTriangleList,
-                               epix::assets::RenderAssetUsages::MAIN_WORLD);
+    mesh::Mesh without_indices(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     auto unchanged = std::move(without_indices).try_with_duplicated_vertices();
     ASSERT_TRUE(unchanged.has_value());
     EXPECT_FALSE(unchanged->indices().has_value());
@@ -101,19 +99,16 @@ TEST(MeshAlgorithms, InvertWindingMatchesEveryBevyTopologyAndError) {
     abrupt.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 3}});
     const auto abrupt_result = abrupt.invert_winding();
     ASSERT_FALSE(abrupt_result.has_value());
-    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::AbruptIndicesEnd>(
-        abrupt_result.error()));
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::AbruptIndicesEnd>(abrupt_result.error()));
     EXPECT_EQ(*abrupt.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 3}));
 
     mesh::Mesh points(wgpu::PrimitiveTopology::ePointList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     points.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0}});
     const auto point_result = points.invert_winding();
     ASSERT_FALSE(point_result.has_value());
-    EXPECT_TRUE(
-        std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(point_result.error()));
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_winding_invert_error::WrongTopology>(point_result.error()));
 
-    mesh::Mesh unindexed_points(wgpu::PrimitiveTopology::ePointList,
-                                epix::assets::RenderAssetUsages::MAIN_WORLD);
+    mesh::Mesh unindexed_points(wgpu::PrimitiveTopology::ePointList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     EXPECT_TRUE(unindexed_points.invert_winding().has_value());
 
     mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
@@ -122,8 +117,91 @@ TEST(MeshAlgorithms, InvertWindingMatchesEveryBevyTopologyAndError) {
     const auto extracted_result = extracted.invert_winding();
     ASSERT_FALSE(extracted_result.has_value());
     ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(extracted_result.error()));
-    EXPECT_EQ(std::get<mesh::MeshAccessError>(extracted_result.error()),
-              mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(extracted_result.error()), mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
+TEST(MeshAlgorithms, TrianglesMatchesBevyLazyListStripAndErrorBehavior) {
+    static_assert(std::ranges::view<mesh::MeshTriangles>);
+    static_assert(std::ranges::input_range<mesh::MeshTriangles>);
+
+    const std::vector<std::array<float, 3>> positions{
+        {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f},  {1.0f, 1.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f}, {-1.0f, 1.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
+    };
+
+    mesh::Mesh list(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    list.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    list.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 2, 3, 0, 5}});
+    auto list_result = list.triangles();
+    ASSERT_TRUE(list_result.has_value());
+    const auto list_triangles = std::ranges::to<std::vector<mesh::Triangle3d>>(*list_result);
+    ASSERT_EQ(list_triangles.size(), 2u);
+    EXPECT_EQ(list_triangles[0].vertices,
+              (std::array{glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f)}));
+    EXPECT_EQ(list_triangles[1].vertices,
+              (std::array{glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f)}));
+
+    mesh::Mesh strip(wgpu::PrimitiveTopology::eTriangleStrip, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    strip.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    strip.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 3, 4, 5}});
+    auto strip_result = strip.triangles();
+    ASSERT_TRUE(strip_result.has_value());
+    const auto strip_triangles = std::ranges::to<std::vector<mesh::Triangle3d>>(*strip_result);
+    ASSERT_EQ(strip_triangles.size(), 4u);
+    EXPECT_EQ(strip_triangles[0].vertices,
+              (std::array{glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(1.0f, 1.0f, 0.0f)}));
+    EXPECT_EQ(strip_triangles[1].vertices,
+              (std::array{glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)}));
+    EXPECT_EQ(strip_triangles[2].vertices,
+              (std::array{glm::vec3(1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(-1.0f, 1.0f, 0.0f)}));
+    EXPECT_EQ(strip_triangles[3].vertices,
+              (std::array{glm::vec3(-1.0f, 1.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(-1.0f, 0.0f, 0.0f)}));
+
+    mesh::Mesh invalid(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    invalid.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    invalid.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 0, 99, 2, 2, 3, 0}});
+    auto invalid_result = invalid.triangles();
+    ASSERT_TRUE(invalid_result.has_value());
+    EXPECT_EQ(std::ranges::distance(*invalid_result), 2);
+
+    mesh::Mesh missing_position(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    missing_position.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    const auto missing_position_result = missing_position.triangles();
+    ASSERT_FALSE(missing_position_result.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(missing_position_result.error()));
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(missing_position_result.error()), mesh::MeshAccessError::NotFound);
+
+    mesh::Mesh missing_indices(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    missing_indices.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    const auto missing_indices_result = missing_indices.triangles();
+    ASSERT_FALSE(missing_indices_result.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(missing_indices_result.error()));
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(missing_indices_result.error()), mesh::MeshAccessError::NotFound);
+
+    mesh::Mesh wrong_format(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    wrong_format.insert_attribute(
+        mesh::MeshVertexAttribute{"Wrong_Position", mesh::Mesh::ATTRIBUTE_POSITION.id, wgpu::VertexFormat::eFloat32x2},
+        std::vector{glm::vec2(0.0f), glm::vec2(1.0f), glm::vec2(2.0f)});
+    wrong_format.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    const auto wrong_format_result = wrong_format.triangles();
+    ASSERT_FALSE(wrong_format_result.has_value());
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_triangles_error::PositionsFormat>(wrong_format_result.error()));
+
+    mesh::Mesh wrong_topology(wgpu::PrimitiveTopology::eLineList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    wrong_topology.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    wrong_topology.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    const auto wrong_topology_result = wrong_topology.triangles();
+    ASSERT_FALSE(wrong_topology_result.has_value());
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_triangles_error::WrongTopology>(wrong_topology_result.error()));
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    extracted.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto extracted_result = extracted.triangles();
+    ASSERT_FALSE(extracted_result.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(extracted_result.error()));
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(extracted_result.error()), mesh::MeshAccessError::ExtractedToRenderWorld);
 }
 
 TEST(Indices, PushAndExtendPromoteU16StorageWithoutLosingValues) {

@@ -2,6 +2,7 @@ module;
 
 #ifndef EPIX_IMPORT_STD
 #include <algorithm>
+#include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>

@@ -1,6 +1,8 @@
 #ifndef EPIX_IMPORT_STD
+#include <cstddef>
 #include <cstdint>
 #include <print>
+#include <ranges>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -58,6 +60,10 @@ struct MeshAlgorithmsExamplePlugin {
         auto duplicated = indexed;
         auto inverted   = indexed;
 
+        auto triangles = indexed.triangles();
+        if (!triangles) throw std::runtime_error(triangles.error().to_string());
+        const auto triangle_count = static_cast<std::size_t>(std::ranges::distance(*triangles));
+
         duplicated.duplicate_vertices();
         if (auto result = inverted.invert_winding(); !result) {
             throw std::runtime_error(result.error().to_string());
@@ -78,8 +84,10 @@ struct MeshAlgorithmsExamplePlugin {
                     sprite_render::MeshMaterial2d{.color = glm::vec4(0.76f, 0.86f, 1.0f, 1.0f)},
                     transform::Transform{.translation = {280.0f, 0.0f, 0.0f}});
 
-        std::println("Mesh algorithms: left=indexed, center=duplicate_vertices (non-indexed), "
-                     "right=invert_winding");
+        std::println(
+            "Mesh algorithms: triangles() yielded {}; left=indexed, "
+            "center=duplicate_vertices (non-indexed), right=invert_winding",
+            triangle_count);
     }
 };
 }  // namespace

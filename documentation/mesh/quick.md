@@ -36,7 +36,9 @@ and `with_removed_indices`. `Indices` stores either a `std::vector<std::uint16_t
 failure cause, including nested `MeshAccessError` values, and expose Bevy-compatible display text.
 `duplicate_vertices()` expands every attribute in index order and removes the index buffer;
 `invert_winding()` applies Bevy's topology-specific index reversal. Both operations provide fallible
-forms for extracted meshes and consuming builder forms. The `mesh_algorithms` example renders their
+forms for extracted meshes and consuming builder forms. `triangles()` returns an expected lazy range
+over indexed triangle-list or triangle-strip faces; incomplete lists are truncated and faces with
+out-of-range indices are skipped. The `mesh_algorithms` example exercises the range and renders the
 indexed, duplicated, and inverted results side by side.
 `count_vertices()` returns the shortest attribute length and warns when attribute counts disagree.
 `MeshError` also reports missing slots, name mismatches, and requested type mismatches.
