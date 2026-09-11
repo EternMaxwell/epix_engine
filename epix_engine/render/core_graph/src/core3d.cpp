@@ -118,6 +118,18 @@ void epix::core_graph::core_3d::extract_core_3d_camera_phases(
     std::erase_if(*transparent_phases, remove_dead_views);
 }
 
+void epix::core_graph::core_3d::check_msaa(Query<Item<Mut<render::view::Msaa>>,
+                                                   With<::epix::camera::Camera, DeferredPrepass>> deferred_views) {
+    // Bevy `check_msaa` (core_3d/mod.rs:978-988): MSAA is incompatible with
+    // deferred rendering, so every deferred view is forced to `Msaa::Off` with a
+    // warning unless it was already off.
+    for (auto&& [msaa] : deferred_views.iter()) {
+        if (msaa.get() == render::view::Msaa::Off) continue;
+        spdlog::warn("[core_graph] MSAA is incompatible with deferred rendering and has been disabled.");
+        msaa.get_mut() = render::view::Msaa::Off;
+    }
+}
+
 void epix::core_graph::core_3d::prepare_core_3d_depth_textures(
     Commands cmd,
     ResMut<render::render_resource::TextureCache> texture_cache,
@@ -588,9 +600,13 @@ std::expected<void, graph::NodeRunError> LatePrepassNode::run(graph::GraphContex
                                                               graph::RenderContext& render_context,
                                                               typename ecs::QueryData<ViewQuery>::Item view,
                                                               const World& world) const {
-    // Bevy only runs a late prepass when occlusion culling is active and the
-    // view allows indirect drawing; neither exists in Epix yet, so the early
-    // node owns the whole prepass.
+    // Bevy only needs a late prepass when occlusion culling is active and the
+    // view allows indirect drawing (prepass/node.rs:87-92). The `OcclusionCulling`
+    // component exists in Epix but nothing yet splits the bins into a
+    // previously-visible early set and a newly-visible late set
+    // (`PreviousViewUniformOffset` has no producer), so a late pass would draw
+    // the early bins a second time. The early node owns the whole prepass until
+    // that subsystem lands (C14-D2).
     static_cast<void>(graph);
     static_cast<void>(render_context);
     static_cast<void>(view);
@@ -599,9 +615,13 @@ std::expected<void, graph::NodeRunError> LatePrepassNode::run(graph::GraphContex
 }
 
 void epix::core_graph::core_3d::extract_camera_prepass_phase(
+    Commands cmd,
     ResMut<::epix::render::phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     ResMut<::epix::render::phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
+    ResMut<::epix::render::phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
+    ResMut<::epix::render::phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>> alpha_mask_deferred_phases,
     Extract<Query<Item<Entity,
+                       ::epix::render::sync_world::RenderEntity,
                        const ::epix::camera::Camera&,
                        Has<::epix::render::view::NoIndirectDrawing>,
                        Has<DepthPrepass>,
@@ -611,15 +631,18 @@ void epix::core_graph::core_3d::extract_camera_prepass_phase(
                  With<::epix::camera::Camera3d>>> cameras,
     Local<std::unordered_set<::epix::render::view::RetainedViewEntity>> live_views,
     Res<::epix::render::batching::GpuPreprocessingSupport> gpu_preprocessing_support) {
-    // Bevy `extract_camera_prepass_phase` (core_3d/mod.rs:665-745): an active
-    // camera with a depth, normal, or motion-vector prepass prepares both binned
-    // prepass phases for the new frame; otherwise its phases are removed. The
-    // preprocessing mode is the same `GpuPreprocessingSupport` decision the main
-    // 3D phases use, so the two extractions agree by construction.
+    // Bevy `extract_camera_prepass_phase` (core_3d/mod.rs:665-788): one system
+    // handles both the prepass and the deferred phases. An active camera that
+    // asks for a depth, normal, or motion-vector prepass prepares both binned
+    // prepass phases for the new frame, an active camera with a
+    // `DeferredPrepass` prepares both binned deferred phases, and the other
+    // branch removes the corresponding phases. Every active camera is live
+    // regardless of which phases it asked for. The preprocessing mode is the
+    // same `GpuPreprocessingSupport` decision the main 3D phases use, so the
+    // extractions agree by construction.
     live_views->clear();
-    for (auto&& [entity, camera, no_indirect_drawing, depth_prepass, normal_prepass, motion_vector_prepass,
+    for (auto&& [entity, render_entity, camera, no_indirect_drawing, depth_prepass, normal_prepass, motion_vector_prepass,
                  deferred_prepass] : cameras.iter()) {
-        static_cast<void>(deferred_prepass);
         if (!camera.is_active) continue;
         const auto gpu_preprocessing_mode =
             preprocessing_mode_for_view(gpu_preprocessing_support.get(), no_indirect_drawing);
@@ -630,15 +653,50 @@ void epix::core_graph::core_3d::extract_camera_prepass_phase(
         if (depth_prepass || normal_prepass || motion_vector_prepass) {
             opaque_prepass_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
             alpha_mask_prepass_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
-            live_views->insert(retained_view);
         } else {
             opaque_prepass_phases->phases.erase(retained_view);
             alpha_mask_prepass_phases->phases.erase(retained_view);
+        }
+        if (deferred_prepass) {
+            opaque_deferred_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
+            alpha_mask_deferred_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
+        } else {
+            opaque_deferred_phases->phases.erase(retained_view);
+            alpha_mask_deferred_phases->phases.erase(retained_view);
+        }
+        live_views->insert(retained_view);
+
+        // Bevy re-inserts (or removes) the prepass markers on the synced render
+        // entity, which is how the render-world `prepare_prepass_textures` and
+        // the prepass/deferred nodes observe them (core_3d/mod.rs:744-782).
+        // Bevy's two double-buffer markers have no Epix counterpart yet.
+        auto camera_commands = cmd.entity(render_entity.id());
+        if (depth_prepass) {
+            camera_commands.insert(DepthPrepass{});
+        } else {
+            camera_commands.remove<DepthPrepass>();
+        }
+        if (normal_prepass) {
+            camera_commands.insert(NormalPrepass{});
+        } else {
+            camera_commands.remove<NormalPrepass>();
+        }
+        if (motion_vector_prepass) {
+            camera_commands.insert(MotionVectorPrepass{});
+        } else {
+            camera_commands.remove<MotionVectorPrepass>();
+        }
+        if (deferred_prepass) {
+            camera_commands.insert(DeferredPrepass{});
+        } else {
+            camera_commands.remove<DeferredPrepass>();
         }
     }
     const auto remove_dead_views = [&live_views](const auto& entry) { return !live_views->contains(entry.first); };
     std::erase_if(opaque_prepass_phases->phases, remove_dead_views);
     std::erase_if(alpha_mask_prepass_phases->phases, remove_dead_views);
+    std::erase_if(opaque_deferred_phases->phases, remove_dead_views);
+    std::erase_if(alpha_mask_deferred_phases->phases, remove_dead_views);
 }
 
 void epix::core_graph::core_3d::prepare_prepass_textures(
@@ -647,6 +705,8 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
     Res<wgpu::Device> device,
     Res<phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     Res<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
+    Res<phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
+    Res<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>> alpha_mask_deferred_phases,
     Query<Item<Entity,
                const ::epix::render::camera::ExtractedCamera&,
                const ::epix::render::view::ExtractedView&,
@@ -658,50 +718,47 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
         views) {
     // Bevy `prepare_prepass_textures` (core_3d/mod.rs:991-1223) caches one
     // texture per output target, so cameras compositing onto the same target
-    // share it. Epix implements the three textures this row owns; the two
-    // deferred G-buffer textures belong to C15.
+    // share it: `.entry(camera.target.clone())` at line 1049 and the sibling
+    // caches.
     //
-    // Bevy keys its caches by `camera.target` alone and relies on a target
-    // having one MSAA setting. Epix's textures must match the view's sample
-    // count, so the key carries it too: two views on one target with different
-    // sample counts get their own textures instead of sharing one that only fits
-    // the first.
-    struct PrepassTextureKey {
-        std::optional<::epix::camera::RenderTargetId> target;
-        std::uint32_t sample_count = kSingleSample;
-
-        bool operator==(const PrepassTextureKey& other) const noexcept {
-            return sample_count == other.sample_count && target == other.target;
-        }
-    };
-
-    struct PrepassTextureKeyHash {
-        std::size_t operator()(const PrepassTextureKey& key) const noexcept {
-            std::size_t hash = key.target ? ::epix::camera::RenderTargetIdHash{}(*key.target) : std::size_t{0};
-            hash ^= std::hash<std::uint32_t>{}(key.sample_count) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-            return hash;
-        }
-    };
-
     // Each prepass texture clears to black on its first use per frame, which is
     // what Bevy passes as `ColorAttachment::new(t, None, None, Some(BLACK))`.
     constexpr glm::vec4 kPrepassClear{0.0f, 0.0f, 0.0f, 1.0f};
 
-    std::unordered_map<PrepassTextureKey, ::epix::render::render_resource::CachedTexture, PrepassTextureKeyHash>
-        depth_textures;
-    std::unordered_map<PrepassTextureKey, ::epix::render::render_resource::CachedTexture, PrepassTextureKeyHash>
-        normal_textures;
-    std::unordered_map<PrepassTextureKey, ::epix::render::render_resource::CachedTexture, PrepassTextureKeyHash>
-        motion_vector_textures;
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
+                       ::epix::render::render_resource::CachedTexture,
+                       decltype(&render_target_hash)>
+        depth_textures{0, &render_target_hash};
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
+                       ::epix::render::render_resource::CachedTexture,
+                       decltype(&render_target_hash)>
+        normal_textures{0, &render_target_hash};
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
+                       ::epix::render::render_resource::CachedTexture,
+                       decltype(&render_target_hash)>
+        motion_vector_textures{0, &render_target_hash};
+    // C15: the deferred G-buffer and lighting-pass id textures, also one per
+    // output target.
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
+                       ::epix::render::render_resource::CachedTexture,
+                       decltype(&render_target_hash)>
+        deferred_textures{0, &render_target_hash};
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
+                       ::epix::render::render_resource::CachedTexture,
+                       decltype(&render_target_hash)>
+        deferred_lighting_id_textures{0, &render_target_hash};
 
     for (auto&& [entity, camera, extracted_view, msaa, depth_prepass, normal_prepass, motion_vector_prepass,
                  deferred_prepass] : views.iter()) {
         static_cast<void>(deferred_prepass);
         const auto& retained_view = extracted_view.retained_view_entity;
-        // Bevy removes the component when the view is in no prepass phase at
-        // all; this membership test is the equivalent.
+        // Bevy removes the component when the view is in no prepass *or*
+        // deferred phase at all (`core_3d/mod.rs:1033-1040`); this membership
+        // test is the equivalent.
         if (!opaque_prepass_phases->phases.contains(retained_view) &&
-            !alpha_mask_prepass_phases->phases.contains(retained_view)) {
+            !alpha_mask_prepass_phases->phases.contains(retained_view) &&
+            !opaque_deferred_phases->phases.contains(retained_view) &&
+            !alpha_mask_deferred_phases->phases.contains(retained_view)) {
             cmd.entity(entity).remove<ViewPrepassTextures>();
             continue;
         }
@@ -710,34 +767,35 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
 
         const auto size         = wgpu::Extent3D{physical_target_size->x, physical_target_size->y, 1};
         const auto sample_count = ::epix::render::view::samples(msaa);
-        const auto cache_key    = PrepassTextureKey{render_target_of(camera), sample_count};
+        const auto target       = render_target_of(camera);
 
         const auto cached_for = [&](auto& textures,
                                     std::string_view label,
                                     wgpu::TextureFormat format,
-                                    wgpu::TextureUsage usage) {
-            const auto existing = textures.find(cache_key);
+                                    wgpu::TextureUsage usage,
+                                    std::uint32_t texture_samples) {
+            const auto existing = textures.find(target);
             if (existing != textures.end()) return existing->second;
             wgpu::TextureDescriptor descriptor;
             descriptor.setLabel(label.data())
                 .setSize(size)
                 .setMipLevelCount(1)
-                .setSampleCount(sample_count)
+                .setSampleCount(texture_samples)
                 .setDimension(wgpu::TextureDimension::e2D)
                 .setFormat(format)
                 .setUsage(usage);
-            const ::epix::render::render_resource::TextureCacheKey key{
+            const ::epix::render::render_resource::TextureCacheKey texture_key{
                 .format                = format,
                 .dimension             = wgpu::TextureDimension::e2D,
                 .width                 = size.width,
                 .height                = size.height,
                 .depth_or_array_layers = 1,
                 .mip_level_count       = 1,
-                .sample_count          = sample_count,
+                .sample_count          = texture_samples,
                 .usage                 = usage,
                 .label                 = std::string(label),
             };
-            return textures.emplace(cache_key, texture_cache->get(*device, key, descriptor)).first->second;
+            return textures.emplace(target, texture_cache->get(*device, texture_key, descriptor)).first->second;
         };
 
         ViewPrepassTextures textures{};
@@ -750,14 +808,14 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
             const auto cached = cached_for(depth_textures, "prepass_depth_texture", CORE_3D_DEPTH_FORMAT,
                                            static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eCopyDst |
                                                                            wgpu::TextureUsage::eRenderAttachment |
-                                                                           wgpu::TextureUsage::eTextureBinding));
+                                                                           wgpu::TextureUsage::eTextureBinding), sample_count);
             textures.depth =
                 ::epix::render::render_resource::ColorAttachment{cached, std::nullopt, std::nullopt, kPrepassClear};
         }
         if (normal_prepass) {
             const auto cached = cached_for(normal_textures, "prepass_normal_texture", NORMAL_PREPASS_FORMAT,
                                            static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eRenderAttachment |
-                                                                           wgpu::TextureUsage::eTextureBinding));
+                                                                           wgpu::TextureUsage::eTextureBinding), sample_count);
             textures.normal =
                 ::epix::render::render_resource::ColorAttachment{cached, std::nullopt, std::nullopt, kPrepassClear};
         }
@@ -765,24 +823,162 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
             const auto cached = cached_for(motion_vector_textures, "prepass_motion_vectors_texture",
                                            MOTION_VECTOR_PREPASS_FORMAT,
                                            static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eRenderAttachment |
-                                                                           wgpu::TextureUsage::eTextureBinding));
+                                                                           wgpu::TextureUsage::eTextureBinding), sample_count);
             textures.motion_vectors =
                 ::epix::render::render_resource::ColorAttachment{cached, std::nullopt, std::nullopt, kPrepassClear};
+        }
+        if (deferred_prepass) {
+            // The G-buffer and the lighting-pass id are both sampleable render
+            // attachments, created single-sampled even for an MSAA view
+            // (Bevy `sample_count: 1` in both descriptors).
+            const auto cached = cached_for(deferred_textures, "prepass_deferred_texture", DEFERRED_PREPASS_FORMAT,
+                                           static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eRenderAttachment |
+                                                                           wgpu::TextureUsage::eTextureBinding),
+                                           kSingleSample);
+            textures.deferred =
+                ::epix::render::render_resource::ColorAttachment{cached, std::nullopt, std::nullopt, kPrepassClear};
+
+            const auto lighting_id =
+                cached_for(deferred_lighting_id_textures, "deferred_lighting_pass_id_texture",
+                           DEFERRED_LIGHTING_PASS_ID_FORMAT,
+                           static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eRenderAttachment |
+                                                           wgpu::TextureUsage::eTextureBinding),
+                           kSingleSample);
+            textures.deferred_lighting_pass_id =
+                ::epix::render::render_resource::ColorAttachment{lighting_id, std::nullopt, std::nullopt, kPrepassClear};
         }
 
         cmd.entity(entity).insert(std::move(textures));
     }
 }
 
+// C15 deferred G-buffer. Bevy's `deferred/node.rs` shares one body between the
+// early and late nodes and draws the two binned deferred phases; the queuing
+// half comes from the material plugin in the `pbr` module, so these bins are
+// empty until that lands.
+
+namespace {
+/** @brief Shared body of Bevy's `run_deferred_prepass` (`deferred/node.rs:108`). */
+std::expected<void, graph::NodeRunError> run_deferred_prepass(
+    graph::GraphContext& graph,
+    graph::RenderContext& render_context,
+    const ::epix::render::camera::ExtractedCamera& camera,
+    const ::epix::render::view::ExtractedView& extracted_view,
+    const ::epix::render::view::ViewDepthTexture& view_depth_texture,
+    const ViewPrepassTextures& view_prepass_textures,
+    bool is_late,
+    const World& world,
+    std::string_view label) {
+    // Bevy only reads `is_late` inside its WebGL-only fallback, so on native the
+    // parameter survives but changes nothing (deferred/node.rs:155-193).
+    static_cast<void>(is_late);
+    const auto opaque_deferred_phases = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+    const auto alpha_mask_deferred_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
+    if (!opaque_deferred_phases || !alpha_mask_deferred_phases) return {};
+
+    const auto opaque_phase = opaque_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
+    const auto alpha_mask_phase =
+        alpha_mask_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
+    if (opaque_phase == opaque_deferred_phases->get().phases.end() ||
+        alpha_mask_phase == alpha_mask_deferred_phases->get().phases.end()) {
+        return {};
+    }
+
+    // Bevy's attachment order: normals, motion vectors, the deferred G-buffer,
+    // then the deferred lighting-pass id.
+    std::vector<wgpu::RenderPassColorAttachment> color_attachments;
+    color_attachments.push_back(view_prepass_textures.normal
+                                    ? view_prepass_textures.normal->get_attachment()
+                                    : wgpu::RenderPassColorAttachment{});
+    color_attachments.push_back(view_prepass_textures.motion_vectors
+                                    ? view_prepass_textures.motion_vectors->get_attachment()
+                                    : wgpu::RenderPassColorAttachment{});
+    if (view_prepass_textures.deferred) {
+        // Bevy builds this attachment from `package_double_buffered_texture`,
+        // which always passes `Some(LinearRgba::BLACK)` as the clear color
+        // (`core_3d/mod.rs:1231-1236`), so `get_attachment()` clears on both the
+        // early and the late node. Only the WebGL fallback swaps in `Load`, and
+        // that path is compiled out natively (`deferred/node.rs:170-191`).
+        color_attachments.push_back(view_prepass_textures.deferred->get_attachment());
+    } else {
+        color_attachments.push_back(wgpu::RenderPassColorAttachment{});
+    }
+    color_attachments.push_back(view_prepass_textures.deferred_lighting_pass_id
+                                    ? view_prepass_textures.deferred_lighting_pass_id->get_attachment()
+                                    : wgpu::RenderPassColorAttachment{});
+
+    const auto depth_attachment = view_depth_texture.get_attachment(wgpu::StoreOp::eStore);
+    const auto viewport         = camera.viewport;
+    const auto view_entity      = graph.view_entity();
+    const auto* world_ptr       = std::addressof(world);
+    const auto* opaque_ptr      = std::addressof(opaque_phase->second);
+    const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
+
+    render_context.add_command_buffer_generation_task(
+        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_ptr, mask_ptr,
+         label](wgpu::Device device) {
+            auto encoder = device.createCommandEncoder(
+                wgpu::CommandEncoderDescriptor().setLabel("deferred_prepass_command_encoder"));
+            {
+                wgpu::RenderPassDescriptor descriptor;
+                descriptor.setLabel(label.data());
+                descriptor.setColorAttachments(color_attachments);
+                descriptor.setDepthStencilAttachment(depth_attachment);
+                auto render_pass = encoder.beginRenderPass(descriptor);
+                if (viewport) {
+                    const auto& vp = *viewport;
+                    render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                            static_cast<float>(vp.physical_position.y),
+                                            static_cast<float>(vp.physical_size.x),
+                                            static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+                }
+                if (!opaque_ptr->is_empty()) opaque_ptr->render(render_pass, *world_ptr, view_entity);
+                if (!mask_ptr->is_empty()) mask_ptr->render(render_pass, *world_ptr, view_entity);
+                render_pass.end();
+            }
+            return encoder.finish();
+        });
+    return {};
+}
+}  // namespace
+
+std::expected<void, graph::NodeRunError> EarlyDeferredGBufferPrepassNode::run(
+    graph::GraphContext& graph,
+    graph::RenderContext& render_context,
+    typename ecs::QueryData<ViewQuery>::Item view,
+    const World& world) const {
+    auto&& [camera, extracted_view, depth_texture, prepass_textures] = view;
+    return run_deferred_prepass(graph, render_context, camera, extracted_view, depth_texture, prepass_textures, false,
+                                world, "early deferred gbuffer prepass");
+}
+
+std::expected<void, graph::NodeRunError> LateDeferredGBufferPrepassNode::run(
+    graph::GraphContext& graph,
+    graph::RenderContext& render_context,
+    typename ecs::QueryData<ViewQuery>::Item view,
+    const World& world) const {
+    // Bevy only needs a late deferred prepass when occlusion culling is active
+    // and the view allows indirect drawing (deferred/node.rs:83-86); the same
+    // missing bin split that keeps `LatePrepassNode` a no-op applies here, so the
+    // early deferred node owns the whole pass (C15-D2).
+    static_cast<void>(graph);
+    static_cast<void>(render_context);
+    static_cast<void>(view);
+    static_cast<void>(world);
+    return {};
+}
+
 void Core3dGraph::add_to(graph::RenderGraph& g, World& world) {
     spdlog::debug("[render.core_graph] Adding Core3D sub-graph to render graph.");
     graph::RenderGraph g3d;
-    // C14 installs the two real prepass nodes at Bevy's labels. The deferred
-    // G-buffer labels stay empty nodes because C15 owns them.
+    // C14 installs the two real prepass nodes at Bevy's labels and C15 the two
+    // real deferred G-buffer nodes. `CopyDeferredLightingId` stays an empty node
+    // because the deferred lighting pass itself needs the material plugin's
+    // lighting half (C15-D1).
     g3d.add_node(Core3dNodes::EarlyPrepass, graph::ViewNodeRunner{EarlyPrepassNode{}, world});
     g3d.add_node(Core3dNodes::LatePrepass, graph::ViewNodeRunner{LatePrepassNode{}, world});
-    g3d.add_node(Core3dNodes::EarlyDeferredPrepass, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::LateDeferredPrepass, graph::EmptyNode{});
+    g3d.add_node(Core3dNodes::EarlyDeferredPrepass, graph::ViewNodeRunner{EarlyDeferredGBufferPrepassNode{}, world});
+    g3d.add_node(Core3dNodes::LateDeferredPrepass, graph::ViewNodeRunner{LateDeferredGBufferPrepassNode{}, world});
     g3d.add_node(Core3dNodes::CopyDeferredLightingId, graph::EmptyNode{});
     g3d.add_node(Core3dNodes::EndPrepasses, graph::EmptyNode{});
     g3d.add_node(Core3dNodes::StartMainPass, graph::EmptyNode{});
@@ -811,6 +1007,8 @@ void Core3dPlugin::attach(App& app) {
         [] { return render::camera::CameraRenderGraph{Core3d}; });
     app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] { return Tonemapping{}; });
     app.add_plugins(render::ExtractComponentPlugin<::epix::camera::Camera3d>{});
+    // Bevy registers this in the main world's PostUpdate (core_3d/mod.rs:151).
+    app.add_systems(::epix::app::PostUpdate, into(check_msaa).set_name("check msaa"));
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {
         render_app.world_mut().init_resource<phase::DrawFunctions<Opaque3d>>();
         render_app.world_mut().init_resource<phase::DrawFunctions<AlphaMask3d>>();
@@ -826,6 +1024,11 @@ void Core3dPlugin::attach(App& app) {
         render_app.world_mut().init_resource<phase::DrawFunctions<AlphaMask3dPrepass>>();
         render_app.world_mut().init_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
         render_app.world_mut().init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
+        // C15: the same pair for the deferred G-buffer phases.
+        render_app.world_mut().init_resource<phase::DrawFunctions<Opaque3dDeferred>>();
+        render_app.world_mut().init_resource<phase::DrawFunctions<AlphaMask3dDeferred>>();
+        render_app.world_mut().init_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+        render_app.world_mut().init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
         Core3d.add_to(render_app.resource_mut<graph::RenderGraph>(), render_app.world_mut());
 
         render_app.add_systems(Render, into(phase::sort_phase_system<Transmissive3d>)
@@ -842,8 +1045,9 @@ void Core3dPlugin::attach(App& app) {
                                            .set_name("prepare core 3d transmission textures"));
         render_app.add_systems(ExtractSchedule,
                                into(extract_core_3d_camera_phases).set_name("extract core 3d camera phases"));
-        // Bevy runs the prepass extraction in ExtractSchedule and the texture
-        // preparation in PrepareResources (core_3d/mod.rs:174-185).
+        // Bevy registers this single system for both the prepass and the
+        // deferred phases (core_3d/mod.rs:173-187); there is no separate
+        // deferred extraction.
         render_app.add_systems(ExtractSchedule,
                                into(extract_camera_prepass_phase).set_name("extract camera prepass phase"));
         render_app.add_systems(Render, into(prepare_prepass_textures)

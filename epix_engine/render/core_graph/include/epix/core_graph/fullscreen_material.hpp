@@ -116,43 +116,49 @@ struct FullscreenMaterialPlugin {
  * camera's graph when a material of type `T` is first added (Bevy
  * `extract_on_add`, fullscreen_material.rs:101-139).
  *
- * Bevy derives the target graph from the camera's `CameraRenderGraph`. Epix
- * routes on `T::sub_graph()` instead, because a material's `node_edges()` are
- * labels from that same graph: inserting a 2D material's edges into the Core3d
- * graph cannot succeed, so the material's own declaration is the only
- * self-consistent routing key. A camera marker is still required, so the node is
- * only added once a camera of the matching dimensionality exists. */
+ * Bevy picks the sub-graph from the camera markers: `Core3d` when the entity is
+ * a `Camera3d`, otherwise `Core2d` when it is a `Camera2d`, otherwise it warns
+ * and skips. */
 template <FullscreenMaterial T>
 void extract_on_add(
     epix::ecs::World& render_world,
     epix::app::Extract<epix::ecs::Query<
-        epix::ecs::Item<epix::ecs::Entity, epix::ecs::Has<::epix::camera::Camera2d>,
-                        epix::ecs::Has<::epix::camera::Camera3d>>,
+        epix::ecs::Item<epix::ecs::Entity, epix::ecs::Has<::epix::camera::Camera3d>,
+                        epix::ecs::Has<::epix::camera::Camera2d>>,
         ::epix::ecs::Added<T>>> cameras) {
-    const auto declared_graph = T::sub_graph();
-    for (auto&& [entity, has_2d, has_3d] : cameras.iter()) {
+    for (auto&& [entity, is_3d, is_2d] : cameras.iter()) {
         (void)entity;
-        const bool has_3d_camera = has_3d;
-        const bool has_2d_camera = has_2d;
-        if (!has_2d_camera && !has_3d_camera) continue;
         (void)render_world.resource_scope([&](render::graph::RenderGraph& render_graph, epix::ecs::World& world) {
-            const auto graph_label = declared_graph.value_or(
-                has_3d_camera ? render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d)
-                              : render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d));
-            if (auto sub_graph = render_graph.get_sub_graph(graph_label)) {
-                auto& graph = sub_graph->get();
-                graph.add_node(fullscreen_material_node_label<T>(), FullscreenMaterialNodeRunner<T>{
-                                                                        FullscreenMaterialNode<T>{}, world});
-                const auto edges = T::node_edges();
-                for (std::size_t index = 0; index + 1 < edges.size(); ++index) {
-                    const auto res = graph.try_add_node_edge(edges[index], edges[index + 1]);
-                    if (res) continue;
-                    if (const auto* edge_error = std::get_if<render::graph::EdgeError>(&res.error());
-                        edge_error && std::holds_alternative<render::graph::EdgeAlreadyExists>(*edge_error)) {
-                        continue;
-                    }
-                    throw std::runtime_error("Failed to add FullscreenMaterial graph edge");
+            // Bevy tries `Core3d` first, then `Core2d`, and warns otherwise.
+            render::graph::RenderGraph* graph = nullptr;
+            if (is_3d) {
+                if (auto sub_graph = render_graph.get_sub_graph(
+                        render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d))) {
+                    graph = std::addressof(sub_graph->get());
                 }
+            }
+            if (graph == nullptr && is_2d) {
+                if (auto sub_graph = render_graph.get_sub_graph(
+                        render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))) {
+                    graph = std::addressof(sub_graph->get());
+                }
+            }
+            if (graph == nullptr) {
+                spdlog::warn("[core_graph] FullscreenMaterial was added to an entity that isn't a camera");
+                return;
+            }
+
+            graph->add_node(fullscreen_material_node_label<T>(),
+                            FullscreenMaterialNodeRunner<T>{FullscreenMaterialNode<T>{}, world});
+            const auto edges = T::node_edges();
+            for (std::size_t index = 0; index + 1 < edges.size(); ++index) {
+                const auto res = graph->try_add_node_edge(edges[index], edges[index + 1]);
+                if (res) continue;
+                if (const auto* edge_error = std::get_if<render::graph::EdgeError>(&res.error());
+                    edge_error && std::holds_alternative<render::graph::EdgeAlreadyExists>(*edge_error)) {
+                    continue;
+                }
+                throw std::runtime_error("Failed to add FullscreenMaterial graph edge");
             }
         });
     }

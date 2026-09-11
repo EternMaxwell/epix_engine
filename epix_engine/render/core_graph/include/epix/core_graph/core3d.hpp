@@ -50,8 +50,11 @@ EPIX_EXPORT struct MotionVectorPrepass {};
  * G-buffer for later passes (Bevy `DeferredPrepass`).
  *
  * Declared and honoured as the prepass node's bail-out condition exactly as in
- * Bevy. The deferred G-buffer itself is C15, so no view carries this component
- * yet and the two deferred prepass labels remain empty nodes. */
+ * Bevy. The deferred G-buffer itself is C15; its structural half (the two
+ * deferred phase types, `ViewPrepassTextures::deferred*`, the two nodes and
+ * `prepare_prepass_textures`' deferred textures) is implemented, while its
+ * queuing half stays with `pbr`'s material plugin, so a view reaches the nodes
+ * with empty bins until that lands. */
 EPIX_EXPORT struct DeferredPrepass {};
 
 /** @brief The textures the prepass writes (Bevy `ViewPrepassTextures`,
@@ -349,6 +352,85 @@ EPIX_EXPORT struct AlphaMask3dPrepass {
 static_assert(render::phase::CachedRenderPipelinePhaseItem<AlphaMask3dPrepass>);
 static_assert(render::phase::BinnedPhaseItem<AlphaMask3dPrepass>);
 
+// C15 deferred G-buffer. Bevy declares these in `bevy_core_pipeline::deferred`;
+// both phases reuse the lightmap-free key pair exactly as the prepass phases do
+// (`deferred/mod.rs:27` and `:110`).
+
+/** @brief Format of the deferred G-buffer texture (Bevy
+ * `DEFERRED_PREPASS_FORMAT`, `deferred/mod.rs:17`). */
+EPIX_EXPORT inline constexpr wgpu::TextureFormat DEFERRED_PREPASS_FORMAT = wgpu::TextureFormat::eRGBA32Uint;
+
+/** @brief Format of the deferred lighting-pass id texture (Bevy
+ * `DEFERRED_LIGHTING_PASS_ID_FORMAT`, `deferred/mod.rs:18`). */
+EPIX_EXPORT inline constexpr wgpu::TextureFormat DEFERRED_LIGHTING_PASS_ID_FORMAT = wgpu::TextureFormat::eR8Uint;
+
+/** @brief Depth format of the deferred lighting-pass id pass (Bevy
+ * `DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT`, `deferred/mod.rs:19`). */
+EPIX_EXPORT inline constexpr wgpu::TextureFormat DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT =
+    wgpu::TextureFormat::eDepth16Unorm;
+
+/** @brief A binned opaque 3D *deferred G-buffer* render phase item (Bevy
+ * `Opaque3dDeferred`, `deferred/mod.rs:27`). */
+EPIX_EXPORT struct Opaque3dDeferred {
+    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
+    OpaqueNoLightmap3dBatchSetKey batch_set_key_value;
+    OpaqueNoLightmap3dBinKey bin_key_value;
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value;
+    render::phase::PhaseItemExtraIndex extra_index_value{};
+
+    ecs::Entity entity() const noexcept { return representative_entity.first; }
+    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return batch_set_key_value.draw_func; }
+    render::CachedPipelineId cached_pipeline() const noexcept { return batch_set_key_value.pipeline_id; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const render::phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra_index_value; }
+    render::phase::PhaseItemExtraIndex& extra_index() noexcept { return extra_index_value; }
+    using BinKey      = OpaqueNoLightmap3dBinKey;
+    using BatchSetKey = OpaqueNoLightmap3dBatchSetKey;
+    static Opaque3dDeferred create(BatchSetKey batch_set_key,
+                                   BinKey bin_key,
+                                   std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity,
+                                   std::pair<std::uint32_t, std::uint32_t> batch_range,
+                                   render::phase::PhaseItemExtraIndex extra_index) {
+        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key), batch_range,
+                extra_index};
+    }
+};
+static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque3dDeferred>);
+static_assert(render::phase::BinnedPhaseItem<Opaque3dDeferred>);
+
+/** @brief A binned alpha-masked 3D *deferred G-buffer* render phase item (Bevy
+ * `AlphaMask3dDeferred`, `deferred/mod.rs:110`). */
+EPIX_EXPORT struct AlphaMask3dDeferred {
+    std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
+    OpaqueNoLightmap3dBatchSetKey batch_set_key_value;
+    OpaqueNoLightmap3dBinKey bin_key_value;
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value;
+    render::phase::PhaseItemExtraIndex extra_index_value{};
+
+    ecs::Entity entity() const noexcept { return representative_entity.first; }
+    render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return batch_set_key_value.draw_func; }
+    render::CachedPipelineId cached_pipeline() const noexcept { return batch_set_key_value.pipeline_id; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const render::phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra_index_value; }
+    render::phase::PhaseItemExtraIndex& extra_index() noexcept { return extra_index_value; }
+    using BinKey      = OpaqueNoLightmap3dBinKey;
+    using BatchSetKey = OpaqueNoLightmap3dBatchSetKey;
+    static AlphaMask3dDeferred create(BatchSetKey batch_set_key,
+                                      BinKey bin_key,
+                                      std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity,
+                                      std::pair<std::uint32_t, std::uint32_t> batch_range,
+                                      render::phase::PhaseItemExtraIndex extra_index) {
+        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key), batch_range,
+                extra_index};
+    }
+};
+static_assert(render::phase::CachedRenderPipelinePhaseItem<AlphaMask3dDeferred>);
+static_assert(render::phase::BinnedPhaseItem<AlphaMask3dDeferred>);
+
 /** @brief A sorted transmissive 3D render phase item (Bevy `Transmissive3d`).
  *
  * Sorted by ascending view-space distance for back-to-front rendering.
@@ -464,6 +546,40 @@ EPIX_EXPORT struct LatePrepassNode {
                                                          const ecs::World& world) const;
 };
 
+/** @brief Bevy `EarlyDeferredGBufferPrepassNode` (`deferred/node.rs:32`): draws
+ * the deferred G-buffer for the meshes that were visible last frame.
+ *
+ * Without occlusion culling this is the only deferred prepass, so it draws
+ * everything. The deferred subsystem's *queuing* half belongs to the material
+ * plugin in the `pbr` module (C15-D1), so an Epix view reaches here with empty
+ * bins until that lands; the node, its label, and its graph edge are installed
+ * now so the subsystem can fill them without touching Core3D. */
+EPIX_EXPORT struct EarlyDeferredGBufferPrepassNode {
+    using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
+                                const render::view::ExtractedView&,
+                                const render::view::ViewDepthTexture&,
+                                const ViewPrepassTextures&>;
+    void update(ecs::World&) {}
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
+};
+
+/** @brief Bevy `LateDeferredGBufferPrepassNode` (`deferred/node.rs:63`): runs
+ * after occlusion culling against the meshes that were visible last frame.
+ *
+ * Without occlusion culling and indirect drawing this returns without drawing,
+ * exactly as Bevy does, so the early deferred node owns the whole pass. */
+EPIX_EXPORT struct LateDeferredGBufferPrepassNode {
+    using ViewQuery = typename EarlyDeferredGBufferPrepassNode::ViewQuery;
+    void update(ecs::World&) {}
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
+};
+
 /** @brief Bevy `MainOpaquePass3dNode`: renders the opaque and alpha-mask
  * binned phases into one deferred command buffer against the shared depth
  * target. Bevy's optional skybox and `MainPassResolutionOverride` inputs have
@@ -543,6 +659,12 @@ EPIX_EXPORT void extract_core_3d_camera_phases(
     ecs::Local<std::unordered_set<render::view::RetainedViewEntity>> live_views,
     ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support);
 
+/** @brief Disable MSAA on views that use deferred rendering, warning when the
+ * requested sample count was not already off (Bevy `check_msaa`,
+ * `core_3d/mod.rs:978`). Registered in `PostUpdate` by `Core3dPlugin`. */
+EPIX_EXPORT void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
+                                       ecs::With<::epix::camera::Camera, DeferredPrepass>> deferred_views);
+
 /** @brief Prepare depth attachments for live Core3D views (Bevy
  * `prepare_core_3d_depth_textures`). The general view plugin deliberately
  * does not allocate depth for arbitrary cameras. */
@@ -578,12 +700,21 @@ EPIX_EXPORT void prepare_core_3d_transmission_textures(
                          const ::epix::camera::Camera3d&,
                          const render::view::ExtractedView&>> views);
 
-/** @brief Extract the prepass render phases for every active `Camera3d` (Bevy
- * `extract_camera_prepass_phase`, `core_3d/mod.rs:665`). */
+/** @brief Extract the prepass and deferred render phases for every active
+ * `Camera3d` (Bevy `extract_camera_prepass_phase`, `core_3d/mod.rs:665`).
+ *
+ * Bevy handles the prepass and the deferred phases in this one system and
+ * re-inserts the prepass marker components onto the synced render entity, which
+ * is how the render-world preparation and pass nodes observe them
+ * (`core_3d/mod.rs:744-782`). */
 EPIX_EXPORT void extract_camera_prepass_phase(
+    ecs::Commands cmd,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
+    ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>> alpha_mask_deferred_phases,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity,
+                                     render::sync_world::RenderEntity,
                                      const ::epix::camera::Camera&,
                                      ecs::Has<::epix::render::view::NoIndirectDrawing>,
                                      ecs::Has<DepthPrepass>,
@@ -605,6 +736,8 @@ EPIX_EXPORT void prepare_prepass_textures(
     ecs::Res<wgpu::Device> device,
     ecs::Res<render::phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     ecs::Res<render::phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
+    ecs::Res<render::phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>> alpha_mask_deferred_phases,
     ecs::Query<ecs::Item<ecs::Entity,
                          const render::camera::ExtractedCamera&,
                          const render::view::ExtractedView&,

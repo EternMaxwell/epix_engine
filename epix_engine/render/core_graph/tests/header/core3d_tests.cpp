@@ -588,11 +588,45 @@ TEST(Core3dPrepassPhases, MatchBevyBinnedItemContractsAndFormats) {
     EXPECT_EQ(epix::core_graph::core_3d::MOTION_VECTOR_PREPASS_FORMAT, wgpu::TextureFormat::eRG16Float);
 }
 
-// C14: `extract_camera_prepass_phase` prepares both binned prepass phases only
-// for an active camera that carries a prepass component, and drops the phases of
-// a camera that carries none (`core_3d/mod.rs:721-729`). The system runs in the
-// render world's ExtractSchedule, so the whole render sub-app is built and
-// extracted exactly as the Core3dPlugin test does.
+// C13-D3/C15: Bevy registers `check_msaa` in the main world's `PostUpdate`, and
+// it forces every camera carrying `DeferredPrepass` to `Msaa::Off` because MSAA
+// is incompatible with deferred rendering (`core_3d/mod.rs:151,978-988`). A
+// camera that already asked for `Off` is left alone, and a camera without
+// `DeferredPrepass` keeps whatever it asked for.
+TEST(Core3dMsaa, DisablesMsaaOnlyForDeferredViews) {
+    epix::app::App app = epix::app::App::create();
+    app.add_plugins(epix::app::TaskPoolPlugin{}).add_plugins(epix::time::TimePlugin{});
+    app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+
+    using namespace epix::core_graph::core_3d;
+    const auto spawn = [&app](view::Msaa msaa, bool deferred) {
+        auto entity = app.world_mut().spawn(::epix::camera::Camera3d{}, msaa);
+        if (deferred) entity.insert(DeferredPrepass{});
+        return entity.id();
+    };
+    const auto deferred_msaa = spawn(view::Msaa::Sample4, true);
+    const auto deferred_off  = spawn(view::Msaa::Off, true);
+    const auto plain_msaa    = spawn(view::Msaa::Sample4, false);
+
+    app.run_schedule(epix::app::PostUpdate);
+
+    const auto msaa_of = [&](Entity entity) {
+        return app.world().get_entity(entity).and_then(
+            [](const EntityRef& ref) { return ref.get<view::Msaa>(); });
+    };
+    EXPECT_EQ(msaa_of(deferred_msaa).value().get(), view::Msaa::Off);
+    EXPECT_EQ(msaa_of(deferred_off).value().get(), view::Msaa::Off);
+    EXPECT_EQ(msaa_of(plain_msaa).value().get(), view::Msaa::Sample4);
+}
+
+// C14/C15: `extract_camera_prepass_phase` is Bevy's single extraction system for
+// both the prepass and the deferred phases. It prepares each binned phase pair
+// only for an active camera that asked for the matching component, drops the
+// phases of a camera that asked for neither, and re-inserts (or removes) the
+// prepass marker components on the camera's synced render entity
+// (`core_3d/mod.rs:691-788`). The system runs in the render world's
+// ExtractSchedule, so the whole render sub-app is built and extracted exactly as
+// the Core3dPlugin test does.
 TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
     epix::app::App app = epix::app::App::create();
     app.add_events<epix::window::WindowClosed>();
@@ -609,19 +643,21 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
     }
     app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
 
-    const auto spawn = [&app](bool active, bool depth_prepass, bool normal_prepass) {
+    const auto spawn = [&app](bool active, bool depth_prepass, bool normal_prepass, bool deferred_prepass) {
         ::epix::camera::Camera camera;
         camera.is_active = active;
         auto entity      = app.world_mut().spawn(::epix::camera::Camera3d{}, camera);
         if (depth_prepass) entity.insert(epix::core_graph::core_3d::DepthPrepass{});
         if (normal_prepass) entity.insert(epix::core_graph::core_3d::NormalPrepass{});
+        if (deferred_prepass) entity.insert(epix::core_graph::core_3d::DeferredPrepass{});
         return entity.id();
     };
 
-    const auto with_depth  = spawn(true, true, false);
-    const auto with_normal = spawn(true, false, true);
-    const auto none        = spawn(true, false, false);
-    const auto inactive    = spawn(false, true, true);
+    const auto with_depth    = spawn(true, true, false, false);
+    const auto with_normal   = spawn(true, false, true, false);
+    const auto with_deferred = spawn(true, false, false, true);
+    const auto none          = spawn(true, false, false, false);
+    const auto inactive      = spawn(false, true, true, true);
 
     auto render_sub = app.take_sub_app(Render);
     ASSERT_TRUE(render_sub);
@@ -630,20 +666,52 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
         schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
     });
 
-    const auto check = [&](Entity entity, bool expected) {
+    const auto check = [&](Entity entity, bool prepass_expected, bool deferred_expected) {
         using namespace epix::core_graph::core_3d;
         const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{entity}, std::nullopt, 0);
         EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>().phases.contains(retained),
-                  expected);
+                  prepass_expected);
         EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>().phases.contains(retained),
-                  expected);
+                  prepass_expected);
+        EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>().phases.contains(retained),
+                  deferred_expected);
+        EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>().phases.contains(retained),
+                  deferred_expected);
     };
-    check(with_depth, true);
-    check(with_normal, true);
-    // A camera with no prepass component gets no prepass phases at all.
-    check(none, false);
-    // An inactive camera is skipped before the prepass condition is even read.
-    check(inactive, false);
+    check(with_depth, true, false);
+    check(with_normal, true, false);
+    check(with_deferred, false, true);
+    // A camera that asks for neither gets no phases at all.
+    check(none, false, false);
+    // An inactive camera is skipped before either condition is even read.
+    check(inactive, false, false);
+
+    // Bevy copies the prepass markers onto the synced render entity, which is
+    // what the render-world preparation and pass nodes query.
+    const auto render_entity_of = [&](Entity entity) {
+        return app.world()
+            .get_entity(entity)
+            .and_then([](const EntityRef& ref) { return ref.get<sync_world::RenderEntity>(); })
+            .transform([](const auto& value) { return value.get().id(); });
+    };
+    using namespace epix::core_graph::core_3d;
+    const auto check_markers = [&](Entity entity, bool depth, bool normal, bool deferred) {
+        const auto render_entity = render_entity_of(entity);
+        ASSERT_TRUE(render_entity.has_value());
+        const auto extracted = render_sub->world().get_entity(*render_entity);
+        ASSERT_TRUE(extracted.has_value());
+        EXPECT_EQ(extracted->contains<DepthPrepass>(), depth);
+        EXPECT_EQ(extracted->contains<NormalPrepass>(), normal);
+        EXPECT_EQ(extracted->contains<MotionVectorPrepass>(), false);
+        EXPECT_EQ(extracted->contains<DeferredPrepass>(), deferred);
+    };
+    check_markers(with_depth, true, false, false);
+    check_markers(with_normal, false, true, false);
+    check_markers(with_deferred, false, false, true);
+    check_markers(none, false, false, false);
+    // The inactive camera's markers are removed too, so a camera that turns
+    // inactive stops contributing prepass state.
+    check_markers(inactive, false, false, false);
 
     app.insert_sub_app(Render, std::move(render_sub));
 }
@@ -672,6 +740,8 @@ TEST(Core3dPrepassTextures, AllocatesOnlyRequestedTexturesWithBevyFormats) {
     world.init_resource<batching::GpuPreprocessingSupport>();
     world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
     world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
     render_app.add_systems(epix::app::Update, into(prepare_prepass_textures));
 
     const ::epix::camera::NormalizedRenderTarget target{::epix::camera::ManualTextureViewHandle{77}};
@@ -738,11 +808,16 @@ TEST(Core3dPrepassTextures, AllocatesOnlyRequestedTexturesWithBevyFormats) {
     EXPECT_FALSE(depth_only_textures->get().normal);
     EXPECT_FALSE(depth_only_textures->get().motion_vectors);
 
-    // MSAA is honoured on the prepass textures.
+    // Bevy keys the prepass caches by `camera.target` alone
+    // (`.entry(camera.target.clone())`, `core_3d/mod.rs:1049`), so a view already
+    // in the cache shares that target's texture and therefore whatever sample
+    // count the first view created it with. Here the first view for this target
+    // was `all_three` (`Msaa::Off`), so the `Sample4` view shares its texture.
     const auto sampled_textures = world.entity(sampled.entity).get<ViewPrepassTextures>();
     ASSERT_TRUE(sampled_textures);
     ASSERT_TRUE(sampled_textures->get().depth);
-    EXPECT_EQ(sampled_textures->get().depth->texture.texture.getSampleCount(), 4u);
+    EXPECT_EQ(sampled_textures->get().depth->texture.texture, all_textures->get().depth->texture.texture);
+    EXPECT_EQ(sampled_textures->get().depth->texture.texture.getSampleCount(), 1u);
 
     // A view in no prepass phase loses the component, and a view without a
     // physical target size is skipped.
@@ -811,4 +886,102 @@ TEST(Core3dPrepassTextures, DepthPrepassAddsCopySrcToTheViewDepthTexture) {
     EXPECT_TRUE(static_cast<bool>(static_cast<wgpu::TextureUsage>(
         static_cast<std::uint32_t>(plain_depth->get().texture.getUsage()) &
         static_cast<std::uint32_t>(wgpu::TextureUsage::eCopySrc))));
+}
+
+// C15: Bevy's deferred G-buffer phase items are binned, share the lightmap-free
+// key pair, and carry Bevy's deferred texture formats
+// (`deferred/mod.rs:17-19, 27, 110`).
+TEST(Core3dDeferredPhases, MatchBevyBinnedItemContractsAndFormats) {
+    using namespace epix::core_graph::core_3d;
+    static_assert(phase::BinnedPhaseItem<Opaque3dDeferred>);
+    static_assert(phase::BinnedPhaseItem<AlphaMask3dDeferred>);
+    static_assert(phase::CachedRenderPipelinePhaseItem<Opaque3dDeferred>);
+    static_assert(phase::CachedRenderPipelinePhaseItem<AlphaMask3dDeferred>);
+    static_assert(std::same_as<Opaque3dDeferred::BatchSetKey, OpaqueNoLightmap3dBatchSetKey>);
+    static_assert(std::same_as<Opaque3dDeferred::BinKey, OpaqueNoLightmap3dBinKey>);
+    static_assert(std::same_as<AlphaMask3dDeferred::BatchSetKey, OpaqueNoLightmap3dBatchSetKey>);
+    static_assert(std::same_as<AlphaMask3dDeferred::BinKey, OpaqueNoLightmap3dBinKey>);
+
+    EXPECT_EQ(epix::core_graph::core_3d::DEFERRED_PREPASS_FORMAT, wgpu::TextureFormat::eRGBA32Uint);
+    EXPECT_EQ(epix::core_graph::core_3d::DEFERRED_LIGHTING_PASS_ID_FORMAT, wgpu::TextureFormat::eR8Uint);
+    EXPECT_EQ(epix::core_graph::core_3d::DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT, wgpu::TextureFormat::eDepth16Unorm);
+}
+
+// C15: only a camera that carries `DeferredPrepass` gets the deferred phases, and
+// a deferred view receives Bevy's two deferred textures with their formats at a
+// fixed single sample count (`core_3d/mod.rs:731-745` and `:1134-1198`).
+TEST(Core3dDeferredTextures, RequiresDeferredPrepassAndAllocatesBevyFormats) {
+    using namespace epix::core_graph::core_3d;
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    auto& render_app = app.get_sub_app_mut(Render)->get();
+    auto& world      = render_app.world_mut();
+    init_core3d_test_resources(world);
+    world.init_resource<batching::GpuPreprocessingSupport>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
+    render_app.add_systems(epix::app::Update, into(prepare_prepass_textures));
+
+    const ::epix::camera::NormalizedRenderTarget target{::epix::camera::ManualTextureViewHandle{101}};
+    const auto spawn = [&](bool deferred_prepass, view::Msaa msaa) {
+        auto entity         = world.spawn();
+        const auto id       = entity.id();
+        const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{id}, std::nullopt, 0);
+        entity.insert(camera::ExtractedCamera{.target = target, .physical_target_size = glm::uvec2{32, 24}},
+                      view::ExtractedView{.retained_view_entity = retained}, msaa);
+        // A deferred view still belongs to both prepass phases, plus both
+        // deferred phases when it carries the component.
+        world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        if (deferred_prepass) {
+            entity.insert(DeferredPrepass{});
+            world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>().prepare_for_new_frame(
+                retained, batching::GpuPreprocessingMode::None);
+            world.resource_mut<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>().prepare_for_new_frame(
+                retained, batching::GpuPreprocessingMode::None);
+        }
+        return Core3dTestView{.entity = id, .retained = retained};
+    };
+
+    // A deferred view on an MSAA target still gets single-sampled deferred
+    // textures, which is Bevy's documented rule for the resolved G-buffer.
+    const auto deferred = spawn(true, view::Msaa::Sample4);
+    const auto plain    = spawn(false, view::Msaa::Off);
+
+    render_app.run_schedule(epix::app::Update);
+
+    const auto deferred_textures = world.entity(deferred.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(deferred_textures);
+    ASSERT_TRUE(deferred_textures->get().deferred);
+    ASSERT_TRUE(deferred_textures->get().deferred_lighting_pass_id);
+    EXPECT_EQ(deferred_textures->get().deferred->texture.texture.getFormat(), DEFERRED_PREPASS_FORMAT);
+    EXPECT_EQ(deferred_textures->get().deferred_lighting_pass_id->texture.texture.getFormat(),
+              DEFERRED_LIGHTING_PASS_ID_FORMAT);
+    // Sampleable render attachments, both single-sampled.
+    EXPECT_EQ(deferred_textures->get().deferred->texture.texture.getUsage(),
+              wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding);
+    EXPECT_EQ(deferred_textures->get().deferred->texture.texture.getSampleCount(), 1u);
+    EXPECT_EQ(deferred_textures->get().deferred_lighting_pass_id->texture.texture.getSampleCount(), 1u);
+    EXPECT_TRUE(deferred_textures->get().deferred_view().has_value());
+
+    // A view without `DeferredPrepass` allocates neither deferred texture.
+    const auto plain_textures = world.entity(plain.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(plain_textures);
+    EXPECT_FALSE(plain_textures->get().deferred);
+    EXPECT_FALSE(plain_textures->get().deferred_lighting_pass_id);
+    EXPECT_FALSE(plain_textures->get().deferred_view().has_value());
 }
