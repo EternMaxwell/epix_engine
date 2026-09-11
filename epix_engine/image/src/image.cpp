@@ -18,6 +18,56 @@ namespace epix::image {
 namespace {
 std::optional<Format> format_from_texture_format(wgpu::TextureFormat format) noexcept;
 
+/** @brief Lowercased copy of an ASCII name, for case-insensitive lookup. */
+std::string lowercased(std::string_view value) {
+    std::string result(value);
+    std::ranges::transform(result, result.begin(),
+                           [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    return result;
+}
+
+// Bevy's `ImageFormat::to_file_extensions` tables. `Pnm` also accepts `pnm` and
+// the two Epix formats cover `pic`/`psd`, because `stb_image` decodes them and
+// `ImageLoader::extensions()` advertises those three; without them the loader
+// would reject the extensions it registers.
+constexpr std::array<std::string_view, 1> kExtensionsBasis{"basis"};
+constexpr std::array<std::string_view, 1> kExtensionsBmp{"bmp"};
+constexpr std::array<std::string_view, 1> kExtensionsDds{"dds"};
+constexpr std::array<std::string_view, 2> kExtensionsFarbfeld{"ff", "farbfeld"};
+constexpr std::array<std::string_view, 1> kExtensionsGif{"gif"};
+constexpr std::array<std::string_view, 1> kExtensionsOpenExr{"exr"};
+constexpr std::array<std::string_view, 1> kExtensionsHdr{"hdr"};
+constexpr std::array<std::string_view, 1> kExtensionsIco{"ico"};
+constexpr std::array<std::string_view, 2> kExtensionsJpeg{"jpg", "jpeg"};
+constexpr std::array<std::string_view, 1> kExtensionsKtx2{"ktx2"};
+constexpr std::array<std::string_view, 1> kExtensionsPng{"png"};
+constexpr std::array<std::string_view, 5> kExtensionsPnm{"pam", "pbm", "pgm", "ppm", "pnm"};
+constexpr std::array<std::string_view, 1> kExtensionsQoi{"qoi"};
+constexpr std::array<std::string_view, 1> kExtensionsTga{"tga"};
+constexpr std::array<std::string_view, 2> kExtensionsTiff{"tif", "tiff"};
+constexpr std::array<std::string_view, 1> kExtensionsWebP{"webp"};
+constexpr std::array<std::string_view, 1> kExtensionsPic{"pic"};
+constexpr std::array<std::string_view, 1> kExtensionsPsd{"psd"};
+
+// Bevy's `ImageFormat::to_mime_types` tables. Formats with no dedicated type
+// keep an empty list, exactly as in Bevy.
+constexpr std::array<std::string_view, 2> kMimeBasis{"image/basis", "image/x-basis"};
+constexpr std::array<std::string_view, 2> kMimeBmp{"image/bmp", "image/x-bmp"};
+constexpr std::array<std::string_view, 1> kMimeDds{"image/vnd-ms.dds"};
+constexpr std::array<std::string_view, 1> kMimeGif{"image/gif"};
+constexpr std::array<std::string_view, 1> kMimeOpenExr{"image/x-exr"};
+constexpr std::array<std::string_view, 1> kMimeHdr{"image/vnd.radiance"};
+constexpr std::array<std::string_view, 1> kMimeIco{"image/x-icon"};
+constexpr std::array<std::string_view, 1> kMimeJpeg{"image/jpeg"};
+constexpr std::array<std::string_view, 1> kMimeKtx2{"image/ktx2"};
+constexpr std::array<std::string_view, 1> kMimePng{"image/png"};
+constexpr std::array<std::string_view, 4> kMimePnm{"image/x-portable-bitmap", "image/x-portable-graymap",
+                                                  "image/x-portable-pixmap", "image/x-portable-anymap"};
+constexpr std::array<std::string_view, 2> kMimeQoi{"image/qoi", "image/x-qoi"};
+constexpr std::array<std::string_view, 2> kMimeTga{"image/x-targa", "image/x-tga"};
+constexpr std::array<std::string_view, 1> kMimeTiff{"image/tiff"};
+constexpr std::array<std::string_view, 1> kMimeWebP{"image/webp"};
+
 /** @brief True when `format` is a block-compressed format (Bevy
  * `Image::is_compressed`).
  *
@@ -306,6 +356,148 @@ Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint3
             return create3d(w, h, depth_or_layers, fmt);
         default:
             return create2d(w, h, fmt);
+    }
+}
+
+std::span<const std::string_view> to_file_extensions(ImageFormat format) noexcept {
+    // Bevy `ImageFormat::to_file_extensions`; `Pic` and `Psd` are the two Epix
+    // additions that `stb_image` can decode and `ImageLoader` advertises.
+    switch (format) {
+        case ImageFormat::Basis:
+            return kExtensionsBasis;
+        case ImageFormat::Bmp:
+            return kExtensionsBmp;
+        case ImageFormat::Dds:
+            return kExtensionsDds;
+        case ImageFormat::Farbfeld:
+            return kExtensionsFarbfeld;
+        case ImageFormat::Gif:
+            return kExtensionsGif;
+        case ImageFormat::OpenExr:
+            return kExtensionsOpenExr;
+        case ImageFormat::Hdr:
+            return kExtensionsHdr;
+        case ImageFormat::Ico:
+            return kExtensionsIco;
+        case ImageFormat::Jpeg:
+            return kExtensionsJpeg;
+        case ImageFormat::Ktx2:
+            return kExtensionsKtx2;
+        case ImageFormat::Png:
+            return kExtensionsPng;
+        case ImageFormat::Pnm:
+            return kExtensionsPnm;
+        case ImageFormat::Qoi:
+            return kExtensionsQoi;
+        case ImageFormat::Tga:
+            return kExtensionsTga;
+        case ImageFormat::Tiff:
+            return kExtensionsTiff;
+        case ImageFormat::WebP:
+            return kExtensionsWebP;
+        case ImageFormat::Pic:
+            return kExtensionsPic;
+        case ImageFormat::Psd:
+            return kExtensionsPsd;
+    }
+    return {};
+}
+
+std::span<const std::string_view> to_mime_types(ImageFormat format) noexcept {
+    switch (format) {
+        case ImageFormat::Basis:
+            return kMimeBasis;
+        case ImageFormat::Bmp:
+            return kMimeBmp;
+        case ImageFormat::Dds:
+            return kMimeDds;
+        case ImageFormat::Gif:
+            return kMimeGif;
+        case ImageFormat::OpenExr:
+            return kMimeOpenExr;
+        case ImageFormat::Hdr:
+            return kMimeHdr;
+        case ImageFormat::Ico:
+            return kMimeIco;
+        case ImageFormat::Jpeg:
+            return kMimeJpeg;
+        case ImageFormat::Ktx2:
+            return kMimeKtx2;
+        case ImageFormat::Png:
+            return kMimePng;
+        case ImageFormat::Pnm:
+            return kMimePnm;
+        case ImageFormat::Qoi:
+            return kMimeQoi;
+        case ImageFormat::Tga:
+            return kMimeTga;
+        case ImageFormat::Tiff:
+            return kMimeTiff;
+        case ImageFormat::WebP:
+            return kMimeWebP;
+        default:
+            // Bevy returns an empty list for a format without dedicated MIME
+            // types (Farbfeld, and the Epix-only PIC/PSD).
+            return {};
+    }
+}
+
+std::optional<ImageFormat> from_mime_type(std::string_view mime_type) noexcept {
+    const auto lower = lowercased(mime_type);
+    // Bevy resolves against the same tables `to_mime_types` publishes, so the
+    // two cannot drift apart.
+    for (std::uint8_t index = 0; index <= static_cast<std::uint8_t>(ImageFormat::Psd); ++index) {
+        const auto format = static_cast<ImageFormat>(index);
+        for (const auto candidate : to_mime_types(format)) {
+            if (lower == candidate) return format;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<ImageFormat> from_extension(std::string_view extension) noexcept {
+    const auto lower = lowercased(extension);
+    for (std::uint8_t index = 0; index <= static_cast<std::uint8_t>(ImageFormat::Psd); ++index) {
+        const auto format = static_cast<ImageFormat>(index);
+        for (const auto candidate : to_file_extensions(format)) {
+            if (lower == candidate) return format;
+        }
+    }
+    return std::nullopt;
+}
+
+bool is_decodable(ImageFormat format) noexcept {
+    // Bevy's `as_image_crate_format()` returns `None` exactly for the formats
+    // whose transcoding needs a feature the build lacks; the loader reports
+    // `TextureError::UnsupportedTextureFormat` with the format's name. Epix
+    // decodes through `stb_image`, which cannot read these containers.
+    switch (format) {
+        case ImageFormat::Basis:
+        case ImageFormat::Dds:
+        case ImageFormat::OpenExr:
+        case ImageFormat::Ktx2:
+        case ImageFormat::Qoi:
+        case ImageFormat::Tiff:
+        case ImageFormat::WebP:
+        case ImageFormat::Ico:
+        case ImageFormat::Farbfeld:
+            return false;
+        default:
+            return true;
+    }
+}
+
+wgpu::TextureFormat srgb_texture_format(wgpu::TextureFormat format) noexcept {
+    switch (format) {
+        case wgpu::TextureFormat::eRGBA8Unorm:
+            return wgpu::TextureFormat::eRGBA8UnormSrgb;
+        case wgpu::TextureFormat::eBGRA8Unorm:
+            return wgpu::TextureFormat::eBGRA8UnormSrgb;
+        default:
+            // `eR8UnormSrgb`/`eRG8UnormSrgb` are not exposed by the generated
+            // Epix bindings, so single- and dual-channel data keeps its linear
+            // format. Recorded as an FFI gap in the image tracker.
+            return format;
     }
 }
 

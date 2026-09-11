@@ -18,6 +18,12 @@
 
 namespace epix::image {
 
+// `ImageFormatSetting`, `ImageArrayLayout`, and `ImageLoaderSettings` are
+// declared in `image.hpp`, beside `Image::from_buffer`, because the decode core
+// consumes them. Bevy declares them in `bevy_image::image_loader`; the types and
+// defaults are identical, only the declaration site differs so that the header
+// dependency stays acyclic.
+
 /** @brief Error returned when reading a texture file, wrapping the underlying
  * `TextureError` with the path that failed (Bevy `FileTextureError`). */
 EPIX_EXPORT struct FileTextureError {
@@ -68,10 +74,28 @@ EPIX_EXPORT std::exception_ptr to_exception_ptr(const ImageLoaderError& error);
 /** @brief Asset loader for formats supported by Epix's selected decoder. */
 EPIX_EXPORT struct ImageLoader {
     using Asset = Image;
-    struct Settings {};
-    using Error = ImageLoaderError;
+    /** @brief Bevy names this `ImageLoaderSettings`; Epix's nested alias keeps
+     * `ImageLoader::Settings` working as the loader seam expects. */
+    using Settings = ImageLoaderSettings;
+    using Error    = ImageLoaderError;
 
+    /** @brief The container formats this loader decodes (Bevy
+     * `ImageLoader::SUPPORTED_FORMATS`).
+     *
+     * Bevy derives the list from the `image` crate features the build enables.
+     * Epix's decoder is `stb_image`, so the list is the set of Bevy formats that
+     * decoder can actually read, plus the two Epix-only containers (`Pic`,
+     * `Psd`) it also decodes. `ImageFormat` alternatives this decoder cannot read
+     * are absent rather than listed and then rejected. */
+    static std::span<const ImageFormat> SUPPORTED_FORMATS() noexcept;
+
+    /** @brief The file extensions this loader advertises (Bevy
+     * `ImageLoader::SUPPORTED_FILE_EXTENSIONS`).
+     *
+     * Derived from `SUPPORTED_FORMATS` through `to_file_extensions`, exactly as
+     * Bevy derives its list, so the two cannot drift apart. */
     static std::span<std::string_view> extensions() noexcept;
+
     static STDEXEC::task<std::expected<Image, ImageLoaderError>> load(assets::Reader& reader,
                                                                       const Settings& settings,
                                                                       assets::LoadContext& context);

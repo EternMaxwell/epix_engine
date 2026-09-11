@@ -17,11 +17,14 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <span>
+#include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <zpp_bits.h>
 #endif
 
 namespace epix::image {
@@ -96,6 +99,72 @@ EPIX_EXPORT struct FormatInfo {
  * @param fmt The pixel format to query.
  * @return Reference to the static FormatInfo descriptor. */
 EPIX_EXPORT const FormatInfo& getFormatInfo(Format fmt);
+
+/** @brief The container format of encoded image data (Bevy `ImageFormat`).
+ *
+ * Bevy feature-gates every alternative; Epix has a single `stb_image` decoder, so
+ * all of them are always declared and `is_decodable()` reports the ones that
+ * decoder can actually read. `Pic` and `Psd` are Epix additions: `stb_image`
+ * decodes both and `ImageLoader::extensions()` has always advertised them, so
+ * `from_extension` must recognise them or the loader could not accept the
+ * extensions it registers. */
+EPIX_EXPORT enum class ImageFormat : std::uint8_t {
+    Basis,
+    Bmp,
+    Dds,
+    Farbfeld,
+    Gif,
+    OpenExr,
+    Hdr,
+    Ico,
+    Jpeg,
+    Ktx2,
+    Png,
+    Pnm,
+    Qoi,
+    Tga,
+    Tiff,
+    WebP,
+    /** @brief Epix extension: `stb_image` decodes Softimage PIC. */
+    Pic,
+    /** @brief Epix extension: `stbi_image` decodes Photoshop PSD. */
+    Psd,
+};
+
+/** @brief File extensions for a container format (Bevy
+ * `ImageFormat::to_file_extensions`). C++ enums cannot have inherent methods, so
+ * each is the namespace-scoped equivalent. */
+EPIX_EXPORT std::span<const std::string_view> to_file_extensions(ImageFormat format) noexcept;
+/** @brief MIME types for a container format (Bevy
+ * `ImageFormat::to_mime_types`); empty when the format has no dedicated type. */
+EPIX_EXPORT std::span<const std::string_view> to_mime_types(ImageFormat format) noexcept;
+/** @brief Resolve a MIME type, case-insensitively (Bevy
+ * `ImageFormat::from_mime_type`). */
+EPIX_EXPORT std::optional<ImageFormat> from_mime_type(std::string_view mime_type) noexcept;
+/** @brief Resolve a file extension, case-insensitively (Bevy
+ * `ImageFormat::from_extension`). */
+EPIX_EXPORT std::optional<ImageFormat> from_extension(std::string_view extension) noexcept;
+/** @brief Whether Epix's decoder can read this format.
+ *
+ * Bevy's counterpart is `ImageFormat::as_image_crate_format()`, which returns
+ * `None` exactly when the `image` crate has no converter for the format; the
+ * loader turns that into `TextureError::UnsupportedTextureFormat` naming the
+ * format. Epix's decoder is `stb_image`, so the same decision is taken here and
+ * the loader reports the same error with the same format name. */
+EPIX_EXPORT bool is_decodable(ImageFormat format) noexcept;
+
+/** @brief The variant name of a container format, matching Rust's `Debug`
+ * output that Bevy embeds in `TextureError::UnsupportedTextureFormat`. */
+EPIX_EXPORT std::string to_string(ImageFormat format);
+
+/** @brief The sRGB counterpart of a texture format, or the format itself when
+ * WebGPU has no sRGB variant for it.
+ *
+ * Bevy applies its `is_srgb` loader setting inside `Image::from_dynamic`, which
+ * selects the sRGB texture format for 8-bit data. The generated Epix bindings
+ * only expose `eRGBA8UnormSrgb`/`eBGRA8UnormSrgb`, so single- and dual-channel
+ * formats keep their linear format and the gap is recorded in the tracker. */
+EPIX_EXPORT wgpu::TextureFormat srgb_texture_format(wgpu::TextureFormat format) noexcept;
 
 /** @brief Error codes returned when saving an image to disk. */
 EPIX_EXPORT enum class ImageSaveError { SaveFailed };
@@ -371,6 +440,13 @@ EPIX_EXPORT enum class ImageSamplerBorderColor {
  * mirrors wgpu SamplerDescriptor). The default matches wgpu's default:
  * clamp-to-edge addressing, nearest filters, lod clamp 0..32. */
 EPIX_EXPORT struct ImageSamplerDescriptor {
+   private:
+    friend zpp::bits::access;
+    // `std::optional` and the wgpu descriptor types are not reflectable through
+    // structured bindings, so the member list is declared explicitly.
+    using serialize = zpp::bits::members<12>;
+
+   public:
     /** @brief Optional debug label. */
     std::string label;
     /** @brief Address mode for the u (x) direction. */
@@ -450,6 +526,13 @@ EPIX_EXPORT struct ImageSamplerDescriptor {
  * descriptor cannot exist without the matching alternative and an image using the
  * global default carries no descriptor at all. */
 EPIX_EXPORT struct ImageSampler {
+   private:
+    friend zpp::bits::access;
+    // `std::variant` is not reflectable through structured bindings, so the
+    // single member is declared explicitly (see `ImageLoaderSettings`).
+    using serialize = zpp::bits::members<1>;
+
+   public:
     /** @brief C++ counterpart to the payloadless `ImageSampler::Default`. */
     struct DefaultAlternative {};
     /** @brief C++ counterpart to `ImageSampler::Descriptor(ImageSamplerDescriptor)`. */
@@ -489,6 +572,84 @@ EPIX_EXPORT struct ImageSampler {
     }
 
     bool operator==(const ImageSampler&) const = default;
+};
+
+/** @brief How to determine an image's container format when loading (Bevy
+ * `ImageFormatSetting`). `FromExtension` is the default, exactly as in Bevy. */
+EPIX_EXPORT struct ImageFormatSetting {
+    /** @brief C++ counterpart to the payloadless
+     * `ImageFormatSetting::FromExtension`. */
+    struct FromExtension {
+        bool operator==(const FromExtension&) const = default;
+    };
+    /** @brief C++ counterpart to `ImageFormatSetting::Format(ImageFormat)`. */
+    struct Format {
+        ImageFormat format                   = ImageFormat::Png;
+        bool operator==(const Format&) const = default;
+    };
+    /** @brief C++ counterpart to the payloadless `ImageFormatSetting::Guess`. */
+    struct Guess {
+        bool operator==(const Guess&) const = default;
+    };
+
+    std::variant<FromExtension, Format, Guess> alternatives{FromExtension{}};
+
+    bool operator==(const ImageFormatSetting&) const = default;
+};
+
+/** @brief How to interpret an image as an array of textures (Bevy
+ * `ImageArrayLayout`), primarily for `texture2DArray` uniforms. */
+EPIX_EXPORT struct ImageArrayLayout {
+    /** @brief Interpret the image as a vertical stack of `rows` images. */
+    struct RowCount {
+        std::uint32_t rows                     = 1;
+        bool operator==(const RowCount&) const = default;
+    };
+    /** @brief Interpret the image as a vertical stack of images, each `pixels`
+     * pixels tall. */
+    struct RowHeight {
+        std::uint32_t pixels                     = 1;
+        bool operator==(const RowHeight&) const = default;
+    };
+
+    std::variant<RowCount, RowHeight> alternatives{RowCount{}};
+
+    bool operator==(const ImageArrayLayout&) const = default;
+};
+
+/** @brief Settings for loading an `Image` (Bevy `ImageLoaderSettings`), with
+ * Bevy's defaults: format from the extension, no texture-format override,
+ * `is_srgb` true, the default sampler, usage in both worlds, and no array
+ * layout.
+ *
+ * Bevy's own `ImageLoaderSettings` is a plain value type with no serialization
+ * derives, which is why `.meta` files cannot carry image settings there. Epix's
+ * asset architecture needs every loader settings type in `is_settings`, so the
+ * two `std::optional` members are declared through zpp_bits' explicit member
+ * list: reflection cannot enumerate them, and `std::optional` of a large wgpu
+ * enum exceeds the reflector's member limit. */
+EPIX_EXPORT struct ImageLoaderSettings {
+   private:
+    friend zpp::bits::access;
+    using serialize = zpp::bits::members<6>;
+
+   public:
+    /** @brief How to determine the container format. */
+    ImageFormatSetting format{};
+    /** @brief Forcibly use a specific texture format, which controls how the
+     * data is sampled rather than how it is stored (Bevy `texture_format`). */
+    std::optional<wgpu::TextureFormat> texture_format{};
+    /** @brief Whether the data is in sRGB space when the format does not already
+     * determine that. */
+    bool is_srgb = true;
+    /** @brief Sampler used when rendering; it does not affect the image data. */
+    ImageSampler sampler{};
+    /** @brief Worlds that retain the asset (Bevy
+     * `RenderAssetUsages::default()`, i.e. main world and render world). */
+    assets::RenderAssetUsages asset_usage =
+        static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD | assets::RENDER_WORLD);
+    /** @brief Optional interpretation of the image as an array of textures. */
+    std::optional<ImageArrayLayout> array_layout{};
 };
 
 /** @brief Multi-dimensional image with runtime pixel format.
@@ -613,9 +774,33 @@ EPIX_EXPORT class Image {
         std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData);
 
     /** @brief Load an image from the filesystem.
+     *
+     * An Epix convenience over `from_buffer`: the container is detected from the
+     * bytes, so no extension is required. Bevy has no filesystem helper; its
+     * `AssetServer` path goes through `ImageLoader::load`.
      * @param path Path to the image file.
      * @return The loaded Image or a TextureError. */
     static std::expected<Image, TextureError> load(const std::filesystem::path& path);
+
+    /** @brief Decode encoded image bytes into an `Image` (Bevy
+     * `Image::from_buffer`).
+     *
+     * This is the shared decode core: `Image::load` reads a file and calls it,
+     * and `ImageLoader::load` resolves its `ImageLoaderSettings` and calls it, so
+     * a filesystem load and an asset-server load cannot disagree about the
+     * decoded pixels or the texture format. It applies `is_srgb`, `sampler`,
+     * `asset_usage`, and `texture_format`; `array_layout` is applied by
+     * `ImageLoader::load`, because a failed reinterpretation is reported there as
+     * the typed `ImageLoaderError::ArrayLayout`.
+     *
+     * @param bytes Encoded container bytes.
+     * @param settings Loader settings.
+     * @return The decoded image or a `TextureError`. */
+    static std::expected<Image, TextureError> from_buffer(std::span<const std::byte> bytes,
+                                                          const ImageLoaderSettings& settings);
+    /** @brief Decode encoded image bytes, detecting the container from the bytes
+     * (Bevy's `ImageFormatSetting::Guess` path). */
+    static std::expected<Image, TextureError> from_buffer(std::span<const std::byte> bytes);
     /** @brief Save an image to the filesystem.
      * @param path Destination file path.
      * @param image The image to write.

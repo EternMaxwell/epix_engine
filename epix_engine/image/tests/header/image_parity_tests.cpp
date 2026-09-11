@@ -1,7 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cctype>
+#include <cstdint>
 #include <epix/image.hpp>
+#include <string>
+#include <string_view>
+#include <variant>
+#include <vector>
 
 // ImageSamplerDescriptor mirrors bevy_image (image.rs:758-842): linear()/nearest()
 // factories, set_filter, set_address_mode, wgpu-default descriptor values.
@@ -445,4 +452,161 @@ TEST(Image, CompressedFormatReportsUnsupportedAccess) {
         std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(&color.error().value);
     ASSERT_NE(unsupported, nullptr);
     EXPECT_EQ(unsupported->format, wgpu::TextureFormat::eBC7RGBAUnorm);
+}
+
+// Bevy `ImageFormat`'s extension and MIME tables
+// (`bevy_image/src/image.rs:246-540`). Epix declares every alternative the
+// decoder can read, so the tables are asserted for those alternatives; the two
+// Epix-only containers keep their own single entries.
+TEST(ImageFormat, ExtensionAndMimeTablesMatchBevy) {
+    using epix::image::ImageFormat;
+    using epix::image::to_file_extensions;
+    using epix::image::to_mime_types;
+
+    const auto extensions_of = [](ImageFormat format) {
+        std::vector<std::string_view> result;
+        for (const auto extension : to_file_extensions(format)) result.push_back(extension);
+        return result;
+    };
+    const auto mime_of = [](ImageFormat format) {
+        std::vector<std::string_view> result;
+        for (const auto mime : to_mime_types(format)) result.push_back(mime);
+        return result;
+    };
+
+    // Bevy: "jpg" | "jpeg"; "tif" | "tiff"; "ff" | "farbfeld";
+    // "pam" | "pbm" | "pgm" | "ppm" (plus Epix's "pnm", which the loader has
+    // always advertised).
+    EXPECT_EQ(extensions_of(ImageFormat::Jpeg), (std::vector<std::string_view>{"jpg", "jpeg"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Tiff), (std::vector<std::string_view>{"tif", "tiff"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Farbfeld), (std::vector<std::string_view>{"ff", "farbfeld"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Pnm),
+              (std::vector<std::string_view>{"pam", "pbm", "pgm", "ppm", "pnm"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Png), (std::vector<std::string_view>{"png"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Bmp), (std::vector<std::string_view>{"bmp"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Dds), (std::vector<std::string_view>{"dds"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Gif), (std::vector<std::string_view>{"gif"}));
+    EXPECT_EQ(extensions_of(ImageFormat::OpenExr), (std::vector<std::string_view>{"exr"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Hdr), (std::vector<std::string_view>{"hdr"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Ico), (std::vector<std::string_view>{"ico"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Ktx2), (std::vector<std::string_view>{"ktx2"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Qoi), (std::vector<std::string_view>{"qoi"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Tga), (std::vector<std::string_view>{"tga"}));
+    EXPECT_EQ(extensions_of(ImageFormat::WebP), (std::vector<std::string_view>{"webp"}));
+    EXPECT_EQ(extensions_of(ImageFormat::Basis), (std::vector<std::string_view>{"basis"}));
+
+    EXPECT_EQ(mime_of(ImageFormat::Png), (std::vector<std::string_view>{"image/png"}));
+    EXPECT_EQ(mime_of(ImageFormat::Jpeg), (std::vector<std::string_view>{"image/jpeg"}));
+    EXPECT_EQ(mime_of(ImageFormat::Gif), (std::vector<std::string_view>{"image/gif"}));
+    EXPECT_EQ(mime_of(ImageFormat::WebP), (std::vector<std::string_view>{"image/webp"}));
+    EXPECT_EQ(mime_of(ImageFormat::Hdr), (std::vector<std::string_view>{"image/vnd.radiance"}));
+    EXPECT_EQ(mime_of(ImageFormat::Tga), (std::vector<std::string_view>{"image/x-targa", "image/x-tga"}));
+    EXPECT_EQ(mime_of(ImageFormat::Qoi), (std::vector<std::string_view>{"image/qoi", "image/x-qoi"}));
+    // Formats Bevy gives no MIME type must report an empty list.
+    EXPECT_TRUE(mime_of(ImageFormat::Farbfeld).empty());
+    EXPECT_TRUE(mime_of(ImageFormat::Pic).empty());
+    EXPECT_TRUE(mime_of(ImageFormat::Psd).empty());
+}
+
+// Bevy `ImageFormat::from_extension` / `from_mime_type` are case-insensitive and
+// resolve every extension in `to_file_extensions`
+// (`bevy_image/src/image.rs:431-458`).
+TEST(ImageFormat, FromExtensionAndMimeRoundTripBevyTables) {
+    using epix::image::ImageFormat;
+    using epix::image::from_extension;
+    using epix::image::from_mime_type;
+    using epix::image::to_file_extensions;
+    using epix::image::to_mime_types;
+
+    for (std::uint8_t index = 0; index <= static_cast<std::uint8_t>(ImageFormat::Psd); ++index) {
+        const auto format = static_cast<ImageFormat>(index);
+        for (const auto extension : to_file_extensions(format)) {
+            EXPECT_EQ(from_extension(extension), format) << extension;
+            // Uppercase input resolves to the same format.
+            std::string upper(extension);
+            std::ranges::transform(upper, upper.begin(), [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+            EXPECT_EQ(from_extension(upper), format) << upper;
+        }
+        for (const auto mime : to_mime_types(format)) {
+            EXPECT_EQ(from_mime_type(mime), format) << mime;
+        }
+    }
+
+    // Bevy's `from_extension` returns None for anything it does not know.
+    EXPECT_FALSE(from_extension("xyz").has_value());
+    EXPECT_FALSE(from_extension("").has_value());
+    EXPECT_FALSE(from_mime_type("image/unknown").has_value());
+
+    // Bevy names `Pnm`'s MIME alternatives individually.
+    EXPECT_EQ(from_mime_type("image/x-portable-anymap"), ImageFormat::Pnm);
+    EXPECT_EQ(from_mime_type("image/x-portable-bitmap"), ImageFormat::Pnm);
+}
+
+// The Epix decoder reads nine of Bevy's formats plus its own two containers;
+// `is_decodable` is the `as_image_crate_format() != None` decision point that
+// the loader uses to report `UnsupportedTextureFormat`
+// (`bevy_image/src/image.rs:461-514`).
+TEST(ImageFormat, DecodableSetMatchesTheSelectedDecoder) {
+    using epix::image::ImageFormat;
+    using epix::image::is_decodable;
+
+    for (const auto format : {ImageFormat::Bmp, ImageFormat::Gif, ImageFormat::Hdr, ImageFormat::Jpeg,
+                              ImageFormat::Png, ImageFormat::Pnm, ImageFormat::Tga, ImageFormat::Pic,
+                              ImageFormat::Psd}) {
+        EXPECT_TRUE(is_decodable(format));
+    }
+    for (const auto format : {ImageFormat::Basis, ImageFormat::Dds, ImageFormat::Farbfeld, ImageFormat::Ico,
+                              ImageFormat::OpenExr, ImageFormat::Ktx2, ImageFormat::Qoi, ImageFormat::Tiff,
+                              ImageFormat::WebP}) {
+        EXPECT_FALSE(is_decodable(format));
+    }
+}
+
+// Bevy embeds `format!("{format:?}")` in
+// `TextureError::UnsupportedTextureFormat`, so the variant name is part of the
+// reported text.
+TEST(ImageFormat, DebugNamesMatchRustVariantNames) {
+    using epix::image::ImageFormat;
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Basis), "Basis");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Bmp), "Bmp");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Dds), "Dds");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Farbfeld), "Farbfeld");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Gif), "Gif");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::OpenExr), "OpenExr");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Hdr), "Hdr");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Ico), "Ico");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Jpeg), "Jpeg");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Ktx2), "Ktx2");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Png), "Png");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Pnm), "Pnm");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Qoi), "Qoi");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Tga), "Tga");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Tiff), "Tiff");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::WebP), "WebP");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Pic), "Pic");
+    EXPECT_EQ(epix::image::to_string(ImageFormat::Psd), "Psd");
+}
+
+// `is_srgb` selects the 8-bit sRGB texture format, exactly as Bevy's
+// `Image::from_dynamic` does; formats without an sRGB counterpart keep theirs.
+TEST(ImageLoaderSettings, SrgbTextureFormatSelection) {
+    using epix::image::srgb_texture_format;
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eRGBA8Unorm), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eBGRA8Unorm), wgpu::TextureFormat::eBGRA8UnormSrgb);
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eRGBA8UnormSrgb), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eRGBA32Float), wgpu::TextureFormat::eRGBA32Float);
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eR16Uint), wgpu::TextureFormat::eR16Uint);
+    EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eRGBA16Uint), wgpu::TextureFormat::eRGBA16Uint);
+}
+
+// Bevy's defaults for `ImageLoaderSettings` (`image_loader.rs:114-152`).
+TEST(ImageLoaderSettings, DefaultsMatchBevy) {
+    epix::image::ImageLoaderSettings settings;
+    EXPECT_TRUE(std::holds_alternative<epix::image::ImageFormatSetting::FromExtension>(settings.format.alternatives));
+    EXPECT_FALSE(settings.texture_format.has_value());
+    EXPECT_TRUE(settings.is_srgb);
+    EXPECT_TRUE(settings.sampler.is_default());
+    EXPECT_EQ(settings.asset_usage, static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD |
+                                                                                epix::assets::RENDER_WORLD));
+    EXPECT_FALSE(settings.array_layout.has_value());
 }

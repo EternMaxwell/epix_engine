@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
@@ -12,9 +14,12 @@
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stdexec/execution.hpp>
 #include <string>
+#include <string_view>
 #include <system_error>
+#include <variant>
 #include <vector>
 
 using namespace epix;
@@ -84,18 +89,28 @@ struct LoaderTestApp {
     const assets::AssetServer& server() { return app.world().resource<assets::AssetServer>(); }
 };
 
-/** @brief Run `ImageLoader::load` for `path` over `reader`. */
+/** @brief Run `ImageLoader::load` for `path` over `reader` with explicit
+ * settings (Bevy `AssetServer::load_with_settings`). */
 std::expected<image::Image, image::ImageLoaderError> load_through_loader(LoaderTestApp& fixture,
                                                                          assets::Reader& reader,
-                                                                         const std::string& path) {
+                                                                         const std::string& path,
+                                                                         const image::ImageLoaderSettings& settings) {
     assets::LoadContext context(fixture.server(), assets::AssetPath(path));
-    auto result = STDEXEC::sync_wait(image::ImageLoader::load(reader, {}, context));
+    auto result = STDEXEC::sync_wait(image::ImageLoader::load(reader, settings, context));
     if (!result.has_value()) {
         ADD_FAILURE() << "ImageLoader::load did not complete";
         return std::unexpected(
             image::ImageLoaderError{image::ImageLoaderError::Io{std::make_error_code(std::errc::io_error)}});
     }
     return std::move(std::get<0>(*result));
+}
+
+/** @brief Run `ImageLoader::load` for `path` over `reader` with Bevy's default
+ * settings. */
+std::expected<image::Image, image::ImageLoaderError> load_through_loader(LoaderTestApp& fixture,
+                                                                         assets::Reader& reader,
+                                                                         const std::string& path) {
+    return load_through_loader(fixture, reader, path, image::ImageLoaderSettings{});
 }
 
 }  // namespace
@@ -215,7 +230,9 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     auto widened = image::Image::load(rgb_path);
     ASSERT_TRUE(widened.has_value()) << image::to_string(widened.error());
     EXPECT_EQ(widened->format(), image::Format::RGBA8);
-    EXPECT_EQ(widened->texture_descriptor.format, wgpu::TextureFormat::eRGBA8Unorm);
+    // Bevy's loader default is `is_srgb: true`, so 8-bit data is uploaded as the
+    // sRGB format (image_loader.rs:114-152 and image_texture_conversion.rs:46-68).
+    EXPECT_EQ(widened->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
     EXPECT_EQ(widened->width(), 4u);
     EXPECT_EQ(widened->height(), 2u);
     EXPECT_EQ(widened->raw_view().size(), 4u * 2u * 4u);
@@ -415,4 +432,325 @@ TEST(ImageLoader, AdvertisedExtensionsAreClassified) {
         EXPECT_EQ(std::get_if<image::TextureError::UnsupportedTextureFormat>(&file_error->error.error.value), nullptr)
             << extension;
     }
+}
+
+// Bevy derives `SUPPORTED_FILE_EXTENSIONS` from `SUPPORTED_FORMATS`
+// (`image_loader.rs:20-78`), so the advertised extension list is exactly the
+// formats' extensions in declaration order.
+TEST(ImageLoader, SupportedFormatsAndExtensionsAreConsistent) {
+    std::vector<std::string_view> expected;
+    for (const auto format : image::ImageLoader::SUPPORTED_FORMATS()) {
+        EXPECT_TRUE(image::is_decodable(format)) << image::to_string(format);
+        for (const auto extension : image::to_file_extensions(format)) expected.push_back(extension);
+    }
+    const auto actual = image::ImageLoader::extensions();
+    ASSERT_EQ(actual.size(), expected.size());
+    for (std::size_t index = 0; index < expected.size(); ++index) EXPECT_EQ(actual[index], expected[index]);
+
+    // The decoder-accurate list replaces the previous hand-written one: `hdr`
+    // stays, `pic`/`psd` remain Epix extensions, and no format the decoder
+    // cannot read is advertised.
+    EXPECT_NE(std::ranges::find(actual, std::string_view{"hdr"}), actual.end());
+    EXPECT_NE(std::ranges::find(actual, std::string_view{"pic"}), actual.end());
+    EXPECT_NE(std::ranges::find(actual, std::string_view{"psd"}), actual.end());
+    for (const auto extension : {std::string_view{"ktx2"}, std::string_view{"dds"}, std::string_view{"exr"},
+                                 std::string_view{"webp"}, std::string_view{"qoi"}, std::string_view{"tiff"}}) {
+        EXPECT_EQ(std::ranges::find(actual, extension), actual.end()) << extension;
+    }
+}
+
+// Bevy's `ImageLoader::load` resolves `settings.format` before decoding
+// (`image_loader.rs:181-206`): `FromExtension` uses the path extension, `Format`
+// names the container outright, and `Guess` detects it from the bytes.
+TEST(ImageLoaderSettings, FormatSettingControlsClassification) {
+    LoaderTestApp fixture;
+    const auto png = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+
+    // `Format(Png)` accepts a path whose extension the loader does not know.
+    {
+        BytesReader reader(png_bytes);
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Format{image::ImageFormat::Png};
+        const auto loaded = load_through_loader(fixture, reader, "renamed.asset", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        EXPECT_EQ(loaded->width(), 4u);
+        EXPECT_EQ(loaded->height(), 2u);
+    }
+
+    // An explicit format the decoder cannot read is `UnsupportedTextureFormat`,
+    // exactly as Bevy's `as_image_crate_format() == None` path reports it.
+    {
+        BytesReader reader(png_bytes);
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Format{image::ImageFormat::Ktx2};
+        const auto failed = load_through_loader(fixture, reader, "renamed.asset", settings);
+        ASSERT_FALSE(failed.has_value());
+        const auto* file_error = std::get_if<image::ImageLoaderError::FileTexture>(&failed.error().value);
+        ASSERT_NE(file_error, nullptr);
+        const auto* format_error =
+            std::get_if<image::TextureError::UnsupportedTextureFormat>(&file_error->error.error.value);
+        ASSERT_NE(format_error, nullptr);
+        EXPECT_EQ(format_error->format, "Ktx2");
+    }
+
+    // `Guess` ignores the extension entirely: the same unknown extension now
+    // decodes because the bytes are a PNG.
+    {
+        BytesReader reader(png_bytes);
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Guess{};
+        const auto loaded = load_through_loader(fixture, reader, "renamed.xyz", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        EXPECT_EQ(loaded->width(), 4u);
+    }
+
+    // `Guess` also ignores an extension the loader *does* know but the decoder
+    // cannot read: the bytes decide, not the name.
+    {
+        BytesReader reader(png_bytes);
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Guess{};
+        const auto loaded = load_through_loader(fixture, reader, "disguised.ktx2", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        EXPECT_EQ(loaded->width(), 4u);
+    }
+
+    // `Format(Png)` is likewise authoritative, so an extension that would be
+    // rejected is never consulted. This is the case that catches a regression to
+    // "always classify by extension".
+    {
+        BytesReader reader(png_bytes);
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Format{image::ImageFormat::Png};
+        const auto loaded = load_through_loader(fixture, reader, "disguised.ktx2", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        EXPECT_EQ(loaded->width(), 4u);
+        EXPECT_EQ(loaded->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
+    }
+
+    // `FromExtension` is the default and stays authoritative: a known but
+    // undecodable extension is rejected even though the bytes are a valid PNG.
+    {
+        BytesReader reader(png_bytes);
+        const auto failed = load_through_loader(fixture, reader, "disguised.ktx2");
+        ASSERT_FALSE(failed.has_value());
+        const auto* file_error = std::get_if<image::ImageLoaderError::FileTexture>(&failed.error().value);
+        ASSERT_NE(file_error, nullptr);
+        const auto* format_error =
+            std::get_if<image::TextureError::UnsupportedTextureFormat>(&file_error->error.error.value);
+        ASSERT_NE(format_error, nullptr);
+        EXPECT_EQ(format_error->format, "Ktx2");
+    }
+
+    // `Guess` on bytes that are not an image reports a decode failure rather
+    // than an extension error, matching `image::guess_format`'s failure path.
+    {
+        const std::array<std::uint8_t, 9> garbage{1, 2, 3, 4, 5, 6, 7, 8, 9};
+        BytesReader reader(std::vector<std::uint8_t>(garbage.begin(), garbage.end()));
+        auto settings = image::ImageLoaderSettings{};
+        settings.format.alternatives = image::ImageFormatSetting::Guess{};
+        const auto failed = load_through_loader(fixture, reader, "renamed.png", settings);
+        ASSERT_FALSE(failed.has_value());
+        const auto* file_error = std::get_if<image::ImageLoaderError::FileTexture>(&failed.error().value);
+        ASSERT_NE(file_error, nullptr);
+        EXPECT_NE(std::get_if<image::TextureError::ImageError>(&file_error->error.error.value), nullptr);
+    }
+}
+
+// `ImageLoaderSettings::texture_format` overrides the sampled format without
+// touching the pixel bytes (`image_loader.rs:221-223`).
+TEST(ImageLoaderSettings, TextureFormatOverrideReplacesTheDescriptorFormat) {
+    LoaderTestApp fixture;
+    const auto png       = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+
+    BytesReader default_reader(png_bytes);
+    const auto by_default = load_through_loader(fixture, default_reader, "core_loader_fixture.png");
+    ASSERT_TRUE(by_default.has_value()) << image::to_string(by_default.error());
+    EXPECT_EQ(by_default->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
+
+    BytesReader override_reader(png_bytes);
+    auto settings          = image::ImageLoaderSettings{};
+    settings.texture_format = wgpu::TextureFormat::eBGRA8Unorm;
+    const auto overridden  = load_through_loader(fixture, override_reader, "core_loader_fixture.png", settings);
+    ASSERT_TRUE(overridden.has_value()) << image::to_string(overridden.error());
+    EXPECT_EQ(overridden->texture_descriptor.format, wgpu::TextureFormat::eBGRA8Unorm);
+    EXPECT_EQ(overridden->format(), image::Format::RGBA8);
+    // The override changes how the data is sampled, not what was decoded.
+    EXPECT_EQ(overridden->raw_view().size(), by_default->raw_view().size());
+    EXPECT_TRUE(std::equal(overridden->raw_view().begin(), overridden->raw_view().end(),
+                           by_default->raw_view().begin()));
+}
+
+// `ImageLoaderSettings::is_srgb` selects the sRGB texture format for 8-bit data,
+// exactly as Bevy's `Image::from_dynamic` does (`image_loader.rs:212`).
+TEST(ImageLoaderSettings, SrgbSettingSelectsTheTextureFormat) {
+    LoaderTestApp fixture;
+    const auto png       = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+
+    // Bevy's default is `is_srgb: true`.
+    BytesReader srgb_reader(png_bytes);
+    const auto srgb = load_through_loader(fixture, srgb_reader, "core_loader_fixture.png");
+    ASSERT_TRUE(srgb.has_value()) << image::to_string(srgb.error());
+    EXPECT_EQ(srgb->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
+
+    // `is_srgb: false` keeps the linear format and the same decoded bytes.
+    BytesReader linear_reader(png_bytes);
+    auto settings  = image::ImageLoaderSettings{};
+    settings.is_srgb = false;
+    const auto linear = load_through_loader(fixture, linear_reader, "core_loader_fixture.png", settings);
+    ASSERT_TRUE(linear.has_value()) << image::to_string(linear.error());
+    EXPECT_EQ(linear->texture_descriptor.format, wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(linear->raw_view().size(), srgb->raw_view().size());
+    EXPECT_TRUE(std::equal(linear->raw_view().begin(), linear->raw_view().end(), srgb->raw_view().begin()));
+
+    // The Radiance HDR path has no sRGB counterpart in either engine.
+    const auto hdr_path = std::filesystem::path("assets/examples/tonemapping/studio_small_01_1k.hdr");
+    ASSERT_TRUE(std::filesystem::exists(hdr_path)) << hdr_path.string();
+    BytesReader hdr_reader(read_file_bytes(hdr_path));
+    const auto hdr = load_through_loader(fixture, hdr_reader, "studio_small_01_1k.hdr");
+    ASSERT_TRUE(hdr.has_value()) << image::to_string(hdr.error());
+    EXPECT_EQ(hdr->texture_descriptor.format, wgpu::TextureFormat::eRGBA32Float);
+}
+
+// `ImageLoaderSettings::sampler` and `asset_usage` reach the produced image
+// (`image_loader.rs:208-215`).
+TEST(ImageLoaderSettings, SamplerAndAssetUsageReachTheImage) {
+    LoaderTestApp fixture;
+    const auto png       = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+
+    BytesReader reader(png_bytes);
+    auto settings           = image::ImageLoaderSettings{};
+    settings.sampler        = image::ImageSampler::nearest();
+    settings.asset_usage    = epix::assets::RenderAssetUsages::RENDER_WORLD;
+    const auto loaded       = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+    ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+    ASSERT_NE(loaded->sampler_descriptor(), nullptr);
+    EXPECT_EQ(loaded->sampler_descriptor()->mag_filter, image::ImageFilterMode::Nearest);
+    EXPECT_EQ(loaded->usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
+
+    // Bevy's `RenderAssetUsages::default()` retains the data in both worlds.
+    BytesReader default_reader(png_bytes);
+    const auto by_default = load_through_loader(fixture, default_reader, "core_loader_fixture.png");
+    ASSERT_TRUE(by_default.has_value()) << image::to_string(by_default.error());
+    EXPECT_EQ(by_default->usage(), static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD |
+                                                                                epix::assets::RENDER_WORLD));
+}
+
+// `ImageLoaderSettings::array_layout` reinterprets a vertically stacked 2D image
+// as an array texture (`image_loader.rs:225-232`), and a failed reinterpretation
+// is the typed `ImageLoaderError::ArrayLayout`, not a `FileTextureError`.
+TEST(ImageLoaderSettings, ArrayLayoutReinterpretsStackedImages) {
+    LoaderTestApp fixture;
+    // The fixture is 4x2, so it is two 4x1 images stacked vertically.
+    const auto png       = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+
+    {
+        BytesReader reader(png_bytes);
+        auto settings        = image::ImageLoaderSettings{};
+        settings.array_layout = image::ImageArrayLayout{image::ImageArrayLayout::RowHeight{1}};
+        const auto loaded    = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        // Bevy's `reinterpret_stacked_2d_as_array` only calls `reinterpret_size`,
+        // which rewrites the extent; it does not change the dimension
+        // (`bevy_image/src/image.rs:1318-1324`). Epix's `Image::type()` derives
+        // the array type from `depth_or_array_layers > 1` on a 2D descriptor, so
+        // the layer count is observable through both `type()` and
+        // `depth_or_layers()` while the wgpu dimension stays `e2D`.
+        EXPECT_EQ(loaded->texture_descriptor.dimension, wgpu::TextureDimension::e2D);
+        EXPECT_EQ(loaded->type(), image::ImageType::e2DArray);
+        EXPECT_EQ(loaded->layers(), 2u);
+        EXPECT_EQ(loaded->depth_or_layers(), 2u);
+        EXPECT_EQ(loaded->width(), 4u);
+        EXPECT_EQ(loaded->height(), 1u);
+        EXPECT_EQ(loaded->raw_view().size(), 4u * 2u * 4u);
+    }
+
+    {
+        BytesReader reader(png_bytes);
+        auto settings         = image::ImageLoaderSettings{};
+        settings.array_layout = image::ImageArrayLayout{image::ImageArrayLayout::RowCount{2}};
+        const auto loaded     = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+        ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
+        EXPECT_EQ(loaded->texture_descriptor.dimension, wgpu::TextureDimension::e2D);
+        EXPECT_EQ(loaded->layers(), 2u);
+        EXPECT_EQ(loaded->height(), 1u);
+    }
+
+    // Three layers cannot divide a four-pixel-tall payload... but two can, so a
+    // divisibility failure needs an odd count against the same height.
+    {
+        BytesReader reader(png_bytes);
+        auto settings         = image::ImageLoaderSettings{};
+        settings.array_layout = image::ImageArrayLayout{image::ImageArrayLayout::RowCount{3}};
+        const auto failed     = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+        ASSERT_FALSE(failed.has_value());
+        const auto* layout_error = std::get_if<image::ImageLoaderError::ArrayLayout>(&failed.error().value);
+        ASSERT_NE(layout_error, nullptr);
+        EXPECT_EQ(image::to_string(failed.error()), "Invalid array layout: can not evenly divide height = 2 by layers = 3");
+    }
+
+    // A zero row height would divide by zero in Bevy; it is reported as the same
+    // typed layout error instead of panicking.
+    {
+        BytesReader reader(png_bytes);
+        auto settings         = image::ImageLoaderSettings{};
+        settings.array_layout = image::ImageArrayLayout{image::ImageArrayLayout::RowHeight{0}};
+        const auto failed     = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+        ASSERT_FALSE(failed.has_value());
+        EXPECT_NE(std::get_if<image::ImageLoaderError::ArrayLayout>(&failed.error().value), nullptr);
+    }
+
+    // `Image::from_buffer` is the shared decode core and deliberately does not
+    // apply the array layout (that step belongs to the loader, so the typed
+    // `ImageLoaderError::ArrayLayout` can carry the failure), so the direct call
+    // leaves the image 2D while the loader reinterprets its own copy.
+    {
+        const auto as_bytes =
+            std::span<const std::byte>(reinterpret_cast<const std::byte*>(png_bytes.data()), png_bytes.size());
+        auto settings         = image::ImageLoaderSettings{};
+        settings.array_layout = image::ImageArrayLayout{image::ImageArrayLayout::RowCount{2}};
+        const auto direct     = image::Image::from_buffer(as_bytes, settings);
+        ASSERT_TRUE(direct.has_value()) << image::to_string(direct.error());
+        EXPECT_EQ(direct->type(), image::ImageType::e2D);
+        EXPECT_EQ(direct->depth_or_layers(), 1u);
+        EXPECT_EQ(direct->height(), 2u);
+
+        BytesReader reader(png_bytes);
+        const auto via_loader = load_through_loader(fixture, reader, "core_loader_fixture.png", settings);
+        ASSERT_TRUE(via_loader.has_value()) << image::to_string(via_loader.error());
+        EXPECT_EQ(via_loader->type(), image::ImageType::e2DArray);
+        EXPECT_EQ(via_loader->depth_or_layers(), 2u);
+        EXPECT_EQ(via_loader->height(), 1u);
+    }
+}
+
+// `Image::from_buffer` is the shared decode core Bevy exposes
+// (`bevy_image/src/image.rs:1357`), so a bytes-only decode and the loader agree.
+TEST(ImageFromBuffer, DecodesBytesWithTheSameResultAsTheLoader) {
+    const auto png       = write_png_fixture();
+    const auto png_bytes = read_file_bytes(png);
+    const auto as_bytes =
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(png_bytes.data()), png_bytes.size());
+
+    const auto decoded = image::Image::from_buffer(as_bytes);
+    ASSERT_TRUE(decoded.has_value()) << image::to_string(decoded.error());
+    EXPECT_EQ(decoded->width(), 4u);
+    EXPECT_EQ(decoded->height(), 2u);
+    EXPECT_EQ(decoded->format(), image::Format::RGBA8);
+    EXPECT_EQ(decoded->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
+
+    // Bytes that are not an image report a decode failure.
+    const std::array<std::byte, 4> garbage{std::byte{1}, std::byte{2}, std::byte{3}, std::byte{4}};
+    const auto failed = image::Image::from_buffer(garbage);
+    ASSERT_FALSE(failed.has_value());
+    EXPECT_NE(std::get_if<image::TextureError::ImageError>(&failed.error().value), nullptr);
+
+    // An empty payload is rejected with a decode failure rather than UB.
+    const auto empty = image::Image::from_buffer(std::span<const std::byte>{});
+    EXPECT_FALSE(empty.has_value());
 }
