@@ -27,6 +27,7 @@ add_subdirectory(camera)
 add_subdirectory(sprite)
 add_subdirectory(render)
 add_subdirectory(sprite_render)
+add_subdirectory(pbr)
 add_subdirectory(text)
 
 add_subdirectory(extension)

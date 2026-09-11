@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/ecs.hpp>
+#include <epix/core_graph/fullscreen.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
 #include <functional>
