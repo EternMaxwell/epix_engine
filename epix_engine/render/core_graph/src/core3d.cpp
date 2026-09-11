@@ -907,22 +907,40 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
                                     ? view_prepass_textures.deferred_lighting_pass_id->get_attachment()
                                     : wgpu::RenderPassColorAttachment{});
 
+    // Bevy empties the color-attachment list when every slot is absent, so the
+    // pass needs no fragment shader at all (deferred/node.rs:202-205). The same
+    // rule `run_prepass` applies for the non-deferred pass.
+    const bool has_any_color = view_prepass_textures.normal.has_value() ||
+                               view_prepass_textures.motion_vectors.has_value() ||
+                               view_prepass_textures.deferred.has_value() ||
+                               view_prepass_textures.deferred_lighting_pass_id.has_value();
+
     const auto depth_attachment = view_depth_texture.get_attachment(wgpu::StoreOp::eStore);
     const auto viewport         = camera.viewport;
     const auto view_entity      = graph.view_entity();
     const auto* world_ptr       = std::addressof(world);
     const auto* opaque_ptr      = std::addressof(opaque_phase->second);
     const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
+    // Bevy copies the view depth texture into the prepass depth texture after the
+    // deferred pass, exactly as the non-deferred prepass node does
+    // (deferred/node.rs:260-267). Without it a deferred view's
+    // `ViewPrepassTextures::depth` is never written, so every consumer of the
+    // prepass depth reads uninitialised content.
+    const auto has_prepass_depth = view_prepass_textures.depth.has_value();
+    const auto prepass_depth_texture =
+        has_prepass_depth ? std::optional<wgpu::Texture>{view_prepass_textures.depth->texture.texture} : std::nullopt;
+    const auto prepass_copy_size  = view_prepass_textures.size;
+    const auto depth_texture_copy = view_depth_texture.texture;
 
     render_context.add_command_buffer_generation_task(
-        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_ptr, mask_ptr,
-         label](wgpu::Device device) {
+        [color_attachments, has_any_color, depth_attachment, viewport, view_entity, world_ptr, opaque_ptr, mask_ptr,
+         has_prepass_depth, prepass_depth_texture, prepass_copy_size, depth_texture_copy, label](wgpu::Device device) {
             auto encoder = device.createCommandEncoder(
                 wgpu::CommandEncoderDescriptor().setLabel("deferred_prepass_command_encoder"));
             {
                 wgpu::RenderPassDescriptor descriptor;
                 descriptor.setLabel(label.data());
-                descriptor.setColorAttachments(color_attachments);
+                if (has_any_color) descriptor.setColorAttachments(color_attachments);
                 descriptor.setDepthStencilAttachment(depth_attachment);
                 auto render_pass = encoder.beginRenderPass(descriptor);
                 if (viewport) {
@@ -936,6 +954,21 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
                 if (!mask_ptr->is_empty()) mask_ptr->render(render_pass, *world_ptr, view_entity);
                 render_pass.end();
             }
+
+            if (has_prepass_depth && prepass_depth_texture) {
+                auto source          = wgpu::TexelCopyTextureInfo();
+                source.texture       = depth_texture_copy;
+                source.mipLevel      = 0;
+                source.origin        = wgpu::Origin3D{0, 0, 0};
+                source.aspect        = wgpu::TextureAspect::eAll;
+                auto destination     = wgpu::TexelCopyTextureInfo();
+                destination.texture  = *prepass_depth_texture;
+                destination.mipLevel = 0;
+                destination.origin   = wgpu::Origin3D{0, 0, 0};
+                destination.aspect   = wgpu::TextureAspect::eAll;
+                encoder.copyTextureToTexture(source, destination, prepass_copy_size);
+            }
+
             return encoder.finish();
         });
     return {};
