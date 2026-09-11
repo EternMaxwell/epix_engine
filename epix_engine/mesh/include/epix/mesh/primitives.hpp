@@ -24,6 +24,8 @@ struct Capsule2dMeshBuilder;
 struct CircleMeshBuilder;
 struct CircularSectorMeshBuilder;
 struct CircularSegmentMeshBuilder;
+struct ConeMeshBuilder;
+struct ConicalFrustumMeshBuilder;
 struct ConvexPolygonMeshBuilder;
 struct CuboidMeshBuilder;
 struct CylinderMeshBuilder;
@@ -705,6 +707,108 @@ EPIX_EXPORT struct TorusMeshBuilder {
     Mesh build() const;
 };
 
+/** @brief Anchor point of a cone mesh (Bevy `ConeAnchor`). */
+EPIX_EXPORT enum class ConeAnchor : std::uint8_t { MidPoint, Tip, Base };
+
+/** @brief Cone primitive centered on the midpoint between its tip and its base
+ * (Bevy `Cone`). The tip points towards +Y. */
+EPIX_EXPORT struct Cone {
+    /** @brief Radius of the base. Default: 0.5. */
+    float radius = 0.5f;
+    /** @brief Total height. Default: 1.0. */
+    float height = 1.0f;
+
+    constexpr Cone() = default;
+    constexpr Cone(float radius, float height) : radius(radius), height(height) {}
+    /** @brief The base circle of the cone (Bevy `Cone::base`). */
+    constexpr Circle base() const noexcept { return Circle{radius}; }
+    /** @brief Length from a base point to the apex (Bevy `Cone::slant_height`). */
+    float slant_height() const noexcept;
+    /** @brief Surface area of the side (Bevy `Cone::lateral_area`). */
+    float lateral_area() const noexcept;
+    /** @brief Surface area of the base (Bevy `Cone::base_area`). */
+    float base_area() const noexcept;
+    ConeMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Cone&) const = default;
+};
+
+/** @brief Builder used to create a cone mesh. */
+EPIX_EXPORT struct ConeMeshBuilder {
+    Cone cone{};
+    /** @brief Vertices used for the base circle. Default: 32. */
+    std::uint32_t resolution = 32;
+    ConeAnchor anchor        = ConeAnchor::MidPoint;
+
+    constexpr ConeMeshBuilder() = default;
+    constexpr ConeMeshBuilder(float radius, float height, std::uint32_t resolution)
+        : cone(radius, height), resolution(resolution) {}
+    constexpr explicit ConeMeshBuilder(Cone cone) : cone(cone) {}
+    ConeMeshBuilder with_resolution(std::uint32_t value) && noexcept {
+        resolution = value;
+        return std::move(*this);
+    }
+    ConeMeshBuilder with_anchor(ConeAnchor value) && noexcept {
+        anchor = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
+/** @brief Truncated cone primitive described by its two radii and height
+ * (Bevy `ConicalFrustum`). */
+EPIX_EXPORT struct ConicalFrustum {
+    /** @brief Radius of the top. Default: 0.25. */
+    float radius_top = 0.25f;
+    /** @brief Radius of the base. Default: 0.5. */
+    float radius_bottom = 0.5f;
+    /** @brief Height. Default: 0.5. */
+    float height = 0.5f;
+
+    constexpr ConicalFrustum() = default;
+    constexpr ConicalFrustum(float radius_top, float radius_bottom, float height)
+        : radius_top(radius_top), radius_bottom(radius_bottom), height(height) {}
+    /** @brief The base circle (Bevy `ConicalFrustum::bottom_base`). */
+    constexpr Circle bottom_base() const noexcept { return Circle{radius_bottom}; }
+    /** @brief The top circle (Bevy `ConicalFrustum::top_base`). */
+    constexpr Circle top_base() const noexcept { return Circle{radius_top}; }
+    /** @brief Length from the base edge to the closest top edge point (Bevy
+     * `ConicalFrustum::slant_height`). */
+    float slant_height() const noexcept;
+    /** @brief Surface area of the side (Bevy `ConicalFrustum::lateral_area`). */
+    float lateral_area() const noexcept;
+    /** @brief Surface area of the base (Bevy `ConicalFrustum::bottom_area`). */
+    float bottom_area() const noexcept;
+    /** @brief Surface area of the top (Bevy `ConicalFrustum::top_area`). */
+    float top_area() const noexcept;
+    ConicalFrustumMeshBuilder mesh() const noexcept;
+
+    bool operator==(const ConicalFrustum&) const = default;
+};
+
+/** @brief Builder used to create a conical-frustum mesh. */
+EPIX_EXPORT struct ConicalFrustumMeshBuilder {
+    ConicalFrustum frustum{};
+    /** @brief Vertices used for the top and bottom circles. Default: 32. */
+    std::uint32_t resolution = 32;
+    /** @brief Horizontal lines subdividing the lateral surface. Default: 1. */
+    std::uint32_t segments = 1;
+
+    constexpr ConicalFrustumMeshBuilder() = default;
+    constexpr ConicalFrustumMeshBuilder(float radius_top, float radius_bottom, float height, std::uint32_t resolution)
+        : frustum(radius_top, radius_bottom, height), resolution(resolution) {}
+    constexpr explicit ConicalFrustumMeshBuilder(ConicalFrustum frustum) : frustum(frustum) {}
+    ConicalFrustumMeshBuilder with_resolution(std::uint32_t value) && noexcept {
+        resolution = value;
+        return std::move(*this);
+    }
+    ConicalFrustumMeshBuilder with_segments(std::uint32_t value) && noexcept {
+        segments = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
 /** @brief Builder used to create a circle mesh. */
 EPIX_EXPORT struct CircleMeshBuilder {
     Circle circle{};
@@ -910,8 +1014,12 @@ static_assert(Meshable<Triangle3d>);
 static_assert(Meshable<Tetrahedron>);
 static_assert(Meshable<Cylinder>);
 static_assert(Meshable<Torus>);
+static_assert(Meshable<Cone>);
+static_assert(Meshable<ConicalFrustum>);
 static_assert(MeshBuilder<CylinderMeshBuilder>);
 static_assert(MeshBuilder<TorusMeshBuilder>);
+static_assert(MeshBuilder<ConeMeshBuilder>);
+static_assert(MeshBuilder<ConicalFrustumMeshBuilder>);
 static_assert(MeshBuilder<CuboidMeshBuilder>);
 static_assert(MeshBuilder<PlaneMeshBuilder>);
 static_assert(MeshBuilder<Segment3dMeshBuilder>);

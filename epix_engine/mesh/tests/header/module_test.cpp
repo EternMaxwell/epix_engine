@@ -1554,6 +1554,186 @@ TEST(MeshPrimitives, TorusMatchesBevyTubeGridAndAngleRange) {
     EXPECT_NEAR((*partial_positions)[4u * 4u][0], -1.0f, 1e-5f);
 }
 
+// Bevy `ConeMeshBuilder::build`
+// (`bevy_mesh/src/primitives/dim3/cone.rs:72-171`) at resolution 4, which is the
+// resolution Bevy's own `cone_mesh` test uses.
+TEST(MeshPrimitives, ConeMatchesBevyTipLateralSurfaceAndBase) {
+    static_assert(mesh::Meshable<mesh::Cone>);
+    static_assert(mesh::MeshBuilder<mesh::ConeMeshBuilder>);
+
+    const mesh::Cone default_cone{};
+    EXPECT_FLOAT_EQ(default_cone.radius, 0.5f);
+    EXPECT_FLOAT_EQ(default_cone.height, 1.0f);
+    EXPECT_FLOAT_EQ(default_cone.slant_height(), std::sqrt(0.5f * 0.5f + 1.0f));
+    EXPECT_FLOAT_EQ(default_cone.base_area(), std::numbers::pi_v<float> * 0.25f);
+    EXPECT_FLOAT_EQ(default_cone.lateral_area(),
+                    std::numbers::pi_v<float> * 0.5f * std::sqrt(0.5f * 0.5f + 1.0f));
+
+    const auto value = std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // resolution * 2 + 1 vertices: the tip, the lateral ring, and the base ring.
+    ASSERT_EQ(positions->size(), 9u);
+    EXPECT_EQ(normals->size(), 9u);
+    EXPECT_EQ(uvs->size(), 9u);
+
+    // Tip vertex: at +half_height with Bevy's deliberately invalid zero normal
+    // and the polar UV centre.
+    EXPECT_EQ((*positions)[0], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.5f, 0.0f}));
+    EXPECT_EQ((*normals)[0], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.5f, 0.5f}));
+
+    // Lateral ring at -half_height, angle zero first: +X with the slope normal.
+    EXPECT_NEAR((*positions)[1][0], 0.5f, 1e-5f);
+    EXPECT_NEAR((*positions)[1][1], -0.5f, 1e-5f);
+    EXPECT_NEAR((*positions)[1][2], 0.0f, 1e-5f);
+    const float factor = 1.0f / std::sqrt(1.0f + 0.25f);
+    EXPECT_NEAR((*normals)[1][0], factor, 1e-5f);
+    EXPECT_NEAR((*normals)[1][1], 0.5f * factor, 1e-5f);
+    EXPECT_NEAR((*normals)[1][2], 0.0f, 1e-5f);
+    // Lateral UVs are polar: centred at the tip's UV.
+    EXPECT_NEAR((*uvs)[1][0], 1.0f, 1e-5f);
+    EXPECT_NEAR((*uvs)[1][1], 0.5f, 1e-5f);
+    // The second lateral vertex is a quarter turn round, i.e. +Z.
+    EXPECT_NEAR((*positions)[2][0], 0.0f, 1e-5f);
+    EXPECT_NEAR((*positions)[2][2], 0.5f, 1e-5f);
+
+    // Base ring: five vertices later, all facing -Y.
+    EXPECT_NEAR((*positions)[5][1], -0.5f, 1e-5f);
+    EXPECT_EQ((*normals)[5], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+    EXPECT_EQ((*normals)[8], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+
+    const auto* indices = value.indices()->get().as_u32();
+    ASSERT_NE(indices, nullptr);
+    // resolution * 6 - 6 indices: the lateral fan, its closing triangle, and the
+    // base fan.
+    EXPECT_EQ(indices->size(), 18u);
+    // The lateral fan starts at the tip.
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[0], (*indices)[1], (*indices)[2]}),
+              (std::vector<std::uint32_t>{0, 2, 1}));
+    // Bevy closes the lateral surface with `[0, 1, resolution]`.
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[9], (*indices)[10], (*indices)[11]}),
+              (std::vector<std::uint32_t>{0, 1, 4}));
+    // The base fan is centred on the first base vertex (index 5).
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[12], (*indices)[13], (*indices)[14]}),
+              (std::vector<std::uint32_t>{5, 6, 7}));
+
+    // Bevy's anchors shift the whole mesh along Y.
+    const auto tip = std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).with_anchor(mesh::ConeAnchor::Tip).build();
+    const auto* tip_positions =
+        tip.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(tip_positions, nullptr);
+    EXPECT_NEAR((*tip_positions)[0][1], 0.0f, 1e-5f);
+    EXPECT_NEAR((*tip_positions)[1][1], -1.0f, 1e-5f);
+
+    const auto base =
+        std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).with_anchor(mesh::ConeAnchor::Base).build();
+    const auto* base_positions =
+        base.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(base_positions, nullptr);
+    EXPECT_NEAR((*base_positions)[0][1], 1.0f, 1e-5f);
+    EXPECT_NEAR((*base_positions)[5][1], 0.0f, 1e-5f);
+}
+
+// Bevy `ConicalFrustumMeshBuilder::build`
+// (`bevy_mesh/src/primitives/dim3/conical_frustum.rs:63-166`).
+TEST(MeshPrimitives, ConicalFrustumMatchesBevyRingsLateralSurfaceAndCaps) {
+    static_assert(mesh::Meshable<mesh::ConicalFrustum>);
+    static_assert(mesh::MeshBuilder<mesh::ConicalFrustumMeshBuilder>);
+
+    const mesh::ConicalFrustum default_frustum{};
+    EXPECT_FLOAT_EQ(default_frustum.radius_top, 0.25f);
+    EXPECT_FLOAT_EQ(default_frustum.radius_bottom, 0.5f);
+    EXPECT_FLOAT_EQ(default_frustum.height, 0.5f);
+    EXPECT_FLOAT_EQ(default_frustum.bottom_area(), std::numbers::pi_v<float> * 0.25f);
+    EXPECT_FLOAT_EQ(default_frustum.top_area(), std::numbers::pi_v<float> * 0.0625f);
+    EXPECT_FLOAT_EQ(default_frustum.slant_height(), std::sqrt(0.25f * 0.25f + 0.5f * 0.5f));
+
+    const auto value =
+        std::move(mesh::ConicalFrustum{0.25f, 0.5f, 0.5f}.mesh()).with_resolution(4).with_segments(1).build();
+    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+
+    const auto* positions =
+        value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    // Two seam-duplicated rings of resolution + 1, plus two caps of resolution.
+    ASSERT_EQ(positions->size(), 2u * 5u + 2u * 4u);
+    EXPECT_EQ(normals->size(), 18u);
+    EXPECT_EQ(uvs->size(), 18u);
+
+    // Bottom ring first, at -half_height with the bottom radius.
+    EXPECT_NEAR((*positions)[0][0], 0.5f, 1e-5f);
+    EXPECT_NEAR((*positions)[0][1], -0.25f, 1e-5f);
+    EXPECT_NEAR((*positions)[0][2], 0.0f, 1e-5f);
+    EXPECT_EQ((*uvs)[0], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 0.0f}));
+    // The lateral normal's Y is (radius_bottom - radius_top) / height.
+    const glm::vec3 expected_normal = glm::normalize(glm::vec3{1.0f, (0.5f - 0.25f) / 0.5f, 0.0f});
+    EXPECT_NEAR((*normals)[0][0], expected_normal.x, 1e-5f);
+    EXPECT_NEAR((*normals)[0][1], expected_normal.y, 1e-5f);
+
+    // The ring row is resolution + 1 wide and wraps back to the seam, so the
+    // second ring starts at the top radius.
+    EXPECT_NEAR((*positions)[5][0], 0.25f, 1e-5f);
+    EXPECT_NEAR((*positions)[5][1], 0.25f, 1e-5f);
+    EXPECT_EQ((*uvs)[5], (mesh::VertexAttributeValues::Float32x2Value{0.0f, 1.0f}));
+    // The seam vertex duplicates the first one's position at u = 1.
+    EXPECT_NEAR((*positions)[4][0], 0.5f, 1e-5f);
+    EXPECT_NEAR((*uvs)[4][0], 1.0f, 1e-5f);
+
+    // Top cap faces +Y, bottom cap faces -Y.
+    EXPECT_EQ((*normals)[10], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f}));
+    EXPECT_EQ((*normals)[14], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+
+    const auto* indices = value.indices()->get().as_u32();
+    ASSERT_NE(indices, nullptr);
+    // resolution * (num_rings - 2) faces plus two cap fans of resolution - 2
+    // triangles each, two triangles per face.
+    EXPECT_EQ(indices->size(), 4u * 2u * 3u + 2u * 2u * 3u);
+    // Lateral quad 0: (ring + j, next_ring + j, ring + j + 1) then the second
+    // triangle.
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[0], (*indices)[1], (*indices)[2]}),
+              (std::vector<std::uint32_t>{0, 5, 1}));
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[3], (*indices)[4], (*indices)[5]}),
+              (std::vector<std::uint32_t>{5, 6, 1}));
+    // The top cap starts at the first cap vertex (10) with winding (1, 0).
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[24], (*indices)[25], (*indices)[26]}),
+              (std::vector<std::uint32_t>{10, 12, 11}));
+    // The bottom cap starts at the second cap vertex block (14) with (0, 1).
+    EXPECT_EQ((std::vector<std::uint32_t>{(*indices)[30], (*indices)[31], (*indices)[32]}),
+              (std::vector<std::uint32_t>{14, 15, 16}));
+
+    // More segments add intermediate rings without changing the caps.
+    const auto multi = std::move(mesh::ConicalFrustum{0.25f, 0.5f, 0.5f}.mesh())
+                           .with_resolution(4)
+                           .with_segments(3)
+                           .build();
+    const auto* multi_positions =
+        multi.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(multi_positions, nullptr);
+    EXPECT_EQ(multi_positions->size(), 4u * 5u + 2u * 4u);
+    // Three segments put the middle ring at `-half_height + 2 * step_y` with the
+    // linearly interpolated radius, i.e. the middle third of the frustum.
+    const float step_y      = 0.5f / 3.0f;
+    const float step_radius = (0.25f - 0.5f) / 3.0f;
+    EXPECT_NEAR((*multi_positions)[2u * 5u][1], -0.25f + 2.0f * step_y, 1e-5f);
+    EXPECT_NEAR((*multi_positions)[2u * 5u][0], 0.5f + 2.0f * step_radius, 1e-5f);
+}
+
 TEST(MeshModule, Box2dUvBuildsTexturedQuad) {
     auto value = mesh::make_box2d_uv(20.0f, 10.0f, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f), glm::vec4(0.5f));
     EXPECT_EQ(value.count_vertices(), 4);

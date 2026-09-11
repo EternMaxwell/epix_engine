@@ -47,16 +47,24 @@ struct Primitives3dExamplePlugin {
         mesh::Mesh segment     = mesh::Segment3d{{-0.6f, 0.0f, 0.0f}, {0.6f, 0.0f, 0.0f}};
         mesh::Mesh cylinder    = mesh::Cylinder{0.32f, 0.86f};
         mesh::Mesh torus = std::move(mesh::Torus{}.mesh()).with_minor_resolution(12).with_major_resolution(24).build();
+        // The two rotational solids that close Bevy's cone/frustum builders. The
+        // cone's anchor is left at Bevy's default midpoint so its tip sits above
+        // its base, exactly as Bevy's own test fixture does.
+        mesh::Mesh cone    = std::move(mesh::Cone{0.36f, 1.0f}.mesh()).with_resolution(24).build();
+        mesh::Mesh frustum = std::move(mesh::ConicalFrustum{0.18f, 0.4f, 0.9f}.mesh()).with_resolution(24).build();
 
         std::println(
-            "3D primitives: cuboid={} plane={} triangle={} tetrahedron={} segment={} cylinder={} torus={} vertices",
+            "3D primitives: cuboid={} plane={} triangle={} tetrahedron={} segment={} cylinder={} torus={} cone={} "
+            "frustum={} vertices",
             cuboid.count_vertices(), plane.count_vertices(), triangle.count_vertices(), tetrahedron.count_vertices(),
-            segment.count_vertices(), cylinder.count_vertices(), torus.count_vertices());
+            segment.count_vertices(), cylinder.count_vertices(), torus.count_vertices(), cone.count_vertices(),
+            frustum.count_vertices());
         std::println(
             "Bevy-aligned attributes: cuboid=[{}] plane=[{}] triangle=[{}] tetrahedron=[{}] segment=[{}] cylinder=[{}] "
-            "torus=[{}]",
+            "torus=[{}] cone=[{}] frustum=[{}]",
             attribute_names(cuboid), attribute_names(plane), attribute_names(triangle), attribute_names(tetrahedron),
-            attribute_names(segment), attribute_names(cylinder), attribute_names(torus));
+            attribute_names(segment), attribute_names(cylinder), attribute_names(torus), attribute_names(cone),
+            attribute_names(frustum));
 
         const auto cuboid_handle      = asset_store.emplace(std::move(cuboid));
         const auto plane_handle       = asset_store.emplace(std::move(plane));
@@ -65,9 +73,11 @@ struct Primitives3dExamplePlugin {
         const auto segment_handle     = asset_store.emplace(std::move(segment));
         const auto cylinder_handle    = asset_store.emplace(std::move(cylinder));
         const auto torus_handle       = asset_store.emplace(std::move(torus));
+        const auto cone_handle        = asset_store.emplace(std::move(cone));
+        const auto frustum_handle     = asset_store.emplace(std::move(frustum));
 
         // The Bevy primitives are unit-scale, so the camera fixes a 4.0-unit tall viewport and the
-        // seven shapes are laid out on two rows that both fit inside the visible width.
+        // nine shapes are laid out on two rows of five and four, both inside the visible width.
         camera::OrthographicProjection orthographic{};
         orthographic.scaling_mode = camera::ScalingMode{camera::ScalingMode::FixedVertical{.viewport_height = 4.0f}};
         world.spawn(camera::Camera2d{}, transform::Transform{}, camera::Projection::orthographic(orthographic));
@@ -76,15 +86,17 @@ struct Primitives3dExamplePlugin {
             world.spawn(mesh::Mesh2d{handle}, sprite_render::MeshMaterial2d{.color = color},
                         transform::Transform{.translation = translation});
         };
-        // Upper row: cuboid, plane, triangle, tetrahedron.
+        // Upper row: cuboid, plane, triangle, tetrahedron, segment.
         place(cuboid_handle, {-1.80f, 1.0f, 0.0f}, glm::vec4(0.42f, 0.80f, 0.98f, 1.0f));
-        place(plane_handle, {-0.60f, 1.0f, 0.0f}, glm::vec4(0.55f, 0.92f, 0.60f, 1.0f));
-        place(triangle_handle, {0.60f, 1.0f, 0.0f}, glm::vec4(0.90f, 0.52f, 0.88f, 1.0f));
-        place(tetrahedron_handle, {1.80f, 1.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));
-        // Lower row: segment, cylinder, torus.
-        place(segment_handle, {-1.80f, -1.1f, 0.0f}, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
-        place(cylinder_handle, {-0.60f, -1.1f, 0.0f}, glm::vec4(0.98f, 0.55f, 0.45f, 1.0f));
-        place(torus_handle, {0.80f, -1.1f, 0.0f}, glm::vec4(0.72f, 0.86f, 0.98f, 1.0f));
+        place(plane_handle, {-0.90f, 1.0f, 0.0f}, glm::vec4(0.55f, 0.92f, 0.60f, 1.0f));
+        place(triangle_handle, {0.0f, 1.0f, 0.0f}, glm::vec4(0.90f, 0.52f, 0.88f, 1.0f));
+        place(tetrahedron_handle, {0.90f, 1.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));
+        place(segment_handle, {1.80f, 1.0f, 0.0f}, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+        // Lower row: cylinder, torus, cone, frustum.
+        place(cylinder_handle, {-1.35f, -1.1f, 0.0f}, glm::vec4(0.98f, 0.55f, 0.45f, 1.0f));
+        place(torus_handle, {-0.45f, -1.1f, 0.0f}, glm::vec4(0.72f, 0.86f, 0.98f, 1.0f));
+        place(cone_handle, {0.45f, -1.1f, 0.0f}, glm::vec4(0.86f, 0.94f, 0.36f, 1.0f));
+        place(frustum_handle, {1.35f, -1.1f, 0.0f}, glm::vec4(0.98f, 0.80f, 0.56f, 1.0f));
     }
 };
 }  // namespace
@@ -93,7 +105,7 @@ int main() {
     auto app = app::App::create();
 
     window::Window primary_window;
-    primary_window.title = "Bevy 3D Primitives | cuboid | plane | triangle | tetrahedron | segment";
+    primary_window.title = "Bevy 3D Primitives | cuboid | plane | triangle | tetrahedron | segment | cylinder | torus | cone | frustum";
     primary_window.size  = {1500, 420};
 
     app.add_plugins(app::TaskPoolPlugin{})

@@ -559,8 +559,7 @@ Mesh CylinderMeshBuilder::build() const {
 Mesh TorusMeshBuilder::build() const {
     // Adapted from Bevy, which adapted it from
     // http://apparat-engine.blogspot.com/2013/04/procedural-meshes-torus.html
-    const std::size_t n_vertices = static_cast<std::size_t>(major_resolution + 1) * (minor_resolution + 1);
-    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    const std::size_t n_vertices = static_cast<std::size_t>(major_resolution + 1) * (minor_resolution + 1);    std::vector<VertexAttributeValues::Float32x3Value> positions;
     std::vector<VertexAttributeValues::Float32x3Value> normals;
     std::vector<VertexAttributeValues::Float32x2Value> uvs;
     positions.reserve(n_vertices);
@@ -606,6 +605,192 @@ Mesh TorusMeshBuilder::build() const {
             indices.insert(indices.end(), {right_top, right_bottom, left_bottom});
         }
     }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+float Cone::slant_height() const noexcept { return std::sqrt(radius * radius + height * height); }
+float Cone::lateral_area() const noexcept { return std::numbers::pi_v<float> * radius * slant_height(); }
+float Cone::base_area() const noexcept { return std::numbers::pi_v<float> * radius * radius; }
+
+ConeMeshBuilder Cone::mesh() const noexcept { return ConeMeshBuilder{Cone{*this}}; }
+
+Mesh ConeMeshBuilder::build() const {
+    // Bevy's `ConeMeshBuilder::build` (bevy_mesh/src/primitives/dim3/cone.rs:72):
+    // `resolution` base vertices, `resolution` lateral-surface vertices, and one
+    // tip vertex, with the lateral fan then the closed base fan.
+    const float half_height = cone.height * 0.5f;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    positions.reserve(static_cast<std::size_t>(resolution) * 2 + 1);
+    normals.reserve(static_cast<std::size_t>(resolution) * 2 + 1);
+    uvs.reserve(static_cast<std::size_t>(resolution) * 2 + 1);
+
+    // Tip. The tip has no single correct normal, so Bevy stores the zero vector
+    // and lets the fragment shader derive it, which keeps the lateral surface
+    // crease-free.
+    positions.push_back({0.0f, half_height, 0.0f});
+    normals.push_back({0.0f, 0.0f, 0.0f});
+    uvs.push_back({0.5f, 0.5f});
+
+    // The lateral normal's slope, used as a fast normalization factor.
+    const float normal_slope         = cone.radius / cone.height;
+    const float normalization_factor = 1.0f / std::sqrt(1.0f + normal_slope * normal_slope);
+    const float step_theta           = 2.0f * std::numbers::pi_v<float> / static_cast<float>(resolution);
+
+    for (std::uint32_t segment = 0; segment < resolution; ++segment) {
+        const float theta = static_cast<float>(segment) * step_theta;
+        const float sin_t = std::sin(theta);
+        const float cos_t = std::cos(theta);
+
+        positions.push_back({cone.radius * cos_t, -half_height, cone.radius * sin_t});
+        normals.push_back({cos_t * normalization_factor, normal_slope * normalization_factor,
+                           sin_t * normalization_factor});
+        uvs.push_back({0.5f + cos_t * 0.5f, 0.5f + sin_t * 0.5f});
+    }
+
+    std::vector<std::uint32_t> indices;
+    indices.reserve((static_cast<std::size_t>(resolution) * 6) - 6);
+
+    // Lateral fan: the tip plus two consecutive base vertices.
+    for (std::uint32_t j = 1; j < resolution; ++j) {
+        indices.insert(indices.end(), {0u, j + 1u, j});
+    }
+    // Close the surface between the tip, the first and the last lateral vertex.
+    indices.insert(indices.end(), {0u, 1u, resolution});
+
+    const auto index_offset = static_cast<std::uint32_t>(positions.size());
+
+    for (std::uint32_t i = 0; i < resolution; ++i) {
+        const float theta = static_cast<float>(i) * step_theta;
+        const float sin_t = std::sin(theta);
+        const float cos_t = std::cos(theta);
+
+        positions.push_back({cos_t * cone.radius, -half_height, sin_t * cone.radius});
+        normals.push_back({0.0f, -1.0f, 0.0f});
+        uvs.push_back({0.5f * (cos_t + 1.0f), 1.0f - 0.5f * (sin_t + 1.0f)});
+    }
+
+    for (std::uint32_t i = 1; i + 1 < resolution; ++i) {
+        indices.insert(indices.end(), {index_offset, index_offset + i, index_offset + i + 1u});
+    }
+
+    switch (anchor) {
+        case ConeAnchor::Tip:
+            for (auto& position : positions) position[1] -= half_height;
+            break;
+        case ConeAnchor::Base:
+            for (auto& position : positions) position[1] += half_height;
+            break;
+        case ConeAnchor::MidPoint:
+        default:
+            break;
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+float ConicalFrustum::slant_height() const noexcept {
+    const float radius_delta = radius_bottom - radius_top;
+    return std::sqrt(radius_delta * radius_delta + height * height);
+}
+
+float ConicalFrustum::lateral_area() const noexcept {
+    return std::numbers::pi_v<float> * (radius_bottom + radius_top) * slant_height();
+}
+
+float ConicalFrustum::bottom_area() const noexcept { return std::numbers::pi_v<float> * radius_bottom * radius_bottom; }
+float ConicalFrustum::top_area() const noexcept { return std::numbers::pi_v<float> * radius_top * radius_top; }
+
+ConicalFrustumMeshBuilder ConicalFrustum::mesh() const noexcept {
+    return ConicalFrustumMeshBuilder{ConicalFrustum{*this}};
+}
+
+Mesh ConicalFrustumMeshBuilder::build() const {
+    // Bevy's `ConicalFrustumMeshBuilder::build`
+    // (bevy_mesh/src/primitives/dim3/conical_frustum.rs:63): `segments + 1`
+    // seam-duplicated rings of `resolution + 1` vertices, the lateral surface
+    // between consecutive rings, then the top and bottom cap fans with opposite
+    // winding.
+    const float half_height = frustum.height * 0.5f;
+    const auto num_rings    = static_cast<std::uint32_t>(segments) + 1u;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    const std::size_t ring_vertices = static_cast<std::size_t>(num_rings) * (resolution + 1u);
+    positions.reserve(ring_vertices + static_cast<std::size_t>(resolution) * 2u);
+    normals.reserve(ring_vertices + static_cast<std::size_t>(resolution) * 2u);
+    uvs.reserve(ring_vertices + static_cast<std::size_t>(resolution) * 2u);
+
+    const float step_theta  = 2.0f * std::numbers::pi_v<float> / static_cast<float>(resolution);
+    const float step_y      = frustum.height / static_cast<float>(segments);
+    const float step_radius = (frustum.radius_top - frustum.radius_bottom) / static_cast<float>(segments);
+    const float normal_y    = (frustum.radius_bottom - frustum.radius_top) / frustum.height;
+
+    for (std::uint32_t ring = 0; ring < num_rings; ++ring) {
+        const float y      = -half_height + static_cast<float>(ring) * step_y;
+        const float radius = frustum.radius_bottom + static_cast<float>(ring) * step_radius;
+
+        for (std::uint32_t segment = 0; segment <= resolution; ++segment) {
+            const float theta = static_cast<float>(segment) * step_theta;
+            const float sin_t = std::sin(theta);
+            const float cos_t = std::cos(theta);
+
+            positions.push_back({radius * cos_t, y, radius * sin_t});
+            const glm::vec3 normal = glm::normalize(glm::vec3{cos_t, normal_y, sin_t});
+            normals.push_back({normal.x, normal.y, normal.z});
+            uvs.push_back({static_cast<float>(segment) / static_cast<float>(resolution),
+                           static_cast<float>(ring) / static_cast<float>(segments)});
+        }
+    }
+
+    std::vector<std::uint32_t> indices;
+    for (std::uint32_t i = 0; i < segments; ++i) {
+        const std::uint32_t ring      = i * (resolution + 1u);
+        const std::uint32_t next_ring = (i + 1u) * (resolution + 1u);
+
+        for (std::uint32_t j = 0; j < resolution; ++j) {
+            indices.insert(indices.end(),
+                           {ring + j, next_ring + j, ring + j + 1u, next_ring + j, next_ring + j + 1u, ring + j + 1u});
+        }
+    }
+
+    // Caps: Bevy builds the top with winding (1, 0) and the bottom with (0, 1).
+    const auto build_cap = [&](bool top, float radius) {
+        const auto offset     = static_cast<std::uint32_t>(positions.size());
+        const float y         = top ? half_height : -half_height;
+        const float normal_y_ = top ? 1.0f : -1.0f;
+        const std::uint32_t winding_a = top ? 1u : 0u;
+        const std::uint32_t winding_b = top ? 0u : 1u;
+
+        for (std::uint32_t i = 0; i < resolution; ++i) {
+            const float theta = static_cast<float>(i) * step_theta;
+            const float sin_t = std::sin(theta);
+            const float cos_t = std::cos(theta);
+
+            positions.push_back({cos_t * radius, y, sin_t * radius});
+            normals.push_back({0.0f, normal_y_, 0.0f});
+            uvs.push_back({0.5f * (cos_t + 1.0f), 1.0f - 0.5f * (sin_t + 1.0f)});
+        }
+
+        for (std::uint32_t i = 1; i + 1 < resolution; ++i) {
+            indices.insert(indices.end(), {offset, offset + i + winding_a, offset + i + winding_b});
+        }
+    };
+
+    build_cap(true, frustum.radius_top);
+    build_cap(false, frustum.radius_bottom);
 
     return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
         .with_inserted_indices(Indices{std::move(indices)})
