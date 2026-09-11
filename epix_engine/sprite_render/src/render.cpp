@@ -614,7 +614,17 @@ void sprite_render::compute_slices_on_sprite_change(
 
 void SpriteRenderPlugin::attach(app::App& app) {
     spdlog::debug("[sprite] Attaching SpriteRenderPlugin.");
+    // Bevy `SpriteRenderPlugin::build` (bevy_sprite_render/src/lib.rs:62-86)
+    // installs `TextureAtlasPlugin` when it is absent and then composes
+    // `Mesh2dRenderPlugin` with the color-material and tilemap plugins, which
+    // arrive with S10 and S14.
+    if (!app.get_plugin<image::TextureAtlasPlugin>()) {
+        app.add_plugins(image::TextureAtlasPlugin{});
+    }
     app.add_plugins(Mesh2dRenderPlugin{});
+    // Bevy registers `SyncToRenderWorld` as a required component of `Sprite`
+    // (lib.rs:86), so every sprite entity is synchronized into the render world.
+    app.add_plugins(render::SyncComponentPlugin<sprite::Sprite>{});
     app.add_systems(app::PostUpdate,
                     into(sprite_render::compute_slices_on_asset_event)
                         .in_set(SpriteSystems::ComputeSlices)
