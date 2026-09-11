@@ -18,6 +18,15 @@ auto texture = app.resource<assets::AssetServer>().load<Image>("textures/icon.pn
 `pgm`, and `pnm`. Loaded three-channel images are converted to the corresponding four-channel
 format for WebGPU, and loaded images default to `ImageUsage::Render`.
 
+Loader failures use Bevy's typed errors. `ImageLoader::load` returns
+`expected<Image, ImageLoaderError>`, whose alternatives are `Io` (a failed `assets::Reader`),
+`FileTexture` (a `FileTextureError` carrying a `TextureError` and the offending path), and
+`ArrayLayout`. `TextureError` matches Bevy's alternatives and text, so an unknown extension reports
+`InvalidImageExtension`, a container this decoder cannot read (Ktx2, Dds, Basis, Ico, Qoi, Tiff,
+WebP, Farbfeld) reports `UnsupportedTextureFormat` with Bevy's format name, and a failed decode
+reports `ImageError` with the decoder's message. `to_string()` renders the same text Bevy's
+`Display` produces, and `to_exception_ptr()` turns either error into an exception.
+
 ## Formats and dimensions
 
 `Format` covers 8-bit (`Grey8`, `GreyAlpha8`, `RGB8`, `RGBA8`), 16-bit (`Grey16`, `RGB16`,

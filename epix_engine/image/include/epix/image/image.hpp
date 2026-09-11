@@ -93,9 +93,6 @@ EPIX_EXPORT struct FormatInfo {
  * @return Reference to the static FormatInfo descriptor. */
 EPIX_EXPORT const FormatInfo& getFormatInfo(Format fmt);
 
-/** @brief Error codes returned when loading an image from disk. */
-EPIX_EXPORT enum class ImageLoadError { FileNotFound, UnsupportedFormat, LoadFailed };
-EPIX_EXPORT std::exception_ptr to_exception_ptr(ImageLoadError error);
 /** @brief Error codes returned when saving an image to disk. */
 EPIX_EXPORT enum class ImageSaveError { SaveFailed };
 /** @brief Error codes returned when sampling a pixel out of bounds. */
@@ -110,7 +107,15 @@ EPIX_EXPORT struct TextureReinterpretationError {
     struct IncompatibleSizes {
         wgpu::Extent3D old{};
         wgpu::Extent3D new_size{};
-        bool operator==(const IncompatibleSizes&) const = default;
+        /** @brief Bevy's `IncompatibleSizes` is `PartialEq`; the wgpu extent has
+         * no `operator==`, so the three fields are compared directly. */
+        bool operator==(const IncompatibleSizes& other) const noexcept {
+            const auto same_extent = [](const wgpu::Extent3D& lhs, const wgpu::Extent3D& rhs) {
+                return lhs.width == rhs.width && lhs.height == rhs.height &&
+                       lhs.depthOrArrayLayers == rhs.depthOrArrayLayers;
+            };
+            return same_extent(old, other.old) && same_extent(new_size, other.new_size);
+        }
     };
     /** @brief C++ counterpart to `TextureReinterpretationError::WrongDimension`. */
     struct WrongDimension {
@@ -133,6 +138,9 @@ EPIX_EXPORT struct TextureReinterpretationError {
 
     bool operator==(const TextureReinterpretationError&) const = default;
 };
+
+/** @brief Bevy `TextureReinterpretationError`'s `Display` text. */
+EPIX_EXPORT std::string to_string(const TextureReinterpretationError& error);
 
 /** @brief Error returned when accessing a specific pixel in a texture (Bevy
  * `TextureAccessError`). */
@@ -159,6 +167,121 @@ EPIX_EXPORT struct TextureAccessError {
 
     bool operator==(const TextureAccessError&) const = default;
 };
+
+/** @brief The data format of a supercompressed image (Bevy `DataFormat`). */
+EPIX_EXPORT enum class DataFormat : std::uint8_t { Rgb, Rgba, Rrr, Rrrg, Rg };
+
+/** @brief A texture format that must be transcoded before wgpu can use it
+ * (Bevy `TranscodeFormat`). */
+EPIX_EXPORT struct TranscodeFormat {
+    /** @brief C++ counterpart to `TranscodeFormat::Etc1s`. */
+    struct Etc1s {
+        bool operator==(const Etc1s&) const = default;
+    };
+    /** @brief C++ counterpart to `TranscodeFormat::Uastc(DataFormat)`. */
+    struct Uastc {
+        DataFormat format                   = DataFormat::Rgb;
+        bool operator==(const Uastc&) const = default;
+    };
+    /** @brief Transcode from `R8UnormSrgb` to `R8Unorm` for wgpu. */
+    struct R8UnormSrgb {
+        bool operator==(const R8UnormSrgb&) const = default;
+    };
+    /** @brief Transcode from `Rg8UnormSrgb` to `R8G8Unorm` for wgpu. */
+    struct Rg8UnormSrgb {
+        bool operator==(const Rg8UnormSrgb&) const = default;
+    };
+    /** @brief Transcode from `Rgb8` to `Rgba8` for wgpu. */
+    struct Rgb8 {
+        bool operator==(const Rgb8&) const = default;
+    };
+
+    std::variant<Etc1s, Uastc, R8UnormSrgb, Rg8UnormSrgb, Rgb8> value{Etc1s{}};
+
+    bool operator==(const TranscodeFormat&) const = default;
+};
+
+/** @brief Error returned when loading a texture (Bevy `TextureError`).
+ *
+ * The alternative set, the payloads, and the `to_string` text all follow
+ * Bevy's `TextureError` so the failures a loader reports stay comparable.
+ * `ImageError` carries the decoder's message rather than a Rust
+ * `image::ImageError` because Epix decodes through `stb_image` (recorded as an
+ * adaptation in the image tracker). */
+EPIX_EXPORT struct TextureError {
+    /** @brief C++ counterpart to `TextureError::InvalidImageMimeType(String)`. */
+    struct InvalidImageMimeType {
+        std::string mime_type;
+        bool operator==(const InvalidImageMimeType&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureError::InvalidImageExtension(String)`. */
+    struct InvalidImageExtension {
+        std::string extension;
+        bool operator==(const InvalidImageExtension&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureError::ImageError(image::ImageError)`.
+     * Epix carries the decoder's message. */
+    struct ImageError {
+        std::string message;
+        bool operator==(const ImageError&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureError::UnsupportedTextureFormat(String)`. */
+    struct UnsupportedTextureFormat {
+        std::string format;
+        bool operator==(const UnsupportedTextureFormat&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureError::SuperCompressionNotSupported(String)`. */
+    struct SuperCompressionNotSupported {
+        std::string format;
+        bool operator==(const SuperCompressionNotSupported&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureError::SuperDecompressionError(String)`. */
+    struct SuperDecompressionError {
+        std::string message;
+        bool operator==(const SuperDecompressionError&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureError::InvalidData(String)`. */
+    struct InvalidData {
+        std::string message;
+        bool operator==(const InvalidData&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureError::TranscodeError(String)`. */
+    struct TranscodeError {
+        std::string message;
+        bool operator==(const TranscodeError&) const = default;
+    };
+    /** @brief C++ counterpart to
+     * `TextureError::FormatRequiresTranscodingError(TranscodeFormat)`. */
+    struct FormatRequiresTranscodingError {
+        TranscodeFormat format;
+        bool operator==(const FormatRequiresTranscodingError&) const = default;
+    };
+    /** @brief C++ counterpart to `TextureError::IncompleteCubemap`. */
+    struct IncompleteCubemap {
+        bool operator==(const IncompleteCubemap&) const = default;
+    };
+
+    std::variant<InvalidImageMimeType,
+                 InvalidImageExtension,
+                 ImageError,
+                 UnsupportedTextureFormat,
+                 SuperCompressionNotSupported,
+                 SuperDecompressionError,
+                 InvalidData,
+                 TranscodeError,
+                 FormatRequiresTranscodingError,
+                 IncompleteCubemap>
+        value{InvalidData{}};
+
+    bool operator==(const TextureError&) const = default;
+};
+
+/** @brief Bevy `TextureError`'s `Display` text. */
+EPIX_EXPORT std::string to_string(const TextureError& error);
+EPIX_EXPORT std::exception_ptr to_exception_ptr(const TextureError& error);
 
 template <typename T>
 struct span_type {
@@ -487,8 +610,8 @@ EPIX_EXPORT class Image {
 
     /** @brief Load an image from the filesystem.
      * @param path Path to the image file.
-     * @return The loaded Image or an ImageLoadError. */
-    static std::expected<Image, ImageLoadError> load(const std::filesystem::path& path);
+     * @return The loaded Image or a TextureError. */
+    static std::expected<Image, TextureError> load(const std::filesystem::path& path);
     /** @brief Save an image to the filesystem.
      * @param path Destination file path.
      * @param image The image to write.
