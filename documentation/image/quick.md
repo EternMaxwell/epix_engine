@@ -29,9 +29,11 @@ reports `ImageError` with the decoder's message. `to_string()` renders the same 
 
 ## Formats and dimensions
 
-`Format` covers 8-bit (`Grey8`, `GreyAlpha8`, `RGB8`, `RGBA8`), 16-bit (`Grey16`, `RGB16`,
-`RGBA16`), and float (`Grey32F`, `RGB32F`, `RGBA32F`) pixels. `getFormatInfo()` returns channel
-count, bytes per channel, flags, and `pixelSize()`.
+`Format` covers 8-bit (`Grey8`, `GreyAlpha8`, `RGBA8`), 16-bit (`Grey16`, `RGBA16`), and float
+(`Grey32F`, `RGBA32F`) pixels. There is deliberately no three-channel format: WebGPU has none, and
+Bevy's `Image::from_dynamic` widens three-channel decoder output to four channels with an opaque
+alpha, so loaded PNG/JPEG/HDR data arrives as the four-channel equivalent. `getFormatInfo()` returns
+channel count, bytes per channel, flags, and `pixelSize()`.
 
 `ImageType` is `e1D`, `e2D`, `e2DArray`, or `e3D`. `ImageUsage` is the bitmask `Main`, `Render`, or
 `Both`; inspect/set it with `usage()` and `set_usage()`.

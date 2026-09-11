@@ -74,29 +74,23 @@ std::optional<std::size_t> pixel_size_of(wgpu::TextureFormat format) noexcept {
 /** @brief The WebGPU texture format for a decoded pixel format (Bevy's
  * `ImageFormat` to `TextureFormat` mapping).
  *
- * Formats with no direct WebGPU equivalent report `Undefined`; `image_loader`
- * converts 3-channel data to the 4-channel equivalent before it reaches a
- * texture, so those cases are unreachable for prepared images. */
+ * `Format::Unknown` (a descriptor with no pixel format) reports `Undefined`,
+ * which is the only case the render module can reject. Every other format maps
+ * directly, because Epix has no three-channel format to fall back on. */
 wgpu::TextureFormat texture_format_cast(Format format) noexcept {
     switch (format) {
         case Format::Grey8:
             return wgpu::TextureFormat::eR8Unorm;
         case Format::GreyAlpha8:
             return wgpu::TextureFormat::eRG8Unorm;
-        case Format::RGB8:
-            return wgpu::TextureFormat::eUndefined;
         case Format::RGBA8:
             return wgpu::TextureFormat::eRGBA8Unorm;
         case Format::Grey16:
             return wgpu::TextureFormat::eR16Uint;
-        case Format::RGB16:
-            return wgpu::TextureFormat::eUndefined;
         case Format::RGBA16:
             return wgpu::TextureFormat::eRGBA16Uint;
         case Format::Grey32F:
             return wgpu::TextureFormat::eR32Float;
-        case Format::RGB32F:
-            return wgpu::TextureFormat::eUndefined;
         case Format::RGBA32F:
             return wgpu::TextureFormat::eRGBA32Float;
         default:
@@ -274,13 +268,10 @@ Image create_resized_like(const Image& image, std::uint32_t width, std::uint32_t
 const FormatInfo& getFormatInfo(Format fmt) {
     static FormatInfo info1{1, 1, false, false};
     static FormatInfo info2{2, 1, false, false};
-    static FormatInfo info3{3, 1, false, false};
     static FormatInfo info4{4, 1, false, false};
     static FormatInfo info5{1, 2, false, true};
-    static FormatInfo info6{3, 2, false, true};
     static FormatInfo info7{4, 2, false, true};
     static FormatInfo info8{1, 4, true, false};
-    static FormatInfo info9{3, 4, true, false};
     static FormatInfo info10{4, 4, true, false};
     static FormatInfo info0{0, 0, false, false};
     switch (fmt) {
@@ -288,20 +279,14 @@ const FormatInfo& getFormatInfo(Format fmt) {
             return info1;
         case Format::GreyAlpha8:
             return info2;
-        case Format::RGB8:
-            return info3;
         case Format::RGBA8:
             return info4;
         case Format::Grey16:
             return info5;
-        case Format::RGB16:
-            return info6;
         case Format::RGBA16:
             return info7;
         case Format::Grey32F:
             return info8;
-        case Format::RGB32F:
-            return info9;
         case Format::RGBA32F:
             return info10;
         default:
@@ -914,9 +899,11 @@ Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
 }
 Image Image::blur(std::uint32_t radius) const {
     // For simplicity, convert to float for processing, then convert back
-    // unless it's already float.
+    // unless it's already float. The float working format is four-channel
+    // because Epix has no three-channel format (Bevy widens three-channel data
+    // the same way), and `convert` fills the missing channels.
     bool needsConvert = !format_info().isFloat;
-    Image work = needsConvert ? this->convert(format_info().channels == 4 ? Format::RGBA32F : Format::RGB32F) : *this;
+    Image work        = needsConvert ? this->convert(Format::RGBA32F) : *this;
 
     auto& inf    = work.format_info();
     Image temp   = create_like(work, work.format());

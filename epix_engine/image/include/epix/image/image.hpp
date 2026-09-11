@@ -57,19 +57,23 @@ EPIX_EXPORT struct URect {
 /** @brief Pixel format for images.
  *
  * Each variant specifies channels and bit depth.
+ *
+ * There is deliberately no three-channel alternative: WebGPU has no
+ * three-channel texture format, and Bevy's `Image::from_dynamic` widens
+ * `Rgb8`/`Rgb16`/`Rgb32F` to the four-channel equivalent while building an
+ * image, so no `Image` in either engine ever holds three-channel pixels.
+ * Decoders that return three channels (a colour-type-2 PNG, a Radiance HDR)
+ * widen the data before the `Image` is created.
  */
 // Enum Format (8bit, 16bit, Float)
 EPIX_EXPORT enum class Format {
     Unknown = 0,
     Grey8,       // 1 channel, 8-bit
     GreyAlpha8,  // 2 channels, 8-bit
-    RGB8,        // 3 channels, 8-bit
     RGBA8,       // 4 channels, 8-bit
     Grey16,      // 1 channel, 16-bit
-    RGB16,       // 3 channels, 16-bit
     RGBA16,      // 4 channels, 16-bit
     Grey32F,     // 1 channel, float
-    RGB32F,      // 3 channels, float
     RGBA32F      // 4 channels, float
 };
 

@@ -155,11 +155,12 @@ std::expected<std::vector<std::byte>, TextureError> read_file_bytes(const std::f
 /**
  * @brief Widen three-channel pixels to four channels with an opaque alpha.
  *
- * WebGPU has no three-channel format, so Bevy's `Image::from_dynamic` converts
- * `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building the
- * image. Epix decodes with `stb_image` and does the same widening here, before
- * the `Image` is created, because an image left in `RGB8`/`RGB16`/`RGB32F` has
- * no `wgpu::TextureFormat` and could never be uploaded.
+ * WebGPU has no three-channel texture format, so Bevy's `Image::from_dynamic`
+ * converts `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building
+ * the image, and Epix's `Format` therefore has no three-channel alternative
+ * either. `stb_image` still returns three channels for a colour-type-2 PNG or a
+ * Radiance HDR, so the decoded bytes are widened here, before the `Image`
+ * exists, rather than through a conversion of an already-created image.
  */
 template <typename Element>
 std::vector<std::byte> widen_rgb_to_rgba(const Element* pixels, std::size_t pixel_count, Element opaque) {

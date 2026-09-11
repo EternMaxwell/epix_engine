@@ -201,14 +201,14 @@ TEST(ImageLoad, ReportsTypedFailuresAndLoadsRealFiles) {
     EXPECT_FALSE(image::to_string(failed.error()).empty());
 }
 
-// WebGPU has no three-channel format, so Bevy's `Image::from_dynamic` widens
-// `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building the image.
-// The loader must do the same: an image left in `RGB8`/`RGB16`/`RGB32F` has an
-// undefined texture format and can never reach the GPU.
+// WebGPU has no three-channel texture format, so Bevy's `Image::from_dynamic`
+// widens `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building the
+// image, and Epix's `Format` has no three-channel alternative either. A decoder
+// that returns three channels must therefore be widened before the `Image` is
+// created.
 TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     // A committed 4x2 colour-type-2 (truecolour RGB) PNG. Epix cannot produce
-    // such a file itself: its `Format` has no GPU-facing three-channel
-    // alternative, and `Image::save` refuses a format it cannot describe.
+    // such a file itself, because it has no three-channel image format.
     const auto rgb_path = std::filesystem::path("assets/tests/image/rgb_8.png");
     ASSERT_TRUE(std::filesystem::exists(rgb_path)) << rgb_path.string();
 
@@ -252,16 +252,20 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
 }
 
 // `Image::save` must not write a corrupt file when the image's format has no
-// channel description (Bevy always widens three-channel data, so it has no such
-// state at all).
+// channel description. With the three-channel formats gone (Bevy has no such
+// image format), the only way to reach that state is a descriptor with no pixel
+// format at all, which is what this asserts.
 TEST(ImageSave, RefusesAFormatWithoutAChannelDescription) {
-    const auto rgb = image::Image::create2d(2, 3, image::Format::RGB8);
-    EXPECT_EQ(rgb.format(), image::Format::Unknown);
+    auto unknown                      = image::Image::create2d(2, 3, image::Format::RGBA8);
+    unknown.texture_descriptor.format = wgpu::TextureFormat::eUndefined;
+    EXPECT_EQ(unknown.format(), image::Format::Unknown);
+    EXPECT_EQ(unknown.format_info().channels, 0u);
+
     const auto path = fixture_dir() / "core_loader_unknown_format.png";
     // Hermetic: a previous run may have left the file behind.
     std::filesystem::remove(path);
 
-    EXPECT_FALSE(image::Image::save(path, rgb).has_value());
+    EXPECT_FALSE(image::Image::save(path, unknown).has_value());
     EXPECT_FALSE(std::filesystem::exists(path));
 
     // A four-channel image still saves and reloads.

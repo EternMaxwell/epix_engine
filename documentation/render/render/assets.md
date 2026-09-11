@@ -174,6 +174,8 @@ Provided automatically.  Access GPU images in render systems via
 `Res<render::RenderAssets<image::Image>>`.
 
 `GPUImage` upload currently supports formats that map directly to WebGPU:
-Grey8, GreyAlpha8, RGBA8, Grey16, RGBA16, Grey32F, and RGBA32F. RGB8, RGB16,
-and RGB32F require conversion to an RGBA representation before GPU extraction.
+Grey8, GreyAlpha8, RGBA8, Grey16, RGBA16, Grey32F, and RGBA32F. Three-channel
+data has no `Format` alternative at all in either engine, so it is widened to
+four channels while the decoder builds the image (Bevy's `from_dynamic` does the
+same), and no unreachable conversion step exists at upload time.
 The upload creates one mip level and uses `DefaultImageSampler`.
