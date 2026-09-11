@@ -569,3 +569,246 @@ TEST(Core3dTransmissionTextures, RequiresStepsItemsPhasesAndSize) {
     ASSERT_TRUE(shared_texture);
     EXPECT_EQ(shared_texture->get().texture, ldr_texture->get().texture);
 }
+
+// C14: Bevy's prepass phase items are binned and share the lightmap-free key
+// pair with `AlphaMask3d` (`prepass/mod.rs:175-380`), and the two prepass
+// formats match `prepass/mod.rs:52-53`.
+TEST(Core3dPrepassPhases, MatchBevyBinnedItemContractsAndFormats) {
+    using namespace epix::core_graph::core_3d;
+    static_assert(phase::BinnedPhaseItem<Opaque3dPrepass>);
+    static_assert(phase::BinnedPhaseItem<AlphaMask3dPrepass>);
+    static_assert(phase::CachedRenderPipelinePhaseItem<Opaque3dPrepass>);
+    static_assert(phase::CachedRenderPipelinePhaseItem<AlphaMask3dPrepass>);
+    static_assert(std::same_as<Opaque3dPrepass::BatchSetKey, OpaqueNoLightmap3dBatchSetKey>);
+    static_assert(std::same_as<Opaque3dPrepass::BinKey, OpaqueNoLightmap3dBinKey>);
+    static_assert(std::same_as<AlphaMask3dPrepass::BatchSetKey, OpaqueNoLightmap3dBatchSetKey>);
+    static_assert(std::same_as<AlphaMask3dPrepass::BinKey, OpaqueNoLightmap3dBinKey>);
+
+    EXPECT_EQ(epix::core_graph::core_3d::NORMAL_PREPASS_FORMAT, wgpu::TextureFormat::eRGB10A2Unorm);
+    EXPECT_EQ(epix::core_graph::core_3d::MOTION_VECTOR_PREPASS_FORMAT, wgpu::TextureFormat::eRG16Float);
+}
+
+// C14: `extract_camera_prepass_phase` prepares both binned prepass phases only
+// for an active camera that carries a prepass component, and drops the phases of
+// a camera that carries none (`core_3d/mod.rs:721-729`). The system runs in the
+// render world's ExtractSchedule, so the whole render sub-app is built and
+// extracted exactly as the Core3dPlugin test does.
+TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::render::FrameCountPlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        RenderPlugin{}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    app.add_plugins(epix::core_graph::core_3d::Core3dPlugin{});
+
+    const auto spawn = [&app](bool active, bool depth_prepass, bool normal_prepass) {
+        ::epix::camera::Camera camera;
+        camera.is_active = active;
+        auto entity      = app.world_mut().spawn(::epix::camera::Camera3d{}, camera);
+        if (depth_prepass) entity.insert(epix::core_graph::core_3d::DepthPrepass{});
+        if (normal_prepass) entity.insert(epix::core_graph::core_3d::NormalPrepass{});
+        return entity.id();
+    };
+
+    const auto with_depth  = spawn(true, true, false);
+    const auto with_normal = spawn(true, false, true);
+    const auto none        = spawn(true, false, false);
+    const auto inactive    = spawn(false, true, true);
+
+    auto render_sub = app.take_sub_app(Render);
+    ASSERT_TRUE(render_sub);
+    render_sub->extract(app);
+    render_sub->resource_scope([](epix::ecs::Schedules& schedules, epix::ecs::World& world) {
+        schedules.schedule_mut(ExtractSchedule).apply_deferred(world);
+    });
+
+    const auto check = [&](Entity entity, bool expected) {
+        using namespace epix::core_graph::core_3d;
+        const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{entity}, std::nullopt, 0);
+        EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>().phases.contains(retained),
+                  expected);
+        EXPECT_EQ(render_sub->resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>().phases.contains(retained),
+                  expected);
+    };
+    check(with_depth, true);
+    check(with_normal, true);
+    // A camera with no prepass component gets no prepass phases at all.
+    check(none, false);
+    // An inactive camera is skipped before the prepass condition is even read.
+    check(inactive, false);
+
+    app.insert_sub_app(Render, std::move(render_sub));
+}
+
+// C14: `prepare_prepass_textures` allocates exactly the textures the requested
+// prepass components need, with Bevy's formats, sample counts, and usages, and
+// removes the component for a view that is in no prepass phase
+// (`core_3d/mod.rs:1033-1221`).
+TEST(Core3dPrepassTextures, AllocatesOnlyRequestedTexturesWithBevyFormats) {
+    using namespace epix::core_graph::core_3d;
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    auto& render_app = app.get_sub_app_mut(Render)->get();
+    auto& world      = render_app.world_mut();
+    init_core3d_test_resources(world);
+    world.init_resource<batching::GpuPreprocessingSupport>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
+    render_app.add_systems(epix::app::Update, into(prepare_prepass_textures));
+
+    const ::epix::camera::NormalizedRenderTarget target{::epix::camera::ManualTextureViewHandle{77}};
+
+    /** @brief Spawn a view with the requested prepass components and membership. */
+    const auto spawn = [&](std::optional<glm::uvec2> size,
+                           view::Msaa msaa,
+                           bool in_phase,
+                           bool depth_prepass,
+                           bool normal_prepass,
+                           bool motion_vectors) {
+        auto entity         = world.spawn();
+        const auto id       = entity.id();
+        const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{id}, std::nullopt, 0);
+        entity.insert(camera::ExtractedCamera{.target = target, .physical_target_size = size},
+                      view::ExtractedView{.retained_view_entity = retained}, msaa);
+        if (depth_prepass) entity.insert(DepthPrepass{});
+        if (normal_prepass) entity.insert(NormalPrepass{});
+        if (motion_vectors) entity.insert(MotionVectorPrepass{});
+        if (in_phase) {
+            world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>().prepare_for_new_frame(
+                retained, batching::GpuPreprocessingMode::None);
+        }
+        return Core3dTestView{.entity = id, .retained = retained};
+    };
+
+    const auto all_three = spawn(glm::uvec2{64, 48}, view::Msaa::Off, true, true, true, true);
+    const auto depth_only = spawn(glm::uvec2{64, 48}, view::Msaa::Off, true, true, false, false);
+    const auto sampled    = spawn(glm::uvec2{64, 48}, view::Msaa::Sample4, true, true, false, false);
+    const auto not_in_phase = spawn(glm::uvec2{64, 48}, view::Msaa::Off, false, true, true, true);
+    const auto no_size      = spawn(std::nullopt, view::Msaa::Off, true, true, true, true);
+    // A second view on the same target and sample count, spawned before the run
+    // so both are served by one frame's cache.
+    const auto shared_same_frame = spawn(glm::uvec2{64, 48}, view::Msaa::Off, true, true, false, false);
+
+    render_app.run_schedule(epix::app::Update);
+
+    const auto all_textures = world.entity(all_three.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(all_textures);
+    EXPECT_EQ(all_textures->get().size.width, 64u);
+    EXPECT_EQ(all_textures->get().size.height, 48u);
+    ASSERT_TRUE(all_textures->get().depth);
+    ASSERT_TRUE(all_textures->get().normal);
+    ASSERT_TRUE(all_textures->get().motion_vectors);
+    // C15 owns the deferred textures: this view carries no `DeferredPrepass`.
+    EXPECT_FALSE(all_textures->get().deferred);
+    EXPECT_FALSE(all_textures->get().deferred_lighting_pass_id);
+    EXPECT_EQ(all_textures->get().depth->texture.texture.getFormat(), CORE_3D_DEPTH_FORMAT);
+    EXPECT_EQ(all_textures->get().normal->texture.texture.getFormat(), NORMAL_PREPASS_FORMAT);
+    EXPECT_EQ(all_textures->get().motion_vectors->texture.texture.getFormat(), MOTION_VECTOR_PREPASS_FORMAT);
+    // The prepass depth texture is a sampleable copy destination.
+    EXPECT_EQ(all_textures->get().depth->texture.texture.getUsage(),
+              wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eRenderAttachment |
+                  wgpu::TextureUsage::eTextureBinding);
+    EXPECT_TRUE(all_textures->get().depth_view().has_value());
+    EXPECT_TRUE(all_textures->get().normal_view().has_value());
+    EXPECT_TRUE(all_textures->get().motion_vectors_view().has_value());
+    EXPECT_FALSE(all_textures->get().deferred_view().has_value());
+
+    // Only the requested textures exist.
+    const auto depth_only_textures = world.entity(depth_only.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(depth_only_textures);
+    EXPECT_TRUE(depth_only_textures->get().depth);
+    EXPECT_FALSE(depth_only_textures->get().normal);
+    EXPECT_FALSE(depth_only_textures->get().motion_vectors);
+
+    // MSAA is honoured on the prepass textures.
+    const auto sampled_textures = world.entity(sampled.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(sampled_textures);
+    ASSERT_TRUE(sampled_textures->get().depth);
+    EXPECT_EQ(sampled_textures->get().depth->texture.texture.getSampleCount(), 4u);
+
+    // A view in no prepass phase loses the component, and a view without a
+    // physical target size is skipped.
+    EXPECT_FALSE(world.entity(not_in_phase.entity).contains<ViewPrepassTextures>());
+    EXPECT_FALSE(world.entity(no_size.entity).contains<ViewPrepassTextures>());
+
+    // Views sharing an output target and sample count share one cached texture
+    // within a frame.
+    const auto shared_textures = world.entity(shared_same_frame.entity).get<ViewPrepassTextures>();
+    ASSERT_TRUE(shared_textures);
+    ASSERT_TRUE(shared_textures->get().depth);
+    EXPECT_EQ(shared_textures->get().depth->texture.texture, depth_only_textures->get().depth->texture.texture);
+}
+
+// C13-D5, closed by C14: a view with `DepthPrepass` adds COPY_SRC to the shared
+// depth texture's usage so the prepass node can copy it
+// (`prepass/node.rs:244-249`).
+TEST(Core3dPrepassTextures, DepthPrepassAddsCopySrcToTheViewDepthTexture) {
+    using namespace epix::core_graph::core_3d;
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    auto& render_app = app.get_sub_app_mut(Render)->get();
+    auto& world      = render_app.world_mut();
+    init_core3d_test_resources(world);
+    render_app.add_systems(epix::app::Update, into(prepare_core_3d_depth_textures));
+
+    const ::epix::camera::NormalizedRenderTarget target{::epix::camera::ManualTextureViewHandle{91}};
+    ::epix::camera::Camera3d camera_3d;
+
+    const auto plain = spawn_core3d_view(world, camera_3d, target, glm::uvec2{32, 16}, view::Msaa::Off, true, true,
+                                         true, true);
+    const auto with_prepass = [&] {
+        auto entity         = world.spawn();
+        const auto id       = entity.id();
+        const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{id}, std::nullopt, 0);
+        entity.insert(camera::ExtractedCamera{.target = target, .physical_target_size = glm::uvec2{32, 16}},
+                      view::ExtractedView{.retained_view_entity = retained}, view::Msaa::Off, camera_3d, DepthPrepass{});
+        world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3d>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewBinnedRenderPhases<AlphaMask3d>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewSortedRenderPhases<Transmissive3d>>().insert_or_clear(retained);
+        world.resource_mut<phase::ViewSortedRenderPhases<Transparent3d>>().insert_or_clear(retained);
+        return Core3dTestView{.entity = id, .retained = retained};
+    }();
+
+    render_app.run_schedule(epix::app::Update);
+
+    const auto plain_depth   = world.entity(plain.entity).get<view::ViewDepthTexture>();
+    const auto prepass_depth = world.entity(with_prepass.entity).get<view::ViewDepthTexture>();
+    ASSERT_TRUE(plain_depth);
+    ASSERT_TRUE(prepass_depth);
+    // The two views share one texture because they share an output target and
+    // sample count, so the union of their requests carries COPY_SRC.
+    EXPECT_EQ(plain_depth->get().texture, prepass_depth->get().texture);
+    EXPECT_TRUE(static_cast<bool>(static_cast<wgpu::TextureUsage>(
+        static_cast<std::uint32_t>(plain_depth->get().texture.getUsage()) &
+        static_cast<std::uint32_t>(wgpu::TextureUsage::eCopySrc))));
+}
