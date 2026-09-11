@@ -654,3 +654,61 @@ TEST(ImageLoaderSettings, DefaultsMatchBevy) {
                                                                                 epix::assets::RENDER_WORLD));
     EXPECT_FALSE(settings.array_layout.has_value());
 }
+
+// Bevy `BevyDefault for TextureFormat` (`bevy_image/src/image.rs`): the default
+// texture format is `Rgba8UnormSrgb`, which is what a non-HDR camera target uses.
+TEST(BevyDefault, TextureFormatMatchesBevy) {
+    static_assert(epix::image::BevyDefault<wgpu::TextureFormat>);
+    EXPECT_EQ(epix::image::bevy_default<wgpu::TextureFormat>(), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    // The default is the sRGB variant, so it is itself the sRGB view format of
+    // the linear format rather than a format with an sRGB counterpart.
+    EXPECT_EQ(epix::image::srgb_view_formats(wgpu::TextureFormat::eRGBA8Unorm).front(),
+              epix::image::bevy_default<wgpu::TextureFormat>());
+    EXPECT_EQ(epix::image::srgb_view_formats(epix::image::bevy_default<wgpu::TextureFormat>()).size(), 0u);
+}
+
+// Bevy `TextureSrgbViewFormats for TextureFormat` (`bevy_image/src/image.rs`):
+// exactly the formats with an `add_srgb_suffix` counterpart answer with one
+// format, everything else with none. Bevy models the ASTC entries as
+// `Astc { block, channel }` struct variants there; Epix's wgpu enum is flat, so
+// every ASTC block appears as one `Unorm`/`UnormSrgb` pair.
+TEST(TextureSrgbViewFormats, FormatTableMatchesBevy) {
+    const std::array unorm_formats{
+        wgpu::TextureFormat::eRGBA8Unorm,      wgpu::TextureFormat::eBGRA8Unorm,
+        wgpu::TextureFormat::eBC1RGBAUnorm,    wgpu::TextureFormat::eBC2RGBAUnorm,
+        wgpu::TextureFormat::eBC3RGBAUnorm,    wgpu::TextureFormat::eBC7RGBAUnorm,
+        wgpu::TextureFormat::eETC2RGB8Unorm,   wgpu::TextureFormat::eETC2RGB8A1Unorm,
+        wgpu::TextureFormat::eETC2RGBA8Unorm,  wgpu::TextureFormat::eASTC4x4Unorm,
+        wgpu::TextureFormat::eASTC5x4Unorm,    wgpu::TextureFormat::eASTC5x5Unorm,
+        wgpu::TextureFormat::eASTC6x5Unorm,    wgpu::TextureFormat::eASTC6x6Unorm,
+        wgpu::TextureFormat::eASTC8x5Unorm,    wgpu::TextureFormat::eASTC8x6Unorm,
+        wgpu::TextureFormat::eASTC8x8Unorm,    wgpu::TextureFormat::eASTC10x5Unorm,
+        wgpu::TextureFormat::eASTC10x6Unorm,   wgpu::TextureFormat::eASTC10x8Unorm,
+        wgpu::TextureFormat::eASTC10x10Unorm,  wgpu::TextureFormat::eASTC12x10Unorm,
+        wgpu::TextureFormat::eASTC12x12Unorm,
+    };
+    // Nine flat formats plus the fourteen ASTC blocks.
+    EXPECT_EQ(unorm_formats.size(), 23u);
+
+    for (const auto format : unorm_formats) {
+        const auto srgb = epix::image::srgb_view_formats(format);
+        ASSERT_EQ(srgb.size(), 1u) << "format=" << static_cast<int>(format);
+        // The counterpart is the sRGB variant of the same kind, and an sRGB
+        // format has no further sRGB variant, which is what Bevy's `_ => &[]`
+        // arm gives.
+        EXPECT_EQ(epix::image::srgb_view_formats(srgb.front()).size(), 0u);
+    }
+    EXPECT_EQ(epix::image::srgb_view_formats(wgpu::TextureFormat::eRGBA8Unorm).front(),
+              wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(epix::image::srgb_view_formats(wgpu::TextureFormat::eBGRA8Unorm).front(),
+              wgpu::TextureFormat::eBGRA8UnormSrgb);
+    EXPECT_EQ(epix::image::srgb_view_formats(wgpu::TextureFormat::eASTC12x12Unorm).front(),
+              wgpu::TextureFormat::eASTC12x12UnormSrgb);
+
+    // Formats without an sRGB counterpart yield an empty slice.
+    for (const auto format : {wgpu::TextureFormat::eR8Unorm, wgpu::TextureFormat::eRGBA8Uint,
+                              wgpu::TextureFormat::eRGBA16Float, wgpu::TextureFormat::eDepth32Float,
+                              wgpu::TextureFormat::eDepth16Unorm, wgpu::TextureFormat::eUndefined}) {
+        EXPECT_EQ(epix::image::srgb_view_formats(format).size(), 0u) << "format=" << static_cast<int>(format);
+    }
+}

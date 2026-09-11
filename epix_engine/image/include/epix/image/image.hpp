@@ -356,6 +356,38 @@ EPIX_EXPORT struct TextureError {
 EPIX_EXPORT std::string to_string(const TextureError& error);
 EPIX_EXPORT std::exception_ptr to_exception_ptr(const TextureError& error);
 
+/** @brief Customization point for Bevy's `BevyDefault` trait
+ * (`bevy_image/src/image.rs`). */
+template <typename T>
+struct BevyDefaultImpl;
+
+/** @brief Satisfied when `BevyDefaultImpl<T>` provides Bevy's `bevy_default`. */
+template <typename T>
+concept BevyDefault = requires { { BevyDefaultImpl<T>::bevy_default() } -> std::same_as<T>; };
+
+/** @brief The default value for a type (Bevy `BevyDefault::bevy_default`). */
+template <BevyDefault T>
+constexpr T bevy_default() noexcept {
+    return BevyDefaultImpl<T>::bevy_default();
+}
+
+/** @brief Bevy's default texture format, `Rgba8UnormSrgb`, which is the format a
+ * camera target uses without HDR. */
+template <>
+struct BevyDefaultImpl<wgpu::TextureFormat> {
+    static constexpr wgpu::TextureFormat bevy_default() noexcept { return wgpu::TextureFormat::eRGBA8UnormSrgb; }
+};
+
+static_assert(BevyDefault<wgpu::TextureFormat>);
+static_assert(bevy_default<wgpu::TextureFormat>() == wgpu::TextureFormat::eRGBA8UnormSrgb);
+
+/** @brief Returns the sRGB view formats of a texture format (Bevy
+ * `TextureSrgbViewFormats::srgb_view_formats`).
+ *
+ * Covers the same set as `TextureFormat::add_srgb_suffix`; a format without an
+ * sRGB variant yields an empty span. */
+EPIX_EXPORT std::span<const wgpu::TextureFormat> srgb_view_formats(wgpu::TextureFormat format) noexcept;
+
 template <typename T>
 struct span_type {
     using span = decltype(std::span(std::declval<T>()));

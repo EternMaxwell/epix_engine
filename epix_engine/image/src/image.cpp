@@ -1187,4 +1187,108 @@ void ImagePlugin::attach(epix::app::App& app) {
     (void)images.insert(TRANSPARENT_IMAGE_HANDLE.id(), Image::transparent());
 }
 
+std::span<const wgpu::TextureFormat> srgb_view_formats(wgpu::TextureFormat format) noexcept {
+    // Bevy's `TextureSrgbViewFormats for TextureFormat`
+    // (`bevy_image/src/image.rs`): every arm has exactly one sRGB counterpart.
+    // Bevy models the ASTC entries as `Astc { block, channel }` struct variants
+    // where Epix's wgpu enum is flat, so each becomes one `Unorm`/`UnormSrgb`
+    // pair here. Every other format yields an empty slice.
+    switch (format) {
+        case wgpu::TextureFormat::eRGBA8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eRGBA8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eBGRA8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eBGRA8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eBC1RGBAUnorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eBC1RGBAUnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eBC2RGBAUnorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eBC2RGBAUnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eBC3RGBAUnorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eBC3RGBAUnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eBC7RGBAUnorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eBC7RGBAUnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eETC2RGB8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eETC2RGB8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eETC2RGB8A1Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eETC2RGB8A1UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eETC2RGBA8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eETC2RGBA8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC4x4Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC4x4UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC5x4Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC5x4UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC5x5Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC5x5UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC6x5Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC6x5UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC6x6Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC6x6UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC8x5Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC8x5UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC8x6Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC8x6UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC8x8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC8x8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC10x5Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC10x5UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC10x6Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC10x6UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC10x8Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC10x8UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC10x10Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC10x10UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC12x10Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC12x10UnormSrgb};
+            return kFormats;
+        }
+        case wgpu::TextureFormat::eASTC12x12Unorm: {
+            static constexpr std::array kFormats{wgpu::TextureFormat::eASTC12x12UnormSrgb};
+            return kFormats;
+        }
+        default:
+            return {};
+    }
+}
+
 }  // namespace epix::image
