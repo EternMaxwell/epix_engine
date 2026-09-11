@@ -316,13 +316,15 @@ static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
                                 .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
     device.getQueue().writeBuffer(pipeline.vertex_buffer, 0, vertices, sizeof(vertices));
     VertexState vertex{.shader = handles.vertex_shader, .entry_point = std::string("screenshotVert")};
-    vertex.buffers.push_back(
-        wgpu::VertexBufferLayout()
-            .setArrayStride(sizeof(float) * 2)
-            .setStepMode(wgpu::VertexStepMode::eVertex)
-            .setAttributes(std::array{
-                wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(wgpu::VertexFormat::eFloat32x2),
-            }));
+    vertex.buffers.push_back(::epix::mesh::VertexBufferLayout()
+                                 .set_array_stride(sizeof(float) * 2)
+                                 .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                 .set_attributes(std::array{
+                                     ::epix::mesh::VertexAttribute()
+                                         .set_offset(0)
+                                         .set_format(wgpu::VertexFormat::eFloat32x2)
+                                         .set_shader_location(0),
+                                 }));
     FragmentState fragment{.shader = handles.fragment_shader, .entry_point = std::string("screenshotFrag")};
     fragment.add_target(wgpu::ColorTargetState().setFormat(format).setWriteMask(wgpu::ColorWriteMask::eAll));
     pipeline.pipeline_id = pipeline_server.queue_render_pipeline(RenderPipelineDescriptor{

@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <expected>
 #include <future>
 #include <ranges>
 #include <thread>
@@ -12,6 +13,7 @@
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <type_traits>
@@ -91,6 +93,146 @@ TEST(SpecializedPipelines, CallThePipelineInstance) {
     EXPECT_EQ(compute_pipeline.specialize(4).label, "24");
     [[maybe_unused]] SpecializedRenderPipelines<InstanceSpecializedRenderPipeline> render_cache;
     [[maybe_unused]] SpecializedComputePipelines<InstanceSpecializedComputePipeline> compute_cache;
+}
+
+/** @brief A mesh specializer whose produced vertex layout depends only on the
+ * key, so mesh layouts that differ can still deduplicate to one pipeline. */
+struct InstanceSpecializedMeshPipeline {
+    using Key = std::uint32_t;
+
+    std::uint32_t marker = 0;
+    /** @brief When true, specialization reports a missing vertex attribute. */
+    bool fail = false;
+    /** @brief When true, specialization produces no vertex buffer at all. */
+    bool no_vertex_buffer = false;
+
+    std::expected<RenderPipelineDescriptor, SpecializedMeshPipelineError> specialize(
+        Key key, const ::epix::mesh::MeshVertexBufferLayoutRef&) const {
+        if (fail) {
+            return std::unexpected(SpecializedMeshPipelineError{::epix::mesh::MissingVertexAttributeError{
+                .pipeline_type = std::nullopt,
+                .id            = ::epix::mesh::MeshVertexAttributeId{7},
+                .name          = "Vertex_Position",
+            }});
+        }
+        const auto shader =
+            epix::assets::Handle<epix::shader::Shader>{epix::assets::AssetId<epix::shader::Shader>::invalid()};
+        RenderPipelineDescriptor descriptor{
+            .label  = std::to_string(marker + key),
+            .vertex = VertexState{.shader = shader},
+        };
+        if (!no_vertex_buffer) {
+            descriptor.vertex.buffers.push_back(::epix::mesh::VertexBufferLayout()
+                                                    .set_array_stride(key)
+                                                    .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                                    .set_attributes(std::array{
+                                                        ::epix::mesh::VertexAttribute()
+                                                            .set_offset(0)
+                                                            .set_format(wgpu::VertexFormat::eFloat32x3)
+                                                            .set_shader_location(0),
+                                                    }));
+        }
+        return descriptor;
+    }
+};
+
+static_assert(SpecializedMeshPipeline<InstanceSpecializedMeshPipeline>);
+
+namespace {
+/** @brief Intern two mesh vertex buffer layouts that differ structurally. */
+std::pair<::epix::mesh::MeshVertexBufferLayoutRef, ::epix::mesh::MeshVertexBufferLayoutRef> two_mesh_layouts() {
+    ::epix::mesh::MeshVertexBufferLayouts layouts;
+    const auto position_only =
+        layouts.insert(::epix::mesh::MeshVertexBufferLayout({::epix::mesh::MeshVertexAttributeId{0}},
+                                                            ::epix::mesh::VertexBufferLayout()
+                                                                .set_array_stride(sizeof(float) * 3)
+                                                                .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                                                .set_attributes(std::array{
+                                                                    ::epix::mesh::VertexAttribute()
+                                                                        .set_offset(0)
+                                                                        .set_format(wgpu::VertexFormat::eFloat32x3)
+                                                                        .set_shader_location(0),
+                                                                })));
+    const auto position_and_uv =
+        layouts.insert(::epix::mesh::MeshVertexBufferLayout({::epix::mesh::MeshVertexAttributeId{0},
+                                                             ::epix::mesh::MeshVertexAttributeId{1}},
+                                                            ::epix::mesh::VertexBufferLayout()
+                                                                .set_array_stride(sizeof(float) * 5)
+                                                                .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                                                .set_attributes(std::array{
+                                                                    ::epix::mesh::VertexAttribute()
+                                                                        .set_offset(0)
+                                                                        .set_format(wgpu::VertexFormat::eFloat32x3)
+                                                                        .set_shader_location(0),
+                                                                    ::epix::mesh::VertexAttribute()
+                                                                        .set_offset(sizeof(float) * 3)
+                                                                        .set_format(wgpu::VertexFormat::eFloat32x2)
+                                                                        .set_shader_location(1),
+                                                                })));
+    return {position_only, position_and_uv};
+}
+}  // namespace
+
+// Bevy's `SpecializedMeshPipelines` keeps two caches: a fast one keyed by the
+// interned mesh layout plus the key, and a deduplicating one keyed by the
+// *resulting* `VertexBufferLayout`, so different mesh layouts that produce the
+// same final layout share one compiled pipeline
+// (`pipeline_specializer.rs:151-252`).
+TEST(SpecializedPipelines, MeshPipelinesDeduplicateByProducedVertexLayout) {
+    PipelineServer server{wgpu::Device{}};
+    SpecializedMeshPipelines<InstanceSpecializedMeshPipeline> cache;
+    const InstanceSpecializedMeshPipeline specializer{.marker = 100};
+    const auto [position_only, position_and_uv] = two_mesh_layouts();
+    ASSERT_NE(position_only.value.get(), position_and_uv.value.get());
+
+    const auto first = cache.specialize(server, specializer, 1u, position_only);
+    ASSERT_TRUE(first.has_value());
+
+    // Same key and same interned layout: the fast cache returns the same id.
+    const auto repeat = cache.specialize(server, specializer, 1u, position_only);
+    ASSERT_TRUE(repeat.has_value());
+    EXPECT_EQ(*repeat, *first);
+
+    // A structurally different mesh layout that specializes to the same final
+    // vertex layout shares the pipeline.
+    const auto deduplicated = cache.specialize(server, specializer, 1u, position_and_uv);
+    ASSERT_TRUE(deduplicated.has_value());
+    EXPECT_EQ(*deduplicated, *first);
+
+    // A different key is a different pipeline.
+    const auto other_key = cache.specialize(server, specializer, 2u, position_only);
+    ASSERT_TRUE(other_key.has_value());
+    EXPECT_NE(*other_key, *first);
+}
+
+// Bevy annotates the returned error with `type_name::<S>()` so the message names
+// the pipeline whose attribute request failed
+// (`pipeline_specializer.rs:209-217`).
+TEST(SpecializedPipelines, MeshPipelineErrorsNameTheSpecializer) {
+    PipelineServer server{wgpu::Device{}};
+    SpecializedMeshPipelines<InstanceSpecializedMeshPipeline> cache;
+    const auto [layout, _] = two_mesh_layouts();
+
+    const auto failed = cache.specialize(server, InstanceSpecializedMeshPipeline{.fail = true}, 1u, layout);
+    ASSERT_FALSE(failed.has_value());
+    const auto& missing = std::get<::epix::mesh::MissingVertexAttributeError>(failed.error());
+    ASSERT_TRUE(missing.pipeline_type.has_value());
+    EXPECT_EQ(*missing.pipeline_type, epix::meta::type_id<InstanceSpecializedMeshPipeline>().short_name());
+    EXPECT_EQ(missing.id.value, 7u);
+    EXPECT_EQ(missing.name, "Vertex_Position");
+    EXPECT_TRUE(cache.mesh_layout_cache.empty());
+}
+
+// Bevy indexes `descriptor.vertex.buffers[0]` and therefore panics when a
+// specializer produces no vertex buffer; Epix raises its typed exception for the
+// same condition (the project's panic-to-exception convention).
+TEST(SpecializedPipelines, MeshPipelineRequiresOneVertexBuffer) {
+    PipelineServer server{wgpu::Device{}};
+    SpecializedMeshPipelines<InstanceSpecializedMeshPipeline> cache;
+    const auto [layout, _] = two_mesh_layouts();
+    EXPECT_THROW(
+        (void)cache.specialize(server, InstanceSpecializedMeshPipeline{.no_vertex_buffer = true}, 1u, layout),
+        std::logic_error);
 }
 
 template <typename T>

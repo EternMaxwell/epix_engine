@@ -257,10 +257,29 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
             }
             pipelineDesc.setLabel(std::string_view(descriptor.label));
             pipelineDesc.setLayout(layout);
+            // The descriptor carries `bevy_mesh::VertexBufferLayout` values, as
+            // Bevy's `VertexState` does; wgpu needs its own layout type, so each
+            // one is converted here with its attribute list.
+            std::vector<wgpu::VertexBufferLayout> wgpu_vertex_buffers;
+            wgpu_vertex_buffers.reserve(descriptor.vertex.buffers.size());
+            for (const auto& buffer : descriptor.vertex.buffers) {
+                std::vector<wgpu::VertexAttribute> attributes;
+                attributes.reserve(buffer.attributes.size());
+                for (const auto& attribute : buffer.attributes) {
+                    attributes.push_back(wgpu::VertexAttribute()
+                                             .setFormat(attribute.format)
+                                             .setOffset(attribute.offset)
+                                             .setShaderLocation(attribute.shader_location));
+                }
+                wgpu_vertex_buffers.push_back(wgpu::VertexBufferLayout()
+                                                  .setArrayStride(buffer.array_stride)
+                                                  .setStepMode(buffer.step_mode)
+                                                  .setAttributes(attributes));
+            }
             pipelineDesc.setVertex(
                 wgpu::VertexState()
                     .setModule(vertex_module)
-                    .setBuffers(descriptor.vertex.buffers)
+                    .setBuffers(wgpu_vertex_buffers)
                     .setEntryPoint(descriptor.vertex.entry_point.transform([](auto&& s) { return std::string_view(s); })
                                        .value_or(std::string_view("main"))));
             pipelineDesc.setPrimitive(descriptor.primitive);

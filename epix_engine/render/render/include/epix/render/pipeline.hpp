@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/shader.hpp>
 #include <optional>
 #include <ranges>
@@ -65,8 +66,10 @@ EPIX_EXPORT struct VertexState {
     std::vector<shader::ShaderDefVal> shader_defs;
     /** @brief Optional entry-point function name (defaults to "vs_main"). */
     std::optional<std::string> entry_point;
-    /** @brief Vertex buffer layouts describing attribute bindings. */
-    std::vector<wgpu::VertexBufferLayout> buffers;
+    /** @brief Vertex buffer layouts describing attribute bindings (Bevy
+     * `VertexState::buffers`, whose element type is `bevy_mesh::VertexBufferLayout`,
+     * not the wgpu type). */
+    std::vector<::epix::mesh::VertexBufferLayout> buffers;
 
     /** @brief Set the vertex shader handle. */
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {
@@ -86,16 +89,16 @@ EPIX_EXPORT struct VertexState {
         return std::forward<decltype(self)>(self);
     }
     /** @brief Set a vertex buffer layout at a specific binding index. */
-    auto&& set_buffer(this auto&& self, std::uint32_t index, wgpu::VertexBufferLayout layout) {
+    auto&& set_buffer(this auto&& self, std::uint32_t index, ::epix::mesh::VertexBufferLayout layout) {
         self.buffers.resize(std::max(self.buffers.size(), static_cast<std::size_t>(index + 1)));
         self.buffers[index] = std::move(layout);
         return std::forward<decltype(self)>(self);
     }
     /** @brief Set all vertex buffer layouts from a range. */
     auto&& set_buffers(this auto&& self, std::ranges::range auto&& buffers)
-        requires std::convertible_to<std::ranges::range_value_t<decltype(buffers)>, wgpu::VertexBufferLayout>
+        requires std::convertible_to<std::ranges::range_value_t<decltype(buffers)>, ::epix::mesh::VertexBufferLayout>
     {
-        self.buffers = std::ranges::to<std::vector<wgpu::VertexBufferLayout>>(std::forward<decltype(buffers)>(buffers));
+        self.buffers = std::ranges::to<std::vector<::epix::mesh::VertexBufferLayout>>(std::forward<decltype(buffers)>(buffers));
         return std::forward<decltype(self)>(self);
     }
 };

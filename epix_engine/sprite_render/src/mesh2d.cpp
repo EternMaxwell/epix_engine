@@ -477,20 +477,10 @@ struct Mesh2dPipelineCache {
         }
 
         const auto& layout = *specialized_layout;
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers;
-        if (!layout.attributes.empty()) {
-            const auto attributes = std::ranges::to<std::vector<wgpu::VertexAttribute>>(
-                std::views::transform(layout.attributes, [](const VertexAttribute& attribute) {
-                    return wgpu::VertexAttribute()
-                        .setShaderLocation(attribute.shader_location)
-                        .setFormat(attribute.format)
-                        .setOffset(attribute.offset);
-                }));
-            vertex_buffers.push_back(wgpu::VertexBufferLayout()
-                                         .setArrayStride(layout.array_stride)
-                                         .setStepMode(layout.step_mode)
-                                         .setAttributes(attributes));
-        }
+        // `VertexState::buffers` holds mesh vertex-buffer layouts, exactly as
+        // Bevy's does, so the specialized layout is used directly.
+        std::vector<mesh::VertexBufferLayout> vertex_buffers;
+        if (!layout.attributes.empty()) vertex_buffers.push_back(layout);
 
         render::VertexState vertex_state{
             .shader = [&]() -> assets::Handle<shader::Shader> {

@@ -1213,12 +1213,14 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
         }
         if (fmt != wgpu::TextureFormat::eUndefined) {
             VertexState vs{.shader = handles->blit_vert, .entry_point = std::string("blitVert")};
-            vs.buffers.push_back(wgpu::VertexBufferLayout()
-                                     .setArrayStride(sizeof(float) * 2)
-                                     .setStepMode(wgpu::VertexStepMode::eVertex)
-                                     .setAttributes(std::array{
-                                         wgpu::VertexAttribute().setShaderLocation(0).setOffset(0).setFormat(
-                                             wgpu::VertexFormat::eFloat32x2),
+            vs.buffers.push_back(::epix::mesh::VertexBufferLayout()
+                                     .set_array_stride(sizeof(float) * 2)
+                                     .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                     .set_attributes(std::array{
+                                         ::epix::mesh::VertexAttribute()
+                                             .set_shader_location(0)
+                                             .set_offset(0)
+                                             .set_format(wgpu::VertexFormat::eFloat32x2),
                                      }));
             FragmentState fs{.shader = handles->blit_frag, .entry_point = std::string("blitFrag")};
             fs.add_target(wgpu::ColorTargetState().setFormat(fmt).setWriteMask(wgpu::ColorWriteMask::eAll));

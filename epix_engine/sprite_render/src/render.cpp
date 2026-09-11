@@ -163,22 +163,28 @@ struct SpritePipelineCache {
             return it->second;
         }
 
-        std::vector<wgpu::VertexBufferLayout> vertex_buffers;
+        // `VertexState::buffers` holds mesh vertex-buffer layouts, exactly as
+        // Bevy's does.
+        std::vector<::epix::mesh::VertexBufferLayout> vertex_buffers;
         vertex_buffers.reserve(2);
-        vertex_buffers.push_back(
-            wgpu::VertexBufferLayout()
-                .setArrayStride(sizeof(glm::vec2))
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(0).setFormat(wgpu::VertexFormat::eFloat32x2).setOffset(0),
-                }));
-        vertex_buffers.push_back(
-            wgpu::VertexBufferLayout()
-                .setArrayStride(sizeof(glm::vec2))
-                .setStepMode(wgpu::VertexStepMode::eVertex)
-                .setAttributes(std::array{
-                    wgpu::VertexAttribute().setShaderLocation(1).setFormat(wgpu::VertexFormat::eFloat32x2).setOffset(0),
-                }));
+        vertex_buffers.push_back(::epix::mesh::VertexBufferLayout()
+                                     .set_array_stride(sizeof(glm::vec2))
+                                     .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                     .set_attributes(std::array{
+                                         ::epix::mesh::VertexAttribute()
+                                             .set_offset(0)
+                                             .set_format(wgpu::VertexFormat::eFloat32x2)
+                                             .set_shader_location(0),
+                                     }));
+        vertex_buffers.push_back(::epix::mesh::VertexBufferLayout()
+                                     .set_array_stride(sizeof(glm::vec2))
+                                     .set_step_mode(wgpu::VertexStepMode::eVertex)
+                                     .set_attributes(std::array{
+                                         ::epix::mesh::VertexAttribute()
+                                             .set_offset(0)
+                                             .set_format(wgpu::VertexFormat::eFloat32x2)
+                                             .set_shader_location(1),
+                                     }));
 
         render::VertexState vertex_state{.shader = vertex_shader};
         vertex_state.set_buffers(vertex_buffers);

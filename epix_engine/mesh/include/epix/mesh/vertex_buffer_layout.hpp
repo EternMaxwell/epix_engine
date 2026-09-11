@@ -5,6 +5,8 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <compare>
+#include <concepts>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <functional>
@@ -14,6 +16,7 @@
 #include <ranges>
 #include <span>
 #include <string_view>
+#include <type_traits>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -35,6 +38,22 @@ struct VertexAttribute {
     std::uint32_t shader_location = 0;
 
     bool operator==(const VertexAttribute&) const noexcept = default;
+
+    /** @brief Set the byte offset of this attribute within the vertex buffer. */
+    auto&& set_offset(this auto&& self, std::uint64_t value) {
+        self.offset = value;
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the attribute's format. */
+    auto&& set_format(this auto&& self, wgpu::VertexFormat value) {
+        self.format = value;
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the shader location this attribute binds to. */
+    auto&& set_shader_location(this auto&& self, std::uint32_t value) {
+        self.shader_location = value;
+        return std::forward<decltype(self)>(self);
+    }
 };
 
 /** @brief Pipeline request for a mesh attribute at a shader location. */
@@ -60,6 +79,24 @@ struct VertexBufferLayout {
 
     bool operator==(const VertexBufferLayout& other) const noexcept {
         return array_stride == other.array_stride && step_mode == other.step_mode && attributes == other.attributes;
+    }
+
+    /** @brief Set the byte stride between consecutive vertices. */
+    auto&& set_array_stride(this auto&& self, std::uint64_t value) {
+        self.array_stride = value;
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set whether the buffer advances per vertex or per instance. */
+    auto&& set_step_mode(this auto&& self, wgpu::VertexStepMode value) {
+        self.step_mode = value;
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Set the attribute list from a range of `VertexAttribute`. */
+    auto&& set_attributes(this auto&& self, std::ranges::range auto&& values)
+        requires std::convertible_to<std::ranges::range_value_t<decltype(values)>, VertexAttribute>
+    {
+        self.attributes = std::ranges::to<std::vector<VertexAttribute>>(std::forward<decltype(values)>(values));
+        return std::forward<decltype(self)>(self);
     }
 };
 
@@ -198,5 +235,41 @@ template <>
 struct std::hash<epix::mesh::MeshVertexBufferLayoutRef> {
     std::size_t operator()(const epix::mesh::MeshVertexBufferLayoutRef& value) const noexcept {
         return std::hash<const epix::mesh::MeshVertexBufferLayout*>{}(value.value.get());
+    }
+};
+
+/** @brief Hash for `VertexAttribute` (Bevy derives `Hash` on
+ * `bevy_mesh::vertex::VertexAttribute`). */
+template <>
+struct std::hash<epix::mesh::VertexAttribute> {
+    std::size_t operator()(const epix::mesh::VertexAttribute& value) const noexcept {
+        std::size_t hash = std::hash<std::uint64_t>{}(value.offset);
+        const auto combine = [&hash](std::size_t part) {
+            hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        };
+        combine(std::hash<std::underlying_type_t<wgpu::VertexFormat>>{}(
+            static_cast<std::underlying_type_t<wgpu::VertexFormat>>(value.format)));
+        combine(std::hash<std::uint32_t>{}(value.shader_location));
+        return hash;
+    }
+};
+
+/** @brief Hash for `VertexBufferLayout` (Bevy derives `Hash` on
+ * `bevy_mesh::VertexBufferLayout`). The `SpecializedMeshPipelines` vertex-layout
+ * cache is keyed by this type, so distinct meshes that specialize to the same
+ * final layout share one compiled pipeline. */
+template <>
+struct std::hash<epix::mesh::VertexBufferLayout> {
+    std::size_t operator()(const epix::mesh::VertexBufferLayout& value) const noexcept {
+        std::size_t hash = std::hash<std::uint64_t>{}(value.array_stride);
+        const auto combine = [&hash](std::size_t part) {
+            hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2);
+        };
+        combine(std::hash<std::underlying_type_t<wgpu::VertexStepMode>>{}(
+            static_cast<std::underlying_type_t<wgpu::VertexStepMode>>(value.step_mode)));
+        for (const auto& attribute : value.attributes) {
+            combine(std::hash<epix::mesh::VertexAttribute>{}(attribute));
+        }
+        return hash;
     }
 };
