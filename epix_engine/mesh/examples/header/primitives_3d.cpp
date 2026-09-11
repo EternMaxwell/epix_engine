@@ -40,24 +40,33 @@ struct Primitives3dExamplePlugin {
         // the ones Bevy produces. Core2D has no Core3d graph yet, so the meshes are rendered on
         // the XY plane through the existing 2D pipeline: this exercises the generated data and
         // the mesh pipeline without requiring the missing 3D graph.
-        mesh::Mesh cuboid      = mesh::Cuboid{1.0f, 1.0f, 1.0f};
-        mesh::Mesh plane       = std::move(mesh::Plane3d{}.mesh()).with_subdivisions(3).build();
-        mesh::Mesh triangle    = mesh::Triangle3d{{-0.6f, -0.5f, 0.0f}, {0.6f, -0.5f, 0.0f}, {0.0f, 0.7f, 0.0f}};
-        mesh::Mesh tetrahedron = mesh::Tetrahedron{};
+        // The shape values are kept around so the `Measured2d`/`Measured3d` helpers below report the
+        // same primitives the meshes were built from.
+        const mesh::Cuboid cuboid_shape{1.0f, 1.0f, 1.0f};
+        const mesh::Plane3d plane_shape{};
+        const mesh::Triangle3d triangle_shape{{-0.6f, -0.5f, 0.0f}, {0.6f, -0.5f, 0.0f}, {0.0f, 0.7f, 0.0f}};
+        const mesh::Tetrahedron tetrahedron_shape{};
+        const mesh::Cylinder cylinder_shape{0.32f, 0.86f};
+        const mesh::Torus torus_shape{};
+        const mesh::Cone cone_shape{0.36f, 1.0f};
+        const mesh::ConicalFrustum frustum_shape{0.18f, 0.4f, 0.9f};
+        const mesh::Capsule3d capsule_shape{0.26f, 0.6f};
+
+        mesh::Mesh cuboid      = cuboid_shape;
+        mesh::Mesh plane       = std::move(plane_shape.mesh()).with_subdivisions(3).build();
+        mesh::Mesh triangle    = triangle_shape;
+        mesh::Mesh tetrahedron = tetrahedron_shape;
         mesh::Mesh segment     = mesh::Segment3d{{-0.6f, 0.0f, 0.0f}, {0.6f, 0.0f, 0.0f}};
-        mesh::Mesh cylinder    = mesh::Cylinder{0.32f, 0.86f};
-        mesh::Mesh torus = std::move(mesh::Torus{}.mesh()).with_minor_resolution(12).with_major_resolution(24).build();
+        mesh::Mesh cylinder    = cylinder_shape;
+        mesh::Mesh torus = std::move(torus_shape.mesh()).with_minor_resolution(12).with_major_resolution(24).build();
         // The two rotational solids that close Bevy's cone/frustum builders. The
         // cone's anchor is left at Bevy's default midpoint so its tip sits above
         // its base, exactly as Bevy's own test fixture does.
-        mesh::Mesh cone    = std::move(mesh::Cone{0.36f, 1.0f}.mesh()).with_resolution(24).build();
-        mesh::Mesh frustum = std::move(mesh::ConicalFrustum{0.18f, 0.4f, 0.9f}.mesh()).with_resolution(24).build();
+        mesh::Mesh cone    = std::move(cone_shape.mesh()).with_resolution(24).build();
+        mesh::Mesh frustum = std::move(frustum_shape.mesh()).with_resolution(24).build();
         // The capsule closes Bevy's rotational solids. Its UV profile is left at
         // Bevy's default `Aspect`, and the ring count at the default 0.
-        mesh::Mesh capsule = std::move(mesh::Capsule3d{0.26f, 0.6f}.mesh())
-                                 .with_longitudes(24)
-                                 .with_latitudes(12)
-                                 .build();
+        mesh::Mesh capsule = std::move(capsule_shape.mesh()).with_longitudes(24).with_latitudes(12).build();
 
         std::println(
             "3D primitives: cuboid={} plane={} triangle={} tetrahedron={} segment={} cylinder={} torus={} cone={} "
@@ -71,6 +80,17 @@ struct Primitives3dExamplePlugin {
             attribute_names(cuboid), attribute_names(plane), attribute_names(triangle), attribute_names(tetrahedron),
             attribute_names(segment), attribute_names(cylinder), attribute_names(torus), attribute_names(cone),
             attribute_names(frustum), attribute_names(capsule));
+        // Bevy's `Measured3d` (area, volume) and the two 3D shapes Bevy measures as 2D shapes.
+        std::println(
+            "Bevy Measured3d (area, volume): cuboid=({}, {}) cylinder=({}, {}) capsule=({}, {}) cone=({}, {}) "
+            "frustum=({}, {}) torus=({}, {}) tetrahedron=({}, {})",
+            mesh::area(cuboid_shape), mesh::volume(cuboid_shape), mesh::area(cylinder_shape),
+            mesh::volume(cylinder_shape), mesh::area(capsule_shape), mesh::volume(capsule_shape),
+            mesh::area(cone_shape), mesh::volume(cone_shape), mesh::area(frustum_shape), mesh::volume(frustum_shape),
+            mesh::area(torus_shape), mesh::volume(torus_shape), mesh::area(tetrahedron_shape),
+            mesh::volume(tetrahedron_shape));
+        std::println("Bevy Measured2d (area, perimeter): plane=({}, {}) triangle3d=({}, {})", mesh::area(plane_shape),
+                     mesh::perimeter(plane_shape), mesh::area(triangle_shape), mesh::perimeter(triangle_shape));
 
         const auto cuboid_handle      = asset_store.emplace(std::move(cuboid));
         const auto plane_handle       = asset_store.emplace(std::move(plane));

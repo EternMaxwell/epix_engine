@@ -3,6 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <epix/mesh/mesh.hpp>
@@ -97,6 +98,8 @@ EPIX_EXPORT struct CircularSector {
     constexpr float half_angle() const noexcept { return arc.half_angle; }
     constexpr float angle() const noexcept { return arc.angle(); }
     constexpr float radius() const noexcept { return arc.radius; }
+    /** @brief Length of the arc defining the sector (Bevy `CircularSector::arc_length`). */
+    constexpr float arc_length() const noexcept { return arc.length(); }
     CircularSectorMeshBuilder mesh() const noexcept;
 
     bool operator==(const CircularSector&) const = default;
@@ -123,6 +126,11 @@ EPIX_EXPORT struct CircularSegment {
     constexpr float half_angle() const noexcept { return arc.half_angle; }
     constexpr float angle() const noexcept { return arc.angle(); }
     constexpr float radius() const noexcept { return arc.radius; }
+    /** @brief Length of the arc defining the segment (Bevy `CircularSegment::arc_length`). */
+    constexpr float arc_length() const noexcept { return arc.length(); }
+    /** @brief Length of the segment's base, also known as its chord (Bevy
+     * `CircularSegment::chord_length`). */
+    float chord_length() const noexcept { return arc.chord_length(); }
     glm::vec2 chord_midpoint() const noexcept { return arc.chord_midpoint(); }
     float apothem() const noexcept { return arc.apothem(); }
     CircularSegmentMeshBuilder mesh() const noexcept;
@@ -209,8 +217,6 @@ EPIX_EXPORT struct Triangle2d {
     constexpr Triangle2d() = default;
     constexpr Triangle2d(glm::vec2 a, glm::vec2 b, glm::vec2 c) : vertices{a, b, c} {}
     WindingOrder winding_order() const noexcept;
-    float area() const noexcept;
-    float perimeter() const noexcept;
     bool is_degenerate() const noexcept;
     bool is_acute() const noexcept;
     bool is_obtuse() const noexcept;
@@ -273,6 +279,10 @@ EPIX_EXPORT struct Ellipse {
     constexpr Ellipse(float half_width, float half_height) : half_size(half_width, half_height) {}
     constexpr explicit Ellipse(glm::vec2 half_size) : half_size(half_size) {}
     static constexpr Ellipse from_size(glm::vec2 size) { return Ellipse{size * 0.5f}; }
+    /** @brief Length of the longest radius (Bevy `Ellipse::semi_major`). */
+    constexpr float semi_major() const noexcept { return std::max(half_size.x, half_size.y); }
+    /** @brief Length of the shortest radius (Bevy `Ellipse::semi_minor`). */
+    constexpr float semi_minor() const noexcept { return std::min(half_size.x, half_size.y); }
     EllipseMeshBuilder mesh() const noexcept;
 
     bool operator==(const Ellipse&) const = default;
@@ -286,6 +296,8 @@ EPIX_EXPORT struct RegularPolygon {
     RegularPolygon() = default;
     RegularPolygon(float circumradius, std::uint32_t sides);
     float circumradius() const noexcept { return circumcircle.radius; }
+    /** @brief Length of one side of the regular polygon (Bevy `RegularPolygon::side_length`). */
+    float side_length() const noexcept;
     RegularPolygonMeshBuilder mesh() const noexcept;
 
     /** @brief Internal angle of the regular polygon (Bevy `internal_angle_radians`). */
@@ -1048,6 +1060,278 @@ EPIX_EXPORT struct RectangleMeshBuilder {
     constexpr explicit RectangleMeshBuilder(glm::vec2 half_size) : half_size(half_size) {}
     Mesh build() const;
 };
+
+// ─── Measurement (Bevy `Measured2d` and `Measured3d`) ───────────────────────────────────────────
+//
+// Bevy measures primitives through the `Measured2d { area, perimeter }` and
+// `Measured3d { area, volume }` traits. As with `Inset`, the traits are modelled as a
+// per-shape customization point (`Measured2dImpl` / `Measured3dImpl`), a concept naming it, and
+// free functions standing in for the trait methods. The formulas below are Bevy's, term for term.
+
+/** @brief Customization point for Bevy's `Measured2d` methods. */
+template <typename T>
+struct Measured2dImpl;
+
+/** @brief Satisfied when `Measured2dImpl<T>` provides the Bevy `area` and `perimeter` methods. */
+template <typename T>
+concept Measured2d = requires(const T& shape) {
+    { Measured2dImpl<T>::area(shape) } -> std::same_as<float>;
+    { Measured2dImpl<T>::perimeter(shape) } -> std::same_as<float>;
+};
+
+/** @brief Get the area of `shape` (Bevy `Measured2d::area`). */
+template <Measured2d T>
+constexpr float area(const T& shape) {
+    return Measured2dImpl<T>::area(shape);
+}
+
+/** @brief Get the perimeter of `shape` (Bevy `Measured2d::perimeter`). */
+template <Measured2d T>
+constexpr float perimeter(const T& shape) {
+    return Measured2dImpl<T>::perimeter(shape);
+}
+
+/** @brief Customization point for Bevy's `Measured3d` methods. */
+template <typename T>
+struct Measured3dImpl;
+
+/** @brief Satisfied when `Measured3dImpl<T>` provides the Bevy `area` and `volume` methods. */
+template <typename T>
+concept Measured3d = requires(const T& shape) {
+    { Measured3dImpl<T>::area(shape) } -> std::same_as<float>;
+    { Measured3dImpl<T>::volume(shape) } -> std::same_as<float>;
+};
+
+/** @brief Get the surface area of `shape` (Bevy `Measured3d::area`). */
+template <Measured3d T>
+constexpr float area(const T& shape) {
+    return Measured3dImpl<T>::area(shape);
+}
+
+/** @brief Get the volume of `shape` (Bevy `Measured3d::volume`). */
+template <Measured3d T>
+constexpr float volume(const T& shape) {
+    return Measured3dImpl<T>::volume(shape);
+}
+
+/** @brief Bevy `Measured2d for Circle` (`dim2.rs:83`). */
+template <>
+struct Measured2dImpl<Circle> {
+    static constexpr float area(const Circle& circle) noexcept {
+        return std::numbers::pi_v<float> * (circle.radius * circle.radius);
+    }
+    static constexpr float perimeter(const Circle& circle) noexcept {
+        return 2.0f * std::numbers::pi_v<float> * circle.radius;
+    }
+};
+
+/** @brief Bevy `Measured2d for CircularSector` (`dim2.rs:307`). */
+template <>
+struct Measured2dImpl<CircularSector> {
+    static constexpr float area(const CircularSector& sector) noexcept {
+        return (sector.arc.radius * sector.arc.radius) * sector.arc.half_angle;
+    }
+    static constexpr float perimeter(const CircularSector& sector) noexcept {
+        // A sector covering at least half a circle has no chord shorter than the diameter.
+        if (sector.half_angle() >= std::numbers::pi_v<float>) {
+            return sector.arc.radius * 2.0f * std::numbers::pi_v<float>;
+        }
+        return 2.0f * sector.radius() + sector.arc_length();
+    }
+};
+
+/** @brief Bevy `Measured2d for CircularSegment` (`dim2.rs:459`). */
+template <>
+struct Measured2dImpl<CircularSegment> {
+    static float area(const CircularSegment& segment) noexcept;
+    static float perimeter(const CircularSegment& segment) noexcept;
+};
+
+/** @brief Bevy `Measured2d for Ellipse` (`dim2.rs:886`). */
+template <>
+struct Measured2dImpl<Ellipse> {
+    static float area(const Ellipse& ellipse) noexcept;
+    static float perimeter(const Ellipse& ellipse) noexcept;
+};
+
+/** @brief Bevy `Measured2d for Annulus` (`dim2.rs:1032`). */
+template <>
+struct Measured2dImpl<Annulus> {
+    static constexpr float area(const Annulus& annulus) noexcept {
+        return std::numbers::pi_v<float> * ((annulus.outer_circle.radius * annulus.outer_circle.radius) -
+                                            (annulus.inner_circle.radius * annulus.inner_circle.radius));
+    }
+    static constexpr float perimeter(const Annulus& annulus) noexcept {
+        return 2.0f * std::numbers::pi_v<float> * (annulus.outer_circle.radius + annulus.inner_circle.radius);
+    }
+};
+
+/** @brief Bevy `Measured2d for Rhombus` (`dim2.rs:1172`). */
+template <>
+struct Measured2dImpl<Rhombus> {
+    static float area(const Rhombus& rhombus) noexcept;
+    static float perimeter(const Rhombus& rhombus) noexcept;
+};
+
+/** @brief Bevy `Measured2d for Triangle2d` (`dim2.rs:1775`). */
+template <>
+struct Measured2dImpl<Triangle2d> {
+    static float area(const Triangle2d& triangle) noexcept;
+    static float perimeter(const Triangle2d& triangle) noexcept;
+};
+
+/** @brief Bevy `Measured2d for Rectangle` (`dim2.rs:1874`). */
+template <>
+struct Measured2dImpl<Rectangle> {
+    static constexpr float area(const Rectangle& rectangle) noexcept {
+        return 4.0f * rectangle.half_size.x * rectangle.half_size.y;
+    }
+    static constexpr float perimeter(const Rectangle& rectangle) noexcept {
+        return 4.0f * (rectangle.half_size.x + rectangle.half_size.y);
+    }
+};
+
+/** @brief Bevy `Measured2d for RegularPolygon` (`dim2.rs:2160`). */
+template <>
+struct Measured2dImpl<RegularPolygon> {
+    static float area(const RegularPolygon& polygon) noexcept;
+    static float perimeter(const RegularPolygon& polygon) noexcept;
+};
+
+/** @brief Bevy `Measured2d for Capsule2d` (`dim2.rs:2227`). */
+template <>
+struct Measured2dImpl<Capsule2d> {
+    static constexpr float area(const Capsule2d& capsule) noexcept {
+        // pi*r^2 + (2r)*l
+        return std::numbers::pi_v<float> * (capsule.radius * capsule.radius) +
+               ::epix::mesh::area(capsule.to_inner_rectangle());
+    }
+    static constexpr float perimeter(const Capsule2d& capsule) noexcept {
+        // 2pi*r + 2l
+        return 2.0f * std::numbers::pi_v<float> * capsule.radius + 4.0f * capsule.half_length;
+    }
+};
+
+/** @brief Bevy `Measured2d for Ring<P>` (`dim2.rs:2288`). */
+template <Inset P>
+    requires Measured2d<P>
+struct Measured2dImpl<Ring<P>> {
+    static constexpr float area(const Ring<P>& ring) noexcept {
+        return ::epix::mesh::area(ring.outer_shape) - ::epix::mesh::area(ring.inner_shape);
+    }
+    static constexpr float perimeter(const Ring<P>& ring) noexcept {
+        return ::epix::mesh::perimeter(ring.outer_shape) + ::epix::mesh::perimeter(ring.inner_shape);
+    }
+};
+
+/** @brief Bevy `Measured2d for Plane3d` (`dim3.rs:162`). */
+template <>
+struct Measured2dImpl<Plane3d> {
+    static constexpr float area(const Plane3d& plane) noexcept {
+        return (plane.half_size.x * plane.half_size.y) * 4.0f;
+    }
+    static constexpr float perimeter(const Plane3d& plane) noexcept {
+        return (plane.half_size.x + plane.half_size.y) * 4.0f;
+    }
+};
+
+/** @brief Bevy `Measured2d for Triangle3d` (`dim3.rs:1410`). */
+template <>
+struct Measured2dImpl<Triangle3d> {
+    static float area(const Triangle3d& triangle) noexcept;
+    static float perimeter(const Triangle3d& triangle) noexcept;
+};
+
+/** @brief Bevy `Measured3d for Cuboid` (`dim3.rs:756`). */
+template <>
+struct Measured3dImpl<Cuboid> {
+    static constexpr float area(const Cuboid& cuboid) noexcept {
+        return 8.0f * (cuboid.half_size.x * cuboid.half_size.y + cuboid.half_size.y * cuboid.half_size.z +
+                       cuboid.half_size.x * cuboid.half_size.z);
+    }
+    static constexpr float volume(const Cuboid& cuboid) noexcept {
+        return 8.0f * cuboid.half_size.x * cuboid.half_size.y * cuboid.half_size.z;
+    }
+};
+
+/** @brief Bevy `Measured3d for Cylinder` (`dim3.rs:836`). */
+template <>
+struct Measured3dImpl<Cylinder> {
+    static constexpr float area(const Cylinder& cylinder) noexcept {
+        return 2.0f * std::numbers::pi_v<float> * cylinder.radius * (cylinder.radius + 2.0f * cylinder.half_height);
+    }
+    static float volume(const Cylinder& cylinder) noexcept;
+};
+
+/** @brief Bevy `Measured3d for Capsule3d` (`dim3.rs:903`). */
+template <>
+struct Measured3dImpl<Capsule3d> {
+    static constexpr float area(const Capsule3d& capsule) noexcept {
+        // Modified version of 2pi * r * (2r + h)
+        return 4.0f * std::numbers::pi_v<float> * capsule.radius * (capsule.radius + capsule.half_length);
+    }
+    static constexpr float volume(const Capsule3d& capsule) noexcept {
+        // Modified version of pi * r^2 * (4/3 * r + a)
+        const float diameter = capsule.radius * 2.0f;
+        return std::numbers::pi_v<float> * capsule.radius * diameter * (diameter / 3.0f + capsule.half_length);
+    }
+};
+
+/** @brief Bevy `Measured3d for Cone` (`dim3.rs:989`). */
+template <>
+struct Measured3dImpl<Cone> {
+    static float area(const Cone& cone) noexcept;
+    static float volume(const Cone& cone) noexcept;
+};
+
+/** @brief Bevy `Measured3d for ConicalFrustum` (`dim3.rs:1085`). */
+template <>
+struct Measured3dImpl<ConicalFrustum> {
+    static float area(const ConicalFrustum& frustum) noexcept;
+    static float volume(const ConicalFrustum& frustum) noexcept;
+};
+
+/** @brief Bevy `Measured3d for Torus` (`dim3.rs:1215`). */
+template <>
+struct Measured3dImpl<Torus> {
+    static constexpr float area(const Torus& torus) noexcept {
+        constexpr float pi_squared = std::numbers::pi_v<float> * std::numbers::pi_v<float>;
+        return 4.0f * pi_squared * torus.major_radius * torus.minor_radius;
+    }
+    static constexpr float volume(const Torus& torus) noexcept {
+        constexpr float pi_squared = std::numbers::pi_v<float> * std::numbers::pi_v<float>;
+        return 2.0f * pi_squared * torus.major_radius * (torus.minor_radius * torus.minor_radius);
+    }
+};
+
+/** @brief Bevy `Measured3d for Tetrahedron` (`dim3.rs:1512`). */
+template <>
+struct Measured3dImpl<Tetrahedron> {
+    static float area(const Tetrahedron& tetrahedron) noexcept;
+    static float volume(const Tetrahedron& tetrahedron) noexcept;
+};
+
+static_assert(Measured2d<Circle>);
+static_assert(Measured2d<CircularSector>);
+static_assert(Measured2d<CircularSegment>);
+static_assert(Measured2d<Ellipse>);
+static_assert(Measured2d<Annulus>);
+static_assert(Measured2d<Rhombus>);
+static_assert(Measured2d<Triangle2d>);
+static_assert(Measured2d<Rectangle>);
+static_assert(Measured2d<RegularPolygon>);
+static_assert(Measured2d<Capsule2d>);
+static_assert(Measured2d<Plane3d>);
+static_assert(Measured2d<Triangle3d>);
+static_assert(Measured2d<Ring<Circle>>);
+static_assert(Measured2d<Ring<Capsule2d>>);
+static_assert(Measured3d<Cuboid>);
+static_assert(Measured3d<Cylinder>);
+static_assert(Measured3d<Capsule3d>);
+static_assert(Measured3d<Cone>);
+static_assert(Measured3d<ConicalFrustum>);
+static_assert(Measured3d<Torus>);
+static_assert(Measured3d<Tetrahedron>);
 
 static_assert(MeshBuilder<AnnulusMeshBuilder>);
 static_assert(MeshBuilder<Capsule2dMeshBuilder>);

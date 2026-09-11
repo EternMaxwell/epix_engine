@@ -92,16 +92,18 @@ WindingOrder Triangle2d::winding_order() const noexcept {
     return ::epix::mesh::winding_order(vertices[0], vertices[1], vertices[2]);
 }
 
-float Triangle2d::area() const noexcept {
-    const auto& a = vertices[0];
-    const auto& b = vertices[1];
-    const auto& c = vertices[2];
-    return std::abs(a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)) * 0.5f;
+float Measured2dImpl<Triangle2d>::area(const Triangle2d& triangle) noexcept {
+    const auto& a = triangle.vertices[0];
+    const auto& b = triangle.vertices[1];
+    const auto& c = triangle.vertices[2];
+    return std::abs(a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)) / 2.0f;
 }
 
-float Triangle2d::perimeter() const noexcept {
-    return glm::distance(vertices[0], vertices[1]) + glm::distance(vertices[1], vertices[2]) +
-           glm::distance(vertices[2], vertices[0]);
+float Measured2dImpl<Triangle2d>::perimeter(const Triangle2d& triangle) noexcept {
+    const auto& a = triangle.vertices[0];
+    const auto& b = triangle.vertices[1];
+    const auto& c = triangle.vertices[2];
+    return glm::distance(a, b) + glm::distance(b, c) + glm::distance(c, a);
 }
 
 bool Triangle2d::is_degenerate() const noexcept {
@@ -714,6 +716,142 @@ float ConicalFrustum::top_area() const noexcept { return std::numbers::pi_v<floa
 
 ConicalFrustumMeshBuilder ConicalFrustum::mesh() const noexcept {
     return ConicalFrustumMeshBuilder{ConicalFrustum{*this}};
+}
+
+// ─── Measurement (Bevy `Measured2d` / `Measured3d`) ─────────────────────────────────────────────
+//
+// Only the measurements that lean on a non-`constexpr` helper live here; the rest are inline in
+// `primitives.hpp`. Every body mirrors the corresponding Bevy trait method, including the order of
+// the floating point operations.
+
+/** @brief Bevy's `FRAC_PI_3` (`std::f32::consts::FRAC_PI_3`), the correctly rounded f32 `pi / 3`. */
+constexpr float kFracPi3 = 1.0471975511965977461542144610931676f;
+
+float Measured2dImpl<CircularSegment>::area(const CircularSegment& segment) noexcept {
+    return 0.5f * (segment.arc.radius * segment.arc.radius) * (segment.arc.angle() - std::sin(segment.arc.angle()));
+}
+
+float Measured2dImpl<CircularSegment>::perimeter(const CircularSegment& segment) noexcept {
+    return segment.chord_length() + segment.arc_length();
+}
+
+float Measured2dImpl<Ellipse>::area(const Ellipse& ellipse) noexcept {
+    return std::numbers::pi_v<float> * ellipse.half_size.x * ellipse.half_size.y;
+}
+
+float Measured2dImpl<Ellipse>::perimeter(const Ellipse& ellipse) noexcept {
+    const float a = ellipse.semi_major();
+    const float b = ellipse.semi_minor();
+
+    // In the case that `a == b`, the ellipse is a circle
+    if (a / b - 1.0f < 1e-5f) return std::numbers::pi_v<float> * (a + b);
+
+    // In the case that `a` is much larger than `b`, the ellipse is a line
+    if (a / b > 1e4f) return 4.0f * a;
+
+    // These values are the result of (0.5 choose n)^2 where n is the index in the array.
+    constexpr std::array<float, 21> kBinomialCoefficients{
+        1.0f,
+        0.25f,
+        0.015625f,
+        0.00390625f,
+        0.0015258789f,
+        0.00074768066f,
+        0.00042057037f,
+        0.00025963783f,
+        0.00017140154f,
+        0.000119028846f,
+        0.00008599834f,
+        0.00006414339f,
+        0.000049109784f,
+        0.000038430585f,
+        0.000030636627f,
+        0.000024815668f,
+        0.000020380836f,
+        0.000016942893f,
+        0.000014236736f,
+        0.000012077564f,
+        0.000010333865f,
+    };
+
+    // The Gauss-Kummer infinite series expansion of the elliptic integral expression for the
+    // perimeter of ellipses, with the terms up to `i == 20`.
+    const float eccentricity = (a - b) / (a + b);
+    const float h            = eccentricity * eccentricity;
+
+    float series = 0.0f;
+    for (std::size_t index = 0; index < kBinomialCoefficients.size(); ++index) {
+        series += kBinomialCoefficients[index] * std::pow(h, static_cast<float>(index));
+    }
+    return std::numbers::pi_v<float> * (a + b) * series;
+}
+
+float Measured2dImpl<Rhombus>::area(const Rhombus& rhombus) noexcept {
+    return 2.0f * rhombus.half_diagonals.x * rhombus.half_diagonals.y;
+}
+
+float Measured2dImpl<Rhombus>::perimeter(const Rhombus& rhombus) noexcept { return 4.0f * rhombus.side(); }
+
+float RegularPolygon::side_length() const noexcept {
+    return 2.0f * circumradius() * std::sin(std::numbers::pi_v<float> / static_cast<float>(sides));
+}
+
+float Measured2dImpl<RegularPolygon>::area(const RegularPolygon& polygon) noexcept {
+    const float angle = 2.0f * std::numbers::pi_v<float> / static_cast<float>(polygon.sides);
+    return static_cast<float>(polygon.sides) * (polygon.circumradius() * polygon.circumradius()) * std::sin(angle) /
+           2.0f;
+}
+
+float Measured2dImpl<RegularPolygon>::perimeter(const RegularPolygon& polygon) noexcept {
+    return static_cast<float>(polygon.sides) * polygon.side_length();
+}
+
+float Measured2dImpl<Triangle3d>::area(const Triangle3d& triangle) noexcept {
+    const auto& a = triangle.vertices[0];
+    const auto& b = triangle.vertices[1];
+    const auto& c = triangle.vertices[2];
+    return glm::length(glm::cross(b - a, c - a)) / 2.0f;
+}
+
+float Measured2dImpl<Triangle3d>::perimeter(const Triangle3d& triangle) noexcept {
+    const auto& a = triangle.vertices[0];
+    const auto& b = triangle.vertices[1];
+    const auto& c = triangle.vertices[2];
+    return glm::distance(a, b) + glm::distance(b, c) + glm::distance(c, a);
+}
+
+float Measured3dImpl<Cylinder>::volume(const Cylinder& cylinder) noexcept {
+    return cylinder.base_area() * 2.0f * cylinder.half_height;
+}
+
+float Measured3dImpl<Cone>::area(const Cone& cone) noexcept { return cone.base_area() + cone.lateral_area(); }
+
+float Measured3dImpl<Cone>::volume(const Cone& cone) noexcept { return (cone.base_area() * cone.height) / 3.0f; }
+
+float Measured3dImpl<ConicalFrustum>::area(const ConicalFrustum& frustum) noexcept {
+    return frustum.bottom_area() + frustum.top_area() + frustum.lateral_area();
+}
+
+float Measured3dImpl<ConicalFrustum>::volume(const ConicalFrustum& frustum) noexcept {
+    return kFracPi3 * frustum.height *
+           (frustum.radius_bottom * frustum.radius_bottom + frustum.radius_top * frustum.radius_top +
+            frustum.radius_top * frustum.radius_bottom);
+}
+
+float Measured3dImpl<Tetrahedron>::area(const Tetrahedron& tetrahedron) noexcept {
+    const auto [a, b, c, d] = tetrahedron.vertices;
+    const glm::vec3 ab      = b - a;
+    const glm::vec3 ac      = c - a;
+    const glm::vec3 ad      = d - a;
+    const glm::vec3 bc      = c - b;
+    const glm::vec3 bd      = d - b;
+    return (glm::length(glm::cross(ab, ac)) + glm::length(glm::cross(ab, ad)) + glm::length(glm::cross(ac, ad)) +
+            glm::length(glm::cross(bc, bd))) /
+           2.0f;
+}
+
+float Measured3dImpl<Tetrahedron>::volume(const Tetrahedron& tetrahedron) noexcept {
+    return std::abs(tetrahedron.signed_volume());
 }
 
 Mesh ConicalFrustumMeshBuilder::build() const {

@@ -838,8 +838,8 @@ TEST(MeshPrimitives, Triangle2dMatchesBevyShapeMeasurementAndWinding) {
 
     const mesh::Triangle2d clockwise{{-1.0f, 0.0f}, {0.0f, 2.0f}, {1.0f, 0.0f}};
     EXPECT_EQ(clockwise.winding_order(), mesh::WindingOrder::Clockwise);
-    EXPECT_FLOAT_EQ(clockwise.area(), 2.0f);
-    EXPECT_NEAR(clockwise.perimeter(), 2.0f + 2.0f * std::sqrt(5.0f), 1e-5f);
+    EXPECT_FLOAT_EQ(mesh::area(clockwise), 2.0f);
+    EXPECT_NEAR(mesh::perimeter(clockwise), 2.0f + 2.0f * std::sqrt(5.0f), 1e-5f);
     EXPECT_TRUE(clockwise.is_acute());
     EXPECT_FALSE(clockwise.is_obtuse());
     // The angle at the origin is obtuse (ab . ac = -3), so squared sides 9, 17, 2 satisfy 17 > 9 + 2.
@@ -852,7 +852,7 @@ TEST(MeshPrimitives, Triangle2dMatchesBevyShapeMeasurementAndWinding) {
     const mesh::Triangle2d collinear{{0.0f, 0.0f}, {1.0f, 0.0f}, {2.0f, 0.0f}};
     EXPECT_EQ(collinear.winding_order(), mesh::WindingOrder::Invalid);
     EXPECT_TRUE(collinear.is_degenerate());
-    EXPECT_FLOAT_EQ(collinear.area(), 0.0f);
+    EXPECT_FLOAT_EQ(mesh::area(collinear), 0.0f);
 
     EXPECT_EQ(clockwise.reversed().winding_order(), mesh::WindingOrder::CounterClockwise);
     mesh::Triangle2d mutable_triangle = clockwise;
@@ -1599,4 +1599,136 @@ TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
     auto repeated = source.take_gpu_data();
     ASSERT_FALSE(repeated.has_value());
     EXPECT_EQ(repeated.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
+TEST(MeshPrimitives, Measured2dMatchesBevyTraitFormulas) {
+    // Bevy measures 2D primitives through the `Measured2d` trait; Epix mirrors it with
+    // `Measured2dImpl` plus the free functions `area` and `perimeter`.
+    static_assert(mesh::Measured2d<mesh::Circle>);
+    static_assert(mesh::Measured2d<mesh::CircularSector>);
+    static_assert(mesh::Measured2d<mesh::CircularSegment>);
+    static_assert(mesh::Measured2d<mesh::Ellipse>);
+    static_assert(mesh::Measured2d<mesh::Annulus>);
+    static_assert(mesh::Measured2d<mesh::Rhombus>);
+    static_assert(mesh::Measured2d<mesh::Triangle2d>);
+    static_assert(mesh::Measured2d<mesh::Rectangle>);
+    static_assert(mesh::Measured2d<mesh::RegularPolygon>);
+    static_assert(mesh::Measured2d<mesh::Capsule2d>);
+    static_assert(mesh::Measured2d<mesh::Plane3d>);
+    static_assert(mesh::Measured2d<mesh::Triangle3d>);
+    static_assert(mesh::Measured2d<mesh::Ring<mesh::Circle>>);
+    // `Cuboid` is only measured in 3D, exactly like in Bevy.
+    static_assert(!mesh::Measured2d<mesh::Cuboid>);
+
+    // Circle: `PI * r^2` and `2 * PI * r`.
+    EXPECT_NEAR(mesh::area(mesh::Circle{0.5f}), 0.785398163f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Circle{0.5f}), 3.141592654f, 1e-6f);
+
+    // CircularSector: the area uses the *half* angle, and the perimeter switches to the full
+    // circumference once the sector covers at least half a circle.
+    const mesh::CircularSector default_sector{};
+    EXPECT_NEAR(mesh::area(default_sector), 0.523598776f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(default_sector), 3.094395102f, 1e-6f);
+    const auto minor_sector = mesh::CircularSector::from_radians(0.5f, std::numbers::pi_v<float> / 2.0f);
+    EXPECT_NEAR(mesh::area(minor_sector), 0.196349541f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(minor_sector), 1.785398163f, 1e-6f);
+    // `half_angle() >= PI` is an inclusive boundary: a full circle uses `2 * PI * r`.
+    const auto full_sector = mesh::CircularSector::from_turns(0.5f, 1.0f);
+    EXPECT_NEAR(mesh::area(full_sector), 0.785398163f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(full_sector), 3.141592654f, 1e-6f);
+
+    // CircularSegment: `r^2 / 2 * (angle - sin(angle))` and chord plus arc length.
+    const mesh::CircularSegment default_segment{};
+    EXPECT_NEAR(default_segment.chord_length(), 0.866025404f, 1e-6f);
+    EXPECT_NEAR(default_segment.arc_length(), 2.094395102f, 1e-6f);
+    EXPECT_NEAR(mesh::area(default_segment), 0.631851951f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(default_segment), 2.960420506f, 1e-6f);
+
+    // Ellipse: `PI * a * b`, plus all three of Bevy's perimeter branches.
+    const mesh::Ellipse default_ellipse{};
+    EXPECT_FLOAT_EQ(default_ellipse.semi_major(), 1.0f);
+    EXPECT_FLOAT_EQ(default_ellipse.semi_minor(), 0.5f);
+    EXPECT_NEAR(mesh::area(default_ellipse), 1.570796327f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(default_ellipse), 4.844224110f, 1e-4f);
+    // `a == b` short circuits to the circle circumference.
+    EXPECT_NEAR(mesh::perimeter(mesh::Ellipse{0.5f, 0.5f}), 3.141592654f, 1e-6f);
+    // `a / b > 1e4` treats the ellipse as a line of length `4 * a`.
+    EXPECT_FLOAT_EQ(mesh::perimeter(mesh::Ellipse{100.0f, 0.001f}), 400.0f);
+
+    // Annulus: `PI * (outer^2 - inner^2)` and `2 * PI * (outer + inner)`.
+    EXPECT_NEAR(mesh::area(mesh::Annulus{}), 2.356194490f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Annulus{}), 9.424777961f, 1e-6f);
+
+    // Rhombus: half the diagonal product and four sides.
+    EXPECT_NEAR(mesh::area(mesh::Rhombus{0.62f, 0.98f}), 0.3038f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Rhombus{0.62f, 0.98f}), 2.319310242f, 1e-6f);
+
+    // Triangle2d: the shoelace area and the side sum.
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Triangle2d{}), 0.5f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Triangle2d{}), 3.236067977f, 1e-6f);
+
+    // Rectangle and Plane3d share the `4 * half_size` product/sum form.
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Rectangle{}), 1.0f);
+    EXPECT_FLOAT_EQ(mesh::perimeter(mesh::Rectangle{}), 4.0f);
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Plane3d{}), 1.0f);
+    EXPECT_FLOAT_EQ(mesh::perimeter(mesh::Plane3d{}), 4.0f);
+
+    // RegularPolygon: area from the circumradius, perimeter from the side length.
+    const mesh::RegularPolygon default_polygon{};
+    EXPECT_FLOAT_EQ(default_polygon.side_length(), 0.5f);
+    EXPECT_NEAR(mesh::area(default_polygon), 0.649519053f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(default_polygon), 3.0f, 1e-6f);
+
+    // Capsule2d: the inner rectangle plus the two half discs.
+    EXPECT_NEAR(mesh::area(mesh::Capsule2d{0.5f, 1.0f}), 1.785398163f, 1e-6f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Capsule2d{0.5f, 1.0f}), 5.141592654f, 1e-6f);
+
+    // Triangle3d is measured as a 2D shape, as in Bevy.
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Triangle3d{}), 0.5f);
+    EXPECT_NEAR(mesh::perimeter(mesh::Triangle3d{}), 3.236067977f, 1e-6f);
+
+    // Ring<P> subtracts the inner shape from the outer one and adds the perimeters.
+    const auto ring = mesh::Ring<mesh::Circle>::from_primitive_and_thickness(mesh::Circle{0.42f}, 0.18f);
+    EXPECT_NEAR(mesh::area(ring), 0.373221207f, 1e-5f);
+    EXPECT_NEAR(mesh::perimeter(ring), 4.146902303f, 1e-5f);
+}
+
+TEST(MeshPrimitives, Measured3dMatchesBevyTraitFormulas) {
+    static_assert(mesh::Measured3d<mesh::Cuboid>);
+    static_assert(mesh::Measured3d<mesh::Cylinder>);
+    static_assert(mesh::Measured3d<mesh::Capsule3d>);
+    static_assert(mesh::Measured3d<mesh::Cone>);
+    static_assert(mesh::Measured3d<mesh::ConicalFrustum>);
+    static_assert(mesh::Measured3d<mesh::Torus>);
+    static_assert(mesh::Measured3d<mesh::Tetrahedron>);
+
+    // Cuboid: `8 * (xy + yz + xz)` and `8 * xyz`.
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Cuboid{}), 6.0f);
+    EXPECT_FLOAT_EQ(mesh::volume(mesh::Cuboid{}), 1.0f);
+
+    // Cylinder: `2 * PI * r * (r + 2 * half_height)` and `base_area * 2 * half_height`.
+    EXPECT_NEAR(mesh::area(mesh::Cylinder{}), 4.712388980f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Cylinder{}), 0.785398163f, 1e-6f);
+
+    // Capsule3d: `4 * PI * r * (r + half_length)` and `PI * r * diameter * (diameter / 3 + half_length)`.
+    EXPECT_NEAR(mesh::area(mesh::Capsule3d{}), 6.283185307f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Capsule3d{}), 1.308996939f, 1e-6f);
+
+    // Cone: base plus lateral area, and a third of `base_area * height`.
+    EXPECT_NEAR(mesh::area(mesh::Cone{}), 2.541601846f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Cone{}), 0.261799388f, 1e-6f);
+
+    // ConicalFrustum: both bases plus the lateral area, and `PI / 3 * h * (rb^2 + rt^2 + rt * rb)`.
+    EXPECT_NEAR(mesh::area(mesh::ConicalFrustum{}), 2.298900466f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::ConicalFrustum{}), 0.229074464f, 1e-6f);
+
+    // Torus: `4 * PI^2 * R * r` and `2 * PI^2 * R * r^2`.
+    EXPECT_NEAR(mesh::area(mesh::Torus{}), 7.402203301f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Torus{}), 0.925275413f, 1e-6f);
+
+    // Tetrahedron: the four face areas over two, and the absolute signed volume. The default
+    // tetrahedron is regular with edge length `sqrt(2)`, so the surface is `2 * sqrt(3)` and the
+    // volume is `1 / 3`.
+    EXPECT_NEAR(mesh::area(mesh::Tetrahedron{}), 3.464101615f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Tetrahedron{}), 0.333333333f, 1e-6f);
 }
