@@ -5,6 +5,7 @@ import epix.ecs;
 import epix.input;
 import epix.window;
 import epix.transform;
+import epix.mesh;
 import epix.render;
 import epix.image;
 import epix.camera;
@@ -55,6 +56,7 @@ int main() {
         .add_plugins(render::FrameCountPlugin{})
         .add_plugins(camera::CameraPlugin{})
         .add_plugins(image::ImagePlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::core_2d::Core2dPlugin{})
         .add_plugins(imgui::ImGuiPlugin{

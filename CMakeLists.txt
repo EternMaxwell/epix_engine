@@ -36,8 +36,10 @@ if (MSVC)
   add_compile_options(/bigobj)
   add_compile_options(/wd4819)
   add_compile_options(/wd5244)
-  string(REPLACE "/showIncludes" "" CMAKE_DEPFILE_FLAGS_C "${CMAKE_DEPFILE_FLAGS_C}")
-  string(REPLACE "/showIncludes" "" CMAKE_DEPFILE_FLAGS_CXX "${CMAKE_DEPFILE_FLAGS_CXX}")
+  # CMAKE_DEPFILE_FLAGS_C/CXX keep /showIncludes: Ninja's `msvc_deps_prefix`
+  # parsing is what records each object's header dependencies, so removing the
+  # flag leaves every object with zero recorded deps and lets an incremental
+  # build skip header consumers entirely (a mixed-ABI binary).
 elseif (CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   message(STATUS "Applying Clang-specific compile options")
   add_compile_options(-Wno-unknown-attributes)

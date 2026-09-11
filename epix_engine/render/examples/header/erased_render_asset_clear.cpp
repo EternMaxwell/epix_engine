@@ -7,6 +7,7 @@
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/render/erased_render_asset.hpp>
 #include <epix/time.hpp>
@@ -145,6 +146,7 @@ int main() {
         .add_plugins(assets::AssetPlugin{})
         .add_plugins(image::ImagePlugin{})
         .add_plugins(render::FrameCountPlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(render::erased_render_asset::ErasedRenderAssetPlugin<ClearColorAdapter>{})
         .add_plugins(ClearGraphPlugin{});

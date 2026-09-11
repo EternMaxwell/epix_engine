@@ -20,6 +20,7 @@
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/render/imgui.hpp>
 #include <epix/shader.hpp>
@@ -1498,6 +1499,7 @@ int main() {
         .add_plugins(::epix::camera::CameraPlugin{})
         .add_plugins(assets::AssetPlugin{})
         .add_plugins(image::ImagePlugin{})
+        .add_plugins(::epix::mesh::MeshPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(BM4DPathTracerPlugin{});

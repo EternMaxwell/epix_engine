@@ -8,6 +8,7 @@
 
 #include <epix/ecs.hpp>
 #include <epix/input.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/sfml/core.hpp>
 #include <epix/sfml/render.hpp>
@@ -100,6 +101,7 @@ int main() {
         .add_plugins(camera::CameraPlugin{})
         .add_plugins(assets::AssetPlugin{})
         .add_plugins(image::ImagePlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(ClearGraphPlugin{});
 

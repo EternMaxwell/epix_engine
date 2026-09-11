@@ -11,6 +11,7 @@
 #include <epix/glfw/core.hpp>
 #include <epix/glfw/render.hpp>
 #include <epix/input.hpp>
+#include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
@@ -113,6 +114,7 @@ int main() {
         .add_plugins(camera::CameraPlugin{})
         .add_plugins(assets::AssetPlugin{})
         .add_plugins(image::ImagePlugin{})
+        .add_plugins(mesh::MeshPlugin{})
         .add_plugins(render::RenderPlugin{})
         .add_plugins(core_graph::CoreGraphPlugin{})
         .add_plugins(core_graph::FullscreenMaterialPlugin<ScreenTintMaterial>{})
