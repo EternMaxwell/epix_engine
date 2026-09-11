@@ -580,6 +580,69 @@ EPIX_EXPORT struct LateDeferredGBufferPrepassNode {
                                                          const ecs::World& world) const;
 };
 
+/** @brief The depth texture that holds one deferred material id per pixel for
+ * the deferred lighting pass to read (Bevy `DeferredLightingIdDepthTexture`,
+ * `deferred/copy_lighting_id.rs:154`). */
+EPIX_EXPORT struct DeferredLightingIdDepthTexture {
+    render::render_resource::CachedTexture texture;
+};
+
+/** @brief The pipeline that copies each view's deferred lighting-pass id into
+ * that view's depth texture (Bevy `CopyDeferredLightingIdPipeline`,
+ * `deferred/copy_lighting_id.rs:139`).
+ *
+ * Bevy has a single pipeline variant, so unlike `BlitPipeline` it is not
+ * specialized by key: `init_copy_deferred_lighting_id_pipeline` queues it once
+ * during render startup and the node only waits for it. */
+EPIX_EXPORT struct CopyDeferredLightingIdPipeline {
+    wgpu::BindGroupLayout layout;
+    render::CachedPipelineId pipeline_id = render::INVALID_RENDER_PIPELINE_ID;
+};
+
+/** @brief Writes each view's `deferred_lighting_pass_id` texture into the depth
+ * texture the deferred lighting pass reads (Bevy `CopyDeferredLightingIdNode`,
+ * `deferred/copy_lighting_id.rs:57`).
+ *
+ * The pass has no colour target: it draws the fullscreen triangle with
+ * `depth_compare: Always` and `depth_write_enabled: true`, and the fragment
+ * shader converts the stored `u8` material id into a normalised `frag_depth`. */
+EPIX_EXPORT struct CopyDeferredLightingIdNode {
+    using ViewQuery = ecs::Item<const render::view::ViewTarget&,
+                                const ViewPrepassTextures&,
+                                const DeferredLightingIdDepthTexture&>;
+    void update(ecs::World&) {}
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
+};
+
+/** @brief Queue the copy pipeline during render startup (Bevy
+ * `init_copy_deferred_lighting_id_pipeline`, `deferred/copy_lighting_id.rs:98`). */
+EPIX_EXPORT void init_copy_deferred_lighting_id_pipeline(
+    ecs::Commands cmd,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<assets::AssetServer> asset_server,
+    ecs::Res<FullscreenShader> fullscreen_shader,
+    ecs::Res<render::PipelineServer> pipeline_server);
+
+/** @brief Allocate the lighting-id depth texture for every view with a
+ * `DeferredPrepass` (Bevy `prepare_deferred_lighting_id_textures`,
+ * `deferred/copy_lighting_id.rs:160`). */
+EPIX_EXPORT void prepare_deferred_lighting_id_textures(
+    ecs::Commands cmd,
+    ecs::ResMut<render::render_resource::TextureCache> texture_cache,
+    ecs::Res<wgpu::Device> device,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const render::camera::ExtractedCamera&>,
+               ecs::With<DeferredPrepass>> views);
+
+/** @brief Bevy `CopyDeferredLightingIdPlugin`, installed by `CoreGraphPlugin`
+ * beside the Core2d and Core3d plugins (`bevy_core_pipeline/src/lib.rs:44`). */
+EPIX_EXPORT struct CopyDeferredLightingIdPlugin {
+    void attach(app::App& app);
+};
+
 /** @brief Bevy `MainOpaquePass3dNode`: renders the opaque and alpha-mask
  * binned phases into one deferred command buffer against the shared depth
  * target. Bevy's optional skybox and `MainPassResolutionOverride` inputs have

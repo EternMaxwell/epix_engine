@@ -383,13 +383,14 @@ void probe_prepass(
                Has<core_graph::core_3d::MotionVectorPrepass>,
                Has<core_graph::core_3d::DeferredPrepass>,
                Opt<const core_graph::core_3d::ViewPrepassTextures&>,
-               Opt<const render::view::ViewDepthTexture&>>> views) {
+               Opt<const render::view::ViewDepthTexture&>,
+               Opt<const core_graph::core_3d::DeferredLightingIdDepthTexture&>>> views) {
     if (probe->logged) return;
     probe->frames += 1;
     if (probe->frames < 4) return;
 
     for (auto&& [extracted_view, msaa, camera_3d, depth_prepass, normal_prepass, motion_vectors, deferred_prepass,
-                 textures, view_depth] : views.iter()) {
+                 textures, view_depth, lighting_id_depth] : views.iter()) {
         probe->logged        = true;
         const auto& retained = extracted_view.retained_view_entity;
         // Bevy's extract_camera_prepass_phase inserts these markers onto the
@@ -439,6 +440,20 @@ void probe_prepass(
         describe("motion_vectors", textures->get().motion_vectors);
         describe("deferred", textures->get().deferred);
         describe("deferred_lighting_pass_id", textures->get().deferred_lighting_pass_id);
+        // C15-D4: the copy node writes the deferred material id into this depth
+        // texture. Its presence here, combined with the empty stderr of the run,
+        // is the evidence that the depth-only copy pass built and executed: the
+        // pipeline has no colour target, writes `SV_Depth`, and compares depth
+        // with `Always`, all of which wgpu validates at pass time.
+        if (lighting_id_depth) {
+            const auto& value = lighting_id_depth->get().texture.texture;
+            spdlog::info("[core3d_prepass] deferred_lighting_id_depth: {}x{} format={} samples={} usage={}", value
+                             .getWidth(),
+                         value.getHeight(), wgpu::to_string(value.getFormat()), value.getSampleCount(),
+                         static_cast<int>(value.getUsage()));
+        } else {
+            spdlog::warn("[core3d_prepass] the deferred view has NO DeferredLightingIdDepthTexture.");
+        }
         return;
     }
     spdlog::warn("[core3d_prepass] no extracted Camera3d view after {} frames.", probe->frames);

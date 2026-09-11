@@ -1004,15 +1004,14 @@ std::expected<void, graph::NodeRunError> LateDeferredGBufferPrepassNode::run(
 void Core3dGraph::add_to(graph::RenderGraph& g, World& world) {
     spdlog::debug("[render.core_graph] Adding Core3D sub-graph to render graph.");
     graph::RenderGraph g3d;
-    // C14 installs the two real prepass nodes at Bevy's labels and C15 the two
-    // real deferred G-buffer nodes. `CopyDeferredLightingId` stays an empty node
-    // because the deferred lighting pass itself needs the material plugin's
-    // lighting half (C15-D1).
+    // Every label in Bevy's default chain is now a real node: C14 installed the
+    // two prepass nodes, C15 the two deferred G-buffer nodes, and C15-D4 the
+    // lighting-id copy.
     g3d.add_node(Core3dNodes::EarlyPrepass, graph::ViewNodeRunner{EarlyPrepassNode{}, world});
     g3d.add_node(Core3dNodes::LatePrepass, graph::ViewNodeRunner{LatePrepassNode{}, world});
     g3d.add_node(Core3dNodes::EarlyDeferredPrepass, graph::ViewNodeRunner{EarlyDeferredGBufferPrepassNode{}, world});
     g3d.add_node(Core3dNodes::LateDeferredPrepass, graph::ViewNodeRunner{LateDeferredGBufferPrepassNode{}, world});
-    g3d.add_node(Core3dNodes::CopyDeferredLightingId, graph::EmptyNode{});
+    g3d.add_node(Core3dNodes::CopyDeferredLightingId, graph::ViewNodeRunner{CopyDeferredLightingIdNode{}, world});
     g3d.add_node(Core3dNodes::EndPrepasses, graph::EmptyNode{});
     g3d.add_node(Core3dNodes::StartMainPass, graph::EmptyNode{});
     g3d.add_node(Core3dNodes::MainOpaquePass, graph::ViewNodeRunner{MainOpaquePass3dNode{}, world});

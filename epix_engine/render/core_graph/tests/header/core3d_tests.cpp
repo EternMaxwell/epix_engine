@@ -985,3 +985,57 @@ TEST(Core3dDeferredTextures, RequiresDeferredPrepassAndAllocatesBevyFormats) {
     EXPECT_FALSE(plain_textures->get().deferred_lighting_pass_id);
     EXPECT_FALSE(plain_textures->get().deferred_view().has_value());
 }
+
+// C15-D4: `prepare_deferred_lighting_id_textures` gives every view with a
+// `DeferredPrepass` one single-sampled `eDepth16Unorm` texture usable as a render
+// attachment and as a copy source, and gives a view without the component none
+// (`deferred/copy_lighting_id.rs:160-193`).
+TEST(Core3dDeferredTextures, CopyLightingIdAllocatesADepthTargetPerDeferredView) {
+    using namespace epix::core_graph::core_3d;
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    auto& render_app = app.get_sub_app_mut(Render)->get();
+    auto& world      = render_app.world_mut();
+    init_core3d_test_resources(world);
+    render_app.add_systems(epix::app::Update, into(prepare_deferred_lighting_id_textures));
+
+    const ::epix::camera::NormalizedRenderTarget target{::epix::camera::ManualTextureViewHandle{102}};
+    const auto spawn = [&](bool deferred_prepass, std::optional<glm::uvec2> size) {
+        auto entity = world.spawn();
+        const auto id = entity.id();
+        entity.insert(camera::ExtractedCamera{.target = target, .physical_target_size = size});
+        if (deferred_prepass) entity.insert(DeferredPrepass{});
+        return id;
+    };
+    const auto deferred = spawn(true, glm::uvec2{48, 32});
+    const auto plain    = spawn(false, glm::uvec2{48, 32});
+    // A deferred view with no physical target size is skipped rather than
+    // allocated at a zero extent.
+    const auto no_size = spawn(true, std::nullopt);
+
+    render_app.run_schedule(epix::app::Update);
+
+    const auto lighting_id = world.entity(deferred).get<DeferredLightingIdDepthTexture>();
+    ASSERT_TRUE(lighting_id);
+    const auto& texture = lighting_id->get().texture.texture;
+    EXPECT_EQ(texture.getFormat(), DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT);
+    EXPECT_EQ(texture.getSampleCount(), 1u);
+    EXPECT_EQ(texture.getWidth(), 48u);
+    EXPECT_EQ(texture.getHeight(), 32u);
+    EXPECT_EQ(texture.getUsage(),
+              wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eCopySrc);
+    EXPECT_TRUE(static_cast<bool>(lighting_id->get().texture.default_view));
+
+    EXPECT_FALSE(world.entity(plain).contains<DeferredLightingIdDepthTexture>());
+    EXPECT_FALSE(world.entity(no_size).contains<DeferredLightingIdDepthTexture>());
+}
