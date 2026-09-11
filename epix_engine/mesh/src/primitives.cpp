@@ -799,6 +799,321 @@ Mesh ConicalFrustumMeshBuilder::build() const {
         .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
 }
 
+Capsule3dMeshBuilder Capsule3d::mesh() const noexcept { return Capsule3dMeshBuilder{Capsule3d{*this}}; }
+
+Mesh Capsule3dMeshBuilder::build() const {
+    // Bevy's `Capsule3dMeshBuilder::build`
+    // (bevy_mesh/src/primitives/dim3/capsule.rs:96-419), adapted from
+    // <https://behreajj.medium.com/making-a-capsule-mesh-via-script-in-five-3d-environments-c2214abf02db>.
+    // The capsule is built as a single index-ordered vertex pool with fixed
+    // offsets per region: a north polar ring, the north hemisphere, the north
+    // equator, an optional cylinder, the south equator, the south hemisphere, a
+    // south polar ring, and a south cap ring. Each region is written into its
+    // slice of the pool, and the triangle list is filled in the same region
+    // order, which is why the offsets are computed up front.
+    const Capsule3d capsule_copy = capsule;
+    const auto rings_             = rings;
+    const auto longitudes_        = longitudes;
+    const auto latitudes_         = latitudes;
+    const auto uv_profile_        = uv_profile;
+    const float radius            = capsule_copy.radius;
+    const float half_length       = capsule_copy.half_length;
+
+    const bool calc_middle       = rings_ > 0;
+    const std::uint32_t half_lats  = latitudes_ / 2u;
+    const std::uint32_t half_latsn1 = half_lats - 1u;
+    const std::uint32_t half_latsn2 = half_lats - 2u;
+    const std::uint32_t ringsp1    = rings_ + 1u;
+    const std::uint32_t lonsp1     = longitudes_ + 1u;
+    const float summit             = half_length + radius;
+
+    // Vertex index offsets.
+    const std::uint32_t vert_offset_north_hemi      = longitudes_;
+    const std::uint32_t vert_offset_north_equator   = vert_offset_north_hemi + lonsp1 * half_latsn1;
+    const std::uint32_t vert_offset_cylinder        = vert_offset_north_equator + lonsp1;
+    const std::uint32_t vert_offset_south_equator =
+        calc_middle ? vert_offset_cylinder + lonsp1 * rings_ : vert_offset_cylinder;
+    const std::uint32_t vert_offset_south_hemi  = vert_offset_south_equator + lonsp1;
+    const std::uint32_t vert_offset_south_polar = vert_offset_south_hemi + lonsp1 * half_latsn2;
+    const std::uint32_t vert_offset_south_cap   = vert_offset_south_polar + lonsp1;
+
+    const std::size_t vert_len = static_cast<std::size_t>(vert_offset_south_cap) + longitudes_;
+
+    std::vector<VertexAttributeValues::Float32x3Value> positions(vert_len, VertexAttributeValues::Float32x3Value{});
+    std::vector<VertexAttributeValues::Float32x3Value> normals(vert_len, VertexAttributeValues::Float32x3Value{});
+    std::vector<VertexAttributeValues::Float32x2Value> uvs(vert_len, VertexAttributeValues::Float32x2Value{});
+
+    const float to_theta          = 2.0f * std::numbers::pi_v<float> / static_cast<float>(longitudes_);
+    const float to_phi            = std::numbers::pi_v<float> / static_cast<float>(latitudes_);
+    const float to_tex_horizontal = 1.0f / static_cast<float>(longitudes_);
+    const float to_tex_vertical   = 1.0f / static_cast<float>(half_lats);
+
+    const float vt_aspect_ratio =
+        uv_profile_ == CapsuleUvProfile::Aspect
+            ? radius / (2.0f * half_length + radius + radius)
+            : (uv_profile_ == CapsuleUvProfile::Uniform
+                   ? static_cast<float>(half_lats) / static_cast<float>(ringsp1 + latitudes_)
+                   : 1.0f / 3.0f);
+    const float vt_aspect_north = 1.0f - vt_aspect_ratio;
+    const float vt_aspect_south = vt_aspect_ratio;
+
+    std::vector<glm::vec2> theta_cartesian(static_cast<std::size_t>(longitudes_));
+    std::vector<glm::vec2> rho_theta_cartesian(static_cast<std::size_t>(longitudes_));
+    std::vector<float> s_texture_cache(static_cast<std::size_t>(lonsp1));
+
+    for (std::size_t j = 0; j < static_cast<std::size_t>(longitudes_); ++j) {
+        const float jf             = static_cast<float>(j);
+        const float s_texture_polar = 1.0f - ((jf + 0.5f) * to_tex_horizontal);
+        const float theta           = jf * to_theta;
+
+        theta_cartesian[j]     = glm::vec2{std::cos(theta), std::sin(theta)};
+        rho_theta_cartesian[j] = radius * theta_cartesian[j];
+
+        // North pole.
+        positions[j] = VertexAttributeValues::Float32x3Value{0.0f, summit, 0.0f};
+        uvs[j]       = VertexAttributeValues::Float32x2Value{s_texture_polar, 1.0f};
+        normals[j]   = VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f};
+
+        // South pole.
+        const std::size_t idx = static_cast<std::size_t>(vert_offset_south_cap) + j;
+        positions[idx]        = VertexAttributeValues::Float32x3Value{0.0f, -summit, 0.0f};
+        uvs[idx]              = VertexAttributeValues::Float32x2Value{s_texture_polar, 0.0f};
+        normals[idx]          = VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f};
+    }
+
+    // Equatorial vertices. The last column repeats the first so the seam has its
+    // own vertices; `s_texture` runs from 1 at the seam back down to 0.
+    for (std::size_t j = 0; j < static_cast<std::size_t>(lonsp1); ++j) {
+        const float s_texture = 1.0f - static_cast<float>(j) * to_tex_horizontal;
+        s_texture_cache[j]    = s_texture;
+
+        // Wrap to the first element on reaching the last.
+        const std::size_t j_mod = j % static_cast<std::size_t>(longitudes_);
+        const glm::vec2 tc      = theta_cartesian[j_mod];
+        const glm::vec2 rtc     = rho_theta_cartesian[j_mod];
+
+        // North equator.
+        const std::size_t idxn = static_cast<std::size_t>(vert_offset_north_equator) + j;
+        positions[idxn]        = VertexAttributeValues::Float32x3Value{rtc.x, half_length, -rtc.y};
+        uvs[idxn]              = VertexAttributeValues::Float32x2Value{s_texture, vt_aspect_north};
+        normals[idxn]          = VertexAttributeValues::Float32x3Value{tc.x, 0.0f, -tc.y};
+
+        // South equator.
+        const std::size_t idxs = static_cast<std::size_t>(vert_offset_south_equator) + j;
+        positions[idxs]        = VertexAttributeValues::Float32x3Value{rtc.x, -half_length, -rtc.y};
+        uvs[idxs]              = VertexAttributeValues::Float32x2Value{s_texture, vt_aspect_south};
+        normals[idxs]          = VertexAttributeValues::Float32x3Value{tc.x, 0.0f, -tc.y};
+    }
+
+    // Hemisphere vertices.
+    for (std::uint32_t i = 0; i < half_latsn1; ++i) {
+        const float ip1f = static_cast<float>(i) + 1.0f;
+        const float phi  = ip1f * to_phi;
+
+        const float sin_phi_south = std::sin(phi);
+        const float cos_phi_south = std::cos(phi);
+
+        // The hemispheres are symmetrical, so the sine and cosine only need to be
+        // computed once and swapped between north and south.
+        const float cos_phi_north = sin_phi_south;
+        const float sin_phi_north = -cos_phi_south;
+
+        const float rho_cos_phi_north = radius * cos_phi_north;
+        const float rho_sin_phi_north = radius * sin_phi_north;
+        const float z_offset_north    = half_length - rho_sin_phi_north;
+
+        const float rho_cos_phi_south = radius * cos_phi_south;
+        const float rho_sin_phi_south = radius * sin_phi_south;
+        const float z_offset_south    = -half_length - rho_sin_phi_south;
+
+        // Texture coordinates.
+        const float t_tex_fac   = ip1f * to_tex_vertical;
+        const float cmpl_tex_fac = 1.0f - t_tex_fac;
+        const float t_tex_north  = cmpl_tex_fac + vt_aspect_north * t_tex_fac;
+        const float t_tex_south  = cmpl_tex_fac * vt_aspect_south;
+
+        const std::uint32_t i_lonsp1           = i * lonsp1;
+        const std::uint32_t vert_curr_lat_north = vert_offset_north_hemi + i_lonsp1;
+        const std::uint32_t vert_curr_lat_south = vert_offset_south_hemi + i_lonsp1;
+
+        for (std::size_t j = 0; j < static_cast<std::size_t>(lonsp1); ++j) {
+            const std::size_t j_mod = j % static_cast<std::size_t>(longitudes_);
+            const glm::vec2 tc      = theta_cartesian[j_mod];
+            const float s_texture   = s_texture_cache[j];
+
+            // North hemisphere.
+            const std::size_t idxn = static_cast<std::size_t>(vert_curr_lat_north) + j;
+            positions[idxn] = VertexAttributeValues::Float32x3Value{rho_cos_phi_north * tc.x, z_offset_north,
+                                                                   -rho_cos_phi_north * tc.y};
+            uvs[idxn]       = VertexAttributeValues::Float32x2Value{s_texture, t_tex_north};
+            normals[idxn]   = VertexAttributeValues::Float32x3Value{cos_phi_north * tc.x, -sin_phi_north,
+                                                                   -cos_phi_north * tc.y};
+
+            // South hemisphere.
+            const std::size_t idxs = static_cast<std::size_t>(vert_curr_lat_south) + j;
+            positions[idxs] = VertexAttributeValues::Float32x3Value{rho_cos_phi_south * tc.x, z_offset_south,
+                                                                   -rho_cos_phi_south * tc.y};
+            uvs[idxs]       = VertexAttributeValues::Float32x2Value{s_texture, t_tex_south};
+            normals[idxs]   = VertexAttributeValues::Float32x3Value{cos_phi_south * tc.x, -sin_phi_south,
+                                                                   -cos_phi_south * tc.y};
+        }
+    }
+
+    // Cylinder vertices. Both equators are excluded from the interpolation, so
+    // only the `rings - 1` interior rings are written here.
+    if (calc_middle) {
+        const float to_fac           = 1.0f / static_cast<float>(ringsp1);
+        std::size_t idx_cyl_lat      = static_cast<std::size_t>(vert_offset_cylinder);
+
+        for (std::uint32_t h = 1; h < ringsp1; ++h) {
+            const float fac        = static_cast<float>(h) * to_fac;
+            const float cmpl_fac   = 1.0f - fac;
+            const float t_texture  = cmpl_fac * vt_aspect_north + fac * vt_aspect_south;
+            const float z          = half_length - 2.0f * half_length * fac;
+
+            for (std::size_t j = 0; j < static_cast<std::size_t>(lonsp1); ++j) {
+                const std::size_t j_mod = j % static_cast<std::size_t>(longitudes_);
+                const glm::vec2 tc      = theta_cartesian[j_mod];
+                const glm::vec2 rtc     = rho_theta_cartesian[j_mod];
+
+                positions[idx_cyl_lat] = VertexAttributeValues::Float32x3Value{rtc.x, z, -rtc.y};
+                uvs[idx_cyl_lat]       = VertexAttributeValues::Float32x2Value{s_texture_cache[j], t_texture};
+                normals[idx_cyl_lat]   = VertexAttributeValues::Float32x3Value{tc.x, 0.0f, -tc.y};
+
+                ++idx_cyl_lat;
+            }
+        }
+    }
+
+    // Triangle indices. The stride is 3 for the polar fans and 6 for the two
+    // triangles of each quad, so the region offsets are computed the same way.
+    const std::uint32_t lons3 = longitudes_ * 3u;
+    const std::uint32_t lons6 = longitudes_ * 6u;
+    const std::uint32_t hemi_lons = half_latsn1 * lons6;
+
+    const std::uint32_t tri_offset_north_hemi = lons3;
+    const std::uint32_t tri_offset_cylinder   = tri_offset_north_hemi + hemi_lons;
+    const std::uint32_t tri_offset_south_hemi = tri_offset_cylinder + ringsp1 * lons6;
+    const std::uint32_t tri_offset_south_cap  = tri_offset_south_hemi + hemi_lons;
+
+    const std::size_t fs_len = static_cast<std::size_t>(tri_offset_south_cap) + lons3;
+    std::vector<std::uint32_t> tris(fs_len, 0u);
+
+    // Polar caps.
+    {
+        std::uint32_t i = 0;
+        std::size_t k   = 0;
+        std::size_t m   = static_cast<std::size_t>(tri_offset_south_cap);
+        while (i < longitudes_) {
+            // North.
+            tris[k]     = i;
+            tris[k + 1] = vert_offset_north_hemi + i;
+            tris[k + 2] = vert_offset_north_hemi + i + 1u;
+
+            // South.
+            tris[m]     = vert_offset_south_cap + i;
+            tris[m + 1] = vert_offset_south_polar + i + 1u;
+            tris[m + 2] = vert_offset_south_polar + i;
+
+            ++i;
+            k += 3;
+            m += 3;
+        }
+    }
+
+    // Hemispheres.
+    {
+        std::uint32_t i = 0;
+        std::size_t k   = static_cast<std::size_t>(tri_offset_north_hemi);
+        std::size_t m   = static_cast<std::size_t>(tri_offset_south_hemi);
+
+        while (i < half_latsn1) {
+            const std::uint32_t i_lonsp1 = i * lonsp1;
+
+            const std::uint32_t vert_curr_lat_north = vert_offset_north_hemi + i_lonsp1;
+            const std::uint32_t vert_next_lat_north = vert_curr_lat_north + lonsp1;
+
+            const std::uint32_t vert_curr_lat_south = vert_offset_south_equator + i_lonsp1;
+            const std::uint32_t vert_next_lat_south = vert_curr_lat_south + lonsp1;
+
+            std::uint32_t j = 0;
+            while (j < longitudes_) {
+                // North.
+                const std::uint32_t north00 = vert_curr_lat_north + j;
+                const std::uint32_t north01 = vert_next_lat_north + j;
+                const std::uint32_t north11 = vert_next_lat_north + j + 1u;
+                const std::uint32_t north10 = vert_curr_lat_north + j + 1u;
+
+                tris[k]     = north00;
+                tris[k + 1] = north11;
+                tris[k + 2] = north10;
+
+                tris[k + 3] = north00;
+                tris[k + 4] = north01;
+                tris[k + 5] = north11;
+
+                // South.
+                const std::uint32_t south00 = vert_curr_lat_south + j;
+                const std::uint32_t south01 = vert_next_lat_south + j;
+                const std::uint32_t south11 = vert_next_lat_south + j + 1u;
+                const std::uint32_t south10 = vert_curr_lat_south + j + 1u;
+
+                tris[m]     = south00;
+                tris[m + 1] = south11;
+                tris[m + 2] = south10;
+
+                tris[m + 3] = south00;
+                tris[m + 4] = south01;
+                tris[m + 5] = south11;
+
+                ++j;
+                k += 6;
+                m += 6;
+            }
+
+            ++i;
+        }
+    }
+
+    // Cylinder.
+    {
+        std::uint32_t i = 0;
+        std::size_t k   = static_cast<std::size_t>(tri_offset_cylinder);
+
+        while (i < ringsp1) {
+            const std::uint32_t vert_curr_lat = vert_offset_north_equator + i * lonsp1;
+            const std::uint32_t vert_next_lat = vert_curr_lat + lonsp1;
+
+            std::uint32_t j = 0;
+            while (j < longitudes_) {
+                const std::uint32_t cy00 = vert_curr_lat + j;
+                const std::uint32_t cy01 = vert_next_lat + j;
+                const std::uint32_t cy11 = vert_next_lat + j + 1u;
+                const std::uint32_t cy10 = vert_curr_lat + j + 1u;
+
+                tris[k]     = cy00;
+                tris[k + 1] = cy11;
+                tris[k + 2] = cy10;
+
+                tris[k + 3] = cy00;
+                tris[k + 4] = cy01;
+                tris[k + 5] = cy11;
+
+                ++j;
+                k += 6;
+            }
+
+            ++i;
+        }
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs))
+        .with_inserted_indices(Indices{std::move(tris)});
+}
+
 Mesh CuboidMeshBuilder::build() const {
     const glm::vec3 minimum = -half_size;
     const glm::vec3 maximum = half_size;

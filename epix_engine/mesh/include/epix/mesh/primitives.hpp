@@ -21,6 +21,7 @@ class Polyline2dMeshBuilder;
 class Polyline3dMeshBuilder;
 struct AnnulusMeshBuilder;
 struct Capsule2dMeshBuilder;
+struct Capsule3dMeshBuilder;
 struct CircleMeshBuilder;
 struct CircularSectorMeshBuilder;
 struct CircularSegmentMeshBuilder;
@@ -809,6 +810,81 @@ EPIX_EXPORT struct ConicalFrustumMeshBuilder {
     Mesh build() const;
 };
 
+/** @brief Manner in which a capsule mesh distributes UV coordinates vertically
+ * (Bevy `CapsuleUvProfile`). */
+EPIX_EXPORT enum class CapsuleUvProfile : std::uint8_t {
+    /** @brief UV space is distributed by how much of the capsule consists of the
+     * hemispheres. */
+    Aspect,
+    /** @brief Hemispheres get UV space according to the ratio of latitudes to
+     * rings. */
+    Uniform,
+    /** @brief The upper third of the texture goes to the northern hemisphere, the
+     * middle third to the cylinder and the lower third to the southern one. */
+    Fixed,
+};
+
+/** @brief Capsule primitive described by its radius and its length excluding the
+ * hemispheres (Bevy `bevy_math::primitives::Capsule3d`). The cylindrical segment
+ * is twice `half_length` long and both ends are hemispheres of `radius`. */
+EPIX_EXPORT struct Capsule3d {
+    /** @brief Radius of the capsule. Default: 0.5. */
+    float radius = 0.5f;
+    /** @brief Half the height of the capsule, excluding the hemispheres.
+     * Default: 0.5, so the total height is 2.0. */
+    float half_length = 0.5f;
+
+    constexpr Capsule3d() = default;
+    /** @brief Create from a radius and the length of the cylindrical segment
+     * (Bevy `Capsule3d::new`). */
+    constexpr Capsule3d(float radius, float length) : radius(radius), half_length(length * 0.5f) {}
+    /** @brief The part connecting the hemispherical ends, as a cylinder (Bevy
+     * `Capsule3d::to_cylinder`). */
+    constexpr Cylinder to_cylinder() const noexcept { return Cylinder{radius, half_length * 2.0f}; }
+    Capsule3dMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Capsule3d&) const = default;
+};
+
+/** @brief Builder used to create a capsule mesh (Bevy `Capsule3dMeshBuilder`).
+ *
+ * `height` passed to the constructor is the distance between the centres of the
+ * hemispheres; `radius` is added at both ends to get the mesh's real height. */
+EPIX_EXPORT struct Capsule3dMeshBuilder {
+    Capsule3d capsule{};
+    /** @brief Horizontal lines subdividing the cylindrical part. Default: 0. */
+    std::uint32_t rings = 0;
+    /** @brief Vertical lines subdividing the hemispheres. Default: 32. */
+    std::uint32_t longitudes = 32;
+    /** @brief Horizontal lines subdividing the hemispheres. Default: 16. */
+    std::uint32_t latitudes = 16;
+    /** @brief How UV coordinates are distributed vertically. Default:
+     * `CapsuleUvProfile::Aspect`. */
+    CapsuleUvProfile uv_profile = CapsuleUvProfile::Aspect;
+
+    constexpr Capsule3dMeshBuilder() = default;
+    constexpr Capsule3dMeshBuilder(float radius, float height, std::uint32_t longitudes, std::uint32_t latitudes)
+        : capsule(radius, height), longitudes(longitudes), latitudes(latitudes) {}
+    constexpr explicit Capsule3dMeshBuilder(Capsule3d capsule) : capsule(capsule) {}
+    Capsule3dMeshBuilder with_rings(std::uint32_t value) && noexcept {
+        rings = value;
+        return std::move(*this);
+    }
+    Capsule3dMeshBuilder with_longitudes(std::uint32_t value) && noexcept {
+        longitudes = value;
+        return std::move(*this);
+    }
+    Capsule3dMeshBuilder with_latitudes(std::uint32_t value) && noexcept {
+        latitudes = value;
+        return std::move(*this);
+    }
+    Capsule3dMeshBuilder with_uv_profile(CapsuleUvProfile value) && noexcept {
+        uv_profile = value;
+        return std::move(*this);
+    }
+    Mesh build() const;
+};
+
 /** @brief Builder used to create a circle mesh. */
 EPIX_EXPORT struct CircleMeshBuilder {
     Circle circle{};
@@ -1020,6 +1096,7 @@ static_assert(MeshBuilder<CylinderMeshBuilder>);
 static_assert(MeshBuilder<TorusMeshBuilder>);
 static_assert(MeshBuilder<ConeMeshBuilder>);
 static_assert(MeshBuilder<ConicalFrustumMeshBuilder>);
+static_assert(MeshBuilder<Capsule3dMeshBuilder>);
 static_assert(MeshBuilder<CuboidMeshBuilder>);
 static_assert(MeshBuilder<PlaneMeshBuilder>);
 static_assert(MeshBuilder<Segment3dMeshBuilder>);

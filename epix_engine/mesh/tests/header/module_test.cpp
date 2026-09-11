@@ -1776,3 +1776,183 @@ TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
     EXPECT_EQ(source.try_attributes().error(), mesh::MeshAccessError::ExtractedToRenderWorld);
     EXPECT_FALSE(source.take_gpu_data().has_value());
 }
+
+// Bevy `Capsule3d` / `Capsule3dMeshBuilder` defaults and constructors
+// (`bevy_math/src/primitives/dim3.rs`, `bevy_mesh/src/primitives/dim3/capsule.rs:9-94`).
+TEST(MeshPrimitives, Capsule3dDefaultsAndConstructorsMatchBevy) {
+    static_assert(mesh::Meshable<mesh::Capsule3d>);
+    static_assert(mesh::MeshBuilder<mesh::Capsule3dMeshBuilder>);
+
+    const mesh::Capsule3d capsule{};
+    EXPECT_FLOAT_EQ(capsule.radius, 0.5f);
+    EXPECT_FLOAT_EQ(capsule.half_length, 0.5f);
+    // `new` takes the distance between the hemisphere centres, so half of it.
+    const mesh::Capsule3d from_new{2.0f, 3.0f};
+    EXPECT_FLOAT_EQ(from_new.radius, 2.0f);
+    EXPECT_FLOAT_EQ(from_new.half_length, 1.5f);
+    // The connecting part is a cylinder of the same radius and the full length.
+    const mesh::Cylinder cylinder = from_new.to_cylinder();
+    EXPECT_FLOAT_EQ(cylinder.radius, 2.0f);
+    EXPECT_FLOAT_EQ(cylinder.half_height, 1.5f);
+
+    const mesh::Capsule3dMeshBuilder builder{};
+    EXPECT_FLOAT_EQ(builder.capsule.radius, 0.5f);
+    EXPECT_EQ(builder.rings, 0u);
+    EXPECT_EQ(builder.longitudes, 32u);
+    EXPECT_EQ(builder.latitudes, 16u);
+    EXPECT_EQ(builder.uv_profile, mesh::CapsuleUvProfile::Aspect);
+
+    const mesh::Capsule3dMeshBuilder from_args{1.0f, 2.0f, 8u, 4u};
+    EXPECT_FLOAT_EQ(from_args.capsule.radius, 1.0f);
+    EXPECT_FLOAT_EQ(from_args.capsule.half_length, 1.0f);
+    EXPECT_EQ(from_args.longitudes, 8u);
+    EXPECT_EQ(from_args.latitudes, 4u);
+    EXPECT_EQ(from_args.rings, 0u);
+    EXPECT_EQ(from_args.uv_profile, mesh::CapsuleUvProfile::Aspect);
+    // `mesh()` is the `Meshable` entry point and preserves the shape.
+    EXPECT_EQ((mesh::Capsule3d{1.0f, 2.0f}.mesh().capsule), (mesh::Capsule3d{1.0f, 2.0f}));
+
+    const auto configured = mesh::Capsule3dMeshBuilder{}
+                                .with_rings(3)
+                                .with_longitudes(5)
+                                .with_latitudes(6)
+                                .with_uv_profile(mesh::CapsuleUvProfile::Fixed);
+    EXPECT_EQ(configured.rings, 3u);
+    EXPECT_EQ(configured.longitudes, 5u);
+    EXPECT_EQ(configured.latitudes, 6u);
+    EXPECT_EQ(configured.uv_profile, mesh::CapsuleUvProfile::Fixed);
+}
+
+// Bevy's `Capsule3dMeshBuilder::build` region layout and its resulting vertex and
+// index counts (`capsule.rs:111-133`, `:288-298`). The counts are the clearest
+// check that each region — north polar ring, north hemisphere, north equator,
+// optional cylinder, south equator, south hemisphere, south polar ring, south cap
+// ring — is written into its own slice of the pool, because one region's stride
+// changing shows up directly here.
+TEST(MeshPrimitives, Capsule3dMeshRegionLayoutMatchesBevy) {
+    const auto counts = [](std::uint32_t rings, std::uint32_t longitudes, std::uint32_t latitudes) {
+        const std::uint32_t half_lats   = latitudes / 2u;
+        const std::uint32_t half_latsn1 = half_lats - 1u;
+        const std::uint32_t half_latsn2 = half_lats - 2u;
+        const std::uint32_t ringsp1     = rings + 1u;
+        const std::uint32_t lonsp1      = longitudes + 1u;
+        const std::uint32_t north_hemi    = longitudes;
+        const std::uint32_t north_equator = north_hemi + lonsp1 * half_latsn1;
+        const std::uint32_t cylinder      = north_equator + lonsp1;
+        const std::uint32_t south_equator = rings > 0 ? cylinder + lonsp1 * rings : cylinder;
+        const std::uint32_t south_hemi    = south_equator + lonsp1;
+        const std::uint32_t south_polar   = south_hemi + lonsp1 * half_latsn2;
+        const std::uint32_t south_cap     = south_polar + lonsp1;
+        const std::uint32_t vertices      = south_cap + longitudes;
+        const std::uint32_t lons3         = longitudes * 3u;
+        const std::uint32_t lons6         = longitudes * 6u;
+        const std::uint32_t hemi_indices  = half_latsn1 * lons6;
+        const std::uint32_t indices       = lons3 + hemi_indices + ringsp1 * lons6 + hemi_indices + lons3;
+        return std::pair{static_cast<std::size_t>(vertices), static_cast<std::size_t>(indices)};
+    };
+
+    for (const std::uint32_t rings : {0u, 1u, 4u}) {
+        const mesh::Capsule3dMeshBuilder builder =
+            mesh::Capsule3dMeshBuilder{0.5f, 1.0f, 32u, 16u}.with_rings(rings);
+        const auto value = builder.build();
+        const auto* positions =
+            value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+        const auto* normals =
+            value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+        const auto* uvs =
+            value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+        ASSERT_NE(positions, nullptr);
+        ASSERT_NE(normals, nullptr);
+        ASSERT_NE(uvs, nullptr);
+        const auto expected_vertices = std::get<0>(counts(rings, 32u, 16u));
+        const auto expected_indices  = std::get<1>(counts(rings, 32u, 16u));
+        EXPECT_EQ(positions->size(), expected_vertices) << "rings=" << rings;
+        EXPECT_EQ(normals->size(), expected_vertices) << "rings=" << rings;
+        EXPECT_EQ(uvs->size(), expected_vertices) << "rings=" << rings;
+        const auto indices = value.indices();
+        ASSERT_TRUE(indices.has_value());
+        EXPECT_EQ(indices->get().len(), expected_indices) << "rings=" << rings;
+        // Every index addresses a real vertex.
+        const auto* index_list = indices->get().as_u32();
+        ASSERT_NE(index_list, nullptr);
+        for (const std::uint32_t index : *index_list) {
+            EXPECT_LT(index, expected_vertices) << "rings=" << rings;
+        }
+    }
+    // The default builder (rings = 0) is 592 vertices and 3072 indices.
+    EXPECT_EQ(std::get<0>(counts(0u, 32u, 16u)), 592u);
+    EXPECT_EQ(std::get<1>(counts(0u, 32u, 16u)), 3072u);
+}
+
+// The vertex values Bevy's algorithm fixes: the poles, the two equator rings and
+// the three UV profiles (`capsule.rs:144-150`, `:156-197`).
+TEST(MeshPrimitives, Capsule3dPolesEquatorsAndUvProfilesMatchBevy) {
+    const auto build = [](mesh::CapsuleUvProfile profile, std::uint32_t longitudes) {
+        return mesh::Capsule3dMeshBuilder{0.5f, 1.0f, longitudes, 16u}.with_uv_profile(profile).build();
+    };
+    const auto attribute = [](const mesh::Mesh& value, const auto& id) {
+        return value.attribute(id)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+    const auto uv_attribute = [](const mesh::Mesh& value) {
+        return value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    };
+
+    // `longitudes = 4` puts the ring vertices at 0, 90, 180 and 270 degrees.
+    const auto value     = build(mesh::CapsuleUvProfile::Aspect, 4u);
+    const auto* positions = attribute(value, mesh::Mesh::ATTRIBUTE_POSITION);
+    const auto* normals   = attribute(value, mesh::Mesh::ATTRIBUTE_NORMAL);
+    const auto* uvs       = uv_attribute(value);
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+
+    // North polar ring: at `half_length + radius` with a +Y normal and the top of
+    // the UV range, `s` offset by half a step.
+    for (std::size_t j = 0; j < 4; ++j) {
+        EXPECT_NEAR((*positions)[j][0], 0.0f, 1e-6f);
+        EXPECT_NEAR((*positions)[j][1], 1.0f, 1e-6f);
+        EXPECT_NEAR((*positions)[j][2], 0.0f, 1e-6f);
+        EXPECT_EQ((*normals)[j], (mesh::VertexAttributeValues::Float32x3Value{0.0f, 1.0f, 0.0f}));
+        EXPECT_NEAR((*uvs)[j][1], 1.0f, 1e-6f);
+    }
+    // South cap ring: the same ring mirrored, with a -Y normal and v = 0. Its
+    // offset is the last region: the north polar ring, the north hemisphere, the
+    // north equator, the (empty) cylinder, the south equator, the south
+    // hemisphere, the south polar ring, then the cap.
+    const std::size_t south_cap = 4u + 5u * 7u + 5u + 5u + 5u * 6u + 5u;
+    for (std::size_t j = 0; j < 4; ++j) {
+        EXPECT_NEAR((*positions)[south_cap + j][1], -1.0f, 1e-6f);
+        EXPECT_EQ((*normals)[south_cap + j], (mesh::VertexAttributeValues::Float32x3Value{0.0f, -1.0f, 0.0f}));
+        EXPECT_NEAR((*uvs)[south_cap + j][1], 0.0f, 1e-6f);
+    }
+
+    // Equators: with `rings = 0` the north and south equator rings are adjacent,
+    // at +/-half_length, with the radial normal (cos, 0, -sin). The first ring
+    // vertex is at angle zero, so it is +X.
+    const std::size_t north_equator = 4u + 5u * 7u;
+    EXPECT_NEAR((*positions)[north_equator][0], 0.5f, 1e-6f);
+    EXPECT_NEAR((*positions)[north_equator][1], 0.5f, 1e-6f);
+    EXPECT_NEAR((*positions)[north_equator][2], 0.0f, 1e-6f);
+    EXPECT_NEAR((*normals)[north_equator][0], 1.0f, 1e-6f);
+    EXPECT_NEAR((*normals)[north_equator][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*normals)[north_equator][2], 0.0f, 1e-6f);
+    const std::size_t south_equator = north_equator + 5u;
+    EXPECT_NEAR((*positions)[south_equator][1], -0.5f, 1e-6f);
+
+    // The UV profile sets how much of the vertical range the cylinder takes.
+    // Aspect: radius / (2 * half_length + 2 * radius) = 0.5 / 2 = 0.25.
+    EXPECT_NEAR((*uvs)[north_equator][1], 0.75f, 1e-6f);
+    EXPECT_NEAR((*uvs)[south_equator][1], 0.25f, 1e-6f);
+    // Uniform: half_lats / (rings + 1 + latitudes) = 8 / 17.
+    const auto uniform     = build(mesh::CapsuleUvProfile::Uniform, 4u);
+    const auto* uniform_uvs = uv_attribute(uniform);
+    ASSERT_NE(uniform_uvs, nullptr);
+    EXPECT_NEAR((*uniform_uvs)[north_equator][1], 1.0f - 8.0f / 17.0f, 1e-6f);
+    EXPECT_NEAR((*uniform_uvs)[south_equator][1], 8.0f / 17.0f, 1e-6f);
+    // Fixed: one third of the range per region.
+    const auto fixed     = build(mesh::CapsuleUvProfile::Fixed, 4u);
+    const auto* fixed_uvs = uv_attribute(fixed);
+    ASSERT_NE(fixed_uvs, nullptr);
+    EXPECT_NEAR((*fixed_uvs)[north_equator][1], 2.0f / 3.0f, 1e-6f);
+    EXPECT_NEAR((*fixed_uvs)[south_equator][1], 1.0f / 3.0f, 1e-6f);
+}
