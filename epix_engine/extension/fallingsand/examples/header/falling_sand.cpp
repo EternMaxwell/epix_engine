@@ -658,7 +658,11 @@ void freefall_overlay_system(
             indices.push_back(base);
             base += 4;
         }
-        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD)
+        // Rebuilt every frame, and `calculate_bounds_2d` reads it in the main
+        // world, so its CPU payload must remain available after extraction.
+        return mesh::Mesh(wgpu::PrimitiveTopology::eTriangleList,
+                          static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                                 assets::RenderAssetUsages::RENDER_WORLD))
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions)
             .with_inserted_attribute(mesh::Mesh::ATTRIBUTE_COLOR, colors)
             .with_inserted_indices(mesh::Indices{std::move(indices)});

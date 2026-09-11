@@ -892,6 +892,23 @@ Image Image::create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t laye
     Image img;
     const std::uint32_t layer_count = std::max(layers, 1u);
     set_descriptor(img, ImageType::e2DArray, w, h, layer_count, fmt);
+    // An array image declares its array *view* explicitly. The view dimension
+    // cannot be recovered from the texture once `depth_or_array_layers == 1`, so
+    // a one-layer array texture would otherwise be handed out as a plain 2D view
+    // and an array consumer's bind group would fail with
+    // "expects dimension = D2Array, but given a view with dimension = D2".
+    // `texture_view_descriptor` is Bevy's own mechanism for stating the view an
+    // image requires (`bevy_image/src/ktx2.rs:287-297` sets it exactly this way
+    // for layered textures), and render preparation honours it over the derived
+    // fallback (`bevy_render/src/texture/gpu_image.rs`).
+    img.texture_view_descriptor =
+        wgpu::TextureViewDescriptor()
+            .setLabel("image_create2d_array_view")
+            .setDimension(wgpu::TextureViewDimension::e2DArray)
+            .setMipLevelCount(1)
+            .setBaseMipLevel(0)
+            .setBaseArrayLayer(0)
+            .setArrayLayerCount(layer_count);
     img.data.assign(static_cast<std::size_t>(w) * h * layer_count * getFormatInfo(fmt).pixelSize(), std::byte(0));
     return img;
 }

@@ -1,7 +1,9 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
+#include <epix/assets.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/input.hpp>
 #include <epix/sfml/core.hpp>
 #include <epix/window.hpp>
@@ -52,6 +54,11 @@ int main() {
             plugin.primary_window = window_desc;
         })
         .add_plugins(epix::sfml::SFMLPlugin{})
+        // `SFMLPlugin::update_window_states` resolves cursor images from
+        // `Assets<Image>`, so the asset and image plugins must be present for
+        // that system to validate.
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(epix::input::InputPlugin{})
         .add_systems(Update, into(epix::input::log_inputs, log_events).set_name("print inputs"))
         .add_systems(Update, into(

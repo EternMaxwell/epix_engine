@@ -599,6 +599,50 @@ TEST(ImageLoaderSettings, SrgbTextureFormatSelection) {
     EXPECT_EQ(srgb_texture_format(wgpu::TextureFormat::eRGBA16Uint), wgpu::TextureFormat::eRGBA16Uint);
 }
 
+// The image audit deleted `Image`'s legacy `ImageType m_type` intrinsic, so the
+// render side now derives the view dimension from the descriptor. That silently
+// changed behaviour for a 2D-array image with exactly one layer: the array view
+// dimension is unrecoverable from the texture once
+// `depth_or_array_layers == 1`, so a consumer that binds an array received a
+// plain 2D view and failed bind-group creation with
+// "expects dimension = D2Array, but given a view with dimension = D2".
+//
+// An image constructed *as* an array therefore declares its view explicitly,
+// which is Bevy's own mechanism for stating the view an image requires
+// (`bevy_image/src/ktx2.rs:287-297`), honoured by render preparation over the
+// derived fallback (`bevy_render/src/texture/gpu_image.rs`).
+TEST(ImageArrayLayout, Create2dArrayDeclaresAnArrayViewEvenForOneLayer) {
+    for (const std::uint32_t layers : {1u, 4u}) {
+        const auto image = epix::image::Image::create2d_array(8, 4, layers, epix::image::Format::RGBA8);
+        ASSERT_TRUE(image.texture_view_descriptor.has_value());
+        const auto& view = *image.texture_view_descriptor;
+        EXPECT_EQ(view.dimension, wgpu::TextureViewDimension::e2DArray);
+        EXPECT_EQ(view.arrayLayerCount, layers);
+        EXPECT_EQ(view.baseArrayLayer, 0u);
+        EXPECT_EQ(view.mipLevelCount, 1u);
+        EXPECT_EQ(image.texture_descriptor.dimension, wgpu::TextureDimension::e2D);
+        EXPECT_EQ(image.texture_descriptor.size.depthOrArrayLayers, layers);
+        EXPECT_EQ(image.layers(), layers);
+        // `type()` is derived from the layer count, so a one-layer array image
+        // reports `e2D` even though it was constructed as an array. That is
+        // exactly why the view dimension has to be declared rather than derived.
+        EXPECT_EQ(image.type(), layers > 1 ? epix::image::ImageType::e2DArray : epix::image::ImageType::e2D);
+    }
+}
+
+// The declaration is specific to the array constructor: plain 2D and volume
+// images keep deriving their view, so no non-array path changes.
+TEST(ImageArrayLayout, NonArrayConstructorsKeepTheirDerivedViews) {
+    const auto plain = epix::image::Image::create2d(8, 4, epix::image::Format::RGBA8);
+    EXPECT_FALSE(plain.texture_view_descriptor.has_value());
+    EXPECT_EQ(plain.type(), epix::image::ImageType::e2D);
+    EXPECT_EQ(plain.layers(), 1u);
+
+    const auto volume = epix::image::Image::create3d(8, 4, 3, epix::image::Format::RGBA8);
+    EXPECT_FALSE(volume.texture_view_descriptor.has_value());
+    EXPECT_EQ(volume.type(), epix::image::ImageType::e3D);
+}
+
 // Bevy's defaults for `ImageLoaderSettings` (`image_loader.rs:114-152`).
 TEST(ImageLoaderSettings, DefaultsMatchBevy) {
     epix::image::ImageLoaderSettings settings;
