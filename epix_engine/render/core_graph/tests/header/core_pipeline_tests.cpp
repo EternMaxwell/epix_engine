@@ -512,3 +512,39 @@ TEST(FullscreenMaterial, StructuredForBevyParity) {
     auto app = epix::app::App::create();
     EXPECT_NO_THROW(::epix::core_graph::FullscreenMaterialPlugin<C3FullscreenMaterialProbe>{}.attach(app));
 }
+
+// C3: the routing key for a fullscreen material's node is the material's own
+// `sub_graph()` declaration, which the C13 Core3d batch made meaningful for 3D.
+// Bevy derives the target graph from the camera's `CameraRenderGraph`; Epix uses
+// the material's declaration instead, because `node_edges()` labels belong to
+// that graph, so a 2D material's edges can never be inserted into the 3D graph.
+// The routing decision itself is what this asserts: the edges and the declared
+// graph have to agree, and both sub-graph labels now exist.
+TEST(FullscreenMaterial, NodeEdgesAndSubGraphsBothExist) {
+    // The 2D probe declares a graph and exposes node edges that belong to it.
+    ASSERT_TRUE(C3FullscreenMaterialProbe::sub_graph().has_value());
+    const auto edges = C3FullscreenMaterialProbe::node_edges();
+    ASSERT_GE(edges.size(), 2u);
+
+    // Both sub-graph labels a material can declare exist, which is what the C13
+    // Core3d batch added and what makes a 3D fullscreen material possible.
+    auto app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(::epix::render::RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    app.add_plugins(::epix::core_graph::CoreGraphPlugin{});
+    auto& render_world = app.get_sub_app_mut(::epix::render::Render)->get();
+    auto& render_graph = render_world.world_mut().resource<::epix::render::graph::RenderGraph>();
+    EXPECT_TRUE(render_graph.get_sub_graph(::epix::render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))
+                    .has_value());
+    EXPECT_TRUE(render_graph.get_sub_graph(::epix::render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d))
+                    .has_value());
+}

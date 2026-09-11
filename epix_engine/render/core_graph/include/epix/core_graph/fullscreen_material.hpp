@@ -114,18 +114,32 @@ struct FullscreenMaterialPlugin {
 /**
  * @brief Extract-stage system that registers the material's view node into the
  * camera's graph when a material of type `T` is first added (Bevy
- * `extract_on_add`, fullscreen_material.rs:101-139). With no Core3D graph in
- * Epix, a `Camera2d` material lands in the `Core2d` sub-graph.
- */
+ * `extract_on_add`, fullscreen_material.rs:101-139).
+ *
+ * Bevy derives the target graph from the camera's `CameraRenderGraph`. Epix
+ * routes on `T::sub_graph()` instead, because a material's `node_edges()` are
+ * labels from that same graph: inserting a 2D material's edges into the Core3d
+ * graph cannot succeed, so the material's own declaration is the only
+ * self-consistent routing key. A camera marker is still required, so the node is
+ * only added once a camera of the matching dimensionality exists. */
 template <FullscreenMaterial T>
 void extract_on_add(
     epix::ecs::World& render_world,
-    epix::app::Extract<epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, epix::ecs::Has<::epix::camera::Camera2d>>,
-                                        ::epix::ecs::Added<T>>> cameras) {
-    for (auto&& [entity, has_2d] : cameras.iter()) {
-        if (!has_2d) continue;
+    epix::app::Extract<epix::ecs::Query<
+        epix::ecs::Item<epix::ecs::Entity, epix::ecs::Has<::epix::camera::Camera2d>,
+                        epix::ecs::Has<::epix::camera::Camera3d>>,
+        ::epix::ecs::Added<T>>> cameras) {
+    const auto declared_graph = T::sub_graph();
+    for (auto&& [entity, has_2d, has_3d] : cameras.iter()) {
+        (void)entity;
+        const bool has_3d_camera = has_3d;
+        const bool has_2d_camera = has_2d;
+        if (!has_2d_camera && !has_3d_camera) continue;
         (void)render_world.resource_scope([&](render::graph::RenderGraph& render_graph, epix::ecs::World& world) {
-            if (auto sub_graph = render_graph.get_sub_graph(::epix::core_graph::core_2d::Core2d)) {
+            const auto graph_label = declared_graph.value_or(
+                has_3d_camera ? render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d)
+                              : render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d));
+            if (auto sub_graph = render_graph.get_sub_graph(graph_label)) {
                 auto& graph = sub_graph->get();
                 graph.add_node(fullscreen_material_node_label<T>(), FullscreenMaterialNodeRunner<T>{
                                                                         FullscreenMaterialNode<T>{}, world});
