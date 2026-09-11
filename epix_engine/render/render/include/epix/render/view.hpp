@@ -109,6 +109,17 @@ struct epix::render::ExtractComponent<epix::camera::Camera2d> {
     static std::optional<Out> extract_component(QueryData item) { return item; }
 };
 
+// Bevy render::camera extracts Camera3d too, so Core3D render systems (and the
+// transmissive node's view query) can see the marker in the render world.
+template <>
+struct epix::render::ExtractComponent<epix::camera::Camera3d> {
+    using QueryData   = const epix::camera::Camera3d&;
+    using QueryFilter = epix::ecs::With<epix::camera::Camera>;
+    using Out         = epix::camera::Camera3d;
+
+    static std::optional<Out> extract_component(QueryData item) { return item; }
+};
+
 namespace epix::render::view {
 /** @brief Number of samples for multisample anti-aliasing (Bevy
  * `bevy_render::view::Msaa`). The render-side camera

@@ -44,15 +44,16 @@ void CoreGraphPlugin::attach(App& app) {
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
         registry->get().insert_asset_static(kFullscreenVertexPath, shader_bytes(kFullscreenVertexSlang));
-        fullscreen_shader = FullscreenShader{
-            server->get().load<shader::Shader>("embedded://core_pipeline/fullscreen_vertex.slang")};
+        fullscreen_shader =
+            FullscreenShader{server->get().load<shader::Shader>("embedded://core_pipeline/fullscreen_vertex.slang")};
     } else {
         spdlog::warn("[core_graph] EmbeddedAssetRegistry or AssetServer not available; fullscreen passes disabled.");
     }
 
-    app.add_plugins(core_graph::core_2d::Core2dPlugin{}, BlitPlugin{}, UpscalingPlugin{}, TonemappingPlugin{});
-    if (auto render_app = app.get_sub_app_mut(render::Render); render_app && fullscreen_shader &&
-        !render_app->get().world().get_resource<FullscreenShader>()) {
+    app.add_plugins(core_graph::core_2d::Core2dPlugin{}, core_graph::core_3d::Core3dPlugin{}, BlitPlugin{},
+                    UpscalingPlugin{}, TonemappingPlugin{});
+    if (auto render_app = app.get_sub_app_mut(render::Render);
+        render_app && fullscreen_shader && !render_app->get().world().get_resource<FullscreenShader>()) {
         render_app->get().world_mut().insert_resource(std::move(*fullscreen_shader));
     }
 }
