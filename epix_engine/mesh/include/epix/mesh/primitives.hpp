@@ -5,6 +5,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <cmath>
 #include <cstdint>
 #include <epix/mesh/mesh.hpp>
@@ -1681,5 +1682,365 @@ static_assert(!Extrudable<Polyline2dMeshBuilder>);
 
 static_assert(Meshable<Ring<Circle>>);
 static_assert(MeshBuilder<RingMeshBuilder<Circle>>);
+
+// ─── Extrusion (Bevy `bevy_mesh/src/primitives/extrusion.rs`) ───────────────────────────────────
+//
+// `Extrusion<T>` thickens a 2D shape into a prism: the 2D mesh is the front cap, a copy mirrored
+// through z is the back cap, and a mantel of `segments + 1` layers connects them around the
+// perimeter supplied by the 2D builder's `Extrudable` impl.
+
+/** @brief Bevy's `Vec2`/`Vec3::normalize_or_zero`: normalize the vector, or return the zero vector
+ * when its length is zero or non-finite. */
+template <typename Vec>
+Vec normalize_or_zero(const Vec& value) {
+    const auto length = glm::length(value);
+    return std::isfinite(length) && length > 0.0f ? value / length : Vec{0.0f};
+}
+
+/** @brief The four shapes Bevy declares `ExtrusionBuilder::<Shape>::resolution` for
+ * (`extrusion.rs:143-173`): `Circle`, `Ellipse`, `Annulus` and `Capsule2d`. */
+template <typename P>
+concept ExtrusionResolutionShape =
+    std::same_as<P, Circle> || std::same_as<P, Ellipse> || std::same_as<P, Annulus> || std::same_as<P, Capsule2d>;
+
+/** @brief Builder used to create an extrusion mesh (Bevy `ExtrusionBuilder<P>`,
+ * `extrusion.rs:104-173`).
+ *
+ * Bevy derives nothing on this struct, so the C++ counterpart has public fields, no default
+ * constructor and no comparison. `base_builder` is the 2D shape's builder, whose `perimeter`
+ * supplies the mantel's cross-section. */
+template <typename P>
+    requires Meshable<P>
+struct ExtrusionBuilder {
+    using ShapeMeshBuilder = decltype(std::declval<const P&>().mesh());
+
+    /** @brief The 2D shape's builder, which produces both caps. */
+    ShapeMeshBuilder base_builder{};
+    /** @brief Half of the extrusion's depth. */
+    float half_depth = 0.0f;
+    /** @brief Number of segments along the depth. Must be greater than `0` for the geometry of the
+     * mantel to be generated. */
+    std::size_t segments = 1;
+
+    /** @brief Create a builder from the 2D `base_shape` and the full `depth` (Bevy `new`,
+     * `extrusion.rs:253-259`). */
+    ExtrusionBuilder(const P& base_shape, float depth)
+        : base_builder(base_shape.mesh()), half_depth(depth * 0.5f), segments(1) {}
+
+    /** @brief Create a builder from an already-configured 2D builder, which is how Bevy's
+     * `Meshable for Extrusion<P>::mesh` and its consuming setters construct one. */
+    ExtrusionBuilder(ShapeMeshBuilder base_builder, float half_depth, std::size_t segments)
+        : base_builder(std::move(base_builder)), half_depth(half_depth), segments(segments) {}
+
+    /** @brief Set the number of segments along the depth (Bevy `ExtrusionBuilder::segments`).
+     *
+     * Named `with_segments` because the field already carries Bevy's name. */
+    ExtrusionBuilder with_segments(std::size_t value) const {
+        return ExtrusionBuilder{base_builder, half_depth, value};
+    }
+
+    /** @brief Apply `func` to the inner 2D builder (Bevy `ExtrusionBuilder::with_inner`). Unlike
+     * `RingMeshBuilder::with_inner`, this touches `base_builder` only, as in Bevy. */
+    template <typename Func>
+    ExtrusionBuilder with_inner(Func func) const {
+        return ExtrusionBuilder{func(base_builder), half_depth, segments};
+    }
+
+    /** @brief Set the number of vertices used for each end of the extrusion (Bevy's
+     * `ExtrusionBuilder::<Shape>::resolution`).
+     *
+     * Bevy declares this inherent method for exactly four shapes — `Circle`, `Ellipse`, `Annulus`
+     * and `Capsule2d` (`extrusion.rs:143-173`) — even though six 2D builders carry a `resolution`
+     * field, so the constraint reproduces that set rather than exposing it for every shape whose
+     * builder happens to have the field. */
+    ExtrusionBuilder resolution(std::uint32_t value) const
+        requires ExtrusionResolutionShape<P>
+    {
+        ShapeMeshBuilder inner = base_builder;
+        inner.resolution       = value;
+        return ExtrusionBuilder{std::move(inner), half_depth, segments};
+    }
+
+    /** @brief Build the extrusion mesh (Bevy `MeshBuilder for ExtrusionBuilder<P>::build`,
+     * `extrusion.rs:175-427`).
+     *
+     * The 2D base mesh becomes the front cap translated to `+half_depth` with its UVs halved; a copy
+     * scaled by `(1, 1, -1)` becomes the back cap with `u += 0.5` and every triangle's winding
+     * reversed; and the mantel walks `segments + 1` layers from `+half_depth` down to `-half_depth`
+     * around the perimeter. A zero `half_depth` merges the two caps and emits no mantel.
+     *
+     * Bevy panics when the base mesh has no vertex positions or is not a `TriangleList`; Epix throws
+     * instead, which is how this module reports conditions Bevy has no error channel for. */
+    Mesh build() const
+        requires Extrudable<ShapeMeshBuilder>
+    {
+        // Create and move the base mesh to the front.
+        Mesh front_face = base_builder.build().translated_by(glm::vec3{0.0f, 0.0f, half_depth});
+
+        // Move the uvs of the front face to be between (0, 0) and (0.5, 0.5).
+        if (auto uvs = front_face.attribute_mut(Mesh::ATTRIBUTE_UV_0)) {
+            if (auto* values = uvs->get().get_if<VertexAttributeValues::Float32x2>()) {
+                for (auto& uv : *values) uv = {uv[0] * 0.5f, uv[1] * 0.5f};
+            }
+        }
+
+        const wgpu::PrimitiveTopology topology = front_face.get_primitive_type();
+
+        // Flip the normals, etc. and move the mesh to the back.
+        Mesh back_face = Mesh{front_face}.scaled_by(glm::vec3{1.0f, 1.0f, -1.0f});
+
+        // Move the uvs of the back face to be between (0.5, 0) and (1, 0.5).
+        if (auto uvs = back_face.attribute_mut(Mesh::ATTRIBUTE_UV_0)) {
+            if (auto* values = uvs->get().get_if<VertexAttributeValues::Float32x2>()) {
+                for (auto& uv : *values) uv = {uv[0] + 0.5f, uv[1]};
+            }
+        }
+
+        // By swapping the first and second indices of each triangle the winding order is inverted,
+        // making the mesh visible from the other side.
+        if (auto indices = back_face.indices_mut()) {
+            if (topology != wgpu::PrimitiveTopology::eTriangleList) {
+                throw std::runtime_error(
+                    "Meshes used with Extrusions must have a primitive topology of `PrimitiveTopology::TriangleList`");
+            }
+            const auto swap_triangle_pairs = [](std::vector<std::uint16_t>& values) {
+                for (std::size_t index = 0; index + 2 < values.size(); index += 3) {
+                    std::swap(values[index], values[index + 1]);
+                }
+            };
+            const auto swap_triangle_pairs_u32 = [](std::vector<std::uint32_t>& values) {
+                for (std::size_t index = 0; index + 2 < values.size(); index += 3) {
+                    std::swap(values[index], values[index + 1]);
+                }
+            };
+            if (auto* values = indices->get().as_u16()) {
+                swap_triangle_pairs(*values);
+            } else if (auto* values = indices->get().as_u32()) {
+                swap_triangle_pairs_u32(*values);
+            }
+        }
+
+        // An extrusion of depth 0 does not need a mantel.
+        if (half_depth == 0.0f) {
+            auto merged = front_face.merge(back_face);
+            if (!merged) throw std::runtime_error(merged.error().to_string());
+            return front_face;
+        }
+
+        const auto* cap_vertices =
+            front_face.attribute(Mesh::ATTRIBUTE_POSITION)->get().get_if<VertexAttributeValues::Float32x3>();
+        if (cap_vertices == nullptr) throw std::runtime_error("The base mesh did not have vertex positions");
+
+        assert(segments > 0);
+
+        const std::size_t layers      = segments + 1;
+        const float layer_depth_delta = half_depth * 2.0f / static_cast<float>(segments);
+
+        const std::vector<PerimeterSegment> perimeter = ::epix::mesh::perimeter(base_builder);
+
+        std::size_t vertex_count = 0;
+        std::size_t index_count  = 0;
+        for (const auto& segment : perimeter) {
+            vertex_count += layers * vertices_per_layer(segment);
+            index_count += segments * indices_per_segment(segment);
+        }
+
+        std::vector<VertexAttributeValues::Float32x3Value> positions;
+        std::vector<VertexAttributeValues::Float32x3Value> normals;
+        std::vector<VertexAttributeValues::Float32x2Value> uvs;
+        std::vector<std::uint32_t> indices;
+        positions.reserve(vertex_count);
+        normals.reserve(vertex_count);
+        uvs.reserve(vertex_count);
+        indices.reserve(index_count);
+
+        const auto vertex_uv_y = [this](std::size_t layer) {
+            return 0.5f + 0.5f * static_cast<float>(layer) / static_cast<float>(segments);
+        };
+
+        // The amount of horizontal space allocated to each segment of the perimeter.
+        const float uv_segment_delta = 1.0f / static_cast<float>(perimeter.size());
+        for (std::size_t segment_index = 0; segment_index < perimeter.size(); ++segment_index) {
+            // The start of the x range of the area of the current perimeter segment.
+            const float uv_start = static_cast<float>(segment_index) * uv_segment_delta;
+
+            std::visit(
+                [&](const auto& segment) {
+                    using Segment                                     = std::remove_cvref_t<decltype(segment)>;
+                    const std::vector<std::uint32_t>& segment_indices = segment.indices;
+                    const float uv_delta = uv_segment_delta / static_cast<float>(segment_indices.size() - 1);
+
+                    if constexpr (std::same_as<Segment, PerimeterSegment::Flat>) {
+                        for (std::size_t edge = 0; edge + 1 < segment_indices.size(); ++edge) {
+                            const float uv_x = uv_start + uv_delta * static_cast<float>(edge);
+                            const auto& a    = (*cap_vertices)[segment_indices[edge]];
+                            const auto& b    = (*cap_vertices)[segment_indices[edge + 1]];
+
+                            // The index of the next vertex added to the mantel.
+                            const std::uint32_t index = static_cast<std::uint32_t>(positions.size());
+
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                const float z = a[2] - layer_depth_delta * static_cast<float>(layer);
+                                positions.push_back({a[0], a[1], z});
+                                positions.push_back({b[0], b[1], z});
+
+                                // Mantel UVs are between (0, 0.5) and (1, 1).
+                                const float uv_y = vertex_uv_y(layer);
+                                uvs.push_back({uv_x, uv_y});
+                                uvs.push_back({uv_x + uv_delta, uv_y});
+                            }
+
+                            // The normal is the normal of the line segment connecting `a` and `b`.
+                            const glm::vec3 normal = normalize_or_zero(glm::vec3{b[1] - a[1], a[0] - b[0], 0.0f});
+                            normals.insert(normals.end(), 2 * layers,
+                                           VertexAttributeValues::Float32x3Value{normal.x, normal.y, normal.z});
+
+                            for (std::size_t s = 0; s < segments; ++s) {
+                                const std::uint32_t base_index = index + static_cast<std::uint32_t>(2 * s);
+                                indices.insert(indices.end(), {base_index, base_index + 2, base_index + 1,
+                                                               base_index + 1, base_index + 2, base_index + 3});
+                            }
+                        }
+                    } else {
+                        // The indices of a smooth segment are added after its vertices, so the index
+                        // of its first vertex has to be remembered.
+                        const std::uint32_t base_index = static_cast<std::uint32_t>(positions.size());
+
+                        // The first vertex's normal is supplied by the segment.
+                        if (!segment_indices.empty()) {
+                            const auto& first = (*cap_vertices)[segment_indices.front()];
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                const float z = first[2] - layer_depth_delta * static_cast<float>(layer);
+                                positions.push_back({first[0], first[1], z});
+                                uvs.push_back({uv_start, vertex_uv_y(layer)});
+                            }
+                            normals.insert(normals.end(), layers,
+                                           VertexAttributeValues::Float32x3Value{segment.first_normal.x,
+                                                                                 segment.first_normal.y, 0.0f});
+                        }
+
+                        // Every vertex between the first and the last computes its normal from its
+                        // two neighbours: closer vertices have a stronger effect on the normal.
+                        for (std::size_t column = 1; column + 1 < segment_indices.size(); ++column) {
+                            const float uv_x = uv_start + uv_delta * static_cast<float>(column);
+                            const auto& a    = (*cap_vertices)[segment_indices[column - 1]];
+                            const auto& b    = (*cap_vertices)[segment_indices[column]];
+                            const auto& c    = (*cap_vertices)[segment_indices[column + 1]];
+
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                const float z = b[2] - layer_depth_delta * static_cast<float>(layer);
+                                positions.push_back({b[0], b[1], z});
+                                uvs.push_back({uv_x, vertex_uv_y(layer)});
+                            }
+
+                            const glm::vec2 ab     = normalize_or_zero(glm::vec2{b[0], b[1]} - glm::vec2{a[0], a[1]});
+                            const glm::vec2 bc     = normalize_or_zero(glm::vec2{c[0], c[1]} - glm::vec2{b[0], b[1]});
+                            const glm::vec2 sum    = ab + bc;
+                            const glm::vec3 normal = normalize_or_zero(glm::vec3{sum.y, -sum.x, 0.0f});
+                            normals.insert(normals.end(), layers,
+                                           VertexAttributeValues::Float32x3Value{normal.x, normal.y, normal.z});
+                        }
+
+                        // The last vertex's normal is supplied by the segment.
+                        if (!segment_indices.empty()) {
+                            const auto& last = (*cap_vertices)[segment_indices.back()];
+                            for (std::size_t layer = 0; layer < layers; ++layer) {
+                                const float z = last[2] - layer_depth_delta * static_cast<float>(layer);
+                                positions.push_back({last[0], last[1], z});
+                                uvs.push_back({uv_start + uv_segment_delta, vertex_uv_y(layer)});
+                            }
+                            normals.insert(normals.end(), layers,
+                                           VertexAttributeValues::Float32x3Value{segment.last_normal.x,
+                                                                                 segment.last_normal.y, 0.0f});
+                        }
+
+                        const std::uint32_t columns = static_cast<std::uint32_t>(segment_indices.size());
+                        const auto segment_layers   = static_cast<std::uint32_t>(layers);
+                        for (std::uint32_t s = 0; s < static_cast<std::uint32_t>(segments); ++s) {
+                            for (std::uint32_t column = 0; column + 1 < columns; ++column) {
+                                const std::uint32_t index = base_index + s + column * segment_layers;
+                                indices.insert(indices.end(),
+                                               {index, index + 1, index + segment_layers, index + segment_layers,
+                                                index + 1, index + segment_layers + 1});
+                            }
+                        }
+                    }
+                },
+                perimeter[segment_index].value);
+        }
+
+        Mesh mantel{wgpu::PrimitiveTopology::eTriangleList, front_face.asset_usage};
+        mantel.insert_indices(Indices{std::move(indices)});
+        mantel.insert_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
+        mantel.insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals));
+        mantel.insert_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+
+        auto back_merged = front_face.merge(back_face);
+        if (!back_merged) throw std::runtime_error(back_merged.error().to_string());
+        auto mantel_merged = front_face.merge(mantel);
+        if (!mantel_merged) throw std::runtime_error(mantel_merged.error().to_string());
+        return front_face;
+    }
+};
+
+/** @brief A 3D shape representing an extruded 2D `base_shape` (Bevy `bevy_math`'s `Extrusion<T>`,
+ * `dim3.rs:1536-1563`).
+ *
+ * Extruding a shape thickens it, creating a shape with the same cross-section over the entire depth.
+ * Bevy derives `Clone, Copy, Debug, PartialEq` and declares no `Default`, so the C++ counterpart has
+ * an implicit copy and `operator==` and no default constructor. */
+template <typename P>
+    requires Meshable<P>
+struct Extrusion {
+    /** @brief The shape being extruded. */
+    P base_shape;
+    /** @brief Half of the depth of the extrusion. */
+    float half_depth = 0.0f;
+
+    /** @brief Create an `Extrusion` from a `base_shape` and the full `depth` (Bevy `new`). */
+    Extrusion(P base_shape, float depth) : base_shape(std::move(base_shape)), half_depth(depth * 0.5f) {}
+
+    /** @brief Create the builder for this extrusion (Bevy `Meshable for Extrusion<P>`,
+     * `extrusion.rs:88-102`). Unlike `ExtrusionBuilder::new`, this takes `half_depth` as it stands. */
+    ExtrusionBuilder<P> mesh() const
+        requires Extrudable<typename ExtrusionBuilder<P>::ShapeMeshBuilder>
+    {
+        return ExtrusionBuilder<P>{base_shape.mesh(), half_depth, 1};
+    }
+
+    bool operator==(const Extrusion&) const = default;
+};
+
+static_assert(Meshable<Extrusion<Circle>>);
+static_assert(MeshBuilder<ExtrusionBuilder<Circle>>);
+static_assert(Meshable<Extrusion<CircularSector>>);
+static_assert(Meshable<Extrusion<CircularSegment>>);
+static_assert(Meshable<Extrusion<ConvexPolygon>>);
+static_assert(Meshable<Extrusion<RegularPolygon>>);
+static_assert(Meshable<Extrusion<Ellipse>>);
+static_assert(Meshable<Extrusion<Annulus>>);
+static_assert(Meshable<Extrusion<Rhombus>>);
+static_assert(Meshable<Extrusion<Triangle2d>>);
+static_assert(Meshable<Extrusion<Rectangle>>);
+static_assert(Meshable<Extrusion<Capsule2d>>);
+static_assert(Meshable<Extrusion<Ring<Circle>>>);
+// Bevy's `Meshable for Extrusion<P>` requires `P::Output: Extrudable`, so neither of these can mesh.
+static_assert(!Meshable<Extrusion<Segment2d>>);
+static_assert(!Meshable<Extrusion<Polyline2d>>);
+
+/** @brief `Extrusion<P>` is measured from its base shape (Bevy `Measured3d for Extrusion<T>`,
+ * `dim3.rs:1565-1575`). */
+template <Measured2d P>
+struct Measured3dImpl<Extrusion<P>> {
+    static float area(const Extrusion<P>& extrusion) {
+        return 2.0f * (::epix::mesh::area(extrusion.base_shape) +
+                       extrusion.half_depth * ::epix::mesh::perimeter(extrusion.base_shape));
+    }
+    static float volume(const Extrusion<P>& extrusion) {
+        return 2.0f * ::epix::mesh::area(extrusion.base_shape) * extrusion.half_depth;
+    }
+};
+
+static_assert(Measured3d<Extrusion<Circle>>);
 
 }  // namespace epix::mesh

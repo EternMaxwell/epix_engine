@@ -2518,3 +2518,292 @@ TEST(MeshPrimitives, ExtrudableRingPerimeterTransformsTheInnerLoop) {
     smaller_inner.resolution = 3;
     EXPECT_THROW(mesh::perimeter(mesh::RingMeshBuilder<mesh::Circle>{outer, smaller_inner}), std::invalid_argument);
 }
+
+// Bevy's `ExtrusionBuilder<P>` holds the 2D builder, the half depth and the segment count, and its
+// `resolution` method exists for exactly the four shapes whose 2D builder carries a `resolution`
+// field (`extrusion.rs:104-173`). `Extrusion<T>::mesh` keeps `half_depth` as it stands, unlike
+// `ExtrusionBuilder::new`, which halves a full depth.
+TEST(MeshExtrusion, BuilderAndShapeMatchBevyContracts) {
+    static_assert(mesh::Meshable<mesh::Extrusion<mesh::Circle>>);
+    static_assert(mesh::MeshBuilder<mesh::ExtrusionBuilder<mesh::Circle>>);
+    static_assert(mesh::Measured3d<mesh::Extrusion<mesh::Circle>>);
+    // `Meshable for Extrusion<P>` needs `P::Output: Extrudable`, so neither of these meshes.
+    static_assert(!mesh::Meshable<mesh::Extrusion<mesh::Segment2d>>);
+    static_assert(!mesh::Meshable<mesh::Extrusion<mesh::Polyline2d>>);
+    static_assert(!mesh::MeshBuilder<mesh::ExtrusionBuilder<mesh::Segment2d>>);
+
+    // Bevy declares the inherent `resolution` method for exactly four shapes.
+    static_assert(mesh::ExtrusionResolutionShape<mesh::Circle>);
+    static_assert(mesh::ExtrusionResolutionShape<mesh::Ellipse>);
+    static_assert(mesh::ExtrusionResolutionShape<mesh::Annulus>);
+    static_assert(mesh::ExtrusionResolutionShape<mesh::Capsule2d>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::CircularSector>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::CircularSegment>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::Rectangle>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::RegularPolygon>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::Rhombus>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::Triangle2d>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::ConvexPolygon>);
+    static_assert(!mesh::ExtrusionResolutionShape<mesh::Ring<mesh::Circle>>);
+
+    const mesh::ExtrusionBuilder<mesh::Circle> from_new{mesh::Circle{0.5f}, 2.0f};
+    EXPECT_FLOAT_EQ(from_new.half_depth, 1.0f);
+    EXPECT_EQ(from_new.segments, 1u);
+    EXPECT_EQ(from_new.base_builder.resolution, 32u);
+
+    const mesh::Extrusion<mesh::Circle> shape{mesh::Circle{0.25f}, 4.0f};
+    EXPECT_FLOAT_EQ(shape.base_shape.radius, 0.25f);
+    EXPECT_FLOAT_EQ(shape.half_depth, 2.0f);
+    EXPECT_EQ(shape.mesh().half_depth, 2.0f);
+    EXPECT_EQ(shape.mesh().segments, 1u);
+
+    // The consuming setters return a configured copy and leave the receiver alone.
+    const auto segmented = from_new.with_segments(3);
+    EXPECT_EQ(segmented.segments, 3u);
+    EXPECT_EQ(from_new.segments, 1u);
+
+    const auto inner_configured = from_new.with_inner([](mesh::CircleMeshBuilder builder) {
+        builder.resolution = 8;
+        return builder;
+    });
+    EXPECT_EQ(inner_configured.base_builder.resolution, 8u);
+    EXPECT_EQ(from_new.base_builder.resolution, 32u);
+
+    const auto with_resolution = from_new.resolution(6);
+    EXPECT_EQ(with_resolution.base_builder.resolution, 6u);
+    EXPECT_FLOAT_EQ(with_resolution.half_depth, 1.0f);
+    EXPECT_EQ(with_resolution.segments, 1u);
+
+    // Bevy derives `PartialEq` on `Extrusion<T>` and declares no `Default` for either type.
+    EXPECT_EQ((mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}),
+              (mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}));
+    EXPECT_NE((mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}),
+              (mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 4.0f}));
+    static_assert(!std::default_initializable<mesh::Extrusion<mesh::Circle>>);
+    static_assert(!std::default_initializable<mesh::ExtrusionBuilder<mesh::Circle>>);
+
+    // `Measured3d for Extrusion<T>`: `2 * (base.area + half_depth * base.perimeter)` and
+    // `2 * base.area * half_depth`.
+    EXPECT_NEAR(mesh::area(mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}), 7.853981634f, 1e-5f);
+    EXPECT_NEAR(mesh::volume(mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}), 1.570796327f, 1e-6f);
+    EXPECT_FLOAT_EQ(mesh::area(mesh::Extrusion<mesh::Rectangle>{mesh::Rectangle{}, 2.0f}), 10.0f);
+    EXPECT_FLOAT_EQ(mesh::volume(mesh::Extrusion<mesh::Rectangle>{mesh::Rectangle{}, 2.0f}), 2.0f);
+}
+
+// The caps are the 2D mesh translated to `+half_depth` with its UVs halved, and a copy scaled by
+// `(1, 1, -1)` with `u += 0.5` and every triangle's index pair swapped. A single smooth perimeter
+// segment then walks one mantel column per perimeter index over two layers, taking its end normals
+// from the segment and interpolating the interior ones (`extrusion.rs:343-427`, `478-575`).
+TEST(MeshExtrusion, SmoothCircleExtrusionMatchesBevyCapsAndMantel) {
+    const auto expect_vec3_near = [](const std::vector<mesh::VertexAttributeValues::Float32x3Value>& actual,
+                                     const std::vector<mesh::VertexAttributeValues::Float32x3Value>& expected) {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (std::size_t index = 0; index < actual.size(); ++index) {
+            EXPECT_NEAR(actual[index][0], expected[index][0], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][1], expected[index][1], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][2], expected[index][2], 1e-6f) << "vertex " << index;
+        }
+    };
+    const auto expect_vec2_near = [](const std::vector<mesh::VertexAttributeValues::Float32x2Value>& actual,
+                                     const std::vector<mesh::VertexAttributeValues::Float32x2Value>& expected) {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (std::size_t index = 0; index < actual.size(); ++index) {
+            EXPECT_NEAR(actual[index][0], expected[index][0], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][1], expected[index][1], 1e-6f) << "vertex " << index;
+        }
+    };
+
+    // A resolution-4 circle has four rim vertices and a single smooth loop `0, 1, 2, 3, 0`.
+    const mesh::Mesh extrusion{mesh::Extrusion<mesh::Circle>{mesh::Circle{0.5f}, 2.0f}.mesh().resolution(4)};
+    EXPECT_EQ(extrusion.count_vertices(), 18u);
+    ASSERT_NE(extrusion.indices(), std::nullopt);
+    EXPECT_TRUE(extrusion.indices()->get().as_u32() != nullptr);
+    EXPECT_EQ(extrusion.indices()->get().len(), 36u);
+
+    // Front cap, back cap (mirrored and rewound), then the five mantel columns of two layers each.
+    EXPECT_EQ(*extrusion.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0,  1,  2,  0,  2,  3,  5,  4,  6,  6,  4,  7,  8,  9,  10, 10, 9,  11,
+                                          10, 11, 12, 12, 11, 13, 12, 13, 14, 14, 13, 15, 14, 15, 16, 16, 15, 17}));
+
+    const auto* positions =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+
+    expect_vec3_near(*positions, {{0.0f, 0.5f, 1.0f},
+                                  {-0.5f, 0.0f, 1.0f},
+                                  {0.0f, -0.5f, 1.0f},
+                                  {0.5f, 0.0f, 1.0f},
+                                  {0.0f, 0.5f, -1.0f},
+                                  {-0.5f, 0.0f, -1.0f},
+                                  {0.0f, -0.5f, -1.0f},
+                                  {0.5f, 0.0f, -1.0f},
+                                  {0.0f, 0.5f, 1.0f},
+                                  {0.0f, 0.5f, -1.0f},
+                                  {-0.5f, 0.0f, 1.0f},
+                                  {-0.5f, 0.0f, -1.0f},
+                                  {0.0f, -0.5f, 1.0f},
+                                  {0.0f, -0.5f, -1.0f},
+                                  {0.5f, 0.0f, 1.0f},
+                                  {0.5f, 0.0f, -1.0f},
+                                  {0.0f, 0.5f, 1.0f},
+                                  {0.0f, 0.5f, -1.0f}});
+
+    // `Vec2::Y` at both ends of the loop, and the interpolated `(n.y, -n.x)` normals in between.
+    expect_vec3_near(*normals, {{0.0f, 0.0f, 1.0f},
+                                {0.0f, 0.0f, 1.0f},
+                                {0.0f, 0.0f, 1.0f},
+                                {0.0f, 0.0f, 1.0f},
+                                {0.0f, 0.0f, -1.0f},
+                                {0.0f, 0.0f, -1.0f},
+                                {0.0f, 0.0f, -1.0f},
+                                {0.0f, 0.0f, -1.0f},
+                                {0.0f, 1.0f, 0.0f},
+                                {0.0f, 1.0f, 0.0f},
+                                {-1.0f, 0.0f, 0.0f},
+                                {-1.0f, 0.0f, 0.0f},
+                                {0.0f, -1.0f, 0.0f},
+                                {0.0f, -1.0f, 0.0f},
+                                {1.0f, 0.0f, 0.0f},
+                                {1.0f, 0.0f, 0.0f},
+                                {0.0f, 1.0f, 0.0f},
+                                {0.0f, 1.0f, 0.0f}});
+
+    // Cap UVs are halved (`u` shifted by `0.5` on the back), mantel UVs span `(0, 0.5)` to `(1, 1)`.
+    expect_vec2_near(*uvs, {{0.25f, 0.0f},
+                            {0.0f, 0.25f},
+                            {0.25f, 0.5f},
+                            {0.5f, 0.25f},
+                            {0.75f, 0.0f},
+                            {0.5f, 0.25f},
+                            {0.75f, 0.5f},
+                            {1.0f, 0.25f},
+                            {0.0f, 0.5f},
+                            {0.0f, 1.0f},
+                            {0.25f, 0.5f},
+                            {0.25f, 1.0f},
+                            {0.5f, 0.5f},
+                            {0.5f, 1.0f},
+                            {0.75f, 0.5f},
+                            {0.75f, 1.0f},
+                            {1.0f, 0.5f},
+                            {1.0f, 1.0f}});
+}
+
+// A flat perimeter segment emits one vertex pair per edge per layer with the edge's own normal, and
+// its mantel UVs are distributed across the segment's horizontal band (`extrusion.rs:432-477`).
+TEST(MeshExtrusion, FlatRectangleExtrusionMatchesBevyCapsAndMantel) {
+    const mesh::Mesh extrusion{mesh::Extrusion<mesh::Rectangle>{mesh::Rectangle{}, 2.0f}};
+    EXPECT_EQ(extrusion.count_vertices(), 24u);
+    ASSERT_NE(extrusion.indices(), std::nullopt);
+    EXPECT_EQ(extrusion.indices()->get().len(), 36u);
+
+    EXPECT_EQ(*extrusion.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0,  1,  2,  0,  2,  3,  5,  4,  6,  6,  4,  7,  8,  10, 9,  9,  10, 11,
+                                          12, 14, 13, 13, 14, 15, 16, 18, 17, 17, 18, 19, 20, 22, 21, 21, 22, 23}));
+
+    const auto* positions =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        extrusion.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {0.5f, 0.5f, 1.0f},   {-0.5f, 0.5f, 1.0f},  {-0.5f, -0.5f, 1.0f},  {0.5f, -0.5f, 1.0f},
+                              {0.5f, 0.5f, -1.0f},  {-0.5f, 0.5f, -1.0f}, {-0.5f, -0.5f, -1.0f}, {0.5f, -0.5f, -1.0f},
+                              {0.5f, 0.5f, 1.0f},   {-0.5f, 0.5f, 1.0f},  {0.5f, 0.5f, -1.0f},   {-0.5f, 0.5f, -1.0f},
+                              {-0.5f, 0.5f, 1.0f},  {-0.5f, -0.5f, 1.0f}, {-0.5f, 0.5f, -1.0f},  {-0.5f, -0.5f, -1.0f},
+                              {-0.5f, -0.5f, 1.0f}, {0.5f, -0.5f, 1.0f},  {-0.5f, -0.5f, -1.0f}, {0.5f, -0.5f, -1.0f},
+                              {0.5f, -0.5f, 1.0f},  {0.5f, 0.5f, 1.0f},   {0.5f, -0.5f, -1.0f},  {0.5f, 0.5f, -1.0f}}));
+
+    // Four flat edges: `+Y`, `-X`, `-Y`, `+X`, two layers each.
+    EXPECT_EQ(*normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                            {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, 1.0f},  {0.0f, 0.0f, 1.0f},
+                            {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f, -1.0f},
+                            {0.0f, 1.0f, 0.0f},  {0.0f, 1.0f, 0.0f},  {0.0f, 1.0f, 0.0f},  {0.0f, 1.0f, 0.0f},
+                            {-1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f},
+                            {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f},
+                            {1.0f, 0.0f, 0.0f},  {1.0f, 0.0f, 0.0f},  {1.0f, 0.0f, 0.0f},  {1.0f, 0.0f, 0.0f}}));
+
+    EXPECT_EQ(*uvs, (std::vector<mesh::VertexAttributeValues::Float32x2Value>{
+                        {0.5f, 0.0f},  {0.0f, 0.0f},  {0.0f, 0.5f},  {0.5f, 0.5f},  {1.0f, 0.0f},  {0.5f, 0.0f},
+                        {0.5f, 0.5f},  {1.0f, 0.5f},  {0.0f, 0.5f},  {0.25f, 0.5f}, {0.0f, 1.0f},  {0.25f, 1.0f},
+                        {0.25f, 0.5f}, {0.5f, 0.5f},  {0.25f, 1.0f}, {0.5f, 1.0f},  {0.5f, 0.5f},  {0.75f, 0.5f},
+                        {0.5f, 1.0f},  {0.75f, 1.0f}, {0.75f, 0.5f}, {1.0f, 0.5f},  {0.75f, 1.0f}, {1.0f, 1.0f}}));
+}
+
+// `segments` grows the mantel to `segments + 1` layers between `+half_depth` and `-half_depth`, and a
+// zero half depth merges the two caps without any mantel at all (`extrusion.rs:392-408`). The
+// generic `Mesh` conversion is Bevy's `From<Extrusion<P>> for Mesh`.
+TEST(MeshExtrusion, SegmentsWalkBevyLayersAndZeroDepthSkipsTheMantel) {
+    const mesh::Mesh segmented{mesh::Extrusion<mesh::Rectangle>{mesh::Rectangle{}, 2.0f}.mesh().with_segments(3)};
+    EXPECT_EQ(segmented.count_vertices(), 40u);
+    ASSERT_NE(segmented.indices(), std::nullopt);
+    EXPECT_EQ(segmented.indices()->get().len(), 84u);
+    // The first edge's eight mantel vertices: two per layer over four layers, `2 / 3` apart.
+    EXPECT_EQ(*segmented.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{0,  1,  2,  0,  2,  3,  5,  4,  6,  6,  4,  7,  8,  10, 9,  9,  10,
+                                          11, 10, 12, 11, 11, 12, 13, 12, 14, 13, 13, 14, 15, 16, 18, 17, 17,
+                                          18, 19, 18, 20, 19, 19, 20, 21, 20, 22, 21, 21, 22, 23, 24, 26, 25,
+                                          25, 26, 27, 26, 28, 27, 27, 28, 29, 28, 30, 29, 29, 30, 31, 32, 34,
+                                          33, 33, 34, 35, 34, 36, 35, 35, 36, 37, 36, 38, 37, 37, 38, 39}));
+
+    const auto* positions =
+        segmented.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs =
+        segmented.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(uvs, nullptr);
+    for (std::size_t layer = 0; layer < 4; ++layer) {
+        EXPECT_NEAR((*positions)[8 + 2 * layer][2], 1.0f - 2.0f / 3.0f * static_cast<float>(layer), 1e-6f);
+        EXPECT_NEAR((*positions)[9 + 2 * layer][2], 1.0f - 2.0f / 3.0f * static_cast<float>(layer), 1e-6f);
+        EXPECT_NEAR((*uvs)[8 + 2 * layer][1], 0.5f + 0.5f * static_cast<float>(layer) / 3.0f, 1e-6f);
+        EXPECT_NEAR((*uvs)[9 + 2 * layer][1], 0.5f + 0.5f * static_cast<float>(layer) / 3.0f, 1e-6f);
+    }
+    EXPECT_NEAR((*uvs)[8][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*uvs)[9][0], 0.25f, 1e-6f);
+
+    // A depth of zero still builds both caps, and merges them without a mantel.
+    const mesh::Mesh flattened{mesh::Extrusion<mesh::Rectangle>{mesh::Rectangle{}, 0.0f}};
+    EXPECT_EQ(flattened.count_vertices(), 8u);
+    ASSERT_NE(flattened.indices(), std::nullopt);
+    EXPECT_EQ(flattened.indices()->get().len(), 12u);
+    EXPECT_EQ(*flattened.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 2, 0, 2, 3, 5, 4, 6, 6, 4, 7}));
+    const auto* flattened_positions =
+        flattened.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(flattened_positions, nullptr);
+    EXPECT_EQ(*flattened_positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.5f, 0.5f, 0.0f},
+                                                                                              {-0.5f, 0.5f, 0.0f},
+                                                                                              {-0.5f, -0.5f, 0.0f},
+                                                                                              {0.5f, -0.5f, 0.0f},
+                                                                                              {0.5f, 0.5f, 0.0f},
+                                                                                              {-0.5f, 0.5f, 0.0f},
+                                                                                              {-0.5f, -0.5f, 0.0f},
+                                                                                              {0.5f, -0.5f, 0.0f}}));
+
+    // A ring has two smooth perimeter segments: five columns each over two layers, so its mantel adds
+    // `2 * 5 * 2` vertices and `2 * 6 * 4` indices to the two copies of the cap mesh. `Extrusion` has
+    // no `resolution` method for a ring, so both builders are configured through `with_inner`.
+    const auto with_resolution = [](mesh::CircleMeshBuilder circle) {
+        circle.resolution = 4;
+        return circle;
+    };
+    const mesh::Ring<mesh::Circle> ring{mesh::Circle{0.5f}, mesh::Circle{0.25f}};
+    const mesh::Mesh cap = ring.mesh().with_inner(with_resolution).build();
+    const mesh::Mesh ring_extrusion{mesh::Extrusion<mesh::Ring<mesh::Circle>>{ring, 2.0f}.mesh().with_inner(
+        [&with_resolution](mesh::RingMeshBuilder<mesh::Circle> ring_builder) {
+            return ring_builder.with_inner(with_resolution);
+        })};
+    ASSERT_NE(cap.indices(), std::nullopt);
+    EXPECT_EQ(ring_extrusion.count_vertices(), 2 * cap.count_vertices() + 20u);
+    EXPECT_EQ(ring_extrusion.indices()->get().len(), 2 * cap.indices()->get().len() + 48u);
+}
