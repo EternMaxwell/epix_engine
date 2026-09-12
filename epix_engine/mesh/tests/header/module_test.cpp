@@ -1,10 +1,14 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstring>
 #include <epix/mesh.hpp>
 #include <limits>
 #include <numbers>
+#include <stdexcept>
 #include <unordered_set>
+#include <variant>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 
 namespace mesh = epix::mesh;
@@ -2087,4 +2091,178 @@ TEST(MeshPrimitives, Measured3dMatchesBevyTraitFormulas) {
     // volume is `1 / 3`.
     EXPECT_NEAR(mesh::area(mesh::Tetrahedron{}), 3.464101615f, 1e-6f);
     EXPECT_NEAR(mesh::volume(mesh::Tetrahedron{}), 0.333333333f, 1e-6f);
+}
+
+// The `Extrudable` trait (`extrusion.rs:76-86`) is a customization point over the twelve Bevy
+// `perimeter` implementations in `dim2.rs`. Single closed loops come first: `Circle`/`Ellipse`
+// shade smooth and close back onto index 0, while the four polygons shade flat and emit
+// `2 * (n - 1)` vertices per layer.
+TEST(MeshPrimitives, ExtrudablePerimeterMatchesBevyForClosedLoops) {
+    const auto expect_vec2 = [](glm::vec2 actual, glm::vec2 expected) {
+        EXPECT_FLOAT_EQ(actual.x, expected.x);
+        EXPECT_FLOAT_EQ(actual.y, expected.y);
+    };
+
+    // Circle and Ellipse: `(0..resolution).chain([0])`, with `Vec2::Y` at both ends.
+    mesh::CircleMeshBuilder circle;
+    circle.resolution           = 6;
+    const auto circle_perimeter = mesh::perimeter(circle);
+    ASSERT_EQ(circle_perimeter.size(), 1u);
+    const auto* circle_smooth = std::get_if<mesh::PerimeterSegment::Smooth>(&circle_perimeter[0].value);
+    ASSERT_NE(circle_smooth, nullptr);
+    EXPECT_EQ(circle_smooth->indices, (std::vector<std::uint32_t>{0, 1, 2, 3, 4, 5, 0}));
+    expect_vec2(circle_smooth->first_normal, glm::vec2{0.0f, 1.0f});
+    expect_vec2(circle_smooth->last_normal, glm::vec2{0.0f, 1.0f});
+    EXPECT_EQ(mesh::vertices_per_layer(circle_perimeter[0]), 7u);
+    EXPECT_EQ(mesh::indices_per_segment(circle_perimeter[0]), 36u);
+
+    mesh::EllipseMeshBuilder ellipse;
+    ellipse.resolution           = 4;
+    const auto ellipse_perimeter = mesh::perimeter(ellipse);
+    ASSERT_EQ(ellipse_perimeter.size(), 1u);
+    const auto* ellipse_smooth = std::get_if<mesh::PerimeterSegment::Smooth>(&ellipse_perimeter[0].value);
+    ASSERT_NE(ellipse_smooth, nullptr);
+    EXPECT_EQ(ellipse_smooth->indices, (std::vector<std::uint32_t>{0, 1, 2, 3, 0}));
+
+    // RegularPolygon and ConvexPolygon: `(0..count).chain([0])` as a flat loop.
+    mesh::RegularPolygonMeshBuilder polygon;
+    polygon.sides                = 5;
+    const auto polygon_perimeter = mesh::perimeter(polygon);
+    ASSERT_EQ(polygon_perimeter.size(), 1u);
+    const auto* polygon_flat = std::get_if<mesh::PerimeterSegment::Flat>(&polygon_perimeter[0].value);
+    ASSERT_NE(polygon_flat, nullptr);
+    EXPECT_EQ(polygon_flat->indices, (std::vector<std::uint32_t>{0, 1, 2, 3, 4, 0}));
+    EXPECT_EQ(mesh::vertices_per_layer(polygon_perimeter[0]), 10u);
+    EXPECT_EQ(mesh::indices_per_segment(polygon_perimeter[0]), 30u);
+
+    mesh::ConvexPolygonMeshBuilder convex;
+    convex.vertices             = {{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}};
+    const auto convex_perimeter = mesh::perimeter(convex);
+    ASSERT_EQ(convex_perimeter.size(), 1u);
+    const auto* convex_flat = std::get_if<mesh::PerimeterSegment::Flat>(&convex_perimeter[0].value);
+    ASSERT_NE(convex_flat, nullptr);
+    EXPECT_EQ(convex_flat->indices, (std::vector<std::uint32_t>{0, 1, 2, 0}));
+
+    // Rhombus and Rectangle: Bevy hard-codes the four-vertex loop.
+    const auto rhombus_perimeter = mesh::perimeter(mesh::RhombusMeshBuilder{});
+    ASSERT_EQ(rhombus_perimeter.size(), 1u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(rhombus_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{0, 1, 2, 3, 0}));
+    const auto rectangle_perimeter = mesh::perimeter(mesh::RectangleMeshBuilder{});
+    ASSERT_EQ(rectangle_perimeter.size(), 1u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(rectangle_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{0, 1, 2, 3, 0}));
+}
+
+// The winding-sensitive and multi-segment perimeters. `Triangle2d` follows its own winding order,
+// the sector/segment pair emit a flat chord followed by a smooth arc whose end normals come from
+// `sin_cos(half_angle)`, `Annulus` emits its inner hole first wound the other way, and `Capsule2d`
+// emits four segments in order.
+TEST(MeshPrimitives, ExtrudablePerimeterMatchesBevyForWindingAndMultiSegmentShapes) {
+    const auto expect_vec2 = [](glm::vec2 actual, glm::vec2 expected) {
+        EXPECT_FLOAT_EQ(actual.x, expected.x);
+        EXPECT_FLOAT_EQ(actual.y, expected.y);
+    };
+
+    // Counter-clockwise triangle: 0, 1, 2, 0; clockwise: 2, 1, 0, 2.
+    const auto ccw_perimeter = mesh::perimeter(mesh::Triangle2d{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}}.mesh());
+    ASSERT_EQ(ccw_perimeter.size(), 1u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(ccw_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{0, 1, 2, 0}));
+    const auto cw_perimeter = mesh::perimeter(mesh::Triangle2d{{0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 0.0f}}.mesh());
+    ASSERT_EQ(cw_perimeter.size(), 1u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(cw_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{2, 1, 0, 2}));
+
+    // CircularSector / CircularSegment: flat chord `[resolution, 0, 1]`, then the arc `1..=resolution`.
+    mesh::CircularSectorMeshBuilder sector;
+    sector.resolution           = 4;
+    const auto sector_perimeter = mesh::perimeter(sector);
+    ASSERT_EQ(sector_perimeter.size(), 2u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(sector_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{4, 0, 1}));
+    const auto* sector_arc = std::get_if<mesh::PerimeterSegment::Smooth>(&sector_perimeter[1].value);
+    ASSERT_NE(sector_arc, nullptr);
+    EXPECT_EQ(sector_arc->indices, (std::vector<std::uint32_t>{1, 2, 3, 4}));
+    const float half_angle = mesh::CircularSector{}.arc.half_angle;
+    expect_vec2(sector_arc->first_normal, glm::vec2{std::sin(half_angle), std::cos(half_angle)});
+    expect_vec2(sector_arc->last_normal, glm::vec2{-std::sin(half_angle), std::cos(half_angle)});
+
+    mesh::CircularSegmentMeshBuilder segment;
+    segment.resolution           = 3;
+    const auto segment_perimeter = mesh::perimeter(segment);
+    ASSERT_EQ(segment_perimeter.size(), 2u);
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(segment_perimeter[0].value).indices,
+              (std::vector<std::uint32_t>{3, 0, 1}));
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Smooth>(segment_perimeter[1].value).indices,
+              (std::vector<std::uint32_t>{1, 2, 3}));
+
+    // Annulus: the inner hole is emitted first, stepped by two and reversed, so its indices descend
+    // from the closing 0; the outer perimeter steps by two from 1.
+    mesh::AnnulusMeshBuilder annulus;
+    annulus.resolution           = 4;
+    const auto annulus_perimeter = mesh::perimeter(annulus);
+    ASSERT_EQ(annulus_perimeter.size(), 2u);
+    const auto* inner = std::get_if<mesh::PerimeterSegment::Smooth>(&annulus_perimeter[0].value);
+    const auto* outer = std::get_if<mesh::PerimeterSegment::Smooth>(&annulus_perimeter[1].value);
+    ASSERT_NE(inner, nullptr);
+    ASSERT_NE(outer, nullptr);
+    EXPECT_EQ(inner->indices, (std::vector<std::uint32_t>{0, 6, 4, 2, 0}));
+    EXPECT_EQ(outer->indices, (std::vector<std::uint32_t>{1, 3, 5, 7, 1}));
+    expect_vec2(inner->first_normal, glm::vec2{0.0f, -1.0f});
+    expect_vec2(outer->first_normal, glm::vec2{0.0f, 1.0f});
+
+    // Capsule2d: top semi-circle, left edge, bottom semi-circle, right edge.
+    mesh::Capsule2dMeshBuilder capsule;
+    capsule.resolution           = 4;
+    const auto capsule_perimeter = mesh::perimeter(capsule);
+    ASSERT_EQ(capsule_perimeter.size(), 4u);
+    const auto* top = std::get_if<mesh::PerimeterSegment::Smooth>(&capsule_perimeter[0].value);
+    ASSERT_NE(top, nullptr);
+    EXPECT_EQ(top->indices, (std::vector<std::uint32_t>{0, 1, 2, 3}));
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(capsule_perimeter[1].value).indices,
+              (std::vector<std::uint32_t>{3, 4}));
+    const auto* bottom = std::get_if<mesh::PerimeterSegment::Smooth>(&capsule_perimeter[2].value);
+    ASSERT_NE(bottom, nullptr);
+    EXPECT_EQ(bottom->indices, (std::vector<std::uint32_t>{4, 5, 6, 7}));
+    EXPECT_EQ(std::get<mesh::PerimeterSegment::Flat>(capsule_perimeter[3].value).indices,
+              (std::vector<std::uint32_t>{7, 0}));
+    expect_vec2(top->first_normal, glm::vec2{1.0f, 0.0f});
+    expect_vec2(top->last_normal, glm::vec2{-1.0f, 0.0f});
+    expect_vec2(bottom->first_normal, glm::vec2{-1.0f, 0.0f});
+    expect_vec2(bottom->last_normal, glm::vec2{1.0f, 0.0f});
+}
+
+// `RingMeshBuilder<P>`'s perimeter appends the *inner* perimeter reversed, offset past the outer
+// vertices, with its smooth normals negated and swapped (`dim2.rs:1441-1505`).
+TEST(MeshPrimitives, ExtrudableRingPerimeterTransformsTheInnerLoop) {
+    const auto expect_vec2 = [](glm::vec2 actual, glm::vec2 expected) {
+        EXPECT_FLOAT_EQ(actual.x, expected.x);
+        EXPECT_FLOAT_EQ(actual.y, expected.y);
+    };
+
+    mesh::CircleMeshBuilder outer;
+    outer.resolution = 4;
+    mesh::CircleMeshBuilder inner;
+    inner.resolution    = 4;
+    const auto segments = mesh::perimeter(mesh::RingMeshBuilder<mesh::Circle>{outer, inner});
+
+    ASSERT_EQ(segments.size(), 2u);
+    const auto* outer_segment = std::get_if<mesh::PerimeterSegment::Smooth>(&segments[0].value);
+    const auto* inner_segment = std::get_if<mesh::PerimeterSegment::Smooth>(&segments[1].value);
+    ASSERT_NE(outer_segment, nullptr);
+    ASSERT_NE(inner_segment, nullptr);
+    // The outer loop is untouched: 0..3 then the closing 0.
+    EXPECT_EQ(outer_segment->indices, (std::vector<std::uint32_t>{0, 1, 2, 3, 0}));
+    // The inner loop is reversed so the solid stays on the right, and offset by the outer vertex
+    // count; a circle of resolution four meshes to four vertices.
+    EXPECT_EQ(inner_segment->indices, (std::vector<std::uint32_t>{4, 7, 6, 5, 4}));
+    expect_vec2(inner_segment->first_normal, glm::vec2{0.0f, -1.0f});
+    expect_vec2(inner_segment->last_normal, glm::vec2{0.0f, -1.0f});
+
+    // A ring whose inner and outer meshes have different vertex counts is Bevy's panic case; Epix
+    // reports it as the module's typed exception instead.
+    mesh::CircleMeshBuilder smaller_inner;
+    smaller_inner.resolution = 3;
+    EXPECT_THROW(mesh::perimeter(mesh::RingMeshBuilder<mesh::Circle>{outer, smaller_inner}), std::invalid_argument);
 }

@@ -23,6 +23,31 @@ WindingOrder winding_order(const glm::vec2& a, const glm::vec2& b, const glm::ve
 }
 }  // namespace
 
+std::uint32_t vertices_per_layer(const PerimeterSegment& segment) noexcept {
+    // Bevy `PerimeterSegment::vertices_per_layer`, verbatim.
+    return std::visit(
+        [](const auto& value) -> std::uint32_t {
+            using Alternative = std::remove_cvref_t<decltype(value)>;
+            assert(value.indices.size() >= 1 && "a perimeter segment needs at least one index");
+            if constexpr (std::same_as<Alternative, PerimeterSegment::Smooth>) {
+                return static_cast<std::uint32_t>(value.indices.size());
+            } else {
+                return 2 * (static_cast<std::uint32_t>(value.indices.size()) - 1);
+            }
+        },
+        segment.value);
+}
+
+std::size_t indices_per_segment(const PerimeterSegment& segment) noexcept {
+    // Bevy `PerimeterSegment::indices_per_segment`, verbatim for both variants.
+    return std::visit(
+        [](const auto& value) -> std::size_t {
+            assert(value.indices.size() >= 1 && "a perimeter segment needs at least one index");
+            return 6 * (value.indices.size() - 1);
+        },
+        segment.value);
+}
+
 CircleMeshBuilder Circle::mesh() const noexcept { return CircleMeshBuilder{radius, 32}; }
 
 float Arc2d::half_chord_length() const noexcept { return radius * std::sin(half_angle); }
