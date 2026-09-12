@@ -3,8 +3,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <cstdint>
 #include <epix/image.hpp>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -736,4 +738,126 @@ TEST(TextureAccessError, DisplayUsesTheWrapperFormatNames) {
     EXPECT_EQ(unsupported(wgpu::TextureFormat::eASTC4x4Unorm), "unsupported texture format: ASTC4x4Unorm");
     EXPECT_EQ(unsupported(wgpu::TextureFormat::eASTC12x12UnormSrgb), "unsupported texture format: ASTC12x12UnormSrgb");
     EXPECT_EQ(unsupported(wgpu::TextureFormat::eUndefined), "unsupported texture format: Undefined");
+}
+
+// `TextureFormatPixelInfo::pixel_size` (image.rs:2044-2059): `block_dimensions()` must be
+// `(1, 1)`, and the answer is `block_copy_size(None)`. The three WebGPU formats that define no
+// copy size hit Bevy's `Option::unwrap()` on `None` and panic, which Epix throws.
+TEST(TextureFormatPixelSize, MatchesWgpuTypesBlockCopySizes) {
+    const auto size = [](wgpu::TextureFormat format) { return epix::image::texture_format_pixel_size(format); };
+
+    EXPECT_EQ(size(wgpu::TextureFormat::eR8Unorm), 1u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eR8Uint), 1u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eStencil8), 1u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eR16Float), 2u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRG8Snorm), 2u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eDepth16Unorm), 2u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRGBA8UnormSrgb), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eBGRA8Unorm), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRGB10A2Unorm), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eR32Float), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eDepth32Float), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRGBA16Float), 8u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRG32Uint), 8u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRGBA32Float), 16u);
+
+    // Every block-compressed format reports `UnsupportedTextureFormat` instead of a size.
+    for (const auto format : {wgpu::TextureFormat::eBC1RGBAUnorm, wgpu::TextureFormat::eBC7RGBAUnormSrgb,
+                              wgpu::TextureFormat::eETC2RGBA8Unorm, wgpu::TextureFormat::eASTC4x4Unorm,
+                              wgpu::TextureFormat::eASTC12x12UnormSrgb}) {
+        const auto result = size(format);
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error(),
+                  (epix::image::TextureAccessError{epix::image::TextureAccessError::UnsupportedTextureFormat{format}}));
+    }
+
+    EXPECT_THROW(size(wgpu::TextureFormat::eDepth24Plus), std::runtime_error);
+    EXPECT_THROW(size(wgpu::TextureFormat::eDepth24PlusStencil8), std::runtime_error);
+    EXPECT_THROW(size(wgpu::TextureFormat::eDepth32FloatStencil8), std::runtime_error);
+
+    // `eUndefined` has no `wgpu-types` counterpart, so Rust cannot ask for its size.
+    EXPECT_FALSE(size(wgpu::TextureFormat::eUndefined).has_value());
+}
+
+// `Image::new` and `Image::new_uninit` (image.rs:1001-1050).
+TEST(ImageNew, BuildsDescriptorPayloadAndUsage) {
+    const std::vector<std::byte> payload(2 * 3 * 4, std::byte{7});
+    epix::image::Image image{wgpu::Extent3D{2, 3, 1}, wgpu::TextureDimension::e2D, payload,
+                             wgpu::TextureFormat::eRGBA8UnormSrgb, epix::assets::MAIN_WORLD};
+
+    EXPECT_EQ(image.width(), 2u);
+    EXPECT_EQ(image.height(), 3u);
+    EXPECT_EQ(image.depth_or_layers(), 1u);
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    EXPECT_EQ(image.texture_descriptor.dimension, wgpu::TextureDimension::e2D);
+    EXPECT_EQ(image.texture_descriptor.mipLevelCount, 1u);
+    EXPECT_TRUE(image.has_data());
+    ASSERT_EQ(image.raw_view().size(), payload.size());
+    EXPECT_EQ(image.raw_view()[0], std::byte{7});
+    EXPECT_EQ(image.usage(), static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD));
+
+    epix::image::Image uninitialized{wgpu::Extent3D{2, 3, 1}, wgpu::TextureDimension::e2D,
+                                     wgpu::TextureFormat::eRGBA8UnormSrgb, epix::assets::MAIN_WORLD};
+    EXPECT_EQ(uninitialized.width(), 2u);
+    EXPECT_FALSE(uninitialized.has_data());
+    EXPECT_TRUE(uninitialized.raw_view().empty());
+    EXPECT_EQ(uninitialized.usage(), static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD));
+}
+
+// `Image::convert(TextureFormat)` (image.rs:1335-1353): the source must be one of the formats
+// `try_into_dynamic` understands and the target one of the three `convert` handles, and a BGRA
+// source is swapped to RGBA first.
+TEST(ImageConvert, MatchesBevyConvertGates) {
+    const auto make = [](wgpu::TextureFormat format, std::vector<std::byte> payload, std::uint32_t width = 2,
+                         std::uint32_t height = 2) {
+        return epix::image::Image{wgpu::Extent3D{width, height, 1}, wgpu::TextureDimension::e2D, std::move(payload),
+                                  format, epix::assets::MAIN_WORLD};
+    };
+
+    const std::vector<std::byte> grey{std::byte{9}, std::byte{10}, std::byte{11}, std::byte{12}};
+    const auto converted = make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eRGBA8UnormSrgb);
+    ASSERT_TRUE(converted.has_value());
+    EXPECT_EQ(converted->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
+    ASSERT_EQ(converted->raw_view().size(), 16u);
+    EXPECT_EQ(converted->raw_view()[0], std::byte{9});
+    EXPECT_EQ(converted->raw_view()[1], std::byte{9});
+    EXPECT_EQ(converted->raw_view()[2], std::byte{9});
+    EXPECT_EQ(converted->raw_view()[3], std::byte{255});
+    EXPECT_EQ(converted->raw_view()[12], std::byte{12});
+
+    const auto regrey = make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eR8Unorm);
+    ASSERT_TRUE(regrey.has_value());
+    EXPECT_EQ(regrey->texture_format(), wgpu::TextureFormat::eR8Unorm);
+    EXPECT_EQ(regrey->raw_view().size(), 4u);
+
+    // Only the three formats Bevy's `convert` handles are accepted as a target.
+    EXPECT_FALSE(make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eRGBA8Unorm).has_value());
+    EXPECT_FALSE(make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eBC1RGBAUnorm).has_value());
+
+    // A payload that was already transferred has no `DynamicImage`.
+    auto transferred = make(wgpu::TextureFormat::eR8Unorm, grey);
+    transferred.take_data();
+    EXPECT_FALSE(transferred.convert(wgpu::TextureFormat::eRGBA8UnormSrgb).has_value());
+
+    // A source format `try_into_dynamic` cannot build.
+    const std::vector<std::byte> floats(2 * 2 * 16, std::byte{0});
+    EXPECT_FALSE(
+        make(wgpu::TextureFormat::eRGBA32Float, floats).convert(wgpu::TextureFormat::eRGBA8UnormSrgb).has_value());
+
+    // A payload whose length does not match the dimensions is rejected by `ImageBuffer::from_raw`.
+    EXPECT_FALSE(make(wgpu::TextureFormat::eR8Unorm, {std::byte{1}, std::byte{2}})
+                     .convert(wgpu::TextureFormat::eRGBA8UnormSrgb)
+                     .has_value());
+
+    // `try_into_dynamic` swaps the red and blue channels of a BGRA source.
+    const std::vector<std::byte> bgra{std::byte{1},  std::byte{2},  std::byte{3},  std::byte{4},
+                                      std::byte{5},  std::byte{6},  std::byte{7},  std::byte{8},
+                                      std::byte{9},  std::byte{10}, std::byte{11}, std::byte{12},
+                                      std::byte{13}, std::byte{14}, std::byte{15}, std::byte{16}};
+    const auto swapped = make(wgpu::TextureFormat::eBGRA8UnormSrgb, bgra).convert(wgpu::TextureFormat::eRGBA8UnormSrgb);
+    ASSERT_TRUE(swapped.has_value());
+    EXPECT_EQ(swapped->raw_view()[0], std::byte{3});
+    EXPECT_EQ(swapped->raw_view()[1], std::byte{2});
+    EXPECT_EQ(swapped->raw_view()[2], std::byte{1});
+    EXPECT_EQ(swapped->raw_view()[3], std::byte{4});
 }

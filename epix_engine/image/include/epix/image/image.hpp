@@ -247,6 +247,19 @@ EPIX_EXPORT struct TextureAccessError {
  * rather than through a Rust-`Debug` table; see G26 in the image mismatch tracker. */
 EPIX_EXPORT std::string to_string(const TextureAccessError& error);
 
+/** @brief The number of bytes one pixel of `format` occupies, or Bevy's
+ * `TextureAccessError::UnsupportedTextureFormat` for a block-compressed format
+ * (Bevy `TextureFormatPixelInfo::pixel_size`).
+ *
+ * Bevy implements this on `wgpu::TextureFormat` through `block_dimensions()` and
+ * `block_copy_size(None)`: any format whose block dimensions are not `(1, 1)` is
+ * rejected, which is every BC/ETC2/ASTC format, and the rest report their
+ * per-pixel byte size. Three formats that WebGPU defines without a copy size
+ * (`Depth24Plus`, `Depth24PlusStencil8` and `Depth32FloatStencil8`) hit Bevy's
+ * `Option::unwrap()` on `None` and panic; Epix throws `std::runtime_error` with
+ * the same message. */
+EPIX_EXPORT std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::TextureFormat format);
+
 /** @brief The data format of a supercompressed image (Bevy `DataFormat`). */
 EPIX_EXPORT enum class DataFormat : std::uint8_t { Rgb, Rgba, Rrr, Rrrg, Rg };
 
@@ -727,6 +740,24 @@ EPIX_EXPORT class Image {
     /** @brief Create Bevy's default opaque-white 1x1 RGBA image. */
     Image();
 
+    /** @brief Create an image from raw binary data and the corresponding metadata
+     * (Bevy `Image::new`).
+     *
+     * Panics (throws `std::invalid_argument`) if the length of `data`, the volume of `size`
+     * and the size of `format` do not match. */
+    Image(wgpu::Extent3D size,
+          wgpu::TextureDimension dimension,
+          std::vector<std::byte> data,
+          wgpu::TextureFormat format,
+          assets::RenderAssetUsages asset_usage);
+
+    /** @brief Exactly the same as `Image::new`, but doesn't initialize the image
+     * (Bevy `Image::new_uninit`). */
+    Image(wgpu::Extent3D size,
+          wgpu::TextureDimension dimension,
+          wgpu::TextureFormat format,
+          assets::RenderAssetUsages asset_usage);
+
     /** @brief Create a transparent-white 1x1 RGBA image (Bevy
      * `Image::transparent`). */
     static Image transparent();
@@ -964,6 +995,19 @@ EPIX_EXPORT class Image {
      * @brief Convert image to target format, return the converted image.
      */
     Image convert(Format targetFmt) const;
+    /**
+     * @brief Convert the image to `new_format`, or `std::nullopt` when the conversion is not
+     * supported (Bevy `Image::convert`).
+     *
+     * Bevy builds an `image::DynamicImage` from the image and converts that, so it can only
+     * convert the formats `Image::try_into_dynamic` understands (`R8Unorm`, `Rg8Unorm`,
+     * `Rgba8UnormSrgb`, `Bgra8UnormSrgb` and `Bgra8Unorm`) and only into `R8Unorm`, `Rg8Unorm`
+     * or `Rgba8UnormSrgb`; anything else answers `None`, which is what the atlas builder logs
+     * and skips. The same gates apply here, while the pixel conversion itself runs through
+     * Epix's `Format` pipeline (see `ImageTextureConversion` in the tracker: Bevy's
+     * `DynamicImage` round-trip is not ported, and Epix keeps the requested layout instead of
+     * `from_dynamic`'s RGBA widening). */
+    std::optional<Image> convert(wgpu::TextureFormat new_format) const;
     /**
      * @brief Resize image to new width and height, return the resized image.
      */

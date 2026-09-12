@@ -9,6 +9,7 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <variant>
@@ -19,6 +20,13 @@
 #include <epix/image/image.hpp>
 
 namespace epix::image {
+
+namespace detail {
+/** @brief `rectangle-pack`'s `PackedLocation`, defined in `detail/rectangle_pack.hpp`.
+ *
+ * Forward declared because only the builder's private copy helpers name it. */
+struct PackedLocation;
+}  // namespace detail
 
 /** @brief Asset describing the pixel rectangles in a texture atlas. */
 EPIX_EXPORT struct TextureAtlasLayout {
@@ -162,6 +170,145 @@ EPIX_EXPORT class DynamicTextureAtlasBuilder {
 
     detail::AtlasAllocator atlas_allocator;
     std::uint32_t padding = 0;
+};
+
+/** @brief C++ counterparts to `TextureAtlasBuilderError`'s alternatives
+ * (`texture_atlas_builder.rs:16-30`). */
+EPIX_EXPORT namespace texture_atlas_builder_error {
+    /** @brief Could not pack the textures into an atlas within the given bounds. */
+    struct NotEnoughSpace {
+        bool operator==(const NotEnoughSpace&) const = default;
+    };
+    /** @brief A texture with the wrong format was added to an atlas. */
+    struct WrongFormat {
+        bool operator==(const WrongFormat&) const = default;
+    };
+    /** @brief Attempted to add a texture to an uninitialized atlas. */
+    struct UninitializedAtlas {
+        bool operator==(const UninitializedAtlas&) const = default;
+    };
+    /** @brief Attempted to add an uninitialized texture to an atlas. */
+    struct UninitializedSourceTexture {
+        bool operator==(const UninitializedSourceTexture&) const = default;
+    };
+}  // namespace texture_atlas_builder_error
+
+/** @brief Error produced by `TextureAtlasBuilder` (Bevy `TextureAtlasBuilderError`). */
+EPIX_EXPORT struct TextureAtlasBuilderError : std::variant<texture_atlas_builder_error::NotEnoughSpace,
+                                                           texture_atlas_builder_error::WrongFormat,
+                                                           texture_atlas_builder_error::UninitializedAtlas,
+                                                           texture_atlas_builder_error::UninitializedSourceTexture,
+                                                           TextureAccessError> {
+    using Base = std::variant<texture_atlas_builder_error::NotEnoughSpace,
+                              texture_atlas_builder_error::WrongFormat,
+                              texture_atlas_builder_error::UninitializedAtlas,
+                              texture_atlas_builder_error::UninitializedSourceTexture,
+                              TextureAccessError>;
+    using Base::Base;
+
+    /** @brief Bevy `TextureAtlasBuilderError`'s `Display` text. */
+    std::string to_string() const;
+};
+
+/** @brief `TextureAtlasBuilder`'s result type (Bevy `TextureAtlasBuilderResult`). */
+template <typename T>
+using TextureAtlasBuilderResult = std::expected<T, TextureAtlasBuilderError>;
+
+/** @brief A builder which is used to create a texture atlas from many individual sprites
+ * (Bevy `TextureAtlasBuilder`).
+ *
+ * Like Bevy's `&'a Image`, the builder *borrows* the images it packs: the referenced images must
+ * outlive the builder and its `build()` call. */
+EPIX_EXPORT class [[nodiscard]] TextureAtlasBuilder {
+   public:
+    /** @brief Bevy's `Default`: a 256x256 initial atlas, at most 2048x2048,
+     * `Rgba8UnormSrgb`, automatic format conversion, no padding. */
+    TextureAtlasBuilder() = default;
+
+    /** @brief Sets the initial size of the atlas in pixels. */
+    TextureAtlasBuilder& initial_size(glm::uvec2 size) {
+        initial_size_ = size;
+        return *this;
+    }
+
+    /** @brief Sets the max size of the atlas in pixels. */
+    TextureAtlasBuilder& max_size(glm::uvec2 size) {
+        max_size_ = size;
+        return *this;
+    }
+
+    /** @brief Sets the texture format for the textures that will be loaded in the atlas. */
+    TextureAtlasBuilder& format(wgpu::TextureFormat format) {
+        format_ = format;
+        return *this;
+    }
+
+    /** @brief Control whether the added texture should be converted to the atlas format, if
+     * different. */
+    TextureAtlasBuilder& auto_format_conversion(bool auto_format_conversion) {
+        auto_format_conversion_ = auto_format_conversion;
+        return *this;
+    }
+
+    /** @brief Adds a texture to be copied to the texture atlas.
+     *
+     * Optionally an asset id can be passed that can later be used with the texture layout to
+     * retrieve the index of this texture. The insertion order will reflect the index of the added
+     * texture in the finished texture atlas. */
+    TextureAtlasBuilder& add_texture(std::optional<assets::AssetId<Image>> image_id, const Image& texture) {
+        textures_to_place_.emplace_back(std::move(image_id), &texture);
+        return *this;
+    }
+
+    /** @brief Sets the amount of padding in pixels to add between the textures in the texture
+     * atlas.
+     *
+     * The `x` value provided will be added to the right edge, while the `y` value will be added to
+     * the bottom edge. */
+    TextureAtlasBuilder& padding(glm::uvec2 padding) {
+        padding_ = padding;
+        return *this;
+    }
+
+    /** @brief Consumes the builder, and returns the newly created texture atlas and the associated
+     * atlas layout.
+     *
+     * Assigns indices to the textures based on the insertion order. Internally it copies all
+     * rectangles from the textures and copies them into a new texture.
+     *
+     * If there is not enough space in the atlas texture, an error will be returned. It is then
+     * recommended to make a larger sprite sheet. */
+    TextureAtlasBuilderResult<std::tuple<TextureAtlasLayout, TextureAtlasSources, Image>> build();
+
+   private:
+    /** @brief Copy `texture` into `atlas_texture` at `packed_location`, row by row, leaving
+     * `padding` rows and columns of the packed rectangle untouched. */
+    static TextureAtlasBuilderResult<void> copy_texture_to_atlas(Image& atlas_texture,
+                                                                 const Image& texture,
+                                                                 const detail::PackedLocation& packed_location,
+                                                                 glm::uvec2 padding);
+
+    /** @brief Copy `texture` into `atlas_texture`, converting it to the atlas format first when
+     * the two differ. */
+    TextureAtlasBuilderResult<void> copy_converted_texture(Image& atlas_texture,
+                                                           const Image& texture,
+                                                           const detail::PackedLocation& packed_location) const;
+
+    /** @brief Collection of texture's asset id (optional) and image data to be packed into an
+     * atlas. */
+    std::vector<std::pair<std::optional<assets::AssetId<Image>>, const Image*>> textures_to_place_;
+    /** @brief The initial atlas size in pixels. */
+    glm::uvec2 initial_size_{256u};
+    /** @brief The absolute maximum size of the texture atlas in pixels. */
+    glm::uvec2 max_size_{2048u};
+    /** @brief The texture format for the textures that will be loaded in the atlas. */
+    wgpu::TextureFormat format_ = wgpu::TextureFormat::eRGBA8UnormSrgb;
+    /** @brief Enable automatic format conversion for textures if they are not in the atlas
+     * format. */
+    bool auto_format_conversion_ = true;
+    /** @brief The amount of padding in pixels to add along the right and bottom edges of the
+     * texture rects. */
+    glm::uvec2 padding_{0u};
 };
 
 }  // namespace epix::image

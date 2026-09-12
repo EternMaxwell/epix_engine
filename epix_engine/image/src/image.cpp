@@ -11,6 +11,7 @@
 #include <epix/image/image_loader.hpp>
 #include <expected>
 #include <span>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -148,7 +149,8 @@ wgpu::TextureFormat texture_format_cast(Format format) noexcept {
     }
 }
 
-/** @brief The reverse of `texture_format_cast`, used by `Image::format`. */
+/** @brief The reverse of `texture_format_cast`, used by `Image::format` and by
+ * `Image::convert(wgpu::TextureFormat)`. */
 std::optional<Format> format_from_texture_format(wgpu::TextureFormat format) noexcept {
     switch (format) {
         case wgpu::TextureFormat::eR8Unorm:
@@ -314,6 +316,73 @@ Image create_resized_like(const Image& image, std::uint32_t width, std::uint32_t
     }
 }
 }  // namespace
+
+std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::TextureFormat format) {
+    // Bevy rejects every format whose block dimensions are not `(1, 1)`.
+    if (is_compressed_texture_format(format)) {
+        return std::unexpected(TextureAccessError{TextureAccessError::UnsupportedTextureFormat{format}});
+    }
+
+    switch (format) {
+        // `block_copy_size(None)` for the single-texel-block formats the generated bindings name.
+        case wgpu::TextureFormat::eR8Unorm:
+        case wgpu::TextureFormat::eR8Snorm:
+        case wgpu::TextureFormat::eR8Uint:
+        case wgpu::TextureFormat::eR8Sint:
+        case wgpu::TextureFormat::eStencil8:
+            return 1;
+        case wgpu::TextureFormat::eRG8Unorm:
+        case wgpu::TextureFormat::eRG8Snorm:
+        case wgpu::TextureFormat::eRG8Uint:
+        case wgpu::TextureFormat::eRG8Sint:
+        case wgpu::TextureFormat::eR16Uint:
+        case wgpu::TextureFormat::eR16Sint:
+        case wgpu::TextureFormat::eR16Float:
+        case wgpu::TextureFormat::eDepth16Unorm:
+            return 2;
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+        case wgpu::TextureFormat::eRGBA8Snorm:
+        case wgpu::TextureFormat::eRGBA8Uint:
+        case wgpu::TextureFormat::eRGBA8Sint:
+        case wgpu::TextureFormat::eBGRA8Unorm:
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+        case wgpu::TextureFormat::eRG16Uint:
+        case wgpu::TextureFormat::eRG16Sint:
+        case wgpu::TextureFormat::eRG16Float:
+        case wgpu::TextureFormat::eR32Uint:
+        case wgpu::TextureFormat::eR32Sint:
+        case wgpu::TextureFormat::eR32Float:
+        case wgpu::TextureFormat::eRGB9E5Ufloat:
+        case wgpu::TextureFormat::eRGB10A2Uint:
+        case wgpu::TextureFormat::eRGB10A2Unorm:
+        case wgpu::TextureFormat::eRG11B10Ufloat:
+        case wgpu::TextureFormat::eDepth32Float:
+            return 4;
+        case wgpu::TextureFormat::eRGBA16Uint:
+        case wgpu::TextureFormat::eRGBA16Sint:
+        case wgpu::TextureFormat::eRGBA16Float:
+        case wgpu::TextureFormat::eRG32Uint:
+        case wgpu::TextureFormat::eRG32Sint:
+        case wgpu::TextureFormat::eRG32Float:
+            return 8;
+        case wgpu::TextureFormat::eRGBA32Uint:
+        case wgpu::TextureFormat::eRGBA32Sint:
+        case wgpu::TextureFormat::eRGBA32Float:
+            return 16;
+
+        // WebGPU defines no copy size for these, so Bevy's `block_copy_size(None).unwrap()`
+        // panics; Epix throws Rust's panic message.
+        case wgpu::TextureFormat::eDepth24Plus:
+        case wgpu::TextureFormat::eDepth24PlusStencil8:
+        case wgpu::TextureFormat::eDepth32FloatStencil8:
+            throw std::runtime_error("called `Option::unwrap()` on a `None` value");
+
+        default:
+            // `eUndefined`/`eForce32` have no `wgpu-types` counterpart, so Bevy cannot name them.
+            return std::unexpected(TextureAccessError{TextureAccessError::UnsupportedTextureFormat{format}});
+    }
+}
 
 const FormatInfo& getFormatInfo(Format fmt) {
     static FormatInfo info1{1, 1, false, false};
@@ -504,6 +573,46 @@ wgpu::TextureFormat srgb_texture_format(wgpu::TextureFormat format) noexcept {
 Image::Image() : data(4, std::byte{0xFF}) {
     // Bevy's default image is an opaque white 1x1 RGBA8 image.
     set_descriptor(*this, ImageType::e2D, 1, 1, 1, Format::RGBA8);
+}
+
+Image::Image(wgpu::Extent3D size,
+             wgpu::TextureDimension dimension,
+             std::vector<std::byte> image_data,
+             wgpu::TextureFormat format,
+             assets::RenderAssetUsages asset_usage) {
+    // Bevy's `Image::new` only debug-asserts the payload length, and only for formats that
+    // report a pixel size.
+    if (const auto pixel_size = pixel_size_of(format)) {
+        const std::size_t volume = static_cast<std::size_t>(size.width) * size.height * size.depthOrArrayLayers;
+        assert(volume * *pixel_size == image_data.size() && "Pixel data, size and format have to match");
+    }
+
+    texture_descriptor.size          = size;
+    texture_descriptor.dimension     = dimension;
+    texture_descriptor.format        = format;
+    texture_descriptor.mipLevelCount = 1;
+    texture_descriptor.sampleCount   = 1;
+    texture_descriptor.usage         = static_cast<wgpu::TextureUsage>(
+        wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eCopySrc);
+    m_usage    = asset_usage;
+    data       = std::move(image_data);
+    m_has_data = true;
+}
+
+Image::Image(wgpu::Extent3D size,
+             wgpu::TextureDimension dimension,
+             wgpu::TextureFormat format,
+             assets::RenderAssetUsages asset_usage) {
+    texture_descriptor.size          = size;
+    texture_descriptor.dimension     = dimension;
+    texture_descriptor.format        = format;
+    texture_descriptor.mipLevelCount = 1;
+    texture_descriptor.sampleCount   = 1;
+    texture_descriptor.usage         = static_cast<wgpu::TextureUsage>(
+        wgpu::TextureUsage::eTextureBinding | wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eCopySrc);
+    m_usage = asset_usage;
+    data.clear();
+    m_has_data = false;
 }
 
 Image Image::transparent() {
@@ -1103,6 +1212,59 @@ Image Image::convert(Format targetFmt) const {
 
     return result;
 }
+
+std::optional<Image> Image::convert(wgpu::TextureFormat new_format) const {
+    // Bevy starts from `Image::try_into_dynamic`, which only understands these source formats
+    // and needs the payload to build a `DynamicImage`.
+    const wgpu::TextureFormat source_format = texture_format();
+    const bool source_is_bgra =
+        source_format == wgpu::TextureFormat::eBGRA8Unorm || source_format == wgpu::TextureFormat::eBGRA8UnormSrgb;
+    switch (source_format) {
+        case wgpu::TextureFormat::eR8Unorm:
+        case wgpu::TextureFormat::eRG8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+        case wgpu::TextureFormat::eBGRA8Unorm:
+            break;
+        default:
+            return std::nullopt;
+    }
+    if (!m_has_data) return std::nullopt;
+
+    // `ImageBuffer::from_raw` rejects a payload whose length does not match the dimensions.
+    const std::size_t volume = static_cast<std::size_t>(width()) * height() * depth_or_layers();
+    if (data.size() != volume * *texture_format_pixel_size(source_format)) return std::nullopt;
+
+    // `Image::convert`'s target match: everything else answers `None`.
+    switch (new_format) {
+        case wgpu::TextureFormat::eR8Unorm:
+        case wgpu::TextureFormat::eRG8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            break;
+        default:
+            return std::nullopt;
+    }
+
+    Image source = *this;
+    if (source_is_bgra) {
+        // `try_into_dynamic` swaps the red and blue channels of a BGRA source.
+        auto bytes = source.raw_view_mut();
+        for (std::size_t index = 0; index + 3 < bytes.size(); index += 4) {
+            std::swap(bytes[index], bytes[index + 2]);
+        }
+    }
+
+    // The pixel conversion runs through Epix's `Format` pipeline, and the result keeps the
+    // requested texture format: Bevy's `from_dynamic` widens the `R8Unorm`/`Rg8Unorm` results to
+    // `Rgba8Unorm` (see `ImageTextureConversion` in the image tracker).
+    const auto target = format_from_texture_format(new_format);
+    if (!target) return std::nullopt;
+
+    Image result                     = source.convert(*target);
+    result.texture_descriptor.format = new_format;
+    return result;
+}
+
 Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
     auto& inf          = format_info();
     auto target_height = type() == ImageType::e1D ? 1u : newH;
