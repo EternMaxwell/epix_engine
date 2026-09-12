@@ -241,6 +241,12 @@ EPIX_EXPORT struct TextureAccessError {
     bool operator==(const TextureAccessError&) const = default;
 };
 
+/** @brief Bevy `TextureAccessError`'s `Display` text (`image.rs:1963-1972`).
+ *
+ * The `UnsupportedTextureFormat` arm renders the format through the WebGPU wrapper's `to_string`
+ * rather than through a Rust-`Debug` table; see G26 in the image mismatch tracker. */
+EPIX_EXPORT std::string to_string(const TextureAccessError& error);
+
 /** @brief The data format of a supercompressed image (Bevy `DataFormat`). */
 EPIX_EXPORT enum class DataFormat : std::uint8_t { Rgb, Rgba, Rrr, Rrrg, Rg };
 

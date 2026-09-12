@@ -712,3 +712,28 @@ TEST(TextureSrgbViewFormats, FormatTableMatchesBevy) {
         EXPECT_EQ(epix::image::srgb_view_formats(format).size(), 0u) << "format=" << static_cast<int>(format);
     }
 }
+
+// Bevy renders `TextureAccessError::UnsupportedTextureFormat` with `{0:?}` of a wgpu
+// `TextureFormat`. Epix renders it through the WebGPU wrapper's own `to_string` instead of
+// reproducing the Rust `Debug` derive, so the names are the webgpu.h ones (`RGBA8UnormSrgb`,
+// `ASTC4x4Unorm`) rather than the Rust ones (`Rgba8UnormSrgb`,
+// `Astc { block: B4x4, channel: Unorm }`). That divergence is recorded as G26 in the image tracker.
+TEST(TextureAccessError, DisplayUsesTheWrapperFormatNames) {
+    const auto unsupported = [](wgpu::TextureFormat format) {
+        return epix::image::to_string(
+            epix::image::TextureAccessError{epix::image::TextureAccessError::UnsupportedTextureFormat{format}});
+    };
+
+    EXPECT_EQ(
+        epix::image::to_string(epix::image::TextureAccessError{epix::image::TextureAccessError::OutOfBounds{1, 2, 3}}),
+        "out of bounds (x: 1, y: 2, z: 3)");
+    EXPECT_EQ(
+        epix::image::to_string(epix::image::TextureAccessError{epix::image::TextureAccessError::WrongDimension{}}),
+        "attempt to access texture with different dimension");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eRGBA8UnormSrgb), "unsupported texture format: RGBA8UnormSrgb");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eRG8Unorm), "unsupported texture format: RG8Unorm");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eBC1RGBAUnorm), "unsupported texture format: BC1RGBAUnorm");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eASTC4x4Unorm), "unsupported texture format: ASTC4x4Unorm");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eASTC12x12UnormSrgb), "unsupported texture format: ASTC12x12UnormSrgb");
+    EXPECT_EQ(unsupported(wgpu::TextureFormat::eUndefined), "unsupported texture format: Undefined");
+}

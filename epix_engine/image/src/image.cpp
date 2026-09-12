@@ -842,6 +842,23 @@ bool is_3d_or_layered(const Image& image) noexcept {
 }
 }  // namespace
 
+std::string to_string(const TextureAccessError& error) {
+    return std::visit(
+        [](const auto& value) -> std::string {
+            using Alternative = std::remove_cvref_t<decltype(value)>;
+            if constexpr (std::same_as<Alternative, TextureAccessError::OutOfBounds>) {
+                return std::format("out of bounds (x: {}, y: {}, z: {})", value.x, value.y, value.z);
+            } else if constexpr (std::same_as<Alternative, TextureAccessError::UnsupportedTextureFormat>) {
+                // Bevy renders this format with its Rust `Debug`; Epix uses the WebGPU wrapper's own
+                // name renderer instead of duplicating that table (recorded as G26).
+                return std::format("unsupported texture format: {}", wgpu::to_string(value.format));
+            } else {
+                return std::string("attempt to access texture with different dimension");
+            }
+        },
+        error.value);
+}
+
 std::expected<glm::vec4, TextureAccessError> Image::get_color_at(std::uint32_t x, std::uint32_t y) const {
     if (!is_plain_2d(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
     return read_color_at(*this, glm::uvec3{x, y, 0});
