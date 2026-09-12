@@ -2807,3 +2807,129 @@ TEST(MeshExtrusion, SegmentsWalkBevyLayersAndZeroDepthSkipsTheMantel) {
     EXPECT_EQ(ring_extrusion.count_vertices(), 2 * cap.count_vertices() + 20u);
     EXPECT_EQ(ring_extrusion.indices()->get().len(), 2 * cap.indices()->get().len() + 48u);
 }
+
+// Bevy's `Sphere` is a radius with a `0.5` default, a `diameter`, a `closest_point` that returns the
+// point itself when it is inside, and `Measured3d` (`bevy_math/src/primitives/dim3.rs:30-100`).
+TEST(MeshSphere, ShapeAndBuilderMatchBevyContracts) {
+    static_assert(mesh::Meshable<mesh::Sphere>);
+    static_assert(mesh::MeshBuilder<mesh::SphereMeshBuilder>);
+    static_assert(mesh::Measured3d<mesh::Sphere>);
+
+    EXPECT_FLOAT_EQ(mesh::Sphere{}.radius, 0.5f);
+    EXPECT_FLOAT_EQ(mesh::Sphere{2.0f}.diameter(), 4.0f);
+    EXPECT_EQ(mesh::Sphere{1.0f}, mesh::Sphere{1.0f});
+    EXPECT_NE(mesh::Sphere{1.0f}, mesh::Sphere{2.0f});
+
+    // `4 * PI * r^2` and `4 / 3 * PI * r^3`.
+    EXPECT_NEAR(mesh::area(mesh::Sphere{0.5f}), 3.141592654f, 1e-6f);
+    EXPECT_NEAR(mesh::volume(mesh::Sphere{0.5f}), 0.523598776f, 1e-6f);
+    EXPECT_NEAR(mesh::area(mesh::Sphere{1.0f}), 12.566370614f, 1e-5f);
+    EXPECT_NEAR(mesh::volume(mesh::Sphere{1.0f}), 4.188790205f, 1e-5f);
+
+    // Inside the sphere the point is returned unchanged; outside it is projected onto the surface.
+    EXPECT_EQ(mesh::Sphere{1.0f}.closest_point(glm::vec3{0.25f, 0.0f, 0.0f}), (glm::vec3{0.25f, 0.0f, 0.0f}));
+    const glm::vec3 projected = mesh::Sphere{1.0f}.closest_point(glm::vec3{3.0f, 4.0f, 0.0f});
+    EXPECT_NEAR(projected.x, 0.6f, 1e-6f);
+    EXPECT_NEAR(projected.y, 0.8f, 1e-6f);
+    EXPECT_NEAR(projected.z, 0.0f, 1e-6f);
+    EXPECT_NEAR(glm::length(projected), 1.0f, 1e-6f);
+
+    // `SphereKind` defaults to `Ico { subdivisions: 5 }`, and `Sphere::mesh` keeps that default.
+    const mesh::SphereKind default_kind{};
+    EXPECT_TRUE(std::holds_alternative<mesh::SphereKind::Ico>(default_kind.value));
+    EXPECT_EQ(std::get<mesh::SphereKind::Ico>(default_kind.value).subdivisions, 5u);
+    EXPECT_EQ(mesh::SphereKind{}, (mesh::SphereKind{mesh::SphereKind::Ico{5}}));
+
+    const auto builder = mesh::Sphere{0.75f}.mesh();
+    EXPECT_FLOAT_EQ(builder.sphere.radius, 0.75f);
+    EXPECT_EQ(builder.kind, default_kind);
+
+    const auto from_new = mesh::SphereMeshBuilder{2.0f, mesh::SphereKind{mesh::SphereKind::Uv{8, 6}}};
+    EXPECT_FLOAT_EQ(from_new.sphere.radius, 2.0f);
+    EXPECT_EQ(std::get<mesh::SphereKind::Uv>(from_new.kind.value).sectors, 8u);
+    EXPECT_EQ(std::get<mesh::SphereKind::Uv>(from_new.kind.value).stacks, 6u);
+
+    const auto kinded =
+        mesh::SphereMeshBuilder{1.0f, mesh::SphereKind{}}.with_kind(mesh::SphereKind{mesh::SphereKind::Uv{4, 3}});
+    EXPECT_EQ(std::get<mesh::SphereKind::Uv>(kinded.kind.value).sectors, 4u);
+}
+
+// Bevy's `uv` sphere walks `stacks + 1` rings of `sectors + 1` vertices (the seam is duplicated),
+// pushes positions/normals/UVs in that order, and emits the two triangles per quad except at the
+// poles (`sphere.rs:168-231`).
+TEST(MeshSphere, UvSphereMatchesBevyRingsAndIndexLayout) {
+    const mesh::Mesh uv = mesh::Sphere{1.0f}.mesh().with_kind(mesh::SphereKind{mesh::SphereKind::Uv{4, 3}}).build();
+
+    EXPECT_EQ(uv.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(uv.count_vertices(), 20u);
+    ASSERT_NE(uv.indices(), std::nullopt);
+    EXPECT_EQ(uv.indices()->get().len(), 48u);
+
+    const auto* positions =
+        uv.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals =
+        uv.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* uvs = uv.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(positions, nullptr);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_NE(uvs, nullptr);
+
+    // Stack 0 sits at the north pole, stack 1 at `PI / 6`, so `z = 1` then `z = 0.5` with an XY radius
+    // of `sqrt(3) / 2`. The last vertex of each ring repeats the first, with `u = 1`.
+    EXPECT_NEAR((*positions)[0][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[0][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[0][2], 1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[5][0], 0.86602540f, 1e-6f);
+    EXPECT_NEAR((*positions)[5][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[5][2], 0.5f, 1e-6f);
+    EXPECT_NEAR((*positions)[6][0], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[6][1], 0.86602540f, 1e-6f);
+    EXPECT_NEAR((*positions)[9][0], 0.86602540f, 1e-6f);
+    EXPECT_NEAR((*positions)[9][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[10][2], -0.5f, 1e-6f);
+    EXPECT_NEAR((*positions)[15][2], -1.0f, 1e-6f);
+    EXPECT_NEAR((*positions)[19][2], -1.0f, 1e-6f);
+
+    // A unit sphere: the normal is the position itself.
+    for (std::size_t index = 0; index < positions->size(); ++index) {
+        EXPECT_NEAR((*normals)[index][0], (*positions)[index][0], 1e-6f);
+        EXPECT_NEAR((*normals)[index][1], (*positions)[index][1], 1e-6f);
+        EXPECT_NEAR((*normals)[index][2], (*positions)[index][2], 1e-6f);
+    }
+
+    const std::vector<mesh::VertexAttributeValues::Float32x2Value> expected_uvs{
+        {0.0f, 0.0f},        {0.25f, 0.0f},        {0.5f, 0.0f},        {0.75f, 0.0f},        {1.0f, 0.0f},
+        {0.0f, 1.0f / 3.0f}, {0.25f, 1.0f / 3.0f}, {0.5f, 1.0f / 3.0f}, {0.75f, 1.0f / 3.0f}, {1.0f, 1.0f / 3.0f},
+        {0.0f, 2.0f / 3.0f}, {0.25f, 2.0f / 3.0f}, {0.5f, 2.0f / 3.0f}, {0.75f, 2.0f / 3.0f}, {1.0f, 2.0f / 3.0f},
+        {0.0f, 1.0f},        {0.25f, 1.0f},        {0.5f, 1.0f},        {0.75f, 1.0f},        {1.0f, 1.0f}};
+    ASSERT_EQ(uvs->size(), expected_uvs.size());
+    for (std::size_t index = 0; index < expected_uvs.size(); ++index) {
+        EXPECT_NEAR((*uvs)[index][0], expected_uvs[index][0], 1e-6f) << "vertex " << index;
+        EXPECT_NEAR((*uvs)[index][1], expected_uvs[index][1], 1e-6f) << "vertex " << index;
+    }
+
+    // The north pole ring contributes only the lower triangle, the south pole ring only the upper one.
+    EXPECT_EQ(*uv.indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{1,  5,  6,  2,  6,  7,  3,  7,  8,  4,  8,  9,  5,  10, 6,  6,
+                                          10, 11, 6,  11, 7,  7,  11, 12, 7,  12, 8,  8,  12, 13, 8,  13,
+                                          9,  9,  13, 14, 10, 15, 11, 11, 16, 12, 12, 17, 13, 13, 18, 14}));
+}
+
+// Bevy rejects `subdivisions >= 80` before generating anything, with the vertex count its own
+// derivation produces. Below that the `hexasphere` 16.0.0 generator is still unported (B48b).
+TEST(MeshSphere, IcosphereGuardMatchesBevyErrorText) {
+    const mesh::SphereMeshBuilder builder{1.0f, mesh::SphereKind{mesh::SphereKind::Ico{80}}};
+    const auto rejected = builder.ico(80);
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_EQ(rejected.error().subdivisions, 80u);
+    EXPECT_EQ(rejected.error().number_of_resulting_points, 65612u);
+    EXPECT_EQ(rejected.error().to_string(),
+              "Cannot create an icosphere of 80 subdivisions due to there being too many vertices being generated: "
+              "65612. (Limited to 65535 vertices or 79 subdivisions)");
+    EXPECT_EQ(rejected.error(), (mesh::IcosphereError{.subdivisions = 80, .number_of_resulting_points = 65612}));
+    EXPECT_EQ(builder.ico(100).error().number_of_resulting_points, 102012u);
+
+    // `build` unwraps the fallible constructor, as Bevy's does, so the error surfaces as an exception.
+    EXPECT_THROW(builder.build(), std::runtime_error);
+    EXPECT_THROW(builder.ico(79), std::logic_error);
+}

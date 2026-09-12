@@ -395,6 +395,117 @@ Cuboid Cuboid::from_corners(glm::vec3 point1, glm::vec3 point2) noexcept {
 
 CuboidMeshBuilder Cuboid::mesh() const noexcept { return CuboidMeshBuilder{half_size}; }
 
+glm::vec3 Sphere::closest_point(glm::vec3 point) const noexcept {
+    const float distance_squared = glm::dot(point, point);
+    if (distance_squared <= radius * radius) {
+        // The point is inside the sphere.
+        return point;
+    }
+    // The point is outside the sphere: find the closest point on its surface.
+    const glm::vec3 direction_to_point = point / std::sqrt(distance_squared);
+    return radius * direction_to_point;
+}
+
+SphereMeshBuilder Sphere::mesh() const noexcept {
+    // Bevy's `..Default::default()` leaves the kind at `Ico { subdivisions: 5 }`.
+    SphereMeshBuilder builder;
+    builder.sphere = *this;
+    return builder;
+}
+
+std::expected<Mesh, IcosphereError> SphereMeshBuilder::ico(std::uint32_t subdivisions) const {
+    if (subdivisions >= 80) {
+        // Bevy's vertex-count derivation, verbatim: `10(s + 1)^2 + 2`.
+        const std::uint32_t steps                      = subdivisions + 1;
+        const std::uint32_t number_of_resulting_points = steps * steps * 10 + 2;
+        return std::unexpected(IcosphereError{
+            .subdivisions               = subdivisions,
+            .number_of_resulting_points = number_of_resulting_points,
+        });
+    }
+    // B48b: the `hexasphere` 16.0.0 `IcoSphere` generator is not ported yet; `SphereKind::Uv` is.
+    throw std::logic_error("The icosphere generator is not ported yet (B48b); use SphereKind::Uv for now");
+}
+
+Mesh SphereMeshBuilder::uv(std::uint32_t sectors, std::uint32_t stacks) const {
+    // Largely inspired from http://www.songho.ca/opengl/gl_sphere.html
+    const float sectors_f32 = static_cast<float>(sectors);
+    const float stacks_f32  = static_cast<float>(stacks);
+    const float length_inv  = 1.0f / sphere.radius;
+    const float sector_step = 2.0f * std::numbers::pi_v<float> / sectors_f32;
+    const float stack_step  = std::numbers::pi_v<float> / stacks_f32;
+
+    const auto n_vertices = static_cast<std::size_t>(stacks) * sectors;
+    std::vector<VertexAttributeValues::Float32x3Value> vertices;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    std::vector<VertexAttributeValues::Float32x2Value> uvs;
+    std::vector<std::uint32_t> indices;
+    vertices.reserve(n_vertices);
+    normals.reserve(n_vertices);
+    uvs.reserve(n_vertices);
+    indices.reserve(n_vertices * 2 * 3);
+
+    for (std::uint32_t i = 0; i <= stacks; ++i) {
+        const float stack_angle = std::numbers::pi_v<float> / 2.0f - static_cast<float>(i) * stack_step;
+        const float xy          = sphere.radius * std::cos(stack_angle);
+        const float z           = sphere.radius * std::sin(stack_angle);
+
+        for (std::uint32_t j = 0; j <= sectors; ++j) {
+            const float sector_angle = static_cast<float>(j) * sector_step;
+            const float x            = xy * std::cos(sector_angle);
+            const float y            = xy * std::sin(sector_angle);
+
+            vertices.push_back({x, y, z});
+            normals.push_back({x * length_inv, y * length_inv, z * length_inv});
+            uvs.push_back({static_cast<float>(j) / sectors_f32, static_cast<float>(i) / stacks_f32});
+        }
+    }
+
+    //  k1--k1+1
+    //  |  / |
+    //  | /  |
+    //  k2--k2+1
+    for (std::uint32_t i = 0; i < stacks; ++i) {
+        std::uint32_t k1 = i * (sectors + 1);
+        std::uint32_t k2 = k1 + sectors + 1;
+        for (std::uint32_t j = 0; j < sectors; ++j) {
+            if (i != 0) {
+                indices.push_back(k1);
+                indices.push_back(k2);
+                indices.push_back(k1 + 1);
+            }
+            if (i != stacks - 1) {
+                indices.push_back(k1 + 1);
+                indices.push_back(k2);
+                indices.push_back(k2 + 1);
+            }
+            ++k1;
+            ++k2;
+        }
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(vertices))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, std::move(uvs));
+}
+
+Mesh SphereMeshBuilder::build() const {
+    return std::visit(
+        [this](const auto& kind) -> Mesh {
+            using Kind = std::remove_cvref_t<decltype(kind)>;
+            if constexpr (std::same_as<Kind, SphereKind::Ico>) {
+                auto result = ico(kind.subdivisions);
+                if (!result) throw std::runtime_error(result.error().to_string());
+                return std::move(*result);
+            } else {
+                return uv(kind.sectors, kind.stacks);
+            }
+        },
+        kind.value);
+}
+
 Plane3d Plane3d::from_points(glm::vec3 a, glm::vec3 b, glm::vec3 c) {
     const auto normal = glm::cross(b - a, c - a);
     if (glm::dot(normal, normal) == 0.0f) {

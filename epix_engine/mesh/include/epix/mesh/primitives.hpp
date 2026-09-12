@@ -43,6 +43,7 @@ struct RegularPolygonMeshBuilder;
 struct RhombusMeshBuilder;
 struct Segment2dMeshBuilder;
 struct Segment3dMeshBuilder;
+struct SphereMeshBuilder;
 struct TetrahedronMeshBuilder;
 struct TorusMeshBuilder;
 struct Triangle2dMeshBuilder;
@@ -461,6 +462,23 @@ struct Ring {
 };
 
 // ─── 3D shapes (Bevy `bevy_math::primitives::dim3`) ────────────────────────────────────────────
+
+/** @brief Sphere primitive described by its radius (Bevy `Sphere`, `dim3.rs:30-75`). */
+EPIX_EXPORT struct Sphere {
+    /** @brief The radius of the sphere. */
+    float radius = 0.5f;
+
+    constexpr Sphere() = default;
+    constexpr explicit Sphere(float radius) : radius(radius) {}
+    /** @brief Diameter of the sphere (Bevy `Sphere::diameter`). */
+    constexpr float diameter() const noexcept { return 2.0f * radius; }
+    /** @brief The point on the sphere's surface closest to `point`, or `point` itself when it is
+     * already inside (Bevy `Sphere::closest_point`). */
+    glm::vec3 closest_point(glm::vec3 point) const noexcept;
+    SphereMeshBuilder mesh() const noexcept;
+
+    bool operator==(const Sphere&) const = default;
+};
 
 /** @brief Cuboid primitive described by its half extents. */
 EPIX_EXPORT struct Cuboid {
@@ -902,6 +920,87 @@ EPIX_EXPORT struct Capsule3dMeshBuilder {
     Mesh build() const;
 };
 
+/** @brief The kind of sphere mesh to build (Bevy `SphereKind`, `sphere.rs:25-48`).
+ *
+ * Bevy's variants carry no defaults and its `Default` impl is `Ico { subdivisions: 5 }`; the C++
+ * alternatives need member initializers to stay aggregate-initializable, so they carry Bevy's
+ * recommended values instead. */
+EPIX_EXPORT struct SphereKind {
+    /** @brief An icosphere: similar sized triangles. The face count quadruples per subdivision. */
+    struct Ico {
+        /** @brief The number of subdivisions applied. */
+        std::uint32_t subdivisions = 5;
+
+        bool operator==(const Ico&) const = default;
+    };
+    /** @brief A UV sphere: quadrilaterals apart from triangles at the top and bottom. */
+    struct Uv {
+        /** @brief The number of longitudinal sectors, the horizontal resolution. */
+        std::uint32_t sectors = 32;
+        /** @brief The number of latitudinal stacks, the vertical resolution. */
+        std::uint32_t stacks = 18;
+
+        bool operator==(const Uv&) const = default;
+    };
+
+    std::variant<Ico, Uv> value{Ico{5}};
+
+    bool operator==(const SphereKind&) const = default;
+};
+
+/** @brief Error returned while creating an icosphere mesh (Bevy `IcosphereError`,
+ * `sphere.rs:11-20`).
+ *
+ * Bevy's error enum has a single variant, so the C++ counterpart is a plain struct. */
+EPIX_EXPORT struct IcosphereError {
+    /** @brief The number of subdivisions that was requested. */
+    std::uint32_t subdivisions = 0;
+    /** @brief The number of vertices the request would have generated. */
+    std::uint32_t number_of_resulting_points = 0;
+
+    /** @brief Return Bevy's `Error` display text for this error. */
+    std::string to_string() const {
+        return std::format(
+            "Cannot create an icosphere of {} subdivisions due to there being too many vertices being generated: {}. "
+            "(Limited to 65535 vertices or 79 subdivisions)",
+            subdivisions, number_of_resulting_points);
+    }
+
+    bool operator==(const IcosphereError&) const = default;
+};
+
+/** @brief Builder used to create a sphere mesh (Bevy `SphereMeshBuilder`, `sphere.rs:53-232`). */
+EPIX_EXPORT struct SphereMeshBuilder {
+    /** @brief The sphere shape. */
+    Sphere sphere{};
+    /** @brief The kind of sphere mesh that will be built. */
+    SphereKind kind{};
+
+    constexpr SphereMeshBuilder() = default;
+    constexpr SphereMeshBuilder(float radius, SphereKind kind) : sphere(radius), kind(kind) {}
+
+    /** @brief Set the kind of sphere mesh to build (Bevy `SphereMeshBuilder::kind`). */
+    SphereMeshBuilder with_kind(SphereKind value) && noexcept {
+        kind = value;
+        return std::move(*this);
+    }
+
+    /** @brief Create an icosphere mesh with the given number of subdivisions (Bevy
+     * `SphereMeshBuilder::ico`).
+     *
+     * Returns Bevy's `TooManyVertices` error from `80` subdivisions upwards, before any vertex is
+     * generated. **B48b:** the generator itself is not ported yet, so a valid subdivision count
+     * throws; see the module-wide tracker. */
+    std::expected<Mesh, IcosphereError> ico(std::uint32_t subdivisions) const;
+
+    /** @brief Create a UV sphere mesh with the given longitudinal sectors and latitudinal stacks
+     * (Bevy `SphereMeshBuilder::uv`). */
+    Mesh uv(std::uint32_t sectors, std::uint32_t stacks) const;
+
+    /** @brief Build the mesh for the configured kind (Bevy `MeshBuilder for SphereMeshBuilder`). */
+    Mesh build() const;
+};
+
 /** @brief Builder used to create a circle mesh. */
 EPIX_EXPORT struct CircleMeshBuilder {
     Circle circle{};
@@ -1247,6 +1346,17 @@ struct Measured2dImpl<Triangle3d> {
     static float perimeter(const Triangle3d& triangle) noexcept;
 };
 
+/** @brief Bevy `Measured3d for Sphere` (`dim3.rs:77`). */
+template <>
+struct Measured3dImpl<Sphere> {
+    static constexpr float area(const Sphere& sphere) noexcept {
+        return 4.0f * std::numbers::pi_v<float> * (sphere.radius * sphere.radius);
+    }
+    static constexpr float volume(const Sphere& sphere) noexcept {
+        return 4.0f * (std::numbers::pi_v<float> / 3.0f) * (sphere.radius * sphere.radius * sphere.radius);
+    }
+};
+
 /** @brief Bevy `Measured3d for Cuboid` (`dim3.rs:756`). */
 template <>
 struct Measured3dImpl<Cuboid> {
@@ -1330,6 +1440,7 @@ static_assert(Measured2d<Plane3d>);
 static_assert(Measured2d<Triangle3d>);
 static_assert(Measured2d<Ring<Circle>>);
 static_assert(Measured2d<Ring<Capsule2d>>);
+static_assert(Measured3d<Sphere>);
 static_assert(Measured3d<Cuboid>);
 static_assert(Measured3d<Cylinder>);
 static_assert(Measured3d<Capsule3d>);
@@ -1372,6 +1483,8 @@ static_assert(Inset<RegularPolygon>);
 static_assert(Inset<Rhombus>);
 static_assert(Inset<Triangle2d>);
 static_assert(Meshable<Cuboid>);
+static_assert(Meshable<Sphere>);
+static_assert(MeshBuilder<SphereMeshBuilder>);
 static_assert(Meshable<Plane3d>);
 static_assert(Meshable<Segment3d>);
 static_assert(Meshable<Polyline3d>);
