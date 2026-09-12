@@ -4,6 +4,7 @@
 #include <cmath>
 #include <epix/mesh/primitives.hpp>
 #include <limits>
+#include <memory>
 #include <numbers>
 #include <stdexcept>
 
@@ -413,6 +414,578 @@ SphereMeshBuilder Sphere::mesh() const noexcept {
     return builder;
 }
 
+namespace {
+// ─── A port of the parts of `hexasphere` 16.0.0 that Bevy's icosphere uses (B48b) ────────────────
+//
+// Bevy's `SphereMeshBuilder::ico` calls `hexasphere::shapes::IcoSphere::new(subdivisions, ..)`, which
+// is `Subdivided<Vec2, IcoSphereBase>`. The pieces below are that crate's 16.0.0 source, transcribed:
+// `src/slice.rs` (the direction-aware `Slice`), the `TriangleContents`/`Triangle` subdivision
+// recursion with its index emission (`src/lib.rs`), the geometric slerp interpolators
+// (`src/interpolation.rs`), and the icosahedron base plus its 20 main triangles (`src/shapes.rs`).
+// Reproducing that source's vertex, UV and index order is what makes Epix's icosphere identical to
+// Bevy's; the recorded dumps of the real crate are the test's oracle.
+
+using IcoPoint = glm::vec3;
+
+/** @brief `hexasphere::interpolation::geometric_slerp_half`. */
+IcoPoint slerp_half(const IcoPoint& a, const IcoPoint& b) {
+    return (a + b) / std::sqrt(2.0f * (1.0f + glm::dot(a, b)));
+}
+
+/** @brief `hexasphere::interpolation::geometric_slerp_multiple`. */
+void slerp_multiple(const IcoPoint& a,
+                    const IcoPoint& b,
+                    const std::vector<std::uint32_t>& indices,
+                    std::vector<IcoPoint>& points) {
+    const float angle     = std::acos(glm::dot(a, b));
+    const float sin_recip = 1.0f / std::sin(angle);
+    for (std::size_t position = 0; position < indices.size(); ++position) {
+        const float percent = static_cast<float>(position + 1) / static_cast<float>(indices.size() + 1);
+        points[indices[position]] =
+            a * (std::sin((1.0f - percent) * angle) * sin_recip) + b * (std::sin(percent * angle) * sin_recip);
+    }
+}
+
+/** @brief `hexasphere::Slice`: a forwards or backwards view over an edge's interior points. */
+struct IcoSlice {
+    const std::vector<std::uint32_t>* values = nullptr;
+    bool forward                             = true;
+
+    std::size_t len() const { return values->size(); }
+    std::uint32_t operator[](std::size_t index) const {
+        return forward ? (*values)[index] : (*values)[values->size() - 1 - index];
+    }
+};
+
+struct IcoTriangle;
+struct IcoTriangleContents;
+
+/** @brief `hexasphere::add_indices_triangular`. */
+void add_indices_triangular(std::uint32_t a,
+                            std::uint32_t b,
+                            std::uint32_t c,
+                            const IcoSlice& ab,
+                            const IcoSlice& bc,
+                            const IcoSlice& ca,
+                            const IcoTriangleContents& contents,
+                            std::vector<std::uint32_t>& buffer);
+
+/** @brief `hexasphere::TriangleContents`: the points interior to one main triangle. */
+struct IcoTriangleContents {
+    enum class Kind {
+        /** @brief Nothing inside the triangle: subdivisions 0 and 1. */
+        None,
+        /** @brief One point inside the triangle: subdivision 2. */
+        One,
+        /** @brief Three points inside the triangle: subdivision 3. */
+        Three,
+        /** @brief Six points inside the triangle: subdivision 4. */
+        Six,
+        /** @brief More than six points inside the triangle: subdivision > 4. */
+        More,
+    };
+
+    Kind kind = Kind::None;
+    /** @brief `One`'s point. */
+    std::uint32_t one = 0;
+    /** @brief `Three`'s and `Six`'s points. */
+    std::uint32_t a = 0, b = 0, c = 0;
+    /** @brief `Six`'s edge midpoints. */
+    std::uint32_t ab = 0, bc = 0, ca = 0;
+    /** @brief `More`'s three `my_side_length`-long edge segments. */
+    std::vector<std::uint32_t> sides;
+    /** @brief `More`'s segment length. */
+    std::uint32_t my_side_length = 0;
+    /** @brief `More`'s inner triangle. */
+    std::unique_ptr<IcoTriangleContents> contents;
+
+    /** @brief `TriangleContents::subdivide`. */
+    void subdivide(std::size_t& points);
+    /** @brief `TriangleContents::calculate`. */
+    void calculate(const IcoSlice& ab, const IcoSlice& bc, const IcoSlice& ca, std::vector<IcoPoint>& points);
+    /** @brief `TriangleContents::add_indices`. */
+    void add_indices(std::vector<std::uint32_t>& buffer) const;
+
+    /** @brief `TriangleContents::idx_ab`. */
+    std::uint32_t idx_ab(std::size_t index) const;
+    /** @brief `TriangleContents::idx_bc`. */
+    std::uint32_t idx_bc(std::size_t index) const;
+    /** @brief `TriangleContents::idx_ca`. */
+    std::uint32_t idx_ca(std::size_t index) const;
+
+    /** @brief `TriangleContents::calculate_one`. */
+    void calculate_one(const IcoSlice& ab, const IcoSlice& bc, std::vector<IcoPoint>& points);
+    /** @brief `TriangleContents::calculate_three`. */
+    void calculate_three(const IcoSlice& ab, const IcoSlice& bc, const IcoSlice& ca, std::vector<IcoPoint>& points);
+    /** @brief `TriangleContents::calculate_six`. */
+    void calculate_six(const IcoSlice& ab, const IcoSlice& bc, const IcoSlice& ca, std::vector<IcoPoint>& points);
+};
+
+/** @brief `hexasphere::Triangle`: one main triangle of the base shape. */
+struct IcoTriangle {
+    std::uint32_t a = 0, b = 0, c = 0;
+    std::size_t ab_edge = 0, bc_edge = 0, ca_edge = 0;
+    bool ab_forward = false, bc_forward = false, ca_forward = false;
+    IcoTriangleContents contents;
+
+    /** @brief `hexasphere::Triangle::subdivide`. */
+    void subdivide(std::size_t& points, std::size_t subdivision_level) {
+        if (subdivision_level >= 1) contents.subdivide(points);
+    }
+
+    /** @brief `hexasphere::Triangle::calculate_edges`. */
+    std::size_t calculate_edges(std::vector<std::vector<std::uint32_t>>& edges,
+                                std::vector<bool>& edges_done,
+                                std::vector<IcoPoint>& points) {
+        const auto divide = [&](std::uint32_t first, std::uint32_t second, std::size_t edge, bool& forward) {
+            if (!edges_done[edge]) {
+                slerp_multiple(points[first], points[second], edges[edge], points);
+                edges_done[edge] = true;
+                forward          = true;
+            } else {
+                forward = false;
+            }
+        };
+        divide(a, b, ab_edge, ab_forward);
+        divide(b, c, bc_edge, bc_forward);
+        divide(c, a, ca_edge, ca_forward);
+        return edges[ab_edge].size();
+    }
+
+    /** @brief `hexasphere::Triangle::calculate`. */
+    void calculate(std::vector<std::vector<std::uint32_t>>& edges,
+                   std::vector<bool>& edges_done,
+                   std::vector<IcoPoint>& points) {
+        const std::size_t side_length = calculate_edges(edges, edges_done, points) + 1;
+        if (side_length > 2) {
+            const IcoSlice ab{&edges[ab_edge], ab_forward};
+            const IcoSlice bc{&edges[bc_edge], bc_forward};
+            const IcoSlice ca{&edges[ca_edge], ca_forward};
+            contents.calculate(ab, bc, ca, points);
+        }
+    }
+
+    /** @brief `hexasphere::Triangle::add_indices`. */
+    void add_indices(std::vector<std::uint32_t>& buffer, const std::vector<std::vector<std::uint32_t>>& edges) const {
+        const IcoSlice ab{&edges[ab_edge], ab_forward};
+        const IcoSlice bc{&edges[bc_edge], bc_forward};
+        const IcoSlice ca{&edges[ca_edge], ca_forward};
+        add_indices_triangular(a, b, c, ab, bc, ca, contents, buffer);
+        contents.add_indices(buffer);
+    }
+};
+
+/** @brief `hexasphere::add_indices_triangular`. */
+void add_indices_triangular(std::uint32_t a,
+                            std::uint32_t b,
+                            std::uint32_t c,
+                            const IcoSlice& ab,
+                            const IcoSlice& bc,
+                            const IcoSlice& ca,
+                            const IcoTriangleContents& contents,
+                            std::vector<std::uint32_t>& buffer) {
+    const std::size_t subdivisions = ab.len();
+    if (subdivisions == 0) {
+        buffer.insert(buffer.end(), {a, b, c});
+        return;
+    }
+    if (subdivisions == 1) {
+        buffer.insert(buffer.end(), {a, ab[0], ca[0]});
+        buffer.insert(buffer.end(), {b, bc[0], ab[0]});
+        buffer.insert(buffer.end(), {c, ca[0], bc[0]});
+        buffer.insert(buffer.end(), {ab[0], bc[0], ca[0]});
+        return;
+    }
+    if (subdivisions == 2) {
+        buffer.insert(buffer.end(), {a, ab[0], ca[1]});
+        buffer.insert(buffer.end(), {b, bc[0], ab[1]});
+        buffer.insert(buffer.end(), {c, ca[0], bc[1]});
+
+        buffer.insert(buffer.end(), {ab[1], contents.idx_ab(0), ab[0]});
+        buffer.insert(buffer.end(), {bc[1], contents.idx_ab(0), bc[0]});
+        buffer.insert(buffer.end(), {ca[1], contents.idx_ab(0), ca[0]});
+
+        buffer.insert(buffer.end(), {ab[0], contents.idx_ab(0), ca[1]});
+        buffer.insert(buffer.end(), {bc[0], contents.idx_ab(0), ab[1]});
+        buffer.insert(buffer.end(), {ca[0], contents.idx_ab(0), bc[1]});
+        return;
+    }
+
+    const std::size_t last_idx = ab.len() - 1;
+
+    buffer.insert(buffer.end(), {a, ab[0], ca[last_idx]});
+    buffer.insert(buffer.end(), {b, bc[0], ab[last_idx]});
+    buffer.insert(buffer.end(), {c, ca[0], bc[last_idx]});
+
+    buffer.insert(buffer.end(), {ab[0], contents.idx_ab(0), ca[last_idx]});
+    buffer.insert(buffer.end(), {bc[0], contents.idx_bc(0), ab[last_idx]});
+    buffer.insert(buffer.end(), {ca[0], contents.idx_ca(0), bc[last_idx]});
+
+    for (std::size_t index = 0; index < last_idx - 1; ++index) {
+        // Exclude the special case `last_idx - 1`.
+        buffer.insert(buffer.end(), {ab[index], ab[index + 1], contents.idx_ab(index)});
+        buffer.insert(buffer.end(), {ab[index + 1], contents.idx_ab(index + 1), contents.idx_ab(index)});
+
+        buffer.insert(buffer.end(), {bc[index], bc[index + 1], contents.idx_bc(index)});
+        buffer.insert(buffer.end(), {bc[index + 1], contents.idx_bc(index + 1), contents.idx_bc(index)});
+
+        buffer.insert(buffer.end(), {ca[index], ca[index + 1], contents.idx_ca(index)});
+        buffer.insert(buffer.end(), {ca[index + 1], contents.idx_ca(index + 1), contents.idx_ca(index)});
+    }
+
+    // The special case `last_idx - 1`.
+    buffer.insert(buffer.end(), {ab[last_idx], contents.idx_ab(last_idx - 1), ab[last_idx - 1]});
+    buffer.insert(buffer.end(), {bc[last_idx], contents.idx_bc(last_idx - 1), bc[last_idx - 1]});
+    buffer.insert(buffer.end(), {ca[last_idx], contents.idx_ca(last_idx - 1), ca[last_idx - 1]});
+}
+
+void IcoTriangleContents::subdivide(std::size_t& points) {
+    switch (kind) {
+        case Kind::None:
+            kind = Kind::One;
+            one  = static_cast<std::uint32_t>(points);
+            ++points;
+            return;
+        case Kind::One:
+            // `TriangleContents::three`.
+            points += 2;
+            kind = Kind::Three;
+            a    = one;
+            b    = static_cast<std::uint32_t>(points) - 2;
+            c    = static_cast<std::uint32_t>(points) - 1;
+            return;
+        case Kind::Three:
+            // `TriangleContents::six`.
+            points += 3;
+            kind = Kind::Six;
+            ab   = static_cast<std::uint32_t>(points) - 3;
+            bc   = static_cast<std::uint32_t>(points) - 2;
+            ca   = static_cast<std::uint32_t>(points) - 1;
+            return;
+        case Kind::Six:
+            kind = Kind::More;
+            sides.assign({ab, bc, ca});
+            my_side_length = 1;
+            contents       = std::make_unique<IcoTriangleContents>();
+            subdivide(points);
+            return;
+        case Kind::More: {
+            points += 3;
+            const auto last = static_cast<std::uint32_t>(points);
+            sides.insert(sides.end(), {last - 3, last - 2, last - 1});
+            ++my_side_length;
+            contents->subdivide(points);
+            return;
+        }
+    }
+}
+
+std::uint32_t IcoTriangleContents::idx_ab(std::size_t index) const {
+    switch (kind) {
+        case Kind::None:
+            throw std::logic_error("invalid index: triangle contents are empty");
+        case Kind::One:
+            if (index != 0) throw std::logic_error("invalid index: triangle contents hold one point");
+            return one;
+        case Kind::Three:
+            return index == 0 ? a : b;
+        case Kind::Six:
+            return index == 0 ? a : (index == 1 ? ab : b);
+        case Kind::More:
+            if (index == 0) return a;
+            if (index <= my_side_length) return sides[index - 1];
+            return b;
+    }
+    std::unreachable();
+}
+
+std::uint32_t IcoTriangleContents::idx_bc(std::size_t index) const {
+    switch (kind) {
+        case Kind::None:
+            throw std::logic_error("invalid index: triangle contents are empty");
+        case Kind::One:
+            if (index != 0) throw std::logic_error("invalid index: triangle contents hold one point");
+            return one;
+        case Kind::Three:
+            return index == 0 ? b : c;
+        case Kind::Six:
+            return index == 0 ? b : (index == 1 ? bc : c);
+        case Kind::More:
+            if (index == 0) return b;
+            if (index <= my_side_length) return sides[my_side_length + index - 1];
+            return c;
+    }
+    std::unreachable();
+}
+
+std::uint32_t IcoTriangleContents::idx_ca(std::size_t index) const {
+    switch (kind) {
+        case Kind::None:
+            throw std::logic_error("invalid index: triangle contents are empty");
+        case Kind::One:
+            if (index != 0) throw std::logic_error("invalid index: triangle contents hold one point");
+            return one;
+        case Kind::Three:
+            return index == 0 ? c : a;
+        case Kind::Six:
+            return index == 0 ? c : (index == 1 ? ca : a);
+        case Kind::More:
+            if (index == 0) return c;
+            if (index <= my_side_length) return sides[my_side_length * 2 + index - 1];
+            return a;
+    }
+    std::unreachable();
+}
+
+void IcoTriangleContents::calculate_one(const IcoSlice& ab, const IcoSlice& bc, std::vector<IcoPoint>& points) {
+    points[one] = slerp_half(points[ab[0]], points[bc[1]]);
+}
+
+void IcoTriangleContents::calculate_three(const IcoSlice& ab,
+                                          const IcoSlice& bc,
+                                          const IcoSlice& ca,
+                                          std::vector<IcoPoint>& points) {
+    const IcoPoint ab_point = points[ab[1]];
+    const IcoPoint bc_point = points[bc[1]];
+    const IcoPoint ca_point = points[ca[1]];
+
+    points[a] = slerp_half(ab_point, ca_point);
+    points[b] = slerp_half(bc_point, ab_point);
+    points[c] = slerp_half(ca_point, bc_point);
+}
+
+void IcoTriangleContents::calculate_six(const IcoSlice& ab,
+                                        const IcoSlice& bc,
+                                        const IcoSlice& ca,
+                                        std::vector<IcoPoint>& points) {
+    const IcoPoint aba = points[ab[1]];
+    const IcoPoint abb = points[ab[2]];
+    const IcoPoint bcb = points[bc[1]];
+    const IcoPoint bcc = points[bc[2]];
+    const IcoPoint cac = points[ca[1]];
+    const IcoPoint caa = points[ca[2]];
+
+    const IcoPoint a_point = slerp_half(aba, caa);
+    const IcoPoint b_point = slerp_half(abb, bcb);
+    const IcoPoint c_point = slerp_half(bcc, cac);
+
+    const IcoPoint ab_point = slerp_half(a_point, b_point);
+    const IcoPoint bc_point = slerp_half(b_point, c_point);
+    const IcoPoint ca_point = slerp_half(c_point, a_point);
+
+    // Rust destructures the fields into *_index bindings here, because the parameters below
+    // share the edge names; the explicit 	his-> is the C++ equivalent.
+    points[this->a]  = a_point;
+    points[this->b]  = b_point;
+    points[this->c]  = c_point;
+    points[this->ab] = ab_point;
+    points[this->bc] = bc_point;
+    points[this->ca] = ca_point;
+}
+
+void IcoTriangleContents::calculate(const IcoSlice& ab,
+                                    const IcoSlice& bc,
+                                    const IcoSlice& ca,
+                                    std::vector<IcoPoint>& points) {
+    switch (kind) {
+        case Kind::None:
+            throw std::logic_error("invalid triangle contents");
+        case Kind::One:
+            calculate_one(ab, bc, points);
+            return;
+        case Kind::Three:
+            calculate_three(ab, bc, ca, points);
+            return;
+        case Kind::Six:
+            calculate_six(ab, bc, ca, points);
+            return;
+        case Kind::More: {
+            const std::size_t side_length = my_side_length;
+            const std::size_t outer_len   = ab.len();
+
+            const IcoPoint aba = points[ab[1]];
+            const IcoPoint abb = points[ab[outer_len - 2]];
+            const IcoPoint bcb = points[bc[1]];
+            const IcoPoint bcc = points[bc[outer_len - 2]];
+            const IcoPoint cac = points[ca[1]];
+            const IcoPoint caa = points[ca[outer_len - 2]];
+
+            points[a] = slerp_half(aba, caa);
+            points[b] = slerp_half(abb, bcb);
+            points[c] = slerp_half(bcc, cac);
+
+            const std::vector<std::uint32_t> ab_sides{sides.begin(),
+                                                      sides.begin() + static_cast<std::ptrdiff_t>(side_length)};
+            const std::vector<std::uint32_t> bc_sides{sides.begin() + static_cast<std::ptrdiff_t>(side_length),
+                                                      sides.begin() + static_cast<std::ptrdiff_t>(side_length * 2)};
+            const std::vector<std::uint32_t> ca_sides{sides.begin() + static_cast<std::ptrdiff_t>(side_length * 2),
+                                                      sides.end()};
+
+            slerp_multiple(points[a], points[b], ab_sides, points);
+            slerp_multiple(points[b], points[c], bc_sides, points);
+            slerp_multiple(points[c], points[a], ca_sides, points);
+
+            const IcoSlice inner_ab{&ab_sides, true};
+            const IcoSlice inner_bc{&bc_sides, true};
+            const IcoSlice inner_ca{&ca_sides, true};
+            contents->calculate(inner_ab, inner_bc, inner_ca, points);
+            return;
+        }
+    }
+}
+
+void IcoTriangleContents::add_indices(std::vector<std::uint32_t>& buffer) const {
+    switch (kind) {
+        case Kind::None:
+        case Kind::One:
+            return;
+        case Kind::Three:
+            buffer.insert(buffer.end(), {a, b, c});
+            return;
+        case Kind::Six:
+            buffer.insert(buffer.end(), {a, ab, ca});
+            buffer.insert(buffer.end(), {ab, b, bc});
+            buffer.insert(buffer.end(), {bc, c, ca});
+            buffer.insert(buffer.end(), {ab, bc, ca});
+            return;
+        case Kind::More: {
+            const std::size_t side_length = my_side_length;
+            const std::vector<std::uint32_t> ab_sides{sides.begin(),
+                                                      sides.begin() + static_cast<std::ptrdiff_t>(side_length)};
+            const std::vector<std::uint32_t> bc_sides{sides.begin() + static_cast<std::ptrdiff_t>(side_length),
+                                                      sides.begin() + static_cast<std::ptrdiff_t>(side_length * 2)};
+            const std::vector<std::uint32_t> ca_sides{sides.begin() + static_cast<std::ptrdiff_t>(side_length * 2),
+                                                      sides.end()};
+
+            // Contents are always stored forward.
+            const IcoSlice forward_ab{&ab_sides, true};
+            const IcoSlice forward_bc{&bc_sides, true};
+            const IcoSlice forward_ca{&ca_sides, true};
+            add_indices_triangular(a, b, c, forward_ab, forward_bc, forward_ca, *contents, buffer);
+            contents->add_indices(buffer);
+            return;
+        }
+    }
+}
+
+/** @brief `hexasphere::shapes::IcoSphereBase`: the icosahedron's 12 points and 20 main triangles. */
+struct IcoSphereBase {
+    static constexpr std::size_t EDGES = 30;
+
+    static const std::vector<IcoPoint>& initial_points() {
+        static const std::vector<IcoPoint> points{
+            {0.0f, 1.0f, 0.0f},
+            {0.89442718f, 0.44721359f, 0.0f},
+            {0.27639320f, 0.44721359f, 0.85065079f},
+            {-0.72360682f, 0.44721359f, 0.52573109f},
+            {-0.72360682f, 0.44721359f, -0.52573109f},
+            {0.27639320f, 0.44721359f, -0.85065079f},
+            {0.72360682f, -0.44721359f, -0.52573109f},
+            {0.72360682f, -0.44721359f, 0.52573109f},
+            {-0.27639320f, -0.44721359f, 0.85065079f},
+            {-0.89442718f, -0.44721359f, 0.0f},
+            {-0.27639320f, -0.44721359f, -0.85065079f},
+            {0.0f, -1.0f, 0.0f},
+        };
+        return points;
+    }
+
+    /** @brief The 20 main triangles, as `(a, b, c, ab_edge, bc_edge, ca_edge)`. */
+    static std::vector<IcoTriangle> triangles() {
+        static constexpr std::array<std::array<std::uint32_t, 6>, 20> table{{
+            {0, 2, 1, 0, 5, 4},     {0, 3, 2, 1, 6, 0},     {0, 4, 3, 2, 7, 1},     {0, 5, 4, 3, 8, 2},
+            {0, 1, 5, 4, 9, 3},     {5, 1, 6, 9, 10, 15},   {1, 2, 7, 5, 11, 16},   {2, 3, 8, 6, 12, 17},
+            {3, 4, 9, 7, 13, 18},   {4, 5, 10, 8, 14, 19},  {5, 6, 10, 15, 20, 14}, {1, 7, 6, 16, 21, 10},
+            {2, 8, 7, 17, 22, 11},  {3, 9, 8, 18, 23, 12},  {4, 10, 9, 19, 24, 13}, {10, 6, 11, 20, 26, 25},
+            {6, 7, 11, 21, 27, 26}, {7, 8, 11, 22, 28, 27}, {8, 9, 11, 23, 29, 28}, {9, 10, 11, 24, 25, 29},
+        }};
+
+        std::vector<IcoTriangle> triangles;
+        triangles.reserve(table.size());
+        for (const auto& row : table) {
+            IcoTriangle triangle;
+            triangle.a       = row[0];
+            triangle.b       = row[1];
+            triangle.c       = row[2];
+            triangle.ab_edge = row[3];
+            triangle.bc_edge = row[4];
+            triangle.ca_edge = row[5];
+            triangles.push_back(std::move(triangle));
+        }
+        return triangles;
+    }
+};
+
+/** @brief `hexasphere::Subdivided<T, IcoSphereBase>`: the subdivided icosphere Bevy consumes. */
+struct IcoSphere {
+    std::vector<IcoPoint> points;
+    std::vector<VertexAttributeValues::Float32x2Value> data;
+    std::vector<IcoTriangle> triangles;
+    std::vector<std::vector<std::uint32_t>> edges;
+    std::vector<bool> edges_done;
+    std::size_t subdivisions = 1;
+
+    /** @brief `Subdivided::new_custom_shape`. */
+    static IcoSphere generate(std::size_t subdivisions);
+
+    /** @brief `Subdivided::raw_points`. */
+    const std::vector<IcoPoint>& raw_points() const { return points; }
+    /** @brief `Subdivided::raw_data`. */
+    const std::vector<VertexAttributeValues::Float32x2Value>& raw_data() const { return data; }
+    /** @brief `Subdivided::indices_per_main_triangle`. */
+    std::size_t indices_per_main_triangle() const { return (subdivisions + 1) * (subdivisions + 1); }
+    /** @brief `Subdivided::get_indices`. */
+    void get_indices(std::size_t triangle, std::vector<std::uint32_t>& buffer) const {
+        triangles[triangle].add_indices(buffer, edges);
+    }
+};
+
+IcoSphere IcoSphere::generate(std::size_t subdivisions) {
+    IcoSphere sphere;
+    sphere.points    = IcoSphereBase::initial_points();
+    sphere.triangles = IcoSphereBase::triangles();
+    sphere.edges.resize(IcoSphereBase::EDGES);
+    sphere.edges_done.assign(IcoSphereBase::EDGES, true);
+    sphere.subdivisions = 1;
+
+    std::size_t new_points = sphere.points.size();
+
+    for (std::size_t edge_index = 0; edge_index < sphere.edges.size(); ++edge_index) {
+        for (std::size_t index = 0; index < subdivisions; ++index) {
+            sphere.edges[edge_index].push_back(static_cast<std::uint32_t>(new_points));
+            ++new_points;
+        }
+        sphere.edges_done[edge_index] = false;
+    }
+
+    for (auto& triangle : sphere.triangles) {
+        for (std::size_t index = 0; index < subdivisions; ++index) {
+            triangle.subdivide(new_points, index);
+        }
+    }
+
+    sphere.points.resize(new_points, IcoPoint{0.0f});
+
+    for (auto& triangle : sphere.triangles) {
+        triangle.calculate(sphere.edges, sphere.edges_done, sphere.points);
+    }
+
+    // Bevy's interpolator: the UV of each point, from its spherical coordinates.
+    constexpr float pi  = std::numbers::pi_v<float>;
+    constexpr float tau = 2.0f * pi;
+    sphere.data.reserve(sphere.points.size());
+    for (const auto& point : sphere.points) {
+        const float inclination      = std::acos(point.y);
+        const float azimuth          = std::atan2(point.z, point.x);
+        const float norm_inclination = inclination / pi;
+        const float norm_azimuth     = 0.5f - (azimuth / tau);
+        sphere.data.push_back({norm_azimuth, norm_inclination});
+    }
+
+    return sphere;
+}
+}  // namespace
+
 std::expected<Mesh, IcosphereError> SphereMeshBuilder::ico(std::uint32_t subdivisions) const {
     if (subdivisions >= 80) {
         // Bevy's vertex-count derivation, verbatim: `10(s + 1)^2 + 2`.
@@ -423,8 +996,30 @@ std::expected<Mesh, IcosphereError> SphereMeshBuilder::ico(std::uint32_t subdivi
             .number_of_resulting_points = number_of_resulting_points,
         });
     }
-    // B48b: the `hexasphere` 16.0.0 `IcoSphere` generator is not ported yet; `SphereKind::Uv` is.
-    throw std::logic_error("The icosphere generator is not ported yet (B48b); use SphereKind::Uv for now");
+
+    const IcoSphere generated = IcoSphere::generate(subdivisions);
+    const auto& raw_points    = generated.raw_points();
+
+    std::vector<VertexAttributeValues::Float32x3Value> points;
+    std::vector<VertexAttributeValues::Float32x3Value> normals;
+    points.reserve(raw_points.size());
+    normals.reserve(raw_points.size());
+    for (const auto& point : raw_points) {
+        points.push_back({point.x * sphere.radius, point.y * sphere.radius, point.z * sphere.radius});
+        normals.push_back({point.x, point.y, point.z});
+    }
+
+    std::vector<std::uint32_t> indices;
+    indices.reserve(generated.indices_per_main_triangle() * 20);
+    for (std::size_t triangle = 0; triangle < 20; ++triangle) {
+        generated.get_indices(triangle, indices);
+    }
+
+    return Mesh(wgpu::PrimitiveTopology::eTriangleList, kDefaultMeshAssetUsage)
+        .with_inserted_indices(Indices{std::move(indices)})
+        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(points))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals))
+        .with_inserted_attribute(Mesh::ATTRIBUTE_UV_0, generated.raw_data());
 }
 
 Mesh SphereMeshBuilder::uv(std::uint32_t sectors, std::uint32_t stacks) const {

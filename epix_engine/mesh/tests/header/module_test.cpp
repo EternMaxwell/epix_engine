@@ -2931,5 +2931,143 @@ TEST(MeshSphere, IcosphereGuardMatchesBevyErrorText) {
 
     // `build` unwraps the fallible constructor, as Bevy's does, so the error surfaces as an exception.
     EXPECT_THROW(builder.build(), std::runtime_error);
-    EXPECT_THROW(builder.ico(79), std::logic_error);
+    // Below the guard the generator itself runs, so the same builder meshes at 79 subdivisions.
+    EXPECT_TRUE(builder.ico(79).has_value());
+}
+
+// Bevy's `ico` is `hexasphere::shapes::IcoSphere::new(subdivisions, interpolator)`, so the C++ port
+// in `primitives.cpp` must reproduce that crate's 16.0.0 vertex, UV and index order. The expected
+// data below is a recorded dump of the real crate (the `tmp/hexa-fixture` Rust project, which
+// depends on `hexasphere = "=16.0.0"`), not a reimplementation of it.
+TEST(MeshSphere, IcosphereMatchesHexasphere16PointUvAndIndexOrder) {
+    const auto expect_points_near = [](const std::vector<mesh::VertexAttributeValues::Float32x3Value>& actual,
+                                       const std::vector<mesh::VertexAttributeValues::Float32x3Value>& expected) {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (std::size_t index = 0; index < actual.size(); ++index) {
+            EXPECT_NEAR(actual[index][0], expected[index][0], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][1], expected[index][1], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][2], expected[index][2], 1e-6f) << "vertex " << index;
+        }
+    };
+    const auto expect_uvs_near = [](const std::vector<mesh::VertexAttributeValues::Float32x2Value>& actual,
+                                    const std::vector<mesh::VertexAttributeValues::Float32x2Value>& expected) {
+        ASSERT_EQ(actual.size(), expected.size());
+        for (std::size_t index = 0; index < actual.size(); ++index) {
+            EXPECT_NEAR(actual[index][0], expected[index][0], 1e-6f) << "vertex " << index;
+            EXPECT_NEAR(actual[index][1], expected[index][1], 1e-6f) << "vertex " << index;
+        }
+    };
+    const auto uvs_of = [](const mesh::Mesh& value) {
+        return *value.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    };
+
+    // Subdivision 0 is the bare icosahedron: 12 points and 20 triangles.
+    const auto ico0 = mesh::Sphere{1.0f}.mesh().ico(0);
+    ASSERT_TRUE(ico0.has_value());
+    EXPECT_EQ(ico0->count_vertices(), 12u);
+    ASSERT_NE(ico0->indices(), std::nullopt);
+    EXPECT_EQ(ico0->indices()->get().len(), 60u);
+    const auto* positions0 =
+        ico0->attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    const auto* normals0 =
+        ico0->attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions0, nullptr);
+    ASSERT_NE(normals0, nullptr);
+    const std::vector<mesh::VertexAttributeValues::Float32x3Value> expected_points0{
+        {0.000000000f, 1.000000000f, 0.000000000f},    {0.894427180f, 0.447213590f, 0.000000000f},
+        {0.276393205f, 0.447213590f, 0.850650787f},    {-0.723606825f, 0.447213590f, 0.525731087f},
+        {-0.723606825f, 0.447213590f, -0.525731087f},  {0.276393205f, 0.447213590f, -0.850650787f},
+        {0.723606825f, -0.447213590f, -0.525731087f},  {0.723606825f, -0.447213590f, 0.525731087f},
+        {-0.276393205f, -0.447213590f, 0.850650787f},  {-0.894427180f, -0.447213590f, 0.000000000f},
+        {-0.276393205f, -0.447213590f, -0.850650787f}, {0.000000000f, -1.000000000f, 0.000000000f},
+    };
+    expect_points_near(*positions0, expected_points0);
+    // A unit sphere carries the raw points as its normals.
+    expect_points_near(*normals0, expected_points0);
+    const std::vector<mesh::VertexAttributeValues::Float32x2Value> expected_uvs0{
+        {0.500000000f, 0.000000000f}, {0.500000000f, 0.352416396f}, {0.300000012f, 0.352416396f},
+        {0.099999994f, 0.352416396f}, {0.899999976f, 0.352416396f}, {0.699999988f, 0.352416396f},
+        {0.600000024f, 0.647583544f}, {0.400000006f, 0.647583544f}, {0.199999988f, 0.647583544f},
+        {0.000000000f, 0.647583544f}, {0.800000012f, 0.647583544f}, {0.500000000f, 1.000000000f},
+    };
+    expect_uvs_near(uvs_of(*ico0), expected_uvs0);
+    EXPECT_EQ(*ico0->indices()->get().as_u32(),
+              (std::vector<std::uint32_t>{
+                  0, 2, 1,  0, 3, 2, 0, 4, 3, 0, 5, 4, 0, 1,  5, 5,  1, 6,  1, 2, 7,  2, 3, 8,  3, 4, 9,  4, 5,  10,
+                  5, 6, 10, 1, 7, 6, 2, 8, 7, 3, 9, 8, 4, 10, 9, 10, 6, 11, 6, 7, 11, 7, 8, 11, 8, 9, 11, 9, 10, 11,
+              }));
+
+    // Subdivision 1 adds one point per edge and one interior point per face: 42 points, 80 faces.
+    const auto ico1 = mesh::Sphere{1.0f}.mesh().ico(1);
+    ASSERT_TRUE(ico1.has_value());
+    EXPECT_EQ(ico1->count_vertices(), 42u);
+    ASSERT_NE(ico1->indices(), std::nullopt);
+    EXPECT_EQ(ico1->indices()->get().len(), 240u);
+    const auto* positions1 =
+        ico1->attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions1, nullptr);
+    const std::vector<mesh::VertexAttributeValues::Float32x3Value> expected_points1{
+        {0.000000000f, 1.000000000f, 0.000000000f},    {0.894427180f, 0.447213590f, 0.000000000f},
+        {0.276393205f, 0.447213590f, 0.850650787f},    {-0.723606825f, 0.447213590f, 0.525731087f},
+        {-0.723606825f, 0.447213590f, -0.525731087f},  {0.276393205f, 0.447213590f, -0.850650787f},
+        {0.723606825f, -0.447213590f, -0.525731087f},  {0.723606825f, -0.447213590f, 0.525731087f},
+        {-0.276393205f, -0.447213590f, 0.850650787f},  {-0.894427180f, -0.447213590f, 0.000000000f},
+        {-0.276393205f, -0.447213590f, -0.850650787f}, {0.000000000f, -1.000000000f, 0.000000000f},
+        {0.162459850f, 0.850650787f, 0.499999970f},    {-0.425325423f, 0.850650787f, 0.309016973f},
+        {-0.425325423f, 0.850650787f, -0.309016973f},  {0.162459850f, 0.850650787f, -0.499999970f},
+        {0.525731087f, 0.850650787f, 0.000000000f},    {0.688190937f, 0.525731087f, 0.499999970f},
+        {-0.262865573f, 0.525731087f, 0.809016943f},   {-0.850650847f, 0.525731087f, 0.000000000f},
+        {-0.262865573f, 0.525731087f, -0.809016943f},  {0.688190937f, 0.525731087f, -0.499999970f},
+        {0.951056480f, 0.000000000f, -0.309016973f},   {0.587785244f, 0.000000000f, 0.809016943f},
+        {-0.587785244f, 0.000000000f, 0.809016943f},   {-0.951056480f, 0.000000000f, -0.309016973f},
+        {0.000000000f, 0.000000000f, -0.999999940f},   {0.587785244f, 0.000000000f, -0.809016943f},
+        {0.951056480f, 0.000000000f, 0.309016973f},    {0.000000000f, 0.000000000f, 0.999999940f},
+        {-0.951056480f, 0.000000000f, 0.309016973f},   {-0.587785244f, 0.000000000f, -0.809016943f},
+        {0.262865573f, -0.525731087f, -0.809016943f},  {0.850650847f, -0.525731087f, 0.000000000f},
+        {0.262865573f, -0.525731087f, 0.809016943f},   {-0.688190937f, -0.525731087f, 0.499999970f},
+        {-0.688190937f, -0.525731087f, -0.499999970f}, {-0.162459850f, -0.850650787f, -0.499999970f},
+        {0.425325423f, -0.850650787f, -0.309016973f},  {0.425325423f, -0.850650787f, 0.309016973f},
+        {-0.162459850f, -0.850650787f, 0.499999970f},  {-0.525731087f, -0.850650787f, 0.000000000f},
+    };
+    expect_points_near(*positions1, expected_points1);
+    const std::vector<mesh::VertexAttributeValues::Float32x2Value> expected_uvs1{
+        {0.500000000f, 0.000000000f}, {0.500000000f, 0.352416396f}, {0.300000012f, 0.352416396f},
+        {0.099999994f, 0.352416396f}, {0.899999976f, 0.352416396f}, {0.699999988f, 0.352416396f},
+        {0.600000024f, 0.647583544f}, {0.400000006f, 0.647583544f}, {0.199999988f, 0.647583544f},
+        {0.000000000f, 0.647583544f}, {0.800000012f, 0.647583544f}, {0.500000000f, 1.000000000f},
+        {0.300000012f, 0.176208198f}, {0.099999994f, 0.176208198f}, {0.899999976f, 0.176208198f},
+        {0.699999988f, 0.176208198f}, {0.500000000f, 0.176208198f}, {0.400000006f, 0.323791832f},
+        {0.199999988f, 0.323791832f}, {0.000000000f, 0.323791832f}, {0.800000012f, 0.323791832f},
+        {0.600000024f, 0.323791832f}, {0.550000012f, 0.500000000f}, {0.350000024f, 0.500000000f},
+        {0.150000006f, 0.500000000f}, {0.949999988f, 0.500000000f}, {0.750000000f, 0.500000000f},
+        {0.649999976f, 0.500000000f}, {0.449999988f, 0.500000000f}, {0.250000000f, 0.500000000f},
+        {0.050000012f, 0.500000000f}, {0.850000024f, 0.500000000f}, {0.699999988f, 0.676208138f},
+        {0.500000000f, 0.676208138f}, {0.300000012f, 0.676208138f}, {0.099999994f, 0.676208138f},
+        {0.899999976f, 0.676208138f}, {0.800000012f, 0.823791742f}, {0.600000024f, 0.823791742f},
+        {0.400000006f, 0.823791742f}, {0.199999988f, 0.823791742f}, {0.000000000f, 0.823791742f},
+    };
+    expect_uvs_near(uvs_of(*ico1), expected_uvs1);
+    EXPECT_EQ(
+        *ico1->indices()->get().as_u32(),
+        (std::vector<std::uint32_t>{
+            0,  12, 16, 2,  17, 12, 1,  16, 17, 12, 17, 16, 0,  13, 12, 3,  18, 13, 2,  12, 18, 13, 18, 12, 0,  14, 13,
+            4,  19, 14, 3,  13, 19, 14, 19, 13, 0,  15, 14, 5,  20, 15, 4,  14, 20, 15, 20, 14, 0,  16, 15, 1,  21, 16,
+            5,  15, 21, 16, 21, 15, 5,  21, 27, 1,  22, 21, 6,  27, 22, 21, 22, 27, 1,  17, 28, 2,  23, 17, 7,  28, 23,
+            17, 23, 28, 2,  18, 29, 3,  24, 18, 8,  29, 24, 18, 24, 29, 3,  19, 30, 4,  25, 19, 9,  30, 25, 19, 25, 30,
+            4,  20, 31, 5,  26, 20, 10, 31, 26, 20, 26, 31, 5,  27, 26, 6,  32, 27, 10, 26, 32, 27, 32, 26, 1,  28, 22,
+            7,  33, 28, 6,  22, 33, 28, 33, 22, 2,  29, 23, 8,  34, 29, 7,  23, 34, 29, 34, 23, 3,  30, 24, 9,  35, 30,
+            8,  24, 35, 30, 35, 24, 4,  31, 25, 10, 36, 31, 9,  25, 36, 31, 36, 25, 10, 32, 37, 6,  38, 32, 11, 37, 38,
+            32, 38, 37, 6,  33, 38, 7,  39, 33, 11, 38, 39, 33, 39, 38, 7,  34, 39, 8,  40, 34, 11, 39, 40, 34, 40, 39,
+            8,  35, 40, 9,  41, 35, 11, 40, 41, 35, 41, 40, 9,  36, 41, 10, 37, 36, 11, 41, 37, 36, 37, 41,
+        }));
+
+    // Deeper subdivisions keep the counts the crate produces: `12 + 30s + 20 * (s(s-1)/2)` points
+    // and `60 * (s + 1)^2` indices, which is also Bevy's `10(s + 1)^2 + 2` vertex derivation.
+    for (const auto& [subdivisions, vertices, indices] :
+         std::vector<std::array<std::uint32_t, 3>>{{2, 92, 540}, {3, 162, 960}, {4, 252, 1500}, {5, 362, 2160}}) {
+        const auto mesh_value = mesh::Sphere{1.0f}.mesh().ico(subdivisions);
+        ASSERT_TRUE(mesh_value.has_value()) << subdivisions;
+        EXPECT_EQ(mesh_value->count_vertices(), vertices) << subdivisions;
+        EXPECT_EQ(mesh_value->indices()->get().len(), indices) << subdivisions;
+    }
 }
