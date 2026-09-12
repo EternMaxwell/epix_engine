@@ -1,6 +1,8 @@
 
 
 #include <array>
+#include <cassert>
+#include <cmath>
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
 #include <unordered_set>
@@ -396,6 +398,185 @@ std::optional<std::span<const std::uint8_t>> Mesh::get_index_buffer_bytes() cons
     const auto* values = stored_indices->get().as_u32();
     return std::span<const std::uint8_t>{reinterpret_cast<const std::uint8_t*>(values->data()),
                                          values->size() * sizeof(std::uint32_t)};
+}
+
+std::expected<void, MeshMergeError> Mesh::merge(const Mesh& other) {
+    // Two meshes of different topologies would most likely produce an invalid
+    // result, so this is rejected before anything is appended.
+    if (primitive_type != other.primitive_type) {
+        return std::unexpected(MeshMergeError{mesh_merge_error::IncompatiblePrimitiveTopology{
+            .self_primitive_topology  = primitive_type,
+            .other_primitive_topology = other.primitive_type,
+        }});
+    }
+
+    // The indices of `other` start after this mesh's last vertex.
+    const std::size_t index_offset = count_vertices();
+
+    auto attributes = try_attributes_mut();
+    if (!attributes) return std::unexpected(MeshMergeError{attributes.error()});
+    for (auto&& [attribute, values] : *attributes) {
+        auto other_values = other.try_attribute_option(attribute.id);
+        if (!other_values) return std::unexpected(MeshMergeError{other_values.error()});
+        if (!*other_values) continue;
+
+        const auto& other_attribute_values = other_values->value().get();
+        const bool merged                  = std::visit(
+            [&other_attribute_values](auto& alternative) {
+                using Alternative             = std::remove_cvref_t<decltype(alternative)>;
+                const auto* other_alternative = std::get_if<Alternative>(&other_attribute_values.variant());
+                if (other_alternative == nullptr) return false;
+                alternative.values.insert(alternative.values.end(), other_alternative->values.begin(),
+                                          other_alternative->values.end());
+                return true;
+            },
+            values.variant());
+        if (!merged) {
+            // The other mesh's descriptor for this ID, as Bevy reports it. Only the type differs by
+            // construction, so the layout lookup always finds it.
+            const MeshAttributeLayout other_layout = other.attribute_layout();
+            const auto other_attribute             = other_layout.get_attribute(attribute.id);
+            return std::unexpected(MeshMergeError{mesh_merge_error::IncompatibleVertexAttributes{
+                .self_attribute = attribute,
+                .other_attribute =
+                    other_attribute ? std::optional<MeshVertexAttribute>{other_attribute->get()} : std::nullopt,
+            }});
+        }
+    }
+
+    auto indices = try_indices_mut_option();
+    if (!indices) return std::unexpected(MeshMergeError{indices.error()});
+    auto other_indices = other.try_indices_option();
+    if (!other_indices) return std::unexpected(MeshMergeError{other_indices.error()});
+    if (*indices && *other_indices) {
+        indices->value().get().extend(other_indices->value().get().iter() |
+                                      std::views::transform([index_offset](std::size_t index) {
+                                          return static_cast<std::uint32_t>(index + index_offset);
+                                      }));
+    }
+    return {};
+}
+
+void Mesh::translate_by(glm::vec3 translation) {
+    auto result = try_translate_by(translation);
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_translate_by(glm::vec3 translation) {
+    if (translation == glm::vec3{0.0f}) return {};
+
+    auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
+    if (!positions) return std::unexpected(positions.error());
+    if (!*positions) return {};
+
+    auto* values = positions->value().get().get_if<VertexAttributeValues::Float32x3>();
+    if (values == nullptr) return {};
+    for (auto& position : *values) {
+        const glm::vec3 translated = glm::vec3{position[0], position[1], position[2]} + translation;
+        position                   = {translated.x, translated.y, translated.z};
+    }
+    return {};
+}
+
+Mesh Mesh::translated_by(glm::vec3 translation) && {
+    translate_by(translation);
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_translated_by(glm::vec3 translation) && {
+    auto result = try_translate_by(translation);
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+namespace {
+/** @brief Scale and renormalize an already normalized normal by the reciprocal
+ * scale (Bevy's `mesh::scale_normal`). */
+glm::vec3 scale_normal(glm::vec3 normal, glm::vec3 scale_reciprocal) {
+    // This is `normal * scale_reciprocal`, but `0. * anything == 0.` is applied
+    // first because components of the reciprocal may be infinities, which do not
+    // multiply to zero.
+    glm::vec3 scaled{normal.x == 0.0f ? 0.0f : normal.x * scale_reciprocal.x,
+                     normal.y == 0.0f ? 0.0f : normal.y * scale_reciprocal.y,
+                     normal.z == 0.0f ? 0.0f : normal.z * scale_reciprocal.z};
+
+    // If `scaled` is finite, no component of the reciprocal was infinite or the
+    // normal was perpendicular to the scale. Otherwise the scale had at least one
+    // zero component and the normal must point along that component.
+    if (std::isfinite(scaled.x) && std::isfinite(scaled.y) && std::isfinite(scaled.z)) {
+        const float length = glm::length(scaled);
+        return length > 0.0f ? scaled / length : glm::vec3{0.0f};
+    }
+
+    glm::vec3 selected{std::isinf(std::abs(scaled.x)) ? std::copysign(1.0f, scaled.x) : 0.0f,
+                       std::isinf(std::abs(scaled.y)) ? std::copysign(1.0f, scaled.y) : 0.0f,
+                       std::isinf(std::abs(scaled.z)) ? std::copysign(1.0f, scaled.z) : 0.0f};
+    return selected / glm::length(selected);
+}
+}  // namespace
+
+void Mesh::scale_by(glm::vec3 scale) {
+    auto result = try_scale_by(scale);
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_scale_by(glm::vec3 scale) {
+    // Needed when transforming normals and tangents.
+    const glm::vec3 scale_reciprocal{1.0f / scale.x, 1.0f / scale.y, 1.0f / scale.z};
+    // The scale cannot be zero on more than one axis, as in Bevy.
+    assert(glm::vec3(scale.y, scale.z, scale.x) * glm::vec3(scale.z, scale.x, scale.y) != glm::vec3(0.0f));
+
+    auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
+    if (!positions) return std::unexpected(positions.error());
+    if (*positions) {
+        if (auto* values = positions->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& position : *values) {
+                const glm::vec3 scaled = glm::vec3{position[0], position[1], position[2]} * scale;
+                position               = {scaled.x, scaled.y, scaled.z};
+            }
+        }
+    }
+
+    // Normals and tangents do not need transforming when the scale is uniform.
+    if (scale.x == scale.y && scale.y == scale.z) return {};
+
+    auto normals = try_attribute_mut_option(Mesh::ATTRIBUTE_NORMAL);
+    if (!normals) return std::unexpected(normals.error());
+    if (*normals) {
+        if (auto* values = normals->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& normal : *values) {
+                const glm::vec3 transformed =
+                    scale_normal(glm::vec3{normal[0], normal[1], normal[2]}, scale_reciprocal);
+                normal = {transformed.x, transformed.y, transformed.z};
+            }
+        }
+    }
+
+    auto tangents = try_attribute_mut_option(Mesh::ATTRIBUTE_TANGENT);
+    if (!tangents) return std::unexpected(tangents.error());
+    if (*tangents) {
+        if (auto* values = tangents->value().get().get_if<VertexAttributeValues::Float32x4>()) {
+            for (auto& tangent : *values) {
+                const float handedness = tangent[3];
+                glm::vec3 scaled_tangent{tangent[0] * scale[0], tangent[1] * scale[1], tangent[2] * scale[2]};
+                const float length = glm::length(scaled_tangent);
+                scaled_tangent     = length > 0.0f ? scaled_tangent / length : glm::vec3{0.0f};
+                tangent            = {scaled_tangent.x, scaled_tangent.y, scaled_tangent.z, handedness};
+            }
+        }
+    }
+    return {};
+}
+
+Mesh Mesh::scaled_by(glm::vec3 scale) && {
+    scale_by(scale);
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_scaled_by(glm::vec3 scale) && {
+    auto result = try_scale_by(scale);
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
 }
 
 std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {

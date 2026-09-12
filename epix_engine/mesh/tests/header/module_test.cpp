@@ -197,6 +197,35 @@ TEST(MeshErrors, WindingAndTriangleErrorsPreserveBevyVariantsAndMessages) {
     EXPECT_EQ(triangle_access.to_string(), "mesh access error: The requested mesh data wasn't found in this mesh");
 }
 
+TEST(MeshErrors, MergeErrorPreservesBevyVariantsAndMessages) {
+    const mesh::MeshMergeError topology{mesh::mesh_merge_error::IncompatiblePrimitiveTopology{
+        .self_primitive_topology  = wgpu::PrimitiveTopology::eTriangleList,
+        .other_primitive_topology = wgpu::PrimitiveTopology::eLineList,
+    }};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_merge_error::IncompatiblePrimitiveTopology>(topology));
+    EXPECT_EQ(topology.to_string(), "Incompatible primitive topologies: TriangleList and LineList");
+
+    const mesh::MeshMergeError attributes{mesh::mesh_merge_error::IncompatibleVertexAttributes{
+        .self_attribute  = mesh::Mesh::ATTRIBUTE_POSITION,
+        .other_attribute = mesh::Mesh::ATTRIBUTE_NORMAL,
+    }};
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_merge_error::IncompatibleVertexAttributes>(attributes));
+    EXPECT_EQ(attributes.to_string(), "Incompatible vertex attribute types: Vertex_Position and Vertex_Normal");
+
+    // Bevy's `None` arm of the other-attribute name lookup.
+    const mesh::MeshMergeError unnamed{mesh::mesh_merge_error::IncompatibleVertexAttributes{
+        .self_attribute  = mesh::Mesh::ATTRIBUTE_POSITION,
+        .other_attribute = std::nullopt,
+    }};
+    EXPECT_EQ(unnamed.to_string(), "Incompatible vertex attribute types: Vertex_Position and None");
+
+    const mesh::MeshMergeError access{mesh::MeshAccessError::ExtractedToRenderWorld};
+    EXPECT_TRUE(std::holds_alternative<mesh::MeshAccessError>(access));
+    EXPECT_EQ(access.to_string(),
+              "Mesh access error: The mesh vertex/index data has been extracted to the RenderWorld (via "
+              "`Mesh::asset_usage`)");
+}
+
 TEST(MeshAlgorithms, DuplicateVerticesMatchesBevyIndexedExpansion) {
     const std::vector<glm::vec3> positions{
         {0.0f, 0.0f, 0.0f},
@@ -248,6 +277,229 @@ TEST(MeshAlgorithms, DuplicateVerticesMatchesBevyIndexedExpansion) {
     const auto inaccessible = extracted.try_duplicate_vertices();
     ASSERT_FALSE(inaccessible.has_value());
     EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
+// Bevy's `Mesh::merge` appends the other mesh's attribute values, offsets its
+// indices past this mesh's last vertex, and ignores attributes this mesh does not
+// have (`mesh.rs:1643-1714`).
+TEST(MeshAlgorithms, MergeAppendsBevyAttributesAndOffsetsIndices) {
+    const std::vector<glm::vec3> first_positions{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
+    const std::vector<glm::vec3> second_positions{{2.0f, 0.0f, 0.0f}, {3.0f, 0.0f, 0.0f}};
+    const std::vector<glm::vec3> normals{{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}};
+
+    mesh::Mesh first(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    first.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, first_positions);
+    first.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, normals);
+    first.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 0}});
+    EXPECT_EQ(first.count_vertices(), 2u);
+
+    mesh::Mesh second(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    second.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, second_positions);
+    second.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, normals);
+    second.insert_attribute(mesh::Mesh::ATTRIBUTE_UV_0, std::vector<glm::vec2>{{0.0f, 0.0f}, {1.0f, 1.0f}});
+    second.insert_indices(mesh::Indices{std::vector<std::uint16_t>{1, 0, 1}});
+
+    ASSERT_TRUE(first.merge(second).has_value());
+
+    EXPECT_EQ(first.count_vertices(), 4u);
+    const auto* positions =
+        first.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {3.0f, 0.0f, 0.0f}}));
+    const auto* merged_normals =
+        first.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(merged_normals, nullptr);
+    EXPECT_EQ(*merged_normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                                   {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}}));
+    // The other mesh's UVs are ignored: this mesh has no UV attribute.
+    EXPECT_FALSE(first.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
+    // Indices are appended with the offset, keeping the 16-bit alternative.
+    ASSERT_NE(first.indices()->get().as_u16(), nullptr);
+    EXPECT_EQ(*first.indices()->get().as_u16(), (std::vector<std::uint16_t>{0, 1, 0, 3, 2, 3}));
+
+    // A mesh without indices contributes vertices only.
+    mesh::Mesh unindexed(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    unindexed.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, first_positions);
+    unindexed.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, normals);
+    ASSERT_TRUE(first.merge(unindexed).has_value());
+    EXPECT_EQ(first.count_vertices(), 6u);
+    EXPECT_EQ(*first.indices()->get().as_u16(), (std::vector<std::uint16_t>{0, 1, 0, 3, 2, 3}));
+
+    // Only shared attributes are appended, exactly as in Bevy: a mesh that lacks this mesh's
+    // normals leaves the position list longer, and `count_vertices` then reports the minimum.
+    mesh::Mesh position_only(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    position_only.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, first_positions);
+    ASSERT_TRUE(first.merge(position_only).has_value());
+    EXPECT_EQ(
+        first.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>()->size(),
+        8u);
+    EXPECT_EQ(
+        first.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>()->size(),
+        6u);
+    EXPECT_EQ(first.count_vertices(), 6u);
+}
+
+TEST(MeshAlgorithms, MergeRejectsBevyIncompatibleTopologiesAndAttributeTypes) {
+    const std::vector<glm::vec3> positions{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
+
+    mesh::Mesh triangles(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    triangles.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+
+    mesh::Mesh lines(wgpu::PrimitiveTopology::eLineList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    lines.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+
+    const auto topology = triangles.merge(lines);
+    ASSERT_FALSE(topology.has_value());
+    EXPECT_TRUE(std::holds_alternative<mesh::mesh_merge_error::IncompatiblePrimitiveTopology>(topology.error()));
+    EXPECT_EQ(topology.error().to_string(), "Incompatible primitive topologies: TriangleList and LineList");
+    // The rejection happens before anything is appended.
+    EXPECT_EQ(triangles.count_vertices(), 2u);
+
+    // The same attribute ID with a different type: both descriptors are reported.
+    const mesh::MeshVertexAttribute custom_position{"Custom_Position", mesh::MeshVertexAttributeId{0},
+                                                    wgpu::VertexFormat::eUint32x3};
+    mesh::Mesh other(triangles);
+    other.insert_attribute(custom_position, std::vector<glm::uvec3>{{0u, 0u, 0u}, {1u, 0u, 0u}});
+
+    const auto attribute_types = triangles.merge(other);
+    ASSERT_FALSE(attribute_types.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::mesh_merge_error::IncompatibleVertexAttributes>(attribute_types.error()));
+    const auto& mismatch = std::get<mesh::mesh_merge_error::IncompatibleVertexAttributes>(attribute_types.error());
+    EXPECT_EQ(mismatch.self_attribute.name, "Vertex_Position");
+    ASSERT_TRUE(mismatch.other_attribute.has_value());
+    EXPECT_EQ(mismatch.other_attribute->name, "Custom_Position");
+    EXPECT_EQ(attribute_types.error().to_string(),
+              "Incompatible vertex attribute types: Vertex_Position and Custom_Position");
+
+    // A mesh whose data has been extracted cannot be merged from.
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+
+    const auto inaccessible = triangles.merge(extracted);
+    ASSERT_FALSE(inaccessible.has_value());
+    ASSERT_TRUE(std::holds_alternative<mesh::MeshAccessError>(inaccessible.error()));
+    EXPECT_EQ(std::get<mesh::MeshAccessError>(inaccessible.error()), mesh::MeshAccessError::ExtractedToRenderWorld);
+}
+
+// Bevy's `Mesh::translated_by` moves vertex positions only (`mesh.rs:1803-1853`).
+TEST(MeshAlgorithms, TranslateMatchesBevyPositionOnlyTransform) {
+    const std::vector<glm::vec3> positions{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
+    const std::vector<glm::vec3> normals{{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}};
+    const std::vector<glm::vec2> uvs{{0.0f, 0.0f}, {1.0f, 1.0f}};
+
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, normals);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_UV_0, uvs);
+
+    const mesh::Mesh moved = std::move(value).translated_by(glm::vec3{1.0f, 2.0f, 3.0f});
+    const auto* moved_positions =
+        moved.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(moved_positions, nullptr);
+    EXPECT_EQ(*moved_positions,
+              (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{1.0f, 2.0f, 3.0f}, {2.0f, 2.0f, 3.0f}}));
+    const auto* moved_normals =
+        moved.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(moved_normals, nullptr);
+    EXPECT_EQ(*moved_normals,
+              (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}}));
+    const auto* moved_uvs =
+        moved.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(moved_uvs, nullptr);
+    EXPECT_EQ(*moved_uvs, (std::vector<mesh::VertexAttributeValues::Float32x2Value>{{0.0f, 0.0f}, {1.0f, 1.0f}}));
+
+    // The zero translation is a no-op, and the in-place fallible form matches.
+    mesh::Mesh in_place(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    in_place.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    ASSERT_TRUE(in_place.try_translate_by(glm::vec3{0.0f}).has_value());
+    ASSERT_TRUE(in_place.try_translate_by(glm::vec3{-1.0f, 0.0f, 0.0f}).has_value());
+    EXPECT_EQ(
+        *in_place.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>(),
+        (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 0.0f}}));
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto inaccessible = extracted.try_translate_by(glm::vec3{1.0f});
+    ASSERT_FALSE(inaccessible.has_value());
+    EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(extracted.translate_by(glm::vec3{1.0f}), std::logic_error);
+}
+
+// Bevy's `Mesh::scaled_by` scales positions, then renormalizes normals through
+// `scale_normal` and tangents, keeping the tangent handedness (`mesh.rs:1928-2007`,
+// `scale_normal` at `mesh.rs:2343-2357`).
+TEST(MeshAlgorithms, ScaleMatchesBevyNormalAndTangentTransform) {
+    const auto positions_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+    const auto normals_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+    const auto tangents_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_TANGENT)->get().get_if<mesh::VertexAttributeValues::Float32x4>();
+    };
+
+    // A uniform scale moves positions only: normals and tangents are already correct.
+    mesh::Mesh uniform(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    uniform.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 2.0f, 3.0f}});
+    uniform.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{0.0f, 0.0f, 1.0f}});
+    uniform.insert_attribute(mesh::Mesh::ATTRIBUTE_TANGENT, std::vector<glm::vec4>{{1.0f, 0.0f, 0.0f, 1.0f}});
+
+    const mesh::Mesh scaled = std::move(uniform).scaled_by(glm::vec3{2.0f});
+    EXPECT_EQ(positions_of(scaled), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{2.0f, 4.0f, 6.0f}}));
+    EXPECT_EQ(normals_of(scaled), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 1.0f}}));
+    EXPECT_EQ(tangents_of(scaled),
+              (std::vector<mesh::VertexAttributeValues::Float32x4Value>{{1.0f, 0.0f, 0.0f, 1.0f}}));
+
+    // The extrusion's back-cap flip: negating Z negates both the position and the normal.
+    mesh::Mesh flipped(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    flipped.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 2.0f, 3.0f}});
+    flipped.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{0.0f, 0.0f, 1.0f}});
+    ASSERT_TRUE(flipped.try_scale_by(glm::vec3{1.0f, 1.0f, -1.0f}).has_value());
+    EXPECT_EQ(positions_of(flipped), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{1.0f, 2.0f, -3.0f}}));
+    EXPECT_EQ(normals_of(flipped), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, -1.0f}}));
+
+    // A non-uniform scale renormalizes a non-axis-aligned normal: (1, 0, 1) / sqrt(2) with a
+    // reciprocal scale of (0.5, 1, 1) becomes (1, 0, 2) / sqrt(5).
+    mesh::Mesh oblique(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    oblique.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    oblique.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{0.70710678f, 0.0f, 0.70710678f}});
+    ASSERT_TRUE(oblique.try_scale_by(glm::vec3{2.0f, 1.0f, 1.0f}).has_value());
+    const auto* oblique_normals =
+        oblique.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(oblique_normals, nullptr);
+    ASSERT_EQ(oblique_normals->size(), 1u);
+    EXPECT_NEAR((*oblique_normals)[0][0], 0.44721360f, 1e-6f);
+    EXPECT_NEAR((*oblique_normals)[0][1], 0.0f, 1e-6f);
+    EXPECT_NEAR((*oblique_normals)[0][2], 0.89442719f, 1e-6f);
+
+    // A zero scale component collapses the position and points the normal along that axis, which is
+    // Bevy's infinity branch of `scale_normal`.
+    mesh::Mesh collapsed(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    collapsed.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 1.0f, 1.0f}});
+    collapsed.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{0.0f, 0.0f, 1.0f}});
+    ASSERT_TRUE(collapsed.try_scale_by(glm::vec3{1.0f, 1.0f, 0.0f}).has_value());
+    EXPECT_EQ(positions_of(collapsed), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{1.0f, 1.0f, 0.0f}}));
+    EXPECT_EQ(normals_of(collapsed), (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 1.0f}}));
+
+    // Tangents are renormalized and keep their handedness.
+    mesh::Mesh tangents(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    tangents.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    tangents.insert_attribute(mesh::Mesh::ATTRIBUTE_TANGENT, std::vector<glm::vec4>{{1.0f, 0.0f, 0.0f, -1.0f}});
+    ASSERT_TRUE(tangents.try_scale_by(glm::vec3{1.0f, 2.0f, 1.0f}).has_value());
+    EXPECT_EQ(tangents_of(tangents),
+              (std::vector<mesh::VertexAttributeValues::Float32x4Value>{{1.0f, 0.0f, 0.0f, -1.0f}}));
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto inaccessible = std::move(extracted).try_scaled_by(glm::vec3{2.0f});
+    ASSERT_FALSE(inaccessible.has_value());
+    EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(std::move(extracted).scaled_by(glm::vec3{2.0f}), std::logic_error);
 }
 
 TEST(MeshAlgorithms, InvertWindingMatchesEveryBevyTopologyAndError) {

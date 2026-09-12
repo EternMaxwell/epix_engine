@@ -312,6 +312,57 @@ EPIX_EXPORT struct MeshAttributeLayout : std::map<MeshVertexAttributeId, MeshVer
         return ss.str();
     }
 };
+EPIX_EXPORT namespace mesh_merge_error {
+    /** @brief The two meshes store the same attribute ID with different types. */
+    struct IncompatibleVertexAttributes {
+        /** @brief The attribute this mesh stores under that ID. */
+        MeshVertexAttribute self_attribute;
+        /** @brief The attribute the other mesh stores under that ID, if it has one. */
+        std::optional<MeshVertexAttribute> other_attribute;
+
+        bool operator==(const IncompatibleVertexAttributes&) const = default;
+    };
+    /** @brief The two meshes use different primitive topologies. */
+    struct IncompatiblePrimitiveTopology {
+        /** @brief The topology of the mesh being merged into. */
+        wgpu::PrimitiveTopology self_primitive_topology = wgpu::PrimitiveTopology::eTriangleList;
+        /** @brief The topology of the mesh being merged in. */
+        wgpu::PrimitiveTopology other_primitive_topology = wgpu::PrimitiveTopology::eTriangleList;
+
+        bool operator==(const IncompatiblePrimitiveTopology&) const = default;
+    };
+}  // namespace mesh_merge_error
+
+/** @brief Error returned while merging one mesh into another (Bevy
+ * `MeshMergeError`). */
+EPIX_EXPORT struct MeshMergeError : std::variant<mesh_merge_error::IncompatibleVertexAttributes,
+                                                 mesh_merge_error::IncompatiblePrimitiveTopology,
+                                                 MeshAccessError> {
+    using Base = std::variant<mesh_merge_error::IncompatibleVertexAttributes,
+                              mesh_merge_error::IncompatiblePrimitiveTopology,
+                              MeshAccessError>;
+    using Base::Base;
+
+    /** @brief Return Bevy's `Display` text for this merge error. */
+    std::string to_string() const {
+        return std::visit(
+            [](const auto& error) -> std::string {
+                using Error = std::remove_cvref_t<decltype(error)>;
+                if constexpr (std::same_as<Error, mesh_merge_error::IncompatibleVertexAttributes>) {
+                    return std::format("Incompatible vertex attribute types: {} and {}", error.self_attribute.name,
+                                       error.other_attribute ? error.other_attribute->name : std::string_view{"None"});
+                } else if constexpr (std::same_as<Error, mesh_merge_error::IncompatiblePrimitiveTopology>) {
+                    return std::format("Incompatible primitive topologies: {} and {}",
+                                       wgpu::to_string(error.self_primitive_topology),
+                                       wgpu::to_string(error.other_primitive_topology));
+                } else {
+                    return "Mesh access error: " + std::string(epix::mesh::to_string(error));
+                }
+            },
+            static_cast<const Base&>(*this));
+    }
+};
+
 /** @brief An index buffer stored as either 16-bit or 32-bit values (Bevy
  * `Indices`). */
 EPIX_EXPORT class Indices {
@@ -780,6 +831,38 @@ EPIX_EXPORT struct Mesh {
     /** @brief Return the raw index-buffer bytes, or no value for a non-indexed
      * mesh (Bevy `Mesh::get_index_buffer_bytes`). */
     std::optional<std::span<const std::uint8_t>> get_index_buffer_bytes() const;
+
+    /** @brief Append `other`'s vertex and index data to this mesh (Bevy
+     * `Mesh::merge`).
+     *
+     * Attributes of `other` that this mesh does not have are ignored, and the
+     * indices of `other` are offset past this mesh's last vertex. Both meshes
+     * must share a primitive topology, and every attribute ID must have the same
+     * type in both. Throws after render-world extraction, exactly as Bevy's
+     * `count_vertices` panics there. */
+    std::expected<void, MeshMergeError> merge(const Mesh& other);
+
+    /** @brief Translate every vertex position by `translation` (Bevy
+     * `Mesh::translate_by`). Throws after render-world extraction. */
+    void translate_by(glm::vec3 translation);
+    /** @brief Fallible `translate_by` (Bevy `Mesh::try_translate_by`). */
+    std::expected<void, MeshAccessError> try_translate_by(glm::vec3 translation);
+    /** @brief Consume this mesh and return a translated copy (Bevy
+     * `Mesh::translated_by`). */
+    Mesh translated_by(glm::vec3 translation) &&;
+    /** @brief Fallible `translated_by` (Bevy `Mesh::try_translated_by`). */
+    std::expected<Mesh, MeshAccessError> try_translated_by(glm::vec3 translation) &&;
+
+    /** @brief Scale every vertex position, normal and tangent by `scale` (Bevy
+     * `Mesh::scale_by`). Throws after render-world extraction. */
+    void scale_by(glm::vec3 scale);
+    /** @brief Fallible `scale_by` (Bevy `Mesh::try_scale_by`). */
+    std::expected<void, MeshAccessError> try_scale_by(glm::vec3 scale);
+    /** @brief Consume this mesh and return a scaled copy (Bevy
+     * `Mesh::scaled_by`). */
+    Mesh scaled_by(glm::vec3 scale) &&;
+    /** @brief Fallible `scaled_by` (Bevy `Mesh::try_scaled_by`). */
+    std::expected<Mesh, MeshAccessError> try_scaled_by(glm::vec3 scale) &&;
 
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {
