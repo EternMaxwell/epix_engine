@@ -64,7 +64,7 @@ std::filesystem::path write_fixture(const std::string& name, std::string_view by
 /** @brief A real PNG written through the module's own save path, so loader
  * tests never depend on a checked-in fixture. */
 std::filesystem::path write_png_fixture() {
-    auto image = image::Image::create2d(4, 2, image::Format::RGBA8);
+    auto image = image::Image::create2d(4, 2, wgpu::TextureFormat::eRGBA8Unorm);
     for (std::uint32_t y = 0; y < 2; ++y) {
         for (std::uint32_t x = 0; x < 4; ++x) {
             const auto written =
@@ -200,7 +200,7 @@ TEST(ImageLoad, ReportsTypedFailuresAndLoadsRealFiles) {
     ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
     EXPECT_EQ(loaded->width(), 4u);
     EXPECT_EQ(loaded->height(), 2u);
-    EXPECT_EQ(loaded->format(), image::Format::RGBA8);
+    EXPECT_EQ(loaded->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
 
     const auto missing = image::Image::load(fixture_dir() / "does_not_exist.png");
     ASSERT_FALSE(missing.has_value());
@@ -229,7 +229,7 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
 
     auto widened = image::Image::load(rgb_path);
     ASSERT_TRUE(widened.has_value()) << image::to_string(widened.error());
-    EXPECT_EQ(widened->format(), image::Format::RGBA8);
+    EXPECT_EQ(widened->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
     // Bevy's loader default is `is_srgb: true`, so 8-bit data is uploaded as the
     // sRGB format (image_loader.rs:114-152 and image_texture_conversion.rs:46-68).
     EXPECT_EQ(widened->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
@@ -253,7 +253,7 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     ASSERT_TRUE(std::filesystem::exists(hdr_path)) << hdr_path.string();
     auto hdr = image::Image::load(hdr_path);
     ASSERT_TRUE(hdr.has_value()) << image::to_string(hdr.error());
-    EXPECT_EQ(hdr->format(), image::Format::RGBA32F);
+    EXPECT_EQ(hdr->texture_format(), wgpu::TextureFormat::eRGBA32Float);
     EXPECT_EQ(hdr->texture_descriptor.format, wgpu::TextureFormat::eRGBA32Float);
     EXPECT_EQ(hdr->width(), 1024u);
     EXPECT_EQ(hdr->height(), 512u);
@@ -273,10 +273,10 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
 // image format), the only way to reach that state is a descriptor with no pixel
 // format at all, which is what this asserts.
 TEST(ImageSave, RefusesAFormatWithoutAChannelDescription) {
-    auto unknown                      = image::Image::create2d(2, 3, image::Format::RGBA8);
+    auto unknown                      = image::Image::create2d(2, 3, wgpu::TextureFormat::eRGBA8Unorm);
     unknown.texture_descriptor.format = wgpu::TextureFormat::eUndefined;
-    EXPECT_EQ(unknown.format(), image::Format::Unknown);
-    EXPECT_EQ(unknown.format_info().channels, 0u);
+    EXPECT_EQ(unknown.texture_format(), wgpu::TextureFormat::eUndefined);
+    EXPECT_EQ(image::texture_format_components(unknown.texture_format()), 0u);
 
     const auto path = fixture_dir() / "core_loader_unknown_format.png";
     // Hermetic: a previous run may have left the file behind.
@@ -286,12 +286,12 @@ TEST(ImageSave, RefusesAFormatWithoutAChannelDescription) {
     EXPECT_FALSE(std::filesystem::exists(path));
 
     // A four-channel image still saves and reloads.
-    const auto rgba = image::Image::create2d(2, 3, image::Format::RGBA8);
+    const auto rgba = image::Image::create2d(2, 3, wgpu::TextureFormat::eRGBA8Unorm);
     ASSERT_TRUE(image::Image::save(path, rgba).has_value());
     EXPECT_TRUE(std::filesystem::exists(path));
     const auto reloaded = image::Image::load(path);
     ASSERT_TRUE(reloaded.has_value()) << image::to_string(reloaded.error());
-    EXPECT_EQ(reloaded->format(), image::Format::RGBA8);
+    EXPECT_EQ(reloaded->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
     std::filesystem::remove(path);
 }
 
@@ -307,7 +307,7 @@ TEST(ImageLoad, FilesystemAndAssetServerLoadsAgree) {
     auto by_loader = load_through_loader(fixture, reader, "tests/image/rgb_8.png");
     ASSERT_TRUE(by_loader.has_value()) << image::to_string(by_loader.error());
 
-    EXPECT_EQ(by_loader->format(), by_path->format());
+    EXPECT_EQ(by_loader->texture_format(), by_path->texture_format());
     EXPECT_EQ(by_loader->texture_descriptor.format, by_path->texture_descriptor.format);
     EXPECT_EQ(by_loader->width(), by_path->width());
     EXPECT_EQ(by_loader->height(), by_path->height());
@@ -325,7 +325,7 @@ TEST(ImageLoader, ClassifiesExtensionsBeforeDecoding) {
     auto loaded = load_through_loader(fixture, valid_reader, "core_loader_fixture.png");
     ASSERT_TRUE(loaded.has_value()) << image::to_string(loaded.error());
     // Bevy's loader widens RGB to RGBA and keeps render-world-only usage.
-    EXPECT_EQ(loaded->format(), image::Format::RGBA8);
+    EXPECT_EQ(loaded->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
     EXPECT_EQ(loaded->width(), 4u);
     EXPECT_EQ(loaded->height(), 2u);
 
@@ -576,7 +576,7 @@ TEST(ImageLoaderSettings, TextureFormatOverrideReplacesTheDescriptorFormat) {
     const auto overridden  = load_through_loader(fixture, override_reader, "core_loader_fixture.png", settings);
     ASSERT_TRUE(overridden.has_value()) << image::to_string(overridden.error());
     EXPECT_EQ(overridden->texture_descriptor.format, wgpu::TextureFormat::eBGRA8Unorm);
-    EXPECT_EQ(overridden->format(), image::Format::RGBA8);
+    EXPECT_EQ(overridden->texture_format(), wgpu::TextureFormat::eBGRA8Unorm);
     // The override changes how the data is sampled, not what was decoded.
     EXPECT_EQ(overridden->raw_view().size(), by_default->raw_view().size());
     EXPECT_TRUE(std::equal(overridden->raw_view().begin(), overridden->raw_view().end(),
@@ -741,7 +741,7 @@ TEST(ImageFromBuffer, DecodesBytesWithTheSameResultAsTheLoader) {
     ASSERT_TRUE(decoded.has_value()) << image::to_string(decoded.error());
     EXPECT_EQ(decoded->width(), 4u);
     EXPECT_EQ(decoded->height(), 2u);
-    EXPECT_EQ(decoded->format(), image::Format::RGBA8);
+    EXPECT_EQ(decoded->texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
     EXPECT_EQ(decoded->texture_descriptor.format, wgpu::TextureFormat::eRGBA8UnormSrgb);
 
     // Bytes that are not an image report a decode failure.

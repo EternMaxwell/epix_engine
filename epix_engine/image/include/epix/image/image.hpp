@@ -57,48 +57,6 @@ EPIX_EXPORT struct URect {
     bool operator==(const URect&) const = default;
 };
 
-/** @brief Pixel format for images.
- *
- * Each variant specifies channels and bit depth.
- *
- * There is deliberately no three-channel alternative: WebGPU has no
- * three-channel texture format, and Bevy's `Image::from_dynamic` widens
- * `Rgb8`/`Rgb16`/`Rgb32F` to the four-channel equivalent while building an
- * image, so no `Image` in either engine ever holds three-channel pixels.
- * Decoders that return three channels (a colour-type-2 PNG, a Radiance HDR)
- * widen the data before the `Image` is created.
- */
-// Enum Format (8bit, 16bit, Float)
-EPIX_EXPORT enum class Format {
-    Unknown = 0,
-    Grey8,       // 1 channel, 8-bit
-    GreyAlpha8,  // 2 channels, 8-bit
-    RGBA8,       // 4 channels, 8-bit
-    Grey16,      // 1 channel, 16-bit
-    RGBA16,      // 4 channels, 16-bit
-    Grey32F,     // 1 channel, float
-    RGBA32F      // 4 channels, float
-};
-
-/** @brief Descriptive metadata for a pixel Format. */
-EPIX_EXPORT struct FormatInfo {
-    /** @brief Number of color channels (1–4). */
-    std::uint32_t channels;
-    /** @brief Bytes per channel (1, 2, or 4). */
-    std::uint32_t bytesPerChannel;
-    /** @brief True if channels are 32-bit floating point. */
-    bool isFloat;
-    /** @brief True if channels are 16-bit integer. */
-    bool is16Bit;
-
-    /** @brief Get the total byte size of a single pixel. */
-    std::size_t pixelSize() const noexcept { return channels * bytesPerChannel; }
-};
-
-/** @brief Look up the FormatInfo for a given pixel Format.
- * @param fmt The pixel format to query.
- * @return Reference to the static FormatInfo descriptor. */
-EPIX_EXPORT const FormatInfo& getFormatInfo(Format fmt);
 
 /** @brief The container format of encoded image data (Bevy `ImageFormat`).
  *
@@ -259,6 +217,23 @@ EPIX_EXPORT std::string to_string(const TextureAccessError& error);
  * `Option::unwrap()` on `None` and panic; Epix throws `std::runtime_error` with
  * the same message. */
 EPIX_EXPORT std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::TextureFormat format);
+
+/** @brief The number of components one texel of `format` carries (wgpu-types
+ * `TextureFormat::components`).
+ *
+ * The `aspect`-dependent formats (`Depth24PlusStencil8`, `Depth32FloatStencil8`) report the
+ * `TextureAspect::All` count, which is what wgpu-types' `components()` forwards to
+ * `components_with_aspect`. Formats WebGPU names but `wgpu-types` does not (`eUndefined`,
+ * `eForce32`) report 0. */
+EPIX_EXPORT std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept;
+
+/** @brief True for the 32-bit float texture formats Epix's CPU-side extensions handle
+ * (`Image::blur`, `Image::resize`, `Image::save`, `Image::sample`).
+ *
+ * Bevy classifies a format through `wgpu::TextureFormat::sample_type`; these extensions only ever
+ * see the formats `Image::from_dynamic` and the `create*` factories produce, so the float set is
+ * the two 32-bit float spellings. */
+EPIX_EXPORT bool is_float_texture_format(wgpu::TextureFormat format) noexcept;
 
 /** @brief The data format of a supercompressed image (Bevy `DataFormat`). */
 EPIX_EXPORT enum class DataFormat : std::uint8_t { Rgb, Rgba, Rrr, Rrrg, Rg };
@@ -703,6 +678,115 @@ EPIX_EXPORT struct ImageLoaderSettings {
     std::optional<ImageArrayLayout> array_layout{};
 };
 
+/** @brief A rectangular pixel buffer with a fixed channel layout (Bevy `image::ImageBuffer`).
+ *
+ * `Channels` counts the interleaved samples per pixel and `Element` is the sample type, so the
+ * aliases below are the `image` crate's `Luma`/`LumaA`/`Rgb`/`Rgba` buffers at the three
+ * supported sample widths. */
+template <typename Element, std::uint32_t Channels>
+struct PixelBuffer {
+    /** @brief Width in pixels. */
+    std::uint32_t width = 0;
+    /** @brief Height in pixels. */
+    std::uint32_t height = 0;
+    /** @brief Row-major, interleaved samples. */
+    std::vector<Element> data;
+
+    /** @brief The number of interleaved samples per pixel. */
+    static constexpr std::uint32_t channels = Channels;
+    /** @brief The number of pixels the buffer holds. */
+    std::size_t pixel_count() const noexcept { return static_cast<std::size_t>(width) * height; }
+};
+
+using Luma8Image   = PixelBuffer<std::uint8_t, 1>;
+using LumaA8Image  = PixelBuffer<std::uint8_t, 2>;
+using Rgb8Image    = PixelBuffer<std::uint8_t, 3>;
+using Rgba8Image   = PixelBuffer<std::uint8_t, 4>;
+using Luma16Image  = PixelBuffer<std::uint16_t, 1>;
+using LumaA16Image = PixelBuffer<std::uint16_t, 2>;
+using Rgb16Image   = PixelBuffer<std::uint16_t, 3>;
+using Rgba16Image  = PixelBuffer<std::uint16_t, 4>;
+using Rgb32FImage  = PixelBuffer<float, 3>;
+using Rgba32FImage = PixelBuffer<float, 4>;
+
+/** @brief A CPU-side decoded image (Bevy `image::DynamicImage`).
+ *
+ * Bevy converts through the `image` crate's `DynamicImage`: `Image::from_dynamic` builds an
+ * `Image` from one and `Image::try_into_dynamic` builds one from an `Image`. Epix has no `image`
+ * crate, so this value type carries the same variant set plus the conversions those two functions
+ * call, using the `image` crate's own channel arithmetic. */
+EPIX_EXPORT struct DynamicImage
+    : std::variant<Luma8Image,
+                   LumaA8Image,
+                   Rgb8Image,
+                   Rgba8Image,
+                   Luma16Image,
+                   LumaA16Image,
+                   Rgb16Image,
+                   Rgba16Image,
+                   Rgb32FImage,
+                   Rgba32FImage> {
+    using Base = std::variant<Luma8Image,
+                              LumaA8Image,
+                              Rgb8Image,
+                              Rgba8Image,
+                              Luma16Image,
+                              LumaA16Image,
+                              Rgb16Image,
+                              Rgba16Image,
+                              Rgb32FImage,
+                              Rgba32FImage>;
+    using Base::Base;
+
+    /** @brief The image width in pixels (Bevy `DynamicImage::width`). */
+    std::uint32_t width() const noexcept;
+    /** @brief The image height in pixels (Bevy `DynamicImage::height`). */
+    std::uint32_t height() const noexcept;
+
+    /** @brief Convert to an 8-bit RGBA buffer (Bevy `DynamicImage::into_rgba8`). */
+    Rgba8Image into_rgba8() const;
+    /** @brief Convert to a 16-bit RGBA buffer (Bevy `DynamicImage::into_rgba16`). */
+    Rgba16Image into_rgba16() const;
+    /** @brief Convert to an 8-bit luma buffer (Bevy `DynamicImage::into_luma8`). */
+    Luma8Image into_luma8() const;
+    /** @brief Convert to an 8-bit luma+alpha buffer (Bevy `DynamicImage::into_luma_alpha8`). */
+    LumaA8Image into_luma_alpha8() const;
+};
+
+/** @brief C++ counterparts to `IntoDynamicImageError`'s alternatives
+ * (`image_texture_conversion.rs:210-225`). */
+EPIX_EXPORT namespace into_dynamic_image_error {
+    /** @brief Conversion into a dynamic image is not supported for the source format. */
+    struct UnsupportedFormat {
+        wgpu::TextureFormat format                      = wgpu::TextureFormat::eUndefined;
+        bool operator==(const UnsupportedFormat&) const = default;
+    };
+    /** @brief Encountered an unknown error during conversion. */
+    struct UnknownConversionError {
+        wgpu::TextureFormat format                            = wgpu::TextureFormat::eUndefined;
+        bool operator==(const UnknownConversionError&) const = default;
+    };
+    /** @brief Tried to convert an image that has no texture data. */
+    struct UninitializedImage {
+        bool operator==(const UninitializedImage&) const = default;
+    };
+}  // namespace into_dynamic_image_error
+
+/** @brief Errors that occur while converting an `Image` into a `DynamicImage`
+ * (Bevy `IntoDynamicImageError`). */
+EPIX_EXPORT struct IntoDynamicImageError
+    : std::variant<into_dynamic_image_error::UnsupportedFormat,
+                   into_dynamic_image_error::UnknownConversionError,
+                   into_dynamic_image_error::UninitializedImage> {
+    using Base = std::variant<into_dynamic_image_error::UnsupportedFormat,
+                              into_dynamic_image_error::UnknownConversionError,
+                              into_dynamic_image_error::UninitializedImage>;
+    using Base::Base;
+
+    /** @brief Bevy `IntoDynamicImageError`'s `Display` text. */
+    std::string to_string() const;
+};
+
 /** @brief Multi-dimensional image with runtime pixel format.
  *
  * Supports 1D, 2D, 2D array, and 3D images. Provides factory methods,
@@ -768,36 +852,36 @@ EPIX_EXPORT class Image {
      * @param w Width in pixels.
      * @param h Height in pixels.
      * @param depth_or_layers Depth (3D) or layer count (2D array).
-     * @param fmt Pixel format. */
-    static Image create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt);
+     * @param format Pixel format. */
+    static Image create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, wgpu::TextureFormat format);
     /** @brief Create a zero-initialized 1D image.
      * @param w Width in pixels.
-     * @param fmt Pixel format. */
-    static Image create1d(std::uint32_t w, Format fmt);
+     * @param format Pixel format. */
+    static Image create1d(std::uint32_t w, wgpu::TextureFormat format);
     /** @brief Create a zero-initialized 2D image.
      * @param w Width in pixels.
      * @param h Height in pixels.
-     * @param fmt Pixel format. */
-    static Image create2d(std::uint32_t w, std::uint32_t h, Format fmt);
+     * @param format Pixel format. */
+    static Image create2d(std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format);
     /** @brief Create a zero-initialized 2D array image.
      * @param w Width in pixels.
      * @param h Height in pixels.
      * @param layers Number of array layers.
-     * @param fmt Pixel format. */
-    static Image create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt);
+     * @param format Pixel format. */
+    static Image create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t layers, wgpu::TextureFormat format);
     /** @brief Create a zero-initialized 3D image.
      * @param w Width in pixels.
      * @param h Height in pixels.
      * @param depth Depth in pixels.
-     * @param fmt Pixel format. */
-    static Image create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt);
+     * @param format Pixel format. */
+    static Image create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, wgpu::TextureFormat format);
     /** @brief Create an image initialized with the provided data.
      * @tparam T Contiguous range of trivially-copyable elements.
      * @param type Image dimension type.
      * @param w Width in pixels.
      * @param h Height in pixels.
      * @param depth_or_layers Depth (3D) or layer count (2D array).
-     * @param fmt Pixel format.
+     * @param format Pixel format.
      * @param initData Initial pixel data; must match the expected byte size.
      * @return The image, or std::nullopt if the data size is wrong. */
     template <typename T>
@@ -806,7 +890,7 @@ EPIX_EXPORT class Image {
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create(
-        ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData);
+        ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, wgpu::TextureFormat format, T&& initData);
     /** @brief Create a 1D image initialized with the provided data.
      * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
@@ -814,7 +898,7 @@ EPIX_EXPORT class Image {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
-    static std::optional<Image> create1d(std::uint32_t w, Format fmt, T&& initData);
+    static std::optional<Image> create1d(std::uint32_t w, wgpu::TextureFormat format, T&& initData);
     /** @brief Create a 2D image initialized with the provided data.
      * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
@@ -822,7 +906,7 @@ EPIX_EXPORT class Image {
             { std::span(std::forward<T>(t)) };
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
-    static std::optional<Image> create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData);
+    static std::optional<Image> create2d(std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format, T&& initData);
     /** @brief Create a 2D array image initialized with the provided data.
      * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
@@ -831,7 +915,7 @@ EPIX_EXPORT class Image {
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create2d_array(
-        std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData);
+        std::uint32_t w, std::uint32_t h, std::uint32_t layers, wgpu::TextureFormat format, T&& initData);
     /** @brief Create a 3D image initialized with the provided data.
      * @tparam T Contiguous range of trivially-copyable elements. */
     template <typename T>
@@ -840,7 +924,7 @@ EPIX_EXPORT class Image {
             requires std::is_trivially_copyable_v<typename span_type<T>::type>;
         }
     static std::optional<Image> create3d(
-        std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData);
+        std::uint32_t w, std::uint32_t h, std::uint32_t depth, wgpu::TextureFormat format, T&& initData);
 
     /** @brief Load an image from the filesystem.
      *
@@ -905,13 +989,12 @@ EPIX_EXPORT class Image {
     }
     /** @brief Get the image dimension type, derived from the descriptor. */
     ImageType type() const noexcept;
-    /** @brief Get the pixel format (Bevy `Image::texture_descriptor.format`). */
-    Format format() const noexcept;
+
     /** @brief Get the WebGPU texture format (Bevy
      * `Image::texture_descriptor.format`). */
     wgpu::TextureFormat texture_format() const noexcept { return texture_descriptor.format; }
     /** @brief Get the format metadata for this image's pixel format. */
-    const FormatInfo& format_info() const noexcept { return getFormatInfo(format()); }
+
     /** @brief Get the usage flags for this image (Bevy `Image::asset_usage`). */
     assets::RenderAssetUsages usage() const noexcept { return m_usage; }
     /** @brief Set the usage flags (Bevy `Image::asset_usage`).
@@ -950,6 +1033,21 @@ EPIX_EXPORT class Image {
      * retaining the metadata in this image (Bevy `Image::data.take()` used by
      * `GpuImage::take_gpu_data`). */
     Image take_data();
+
+    /** @brief Convert a `DynamicImage` to an `Image` (Bevy `Image::from_dynamic`).
+     *
+     * The per-variant table is Bevy's: 8-bit luma, luma+alpha, RGB and RGBA all become
+     * `Rgba8Unorm`/`Rgba8UnormSrgb` (the three-channel and luma buffers are widened to RGBA),
+     * `Luma16` becomes `R16Uint`, `LumaA16` becomes `Rg16Uint`, `Rgb16`/`Rgba16` become
+     * `Rgba16Unorm`, and `Rgb32F`/`Rgba32F` become `Rgba32Float`. */
+    static Image from_dynamic(DynamicImage dyn_img, bool is_srgb, assets::RenderAssetUsages asset_usage);
+
+    /** @brief Convert this `Image` to a `DynamicImage` (Bevy `Image::try_into_dynamic`).
+     *
+     * Only `R8Unorm`, `Rg8Unorm`, `Rgba8UnormSrgb`, `Bgra8Unorm` and `Bgra8UnormSrgb` are
+     * covered, the BGRA spellings are swapped to RGBA, and a payload whose length does not match
+     * the dimensions reports `UnknownConversionError` exactly as `ImageBuffer::from_raw` does. */
+    std::expected<DynamicImage, IntoDynamicImageError> try_into_dynamic() const;
 
     /**
      * @brief Sample a pixel at (x, y), returning an array of 4 floats, each representing a channel. Missing channels
@@ -991,10 +1089,7 @@ EPIX_EXPORT class Image {
                                                std::uint32_t z,
                                                std::span<const float> values);
 
-    /**
-     * @brief Convert image to target format, return the converted image.
-     */
-    Image convert(Format targetFmt) const;
+
     /**
      * @brief Convert the image to `new_format`, or `std::nullopt` when the conversion is not
      * supported (Bevy `Image::convert`).
@@ -1140,13 +1235,13 @@ template <typename T>
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
 std::optional<Image> Image::create(
-    ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, Format fmt, T&& initData) {
+    ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, wgpu::TextureFormat format, T&& initData) {
     std::optional<Image> img;
-    auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = static_cast<std::size_t>(w) * h * depth_or_layers * info.pixelSize();
+    std::size_t expectedSize =
+        static_cast<std::size_t>(w) * h * depth_or_layers * texture_format_pixel_size(format).value_or(0);
     auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
     if (init_bytes.size() != expectedSize) return img;
-    img.emplace(create(type, w, h, depth_or_layers, fmt));
+    img.emplace(create(type, w, h, depth_or_layers, format));
     std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
@@ -1155,13 +1250,12 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-std::optional<Image> Image::create1d(std::uint32_t w, Format fmt, T&& initData) {
+std::optional<Image> Image::create1d(std::uint32_t w, wgpu::TextureFormat format, T&& initData) {
     std::optional<Image> img;
-    auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = static_cast<std::size_t>(w) * info.pixelSize();
+    std::size_t expectedSize = static_cast<std::size_t>(w) * texture_format_pixel_size(format).value_or(0);
     auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
     if (init_bytes.size() != expectedSize) return img;
-    img.emplace(create1d(w, fmt));
+    img.emplace(create1d(w, format));
     std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
@@ -1170,13 +1264,12 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-std::optional<Image> Image::create2d(std::uint32_t w, std::uint32_t h, Format fmt, T&& initData) {
+std::optional<Image> Image::create2d(std::uint32_t w, std::uint32_t h, wgpu::TextureFormat format, T&& initData) {
     std::optional<Image> img;
-    auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = static_cast<std::size_t>(w) * h * info.pixelSize();
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * texture_format_pixel_size(format).value_or(0);
     auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
     if (init_bytes.size() != expectedSize) return img;
-    img.emplace(create2d(w, h, fmt));
+    img.emplace(create2d(w, h, format));
     std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
@@ -1186,13 +1279,12 @@ template <typename T>
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
 std::optional<Image> Image::create2d_array(
-    std::uint32_t w, std::uint32_t h, std::uint32_t layers, Format fmt, T&& initData) {
+    std::uint32_t w, std::uint32_t h, std::uint32_t layers, wgpu::TextureFormat format, T&& initData) {
     std::optional<Image> img;
-    auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = static_cast<std::size_t>(w) * h * layers * info.pixelSize();
+    std::size_t expectedSize = static_cast<std::size_t>(w) * h * layers * texture_format_pixel_size(format).value_or(0);
     auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
     if (init_bytes.size() != expectedSize) return img;
-    img.emplace(create2d_array(w, h, layers, fmt));
+    img.emplace(create2d_array(w, h, layers, format));
     std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
@@ -1201,13 +1293,14 @@ template <typename T>
         { std::span(std::forward<T>(t)) };
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
-std::optional<Image> Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, Format fmt, T&& initData) {
+std::optional<Image> Image::create3d(
+    std::uint32_t w, std::uint32_t h, std::uint32_t depth, wgpu::TextureFormat format, T&& initData) {
     std::optional<Image> img;
-    auto& info               = getFormatInfo(fmt);
-    std::size_t expectedSize = static_cast<std::size_t>(w) * h * std::max(depth, 1u) * info.pixelSize();
+    std::size_t expectedSize =
+        static_cast<std::size_t>(w) * h * std::max(depth, 1u) * texture_format_pixel_size(format).value_or(0);
     auto init_bytes          = std::as_bytes(std::span(std::forward<T>(initData)));
     if (init_bytes.size() != expectedSize) return img;
-    img.emplace(create3d(w, h, depth, fmt));
+    img.emplace(create3d(w, h, depth, format));
     std::memcpy(img->data.data(), init_bytes.data(), expectedSize);
     return img;
 }
@@ -1233,15 +1326,15 @@ template <typename T>
         requires std::is_trivially_copyable_v<typename span_type<T>::type>;
     }
 std::expected<void, ImageWriteError> Image::write_raw(std::uint32_t x, std::uint32_t y, std::uint32_t z, T&& data) {
-    const FormatInfo& inf = format_info();
-    auto bytes            = std::as_bytes(std::span(std::forward<T>(data)));
+    const std::size_t pixel_size = texture_format_pixel_size(texture_descriptor.format).value_or(0);
+    auto bytes                   = std::as_bytes(std::span(std::forward<T>(data)));
     if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageWriteError::OutOfBounds);
-    if (bytes.size() != inf.pixelSize()) return std::unexpected(ImageWriteError::DataSizeMismatch);
+    if (bytes.size() != pixel_size) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    auto slice_stride = static_cast<std::size_t>(width()) * height() * inf.pixelSize();
+    auto slice_stride = static_cast<std::size_t>(width()) * height() * pixel_size;
     std::byte* pixelPtr =
-        this->data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * inf.pixelSize();
-    std::memcpy(pixelPtr, bytes.data(), inf.pixelSize());
+        this->data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * pixel_size;
+    std::memcpy(pixelPtr, bytes.data(), pixel_size);
     return {};
 }
 }  // namespace epix::image

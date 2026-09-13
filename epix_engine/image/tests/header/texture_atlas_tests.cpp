@@ -54,7 +54,7 @@ TEST(TextureAtlas, ResolvesSelectedTextureRectangle) {
 TEST(TextureAtlasSources, ResolvesIndexRectUvAndHandle) {
     epix::assets::Assets<image::Image> images;
     epix::assets::Assets<image::TextureAtlasLayout> layouts;
-    const auto source = images.emplace(image::Image::create2d(8, 8, image::Format::RGBA8));
+    const auto source = images.emplace(image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm));
     auto layout       = image::TextureAtlasLayout::new_empty(glm::uvec2(32, 16));
     layout.textures.push_back(image::URect{{8, 4}, {24, 12}});
     const auto layout_handle = layouts.emplace(layout);
@@ -148,7 +148,7 @@ TEST(AtlasAllocator, SizeAndEmptyRequestMatchGuillotiere) {
 // `tmp/guillotiere-fixture`) minus the padding, and the pixels are copied row by row.
 TEST(DynamicTextureAtlasBuilder, PlacesTexturesWithGuillotierePlacementsAndCopiesPixels) {
     const auto fill = [](std::uint32_t width, std::uint32_t height, float red) {
-        image::Image image = image::Image::create2d(width, height, image::Format::RGBA8);
+        image::Image image = image::Image::create2d(width, height, wgpu::TextureFormat::eRGBA8Unorm);
         for (std::uint32_t y = 0; y < height; ++y) {
             for (std::uint32_t x = 0; x < width; ++x) {
                 image.set_color_at(x, y,
@@ -159,7 +159,7 @@ TEST(DynamicTextureAtlasBuilder, PlacesTexturesWithGuillotierePlacementsAndCopie
     };
 
     image::TextureAtlasLayout layout = image::TextureAtlasLayout::new_empty(glm::uvec2{16u, 16u});
-    image::Image atlas               = image::Image::create2d(16, 16, image::Format::RGBA8);
+    image::Image atlas               = image::Image::create2d(16, 16, wgpu::TextureFormat::eRGBA8Unorm);
     image::DynamicTextureAtlasBuilder builder{glm::uvec2{16u, 16u}, 1u};
 
     const image::Image first{fill(4, 3, 0.25f)};
@@ -221,12 +221,12 @@ TEST(DynamicTextureAtlasBuilder, PlacesTexturesWithGuillotierePlacementsAndCopie
 
 TEST(DynamicTextureAtlasBuilder, ReportsTypedErrorsInBevyOrder) {
     image::TextureAtlasLayout layout = image::TextureAtlasLayout::new_empty(glm::uvec2{8u, 8u});
-    image::Image atlas               = image::Image::create2d(8, 8, image::Format::RGBA8);
-    image::Image source              = image::Image::create2d(2, 2, image::Format::RGBA8);
+    image::Image atlas               = image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm);
+    image::Image source              = image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     image::DynamicTextureAtlasBuilder builder{glm::uvec2{8u, 8u}, 0u};
 
     // A source that no longer owns its payload: Bevy's `data.is_none()` arm.
-    image::Image taken = image::Image::create2d(2, 2, image::Format::RGBA8);
+    image::Image taken = image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     taken.take_data();
     const auto uninitialized_source = builder.add_texture(layout, taken, atlas);
     ASSERT_FALSE(uninitialized_source.has_value());
@@ -236,7 +236,7 @@ TEST(DynamicTextureAtlasBuilder, ReportsTypedErrorsInBevyOrder) {
     EXPECT_EQ(uninitialized_source.error().to_string(), "cannot add uninitialized texture to atlas");
 
     // An atlas that no longer owns its payload.
-    image::Image atlas_taken = image::Image::create2d(8, 8, image::Format::RGBA8);
+    image::Image atlas_taken = image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm);
     atlas_taken.take_data();
     const auto uninitialized_atlas = builder.add_texture(layout, source, atlas_taken);
     ASSERT_FALSE(uninitialized_atlas.has_value());
@@ -246,7 +246,7 @@ TEST(DynamicTextureAtlasBuilder, ReportsTypedErrorsInBevyOrder) {
     EXPECT_EQ(uninitialized_atlas.error().to_string(), "cannot add texture to uninitialized atlas texture");
 
     // A texture that cannot fit at all.
-    image::Image too_big = image::Image::create2d(16, 16, image::Format::RGBA8);
+    image::Image too_big = image::Image::create2d(16, 16, wgpu::TextureFormat::eRGBA8Unorm);
     const auto failed    = builder.add_texture(layout, too_big, atlas);
     ASSERT_FALSE(failed.has_value());
     EXPECT_EQ(
@@ -255,7 +255,7 @@ TEST(DynamicTextureAtlasBuilder, ReportsTypedErrorsInBevyOrder) {
 
     // Bevy asserts the atlas keeps its main-world usage flag; Epix reports the same contract as a
     // thrown `std::invalid_argument` instead of a panic.
-    image::Image render_only = image::Image::create2d(8, 8, image::Format::RGBA8);
+    image::Image render_only = image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm);
     render_only.set_usage(static_cast<epix::assets::RenderAssetUsages>(epix::assets::RENDER_WORLD));
     EXPECT_THROW(builder.add_texture(layout, source, render_only), std::invalid_argument);
 }

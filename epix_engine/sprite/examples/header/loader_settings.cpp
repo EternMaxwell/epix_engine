@@ -125,7 +125,7 @@ struct LoaderSettingsVisualTestPlugin {
         // no separately generated binary. It is committed as well, so a reader can
         // see the exact input; rewriting it keeps a stale copy from masking a
         // regression in `Image::save`.
-        auto fixture = image::Image::create2d(8, 8, image::Format::RGBA8);
+        auto fixture = image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm);
         constexpr std::array<std::array<std::uint8_t, 3>, 8> palette{{
             {255, 32, 32},
             {32, 255, 32},

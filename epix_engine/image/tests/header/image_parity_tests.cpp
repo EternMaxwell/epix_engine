@@ -111,7 +111,7 @@ TEST(ImageSampler, PayloadCarryingAlternatives) {
 // switches to the descriptor-carrying alternative once a descriptor is set
 // (Bevy Image::sampler, image.rs:599-624).
 TEST(Image, SamplerAccessors) {
-    auto image = epix::image::Image::create2d(4, 4, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_TRUE(image.sampler().is_default());
     EXPECT_EQ(image.sampler_descriptor(), nullptr);
 
@@ -134,7 +134,7 @@ TEST(Image, SamplerAccessors) {
 // is transferred: metadata stays in the source and an empty present payload
 // remains distinguishable from an absent payload.
 TEST(Image, TakeDataPreservesMetadataAndPresence) {
-    auto source = epix::image::Image::create3d(2, 3, 4, epix::image::Format::RGBA8);
+    auto source = epix::image::Image::create3d(2, 3, 4, wgpu::TextureFormat::eRGBA8Unorm);
     source.set_usage(epix::assets::RenderAssetUsages::RENDER_WORLD);
     source.set_copy_on_resize(true);
     auto descriptor  = epix::image::ImageSamplerDescriptor::nearest();
@@ -149,7 +149,7 @@ TEST(Image, TakeDataPreservesMetadataAndPresence) {
     EXPECT_EQ(source.width(), 2u);
     EXPECT_EQ(source.height(), 3u);
     EXPECT_EQ(source.depth(), 4u);
-    EXPECT_EQ(source.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(source.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(source.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_TRUE(source.copy_on_resize());
     ASSERT_NE(source.sampler_descriptor(), nullptr);
@@ -163,7 +163,7 @@ TEST(Image, TakeDataPreservesMetadataAndPresence) {
     ASSERT_NE(extracted.sampler_descriptor(), nullptr);
     EXPECT_EQ(extracted.sampler_descriptor()->label, "take-data sampler");
 
-    auto empty = epix::image::Image::create2d(0, 0, epix::image::Format::RGBA8);
+    auto empty = epix::image::Image::create2d(0, 0, wgpu::TextureFormat::eRGBA8Unorm);
     ASSERT_TRUE(empty.has_data());
     ASSERT_TRUE(empty.raw_view().empty());
     auto extracted_empty = empty.take_data();
@@ -175,13 +175,13 @@ TEST(Image, TakeDataPreservesMetadataAndPresence) {
 // Image size accessors and the width/height ratio (Bevy Image::size,
 // size_f32, aspect_ratio; image.rs:1198-1216).
 TEST(Image, SizeAccessorsMatchBevy) {
-    auto image = epix::image::Image::create2d(8, 4, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(8, 4, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(image.size(), glm::uvec2(8u, 4u));
     EXPECT_EQ(image.size_f32(), glm::vec2(8.0f, 4.0f));
     EXPECT_FLOAT_EQ(image.aspect_ratio(), 2.0f);
 
     // Bevy panics on a zero dimension; Epix reports the same contract as an exception.
-    auto degenerate = epix::image::Image::create2d(0, 4, epix::image::Format::RGBA8);
+    auto degenerate = epix::image::Image::create2d(0, 4, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_THROW(degenerate.aspect_ratio(), std::invalid_argument);
 }
 
@@ -189,7 +189,7 @@ TEST(Image, SizeAccessorsMatchBevy) {
 // coordinates or formats with no known pixel size (Bevy Image::pixel_data_offset,
 // image.rs:1431).
 TEST(Image, PixelDataOffsetIsRowMajorPerLayer) {
-    auto image                  = epix::image::Image::create3d(4, 3, 2, epix::image::Format::RGBA8);
+    auto image                  = epix::image::Image::create3d(4, 3, 2, wgpu::TextureFormat::eRGBA8Unorm);
     constexpr std::size_t pixel = 4;
     EXPECT_EQ(image.pixel_data_offset({0u, 0u, 0u}).value(), 0u);
     EXPECT_EQ(image.pixel_data_offset({3u, 0u, 0u}).value(), 3u * pixel);
@@ -203,7 +203,7 @@ TEST(Image, PixelDataOffsetIsRowMajorPerLayer) {
 
 // A grey image carries one byte per pixel, which halves the stride.
 TEST(Image, PixelDataOffsetRespectsGreyFormat) {
-    auto image = epix::image::Image::create2d(8, 2, epix::image::Format::Grey8);
+    auto image = epix::image::Image::create2d(8, 2, wgpu::TextureFormat::eR8Unorm);
     EXPECT_EQ(image.pixel_data_offset({1u, 0u, 0u}).value(), 1u);
     EXPECT_EQ(image.pixel_data_offset({0u, 1u, 0u}).value(), 8u);
 }
@@ -211,8 +211,8 @@ TEST(Image, PixelDataOffsetRespectsGreyFormat) {
 // Image::is_compressed reports block-compressed formats (Bevy Image::is_compressed,
 // image.rs:1412).
 TEST(Image, IsCompressedMatchesBevy) {
-    EXPECT_FALSE(epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8).is_compressed());
-    auto compressed                      = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    EXPECT_FALSE(epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm).is_compressed());
+    auto compressed                      = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     compressed.texture_descriptor.format = wgpu::TextureFormat::eBC7RGBAUnorm;
     EXPECT_TRUE(compressed.is_compressed());
     compressed.texture_descriptor.format = wgpu::TextureFormat::eETC2RGBA8Unorm;
@@ -222,7 +222,7 @@ TEST(Image, IsCompressedMatchesBevy) {
 // resize replaces the size and zero-extends or truncates the payload without
 // scaling (Bevy Image::resize, image.rs:1222).
 TEST(Image, ResizeReplacesSizeAndReallocsData) {
-    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     ASSERT_EQ(image.raw_view().size(), 2u * 2u * 4u);
     // A written pixel survives a grow unchanged, because resize never scales.
     ASSERT_TRUE(image.write(1, 1, 0, std::array{1.0f, 0.5f, 0.25f, 1.0f}).has_value());
@@ -245,7 +245,7 @@ TEST(Image, ResizeReplacesSizeAndReallocsData) {
 // zeroes (Bevy Image::resize_in_place, image.rs:1252).
 TEST(Image, ResizeInPlaceKeepsTopLeftPixels) {
     // Grey8 has a one-byte stride, which makes the row arithmetic easy to assert.
-    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::Grey8);
+    auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eR8Unorm);
     ASSERT_TRUE(image.write(0, 0, std::array{1.0f}).has_value());
     ASSERT_TRUE(image.write(1, 0, std::array{0.5f}).has_value());
     ASSERT_TRUE(image.write(0, 1, std::array{0.25f}).has_value());
@@ -274,7 +274,7 @@ TEST(Image, ResizeInPlaceKeepsTopLeftPixels) {
 // A resize without a CPU payload defers to the GPU copy path, exactly as Bevy
 // does (Bevy Image::resize_in_place, image.rs:1258-1261).
 TEST(Image, ResizeInPlaceWithoutDataEnablesCopyOnResize) {
-    auto image = epix::image::Image::create2d(4, 4, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm);
     image.set_copy_on_resize(false);
     auto extracted = image.take_data();
     ASSERT_FALSE(image.has_data());
@@ -287,7 +287,7 @@ TEST(Image, ResizeInPlaceWithoutDataEnablesCopyOnResize) {
 // reinterpret_size only succeeds when the total pixel count is unchanged
 // (Bevy Image::reinterpret_size, image.rs:1233).
 TEST(Image, ReinterpretSizeRequiresEqualVolume) {
-    auto image = epix::image::Image::create2d(4, 4, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm);
 
     const auto same_volume = image.reinterpret_size(wgpu::Extent3D{2, 8, 1});
     ASSERT_TRUE(same_volume.has_value());
@@ -311,7 +311,7 @@ TEST(Image, ReinterpretSizeRequiresEqualVolume) {
 // reports Bevy's typed errors otherwise (Bevy
 // Image::reinterpret_stacked_2d_as_array, image.rs:1300).
 TEST(Image, ReinterpretStacked2dAsArrayMatchesBevyErrors) {
-    auto stacked     = epix::image::Image::create2d(4, 8, epix::image::Format::RGBA8);
+    auto stacked     = epix::image::Image::create2d(4, 8, wgpu::TextureFormat::eRGBA8Unorm);
     const auto split = stacked.reinterpret_stacked_2d_as_array(4);
     ASSERT_TRUE(split.has_value());
     EXPECT_EQ(stacked.width(), 4u);
@@ -320,7 +320,7 @@ TEST(Image, ReinterpretStacked2dAsArrayMatchesBevyErrors) {
     EXPECT_EQ(stacked.type(), epix::image::ImageType::e2DArray);
 
     // A height that is not divisible by the layer count is rejected.
-    auto uneven              = epix::image::Image::create2d(4, 6, epix::image::Format::RGBA8);
+    auto uneven              = epix::image::Image::create2d(4, 6, wgpu::TextureFormat::eRGBA8Unorm);
     const auto uneven_result = uneven.reinterpret_stacked_2d_as_array(4);
     ASSERT_FALSE(uneven_result.has_value());
     const auto* not_divisible = std::get_if<epix::image::TextureReinterpretationError::HeightNotDivisibleByLayers>(
@@ -330,7 +330,7 @@ TEST(Image, ReinterpretStacked2dAsArrayMatchesBevyErrors) {
     EXPECT_EQ(not_divisible->layer_count, 4u);
 
     // A non-2D image is rejected with WrongDimension.
-    auto volumetric            = epix::image::Image::create3d(2, 2, 2, epix::image::Format::RGBA8);
+    auto volumetric            = epix::image::Image::create3d(2, 2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     const auto wrong_dimension = volumetric.reinterpret_stacked_2d_as_array(2);
     ASSERT_FALSE(wrong_dimension.has_value());
     EXPECT_NE(std::get_if<epix::image::TextureReinterpretationError::WrongDimension>(&wrong_dimension.error().value),
@@ -346,7 +346,7 @@ TEST(Image, ReinterpretStacked2dAsArrayMatchesBevyErrors) {
 // pixel_bytes exposes one pixel's raw bytes and rejects out-of-range coordinates
 // or a missing payload (Bevy Image::pixel_bytes, image.rs:1457).
 TEST(Image, PixelBytesExposeOnePixelsBytes) {
-    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     ASSERT_TRUE(image.write(1, 0, 0, std::array{1.0f, 0.0f, 0.0f, 1.0f}).has_value());
 
     const auto first = image.pixel_bytes({1u, 0u, 0u});
@@ -372,7 +372,7 @@ TEST(Image, PixelBytesExposeOnePixelsBytes) {
 // clear repeats the fill data across the whole payload (Bevy Image::clear,
 // image.rs:1477).
 TEST(Image, ClearRepeatsFillAcrossPayload) {
-    auto image = epix::image::Image::create2d(3, 2, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(3, 2, wgpu::TextureFormat::eRGBA8Unorm);
     const std::array<std::byte, 4> fill{std::byte(1), std::byte(2), std::byte(3), std::byte(4)};
     image.clear(fill);
     ASSERT_EQ(image.raw_view().size(), 3u * 2u * 4u);
@@ -384,7 +384,7 @@ TEST(Image, ClearRepeatsFillAcrossPayload) {
 // get_color_at/set_color_at round-trip through the texture format, reporting Bevy's
 // typed access errors (Bevy Image::get_color_at / set_color_at, image.rs:1504-1610).
 TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
-    auto image = epix::image::Image::create2d(2, 2, epix::image::Format::RGBA8);
+    auto image = epix::image::Image::create2d(2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     ASSERT_TRUE(image.set_color_at(1, 1, glm::vec4(1.0f, 0.5f, 0.25f, 1.0f)).has_value());
 
     const auto read_back = image.get_color_at(1, 1);
@@ -403,7 +403,7 @@ TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
     EXPECT_EQ(bounds->y, 0u);
 
     // The 2D accessor rejects a 3D image with WrongDimension.
-    auto volumetric            = epix::image::Image::create3d(2, 2, 2, epix::image::Format::RGBA8);
+    auto volumetric            = epix::image::Image::create3d(2, 2, 2, wgpu::TextureFormat::eRGBA8Unorm);
     const auto wrong_dimension = volumetric.get_color_at(0, 0);
     ASSERT_FALSE(wrong_dimension.has_value());
     EXPECT_NE(std::get_if<epix::image::TextureAccessError::WrongDimension>(&wrong_dimension.error().value), nullptr);
@@ -425,7 +425,7 @@ TEST(Image, ColorAccessorsRoundTripAndReportTypedErrors) {
 // A BGRA8 image stores its channels in B, G, R, A order while the accessor still
 // returns linear RGBA (Bevy Image::set_color_at's documented format support).
 TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
-    auto image                      = epix::image::Image::create2d(1, 1, epix::image::Format::RGBA8);
+    auto image                      = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Unorm);
     image.texture_descriptor.format = wgpu::TextureFormat::eBGRA8Unorm;
     ASSERT_TRUE(image.set_color_at(0, 0, glm::vec4(1.0f, 0.0f, 0.5f, 1.0f)).has_value());
 
@@ -444,7 +444,7 @@ TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
 // UnsupportedTextureFormat rather than an out-of-bounds error
 // (Bevy TextureAccessError::UnsupportedTextureFormat, image.rs:1968).
 TEST(Image, CompressedFormatReportsUnsupportedAccess) {
-    auto image                      = epix::image::Image::create2d(4, 4, epix::image::Format::RGBA8);
+    auto image                      = epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm);
     image.texture_descriptor.format = wgpu::TextureFormat::eBC7RGBAUnorm;
 
     EXPECT_FALSE(image.pixel_bytes({0u, 0u, 0u}).has_value());
@@ -615,7 +615,7 @@ TEST(ImageLoaderSettings, SrgbTextureFormatSelection) {
 // derived fallback (`bevy_render/src/texture/gpu_image.rs`).
 TEST(ImageArrayLayout, Create2dArrayDeclaresAnArrayViewEvenForOneLayer) {
     for (const std::uint32_t layers : {1u, 4u}) {
-        const auto image = epix::image::Image::create2d_array(8, 4, layers, epix::image::Format::RGBA8);
+        const auto image = epix::image::Image::create2d_array(8, 4, layers, wgpu::TextureFormat::eRGBA8Unorm);
         ASSERT_TRUE(image.texture_view_descriptor.has_value());
         const auto& view = *image.texture_view_descriptor;
         EXPECT_EQ(view.dimension, wgpu::TextureViewDimension::e2DArray);
@@ -635,12 +635,12 @@ TEST(ImageArrayLayout, Create2dArrayDeclaresAnArrayViewEvenForOneLayer) {
 // The declaration is specific to the array constructor: plain 2D and volume
 // images keep deriving their view, so no non-array path changes.
 TEST(ImageArrayLayout, NonArrayConstructorsKeepTheirDerivedViews) {
-    const auto plain = epix::image::Image::create2d(8, 4, epix::image::Format::RGBA8);
+    const auto plain = epix::image::Image::create2d(8, 4, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_FALSE(plain.texture_view_descriptor.has_value());
     EXPECT_EQ(plain.type(), epix::image::ImageType::e2D);
     EXPECT_EQ(plain.layers(), 1u);
 
-    const auto volume = epix::image::Image::create3d(8, 4, 3, epix::image::Format::RGBA8);
+    const auto volume = epix::image::Image::create3d(8, 4, 3, wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_FALSE(volume.texture_view_descriptor.has_value());
     EXPECT_EQ(volume.type(), epix::image::ImageType::e3D);
 }
@@ -825,10 +825,12 @@ TEST(ImageConvert, MatchesBevyConvertGates) {
     EXPECT_EQ(converted->raw_view()[3], std::byte{255});
     EXPECT_EQ(converted->raw_view()[12], std::byte{12});
 
+    // Bevy's `from_dynamic` widens an 8-bit luma result back to RGBA, so the `R8Unorm` target
+    // yields `Rgba8Unorm` - that is Bevy's own behaviour, not an adaptation.
     const auto regrey = make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eR8Unorm);
     ASSERT_TRUE(regrey.has_value());
-    EXPECT_EQ(regrey->texture_format(), wgpu::TextureFormat::eR8Unorm);
-    EXPECT_EQ(regrey->raw_view().size(), 4u);
+    EXPECT_EQ(regrey->texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(regrey->raw_view().size(), 16u);
 
     // Only the three formats Bevy's `convert` handles are accepted as a target.
     EXPECT_FALSE(make(wgpu::TextureFormat::eR8Unorm, grey).convert(wgpu::TextureFormat::eRGBA8Unorm).has_value());

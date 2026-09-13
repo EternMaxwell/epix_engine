@@ -36,7 +36,7 @@ assets::Handle<image::Image> make_scaling_image(assets::Assets<image::Image>& im
             std::copy(color.begin(), color.end(), pixels.begin() + offset);
         }
     }
-    return images.emplace(image::Image::create2d(96, 48, image::Format::RGBA8, pixels).value());
+    return images.emplace(image::Image::create2d(96, 48, wgpu::TextureFormat::eRGBA8Unorm, pixels).value());
 }
 
 assets::Handle<image::Image> make_slice_image(assets::Assets<image::Image>& images) {
@@ -52,7 +52,7 @@ assets::Handle<image::Image> make_slice_image(assets::Assets<image::Image>& imag
             std::copy(color.begin(), color.end(), pixels.begin() + offset);
         }
     }
-    return images.emplace(image::Image::create2d(32, 32, image::Format::RGBA8, pixels).value());
+    return images.emplace(image::Image::create2d(32, 32, wgpu::TextureFormat::eRGBA8Unorm, pixels).value());
 }
 
 struct TextureSliceVisualPlugin {
@@ -65,7 +65,7 @@ struct TextureSliceVisualPlugin {
         const auto slice_image   = make_slice_image(images);
         auto backing_pixels = std::array<std::uint8_t, 4>{28, 31, 42, 255};
         const auto backing = images.emplace(
-            image::Image::create2d(1, 1, image::Format::RGBA8, backing_pixels).value());
+            image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Unorm, backing_pixels).value());
 
         constexpr std::array modes{
             sprite::SpriteScalingMode::FillCenter,

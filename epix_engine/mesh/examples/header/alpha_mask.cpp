@@ -38,7 +38,7 @@ struct AlphaMaskVisualTestPlugin {
             20, 210, 255, 255, 20, 210, 255, 0,   20, 210, 255, 255, 20, 210, 255, 0,
             20, 210, 255, 0,   20, 210, 255, 255, 20, 210, 255, 0,   20, 210, 255, 255,
         };
-        const auto image = images.emplace(image::Image::create2d(4, 4, image::Format::RGBA8, checker).value());
+        const auto image = images.emplace(image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm, checker).value());
         const auto background = meshes.emplace(mesh::make_box2d(440.0f, 300.0f));
         const auto foreground = meshes.emplace(mesh::make_box2d_uv(440.0f, 300.0f));
 

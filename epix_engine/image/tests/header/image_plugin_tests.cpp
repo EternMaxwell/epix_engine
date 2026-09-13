@@ -37,7 +37,7 @@ TEST(ImagePlugin, InstallsBevyFallbackImageAssets) {
     ASSERT_TRUE(opaque.has_value());
     EXPECT_EQ(opaque->get().width(), 1u);
     EXPECT_EQ(opaque->get().height(), 1u);
-    EXPECT_EQ(opaque->get().format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(opaque->get().texture_format(), wgpu::TextureFormat::eRGBA8UnormSrgb);
     constexpr std::array<std::uint8_t, 4> opaque_pixels{255, 255, 255, 255};
     ASSERT_EQ(opaque->get().raw_view().size(), opaque_pixels.size());
     for (std::size_t i = 0; i < opaque_pixels.size(); ++i) {

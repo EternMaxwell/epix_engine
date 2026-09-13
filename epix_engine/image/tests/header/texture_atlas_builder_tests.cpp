@@ -15,15 +15,11 @@ namespace assets = epix::assets;
 
 namespace {
 
-/** @brief The fixture's `image`: a deterministic payload whose byte `i` is `offset + i`.
- *
- * The layout and the descriptor format are given separately because Epix's factories are
- * `Format`-based while the builder stores a `wgpu::TextureFormat`. */
+/** @brief The fixture's `image`: a deterministic payload whose byte `i` is `offset + i`. */
 image::Image make_image(
-    std::uint32_t width, std::uint32_t height, image::Format layout, wgpu::TextureFormat format, std::uint8_t offset) {
-    auto result                      = image::Image::create2d(width, height, layout);
-    result.texture_descriptor.format = format;
-    auto bytes                       = result.raw_view_mut();
+    std::uint32_t width, std::uint32_t height, wgpu::TextureFormat format, std::uint8_t offset) {
+    auto result = image::Image::create2d(width, height, format);
+    auto bytes  = result.raw_view_mut();
     for (std::size_t index = 0; index < bytes.size(); ++index) {
         bytes[index] = static_cast<std::byte>(static_cast<std::uint8_t>(offset + index));
     }
@@ -31,11 +27,8 @@ image::Image make_image(
 }
 
 /** @brief The fixture's `uninitialized`: an image whose payload was already transferred. */
-image::Image uninitialized(std::uint32_t width,
-                           std::uint32_t height,
-                           image::Format layout,
-                           wgpu::TextureFormat format) {
-    auto result = make_image(width, height, layout, format, 0);
+image::Image uninitialized(std::uint32_t width, std::uint32_t height, wgpu::TextureFormat format) {
+    auto result = make_image(width, height, format, 0);
     result.take_data();
     return result;
 }
@@ -100,16 +93,16 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     std::string dump;
 
     {
-        const auto a = make_image(2, 2, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 1);
-        const auto b = make_image(2, 2, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 100);
+        const auto a = make_image(2, 2, wgpu::TextureFormat::eRGBA8UnormSrgb, 1);
+        const auto b = make_image(2, 2, wgpu::TextureFormat::eRGBA8UnormSrgb, 100);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(4, 4)).add_texture(std::nullopt, a).add_texture(std::nullopt, b);
         dump += report("pixel-2x2", builder);
     }
 
     {
-        const auto a = make_image(2, 2, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 7);
-        const auto b = make_image(2, 2, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 40);
+        const auto a = make_image(2, 2, wgpu::TextureFormat::eRGBA8UnormSrgb, 7);
+        const auto b = make_image(2, 2, wgpu::TextureFormat::eRGBA8UnormSrgb, 40);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(8, 8))
             .padding(glm::uvec2(1, 1))
@@ -119,7 +112,7 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     }
 
     {
-        const auto a = make_image(3, 3, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 5);
+        const auto a = make_image(3, 3, wgpu::TextureFormat::eRGBA8UnormSrgb, 5);
         image::TextureAtlasBuilder builder;
         builder.add_texture(std::nullopt, a);
         dump += report("default-size", builder);
@@ -128,7 +121,7 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     {
         std::vector<image::Image> textures;
         for (std::uint32_t index = 0; index < 5; ++index) {
-            textures.push_back(make_image(8, 8, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb,
+            textures.push_back(make_image(8, 8, wgpu::TextureFormat::eRGBA8UnormSrgb,
                                           static_cast<std::uint8_t>(index * 10)));
         }
         image::TextureAtlasBuilder builder;
@@ -142,7 +135,7 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     {
         std::vector<image::Image> textures;
         for (std::uint32_t index = 0; index < 5; ++index) {
-            textures.push_back(make_image(8, 8, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb,
+            textures.push_back(make_image(8, 8, wgpu::TextureFormat::eRGBA8UnormSrgb,
                                           static_cast<std::uint8_t>(index * 10)));
         }
         image::TextureAtlasBuilder builder;
@@ -154,7 +147,7 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     }
 
     {
-        const auto a = make_image(64, 64, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 3);
+        const auto a = make_image(64, 64, wgpu::TextureFormat::eRGBA8UnormSrgb, 3);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(16, 16)).max_size(glm::uvec2(32, 32)).add_texture(std::nullopt, a);
         dump += report("too-large", builder);
@@ -166,9 +159,9 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     }
 
     {
-        const auto a      = make_image(8, 8, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 11);
-        const auto b      = make_image(8, 8, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 22);
-        const auto c      = make_image(8, 8, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 33);
+        const auto a      = make_image(8, 8, wgpu::TextureFormat::eRGBA8UnormSrgb, 11);
+        const auto b      = make_image(8, 8, wgpu::TextureFormat::eRGBA8UnormSrgb, 22);
+        const auto c      = make_image(8, 8, wgpu::TextureFormat::eRGBA8UnormSrgb, 33);
         const auto first  = make_id(1);
         const auto second = make_id(2);
         image::TextureAtlasBuilder builder;
@@ -180,28 +173,28 @@ TEST(TextureAtlasBuilder, MatchesBevyImage018Results) {
     }
 
     {
-        const auto a = make_image(2, 2, image::Format::Grey8, wgpu::TextureFormat::eR8Unorm, 9);
+        const auto a = make_image(2, 2, wgpu::TextureFormat::eR8Unorm, 9);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(4, 4)).add_texture(std::nullopt, a);
         dump += report("convert-r8", builder);
     }
 
     {
-        const auto a = make_image(4, 4, image::Format::Grey8, wgpu::TextureFormat::eR8Unorm, 9);
+        const auto a = make_image(4, 4, wgpu::TextureFormat::eR8Unorm, 9);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(8, 8)).auto_format_conversion(false).add_texture(std::nullopt, a);
         dump += report("wrong-format", builder);
     }
 
     {
-        const auto a = uninitialized(4, 4, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb);
+        const auto a = uninitialized(4, 4, wgpu::TextureFormat::eRGBA8UnormSrgb);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(8, 8)).add_texture(std::nullopt, a);
         dump += report("uninitialized-source", builder);
     }
 
     {
-        const auto a = uninitialized(4, 4, image::Format::Grey8, wgpu::TextureFormat::eR8Unorm);
+        const auto a = uninitialized(4, 4, wgpu::TextureFormat::eR8Unorm);
         image::TextureAtlasBuilder builder;
         builder.initial_size(glm::uvec2(8, 8)).add_texture(std::nullopt, a);
         dump += report("uninitialized-source-converted", builder);
@@ -294,7 +287,7 @@ TEST(TextureAtlasBuilderError, DisplayMatchesBevy) {
 }
 
 TEST(TextureAtlasBuilder, ReportsUnsupportedAtlasFormat) {
-    const auto a = make_image(2, 2, image::Format::RGBA8, wgpu::TextureFormat::eRGBA8UnormSrgb, 1);
+    const auto a = make_image(2, 2, wgpu::TextureFormat::eRGBA8UnormSrgb, 1);
 
     image::TextureAtlasBuilder builder;
     builder.initial_size(glm::uvec2(4, 4)).format(wgpu::TextureFormat::eBC1RGBAUnorm).add_texture(std::nullopt, a);

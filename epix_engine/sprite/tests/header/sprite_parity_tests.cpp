@@ -111,7 +111,7 @@ TEST(TextureSlicer, InvalidInsetsFallBackToOneSlice) {
 TEST(Sprite, ConstructorsOwnImageAndAtlas) {
     epix::assets::Assets<image::Image> images;
     epix::assets::Assets<image::TextureAtlasLayout> layouts;
-    const auto source = images.emplace(image::Image::create2d(5, 10, image::Format::RGBA8));
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
     const auto layout = layouts.emplace(image::TextureAtlasLayout{
         .size = {5, 10}, .textures = {image::URect{{1, 1}, {4, 4}}}});
 
@@ -127,7 +127,7 @@ TEST(Sprite, ConstructorsOwnImageAndAtlas) {
 TEST(Sprite, ComputesRegularAndAtlasPixelSpacePoints) {
     epix::assets::Assets<image::Image> images;
     epix::assets::Assets<image::TextureAtlasLayout> layouts;
-    const auto source = images.emplace(image::Image::create2d(5, 10, image::Format::RGBA8));
+    const auto source = images.emplace(image::Image::create2d(5, 10, wgpu::TextureFormat::eRGBA8Unorm));
 
     const auto regular = sprite::Sprite::from_image(source);
     EXPECT_EQ(regular.compute_pixel_space_point({0.0f, 0.0f}, sprite::Anchor::CENTER, images, layouts),
@@ -166,7 +166,7 @@ TEST(CalculateBounds2d, CreatesAndUpdatesSpriteAabb) {
     app.add_plugins(sprite::SpritePlugin{});
 
     auto image_handle = app.world_mut().resource_mut<epix::assets::Assets<image::Image>>().emplace(
-        image::Image::create2d(20, 10, image::Format::RGBA8));
+        image::Image::create2d(20, 10, wgpu::TextureFormat::eRGBA8Unorm));
     const auto entity = app.world_mut().spawn(sprite::Sprite::from_image(image_handle), sprite::Anchor::TOP_RIGHT).id();
 
     EXPECT_FALSE(app.world().entity(entity).contains<epix::camera::Aabb>());

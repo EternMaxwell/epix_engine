@@ -513,6 +513,42 @@ void SFMLPlugin::create_windows(Commands cmd,
     }
 }
 
+namespace {
+/**
+ * @brief The 8-bit RGBA pixels a cursor or window icon needs, following Bevy's
+ * `extract_rgba_pixels` (`bevy_winit/src/cursor/custom_cursor.rs:85-103`).
+ *
+ * The 8-bit RGBA spellings pass their payload through unchanged, `Rgba32Float` is rounded to
+ * 8-bit, and every other format has no cursor/icon representation - which is Bevy's `None`, so no
+ * cursor is created rather than a payload being reinterpreted.
+ */
+std::optional<std::vector<std::byte>> extract_rgba_pixels(const epix::image::Image& image) {
+    switch (image.texture_format()) {
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+        case wgpu::TextureFormat::eRGBA8Snorm:
+        case wgpu::TextureFormat::eRGBA8Uint:
+        case wgpu::TextureFormat::eRGBA8Sint: {
+            const auto span = image.raw_view();
+            return std::vector<std::byte>(span.begin(), span.end());
+        }
+        case wgpu::TextureFormat::eRGBA32Float: {
+            const auto span = image.raw_view();
+            std::vector<std::byte> pixels;
+            pixels.reserve(span.size() / 4);
+            for (std::size_t offset = 0; offset + sizeof(float) <= span.size(); offset += sizeof(float)) {
+                float value = 0.0f;
+                std::memcpy(&value, span.data() + offset, sizeof(value));
+                pixels.push_back(static_cast<std::byte>(
+                    static_cast<unsigned char>(std::round(std::clamp(value, 0.0f, 1.0f) * 255.0f))));
+            }
+            return pixels;
+        }
+        default:
+            return std::nullopt;
+    }
+}
+}  // namespace
 void SFMLPlugin::update_window_states(Query<Item<Entity, Mut<WindowDesc>, const CachedWindow&>> windows,
                                       Res<assets::Assets<image::Image>> images,
                                       ResMut<SFMLwindows> sfml_windows) {
@@ -621,13 +657,14 @@ void SFMLPlugin::update_window_states(Query<Item<Entity, Mut<WindowDesc>, const 
                                       },
                                       [&](const CustomCursor& handle) {
                                           images->get(handle.image).transform([&](const image::Image& img) {
-                                              auto expected_format = image::Format::RGBA8;
-                                              std::optional<image::Image> converted_img;
-                                              if (img.format() != expected_format) {
-                                                  converted_img = img.convert(expected_format);
+                                              auto pixels = extract_rgba_pixels(img);
+                                              if (!pixels) {
+                                                  spdlog::warn("Image format '{}' is not supported for a cursor or icon; ignoring.",
+                                                               wgpu::to_string(img.texture_format()));
+                                                  return std::cref(img);
                                               }
-                                              auto& image = converted_img.has_value() ? *converted_img : img;
-                                              auto view   = image.raw_view();
+                                              const auto& image = img;
+                                              auto view         = std::span<const std::byte>(*pixels);
                                               auto cursor = sf::Cursor::createFromPixels(
                                                   reinterpret_cast<const std::uint8_t*>(view.data()),
                                                   {static_cast<unsigned>(image.width()),
@@ -645,13 +682,14 @@ void SFMLPlugin::update_window_states(Query<Item<Entity, Mut<WindowDesc>, const 
         if (cached.icon != desc.icon) {
             if (desc.icon.has_value()) {
                 images->get(desc.icon.value()).transform([&](const image::Image& img) {
-                    auto expected_format = image::Format::RGBA8;
-                    std::optional<image::Image> converted_img;
-                    if (img.format() != expected_format) {
-                        converted_img = img.convert(expected_format);
+                    auto pixels = extract_rgba_pixels(img);
+                    if (!pixels) {
+                        spdlog::warn("Image format '{}' is not supported for a cursor or icon; ignoring.",
+                                     wgpu::to_string(img.texture_format()));
+                        return std::cref(img);
                     }
-                    auto& image = converted_img.has_value() ? *converted_img : img;
-                    auto view   = image.raw_view();
+                    const auto& image = img;
+                    auto view         = std::span<const std::byte>(*pixels);
                     window->setIcon({static_cast<unsigned>(image.width()), static_cast<unsigned>(image.height())},
                                     reinterpret_cast<const std::uint8_t*>(view.data()));
                     cached.icon = desc.icon;

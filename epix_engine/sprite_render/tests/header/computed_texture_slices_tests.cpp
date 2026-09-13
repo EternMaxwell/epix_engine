@@ -43,7 +43,7 @@ TEST(ComputedTextureSlices, SpriteAndImageChangesMaintainComponent) {
                     epix::ecs::into(sprite_render::compute_slices_on_sprite_change));
 
     const auto image_handle = app.resource_mut<assets::Assets<image::Image>>().emplace(
-        image::Image::create2d(16, 16, image::Format::RGBA8));
+        image::Image::create2d(16, 16, wgpu::TextureFormat::eRGBA8Unorm));
     auto value = sprite::Sprite::from_image(image_handle);
     value.custom_size = glm::vec2(40.0f, 40.0f);
     value.image_mode = sprite::SpriteImageMode::Sliced{

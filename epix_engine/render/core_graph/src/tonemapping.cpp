@@ -409,7 +409,7 @@ image::Image setup_tonemapping_lut_image(std::span<const std::byte> ktx2) {
         throw std::runtime_error("unsupported tonemapping KTX2 Vulkan format");
     }
 
-    auto lut_image = image::Image::create3d(width, height, depth, image::Format::RGBA32F, rgba).value();
+    auto lut_image = image::Image::create3d(width, height, depth, wgpu::TextureFormat::eRGBA32Float, rgba).value();
     auto sampler = image::ImageSamplerDescriptor::linear();
     sampler.label = "Tonemapping LUT sampler";
     sampler.set_address_mode(image::ImageAddressMode::ClampToEdge);
@@ -444,7 +444,7 @@ get_lut_bind_group_layout_entries() {
 
 image::Image lut_placeholder() {
     const std::array<std::uint8_t, 4> magenta{255, 0, 255, 255};
-    auto placeholder = image::Image::create3d(1, 1, 1, image::Format::RGBA8, magenta).value();
+    auto placeholder = image::Image::create3d(1, 1, 1, wgpu::TextureFormat::eRGBA8Unorm, magenta).value();
     placeholder.set_usage(assets::RenderAssetUsages::RENDER_WORLD);
     return placeholder;
 }

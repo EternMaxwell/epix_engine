@@ -3431,7 +3431,7 @@ TEST(GpuImage, TakeGpuData) {
     static_assert(RenderAssetImpl<epix::image::Image>);
     static_assert(HasTakeGpuData<epix::image::Image>);
 
-    auto stored = epix::image::Image::create2d(3, 2, epix::image::Format::RGBA8);
+    auto stored = epix::image::Image::create2d(3, 2, wgpu::TextureFormat::eRGBA8Unorm);
     stored.set_usage(epix::assets::RenderAssetUsages::RENDER_WORLD);
     RenderAsset<epix::image::Image> impl;
     EXPECT_EQ(impl.byte_len(stored), std::optional<std::size_t>{24});
@@ -3444,7 +3444,7 @@ TEST(GpuImage, TakeGpuData) {
     EXPECT_TRUE(stored.raw_view().empty());
     EXPECT_EQ(stored.width(), 3u);
     EXPECT_EQ(stored.height(), 2u);
-    EXPECT_EQ(stored.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(stored.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(stored.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     EXPECT_FALSE(impl.byte_len(stored).has_value());
 

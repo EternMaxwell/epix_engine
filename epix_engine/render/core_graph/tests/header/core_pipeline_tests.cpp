@@ -169,7 +169,7 @@ TEST(TonemappingPipeline, MatchesBevyKeyAndPlaceholderContracts) {
     EXPECT_EQ(placeholder.width(), 1u);
     EXPECT_EQ(placeholder.height(), 1u);
     EXPECT_EQ(placeholder.depth(), 1u);
-    EXPECT_EQ(placeholder.format(), epix::image::Format::RGBA8);
+    EXPECT_EQ(placeholder.texture_format(), wgpu::TextureFormat::eRGBA8Unorm);
     EXPECT_EQ(placeholder.usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
     ASSERT_EQ(placeholder.raw_view().size(), 4u);
     EXPECT_EQ(placeholder.raw_view()[0], std::byte{255});
@@ -195,7 +195,7 @@ TEST(TonemappingPlugin, InstallsBundledBevyLuts) {
         EXPECT_EQ(lut->get().width(), extent);
         EXPECT_EQ(lut->get().height(), extent);
         EXPECT_EQ(lut->get().depth(), extent);
-        EXPECT_EQ(lut->get().format(), epix::image::Format::RGBA32F);
+        EXPECT_EQ(lut->get().texture_format(), wgpu::TextureFormat::eRGBA32Float);
         EXPECT_EQ(lut->get().usage(), epix::assets::RenderAssetUsages::RENDER_WORLD);
         ASSERT_NE(lut->get().sampler_descriptor(), nullptr);
         EXPECT_EQ(lut->get().sampler_descriptor()->min_filter, epix::image::ImageFilterMode::Linear);

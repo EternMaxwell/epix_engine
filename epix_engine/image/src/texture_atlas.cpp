@@ -106,12 +106,11 @@ std::expected<void, DynamicTextureAtlasBuilderError> DynamicTextureAtlasBuilder:
     detail::AtlasRectangle rect = allocation.rectangle;
     rect.max.x -= static_cast<std::int32_t>(padding);
     rect.max.y -= static_cast<std::int32_t>(padding);
-    const auto atlas_width        = static_cast<std::size_t>(atlas_texture.width());
-    const auto rect_width         = static_cast<std::size_t>(rect.width());
-    const std::size_t format_size = atlas_texture.format_info().pixelSize();
-    if (format_size == 0) {
-        return std::unexpected(DynamicTextureAtlasBuilderError{
-            TextureAccessError{TextureAccessError::UnsupportedTextureFormat{atlas_texture.texture_descriptor.format}}});
+    const auto atlas_width     = static_cast<std::size_t>(atlas_texture.width());
+    const auto rect_width      = static_cast<std::size_t>(rect.width());
+    const auto format_size     = texture_format_pixel_size(atlas_texture.texture_format());
+    if (!format_size) {
+        return std::unexpected(DynamicTextureAtlasBuilderError{format_size.error()});
     }
 
     if (!atlas_texture.has_data()) {
@@ -127,10 +126,10 @@ std::expected<void, DynamicTextureAtlasBuilderError> DynamicTextureAtlasBuilder:
     const auto source = texture.raw_view();
     for (std::int32_t texture_y = rect.min.y, row = 0; texture_y < rect.max.y; ++texture_y, ++row) {
         const auto bound_y              = static_cast<std::size_t>(texture_y);
-        const std::size_t begin         = (bound_y * atlas_width + static_cast<std::size_t>(rect.min.x)) * format_size;
-        const std::size_t end           = begin + rect_width * format_size;
-        const std::size_t texture_begin = static_cast<std::size_t>(row) * rect_width * format_size;
-        const std::size_t texture_end   = texture_begin + rect_width * format_size;
+        const std::size_t begin         = (bound_y * atlas_width + static_cast<std::size_t>(rect.min.x)) * *format_size;
+        const std::size_t end           = begin + rect_width * *format_size;
+        const std::size_t texture_begin = static_cast<std::size_t>(row) * rect_width * *format_size;
+        const std::size_t texture_end   = texture_begin + rect_width * *format_size;
         std::memcpy(atlas_data.data() + begin, source.data() + texture_begin, end - begin);
     }
     return {};

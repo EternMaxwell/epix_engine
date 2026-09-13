@@ -142,114 +142,126 @@ std::expected<std::vector<std::byte>, TextureError> read_file_bytes(const std::f
 }
 
 /**
- * @brief Widen three-channel pixels to four channels with an opaque alpha.
+ * @brief The `DynamicImage` variant `stb_image`'s channel count and sample type name.
  *
- * WebGPU has no three-channel texture format, so Bevy's `Image::from_dynamic`
- * converts `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building
- * the image, and Epix's `Format` therefore has no three-channel alternative
- * either. `stb_image` still returns three channels for a colour-type-2 PNG or a
- * Radiance HDR, so the decoded bytes are widened here, before the `Image`
- * exists, rather than through a conversion of an already-created image.
+ * Bevy's decoder hands `Image::from_dynamic` the `image::DynamicImage` variant that matches the
+ * decoded buffer, so the same variant is built here: one and two channels stay luma and
+ * luma+alpha, three channels stay RGB (the widening to RGBA happens inside `from_dynamic`), and
+ * four channels stay RGBA. `stb_image` reports floats only through `stbi_loadf`, which is the
+ * Radiance HDR path, and `image` has no float luma variant, so a single-channel float buffer is
+ * replicated into RGB exactly as a luma buffer would be.
  */
-template <typename Element>
-std::vector<std::byte> widen_rgb_to_rgba(const Element* pixels, std::size_t pixel_count, Element opaque) {
-    std::vector<std::byte> output(pixel_count * 4 * sizeof(Element));
-    auto* target = reinterpret_cast<Element*>(output.data());
-    for (std::size_t index = 0; index < pixel_count; ++index) {
-        target[index * 4 + 0] = pixels[index * 3 + 0];
-        target[index * 4 + 1] = pixels[index * 3 + 1];
-        target[index * 4 + 2] = pixels[index * 3 + 2];
-        target[index * 4 + 3] = opaque;
+DynamicImage decoded_dynamic_image(const void* pixels,
+                                   int width,
+                                   int height,
+                                   int channels,
+                                   bool is_float,
+                                   bool is_16_bit) {
+    const std::uint32_t w         = static_cast<std::uint32_t>(width);
+    const std::uint32_t h         = static_cast<std::uint32_t>(height);
+    const std::size_t pixel_count = static_cast<std::size_t>(w) * h;
+
+    if (is_float) {
+        const auto* source = static_cast<const float*>(pixels);
+        if (channels == 4) {
+            Rgba32FImage image{w, h, {}};
+            image.data.assign(source, source + pixel_count * 4);
+            return DynamicImage{std::move(image)};
+        }
+        if (channels == 2) {
+            Rgba32FImage image{w, h, {}};
+            image.data.resize(pixel_count * 4);
+            for (std::size_t index = 0; index < pixel_count; ++index) {
+                image.data[index * 4 + 0] = source[index * 2 + 0];
+                image.data[index * 4 + 1] = source[index * 2 + 0];
+                image.data[index * 4 + 2] = source[index * 2 + 0];
+                image.data[index * 4 + 3] = source[index * 2 + 1];
+            }
+            return DynamicImage{std::move(image)};
+        }
+        Rgb32FImage image{w, h, {}};
+        if (channels == 1) {
+            image.data.resize(pixel_count * 3);
+            for (std::size_t index = 0; index < pixel_count; ++index) {
+                image.data[index * 3 + 0] = source[index];
+                image.data[index * 3 + 1] = source[index];
+                image.data[index * 3 + 2] = source[index];
+            }
+        } else {
+            image.data.assign(source, source + pixel_count * 3);
+        }
+        return DynamicImage{std::move(image)};
     }
-    return output;
-}
 
-/** @brief Copy raw decoded pixels into the byte payload of an `Image`. */
-template <typename Element>
-std::vector<std::byte> copy_pixels(const Element* pixels, std::size_t count) {
-    std::vector<std::byte> output(count * sizeof(Element));
-    std::memcpy(output.data(), pixels, output.size());
-    return output;
-}
-
-std::expected<Image, TextureError> make_decoded_image(int width,
-                                                      int height,
-                                                      const std::vector<std::byte>& payload,
-                                                      Format format) {
-    // `create2d`'s payload overload deduces `std::span` from its argument, which
-    // only accepts an lvalue for a non-const element type, so the payload is
-    // passed by const reference rather than moved.
-    auto image =
-        Image::create2d(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height), format, payload);
-    if (!image) {
-        return std::unexpected(TextureError{TextureError::InvalidData{std::format(
-            "decoded {}x{} {} image does not match its payload", width, height, static_cast<int>(format))}});
+    if (is_16_bit) {
+        const auto* source = static_cast<const std::uint16_t*>(pixels);
+        if (channels == 1) {
+            Luma16Image image{w, h, {}};
+            image.data.assign(source, source + pixel_count);
+            return DynamicImage{std::move(image)};
+        }
+        if (channels == 2) {
+            LumaA16Image image{w, h, {}};
+            image.data.assign(source, source + pixel_count * 2);
+            return DynamicImage{std::move(image)};
+        }
+        if (channels == 3) {
+            Rgb16Image image{w, h, {}};
+            image.data.assign(source, source + pixel_count * 3);
+            return DynamicImage{std::move(image)};
+        }
+        Rgba16Image image{w, h, {}};
+        image.data.assign(source, source + pixel_count * 4);
+        return DynamicImage{std::move(image)};
     }
-    return std::move(*image);
+
+    const auto* source = static_cast<const std::uint8_t*>(pixels);
+    if (channels == 1) {
+        Luma8Image image{w, h, {}};
+        image.data.assign(source, source + pixel_count);
+        return DynamicImage{std::move(image)};
+    }
+    if (channels == 2) {
+        LumaA8Image image{w, h, {}};
+        image.data.assign(source, source + pixel_count * 2);
+        return DynamicImage{std::move(image)};
+    }
+    if (channels == 3) {
+        Rgb8Image image{w, h, {}};
+        image.data.assign(source, source + pixel_count * 3);
+        return DynamicImage{std::move(image)};
+    }
+    Rgba8Image image{w, h, {}};
+    image.data.assign(source, source + pixel_count * 4);
+    return DynamicImage{std::move(image)};
 }
 
-/**
- * @brief Apply Bevy's `is_srgb` decision to a decoded image.
- *
- * Bevy's `Image::from_dynamic` chooses the sRGB texture format for 8-bit data
- * when `is_srgb` is true, so an sRGB PNG is uploaded as `Rgba8UnormSrgb` and the
- * GPU linearizes it on sample. Epix's `Format` names the pixel layout, not the
- * transfer function, so the sRGB variant is selected here on the descriptor's
- * texture format. 16-bit and float formats have no sRGB counterpart in either
- * engine and are left alone.
- */
-void apply_srgb(Image& image, bool is_srgb) {
-    if (!is_srgb) return;
-    image.texture_descriptor.format = srgb_texture_format(image.texture_descriptor.format);
-}
-
-/** @brief The channel count `stb_image` reported for a decoded image. */
-Format decoded_format(int channels, bool is_float, bool is_16_bit) noexcept {
-    if (is_float) return channels >= 3 ? Format::RGBA32F : Format::Grey32F;
-    if (is_16_bit) return channels >= 3 ? Format::RGBA16 : Format::Grey16;
-    // `stb_image` declares the channel count it returns, so four, two, and one
-    // are the only values left; anything else is treated as four.
-    if (channels == 1) return Format::Grey8;
-    if (channels == 2) return Format::GreyAlpha8;
-    return Format::RGBA8;
-}
-
-std::expected<Image, TextureError> decode_image(const unsigned char* buffer, int size) {
+std::expected<Image, TextureError> decode_image(const unsigned char* buffer,
+                                                int size,
+                                                bool is_srgb,
+                                                assets::RenderAssetUsages asset_usage) {
     int w, h, channels;
     if (stbi_is_hdr_from_memory(buffer, size)) {
         float* pixels = stbi_loadf_from_memory(buffer, size, &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(TextureError{TextureError::ImageError{decode_failure_message()}});
-        const auto pixel_count = static_cast<std::size_t>(w) * h;
-        // `stb_image` returns two channels only for grey+alpha data, which has no
-        // three-channel counterpart, so the existing Grey32F mapping is kept.
-        const Format format = decoded_format(channels, true, false);
-        auto payload        = channels == 3 ? widen_rgb_to_rgba(pixels, pixel_count, 1.0f)
-                                            : copy_pixels(pixels, pixel_count * static_cast<std::size_t>(channels));
+        auto dynamic = decoded_dynamic_image(pixels, w, h, channels, true, false);
         stbi_image_free(pixels);
-        return make_decoded_image(w, h, payload, format);
+        return Image::from_dynamic(std::move(dynamic), is_srgb, asset_usage);
     }
 
     if (stbi_is_16_bit_from_memory(buffer, size)) {
         unsigned short* pixels = stbi_load_16_from_memory(buffer, size, &w, &h, &channels, 0);
         if (!pixels) return std::unexpected(TextureError{TextureError::ImageError{decode_failure_message()}});
-        const auto pixel_count = static_cast<std::size_t>(w) * h;
-        // `Format` has no 16-bit grey+alpha alternative, so two-channel data keeps
-        // the pre-existing Grey16 mapping and three-channel data is widened.
-        const Format format = decoded_format(channels, false, true);
-        auto payload = channels == 3 ? widen_rgb_to_rgba(pixels, pixel_count, static_cast<unsigned short>(0xFFFF))
-                                     : copy_pixels(pixels, pixel_count * static_cast<std::size_t>(channels));
+        auto dynamic = decoded_dynamic_image(pixels, w, h, channels, false, true);
         stbi_image_free(pixels);
-        return make_decoded_image(w, h, payload, format);
+        return Image::from_dynamic(std::move(dynamic), is_srgb, asset_usage);
     }
 
     stbi_uc* pixels = stbi_load_from_memory(buffer, size, &w, &h, &channels, 0);
     if (!pixels) return std::unexpected(TextureError{TextureError::ImageError{decode_failure_message()}});
-    const auto pixel_count = static_cast<std::size_t>(w) * h;
-    const Format format    = decoded_format(channels, false, false);
-    auto payload           = channels == 3 ? widen_rgb_to_rgba(pixels, pixel_count, static_cast<stbi_uc>(0xFF))
-                                           : copy_pixels(pixels, pixel_count * static_cast<std::size_t>(channels));
+    auto dynamic = decoded_dynamic_image(pixels, w, h, channels, false, false);
     stbi_image_free(pixels);
-    return make_decoded_image(w, h, payload, format);
+    return Image::from_dynamic(std::move(dynamic), is_srgb, asset_usage);
 }
 
 /**
@@ -444,17 +456,18 @@ std::expected<Image, TextureError> Image::from_buffer(std::span<const std::byte>
     }
 
     auto decoded = decode_image(reinterpret_cast<const unsigned char*>(bytes.data()),
-                                static_cast<int>(bytes.size()));
+                                static_cast<int>(bytes.size()),
+                                settings.is_srgb,
+                                settings.asset_usage);
     if (!decoded) return std::unexpected(decoded.error());
 
     Image image = std::move(*decoded);
-    // Bevy's `ImageLoader::load` order: `from_buffer` applies `is_srgb` and the
-    // sampler, then `texture_format` overrides the descriptor, then `array_layout`
-    // reinterprets the result (in `ImageLoader::load`, where a failure can be
-    // reported as `ImageLoaderError::ArrayLayout`).
-    apply_srgb(image, settings.is_srgb);
+    // Bevy's `ImageLoader::load` order: `from_buffer` applies `is_srgb` (inside
+    // `Image::from_dynamic`, which also applies `asset_usage`) and the sampler, then
+    // `texture_format` overrides the descriptor, then `array_layout` reinterprets the result (in
+    // `ImageLoader::load`, where a failure can be reported as
+    // `ImageLoaderError::ArrayLayout`).
     image.set_sampler(settings.sampler);
-    image.set_usage(settings.asset_usage);
 
     if (settings.texture_format) {
         image.texture_descriptor.format = *settings.texture_format;
@@ -473,36 +486,44 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
         return std::unexpected(ImageSaveError::SaveFailed);
     }
 
-    const auto& info       = image.format_info();
-    auto extension         = path.extension().string();
+    const std::uint8_t components = texture_format_components(image.texture_format());
+    const std::size_t pixel_size  = texture_format_pixel_size(image.texture_format()).value_or(0);
+    // The encoders below write 8-bit, 16-bit or 32-bit float samples, so the sample width is
+    // derived from the descriptor instead of a separate format table. A format whose samples are
+    // none of those (a 32-bit integer format, for example) has no writer here and is refused
+    // rather than written as invalid data, which is the case the previous `Format::Unknown` guard
+    // covered.
+    const std::size_t sample_size = components == 0 ? 0 : pixel_size / components;
+    const bool is_float =
+        sample_size == 4 &&
+        (image.texture_format() == wgpu::TextureFormat::eR32Float ||
+         image.texture_format() == wgpu::TextureFormat::eRGBA32Float);
+    const bool is_16_bit = sample_size == 2;
+    auto extension       = path.extension().string();
     const auto path_string = path.string();
     std::ranges::transform(extension, extension.begin(), [](unsigned char value) { return std::tolower(value); });
 
-    // A `Format` with no `wgpu::TextureFormat` counterpart (the three-channel
-    // alternatives) reports `Format::Unknown`, and `getFormatInfo` then reports
-    // zero channels, which would make the encoders write a corrupt file. Refuse
-    // instead of writing invalid data.
-    if (image.format() == Format::Unknown) {
+    if (components == 0 || pixel_size == 0 || (sample_size == 4 && !is_float)) {
         spdlog::error("[image] Refusing to save '{}': the image's format has no channel description.", path_string);
         return std::unexpected(ImageSaveError::SaveFailed);
     }
 
     bool success = false;
-    if (info.isFloat) {
-        success = stbi_write_hdr(path_string.c_str(), image.width(), image.height(), info.channels, image.raw<float>());
+    if (is_float) {
+        success = stbi_write_hdr(path_string.c_str(), image.width(), image.height(), components, image.raw<float>());
     } else {
-        if (info.is16Bit && extension == ".png") {
+        if (is_16_bit && extension == ".png") {
             std::cerr << "Warning: Saving 16-bit directly might not be supported by all formats.\n";
         }
         if (extension == ".png") {
-            success = stbi_write_png(path_string.c_str(), image.width(), image.height(), info.channels,
-                                     image.data.data(), image.width() * info.pixelSize());
+            success = stbi_write_png(path_string.c_str(), image.width(), image.height(), components, image.data.data(),
+                                     image.width() * pixel_size);
         } else if (extension == ".jpg" || extension == ".jpeg") {
-            success = stbi_write_jpg(path_string.c_str(), image.width(), image.height(), info.channels,
-                                     image.data.data(), 90);
+            success = stbi_write_jpg(path_string.c_str(), image.width(), image.height(), components, image.data.data(),
+                                     90);
         } else if (extension == ".bmp") {
             success =
-                stbi_write_bmp(path_string.c_str(), image.width(), image.height(), info.channels, image.data.data());
+                stbi_write_bmp(path_string.c_str(), image.width(), image.height(), components, image.data.data());
         }
     }
     if (!success) return std::unexpected(ImageSaveError::SaveFailed);

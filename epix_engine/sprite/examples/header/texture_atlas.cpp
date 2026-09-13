@@ -47,7 +47,7 @@ struct TextureAtlasVisualTestPlugin {
         }
 
         const auto atlas_image = images.emplace(
-            image::Image::create2d(8, 8, image::Format::RGBA8, pixels).value());
+            image::Image::create2d(8, 8, wgpu::TextureFormat::eRGBA8Unorm, pixels).value());
         const auto layout = layouts.emplace(
             image::TextureAtlasLayout::from_grid(glm::uvec2(4), 2, 2));
         constexpr std::array positions{

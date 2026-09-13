@@ -73,7 +73,7 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     (void)id;
     auto& [device, queue, default_sampler] = param;
     spdlog::trace("[render.image] Processing image to GPU: {}x{}x{} format={}.", asset.width(), asset.height(),
-                  asset.depth_or_layers(), static_cast<int>(asset.format()));
+                  asset.depth_or_layers(), static_cast<int>(asset.texture_format()));
     // The image owns its texture descriptor (Bevy `Image::texture_descriptor`), so
     // preparation consumes the declared descriptor instead of reconstructing the
     // dimension and format from image intrinsics.
@@ -156,7 +156,7 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     if (asset.has_data()) {
         assert(asset.texture_descriptor.mipLevelCount == 1 &&
                "layered upload assumes a single mip level; data_order must be honoured once mips exist");
-        const std::uint32_t pixel_size  = asset.format_info().pixelSize();
+        const std::uint32_t pixel_size  = static_cast<std::uint32_t>(image::texture_format_pixel_size(asset.texture_format()).value_or(0));
         const std::uint32_t width       = asset.width();
         const std::uint32_t height      = asset.height();
         const std::uint32_t raw_row     = width * pixel_size;

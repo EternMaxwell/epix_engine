@@ -194,7 +194,7 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
 
 struct CaptureFormatInfo {
     uint32_t bytes_per_pixel   = 0;
-    image::Format image_format = image::Format::Unknown;
+    wgpu::TextureFormat image_format = wgpu::TextureFormat::eUndefined;
     bool bgra_swap             = false;
 };
 
@@ -206,20 +206,20 @@ static CaptureFormatInfo capture_format(wgpu::TextureFormat format) {
     switch (format) {
         case wgpu::TextureFormat::eRGBA8Unorm:
         case wgpu::TextureFormat::eRGBA8UnormSrgb:
-            return {4, image::Format::RGBA8, false};
+            return {4, wgpu::TextureFormat::eRGBA8Unorm, false};
         case wgpu::TextureFormat::eBGRA8Unorm:
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
-            return {4, image::Format::RGBA8, true};
+            return {4, wgpu::TextureFormat::eRGBA8Unorm, true};
         case wgpu::TextureFormat::eR8Unorm:
-            return {1, image::Format::Grey8, false};
+            return {1, wgpu::TextureFormat::eR8Unorm, false};
         case wgpu::TextureFormat::eRG8Unorm:
-            return {2, image::Format::GreyAlpha8, false};
+            return {2, wgpu::TextureFormat::eRG8Unorm, false};
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
         case wgpu::TextureFormat::eRGBA16Float:
-            return {8, image::Format::RGBA16, false};
+            return {8, wgpu::TextureFormat::eRGBA16Uint, false};
         case wgpu::TextureFormat::eRGBA32Float:
-            return {16, image::Format::RGBA32F, false};
+            return {16, wgpu::TextureFormat::eRGBA32Float, false};
         default:
             return {};
     }

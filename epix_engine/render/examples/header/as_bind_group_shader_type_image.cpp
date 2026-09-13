@@ -118,7 +118,7 @@ struct ImageAssetClearGraphPlugin {
 struct ImageAssetInputPlugin {
     void ready(App& app) {
         std::array<std::uint8_t, 4> pixels{20, 180, 220, 255};
-        auto image_asset = image::Image::create2d(1, 1, image::Format::RGBA8, pixels).value();
+        auto image_asset = image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Unorm, pixels).value();
         app.world_mut().resource_mut<assets::Assets<image::Image>>().emplace(std::move(image_asset));
     }
 };
