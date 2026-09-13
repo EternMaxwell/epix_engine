@@ -12,7 +12,31 @@ their modules so that each item can be checked against the current code:
 - [Shader](shader/todo.md)
 - [Render](render/render/todo.md)
 
-## Error-type direction: a std::exception base
+## Repository-text integrity: never route file text through a shell
+
+Every file here is UTF-8, while the shell on this machine defaults to code page GBK. Any tool that
+decodes or re-encodes text through it corrupts the file: PowerShell script files without a BOM,
+`Get-Content`/`Set-Content`, and captured native-command output all mangle non-ASCII characters,
+and worse, a UTF-8 sequence followed by an ASCII letter makes the decoder swallow that letter
+(`bevy_image` becomes `evy_image`, `from_dynamic` becomes a tab plus `rom_dynamic`,
+`block_dimensions` becomes `lock_dimensions`). `documentation/image-bevy-0.18-mismatch-tracker.md`
+and `documentation/mesh-core-graph-bevy-0.18-match-status.md` both carry this damage.
+
+Rule: file text is only ever read or written with the file tools (`read`/`edit`/`write`), which are
+UTF-8 end to end. Shell commands are for building, running, measuring and searching only.
+
+Repair work outstanding:
+
+- `image-bevy-0.18-mismatch-tracker.md`: the vocabulary damage is repaired (emoji, eaten leading
+  letters, swallowed spaces). Re-read the file once end to end to confirm no remaining losses.
+- `mesh-core-graph-bevy-0.18-match-status.md`: still corrupted across roughly ninety lines - the
+  status emoji (`鉁?` for the tick, `馃毇` for the block sign, `鉂?` for the cross, `鈿狅笍` for the
+  warning sign), the punctuation (an em dash, `鈫抂` for an arrow plus a swallowed letter, `脳` for
+  the multiplication sign), and the letters swallowed inside those sequences. Repair each distinct
+  corrupted sequence with `edit` (replace-all) against the intended character, restoring swallowed
+  letters from context.
+
+## Error-type direction: a `std::exception` base
 
 Every public Epix error type is a value type returned through `std::expected`, which mirrors
 Bevy's `Result`. What Bevy also gives every one of them is `std::error::Error` + `Display`,
@@ -32,7 +56,7 @@ do not derive from `std::exception`, and the consequences are visible:
 ### Agreed design
 
 ```cpp
-/** @brief The text what() returns: a 	o_string result a std::string can be built from. */
+/** @brief The text what() returns: a `to_string` result a `std::string` can be built from. */
 template <typename Derived>
 concept DisplayableError =
     std::constructible_from<std::string, decltype(to_string(std::declval<const Derived&>()))>;
@@ -88,6 +112,7 @@ class Error : public std::exception, private ErrorStorage<owns_message_v<Derived
 Where a Rust `panic!`/`unwrap` is currently mirrored as
 `std::invalid_argument`/`std::runtime_error`, the module's own typed error can be thrown
 instead, so both the type and the message survive.
+
 ## Language and standard-library direction
 
 The engine currently targets C++23. Future migrations may use standardized static
