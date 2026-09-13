@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cassert>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +33,7 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -826,6 +828,97 @@ EPIX_EXPORT struct Mesh {
     std::expected<void, MeshWindingInvertError> invert_winding();
     std::expected<Mesh, MeshWindingInvertError> with_inverted_winding() &&;
 
+    /** @brief Insert the mesh's normals: smooth when the mesh is indexed, flat when it is not
+     * (Bevy `Mesh::compute_normals`). Throws after render-world extraction. */
+    void compute_normals();
+    /** @brief Fallible `compute_normals` (Bevy `Mesh::try_compute_normals`). */
+    std::expected<void, MeshAccessError> try_compute_normals();
+
+    /** @brief Insert one flat (per-face) normal per vertex; requires an unindexed `TriangleList`
+     * (Bevy `Mesh::compute_flat_normals`). Throws after render-world extraction. */
+    void compute_flat_normals();
+    /** @brief Fallible `compute_flat_normals` (Bevy `Mesh::try_compute_flat_normals`). */
+    std::expected<void, MeshAccessError> try_compute_flat_normals();
+
+    /** @brief Insert normals smoothed over shared vertices, weighted by the corner angles of the
+     * connected triangles (Bevy `Mesh::compute_smooth_normals`). */
+    void compute_smooth_normals();
+    /** @brief Fallible `compute_smooth_normals` (Bevy `Mesh::try_compute_smooth_normals`). */
+    std::expected<void, MeshAccessError> try_compute_smooth_normals();
+
+    /** @brief Insert normals smoothed over shared vertices, weighted by the area of each
+     * connected triangle (Bevy `Mesh::compute_area_weighted_normals`). */
+    void compute_area_weighted_normals();
+    /** @brief Fallible `compute_area_weighted_normals` (Bevy
+     * `Mesh::try_compute_area_weighted_normals`). */
+    std::expected<void, MeshAccessError> try_compute_area_weighted_normals();
+
+    /** @brief Insert normals smoothed over shared vertices with a custom per-triangle weight
+     * (Bevy `Mesh::compute_custom_smooth_normals`). Throws after render-world extraction.
+     *
+     * `per_triangle` receives a triangle's three vertex indices, the mesh's positions and the
+     * running normal sums, which is the C++ form of Bevy's
+     * `FnMut([usize; 3], &[[f32; 3]], &mut [Vec3])`. */
+    template <typename PerTriangle>
+    void compute_custom_smooth_normals(PerTriangle&& per_triangle) {
+        auto result = try_compute_custom_smooth_normals(std::forward<PerTriangle>(per_triangle));
+        if (!result) throw_access_error(result.error());
+    }
+    /** @brief Fallible `compute_custom_smooth_normals` (Bevy
+     * `Mesh::try_compute_custom_smooth_normals`). */
+    template <typename PerTriangle>
+    std::expected<void, MeshAccessError> try_compute_custom_smooth_normals(PerTriangle&& per_triangle) {
+        assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
+               "smooth normals can only be computed on `TriangleList`s");
+        auto stored_indices = try_indices_option();
+        if (!stored_indices) return std::unexpected(stored_indices.error());
+        assert(stored_indices->has_value() && "smooth normals can only be computed on indexed meshes");
+
+        auto position_data = try_attribute(ATTRIBUTE_POSITION);
+        if (!position_data) return std::unexpected(position_data.error());
+        const auto* positions = position_data->get().as_float3();
+        assert(positions != nullptr && "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+
+        std::vector<glm::vec3> normals(positions->size(), glm::vec3{0.0f});
+
+        const std::vector<std::size_t> raw_indices =
+            stored_indices->value().get().iter() | std::ranges::to<std::vector>();
+        for (std::size_t offset = 0; offset + 3 <= raw_indices.size(); offset += 3) {
+            per_triangle(std::array{raw_indices[offset], raw_indices[offset + 1], raw_indices[offset + 2]}, *positions,
+                         normals);
+        }
+
+        for (auto& normal : normals) normal = detail::normalize_or_zero(normal);
+        return try_insert_attribute(ATTRIBUTE_NORMAL, std::move(normals));
+    }
+
+    /** @brief Consume the mesh and return it with computed normals (Bevy
+     * `Mesh::with_computed_normals`). Throws after render-world extraction. */
+    Mesh with_computed_normals() &&;
+    /** @brief Fallible `with_computed_normals` (Bevy `Mesh::try_with_computed_normals`). */
+    std::expected<Mesh, MeshAccessError> try_with_computed_normals() &&;
+
+    /** @brief Consume the mesh and return it with flat normals (Bevy
+     * `Mesh::with_computed_flat_normals`). */
+    Mesh with_computed_flat_normals() &&;
+    /** @brief Fallible `with_computed_flat_normals` (Bevy
+     * `Mesh::try_with_computed_flat_normals`). */
+    std::expected<Mesh, MeshAccessError> try_with_computed_flat_normals() &&;
+
+    /** @brief Consume the mesh and return it with smooth normals (Bevy
+     * `Mesh::with_computed_smooth_normals`). */
+    Mesh with_computed_smooth_normals() &&;
+    /** @brief Fallible `with_computed_smooth_normals` (Bevy
+     * `Mesh::try_with_computed_smooth_normals`). */
+    std::expected<Mesh, MeshAccessError> try_with_computed_smooth_normals() &&;
+
+    /** @brief Consume the mesh and return it with area-weighted normals (Bevy
+     * `Mesh::with_computed_area_weighted_normals`). */
+    Mesh with_computed_area_weighted_normals() &&;
+    /** @brief Fallible `with_computed_area_weighted_normals` (Bevy
+     * `Mesh::try_with_computed_area_weighted_normals`). */
+    std::expected<Mesh, MeshAccessError> try_with_computed_area_weighted_normals() &&;
+
     /** @brief Lazily iterate indexed triangle-list or triangle-strip faces. */
     std::expected<MeshTriangles, MeshTrianglesError> triangles() const;
 
@@ -885,6 +978,12 @@ EPIX_EXPORT struct Mesh {
     Mesh transformed_by(const epix::transform::Transform& transform) &&;
     /** @brief Fallible `transformed_by` (Bevy `Mesh::try_transformed_by`). */
     std::expected<Mesh, MeshAccessError> try_transformed_by(const epix::transform::Transform& transform) &&;
+
+    /** @brief Normalize the joint weights so that each vertex's four weights sum to 1 (Bevy
+     * `Mesh::normalize_joint_weights`). Throws after render-world extraction. */
+    void normalize_joint_weights();
+    /** @brief Fallible `normalize_joint_weights` (Bevy `Mesh::try_normalize_joint_weights`). */
+    std::expected<void, MeshAccessError> try_normalize_joint_weights();
 
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {

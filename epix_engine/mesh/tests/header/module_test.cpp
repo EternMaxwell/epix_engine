@@ -3187,3 +3187,191 @@ TEST(MeshSphere, IcosphereMatchesHexasphere16PointUvAndIndexOrder) {
         EXPECT_EQ(mesh_value->indices()->get().len(), indices) << subdivisions;
     }
 }
+
+// Bevy's `compute_area_weighted_normals` tests (`mesh.rs:2683` and `mesh.rs:2718`): the sum of the
+// double-area face normals already carries each triangle's area, so a larger triangle skews the
+// normals of its vertices further.
+TEST(MeshAlgorithms, ComputeAreaWeightedNormalsMatchesBevy) {
+    const auto expect_near3 = [](const mesh::VertexAttributeValues::Float32x3Value& actual, glm::vec3 expected) {
+        for (glm::length_t index = 0; index < 3; ++index) EXPECT_NEAR(actual[index], expected[index], 1e-6f);
+    };
+    const auto normals_of = [](const mesh::Mesh& value) {
+        return value.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+
+    mesh::Mesh unit(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    unit.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    unit.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+    unit.compute_area_weighted_normals();
+
+    const auto* normals = normals_of(unit);
+    ASSERT_NE(normals, nullptr);
+    ASSERT_EQ(normals->size(), 4);
+    expect_near3((*normals)[0], glm::normalize(glm::vec3{1.0f, 0.0f, 1.0f}));
+    expect_near3((*normals)[1], glm::vec3{0.0f, 0.0f, 1.0f});
+    expect_near3((*normals)[2], glm::normalize(glm::vec3{1.0f, 0.0f, 1.0f}));
+    expect_near3((*normals)[3], glm::vec3{1.0f, 0.0f, 0.0f});
+
+    // The same two triangles with the first one twice as wide: vertex 1 keeps the first face's
+    // normal, while vertices 0 and 2 lean towards it because that face is now twice the area.
+    mesh::Mesh proportionate(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    proportionate.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    proportionate.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+    proportionate.compute_area_weighted_normals();
+
+    const auto* proportionate_normals = normals_of(proportionate);
+    ASSERT_NE(proportionate_normals, nullptr);
+    ASSERT_EQ(proportionate_normals->size(), 4);
+    expect_near3((*proportionate_normals)[0], glm::normalize(glm::vec3{1.0f, 0.0f, 2.0f}));
+    expect_near3((*proportionate_normals)[1], glm::vec3{0.0f, 0.0f, 1.0f});
+    expect_near3((*proportionate_normals)[2], glm::normalize(glm::vec3{1.0f, 0.0f, 2.0f}));
+    expect_near3((*proportionate_normals)[3], glm::vec3{1.0f, 0.0f, 0.0f});
+}
+
+// Bevy's `compute_angle_weighted_normals` test (`mesh.rs:2753`) over an indexed cuboid whose
+// corners are shared by three faces: weighting by corner angle, not area, is what makes every
+// component of every normal `1 / sqrt(3)`.
+TEST(MeshAlgorithms, ComputeSmoothNormalsMatchesBevy) {
+    mesh::Mesh cuboid(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    cuboid.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 1.0f, 1.0f},
+                                                                                   {-1.0f, 1.0f, 1.0f},
+                                                                                   {-1.0f, -1.0f, 1.0f},
+                                                                                   {1.0f, -1.0f, 1.0f},
+                                                                                   {1.0f, 1.0f, -1.0f},
+                                                                                   {-1.0f, 1.0f, -1.0f},
+                                                                                   {-1.0f, -1.0f, -1.0f},
+                                                                                   {1.0f, -1.0f, -1.0f}});
+    cuboid.insert_indices(mesh::Indices{std::vector<std::uint16_t>{
+        0, 1, 2, 2, 3, 0,  // front
+        5, 4, 7, 7, 6, 5,  // back
+        1, 5, 6, 6, 2, 1,  // left
+        4, 0, 3, 3, 7, 4,  // right
+        4, 5, 1, 1, 0, 4,  // top
+        3, 2, 6, 6, 7, 3,  // bottom
+    }});
+    cuboid.compute_smooth_normals();
+
+    const auto* normals =
+        cuboid.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(normals, nullptr);
+    ASSERT_EQ(normals->size(), 8);
+    constexpr float kFrac1Sqrt3 = 0.57735026f;
+    for (const auto& normal : *normals) {
+        for (const float component : normal) EXPECT_NEAR(std::abs(component), kFrac1Sqrt3, 1e-6f);
+    }
+
+    // Angle weighting is not area weighting: with a wider first triangle the two disagree about
+    // where the shared corners point, because the corner angles stay 90 degrees while the areas
+    // no longer match.
+    mesh::Mesh proportionate(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    proportionate.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    proportionate.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+    proportionate.compute_smooth_normals();
+
+    const auto* smooth =
+        proportionate.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(smooth, nullptr);
+    ASSERT_EQ(smooth->size(), 4);
+    const auto expect_near3 = [](const mesh::VertexAttributeValues::Float32x3Value& actual, glm::vec3 expected) {
+        for (glm::length_t index = 0; index < 3; ++index) EXPECT_NEAR(actual[index], expected[index], 1e-6f);
+    };
+    expect_near3((*smooth)[0], glm::normalize(glm::vec3{1.0f, 0.0f, 1.0f}));
+    expect_near3((*smooth)[1], glm::vec3{0.0f, 0.0f, 1.0f});
+    // The shared corner 2 subtends 90 degrees in the second triangle and `acos(1 / sqrt(5))` in the
+    // first, so angle weighting puts it between the two face normals - not at the area-weighted
+    // `normalize(1, 0, 2)` direction the area-weighted test above expects.
+    expect_near3((*smooth)[2],
+                 glm::normalize(glm::vec3{glm::pi<float>() / 4.0f, 0.0f, std::acos(1.0f / std::sqrt(5.0f))}));
+    expect_near3((*smooth)[3], glm::vec3{1.0f, 0.0f, 0.0f});
+}
+
+// Flat normals are one normal per face, repeated for that face's three vertices, and `compute_normals`
+// picks them exactly when the mesh has no index buffer.
+TEST(MeshAlgorithms, ComputeFlatNormalsAndDispatchMatchBevy) {
+    const auto expect_near3 = [](const mesh::VertexAttributeValues::Float32x3Value& actual, glm::vec3 expected) {
+        for (glm::length_t index = 0; index < 3; ++index) EXPECT_NEAR(actual[index], expected[index], 1e-6f);
+    };
+    const auto positions = std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f},
+                                                  {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}};
+
+    mesh::Mesh flat(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    flat.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, positions);
+    flat.compute_normals();
+
+    const auto* normals =
+        flat.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(normals, nullptr);
+    ASSERT_EQ(normals->size(), 6);
+    for (const std::size_t index : {0, 1, 2}) expect_near3((*normals)[index], glm::vec3{0.0f, 0.0f, 1.0f});
+    for (const std::size_t index : {3, 4, 5}) expect_near3((*normals)[index], glm::vec3{1.0f, 0.0f, 0.0f});
+
+    // The consuming forms return the same mesh the in-place forms do.
+    mesh::Mesh consumed = std::move(flat).with_computed_normals();
+    EXPECT_EQ(consumed.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)
+                  ->get()
+                  .get_if<mesh::VertexAttributeValues::Float32x3>()
+                  ->size(),
+              6);
+
+    // Indexed input routes `compute_normals` to smooth normals; the same vertices without indices
+    // are the flat case above.
+    mesh::Mesh indexed(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    indexed.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    indexed.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+    indexed.compute_normals();
+
+    const auto* indexed_normals =
+        indexed.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(indexed_normals, nullptr);
+    ASSERT_EQ(indexed_normals->size(), 4);
+    expect_near3((*indexed_normals)[0], glm::normalize(glm::vec3{1.0f, 0.0f, 1.0f}));
+    expect_near3((*indexed_normals)[1], glm::vec3{0.0f, 0.0f, 1.0f});
+    expect_near3((*indexed_normals)[3], glm::vec3{1.0f, 0.0f, 0.0f});
+}
+
+// Normal computed normals follow the same extraction rule as every other accessor (M9).
+TEST(MeshAlgorithms, ComputeNormalsReportsBevyAccessErrors) {
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                               std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+
+    for (const auto& result :
+         {extracted.try_compute_normals(), extracted.try_compute_flat_normals(), extracted.try_compute_smooth_normals(),
+          extracted.try_compute_area_weighted_normals(), extracted.try_normalize_joint_weights()}) {
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    }
+    EXPECT_THROW(extracted.compute_normals(), std::logic_error);
+    EXPECT_THROW(extracted.normalize_joint_weights(), std::logic_error);
+}
+
+// Joint weights are clamped at zero, normalised to a sum of one, and an all-zero set hands the
+// vertex to the first joint (Bevy `Mesh::normalize_joint_weights`).
+TEST(MeshAlgorithms, NormalizeJointWeightsMatchesBevy) {
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    value.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT,
+        std::vector<glm::vec4>{
+            {0.5f, 0.5f, 0.0f, 0.0f}, {-1.0f, 1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 0.0f, 0.0f}, {2.0f, 2.0f, 0.0f, 0.0f}});
+    value.normalize_joint_weights();
+
+    const auto* weights =
+        value.attribute(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT)->get().get_if<mesh::VertexAttributeValues::Float32x4>();
+    ASSERT_NE(weights, nullptr);
+    ASSERT_EQ(weights->size(), 4);
+    EXPECT_EQ((*weights)[0], (mesh::VertexAttributeValues::Float32x4Value{0.5f, 0.5f, 0.0f, 0.0f}));
+    EXPECT_EQ((*weights)[1],
+              (mesh::VertexAttributeValues::Float32x4Value{0.0f, 1.0f / 3.0f, 1.0f / 3.0f, 1.0f / 3.0f}));
+    EXPECT_EQ((*weights)[2], (mesh::VertexAttributeValues::Float32x4Value{1.0f, 0.0f, 0.0f, 0.0f}));
+    EXPECT_EQ((*weights)[3], (mesh::VertexAttributeValues::Float32x4Value{0.5f, 0.5f, 0.0f, 0.0f}));
+}

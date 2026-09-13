@@ -5,7 +5,10 @@
 #include <cmath>
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
+#include <limits>
+#include <span>
 #include <unordered_set>
+#include <vector>
 
 using namespace epix::mesh;
 namespace ecs = epix::ecs;
@@ -504,8 +507,7 @@ glm::vec3 scale_normal(glm::vec3 normal, glm::vec3 scale_reciprocal) {
     // normal was perpendicular to the scale. Otherwise the scale had at least one
     // zero component and the normal must point along that component.
     if (std::isfinite(scaled.x) && std::isfinite(scaled.y) && std::isfinite(scaled.z)) {
-        const float length = glm::length(scaled);
-        return length > 0.0f ? scaled / length : glm::vec3{0.0f};
+        return detail::normalize_or_zero(scaled);
     }
 
     glm::vec3 selected{std::isinf(std::abs(scaled.x)) ? std::copysign(1.0f, scaled.x) : 0.0f,
@@ -537,6 +539,17 @@ float acos_approx(float value) {
     result *= root;
 
     return nonnegative ? result : glm::pi<float>() - result;
+}
+
+/** @brief `Vec3::from([f32; 3])`. */
+glm::vec3 to_vec3(const VertexAttributeValues::Float32x3Value& value) {
+    return glm::vec3{value[0], value[1], value[2]};
+}
+
+/** @brief `glam::Vec3::angle_between`: the angle between two non-zero vectors, computed through
+ * the same approximation `acos_approx` applies (and therefore clamped the same way). */
+float angle_between(glm::vec3 lhs, glm::vec3 rhs) {
+    return acos_approx(glm::dot(lhs, rhs) / std::sqrt(glm::dot(lhs, lhs) * glm::dot(rhs, rhs)));
 }
 
 /** @brief `glam::Quat::is_near_identity` (glam 0.30 `f32/quat.rs`): the shortest-path angle of
@@ -594,9 +607,8 @@ std::expected<void, MeshAccessError> Mesh::try_scale_by(glm::vec3 scale) {
             for (auto& tangent : *values) {
                 const float handedness = tangent[3];
                 glm::vec3 scaled_tangent{tangent[0] * scale[0], tangent[1] * scale[1], tangent[2] * scale[2]};
-                const float length = glm::length(scaled_tangent);
-                scaled_tangent     = length > 0.0f ? scaled_tangent / length : glm::vec3{0.0f};
-                tangent            = {scaled_tangent.x, scaled_tangent.y, scaled_tangent.z, handedness};
+                scaled_tangent = detail::normalize_or_zero(scaled_tangent);
+                tangent        = {scaled_tangent.x, scaled_tangent.y, scaled_tangent.z, handedness};
             }
         }
     }
@@ -639,9 +651,8 @@ std::expected<void, MeshAccessError> Mesh::try_rotate_by(glm::quat rotation) {
     if (*normals) {
         if (auto* values = normals->value().get().get_if<VertexAttributeValues::Float32x3>()) {
             for (auto& normal : *values) {
-                const glm::vec3 source{normal[0], normal[1], normal[2]};
-                const float length      = glm::length(source);
-                const glm::vec3 rotated = rotation * (length > 0.0f ? source / length : glm::vec3{0.0f});
+                const glm::vec3 source  = detail::normalize_or_zero(glm::vec3{normal[0], normal[1], normal[2]});
+                const glm::vec3 rotated = rotation * source;
                 normal                  = {rotated.x, rotated.y, rotated.z};
             }
         }
@@ -652,10 +663,9 @@ std::expected<void, MeshAccessError> Mesh::try_rotate_by(glm::quat rotation) {
     if (*tangents) {
         if (auto* values = tangents->value().get().get_if<VertexAttributeValues::Float32x4>()) {
             for (auto& tangent : *values) {
-                const float handedness = tangent[3];
-                const glm::vec3 source{tangent[0], tangent[1], tangent[2]};
-                const float length      = glm::length(source);
-                const glm::vec3 rotated = rotation * (length > 0.0f ? source / length : glm::vec3{0.0f});
+                const float handedness  = tangent[3];
+                const glm::vec3 source  = detail::normalize_or_zero(glm::vec3{tangent[0], tangent[1], tangent[2]});
+                const glm::vec3 rotated = rotation * source;
                 tangent                 = {rotated.x, rotated.y, rotated.z, handedness};
             }
         }
@@ -726,13 +736,12 @@ std::expected<void, MeshAccessError> Mesh::try_transform_by(const epix::transfor
     if (*tangents) {
         if (auto* values = tangents->value().get().get_if<VertexAttributeValues::Float32x4>()) {
             for (auto& tangent : *values) {
-                const float handedness = tangent[3];
-                glm::vec3 scaled_tangent{tangent[0] * transform.scaler[0], tangent[1] * transform.scaler[1],
-                                         tangent[2] * transform.scaler[2]};
-                const float length      = glm::length(scaled_tangent);
-                scaled_tangent          = length > 0.0f ? scaled_tangent / length : glm::vec3{0.0f};
-                const glm::vec3 rotated = transform.rotation * scaled_tangent;
-                tangent                 = {rotated.x, rotated.y, rotated.z, handedness};
+                const float handedness         = tangent[3];
+                const glm::vec3 scaled_tangent = detail::normalize_or_zero(glm::vec3{tangent[0] * transform.scaler[0],
+                                                                                     tangent[1] * transform.scaler[1],
+                                                                                     tangent[2] * transform.scaler[2]});
+                const glm::vec3 rotated        = transform.rotation * scaled_tangent;
+                tangent                        = {rotated.x, rotated.y, rotated.z, handedness};
             }
         }
     }
@@ -748,6 +757,175 @@ std::expected<Mesh, MeshAccessError> Mesh::try_transformed_by(const epix::transf
     auto result = try_transform_by(transform);
     if (!result) return std::unexpected(result.error());
     return std::move(*this);
+}
+
+void Mesh::compute_normals() {
+    auto result = try_compute_normals();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_compute_normals() {
+    assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
+           "`compute_normals` can only work on `TriangleList`s");
+    auto stored_indices = try_indices_option();
+    if (!stored_indices) return std::unexpected(stored_indices.error());
+    if (!stored_indices->has_value()) return try_compute_flat_normals();
+    return try_compute_smooth_normals();
+}
+
+void Mesh::compute_flat_normals() {
+    auto result = try_compute_flat_normals();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_compute_flat_normals() {
+    auto stored_indices = try_indices_option();
+    if (!stored_indices) return std::unexpected(stored_indices.error());
+    assert(!stored_indices->has_value() &&
+           "`compute_flat_normals` can't work on indexed geometry. Consider calling either "
+           "`Mesh::compute_smooth_normals` or `Mesh::duplicate_vertices` followed by "
+           "`Mesh::compute_flat_normals`.");
+    assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
+           "`compute_flat_normals` can only work on `TriangleList`s");
+
+    auto position_data = try_attribute(Mesh::ATTRIBUTE_POSITION);
+    if (!position_data) return std::unexpected(position_data.error());
+    const auto* positions = position_data->get().as_float3();
+    assert(positions != nullptr && "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+
+    // One normal per face, repeated for that face's three vertices.
+    std::vector<glm::vec3> normals;
+    normals.reserve(positions->size());
+    for (std::size_t offset = 0; offset + 3 <= positions->size(); offset += 3) {
+        const glm::vec3 normal =
+            triangle_normal((*positions)[offset], (*positions)[offset + 1], (*positions)[offset + 2]);
+        normals.insert(normals.end(), 3, normal);
+    }
+
+    return try_insert_attribute(Mesh::ATTRIBUTE_NORMAL, std::move(normals));
+}
+
+void Mesh::compute_smooth_normals() {
+    auto result = try_compute_smooth_normals();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_compute_smooth_normals() {
+    return try_compute_custom_smooth_normals([](std::array<std::size_t, 3> face,
+                                                std::span<const VertexAttributeValues::Float32x3Value> positions,
+                                                std::span<glm::vec3> normals) {
+        const glm::vec3 pa = to_vec3(positions[face[0]]);
+        const glm::vec3 pb = to_vec3(positions[face[1]]);
+        const glm::vec3 pc = to_vec3(positions[face[2]]);
+
+        const glm::vec3 ab = pb - pa;
+        const glm::vec3 ba = pa - pb;
+        const glm::vec3 bc = pc - pb;
+        const glm::vec3 cb = pb - pc;
+        const glm::vec3 ca = pa - pc;
+        const glm::vec3 ac = pc - pa;
+
+        // Weight each corner by the angle it subtends, so triangle area and triangle count
+        // do not influence the result. Degenerate corners weigh nothing.
+        constexpr float kEpsilon = std::numeric_limits<float>::epsilon();
+        const float weight_a     = glm::dot(ab, ab) * glm::dot(ac, ac) > kEpsilon ? angle_between(ab, ac) : 0.0f;
+        const float weight_b     = glm::dot(ba, ba) * glm::dot(bc, bc) > kEpsilon ? angle_between(ba, bc) : 0.0f;
+        const float weight_c     = glm::dot(ca, ca) * glm::dot(cb, cb) > kEpsilon ? angle_between(ca, cb) : 0.0f;
+
+        const glm::vec3 normal = triangle_normal(positions[face[0]], positions[face[1]], positions[face[2]]);
+
+        normals[face[0]] += normal * weight_a;
+        normals[face[1]] += normal * weight_b;
+        normals[face[2]] += normal * weight_c;
+    });
+}
+
+void Mesh::compute_area_weighted_normals() {
+    auto result = try_compute_area_weighted_normals();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_compute_area_weighted_normals() {
+    return try_compute_custom_smooth_normals([](std::array<std::size_t, 3> face,
+                                                std::span<const VertexAttributeValues::Float32x3Value> positions,
+                                                std::span<glm::vec3> normals) {
+        // The double-area face normal is already weighted by the triangle's area.
+        const glm::vec3 normal = triangle_area_normal(positions[face[0]], positions[face[1]], positions[face[2]]);
+        for (const std::size_t index : face) normals[index] += normal;
+    });
+}
+
+Mesh Mesh::with_computed_normals() && {
+    compute_normals();
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_computed_normals() && {
+    auto result = try_compute_normals();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+Mesh Mesh::with_computed_flat_normals() && {
+    compute_flat_normals();
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_computed_flat_normals() && {
+    auto result = try_compute_flat_normals();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+Mesh Mesh::with_computed_smooth_normals() && {
+    compute_smooth_normals();
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_computed_smooth_normals() && {
+    auto result = try_compute_smooth_normals();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+Mesh Mesh::with_computed_area_weighted_normals() && {
+    compute_area_weighted_normals();
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_computed_area_weighted_normals() && {
+    auto result = try_compute_area_weighted_normals();
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+void Mesh::normalize_joint_weights() {
+    auto result = try_normalize_joint_weights();
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_normalize_joint_weights() {
+    auto joints = try_attribute_mut_option(Mesh::ATTRIBUTE_JOINT_WEIGHT);
+    if (!joints) return std::unexpected(joints.error());
+    if (*joints) {
+        if (auto* weights = joints->value().get().get_if<VertexAttributeValues::Float32x4>()) {
+            for (auto& vertex_weights : *weights) {
+                // Negative weights are forced to zero. `std::fmax` is the equivalent of Rust's
+                // `f32::max`, which prefers the other operand over a NaN.
+                for (float& weight : vertex_weights) weight = std::fmax(weight, 0.0f);
+
+                const float sum = vertex_weights[0] + vertex_weights[1] + vertex_weights[2] + vertex_weights[3];
+                if (sum == 0.0f) {
+                    // All-zero weights are invalid, so the first joint takes the vertex.
+                    vertex_weights[0] = 1.0f;
+                } else {
+                    const float reciprocal = 1.0f / sum;
+                    for (float& weight : vertex_weights) weight *= reciprocal;
+                }
+            }
+        }
+    }
+    return {};
 }
 
 std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {

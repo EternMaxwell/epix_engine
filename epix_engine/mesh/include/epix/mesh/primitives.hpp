@@ -1802,12 +1802,11 @@ static_assert(MeshBuilder<RingMeshBuilder<Circle>>);
 // through z is the back cap, and a mantel of `segments + 1` layers connects them around the
 // perimeter supplied by the 2D builder's `Extrudable` impl.
 
-/** @brief Bevy's `Vec2`/`Vec3::normalize_or_zero`: normalize the vector, or return the zero vector
- * when its length is zero or non-finite. */
+/** @brief Bevy's `Vec2`/`Vec3::normalize_or_zero`: normalize the vector through the reciprocal of
+ * its length, or return the zero vector when that reciprocal is zero or non-finite. */
 template <typename Vec>
 Vec normalize_or_zero(const Vec& value) {
-    const auto length = glm::length(value);
-    return std::isfinite(length) && length > 0.0f ? value / length : Vec{0.0f};
+    return detail::normalize_or_zero(value);
 }
 
 /** @brief The four shapes Bevy declares `ExtrusionBuilder::<Shape>::resolution` for

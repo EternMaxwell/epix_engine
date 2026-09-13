@@ -4,6 +4,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <epix/meta.hpp>
@@ -35,9 +36,38 @@ EPIX_EXPORT struct FromVertexAttributeError {
 };
 
 namespace detail {
+/** @brief Bevy's `Vec2`/`Vec3`/`Vec4::normalize_or_zero`: the normalized vector, or the zero
+ * vector when the length is zero or non-finite. */
+template <typename Vec>
+Vec normalize_or_zero(Vec value) {
+    const float length = glm::length(value);
+    return std::isfinite(length) && length > 0.0f ? value / length : Vec{0.0f};
+}
+
 template <typename Target>
 std::expected<std::vector<Target>, FromVertexAttributeError> try_convert_vertex_attribute_values(
     VertexAttributeValues&& values);
+}  // namespace detail
+
+/** @brief Compute a face normal, scaled by twice the face's area (Bevy
+ * `triangle_area_normal`, `bevy_mesh/src/vertex.rs:222`).
+ *
+ * Skipping the division by two is deliberate: the constant factor cancels when the summed
+ * normals are normalized, which is the only way Bevy uses this. */
+EPIX_EXPORT inline glm::vec3 triangle_area_normal(std::array<float, 3> a,
+                                                  std::array<float, 3> b,
+                                                  std::array<float, 3> c) {
+    const glm::vec3 pa{a[0], a[1], a[2]};
+    const glm::vec3 pb{b[0], b[1], b[2]};
+    const glm::vec3 pc{c[0], c[1], c[2]};
+    return glm::cross(pb - pa, pc - pa);
+}
+
+/** @brief Compute the normal of the face made of the three points `a`, `b` and `c` (Bevy
+ * `triangle_normal`, `bevy_mesh/src/vertex.rs:229`). */
+EPIX_EXPORT inline glm::vec3 triangle_normal(std::array<float, 3> a, std::array<float, 3> b, std::array<float, 3> c) {
+    const glm::vec3 face_normal = triangle_area_normal(a, b, c);
+    return detail::normalize_or_zero(face_normal);
 }
 
 /** @brief Semantically tagged arrays of per-vertex values (Bevy
