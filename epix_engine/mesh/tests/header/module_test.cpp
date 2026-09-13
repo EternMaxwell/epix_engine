@@ -502,6 +502,122 @@ TEST(MeshAlgorithms, ScaleMatchesBevyNormalAndTangentTransform) {
     EXPECT_THROW(std::move(extracted).scaled_by(glm::vec3{2.0f}), std::logic_error);
 }
 
+// Bevy's `Mesh::rotate_by` rotates positions, then renormalizes and rotates normals and tangents,
+// keeping the tangent handedness; a near-identity rotation skips the normal/tangent passes
+// (`mesh.rs:1855-1926`, with `Quat::is_near_identity` being glam 0.30's threshold check).
+TEST(MeshAlgorithms, RotateMatchesBevyNormalAndTangentTransform) {
+    const auto positions_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+    const auto normals_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    };
+    const auto tangents_of = [](const mesh::Mesh& mesh) {
+        return *mesh.attribute(mesh::Mesh::ATTRIBUTE_TANGENT)->get().get_if<mesh::VertexAttributeValues::Float32x4>();
+    };
+
+    // A half turn about Z, which is unambiguous across handedness conventions: x and y negate and z
+    // is unchanged.
+    mesh::Mesh half_turn(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    half_turn.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 2.0f, 3.0f}});
+    half_turn.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{1.0f, 0.0f, 0.0f}});
+    half_turn.insert_attribute(mesh::Mesh::ATTRIBUTE_TANGENT, std::vector<glm::vec4>{{0.0f, 3.0f, 0.0f, -1.0f}});
+
+    const glm::quat rotation = glm::angleAxis(glm::pi<float>(), glm::vec3{0.0f, 0.0f, 1.0f});
+    const mesh::Mesh rotated = std::move(half_turn).rotated_by(rotation);
+    // The half turn is not exactly representable as a quaternion, so the results carry the usual
+    // float residue around 1e-7 and are compared component-wise.
+    const auto expect_near3 = [](const mesh::VertexAttributeValues::Float32x3Value& actual, const glm::vec3& expected) {
+        for (glm::length_t index = 0; index < 3; ++index) EXPECT_NEAR(actual[index], expected[index], 1e-6f);
+    };
+    const auto expect_near4 = [](const mesh::VertexAttributeValues::Float32x4Value& actual, const glm::vec4& expected) {
+        for (glm::length_t index = 0; index < 4; ++index) EXPECT_NEAR(actual[index], expected[index], 1e-6f);
+    };
+
+    const auto rotated_positions = positions_of(rotated);
+    ASSERT_EQ(rotated_positions.size(), 1u);
+    expect_near3(rotated_positions[0], glm::vec3{-1.0f, -2.0f, 3.0f});
+    const auto rotated_normals = normals_of(rotated);
+    ASSERT_EQ(rotated_normals.size(), 1u);
+    expect_near3(rotated_normals[0], glm::vec3{-1.0f, 0.0f, 0.0f});
+    // The tangent is normalized before it is rotated, and keeps its handedness.
+    const auto rotated_tangents = tangents_of(rotated);
+    ASSERT_EQ(rotated_tangents.size(), 1u);
+    expect_near4(rotated_tangents[0], glm::vec4{0.0f, -1.0f, 0.0f, -1.0f});
+
+    // A near-identity rotation leaves normals and tangents untouched, even when they are not unit
+    // length, because only the position pass runs.
+    mesh::Mesh near_identity(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    near_identity.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 0.0f, 0.0f}});
+    near_identity.insert_attribute(mesh::Mesh::ATTRIBUTE_NORMAL, std::vector<glm::vec3>{{0.0f, 0.0f, 5.0f}});
+    near_identity.insert_attribute(mesh::Mesh::ATTRIBUTE_TANGENT, std::vector<glm::vec4>{{0.0f, 0.0f, 4.0f, 1.0f}});
+    ASSERT_TRUE(near_identity.try_rotate_by(glm::angleAxis(1e-7f, glm::vec3{0.0f, 0.0f, 1.0f})).has_value());
+    EXPECT_EQ(normals_of(near_identity),
+              (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 5.0f}}));
+    EXPECT_EQ(tangents_of(near_identity),
+              (std::vector<mesh::VertexAttributeValues::Float32x4Value>{{0.0f, 0.0f, 4.0f, 1.0f}}));
+
+    // The extraction guard is the same as for the other in-place families.
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto inaccessible = extracted.try_rotate_by(rotation);
+    ASSERT_FALSE(inaccessible.has_value());
+    EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(extracted.rotate_by(rotation), std::logic_error);
+}
+
+// Bevy's own `transform_mesh` test (`mesh.rs:2542-2591`): positions are scaled, rotated and
+// translated; normals go through `scale_normal`; UVs are untouched.
+TEST(MeshAlgorithms, TransformMatchesBevyWholeTransformCase) {
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                           std::vector<glm::vec3>{{-1.0f, -1.0f, 2.0f}, {1.0f, -1.0f, 2.0f}, {0.0f, 1.0f, 2.0f}});
+    value.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_NORMAL,
+        std::vector<glm::vec3>{glm::normalize(glm::vec3{-1.0f, -1.0f, 1.0f}),
+                               glm::normalize(glm::vec3{1.0f, -1.0f, 1.0f}), glm::vec3{0.0f, 0.0f, 1.0f}});
+    value.insert_attribute(mesh::Mesh::ATTRIBUTE_UV_0,
+                           std::vector<glm::vec2>{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.5f, 1.0f}});
+
+    epix::transform::Transform transform;
+    transform.translation = glm::vec3{-2.0f};
+    transform.scaler      = glm::vec3{2.0f, 0.0f, -1.0f};
+
+    const mesh::Mesh transformed = std::move(value).transformed_by(transform);
+    const auto* positions =
+        transformed.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(positions, nullptr);
+    EXPECT_EQ(*positions, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                              {-4.0f, -2.0f, -4.0f}, {0.0f, -2.0f, -4.0f}, {-2.0f, -2.0f, -4.0f}}));
+    const auto* normals =
+        transformed.attribute(mesh::Mesh::ATTRIBUTE_NORMAL)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
+    ASSERT_NE(normals, nullptr);
+    EXPECT_EQ(*normals, (std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                            {0.0f, -1.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}}));
+    const auto* uvs =
+        transformed.attribute(mesh::Mesh::ATTRIBUTE_UV_0)->get().get_if<mesh::VertexAttributeValues::Float32x2>();
+    ASSERT_NE(uvs, nullptr);
+    EXPECT_EQ(*uvs,
+              (std::vector<mesh::VertexAttributeValues::Float32x2Value>{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.5f, 1.0f}}));
+
+    // The in-place and fallible forms agree, and the extraction guard still applies.
+    mesh::Mesh in_place(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    in_place.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{1.0f, 2.0f, 3.0f}});
+    ASSERT_TRUE(in_place.try_transform_by(transform).has_value());
+    EXPECT_EQ(
+        *in_place.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>(),
+        (std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, -2.0f, -5.0f}}));
+
+    mesh::Mesh extracted(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    extracted.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION, std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}});
+    ASSERT_TRUE(extracted.take_gpu_data().has_value());
+    const auto inaccessible = std::move(extracted).try_transformed_by(transform);
+    ASSERT_FALSE(inaccessible.has_value());
+    EXPECT_EQ(inaccessible.error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_THROW(std::move(extracted).transformed_by(transform), std::logic_error);
+}
+
 TEST(MeshAlgorithms, InvertWindingMatchesEveryBevyTopologyAndError) {
     mesh::Mesh triangles(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     triangles.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 2, 3, 0}});

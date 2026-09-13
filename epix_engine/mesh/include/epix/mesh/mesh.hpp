@@ -15,6 +15,7 @@
 #include <epix/ecs.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
+#include <epix/transform.hpp>
 #include <expected>
 #include <format>
 #include <functional>
@@ -863,6 +864,27 @@ EPIX_EXPORT struct Mesh {
     Mesh scaled_by(glm::vec3 scale) &&;
     /** @brief Fallible `scaled_by` (Bevy `Mesh::try_scaled_by`). */
     std::expected<Mesh, MeshAccessError> try_scaled_by(glm::vec3 scale) &&;
+
+    /** @brief Rotate every vertex position, normal and tangent by `rotation` (Bevy
+     * `Mesh::rotate_by`). Throws after render-world extraction. */
+    void rotate_by(glm::quat rotation);
+    /** @brief Fallible `rotate_by` (Bevy `Mesh::try_rotate_by`). */
+    std::expected<void, MeshAccessError> try_rotate_by(glm::quat rotation);
+    /** @brief Consume this mesh and return a rotated copy (Bevy `Mesh::rotated_by`). */
+    Mesh rotated_by(glm::quat rotation) &&;
+    /** @brief Fallible `rotated_by` (Bevy `Mesh::try_rotated_by`). */
+    std::expected<Mesh, MeshAccessError> try_rotated_by(glm::quat rotation) &&;
+
+    /** @brief Transform every vertex position, normal and tangent by `transform` (Bevy
+     * `Mesh::transform_by`). Throws after render-world extraction. */
+    void transform_by(const epix::transform::Transform& transform);
+    /** @brief Fallible `transform_by` (Bevy `Mesh::try_transform_by`). */
+    std::expected<void, MeshAccessError> try_transform_by(const epix::transform::Transform& transform);
+    /** @brief Consume this mesh and return a transformed copy (Bevy
+     * `Mesh::transformed_by`). */
+    Mesh transformed_by(const epix::transform::Transform& transform) &&;
+    /** @brief Fallible `transformed_by` (Bevy `Mesh::try_transformed_by`). */
+    std::expected<Mesh, MeshAccessError> try_transformed_by(const epix::transform::Transform& transform) &&;
 
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {

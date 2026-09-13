@@ -513,6 +513,41 @@ glm::vec3 scale_normal(glm::vec3 normal, glm::vec3 scale_reciprocal) {
                        std::isinf(std::abs(scaled.z)) ? std::copysign(1.0f, scaled.z) : 0.0f};
     return selected / glm::length(selected);
 }
+
+/** @brief `glam::f32::math::acos_approx` (glam 0.30 `f32/math.rs`): the DirectXMath
+ * `XMScalarAcos` 7-degree minimax approximation of `clamp(value, -1, 1).acos()`.
+ *
+ * Ported because `Quat::is_near_identity` is defined in terms of it, and the threshold only
+ * makes sense against the approximated angle. */
+float acos_approx(float value) {
+    const bool nonnegative = value >= 0.0f;
+    const float x          = std::abs(value);
+    float omx              = 1.0f - x;
+    if (omx < 0.0f) omx = 0.0f;
+    const float root = std::sqrt(omx);
+
+    float result = -0.0012624911f;
+    result       = result * x + 0.00667009f;
+    result       = result * x - 0.017088126f;
+    result       = result * x + 0.03089188f;
+    result       = result * x - 0.050174303f;
+    result       = result * x + 0.08897899f;
+    result       = result * x - 0.2145988f;
+    result       = result * x + 1.5707963f;
+    result *= root;
+
+    return nonnegative ? result : glm::pi<float>() - result;
+}
+
+/** @brief `glam::Quat::is_near_identity` (glam 0.30 `f32/quat.rs`): the shortest-path angle of
+ * `rotation` against `THRESHOLD_ANGLE`, using the same approximation glam uses.
+ *
+ * Forcing the angle to the shortest path (through `abs(w)`) is what makes a quaternion close to
+ * `-1` count as a near-identity rotation. */
+bool is_near_identity(glm::quat rotation) {
+    constexpr float kThresholdAngle = 0.0028471446f;
+    return acos_approx(std::abs(rotation.w)) * 2.0f < kThresholdAngle;
+}
 }  // namespace
 
 void Mesh::scale_by(glm::vec3 scale) {
@@ -575,6 +610,142 @@ Mesh Mesh::scaled_by(glm::vec3 scale) && {
 
 std::expected<Mesh, MeshAccessError> Mesh::try_scaled_by(glm::vec3 scale) && {
     auto result = try_scale_by(scale);
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+void Mesh::rotate_by(glm::quat rotation) {
+    auto result = try_rotate_by(rotation);
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_rotate_by(glm::quat rotation) {
+    auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
+    if (!positions) return std::unexpected(positions.error());
+    if (*positions) {
+        if (auto* values = positions->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& position : *values) {
+                const glm::vec3 rotated = rotation * glm::vec3{position[0], position[1], position[2]};
+                position                = {rotated.x, rotated.y, rotated.z};
+            }
+        }
+    }
+
+    // Normals and tangents do not need transforming for a near-identity rotation.
+    if (is_near_identity(rotation)) return {};
+
+    auto normals = try_attribute_mut_option(Mesh::ATTRIBUTE_NORMAL);
+    if (!normals) return std::unexpected(normals.error());
+    if (*normals) {
+        if (auto* values = normals->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& normal : *values) {
+                const glm::vec3 source{normal[0], normal[1], normal[2]};
+                const float length      = glm::length(source);
+                const glm::vec3 rotated = rotation * (length > 0.0f ? source / length : glm::vec3{0.0f});
+                normal                  = {rotated.x, rotated.y, rotated.z};
+            }
+        }
+    }
+
+    auto tangents = try_attribute_mut_option(Mesh::ATTRIBUTE_TANGENT);
+    if (!tangents) return std::unexpected(tangents.error());
+    if (*tangents) {
+        if (auto* values = tangents->value().get().get_if<VertexAttributeValues::Float32x4>()) {
+            for (auto& tangent : *values) {
+                const float handedness = tangent[3];
+                const glm::vec3 source{tangent[0], tangent[1], tangent[2]};
+                const float length      = glm::length(source);
+                const glm::vec3 rotated = rotation * (length > 0.0f ? source / length : glm::vec3{0.0f});
+                tangent                 = {rotated.x, rotated.y, rotated.z, handedness};
+            }
+        }
+    }
+    return {};
+}
+
+Mesh Mesh::rotated_by(glm::quat rotation) && {
+    rotate_by(rotation);
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_rotated_by(glm::quat rotation) && {
+    auto result = try_rotate_by(rotation);
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+void Mesh::transform_by(const epix::transform::Transform& transform) {
+    auto result = try_transform_by(transform);
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_transform_by(const epix::transform::Transform& transform) {
+    // Needed when transforming normals and tangents.
+    const glm::vec3 scale_reciprocal{1.0f / transform.scaler.x, 1.0f / transform.scaler.y, 1.0f / transform.scaler.z};
+    // The scale cannot be zero on more than one axis, as in Bevy.
+    assert(glm::vec3(transform.scaler.y, transform.scaler.z, transform.scaler.x) *
+               glm::vec3(transform.scaler.z, transform.scaler.x, transform.scaler.y) !=
+           glm::vec3(0.0f));
+
+    auto positions = try_attribute_mut_option(Mesh::ATTRIBUTE_POSITION);
+    if (!positions) return std::unexpected(positions.error());
+    if (*positions) {
+        if (auto* values = positions->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& position : *values) {
+                // `Transform::transform_point`: scale, then rotate, then translate.
+                const glm::vec3 point{position[0], position[1], position[2]};
+                const glm::vec3 scaled     = point * transform.scaler;
+                const glm::vec3 rotated    = transform.rotation * scaled;
+                const glm::vec3 translated = rotated + transform.translation;
+                position                   = {translated.x, translated.y, translated.z};
+            }
+        }
+    }
+
+    // Normals and tangents do not need transforming when the rotation is near identity and the
+    // scale is uniform.
+    if (is_near_identity(transform.rotation) && transform.scaler.x == transform.scaler.y &&
+        transform.scaler.y == transform.scaler.z) {
+        return {};
+    }
+
+    auto normals = try_attribute_mut_option(Mesh::ATTRIBUTE_NORMAL);
+    if (!normals) return std::unexpected(normals.error());
+    if (*normals) {
+        if (auto* values = normals->value().get().get_if<VertexAttributeValues::Float32x3>()) {
+            for (auto& normal : *values) {
+                const glm::vec3 transformed =
+                    transform.rotation * scale_normal(glm::vec3{normal[0], normal[1], normal[2]}, scale_reciprocal);
+                normal = {transformed.x, transformed.y, transformed.z};
+            }
+        }
+    }
+
+    auto tangents = try_attribute_mut_option(Mesh::ATTRIBUTE_TANGENT);
+    if (!tangents) return std::unexpected(tangents.error());
+    if (*tangents) {
+        if (auto* values = tangents->value().get().get_if<VertexAttributeValues::Float32x4>()) {
+            for (auto& tangent : *values) {
+                const float handedness = tangent[3];
+                glm::vec3 scaled_tangent{tangent[0] * transform.scaler[0], tangent[1] * transform.scaler[1],
+                                         tangent[2] * transform.scaler[2]};
+                const float length      = glm::length(scaled_tangent);
+                scaled_tangent          = length > 0.0f ? scaled_tangent / length : glm::vec3{0.0f};
+                const glm::vec3 rotated = transform.rotation * scaled_tangent;
+                tangent                 = {rotated.x, rotated.y, rotated.z, handedness};
+            }
+        }
+    }
+    return {};
+}
+
+Mesh Mesh::transformed_by(const epix::transform::Transform& transform) && {
+    transform_by(transform);
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_transformed_by(const epix::transform::Transform& transform) && {
+    auto result = try_transform_by(transform);
     if (!result) return std::unexpected(result.error());
     return std::move(*this);
 }
