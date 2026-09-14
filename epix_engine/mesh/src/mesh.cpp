@@ -937,6 +937,25 @@ std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {
     Mesh extracted{primitive_type, asset_usage};
     extracted._attributes = std::move(attributes).value();
     extracted._indices    = std::move(indices).value();
+
+    // Store the AABB extents as they cannot be computed after extraction. Bevy assigns them to
+    // `self` and returns `Self { ..self.clone() }`, so both this mesh and the extracted copy keep
+    // the bounds once the attribute data has moved to the render world.
+    const auto position_data = extracted.try_attribute(Mesh::ATTRIBUTE_POSITION);
+    if (position_data) {
+        const auto* position_values = position_data->get().as_float3();
+        if (position_values != nullptr && !position_values->empty()) {
+            glm::vec3 minimum = to_vec3(position_values->front());
+            glm::vec3 maximum = minimum;
+            for (const auto& components : *position_values) {
+                const glm::vec3 point = to_vec3(components);
+                minimum               = glm::min(minimum, point);
+                maximum               = glm::max(maximum, point);
+            }
+            final_aabb           = Aabb3d::from_min_max(minimum, maximum);
+            extracted.final_aabb = final_aabb;
+        }
+    }
     return extracted;
 }
 

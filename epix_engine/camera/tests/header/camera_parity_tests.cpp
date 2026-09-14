@@ -597,6 +597,50 @@ TEST(MeshAabb, MeshSpecializationIsOwnedByCameraAndComputesBounds) {
     ASSERT_TRUE(aabb.has_value());
     EXPECT_EQ(aabb->center, glm::vec3(0.0f));
     EXPECT_EQ(aabb->half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
+
+    // Extracting a mesh stores its extents in `Mesh::final_aabb`, and those extents keep the
+    // bounds available after the position attribute itself can no longer be read - the
+    // short-circuit Bevy's `MeshAabb` opens with. Bevy assigns them to `self` and returns
+    // `Self { ..self.clone() }`, so the mesh that gave up its data keeps them as well.
+    auto taken = value.take_gpu_data();
+    ASSERT_TRUE(taken.has_value());
+    ASSERT_TRUE(value.final_aabb.has_value());
+    ASSERT_TRUE(taken->final_aabb.has_value());
+    EXPECT_EQ(*taken->final_aabb,
+              (::epix::mesh::Aabb3d::from_min_max(glm::vec3{-10.0f, -5.0f, 0.0f}, glm::vec3{10.0f, 5.0f, 0.0f})));
+    for (const auto* mesh : {&value, &*taken}) {
+        const auto precomputed = ::epix::camera::MeshAabb<::epix::mesh::Mesh>::compute_aabb(*mesh);
+        ASSERT_TRUE(precomputed.has_value());
+        EXPECT_EQ(precomputed->center, glm::vec3(0.0f));
+        EXPECT_EQ(precomputed->half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
+    }
+
+    // A mesh extracted to the render world alone: its position data has left this world, so the
+    // bounds can only come from the stored extents - the case the short-circuit exists for.
+    ::epix::mesh::Mesh render_only(wgpu::PrimitiveTopology::eTriangleList,
+                                   ::epix::assets::RenderAssetUsages::RENDER_WORLD);
+    render_only.insert_attribute(::epix::mesh::Mesh::ATTRIBUTE_POSITION,
+                                 std::vector<glm::vec3>{{-1.0f, -1.0f, -1.0f}, {2.0f, 0.0f, 4.0f}});
+    ASSERT_TRUE(render_only.take_gpu_data().has_value());
+    EXPECT_FALSE(render_only.try_attribute_option(::epix::mesh::Mesh::ATTRIBUTE_POSITION).has_value());
+    ASSERT_TRUE(render_only.final_aabb.has_value());
+    const auto surviving = ::epix::camera::MeshAabb<::epix::mesh::Mesh>::compute_aabb(render_only);
+    ASSERT_TRUE(surviving.has_value());
+    EXPECT_EQ(surviving->center, glm::vec3(0.5f, -0.5f, 1.5f));
+    EXPECT_EQ(surviving->half_extents, glm::vec3(1.5f, 0.5f, 2.5f));
+
+    // Without precomputed extents the same access error simply yields no bounds, because Bevy's
+    // `let Ok(..) = .. else { return None }` covers it instead of propagating it.
+    ::epix::mesh::Mesh indices_only(wgpu::PrimitiveTopology::eTriangleList,
+                                    ::epix::assets::RenderAssetUsages::RENDER_WORLD);
+    indices_only.insert_indices(::epix::mesh::Indices{std::vector<std::uint32_t>{0, 1, 2}});
+    ASSERT_TRUE(indices_only.take_gpu_data().has_value());
+    EXPECT_FALSE(indices_only.final_aabb.has_value());
+    EXPECT_FALSE(::epix::camera::MeshAabb<::epix::mesh::Mesh>::compute_aabb(indices_only).has_value());
+
+    // A readable mesh without position data has no bounds either.
+    ::epix::mesh::Mesh empty(wgpu::PrimitiveTopology::eTriangleList, ::epix::assets::RenderAssetUsages::MAIN_WORLD);
+    EXPECT_FALSE(::epix::camera::MeshAabb<::epix::mesh::Mesh>::compute_aabb(empty).has_value());
 }
 
 TEST(VisibilityPlugin, Mesh2dReceivesRequiredVisibilityComponents) {

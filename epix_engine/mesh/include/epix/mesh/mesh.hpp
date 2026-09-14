@@ -586,6 +586,32 @@ class MeshExtractableData {
     std::variant<std::monostate, T, ExtractedToRenderWorld> _value;
 };
 }  // namespace detail
+
+/** @brief Axis-aligned box defined by its minimum and maximum extent (Bevy
+ * `bevy_math::bounding::Aabb3d`).
+ *
+ * Bevy keeps this type in `bevy_math`, which Epix has no standalone equivalent of, so the surface
+ * its mesh and camera code consumes lives here, as the minimal shape inputs do (M19a). The rest of
+ * `bevy_math::bounding` - the `BoundingVolume` trait, `from_point_cloud`, `bounding_sphere`,
+ * `closest_point` and the ray casts - has no consumer in these modules and is out of scope. */
+EPIX_EXPORT struct Aabb3d {
+    /** @brief The minimum point of the box. */
+    glm::vec3 min{0.0f};
+    /** @brief The maximum point of the box. */
+    glm::vec3 max{0.0f};
+
+    /** @brief Construct from a minimum and maximum extent (Bevy `Aabb3d::from_min_max`). */
+    static Aabb3d from_min_max(glm::vec3 minimum, glm::vec3 maximum) noexcept {
+        return {.min = minimum, .max = maximum};
+    }
+    /** @brief The box's center (Bevy `BoundingVolume::center`). */
+    glm::vec3 center() const noexcept { return 0.5f * (min + max); }
+    /** @brief Half the box's size (Bevy `BoundingVolume::half_size`). */
+    glm::vec3 half_size() const noexcept { return 0.5f * (max - min); }
+
+    bool operator==(const Aabb3d&) const = default;
+};
+
 /** @brief CPU-side mesh asset storing vertex attributes and optional index data.
  *
  * Use insert_attribute/with_inserted_attribute to add vertex data and
@@ -631,6 +657,11 @@ EPIX_EXPORT struct Mesh {
 
     /** @brief Worlds in which this mesh's asset data is retained. */
     assets::RenderAssetUsages asset_usage;
+    /** @brief Precomputed min and max extents of the mesh position data, used mainly for
+     * constructing `Aabb`s for frustum culling.
+     *
+     * Set if and when the mesh is extracted to the GPU (Bevy `Mesh::final_aabb`). */
+    std::optional<Aabb3d> final_aabb;
 
     /** @brief Get the primitive topology. */
     wgpu::PrimitiveTopology get_primitive_type() const noexcept { return primitive_type; }

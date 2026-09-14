@@ -3375,3 +3375,33 @@ TEST(MeshAlgorithms, NormalizeJointWeightsMatchesBevy) {
     EXPECT_EQ((*weights)[2], (mesh::VertexAttributeValues::Float32x4Value{1.0f, 0.0f, 0.0f, 0.0f}));
     EXPECT_EQ((*weights)[3], (mesh::VertexAttributeValues::Float32x4Value{0.5f, 0.5f, 0.0f, 0.0f}));
 }
+
+// Bevy's `take_gpu_data_calculates_aabb` test (`mesh.rs:2883-2903`): the extents are stored while
+// the position data is still readable, because they cannot be computed after extraction.
+TEST(MeshAlgorithms, TakeGpuDataCalculatesFinalAabb) {
+    mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    value.insert_attribute(
+        mesh::Mesh::ATTRIBUTE_POSITION,
+        std::vector<glm::vec3>{{-0.5f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {-1.0f, -1.0f, 0.0f}, {-0.5f, -1.0f, 0.0f}});
+    value.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2, 2, 3, 0}});
+    EXPECT_FALSE(value.final_aabb.has_value());
+
+    auto taken = value.take_gpu_data();
+    ASSERT_TRUE(taken.has_value());
+    // Bevy assigns the extents to `self` and returns `Self { ..self.clone() }`, so the mesh that
+    // gave up its data keeps the bounds as well as the extracted copy.
+    EXPECT_TRUE(value.final_aabb.has_value());
+    ASSERT_TRUE(taken->final_aabb.has_value());
+    EXPECT_EQ(*taken->final_aabb,
+              (mesh::Aabb3d::from_min_max(glm::vec3{-1.0f, -1.0f, 0.0f}, glm::vec3{-0.5f, 0.0f, 0.0f})));
+    EXPECT_EQ(taken->final_aabb->center(), (glm::vec3{-0.75f, -0.5f, 0.0f}));
+    EXPECT_EQ(taken->final_aabb->half_size(), (glm::vec3{0.25f, 0.5f, 0.0f}));
+
+    // A mesh whose position attribute is absent keeps no extents, exactly as Bevy's
+    // `if let .. VertexAttributeValues::Float32x3(..)` guard does.
+    mesh::Mesh no_positions(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
+    no_positions.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2}});
+    auto without_positions = no_positions.take_gpu_data();
+    ASSERT_TRUE(without_positions.has_value());
+    EXPECT_FALSE(without_positions->final_aabb.has_value());
+}
