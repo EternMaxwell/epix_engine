@@ -1940,8 +1940,7 @@ TEST(MeshPrimitives, ConeMatchesBevyTipLateralSurfaceAndBase) {
     EXPECT_FLOAT_EQ(default_cone.height, 1.0f);
     EXPECT_FLOAT_EQ(default_cone.slant_height(), std::sqrt(0.5f * 0.5f + 1.0f));
     EXPECT_FLOAT_EQ(default_cone.base_area(), std::numbers::pi_v<float> * 0.25f);
-    EXPECT_FLOAT_EQ(default_cone.lateral_area(),
-                    std::numbers::pi_v<float> * 0.5f * std::sqrt(0.5f * 0.5f + 1.0f));
+    EXPECT_FLOAT_EQ(default_cone.lateral_area(), std::numbers::pi_v<float> * 0.5f * std::sqrt(0.5f * 0.5f + 1.0f));
 
     const auto value = std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).build();
     EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
@@ -2002,7 +2001,8 @@ TEST(MeshPrimitives, ConeMatchesBevyTipLateralSurfaceAndBase) {
               (std::vector<std::uint32_t>{5, 6, 7}));
 
     // Bevy's anchors shift the whole mesh along Y.
-    const auto tip = std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).with_anchor(mesh::ConeAnchor::Tip).build();
+    const auto tip =
+        std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).with_anchor(mesh::ConeAnchor::Tip).build();
     const auto* tip_positions =
         tip.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     ASSERT_NE(tip_positions, nullptr);
@@ -2028,8 +2028,8 @@ TEST(MeshPrimitives, ConicalFrustumMatchesBevyRingsLateralSurfaceAndCaps) {
     EXPECT_FLOAT_EQ(default_frustum.radius_top, 0.25f);
     EXPECT_FLOAT_EQ(default_frustum.radius_bottom, 0.5f);
     EXPECT_FLOAT_EQ(default_frustum.height, 0.5f);
-    EXPECT_FLOAT_EQ(default_frustum.bottom_area(), std::numbers::pi_v<float> * 0.25f);
-    EXPECT_FLOAT_EQ(default_frustum.top_area(), std::numbers::pi_v<float> * 0.0625f);
+    EXPECT_FLOAT_EQ(default_frustum.bottom_base_area(), std::numbers::pi_v<float> * 0.25f);
+    EXPECT_FLOAT_EQ(default_frustum.top_base_area(), std::numbers::pi_v<float> * 0.0625f);
     EXPECT_FLOAT_EQ(default_frustum.slant_height(), std::sqrt(0.25f * 0.25f + 0.5f * 0.5f));
 
     const auto value =
@@ -2092,10 +2092,8 @@ TEST(MeshPrimitives, ConicalFrustumMatchesBevyRingsLateralSurfaceAndCaps) {
               (std::vector<std::uint32_t>{14, 15, 16}));
 
     // More segments add intermediate rings without changing the caps.
-    const auto multi = std::move(mesh::ConicalFrustum{0.25f, 0.5f, 0.5f}.mesh())
-                           .with_resolution(4)
-                           .with_segments(3)
-                           .build();
+    const auto multi =
+        std::move(mesh::ConicalFrustum{0.25f, 0.5f, 0.5f}.mesh()).with_resolution(4).with_segments(3).build();
     const auto* multi_positions =
         multi.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     ASSERT_NE(multi_positions, nullptr);
@@ -2186,11 +2184,9 @@ TEST(MeshPrimitives, Capsule3dDefaultsAndConstructorsMatchBevy) {
     // `mesh()` is the `Meshable` entry point and preserves the shape.
     EXPECT_EQ((mesh::Capsule3d{1.0f, 2.0f}.mesh().capsule), (mesh::Capsule3d{1.0f, 2.0f}));
 
-    const auto configured = mesh::Capsule3dMeshBuilder{}
-                                .with_rings(3)
-                                .with_longitudes(5)
-                                .with_latitudes(6)
-                                .with_uv_profile(mesh::CapsuleUvProfile::Fixed);
+    const auto configured =
+        mesh::Capsule3dMeshBuilder{}.with_rings(3).with_longitudes(5).with_latitudes(6).with_uv_profile(
+            mesh::CapsuleUvProfile::Fixed);
     EXPECT_EQ(configured.rings, 3u);
     EXPECT_EQ(configured.longitudes, 5u);
     EXPECT_EQ(configured.latitudes, 6u);
@@ -2205,11 +2201,11 @@ TEST(MeshPrimitives, Capsule3dDefaultsAndConstructorsMatchBevy) {
 // changing shows up directly here.
 TEST(MeshPrimitives, Capsule3dMeshRegionLayoutMatchesBevy) {
     const auto counts = [](std::uint32_t rings, std::uint32_t longitudes, std::uint32_t latitudes) {
-        const std::uint32_t half_lats   = latitudes / 2u;
-        const std::uint32_t half_latsn1 = half_lats - 1u;
-        const std::uint32_t half_latsn2 = half_lats - 2u;
-        const std::uint32_t ringsp1     = rings + 1u;
-        const std::uint32_t lonsp1      = longitudes + 1u;
+        const std::uint32_t half_lats     = latitudes / 2u;
+        const std::uint32_t half_latsn1   = half_lats - 1u;
+        const std::uint32_t half_latsn2   = half_lats - 2u;
+        const std::uint32_t ringsp1       = rings + 1u;
+        const std::uint32_t lonsp1        = longitudes + 1u;
         const std::uint32_t north_hemi    = longitudes;
         const std::uint32_t north_equator = north_hemi + lonsp1 * half_latsn1;
         const std::uint32_t cylinder      = north_equator + lonsp1;
@@ -2226,9 +2222,8 @@ TEST(MeshPrimitives, Capsule3dMeshRegionLayoutMatchesBevy) {
     };
 
     for (const std::uint32_t rings : {0u, 1u, 4u}) {
-        const mesh::Capsule3dMeshBuilder builder =
-            mesh::Capsule3dMeshBuilder{0.5f, 1.0f, 32u, 16u}.with_rings(rings);
-        const auto value = builder.build();
+        const mesh::Capsule3dMeshBuilder builder = mesh::Capsule3dMeshBuilder{0.5f, 1.0f, 32u, 16u}.with_rings(rings);
+        const auto value                         = builder.build();
         const auto* positions =
             value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
         const auto* normals =
@@ -2272,7 +2267,7 @@ TEST(MeshPrimitives, Capsule3dPolesEquatorsAndUvProfilesMatchBevy) {
     };
 
     // `longitudes = 4` puts the ring vertices at 0, 90, 180 and 270 degrees.
-    const auto value     = build(mesh::CapsuleUvProfile::Aspect, 4u);
+    const auto value      = build(mesh::CapsuleUvProfile::Aspect, 4u);
     const auto* positions = attribute(value, mesh::Mesh::ATTRIBUTE_POSITION);
     const auto* normals   = attribute(value, mesh::Mesh::ATTRIBUTE_NORMAL);
     const auto* uvs       = uv_attribute(value);
@@ -2318,13 +2313,13 @@ TEST(MeshPrimitives, Capsule3dPolesEquatorsAndUvProfilesMatchBevy) {
     EXPECT_NEAR((*uvs)[north_equator][1], 0.75f, 1e-6f);
     EXPECT_NEAR((*uvs)[south_equator][1], 0.25f, 1e-6f);
     // Uniform: half_lats / (rings + 1 + latitudes) = 8 / 17.
-    const auto uniform     = build(mesh::CapsuleUvProfile::Uniform, 4u);
+    const auto uniform      = build(mesh::CapsuleUvProfile::Uniform, 4u);
     const auto* uniform_uvs = uv_attribute(uniform);
     ASSERT_NE(uniform_uvs, nullptr);
     EXPECT_NEAR((*uniform_uvs)[north_equator][1], 1.0f - 8.0f / 17.0f, 1e-6f);
     EXPECT_NEAR((*uniform_uvs)[south_equator][1], 8.0f / 17.0f, 1e-6f);
     // Fixed: one third of the range per region.
-    const auto fixed     = build(mesh::CapsuleUvProfile::Fixed, 4u);
+    const auto fixed      = build(mesh::CapsuleUvProfile::Fixed, 4u);
     const auto* fixed_uvs = uv_attribute(fixed);
     ASSERT_NE(fixed_uvs, nullptr);
     EXPECT_NEAR((*fixed_uvs)[north_equator][1], 2.0f / 3.0f, 1e-6f);
@@ -3403,7 +3398,188 @@ TEST(MeshAlgorithms, TakeGpuDataCalculatesFinalAabb) {
     mesh::Mesh no_positions(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     no_positions.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2}});
     no_positions.final_aabb = mesh::Aabb3d::from_min_max(glm::vec3{-4.0f}, glm::vec3{5.0f});
-    auto without_positions = no_positions.take_gpu_data();
+    auto without_positions  = no_positions.take_gpu_data();
     ASSERT_TRUE(without_positions.has_value());
     EXPECT_EQ(without_positions->final_aabb, no_positions.final_aabb);
+}
+
+// Bevy v0.18 `Segment2d` inherent helpers (dim2.rs:1277-1544). Epix uses raw GLM vectors
+// for checked unit directions and translation-plus-angle for the otherwise identical isometry.
+TEST(MeshPrimitives, Segment2dHelpersMatchBevy) {
+    const auto expect_vec2_near = [](glm::vec2 actual, glm::vec2 expected) {
+        EXPECT_NEAR(actual.x, expected.x, 1e-6f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-6f);
+    };
+
+    const auto centered = mesh::Segment2d::from_direction_and_length({3.0f, 4.0f}, 10.0f);
+    expect_vec2_near(centered.point1(), {-3.0f, -4.0f});
+    expect_vec2_near(centered.point2(), {3.0f, 4.0f});
+    const auto ray = mesh::Segment2d::from_ray_and_length({1.0f, 2.0f}, {0.0f, 2.0f}, 3.0f);
+    expect_vec2_near(ray.point1(), {1.0f, 2.0f});
+    expect_vec2_near(ray.point2(), {1.0f, 5.0f});
+
+    const mesh::Segment2d segment{{1.0f, 2.0f}, {4.0f, 6.0f}};
+    EXPECT_FLOAT_EQ(segment.length(), 5.0f);
+    EXPECT_FLOAT_EQ(segment.length_squared(), 25.0f);
+    EXPECT_EQ(segment.scaled_direction(), (glm::vec2{3.0f, 4.0f}));
+    expect_vec2_near(segment.direction(), {0.6f, 0.8f});
+    expect_vec2_near(segment.left_normal(), {-0.8f, 0.6f});
+    expect_vec2_near(segment.right_normal(), {0.8f, -0.6f});
+    EXPECT_EQ(segment.scaled_left_normal(), (glm::vec2{-4.0f, 3.0f}));
+    EXPECT_EQ(segment.scaled_right_normal(), (glm::vec2{4.0f, -3.0f}));
+
+    const mesh::Segment2d degenerate{{2.0f, 3.0f}, {2.0f, 3.0f}};
+    EXPECT_FALSE(degenerate.try_direction().has_value());
+    EXPECT_FALSE(degenerate.try_left_normal().has_value());
+    EXPECT_FALSE(degenerate.try_right_normal().has_value());
+    EXPECT_THROW(degenerate.direction(), std::invalid_argument);
+    EXPECT_THROW(mesh::Segment2d::from_direction_and_length({std::numeric_limits<float>::infinity(), 0.0f}, 1.0f),
+                 std::invalid_argument);
+
+    EXPECT_EQ(segment.translated({-1.0f, 3.0f}), (mesh::Segment2d{{0.0f, 5.0f}, {3.0f, 9.0f}}));
+    const auto rotated = segment.rotated(std::numbers::pi_v<float> * 0.5f);
+    expect_vec2_near(rotated.point1(), {-2.0f, 1.0f});
+    expect_vec2_near(rotated.point2(), {-6.0f, 4.0f});
+    const auto transformed = segment.transformed({10.0f, -2.0f}, std::numbers::pi_v<float> * 0.5f);
+    expect_vec2_near(transformed.point1(), {8.0f, -1.0f});
+    expect_vec2_near(transformed.point2(), {4.0f, 2.0f});
+    const auto around_first = segment.rotated_around(std::numbers::pi_v<float>, segment.point1());
+    expect_vec2_near(around_first.point1(), segment.point1());
+    expect_vec2_near(around_first.point2(), {-2.0f, -2.0f});
+    EXPECT_EQ(segment.centered(), (mesh::Segment2d{{-1.5f, -2.0f}, {1.5f, 2.0f}}));
+    EXPECT_EQ(segment.resized(10.0f), (mesh::Segment2d{{-0.5f, 0.0f}, {5.5f, 8.0f}}));
+
+    auto reversed = segment;
+    reversed.reverse();
+    EXPECT_EQ(reversed, (mesh::Segment2d{{4.0f, 6.0f}, {1.0f, 2.0f}}));
+    EXPECT_EQ(segment.reversed(), reversed);
+    EXPECT_EQ(segment.closest_point({-10.0f, -10.0f}), segment.point1());
+    EXPECT_EQ(segment.closest_point({10.0f, 10.0f}), segment.point2());
+    expect_vec2_near(segment.closest_point({2.5f, 4.0f}), segment.center());
+}
+
+// Bevy v0.18 `Segment3d` inherent helpers (dim3.rs:399-602), with the same GLM
+// direction/isometry adaptation used by Segment2d.
+TEST(MeshPrimitives, Segment3dHelpersMatchBevy) {
+    const auto expect_vec3_near = [](glm::vec3 actual, glm::vec3 expected) {
+        EXPECT_NEAR(actual.x, expected.x, 1e-6f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-6f);
+        EXPECT_NEAR(actual.z, expected.z, 1e-6f);
+    };
+
+    const auto centered = mesh::Segment3d::from_direction_and_length({0.0f, 3.0f, 4.0f}, 10.0f);
+    expect_vec3_near(centered.point1(), {0.0f, -3.0f, -4.0f});
+    expect_vec3_near(centered.point2(), {0.0f, 3.0f, 4.0f});
+    const auto ray = mesh::Segment3d::from_ray_and_length({1.0f, 2.0f, 3.0f}, {2.0f, 0.0f, 0.0f}, 4.0f);
+    EXPECT_EQ(ray, (mesh::Segment3d{{1.0f, 2.0f, 3.0f}, {5.0f, 2.0f, 3.0f}}));
+
+    const mesh::Segment3d segment{{1.0f, 2.0f, 3.0f}, {1.0f, 5.0f, 7.0f}};
+    EXPECT_FLOAT_EQ(segment.length(), 5.0f);
+    EXPECT_FLOAT_EQ(segment.length_squared(), 25.0f);
+    EXPECT_EQ(segment.scaled_direction(), (glm::vec3{0.0f, 3.0f, 4.0f}));
+    expect_vec3_near(segment.direction(), {0.0f, 0.6f, 0.8f});
+
+    const mesh::Segment3d degenerate{glm::vec3{1.0f}, glm::vec3{1.0f}};
+    EXPECT_FALSE(degenerate.try_direction().has_value());
+    EXPECT_THROW(degenerate.direction(), std::invalid_argument);
+
+    const glm::quat half_turn = glm::angleAxis(std::numbers::pi_v<float>, glm::vec3{0.0f, 0.0f, 1.0f});
+    const auto transformed    = segment.transformed({2.0f, -1.0f, 3.0f}, half_turn);
+    expect_vec3_near(transformed.point1(), {1.0f, -3.0f, 6.0f});
+    expect_vec3_near(transformed.point2(), {1.0f, -6.0f, 10.0f});
+    const auto around_first = segment.rotated_around(half_turn, segment.point1());
+    expect_vec3_near(around_first.point1(), segment.point1());
+    expect_vec3_near(around_first.point2(), {1.0f, -1.0f, 7.0f});
+    EXPECT_EQ(segment.centered(), (mesh::Segment3d{{0.0f, -1.5f, -2.0f}, {0.0f, 1.5f, 2.0f}}));
+    EXPECT_EQ(segment.resized(10.0f), (mesh::Segment3d{{1.0f, 0.5f, 1.0f}, {1.0f, 6.5f, 9.0f}}));
+
+    auto reversed = segment;
+    reversed.reverse();
+    EXPECT_EQ(segment.reversed(), reversed);
+    EXPECT_EQ(segment.closest_point({1.0f, -10.0f, -10.0f}), segment.point1());
+    EXPECT_EQ(segment.closest_point({1.0f, 10.0f, 12.0f}), segment.point2());
+    expect_vec3_near(segment.closest_point({8.0f, 3.5f, 5.0f}), segment.center());
+}
+
+// The remaining B47-D2 helpers are direct ports of Bevy v0.18's primitive impl blocks.
+TEST(MeshPrimitives, InherentShapeHelpersMatchBevy) {
+    const auto expect_vec2_near = [](glm::vec2 actual, glm::vec2 expected) {
+        EXPECT_NEAR(actual.x, expected.x, 1e-6f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-6f);
+    };
+    const auto expect_vec3_near = [](glm::vec3 actual, glm::vec3 expected) {
+        EXPECT_NEAR(actual.x, expected.x, 1e-6f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-6f);
+        EXPECT_NEAR(actual.z, expected.z, 1e-6f);
+    };
+
+    const mesh::Circle circle{2.0f};
+    EXPECT_EQ(circle.closest_point({1.0f, 0.0f}), (glm::vec2{1.0f, 0.0f}));
+    expect_vec2_near(circle.closest_point({3.0f, 4.0f}), {1.2f, 1.6f});
+
+    const mesh::Arc2d arc{2.0f, std::numbers::pi_v<float> / 3.0f};
+    expect_vec2_near(arc.right_endpoint(), {std::sqrt(3.0f), 1.0f});
+    expect_vec2_near(arc.left_endpoint(), {-std::sqrt(3.0f), 1.0f});
+    expect_vec2_near(arc.endpoints()[0], arc.left_endpoint());
+    expect_vec2_near(arc.endpoints()[1], arc.right_endpoint());
+    EXPECT_EQ(arc.midpoint(), (glm::vec2{0.0f, 2.0f}));
+    EXPECT_NEAR(arc.half_chord_length(), std::sqrt(3.0f), 1e-6f);
+    EXPECT_NEAR(arc.chord_length(), 2.0f * std::sqrt(3.0f), 1e-6f);
+    EXPECT_NEAR(arc.apothem(), 1.0f, 1e-6f);
+    EXPECT_NEAR(arc.sagitta(), 1.0f, 1e-6f);
+    EXPECT_TRUE(arc.is_minor());
+    EXPECT_FALSE(arc.is_major());
+    const mesh::Arc2d semicircle{2.0f, std::numbers::pi_v<float> * 0.5f};
+    EXPECT_TRUE(semicircle.is_minor());
+    EXPECT_TRUE(semicircle.is_major());
+
+    const mesh::CircularSector sector{arc.radius, arc.half_angle};
+    const mesh::CircularSegment circular_segment{arc.radius, arc.half_angle};
+    EXPECT_FLOAT_EQ(sector.half_chord_length(), arc.half_chord_length());
+    EXPECT_FLOAT_EQ(sector.chord_length(), arc.chord_length());
+    EXPECT_FLOAT_EQ(sector.sagitta(), arc.sagitta());
+    EXPECT_FLOAT_EQ(circular_segment.half_chord_length(), arc.half_chord_length());
+    EXPECT_FLOAT_EQ(circular_segment.sagitta(), arc.sagitta());
+
+    const mesh::Ellipse ellipse{glm::vec2{3.0f, 2.0f}};
+    EXPECT_NEAR(ellipse.eccentricity(), std::sqrt(5.0f) / 3.0f, 1e-6f);
+    EXPECT_NEAR(ellipse.focal_length(), std::sqrt(5.0f), 1e-6f);
+
+    const mesh::RegularPolygon square{2.0f, 4};
+    EXPECT_NEAR(square.inradius(), std::sqrt(2.0f), 1e-6f);
+    EXPECT_FLOAT_EQ(square.internal_angle_degrees(), 90.0f);
+    EXPECT_FLOAT_EQ(square.external_angle_degrees(), 90.0f);
+    const auto square_vertices = square.vertices(0.0f);
+    ASSERT_EQ(square_vertices.size(), 4u);
+    expect_vec2_near(square_vertices[0], {0.0f, 2.0f});
+    expect_vec2_near(square_vertices[1], {-2.0f, 0.0f});
+
+    const mesh::Rectangle rectangle{glm::vec2{2.0f, 3.0f}};
+    EXPECT_EQ(rectangle.closest_point({4.0f, -1.0f}), (glm::vec2{2.0f, -1.0f}));
+    const auto [circumcircle, circumcenter] =
+        mesh::Triangle2d{glm::vec2{0.0f, 0.0f}, glm::vec2{2.0f, 0.0f}, glm::vec2{0.0f, 2.0f}}.circumcircle();
+    EXPECT_NEAR(circumcircle.radius, std::sqrt(2.0f), 1e-6f);
+    expect_vec2_near(circumcenter, {1.0f, 1.0f});
+
+    const mesh::Cuboid cuboid{glm::vec3{2.0f, 3.0f, 4.0f}};
+    EXPECT_EQ(cuboid.closest_point({5.0f, -2.0f, -8.0f}), (glm::vec3{2.0f, -2.0f, -4.0f}));
+    const mesh::Torus ring_torus{0.5f, 1.0f};
+    const mesh::Torus horn_torus{1.0f, 1.0f};
+    const mesh::Torus spindle_torus{2.0f, 1.0f};
+    const mesh::Torus invalid_torus{0.0f, 1.0f};
+    EXPECT_EQ(ring_torus.inner_radius(), 0.5f);
+    EXPECT_EQ(ring_torus.outer_radius(), 1.5f);
+    EXPECT_EQ(ring_torus.kind(), mesh::TorusKind::Ring);
+    EXPECT_EQ(horn_torus.kind(), mesh::TorusKind::Horn);
+    EXPECT_EQ(spindle_torus.kind(), mesh::TorusKind::Spindle);
+    EXPECT_EQ(invalid_torus.kind(), mesh::TorusKind::Invalid);
+
+    const mesh::Triangle3d triangle{glm::vec3{0.0f, 0.0f, 0.0f}, glm::vec3{2.0f, 0.0f, 0.0f},
+                                    glm::vec3{0.0f, 2.0f, 0.0f}};
+    expect_vec3_near(triangle.centroid(), {2.0f / 3.0f, 2.0f / 3.0f, 0.0f});
+    EXPECT_EQ(triangle.largest_side(), (std::pair<glm::vec3, glm::vec3>{{2.0f, 0.0f, 0.0f}, {0.0f, 2.0f, 0.0f}}));
+    expect_vec3_near(triangle.circumcenter(), {1.0f, 1.0f, 0.0f});
+    const mesh::Triangle3d degenerate_triangle{glm::vec3{0.0f}, glm::vec3{1.0f, 0.0f, 0.0f},
+                                               glm::vec3{4.0f, 0.0f, 0.0f}};
+    expect_vec3_near(degenerate_triangle.circumcenter(), {2.0f, 0.0f, 0.0f});
 }

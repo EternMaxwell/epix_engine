@@ -56,6 +56,7 @@ EPIX_EXPORT struct Circle {
     constexpr Circle() = default;
     constexpr explicit Circle(float radius) : radius(radius) {}
     constexpr float diameter() const noexcept { return 2.0f * radius; }
+    glm::vec2 closest_point(glm::vec2 point) const noexcept;
     CircleMeshBuilder mesh() const noexcept;
 
     bool operator==(const Circle&) const = default;
@@ -77,11 +78,17 @@ EPIX_EXPORT struct Arc2d {
     }
     constexpr float angle() const noexcept { return half_angle * 2.0f; }
     constexpr float length() const noexcept { return angle() * radius; }
+    glm::vec2 right_endpoint() const noexcept;
+    glm::vec2 left_endpoint() const noexcept;
+    std::array<glm::vec2, 2> endpoints() const noexcept { return {left_endpoint(), right_endpoint()}; }
+    constexpr glm::vec2 midpoint() const noexcept { return radius * glm::vec2{0.0f, 1.0f}; }
     float half_chord_length() const noexcept;
     float chord_length() const noexcept { return 2.0f * half_chord_length(); }
     glm::vec2 chord_midpoint() const noexcept;
     float apothem() const noexcept;
+    float sagitta() const noexcept { return radius - apothem(); }
     constexpr bool is_minor() const noexcept { return half_angle <= std::numbers::pi_v<float> * 0.5f; }
+    constexpr bool is_major() const noexcept { return half_angle >= std::numbers::pi_v<float> * 0.5f; }
 
     bool operator==(const Arc2d&) const = default;
 };
@@ -106,6 +113,11 @@ EPIX_EXPORT struct CircularSector {
     constexpr float radius() const noexcept { return arc.radius; }
     /** @brief Length of the arc defining the sector (Bevy `CircularSector::arc_length`). */
     constexpr float arc_length() const noexcept { return arc.length(); }
+    float half_chord_length() const noexcept { return arc.half_chord_length(); }
+    float chord_length() const noexcept { return arc.chord_length(); }
+    glm::vec2 chord_midpoint() const noexcept { return arc.chord_midpoint(); }
+    float apothem() const noexcept { return arc.apothem(); }
+    float sagitta() const noexcept { return arc.sagitta(); }
     CircularSectorMeshBuilder mesh() const noexcept;
 
     bool operator==(const CircularSector&) const = default;
@@ -136,9 +148,11 @@ EPIX_EXPORT struct CircularSegment {
     constexpr float arc_length() const noexcept { return arc.length(); }
     /** @brief Length of the segment's base, also known as its chord (Bevy
      * `CircularSegment::chord_length`). */
+    float half_chord_length() const noexcept { return arc.half_chord_length(); }
     float chord_length() const noexcept { return arc.chord_length(); }
     glm::vec2 chord_midpoint() const noexcept { return arc.chord_midpoint(); }
     float apothem() const noexcept { return arc.apothem(); }
+    float sagitta() const noexcept { return arc.sagitta(); }
     CircularSegmentMeshBuilder mesh() const noexcept;
 
     bool operator==(const CircularSegment&) const = default;
@@ -176,10 +190,43 @@ EPIX_EXPORT struct Segment2d {
         const auto endpoint = scaled_direction * 0.5f;
         return Segment2d{-endpoint, endpoint};
     }
+    /** @brief Construct a segment starting at `origin` along a checked unit direction. */
+    static Segment2d from_ray_and_length(glm::vec2 origin, glm::vec2 direction, float length);
     constexpr glm::vec2 point1() const noexcept { return vertices[0]; }
     constexpr glm::vec2 point2() const noexcept { return vertices[1]; }
     constexpr glm::vec2 center() const noexcept { return (vertices[0] + vertices[1]) * 0.5f; }
     float length() const noexcept;
+    float length_squared() const noexcept;
+    glm::vec2 direction() const;
+    std::optional<glm::vec2> try_direction() const noexcept;
+    constexpr glm::vec2 scaled_direction() const noexcept { return point2() - point1(); }
+    glm::vec2 left_normal() const;
+    std::optional<glm::vec2> try_left_normal() const noexcept;
+    constexpr glm::vec2 scaled_left_normal() const noexcept {
+        const auto value = scaled_direction();
+        return {-value.y, value.x};
+    }
+    glm::vec2 right_normal() const;
+    std::optional<glm::vec2> try_right_normal() const noexcept;
+    constexpr glm::vec2 scaled_right_normal() const noexcept {
+        const auto value = scaled_direction();
+        return {value.y, -value.x};
+    }
+    /** @brief Apply a Bevy-style rigid transform: rotate, then translate. */
+    Segment2d transformed(glm::vec2 translation, float rotation) const noexcept;
+    Segment2d translated(glm::vec2 translation) const noexcept;
+    Segment2d rotated(float rotation) const noexcept;
+    Segment2d rotated_around(float rotation, glm::vec2 point) const noexcept;
+    Segment2d rotated_around_center(float rotation) const noexcept;
+    Segment2d centered() const noexcept;
+    Segment2d resized(float length) const noexcept;
+    void reverse() noexcept { std::swap(vertices[0], vertices[1]); }
+    Segment2d reversed() const noexcept {
+        Segment2d value = *this;
+        value.reverse();
+        return value;
+    }
+    glm::vec2 closest_point(glm::vec2 point) const noexcept;
     Segment2dMeshBuilder mesh() const noexcept;
 
     bool operator==(const Segment2d&) const = default;
@@ -226,6 +273,7 @@ EPIX_EXPORT struct Triangle2d {
     bool is_degenerate() const noexcept;
     bool is_acute() const noexcept;
     bool is_obtuse() const noexcept;
+    std::pair<Circle, glm::vec2> circumcircle() const noexcept;
     void reverse() noexcept { std::swap(vertices[0], vertices[2]); }
     Triangle2d reversed() const noexcept {
         Triangle2d value = *this;
@@ -289,6 +337,8 @@ EPIX_EXPORT struct Ellipse {
     constexpr float semi_major() const noexcept { return std::max(half_size.x, half_size.y); }
     /** @brief Length of the shortest radius (Bevy `Ellipse::semi_minor`). */
     constexpr float semi_minor() const noexcept { return std::min(half_size.x, half_size.y); }
+    float eccentricity() const noexcept;
+    float focal_length() const noexcept;
     EllipseMeshBuilder mesh() const noexcept;
 
     bool operator==(const Ellipse&) const = default;
@@ -304,6 +354,8 @@ EPIX_EXPORT struct RegularPolygon {
     float circumradius() const noexcept { return circumcircle.radius; }
     /** @brief Length of one side of the regular polygon (Bevy `RegularPolygon::side_length`). */
     float side_length() const noexcept;
+    float inradius() const noexcept;
+    std::vector<glm::vec2> vertices(float rotation) const;
     RegularPolygonMeshBuilder mesh() const noexcept;
 
     /** @brief Internal angle of the regular polygon (Bevy `internal_angle_radians`). */
@@ -314,6 +366,10 @@ EPIX_EXPORT struct RegularPolygon {
     constexpr float external_angle_radians() const noexcept {
         return 2.0f * std::numbers::pi_v<float> / static_cast<float>(sides);
     }
+    constexpr float internal_angle_degrees() const noexcept {
+        return static_cast<float>(sides - 2) / static_cast<float>(sides) * 180.0f;
+    }
+    constexpr float external_angle_degrees() const noexcept { return 360.0f / static_cast<float>(sides); }
 
     bool operator==(const RegularPolygon&) const = default;
 };
@@ -329,6 +385,7 @@ EPIX_EXPORT struct Rectangle {
     static Rectangle from_corners(glm::vec2 first, glm::vec2 second) noexcept;
     static constexpr Rectangle from_length(float length) { return Rectangle{glm::vec2(length * 0.5f)}; }
     constexpr glm::vec2 size() const noexcept { return half_size * 2.0f; }
+    glm::vec2 closest_point(glm::vec2 point) const noexcept;
     RectangleMeshBuilder mesh() const noexcept;
 
     bool operator==(const Rectangle&) const = default;
@@ -492,6 +549,7 @@ EPIX_EXPORT struct Cuboid {
     static constexpr Cuboid from_length(float length) { return Cuboid{glm::vec3(length * 0.5f)}; }
     static Cuboid from_corners(glm::vec3 point1, glm::vec3 point2) noexcept;
     constexpr glm::vec3 size() const noexcept { return half_size * 2.0f; }
+    glm::vec3 closest_point(glm::vec3 point) const noexcept;
     CuboidMeshBuilder mesh() const noexcept;
 
     bool operator==(const Cuboid&) const = default;
@@ -521,10 +579,31 @@ EPIX_EXPORT struct Segment3d {
         const auto endpoint = scaled_direction * 0.5f;
         return Segment3d{-endpoint, endpoint};
     }
+    /** @brief Construct a segment starting at `origin` along a checked unit direction. */
+    static Segment3d from_ray_and_length(glm::vec3 origin, glm::vec3 direction, float length);
     constexpr glm::vec3 point1() const noexcept { return vertices[0]; }
     constexpr glm::vec3 point2() const noexcept { return vertices[1]; }
     constexpr glm::vec3 center() const noexcept { return (vertices[0] + vertices[1]) * 0.5f; }
     float length() const noexcept;
+    float length_squared() const noexcept;
+    glm::vec3 direction() const;
+    std::optional<glm::vec3> try_direction() const noexcept;
+    constexpr glm::vec3 scaled_direction() const noexcept { return point2() - point1(); }
+    /** @brief Apply a Bevy-style rigid transform: rotate, then translate. */
+    Segment3d transformed(glm::vec3 translation, glm::quat rotation) const noexcept;
+    Segment3d translated(glm::vec3 translation) const noexcept;
+    Segment3d rotated(glm::quat rotation) const noexcept;
+    Segment3d rotated_around(glm::quat rotation, glm::vec3 point) const noexcept;
+    Segment3d rotated_around_center(glm::quat rotation) const noexcept;
+    Segment3d centered() const noexcept;
+    Segment3d resized(float length) const noexcept;
+    void reverse() noexcept { std::swap(vertices[0], vertices[1]); }
+    Segment3d reversed() const noexcept {
+        Segment3d value = *this;
+        value.reverse();
+        return value;
+    }
+    glm::vec3 closest_point(glm::vec3 point) const noexcept;
     Segment3dMeshBuilder mesh() const noexcept;
 
     bool operator==(const Segment3d&) const = default;
@@ -656,6 +735,9 @@ EPIX_EXPORT struct Cylinder {
     bool operator==(const Cylinder&) const = default;
 };
 
+/** @brief Bevy's geometric classification of a torus. */
+EPIX_EXPORT enum class TorusKind : std::uint8_t { Ring, Horn, Spindle, Invalid };
+
 /** @brief Torus primitive described by its tube and ring radii. */
 EPIX_EXPORT struct Torus {
     float minor_radius = 0.25f;
@@ -668,6 +750,9 @@ EPIX_EXPORT struct Torus {
         const float minor = (outer_radius - inner_radius) * 0.5f;
         return Torus{minor, outer_radius - minor};
     }
+    constexpr float inner_radius() const noexcept { return major_radius - minor_radius; }
+    constexpr float outer_radius() const noexcept { return major_radius + minor_radius; }
+    TorusKind kind() const noexcept;
     TorusMeshBuilder mesh() const noexcept;
 
     bool operator==(const Torus&) const = default;
@@ -813,10 +898,10 @@ EPIX_EXPORT struct ConicalFrustum {
     float slant_height() const noexcept;
     /** @brief Surface area of the side (Bevy `ConicalFrustum::lateral_area`). */
     float lateral_area() const noexcept;
-    /** @brief Surface area of the base (Bevy `ConicalFrustum::bottom_area`). */
-    float bottom_area() const noexcept;
-    /** @brief Surface area of the top (Bevy `ConicalFrustum::top_area`). */
-    float top_area() const noexcept;
+    /** @brief Surface area of the base (Bevy `ConicalFrustum::bottom_base_area`). */
+    float bottom_base_area() const noexcept;
+    /** @brief Surface area of the top (Bevy `ConicalFrustum::top_base_area`). */
+    float top_base_area() const noexcept;
     ConicalFrustumMeshBuilder mesh() const noexcept;
 
     bool operator==(const ConicalFrustum&) const = default;

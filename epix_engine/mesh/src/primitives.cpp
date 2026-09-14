@@ -15,6 +15,18 @@ constexpr auto kDefaultMeshAssetUsage = static_cast<assets::RenderAssetUsages>(a
 
 glm::vec2 unit_from_angle(float angle) { return {std::cos(angle), std::sin(angle)}; }
 
+template <typename Vector>
+std::optional<Vector> try_normalize_direction(Vector value) noexcept {
+    const float length = glm::length(value);
+    if (!(length > 0.0f) || !std::isfinite(length)) return std::nullopt;
+    return value / length;
+}
+
+glm::vec2 rotate_vector(glm::vec2 value, float rotation) noexcept {
+    const auto [sine, cosine] = std::pair{std::sin(rotation), std::cos(rotation)};
+    return {cosine * value.x - sine * value.y, sine * value.x + cosine * value.y};
+}
+
 /** @brief Bevy's `Triangle2d::winding_order` cross product for one vertex triple. */
 WindingOrder winding_order(const glm::vec2& a, const glm::vec2& b, const glm::vec2& c) noexcept {
     const float area = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
@@ -49,9 +61,25 @@ std::size_t indices_per_segment(const PerimeterSegment& segment) noexcept {
         segment.value);
 }
 
+glm::vec2 Circle::closest_point(glm::vec2 point) const noexcept {
+    const float distance_squared = glm::dot(point, point);
+    if (distance_squared <= radius * radius) return point;
+    return radius * point / std::sqrt(distance_squared);
+}
+
 CircleMeshBuilder Circle::mesh() const noexcept { return CircleMeshBuilder{radius, 32}; }
 
 float Arc2d::half_chord_length() const noexcept { return radius * std::sin(half_angle); }
+
+glm::vec2 Arc2d::right_endpoint() const noexcept {
+    const float angle = std::numbers::pi_v<float> * 0.5f - half_angle;
+    return radius * unit_from_angle(angle);
+}
+
+glm::vec2 Arc2d::left_endpoint() const noexcept {
+    const float angle = std::numbers::pi_v<float> * 0.5f + half_angle;
+    return radius * unit_from_angle(angle);
+}
 
 float Arc2d::apothem() const noexcept {
     const float half_chord = half_chord_length();
@@ -66,13 +94,89 @@ CircularSectorMeshBuilder CircularSector::mesh() const noexcept { return Circula
 CircularSegmentMeshBuilder CircularSegment::mesh() const noexcept { return CircularSegmentMeshBuilder{*this}; }
 
 Segment2d Segment2d::from_direction_and_length(glm::vec2 direction, float length) {
-    const float direction_length = glm::length(direction);
-    if (direction_length == 0.0f) throw std::invalid_argument("segment direction must be nonzero");
-    const auto endpoint = direction / direction_length * (length * 0.5f);
+    const auto normalized = try_normalize_direction(direction);
+    if (!normalized) throw std::invalid_argument("segment direction must be finite and nonzero");
+    const auto endpoint = *normalized * (length * 0.5f);
     return Segment2d{-endpoint, endpoint};
 }
 
+Segment2d Segment2d::from_ray_and_length(glm::vec2 origin, glm::vec2 direction, float length) {
+    const auto normalized = try_normalize_direction(direction);
+    if (!normalized) throw std::invalid_argument("ray direction must be finite and nonzero");
+    return Segment2d{origin, origin + *normalized * length};
+}
+
 float Segment2d::length() const noexcept { return glm::length(vertices[1] - vertices[0]); }
+
+float Segment2d::length_squared() const noexcept { return glm::dot(scaled_direction(), scaled_direction()); }
+
+std::optional<glm::vec2> Segment2d::try_direction() const noexcept {
+    return try_normalize_direction(scaled_direction());
+}
+
+glm::vec2 Segment2d::direction() const {
+    const auto value = try_direction();
+    if (!value) throw std::invalid_argument("failed to compute the direction of a line segment");
+    return *value;
+}
+
+std::optional<glm::vec2> Segment2d::try_left_normal() const noexcept {
+    return try_normalize_direction(scaled_left_normal());
+}
+
+glm::vec2 Segment2d::left_normal() const {
+    const auto value = try_left_normal();
+    if (!value) throw std::invalid_argument("failed to compute the left-hand side normal of a line segment");
+    return *value;
+}
+
+std::optional<glm::vec2> Segment2d::try_right_normal() const noexcept {
+    return try_normalize_direction(scaled_right_normal());
+}
+
+glm::vec2 Segment2d::right_normal() const {
+    const auto value = try_right_normal();
+    if (!value) throw std::invalid_argument("failed to compute the right-hand side normal of a line segment");
+    return *value;
+}
+
+Segment2d Segment2d::transformed(glm::vec2 translation, float rotation) const noexcept {
+    return rotated(rotation).translated(translation);
+}
+
+Segment2d Segment2d::translated(glm::vec2 translation) const noexcept {
+    return Segment2d{point1() + translation, point2() + translation};
+}
+
+Segment2d Segment2d::rotated(float rotation) const noexcept {
+    return Segment2d{rotate_vector(point1(), rotation), rotate_vector(point2(), rotation)};
+}
+
+Segment2d Segment2d::rotated_around(float rotation, glm::vec2 point) const noexcept {
+    return translated(-point).rotated(rotation).translated(point);
+}
+
+Segment2d Segment2d::rotated_around_center(float rotation) const noexcept { return rotated_around(rotation, center()); }
+
+Segment2d Segment2d::centered() const noexcept { return translated(-center()); }
+
+Segment2d Segment2d::resized(float new_length) const noexcept {
+    const auto offset_from_origin = center();
+    const auto centered_segment   = translated(-offset_from_origin);
+    const float ratio             = new_length / length();
+    return Segment2d{centered_segment.point1() * ratio, centered_segment.point2() * ratio}.translated(
+        offset_from_origin);
+}
+
+glm::vec2 Segment2d::closest_point(glm::vec2 point) const noexcept {
+    const auto segment_vector     = scaled_direction();
+    const auto offset             = point - point1();
+    const float projection_scaled = glm::dot(segment_vector, offset);
+    if (projection_scaled <= 0.0f) return point1();
+    const float segment_length_squared = glm::dot(segment_vector, segment_vector);
+    if (projection_scaled >= segment_length_squared) return point2();
+    return point1() + (projection_scaled / segment_length_squared) * segment_vector;
+}
 
 Segment2dMeshBuilder Segment2d::mesh() const noexcept { return Segment2dMeshBuilder{*this}; }
 
@@ -158,6 +262,18 @@ bool Triangle2d::is_obtuse() const noexcept {
     const float sum = side_lengths[0] + side_lengths[1] + side_lengths[2];
     const float max = std::max({side_lengths[0], side_lengths[1], side_lengths[2]});
     return sum - max < max;
+}
+
+std::pair<Circle, glm::vec2> Triangle2d::circumcircle() const noexcept {
+    const glm::vec2 a            = vertices[0];
+    const glm::vec2 b            = vertices[1] - a;
+    const glm::vec2 c            = vertices[2] - a;
+    const float b_length_squared = glm::dot(b, b);
+    const float c_length_squared = glm::dot(c, c);
+    const float inverse_d        = 1.0f / (2.0f * (b.x * c.y - b.y * c.x));
+    const glm::vec2 u{inverse_d * (c.y * b_length_squared - b.y * c_length_squared),
+                      inverse_d * (b.x * c_length_squared - c.x * b_length_squared)};
+    return {Circle{glm::length(u)}, u + a};
 }
 
 Triangle2dMeshBuilder Triangle2d::mesh() const noexcept { return Triangle2dMeshBuilder{*this}; }
@@ -393,6 +509,8 @@ Mesh RingMeshBuilder<P>::build() const {
 Cuboid Cuboid::from_corners(glm::vec3 point1, glm::vec3 point2) noexcept {
     return Cuboid{glm::abs(point2 - point1) * 0.5f};
 }
+
+glm::vec3 Cuboid::closest_point(glm::vec3 point) const noexcept { return glm::clamp(point, -half_size, half_size); }
 
 CuboidMeshBuilder Cuboid::mesh() const noexcept { return CuboidMeshBuilder{half_size}; }
 
@@ -1113,13 +1231,71 @@ Plane3d Plane3d::from_points(glm::vec3 a, glm::vec3 b, glm::vec3 c) {
 PlaneMeshBuilder Plane3d::mesh() const noexcept { return PlaneMeshBuilder(Plane3d{*this}); }
 
 Segment3d Segment3d::from_direction_and_length(glm::vec3 direction, float length) {
-    const float direction_length = glm::length(direction);
-    if (direction_length == 0.0f) throw std::invalid_argument("segment direction must be nonzero");
-    const auto endpoint = direction / direction_length * (length * 0.5f);
+    const auto normalized = try_normalize_direction(direction);
+    if (!normalized) throw std::invalid_argument("segment direction must be finite and nonzero");
+    const auto endpoint = *normalized * (length * 0.5f);
     return Segment3d{-endpoint, endpoint};
 }
 
+Segment3d Segment3d::from_ray_and_length(glm::vec3 origin, glm::vec3 direction, float length) {
+    const auto normalized = try_normalize_direction(direction);
+    if (!normalized) throw std::invalid_argument("ray direction must be finite and nonzero");
+    return Segment3d{origin, origin + *normalized * length};
+}
+
 float Segment3d::length() const noexcept { return glm::length(vertices[1] - vertices[0]); }
+
+float Segment3d::length_squared() const noexcept { return glm::dot(scaled_direction(), scaled_direction()); }
+
+std::optional<glm::vec3> Segment3d::try_direction() const noexcept {
+    return try_normalize_direction(scaled_direction());
+}
+
+glm::vec3 Segment3d::direction() const {
+    const auto value = try_direction();
+    if (!value) throw std::invalid_argument("failed to compute the direction of a line segment");
+    return *value;
+}
+
+Segment3d Segment3d::transformed(glm::vec3 translation, glm::quat rotation) const noexcept {
+    return rotated(rotation).translated(translation);
+}
+
+Segment3d Segment3d::translated(glm::vec3 translation) const noexcept {
+    return Segment3d{point1() + translation, point2() + translation};
+}
+
+Segment3d Segment3d::rotated(glm::quat rotation) const noexcept {
+    return Segment3d{rotation * point1(), rotation * point2()};
+}
+
+Segment3d Segment3d::rotated_around(glm::quat rotation, glm::vec3 point) const noexcept {
+    return translated(-point).rotated(rotation).translated(point);
+}
+
+Segment3d Segment3d::rotated_around_center(glm::quat rotation) const noexcept {
+    return rotated_around(rotation, center());
+}
+
+Segment3d Segment3d::centered() const noexcept { return translated(-center()); }
+
+Segment3d Segment3d::resized(float new_length) const noexcept {
+    const auto offset_from_origin = center();
+    const auto centered_segment   = translated(-offset_from_origin);
+    const float ratio             = new_length / length();
+    return Segment3d{centered_segment.point1() * ratio, centered_segment.point2() * ratio}.translated(
+        offset_from_origin);
+}
+
+glm::vec3 Segment3d::closest_point(glm::vec3 point) const noexcept {
+    const auto segment_vector     = scaled_direction();
+    const auto offset             = point - point1();
+    const float projection_scaled = glm::dot(segment_vector, offset);
+    if (projection_scaled <= 0.0f) return point1();
+    const float segment_length_squared = glm::dot(segment_vector, segment_vector);
+    if (projection_scaled >= segment_length_squared) return point2();
+    return point1() + (projection_scaled / segment_length_squared) * segment_vector;
+}
 
 Segment3dMeshBuilder Segment3d::mesh() const noexcept { return Segment3dMeshBuilder{*this}; }
 
@@ -1172,6 +1348,37 @@ bool Triangle3d::is_obtuse() const noexcept {
     return sum - max < max;
 }
 
+glm::vec3 Triangle3d::centroid() const noexcept { return (vertices[0] + vertices[1] + vertices[2]) / 3.0f; }
+
+std::pair<glm::vec3, glm::vec3> Triangle3d::largest_side() const noexcept {
+    const auto& [a, b, c] = vertices;
+    std::pair result{a, b};
+    const glm::vec3 ab    = b - a;
+    const glm::vec3 bc    = c - b;
+    const glm::vec3 ca    = a - c;
+    float largest_length  = glm::dot(ab, ab);
+    const float bc_length = glm::dot(bc, bc);
+    if (bc_length > largest_length) {
+        result         = {b, c};
+        largest_length = bc_length;
+    }
+    if (const float ca_length = glm::dot(ca, ca); ca_length > largest_length) result = {a, c};
+    return result;
+}
+
+glm::vec3 Triangle3d::circumcenter() const noexcept {
+    if (is_degenerate()) {
+        const auto [first, second] = largest_side();
+        return (first + second) * 0.5f;
+    }
+    const auto& [a, b, c]  = vertices;
+    const glm::vec3 ab     = b - a;
+    const glm::vec3 ac     = c - a;
+    const glm::vec3 normal = glm::cross(ab, ac);
+    return a + (glm::dot(ac, ac) * glm::cross(normal, ab) + glm::dot(ab, ab) * glm::cross(glm::cross(ac, ab), ac)) /
+                   (2.0f * glm::dot(normal, normal));
+}
+
 Triangle3dMeshBuilder Triangle3d::mesh() const noexcept { return Triangle3dMeshBuilder{*this}; }
 
 float Tetrahedron::signed_volume() const noexcept {
@@ -1204,6 +1411,15 @@ TorusMeshBuilder::TorusMeshBuilder(float inner_radius, float outer_radius)
     : torus(Torus::from_inner_and_outer(inner_radius, outer_radius)) {}
 
 TorusMeshBuilder Torus::mesh() const noexcept { return TorusMeshBuilder{Torus{*this}}; }
+
+TorusKind Torus::kind() const noexcept {
+    if (minor_radius <= 0.0f || !std::isfinite(minor_radius) || major_radius <= 0.0f || !std::isfinite(major_radius)) {
+        return TorusKind::Invalid;
+    }
+    if (major_radius > minor_radius) return TorusKind::Ring;
+    if (major_radius == minor_radius) return TorusKind::Horn;
+    return TorusKind::Spindle;
+}
 
 Mesh CylinderMeshBuilder::build() const {
     // Bevy asserts these in debug builds; Epix keeps the same contract.
@@ -1292,7 +1508,8 @@ Mesh CylinderMeshBuilder::build() const {
 Mesh TorusMeshBuilder::build() const {
     // Adapted from Bevy, which adapted it from
     // http://apparat-engine.blogspot.com/2013/04/procedural-meshes-torus.html
-    const std::size_t n_vertices = static_cast<std::size_t>(major_resolution + 1) * (minor_resolution + 1);    std::vector<VertexAttributeValues::Float32x3Value> positions;
+    const std::size_t n_vertices = static_cast<std::size_t>(major_resolution + 1) * (minor_resolution + 1);
+    std::vector<VertexAttributeValues::Float32x3Value> positions;
     std::vector<VertexAttributeValues::Float32x3Value> normals;
     std::vector<VertexAttributeValues::Float32x2Value> uvs;
     positions.reserve(n_vertices);
@@ -1383,8 +1600,8 @@ Mesh ConeMeshBuilder::build() const {
         const float cos_t = std::cos(theta);
 
         positions.push_back({cone.radius * cos_t, -half_height, cone.radius * sin_t});
-        normals.push_back({cos_t * normalization_factor, normal_slope * normalization_factor,
-                           sin_t * normalization_factor});
+        normals.push_back(
+            {cos_t * normalization_factor, normal_slope * normalization_factor, sin_t * normalization_factor});
         uvs.push_back({0.5f + cos_t * 0.5f, 0.5f + sin_t * 0.5f});
     }
 
@@ -1442,8 +1659,10 @@ float ConicalFrustum::lateral_area() const noexcept {
     return std::numbers::pi_v<float> * (radius_bottom + radius_top) * slant_height();
 }
 
-float ConicalFrustum::bottom_area() const noexcept { return std::numbers::pi_v<float> * radius_bottom * radius_bottom; }
-float ConicalFrustum::top_area() const noexcept { return std::numbers::pi_v<float> * radius_top * radius_top; }
+float ConicalFrustum::bottom_base_area() const noexcept {
+    return std::numbers::pi_v<float> * radius_bottom * radius_bottom;
+}
+float ConicalFrustum::top_base_area() const noexcept { return std::numbers::pi_v<float> * radius_top * radius_top; }
 
 ConicalFrustumMeshBuilder ConicalFrustum::mesh() const noexcept {
     return ConicalFrustumMeshBuilder{ConicalFrustum{*this}};
@@ -1527,6 +1746,34 @@ float RegularPolygon::side_length() const noexcept {
     return 2.0f * circumradius() * std::sin(std::numbers::pi_v<float> / static_cast<float>(sides));
 }
 
+float RegularPolygon::inradius() const noexcept {
+    return circumradius() * std::cos(std::numbers::pi_v<float> / static_cast<float>(sides));
+}
+
+std::vector<glm::vec2> RegularPolygon::vertices(float rotation) const {
+    std::vector<glm::vec2> result;
+    result.reserve(sides);
+    const float start_angle = rotation + std::numbers::pi_v<float> * 0.5f;
+    const float step        = 2.0f * std::numbers::pi_v<float> / static_cast<float>(sides);
+    for (std::uint32_t index = 0; index < sides; ++index) {
+        const float angle = start_angle + static_cast<float>(index) * step;
+        result.emplace_back(std::cos(angle) * circumradius(), std::sin(angle) * circumradius());
+    }
+    return result;
+}
+
+float Ellipse::eccentricity() const noexcept {
+    const float major = semi_major();
+    const float minor = semi_minor();
+    return std::sqrt(major * major - minor * minor) / major;
+}
+
+float Ellipse::focal_length() const noexcept {
+    const float major = semi_major();
+    const float minor = semi_minor();
+    return std::sqrt(major * major - minor * minor);
+}
+
 float Measured2dImpl<RegularPolygon>::area(const RegularPolygon& polygon) noexcept {
     const float angle = 2.0f * std::numbers::pi_v<float> / static_cast<float>(polygon.sides);
     return static_cast<float>(polygon.sides) * (polygon.circumradius() * polygon.circumradius()) * std::sin(angle) /
@@ -1560,7 +1807,7 @@ float Measured3dImpl<Cone>::area(const Cone& cone) noexcept { return cone.base_a
 float Measured3dImpl<Cone>::volume(const Cone& cone) noexcept { return (cone.base_area() * cone.height) / 3.0f; }
 
 float Measured3dImpl<ConicalFrustum>::area(const ConicalFrustum& frustum) noexcept {
-    return frustum.bottom_area() + frustum.top_area() + frustum.lateral_area();
+    return frustum.bottom_base_area() + frustum.top_base_area() + frustum.lateral_area();
 }
 
 float Measured3dImpl<ConicalFrustum>::volume(const ConicalFrustum& frustum) noexcept {
@@ -1637,9 +1884,9 @@ Mesh ConicalFrustumMeshBuilder::build() const {
 
     // Caps: Bevy builds the top with winding (1, 0) and the bottom with (0, 1).
     const auto build_cap = [&](bool top, float radius) {
-        const auto offset     = static_cast<std::uint32_t>(positions.size());
-        const float y         = top ? half_height : -half_height;
-        const float normal_y_ = top ? 1.0f : -1.0f;
+        const auto offset             = static_cast<std::uint32_t>(positions.size());
+        const float y                 = top ? half_height : -half_height;
+        const float normal_y_         = top ? 1.0f : -1.0f;
         const std::uint32_t winding_a = top ? 1u : 0u;
         const std::uint32_t winding_b = top ? 0u : 1u;
 
@@ -1681,25 +1928,25 @@ Mesh Capsule3dMeshBuilder::build() const {
     // slice of the pool, and the triangle list is filled in the same region
     // order, which is why the offsets are computed up front.
     const Capsule3d capsule_copy = capsule;
-    const auto rings_             = rings;
-    const auto longitudes_        = longitudes;
-    const auto latitudes_         = latitudes;
-    const auto uv_profile_        = uv_profile;
-    const float radius            = capsule_copy.radius;
-    const float half_length       = capsule_copy.half_length;
+    const auto rings_            = rings;
+    const auto longitudes_       = longitudes;
+    const auto latitudes_        = latitudes;
+    const auto uv_profile_       = uv_profile;
+    const float radius           = capsule_copy.radius;
+    const float half_length      = capsule_copy.half_length;
 
-    const bool calc_middle       = rings_ > 0;
-    const std::uint32_t half_lats  = latitudes_ / 2u;
+    const bool calc_middle          = rings_ > 0;
+    const std::uint32_t half_lats   = latitudes_ / 2u;
     const std::uint32_t half_latsn1 = half_lats - 1u;
     const std::uint32_t half_latsn2 = half_lats - 2u;
-    const std::uint32_t ringsp1    = rings_ + 1u;
-    const std::uint32_t lonsp1     = longitudes_ + 1u;
-    const float summit             = half_length + radius;
+    const std::uint32_t ringsp1     = rings_ + 1u;
+    const std::uint32_t lonsp1      = longitudes_ + 1u;
+    const float summit              = half_length + radius;
 
     // Vertex index offsets.
-    const std::uint32_t vert_offset_north_hemi      = longitudes_;
-    const std::uint32_t vert_offset_north_equator   = vert_offset_north_hemi + lonsp1 * half_latsn1;
-    const std::uint32_t vert_offset_cylinder        = vert_offset_north_equator + lonsp1;
+    const std::uint32_t vert_offset_north_hemi    = longitudes_;
+    const std::uint32_t vert_offset_north_equator = vert_offset_north_hemi + lonsp1 * half_latsn1;
+    const std::uint32_t vert_offset_cylinder      = vert_offset_north_equator + lonsp1;
     const std::uint32_t vert_offset_south_equator =
         calc_middle ? vert_offset_cylinder + lonsp1 * rings_ : vert_offset_cylinder;
     const std::uint32_t vert_offset_south_hemi  = vert_offset_south_equator + lonsp1;
@@ -1717,12 +1964,11 @@ Mesh Capsule3dMeshBuilder::build() const {
     const float to_tex_horizontal = 1.0f / static_cast<float>(longitudes_);
     const float to_tex_vertical   = 1.0f / static_cast<float>(half_lats);
 
-    const float vt_aspect_ratio =
-        uv_profile_ == CapsuleUvProfile::Aspect
-            ? radius / (2.0f * half_length + radius + radius)
-            : (uv_profile_ == CapsuleUvProfile::Uniform
-                   ? static_cast<float>(half_lats) / static_cast<float>(ringsp1 + latitudes_)
-                   : 1.0f / 3.0f);
+    const float vt_aspect_ratio = uv_profile_ == CapsuleUvProfile::Aspect
+                                      ? radius / (2.0f * half_length + radius + radius)
+                                      : (uv_profile_ == CapsuleUvProfile::Uniform
+                                             ? static_cast<float>(half_lats) / static_cast<float>(ringsp1 + latitudes_)
+                                             : 1.0f / 3.0f);
     const float vt_aspect_north = 1.0f - vt_aspect_ratio;
     const float vt_aspect_south = vt_aspect_ratio;
 
@@ -1731,7 +1977,7 @@ Mesh Capsule3dMeshBuilder::build() const {
     std::vector<float> s_texture_cache(static_cast<std::size_t>(lonsp1));
 
     for (std::size_t j = 0; j < static_cast<std::size_t>(longitudes_); ++j) {
-        const float jf             = static_cast<float>(j);
+        const float jf              = static_cast<float>(j);
         const float s_texture_polar = 1.0f - ((jf + 0.5f) * to_tex_horizontal);
         const float theta           = jf * to_theta;
 
@@ -1796,12 +2042,12 @@ Mesh Capsule3dMeshBuilder::build() const {
         const float z_offset_south    = -half_length - rho_sin_phi_south;
 
         // Texture coordinates.
-        const float t_tex_fac   = ip1f * to_tex_vertical;
+        const float t_tex_fac    = ip1f * to_tex_vertical;
         const float cmpl_tex_fac = 1.0f - t_tex_fac;
         const float t_tex_north  = cmpl_tex_fac + vt_aspect_north * t_tex_fac;
         const float t_tex_south  = cmpl_tex_fac * vt_aspect_south;
 
-        const std::uint32_t i_lonsp1           = i * lonsp1;
+        const std::uint32_t i_lonsp1            = i * lonsp1;
         const std::uint32_t vert_curr_lat_north = vert_offset_north_hemi + i_lonsp1;
         const std::uint32_t vert_curr_lat_south = vert_offset_south_hemi + i_lonsp1;
 
@@ -1812,33 +2058,33 @@ Mesh Capsule3dMeshBuilder::build() const {
 
             // North hemisphere.
             const std::size_t idxn = static_cast<std::size_t>(vert_curr_lat_north) + j;
-            positions[idxn] = VertexAttributeValues::Float32x3Value{rho_cos_phi_north * tc.x, z_offset_north,
-                                                                   -rho_cos_phi_north * tc.y};
-            uvs[idxn]       = VertexAttributeValues::Float32x2Value{s_texture, t_tex_north};
-            normals[idxn]   = VertexAttributeValues::Float32x3Value{cos_phi_north * tc.x, -sin_phi_north,
-                                                                   -cos_phi_north * tc.y};
+            positions[idxn]        = VertexAttributeValues::Float32x3Value{rho_cos_phi_north * tc.x, z_offset_north,
+                                                                           -rho_cos_phi_north * tc.y};
+            uvs[idxn]              = VertexAttributeValues::Float32x2Value{s_texture, t_tex_north};
+            normals[idxn] =
+                VertexAttributeValues::Float32x3Value{cos_phi_north * tc.x, -sin_phi_north, -cos_phi_north * tc.y};
 
             // South hemisphere.
             const std::size_t idxs = static_cast<std::size_t>(vert_curr_lat_south) + j;
-            positions[idxs] = VertexAttributeValues::Float32x3Value{rho_cos_phi_south * tc.x, z_offset_south,
-                                                                   -rho_cos_phi_south * tc.y};
-            uvs[idxs]       = VertexAttributeValues::Float32x2Value{s_texture, t_tex_south};
-            normals[idxs]   = VertexAttributeValues::Float32x3Value{cos_phi_south * tc.x, -sin_phi_south,
-                                                                   -cos_phi_south * tc.y};
+            positions[idxs]        = VertexAttributeValues::Float32x3Value{rho_cos_phi_south * tc.x, z_offset_south,
+                                                                           -rho_cos_phi_south * tc.y};
+            uvs[idxs]              = VertexAttributeValues::Float32x2Value{s_texture, t_tex_south};
+            normals[idxs] =
+                VertexAttributeValues::Float32x3Value{cos_phi_south * tc.x, -sin_phi_south, -cos_phi_south * tc.y};
         }
     }
 
     // Cylinder vertices. Both equators are excluded from the interpolation, so
     // only the `rings - 1` interior rings are written here.
     if (calc_middle) {
-        const float to_fac           = 1.0f / static_cast<float>(ringsp1);
-        std::size_t idx_cyl_lat      = static_cast<std::size_t>(vert_offset_cylinder);
+        const float to_fac      = 1.0f / static_cast<float>(ringsp1);
+        std::size_t idx_cyl_lat = static_cast<std::size_t>(vert_offset_cylinder);
 
         for (std::uint32_t h = 1; h < ringsp1; ++h) {
-            const float fac        = static_cast<float>(h) * to_fac;
-            const float cmpl_fac   = 1.0f - fac;
-            const float t_texture  = cmpl_fac * vt_aspect_north + fac * vt_aspect_south;
-            const float z          = half_length - 2.0f * half_length * fac;
+            const float fac       = static_cast<float>(h) * to_fac;
+            const float cmpl_fac  = 1.0f - fac;
+            const float t_texture = cmpl_fac * vt_aspect_north + fac * vt_aspect_south;
+            const float z         = half_length - 2.0f * half_length * fac;
 
             for (std::size_t j = 0; j < static_cast<std::size_t>(lonsp1); ++j) {
                 const std::size_t j_mod = j % static_cast<std::size_t>(longitudes_);
@@ -1856,8 +2102,8 @@ Mesh Capsule3dMeshBuilder::build() const {
 
     // Triangle indices. The stride is 3 for the polar fans and 6 for the two
     // triangles of each quad, so the region offsets are computed the same way.
-    const std::uint32_t lons3 = longitudes_ * 3u;
-    const std::uint32_t lons6 = longitudes_ * 6u;
+    const std::uint32_t lons3     = longitudes_ * 3u;
+    const std::uint32_t lons6     = longitudes_ * 6u;
     const std::uint32_t hemi_lons = half_latsn1 * lons6;
 
     const std::uint32_t tri_offset_north_hemi = lons3;
@@ -2236,6 +2482,8 @@ RegularPolygonMeshBuilder RegularPolygon::mesh() const noexcept {
 Rectangle Rectangle::from_corners(glm::vec2 first, glm::vec2 second) noexcept {
     return Rectangle{glm::abs(second - first) * 0.5f};
 }
+
+glm::vec2 Rectangle::closest_point(glm::vec2 point) const noexcept { return glm::clamp(point, -half_size, half_size); }
 
 RectangleMeshBuilder Rectangle::mesh() const noexcept { return RectangleMeshBuilder{half_size}; }
 

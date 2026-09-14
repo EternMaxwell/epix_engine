@@ -195,6 +195,9 @@ EPIX_EXPORT struct Triangle3d {
     bool is_degenerate() const noexcept;
     bool is_acute() const noexcept;
     bool is_obtuse() const noexcept;
+    glm::vec3 centroid() const noexcept;
+    std::pair<glm::vec3, glm::vec3> largest_side() const noexcept;
+    glm::vec3 circumcenter() const noexcept;
     /** @brief Reverse the winding by swapping the first and last vertices. */
     void reverse() noexcept { std::swap(vertices[0], vertices[2]); }
     Triangle3d reversed() const noexcept {
