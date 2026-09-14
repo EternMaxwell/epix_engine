@@ -7,21 +7,32 @@
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <concepts>
 #include <cstdint>
 #include <epix/mesh/mesh.hpp>
 #include <expected>
 #include <glm/glm.hpp>
+#include <initializer_list>
 #include <iterator>
 #include <numbers>
 #include <span>
 #include <stdexcept>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
 #endif
 
 namespace epix::mesh {
+
+/** @brief C++ marker counterpart of Bevy's `Primitive2d` trait. */
+template <typename T>
+inline constexpr bool is_primitive_2d_v = false;
+
+/** @brief Satisfied exactly by the 2D math primitives represented by this module. */
+template <typename T>
+concept Primitive2d = is_primitive_2d_v<std::remove_cvref_t<T>>;
 
 class Polyline2dMeshBuilder;
 class Polyline3dMeshBuilder;
@@ -179,6 +190,18 @@ EPIX_EXPORT struct CircularMeshUvMode {
 /** @brief Winding classification used when validating polygon inputs. */
 EPIX_EXPORT enum class WindingOrder : std::uint8_t { Clockwise, CounterClockwise, Invalid };
 
+/** @brief An unbounded plane through the origin in 2D space. */
+EPIX_EXPORT struct Plane2d {
+    /** @brief Checked unit normal; Epix uses a normalized GLM vector in place of Bevy's `Dir2`. */
+    glm::vec2 normal{0.0f, 1.0f};
+
+    constexpr Plane2d() = default;
+    /** @throws std::invalid_argument if `normal` is zero, too small to normalize, or non-finite. */
+    explicit Plane2d(glm::vec2 normal);
+
+    bool operator==(const Plane2d&) const = default;
+};
+
 /** @brief Two-endpoint line segment. */
 EPIX_EXPORT struct Segment2d {
     std::array<glm::vec2, 2> vertices{glm::vec2(-0.5f, 0.0f), glm::vec2(0.5f, 0.0f)};
@@ -244,6 +267,26 @@ EPIX_EXPORT struct Polyline2d {
     bool operator==(const Polyline2d&) const = default;
 };
 
+class ConvexPolygon;
+
+/** @brief Polygon with an arbitrary number of vertices (Bevy `Polygon`). */
+EPIX_EXPORT struct Polygon {
+    std::vector<glm::vec2> vertices;
+
+    Polygon() = default;
+    explicit Polygon(std::vector<glm::vec2> vertices) : vertices(std::move(vertices)) {}
+    Polygon(std::initializer_list<glm::vec2> vertices) : vertices(vertices) {}
+    template <std::input_iterator Iterator>
+    Polygon(Iterator first, Iterator last) : vertices(first, last) {}
+    /** @brief Consuming counterpart of Bevy's `From<ConvexPolygon> for Polygon`. */
+    explicit Polygon(ConvexPolygon polygon);
+
+    /** @brief Whether no non-adjacent edges cross or touch (Bevy `Polygon::is_simple`). */
+    bool is_simple() const;
+
+    bool operator==(const Polygon&) const = default;
+};
+
 /** @brief Error returned when checked polygon construction finds concavity. */
 EPIX_EXPORT enum class ConvexPolygonError : std::uint8_t { Concave };
 EPIX_EXPORT std::string_view to_string(ConvexPolygonError error) noexcept;
@@ -252,6 +295,8 @@ EPIX_EXPORT std::string_view to_string(ConvexPolygonError error) noexcept;
 EPIX_EXPORT class ConvexPolygon {
    public:
     static std::expected<ConvexPolygon, ConvexPolygonError> create(std::vector<glm::vec2> vertices);
+    /** @brief Consuming counterpart of Bevy's `TryFrom<Polygon> for ConvexPolygon`. */
+    static std::expected<ConvexPolygon, ConvexPolygonError> from_polygon(Polygon polygon);
     static ConvexPolygon new_unchecked(std::vector<glm::vec2> vertices);
     std::span<const glm::vec2> vertices() const noexcept { return vertices_; }
     ConvexPolygonMeshBuilder mesh() const;
@@ -259,6 +304,7 @@ EPIX_EXPORT class ConvexPolygon {
     bool operator==(const ConvexPolygon&) const = default;
 
    private:
+    friend struct Polygon;
     explicit ConvexPolygon(std::vector<glm::vec2> vertices) : vertices_(std::move(vertices)) {}
     std::vector<glm::vec2> vertices_;
 };
@@ -404,6 +450,57 @@ EPIX_EXPORT struct Capsule2d {
     bool operator==(const Capsule2d&) const = default;
 };
 
+template <>
+inline constexpr bool is_primitive_2d_v<Circle> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Arc2d> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<CircularSector> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<CircularSegment> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Ellipse> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Annulus> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Rhombus> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Plane2d> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Segment2d> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Polyline2d> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Triangle2d> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Rectangle> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Polygon> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<ConvexPolygon> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<RegularPolygon> = true;
+template <>
+inline constexpr bool is_primitive_2d_v<Capsule2d> = true;
+
+static_assert(Primitive2d<Circle>);
+static_assert(Primitive2d<Arc2d>);
+static_assert(Primitive2d<CircularSector>);
+static_assert(Primitive2d<CircularSegment>);
+static_assert(Primitive2d<Ellipse>);
+static_assert(Primitive2d<Annulus>);
+static_assert(Primitive2d<Rhombus>);
+static_assert(Primitive2d<Plane2d>);
+static_assert(Primitive2d<Segment2d>);
+static_assert(Primitive2d<Polyline2d>);
+static_assert(Primitive2d<Triangle2d>);
+static_assert(Primitive2d<Rectangle>);
+static_assert(Primitive2d<Polygon>);
+static_assert(Primitive2d<ConvexPolygon>);
+static_assert(Primitive2d<RegularPolygon>);
+static_assert(Primitive2d<Capsule2d>);
+static_assert(!Primitive2d<SphereMeshBuilder>);
+
 /**
  * @brief A primitive that can be resized uniformly (Bevy `Inset`).
  *
@@ -471,7 +568,8 @@ struct InsetImpl<RegularPolygon> {
  * The inner mesh is remapped so its UVs continue the outer mesh's radial mapping, and the last
  * triangle pair is rewired back to the first vertex.
  */
-template <Inset P>
+template <Primitive2d P>
+    requires Meshable<P>
 struct RingMeshBuilder {
     using ShapeMeshBuilder = decltype(std::declval<const P&>().mesh());
 
@@ -500,7 +598,7 @@ struct RingMeshBuilder {
 };
 
 /** @brief A 2D shape hollowed into a ring, keeping the inner and outer shapes (Bevy `Ring`). */
-template <Inset P>
+template <Primitive2d P>
 struct Ring {
     P outer_shape{};
     P inner_shape{};
@@ -509,14 +607,20 @@ struct Ring {
     constexpr Ring(P outer, P inner) : outer_shape(outer), inner_shape(inner) {}
 
     /** @brief Build a ring by insetting `primitive` by `thickness` (Bevy `from_primitive_and_thickness`). */
-    static constexpr Ring from_primitive_and_thickness(P primitive, float thickness) {
+    static constexpr Ring from_primitive_and_thickness(P primitive, float thickness)
+        requires Inset<P>
+    {
         return Ring{primitive, inset(primitive, thickness)};
     }
 
     bool operator==(const Ring&) const = default;
 
-    RingMeshBuilder<P> mesh() const;
+    RingMeshBuilder<P> mesh() const
+        requires Meshable<P>;
 };
+
+template <Primitive2d P>
+inline constexpr bool is_primitive_2d_v<Ring<P>> = true;
 
 // ─── 3D shapes (Bevy `bevy_math::primitives::dim3`) ────────────────────────────────────────────
 
@@ -1402,7 +1506,7 @@ struct Measured2dImpl<Capsule2d> {
 };
 
 /** @brief Bevy `Measured2d for Ring<P>` (`dim2.rs:2288`). */
-template <Inset P>
+template <Primitive2d P>
     requires Measured2d<P>
 struct Measured2dImpl<Ring<P>> {
     static constexpr float area(const Ring<P>& ring) noexcept {
@@ -1906,7 +2010,7 @@ concept ExtrusionResolutionShape =
  * Bevy derives nothing on this struct, so the C++ counterpart has public fields, no default
  * constructor and no comparison. `base_builder` is the 2D shape's builder, whose `perimeter`
  * supplies the mantel's cross-section. */
-template <typename P>
+template <Primitive2d P>
     requires Meshable<P>
 struct ExtrusionBuilder {
     using ShapeMeshBuilder = decltype(std::declval<const P&>().mesh());
@@ -2186,8 +2290,7 @@ struct ExtrusionBuilder {
  * Extruding a shape thickens it, creating a shape with the same cross-section over the entire depth.
  * Bevy derives `Clone, Copy, Debug, PartialEq` and declares no `Default`, so the C++ counterpart has
  * an implicit copy and `operator==` and no default constructor. */
-template <typename P>
-    requires Meshable<P>
+template <Primitive2d P>
 struct Extrusion {
     /** @brief The shape being extruded. */
     P base_shape;
@@ -2199,8 +2302,8 @@ struct Extrusion {
 
     /** @brief Create the builder for this extrusion (Bevy `Meshable for Extrusion<P>`,
      * `extrusion.rs:88-102`). Unlike `ExtrusionBuilder::new`, this takes `half_depth` as it stands. */
-    ExtrusionBuilder<P> mesh() const
-        requires Extrudable<typename ExtrusionBuilder<P>::ShapeMeshBuilder>
+    auto mesh() const
+        requires(Meshable<P> && Extrudable<decltype(std::declval<const P&>().mesh())>)
     {
         return ExtrusionBuilder<P>{base_shape.mesh(), half_depth, 1};
     }

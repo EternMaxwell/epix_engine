@@ -3502,6 +3502,48 @@ TEST(MeshPrimitives, Segment3dHelpersMatchBevy) {
 }
 
 // The remaining B47-D2 helpers are direct ports of Bevy v0.18's primitive impl blocks.
+// Bevy v0.18 `Primitive2d`, `Plane2d`, and `Polygon` (`primitives/mod.rs:14`,
+// `dim2.rs:1190-1225, 1891-2030`, and `polygon.rs:289-320`).
+TEST(MeshPrimitives, PlanePolygonAndPrimitive2dMatchBevy) {
+    static_assert(mesh::Primitive2d<mesh::Circle>);
+    static_assert(mesh::Primitive2d<mesh::Polygon>);
+    static_assert(mesh::Primitive2d<mesh::Plane2d>);
+    static_assert(mesh::Primitive2d<mesh::Ring<mesh::Plane2d>>);
+    static_assert(!mesh::Primitive2d<mesh::Sphere>);
+    static_assert(std::constructible_from<mesh::Extrusion<mesh::Polygon>, mesh::Polygon, float>);
+    static_assert(!mesh::Meshable<mesh::Extrusion<mesh::Polygon>>);
+
+    EXPECT_EQ(mesh::Plane2d{}.normal, (glm::vec2{0.0f, 1.0f}));
+    const mesh::Plane2d plane{{3.0f, 4.0f}};
+    EXPECT_NEAR(plane.normal.x, 0.6f, 1e-6f);
+    EXPECT_NEAR(plane.normal.y, 0.8f, 1e-6f);
+    EXPECT_THROW(mesh::Plane2d(glm::vec2{0.0f}), std::invalid_argument);
+    EXPECT_THROW(mesh::Plane2d(glm::vec2{std::numeric_limits<float>::infinity(), 0.0f}), std::invalid_argument);
+
+    const mesh::Polygon square{{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}};
+    EXPECT_TRUE(square.is_simple());
+    EXPECT_TRUE(mesh::Polygon{}.is_simple());
+    EXPECT_TRUE((mesh::Polygon{{0.0f, 0.0f}, {1.0f, 0.0f}}.is_simple()));
+    EXPECT_FALSE((mesh::Polygon{{1.0f, 1.0f}, {3.0f, 2.0f}, {-1.0f, 0.0f}}.is_simple()));
+    EXPECT_FALSE((mesh::Polygon{{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}, {2.0f, 0.5f}}.is_simple()));
+    EXPECT_FALSE((mesh::Polygon{{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}, {1.0f, 0.5f}}.is_simple()));
+    EXPECT_FALSE((mesh::Polygon{{1.0f, 1.0f}, {3.0f, 2.0f}, {5.0f, 3.0f}, {-1.0f, 0.0f}}.is_simple()));
+    EXPECT_FALSE((mesh::Polygon{{1.0f, 1.0f}, {1.0f, 1.0f}, {-1.0f, 0.0f}}.is_simple()));
+    EXPECT_FALSE((
+        mesh::Polygon{{0.0f, 0.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}, {0.0f, 1.0f}}.is_simple()));
+
+    const std::array vertices{glm::vec2{0.0f, 0.0f}, glm::vec2{2.0f, 0.0f}, glm::vec2{0.0f, 2.0f}};
+    const mesh::Polygon from_iterators{vertices.begin(), vertices.end()};
+    EXPECT_EQ(from_iterators.vertices.size(), 3u);
+    auto convex = mesh::ConvexPolygon::from_polygon(from_iterators);
+    ASSERT_TRUE(convex.has_value());
+    const mesh::Polygon round_trip{std::move(*convex)};
+    EXPECT_EQ(round_trip, from_iterators);
+    EXPECT_FALSE((mesh::ConvexPolygon::from_polygon(
+                      mesh::Polygon{{0.0f, 0.0f}, {2.0f, 0.0f}, {1.0f, 0.5f}, {2.0f, 2.0f}, {0.0f, 2.0f}})
+                      .has_value()));
+}
+
 TEST(MeshPrimitives, InherentShapeHelpersMatchBevy) {
     const auto expect_vec2_near = [](glm::vec2 actual, glm::vec2 expected) {
         EXPECT_NEAR(actual.x, expected.x, 1e-6f);

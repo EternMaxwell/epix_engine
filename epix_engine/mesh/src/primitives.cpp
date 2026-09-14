@@ -1,9 +1,11 @@
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cassert>
 #include <cmath>
 #include <epix/mesh/primitives.hpp>
 #include <limits>
+#include <map>
 #include <memory>
 #include <numbers>
 #include <stdexcept>
@@ -33,6 +35,155 @@ WindingOrder winding_order(const glm::vec2& a, const glm::vec2& b, const glm::ve
     if (area > std::numeric_limits<float>::epsilon()) return WindingOrder::CounterClockwise;
     if (area < -std::numeric_limits<float>::epsilon()) return WindingOrder::Clockwise;
     return WindingOrder::Invalid;
+}
+
+int total_compare(float left, float right) noexcept {
+    auto left_bits  = std::bit_cast<std::int32_t>(left);
+    auto right_bits = std::bit_cast<std::int32_t>(right);
+    left_bits ^= static_cast<std::int32_t>(static_cast<std::uint32_t>(left_bits >> 31) >> 1);
+    right_bits ^= static_cast<std::int32_t>(static_cast<std::uint32_t>(right_bits >> 31) >> 1);
+    return left_bits < right_bits ? -1 : left_bits > right_bits ? 1 : 0;
+}
+
+int xy_compare(glm::vec2 left, glm::vec2 right) noexcept {
+    const int x_order = total_compare(left.x, right.x);
+    return x_order != 0 ? x_order : total_compare(left.y, right.y);
+}
+
+struct PolygonSegment {
+    std::size_t edge_index{};
+    glm::vec2 left{};
+    glm::vec2 right{};
+};
+
+struct PolygonSegmentLess {
+    bool operator()(const PolygonSegment& left, const PolygonSegment& right) const noexcept {
+        const int left_order = total_compare(left.left.y, right.left.y);
+        return left_order != 0 ? left_order < 0 : total_compare(left.right.y, right.right.y) < 0;
+    }
+};
+
+enum class PolygonEndpoint : std::uint8_t { Left, Right };
+
+struct PolygonSweepEvent {
+    PolygonSegment segment;
+    PolygonEndpoint endpoint{};
+
+    glm::vec2 position() const noexcept { return endpoint == PolygonEndpoint::Left ? segment.left : segment.right; }
+};
+
+struct PolygonSegmentOrder {
+    std::optional<std::size_t> above;
+    std::optional<std::size_t> below;
+};
+
+float point_side(glm::vec2 first, glm::vec2 second, glm::vec2 point) noexcept {
+    return (second.x - first.x) * (point.y - first.y) - (point.x - first.x) * (second.y - first.y);
+}
+
+class PolygonSweepLine {
+   public:
+    explicit PolygonSweepLine(std::span<const glm::vec2> vertices) : vertices_(vertices) {}
+
+    bool intersects(std::optional<std::size_t> first, std::optional<std::size_t> second) const noexcept {
+        if (!first || !second) return false;
+        if (*first == *second || (*first + 1) % vertices_.size() == *second ||
+            (*second + 1) % vertices_.size() == *first) {
+            return false;
+        }
+
+        const auto first_start  = vertices_[*first];
+        const auto first_end    = vertices_[(*first + 1) % vertices_.size()];
+        const auto second_start = vertices_[*second];
+        const auto second_end   = vertices_[(*second + 1) % vertices_.size()];
+        if (point_side(first_start, first_end, second_start) * point_side(first_start, first_end, second_end) > 0.0f) {
+            return false;
+        }
+        if (point_side(second_start, second_end, first_start) * point_side(second_start, second_end, first_end) >
+            0.0f) {
+            return false;
+        }
+        return true;
+    }
+
+    PolygonSegmentOrder add(const PolygonSegment& segment) {
+        std::optional<std::size_t> above;
+        auto next = tree_.lower_bound(segment);
+        if (next != tree_.end()) {
+            next->second.below = segment.edge_index;
+            above              = next->first.edge_index;
+        }
+
+        std::optional<std::size_t> below;
+        auto previous = tree_.lower_bound(segment);
+        if (previous != tree_.begin()) {
+            --previous;
+            previous->second.above = segment.edge_index;
+            below                  = previous->first.edge_index;
+        }
+
+        const PolygonSegmentOrder order{above, below};
+        tree_.insert_or_assign(segment, order);
+        return order;
+    }
+
+    const PolygonSegmentOrder* find(const PolygonSegment& segment) const {
+        const auto found = tree_.find(segment);
+        return found == tree_.end() ? nullptr : &found->second;
+    }
+
+    void remove(const PolygonSegment& segment) {
+        const auto found = tree_.find(segment);
+        if (found == tree_.end()) return;
+        const auto order = found->second;
+
+        auto above = tree_.lower_bound(segment);
+        if (above != tree_.end()) above->second.below = order.below;
+        auto below = tree_.lower_bound(segment);
+        if (below != tree_.begin()) {
+            --below;
+            below->second.above = order.above;
+        }
+        tree_.erase(segment);
+    }
+
+   private:
+    std::span<const glm::vec2> vertices_;
+    std::map<PolygonSegment, PolygonSegmentOrder, PolygonSegmentLess> tree_;
+};
+
+bool is_polygon_simple(std::span<const glm::vec2> vertices) {
+    if (vertices.size() < 3) return true;
+    if (vertices.size() == 3) return area(Triangle2d{vertices[0], vertices[1], vertices[2]}) > 0.0f;
+
+    std::vector<PolygonSweepEvent> events;
+    events.reserve(vertices.size() * 2);
+    for (std::size_t index = 0; index < vertices.size(); ++index) {
+        const auto first         = vertices[index];
+        const auto second        = vertices[(index + 1) % vertices.size()];
+        const auto [left, right] = xy_compare(first, second) < 0 ? std::pair{first, second} : std::pair{second, first};
+        const PolygonSegment segment{index, left, right};
+        events.push_back({segment, PolygonEndpoint::Left});
+        events.push_back({segment, PolygonEndpoint::Right});
+    }
+    std::stable_sort(events.begin(), events.end(), [](const auto& left, const auto& right) {
+        return xy_compare(left.position(), right.position()) < 0;
+    });
+
+    PolygonSweepLine sweep_line(vertices);
+    for (const auto& event : events) {
+        if (event.endpoint == PolygonEndpoint::Left) {
+            const auto order = sweep_line.add(event.segment);
+            if (sweep_line.intersects(event.segment.edge_index, order.above) ||
+                sweep_line.intersects(event.segment.edge_index, order.below)) {
+                return false;
+            }
+        } else if (const auto* order = sweep_line.find(event.segment)) {
+            if (sweep_line.intersects(order->above, order->below)) return false;
+            sweep_line.remove(event.segment);
+        }
+    }
+    return true;
 }
 }  // namespace
 
@@ -92,6 +243,12 @@ glm::vec2 Arc2d::chord_midpoint() const noexcept { return {0.0f, apothem()}; }
 CircularSectorMeshBuilder CircularSector::mesh() const noexcept { return CircularSectorMeshBuilder{*this}; }
 
 CircularSegmentMeshBuilder CircularSegment::mesh() const noexcept { return CircularSegmentMeshBuilder{*this}; }
+
+Plane2d::Plane2d(glm::vec2 value) {
+    const auto normalized = try_normalize_direction(value);
+    if (!normalized) throw std::invalid_argument("normal must be nonzero and finite");
+    normal = *normalized;
+}
 
 Segment2d Segment2d::from_direction_and_length(glm::vec2 direction, float length) {
     const auto normalized = try_normalize_direction(direction);
@@ -193,6 +350,10 @@ Polyline2d Polyline2d::with_subdivisions(glm::vec2 start, glm::vec2 end, std::si
 
 Polyline2dMeshBuilder Polyline2d::mesh() const { return Polyline2dMeshBuilder{*this}; }
 
+Polygon::Polygon(ConvexPolygon polygon) : vertices(std::move(polygon.vertices_)) {}
+
+bool Polygon::is_simple() const { return is_polygon_simple(vertices); }
+
 std::string_view to_string(ConvexPolygonError) noexcept { return "The created polygon is not convex"; }
 
 std::expected<ConvexPolygon, ConvexPolygonError> ConvexPolygon::create(std::vector<glm::vec2> vertices) {
@@ -208,6 +369,10 @@ std::expected<ConvexPolygon, ConvexPolygonError> ConvexPolygon::create(std::vect
         }
     }
     return ConvexPolygon{std::move(vertices)};
+}
+
+std::expected<ConvexPolygon, ConvexPolygonError> ConvexPolygon::from_polygon(Polygon polygon) {
+    return create(std::move(polygon.vertices));
 }
 
 ConvexPolygon ConvexPolygon::new_unchecked(std::vector<glm::vec2> vertices) {
@@ -409,12 +574,15 @@ Triangle2d InsetImpl<Triangle2d>::inset(const Triangle2d& shape, float distance)
     return Triangle2d{find_inset_point(a, b, c, distance), find_inset_point(b, c, a, distance),
                       find_inset_point(c, a, b, distance)};
 }
-template <Inset P>
-RingMeshBuilder<P> Ring<P>::mesh() const {
+template <Primitive2d P>
+RingMeshBuilder<P> Ring<P>::mesh() const
+    requires Meshable<P>
+{
     return RingMeshBuilder<P>{outer_shape.mesh(), inner_shape.mesh()};
 }
 
-template <Inset P>
+template <Primitive2d P>
+    requires Meshable<P>
 std::expected<Mesh, MeshAccessError> RingMeshBuilder<P>::try_build() const {
     Mesh outer = outer_shape_builder.build();
     Mesh inner = inner_shape_builder.build();
@@ -498,7 +666,8 @@ std::expected<Mesh, MeshAccessError> RingMeshBuilder<P>::try_build() const {
         .with_inserted_indices(Indices{std::move(indices)});
 }
 
-template <Inset P>
+template <Primitive2d P>
+    requires Meshable<P>
 Mesh RingMeshBuilder<P>::build() const {
     auto result = try_build();
     if (!result) throw std::runtime_error("ring inner and outer meshes must match in vertex count and attributes");
@@ -2843,11 +3012,11 @@ template struct RingMeshBuilder<RegularPolygon>;
 template struct RingMeshBuilder<Rhombus>;
 template struct RingMeshBuilder<Triangle2d>;
 
-template RingMeshBuilder<Circle> Ring<Circle>::mesh() const;
-template RingMeshBuilder<Capsule2d> Ring<Capsule2d>::mesh() const;
-template RingMeshBuilder<CircularSegment> Ring<CircularSegment>::mesh() const;
-template RingMeshBuilder<Rectangle> Ring<Rectangle>::mesh() const;
-template RingMeshBuilder<RegularPolygon> Ring<RegularPolygon>::mesh() const;
-template RingMeshBuilder<Rhombus> Ring<Rhombus>::mesh() const;
-template RingMeshBuilder<Triangle2d> Ring<Triangle2d>::mesh() const;
+template struct Ring<Circle>;
+template struct Ring<Capsule2d>;
+template struct Ring<CircularSegment>;
+template struct Ring<Rectangle>;
+template struct Ring<RegularPolygon>;
+template struct Ring<Rhombus>;
+template struct Ring<Triangle2d>;
 }  // namespace epix::mesh
