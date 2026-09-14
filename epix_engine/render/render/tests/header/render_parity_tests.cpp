@@ -4,6 +4,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <expected>
 #include <future>
@@ -20,6 +21,18 @@
 
 using namespace epix::ecs;
 using namespace epix::render;
+
+TEST(WebGpuWrapper, NativeEnumExtensionsUseDescriptorFacingTypes) {
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::SType::eDeviceExtras),
+              static_cast<std::uint32_t>(WGPUSType_DeviceExtras));
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::FeatureName::ePushConstants),
+              static_cast<std::uint32_t>(WGPUNativeFeature_PushConstants));
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::QueryType::ePipelineStatistics),
+              static_cast<std::uint32_t>(WGPUNativeQueryType_PipelineStatistics));
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::TextureFormat::eR16Unorm),
+              static_cast<std::uint32_t>(WGPUNativeTextureFormat_R16Unorm));
+    EXPECT_EQ(wgpu::to_string(wgpu::TextureFormat::eRgba16Unorm), "Rgba16Unorm");
+}
 
 struct EarlyExtractInstance {
     int value = 0;

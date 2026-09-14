@@ -1098,10 +1098,8 @@ EPIX_EXPORT class Image {
      * convert the formats `Image::try_into_dynamic` understands (`R8Unorm`, `Rg8Unorm`,
      * `Rgba8UnormSrgb`, `Bgra8UnormSrgb` and `Bgra8Unorm`) and only into `R8Unorm`, `Rg8Unorm`
      * or `Rgba8UnormSrgb`; anything else answers `None`, which is what the atlas builder logs
-     * and skips. The same gates apply here, while the pixel conversion itself runs through
-     * Epix's `Format` pipeline (see `ImageTextureConversion` in the tracker: Bevy's
-     * `DynamicImage` round-trip is not ported, and Epix keeps the requested layout instead of
-     * `from_dynamic`'s RGBA widening). */
+     * and skips. The same gates and `DynamicImage` round-trip apply here, including
+     * `from_dynamic`'s RGBA widening. */
     std::optional<Image> convert(wgpu::TextureFormat new_format) const;
     /**
      * @brief Resize image to new width and height, return the resized image.
@@ -1162,9 +1160,8 @@ EPIX_EXPORT class Image {
     /** @brief Mutable raw bytes of one pixel (Bevy `Image::pixel_bytes_mut`). */
     std::optional<std::span<std::byte>> pixel_bytes_mut(const glm::uvec3& coords) noexcept;
 
-    /** @brief Overwrite every pixel with `pixel` repeated, ignoring any leftover
-     * partial copy when the payload is shorter than one pixel (Bevy
-     * `Image::clear`). */
+    /** @brief Overwrite every pixel with one complete format-sized `pixel`
+     * (Bevy `Image::clear`). */
     void clear(std::span<const std::byte> pixel);
 
     /** @brief Read a pixel as linear RGBA (Bevy `Image::get_color_at`, which

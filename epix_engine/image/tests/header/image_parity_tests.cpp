@@ -199,6 +199,11 @@ TEST(Image, PixelDataOffsetIsRowMajorPerLayer) {
     EXPECT_FALSE(image.pixel_data_offset({4u, 0u, 0u}).has_value());
     EXPECT_FALSE(image.pixel_data_offset({0u, 3u, 0u}).has_value());
     EXPECT_FALSE(image.pixel_data_offset({0u, 0u, 2u}).has_value());
+
+    // Bevy's D1 arm checks X only; Y and Z are deliberately ignored.
+    auto one_dimensional = epix::image::Image::create1d(4, wgpu::TextureFormat::eRGBA8Unorm);
+    EXPECT_EQ(one_dimensional.pixel_data_offset({2u, 99u, 77u}), 2u * pixel);
+    EXPECT_FALSE(one_dimensional.pixel_data_offset({4u, 0u, 0u}).has_value());
 }
 
 // A grey image carries one byte per pixel, which halves the stride.
@@ -369,9 +374,9 @@ TEST(Image, PixelBytesExposeOnePixelsBytes) {
     EXPECT_FALSE(image.pixel_bytes({0u, 0u, 0u}).has_value());
 }
 
-// clear repeats the fill data across the whole payload (Bevy Image::clear,
-// image.rs:1477).
-TEST(Image, ClearRepeatsFillAcrossPayload) {
+// clear copies one complete texel into every texel slot (Bevy Image::clear,
+// image.rs:1477-1496).
+TEST(Image, ClearCopiesOneCompletePixelAcrossPayload) {
     auto image = epix::image::Image::create2d(3, 2, wgpu::TextureFormat::eRGBA8Unorm);
     const std::array<std::byte, 4> fill{std::byte(1), std::byte(2), std::byte(3), std::byte(4)};
     image.clear(fill);
@@ -379,6 +384,13 @@ TEST(Image, ClearRepeatsFillAcrossPayload) {
     for (std::size_t index = 0; index < image.raw_view().size(); ++index) {
         EXPECT_EQ(image.raw_view()[index], fill[index % fill.size()]);
     }
+
+    // Bevy's `copy_from_slice` panics when the source is not exactly one texel.
+    EXPECT_THROW(image.clear(std::array{std::byte(1), std::byte(2)}), std::invalid_argument);
+    EXPECT_THROW(image.clear(std::array{std::byte(1), std::byte(2), std::byte(3), std::byte(4), std::byte(5),
+                                        std::byte(6), std::byte(7), std::byte(8)}),
+                 std::invalid_argument);
+
 }
 
 // get_color_at/set_color_at round-trip through the texture format, reporting Bevy's
@@ -431,7 +443,7 @@ TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
 
     const auto bytes = image.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(bytes.has_value());
-    EXPECT_EQ((*bytes)[0], std::byte(128));  // blue
+    EXPECT_EQ((*bytes)[0], std::byte(127));  // blue; Rust's float-to-int cast truncates
     EXPECT_EQ((*bytes)[1], std::byte(0));    // green
     EXPECT_EQ((*bytes)[2], std::byte(255));  // red
     const auto read_back = image.get_color_at(0, 0);
@@ -440,20 +452,102 @@ TEST(Image, ColorAccessorsHandleBgraChannelOrder) {
     EXPECT_NEAR((*read_back)[2], 0.5f, 1.0f / 255.0f);
 }
 
-// A compressed format has no per-pixel size, so pixel access reports
-// UnsupportedTextureFormat rather than an out-of-bounds error
-// (Bevy TextureAccessError::UnsupportedTextureFormat, image.rs:1968).
-TEST(Image, CompressedFormatReportsUnsupportedAccess) {
+TEST(Image, ColorAccessorsConvertLinearRgbaForSrgbFormats) {
+    auto image = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eBGRA8UnormSrgb);
+    ASSERT_TRUE(image.set_color_at(0, 0, glm::vec4{1.0f, 0.0f, 0.5f, 1.0f}).has_value());
+
+    const auto bytes = image.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(bytes.has_value());
+    EXPECT_EQ((*bytes)[0], std::byte{187});  // Bevy Srgba::from(LinearRgba{blue = 0.5}), truncated
+    EXPECT_EQ((*bytes)[1], std::byte{0});
+    EXPECT_EQ((*bytes)[2], std::byte{254});  // Bevy's inverse-gamma result is just below 1 before truncation
+
+    const auto read_back = image.get_color_at(0, 0);
+    ASSERT_TRUE(read_back.has_value());
+    EXPECT_NEAR(read_back->r, 0.9911022f, 1.0e-6f);
+    EXPECT_NEAR(read_back->b, 0.4969330f, 1.0e-6f);
+}
+
+TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
+    auto rgba_uint = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA8Uint);
+    ASSERT_TRUE(rgba_uint.set_color_at(0, 0, glm::vec4{0.5f, 0.25f, 0.75f, 1.0f}).has_value());
+    const auto rgba_bytes = rgba_uint.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(rgba_bytes.has_value());
+    EXPECT_EQ((*rgba_bytes)[0], std::byte{127});
+    EXPECT_EQ((*rgba_bytes)[1], std::byte{63});
+    EXPECT_EQ((*rgba_bytes)[2], std::byte{191});
+
+    auto rgba_u32 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA32Uint);
+    ASSERT_TRUE(rgba_u32.set_color_at(0, 0, glm::vec4{0.5f, 0.0f, 0.0f, 1.0f}).has_value());
+    const auto rgba_u32_bytes = rgba_u32.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(rgba_u32_bytes.has_value());
+    std::uint32_t rgba_u32_red{};
+    std::memcpy(&rgba_u32_red, rgba_u32_bytes->data(), sizeof(rgba_u32_red));
+    EXPECT_EQ(rgba_u32_red, 0x80000000u);  // Bevy multiplies this format in f32.
+
+    auto rgba_unorm16 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRgba16Unorm);
+    ASSERT_TRUE(rgba_unorm16.set_color_at(0, 0, glm::vec4{0.5f, 0.25f, 0.75f, 1.0f}).has_value());
+    const auto rgba_unorm16_bytes = rgba_unorm16.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(rgba_unorm16_bytes.has_value());
+    std::uint16_t rgba_unorm16_red{};
+    std::memcpy(&rgba_unorm16_red, rgba_unorm16_bytes->data(), sizeof(rgba_unorm16_red));
+    EXPECT_EQ(rgba_unorm16_red, 32767u);
+    const auto rgba_unorm16_read = rgba_unorm16.get_color_at(0, 0);
+    ASSERT_TRUE(rgba_unorm16_read.has_value());
+    EXPECT_NEAR(rgba_unorm16_read->r, 0.5f, 1.0f / 65535.0f);
+
+    auto half_float = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRG16Float);
+    ASSERT_TRUE(half_float.set_color_at(0, 0, glm::vec4{0.5f, -2.0f, 0.0f, 1.0f}).has_value());
+    const auto half_read = half_float.get_color_at(0, 0);
+    ASSERT_TRUE(half_read.has_value());
+    EXPECT_FLOAT_EQ(half_read->r, 0.5f);
+    EXPECT_FLOAT_EQ(half_read->g, -2.0f);
+
+    auto r_uint = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eR32Uint);
+    ASSERT_TRUE(r_uint.set_color_at(0, 0, glm::vec4{1.0f, 0.0f, 0.0f, 1.0f}).has_value());
+    const auto grayscale = r_uint.get_color_at(0, 0);
+    ASSERT_TRUE(grayscale.has_value());
+    EXPECT_NEAR(grayscale->r, 0.2126729f, 1.0e-6f);
+    EXPECT_EQ(grayscale->r, grayscale->g);
+    EXPECT_EQ(grayscale->g, grayscale->b);
+
+    auto r_u32_half = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eR32Uint);
+    ASSERT_TRUE(r_u32_half.set_color_at(0, 0, glm::vec4{0.5f, 0.5f, 0.5f, 1.0f}).has_value());
+    const auto r_u32_bytes = r_u32_half.pixel_bytes({0u, 0u, 0u});
+    ASSERT_TRUE(r_u32_bytes.has_value());
+    std::uint32_t r_u32_value{};
+    std::memcpy(&r_u32_value, r_u32_bytes->data(), sizeof(r_u32_value));
+    // Bevy's XYZ luminance coefficients sum slightly above one in f32, then R32Uint
+    // deliberately multiplies that result in f64.
+    EXPECT_EQ(r_u32_value, 0x800000FFu);
+
+    auto unsupported = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eR8Sint);
+    const auto unsupported_read = unsupported.get_color_at(0, 0);
+    ASSERT_FALSE(unsupported_read.has_value());
+    EXPECT_NE(std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(
+                  &unsupported_read.error().value),
+              nullptr);
+    const auto unsupported_write = unsupported.set_color_at(0, 0, glm::vec4{1.0f});
+    ASSERT_FALSE(unsupported_write.has_value());
+    EXPECT_NE(std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(
+                  &unsupported_write.error().value),
+              nullptr);
+}
+
+// A compressed format has no per-pixel size, so Bevy's `pixel_bytes` returns None and the
+// color accessor maps that to OutOfBounds before reaching its format switch.
+TEST(Image, CompressedFormatReportsOutOfBoundsAccess) {
     auto image                      = epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm);
     image.texture_descriptor.format = wgpu::TextureFormat::eBC7RGBAUnorm;
 
     EXPECT_FALSE(image.pixel_bytes({0u, 0u, 0u}).has_value());
     const auto color = image.get_color_at(0, 0);
     ASSERT_FALSE(color.has_value());
-    const auto* unsupported =
-        std::get_if<epix::image::TextureAccessError::UnsupportedTextureFormat>(&color.error().value);
-    ASSERT_NE(unsupported, nullptr);
-    EXPECT_EQ(unsupported->format, wgpu::TextureFormat::eBC7RGBAUnorm);
+    const auto* bounds = std::get_if<epix::image::TextureAccessError::OutOfBounds>(&color.error().value);
+    ASSERT_NE(bounds, nullptr);
+    EXPECT_EQ(bounds->x, 0u);
+    EXPECT_EQ(bounds->y, 0u);
+    EXPECT_EQ(bounds->z, 0u);
 }
 
 // Bevy `ImageFormat`'s extension and MIME tables
@@ -750,6 +844,7 @@ TEST(TextureFormatPixelSize, MatchesWgpuTypesBlockCopySizes) {
     EXPECT_EQ(size(wgpu::TextureFormat::eR8Uint), 1u);
     EXPECT_EQ(size(wgpu::TextureFormat::eStencil8), 1u);
     EXPECT_EQ(size(wgpu::TextureFormat::eR16Float), 2u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eR16Unorm), 2u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRG8Snorm), 2u);
     EXPECT_EQ(size(wgpu::TextureFormat::eDepth16Unorm), 2u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRGBA8UnormSrgb), 4u);
@@ -757,7 +852,9 @@ TEST(TextureFormatPixelSize, MatchesWgpuTypesBlockCopySizes) {
     EXPECT_EQ(size(wgpu::TextureFormat::eRGB10A2Unorm), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eR32Float), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eDepth32Float), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRg16Unorm), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRGBA16Float), 8u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRgba16Unorm), 8u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRG32Uint), 8u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRGBA32Float), 16u);
 
@@ -771,9 +868,9 @@ TEST(TextureFormatPixelSize, MatchesWgpuTypesBlockCopySizes) {
                   (epix::image::TextureAccessError{epix::image::TextureAccessError::UnsupportedTextureFormat{format}}));
     }
 
-    EXPECT_THROW(size(wgpu::TextureFormat::eDepth24Plus), std::runtime_error);
-    EXPECT_THROW(size(wgpu::TextureFormat::eDepth24PlusStencil8), std::runtime_error);
-    EXPECT_THROW(size(wgpu::TextureFormat::eDepth32FloatStencil8), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(size(wgpu::TextureFormat::eDepth24Plus)), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(size(wgpu::TextureFormat::eDepth24PlusStencil8)), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(size(wgpu::TextureFormat::eDepth32FloatStencil8)), std::runtime_error);
 
     // `eUndefined` has no `wgpu-types` counterpart, so Rust cannot ask for its size.
     EXPECT_FALSE(size(wgpu::TextureFormat::eUndefined).has_value());
@@ -802,6 +899,18 @@ TEST(ImageNew, BuildsDescriptorPayloadAndUsage) {
     EXPECT_FALSE(uninitialized.has_data());
     EXPECT_TRUE(uninitialized.raw_view().empty());
     EXPECT_EQ(uninitialized.usage(), static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD));
+}
+
+TEST(ImageDynamicConversion, UsesNativeRgba16UnormFormat) {
+    epix::image::Rgba16Image rgba{1, 1, {1u, 2u, 3u, 4u}};
+    auto image = epix::image::Image::from_dynamic(
+        epix::image::DynamicImage{std::move(rgba)}, true, epix::assets::MAIN_WORLD);
+
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRgba16Unorm);
+    ASSERT_EQ(image.raw_view().size(), 4u * sizeof(std::uint16_t));
+    std::uint16_t first{};
+    std::memcpy(&first, image.raw_view().data(), sizeof(first));
+    EXPECT_EQ(first, 1u);
 }
 
 // `Image::convert(TextureFormat)` (image.rs:1335-1353): the source must be one of the formats

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
@@ -218,9 +219,8 @@ TEST(ImageLoad, ReportsTypedFailuresAndLoadsRealFiles) {
 
 // WebGPU has no three-channel texture format, so Bevy's `Image::from_dynamic`
 // widens `Rgb8` to `Rgba8` (and the 16-bit/float equivalents) while building the
-// image, and Epix's `Format` has no three-channel alternative either. A decoder
-// that returns three channels must therefore be widened before the `Image` is
-// created.
+// image. WebGPU likewise has no three-channel texture format, so a decoder that
+// returns three channels must be widened before the `Image` is created.
 TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     // A committed 4x2 colour-type-2 (truecolour RGB) PNG. Epix cannot produce
     // such a file itself, because it has no three-channel image format.
@@ -236,14 +236,19 @@ TEST(ImageLoad, WidensThreeChannelImagesToFourChannels) {
     EXPECT_EQ(widened->width(), 4u);
     EXPECT_EQ(widened->height(), 2u);
     EXPECT_EQ(widened->raw_view().size(), 4u * 2u * 4u);
-    // Every pixel gained an opaque alpha channel and kept its colour channels.
+    // Every pixel gained an opaque alpha channel. `get_color_at` adapts Bevy's
+    // tagged sRGB Color result to Epix's linear-RGBA vec4 API.
+    const auto srgb_to_linear = [](float value) {
+        return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+    };
     for (std::uint32_t y = 0; y < 2; ++y) {
         for (std::uint32_t x = 0; x < 4; ++x) {
             const auto color = widened->get_color_at(x, y);
             ASSERT_TRUE(color.has_value());
             EXPECT_FLOAT_EQ(color->a, 1.0f) << "at " << x << "," << y;
-            EXPECT_NEAR(color->r, static_cast<float>(x) / 3.0f, 0.01f) << "at " << x << "," << y;
-            EXPECT_NEAR(color->g, static_cast<float>(y), 0.01f) << "at " << x << "," << y;
+            EXPECT_NEAR(color->r, srgb_to_linear(static_cast<float>(x) / 3.0f), 0.01f)
+                << "at " << x << "," << y;
+            EXPECT_NEAR(color->g, srgb_to_linear(static_cast<float>(y)), 0.01f) << "at " << x << "," << y;
         }
     }
 

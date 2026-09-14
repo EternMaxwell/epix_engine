@@ -10,6 +10,8 @@
 #include <epix/image/image.hpp>
 #include <epix/image/image_loader.hpp>
 #include <expected>
+#include <glm/gtc/packing.hpp>
+#include <limits>
 #include <span>
 #include <stdexcept>
 #include <utility>
@@ -260,6 +262,7 @@ std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eR8Snorm:
         case wgpu::TextureFormat::eR8Uint:
         case wgpu::TextureFormat::eR8Sint:
+        case wgpu::TextureFormat::eR16Unorm:
         case wgpu::TextureFormat::eR16Uint:
         case wgpu::TextureFormat::eR16Sint:
         case wgpu::TextureFormat::eR16Float:
@@ -279,6 +282,7 @@ std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eRG8Snorm:
         case wgpu::TextureFormat::eRG8Uint:
         case wgpu::TextureFormat::eRG8Sint:
+        case wgpu::TextureFormat::eRg16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
         case wgpu::TextureFormat::eRG16Sint:
         case wgpu::TextureFormat::eRG16Float:
@@ -306,6 +310,7 @@ std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eRGBA8Sint:
         case wgpu::TextureFormat::eBGRA8Unorm:
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
+        case wgpu::TextureFormat::eRgba16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
         case wgpu::TextureFormat::eRGBA16Float:
@@ -379,6 +384,7 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
         case wgpu::TextureFormat::eRG8Snorm:
         case wgpu::TextureFormat::eRG8Uint:
         case wgpu::TextureFormat::eRG8Sint:
+        case wgpu::TextureFormat::eR16Unorm:
         case wgpu::TextureFormat::eR16Uint:
         case wgpu::TextureFormat::eR16Sint:
         case wgpu::TextureFormat::eR16Float:
@@ -391,6 +397,7 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
         case wgpu::TextureFormat::eRGBA8Sint:
         case wgpu::TextureFormat::eBGRA8Unorm:
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
+        case wgpu::TextureFormat::eRg16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
         case wgpu::TextureFormat::eRG16Sint:
         case wgpu::TextureFormat::eRG16Float:
@@ -403,6 +410,7 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
         case wgpu::TextureFormat::eRG11B10Ufloat:
         case wgpu::TextureFormat::eDepth32Float:
             return 4;
+        case wgpu::TextureFormat::eRgba16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
         case wgpu::TextureFormat::eRGBA16Float:
@@ -701,12 +709,16 @@ float Image::aspect_ratio() const {
 bool Image::is_compressed() const noexcept { return is_compressed_texture_format(texture_descriptor.format); }
 
 std::optional<std::size_t> Image::pixel_data_offset(const glm::uvec3& coords) const noexcept {
-    if (coords.x >= width() || coords.y >= height() || coords.z >= depth_or_layers()) return std::nullopt;
     const auto pixel_size = texture_format_pixel_size(texture_descriptor.format);
     if (!pixel_size) return std::nullopt;
-    const std::size_t row_stride   = static_cast<std::size_t>(width()) * *pixel_size;
-    const std::size_t layer_stride = static_cast<std::size_t>(height()) * row_stride;
-    return coords.z * layer_stride + coords.y * row_stride + coords.x * *pixel_size;
+    if (texture_descriptor.dimension == wgpu::TextureDimension::e1D) {
+        if (coords.x >= width()) return std::nullopt;
+        return static_cast<std::size_t>(coords.x) * *pixel_size;
+    }
+    if (coords.x >= width() || coords.y >= height() || coords.z >= depth_or_layers()) return std::nullopt;
+    const std::size_t pixel_offset =
+        (static_cast<std::size_t>(coords.z) * height() + coords.y) * width() + coords.x;
+    return pixel_offset * *pixel_size;
 }
 
 void Image::resize_size(const wgpu::Extent3D& new_size) {
@@ -804,120 +816,253 @@ std::optional<std::span<std::byte>> Image::pixel_bytes_mut(const glm::uvec3& coo
 
 void Image::clear(std::span<const std::byte> pixel) {
     const auto pixel_size = texture_format_pixel_size(texture_descriptor.format);
-    if (!pixel_size || *pixel_size == 0 || pixel.empty()) return;
-    // Bevy cycles the fill data across the whole payload, so a shorter `pixel`
-    // repeats and a longer one fills what fits.
-    for (std::size_t index = 0; index < data.size(); ++index) {
-        data[index] = pixel[index % pixel.size()];
+    if (!pixel_size || *pixel_size == 0 || !m_has_data) return;
+    // Rust's `copy_from_slice` panics unless the supplied slice is exactly one texel.
+    // Throwing avoids an unchecked C++ copy while preserving that precondition.
+    if (pixel.size() != *pixel_size) {
+        throw std::invalid_argument("Image::clear requires exactly one complete pixel");
+    }
+    if (data.size() % *pixel_size != 0) {
+        throw std::invalid_argument("Image::clear cannot fill an incomplete trailing pixel");
+    }
+    for (std::size_t offset = 0; offset + *pixel_size <= data.size(); offset += *pixel_size) {
+        std::copy(pixel.begin(), pixel.end(), data.begin() + static_cast<std::ptrdiff_t>(offset));
     }
 }
 
 namespace {
-/** @brief Read the linear RGBA value of one pixel from raw bytes. */
-glm::vec4 read_pixel_color(wgpu::TextureFormat format, std::span<const std::byte> bytes) noexcept {
-    const auto channels = static_cast<std::size_t>(bytes.size());
-    glm::vec4 color{0.0f, 0.0f, 0.0f, 1.0f};
-    if (channels == 0) return color;
-    const unsigned char* raw = reinterpret_cast<const unsigned char*>(bytes.data());
+template <typename T>
+T load_scalar(std::span<const std::byte> bytes, std::size_t offset) noexcept {
+    T value{};
+    std::memcpy(&value, bytes.data() + offset, sizeof(T));
+    return value;
+}
+
+template <typename T>
+void store_scalar(std::span<std::byte> bytes, std::size_t offset, T value) noexcept {
+    std::memcpy(bytes.data() + offset, &value, sizeof(T));
+}
+
+std::uint8_t to_u8(float value) noexcept {
+    if (std::isnan(value) || value <= 0.0f) return 0;
+    if (value >= 1.0f) return std::numeric_limits<std::uint8_t>::max();
+    return static_cast<std::uint8_t>(value * static_cast<float>(std::numeric_limits<std::uint8_t>::max()));
+}
+
+std::uint16_t to_u16(float value) noexcept {
+    if (std::isnan(value) || value <= 0.0f) return 0;
+    if (value >= 1.0f) return std::numeric_limits<std::uint16_t>::max();
+    return static_cast<std::uint16_t>(value * static_cast<float>(std::numeric_limits<std::uint16_t>::max()));
+}
+
+std::uint32_t to_u32_via_f64(float value) noexcept {
+    if (std::isnan(value) || value <= 0.0f) return 0;
+    if (value >= 1.0f) return std::numeric_limits<std::uint32_t>::max();
+    return static_cast<std::uint32_t>(static_cast<double>(value) *
+                                      static_cast<double>(std::numeric_limits<std::uint32_t>::max()));
+}
+
+std::uint32_t to_u32_via_f32(float value) noexcept {
+    if (std::isnan(value) || value <= 0.0f) return 0;
+    const float scaled = value * static_cast<float>(std::numeric_limits<std::uint32_t>::max());
+    if (scaled >= static_cast<float>(std::numeric_limits<std::uint32_t>::max())) {
+        return std::numeric_limits<std::uint32_t>::max();
+    }
+    return static_cast<std::uint32_t>(scaled);
+}
+
+float luminance(const glm::vec4& color) noexcept {
+    // `Xyza::from(LinearRgba).y` in Bevy 0.18.
+    return color.r * 0.2126729f + color.g * 0.7151522f + color.b * 0.0721750f;
+}
+
+float srgb_to_linear(float value) noexcept {
+    // Bevy 0.18 `Srgba::gamma_function`.
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
+
+float linear_to_srgb(float value) noexcept {
+    // Bevy 0.18 `Srgba::gamma_function_inverse`.
+    return value <= 0.0031308f ? value * 12.92f : 1.055f * std::pow(value, 1.0f / 2.4f) - 0.055f;
+}
+
+/** @brief Read exactly the texture formats supported by Bevy's color accessor. */
+std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
+                                          std::span<const std::byte> bytes) noexcept {
+    constexpr double u16_max = static_cast<double>(std::numeric_limits<std::uint16_t>::max());
+    constexpr double u32_max = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
+    const auto normalized_u16 = [bytes](std::size_t offset) {
+        return static_cast<float>(static_cast<double>(load_scalar<std::uint16_t>(bytes, offset)) / u16_max);
+    };
+    const auto normalized_u32 = [bytes](std::size_t offset) {
+        return static_cast<float>(static_cast<double>(load_scalar<std::uint32_t>(bytes, offset)) / u32_max);
+    };
+    const auto half = [bytes](std::size_t offset) {
+        return glm::unpackHalf1x16(load_scalar<std::uint16_t>(bytes, offset));
+    };
+    const auto floating = [bytes](std::size_t offset) { return load_scalar<float>(bytes, offset); };
+    const auto raw = reinterpret_cast<const std::uint8_t*>(bytes.data());
     switch (format) {
         case wgpu::TextureFormat::eR8Unorm:
-            color.r = static_cast<float>(raw[0]) / 255.0f;
-            color.g = color.r;
-            color.b = color.r;
-            return color;
-        case wgpu::TextureFormat::eRG8Unorm:
-            color.r = static_cast<float>(raw[0]) / 255.0f;
-            color.g = static_cast<float>(raw[1]) / 255.0f;
-            color.b = 0.0f;
-            return color;
-        case wgpu::TextureFormat::eRGBA8Unorm:
-        case wgpu::TextureFormat::eRGBA8UnormSrgb:
-            color.r = static_cast<float>(raw[0]) / 255.0f;
-            color.g = static_cast<float>(raw[1]) / 255.0f;
-            color.b = static_cast<float>(raw[2]) / 255.0f;
-            color.a = static_cast<float>(raw[3]) / 255.0f;
-            return color;
-        case wgpu::TextureFormat::eBGRA8Unorm:
-        case wgpu::TextureFormat::eBGRA8UnormSrgb:
-            color.r = static_cast<float>(raw[2]) / 255.0f;
-            color.g = static_cast<float>(raw[1]) / 255.0f;
-            color.b = static_cast<float>(raw[0]) / 255.0f;
-            color.a = static_cast<float>(raw[3]) / 255.0f;
-            return color;
-        default: {
-            // The generic path covers the single- and two-channel, 16-bit and 32-bit float
-            // formats; Bevy reads those through the `image` crate. The channel count and texel
-            // size come from the wgpu format itself (`components` and the texel copy size).
-            const std::uint8_t channel_count = texture_format_components(format);
-            const std::size_t texel_size     = texture_format_pixel_size(format).value_or(0);
-            if (channel_count == 0 || texel_size == 0) return color;
-            const std::size_t per_channel = texel_size / channel_count;
-            if (channel_count > channels) return color;
-            for (std::size_t channel = 0; channel < channel_count && channel < 4; ++channel) {
-                const unsigned char* channel_bytes = raw + channel * per_channel;
-                float value                        = 0.0f;
-                if (per_channel == 2) {
-                    std::uint16_t bits = 0;
-                    std::memcpy(&bits, channel_bytes, sizeof(bits));
-                    value = static_cast<float>(bits) / 65535.0f;
-                } else {
-                    std::memcpy(&value, channel_bytes, sizeof(value));
-                }
-                color[channel] = value;
-            }
-            if (channel_count < 4) color.a = 1.0f;
-            return color;
+        case wgpu::TextureFormat::eR8Uint: {
+            const float value = static_cast<float>(raw[0]) / 255.0f;
+            return glm::vec4{value, value, value, 1.0f};
         }
+        case wgpu::TextureFormat::eR16Unorm:
+        case wgpu::TextureFormat::eR16Uint: {
+            const float value = normalized_u16(0);
+            return glm::vec4{value, value, value, 1.0f};
+        }
+        case wgpu::TextureFormat::eR32Uint: {
+            const float value = normalized_u32(0);
+            return glm::vec4{value, value, value, 1.0f};
+        }
+        case wgpu::TextureFormat::eR16Float: {
+            const float value = half(0);
+            return glm::vec4{value, value, value, 1.0f};
+        }
+        case wgpu::TextureFormat::eR32Float: {
+            const float value = floating(0);
+            return glm::vec4{value, value, value, 1.0f};
+        }
+        case wgpu::TextureFormat::eRG8Unorm:
+        case wgpu::TextureFormat::eRG8Uint:
+            return glm::vec4{static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[1]) / 255.0f, 0.0f,
+                             1.0f};
+        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Uint:
+            return glm::vec4{normalized_u16(0), normalized_u16(2), 0.0f, 1.0f};
+        case wgpu::TextureFormat::eRG32Uint:
+            return glm::vec4{normalized_u32(0), normalized_u32(4), 0.0f, 1.0f};
+        case wgpu::TextureFormat::eRG16Float:
+            return glm::vec4{half(0), half(2), 0.0f, 1.0f};
+        case wgpu::TextureFormat::eRG32Float:
+            return glm::vec4{floating(0), floating(4), 0.0f, 1.0f};
+        case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8Uint:
+            return glm::vec4{static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[1]) / 255.0f,
+                             static_cast<float>(raw[2]) / 255.0f, static_cast<float>(raw[3]) / 255.0f};
+        case wgpu::TextureFormat::eRGBA8UnormSrgb:
+            return glm::vec4{srgb_to_linear(static_cast<float>(raw[0]) / 255.0f),
+                             srgb_to_linear(static_cast<float>(raw[1]) / 255.0f),
+                             srgb_to_linear(static_cast<float>(raw[2]) / 255.0f),
+                             static_cast<float>(raw[3]) / 255.0f};
+        case wgpu::TextureFormat::eBGRA8Unorm:
+            return glm::vec4{static_cast<float>(raw[2]) / 255.0f, static_cast<float>(raw[1]) / 255.0f,
+                             static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[3]) / 255.0f};
+        case wgpu::TextureFormat::eBGRA8UnormSrgb:
+            return glm::vec4{srgb_to_linear(static_cast<float>(raw[2]) / 255.0f),
+                             srgb_to_linear(static_cast<float>(raw[1]) / 255.0f),
+                             srgb_to_linear(static_cast<float>(raw[0]) / 255.0f),
+                             static_cast<float>(raw[3]) / 255.0f};
+        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Uint:
+            return glm::vec4{normalized_u16(0), normalized_u16(2), normalized_u16(4), normalized_u16(6)};
+        case wgpu::TextureFormat::eRGBA32Uint:
+            return glm::vec4{normalized_u32(0), normalized_u32(4), normalized_u32(8), normalized_u32(12)};
+        case wgpu::TextureFormat::eRGBA16Float:
+            return glm::vec4{half(0), half(2), half(4), half(6)};
+        case wgpu::TextureFormat::eRGBA32Float:
+            return glm::vec4{floating(0), floating(4), floating(8), floating(12)};
+        default:
+            return std::nullopt;
     }
 }
 
 /** @brief Encode linear RGBA into one pixel's raw bytes. */
-void write_pixel_color(wgpu::TextureFormat format, std::span<std::byte> bytes, const glm::vec4& color) noexcept {
-    unsigned char* raw  = reinterpret_cast<unsigned char*>(bytes.data());
-    const auto quantize = [](float value) {
-        return static_cast<unsigned char>(std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f);
-    };
+bool write_pixel_color(wgpu::TextureFormat format,
+                       std::span<std::byte> bytes,
+                       const glm::vec4& color) noexcept {
+    auto* raw = reinterpret_cast<std::uint8_t*>(bytes.data());
     switch (format) {
         case wgpu::TextureFormat::eR8Unorm:
-            raw[0] = quantize(color.r);
-            return;
+        case wgpu::TextureFormat::eR8Uint:
+            raw[0] = to_u8(luminance(color));
+            return true;
+        case wgpu::TextureFormat::eR16Unorm:
+        case wgpu::TextureFormat::eR16Uint:
+            store_scalar(bytes, 0, to_u16(luminance(color)));
+            return true;
+        case wgpu::TextureFormat::eR32Uint:
+            store_scalar(bytes, 0, to_u32_via_f64(luminance(color)));
+            return true;
+        case wgpu::TextureFormat::eR16Float:
+            store_scalar(bytes, 0, glm::packHalf1x16(luminance(color)));
+            return true;
+        case wgpu::TextureFormat::eR32Float:
+            store_scalar(bytes, 0, luminance(color));
+            return true;
         case wgpu::TextureFormat::eRG8Unorm:
-            raw[0] = quantize(color.r);
-            raw[1] = quantize(color.g);
-            return;
+        case wgpu::TextureFormat::eRG8Uint:
+            raw[0] = to_u8(color.r);
+            raw[1] = to_u8(color.g);
+            return true;
+        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Uint:
+            store_scalar(bytes, 0, to_u16(color.r));
+            store_scalar(bytes, 2, to_u16(color.g));
+            return true;
+        case wgpu::TextureFormat::eRG32Uint:
+            store_scalar(bytes, 0, to_u32_via_f64(color.r));
+            store_scalar(bytes, 4, to_u32_via_f64(color.g));
+            return true;
+        case wgpu::TextureFormat::eRG16Float:
+            store_scalar(bytes, 0, glm::packHalf1x16(color.r));
+            store_scalar(bytes, 2, glm::packHalf1x16(color.g));
+            return true;
+        case wgpu::TextureFormat::eRG32Float:
+            store_scalar(bytes, 0, color.r);
+            store_scalar(bytes, 4, color.g);
+            return true;
         case wgpu::TextureFormat::eRGBA8Unorm:
+        case wgpu::TextureFormat::eRGBA8Uint:
+            raw[0] = to_u8(color.r);
+            raw[1] = to_u8(color.g);
+            raw[2] = to_u8(color.b);
+            raw[3] = to_u8(color.a);
+            return true;
         case wgpu::TextureFormat::eRGBA8UnormSrgb:
-            raw[0] = quantize(color.r);
-            raw[1] = quantize(color.g);
-            raw[2] = quantize(color.b);
-            raw[3] = quantize(color.a);
-            return;
+            raw[0] = to_u8(linear_to_srgb(color.r));
+            raw[1] = to_u8(linear_to_srgb(color.g));
+            raw[2] = to_u8(linear_to_srgb(color.b));
+            raw[3] = to_u8(color.a);
+            return true;
         case wgpu::TextureFormat::eBGRA8Unorm:
+            raw[0] = to_u8(color.b);
+            raw[1] = to_u8(color.g);
+            raw[2] = to_u8(color.r);
+            raw[3] = to_u8(color.a);
+            return true;
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
-            raw[0] = quantize(color.b);
-            raw[1] = quantize(color.g);
-            raw[2] = quantize(color.r);
-            raw[3] = quantize(color.a);
-            return;
-        default: {
-            const std::uint8_t channel_count = texture_format_components(format);
-            const std::size_t texel_size     = texture_format_pixel_size(format).value_or(0);
-            if (channel_count == 0 || texel_size == 0) return;
-            const std::size_t stride = texel_size / channel_count;
-            if (stride * channel_count > bytes.size()) return;
-            for (std::size_t channel = 0; channel < channel_count && channel < 4; ++channel) {
-                unsigned char* channel_bytes = raw + channel * stride;
-                if (stride == 2) {
-                    const auto bits = static_cast<std::uint16_t>(
-                        std::clamp(color[static_cast<glm::length_t>(channel)], 0.0f, 1.0f) * 65535.0f + 0.5f);
-                    std::memcpy(channel_bytes, &bits, sizeof(bits));
-                } else if (stride == 4) {
-                    const float value = color[static_cast<glm::length_t>(channel)];
-                    std::memcpy(channel_bytes, &value, sizeof(value));
-                }
+            raw[0] = to_u8(linear_to_srgb(color.b));
+            raw[1] = to_u8(linear_to_srgb(color.g));
+            raw[2] = to_u8(linear_to_srgb(color.r));
+            raw[3] = to_u8(color.a);
+            return true;
+        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Uint:
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                store_scalar(bytes, channel * 2, to_u16(color[static_cast<glm::length_t>(channel)]));
             }
-            return;
-        }
+            return true;
+        case wgpu::TextureFormat::eRGBA32Uint:
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                store_scalar(bytes, channel * 4, to_u32_via_f32(color[static_cast<glm::length_t>(channel)]));
+            }
+            return true;
+        case wgpu::TextureFormat::eRGBA16Float:
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                store_scalar(bytes, channel * 2,
+                             glm::packHalf1x16(color[static_cast<glm::length_t>(channel)]));
+            }
+            return true;
+        case wgpu::TextureFormat::eRGBA32Float:
+            for (std::size_t channel = 0; channel < 4; ++channel) {
+                store_scalar(bytes, channel * 4, color[static_cast<glm::length_t>(channel)]);
+            }
+            return true;
+        default:
+            return false;
     }
 }
 }  // namespace
@@ -927,26 +1072,26 @@ namespace {
 std::expected<glm::vec4, TextureAccessError> read_color_at(const Image& image, const glm::uvec3& coords) {
     const auto bytes = image.pixel_bytes(coords);
     if (!bytes) {
-        if (!texture_format_pixel_size(image.texture_descriptor.format)) {
-            return std::unexpected(
-                TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
-        }
         return std::unexpected(TextureAccessError{TextureAccessError::OutOfBounds{coords.x, coords.y, coords.z}});
     }
-    return read_pixel_color(image.texture_descriptor.format, *bytes);
+    const auto color = read_pixel_color(image.texture_descriptor.format, *bytes);
+    if (!color) {
+        return std::unexpected(
+            TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
+    }
+    return *color;
 }
 
 /** @brief Write the pixel at `coords`, mapping the failure to a typed access error. */
 std::expected<void, TextureAccessError> write_color_at(Image& image, const glm::uvec3& coords, const glm::vec4& color) {
     const auto bytes = image.pixel_bytes_mut(coords);
     if (!bytes) {
-        if (!texture_format_pixel_size(image.texture_descriptor.format)) {
-            return std::unexpected(
-                TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
-        }
         return std::unexpected(TextureAccessError{TextureAccessError::OutOfBounds{coords.x, coords.y, coords.z}});
     }
-    write_pixel_color(image.texture_descriptor.format, *bytes, color);
+    if (!write_pixel_color(image.texture_descriptor.format, *bytes, color)) {
+        return std::unexpected(
+            TextureAccessError{TextureAccessError::UnsupportedTextureFormat{image.texture_descriptor.format}});
+    }
     return {};
 }
 

@@ -71,7 +71,7 @@ function(generate_webgpu_wrapper)
             -o "${OUTPUT_HEADER}"
             --use-raii
             --indexed-handle BindGroupLayout
-        DEPENDS ${WEBGPU_CPP_HEADER_TEMPLATE} ${GEN_HEADER_FILES}
+        DEPENDS ${WEBGPU_CPP_GENERATOR_SCRIPT} ${WEBGPU_CPP_HEADER_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         COMMENT "Generating WebGPU C++ header..."
         VERBATIM
@@ -85,7 +85,7 @@ function(generate_webgpu_wrapper)
             -o "${OUTPUT_SOURCE}"
             --use-raii
             --indexed-handle BindGroupLayout
-        DEPENDS ${WEBGPU_CPP_SOURCE_TEMPLATE} ${GEN_HEADER_FILES}
+        DEPENDS ${WEBGPU_CPP_GENERATOR_SCRIPT} ${WEBGPU_CPP_SOURCE_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         COMMENT "Generating WebGPU C++ source..."
         VERBATIM
@@ -99,7 +99,7 @@ function(generate_webgpu_wrapper)
             -o "${OUTPUT_MODULE}"
             --use-raii
             --indexed-handle BindGroupLayout
-        DEPENDS ${WEBGPU_CPP_MODULE_TEMPLATE} ${GEN_HEADER_FILES}
+        DEPENDS ${WEBGPU_CPP_GENERATOR_SCRIPT} ${WEBGPU_CPP_MODULE_TEMPLATE} ${GEN_HEADER_FILES}
         WORKING_DIRECTORY ${WEBGPU_CPP_GENERATOR_DIR}
         COMMENT "Generating WebGPU module wrapper..."
         VERBATIM
