@@ -860,9 +860,11 @@ TEST(MeshModule, MeshUsageAndCloneMatchBevyContract) {
         epix::assets::RenderAssetUsages::MAIN_WORLD | epix::assets::RenderAssetUsages::RENDER_WORLD);
     auto source = mesh::make_box2d(20.0f, 10.0f);
     EXPECT_EQ(source.asset_usage, both_worlds);
+    source.final_aabb = mesh::Aabb3d::from_min_max(glm::vec3{-2.0f}, glm::vec3{3.0f});
 
     mesh::Mesh clone(source);
     EXPECT_EQ(clone.asset_usage, source.asset_usage);
+    EXPECT_EQ(clone.final_aabb, source.final_aabb);
     EXPECT_EQ(clone.count_vertices(), source.count_vertices());
     ASSERT_TRUE(clone.remove_attribute(mesh::Mesh::ATTRIBUTE_POSITION).has_value());
     EXPECT_FALSE(clone.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
@@ -3397,11 +3399,11 @@ TEST(MeshAlgorithms, TakeGpuDataCalculatesFinalAabb) {
     EXPECT_EQ(taken->final_aabb->center(), (glm::vec3{-0.75f, -0.5f, 0.0f}));
     EXPECT_EQ(taken->final_aabb->half_size(), (glm::vec3{0.25f, 0.5f, 0.0f}));
 
-    // A mesh whose position attribute is absent keeps no extents, exactly as Bevy's
-    // `if let .. VertexAttributeValues::Float32x3(..)` guard does.
+    // With no readable position attribute, Bevy's struct update keeps previously stored metadata.
     mesh::Mesh no_positions(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::MAIN_WORLD);
     no_positions.insert_indices(mesh::Indices{std::vector<std::uint32_t>{0, 1, 2}});
+    no_positions.final_aabb = mesh::Aabb3d::from_min_max(glm::vec3{-4.0f}, glm::vec3{5.0f});
     auto without_positions = no_positions.take_gpu_data();
     ASSERT_TRUE(without_positions.has_value());
-    EXPECT_FALSE(without_positions->final_aabb.has_value());
+    EXPECT_EQ(without_positions->final_aabb, no_positions.final_aabb);
 }

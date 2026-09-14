@@ -40,7 +40,8 @@ std::optional<Triangle3d> detail::MeshTriangleAt::operator()(std::size_t triangl
     return triangle;
 }
 
-Mesh::Mesh(const Mesh& other) : asset_usage(other.asset_usage), primitive_type(other.primitive_type) {
+Mesh::Mesh(const Mesh& other)
+    : asset_usage(other.asset_usage), final_aabb(other.final_aabb), primitive_type(other.primitive_type) {
     const auto source_attributes = other._attributes.as_ref_option();
     if (!source_attributes) {
         _attributes = detail::MeshExtractableData<AttributeMap>::extracted_to_render_world();
@@ -937,6 +938,7 @@ std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {
     Mesh extracted{primitive_type, asset_usage};
     extracted._attributes = std::move(attributes).value();
     extracted._indices    = std::move(indices).value();
+    extracted.final_aabb  = final_aabb;
 
     // Store the AABB extents as they cannot be computed after extraction. Bevy assigns them to
     // `self` and returns `Self { ..self.clone() }`, so both this mesh and the extracted copy keep
