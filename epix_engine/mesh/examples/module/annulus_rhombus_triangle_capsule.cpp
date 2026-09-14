@@ -43,10 +43,14 @@ struct AnnulusRhombusTriangleCapsuleExamplePlugin {
 
         // Every shape uses its Bevy-facing primitive default plus an explicit resolution, so the
         // generated vertex counts and attribute sets are the ones Bevy would produce.
-        mesh::Mesh annulus  = mesh::Annulus{0.30f, 0.58f};
-        mesh::Mesh rhombus  = mesh::Rhombus{0.62f, 0.98f};
-        mesh::Mesh triangle = mesh::Triangle2d{{-0.34f, -0.44f}, {0.34f, -0.44f}, {0.0f, 0.46f}};
-        mesh::Mesh capsule  = mesh::Capsule2d{0.22f, 0.40f};
+        const mesh::Annulus annulus_shape{0.30f, 0.58f};
+        const mesh::Rhombus rhombus_shape{0.62f, 0.98f};
+        const mesh::Triangle2d triangle_shape{{-0.34f, -0.44f}, {0.34f, -0.44f}, {0.0f, 0.46f}};
+        const mesh::Capsule2d capsule_shape{0.22f, 0.40f};
+        mesh::Mesh annulus  = annulus_shape;
+        mesh::Mesh rhombus  = rhombus_shape;
+        mesh::Mesh triangle = triangle_shape;
+        mesh::Mesh capsule  = capsule_shape;
         // `Ring` keeps the ring in the shape API as a pair of insetted shapes; the mesh builder
         // stitches them into one closed mesh with a continuous radial UV mapping.
         const auto ring      = mesh::Ring<mesh::Circle>::from_primitive_and_thickness(mesh::Circle{0.42f}, 0.18f);
@@ -58,6 +62,13 @@ struct AnnulusRhombusTriangleCapsuleExamplePlugin {
         std::println("Bevy-aligned attributes: annulus=[{}] rhombus=[{}] triangle=[{}] capsule=[{}] ring=[{}]",
                      attribute_names(annulus), attribute_names(rhombus), attribute_names(triangle),
                      attribute_names(capsule), attribute_names(ring_mesh));
+        // Bevy's `Measured2d`: `area` and `perimeter` for every shape, including the `Ring` pair.
+        std::println(
+            "Bevy Measured2d (area, perimeter): annulus=({}, {}) rhombus=({}, {}) triangle=({}, {}) capsule=({}, {}) "
+            "ring=({}, {})",
+            mesh::area(annulus_shape), mesh::perimeter(annulus_shape), mesh::area(rhombus_shape),
+            mesh::perimeter(rhombus_shape), mesh::area(triangle_shape), mesh::perimeter(triangle_shape),
+            mesh::area(capsule_shape), mesh::perimeter(capsule_shape), mesh::area(ring), mesh::perimeter(ring));
 
         const auto annulus_handle  = mesh_assets.emplace(std::move(annulus));
         const auto rhombus_handle  = mesh_assets.emplace(std::move(rhombus));
