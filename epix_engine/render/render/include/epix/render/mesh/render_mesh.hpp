@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <epix/mesh/base_mesh_pipeline.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
+#include <optional>
 #include <utility>
 #include <variant>
 #include <webgpu/webgpu.hpp>
@@ -46,6 +47,8 @@ EPIX_EXPORT struct RenderMeshBufferInfo {
 EPIX_EXPORT struct RenderMesh {
     /** @brief The number of vertices in the mesh. */
     std::uint32_t vertex_count = 0;
+    /** @brief GPU texture view containing morph-target deltas, when present. */
+    std::optional<wgpu::TextureView> morph_targets;
     /** @brief Information about the mesh data buffers, including whether the
      * mesh uses indices or not (Bevy `buffer_info`). */
     RenderMeshBufferInfo buffer_info;

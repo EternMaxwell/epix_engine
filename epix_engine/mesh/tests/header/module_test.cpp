@@ -938,6 +938,125 @@ TEST(MeshSerialization, FromMeshRejectsRenderWorldExtractedPayload) {
     EXPECT_THROW(mesh::SerializedMesh::from_mesh(std::move(source)), std::logic_error);
 }
 
+TEST(MorphTargetImage, PacksBevyR32FloatTextureLayers) {
+    constexpr auto usage = static_cast<epix::assets::RenderAssetUsages>(epix::assets::RenderAssetUsages::MAIN_WORLD |
+                                                                        epix::assets::RenderAssetUsages::RENDER_WORLD);
+    const std::array targets{
+        std::array{mesh::MorphAttributes{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}, {7.0f, 8.0f, 9.0f}},
+                   mesh::MorphAttributes{{10.0f, 11.0f, 12.0f}, {13.0f, 14.0f, 15.0f}, {16.0f, 17.0f, 18.0f}}},
+        std::array{
+            mesh::MorphAttributes{{-1.0f, -2.0f, -3.0f}, {-4.0f, -5.0f, -6.0f}, {-7.0f, -8.0f, -9.0f}},
+            mesh::MorphAttributes{{-10.0f, -11.0f, -12.0f}, {-13.0f, -14.0f, -15.0f}, {-16.0f, -17.0f, -18.0f}}}};
+
+    auto built = mesh::MorphTargetImage::create(targets, 2, usage);
+    ASSERT_TRUE(built.has_value());
+    const auto& image = built->image;
+    EXPECT_EQ(image.texture_descriptor.dimension, wgpu::TextureDimension::e3D);
+    EXPECT_EQ(image.texture_descriptor.format, wgpu::TextureFormat::eR32Float);
+    EXPECT_EQ(image.texture_descriptor.size.width, 1u);
+    EXPECT_EQ(image.texture_descriptor.size.height, 18u);
+    EXPECT_EQ(image.texture_descriptor.size.depthOrArrayLayers, 2u);
+    EXPECT_EQ(image.usage(), usage);
+
+    std::vector<float> packed(image.raw_view().size() / sizeof(float));
+    std::memcpy(packed.data(), image.raw_view().data(), image.raw_view().size());
+    const std::vector<float> expected{1,  2,  3,  4,  5,  6,  7,  8,  9,  10,  11,  12,  13,  14,  15,  16,  17,  18,
+                                      -1, -2, -3, -4, -5, -6, -7, -8, -9, -10, -11, -12, -13, -14, -15, -16, -17, -18};
+    EXPECT_EQ(packed, expected);
+}
+
+TEST(MorphTargetImage, PreservesBevyLimitsAndRectangleSearch) {
+    std::vector<std::vector<mesh::MorphAttributes>> too_many_targets(mesh::MAX_MORPH_WEIGHTS + 1);
+    auto target_error = mesh::MorphTargetImage::create(too_many_targets, 0, epix::assets::RenderAssetUsages{});
+    ASSERT_FALSE(target_error.has_value());
+    ASSERT_TRUE((std::holds_alternative<mesh::morph_build_error::TooManyTargets>(target_error.error())));
+    EXPECT_EQ(std::get<mesh::morph_build_error::TooManyTargets>(target_error.error()).target_count, 257u);
+    EXPECT_EQ(target_error.error().to_string(),
+              "Bevy only supports up to 256 morph targets (individual poses), tried to create a model with 257 morph "
+              "targets");
+
+    std::array<std::array<mesh::MorphAttributes, 0>, 1> one_empty_target;
+    auto attribute_error = mesh::MorphTargetImage::create(one_empty_target, 466034, epix::assets::RenderAssetUsages{});
+    ASSERT_FALSE(attribute_error.has_value());
+    ASSERT_TRUE((std::holds_alternative<mesh::morph_build_error::TooManyAttributes>(attribute_error.error())));
+    const auto& too_many = std::get<mesh::morph_build_error::TooManyAttributes>(attribute_error.error());
+    EXPECT_EQ(too_many.vertex_count, 466034u);
+    EXPECT_EQ(too_many.component_count, 4194306u);
+    EXPECT_EQ(attribute_error.error().to_string(),
+              "Too many vertex×components in morph target, max is 4194304, got 466034×4194306 = 1954689202404");
+
+    const auto zero = mesh::detail::lowest_morph_texture_2d(0, 2048);
+    ASSERT_TRUE(zero.has_value());
+    EXPECT_EQ(*zero, (mesh::detail::MorphTextureRectangle{.width = 1, .height = 0, .padding = 0}));
+    const auto prime = mesh::detail::lowest_morph_texture_2d(18477, 2048);
+    ASSERT_TRUE(prime.has_value());
+    EXPECT_GE(static_cast<std::uint64_t>(prime->width) * prime->height, 18477u);
+    EXPECT_LE(prime->width, 2048u);
+    EXPECT_LE(prime->height, 2048u);
+    EXPECT_FALSE(mesh::detail::lowest_morph_texture_2d(2048u * 2048u + 1u, 2048).has_value());
+}
+
+TEST(MorphWeights, EnforcesBevyTargetLimitAndMutableSliceBehavior) {
+    auto canonical = mesh::MorphWeights::create({0.25f, 0.75f});
+    ASSERT_TRUE(canonical.has_value());
+    ASSERT_EQ(canonical->weights().size(), 2u);
+    canonical->weights_mut()[0] = 0.5f;
+    EXPECT_EQ(canonical->weights()[0], 0.5f);
+    EXPECT_FALSE(canonical->first_mesh().has_value());
+
+    epix::assets::Handle<mesh::Mesh> mesh_handle{epix::assets::AssetId<mesh::Mesh>::invalid()};
+    auto with_mesh = mesh::MorphWeights::create({1.0f}, mesh_handle);
+    ASSERT_TRUE(with_mesh.has_value());
+    const auto first_mesh = with_mesh->first_mesh();
+    ASSERT_TRUE(first_mesh.has_value());
+    EXPECT_EQ(first_mesh->get(), mesh_handle);
+
+    auto primitive = mesh::MeshMorphWeights::create({0.1f, 0.2f});
+    ASSERT_TRUE(primitive.has_value());
+    primitive->clear_weights();
+    primitive->extend_weights(std::array{0.3f, 0.4f, 0.5f});
+    EXPECT_EQ(std::vector(primitive->weights().begin(), primitive->weights().end()), (std::vector{0.3f, 0.4f, 0.5f}));
+
+    EXPECT_FALSE(mesh::MorphWeights::create(std::vector<float>(257), std::nullopt).has_value());
+    EXPECT_FALSE(mesh::MeshMorphWeights::create(std::vector<float>(257)).has_value());
+    EXPECT_TRUE(mesh::MorphWeights::create(std::vector<float>(256), std::nullopt).has_value());
+    EXPECT_TRUE(mesh::MeshMorphWeights::create(std::vector<float>(256)).has_value());
+}
+
+TEST(MeshMorphTargets, AccessorsBuildersCopyAndExtractionMatchBevy) {
+    constexpr auto usage = static_cast<epix::assets::RenderAssetUsages>(epix::assets::RenderAssetUsages::MAIN_WORLD |
+                                                                        epix::assets::RenderAssetUsages::RENDER_WORLD);
+    epix::assets::Handle<epix::image::Image> target{epix::assets::AssetId<epix::image::Image>::invalid()};
+    mesh::Mesh source{wgpu::PrimitiveTopology::eTriangleList, usage};
+    EXPECT_FALSE(source.has_morph_targets());
+    EXPECT_EQ(source.try_morph_targets().error(), mesh::MeshAccessError::NotFound);
+    EXPECT_FALSE(source.morph_target_names().has_value());
+
+    source = std::move(source).with_morph_targets(target).with_morph_target_names({"smile", "blink"});
+    EXPECT_TRUE(source.has_morph_targets());
+    ASSERT_TRUE(source.morph_targets().has_value());
+    EXPECT_EQ(source.morph_targets()->get(), target);
+    ASSERT_TRUE(source.morph_target_names().has_value());
+    EXPECT_EQ(std::vector(source.morph_target_names()->begin(), source.morph_target_names()->end()),
+              (std::vector<std::string>{"smile", "blink"}));
+
+    const mesh::Mesh copied = source;
+    EXPECT_EQ(copied, source);
+    auto extracted = source.take_gpu_data();
+    ASSERT_TRUE(extracted.has_value());
+    EXPECT_EQ(extracted->morph_targets()->get(), target);
+    EXPECT_EQ(extracted->morph_target_names()->front(), "smile");
+    EXPECT_EQ(source.try_has_morph_targets().error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_EQ(source.try_morph_targets().error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_EQ(source.try_morph_target_names().error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_EQ(source.try_set_morph_targets(target).error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+    EXPECT_EQ(source.try_set_morph_target_names({"other"}).error(), mesh::MeshAccessError::ExtractedToRenderWorld);
+
+    const mesh::Mesh restored = mesh::SerializedMesh::from_mesh(copied).into_mesh();
+    EXPECT_FALSE(restored.has_morph_targets());
+    EXPECT_FALSE(restored.morph_target_names().has_value());
+}
+
 TEST(MeshPlugin, ModifiedMeshAssetMarksOnlyReferencingMesh3dChanged) {
     auto app          = epix::app::App::create();
     auto asset_plugin = epix::assets::AssetPlugin{};

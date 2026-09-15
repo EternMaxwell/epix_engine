@@ -17,6 +17,7 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #include <epix/mesh/mesh.hpp>
+#include <epix/mesh/morph.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/render/mesh/render_mesh.hpp>
 #endif
@@ -33,6 +34,19 @@ EPIX_EXPORT std::vector<std::uint8_t> packed_vertex_bytes(const epix::mesh::Mesh
 /** @brief Installs `RenderAsset<Mesh>`, the mesh allocator, and the render-world
  * vertex-layout interner (Bevy `MeshRenderAssetPlugin`). */
 EPIX_EXPORT struct MeshRenderAssetPlugin {
+    void attach(epix::app::App& app);
+};
+
+/** @brief Inherit canonical glTF node weights onto direct mesh-primitive children. */
+EPIX_EXPORT void inherit_weights(
+    epix::ecs::Query<epix::ecs::Item<const epix::ecs::Children&, const epix::mesh::MorphWeights&>,
+                     epix::ecs::Filter<epix::ecs::Without<epix::mesh::Mesh3d>,
+                                       epix::ecs::Modified<epix::mesh::MorphWeights>>> morph_nodes,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<epix::mesh::MeshMorphWeights>>, epix::ecs::With<epix::mesh::Mesh3d>>
+        morph_primitives);
+
+/** @brief Installs Bevy's PostUpdate direct-child morph-weight inheritance. */
+EPIX_EXPORT struct MorphPlugin {
     void attach(epix::app::App& app);
 };
 }  // namespace epix::render::mesh
@@ -52,7 +66,16 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
     std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
         epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
         auto&& [images, layouts] = params.get();
-        (void)images;
+
+        std::optional<wgpu::TextureView> morph_targets;
+        if (auto target_handle = mesh.morph_targets()) {
+            const auto* target_image = images->get(target_handle->get().id());
+            if (target_image == nullptr) {
+                return std::unexpected(epix::render::PrepareAssetError<epix::mesh::Mesh>{
+                    epix::render::RetryNextAssetUpdate<epix::mesh::Mesh>{std::move(mesh)}});
+            }
+            morph_targets = target_image->texture_view;
+        }
 
         epix::render::mesh::RenderMeshBufferInfo buffer_info;
         if (auto indices = mesh.indices(); indices) {
@@ -62,11 +85,15 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         } else {
             buffer_info = epix::render::mesh::RenderMeshBufferInfo::non_indexed();
         }
+        auto key_bits = epix::mesh::BaseMeshPipelineKey::from_primitive_topology(mesh.get_primitive_type());
+        if (morph_targets) key_bits |= epix::mesh::BaseMeshPipelineKey::MORPH_TARGETS;
+
         return epix::render::mesh::RenderMesh{
-            .vertex_count = static_cast<std::uint32_t>(mesh.count_vertices()),
-            .buffer_info = std::move(buffer_info),
-            .key_bits = epix::mesh::BaseMeshPipelineKey::from_primitive_topology(mesh.get_primitive_type()),
-            .layout = mesh.get_mesh_vertex_buffer_layout(*layouts),
+            .vertex_count  = static_cast<std::uint32_t>(mesh.count_vertices()),
+            .morph_targets = std::move(morph_targets),
+            .buffer_info   = std::move(buffer_info),
+            .key_bits      = key_bits,
+            .layout        = mesh.get_mesh_vertex_buffer_layout(*layouts),
         };
     }
 

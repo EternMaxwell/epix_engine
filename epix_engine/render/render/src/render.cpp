@@ -477,6 +477,7 @@ void RenderPlugin::attach(App& app) {
     app.add_plugins(render::GlobalsPlugin{});
     app.add_plugins(render::TexturePlugin{});
     app.add_plugins(render::mesh::MeshRenderAssetPlugin{});
+    app.add_plugins(render::mesh::MorphPlugin{});
     app.add_plugins(render::batching::BatchingPlugin{debug_flags});
     app.add_plugins(sync_world::SyncWorldPlugin{});
     app.add_plugins(render::StoragePlugin{});

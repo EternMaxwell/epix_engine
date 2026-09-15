@@ -14,6 +14,7 @@
 #include <epix/app.hpp>
 #include <epix/assets/render_asset_usages.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/transform.hpp>
@@ -1028,6 +1029,38 @@ EPIX_EXPORT struct Mesh {
     /** @brief Fallible `normalize_joint_weights` (Bevy `Mesh::try_normalize_joint_weights`). */
     std::expected<void, MeshAccessError> try_normalize_joint_weights();
 
+    /** @brief Whether this mesh has a morph-target image. Throws after render-world extraction. */
+    bool has_morph_targets() const;
+    /** @brief Fallible form of `has_morph_targets`. */
+    std::expected<bool, MeshAccessError> try_has_morph_targets() const;
+
+    /** @brief Set the image containing this mesh's morph-target deltas. */
+    void set_morph_targets(assets::Handle<image::Image> morph_targets);
+    /** @brief Fallible form of `set_morph_targets`. */
+    std::expected<void, MeshAccessError> try_set_morph_targets(assets::Handle<image::Image> morph_targets);
+    /** @brief Retrieve the morph-target image, or no value when absent. */
+    std::optional<std::reference_wrapper<const assets::Handle<image::Image>>> morph_targets() const;
+    /** @brief Retrieve the required morph-target image, reporting absence or extraction. */
+    std::expected<std::reference_wrapper<const assets::Handle<image::Image>>, MeshAccessError> try_morph_targets()
+        const;
+    /** @brief Consume this mesh and set its morph-target image. */
+    Mesh with_morph_targets(assets::Handle<image::Image> morph_targets) &&;
+    /** @brief Fallible consuming form of `with_morph_targets`. */
+    std::expected<Mesh, MeshAccessError> try_with_morph_targets(assets::Handle<image::Image> morph_targets) &&;
+
+    /** @brief Set names corresponding in order to the morph-target image layers. */
+    void set_morph_target_names(std::vector<std::string> names);
+    /** @brief Fallible form of `set_morph_target_names`. */
+    std::expected<void, MeshAccessError> try_set_morph_target_names(std::vector<std::string> names);
+    /** @brief Consume this mesh and set its morph-target names. */
+    Mesh with_morph_target_names(std::vector<std::string> names) &&;
+    /** @brief Fallible consuming form of `with_morph_target_names`. */
+    std::expected<Mesh, MeshAccessError> try_with_morph_target_names(std::vector<std::string> names) &&;
+    /** @brief Retrieve the morph-target names, or no value when absent. */
+    std::optional<std::span<const std::string>> morph_target_names() const;
+    /** @brief Fallible form of `morph_target_names`. */
+    std::expected<std::optional<std::span<const std::string>>, MeshAccessError> try_morph_target_names() const;
+
     /** @brief Count vertices (not indices) in the mesh. */
     std::size_t count_vertices() const {
         std::optional<std::size_t> count;
@@ -1057,6 +1090,8 @@ EPIX_EXPORT struct Mesh {
     wgpu::PrimitiveTopology primitive_type;
     detail::MeshExtractableData<AttributeMap> _attributes;
     detail::MeshExtractableData<Indices> _indices;
+    detail::MeshExtractableData<assets::Handle<image::Image>> _morph_targets;
+    detail::MeshExtractableData<std::vector<std::string>> _morph_target_names;
 };
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.

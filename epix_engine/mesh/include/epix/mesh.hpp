@@ -4,6 +4,7 @@
 #include <epix/mesh/base_mesh_pipeline.hpp>
 #include <epix/mesh/components.hpp>
 #include <epix/mesh/mesh.hpp>
+#include <epix/mesh/morph.hpp>
 #include <epix/mesh/primitives.hpp>
 #include <epix/mesh/serialization.hpp>
 #include <epix/mesh/skinning.hpp>

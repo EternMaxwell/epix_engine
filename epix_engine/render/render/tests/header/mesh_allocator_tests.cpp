@@ -122,6 +122,117 @@ TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
     EXPECT_EQ(*len, 62u);
 }
 
+TEST(MorphPlugin, InheritsOnlyChangedNodeWeightsToDirectMeshChildren) {
+    epix::app::App app = epix::app::App::create();
+    app.add_plugins(mesh_allocator::MorphPlugin{});
+
+    auto parent_weights = mesh::MorphWeights::create({0.25f, 0.75f});
+    ASSERT_TRUE(parent_weights.has_value());
+    const auto parent = app.world_mut().spawn(std::move(*parent_weights)).id();
+
+    auto child_weights = mesh::MeshMorphWeights::create({9.0f});
+    ASSERT_TRUE(child_weights.has_value());
+    const auto child = app.world_mut().spawn(mesh::Mesh3d{}, std::move(*child_weights), epix::ecs::Parent{parent}).id();
+
+    auto grandchild_weights = mesh::MeshMorphWeights::create({8.0f});
+    ASSERT_TRUE(grandchild_weights.has_value());
+    const auto grandchild =
+        app.world_mut().spawn(mesh::Mesh3d{}, std::move(*grandchild_weights), epix::ecs::Parent{child}).id();
+
+    auto excluded_parent_weights = mesh::MorphWeights::create({0.4f, 0.6f});
+    ASSERT_TRUE(excluded_parent_weights.has_value());
+    const auto excluded_parent  = app.world_mut().spawn(mesh::Mesh3d{}, std::move(*excluded_parent_weights)).id();
+    auto excluded_child_weights = mesh::MeshMorphWeights::create({7.0f});
+    ASSERT_TRUE(excluded_child_weights.has_value());
+    const auto excluded_child =
+        app.world_mut()
+            .spawn(mesh::Mesh3d{}, std::move(*excluded_child_weights), epix::ecs::Parent{excluded_parent})
+            .id();
+
+    app.update();
+    const auto child_after_first = app.world().get_entity(child)->get<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(child_after_first.has_value());
+    EXPECT_EQ(std::vector(child_after_first->get().weights().begin(), child_after_first->get().weights().end()),
+              (std::vector{0.25f, 0.75f}));
+    const auto grandchild_after_first = app.world().get_entity(grandchild)->get<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(grandchild_after_first.has_value());
+    EXPECT_EQ(
+        std::vector(grandchild_after_first->get().weights().begin(), grandchild_after_first->get().weights().end()),
+        (std::vector{8.0f}));
+    const auto excluded_after_first = app.world().get_entity(excluded_child)->get<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(excluded_after_first.has_value());
+    EXPECT_EQ(std::vector(excluded_after_first->get().weights().begin(), excluded_after_first->get().weights().end()),
+              (std::vector{7.0f}));
+
+    auto mutable_parent = app.world_mut().get_entity_mut(parent);
+    ASSERT_TRUE(mutable_parent.has_value());
+    auto mutable_weights = mutable_parent->get_mut<mesh::MorphWeights>();
+    ASSERT_TRUE(mutable_weights.has_value());
+    mutable_weights->get_mut().weights_mut()[0] = 1.0f;
+    mutable_weights->get_mut().weights_mut()[1] = 0.0f;
+    app.update();
+    const auto child_after_change = app.world().get_entity(child)->get<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(child_after_change.has_value());
+    EXPECT_EQ(std::vector(child_after_change->get().weights().begin(), child_after_change->get().weights().end()),
+              (std::vector{1.0f, 0.0f}));
+
+    auto mutable_child = app.world_mut().get_entity_mut(child);
+    ASSERT_TRUE(mutable_child.has_value());
+    auto manually_overridden = mutable_child->get_mut<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(manually_overridden.has_value());
+    manually_overridden->get_mut().weights_mut()[0] = 0.125f;
+    app.update();
+    const auto child_after_unchanged_parent = app.world().get_entity(child)->get<mesh::MeshMorphWeights>();
+    ASSERT_TRUE(child_after_unchanged_parent.has_value());
+    EXPECT_EQ(std::vector(child_after_unchanged_parent->get().weights().begin(),
+                          child_after_unchanged_parent->get().weights().end()),
+              (std::vector{0.125f, 0.0f}));
+}
+
+TEST(MeshRenderAsset, MorphImageRetriesThenSetsTextureAndPipelineKey) {
+    epix::app::App app = epix::app::App::create();
+    auto& world        = app.world_mut();
+    world.init_resource<epix::render::RenderAssets<epix::image::Image>>();
+    world.init_resource<mesh::MeshVertexBufferLayouts>();
+
+    const epix::assets::AssetId<epix::image::Image> image_id = epix::assets::AssetId<epix::image::Image>::invalid();
+    const epix::assets::Handle<epix::image::Image> image_handle{image_id};
+    std::optional<mesh::Mesh> pending{
+        mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD}};
+    pending->set_morph_targets(image_handle);
+    std::optional<mesh_allocator::RenderMesh> prepared;
+    std::size_t retry_count = 0;
+
+    app.add_systems(
+        epix::app::Update,
+        epix::ecs::into([&](epix::render::RenderAsset<mesh::Mesh>::Param params) {
+            if (!pending) return;
+            epix::render::RenderAsset<mesh::Mesh> adapter;
+            auto result = adapter.prepare_asset(std::move(*pending), epix::assets::AssetId<mesh::Mesh>::invalid(),
+                                                params, nullptr);
+            pending.reset();
+            if (result) {
+                prepared = std::move(*result);
+            } else if (auto* retry = std::get_if<epix::render::RetryNextAssetUpdate<mesh::Mesh>>(&result.error())) {
+                ++retry_count;
+                pending = std::move(retry->asset);
+            }
+        }).set_name("test morph render asset preparation"));
+
+    app.update();
+    EXPECT_EQ(retry_count, 1u);
+    EXPECT_TRUE(pending.has_value());
+    EXPECT_FALSE(prepared.has_value());
+
+    world.resource_mut<epix::render::RenderAssets<epix::image::Image>>().emplace(image_id,
+                                                                                 epix::render::texture::GpuImage{});
+    app.update();
+    ASSERT_TRUE(prepared.has_value());
+    EXPECT_FALSE(pending.has_value());
+    EXPECT_TRUE(prepared->morph_targets.has_value());
+    EXPECT_TRUE(prepared->key_bits.contains(mesh::BaseMeshPipelineKey::MORPH_TARGETS));
+}
+
 // Bevy 0.18 MeshAllocatorSettings defaults.
 TEST(MeshModule, MeshAllocatorSettingsMatchBevyDefaults) {
     const mesh_allocator::MeshAllocatorSettings settings;

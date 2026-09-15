@@ -55,6 +55,22 @@ Mesh::Mesh(const Mesh& other)
     } else if (*source_indices) {
         _indices = detail::MeshExtractableData<Indices>::data(source_indices->value().get());
     }
+
+    const auto source_morph_targets = other._morph_targets.as_ref_option();
+    if (!source_morph_targets) {
+        _morph_targets = detail::MeshExtractableData<assets::Handle<image::Image>>::extracted_to_render_world();
+    } else if (*source_morph_targets) {
+        _morph_targets =
+            detail::MeshExtractableData<assets::Handle<image::Image>>::data(source_morph_targets->value().get());
+    }
+
+    const auto source_morph_target_names = other._morph_target_names.as_ref_option();
+    if (!source_morph_target_names) {
+        _morph_target_names = detail::MeshExtractableData<std::vector<std::string>>::extracted_to_render_world();
+    } else if (*source_morph_target_names) {
+        _morph_target_names =
+            detail::MeshExtractableData<std::vector<std::string>>::data(source_morph_target_names->value().get());
+    }
 }
 
 Mesh& Mesh::operator=(const Mesh& other) {
@@ -929,16 +945,102 @@ std::expected<void, MeshAccessError> Mesh::try_normalize_joint_weights() {
     return {};
 }
 
+bool Mesh::has_morph_targets() const {
+    auto result = try_has_morph_targets();
+    if (!result) throw_access_error(result.error());
+    return *result;
+}
+
+std::expected<bool, MeshAccessError> Mesh::try_has_morph_targets() const {
+    auto result = _morph_targets.as_ref_option();
+    if (!result) return std::unexpected(result.error());
+    return result->has_value();
+}
+
+void Mesh::set_morph_targets(assets::Handle<image::Image> morph_targets) {
+    auto result = try_set_morph_targets(std::move(morph_targets));
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_set_morph_targets(assets::Handle<image::Image> morph_targets) {
+    auto result = _morph_targets.replace(std::optional{std::move(morph_targets)});
+    if (!result) return std::unexpected(result.error());
+    return {};
+}
+
+std::optional<std::reference_wrapper<const epix::assets::Handle<epix::image::Image>>> Mesh::morph_targets() const {
+    auto result = _morph_targets.as_ref_option();
+    if (!result) throw_access_error(result.error());
+    return *result;
+}
+
+std::expected<std::reference_wrapper<const epix::assets::Handle<epix::image::Image>>, MeshAccessError>
+Mesh::try_morph_targets() const {
+    return _morph_targets.as_ref();
+}
+
+Mesh Mesh::with_morph_targets(assets::Handle<image::Image> morph_targets) && {
+    set_morph_targets(std::move(morph_targets));
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_morph_targets(assets::Handle<image::Image> morph_targets) && {
+    auto result = try_set_morph_targets(std::move(morph_targets));
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+void Mesh::set_morph_target_names(std::vector<std::string> names) {
+    auto result = try_set_morph_target_names(std::move(names));
+    if (!result) throw_access_error(result.error());
+}
+
+std::expected<void, MeshAccessError> Mesh::try_set_morph_target_names(std::vector<std::string> names) {
+    auto result = _morph_target_names.replace(std::optional{std::move(names)});
+    if (!result) return std::unexpected(result.error());
+    return {};
+}
+
+Mesh Mesh::with_morph_target_names(std::vector<std::string> names) && {
+    set_morph_target_names(std::move(names));
+    return std::move(*this);
+}
+
+std::expected<Mesh, MeshAccessError> Mesh::try_with_morph_target_names(std::vector<std::string> names) && {
+    auto result = try_set_morph_target_names(std::move(names));
+    if (!result) return std::unexpected(result.error());
+    return std::move(*this);
+}
+
+std::optional<std::span<const std::string>> Mesh::morph_target_names() const {
+    auto result = try_morph_target_names();
+    if (!result) throw_access_error(result.error());
+    return *result;
+}
+
+std::expected<std::optional<std::span<const std::string>>, MeshAccessError> Mesh::try_morph_target_names() const {
+    auto result = _morph_target_names.as_ref_option();
+    if (!result) return std::unexpected(result.error());
+    if (!*result) return std::nullopt;
+    return std::span<const std::string>{result->value().get()};
+}
+
 std::expected<Mesh, MeshAccessError> Mesh::take_gpu_data() {
     auto attributes = _attributes.extract();
     if (!attributes) return std::unexpected(attributes.error());
     auto indices = _indices.extract();
     if (!indices) return std::unexpected(indices.error());
+    auto morph_targets = _morph_targets.extract();
+    if (!morph_targets) return std::unexpected(morph_targets.error());
+    auto morph_target_names = _morph_target_names.extract();
+    if (!morph_target_names) return std::unexpected(morph_target_names.error());
 
     Mesh extracted{primitive_type, asset_usage};
-    extracted._attributes = std::move(attributes).value();
-    extracted._indices    = std::move(indices).value();
-    extracted.final_aabb  = final_aabb;
+    extracted._attributes         = std::move(attributes).value();
+    extracted._indices            = std::move(indices).value();
+    extracted._morph_targets      = std::move(morph_targets).value();
+    extracted._morph_target_names = std::move(morph_target_names).value();
+    extracted.final_aabb          = final_aabb;
 
     // Store the AABB extents as they cannot be computed after extraction. Bevy assigns them to
     // `self` and returns `Self { ..self.clone() }`, so both this mesh and the extracted copy keep
