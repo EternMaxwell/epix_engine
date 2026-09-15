@@ -5,6 +5,7 @@
 #include <epix/mesh.hpp>
 #include <limits>
 #include <numbers>
+#include <ranges>
 #include <stdexcept>
 #include <unordered_set>
 #include <variant>
@@ -800,6 +801,43 @@ TEST(MeshComponents, Mesh2dAndMesh3dMatchBevyNewtypeContracts) {
 
     EXPECT_EQ(mesh::MeshTag{}.value, 0u);
     EXPECT_EQ(mesh::MeshTag{.value = 17}, mesh::MeshTag{.value = 17});
+}
+
+// Bevy v0.18 `skinning.rs`: inverse bind poses are an asset-backed matrix slice, while
+// `SkinnedMesh` is a component containing that asset handle and an ordered joint list.
+TEST(MeshSkinning, ComponentAssetAndPluginRegistrationMatchBevy) {
+    static_assert(epix::assets::AsAssetIdImpl<mesh::SkinnedMesh>);
+    static_assert(!std::default_initializable<mesh::SkinnedMeshInverseBindposes>);
+
+    const mesh::SkinnedMesh empty;
+    EXPECT_EQ(empty.inverse_bindposes.id(), epix::assets::AssetId<mesh::SkinnedMeshInverseBindposes>::invalid());
+    EXPECT_TRUE(empty.joints.empty());
+
+    auto app          = epix::app::App::create();
+    auto asset_plugin = epix::assets::AssetPlugin{};
+    asset_plugin.mode = epix::assets::AssetServerMode::Unprocessed;
+    app.add_plugins(std::move(asset_plugin));
+    app.add_plugins(mesh::MeshPlugin{});
+
+    const std::vector matrices{glm::mat4{1.0f}, glm::mat4{2.0f}};
+    const auto handle = app.world_mut().resource_mut<epix::assets::Assets<mesh::SkinnedMeshInverseBindposes>>().emplace(
+        mesh::SkinnedMeshInverseBindposes{matrices});
+    const mesh::SkinnedMesh skinned{handle, {epix::ecs::Entity::from_index(3), epix::ecs::Entity::from_parts(7, 2)}};
+    EXPECT_EQ(epix::assets::AsAssetId<mesh::SkinnedMesh>::as_asset_id(skinned), handle.id());
+    EXPECT_EQ(skinned.joints, (std::vector{epix::ecs::Entity::from_index(3), epix::ecs::Entity::from_parts(7, 2)}));
+
+    const auto stored =
+        app.world().resource<epix::assets::Assets<mesh::SkinnedMeshInverseBindposes>>().get(handle.id());
+    ASSERT_TRUE(stored.has_value());
+    EXPECT_EQ(stored->get().size(), 2u);
+    EXPECT_EQ(stored->get().matrices().size(), 2u);
+    EXPECT_FALSE(stored->get().empty());
+    EXPECT_EQ(std::ranges::distance(stored->get()), 2);
+    for (std::size_t column = 0; column < 4; ++column) {
+        for (std::size_t row = 0; row < 4; ++row) {
+            EXPECT_FLOAT_EQ(stored->get()[1][column][row], matrices[1][column][row]);
+        }
+    }
 }
 
 TEST(MeshPlugin, ModifiedMeshAssetMarksOnlyReferencingMesh3dChanged) {
