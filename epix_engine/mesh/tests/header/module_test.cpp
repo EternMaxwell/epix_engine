@@ -840,6 +840,104 @@ TEST(MeshSkinning, ComponentAssetAndPluginRegistrationMatchBevy) {
     }
 }
 
+// Bevy v0.18 `mesh.rs`: SerializedMesh is a lossy process-transfer representation
+// whose default deserializer accepts the eight built-ins and explicitly registered custom attributes.
+TEST(MeshSerialization, RoundTripPreservesBevyTransferFieldsAndResetsLossyState) {
+    static_assert(std::copy_constructible<mesh::SerializedMesh>);
+
+    constexpr auto default_usage = static_cast<epix::assets::RenderAssetUsages>(
+        epix::assets::RenderAssetUsages::MAIN_WORLD | epix::assets::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh source{wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD};
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                            std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                                {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    source.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+    source.final_aabb = mesh::Aabb3d::from_min_max(glm::vec3{-1.0f}, glm::vec3{2.0f});
+
+    auto encoded = mesh::serialize_serialized_mesh(mesh::SerializedMesh::from_mesh(source));
+    ASSERT_TRUE(encoded.has_value());
+    EXPECT_FALSE(encoded->empty());
+
+    auto decoded = mesh::deserialize_serialized_mesh(*encoded);
+    ASSERT_TRUE(decoded.has_value());
+    mesh::Mesh restored = std::move(*decoded).into_mesh();
+
+    mesh::Mesh expected{wgpu::PrimitiveTopology::eTriangleList, default_usage};
+    expected.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                              std::vector<mesh::VertexAttributeValues::Float32x3Value>{
+                                  {0.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, 1.0f}});
+    expected.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 2, 0, 2, 3}});
+
+    EXPECT_EQ(restored, expected);
+    EXPECT_EQ(restored.asset_usage, default_usage);
+    EXPECT_FALSE(restored.final_aabb.has_value());
+    EXPECT_NE(restored, source);
+
+    encoded->pop_back();
+    EXPECT_FALSE(mesh::deserialize_serialized_mesh(*encoded).has_value());
+}
+
+TEST(MeshSerialization, CustomAttributeWhitelistMatchesBevyNameAndIdRules) {
+    constexpr auto usage = static_cast<epix::assets::RenderAssetUsages>(epix::assets::RenderAssetUsages::MAIN_WORLD |
+                                                                        epix::assets::RenderAssetUsages::RENDER_WORLD);
+    const mesh::MeshVertexAttribute custom{"Transfer_Custom", mesh::MeshVertexAttributeId{42},
+                                           wgpu::VertexFormat::eSnorm8x4};
+
+    mesh::Mesh source{wgpu::PrimitiveTopology::ePointList, usage};
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                            std::vector<mesh::VertexAttributeValues::Float32x3Value>{{1.0f, 2.0f, 3.0f}});
+    source.insert_attribute(
+        custom, mesh::VertexAttributeValues::Snorm8x4{{mesh::VertexAttributeValues::Sint8x4Value{1, -2, 3, -4}}});
+
+    const auto transfer = [&source] {
+        auto encoded = mesh::serialize_serialized_mesh(mesh::SerializedMesh::from_mesh(source));
+        EXPECT_TRUE(encoded.has_value());
+        auto decoded = mesh::deserialize_serialized_mesh(encoded.value());
+        EXPECT_TRUE(decoded.has_value());
+        return std::move(decoded).value();
+    };
+
+    mesh::Mesh default_restored = transfer().into_mesh();
+    EXPECT_TRUE(default_restored.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
+    EXPECT_FALSE(default_restored.contains_attribute(custom));
+    EXPECT_FALSE(default_restored.indices().has_value());
+
+    mesh::MeshDeserializer deserializer;
+    deserializer.add_custom_vertex_attribute(custom.name, custom);
+    mesh::Mesh restored = deserializer.deserialize(transfer());
+    ASSERT_TRUE(restored.contains_attribute(custom));
+    EXPECT_EQ(restored.attribute(custom)->get(), (mesh::VertexAttributeValues{mesh::VertexAttributeValues::Snorm8x4{
+                                                     {mesh::VertexAttributeValues::Sint8x4Value{1, -2, 3, -4}}}}));
+
+    mesh::MeshDeserializer wrong_id;
+    wrong_id.add_custom_vertex_attribute(
+        custom.name, mesh::MeshVertexAttribute{custom.name, mesh::MeshVertexAttributeId{43}, custom.format});
+    EXPECT_FALSE(wrong_id.deserialize(transfer()).contains_attribute(custom));
+
+    // Bevy validates the serialized name and ID, then installs the registered descriptor;
+    // it intentionally does not compare the serialized format.
+    const mesh::MeshVertexAttribute remapped_format{custom.name, custom.id, wgpu::VertexFormat::eSint8x4};
+    mesh::MeshDeserializer format_remapper;
+    format_remapper.add_custom_vertex_attribute(custom.name, remapped_format);
+    mesh::Mesh format_restored = format_remapper.deserialize(transfer());
+    const auto attributes      = format_restored.attributes();
+    const auto found = std::ranges::find_if(attributes, [&](const auto& entry) { return entry.first.id == custom.id; });
+    ASSERT_NE(found, std::ranges::end(attributes));
+    EXPECT_EQ((*found).first, remapped_format);
+    EXPECT_EQ((*found).second.format(), wgpu::VertexFormat::eSnorm8x4);
+}
+
+TEST(MeshSerialization, FromMeshRejectsRenderWorldExtractedPayload) {
+    constexpr auto usage = static_cast<epix::assets::RenderAssetUsages>(epix::assets::RenderAssetUsages::MAIN_WORLD |
+                                                                        epix::assets::RenderAssetUsages::RENDER_WORLD);
+    mesh::Mesh source{wgpu::PrimitiveTopology::eTriangleList, usage};
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                            std::vector<mesh::VertexAttributeValues::Float32x3Value>{{0.0f, 0.0f, 0.0f}});
+    ASSERT_TRUE(source.take_gpu_data().has_value());
+
+    EXPECT_THROW(mesh::SerializedMesh::from_mesh(std::move(source)), std::logic_error);
+}
+
 TEST(MeshPlugin, ModifiedMeshAssetMarksOnlyReferencingMesh3dChanged) {
     auto app          = epix::app::App::create();
     auto asset_plugin = epix::assets::AssetPlugin{};

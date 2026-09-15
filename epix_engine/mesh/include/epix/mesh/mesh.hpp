@@ -39,6 +39,8 @@
 
 namespace epix::mesh {
 struct Mesh;
+class SerializedMesh;
+class MeshDeserializer;
 
 /** @brief C++ counterpart of Bevy's `MeshBuilder` trait. */
 template <typename T>
@@ -496,9 +498,13 @@ namespace detail {
 struct MeshAttributeData {
     MeshVertexAttribute attribute;
     VertexAttributeValues values;
+
+    bool operator==(const MeshAttributeData&) const = default;
 };
 
-struct ExtractedToRenderWorld {};
+struct ExtractedToRenderWorld {
+    bool operator==(const ExtractedToRenderWorld&) const = default;
+};
 
 struct ConstMeshAttributeRefs {
     auto operator()(const MeshAttributeData& data) const {
@@ -585,6 +591,8 @@ class MeshExtractableData {
         return previous;
     }
 
+    bool operator==(const MeshExtractableData&) const = default;
+
    private:
     std::variant<std::monostate, T, ExtractedToRenderWorld> _value;
 };
@@ -652,7 +660,8 @@ EPIX_EXPORT struct Mesh {
     Mesh(const Mesh&);
     Mesh(Mesh&&) = default;
     Mesh& operator=(const Mesh&);
-    Mesh& operator=(Mesh&&) = default;
+    Mesh& operator=(Mesh&&)            = default;
+    bool operator==(const Mesh&) const = default;
     template <MeshBuilder Builder>
     Mesh(const Builder& builder) : Mesh(builder.build()) {}
     template <Meshable Shape>
@@ -1040,6 +1049,9 @@ EPIX_EXPORT struct Mesh {
     std::expected<Mesh, MeshAccessError> take_gpu_data();
 
    private:
+    friend class SerializedMesh;
+    friend class MeshDeserializer;
+
     [[noreturn]] static void throw_access_error(MeshAccessError error);
 
     wgpu::PrimitiveTopology primitive_type;

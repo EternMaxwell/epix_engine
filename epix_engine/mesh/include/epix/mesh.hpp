@@ -5,6 +5,7 @@
 #include <epix/mesh/components.hpp>
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/primitives.hpp>
+#include <epix/mesh/serialization.hpp>
 #include <epix/mesh/skinning.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>

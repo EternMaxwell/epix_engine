@@ -21,13 +21,16 @@ module;
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
 #endif
 
 #include <spdlog/spdlog.h>
+#include <zpp_bits.h>
 
 export module epix.mesh;
 #ifdef EPIX_IMPORT_STD
