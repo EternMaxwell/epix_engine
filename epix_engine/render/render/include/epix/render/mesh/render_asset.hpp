@@ -60,12 +60,13 @@ template <>
 struct epix::render::RenderAsset<epix::mesh::Mesh> {
     using ProcessedAsset = epix::render::mesh::RenderMesh;
     using ExtractedAsset = epix::mesh::Mesh;
-    using Param = epix::ecs::ParamSet<epix::ecs::Res<epix::render::RenderAssets<epix::image::Image>>,
-                                      epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
+    using Param = std::tuple<epix::ecs::Res<epix::render::RenderAssets<epix::image::Image>>,
+                             epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
 
     std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
         epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
-        auto&& [images, layouts] = params.get();
+        // Bevy passes `SystemParamItem<Self::Param>` already resolved.
+        auto&& [images, layouts] = params;
 
         std::optional<wgpu::TextureView> morph_targets;
         if (auto target_handle = mesh.morph_targets()) {

@@ -260,7 +260,7 @@ EPIX_EXPORT namespace epix::sprite_render {
                 const PhaseItem&,
                 ecs::Item<const render::view::ViewUniformOffset&, const SpriteViewBindGroup&> view,
                 std::optional<ecs::Item<>>,
-                ecs::ParamSet<>,
+                std::tuple<>,
                 const wgpu::RenderPassEncoder& encoder) {
                 const auto& offset     = std::get<0>(view);
                 const auto& bind_group = std::get<1>(view);
@@ -280,10 +280,10 @@ EPIX_EXPORT namespace epix::sprite_render {
                 const PhaseItem& item,
                 ecs::Item<const render::view::ExtractedView&> view_item,
                 std::optional<ecs::Item<>>,
-                ecs::ParamSet<ecs::Res<ImageBindGroups>, ecs::Res<SpriteBatches>> params,
+                std::tuple<ecs::Res<ImageBindGroups>, ecs::Res<SpriteBatches>> params,
                 const wgpu::RenderPassEncoder& encoder) {
                 const auto& view                    = std::get<0>(view_item);
-                auto&& [image_bind_groups, batches] = params.get();
+                auto&& [image_bind_groups, batches] = params;
                 const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
                 if (batch == batches->values.end()) {
                     return std::unexpected(render::phase::RenderCommandError{
@@ -312,10 +312,10 @@ EPIX_EXPORT namespace epix::sprite_render {
             const PhaseItem& item,
             ecs::Item<const render::view::ExtractedView&> view_item,
             std::optional<ecs::Item<>>,
-            ecs::ParamSet<ecs::Res<SpriteMeta>, ecs::Res<SpriteBatches>> params,
+            std::tuple<ecs::Res<SpriteMeta>, ecs::Res<SpriteBatches>> params,
             const wgpu::RenderPassEncoder& encoder) {
             const auto& view              = std::get<0>(view_item);
-            auto&& [sprite_meta, batches] = params.get();
+            auto&& [sprite_meta, batches] = params;
             const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
             if (batch == batches->values.end()) {
                 return std::unexpected(render::phase::RenderCommandError{

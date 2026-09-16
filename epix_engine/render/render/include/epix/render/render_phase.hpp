@@ -564,6 +564,13 @@ concept RenderCommand = requires {
     requires ecs::query_data<
         typename std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>::value_type>;
     requires ecs::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;
+    /** Bevy additionally requires `C::Param: ReadOnlySystemParam` and
+     * `ViewQuery`/`ItemQuery: ReadOnlyQueryData` (draw.rs:313-316): a render
+     * command must never mutate the world while a pass is being recorded, which
+     * is also what makes the shared draw-function state safe to use from
+     * concurrently recorded views. */
+    requires epix::ecs::SystemParam<
+        typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>::readonly;
     requires std::convertible_to<const wgpu::RenderPassEncoder&,
                                  std::tuple_element_t<4, typename render_command_traits<R, P>::args_tuple>>;
 };
@@ -580,33 +587,59 @@ struct RenderCommandState {
     using system_param       = std::tuple_element_t<3, typename func_traits::args_tuple>;
 
    private:
+    /** @brief Only used to initialize and access-validate the three states as
+     * one system parameter set, exactly as Bevy builds the command's
+     * `SystemState`, `QueryState<C::ViewQuery>` and `QueryState<C::ItemQuery>`
+     * together in `RenderCommandState::new` (draw.rs:302-310). Nothing is ever
+     * fetched through the combined set; the three parts are moved out and held
+     * separately below. */
     using combined_param =
-        epix::ecs::ROSystemParam<epix::ecs::ParamSet<view_query_param, entity_query_param, system_param>>;
+        epix::ecs::ROSystemParam<std::tuple<view_query_param, entity_query_param, system_param>>;
     using combined_state = typename combined_param::State;
-    using combined_item  = typename combined_param::Item;
+    using combined_items =
+        typename epix::ecs::SystemParam<std::tuple<view_query_param, entity_query_param, system_param>>::Item;
+    using view_state_type    = std::tuple_element_t<0, combined_state>;
+    using entity_state_type  = std::tuple_element_t<1, combined_state>;
+    using command_state_type = std::tuple_element_t<2, combined_state>;
+    using command_item_type  = std::tuple_element_t<2, combined_items>;
 
    public:
     explicit RenderCommandState(epix::ecs::World& world) {
-        param_state = combined_param::init_state(world);
-        combined_param::init_access(*param_state, meta, access, world);
+        auto combined = combined_param::init_state(world);
+        combined_param::init_access(combined, meta, access, world);
+        view_state              = std::move(std::get<0>(combined));
+        entity_state            = std::move(std::get<1>(combined));
+        command_parameter_state = std::move(std::get<2>(combined));
     }
 
     void prepare(const epix::ecs::World& world) {
-        params = combined_param::get_param(*param_state, meta, world, world.change_tick());
+        // Bevy `RenderCommandState::prepare` updates the view and item query
+        // archetypes here and nowhere else (draw.rs:319-322); `draw` reads them
+        // through the manual API, which never mutates the query state.
+        view_state->update_archetypes(world);
+        entity_state->update_archetypes(world);
+        // The command's own parameters are read-only (Bevy requires
+        // `C::Param: ReadOnlySystemParam`), so fetching them from a `const
+        // World` is sound; `SystemParam::get_param` is not const-qualified.
+        command_parameters = epix::ecs::SystemParam<system_param>::get_param(
+            *command_parameter_state, meta, const_cast<epix::ecs::World&>(world), world.change_tick());
         command.prepare(world);
     }
     std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& ctx,
                                         epix::ecs::Entity view,
                                         const P& item) {
-        if (!params) {
+        if (!command_parameters) {
             throw std::runtime_error("Failed to get system parameters for render command.");
         }
-        auto&& [view_query, entity_query, system_param] = params->get();
-        auto view_query_result                          = view_query.get(view);
+        auto& mutable_world = const_cast<epix::ecs::World&>(world);
+        auto view_query     = view_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
+        auto view_query_result = view_query.get(view);
         if (!view_query_result) return std::unexpected(DrawError::invalid_view_query());
+        auto entity_query = entity_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
         auto entity_query_result = entity_query.get(item.entity());
-        auto result              = command.render(item, *view_query_result, entity_query_result, system_param, ctx);
+        auto result =
+            command.render(item, *view_query_result, entity_query_result, *command_parameters, ctx);
         if (!result) {
             if (result.error().type == RenderCommandError::Type::Skip) {
                 return std::unexpected(DrawError::skip(std::move(result.error().message)));
@@ -625,8 +658,10 @@ struct RenderCommandState {
    private:
     ecs::SystemMeta meta;
     ecs::FilteredAccessSet access;
-    std::optional<combined_state> param_state;
-    std::optional<combined_item> params;
+    std::optional<view_state_type> view_state;
+    std::optional<entity_state_type> entity_state;
+    std::optional<command_state_type> command_parameter_state;
+    std::optional<command_item_type> command_parameters;
     command_type command;
 };
 
@@ -640,10 +675,12 @@ struct SetItemPipeline {
     std::expected<void, RenderCommandError> render(const P& item,
                                                    epix::ecs::Item<>,
                                                    std::optional<epix::ecs::Item<>>,
-                                                   epix::ecs::ParamSet<epix::ecs::Res<PipelineServer>> params,
+                                                   epix::ecs::Res<PipelineServer> pipeline_server,
                                                    const wgpu::RenderPassEncoder& encoder) {
-        auto&& [pipeline_server] = params.get();
-        auto pipeline            = pipeline_server->get_render_pipeline(item.cached_pipeline());
+        // Bevy's `RenderCommand::Param` is fetched once by the render-command
+        // state and passed in already resolved; a command never re-fetches, and
+        // a single parameter is passed bare rather than as a one-element tuple.
+        auto pipeline = pipeline_server->get_render_pipeline(item.cached_pipeline());
         if (!pipeline) {
             // Bevy: ANY cache miss (not ready, invalid id, or creation failure)
             // is a Skip — the item is simply not drawn this frame

@@ -517,7 +517,7 @@ struct BindViewUniform {
             const P&,
             epix::ecs::Item<const ViewBindGroup&> view_bind_group,
             std::optional<epix::ecs::Item<>> entity_item,
-            epix::ecs::ParamSet<>,
+            std::tuple<>,
             const wgpu::RenderPassEncoder& encoder) {
             encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).bind_group, std::span<const std::uint32_t>{});
             return {};

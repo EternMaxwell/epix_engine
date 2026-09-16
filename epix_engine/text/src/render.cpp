@@ -271,9 +271,8 @@ struct BindTextInstances {
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
             std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>>,
-            ecs::ParamSet<ecs::Res<TextInstanceBuffer>> params,
+            ecs::Res<TextInstanceBuffer> instances,
             const wgpu::RenderPassEncoder& encoder) {
-            auto&& [instances] = params.get();
             if (!instances->bind_group) {
                 return std::unexpected(render::phase::RenderCommandError{
                     .type    = render::phase::RenderCommandError::Type::Failure,
@@ -298,7 +297,7 @@ struct BindTextTexture {
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
             std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-            ecs::ParamSet<>,
+            std::tuple<>,
             const wgpu::RenderPassEncoder& encoder) {
             if (!entity_item) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -333,7 +332,7 @@ struct DrawTextBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        ecs::ParamSet<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
+        std::tuple<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -344,7 +343,7 @@ struct DrawTextBatch {
         }
 
         auto&& [batch, extracted] = **entity_item;
-        auto&& [render_meshes, mesh_allocator] = params.get();
+        auto&& [render_meshes, mesh_allocator] = params;
         auto* render_mesh = render_meshes->try_get(extracted.mesh);
         if (!render_mesh) {
             return std::unexpected(render::phase::RenderCommandError{

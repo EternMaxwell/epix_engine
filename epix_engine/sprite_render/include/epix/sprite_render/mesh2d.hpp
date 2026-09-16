@@ -143,9 +143,8 @@ struct BindMesh2dInstances {
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
             std::optional<ecs::Item<>>,
-            ecs::ParamSet<ecs::Res<MeshInstanceBuffer>> params,
+            ecs::Res<MeshInstanceBuffer> instances,
             const wgpu::RenderPassEncoder& encoder) {
-            auto&& [instances] = params.get();
             if (!instances->bind_group) {
                 return std::unexpected(render::phase::RenderCommandError{
                     .type    = render::phase::RenderCommandError::Type::Failure,
@@ -172,9 +171,8 @@ struct BindMesh2dTexture {
             const PhaseItem& item,
             ecs::Item<const render::view::ViewBindGroup&>,
             std::optional<ecs::Item<>>,
-            ecs::ParamSet<ecs::Res<RenderMesh2dInstances>> params,
+            ecs::Res<RenderMesh2dInstances> instances,
             const wgpu::RenderPassEncoder& encoder) {
-            auto&& [instances]  = params.get();
             const auto instance = instances->find(item.main_entity());
             if (instance == instances->end()) {
                 return std::unexpected(render::phase::RenderCommandError{
@@ -213,11 +211,11 @@ struct DrawMesh2dBatch {
         const PhaseItem& item,
         ecs::Item<const render::view::ViewBindGroup&>,
         std::optional<ecs::Item<>>,
-        ecs::ParamSet<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>,
-                      ecs::Res<render::mesh::MeshAllocator>>
+        std::tuple<ecs::Res<RenderMesh2dInstances>, ecs::Res<render::RenderAssets<Mesh>>,
+                   ecs::Res<render::mesh::MeshAllocator>>
             params,
         const wgpu::RenderPassEncoder& encoder) {
-        auto&& [instances, render_meshes, mesh_allocator] = params.get();
+        auto&& [instances, render_meshes, mesh_allocator] = params;
         const auto instance                               = instances->find(item.main_entity());
         if (instance == instances->end()) {
             return std::unexpected(render::phase::RenderCommandError{

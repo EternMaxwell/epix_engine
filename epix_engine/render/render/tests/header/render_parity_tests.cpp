@@ -4359,10 +4359,11 @@ TEST(SetItemPipeline, SkipsOnPipelineMiss) {
     epix::ecs::World world(2);
     world.insert_resource(PipelineServer{wgpu::Device{}});
 
-    using Params = epix::ecs::ParamSet<epix::ecs::Res<PipelineServer>>;
+    // Bevy's SetItemPipeline takes `SRes<PipelineServer>` directly, not a
+    // one-element tuple or ParamSet.
+    using Params = epix::ecs::Res<PipelineServer>;
     auto states  = epix::ecs::SystemParam<Params>::init_state(world);
     epix::ecs::SystemMeta meta;
-    // The ParamSet ctor is private; build it through the friend SystemParam.
     Params params = epix::ecs::SystemParam<Params>::get_param(states, meta, world, epix::ecs::Tick{});
 
     CachedPipelineTestItem item;
