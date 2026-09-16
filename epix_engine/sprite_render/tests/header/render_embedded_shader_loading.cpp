@@ -79,6 +79,5 @@ TEST(SpriteRenderPlugin, RegistersAndLoadsEmbeddedShadersThroughAssetServer) {
     app.add_plugins(sprite_render::SpriteRenderPlugin{});
     flush_load_tasks(app);
 
-    expect_embedded_shader_loaded(app, "embedded://sprite/sprite_vertex.slang");
-    expect_embedded_shader_loaded(app, "embedded://sprite/sprite_fragment.slang");
+    expect_embedded_shader_loaded(app, "embedded://sprite/sprite.slang");
 }

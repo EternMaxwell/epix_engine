@@ -3,20 +3,25 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
-#include <array>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <expected>
-#include <format>
+#include <functional>
 #include <glm/glm.hpp>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string>
+#include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -26,14 +31,12 @@
 #include <epix/sprite/sprite.hpp>
 
 EPIX_EXPORT namespace epix::sprite_render {
-    /** @brief Slice data copied into the render world for one rendered quad. */
     struct ExtractedSlice {
         glm::vec2 offset{0.0f};
         image::Rect rect{};
         glm::vec2 size{0.0f};
     };
 
-    /** @brief Sprite slices maintained in the main world for sliced and tiled sprites. */
     class ComputedTextureSlices {
         std::vector<sprite::TextureSlice> values_;
 
@@ -68,248 +71,289 @@ EPIX_EXPORT namespace epix::sprite_render {
 
     using ExtractedSpriteKind = std::variant<ExtractedSpriteSingle, ExtractedSpriteSlices>;
 
-    /** @brief Per-frame extracted slice storage, matching Bevy's `ExtractedSlices`. */
+    /** @brief Per-frame extracted slice storage (Bevy `ExtractedSlices`). */
     struct ExtractedSlices {
         std::vector<ExtractedSlice> slices;
     };
 
-    /** @brief Snapshot of a sprite extracted from the main world for rendering.
-     *
-     * Created during the extract phase so the render world has an immutable
-     * copy of every visible sprite's transform, color, texture, and depth.
-     */
+    /** @brief Snapshot of one visible sprite in the render world (Bevy `ExtractedSprite`). */
     struct ExtractedSprite {
-        /** @brief Entity in the main world this sprite was extracted from. */
-        ecs::Entity source_entity;
-        /** @brief Linear tint copied from the sprite. */
+        ecs::Entity main_entity;
+        ecs::Entity render_entity;
+        transform::GlobalTransform transform;
         glm::vec4 color{1.0f};
-        /** @brief Model matrix representing the sprite's world transform. */
-        glm::mat4 model;
-        /** @brief Depth value used for sorting transparent sprites. */
-        float depth;
-        /** @brief Asset ID of the sprite's texture image. */
-        assets::AssetId<image::Image> texture;
+        assets::AssetId<image::Image> image_handle_id;
         bool flip_x = false;
         bool flip_y = false;
         ExtractedSpriteKind kind{ExtractedSpriteSingle{}};
-        /** @brief Render layers this entity belongs to. Default: layer 0. */
-        camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
     };
 
-    /** @brief GPU batch for sprites sharing the same texture bind group.
-     *
-     * Each batch references a texture bind group and the starting offset
-     * into the shared instance buffer for instanced draw calls.
-     */
+    struct ExtractedSprites {
+        std::vector<ExtractedSprite> sprites;
+    };
+
+    struct SpriteAssetEvents {
+        std::vector<assets::AssetEvent<image::Image>> images;
+    };
+
+    /** @brief Bit-packed sprite specialization key (Bevy `SpritePipelineKey`). */
+    struct SpritePipelineKey {
+        enum Bit : std::uint32_t {
+            NONE                                             = 0,
+            HDR                                              = 1u << 0u,
+            TONEMAP_IN_SHADER                                = 1u << 1u,
+            DEBAND_DITHER                                    = 1u << 2u,
+            TONEMAP_METHOD_NONE                              = 0u << 26u,
+            TONEMAP_METHOD_REINHARD                          = 1u << 26u,
+            TONEMAP_METHOD_REINHARD_LUMINANCE                = 2u << 26u,
+            TONEMAP_METHOD_ACES_FITTED                       = 3u << 26u,
+            TONEMAP_METHOD_AGX                               = 4u << 26u,
+            TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM = 5u << 26u,
+            TONEMAP_METHOD_TONY_MC_MAPFACE                   = 6u << 26u,
+            TONEMAP_METHOD_BLENDER_FILMIC                    = 7u << 26u,
+            TONEMAP_METHOD_RESERVED_BITS                     = 0b111u << 26u,
+            MSAA_RESERVED_BITS                               = 0b111u << 29u,
+        };
+
+        std::uint32_t value = NONE;
+
+        constexpr SpritePipelineKey() noexcept = default;
+        constexpr SpritePipelineKey(Bit bit) noexcept : value(static_cast<std::uint32_t>(bit)) {}
+        explicit constexpr SpritePipelineKey(std::uint32_t bits) noexcept : value(bits) {}
+
+        static constexpr SpritePipelineKey from_msaa_samples(std::uint32_t samples) noexcept {
+            return SpritePipelineKey{(std::countr_zero(samples) & 0b111u) << 29u};
+        }
+        static constexpr SpritePipelineKey from_hdr(bool hdr) noexcept {
+            return hdr ? SpritePipelineKey{HDR} : SpritePipelineKey{};
+        }
+        constexpr std::uint32_t bits() const noexcept { return value; }
+        constexpr std::uint32_t msaa_samples() const noexcept { return 1u << ((value >> 29u) & 0b111u); }
+        constexpr bool contains(Bit bit) const noexcept {
+            const auto mask = static_cast<std::uint32_t>(bit);
+            return (value & mask) == mask;
+        }
+        constexpr SpritePipelineKey intersection(Bit mask) const noexcept {
+            return SpritePipelineKey{value & static_cast<std::uint32_t>(mask)};
+        }
+        constexpr SpritePipelineKey& operator|=(SpritePipelineKey other) noexcept {
+            value |= other.value;
+            return *this;
+        }
+        constexpr SpritePipelineKey& operator|=(Bit bit) noexcept {
+            value |= static_cast<std::uint32_t>(bit);
+            return *this;
+        }
+        auto operator<=>(const SpritePipelineKey&) const = default;
+    };
+
+    constexpr SpritePipelineKey operator|(SpritePipelineKey lhs, SpritePipelineKey rhs) noexcept {
+        lhs |= rhs;
+        return lhs;
+    }
+    constexpr SpritePipelineKey operator|(SpritePipelineKey lhs, SpritePipelineKey::Bit rhs) noexcept {
+        lhs |= rhs;
+        return lhs;
+    }
+
+    struct SpritePipeline {
+        using Key = SpritePipelineKey;
+
+        wgpu::BindGroupLayout view_layout;
+        wgpu::BindGroupLayout material_layout;
+        assets::Handle<shader::Shader> shader;
+
+        render::RenderPipelineDescriptor specialize(Key key) const;
+    };
+
+    /** @brief Exact 80-byte instance ABI consumed as instance-rate vertex data. */
+    struct SpriteInstance {
+        glm::vec4 i_model_transpose_col0{0.0f};
+        glm::vec4 i_model_transpose_col1{0.0f};
+        glm::vec4 i_model_transpose_col2{0.0f};
+        glm::vec4 i_color{1.0f};
+        glm::vec4 i_uv_offset_scale{0.0f};
+    };
+    static_assert(sizeof(SpriteInstance) == 80);
+
+    namespace detail {
+    /** @brief Direct Bevy scaling arithmetic, exposed for parity-oracle tests. */
+    void apply_scaling(sprite::SpriteScalingMode mode,
+                       glm::vec2 texture_size,
+                       glm::vec2& quad_size,
+                       glm::vec2& quad_translation,
+                       glm::vec4& uv_offset_scale);
+
+    /** @brief Pack an affine transform into Bevy's transposed 3x4 sprite ABI. */
+    SpriteInstance make_instance(const glm::mat4& transform, glm::vec4 color, glm::vec4 uv);
+    }  // namespace detail
+
+}  // namespace epix::sprite_render
+
+template <>
+struct epix::render::render_resource::RawBufferElementInfo<epix::sprite_render::SpriteInstance> {
+    static constexpr bool has_no_uninit = true;
+};
+
+EPIX_EXPORT namespace epix::sprite_render {
+    struct SpriteMeta {
+        render::render_resource::RawBufferVec<std::uint32_t> sprite_index_buffer{wgpu::BufferUsage::eIndex};
+        render::render_resource::RawBufferVec<SpriteInstance> sprite_instance_buffer{wgpu::BufferUsage::eVertex};
+    };
+
+    struct SpriteViewBindGroup {
+        wgpu::BindGroup value;
+    };
+
     struct SpriteBatch {
-        /** @brief Bind group holding the texture and sampler for this batch. */
-        wgpu::BindGroup texture_bind_group;
-        /** @brief Index of the first instance in SpriteInstanceBuffer for this
-         * batch. */
-        std::uint32_t instance_start = 0;
+        assets::AssetId<image::Image> image_handle_id;
+        std::pair<std::uint32_t, std::uint32_t> range{0, 0};
     };
 
-    /** @brief Per-instance GPU data for a single sprite in an instanced draw
-     * call. */
-    struct SpriteInstanceData {
-        /** @brief Model matrix for this sprite instance. */
-        glm::mat4 model;
-        /** @brief UV offset (xy) and scale (zw) within the texture atlas or
-         * sheet. */
-        glm::vec4 uv_offset_scale;
-        /** @brief Tint color for this instance. */
-        glm::vec4 color;
-        /** @brief Position offset (xy) and scale (zw) applied to the quad
-         * vertices. */
-        glm::vec4 pos_offset_scale;
+    struct SpriteBatchKey {
+        render::view::RetainedViewEntity view;
+        ecs::Entity entity;
+        bool operator==(const SpriteBatchKey&) const = default;
     };
 
-    /** @brief Shared GPU buffers for the unit-quad geometry used by all sprites.
-     *
-     * Created once as a resource; all sprite instances share these vertex and
-     * index buffers and are differentiated only through per-instance data.
-     */
-    struct SpriteGeometryBuffers {
-        /** @brief Vertex buffer containing quad corner positions. */
-        wgpu::Buffer position_buffer;
-        /** @brief Vertex buffer containing quad UV coordinates. */
-        wgpu::Buffer uv_buffer;
-        /** @brief Index buffer for the two-triangle quad. */
-        wgpu::Buffer index_buffer;
-        /** @brief Number of indices in the index buffer. */
-        std::uint32_t index_count = 0;
-
-        /** @brief Constructs the quad geometry buffers on the GPU.
-         * @param world World providing the `wgpu::Device` and `wgpu::Queue`
-         * resources. */
-        explicit SpriteGeometryBuffers(ecs::World& world) {
-            auto& device = world.resource<wgpu::Device>();
-            auto& queue  = world.resource<wgpu::Queue>();
-
-            constexpr std::array quad_positions = {
-                glm::vec2(-0.5f, -0.5f),
-                glm::vec2(0.5f, -0.5f),
-                glm::vec2(0.5f, 0.5f),
-                glm::vec2(-0.5f, 0.5f),
-            };
-            constexpr std::array quad_uvs = {
-                glm::vec2(0.0f, 0.0f),
-                glm::vec2(1.0f, 0.0f),
-                glm::vec2(1.0f, 1.0f),
-                glm::vec2(0.0f, 1.0f),
-            };
-            constexpr std::array<std::uint16_t, 6> quad_indices = {0, 1, 2, 2, 3, 0};
-
-            position_buffer =
-                device.createBuffer(wgpu::BufferDescriptor()
-                                        .setLabel("SpriteQuadPositions")
-                                        .setSize(sizeof(quad_positions))
-                                        .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-            uv_buffer    = device.createBuffer(wgpu::BufferDescriptor()
-                                                   .setLabel("SpriteQuadUvs")
-                                                   .setSize(sizeof(quad_uvs))
-                                                   .setUsage(wgpu::BufferUsage::eVertex | wgpu::BufferUsage::eCopyDst));
-            index_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                   .setLabel("SpriteQuadIndices")
-                                                   .setSize(sizeof(quad_indices))
-                                                   .setUsage(wgpu::BufferUsage::eIndex | wgpu::BufferUsage::eCopyDst));
-
-            queue.writeBuffer(position_buffer, 0, quad_positions.data(), sizeof(quad_positions));
-            queue.writeBuffer(uv_buffer, 0, quad_uvs.data(), sizeof(quad_uvs));
-            queue.writeBuffer(index_buffer, 0, quad_indices.data(), sizeof(quad_indices));
-            index_count = static_cast<std::uint32_t>(quad_indices.size());
+    struct SpriteBatchKeyHash {
+        std::size_t operator()(const SpriteBatchKey& key) const noexcept {
+            std::size_t result = std::hash<render::view::RetainedViewEntity>{}(key.view);
+            result ^= std::hash<ecs::Entity>{}(key.entity) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
+            return result;
         }
     };
 
-    /** @brief GPU buffer holding all sprite instance data for the current frame.
-     *
-     * Sprite instances are collected, uploaded to `buffer`, and bound via
-     * `bind_group` during the prepare phase. */
-    struct SpriteInstanceBuffer {
-        /** @brief GPU buffer storing the array of SpriteInstanceData. */
-        wgpu::Buffer buffer;
-        /** @brief Bind group exposing the instance buffer to shaders. */
-        wgpu::BindGroup bind_group;
-        /** @brief CPU-side instance data staged before uploading. */
-        std::vector<SpriteInstanceData> instances;
+    struct SpriteBatches {
+        std::unordered_map<SpriteBatchKey, SpriteBatch, SpriteBatchKeyHash> values;
     };
 
-    /** @brief Render command that binds the sprite instance buffer at the given
-     * bind group slot.
-     * @tparam Slot Bind group index for the instance buffer. */
+    struct ImageBindGroups {
+        std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> values;
+    };
+
+    namespace detail {
+    using PrepareSpriteImage = std::function<std::optional<glm::vec2>(assets::AssetId<image::Image>)>;
+
+    SpritePipelineKey view_pipeline_key(bool hdr,
+                                        std::uint32_t msaa_samples,
+                                        std::optional<core_graph::Tonemapping> tonemapping,
+                                        std::optional<core_graph::DebandDither> dither);
+
+    void prepare_sprite_batches(SpriteMeta& sprite_meta,
+                                const ExtractedSprites& extracted_sprites,
+                                const ExtractedSlices& extracted_slices,
+                                render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>& phases,
+                                SpriteBatches& batches,
+                                const PrepareSpriteImage& prepare_image);
+
+    bool prepare_sprite_indices(SpriteMeta& sprite_meta);
+    }  // namespace detail
+
     template <std::size_t Slot>
-    struct BindSpriteInstances {
+    struct SetSpriteViewBindGroup {
         template <render::phase::PhaseItem PhaseItem>
         struct Command {
             void prepare(const ecs::World&) noexcept {}
 
             std::expected<void, render::phase::RenderCommandError> render(
-                const PhaseItem& item,
-                ecs::Item<const render::view::ViewBindGroup&>,
-                std::optional<ecs::Item<const SpriteBatch&>>,
-                ecs::ParamSet<ecs::Res<SpriteInstanceBuffer>> params,
-                const wgpu::RenderPassEncoder& encoder) {
-                auto&& [instances] = params.get();
-                if (!instances->bind_group) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type    = render::phase::RenderCommandError::Type::Failure,
-                        .message = std::format("[sprite] Sprite entity {:#x} is missing prepared instance bind group.",
-                                               item.entity().index),
-                    });
-                }
-
-                encoder.setBindGroup(Slot, instances->bind_group, std::span<const std::uint32_t>{});
-                return {};
-            }
-        };
-    };
-
-    /** @brief Render command that binds a sprite batch's texture at the given
-     * bind group slot.
-     * @tparam Slot Bind group index for the texture. */
-    template <std::size_t Slot>
-    struct BindSpriteTexture {
-        template <render::phase::PhaseItem PhaseItem>
-        struct Command {
-            void prepare(const ecs::World&) noexcept {}
-
-            std::expected<void, render::phase::RenderCommandError> render(
-                const PhaseItem& item,
-                ecs::Item<const render::view::ViewBindGroup&>,
-                std::optional<ecs::Item<const SpriteBatch&>> entity_item,
+                const PhaseItem&,
+                ecs::Item<const render::view::ViewUniformOffset&, const SpriteViewBindGroup&> view,
+                std::optional<ecs::Item<>>,
                 ecs::ParamSet<>,
                 const wgpu::RenderPassEncoder& encoder) {
-                if (!entity_item) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type    = render::phase::RenderCommandError::Type::Failure,
-                        .message = std::format("[sprite] Sprite batch entity {:#x} is missing SpriteBatch.",
-                                               item.entity().index),
-                    });
-                }
-
-                auto&& [sprite_batch] = **entity_item;
-                if (!sprite_batch.texture_bind_group) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type    = render::phase::RenderCommandError::Type::Failure,
-                        .message = std::format("[sprite] Sprite entity {:#x} is missing prepared texture bind group.",
-                                               item.entity().index),
-                    });
-                }
-
-                encoder.setBindGroup(Slot, sprite_batch.texture_bind_group, std::span<const std::uint32_t>{});
+                const auto& offset     = std::get<0>(view);
+                const auto& bind_group = std::get<1>(view);
+                encoder.setBindGroup(Slot, bind_group.value, offset.offset);
                 return {};
             }
         };
     };
 
-    /** @brief Render command that issues the instanced draw call for a sprite
-     * batch.
-     * @tparam PhaseItem The render phase item type driving draw ordering. */
+    template <std::size_t Slot>
+    struct SetSpriteTextureBindGroup {
+        template <render::phase::PhaseItem PhaseItem>
+        struct Command {
+            void prepare(const ecs::World&) noexcept {}
+
+            std::expected<void, render::phase::RenderCommandError> render(
+                const PhaseItem& item,
+                ecs::Item<const render::view::ExtractedView&> view_item,
+                std::optional<ecs::Item<>>,
+                ecs::ParamSet<ecs::Res<ImageBindGroups>, ecs::Res<SpriteBatches>> params,
+                const wgpu::RenderPassEncoder& encoder) {
+                const auto& view                    = std::get<0>(view_item);
+                auto&& [image_bind_groups, batches] = params.get();
+                const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
+                if (batch == batches->values.end()) {
+                    return std::unexpected(render::phase::RenderCommandError{
+                        .type    = render::phase::RenderCommandError::Type::Skip,
+                        .message = "sprite item has no prepared batch",
+                    });
+                }
+                const auto bind_group = image_bind_groups->values.find(batch->second.image_handle_id);
+                if (bind_group == image_bind_groups->values.end()) {
+                    return std::unexpected(render::phase::RenderCommandError{
+                        .type    = render::phase::RenderCommandError::Type::Failure,
+                        .message = "sprite batch has no prepared image bind group",
+                    });
+                }
+                encoder.setBindGroup(Slot, bind_group->second, std::span<const std::uint32_t>{});
+                return {};
+            }
+        };
+    };
+
     template <render::phase::PhaseItem PhaseItem>
     struct DrawSpriteBatch {
         void prepare(const ecs::World&) noexcept {}
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            ecs::Item<const render::view::ViewBindGroup&>,
-            std::optional<ecs::Item<const SpriteBatch&>> entity_item,
-            ecs::ParamSet<ecs::Res<SpriteGeometryBuffers>> params,
+            ecs::Item<const render::view::ExtractedView&> view_item,
+            std::optional<ecs::Item<>>,
+            ecs::ParamSet<ecs::Res<SpriteMeta>, ecs::Res<SpriteBatches>> params,
             const wgpu::RenderPassEncoder& encoder) {
-            if (!entity_item) {
+            const auto& view              = std::get<0>(view_item);
+            auto&& [sprite_meta, batches] = params.get();
+            const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
+            if (batch == batches->values.end()) {
                 return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Failure,
-                    .message =
-                        std::format("[sprite] Sprite batch entity {:#x} is missing SpriteBatch.", item.entity().index),
+                    .type    = render::phase::RenderCommandError::Type::Skip,
+                    .message = "sprite item has no prepared batch",
                 });
             }
-
-            auto&& [sprite_batch] = **entity_item;
-            auto&& [geometry]     = params.get();
-            encoder.setVertexBuffer(0, geometry->position_buffer, 0, geometry->position_buffer.getSize());
-            encoder.setVertexBuffer(1, geometry->uv_buffer, 0, geometry->uv_buffer.getSize());
-            encoder.setIndexBuffer(geometry->index_buffer, wgpu::IndexFormat::eUint16, 0,
-                                   geometry->index_buffer.getSize());
-            const auto& batch_range = item.batch_range();
-            encoder.drawIndexed(geometry->index_count, render::phase::batch_range_len(batch_range), 0, 0,
-                                batch_range.first);
+            const auto* indices   = sprite_meta->sprite_index_buffer.buffer();
+            const auto* instances = sprite_meta->sprite_instance_buffer.buffer();
+            if (!indices || !instances) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type    = render::phase::RenderCommandError::Type::Failure,
+                    .message = "sprite batch buffers are not prepared",
+                });
+            }
+            encoder.setIndexBuffer(*indices, wgpu::IndexFormat::eUint32, 0, indices->getSize());
+            encoder.setVertexBuffer(0, *instances, 0, instances->getSize());
+            encoder.drawIndexed(6, batch->second.range.second - batch->second.range.first, 0, 0,
+                                batch->second.range.first);
             return {};
         }
     };
 
-    /** @brief Plugin that registers the sprite rendering pipeline, including
-     * extraction, batching, and draw commands. */
+    using DrawSprite =
+        render::phase::RenderCommandSequence<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
+                                             SetSpriteViewBindGroup<0>::Command, SetSpriteTextureBindGroup<1>::Command,
+                                             DrawSpriteBatch>;
+
     struct SpriteRenderPlugin {
         void attach(app::App& app);
         void ready(app::App& app);
     };
 
-    /** @brief Main-world sprite-render system sets. */
     enum class SpriteSystems {
         ExtractSprites,
         ComputeSlices,
     };
 
-    /** @brief Recompute sliced/tiled sprites whose source image changed. */
     void compute_slices_on_asset_event(
         ecs::Commands commands,
         ecs::EventReader<assets::AssetEvent<image::Image>> events,
@@ -317,11 +361,56 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
         ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>> sprites);
 
-    /** @brief Recompute slices after the Sprite component changes. */
     void compute_slices_on_sprite_change(
         ecs::Commands commands,
         ecs::Res<assets::Assets<image::Image>> images,
         ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
         ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>, ecs::Filter<ecs::Modified<sprite::Sprite>>>
             changed_sprites);
+
+    void extract_sprite_events(ecs::ResMut<SpriteAssetEvents> events,
+                               app::Extract<ecs::EventReader<assets::AssetEvent<image::Image>>> image_events);
+
+    void extract_sprites(
+        ecs::ResMut<ExtractedSprites> extracted_sprites, ecs::ResMut<ExtractedSlices> extracted_slices,
+        app::Extract<ecs::Query<ecs::Item<ecs::Entity, render::sync_world::RenderEntity, const camera::ViewVisibility&,
+                                          const sprite::Sprite&, const transform::GlobalTransform&,
+                                          const sprite::Anchor&, ecs::Opt<const ComputedTextureSlices&>>,
+                                ecs::Filter<ecs::Without<render::CustomRendered>>>> sprites,
+        app::Extract<ecs::Res<assets::Assets<image::TextureAtlasLayout>>> atlases);
+
+    void queue_sprites_2d(
+        ecs::Local<std::unordered_set<std::uint32_t>> view_entities,
+        ecs::Query<ecs::Item<const render::view::RenderVisibleEntities&, const render::view::ExtractedView&,
+                             const render::view::Msaa&, ecs::Opt<const core_graph::Tonemapping&>,
+                             ecs::Opt<const core_graph::DebandDither&>>> views,
+        ecs::Res<ExtractedSprites> extracted_sprites,
+        ecs::Res<render::phase::DrawFunctions<core_graph::core_2d::Transparent2D>> draw_functions,
+        ecs::Res<SpritePipeline> sprite_pipeline,
+        ecs::ResMut<render::SpecializedRenderPipelines<SpritePipeline>> pipelines,
+        ecs::Res<render::PipelineServer> pipeline_server,
+        ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases);
+
+    void prepare_sprite_view_bind_groups(
+        ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<SpritePipeline> sprite_pipeline,
+        ecs::Res<render::view::ViewUniforms> view_uniforms,
+        ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>, ecs::With<render::view::ExtractedView>>
+            views,
+        ecs::Res<core_graph::TonemappingLuts> tonemapping_luts, ecs::Res<render::RenderAssets<image::Image>> images,
+        ecs::Res<render::texture::FallbackImage> fallback_image);
+
+    void prepare_sprite_image_bind_groups(
+        ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue, ecs::ResMut<SpriteMeta> sprite_meta,
+        ecs::Res<SpritePipeline> sprite_pipeline, ecs::ResMut<ImageBindGroups> image_bind_groups,
+        ecs::Res<render::RenderAssets<image::Image>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,
+        ecs::Res<ExtractedSlices> extracted_slices,
+        ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
+        ecs::Res<SpriteAssetEvents> events, ecs::ResMut<SpriteBatches> batches);
 }  // namespace epix::sprite_render
+
+template <>
+struct std::hash<epix::sprite_render::SpritePipelineKey> {
+    std::size_t operator()(epix::sprite_render::SpritePipelineKey key) const noexcept {
+        return std::hash<std::uint32_t>{}(key.bits());
+    }
+};

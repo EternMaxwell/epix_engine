@@ -51,31 +51,29 @@ struct epix::render::ExtractComponent<epix::core_graph::DebandDither> {
 namespace epix::core_graph {
 namespace {
 constexpr std::string_view kTonemappingFragmentPath  = "core_pipeline/tonemapping.slang";
+constexpr std::string_view kTonemappingSharedPath    = "core_pipeline/tonemapping_shared.slang";
+
+struct TonemappingSharedShaderHandle {
+    assets::Handle<shader::Shader> value;
+};
 // Faithful Slang port of Bevy 0.18 tonemapping.wgsl + tonemapping_shared.wgsl +
 // lut_bindings.wgsl (with bevy_render maths::{powsafe, PI_2} and
 // color_operations::{hsv_to_rgb, rgb_to_hsv} inlined). The method and
 // color-grading flags are selected per pipeline via shader_defs preprocessor
 // macros, exactly like Bevy; LUT-requiring methods sample the corresponding
 // bundled 3D LUT and methods that do not use a LUT never observe that binding.
-constexpr std::string_view kTonemappingFragmentSlang = R"slang(
+constexpr std::string_view kTonemappingSharedSlang = R"slang(
+module "epix/tonemapping";
 import epix.view;
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
-[[vk::binding(1, 0)]] Texture2D<float4> hdr_texture;
-[[vk::binding(2, 0)]] SamplerState hdr_sampler;
-[[vk::binding(3, 0)]] Texture3D<float4> dt_lut_texture;
-[[vk::binding(4, 0)]] SamplerState dt_lut_sampler;
-struct VIn {
-    float4 position : SV_Position;
-    [[vk::location(0)]] float2 uv;
-};
+namespace epix::tonemapping {
 
 static const float PI = 3.141592653589793;
 static const float PI_2 = 6.283185307179586;
 static const float FRAC_PI_3 = 1.0471975511965976;
 
 // maths.wgsl powsafe: pow() but safe for NaNs/negatives.
-float3 powsafe(float3 color, float power) {
+public float3 powsafe(float3 color, float power) {
     return pow(abs(color), float3(power)) * sign(color);
 }
 // color_operations.wgsl hsv_to_rgb / rgb_to_hsv.
@@ -103,9 +101,9 @@ static const float LEVEL_MARGIN_DIV = 0.5 / LEVEL_MARGIN;
 
 // lut_bindings.wgsl sample_current_lut: sample the LUT for methods that need
 // it, otherwise return magenta (placeholder).
-float3 sample_current_lut(float3 p) {
+float3 sample_current_lut(float3 p, Texture3D<float4> lut_texture, SamplerState lut_sampler) {
 #if defined(TONEMAP_METHOD_AGX) || defined(TONEMAP_METHOD_TONY_MC_MAPFACE) || defined(TONEMAP_METHOD_BLENDER_FILMIC)
-    return dt_lut_texture.SampleLevel(dt_lut_sampler, p, 0.0).rgb;
+    return lut_texture.SampleLevel(lut_sampler, p, 0.0).rgb;
 #else
     return float3(1.0, 0.0, 1.0);
 #endif
@@ -138,9 +136,9 @@ float3 somewhat_boring_display_transform(float3 col) {
 }
 
 // --- Tony McMapface ---
-float3 sample_tony_mc_mapface_lut(float3 stimulus) {
+float3 sample_tony_mc_mapface_lut(float3 stimulus, Texture3D<float4> lut_texture, SamplerState lut_sampler) {
     float3 uv = (stimulus / (stimulus + 1.0)) * (47.0 / 48.0) + 0.5 / 48.0;
-    return sample_current_lut(saturate(uv));
+    return sample_current_lut(saturate(uv), lut_texture, lut_sampler);
 }
 
 // --- ACES Fitted ---
@@ -187,15 +185,16 @@ float3 applyAgXLog(float3 image) {
     prepared_image = convertOpenDomainToNormalizedLog2_(prepared_image, -10.0, 6.5);
     return clamp(prepared_image, float3(0.0), float3(1.0));
 }
-float3 applyLUT3D(float3 image, float block_size) {
-    return sample_current_lut(image * ((block_size - 1.0) / block_size) + 0.5 / block_size);
+float3 applyLUT3D(float3 image, float block_size, Texture3D<float4> lut_texture, SamplerState lut_sampler) {
+    return sample_current_lut(image * ((block_size - 1.0) / block_size) + 0.5 / block_size,
+                              lut_texture, lut_sampler);
 }
 
 // --- BlenderFilmic ---
-float3 sample_blender_filmic_lut(float3 stimulus) {
+float3 sample_blender_filmic_lut(float3 stimulus, Texture3D<float4> lut_texture, SamplerState lut_sampler) {
     float block_size = 64.0;
     float3 normalized = saturate(convertOpenDomainToNormalizedLog2_(stimulus, -11.0, 12.0));
-    return applyLUT3D(normalized, block_size);
+    return applyLUT3D(normalized, block_size, lut_texture, lut_sampler);
 }
 
 // --- generic tonemapping methods ---
@@ -209,7 +208,7 @@ float3 tonemapping_reinhard_luminance(float3 color) {
     float l_new = l_old / (1.0 + l_old);
     return tonemapping_change_luminance(color, l_new);
 }
-float3 screen_space_dither(float2 frag_coord) {
+public float3 screen_space_dither(float2 frag_coord) {
     float3 dither = float3(dot(float2(171.0, 231.0), frag_coord));
     dither = frac(dither.rgb / float3(103.0, 71.0, 97.0));
     return (dither - 0.5) / 255.0;
@@ -244,7 +243,10 @@ float3 sectional_color_grading(float3 in_color, inout epix::view::ColorGrading c
     color = color * powsafe(float3(2.0), color_grading.exposure);
     return max(color, float3(0.0));
 }
-float4 tone_mapping(float4 in_color, inout epix::view::ColorGrading color_grading) {
+public float4 tone_mapping(float4 in_color,
+                           inout epix::view::ColorGrading color_grading,
+                           Texture3D<float4> lut_texture,
+                           SamplerState lut_sampler) {
     float3 color = max(in_color.rgb, float3(0.0));
 #if defined(HUE_ROTATE)
     float3 hsv = rgb_to_hsv(color);
@@ -268,30 +270,44 @@ float4 tone_mapping(float4 in_color, inout epix::view::ColorGrading color_gradin
 #elif defined(TONEMAP_METHOD_ACES_FITTED)
     color = ACESFitted(color.rgb);
 #elif defined(TONEMAP_METHOD_AGX)
-    color = applyLUT3D(applyAgXLog(color), 32.0);
+    color = applyLUT3D(applyAgXLog(color), 32.0, lut_texture, lut_sampler);
 #elif defined(TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM)
     color = somewhat_boring_display_transform(color.rgb);
 #elif defined(TONEMAP_METHOD_TONY_MC_MAPFACE)
-    color = sample_tony_mc_mapface_lut(color);
+    color = sample_tony_mc_mapface_lut(color, lut_texture, lut_sampler);
 #elif defined(TONEMAP_METHOD_BLENDER_FILMIC)
-    color = sample_blender_filmic_lut(color.rgb);
+    color = sample_blender_filmic_lut(color.rgb, lut_texture, lut_sampler);
 #endif
     color = saturation_(color, color_grading.post_saturation);
     return float4(color, in_color.a);
 }
+}
+)slang";
+
+constexpr std::string_view kTonemappingFragmentSlang = R"slang(
+import epix.view;
+import epix.tonemapping;
+
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
+[[vk::binding(1, 0)]] Texture2D<float4> hdr_texture;
+[[vk::binding(2, 0)]] SamplerState hdr_sampler;
+[[vk::binding(3, 0)]] Texture3D<float4> dt_lut_texture;
+[[vk::binding(4, 0)]] SamplerState dt_lut_sampler;
+struct VIn {
+    float4 position : SV_Position;
+    [[vk::location(0)]] float2 uv;
+};
 
 [shader("fragment")]
 float4 fs_main(VIn input) : SV_Target {
     float4 hdr_color = hdr_texture.Sample(hdr_sampler, input.uv);
-    // Copy the color-grading struct out of the constant buffer so it can be
-    // written in-place by tone_mapping (the ConstantBuffer field is a
-    // read-only value, not an l-value).
     epix::view::ColorGrading color_grading = view_uniform.color_grading;
-    float3 output_rgb = tone_mapping(hdr_color, color_grading).rgb;
+    float3 output_rgb = epix::tonemapping::tone_mapping(
+        hdr_color, color_grading, dt_lut_texture, dt_lut_sampler).rgb;
 #ifdef DEBAND_DITHER
-    output_rgb = powsafe(output_rgb, 1.0 / 2.2);
-    output_rgb = output_rgb + screen_space_dither(input.position.xy);
-    output_rgb = powsafe(output_rgb, 2.2);
+    output_rgb = epix::tonemapping::powsafe(output_rgb, 1.0 / 2.2);
+    output_rgb = output_rgb + epix::tonemapping::screen_space_dither(input.position.xy);
+    output_rgb = epix::tonemapping::powsafe(output_rgb, 2.2);
 #endif
     return float4(output_rgb, hdr_color.a);
 }
@@ -646,8 +662,21 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
 }
 
 void TonemappingPlugin::attach(App& app) {
-    app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>().insert_asset_static(
-        kTonemappingFragmentPath, shader_bytes(kTonemappingFragmentSlang));
+    auto& registry = app.world_mut().resource_mut<assets::EmbeddedAssetRegistry>();
+    registry.insert_asset_static(kTonemappingSharedPath, shader_bytes(kTonemappingSharedSlang));
+    registry.insert_asset_static(kTonemappingFragmentPath, shader_bytes(kTonemappingFragmentSlang));
+    // Keep the library asset alive exactly as the render view shader library
+    // is kept alive. A standalone LUT-only TonemappingPlugin does not install
+    // ShaderPlugin, so defer handle creation unless the shader asset type is
+    // registered. The handle belongs to this App rather than process-global
+    // state, which also keeps independent test/application worlds isolated.
+    if (!app.world().get_resource<TonemappingSharedShaderHandle>() &&
+        app.world().get_resource<assets::Assets<shader::Shader>>()) {
+        app.world_mut().insert_resource(TonemappingSharedShaderHandle{
+            app.world().resource<assets::AssetServer>().load<shader::Shader>(
+                "embedded://core_pipeline/tonemapping_shared.slang"),
+        });
+    }
 
     // Bevy TonemappingPlugin with its default `tonemapping_luts` feature:
     // decode the three bundled KTX2 LUTs, then install extraction and the
