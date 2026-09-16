@@ -3,6 +3,7 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -463,6 +464,12 @@ EPIX_EXPORT struct Transmissive3d {
     ecs::Entity entity() const noexcept { return entity_value.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return entity_value.second; }
     float sort_key() const noexcept { return distance; }
+    /** @brief Bevy `Transmissive3d::sort` uses a stable radix sort
+     * (`radsort::sort_by_key`). */
+    static void sort(std::vector<Transmissive3d>& items) {
+        std::stable_sort(items.begin(), items.end(),
+                         [](const Transmissive3d& a, const Transmissive3d& b) { return a.sort_key() < b.sort_key(); });
+    }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
     bool indexed() const noexcept { return indexed_value; }
@@ -498,6 +505,12 @@ EPIX_EXPORT struct Transparent3d {
     ecs::Entity entity() const noexcept { return entity_value.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return entity_value.second; }
     float sort_key() const noexcept { return distance; }
+    /** @brief Bevy `Transparent3d::sort` uses a stable radix sort
+     * (`radsort::sort_by_key`). */
+    static void sort(std::vector<Transparent3d>& items) {
+        std::stable_sort(items.begin(), items.end(),
+                         [](const Transparent3d& a, const Transparent3d& b) { return a.sort_key() < b.sort_key(); });
+    }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
     bool indexed() const noexcept { return indexed_value; }

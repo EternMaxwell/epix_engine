@@ -465,6 +465,72 @@ TEST(Transparent2D, CarriesIndexedDrawDiscriminator) {
     EXPECT_FALSE(non_indexed.indexed());
 }
 
+TEST(Transparent2D, SortsBackToFrontByRawDepthAndKeepsEqualDepthStable) {
+    using Item = epix::core_graph::core_2d::Transparent2D;
+    const auto entity = Entity::from_index(3);
+    const auto pair   = std::pair{entity, sync_world::MainEntity{entity}};
+    // Bevy `Transparent2d::sort_key` returns the raw key and the smallest value
+    // is drawn first; `z` grows towards the camera, so ascending `z` is
+    // back-to-front. Any negation here inverts blended 2D layering.
+    const Item near_item{.representative_entity = pair, .depth = 0.0f, .indexed_value = true};
+    const Item far_item{.representative_entity = pair, .depth = -0.1f, .indexed_value = true};
+    EXPECT_FLOAT_EQ(near_item.sort_key(), 0.0f);
+    EXPECT_FLOAT_EQ(far_item.sort_key(), -0.1f);
+    EXPECT_TRUE(far_item.sort_key() < near_item.sort_key());
+
+    phase::SortedRenderPhase<Item> phase;
+    phase.add(Item{.representative_entity = pair, .depth = 0.0f, .indexed_value = true});
+    phase.add(Item{.representative_entity = pair, .depth = -0.1f, .indexed_value = true});
+    phase.sort();
+    ASSERT_EQ(phase.items.size(), 2u);
+    EXPECT_FLOAT_EQ(phase.items[0].sort_key(), -0.1f) << "the far item must be drawn first";
+    EXPECT_FLOAT_EQ(phase.items[1].sort_key(), 0.0f);
+
+    // Bevy sorts with a stable radix sort, so equal keys keep queue order.
+    phase::SortedRenderPhase<Item> stable;
+    for (const std::uint32_t marker : {7u, 11u, 13u}) {
+        stable.add(Item{.representative_entity = pair, .batch_range_value = {marker, marker}, .indexed_value = true});
+    }
+    stable.add(Item{.representative_entity = pair, .depth = -1.0f, .indexed_value = true});
+    stable.sort();
+    ASSERT_EQ(stable.items.size(), 4u);
+    EXPECT_EQ(stable.items[0].batch_range().first, 0u);
+    EXPECT_EQ(stable.items[1].batch_range().first, 7u);
+    EXPECT_EQ(stable.items[2].batch_range().first, 11u);
+    EXPECT_EQ(stable.items[3].batch_range().first, 13u);
+}
+
+TEST(Transparent3d, SortsByAscendingDistanceAndKeepsEqualDistanceStable) {
+    using Transmissive = epix::core_graph::core_3d::Transmissive3d;
+    using Transparent  = epix::core_graph::core_3d::Transparent3d;
+    const auto entity = Entity::from_index(4);
+    const auto triples = std::pair{entity, sync_world::MainEntity{entity}};
+    // Bevy sorts both 3D transparent phases by ascending view-space distance
+    // with `radsort::sort_by_key`, i.e. back-to-front and stable.
+    phase::SortedRenderPhase<Transmissive> transmissive;
+    transmissive.add(Transmissive{.distance = 4.0f, .entity_value = triples});
+    transmissive.add(Transmissive{.distance = 1.5f, .entity_value = triples});
+    transmissive.sort();
+    ASSERT_EQ(transmissive.items.size(), 2u);
+    EXPECT_FLOAT_EQ(transmissive.items[0].sort_key(), 1.5f);
+    EXPECT_FLOAT_EQ(transmissive.items[1].sort_key(), 4.0f);
+
+    phase::SortedRenderPhase<Transparent> transparent;
+    for (const std::uint32_t marker : {5u, 3u, 9u}) {
+        transparent.add(Transparent{.distance = 2.0f,
+                                    .entity_value = triples,
+                                    .batch_range_value = {marker, marker}});
+    }
+    transparent.add(Transparent{.distance = 0.5f, .entity_value = triples});
+    transparent.sort();
+    ASSERT_EQ(transparent.items.size(), 4u);
+    EXPECT_EQ(transparent.items[0].batch_range().first, 0u);
+    EXPECT_EQ(transparent.items[1].batch_range().first, 5u);
+    EXPECT_EQ(transparent.items[2].batch_range().first, 3u);
+    EXPECT_EQ(transparent.items[3].batch_range().first, 9u);
+}
+
+
 TEST(Core2dBinnedPhases, MatchBevyOpaqueAndAlphaMaskKeys) {
     using namespace epix::core_graph::core_2d;
     static_assert(phase::BinnedPhaseItem<Opaque2D>);

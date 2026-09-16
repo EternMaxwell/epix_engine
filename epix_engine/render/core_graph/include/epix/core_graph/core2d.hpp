@@ -3,12 +3,14 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <functional>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
+#include <vector>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -62,14 +64,14 @@ EPIX_EXPORT enum class Core2dNodes {
 /**
  * @brief A transparent 2D render phase item.
  *
- * Sorted by inverse depth for back-to-front rendering. Supports instanced
- * batching.
+ * Sorted by ascending view-space `z` for back-to-front rendering, exactly like
+ * Bevy `Transparent2d`. Supports instanced batching.
  */
 EPIX_EXPORT struct Transparent2D {
     /** @brief The render entity and its main-world entity (Bevy
      * representative_entity: (Entity, MainEntity)). */
     std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity;
-    /** @brief Depth value for sorting (inverted for back-to-front). */
+    /** @brief View-space depth used as the sort key (Bevy `Transparent2d::sort_key`). */
     float depth;
     /** @brief Cached render pipeline ID. */
     render::CachedPipelineId pipeline_id;
@@ -80,13 +82,26 @@ EPIX_EXPORT struct Transparent2D {
     std::pair<std::uint32_t, std::uint32_t> batch_range_value;
     /** @brief Dynamic-offset or indirect-parameter index assigned while batching. */
     render::phase::PhaseItemExtraIndex extra_index_value{};
+    /** @brief Index into the renderer-owned extracted item storage. Sprites
+     * use this to recover their immutable extraction record during batching
+     * (Bevy `Transparent2d::extracted_index`). */
+    std::size_t extracted_index = 0;
     /** @brief Whether this item draws with a mesh index buffer (Bevy
      * `Transparent2d::indexed`). */
     bool indexed_value = false;
 
     ecs::Entity entity() const noexcept { return representative_entity.first; }
     render::sync_world::MainEntity main_entity() const noexcept { return representative_entity.second; }
-    float sort_key() const noexcept { return -depth; }  // inverse depth for back-to-front rendering
+    /** @brief View-space `z` (Bevy `Transparent2d::sort_key`). The smallest
+     * value is drawn first, which is back-to-front because `z` grows towards
+     * the camera. Bevy does NOT negate this key. */
+    float sort_key() const noexcept { return depth; }
+    /** @brief Bevy `Transparent2d::sort` uses a stable radix sort
+     * (`radsort::sort_by_key`) so equal-depth items keep their queue order. */
+    static void sort(std::vector<Transparent2D>& items) {
+        std::stable_sort(items.begin(), items.end(),
+                         [](const Transparent2D& a, const Transparent2D& b) { return a.sort_key() < b.sort_key(); });
+    }
     render::phase::DrawFunctionId draw_function() const noexcept { return draw_func; }
     render::CachedPipelineId cached_pipeline() const noexcept { return pipeline_id; }
     bool indexed() const noexcept { return indexed_value; }
