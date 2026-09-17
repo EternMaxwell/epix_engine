@@ -223,6 +223,10 @@ struct Mesh2dPipeline {
     std::optional<std::uint32_t> per_object_buffer_batch_size;
 };
 
+/** @brief Register the mesh2d shader bytes as an embedded asset, so the render
+ *  world can load `embedded://sprite/mesh2d.slang` (Bevy `embedded_asset!`). */
+void register_mesh2d_shader(ecs::World& world);
+
 /** @brief Create the mesh2d view bind group layout (Bevy
  *  `init_mesh_2d_pipeline`'s `view_layout`): the dynamic view uniform, the
  *  globals uniform, and the tonemapping LUT texture and sampler at fragment
@@ -235,6 +239,12 @@ wgpu::BindGroupLayout create_mesh2d_mesh_layout(const wgpu::Device& device);
 /** @brief Bevy `GpuArrayBuffer::<Mesh2dUniform>::batch_size`: the uniform-array
  *  element count when storage buffers are unavailable, otherwise empty. */
 std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Limits& limits);
+
+/** @brief Insert the `Mesh2dPipeline` resource (Bevy `init_mesh_2d_pipeline`,
+ *  `mesh.rs:292-327`). */
+void init_mesh_2d_pipeline(ecs::Commands commands,
+                           ecs::Res<wgpu::Device> device,
+                           ecs::Res<assets::AssetServer> asset_server);
 
 }  // namespace epix::sprite_render
 
