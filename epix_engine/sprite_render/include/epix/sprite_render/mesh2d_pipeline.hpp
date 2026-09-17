@@ -3,12 +3,98 @@
 #include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <bit>
 #include <cstdint>
+#include <glm/glm.hpp>
 #include <webgpu/webgpu.hpp>
 #endif
 
 namespace epix::sprite_render {
+/** @brief Flags carried per mesh2d instance (Bevy `MeshFlags`).
+ *
+ * Bevy keeps only the two sentinel values (`mesh.rs:226-233`); the type exists
+ * so the shader's `flags` word has a named contract. */
+struct MeshFlags {
+    enum Bit : std::uint32_t {
+        NONE          = 0,
+        UNINITIALIZED = 0xFFFF,
+    };
+};
+
+/** @brief Per-instance mesh2d transform (Bevy `Mesh2dTransforms` component).
+ *
+ * Epix stores the transform as the project-wide `glm::mat4`; Bevy's `Affine3`
+ * is the 4x3 affine of the same matrix, so the uniform packing below extracts
+ * exactly that. */
+struct Mesh2dTransforms {
+    glm::mat4 world_from_local{1.0f};
+    std::uint32_t flags = MeshFlags::NONE;
+};
+
+/** @brief GPU representation of one mesh2d instance (Bevy `Mesh2dUniform`).
+ *
+ * The field order, padding and total size are the WGSL layout of Bevy's
+ * `Mesh2d` struct (`mesh2d_types.wgsl`): a `mat3x4` (three `vec4` rows), a
+ * `mat2x4` plus an `f32` carrying the inverse-transpose of the 3x3, then the
+ * `flags` and `tag` words, padded to the 16-byte array stride. */
+struct Mesh2dUniform {
+    /** @brief Affine 4x3 transposed to 3x4: row `i` is axis `i` plus the
+     *  translation component `i` (Bevy `Affine3::to_transpose`). */
+    std::array<glm::vec4, 3> world_from_local{};
+    /** @brief First eight entries of the packed inverse-transpose 3x3. */
+    std::array<glm::vec4, 2> local_from_world_transpose_a{};
+    /** @brief Ninth entry of the packed inverse-transpose 3x3. */
+    float local_from_world_transpose_b = 0.0f;
+    std::uint32_t flags                = MeshFlags::NONE;
+    std::uint32_t tag                  = 0;
+    /** @brief Tail padding to the 16-byte array stride (92 -> 96 bytes). */
+    std::uint32_t padding = 0;
+
+    /** @brief Bevy `Mesh2dUniform::from_components`. */
+    static Mesh2dUniform from_components(const Mesh2dTransforms& transforms, std::uint32_t tag) noexcept {
+        Mesh2dUniform out;
+        const glm::mat4& matrix = transforms.world_from_local;
+        // Bevy `Affine3::to_transpose` stores the transposed 4x3, i.e. row `i`
+        // is (axis_0[i], axis_1[i], axis_2[i], translation[i]) - the `i`-th
+        // component of every column. The shader's `affine3_to_square`
+        // transposes that back, so packing columns here would silently render
+        // the transpose of the intended transform.
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            out.world_from_local[axis] =
+                glm::vec4(matrix[0][axis], matrix[1][axis], matrix[2][axis], matrix[3][axis]);
+        }
+        // Bevy's `Affine3::inverse_transpose_3x3`, packed as the shader's
+        // `mat2x4_f32_to_mat3x3_unpack` expects: columns (a0.xyz),
+        // (a0.w, a1.x, a1.y) and (a1.z, a1.w, b).
+        const glm::mat3 inverse_transpose = glm::transpose(glm::inverse(glm::mat3(matrix)));
+        out.local_from_world_transpose_a[0] = glm::vec4(inverse_transpose[0][0], inverse_transpose[0][1],
+                                                        inverse_transpose[0][2], inverse_transpose[1][0]);
+        out.local_from_world_transpose_a[1] = glm::vec4(inverse_transpose[1][1], inverse_transpose[1][2],
+                                                        inverse_transpose[2][0], inverse_transpose[2][1]);
+        out.local_from_world_transpose_b = inverse_transpose[2][2];
+        out.flags                        = transforms.flags;
+        out.tag                          = tag;
+        return out;
+    }
+
+    /** @brief Rebuild the packed 3x3 exactly as the shader's
+     *  `mat2x4_f32_to_mat3x3_unpack` does. */
+    glm::mat3 unpack_local_from_world_transpose() const noexcept {
+        return glm::mat3(glm::vec3(local_from_world_transpose_a[0]),
+                         glm::vec3(local_from_world_transpose_a[0].w, local_from_world_transpose_a[1].x,
+                                   local_from_world_transpose_a[1].y),
+                         glm::vec3(local_from_world_transpose_a[1].z, local_from_world_transpose_a[1].w,
+                                   local_from_world_transpose_b));
+    }
+};
+static_assert(sizeof(Mesh2dUniform) == 96, "Mesh2dUniform must match the WGSL Mesh2d array stride");
+static_assert(offsetof(Mesh2dUniform, local_from_world_transpose_a) == 48);
+static_assert(offsetof(Mesh2dUniform, local_from_world_transpose_b) == 80);
+static_assert(offsetof(Mesh2dUniform, flags) == 84);
+static_assert(offsetof(Mesh2dUniform, tag) == 88);
+
+
 /** @brief Bit-packed Mesh2d specialization key (Bevy `Mesh2dPipelineKey`).
  *
  * Bevy packs the whole Mesh2d specialization state into one `u32`

@@ -85,6 +85,39 @@ unchanged until step 10.
   actually change what is drawn. Steps 2-9 will each carry their own
   affected-example captures.
 
+### Step 2 — `Mesh2dUniform` and `Mesh2dTransforms` (partial)
+
+- **Files**: `sprite_render/include/epix/sprite_render/mesh2d_pipeline.hpp`,
+  `sprite_render/tests/header/mesh2d_uniform_tests.cpp` (new).
+- **Landed**: `MeshFlags`, `Mesh2dTransforms` and `Mesh2dUniform` with Bevy's
+  packing (`Affine3::to_transpose` rows plus the packed inverse-transpose 3x3),
+  `static_assert`s for the WGSL array stride (96 bytes) and the 0/48/80/84/88
+  offsets, and an `unpack_local_from_world_transpose` helper that reproduces the
+  shader's `mat2x4_f32_to_mat3x3_unpack` column order.
+- **Bug the tests caught**: the first packing wrote the mat4 *columns* into
+  `world_from_local`. Bevy's `Affine3::to_transpose` stores the *rows* - component
+  `i` of every column plus translation `i` - which the shader's
+  `affine3_to_square` transposes back, so the column form would have rendered the
+  transpose of every mesh2d transform. The rotation round-trip test failed on
+  exactly that swap and the packing was fixed before commit. (A translation-only
+  or diagonal-scale transform cannot distinguish the two, which is why the
+  rotation case matters.)
+- **Tests**: the uniform target passes 4/4 (stride/offsets, translation-only
+  packing, non-uniform scale inverse-transpose, and a rotation round trip that
+  rebuilds both the inverse-transpose 3x3 and the affine square). Full suite
+  **82/82** in 46.73 s.
+- **Rendering**: the same non-regression sweep as step 1 - `mesh_rendering`,
+  `mesh_batching`, `mesh_alpha_mask`, `primitive_builders` and
+  `linear_polygon_primitives` captured with `PrintWindow(PW_CLIENTONLY)`,
+  inspected, each stable at one distinct cropped scene hash across three frames
+  and free of flagged stdout/stderr diagnostics.
+- **Remaining in step 2**: `Mesh2dPipeline` (view and mesh layouts, the embedded
+  mesh2d shader, `per_object_buffer_batch_size`) and `init_mesh_2d_pipeline`,
+  which need the mesh-uniform array binding and the ported mesh2d Slang modules.
+- **Tooling**: the capture batch's focus restoration is now best-effort - a Win32
+  hiccup on a dying previously-focused window aborted two sweeps. The batch
+  completes 5/5 with the focus policy intact afterwards.
+
 ## Verification gates
 
 - Steps 1-9: focused tests (key bit layout and round trips, pipeline descriptor
