@@ -84,6 +84,12 @@ PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_co
       pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())),
       synchronous_pipeline_compilation(synchronous_pipeline_compilation) {}
 
+wgpu::BindGroupLayout PipelineServer::get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor) {
+    // Bevy keeps the interning cache private to the pipeline cache and exposes
+    // only this accessor (`pipeline_cache.rs:211-220` and its callers).
+    return bind_group_layout_cache.get(device, descriptor);
+}
+
 auto PipelineServer::get_pipeline_state(CachedPipelineId id) const noexcept
     -> std::optional<std::reference_wrapper<const CachedPipelineState>> {
     if (pipelines.size() <= id.get()) {

@@ -8,6 +8,7 @@
 #include <concepts>
 #include <cstddef>
 #include <epix/ecs.hpp>
+#include <epix/render/bind_group_layout.hpp>
 #include <epix/shader.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -216,6 +217,9 @@ EPIX_EXPORT struct PipelineServer {
     /** @brief Process a newly queued render pipeline and wait for its
      * in-flight creation task (Bevy `PipelineCache::block_on_render_pipeline`). */
     void block_on_render_pipeline(CachedPipelineId id);
+    /** @brief Get the interned bind group layout for a descriptor (Bevy
+     * `PipelineCache::get_bind_group_layout`). */
+    wgpu::BindGroupLayout get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor);
 
    private:
     friend struct RenderPlugin;
@@ -236,6 +240,7 @@ EPIX_EXPORT struct PipelineServer {
 
     std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
     std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
+    BindGroupLayoutCache bind_group_layout_cache;
     wgpu::Device device;
     std::vector<CachedPipeline> pipelines;
     std::unordered_set<CachedPipelineId> waiting_pipelines_;
