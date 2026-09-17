@@ -56,10 +56,10 @@ void epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline(
     // (`copy_lighting_id.rs:99-107`).
     const auto entries = BindGroupLayoutEntries<1>::sequential(
         wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eUint));
-    const auto layout = pipeline_server->get_bind_group_layout(
+    const auto layout = 
         render::BindGroupLayoutDescriptor()
             .set_label("copy_deferred_lighting_id_bind_group_layout")
-            .set_entries(entries.entries()));
+            .set_entries(entries.entries());
 
     const auto shader =
         asset_server->load<shader::Shader>("embedded://core_pipeline/copy_deferred_lighting_id.slang");
@@ -167,7 +167,7 @@ std::expected<void, render::graph::NodeRunError> epix::core_graph::core_3d::Copy
     const auto bind_group =
         device.createBindGroup(wgpu::BindGroupDescriptor()
                                    .setLabel("copy_deferred_lighting_id_bind_group")
-                                   .setLayout(pipeline_res->get().layout)
+                                   .setLayout(pipeline_server->get().get_bind_group_layout(pipeline_res->get().layout))
                                    .setEntries(render::render_resource::BindGroupEntries<>::sequential(
                                        render::render_resource::BindGroupEntries<>::texture_binding(
                                            deferred_lighting_pass_id_texture->texture.default_view))

@@ -102,7 +102,7 @@ std::expected<void, render::graph::NodeRunError> UpscalingNode::run(
         const std::lock_guard lock(cached_bind_group->mutex);
         if (!cached_bind_group->value || !(cached_bind_group->value->first == source_texture)) {
             cached_bind_group->value =
-                std::pair{source_texture, blit_pipeline->get().create_bind_group(render_context.device(), source_texture)};
+                std::pair{source_texture, blit_pipeline->get().create_bind_group(render_context.device(), source_texture, pipeline_server->get())};
         }
         bind_group = cached_bind_group->value->second;
     }

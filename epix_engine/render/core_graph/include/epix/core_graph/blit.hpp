@@ -28,13 +28,14 @@ EPIX_EXPORT struct BlitPipelineKey {
 EPIX_EXPORT struct BlitPipeline {
     using Key = BlitPipelineKey;
 
-    wgpu::BindGroupLayout layout;
+    render::BindGroupLayoutDescriptor layout;
     wgpu::Sampler sampler;
     FullscreenShader fullscreen_shader;
     assets::Handle<shader::Shader> fragment_shader;
 
     /** @brief Creates the texture/sampler bind group for one source view. */
-    wgpu::BindGroup create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture) const;
+    wgpu::BindGroup create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture,
+                                      const render::PipelineServer& pipeline_server) const;
 
     /** @brief Builds a format/blend/sample-specialized render descriptor. */
     render::RenderPipelineDescriptor specialize(Key key) const;

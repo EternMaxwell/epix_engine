@@ -247,14 +247,13 @@ std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Lim
 }  // namespace
 
 void init_mesh_2d_pipeline(ecs::Commands commands,
-                           ecs::Res<render::PipelineServer> pipeline_server,
                            ecs::Res<wgpu::Device> device,
                            ecs::Res<assets::AssetServer> asset_server) {
     wgpu::Limits limits{};
     device.get().getLimits(&limits);
     commands.insert_resource(Mesh2dPipeline{
-        .view_layout = pipeline_server->get_bind_group_layout(mesh2d_view_layout_descriptor()),
-        .mesh_layout = pipeline_server->get_bind_group_layout(mesh2d_mesh_layout_descriptor(limits)),
+        .view_layout = mesh2d_view_layout_descriptor(),
+        .mesh_layout = mesh2d_mesh_layout_descriptor(limits),
         .shader      = asset_server.get().load<shader::Shader>("embedded://sprite/mesh2d.slang"),
         .per_object_buffer_batch_size = mesh2d_per_object_buffer_batch_size(limits),
     });

@@ -93,7 +93,7 @@ EPIX_EXPORT struct TonemappingPipelineKey {
 EPIX_EXPORT struct TonemappingPipeline {
     using Key = TonemappingPipelineKey;
 
-    wgpu::BindGroupLayout layout;
+    render::BindGroupLayoutDescriptor layout;
     wgpu::Sampler sampler;              // non-filtering source sampler
     FullscreenShader fullscreen_shader;
     assets::Handle<shader::Shader> fragment_shader;
@@ -102,7 +102,8 @@ EPIX_EXPORT struct TonemappingPipeline {
      * source texture, source sampler, LUT texture, LUT sampler). */
     wgpu::BindGroup create_bind_group(const wgpu::Device& device, const wgpu::Buffer& view_uniforms,
                                       const wgpu::TextureView& source, const wgpu::TextureView& lut_view,
-                                      const wgpu::Sampler& lut_sampler) const;
+                                      const wgpu::Sampler& lut_sampler,
+                                      const render::PipelineServer& pipeline_server) const;
 
     /** @brief Builds a format/deband/method/flags-specialized render descriptor. */
     render::RenderPipelineDescriptor specialize(Key key) const;

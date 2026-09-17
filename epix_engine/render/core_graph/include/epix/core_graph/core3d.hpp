@@ -609,7 +609,7 @@ EPIX_EXPORT struct DeferredLightingIdDepthTexture {
  * specialized by key: `init_copy_deferred_lighting_id_pipeline` queues it once
  * during render startup and the node only waits for it. */
 EPIX_EXPORT struct CopyDeferredLightingIdPipeline {
-    wgpu::BindGroupLayout layout;
+    render::BindGroupLayoutDescriptor layout;
     render::CachedPipelineId pipeline_id = render::INVALID_RENDER_PIPELINE_ID;
 };
 

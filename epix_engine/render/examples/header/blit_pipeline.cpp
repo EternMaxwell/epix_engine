@@ -74,7 +74,7 @@ struct BlitNode : render::graph::Node {
         const auto ready = world.resource<render::PipelineServer>().get_render_pipeline(cached->second);
         if (!ready) return {};
 
-        const auto bind_group = pipeline.create_bind_group(render_context.device(), target.main_texture_view());
+        const auto bind_group = pipeline.create_bind_group(render_context.device(), target.main_texture_view(), world.resource<render::PipelineServer>());
         auto output_pass = render_context.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor().setColorAttachments(
                 std::array{target.out_texture_color_attachment(glm::vec4(0.90f, 0.04f, 0.08f, 1.0f))}));

@@ -85,6 +85,21 @@ public struct View {
 )";
 }  // namespace
 
+namespace epix::render::view {
+BindGroupLayoutDescriptor view_uniform_layout_descriptor() {
+    return BindGroupLayoutDescriptor().set_label("view_uniform_layout").set_entries(std::array{
+        wgpu::BindGroupLayoutEntry()
+            .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
+            .setBinding(0)
+            .setBuffer(wgpu::BufferBindingLayout()
+                           .setType(wgpu::BufferBindingType::eUniform)
+                           .setHasDynamicOffset(false)
+                           .setMinBindingSize(sizeof(ViewUniform))),
+    });
+}
+
+}  // namespace epix::render::view
+
 void epix::render::view::update_manual_texture_view_cameras(
     Query<Item<Mut<::epix::camera::Camera>, Mut<::epix::camera::Projection>, const ::epix::camera::RenderTarget&>> cameras,
     Res<texture::ManualTextureViews> manual_texture_views) {

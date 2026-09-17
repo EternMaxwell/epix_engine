@@ -567,13 +567,13 @@ struct BM4DRenderState {
     wgpu::TextureView bloom_a_storage_view, bloom_a_sampled_view;
     wgpu::TextureView bloom_b_storage_view, bloom_b_sampled_view;
     // Bind group layouts
-    wgpu::BindGroupLayout scene_layout;
-    wgpu::BindGroupLayout trace_out_layout;
-    wgpu::BindGroupLayout taa_in_layout;
-    wgpu::BindGroupLayout taa_out_layout;
-    wgpu::BindGroupLayout blit_layout;
-    wgpu::BindGroupLayout bloom_in_layout;
-    wgpu::BindGroupLayout bloom_out_layout;
+    render::BindGroupLayoutDescriptor scene_layout;
+    render::BindGroupLayoutDescriptor trace_out_layout;
+    render::BindGroupLayoutDescriptor taa_in_layout;
+    render::BindGroupLayoutDescriptor taa_out_layout;
+    render::BindGroupLayoutDescriptor blit_layout;
+    render::BindGroupLayoutDescriptor bloom_in_layout;
+    render::BindGroupLayoutDescriptor bloom_out_layout;
     // Bind groups
     wgpu::BindGroup scene_bg;
     wgpu::BindGroup trace_out_bg;
@@ -1026,10 +1026,10 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                          Query<Item<const ExtractedView&, const ViewTarget&>, With<ExtractedCamera>> views) {
     // ---- Phase 1: static resources + pipeline kick-offs ----
     if (!state->resources_created) {
-        state->scene_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DSceneBGL")
-                .setEntries(std::array{
+        state->scene_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DSceneBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1044,12 +1044,12 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                         .setBinding(2)
                         .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                }));
+                });
 
-        state->trace_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DTraceOutBGL")
-                .setEntries(std::array{
+        state->trace_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DTraceOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1064,7 +1064,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eR32Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         {
             std::vector<wgpu::BindGroupLayoutEntry> ents;
@@ -1075,14 +1075,14 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                                    .setTexture(wgpu::TextureBindingLayout()
                                                    .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                                    .setViewDimension(wgpu::TextureViewDimension::e2D)));
-            state->taa_in_layout = device->createBindGroupLayout(
-                wgpu::BindGroupLayoutDescriptor().setLabel("BM4DTaaInBGL").setEntries(ents));
+            state->taa_in_layout = 
+                render::BindGroupLayoutDescriptor().set_label("BM4DTaaInBGL").set_entries(ents);
         }
 
-        state->taa_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DTaaOutBGL")
-                .setEntries(std::array{
+        state->taa_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DTaaOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1090,12 +1090,12 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
-        state->blit_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DBlitBGL")
-                .setEntries(std::array{
+        state->blit_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DBlitBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eFragment)
@@ -1112,12 +1112,12 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
-        state->bloom_in_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DBloomInBGL")
-                .setEntries(std::array{
+        state->bloom_in_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DBloomInBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1130,12 +1130,12 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
-        state->bloom_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("BM4DBloomOutBGL")
-                .setEntries(std::array{
+        state->bloom_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("BM4DBloomOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1143,7 +1143,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         state->bloom_params_uniform =
             device->createBuffer(wgpu::BufferDescriptor()
@@ -1330,7 +1330,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
 
     state->scene_bg = device->createBindGroup(wgpu::BindGroupDescriptor()
                                                   .setLabel("BM4DSceneBG")
-                                                  .setLayout(state->scene_layout)
+                                                  .setLayout(pipeline_server->get_bind_group_layout(state->scene_layout))
                                                   .setEntries(std::array{
                                                       wgpu::BindGroupEntry()
                                                           .setBinding(0)
@@ -1352,7 +1352,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     state->trace_out_bg =
         device->createBindGroup(wgpu::BindGroupDescriptor()
                                     .setLabel("BM4DTraceOutBG")
-                                    .setLayout(state->trace_out_layout)
+                                    .setLayout(pipeline_server->get_bind_group_layout(state->trace_out_layout))
                                     .setEntries(std::array{
                                         wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_storage_view),
                                         wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_storage_view),
@@ -1363,7 +1363,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
         state->taa_in_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("BM4DTaaIn" + std::to_string(i)).c_str())
-                .setLayout(state->taa_in_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->taa_in_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_sampled_view),
                     wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_sampled_view),
@@ -1373,14 +1373,14 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
         state->taa_out_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("BM4DTaaOut" + std::to_string(i)).c_str())
-                .setLayout(state->taa_out_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->taa_out_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->accum_storage_view[i]),
                 }));
         state->blit_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("BM4DBlitBG" + std::to_string(i)).c_str())
-                .setLayout(state->blit_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->blit_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setSampler(state->linear_sampler),
                     wgpu::BindGroupEntry().setBinding(1).setTextureView(state->accum_sampled_view[i]),
@@ -1391,7 +1391,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     auto make_bloom_src = [&](const char* lbl, wgpu::TextureView& tv) -> wgpu::BindGroup {
         return device->createBindGroup(wgpu::BindGroupDescriptor()
                                            .setLabel(lbl)
-                                           .setLayout(state->bloom_in_layout)
+                                           .setLayout(pipeline_server->get_bind_group_layout(state->bloom_in_layout))
                                            .setEntries(std::array{
                                                wgpu::BindGroupEntry()
                                                    .setBinding(0)
@@ -1410,7 +1410,7 @@ void prepare_bm4d_render(Res<wgpu::Device> device,
     auto make_bloom_dst = [&](const char* lbl, wgpu::TextureView& sv) -> wgpu::BindGroup {
         return device->createBindGroup(wgpu::BindGroupDescriptor()
                                            .setLabel(lbl)
-                                           .setLayout(state->bloom_out_layout)
+                                           .setLayout(pipeline_server->get_bind_group_layout(state->bloom_out_layout))
                                            .setEntries(std::array{
                                                wgpu::BindGroupEntry().setBinding(0).setTextureView(sv),
                                            }));

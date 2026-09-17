@@ -364,7 +364,7 @@ render::RenderPipelineDescriptor SpritePipeline::specialize(Key key) const {
 
     return render::RenderPipelineDescriptor{
         .label         = "sprite_pipeline",
-        .layouts       = {view_layout, material_layout},
+        .layouts       = {view_layout_descriptor, material_layout_descriptor},
         .vertex        = std::move(vertex),
         .primitive     = wgpu::PrimitiveState()
                              .setTopology(wgpu::PrimitiveTopology::eTriangleList)
@@ -718,6 +718,11 @@ void SpriteRenderPlugin::ready(App& app) {
             // (`PipelineCache::get_bind_group_layout`), so the bind groups below
             // and the pipeline share one native layout per descriptor.
             commands.insert_resource(SpritePipeline{
+                .view_layout_descriptor =
+                    BindGroupLayoutDescriptor().set_label("sprite_view_layout").set_entries(view_entries.entries()),
+                .material_layout_descriptor = BindGroupLayoutDescriptor()
+                                                  .set_label("sprite_material_layout")
+                                                  .set_entries(material_entries.entries()),
                 .view_layout = pipeline_server->get_bind_group_layout(
                     BindGroupLayoutDescriptor().set_label("sprite_view_layout").set_entries(view_entries.entries())),
                 .material_layout = pipeline_server->get_bind_group_layout(

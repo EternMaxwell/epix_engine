@@ -64,7 +64,7 @@ struct ScreenshotBlitHandles {
 
 struct ScreenshotBlitPipeline {
     wgpu::TextureFormat format = wgpu::TextureFormat::eUndefined;
-    wgpu::BindGroupLayout layout;
+    BindGroupLayoutDescriptor layout;
     wgpu::Sampler sampler;
     wgpu::Buffer vertex_buffer;
     CachedPipelineId pipeline_id;
@@ -285,7 +285,7 @@ static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
         return *it;
     ScreenshotBlitPipeline pipeline;
     pipeline.format = format;
-    pipeline.layout = pipeline_server.get_bind_group_layout(
+    pipeline.layout = 
         render::BindGroupLayoutDescriptor()
             .set_label("ScreenshotBlitLayout")
             .set_entries(std::array{
@@ -299,7 +299,7 @@ static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
                     .setTexture(wgpu::TextureBindingLayout()
                                     .setSampleType(wgpu::TextureSampleType::eFloat)
                                     .setViewDimension(wgpu::TextureViewDimension::e2D)),
-            }));
+            });
     pipeline.sampler           = device.createSampler(wgpu::SamplerDescriptor()
                                                           .setLabel("ScreenshotBlitSampler")
                                                           .setAddressModeU(wgpu::AddressMode::eClampToEdge)
@@ -434,7 +434,7 @@ static void submit_screenshot_commands(World& world, wgpu::CommandEncoder& encod
                     const auto bind_group  = device.createBindGroup(
                         wgpu::BindGroupDescriptor()
                             .setLabel("ScreenshotBlitBindGroup")
-                            .setLayout(pipeline->layout)
+                            .setLayout(pipeline_server.get_bind_group_layout(pipeline->layout))
                             .setEntries(std::array{
                                 wgpu::BindGroupEntry().setBinding(0).setSampler(pipeline->sampler),
                                 wgpu::BindGroupEntry().setBinding(1).setTextureView(source_view),

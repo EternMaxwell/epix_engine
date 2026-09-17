@@ -44,12 +44,13 @@ bool BlitPipelineKey::operator==(const BlitPipelineKey& other) const noexcept {
            same_blend_state(blend_state, other.blend_state);
 }
 
-wgpu::BindGroup BlitPipeline::create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture) const {
+wgpu::BindGroup BlitPipeline::create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture,
+                                                const render::PipelineServer& pipeline_server) const {
     using render::render_resource::BindGroupEntries;
     return device.createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("blit_bind_group")
-            .setLayout(layout)
+            .setLayout(pipeline_server.get_bind_group_layout(layout))
             .setEntries(BindGroupEntries<>::sequential(BindGroupEntries<>::texture_binding(src_texture),
                                                         BindGroupEntries<>::sampler_binding(sampler)).entries()));
 }
@@ -99,10 +100,10 @@ void BlitPlugin::attach(App& app) {
                     wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
                     sampler(wgpu::SamplerBindingType::eNonFiltering));
                 commands.insert_resource(BlitPipeline{
-                    .layout = pipeline_server->get_bind_group_layout(
+                    .layout = 
                         render::BindGroupLayoutDescriptor()
                             .set_label("blit_bind_group_layout")
-                            .set_entries(entries.entries())),
+                            .set_entries(entries.entries()),
                     // wgpu-native's C++ descriptor does not initialize this
                     // required field like Rust wgpu's Default does.
                     .sampler = device->createSampler(

@@ -55,7 +55,7 @@ void add_render_prerequisites(App& app) {
 
 /** @brief The uniform-array fallback binds one uniform buffer read through a
  *  dynamic offset (Bevy's `PER_OBJECT_BUFFER_BATCH_SIZE` path). */
-wgpu::BindGroupLayout create_mesh2d_uniform_mesh_layout(const wgpu::Device& device) {
+render::BindGroupLayoutDescriptor create_mesh2d_uniform_mesh_layout() {
     const std::array<wgpu::BindGroupLayoutEntry, 1> entries{
         wgpu::BindGroupLayoutEntry()
             .setBinding(0)
@@ -65,16 +65,14 @@ wgpu::BindGroupLayout create_mesh2d_uniform_mesh_layout(const wgpu::Device& devi
                            .setHasDynamicOffset(wgpu::Bool(true))
                            .setMinBindingSize(0)),
     };
-    const std::span<const wgpu::BindGroupLayoutEntry> span{entries};
-    return device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel("mesh2d_uniform_layout").setEntries(span));
+    return render::BindGroupLayoutDescriptor().set_label("mesh2d_uniform_layout").set_entries(entries);
 }
 
 /** @brief Queue the mesh2d pipeline for one shader-def variant, using the
  *  layouts `init_mesh_2d_pipeline` created (or the uniform fallback's). */
 render::CachedPipelineId queue_mesh2d_pipeline(App& app,
-                                               const wgpu::BindGroupLayout& view_layout,
-                                               const wgpu::BindGroupLayout& mesh_layout,
+                                               const render::BindGroupLayoutDescriptor& view_layout,
+                                               const render::BindGroupLayoutDescriptor& mesh_layout,
                                                const assets::Handle<shader::Shader>& shader,
                                                std::vector<shader::ShaderDefVal> shader_defs) {
 
@@ -178,8 +176,8 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
 
     // `Mesh2dPipeline` exposes the layouts and the uniform-fallback batch size
     // that `init_mesh_2d_pipeline` resolved through the interning cache.
-    EXPECT_TRUE(pipeline->get().view_layout);
-    EXPECT_TRUE(pipeline->get().mesh_layout);
+    EXPECT_EQ(pipeline->get().view_layout.label, "mesh2d_view_layout");
+    EXPECT_EQ(pipeline->get().mesh_layout.label, "mesh2d_layout");
     wgpu::Limits limits{};
     device.getLimits(&limits);
     EXPECT_EQ(pipeline->get().per_object_buffer_batch_size.has_value(),
@@ -222,7 +220,7 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
 
     // Bevy's no-storage-buffer variant: the same vertex path reading the mesh
     // array out of a uniform buffer, so the layout differs from the resource's.
-    const auto uniform_mesh_layout = create_mesh2d_uniform_mesh_layout(device);
+    const auto uniform_mesh_layout = create_mesh2d_uniform_mesh_layout();
     auto fallback_defs             = vertex_color_defs;
     fallback_defs.push_back(shader::ShaderDefVal::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", 682));
     auto fallback = queue_mesh2d_pipeline(app, view_layout, uniform_mesh_layout, shader_handle,

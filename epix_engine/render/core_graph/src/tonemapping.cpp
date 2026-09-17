@@ -471,12 +471,13 @@ bool TonemappingPipelineKey::operator==(const TonemappingPipelineKey& other) con
 
 wgpu::BindGroup TonemappingPipeline::create_bind_group(const wgpu::Device& device, const wgpu::Buffer& view_uniforms,
                                                        const wgpu::TextureView& source, const wgpu::TextureView& lut_view,
-                                                       const wgpu::Sampler& lut_sampler) const {
+                                                       const wgpu::Sampler& lut_sampler,
+                                                       const render::PipelineServer& pipeline_server) const {
     using render::render_resource::BindGroupEntries;
     return device.createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("tonemapping_bind_group")
-            .setLayout(layout)
+            .setLayout(pipeline_server.get_bind_group_layout(layout))
             .setEntries(BindGroupEntries<>::with_indices(
                 std::pair{0u, BindGroupEntries<>::buffer_binding(view_uniforms, 0, sizeof(render::view::ViewUniform))},
                 std::pair{1u, BindGroupEntries<>::texture_binding(source)},
@@ -631,7 +632,7 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
                 post_process.source,
                 lut_view,
                 tonemapping_pipeline.create_bind_group(
-                    render_context.device(), *uniform_buffer, post_process.source, lut_view, lut_sampler),
+                    render_context.device(), *uniform_buffer, post_process.source, lut_view, lut_sampler, pipeline_server),
             };
         }
         bind_group = std::get<3>(**cached);
@@ -714,10 +715,10 @@ void TonemappingPlugin::attach(App& app) {
                     std::pair{3u, lut_entries[0]}, std::pair{4u, lut_entries[1]});
 
                 commands.insert_resource(TonemappingPipeline{
-                    .layout           = pipeline_server->get_bind_group_layout(
+                    .layout           = 
                         render::BindGroupLayoutDescriptor()
                             .set_label("tonemapping_bind_group_layout")
-                            .set_entries(entries.entries())),
+                            .set_entries(entries.entries()),
                     .sampler          = device->createSampler(
                         wgpu::SamplerDescriptor().setLabel("tonemapping_sampler").setMaxAnisotropy(1)),
                     .fullscreen_shader = *fullscreen_shader,

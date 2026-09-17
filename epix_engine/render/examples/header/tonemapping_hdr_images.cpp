@@ -147,7 +147,7 @@ struct TonemappingComparisonNode {
             const auto [lut_view, lut_sampler] = core_graph::get_lut_bindings(
                 gpu_images, tonemapping_luts, kTiles[index].method, fallback_image);
             bind_groups[index] = tonemapping_pipeline.create_bind_group(
-                render_context.device(), *uniform_buffer, source, lut_view, lut_sampler);
+                render_context.device(), *uniform_buffer, source, lut_view, lut_sampler, pipeline_server);
         }
 
         auto attachment = wgpu::RenderPassColorAttachment()

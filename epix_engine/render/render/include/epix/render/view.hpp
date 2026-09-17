@@ -490,19 +490,17 @@ EPIX_EXPORT struct ViewBindGroup {
 };
 /** @brief Resource holding the bind group layout for view uniform
  * binding. */
+/** @brief The group-0 view uniform layout descriptor, shared by the pipelines
+ *  that bind the view uniform (the descriptor form of the layout below). */
+EPIX_EXPORT BindGroupLayoutDescriptor view_uniform_layout_descriptor();
+
+/** @brief The view uniform bind group layout, interned once for the pipelines
+ * binding. */
 EPIX_EXPORT struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
-    ViewUniformBindingLayout(epix::ecs::World& world)
+    explicit ViewUniformBindingLayout(epix::ecs::World& world)
         : layout(world.resource<render::PipelineServer>().get_bind_group_layout(
-              render::BindGroupLayoutDescriptor().set_label("view_uniform_layout").set_entries(std::array{
-                  wgpu::BindGroupLayoutEntry()
-                      .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
-                      .setBinding(0)
-                      .setBuffer(wgpu::BufferBindingLayout()
-                                     .setType(wgpu::BufferBindingType::eUniform)
-                                     .setHasDynamicOffset(false)
-                                     .setMinBindingSize(sizeof(ViewUniform))),
-              }))) {}
+              view_uniform_layout_descriptor())) {}
 };
 /** @brief Render command template that binds the view uniform buffer at
  * the specified bind group slot.

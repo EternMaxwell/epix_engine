@@ -80,7 +80,7 @@ FullscreenMaterialLabel fullscreen_material_node_label() {
  * `FullscreenMaterialPipeline`). Retains the bind-group layout and sampler plus
  * the LDR and HDR cached render pipelines. */
 EPIX_EXPORT struct FullscreenMaterialPipeline {
-    wgpu::BindGroupLayout layout;
+    render::BindGroupLayoutDescriptor layout;
     wgpu::Sampler sampler;
     render::CachedPipelineId pipeline_id;
     render::CachedPipelineId pipeline_id_hdr;
@@ -192,7 +192,7 @@ std::expected<void, render::graph::NodeRunError> FullscreenMaterialNode<T>::run(
     const wgpu::BindGroup bind_group = render_context.device().createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("fullscreen_material_bind_group")
-            .setLayout(pipeline_resource->get().layout)
+            .setLayout(pipeline_server->get().get_bind_group_layout(pipeline_resource->get().layout))
             .setEntries(render::render_resource::BindGroupEntries<>::sequential(
                             render::render_resource::BindGroupEntries<>::texture_binding(post_process.source),
                             render::render_resource::BindGroupEntries<>::sampler_binding(pipeline_resource->get().sampler),
@@ -262,10 +262,10 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
                 std::pair{0u, texture_2d(wgpu::TextureSampleType::eFloat)},
                 std::pair{1u, sampler(wgpu::SamplerBindingType::eFiltering)},
                 std::pair{2u, uniform_buffer(true, render::render_resource::ShaderTypeInfo<T>::shader_size)});
-            const auto layout = pipeline_server->get_bind_group_layout(
+            const auto layout = 
                 render::BindGroupLayoutDescriptor()
                     .set_label("fullscreen_material_bind_group_layout")
-                    .set_entries(entries.entries()));
+                    .set_entries(entries.entries());
             const auto sampler = device->createSampler(
                 wgpu::SamplerDescriptor().setLabel("fullscreen_material_sampler").setMaxAnisotropy(1));
             const auto vertex_state = fullscreen_shader->to_vertex_state();

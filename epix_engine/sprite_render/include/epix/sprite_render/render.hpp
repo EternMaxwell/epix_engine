@@ -159,6 +159,9 @@ EPIX_EXPORT namespace epix::sprite_render {
     struct SpritePipeline {
         using Key = SpritePipelineKey;
 
+        // Descriptors for the pipeline, and the interned layouts the bind groups use.
+        render::BindGroupLayoutDescriptor view_layout_descriptor;
+        render::BindGroupLayoutDescriptor material_layout_descriptor;
         wgpu::BindGroupLayout view_layout;
         wgpu::BindGroupLayout material_layout;
         assets::Handle<shader::Shader> shader;

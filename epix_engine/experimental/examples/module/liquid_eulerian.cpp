@@ -498,10 +498,10 @@ struct GpuPressureProjector {
     // Slang SPIR-V passthrough does not provide wgpu-native with reliable
     // automatic bind-group-layout reflection. Keep the layouts explicit,
     // matching the vk::binding declarations in the compute sources below.
-    wgpu::BindGroupLayout inplace_layout;
-    wgpu::BindGroupLayout inplace_param_layout;
-    wgpu::BindGroupLayout output_layout;
-    wgpu::BindGroupLayout output_noparam_layout;
+    render::BindGroupLayoutDescriptor inplace_layout;
+    render::BindGroupLayoutDescriptor inplace_param_layout;
+    render::BindGroupLayoutDescriptor output_layout;
+    render::BindGroupLayoutDescriptor output_noparam_layout;
 
     // ------- Compute pipelines -------
     wgpu::ComputePipeline pipeline_even;
@@ -597,36 +597,36 @@ struct GpuPressureProjector {
                 .setVisibility(wgpu::ShaderStage::eCompute)
                 .setBuffer(std::move(buffer));
         };
-        inplace_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                          .setLabel("LiquidInplaceLayout")
-                                                          .setEntries(std::array{
+        inplace_layout = render::BindGroupLayoutDescriptor()
+                                                          .set_label("LiquidInplaceLayout")
+                                                          .set_entries(std::array{
                                                               storage(0, wgpu::BufferBindingType::eStorage),
                                                               storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
-                                                          }));
+                                                          });
         inplace_param_layout =
-            device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                             .setLabel("LiquidInplaceParamLayout")
-                                             .setEntries(std::array{
+            render::BindGroupLayoutDescriptor()
+                                             .set_label("LiquidInplaceParamLayout")
+                                             .set_entries(std::array{
                                                  storage(0, wgpu::BufferBindingType::eStorage),
                                                  storage(1, wgpu::BufferBindingType::eReadOnlyStorage),
                                                  storage(2, wgpu::BufferBindingType::eUniform),
-                                             }));
-        output_layout = device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                         .setLabel("LiquidOutputLayout")
-                                                         .setEntries(std::array{
+                                             });
+        output_layout = render::BindGroupLayoutDescriptor()
+                                                         .set_label("LiquidOutputLayout")
+                                                         .set_entries(std::array{
                                                              storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
                                                              storage(1, wgpu::BufferBindingType::eStorage),
                                                              storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
                                                              storage(3, wgpu::BufferBindingType::eUniform),
-                                                         }));
+                                                         });
         output_noparam_layout =
-            device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                             .setLabel("LiquidOutputNoParamLayout")
-                                             .setEntries(std::array{
+            render::BindGroupLayoutDescriptor()
+                                             .set_label("LiquidOutputNoParamLayout")
+                                             .set_entries(std::array{
                                                  storage(0, wgpu::BufferBindingType::eReadOnlyStorage),
                                                  storage(1, wgpu::BufferBindingType::eStorage),
                                                  storage(2, wgpu::BufferBindingType::eReadOnlyStorage),
-                                             }));
+                                             });
 
         // ------- Slang shader common preambles (SVO-indexed chunk lookup via kSvoGridSlangSource) -------
         // Buffer layout: one flat array<int32> for [D|S|P|U|V] field sections,
@@ -1913,7 +1913,7 @@ void computeMain(uint3 gid : SV_DispatchThreadID) {
 
         // Register + load + queue each compute pipeline
         const auto queue_one = [&](std::string_view path, const std::string& src, const char* label,
-                                   const wgpu::BindGroupLayout& layout) {
+                                   const render::BindGroupLayoutDescriptor& layout) {
             registry->get().insert_asset_static(path, bytes(src));
             auto handle = server->get().load<shader::Shader>(std::string("embedded://") + std::string(path));
             return ps.queue_compute_pipeline(render::ComputePipelineDescriptor{

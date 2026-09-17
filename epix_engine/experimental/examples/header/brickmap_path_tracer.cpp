@@ -590,8 +590,8 @@ struct VoxelRenderState {
     wgpu::TextureView bloom_b_storage_view;
     wgpu::TextureView bloom_b_sampled_view;
     // Bloom bind group layouts
-    wgpu::BindGroupLayout bloom_in_layout;   // group 0: params uniform + src texture
-    wgpu::BindGroupLayout bloom_out_layout;  // group 1: dst texture (storage write)
+    render::BindGroupLayoutDescriptor bloom_in_layout;   // group 0: params uniform + src texture
+    render::BindGroupLayoutDescriptor bloom_out_layout;  // group 1: dst texture (storage write)
     // Bloom bind groups: input (params+src) per pass
     wgpu::BindGroup bloom_src_accum_bg[2];  // src = accum_sampled[0 or 1]
     wgpu::BindGroup bloom_src_a_bg;         // src = bloom_a
@@ -604,11 +604,11 @@ struct VoxelRenderState {
     CachedPipelineId bloom_blur_h_pipeline_id;
     CachedPipelineId bloom_blur_v_pipeline_id;
     // Bind group layouts
-    wgpu::BindGroupLayout trace_scene_layout;  // group 0: camera+svo+colors
-    wgpu::BindGroupLayout trace_out_layout;    // group 1: hdr_tex+depth_tex (write)
-    wgpu::BindGroupLayout taa_in_layout;       // group 1: hdr+depth+prev_accum+prev_depth (read)
-    wgpu::BindGroupLayout taa_out_layout;      // group 2: accum_out (write)
-    wgpu::BindGroupLayout blit_layout;
+    render::BindGroupLayoutDescriptor trace_scene_layout;  // group 0: camera+svo+colors
+    render::BindGroupLayoutDescriptor trace_out_layout;    // group 1: hdr_tex+depth_tex (write)
+    render::BindGroupLayoutDescriptor taa_in_layout;       // group 1: hdr+depth+prev_accum+prev_depth (read)
+    render::BindGroupLayoutDescriptor taa_out_layout;      // group 2: accum_out (write)
+    render::BindGroupLayoutDescriptor blit_layout;
     // Bind groups (TAA has two, one per ping-pong direction)
     wgpu::BindGroup trace_scene_bg;
     wgpu::BindGroup trace_out_bg;
@@ -972,10 +972,10 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     // -----------------------------------------------------------------------
     if (!state->resources_created) {
         // group 0 shared by trace and TAA: camera uniform + BrickMap + colors
-        state->trace_scene_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelSceneBGL")
-                .setEntries(std::array{
+        state->trace_scene_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelSceneBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -990,13 +990,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                         .setBinding(2)
                         .setVisibility(wgpu::ShaderStage::eCompute)
                         .setBuffer(wgpu::BufferBindingLayout().setType(wgpu::BufferBindingType::eReadOnlyStorage)),
-                }));
+                });
 
         // trace group 1: write hdr_tex (rgba16f) + depth_tex (r32f)
-        state->trace_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelTraceOutBGL")
-                .setEntries(std::array{
+        state->trace_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelTraceOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1011,13 +1011,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eR32Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         // TAA group 1: read hdr(rgba16f) + depth(r32f) + prev_accum(rgba16f) + prev_depth(r32f)
-        state->taa_in_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelTaaInBGL")
-                .setEntries(std::array{
+        state->taa_in_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelTaaInBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1042,13 +1042,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         // TAA group 2: write accum_out (rgba16f)
-        state->taa_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelTaaOutBGL")
-                .setEntries(std::array{
+        state->taa_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelTaaOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1056,13 +1056,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         // Blit group 0: sampler + accum_tex + bloom_tex (all read as unfiltered float)
-        state->blit_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelBlitBGL")
-                .setEntries(std::array{
+        state->blit_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelBlitBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eFragment)
@@ -1079,13 +1079,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         // Bloom group 0: BloomParams uniform + src texture
-        state->bloom_in_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelBloomInBGL")
-                .setEntries(std::array{
+        state->bloom_in_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelBloomInBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1098,13 +1098,13 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                         .setTexture(wgpu::TextureBindingLayout()
                                         .setSampleType(wgpu::TextureSampleType::eUnfilterableFloat)
                                         .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         // Bloom group 1: dst storage texture (rgba16f)
-        state->bloom_out_layout = device->createBindGroupLayout(
-            wgpu::BindGroupLayoutDescriptor()
-                .setLabel("VoxelBloomOutBGL")
-                .setEntries(std::array{
+        state->bloom_out_layout = 
+            render::BindGroupLayoutDescriptor()
+                .set_label("VoxelBloomOutBGL")
+                .set_entries(std::array{
                     wgpu::BindGroupLayoutEntry()
                         .setBinding(0)
                         .setVisibility(wgpu::ShaderStage::eCompute)
@@ -1112,7 +1112,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
                                                .setAccess(wgpu::StorageTextureAccess::eReadWrite)
                                                .setFormat(wgpu::TextureFormat::eRGBA16Float)
                                                .setViewDimension(wgpu::TextureViewDimension::e2D)),
-                }));
+                });
 
         state->bloom_params_uniform =
             device->createBuffer(wgpu::BufferDescriptor()
@@ -1315,7 +1315,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     // Scene bind group (shared)
     state->trace_scene_bg = device->createBindGroup(wgpu::BindGroupDescriptor()
                                                         .setLabel("VoxelSceneBG")
-                                                        .setLayout(state->trace_scene_layout)
+                                                        .setLayout(pipeline_server->get_bind_group_layout(state->trace_scene_layout))
                                                         .setEntries(std::array{
                                                             wgpu::BindGroupEntry()
                                                                 .setBinding(0)
@@ -1338,7 +1338,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     state->trace_out_bg =
         device->createBindGroup(wgpu::BindGroupDescriptor()
                                     .setLabel("VoxelTraceOutBG")
-                                    .setLayout(state->trace_out_layout)
+                                    .setLayout(pipeline_server->get_bind_group_layout(state->trace_out_layout))
                                     .setEntries(std::array{
                                         wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_storage_view),
                                         wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_storage_view),
@@ -1350,7 +1350,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
         state->taa_in_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("VoxelTaaInBG" + std::to_string(i)).c_str())
-                .setLayout(state->taa_in_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->taa_in_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->hdr_sampled_view),
                     wgpu::BindGroupEntry().setBinding(1).setTextureView(state->depth_sampled_view),
@@ -1360,14 +1360,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
         state->taa_out_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("VoxelTaaOutBG" + std::to_string(i)).c_str())
-                .setLayout(state->taa_out_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->taa_out_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setTextureView(state->accum_storage_view[i]),
                 }));
         state->blit_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("VoxelBlitBG" + std::to_string(i)).c_str())
-                .setLayout(state->blit_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->blit_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry().setBinding(0).setSampler(state->linear_sampler),
                     wgpu::BindGroupEntry().setBinding(1).setTextureView(state->accum_sampled_view[i]),
@@ -1382,7 +1382,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
         state->bloom_src_accum_bg[i] = device->createBindGroup(
             wgpu::BindGroupDescriptor()
                 .setLabel(("VoxelBloomSrcAccum" + std::to_string(i)).c_str())
-                .setLayout(state->bloom_in_layout)
+                .setLayout(pipeline_server->get_bind_group_layout(state->bloom_in_layout))
                 .setEntries(std::array{
                     wgpu::BindGroupEntry()
                         .setBinding(0)
@@ -1395,7 +1395,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     state->bloom_src_a_bg = device->createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("VoxelBloomSrcA")
-            .setLayout(state->bloom_in_layout)
+            .setLayout(pipeline_server->get_bind_group_layout(state->bloom_in_layout))
             .setEntries(std::array{
                 wgpu::BindGroupEntry()
                     .setBinding(0)
@@ -1407,7 +1407,7 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     state->bloom_src_b_bg = device->createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("VoxelBloomSrcB")
-            .setLayout(state->bloom_in_layout)
+            .setLayout(pipeline_server->get_bind_group_layout(state->bloom_in_layout))
             .setEntries(std::array{
                 wgpu::BindGroupEntry()
                     .setBinding(0)
@@ -1419,14 +1419,14 @@ void prepare_voxel_render(Res<wgpu::Device> device,
     state->bloom_dst_a_bg = device->createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("VoxelBloomDstA")
-            .setLayout(state->bloom_out_layout)
+            .setLayout(pipeline_server->get_bind_group_layout(state->bloom_out_layout))
             .setEntries(std::array{
                 wgpu::BindGroupEntry().setBinding(0).setTextureView(state->bloom_a_storage_view),
             }));
     state->bloom_dst_b_bg = device->createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("VoxelBloomDstB")
-            .setLayout(state->bloom_out_layout)
+            .setLayout(pipeline_server->get_bind_group_layout(state->bloom_out_layout))
             .setEntries(std::array{
                 wgpu::BindGroupEntry().setBinding(0).setTextureView(state->bloom_b_storage_view),
             }));

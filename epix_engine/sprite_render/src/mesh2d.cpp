@@ -356,6 +356,10 @@ constexpr const char* alpha_mode_name(Mesh2dPipelineKey::AlphaMode alpha_mode) {
 }
 
 struct Mesh2dPipelineCache {
+    // Descriptors for the pipeline, and the interned layouts the bind groups use.
+    render::BindGroupLayoutDescriptor view_layout_descriptor;
+    render::BindGroupLayoutDescriptor mesh_layout_descriptor;
+    render::BindGroupLayoutDescriptor texture_layout_descriptor;
     wgpu::BindGroupLayout view_layout;
     wgpu::BindGroupLayout mesh_layout;
     wgpu::BindGroupLayout texture_layout;
@@ -370,35 +374,37 @@ struct Mesh2dPipelineCache {
     std::unordered_map<Mesh2dPipelineKey, render::CachedPipelineId, Mesh2dPipelineKeyHash> pipelines;
 
     explicit Mesh2dPipelineCache(World& world, const MeshShaderHandles& shader_handles)
-        : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
-          mesh_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
-              render::BindGroupLayoutDescriptor()
-                  .set_label("Mesh2dInstanceLayout")
-                  .set_entries(std::array{
-                      wgpu::BindGroupLayoutEntry()
-                          .setBinding(0)
-                          .setVisibility(wgpu::ShaderStage::eVertex)
-                          .setBuffer(wgpu::BufferBindingLayout()
-                                         .setType(wgpu::BufferBindingType::eReadOnlyStorage)
-                                         .setHasDynamicOffset(false)
-                                         .setMinBindingSize(sizeof(MeshInstanceData))),
-                  }))),
-          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
-              render::BindGroupLayoutDescriptor()
-                  .set_label("Mesh2dTextureLayout")
-                  .set_entries(std::array{
-                      wgpu::BindGroupLayoutEntry()
-                          .setBinding(0)
-                          .setVisibility(wgpu::ShaderStage::eFragment)
-                          .setSampler(wgpu::SamplerBindingLayout().setType(wgpu::SamplerBindingType::eFiltering)),
-                      wgpu::BindGroupLayoutEntry()
-                          .setBinding(1)
-                          .setVisibility(wgpu::ShaderStage::eFragment)
-                          .setTexture(wgpu::TextureBindingLayout()
-                                          .setSampleType(wgpu::TextureSampleType::eFloat)
-                                          .setViewDimension(wgpu::TextureViewDimension::e2D)
-                                          .setMultisampled(false)),
-                  }))),
+        : view_layout_descriptor(render::view::view_uniform_layout_descriptor()),
+          mesh_layout_descriptor(render::BindGroupLayoutDescriptor()
+                                     .set_label("Mesh2dInstanceLayout")
+                                     .set_entries(std::array{
+                                         wgpu::BindGroupLayoutEntry()
+                                             .setBinding(0)
+                                             .setVisibility(wgpu::ShaderStage::eVertex)
+                                             .setBuffer(wgpu::BufferBindingLayout()
+                                                            .setType(wgpu::BufferBindingType::eReadOnlyStorage)
+                                                            .setHasDynamicOffset(false)
+                                                            .setMinBindingSize(sizeof(MeshInstanceData))),
+                                     })),
+          texture_layout_descriptor(render::BindGroupLayoutDescriptor()
+                                        .set_label("Mesh2dTextureLayout")
+                                        .set_entries(std::array{
+                                            wgpu::BindGroupLayoutEntry()
+                                                .setBinding(0)
+                                                .setVisibility(wgpu::ShaderStage::eFragment)
+                                                .setSampler(wgpu::SamplerBindingLayout().setType(
+                                                    wgpu::SamplerBindingType::eFiltering)),
+                                            wgpu::BindGroupLayoutEntry()
+                                                .setBinding(1)
+                                                .setVisibility(wgpu::ShaderStage::eFragment)
+                                                .setTexture(wgpu::TextureBindingLayout()
+                                                                .setSampleType(wgpu::TextureSampleType::eFloat)
+                                                                .setViewDimension(wgpu::TextureViewDimension::e2D)
+                                                                .setMultisampled(false)),
+                                        })),
+          view_layout(world.resource<render::PipelineServer>().get_bind_group_layout(view_layout_descriptor)),
+          mesh_layout(world.resource<render::PipelineServer>().get_bind_group_layout(mesh_layout_descriptor)),
+          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(texture_layout_descriptor)),
           solid_vertex_shader(shader_handles.solid_vertex_shader),
           vertex_color_shader(shader_handles.vertex_color_shader),
           textured_vertex_shader(shader_handles.textured_vertex_shader),
@@ -519,9 +525,9 @@ struct Mesh2dPipelineCache {
         }
         fragment_state.add_target(color_target);
 
-        auto layouts = std::vector<wgpu::BindGroupLayout>{view_layout, mesh_layout};
+        auto layouts = std::vector<render::BindGroupLayoutDescriptor>{view_layout_descriptor, mesh_layout_descriptor};
         if (textured) {
-            layouts.push_back(texture_layout);
+            layouts.push_back(texture_layout_descriptor);
         }
 
         render::RenderPipelineDescriptor pipeline_desc{

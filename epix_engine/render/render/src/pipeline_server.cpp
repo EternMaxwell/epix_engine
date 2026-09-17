@@ -240,7 +240,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
     };
     auto create_render_pipeline = [&](const RenderPipelineDescriptor& descriptor) mutable {
         auto task = [device = this->device, descriptor, layout_cache_ptr = layout_cache,
-                     shader_cache_ptr = shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+                     bind_group_layout_cache_ptr = bind_group_layout_cache, shader_cache_ptr = shader_cache,
+                     id]() -> std::expected<Pipeline, PipelineServerError> {
             wgpu::RenderPipelineDescriptor pipelineDesc;
             wgpu::ShaderModule vertex_module;
             std::optional<wgpu::ShaderModule> fragment_module;
@@ -258,9 +259,20 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                     fragment_module = *fragment_opt.value();
                 }
                 // Bevy pipeline_cache.rs:519-523: a layout is created when
-                // there are bind-group layouts OR push-constant ranges.
-                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
-                    layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
+                // there are bind-group layouts OR push-constant ranges. The
+                // descriptors are interned first, and the pipeline-layout cache
+                // keys on the resulting native layout ids.
+                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty()) {
+                    std::vector<wgpu::BindGroupLayout> bind_group_layouts;
+                    bind_group_layouts.reserve(descriptor.layouts.size());
+                    {
+                        auto bind_group_layout_cache = bind_group_layout_cache_ptr->lock();
+                        for (const auto& layout_descriptor : descriptor.layouts) {
+                            bind_group_layouts.push_back(bind_group_layout_cache->get(device, layout_descriptor));
+                        }
+                    }
+                    layout = layout_cache->get(device, bind_group_layouts, descriptor.push_constant_ranges);
+                }
             }
             pipelineDesc.setLabel(std::string_view(descriptor.label));
             pipelineDesc.setLayout(layout);
@@ -307,7 +319,8 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
     };
     auto create_compute_pipeline = [&](const ComputePipelineDescriptor& descriptor) mutable {
         auto task = [device = this->device, descriptor, layout_cache_ptr = layout_cache,
-                     shader_cache_ptr = shader_cache, id]() -> std::expected<Pipeline, PipelineServerError> {
+                     bind_group_layout_cache_ptr = bind_group_layout_cache, shader_cache_ptr = shader_cache,
+                     id]() -> std::expected<Pipeline, PipelineServerError> {
             wgpu::ComputePipelineDescriptor desc;
             wgpu::PipelineLayout layout;
             wgpu::ShaderModule module;
@@ -318,9 +331,20 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                 if (!shader_opt) return std::unexpected(shader_opt.error());
                 module = *shader_opt.value();
                 // Bevy pipeline_cache.rs:519-523: a layout is created when
-                // there are bind-group layouts OR push-constant ranges.
-                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty())
-                    layout = layout_cache->get(device, descriptor.layouts, descriptor.push_constant_ranges);
+                // there are bind-group layouts OR push-constant ranges. The
+                // descriptors are interned first, and the pipeline-layout cache
+                // keys on the resulting native layout ids.
+                if (!descriptor.layouts.empty() || !descriptor.push_constant_ranges.empty()) {
+                    std::vector<wgpu::BindGroupLayout> bind_group_layouts;
+                    bind_group_layouts.reserve(descriptor.layouts.size());
+                    {
+                        auto bind_group_layout_cache = bind_group_layout_cache_ptr->lock();
+                        for (const auto& layout_descriptor : descriptor.layouts) {
+                            bind_group_layouts.push_back(bind_group_layout_cache->get(device, layout_descriptor));
+                        }
+                    }
+                    layout = layout_cache->get(device, bind_group_layouts, descriptor.push_constant_ranges);
+                }
             }
             desc.setLabel(std::string_view(descriptor.label))
                 .setLayout(layout)

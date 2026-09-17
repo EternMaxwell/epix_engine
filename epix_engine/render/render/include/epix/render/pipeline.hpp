@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
+#include <epix/render/bind_group_layout.hpp>
 #include <epix/shader.hpp>
 #include <optional>
 #include <ranges>
@@ -142,7 +143,7 @@ EPIX_EXPORT struct FragmentState {
  * multisampling. Uses a builder pattern with `set_*` methods. */
 EPIX_EXPORT struct RenderPipelineDescriptor {
     std::string label;
-    std::vector<wgpu::BindGroupLayout> layouts;
+    std::vector<BindGroupLayoutDescriptor> layouts;
     /** @brief Push constant ranges (Bevy RenderPipelineDescriptor::push_constant_ranges). */
     std::vector<wgpu::PushConstantRange> push_constant_ranges;
     VertexState vertex;
@@ -204,7 +205,7 @@ EPIX_EXPORT struct RenderPipelineDescriptor {
  * layout, shader, and entry point. Uses a builder pattern. */
 EPIX_EXPORT struct ComputePipelineDescriptor {
     std::string label;
-    std::vector<wgpu::BindGroupLayout> layouts;
+    std::vector<BindGroupLayoutDescriptor> layouts;
     /** @brief Push constant ranges (Bevy ComputePipelineDescriptor::push_constant_ranges). */
     std::vector<wgpu::PushConstantRange> push_constant_ranges;
     assets::Handle<shader::Shader> shader;

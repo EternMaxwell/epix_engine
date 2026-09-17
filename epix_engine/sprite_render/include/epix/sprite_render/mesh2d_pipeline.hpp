@@ -207,14 +207,14 @@ constexpr Mesh2dPipelineKey operator|(Mesh2dPipelineKey lhs, Mesh2dPipelineKey::
 
 /** @brief The Mesh2d render pipeline's shared resources (Bevy `Mesh2dPipeline`).
  *
- * Bevy keeps the two bind-group layouts as descriptors and creates them in the
- * pipeline cache; Epix creates the native layouts once in
- * `init_mesh_2d_pipeline`, which is the accepted direct-wgpu translation. */
+ * The two layouts are descriptors, as Bevy's are; the pipeline cache interns
+ * them when a pipeline is specialized against them. */
 EPIX_EXPORT struct Mesh2dPipeline {
-    /** @brief View layout: dynamic view uniform, globals, LUT texture, LUT sampler. */
-    wgpu::BindGroupLayout view_layout;
-    /** @brief Mesh layout: the per-instance mesh2d uniform array. */
-    wgpu::BindGroupLayout mesh_layout;
+    /** @brief View layout descriptor: dynamic view uniform, globals, LUT
+     *  texture, LUT sampler (Bevy `Mesh2dPipeline::view_layout`). */
+    render::BindGroupLayoutDescriptor view_layout;
+    /** @brief Mesh layout descriptor: the per-instance mesh2d uniform array. */
+    render::BindGroupLayoutDescriptor mesh_layout;
     /** @brief The embedded mesh2d shader. */
     assets::Handle<shader::Shader> shader;
     /** @brief Elements per binding when the platform has no storage buffers;
@@ -226,7 +226,6 @@ EPIX_EXPORT struct Mesh2dPipeline {
 /** @brief Insert the `Mesh2dPipeline` resource (Bevy `init_mesh_2d_pipeline`,
  *  `mesh.rs:292-327`). */
 EPIX_EXPORT void init_mesh_2d_pipeline(ecs::Commands commands,
-                                       ecs::Res<render::PipelineServer> pipeline_server,
                                        ecs::Res<wgpu::Device> device,
                                        ecs::Res<assets::AssetServer> asset_server);
 
