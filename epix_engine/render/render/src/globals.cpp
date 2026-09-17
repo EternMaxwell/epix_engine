@@ -27,6 +27,10 @@ public struct Globals {
     public float time;
     public float delta_time;
     public uint frame_count;
+#ifdef SIXTEEN_BYTE_ALIGNMENT
+    // WebGL2 structs must be 16 byte aligned.
+    public float _webgl2_padding;
+#endif
 };
 }
 )";
