@@ -5,6 +5,7 @@
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/sprite_render/mesh2d_pipeline.hpp>
 #include <epix/task.hpp>
 #include <epix/time.hpp>
@@ -149,13 +150,12 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
 
-    sprite_render::register_mesh2d_shader(app.world_mut());
+    // The public path: Mesh2dRenderPlugin registers the embedded shader and adds
+    // init_mesh_2d_pipeline to the render app's RenderStartup, as Bevy's build does.
+    app.add_plugins(sprite_render::Mesh2dRenderPlugin{});
 
     auto render_app = app.get_sub_app_mut(render::Render);
     ASSERT_TRUE(render_app.has_value());
-    render_app->get()
-        .add_systems(render::RenderStartup,
-                     into(sprite_render::init_mesh_2d_pipeline).set_name("init mesh 2d pipeline"));
 
     auto& server = app.resource<assets::AssetServer>();
     // RenderStartup is one-shot and driven by the render app's first frame, which
@@ -175,6 +175,15 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
         << "embedded://sprite/mesh2d.slang failed to load";
 
     const auto device = render_app->get().world().resource<wgpu::Device>();
+
+    // `Mesh2dPipeline` exposes the layouts and the uniform-fallback batch size
+    // that `init_mesh_2d_pipeline` resolved through the interning cache.
+    EXPECT_TRUE(pipeline->get().view_layout);
+    EXPECT_TRUE(pipeline->get().mesh_layout);
+    wgpu::Limits limits{};
+    device.getLimits(&limits);
+    EXPECT_EQ(pipeline->get().per_object_buffer_batch_size.has_value(),
+              limits.maxStorageBuffersPerShaderStage == 0);
 
     // The imported libraries load asynchronously; until they are available the
     // pipeline sits in the recoverable "import not yet available" state, so wait

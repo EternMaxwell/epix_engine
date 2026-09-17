@@ -18,7 +18,7 @@ namespace epix::sprite_render {
  *
  * Bevy keeps only the two sentinel values (`mesh.rs:226-233`); the type exists
  * so the shader's `flags` word has a named contract. */
-struct MeshFlags {
+EPIX_EXPORT struct MeshFlags {
     enum Bit : std::uint32_t {
         NONE          = 0,
         UNINITIALIZED = 0xFFFF,
@@ -30,7 +30,7 @@ struct MeshFlags {
  * Epix stores the transform as the project-wide `glm::mat4`; Bevy's `Affine3`
  * is the 4x3 affine of the same matrix, so the uniform packing below extracts
  * exactly that. */
-struct Mesh2dTransforms {
+EPIX_EXPORT struct Mesh2dTransforms {
     glm::mat4 world_from_local{1.0f};
     std::uint32_t flags = MeshFlags::NONE;
 };
@@ -41,7 +41,7 @@ struct Mesh2dTransforms {
  * `Mesh2d` struct (`mesh2d_types.wgsl`): a `mat3x4` (three `vec4` rows), a
  * `mat2x4` plus an `f32` carrying the inverse-transpose of the 3x3, then the
  * `flags` and `tag` words, padded to the 16-byte array stride. */
-struct Mesh2dUniform {
+EPIX_EXPORT struct Mesh2dUniform {
     /** @brief Affine 4x3 transposed to 3x4: row `i` is axis `i` plus the
      *  translation component `i` (Bevy `Affine3::to_transpose`). */
     std::array<glm::vec4, 3> world_from_local{};
@@ -107,7 +107,7 @@ static_assert(offsetof(Mesh2dUniform, tag) == 88);
  * method. The mesh2d pipeline's specialization reads only this key plus the
  * material's bind group data, which is what lets one pipeline serve every mesh
  * instead of the previous per-variant shader set. */
-struct Mesh2dPipelineKey {
+EPIX_EXPORT struct Mesh2dPipelineKey {
     enum Bit : std::uint32_t {
         NONE                                      = 0,
         HDR                                       = 1u << 0u,
@@ -210,7 +210,7 @@ constexpr Mesh2dPipelineKey operator|(Mesh2dPipelineKey lhs, Mesh2dPipelineKey::
  * Bevy keeps the two bind-group layouts as descriptors and creates them in the
  * pipeline cache; Epix creates the native layouts once in
  * `init_mesh_2d_pipeline`, which is the accepted direct-wgpu translation. */
-struct Mesh2dPipeline {
+EPIX_EXPORT struct Mesh2dPipeline {
     /** @brief View layout: dynamic view uniform, globals, LUT texture, LUT sampler. */
     wgpu::BindGroupLayout view_layout;
     /** @brief Mesh layout: the per-instance mesh2d uniform array. */
@@ -223,28 +223,12 @@ struct Mesh2dPipeline {
     std::optional<std::uint32_t> per_object_buffer_batch_size;
 };
 
-/** @brief Register the mesh2d shader bytes as an embedded asset, so the render
- *  world can load `embedded://sprite/mesh2d.slang` (Bevy `embedded_asset!`). */
-void register_mesh2d_shader(ecs::World& world);
-
-/** @brief Create the mesh2d view bind group layout (Bevy
- *  `init_mesh_2d_pipeline`'s `view_layout`): the dynamic view uniform, the
- *  globals uniform, and the tonemapping LUT texture and sampler at fragment
- *  visibility. */
-wgpu::BindGroupLayout create_mesh2d_view_layout(const wgpu::Device& device);
-/** @brief Create the mesh2d mesh bind group layout (Bevy `init_mesh_2d_pipeline`'s
- *  `mesh_layout`): a single vertex/fragment binding holding the mesh2d uniform
- *  array, storage or dynamic-uniform according to the adapter's limits. */
-wgpu::BindGroupLayout create_mesh2d_mesh_layout(const wgpu::Device& device);
-/** @brief Bevy `GpuArrayBuffer::<Mesh2dUniform>::batch_size`: the uniform-array
- *  element count when storage buffers are unavailable, otherwise empty. */
-std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Limits& limits);
-
 /** @brief Insert the `Mesh2dPipeline` resource (Bevy `init_mesh_2d_pipeline`,
  *  `mesh.rs:292-327`). */
-void init_mesh_2d_pipeline(ecs::Commands commands,
-                           ecs::Res<wgpu::Device> device,
-                           ecs::Res<assets::AssetServer> asset_server);
+EPIX_EXPORT void init_mesh_2d_pipeline(ecs::Commands commands,
+                                       ecs::Res<render::PipelineServer> pipeline_server,
+                                       ecs::Res<wgpu::Device> device,
+                                       ecs::Res<assets::AssetServer> asset_server);
 
 }  // namespace epix::sprite_render
 

@@ -371,10 +371,10 @@ struct Mesh2dPipelineCache {
 
     explicit Mesh2dPipelineCache(World& world, const MeshShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
-          mesh_layout(world.resource<wgpu::Device>().createBindGroupLayout(
-              wgpu::BindGroupLayoutDescriptor()
-                  .setLabel("Mesh2dInstanceLayout")
-                  .setEntries(std::array{
+          mesh_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
+              render::BindGroupLayoutDescriptor()
+                  .set_label("Mesh2dInstanceLayout")
+                  .set_entries(std::array{
                       wgpu::BindGroupLayoutEntry()
                           .setBinding(0)
                           .setVisibility(wgpu::ShaderStage::eVertex)
@@ -383,10 +383,10 @@ struct Mesh2dPipelineCache {
                                          .setHasDynamicOffset(false)
                                          .setMinBindingSize(sizeof(MeshInstanceData))),
                   }))),
-          texture_layout(world.resource<wgpu::Device>().createBindGroupLayout(
-              wgpu::BindGroupLayoutDescriptor()
-                  .setLabel("Mesh2dTextureLayout")
-                  .setEntries(std::array{
+          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
+              render::BindGroupLayoutDescriptor()
+                  .set_label("Mesh2dTextureLayout")
+                  .set_entries(std::array{
                       wgpu::BindGroupLayoutEntry()
                           .setBinding(0)
                           .setVisibility(wgpu::ShaderStage::eFragment)
@@ -928,6 +928,10 @@ void Mesh2dRenderPlugin::attach(app::App& app) {
             app.world_mut().insert_resource(std::move(*shader_handles));
         }
     }
+
+    // Bevy's Mesh2dRenderPlugin also sets up the generic mesh2d pipeline, whose
+    // embedded shader is owned by mesh2d_pipeline.cpp.
+    attach_mesh2d_pipeline(app);
 }
 
 void Mesh2dRenderPlugin::ready(app::App& app) {

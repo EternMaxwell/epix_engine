@@ -1,4 +1,5 @@
 #include <epix/core_graph.hpp>
+#include <epix/sprite_render/mesh2d.hpp>
 #include <epix/sprite_render/mesh2d_pipeline.hpp>
 
 #include <spdlog/spdlog.h>
@@ -190,6 +191,7 @@ std::span<const std::byte> shader_bytes(std::string_view source) {
 }
 }  // namespace
 
+namespace {
 void register_mesh2d_shader(ecs::World& world) {
     auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
     if (!registry) {
@@ -198,8 +200,10 @@ void register_mesh2d_shader(ecs::World& world) {
     }
     registry->get().insert_asset_static(kMesh2dShaderPath, shader_bytes(kMesh2dShader));
 }
+}  // namespace
 
-wgpu::BindGroupLayout create_mesh2d_view_layout(const wgpu::Device& device) {
+namespace {
+render::BindGroupLayoutDescriptor mesh2d_view_layout_descriptor() {
     using render::render_resource::BindGroupLayoutEntries;
     using render::render_resource::binding_types::uniform_buffer;
     // Bevy `init_mesh_2d_pipeline` (mesh.rs:297-309): a dynamic view uniform, the
@@ -212,17 +216,14 @@ wgpu::BindGroupLayout create_mesh2d_view_layout(const wgpu::Device& device) {
         uniform_buffer(true, sizeof(render::view::ViewUniform)),
         uniform_buffer(false, sizeof(render::GlobalsUniform)),
         lut[0].visibility(wgpu::ShaderStage::eFragment), lut[1].visibility(wgpu::ShaderStage::eFragment));
-    return device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel("mesh2d_view_layout").setEntries(entries.entries()));
+    return render::BindGroupLayoutDescriptor().set_label("mesh2d_view_layout").set_entries(entries.entries());
 }
 
-wgpu::BindGroupLayout create_mesh2d_mesh_layout(const wgpu::Device& device) {
+render::BindGroupLayoutDescriptor mesh2d_mesh_layout_descriptor(const wgpu::Limits& limits) {
     using render::render_resource::GpuArrayBuffer;
     // Bevy `init_mesh_2d_pipeline` (mesh.rs:311-317): one vertex/fragment binding
     // holding the mesh2d uniform array, as a storage buffer where the adapter has
     // them and as a dynamic-offset uniform array otherwise.
-    wgpu::Limits limits{};
-    device.getLimits(&limits);
     const auto buffer_binding = GpuArrayBuffer<Mesh2dUniform>::binding_layout(limits);
     const std::array<wgpu::BindGroupLayoutEntry, 1> entries{
         wgpu::BindGroupLayoutEntry()
@@ -231,8 +232,7 @@ wgpu::BindGroupLayout create_mesh2d_mesh_layout(const wgpu::Device& device) {
             .setBuffer(buffer_binding),
     };
     const std::span<const wgpu::BindGroupLayoutEntry> entry_span{entries};
-    return device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel("mesh2d_layout").setEntries(entry_span));
+    return render::BindGroupLayoutDescriptor().set_label("mesh2d_layout").set_entries(entry_span);
 }
 
 std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Limits& limits) {
@@ -244,18 +244,30 @@ std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Lim
     }
     return std::nullopt;
 }
+}  // namespace
 
 void init_mesh_2d_pipeline(ecs::Commands commands,
+                           ecs::Res<render::PipelineServer> pipeline_server,
                            ecs::Res<wgpu::Device> device,
                            ecs::Res<assets::AssetServer> asset_server) {
     wgpu::Limits limits{};
     device.get().getLimits(&limits);
     commands.insert_resource(Mesh2dPipeline{
-        .view_layout                  = create_mesh2d_view_layout(device.get()),
-        .mesh_layout                  = create_mesh2d_mesh_layout(device.get()),
-        .shader                       = asset_server.get().load<shader::Shader>("embedded://sprite/mesh2d.slang"),
+        .view_layout = pipeline_server->get_bind_group_layout(mesh2d_view_layout_descriptor()),
+        .mesh_layout = pipeline_server->get_bind_group_layout(mesh2d_mesh_layout_descriptor(limits)),
+        .shader      = asset_server.get().load<shader::Shader>("embedded://sprite/mesh2d.slang"),
         .per_object_buffer_batch_size = mesh2d_per_object_buffer_batch_size(limits),
     });
+}
+
+void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
+    // Bevy's `Mesh2dRenderPlugin::build` publishes the embedded shader and adds
+    // `init_mesh_2d_pipeline` to the render app's RenderStartup.
+    register_mesh2d_shader(app.world_mut());
+    if (auto render_app = app.get_sub_app_mut(render::Render)) {
+        render_app->get().add_systems(render::RenderStartup,
+                                      into(init_mesh_2d_pipeline).set_name("init mesh 2d pipeline"));
+    }
 }
 
 }  // namespace epix::sprite_render

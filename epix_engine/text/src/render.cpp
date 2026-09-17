@@ -155,10 +155,10 @@ struct Text2dPipelineCache {
 
     explicit Text2dPipelineCache(World& world, const TextShaderHandles& shader_handles)
         : view_layout(world.resource<render::view::ViewUniformBindingLayout>().layout),
-          instance_layout(world.resource<wgpu::Device>().createBindGroupLayout(
-              wgpu::BindGroupLayoutDescriptor()
-                  .setLabel("TextInstanceLayout")
-                  .setEntries(std::array{
+          instance_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
+              render::BindGroupLayoutDescriptor()
+                  .set_label("TextInstanceLayout")
+                  .set_entries(std::array{
                       wgpu::BindGroupLayoutEntry()
                           .setBinding(0)
                           .setVisibility(wgpu::ShaderStage::eVertex)
@@ -167,10 +167,10 @@ struct Text2dPipelineCache {
                                          .setHasDynamicOffset(false)
                                          .setMinBindingSize(sizeof(TextInstanceData))),
                   }))),
-          texture_layout(world.resource<wgpu::Device>().createBindGroupLayout(
-              wgpu::BindGroupLayoutDescriptor()
-                  .setLabel("TextTextureLayout")
-                  .setEntries(std::array{
+          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(
+              render::BindGroupLayoutDescriptor()
+                  .set_label("TextTextureLayout")
+                  .set_entries(std::array{
                       wgpu::BindGroupLayoutEntry()
                           .setBinding(0)
                           .setVisibility(wgpu::ShaderStage::eFragment)

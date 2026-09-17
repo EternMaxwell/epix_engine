@@ -287,5 +287,12 @@ struct DrawMesh2dBatch {
 EPIX_EXPORT struct Mesh2dRenderPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
+
+   private:
+    /** @brief Register the mesh2d shader and add `init_mesh_2d_pipeline` to the
+     *  render app's `RenderStartup` (Bevy `Mesh2dRenderPlugin::build`'s
+     *  `embedded_asset!` and RenderStartup wiring). Defined by
+     *  `mesh2d_pipeline.cpp`, which owns the embedded shader source. */
+    void attach_mesh2d_pipeline(app::App& app);
 };
 }  // namespace epix::sprite_render
