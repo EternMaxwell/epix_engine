@@ -106,9 +106,9 @@ std::uint32_t AtlasAllocator::new_node() {
         .parent       = kNoIndex,
         .next_sibling = kNoIndex,
         .prev_sibling = kNoIndex,
-        .rect         = AtlasRectangle::zero(),
         .kind         = NodeKind::Unused,
         .orientation  = Orientation::Horizontal,
+        .rect         = AtlasRectangle::zero(),
     });
     generations_.push_back(0);
     return static_cast<std::uint32_t>(nodes_.size() - 1);
