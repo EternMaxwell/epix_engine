@@ -229,27 +229,34 @@ int main() {
                               ecs::With<MainText>>> conflicting_queries,
                ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
                ecs::Query<ecs::Item<ecs::Mut<text::Text>>, ecs::With<InfoText>> info_query) {
-                // Get queries from ParamSet (allows access conflict between camera and text transforms)
-                auto&& [camera_query, text_query] = conflicting_queries.get();
+                // ParamSet exposes one member at a time (Bevy `p0()..p7()`): the
+                // camera is only needed to convert the cursor into world space,
+                // so that read query is released before the text query - which
+                // writes Transform - is taken.
+                std::optional<glm::vec2> world_cursor_opt;
+                conflicting_queries.get<0>([&](auto& camera_query) {
+                    // Get camera
+                    auto cam_opt = camera_query.single();
+                    if (!cam_opt) return;
+                    auto&& [cam, proj, cam_transform] = *cam_opt;
 
-                // Get camera
-                auto cam_opt = camera_query.single();
-                if (!cam_opt) return;
-                auto&& [cam, proj, cam_transform] = *cam_opt;
+                    // Get window for cursor position
+                    auto win_opt = window_query.single();
+                    if (!win_opt) return;
+                    auto&& [window] = *win_opt;
 
-                // Get window for cursor position
-                auto win_opt = window_query.single();
-                if (!win_opt) return;
-                auto&& [window] = *win_opt;
+                    auto [cursor_x, cursor_y] = window.cursor_pos;
+                    auto [win_w, win_h]       = window.size;
+                    if (win_w <= 0 || win_h <= 0) return;
 
-                auto [cursor_x, cursor_y] = window.cursor_pos;
-                auto [win_w, win_h]       = window.size;
-                if (win_w <= 0 || win_h <= 0) return;
+                    world_cursor_opt = screen_to_world(
+                        glm::vec2(static_cast<float>(cursor_x), static_cast<float>(cursor_y)),
+                        glm::vec2(static_cast<float>(win_w), static_cast<float>(win_h)), cam, proj, cam_transform);
+                });
+                if (!world_cursor_opt) return;
+                const glm::vec2 world_cursor = *world_cursor_opt;
 
-                glm::vec2 world_cursor = screen_to_world(
-                    glm::vec2(static_cast<float>(cursor_x), static_cast<float>(cursor_y)),
-                    glm::vec2(static_cast<float>(win_w), static_cast<float>(win_h)), cam, proj, cam_transform);
-
+                conflicting_queries.get<1>([&](auto& text_query) {
                 // Get text transform and shaped text info
                 auto text_opt = text_query.single();
                 if (!text_opt) return;
@@ -397,6 +404,7 @@ int main() {
                         world_cursor.x, world_cursor.y, new_text_pos.x, new_text_pos.y, new_bounds_w, new_bounds_h,
                         shaped_text.width(), shaped_text.height(), static_cast<int>(drag_state->mode));
                 }
+                });
             })
             .set_name("text interaction"));
 
@@ -407,20 +415,26 @@ int main() {
                                                ecs::Query<ecs::Item<transform::Transform&>, ecs::With<BoundsOutline>>,
                                                ecs::Query<ecs::Item<transform::Transform&>, ecs::With<TextOutline>>>
                                      transform_queries) {
-                        auto&& [text_pos_query, bounds_outline_query, text_outline_query] = transform_queries.get();
-
-                        auto text_opt = text_pos_query.single();
-                        if (!text_opt) return;
-                        auto&& [text_transform] = *text_opt;
-
-                        if (auto opt = bounds_outline_query.single(); opt) {
-                            auto&& [t]    = *opt;
-                            t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
-                        }
-                        if (auto opt = text_outline_query.single(); opt) {
-                            auto&& [t]    = *opt;
-                            t.translation = glm::vec3(glm::vec2(text_transform.translation), 0.1f);
-                        }
+                        // One member at a time: read the text position, release
+                        // that query, then move each outline.
+                        std::optional<glm::vec2> text_position;
+                        transform_queries.get<0>([&](auto& text_pos_query) {
+                            if (auto text_opt = text_pos_query.single(); text_opt) {
+                                text_position = glm::vec2(std::get<0>(*text_opt).translation);
+                            }
+                        });
+                        if (!text_position) return;
+                        const glm::vec3 outline_translation{*text_position, 0.1f};
+                        transform_queries.get<1>([&](auto& bounds_outline_query) {
+                            if (auto opt = bounds_outline_query.single(); opt) {
+                                std::get<0>(*opt).translation = outline_translation;
+                            }
+                        });
+                        transform_queries.get<2>([&](auto& text_outline_query) {
+                            if (auto opt = text_outline_query.single(); opt) {
+                                std::get<0>(*opt).translation = outline_translation;
+                            }
+                        });
                     }).set_name("sync outline transforms"));
 
     app.run();

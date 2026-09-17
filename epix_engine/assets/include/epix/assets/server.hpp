@@ -478,7 +478,7 @@ EPIX_EXPORT struct AssetServer {
     bool process_handle_destruction(const UntypedAssetId& id) const;
 
     /** @brief Process internal asset events (called from system). */
-    static void handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<AssetServer>> params);
+    static void handle_internal_events(ecs::World& world);
 
    private:
     /** @brief Increment started_load_tasks counter while caller holds the infos write lock.

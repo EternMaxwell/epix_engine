@@ -153,22 +153,27 @@ void AssetServer::load_folder_internal(const UntypedAssetId& id, const AssetPath
         .detach();
 }
 
-void AssetServer::handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<AssetServer>> params) {
-    auto&& [world, server] = params.get();
-    auto receiver          = server->data->asset_event_receiver;
+void AssetServer::handle_internal_events(ecs::World& world) {
+    // The handle is copied rather than borrowed from the world: the body drives
+    // the world (dispatching events and running nested systems) while it uses
+    // it, so holding a reference into the resource map would alias. A copy
+    // shares the same `AssetServerData`; Bevy expresses the same intent by
+    // taking the resource out of the world with `World::resource_scope`.
+    auto server = world.resource<AssetServer>();
+    auto receiver = server.data->asset_event_receiver;
 
     std::vector<UntypedAssetLoadFailedEvent> untyped_failures;
     std::unordered_set<AssetPath> paths_to_reload;
     bool watching_for_changes = false;
 
     {
-        auto guard = server->data->infos.write();
+        auto guard = server.data->infos.write();
 
         while (auto event = receiver.try_recv()) {
             std::visit(utils::visitor{
                            [&](internal_asset_event::Loaded& loaded) {
                                guard->process_asset_load(loaded.id, std::move(loaded.asset), world,
-                                                         server->data->asset_event_sender);
+                                                         server.data->asset_event_sender);
                            },
                            [&](internal_asset_event::LoadedWithDeps& loaded_with_deps) {
                                // Dispatch typed LoadedWithDependencies event
@@ -225,7 +230,7 @@ void AssetServer::handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<Ass
                     auto parent_asset_path = AssetPath(source, current);
                     for (auto handle : guard->get_handles_by_path(parent_asset_path)) {
                         spdlog::info("Reloading folder {} because content has changed", parent_asset_path.string());
-                        server->load_folder_internal(handle.id(), parent_asset_path);
+                        server.load_folder_internal(handle.id(), parent_asset_path);
                     }
                     auto next = current.parent_path();
                     if (next == current) break;
@@ -268,8 +273,8 @@ void AssetServer::handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<Ass
                            event);
             };
 
-            for (auto& source : server->data->sources->iter()) {
-                switch (server->data->mode) {
+            for (auto& source : server.data->sources->iter()) {
+                switch (server.data->mode) {
                     case AssetServerMode::Unprocessed: {
                         if (auto receiver_opt = source.event_receiver()) {
                             while (auto ev = receiver_opt->get().try_recv()) {
@@ -293,7 +298,7 @@ void AssetServer::handle_internal_events(ecs::ParamSet<ecs::World&, ecs::Res<Ass
 
     // Reload paths outside the lock to avoid deadlock
     for (auto& path : paths_to_reload) {
-        (void)server->reload(path);
+        (void)server.reload(path);
     }
 }
 

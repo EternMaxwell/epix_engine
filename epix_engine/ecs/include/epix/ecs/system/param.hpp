@@ -281,21 +281,66 @@ struct SystemParam<std::tuple<T...>> {
     }
 };
 
-/** @brief Groups multiple system parameters for deferred/manual access.
- *  Use get<I>() to retrieve individual params or get() for all.
+namespace internal {
+/** @brief Fetches one `ParamSet` member through its own `SystemParam`
+ *  specialization.
+ *
+ *  The indirection exists because a member type reached through
+ *  `std::tuple_element_t` is dependent, and naming `SystemParam<dependent>`
+ *  directly makes the compiler resolve the constrained primary template instead
+ *  of the member's specialization. As a class-template parameter the type is
+ *  concrete at instantiation, exactly as it is inside `RenderCommandState`. */
+template <typename Param>
+struct ParamSetMember {
+    using param_type               = Param;
+    using state_type               = typename SystemParam<Param>::State;
+    using item_type                = typename SystemParam<Param>::Item;
+    static constexpr bool readonly = SystemParam<Param>::readonly;
+
+    static item_type fetch(state_type& state, const SystemMeta& meta, World& world, Tick tick) {
+        return SystemParam<Param>::get_param(state, meta, world, tick);
+    }
+};
+}  // namespace internal
+
+/** @brief Groups multiple system parameters for deferred access, **one at a
+ *  time**.
+ *
+ *  Bevy's `ParamSet` exists for parameters that conflict with each other, so it
+ *  deliberately exposes exactly one member per accessor: `p0()..p7()` each take
+ *  `&mut self`, and two members therefore can never be live together ("No other
+ *  parameters may be accessed while this one is active", `system_param.rs:728-744`).
+ *  C++ cannot express that with the borrow checker, so the accessor takes an
+ *  invocable instead: the member's item lives only for the duration of the
+ *  callback. There is intentionally no accessor that returns several members at
+ *  once - the previous tuple-returning `get()` allowed conflicting parameters
+ *  (including a read and a write of the same component type) to be live
+ *  simultaneously, which Bevy's design forbids.
+ *
  *  @tparam Ts System parameter types. */
 EPIX_EXPORT template <system_param... Ts>
 struct ParamSet {
    public:
     using State = std::tuple<typename SystemParam<Ts>::State...>;
 
-    template <std::size_t I>
-    typename SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::Item get() {
-        return SystemParam<std::tuple_element_t<I, std::tuple<Ts...>>>::get_param(std::get<I>(states_), *meta_, *world_,
-                                                                                  change_tick_);
+    /** @brief Fetch member `I` and invoke `func` with it. The item is only
+     *  valid inside the callback, mirroring one `p0()`/`p1()` borrow in Bevy. */
+    template <std::size_t I, typename F>
+        requires (I < sizeof...(Ts))
+    decltype(auto) get(F&& func) {
+        using member = internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>;
+        auto item    = member::fetch(std::get<I>(*states_), *meta_, *world_, change_tick_);
+        return std::invoke(std::forward<F>(func), item);
     }
-    typename SystemParam<std::tuple<Ts...>>::Item get() {
-        return SystemParam<std::tuple<Ts...>>::get_param(*states_, *meta_, *world_, change_tick_);
+    /** @brief Fetch member `I` of a const `ParamSet` and invoke `func` with it.
+     *  Only read-only parameters can be fetched through a const handle. */
+    template <std::size_t I, typename F>
+        requires (I < sizeof...(Ts)) &&
+                 internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>::readonly
+    decltype(auto) get(F&& func) const {
+        using member = internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>;
+        auto item    = member::fetch(std::get<I>(*states_), *meta_, const_cast<World&>(*world_), change_tick_);
+        return std::invoke(std::forward<F>(func), item);
     }
 
    private:

@@ -449,9 +449,14 @@ void RenderPlugin::attach(App& app) {
                                      .in_set(RenderSystems::Render)
                                      .set_names(std::array{"process pipeline", "render system"}))
             .add_systems(Render,
-                         into([](ParamSet<World&, ResMut<ecs::Schedules>> params) {
-                             auto&& [world, schedules] = params.get();
-                             schedules.get_mut().get_schedule_mut(ExtractSchedule).value().get().apply_deferred(world);
+                         into([](ecs::World& world) {
+                             // Bevy takes `Schedules` out of the world while the
+                             // extract schedule applies its deferred commands
+                             // (`World::resource_scope`), so the schedule and the
+                             // world are never borrowed at the same time.
+                             (void)world.resource_scope([](ecs::Schedules& schedules, ecs::World& world) {
+                                 schedules.get_schedule_mut(ExtractSchedule).value().get().apply_deferred(world);
+                             });
                          })
                              .in_set(RenderSystems::ExtractCommands)
                              .set_name("apply extract commands"));

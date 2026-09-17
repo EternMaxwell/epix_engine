@@ -476,12 +476,15 @@ void dirty_rect_overlay_system(
     auto&& [sand_world] = *world_opt;
     float cell_size     = sand_world.cell_size();
 
-    auto chunks = std::get<0>(qs.get());
     std::unordered_map<Entity, std::pair<glm::vec3, fs::SandChunkDirtyRect>> active;
-    for (auto&& [e, pos, rect, tf] : chunks.iter()) {
-        if (!rect.active()) continue;
-        active.emplace(e, std::pair{tf.translation, rect});
-    }
+    // ParamSet exposes one member at a time (Bevy `p0()..p7()`): the chunk query
+    // is used inside the callback and released before the overlay query is used.
+    qs.get<0>([&](auto& chunks) {
+        for (auto&& [e, pos, rect, tf] : chunks.iter()) {
+            if (!rect.active()) continue;
+            active.emplace(e, std::pair{tf.translation, rect});
+        }
+    });
 
     std::vector<Entity> to_remove;
     for (auto& [c, o] : st.dirty_rect_overlays) {
@@ -492,31 +495,32 @@ void dirty_rect_overlay_system(
     }
     for (auto e : to_remove) st.dirty_rect_overlays.erase(e);
 
-    for (auto& [c, ar] : active) {
-        auto& [origin, rect] = ar;
-        float x0             = origin.x + static_cast<float>(rect.get_xmin()) * cell_size;
-        float x1             = origin.x + static_cast<float>(rect.get_xmax() + 1) * cell_size;
-        float y0             = origin.y + static_cast<float>(rect.get_ymin()) * cell_size;
-        float y1             = origin.y + static_cast<float>(rect.get_ymax() + 1) * cell_size;
-        glm::vec3 center{(x0 + x1) * 0.5f, (y0 + y1) * 0.5f, -1.0f};
-        glm::vec3 scaler{x1 - x0, y1 - y0, 1.0f};
-        auto overlay_transforms = std::get<1>(qs.get());
-        if (auto it = st.dirty_rect_overlays.find(c); it != st.dirty_rect_overlays.end()) {
-            if (auto opt = overlay_transforms.get(it->second)) {
-                auto&& [tf]              = *opt;
-                tf.get_mut().translation = center;
-                tf.get_mut().scaler      = scaler;
+    qs.get<1>([&](auto& overlay_transforms) {
+        for (auto& [c, ar] : active) {
+            auto& [origin, rect] = ar;
+            float x0             = origin.x + static_cast<float>(rect.get_xmin()) * cell_size;
+            float x1             = origin.x + static_cast<float>(rect.get_xmax() + 1) * cell_size;
+            float y0             = origin.y + static_cast<float>(rect.get_ymin()) * cell_size;
+            float y1             = origin.y + static_cast<float>(rect.get_ymax() + 1) * cell_size;
+            glm::vec3 center{(x0 + x1) * 0.5f, (y0 + y1) * 0.5f, -1.0f};
+            glm::vec3 scaler{x1 - x0, y1 - y0, 1.0f};
+            if (auto it = st.dirty_rect_overlays.find(c); it != st.dirty_rect_overlays.end()) {
+                if (auto opt = overlay_transforms.get(it->second)) {
+                    auto&& [tf]              = *opt;
+                    tf.get_mut().translation = center;
+                    tf.get_mut().scaler      = scaler;
+                }
+            } else {
+                auto handle               = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
+                auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
+                                                      sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
+                                                                           .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                                      transform::Transform{.translation = center, .scaler = scaler})
+                                                .id();
+                st.dirty_rect_overlays[c] = e;
             }
-        } else {
-            auto handle               = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
-            auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                                  sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
-                                                                       .alpha_mode = sprite_render::AlphaMode2dBlend{}},
-                                                  transform::Transform{.translation = center, .scaler = scaler})
-                                            .id();
-            st.dirty_rect_overlays[c] = e;
         }
-    }
+    });
 }
 
 void freefall_overlay_system(Commands cmd,
@@ -626,15 +630,14 @@ void chunk_chain_overlay_system(
     };
 
     std::vector<Entity> to_remove;
-    {
-        auto chunks = std::get<0>(qs.get());
+    qs.get<0>([&](auto& chunks) {
         for (auto& [c, o] : st.chunk_chain_overlays) {
             if (!chunks.get(c).has_value()) {
                 cmd.entity(o).despawn();
                 to_remove.push_back(c);
             }
         }
-    }
+    });
     for (auto e : to_remove) st.chunk_chain_overlays.erase(e);
 
     struct ChainEntry {
@@ -644,35 +647,35 @@ void chunk_chain_overlay_system(
         bool needs_rebuild;
     };
     std::vector<ChainEntry> active;
-    {
-        auto chunks = std::get<0>(qs.get());
+    qs.get<0>([&](auto& chunks) {
         for (auto&& [c, ssb_ref, tf] : chunks.iter()) {
             if (!B2_IS_NON_NULL(ssb_ref.get().b2_body)) continue;
             bool needs_rebuild = ssb_ref.is_modified() || ssb_ref.is_added() || !st.chunk_chain_overlays.contains(c);
             active.push_back({c, &ssb_ref.get(), tf.translation, needs_rebuild});
         }
-    }
-    auto overlays = std::get<1>(qs.get());
-    for (auto& entry : active) {
-        glm::vec3 overlay_tr = entry.translation + glm::vec3{0.0f, 0.0f, -1.5f};
-        if (auto it = st.chunk_chain_overlays.find(entry.entity); it != st.chunk_chain_overlays.end()) {
-            if (auto opt = overlays.get(it->second)) {
-                auto&& [m2d, t] = *opt;
-                if (entry.needs_rebuild) {
-                    auto handle   = meshes->emplace(build_mesh(*entry.ssb));
-                    m2d.get_mut() = mesh::Mesh2d{handle};
+    });
+    qs.get<1>([&](auto& overlays) {
+        for (auto& entry : active) {
+            glm::vec3 overlay_tr = entry.translation + glm::vec3{0.0f, 0.0f, -1.5f};
+            if (auto it = st.chunk_chain_overlays.find(entry.entity); it != st.chunk_chain_overlays.end()) {
+                if (auto opt = overlays.get(it->second)) {
+                    auto&& [m2d, t] = *opt;
+                    if (entry.needs_rebuild) {
+                        auto handle   = meshes->emplace(build_mesh(*entry.ssb));
+                        m2d.get_mut() = mesh::Mesh2d{handle};
+                    }
+                    t.get_mut().translation = overlay_tr;
                 }
-                t.get_mut().translation = overlay_tr;
+            } else {
+                auto handle = meshes->emplace(build_mesh(*entry.ssb));
+                auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
+                                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                        transform::Transform{.translation = overlay_tr})
+                                  .id();
+                st.chunk_chain_overlays[entry.entity] = e;
             }
-        } else {
-            auto handle = meshes->emplace(build_mesh(*entry.ssb));
-            auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
-                                    sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
-                                    transform::Transform{.translation = overlay_tr})
-                              .id();
-            st.chunk_chain_overlays[entry.entity] = e;
         }
-    }
+    });
 }
 
 void body_outline_overlay_system(
@@ -714,15 +717,14 @@ void body_outline_overlay_system(
     };
 
     std::vector<Entity> to_remove;
-    {
-        auto bodies = std::get<0>(qs.get());
+    qs.get<0>([&](auto& bodies) {
         for (auto& [c, o] : st.body_outline_overlays) {
             if (!bodies.get(c).has_value()) {
                 cmd.entity(o).despawn();
                 to_remove.push_back(c);
             }
         }
-    }
+    });
     for (auto e : to_remove) st.body_outline_overlays.erase(e);
 
     struct BodyEntry {
@@ -733,38 +735,38 @@ void body_outline_overlay_system(
         bool needs_rebuild;
     };
     std::vector<BodyEntry> active;
-    {
-        auto bodies = std::get<0>(qs.get());
+    qs.get<0>([&](auto& bodies) {
         for (auto&& [c, body_ref, tf] : bodies.iter()) {
             if (!B2_IS_NON_NULL(body_ref.get().b2_body)) continue;
             bool needs_rebuild = body_ref.is_modified() || body_ref.is_added() || !st.body_outline_overlays.contains(c);
             active.push_back({c, &body_ref.get(), tf.translation, tf.rotation, needs_rebuild});
         }
-    }
-    auto overlays = std::get<1>(qs.get());
-    for (auto& entry : active) {
-        bool awake      = b2Body_IsAwake(entry.body->b2_body);
-        glm::vec4 color = awake ? color_awake : color_sleeping;
-        glm::vec3 t     = entry.translation + glm::vec3{0.0f, 0.0f, -2.0f};
-        if (auto it = st.body_outline_overlays.find(entry.entity); it != st.body_outline_overlays.end()) {
-            if (auto opt = overlays.get(it->second)) {
-                auto&& [m2d, mat, ovt] = *opt;
-                if (entry.needs_rebuild) {
-                    auto handle   = meshes->emplace(build_mesh(*entry.body));
-                    m2d.get_mut() = mesh::Mesh2d{handle};
+    });
+    qs.get<1>([&](auto& overlays) {
+        for (auto& entry : active) {
+            bool awake      = b2Body_IsAwake(entry.body->b2_body);
+            glm::vec4 color = awake ? color_awake : color_sleeping;
+            glm::vec3 t     = entry.translation + glm::vec3{0.0f, 0.0f, -2.0f};
+            if (auto it = st.body_outline_overlays.find(entry.entity); it != st.body_outline_overlays.end()) {
+                if (auto opt = overlays.get(it->second)) {
+                    auto&& [m2d, mat, ovt] = *opt;
+                    if (entry.needs_rebuild) {
+                        auto handle   = meshes->emplace(build_mesh(*entry.body));
+                        m2d.get_mut() = mesh::Mesh2d{handle};
+                    }
+                    mat.get_mut().color = color;
+                    ovt.get_mut()       = transform::Transform{.translation = t, .rotation = entry.rotation};
                 }
-                mat.get_mut().color = color;
-                ovt.get_mut()       = transform::Transform{.translation = t, .rotation = entry.rotation};
+            } else {
+                auto handle = meshes->emplace(build_mesh(*entry.body));
+                auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
+                                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                        transform::Transform{.translation = t, .rotation = entry.rotation})
+                                  .id();
+                st.body_outline_overlays[entry.entity] = e;
             }
-        } else {
-            auto handle = meshes->emplace(build_mesh(*entry.body));
-            auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
-                                    sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
-                                    transform::Transform{.translation = t, .rotation = entry.rotation})
-                              .id();
-            st.body_outline_overlays[entry.entity] = e;
         }
-    }
+    });
 }
 
 int main() {

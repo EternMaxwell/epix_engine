@@ -731,13 +731,12 @@ void dirty_rect_overlay_system(Commands cmd,
         fs::SandChunkDirtyRect dirty_rect;
     };
     std::unordered_map<Entity, ActiveRect> active;
-    {
-        auto&& [chunks, overlay_transforms] = queries.get();
+    queries.get<0>([&](auto& chunks) {
         for (auto&& [ent, pos, dirty_rect, tf, parent] : chunks.iter()) {
             if (!dirty_rect.active()) continue;
             active[ent] = {tf.translation, dirty_rect};
         }
-    }
+    });
 
     // Remove overlays whose chunk is no longer in the active set.
     std::vector<Entity> to_remove;
@@ -750,37 +749,38 @@ void dirty_rect_overlay_system(Commands cmd,
     for (auto e : to_remove) st.dirty_rect_overlays.erase(e);
 
     // Create or update overlays for active chunks.
-    auto&& [chunks, overlay_transforms] = queries.get();
-    for (auto& [chunk_ent, ar] : active) {
-        float x0       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmin()) * cell_size;
-        float x1       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmax() + 1) * cell_size;
-        float y0       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymin()) * cell_size;
-        float y1       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymax() + 1) * cell_size;
-        float center_x = (x0 + x1) * 0.5f;
-        float center_y = (y0 + y1) * 0.5f;
-        float width    = x1 - x0;
-        float height   = y1 - y0;
+    queries.get<1>([&](auto& overlay_transforms) {
+        for (auto& [chunk_ent, ar] : active) {
+            float x0       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmin()) * cell_size;
+            float x1       = ar.chunk_origin.x + static_cast<float>(ar.dirty_rect.get_xmax() + 1) * cell_size;
+            float y0       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymin()) * cell_size;
+            float y1       = ar.chunk_origin.y + static_cast<float>(ar.dirty_rect.get_ymax() + 1) * cell_size;
+            float center_x = (x0 + x1) * 0.5f;
+            float center_y = (y0 + y1) * 0.5f;
+            float width    = x1 - x0;
+            float height   = y1 - y0;
 
-        if (auto it = st.dirty_rect_overlays.find(chunk_ent); it != st.dirty_rect_overlays.end()) {
-            // Update existing overlay transform in place.
-            if (auto opt = overlay_transforms.get(it->second)) {
-                auto&& [tf]              = *opt;
-                tf.get_mut().translation = {center_x, center_y, 1.0f};
-                tf.get_mut().scaler      = {width, height, 1.0f};
+            if (auto it = st.dirty_rect_overlays.find(chunk_ent); it != st.dirty_rect_overlays.end()) {
+                // Update existing overlay transform in place.
+                if (auto opt = overlay_transforms.get(it->second)) {
+                    auto&& [tf]              = *opt;
+                    tf.get_mut().translation = {center_x, center_y, 1.0f};
+                    tf.get_mut().scaler      = {width, height, 1.0f};
+                }
+            } else {
+                // Spawn a new overlay entity (unit quad scaled to dirty-rect size).
+                auto handle      = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
+                auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
+                                             sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
+                                                                  .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                             transform::Transform{.translation = {center_x, center_y, 1.0f},
+                                                                  .scaler      = {width, height, 1.0f}},
+                                             camera::RenderLayers::layer(1))
+                                       .id();
+                st.dirty_rect_overlays[chunk_ent] = overlay_ent;
             }
-        } else {
-            // Spawn a new overlay entity (unit quad scaled to dirty-rect size).
-            auto handle      = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
-            auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                         sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
-                                                              .alpha_mode = sprite_render::AlphaMode2dBlend{}},
-                                         transform::Transform{.translation = {center_x, center_y, 1.0f},
-                                                              .scaler      = {width, height, 1.0f}},
-                                         camera::RenderLayers::layer(1))
-                                   .id();
-            st.dirty_rect_overlays[chunk_ent] = overlay_ent;
         }
-    }
+    });
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
