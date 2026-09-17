@@ -111,9 +111,30 @@ unchanged until step 10.
   `linear_polygon_primitives` captured with `PrintWindow(PW_CLIENTONLY)`,
   inspected, each stable at one distinct cropped scene hash across three frames
   and free of flagged stdout/stderr diagnostics.
-- **Remaining in step 2**: `Mesh2dPipeline` (view and mesh layouts, the embedded
-  mesh2d shader, `per_object_buffer_batch_size`) and `init_mesh_2d_pipeline`,
-  which need the mesh-uniform array binding and the ported mesh2d Slang modules.
+- **Remaining in step 2**: the embedded mesh2d Slang shader modules and the
+  `init_mesh_2d_pipeline` system that loads them. Bevy's mesh2d view bindings
+  import `bevy_render::globals::Globals`, and Epix has no `epix/globals` Slang
+  library yet (only `epix.view`, `epix.tonemapping` and the svo ones), so that
+  library is part of this remaining work and is a render-module addition to
+  present for approval. The seven mesh2d modules total ~5.3 KB of WGSL and need
+  `bevy_render::maths::{affine3_to_square, mat2x4_f32_to_mat3x3_unpack}` inlined,
+  since Epix has no `maths` module.
+- **Pipeline layouts landed (2026-09-17)**: `Mesh2dPipeline`, `create_mesh2d_view_layout`,
+  `create_mesh2d_mesh_layout` and `mesh2d_per_object_buffer_batch_size` in
+  `mesh2d_pipeline.hpp` plus the new `sprite_render/src/mesh2d_pipeline.cpp`, with
+  the `ShaderTypeInfo<Mesh2dUniform>` specialization. The view layout is the
+  dynamic view uniform, the globals uniform and the two LUT entries at fragment
+  visibility; the mesh layout is one vertex/fragment binding taken from
+  `GpuArrayBuffer<Mesh2dUniform>::binding_layout`, and the batch size is reported
+  only for the no-storage-buffer fallback, exactly as Bevy's
+  `GpuArrayBuffer::<T>::batch_size` does. Tests:
+  `tests/header/mesh2d_pipeline_tests.cpp` (2 tests, one of which creates both
+  layouts on a real Vulkan device), full suite **83/83** in 47.54 s.
+- **Rendering (pipeline layouts)**: the same non-regression sweep - all five
+  Mesh2d examples captured through `PrintWindow(PW_CLIENTONLY)`, inspected, one
+  distinct cropped scene hash each across three frames, no flagged diagnostics -
+  and the capture batch ran with the focus policy intact (first example in
+  `keep`, the rest politely).
 - **Tooling**: the capture batch's focus restoration is now best-effort - a Win32
   hiccup on a dying previously-focused window aborted two sweeps. The batch
   completes 5/5 with the focus policy intact afterwards.

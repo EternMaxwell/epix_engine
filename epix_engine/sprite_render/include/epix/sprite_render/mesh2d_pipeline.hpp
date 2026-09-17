@@ -6,7 +6,10 @@
 #include <array>
 #include <bit>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/render.hpp>
 #include <glm/glm.hpp>
+#include <optional>
 #include <webgpu/webgpu.hpp>
 #endif
 
@@ -202,4 +205,43 @@ constexpr Mesh2dPipelineKey operator|(Mesh2dPipelineKey lhs, Mesh2dPipelineKey::
     return lhs;
 }
 
+/** @brief The Mesh2d render pipeline's shared resources (Bevy `Mesh2dPipeline`).
+ *
+ * Bevy keeps the two bind-group layouts as descriptors and creates them in the
+ * pipeline cache; Epix creates the native layouts once in
+ * `init_mesh_2d_pipeline`, which is the accepted direct-wgpu translation. */
+struct Mesh2dPipeline {
+    /** @brief View layout: dynamic view uniform, globals, LUT texture, LUT sampler. */
+    wgpu::BindGroupLayout view_layout;
+    /** @brief Mesh layout: the per-instance mesh2d uniform array. */
+    wgpu::BindGroupLayout mesh_layout;
+    /** @brief The embedded mesh2d shader. */
+    assets::Handle<shader::Shader> shader;
+    /** @brief Elements per binding when the platform has no storage buffers;
+     *  empty when the storage-buffer path is used (Bevy
+     *  `per_object_buffer_batch_size`). */
+    std::optional<std::uint32_t> per_object_buffer_batch_size;
+};
+
+/** @brief Create the mesh2d view bind group layout (Bevy
+ *  `init_mesh_2d_pipeline`'s `view_layout`): the dynamic view uniform, the
+ *  globals uniform, and the tonemapping LUT texture and sampler at fragment
+ *  visibility. */
+wgpu::BindGroupLayout create_mesh2d_view_layout(const wgpu::Device& device);
+/** @brief Create the mesh2d mesh bind group layout (Bevy `init_mesh_2d_pipeline`'s
+ *  `mesh_layout`): a single vertex/fragment binding holding the mesh2d uniform
+ *  array, storage or dynamic-uniform according to the adapter's limits. */
+wgpu::BindGroupLayout create_mesh2d_mesh_layout(const wgpu::Device& device);
+/** @brief Bevy `GpuArrayBuffer::<Mesh2dUniform>::batch_size`: the uniform-array
+ *  element count when storage buffers are unavailable, otherwise empty. */
+std::optional<std::uint32_t> mesh2d_per_object_buffer_batch_size(const wgpu::Limits& limits);
+
 }  // namespace epix::sprite_render
+
+namespace epix::render::render_resource {
+/** @brief `Mesh2dUniform` is a plain 96-byte GPU struct, so the raw
+ *  `sizeof`-derived shader size is exactly the WGSL `Mesh2d` array stride. */
+template <>
+struct ShaderTypeInfo<epix::sprite_render::Mesh2dUniform>
+    : RawShaderType<epix::sprite_render::Mesh2dUniform> {};
+}  // namespace epix::render::render_resource
