@@ -1,8 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -13,11 +13,9 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <glm/glm.hpp>
 #endif
+
 #include <epix/extension/fallingsand/temperature.hpp>
 
 namespace epix::ext::fallingsand {

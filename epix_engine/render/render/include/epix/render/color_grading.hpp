@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -8,6 +7,7 @@
 #include <functional>
 #include <glm/glm.hpp>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::render::view {

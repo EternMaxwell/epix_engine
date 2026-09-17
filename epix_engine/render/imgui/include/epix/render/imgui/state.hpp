@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/ecs.hpp>
@@ -10,6 +9,7 @@
 #include <memory>
 #include <stdexcept>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::imgui {

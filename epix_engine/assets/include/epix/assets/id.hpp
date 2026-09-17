@@ -1,10 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <uuid.h>
-
 #include <concepts>
 #include <cstddef>
 #include <epix/meta.hpp>
@@ -16,6 +14,7 @@
 #include <tuple>
 #include <utility>
 #include <variant>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/concepts.hpp>

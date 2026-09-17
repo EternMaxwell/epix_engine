@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -11,6 +10,7 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/extension/grid/concepts.hpp>

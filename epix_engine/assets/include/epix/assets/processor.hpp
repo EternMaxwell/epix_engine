@@ -1,10 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
-
 #include <epix/async_broadcast.hpp>
 #include <epix/async_channel.hpp>
 #include <epix/ecs.hpp>
@@ -24,6 +22,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -10,6 +9,7 @@
 #include <limits>
 #include <optional>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 // Faithful C++ port of the `offset-allocator` crate v0.2.0 (MIT), which is the

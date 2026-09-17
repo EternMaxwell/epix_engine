@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <BS_thread_pool.hpp>
@@ -8,7 +7,6 @@
 #include <concepts>
 #include <cstddef>
 #include <epix/ecs.hpp>
-#include <epix/render/bind_group_layout.hpp>
 #include <epix/shader.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -23,7 +21,9 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
+#include <epix/render/bind_group_layout.hpp>
 
 #include <epix/render/pipeline.hpp>
 

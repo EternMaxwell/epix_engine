@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -15,8 +14,6 @@
 #include <epix/ecs.hpp>
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
-#include <epix/render/assets.hpp>
-#include <epix/render/mesh/offset_allocator.hpp>
 #include <functional>
 #include <limits>
 #include <memory>
@@ -28,7 +25,10 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render/assets.hpp>
+#include <epix/render/mesh/offset_allocator.hpp>
 
 #include <epix/render/mesh/render_asset.hpp>
 

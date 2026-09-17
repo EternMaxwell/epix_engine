@@ -1,8 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -14,12 +14,10 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
+#include <epix/utils.hpp>
 #endif
 
 #include <epix/extension/grid/concepts.hpp>
-#ifndef EPIX_CXX_MODULE
-#include <epix/utils.hpp>
-#endif
 
 namespace epix::ext::grid {
 

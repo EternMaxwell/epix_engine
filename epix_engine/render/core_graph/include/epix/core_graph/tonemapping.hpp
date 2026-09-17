@@ -1,12 +1,10 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
-#include <epix/core_graph/fullscreen.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/utils/async.hpp>
@@ -14,7 +12,9 @@
 #include <tuple>
 #include <utility>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/core_graph/fullscreen.hpp>
 
 namespace epix::core_graph {
 

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <array>
 #include <concepts>
 #include <cstddef>
@@ -10,11 +10,9 @@
 #include <expected>
 #include <functional>
 #include <utility>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/traits.hpp>
 #endif
+
 
 namespace epix::ext::grid {
 /** @brief Error codes returned by grid operations. */

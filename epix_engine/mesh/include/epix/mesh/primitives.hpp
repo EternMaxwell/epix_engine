@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -9,7 +8,6 @@
 #include <cmath>
 #include <concepts>
 #include <cstdint>
-#include <epix/mesh/mesh.hpp>
 #include <expected>
 #include <glm/glm.hpp>
 #include <initializer_list>
@@ -22,7 +20,9 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
+#include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
 

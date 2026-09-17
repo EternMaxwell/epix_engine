@@ -1,8 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -10,15 +10,11 @@
 #include <functional>
 #include <limits>
 #include <variant>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <glm/glm.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
 #endif
+
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/structs.hpp>
 #include <epix/extension/fallingsand/temperature.hpp>

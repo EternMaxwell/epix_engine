@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
@@ -9,6 +8,7 @@
 #include <memory>
 #include <stdexec/execution.hpp>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

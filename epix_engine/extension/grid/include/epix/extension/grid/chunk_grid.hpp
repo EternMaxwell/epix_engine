@@ -1,8 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <algorithm>
 #include <array>
 #include <concepts>
@@ -19,18 +19,12 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/meta.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/utils.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
 #endif
+
 
 #include <epix/extension/grid/basic_grid.hpp>
 #include <epix/extension/grid/bit_grid.hpp>

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -25,6 +24,7 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #include <zpp_bits.h>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::image {

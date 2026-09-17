@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -16,6 +15,7 @@
 #include <string_view>
 #include <utility>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/asset_changed.hpp>

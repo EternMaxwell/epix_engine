@@ -1,12 +1,10 @@
 ﻿#pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <box2d/box2d.h>
 #include <box2d/id.h>
 #include <box2d/types.h>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -18,6 +16,7 @@
 #include <optional>
 #include <unordered_set>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::experimental::pixelbody {

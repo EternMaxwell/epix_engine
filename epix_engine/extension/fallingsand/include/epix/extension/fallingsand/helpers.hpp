@@ -1,20 +1,14 @@
 #pragma once
 
+
+#ifndef EPIX_CXX_MODULE
 #include <epix/common.hpp>
-
-#ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <glm/glm.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/render.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/transform.hpp>
 #endif
+
 
 namespace epix::ext::fallingsand {
 

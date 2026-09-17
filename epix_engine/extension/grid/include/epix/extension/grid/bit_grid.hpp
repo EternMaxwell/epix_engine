@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -14,6 +13,7 @@
 #include <ranges>
 #include <utility>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/extension/grid/basic_grid.hpp>

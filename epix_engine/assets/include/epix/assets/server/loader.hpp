@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -26,6 +25,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/handle.hpp>

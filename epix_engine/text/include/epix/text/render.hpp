@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -14,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <span>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/text/font.hpp>

@@ -1,37 +1,21 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <array>
 #include <cstddef>
-#endif
-
-#ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/mesh.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/transform.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/render.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/time.hpp>
-#endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/core_graph.hpp>
 #endif
-#ifndef EPIX_CXX_MODULE
 #include <epix/extension/grid.hpp>
-#endif
+
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/helpers.hpp>
 #include <epix/extension/fallingsand/structs.hpp>

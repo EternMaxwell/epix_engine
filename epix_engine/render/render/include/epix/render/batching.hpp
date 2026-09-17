@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -17,6 +16,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 #include <epix/render/binned_phase.hpp>
 #include <epix/render/gpu_preprocessing_mode.hpp>

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
@@ -8,8 +7,6 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/image.hpp>
-#include <epix/render/assets.hpp>
-#include <epix/render/fallback_image.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -19,8 +16,11 @@
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/morph.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
-#include <epix/render/mesh/render_mesh.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render/assets.hpp>
+#include <epix/render/fallback_image.hpp>
+#include <epix/render/mesh/render_mesh.hpp>
 
 namespace epix::render::mesh {
 /** @brief Per-vertex byte stride of a mesh's packed vertex data (Bevy

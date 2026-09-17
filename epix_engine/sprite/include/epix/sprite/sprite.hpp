@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
@@ -14,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <variant>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/sprite/texture_slice.hpp>

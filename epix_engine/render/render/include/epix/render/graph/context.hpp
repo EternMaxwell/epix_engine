@@ -12,9 +12,9 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/task/usages.hpp>
 #endif
 
-#include <epix/task/usages.hpp>
 #include <epix/render/graph/decl.hpp>
 #include <epix/render/graph/node.hpp>
 #include <epix/render/graph/slot.hpp>

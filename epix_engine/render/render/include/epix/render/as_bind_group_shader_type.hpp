@@ -1,11 +1,11 @@
 #pragma once
 
-#include <epix/common.hpp>
 #include <epix/render/fallback_image.hpp>
 #include <epix/render/render_resource.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::render::render_resource {

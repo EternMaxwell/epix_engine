@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -8,6 +7,7 @@
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/mesh/mesh.hpp>

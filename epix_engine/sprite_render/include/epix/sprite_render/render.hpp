@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <bit>
@@ -26,9 +25,10 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
+#include <epix/sprite/sprite.hpp>
 #endif
 
-#include <epix/sprite/sprite.hpp>
 
 EPIX_EXPORT namespace epix::sprite_render {
     struct ExtractedSlice {

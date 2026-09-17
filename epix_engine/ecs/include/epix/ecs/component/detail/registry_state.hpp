@@ -4,9 +4,9 @@
 #include <cstddef>
 #include <epix/meta.hpp>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
-#include <epix/common.hpp>
 #include <epix/ecs/component/hooks.hpp>
 #include <epix/ecs/component/required_component.hpp>
 #include <epix/ecs/core/type_id.hpp>

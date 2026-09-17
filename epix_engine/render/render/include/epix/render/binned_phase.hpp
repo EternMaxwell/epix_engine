@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -13,6 +12,8 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
+#include <epix/utils/index_map.hpp>
 #endif
 
 #include <epix/render/gpu_preprocessing_mode.hpp>
@@ -22,7 +23,6 @@
 #include <epix/render/schedule.hpp>
 #include <epix/render/sync_world.hpp>
 #include <epix/render/view.hpp>
-#include <epix/utils/index_map.hpp>
 
 namespace epix::render::phase {
 

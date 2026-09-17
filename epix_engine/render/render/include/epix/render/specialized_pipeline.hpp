@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -13,6 +12,7 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/render/pipeline_server.hpp>

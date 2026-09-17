@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -10,9 +9,10 @@
 #include <unordered_map>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
+#include <epix/camera.hpp>
 #endif
 
-#include <epix/camera.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/render/sync_world.hpp>
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
@@ -10,6 +9,7 @@
 #include <span>
 #include <utility>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::mesh {

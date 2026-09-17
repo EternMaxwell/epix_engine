@@ -1,15 +1,15 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
-#include <epix/render/extract.hpp>
 #include <optional>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render/extract.hpp>
 
 namespace epix::render::experimental {
 

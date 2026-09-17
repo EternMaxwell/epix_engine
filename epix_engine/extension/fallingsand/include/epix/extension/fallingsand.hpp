@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/helpers.hpp>
 #include <epix/extension/fallingsand/ops.hpp>
@@ -11,6 +10,7 @@
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::ext::fallingsand {

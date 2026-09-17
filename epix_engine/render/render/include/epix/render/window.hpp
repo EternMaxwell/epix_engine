@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
@@ -12,6 +11,7 @@
 #include <unordered_set>
 #include <utility>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::render::camera {

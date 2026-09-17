@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
@@ -8,13 +7,14 @@
 #include <epix/async_channel.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
-#include <epix/render.hpp>
 #include <filesystem>
 #include <functional>
 #include <optional>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render.hpp>
 
 namespace epix::render::screenshot {
 

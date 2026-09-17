@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -8,8 +7,6 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
-#include <epix/core_graph/core2d.hpp>
-#include <epix/core_graph/fullscreen.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -23,7 +20,10 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/core_graph/core2d.hpp>
+#include <epix/core_graph/fullscreen.hpp>
 
 namespace epix::core_graph {
 

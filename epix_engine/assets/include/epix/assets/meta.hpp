@@ -1,11 +1,9 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
-
 #include <array>
 #include <cstdint>
 #include <cstring>
@@ -22,6 +20,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 #include <epix/assets/io/reader.hpp>
 #include <epix/assets/path.hpp>

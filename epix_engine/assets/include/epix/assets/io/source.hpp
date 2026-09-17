@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -15,6 +14,7 @@
 #include <string>
 #include <unordered_map>
 #include <utility>
+#include <epix/common.hpp>
 #endif
 #include <epix/assets/io/file/asset.hpp>
 #include <epix/assets/io/file/watcher.hpp>

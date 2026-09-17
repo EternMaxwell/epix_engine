@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -11,6 +10,7 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::render::sync_world {

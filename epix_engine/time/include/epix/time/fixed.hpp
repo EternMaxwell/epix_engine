@@ -1,11 +1,11 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/time/time_clock.hpp>

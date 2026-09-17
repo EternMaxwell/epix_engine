@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -16,6 +15,7 @@
 #include <string_view>
 #include <variant>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
 #include <epix/render/alpha.hpp>
 #include <epix/render/as_bind_group.hpp>

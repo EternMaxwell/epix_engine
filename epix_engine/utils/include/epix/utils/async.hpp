@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -17,6 +16,7 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::utils {

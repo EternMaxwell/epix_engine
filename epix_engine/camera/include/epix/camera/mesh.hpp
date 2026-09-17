@@ -1,10 +1,10 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/mesh.hpp>
 #include <optional>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/camera/visibility.hpp>

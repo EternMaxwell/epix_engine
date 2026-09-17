@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -19,9 +18,10 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
+#include <epix/image.hpp>
 #endif
 
-#include <epix/image.hpp>
 #include <epix/render/extract.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/render/storage.hpp>

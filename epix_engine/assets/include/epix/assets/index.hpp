@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
@@ -9,6 +8,7 @@
 #include <epix/async_channel.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
+#include <epix/common.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -25,9 +24,10 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
+#include <epix/camera.hpp>
 #endif
 
-#include <epix/camera.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/graph.hpp>
 #include <epix/render/manual_texture_view.hpp>

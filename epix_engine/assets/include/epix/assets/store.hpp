@@ -1,10 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
-
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
@@ -24,6 +22,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 #include <epix/assets/asset_changed.hpp>
 #include <epix/assets/concepts.hpp>

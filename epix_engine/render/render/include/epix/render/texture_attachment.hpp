@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
@@ -8,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>

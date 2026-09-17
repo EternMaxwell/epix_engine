@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
@@ -11,6 +10,7 @@
 #include <optional>
 #include <ranges>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>

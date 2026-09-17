@@ -1,12 +1,12 @@
 #pragma once
 
-#include <epix/common.hpp>
 #include <epix/input/button.hpp>
 #include <epix/input/enums.hpp>
 #include <epix/input/events.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #endif
 
 EPIX_EXPORT namespace epix::input {

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::assets {

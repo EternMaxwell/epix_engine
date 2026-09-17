@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -10,7 +9,6 @@
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
-#include <epix/render/bind_group_layout.hpp>
 #include <epix/shader.hpp>
 #include <optional>
 #include <ranges>
@@ -18,7 +16,9 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render/bind_group_layout.hpp>
 
 #define make_atomic_id(name)                                                                            \
     struct name {                                                                                       \

@@ -1,10 +1,8 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
-
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -15,8 +13,6 @@
 #include <epix/assets/render_asset_usages.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
-#include <epix/mesh/vertex_attribute_values.hpp>
-#include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/transform.hpp>
 #include <expected>
 #include <format>
@@ -36,7 +32,10 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/mesh/vertex_attribute_values.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 
 namespace epix::mesh {
 struct Mesh;

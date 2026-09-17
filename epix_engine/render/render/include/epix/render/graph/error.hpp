@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
@@ -8,6 +7,7 @@
 #include <optional>
 #include <string>
 #include <variant>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/render/graph/decl.hpp>

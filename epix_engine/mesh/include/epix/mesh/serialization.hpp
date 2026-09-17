@@ -1,13 +1,10 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
-
 #include <cstddef>
 #include <cstdint>
-#include <epix/mesh/mesh.hpp>
 #include <expected>
 #include <optional>
 #include <span>
@@ -18,7 +15,9 @@
 #include <utility>
 #include <variant>
 #include <vector>
+#include <epix/common.hpp>
 #endif
+#include <epix/mesh/mesh.hpp>
 
 namespace epix::mesh {
 

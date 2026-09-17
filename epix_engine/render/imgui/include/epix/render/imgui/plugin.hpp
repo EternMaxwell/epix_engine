@@ -1,16 +1,16 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
-#include <epix/render.hpp>
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
+#include <epix/render.hpp>
 
 #include <epix/render/imgui/state.hpp>
 

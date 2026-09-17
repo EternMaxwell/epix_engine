@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -16,6 +15,7 @@
 #include <epix/transform.hpp>
 #include <utility>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::core_graph::core_2d {

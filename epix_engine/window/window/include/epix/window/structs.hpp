@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -12,6 +11,7 @@
 #include <string>
 #include <utility>
 #include <variant>
+#include <epix/common.hpp>
 #endif
 EPIX_EXPORT namespace epix::window {
     /** @brief Controls how the window position is interpreted. */

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
@@ -20,6 +19,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <epix/common.hpp>
 #endif
 
 #include <epix/camera/projection.hpp>

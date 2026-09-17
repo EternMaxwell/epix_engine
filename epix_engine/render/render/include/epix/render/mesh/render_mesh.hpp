@@ -1,6 +1,5 @@
 #pragma once
 
-#include <epix/common.hpp>
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
@@ -10,6 +9,7 @@
 #include <utility>
 #include <variant>
 #include <webgpu/webgpu.hpp>
+#include <epix/common.hpp>
 #endif
 
 namespace epix::render::mesh {
