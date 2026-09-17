@@ -30,8 +30,8 @@ Repair work outstanding:
 - `image-bevy-0.18-mismatch-tracker.md`: the vocabulary damage is repaired (emoji, eaten leading
   letters, swallowed spaces). Re-read the file once end to end to confirm no remaining losses.
 - `mesh-core-graph-bevy-0.18-match-status.md`: still corrupted across roughly ninety lines - the
-  status emoji (`鉁?` for the tick, `馃毇` for the block sign, `鉂?` for the cross, `鈿狅笍` for the
-  warning sign), the punctuation (an em dash, `鈫抂` for an arrow plus a swallowed letter, `脳` for
+  status emoji (`✅` for the tick, `??` for the block sign, `❌` for the cross, `⚠️` for the
+  warning sign), the punctuation (an em dash, `→[` for an arrow plus a swallowed letter, `×` for
   the multiplication sign), and the letters swallowed inside those sequences. Repair each distinct
   corrupted sequence with `edit` (replace-all) against the intended character, restoring swallowed
   letters from context.
