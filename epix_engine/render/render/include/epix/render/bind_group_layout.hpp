@@ -5,8 +5,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
@@ -31,6 +33,27 @@ struct BindGroupLayoutDescriptor {
 
     static BindGroupLayoutDescriptor create(std::string label, std::vector<wgpu::BindGroupLayoutEntry> entries) {
         return BindGroupLayoutDescriptor{std::move(label), std::move(entries)};
+    }
+    static BindGroupLayoutDescriptor create(std::string label, std::span<const wgpu::BindGroupLayoutEntry> entries) {
+        return BindGroupLayoutDescriptor{std::move(label),
+                                         std::vector<wgpu::BindGroupLayoutEntry>(entries.begin(), entries.end())};
+    }
+
+    /** @brief Chainable label setter (Bevy `BindGroupLayoutDescriptor::new`'s
+     * label argument, in the style of the other render descriptors). */
+    auto&& set_label(this auto&& self, std::string label) {
+        self.label = std::move(label);
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Chainable entries setter, from an owned vector. */
+    auto&& set_entries(this auto&& self, std::vector<wgpu::BindGroupLayoutEntry> entries) {
+        self.entries = std::move(entries);
+        return std::forward<decltype(self)>(self);
+    }
+    /** @brief Chainable entries setter, from the entry builders' span. */
+    auto&& set_entries(this auto&& self, std::span<const wgpu::BindGroupLayoutEntry> entries) {
+        self.entries = std::vector<wgpu::BindGroupLayoutEntry>(entries.begin(), entries.end());
+        return std::forward<decltype(self)>(self);
     }
 
     friend bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescriptor& rhs) noexcept {

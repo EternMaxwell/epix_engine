@@ -80,14 +80,15 @@ std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Devi
 PipelineServer::PipelineServer(wgpu::Device device, bool synchronous_pipeline_compilation)
     : layout_cache(std::make_shared<utils::Mutex<LayoutCache>>()),
       shader_cache(std::make_shared<utils::Mutex<ShaderCache>>(device, load_module)),
+      bind_group_layout_cache(std::make_shared<utils::Mutex<BindGroupLayoutCache>>()),
       device(std::move(device)),
       pipeline_create_task_pool(std::make_unique<BS::thread_pool<BS::tp::none>>(std::thread::hardware_concurrency())),
       synchronous_pipeline_compilation(synchronous_pipeline_compilation) {}
 
-wgpu::BindGroupLayout PipelineServer::get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor) {
+wgpu::BindGroupLayout PipelineServer::get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor) const {
     // Bevy keeps the interning cache private to the pipeline cache and exposes
     // only this accessor (`pipeline_cache.rs:211-220` and its callers).
-    return bind_group_layout_cache.get(device, descriptor);
+    return bind_group_layout_cache->lock()->get(device, descriptor);
 }
 
 auto PipelineServer::get_pipeline_state(CachedPipelineId id) const noexcept

@@ -218,8 +218,9 @@ EPIX_EXPORT struct PipelineServer {
      * in-flight creation task (Bevy `PipelineCache::block_on_render_pipeline`). */
     void block_on_render_pipeline(CachedPipelineId id);
     /** @brief Get the interned bind group layout for a descriptor (Bevy
-     * `PipelineCache::get_bind_group_layout`). */
-    wgpu::BindGroupLayout get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor);
+     * `PipelineCache::get_bind_group_layout`). Const because the cache is behind
+     * the server's mutex, as Bevy's is reachable through `Res<PipelineCache>`. */
+    wgpu::BindGroupLayout get_bind_group_layout(const BindGroupLayoutDescriptor& descriptor) const;
 
    private:
     friend struct RenderPlugin;
@@ -240,7 +241,7 @@ EPIX_EXPORT struct PipelineServer {
 
     std::shared_ptr<utils::Mutex<LayoutCache>> layout_cache;
     std::shared_ptr<utils::Mutex<shader::ShaderCache>> shader_cache;
-    BindGroupLayoutCache bind_group_layout_cache;
+    std::shared_ptr<utils::Mutex<BindGroupLayoutCache>> bind_group_layout_cache;
     wgpu::Device device;
     std::vector<CachedPipeline> pipelines;
     std::unordered_set<CachedPipelineId> waiting_pipelines_;
