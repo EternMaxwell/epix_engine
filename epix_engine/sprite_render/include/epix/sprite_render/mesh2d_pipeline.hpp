@@ -229,6 +229,29 @@ EPIX_EXPORT void init_mesh_2d_pipeline(ecs::Commands commands,
                                        ecs::Res<wgpu::Device> device,
                                        ecs::Res<assets::AssetServer> asset_server);
 
+/** @brief Per-view bind group for the mesh2d view bindings (Bevy
+ *  `Mesh2dViewBindGroup`, `mesh.rs:675-678`). */
+EPIX_EXPORT struct Mesh2dViewBindGroup {
+    /** @brief Bind group exposing the view uniform, globals and LUT bindings. */
+    wgpu::BindGroup value;
+};
+
+/** @brief Prepare one `Mesh2dViewBindGroup` per `Camera2d` view from the mesh2d
+ *  view layout (Bevy `prepare_mesh2d_view_bind_groups`, `mesh.rs:680-717`). */
+EPIX_EXPORT void prepare_mesh2d_view_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>,
+               ecs::With<render::view::ExtractedView, epix::camera::Camera2d>>
+        views,
+    ecs::Res<render::GlobalsBuffer> globals_buffer,
+    ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
+    ecs::Res<render::RenderAssets<image::Image>> images,
+    ecs::Res<render::texture::FallbackImage> fallback_image);
+
 }  // namespace epix::sprite_render
 
 namespace epix::render::render_resource {

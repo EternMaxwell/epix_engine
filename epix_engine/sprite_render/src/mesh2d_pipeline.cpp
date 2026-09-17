@@ -259,6 +259,45 @@ void init_mesh_2d_pipeline(ecs::Commands commands,
     });
 }
 
+void prepare_mesh2d_view_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>,
+               ecs::With<render::view::ExtractedView, epix::camera::Camera2d>>
+        views,
+    ecs::Res<render::GlobalsBuffer> globals_buffer,
+    ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
+    ecs::Res<render::RenderAssets<image::Image>> images,
+    ecs::Res<render::texture::FallbackImage> fallback_image) {
+    // Bevy `prepare_mesh2d_view_bind_groups` (mesh.rs:680-717): one bind group
+    // per Camera2d view, from the mesh2d view layout's interned native layout.
+    const auto view_binding    = view_uniforms->uniforms.binding();
+    const auto globals_binding = globals_buffer->buffer.binding();
+    if (!view_binding || !globals_binding) return;
+
+    const auto layout = pipeline_server->get_bind_group_layout(mesh2d_pipeline->view_layout);
+    for (auto&& [entity, tonemapping] : views.iter()) {
+        const auto [lut_view, lut_sampler] =
+            core_graph::get_lut_bindings(*images, *tonemapping_luts, tonemapping, *fallback_image);
+        const auto entries = render::render_resource::BindGroupEntries<>::sequential(
+            render::render_resource::BindGroupEntries<>::buffer_binding(view_binding->get(), 0,
+                                                                        sizeof(render::view::ViewUniform)),
+            render::render_resource::BindGroupEntries<>::buffer_binding(globals_binding->get(), 0,
+                                                                        sizeof(render::GlobalsUniform)),
+            render::render_resource::BindGroupEntries<>::texture_binding(lut_view),
+            render::render_resource::BindGroupEntries<>::sampler_binding(lut_sampler));
+        commands.entity(entity).insert(Mesh2dViewBindGroup{
+            device->createBindGroup(wgpu::BindGroupDescriptor()
+                                        .setLabel("mesh2d_view_bind_group")
+                                        .setLayout(layout)
+                                        .setEntries(entries.entries())),
+        });
+    }
+}
+
 void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
     // Bevy's `Mesh2dRenderPlugin::build` publishes the embedded shader and adds
     // `init_mesh_2d_pipeline` to the render app's RenderStartup.
