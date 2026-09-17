@@ -54,6 +54,37 @@ unchanged until step 10.
 | 9 | `Mesh2dRenderPlugin` wiring, `ViewKeyCache`/`ViewSpecializationTicks`/`check_views_need_specialization`, `Mesh2dMarker` | `mesh.rs:57-116`, `117-158` | replaces `MeshRenderPlugin` |
 | 10 | **Atomic swap**: `MeshMaterial2d<M>` replaces the fixed aggregate; migrate 65 + 9 sites over 33 files (twins kept in step); add `ColorMaterialPlugin`/`Assets<ColorMaterial>` to each affected example; retire the eight-variant shaders and the file-local key | `material.rs:199-233` | engine + examples |
 
+## Landed steps
+
+### Step 1 — `Mesh2dPipelineKey` (`b739f4c4`)
+
+- **Files**: `sprite_render/include/epix/sprite_render/mesh2d_pipeline.hpp` (new),
+  `sprite_render/include/epix/sprite_render.hpp` (umbrella), 
+  `sprite_render/tests/header/mesh2d_pipeline_key_tests.cpp` (new).
+- **Tests**: the key test target passes 4/4 (bit positions of all eight
+  tonemapping methods, the three field shifts, MSAA/HDR round trips,
+  primitive-topology round trips plus the unknown-pattern fallback, and
+  contains/intersection/union); the full suite passes **81/81** in 46.15 s.
+- **Rendering**: the change is additive - nothing consumes the key yet - so the
+  verification is a non-regression check on the examples that render Mesh2d.
+  Captured with `PrintWindow(PW_CLIENTONLY)` and inspected with the image tool:
+  `mesh_rendering` (opaque square, two gradients, overlapping circle/square),
+  `mesh_batching` (the 3000 opaque + 300 transparent pressure scene),
+  `mesh_alpha_mask` (cyan/orange checker), `primitive_builders`
+  (circle/ellipse/hexagon/rectangle) and `linear_polygon_primitives`
+  (segment/convex polygon/polyline). Every example's scene crop below the
+  overlay is byte-identical across all three frames and every stdout/stderr log
+  is free of error, fatal, validation and panic matches.
+- **Note**: a crop at y=130 reported two distinct scene hashes for
+  `mesh_rendering`; the overlay's framerate graph extends below that line. Crops
+  from y=200 are stable for all five, so the earlier difference was overlay
+  leakage, not scene animation.
+- **Dedicated example**: none yet by design. The key has no visible behaviour of
+  its own; the dedicated material2d example and the per-example before/after
+  captures belong to step 10, where the mesh2d pipeline and the material asset
+  actually change what is drawn. Steps 2-9 will each carry their own
+  affected-example captures.
+
 ## Verification gates
 
 - Steps 1-9: focused tests (key bit layout and round trips, pipeline descriptor
