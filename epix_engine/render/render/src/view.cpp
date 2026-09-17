@@ -48,7 +48,7 @@ struct EpixView {
 )";
 
 constexpr std::string_view kViewShaderSlang = R"(
-module "epix/view";
+module epix.view;
 
 namespace epix::view {
 public struct ColorGrading {
