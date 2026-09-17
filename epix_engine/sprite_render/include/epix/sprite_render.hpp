@@ -2,4 +2,5 @@
 
 #include <epix/common.hpp>
 #include <epix/sprite_render/mesh2d.hpp>
+#include <epix/sprite_render/mesh2d_pipeline.hpp>
 #include <epix/sprite_render/render.hpp>
