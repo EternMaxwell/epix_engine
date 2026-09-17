@@ -493,8 +493,8 @@ EPIX_EXPORT struct ViewBindGroup {
 EPIX_EXPORT struct ViewUniformBindingLayout {
     wgpu::BindGroupLayout layout;
     ViewUniformBindingLayout(epix::ecs::World& world)
-        : layout(world.resource<wgpu::Device>().createBindGroupLayout(
-              wgpu::BindGroupLayoutDescriptor().setEntries(std::array{
+        : layout(world.resource<render::PipelineServer>().get_bind_group_layout(
+              render::BindGroupLayoutDescriptor().set_label("view_uniform_layout").set_entries(std::array{
                   wgpu::BindGroupLayoutEntry()
                       .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
                       .setBinding(0)

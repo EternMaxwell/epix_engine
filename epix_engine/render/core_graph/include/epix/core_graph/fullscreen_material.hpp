@@ -262,10 +262,10 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
                 std::pair{0u, texture_2d(wgpu::TextureSampleType::eFloat)},
                 std::pair{1u, sampler(wgpu::SamplerBindingType::eFiltering)},
                 std::pair{2u, uniform_buffer(true, render::render_resource::ShaderTypeInfo<T>::shader_size)});
-            const auto layout = device->createBindGroupLayout(
-                wgpu::BindGroupLayoutDescriptor()
-                    .setLabel("fullscreen_material_bind_group_layout")
-                    .setEntries(entries.entries()));
+            const auto layout = pipeline_server->get_bind_group_layout(
+                render::BindGroupLayoutDescriptor()
+                    .set_label("fullscreen_material_bind_group_layout")
+                    .set_entries(entries.entries()));
             const auto sampler = device->createSampler(
                 wgpu::SamplerDescriptor().setLabel("fullscreen_material_sampler").setMaxAnisotropy(1));
             const auto vertex_state = fullscreen_shader->to_vertex_state();

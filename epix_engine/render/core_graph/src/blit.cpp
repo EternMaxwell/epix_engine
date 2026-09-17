@@ -90,7 +90,8 @@ void BlitPlugin::attach(App& app) {
         render_app->get().world_mut().init_resource<render::SpecializedRenderPipelines<BlitPipeline>>();
         render_app->get().add_systems(
             render::RenderStartup,
-            into([fragment_shader](Commands commands, Res<wgpu::Device> device, Res<FullscreenShader> fullscreen_shader) {
+            into([fragment_shader](Commands commands, Res<wgpu::Device> device,
+                                   Res<render::PipelineServer> pipeline_server, Res<FullscreenShader> fullscreen_shader) {
                 using render::render_resource::BindGroupLayoutEntries;
                 using render::render_resource::binding_types::sampler;
                 using render::render_resource::binding_types::texture_2d;
@@ -98,9 +99,10 @@ void BlitPlugin::attach(App& app) {
                     wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
                     sampler(wgpu::SamplerBindingType::eNonFiltering));
                 commands.insert_resource(BlitPipeline{
-                    .layout = device->createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                                 .setLabel("blit_bind_group_layout")
-                                                                 .setEntries(entries.entries())),
+                    .layout = pipeline_server->get_bind_group_layout(
+                        render::BindGroupLayoutDescriptor()
+                            .set_label("blit_bind_group_layout")
+                            .set_entries(entries.entries())),
                     // wgpu-native's C++ descriptor does not initialize this
                     // required field like Rust wgpu's Default does.
                     .sampler = device->createSampler(

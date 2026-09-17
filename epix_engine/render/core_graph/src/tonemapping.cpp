@@ -700,7 +700,7 @@ void TonemappingPlugin::attach(App& app) {
         render_app->get().add_systems(
             render::RenderStartup,
             into([](Commands commands, Res<wgpu::Device> device, Res<assets::AssetServer> asset_server,
-                    Res<FullscreenShader> fullscreen_shader) {
+                    Res<render::PipelineServer> pipeline_server, Res<FullscreenShader> fullscreen_shader) {
                 using render::render_resource::BindGroupLayoutEntries;
                 using render::render_resource::binding_types::sampler;
                 using render::render_resource::binding_types::texture_2d;
@@ -714,9 +714,10 @@ void TonemappingPlugin::attach(App& app) {
                     std::pair{3u, lut_entries[0]}, std::pair{4u, lut_entries[1]});
 
                 commands.insert_resource(TonemappingPipeline{
-                    .layout           = device->createBindGroupLayout(wgpu::BindGroupLayoutDescriptor()
-                                                                          .setLabel("tonemapping_bind_group_layout")
-                                                                          .setEntries(entries.entries())),
+                    .layout           = pipeline_server->get_bind_group_layout(
+                        render::BindGroupLayoutDescriptor()
+                            .set_label("tonemapping_bind_group_layout")
+                            .set_entries(entries.entries())),
                     .sampler          = device->createSampler(
                         wgpu::SamplerDescriptor().setLabel("tonemapping_sampler").setMaxAnisotropy(1)),
                     .fullscreen_shader = *fullscreen_shader,

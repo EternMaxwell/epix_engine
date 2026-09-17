@@ -285,10 +285,10 @@ static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
         return *it;
     ScreenshotBlitPipeline pipeline;
     pipeline.format = format;
-    pipeline.layout = device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor()
-            .setLabel("ScreenshotBlitLayout")
-            .setEntries(std::array{
+    pipeline.layout = pipeline_server.get_bind_group_layout(
+        render::BindGroupLayoutDescriptor()
+            .set_label("ScreenshotBlitLayout")
+            .set_entries(std::array{
                 wgpu::BindGroupLayoutEntry()
                     .setBinding(0)
                     .setVisibility(wgpu::ShaderStage::eFragment)
