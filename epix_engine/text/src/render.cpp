@@ -262,6 +262,32 @@ struct TransparentTextDrawFunction {
     render::phase::DrawFunctionId value;
 };
 
+/** @brief Per-view bind group for the text view bindings (the same shape as
+ *  Bevy's per-pipeline view bind groups, e.g. `Mesh2dViewBindGroup`). */
+struct TextViewBindGroup {
+    wgpu::BindGroup value;
+};
+
+/** @brief Render command binding the text view bind group at `Slot`. */
+template <size_t Slot>
+struct SetTextViewBindGroup {
+    template <render::phase::PhaseItem PhaseItem>
+    struct Command {
+        void prepare(const World&) {}
+
+        std::expected<void, render::phase::RenderCommandError> render(
+            const PhaseItem&,
+            ecs::Item<const TextViewBindGroup&> view_bind_group,
+            std::optional<ecs::Item<>> entity_item,
+            std::tuple<>,
+            const wgpu::RenderPassEncoder& encoder) {
+            (void)entity_item;
+            encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).value, std::span<const std::uint32_t>{});
+            return {};
+        }
+    };
+};
+
 template <size_t Slot>
 struct BindTextInstances {
     template <render::phase::PhaseItem PhaseItem>
@@ -270,7 +296,7 @@ struct BindTextInstances {
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            ecs::Item<const render::view::ViewBindGroup&>,
+            ecs::Item<const TextViewBindGroup&>,
             std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>>,
             ecs::Res<TextInstanceBuffer> instances,
             const wgpu::RenderPassEncoder& encoder) {
@@ -296,7 +322,7 @@ struct BindTextTexture {
 
         std::expected<void, render::phase::RenderCommandError> render(
             const PhaseItem& item,
-            ecs::Item<const render::view::ViewBindGroup&>,
+            ecs::Item<const TextViewBindGroup&>,
             std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
             std::tuple<>,
             const wgpu::RenderPassEncoder& encoder) {
@@ -331,7 +357,7 @@ struct DrawTextBatch {
 
     std::expected<void, render::phase::RenderCommandError> render(
         const PhaseItem& item,
-        ecs::Item<const render::view::ViewBindGroup&>,
+        ecs::Item<const TextViewBindGroup&>,
         std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
         std::tuple<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
@@ -535,6 +561,30 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
     }
 }
 
+void prepare_text_view_bind_groups(ecs::Commands commands,
+                                   ecs::Res<render::PipelineServer> pipeline_server,
+                                   ecs::Res<wgpu::Device> device,
+                                   ecs::Res<Text2dPipelineCache> pipeline_cache,
+                                   ecs::Res<render::view::ViewUniforms> view_uniforms,
+                                   ecs::Query<ecs::Item<ecs::Entity>, ecs::With<render::view::ExtractedView>> views) {
+    // One bind group per view, built from the text pipeline's own view layout.
+    const auto binding = view_uniforms->uniforms.binding();
+    if (!binding) return;
+
+    const auto layout = pipeline_server->get_bind_group_layout(pipeline_cache->view_layout);
+    for (auto&& [entity] : views.iter()) {
+        const auto entries = render::render_resource::BindGroupEntries<>::sequential(
+            render::render_resource::BindGroupEntries<>::buffer_binding(binding->get(), 0,
+                                                                        sizeof(render::view::ViewUniform)));
+        commands.entity(entity).insert(TextViewBindGroup{
+            device->createBindGroup(wgpu::BindGroupDescriptor()
+                                        .setLabel("text_view_bind_group")
+                                        .setLayout(layout)
+                                        .setEntries(entries.entries())),
+        });
+    }
+}
+
 void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
                           Query<Item<TextBatch&, const ExtractedText2d&>> texts,
                           Res<render::RenderAssets<image::Image>> images,
@@ -672,7 +722,7 @@ void TextRenderPlugin::ready(App& app) {
     world.insert_resource(TransparentTextDrawFunction{
         .value =
             render::phase::app_add_render_commands<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-                                                   render::view::BindViewUniform<0>::Command,
+                                                   SetTextViewBindGroup<0>::Command,
                                                    BindTextInstances<1>::Command, BindTextTexture<2>::Command,
                                                    DrawTextBatch>(render_subapp)});
 
@@ -683,5 +733,8 @@ void TextRenderPlugin::ready(App& app) {
         .add_systems(render::Render, into(queue_texts_2d).in_set(render::RenderSystems::Queue).set_name("queue texts"))
         .add_systems(render::Render, into(prepare_text_batches)
                                          .in_set(render::RenderSystems::PrepareResources)
-                                         .set_name("prepare text batches"));
+                                         .set_name("prepare text batches"))
+        .add_systems(render::Render, into(prepare_text_view_bind_groups)
+                                         .in_set(render::RenderSystems::PrepareBindGroups)
+                                         .set_name("prepare text view bind groups"));
 }

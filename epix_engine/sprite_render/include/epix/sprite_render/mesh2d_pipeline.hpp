@@ -1,13 +1,13 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/assets.hpp>
+#include <epix/common.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/render.hpp>
 #include <array>
 #include <bit>
 #include <cstdint>
-#include <epix/assets.hpp>
-#include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <webgpu/webgpu.hpp>

@@ -1,16 +1,17 @@
 #pragma once
 
-#include <epix/common.hpp>
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/app.hpp>
+#include <epix/assets.hpp>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
+#include <epix/image.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/render.hpp>
+#include <epix/render/mesh/render_asset.hpp>
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <epix/app.hpp>
-#include <epix/assets.hpp>
-#include <epix/ecs.hpp>
-#include <epix/image.hpp>
-#include <epix/render.hpp>
 #include <expected>
 #include <format>
 #include <glm/glm.hpp>
@@ -19,8 +20,6 @@
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #endif
-#include <epix/mesh/mesh.hpp>
-#include <epix/render/mesh/render_asset.hpp>
 
 namespace epix::sprite_render {
 using mesh::Mesh;
