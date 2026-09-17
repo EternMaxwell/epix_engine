@@ -146,49 +146,44 @@ struct TextInstanceBuffer {
 };
 
 struct Text2dPipelineCache {
-    // Descriptors for the pipeline, and the interned layouts the bind groups use.
-    render::BindGroupLayoutDescriptor view_layout_descriptor;
-    render::BindGroupLayoutDescriptor instance_layout_descriptor;
-    render::BindGroupLayoutDescriptor texture_layout_descriptor;
-    wgpu::BindGroupLayout view_layout;
-    wgpu::BindGroupLayout instance_layout;
-    wgpu::BindGroupLayout texture_layout;
+    // Descriptors, as Bevy's are; the pipeline cache interns them and the bind
+    // groups fetch the interned layout at their call sites.
+    render::BindGroupLayoutDescriptor view_layout;
+    render::BindGroupLayoutDescriptor instance_layout;
+    render::BindGroupLayoutDescriptor texture_layout;
     assets::Handle<shader::Shader> vertex_shader;
     assets::Handle<shader::Shader> fragment_shader;
     std::unordered_map<std::uint64_t, render::CachedPipelineId> pipelines;
 
     explicit Text2dPipelineCache(World& world, const TextShaderHandles& shader_handles)
-        : view_layout_descriptor(render::view::view_uniform_layout_descriptor()),
-          instance_layout_descriptor(render::BindGroupLayoutDescriptor()
-                                         .set_label("TextInstanceLayout")
-                                         .set_entries(std::array{
-                                             wgpu::BindGroupLayoutEntry()
-                                                 .setBinding(0)
-                                                 .setVisibility(wgpu::ShaderStage::eVertex)
-                                                 .setBuffer(wgpu::BufferBindingLayout()
-                                                                .setType(wgpu::BufferBindingType::eReadOnlyStorage)
-                                                                .setHasDynamicOffset(false)
-                                                                .setMinBindingSize(sizeof(TextInstanceData))),
-                                         })),
-          texture_layout_descriptor(render::BindGroupLayoutDescriptor()
-                                        .set_label("TextTextureLayout")
-                                        .set_entries(std::array{
-                                            wgpu::BindGroupLayoutEntry()
-                                                .setBinding(0)
-                                                .setVisibility(wgpu::ShaderStage::eFragment)
-                                                .setSampler(wgpu::SamplerBindingLayout().setType(
-                                                    wgpu::SamplerBindingType::eFiltering)),
-                                            wgpu::BindGroupLayoutEntry()
-                                                .setBinding(1)
-                                                .setVisibility(wgpu::ShaderStage::eFragment)
-                                                .setTexture(wgpu::TextureBindingLayout()
-                                                                .setSampleType(wgpu::TextureSampleType::eFloat)
-                                                                .setViewDimension(wgpu::TextureViewDimension::e2DArray)
-                                                                .setMultisampled(false)),
-                                        })),
-          view_layout(world.resource<render::PipelineServer>().get_bind_group_layout(view_layout_descriptor)),
-          instance_layout(world.resource<render::PipelineServer>().get_bind_group_layout(instance_layout_descriptor)),
-          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(texture_layout_descriptor)),
+        : view_layout(render::view::view_uniform_layout_descriptor()),
+          instance_layout(render::BindGroupLayoutDescriptor()
+                              .set_label("TextInstanceLayout")
+                              .set_entries(std::array{
+                                  wgpu::BindGroupLayoutEntry()
+                                      .setBinding(0)
+                                      .setVisibility(wgpu::ShaderStage::eVertex)
+                                      .setBuffer(wgpu::BufferBindingLayout()
+                                                     .setType(wgpu::BufferBindingType::eReadOnlyStorage)
+                                                     .setHasDynamicOffset(false)
+                                                     .setMinBindingSize(sizeof(TextInstanceData))),
+                              })),
+          texture_layout(render::BindGroupLayoutDescriptor()
+                             .set_label("TextTextureLayout")
+                             .set_entries(std::array{
+                                 wgpu::BindGroupLayoutEntry()
+                                     .setBinding(0)
+                                     .setVisibility(wgpu::ShaderStage::eFragment)
+                                     .setSampler(wgpu::SamplerBindingLayout().setType(
+                                         wgpu::SamplerBindingType::eFiltering)),
+                                 wgpu::BindGroupLayoutEntry()
+                                     .setBinding(1)
+                                     .setVisibility(wgpu::ShaderStage::eFragment)
+                                     .setTexture(wgpu::TextureBindingLayout()
+                                                     .setSampleType(wgpu::TextureSampleType::eFloat)
+                                                     .setViewDimension(wgpu::TextureViewDimension::e2DArray)
+                                                     .setMultisampled(false)),
+                             })),
           vertex_shader(shader_handles.vertex_shader),
           fragment_shader(shader_handles.fragment_shader) {}
 
@@ -241,7 +236,7 @@ struct Text2dPipelineCache {
 
         render::RenderPipelineDescriptor pipeline_desc{
             .label         = std::format("text-{}", wgpu::to_string(color_format)),
-            .layouts       = std::vector<render::BindGroupLayoutDescriptor>{view_layout_descriptor, instance_layout_descriptor, texture_layout_descriptor},
+            .layouts       = std::vector<render::BindGroupLayoutDescriptor>{view_layout, instance_layout, texture_layout},
             .vertex        = std::move(vertex_state),
             .primitive     = wgpu::PrimitiveState()
                                  .setTopology(wgpu::PrimitiveTopology::eTriangleList)
@@ -401,6 +396,7 @@ struct DrawTextBatch {
 
 void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,
                                  const Text2dPipelineCache& pipeline_cache,
+                                 const render::PipelineServer& pipeline_server,
                                  const wgpu::Device& device,
                                  std::size_t required_bytes) {
     if (required_bytes == 0) {
@@ -417,7 +413,8 @@ void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,
                                     .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
         instance_buffer.bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
                                                                 .setLabel("TextInstanceBindGroup")
-                                                                .setLayout(pipeline_cache.instance_layout)
+                                                                .setLayout(pipeline_server.get_bind_group_layout(
+                                                                    pipeline_cache.instance_layout))
                                                                 .setEntries(std::array{
                                                                     wgpu::BindGroupEntry()
                                                                         .setBinding(0)
@@ -544,6 +541,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
                           Res<wgpu::Device> device,
                           Res<wgpu::Queue> queue,
                           Res<Text2dPipelineCache> pipeline_cache,
+                          Res<render::PipelineServer> pipeline_server,
                           ResMut<TextInstanceBuffer> instance_buffer) {
     instance_buffer->instances.clear();
     std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
@@ -570,7 +568,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
                 batch.texture_bind_group = device->createBindGroup(
                     wgpu::BindGroupDescriptor()
                         .setLabel("TextTextureBindGroup")
-                        .setLayout(pipeline_cache->texture_layout)
+                        .setLayout(pipeline_server->get_bind_group_layout(pipeline_cache->texture_layout))
                         .setEntries(std::array{
                             wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
                             wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
@@ -584,7 +582,7 @@ void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_grap
     }
 
     auto required_bytes = instance_buffer->instances.size() * sizeof(TextInstanceData);
-    ensure_text_instance_buffer(*instance_buffer, *pipeline_cache, *device, required_bytes);
+    ensure_text_instance_buffer(*instance_buffer, *pipeline_cache, *pipeline_server, *device, required_bytes);
     if (required_bytes != 0) {
         queue->writeBuffer(instance_buffer->buffer, 0, instance_buffer->instances.data(), required_bytes);
     }

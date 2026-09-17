@@ -356,13 +356,11 @@ constexpr const char* alpha_mode_name(Mesh2dPipelineKey::AlphaMode alpha_mode) {
 }
 
 struct Mesh2dPipelineCache {
-    // Descriptors for the pipeline, and the interned layouts the bind groups use.
-    render::BindGroupLayoutDescriptor view_layout_descriptor;
-    render::BindGroupLayoutDescriptor mesh_layout_descriptor;
-    render::BindGroupLayoutDescriptor texture_layout_descriptor;
-    wgpu::BindGroupLayout view_layout;
-    wgpu::BindGroupLayout mesh_layout;
-    wgpu::BindGroupLayout texture_layout;
+    // Descriptors, as Bevy's are; the pipeline cache interns them and the bind
+    // groups fetch the interned layout at their call sites.
+    render::BindGroupLayoutDescriptor view_layout;
+    render::BindGroupLayoutDescriptor mesh_layout;
+    render::BindGroupLayoutDescriptor texture_layout;
     assets::Handle<shader::Shader> solid_vertex_shader;
     assets::Handle<shader::Shader> vertex_color_shader;
     assets::Handle<shader::Shader> textured_vertex_shader;
@@ -374,8 +372,8 @@ struct Mesh2dPipelineCache {
     std::unordered_map<Mesh2dPipelineKey, render::CachedPipelineId, Mesh2dPipelineKeyHash> pipelines;
 
     explicit Mesh2dPipelineCache(World& world, const MeshShaderHandles& shader_handles)
-        : view_layout_descriptor(render::view::view_uniform_layout_descriptor()),
-          mesh_layout_descriptor(render::BindGroupLayoutDescriptor()
+        : view_layout(render::view::view_uniform_layout_descriptor()),
+          mesh_layout(render::BindGroupLayoutDescriptor()
                                      .set_label("Mesh2dInstanceLayout")
                                      .set_entries(std::array{
                                          wgpu::BindGroupLayoutEntry()
@@ -386,7 +384,7 @@ struct Mesh2dPipelineCache {
                                                             .setHasDynamicOffset(false)
                                                             .setMinBindingSize(sizeof(MeshInstanceData))),
                                      })),
-          texture_layout_descriptor(render::BindGroupLayoutDescriptor()
+          texture_layout(render::BindGroupLayoutDescriptor()
                                         .set_label("Mesh2dTextureLayout")
                                         .set_entries(std::array{
                                             wgpu::BindGroupLayoutEntry()
@@ -402,9 +400,6 @@ struct Mesh2dPipelineCache {
                                                                 .setViewDimension(wgpu::TextureViewDimension::e2D)
                                                                 .setMultisampled(false)),
                                         })),
-          view_layout(world.resource<render::PipelineServer>().get_bind_group_layout(view_layout_descriptor)),
-          mesh_layout(world.resource<render::PipelineServer>().get_bind_group_layout(mesh_layout_descriptor)),
-          texture_layout(world.resource<render::PipelineServer>().get_bind_group_layout(texture_layout_descriptor)),
           solid_vertex_shader(shader_handles.solid_vertex_shader),
           vertex_color_shader(shader_handles.vertex_color_shader),
           textured_vertex_shader(shader_handles.textured_vertex_shader),
@@ -525,9 +520,9 @@ struct Mesh2dPipelineCache {
         }
         fragment_state.add_target(color_target);
 
-        auto layouts = std::vector<render::BindGroupLayoutDescriptor>{view_layout_descriptor, mesh_layout_descriptor};
+        auto layouts = std::vector<render::BindGroupLayoutDescriptor>{view_layout, mesh_layout};
         if (textured) {
-            layouts.push_back(texture_layout_descriptor);
+            layouts.push_back(texture_layout);
         }
 
         render::RenderPipelineDescriptor pipeline_desc{
@@ -611,6 +606,7 @@ void extract_meshes_2d(ResMut<RenderMesh2dInstances> render_mesh_instances,
 
 void ensure_mesh_instance_buffer(MeshInstanceBuffer& instance_buffer,
                                  const Mesh2dPipelineCache& pipeline_cache,
+                                 const render::PipelineServer& pipeline_server,
                                  const wgpu::Device& device,
                                  std::size_t required_bytes) {
     if (required_bytes == 0) {
@@ -627,7 +623,8 @@ void ensure_mesh_instance_buffer(MeshInstanceBuffer& instance_buffer,
                                     .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
         instance_buffer.bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
                                                                 .setLabel("Mesh2dInstanceBindGroup")
-                                                                .setLayout(pipeline_cache.mesh_layout)
+                                                                .setLayout(pipeline_server.get_bind_group_layout(
+                                                                    pipeline_cache.mesh_layout))
                                                                 .setEntries(std::array{
                                                                     wgpu::BindGroupEntry()
                                                                         .setBinding(0)
@@ -660,6 +657,7 @@ void prepare_mesh_instances(
     Res<wgpu::Device> device,
     Res<wgpu::Queue> queue,
     Res<Mesh2dPipelineCache> pipeline_cache,
+    Res<render::PipelineServer> pipeline_server,
     ResMut<MeshInstanceBuffer> instance_buffer) {
     instance_buffer->instances.clear();
     std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
@@ -676,7 +674,7 @@ void prepare_mesh_instances(
             auto texture_bind_group = device->createBindGroup(
                 wgpu::BindGroupDescriptor()
                     .setLabel("Mesh2dTextureBindGroup")
-                    .setLayout(pipeline_cache->texture_layout)
+                    .setLayout(pipeline_server->get_bind_group_layout(pipeline_cache->texture_layout))
                     .setEntries(std::array{
                         wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
                         wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
@@ -761,7 +759,7 @@ void prepare_mesh_instances(
     }
 
     auto required_bytes = instance_buffer->instances.size() * sizeof(MeshInstanceData);
-    ensure_mesh_instance_buffer(*instance_buffer, *pipeline_cache, *device, required_bytes);
+    ensure_mesh_instance_buffer(*instance_buffer, *pipeline_cache, *pipeline_server, *device, required_bytes);
     if (required_bytes != 0) {
         queue->writeBuffer(instance_buffer->buffer, 0, instance_buffer->instances.data(), required_bytes);
     }
