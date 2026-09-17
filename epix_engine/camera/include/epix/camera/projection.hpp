@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <epix/app.hpp>
 #include <epix/ecs.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <memory>
@@ -17,10 +18,6 @@
 #include <variant>
 #include <epix/common.hpp>
 #endif
-
-namespace epix::transform {
-struct GlobalTransform;
-}
 
 namespace epix::camera {
 
