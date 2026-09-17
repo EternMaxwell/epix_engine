@@ -253,7 +253,7 @@ struct BinnedGeometryNode {
         if (prepared) return;
 
         render::phase::DrawFunctions<Item> draw_functions;
-        const auto draw_id = draw_functions.add<binned_phase_geometry::TriangleDraw>(pipeline);
+        const auto draw_id = draw_functions.write()->add<binned_phase_geometry::TriangleDraw>(pipeline);
         if (draw_id != render::phase::DrawFunctionId{0}) throw std::runtime_error("unexpected first draw-function id");
         world.insert_resource(std::move(draw_functions));
 

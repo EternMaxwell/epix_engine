@@ -2823,22 +2823,22 @@ TEST(ViewTarget, PostProcessWriteFlipsAB) {
 // when the type is not registered (Bevy panics).
 TEST(DrawFunctions, AddAppendsAndRemaps) {
     phase::DrawFunctions<TestBinnedItem> functions;
-    const phase::DrawFunctionId first = functions.template add<phase::EmptyDrawFunction<TestBinnedItem>>();
+    const phase::DrawFunctionId first = functions.write()->template add<phase::EmptyDrawFunction<TestBinnedItem>>();
     EXPECT_EQ(first.get(), 0u);
-    EXPECT_EQ(functions.template id<phase::EmptyDrawFunction<TestBinnedItem>>().get(), 0u);
+    EXPECT_EQ(functions.read()->template id<phase::EmptyDrawFunction<TestBinnedItem>>().get(), 0u);
     // Re-registering the same type appends a NEW function (Bevy semantics).
-    const phase::DrawFunctionId second = functions.template add<phase::EmptyDrawFunction<TestBinnedItem>>();
+    const phase::DrawFunctionId second = functions.write()->template add<phase::EmptyDrawFunction<TestBinnedItem>>();
     EXPECT_EQ(second.get(), 1u);
-    EXPECT_EQ(functions.template id<phase::EmptyDrawFunction<TestBinnedItem>>().get(), 1u);
+    EXPECT_EQ(functions.read()->template id<phase::EmptyDrawFunction<TestBinnedItem>>().get(), 1u);
     // add_with maps the draw function under an arbitrary mapped type.
     struct MappedDrawType {};
     const phase::DrawFunctionId mapped =
-        functions.template add_with<MappedDrawType, phase::EmptyDrawFunction<TestBinnedItem>>();
+        functions.write()->template add_with<MappedDrawType, phase::EmptyDrawFunction<TestBinnedItem>>();
     EXPECT_EQ(mapped.get(), 2u);
-    EXPECT_EQ(functions.template id<MappedDrawType>().get(), 2u);
+    EXPECT_EQ(functions.read()->template id<MappedDrawType>().get(), 2u);
     // id() of an unregistered type throws (Bevy panics).
     struct UnregisteredDrawType {};
-    EXPECT_THROW(functions.template id<UnregisteredDrawType>(), std::runtime_error);
+    EXPECT_THROW(functions.read()->template id<UnregisteredDrawType>(), std::runtime_error);
 }
 
 // SortedRenderPhase::clear empties the item list (Bevy SortedRenderPhase::clear).
@@ -2915,7 +2915,7 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
 
     epix::ecs::World world(WorldId(0));
     phase::DrawFunctions<RenderableBinnedItem> functions;
-    functions.template add<CountingBinnedDraw>();
+    functions.write()->template add<CountingBinnedDraw>();
     world.insert_resource(std::move(functions));
 
     phase::BinnedRenderPhase<RenderableBinnedItem> phase;
@@ -2955,7 +2955,7 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
 TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
     epix::ecs::World world(WorldId(106));
     phase::DrawFunctions<RenderableBinnedItem> functions;
-    functions.template add<CountingBinnedDraw>();
+    functions.write()->template add<CountingBinnedDraw>();
     world.insert_resource(std::move(functions));
     const auto tick = world.change_tick();
     wgpu::RenderPassEncoder null_pass{};
@@ -2997,7 +2997,7 @@ TEST(BinnedRenderPhase, RenderUsesPreparedDirectAndMultidrawBatchSets) {
 TEST(BinnedRenderPhase, EmptyPreparedSetDoesNotFallbackToRawBins) {
     epix::ecs::World world(WorldId(108));
     phase::DrawFunctions<RenderableBinnedItem> functions;
-    functions.template add<CountingBinnedDraw>();
+    functions.write()->template add<CountingBinnedDraw>();
     world.insert_resource(std::move(functions));
     const auto tick = world.change_tick();
     phase::BinnedRenderPhase<RenderableBinnedItem> phase;
@@ -3031,7 +3031,7 @@ TEST(SortedRenderPhase, RenderSkipsBatchedItems) {
     CountingSortedDraw::calls = 0;
     epix::ecs::World world(WorldId(0));
     phase::DrawFunctions<CpuBatchTestItem> functions;
-    const phase::DrawFunctionId draw_id = functions.template add<CountingSortedDraw>();
+    const phase::DrawFunctionId draw_id = functions.write()->template add<CountingSortedDraw>();
     world.insert_resource(std::move(functions));
 
     phase::SortedRenderPhase<CpuBatchTestItem> phase;

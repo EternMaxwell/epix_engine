@@ -295,7 +295,7 @@ struct EmptyDrawFunction : DrawFunction<P> {
     }
 };
 
-template <PhaseItem P>
+EPIX_EXPORT template <PhaseItem P>
 struct DrawFunctionsInternal {
    private:
     std::vector<std::unique_ptr<DrawFunction<P>>> m_functions;
@@ -368,58 +368,24 @@ struct DrawFunctionsInternal {
  * @brief An thread-safe DrawFunction registry for a specific phase item type. It allows adding and retrieving
  * DrawFunctions by type or by id.
  *
+ * The registry is held behind a `utils::RwLock`, as Bevy's `DrawFunctions` holds
+ * `RwLock<DrawFunctionsInternal>`: callers take `read()` for a lookup and a single `write()` guard for a
+ * whole phase render pass, so `prepare` and every item's draw happen under one lock (draw.rs, mod.rs:
+ * SortedRenderPhase::render_range).
+ *
  * TODO: change the backend to cpp26 <rcu> after switching to cpp26, for better read performance.
  */
 EPIX_EXPORT template <PhaseItem P>
 struct DrawFunctions {
-    void prepare(const epix::ecs::World& world) const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        std::unique_lock lock(m_mutex);
-        m_functions.prepare(world);
-    }
-    template <Draw<P> T, typename... Args>
-        requires std::constructible_from<T, Args...>
-    DrawFunctionId add(Args&&... args) const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        // Bevy always appends and re-maps the type to the NEW id (draw.rs:74-84).
-        std::unique_lock lock(m_mutex);
-        return m_functions.template add<T>(std::forward<Args>(args)...);
-    }
-    /** @brief Append a draw function mapped to the type `T` (Bevy
-     * DrawFunctions::add_with). */
-    template <typename T, Draw<P> D, typename... Args>
-        requires std::constructible_from<D, Args...>
-    DrawFunctionId add_with(Args&&... args) const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        std::unique_lock lock(m_mutex);
-        return m_functions.template add_with<T, D>(std::forward<Args>(args)...);
-    }
-    /** @brief The id of the draw function registered under type T; throws if
-     * not registered (Bevy DrawFunctions::id panics). */
-    template <typename T>
-    DrawFunctionId id() const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        std::shared_lock lock(m_mutex);
-        return m_functions.template id<T>();
-    }
-    std::optional<DrawFunctionId> get_id(const meta::type_index& type) const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        std::shared_lock lock(m_mutex);
-        return m_functions.get_id(type);
-    }
-    template <Draw<P> T>
-    std::optional<DrawFunctionId> get_id() const {
-        return get_id(meta::type_id<T>());
-    }
-    std::optional<std::reference_wrapper<DrawFunction<P>>> get(DrawFunctionId id) const {
-        auto&& [m_mutex, m_functions] = *m_data;
-        std::shared_lock lock(m_mutex);
-        return m_functions.get(id);
-    }
+    using Internal = DrawFunctionsInternal<P>;
+
+    /** @brief A read guard over the registry (Bevy `DrawFunctions::read`). */
+    auto read() const { return m_data.read(); }
+    /** @brief A write guard over the registry (Bevy `DrawFunctions::write`). */
+    auto write() const { return m_data.write(); }
 
    private:
-    std::shared_ptr<std::pair<std::shared_mutex, DrawFunctionsInternal<P>>> m_data =
-        std::make_shared<std::pair<std::shared_mutex, DrawFunctionsInternal<P>>>();
+    utils::RwLock<Internal> m_data{};
 };
 
 /** @brief Sorted phase items and their draw functions for one retained view
@@ -471,7 +437,10 @@ struct SortedRenderPhase {
         if (start >= end) return;
 
         auto&& draw_functions = world.resource<DrawFunctions<T>>();
-        draw_functions.prepare(world);
+        // Bevy holds one write guard for the whole range: prepare and every
+        // item's draw happen under it (render_phase/mod.rs:1474-1486).
+        auto functions = draw_functions.write();
+        functions->prepare(world);
         // Bevy: an empty batch range is skipped without invoking the draw
         // function; otherwise skip `batch_range.len()` items after each
         // batched draw (render_phase/mod.rs:1470-1487).
@@ -482,7 +451,7 @@ struct SortedRenderPhase {
                 ++i;
                 continue;
             }
-            if (auto draw_function = draw_functions.get(item.draw_function()); draw_function) {
+            if (auto draw_function = functions->get(item.draw_function()); draw_function) {
                 auto result = draw_function->get().draw(world, cmd, view, item);
                 if (result) {
                     // drawn
@@ -739,7 +708,7 @@ EPIX_EXPORT template <PhaseItem P, template <typename> typename... R>
 DrawFunctionId app_add_render_commands(app::App& app) {
     auto& world          = app.world_mut();
     auto& draw_functions = world.resource_mut<DrawFunctions<P>>();
-    return draw_functions.template add<RenderCommandSequence<P, R...>>(world);
+    return draw_functions.write()->template add<RenderCommandSequence<P, R...>>(world);
 }
 
 /** @brief Sort all retained views for a sorted phase type (Bevy

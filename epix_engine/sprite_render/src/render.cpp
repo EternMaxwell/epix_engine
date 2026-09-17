@@ -452,7 +452,7 @@ void sprite_render::queue_sprites_2d(
     ResMut<render::SpecializedRenderPipelines<SpritePipeline>> pipelines,
     Res<render::PipelineServer> pipeline_server,
     ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases) {
-    const auto draw_function = draw_functions->template id<DrawSprite>();
+    const auto draw_function = draw_functions->read()->template id<DrawSprite>();
     for (auto&& [visible, view, msaa, tonemapping, dither] : views.iter()) {
         const auto phase = phases->find(view.retained_view_entity);
         if (phase == phases->end()) continue;
