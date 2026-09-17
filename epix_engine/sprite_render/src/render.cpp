@@ -364,7 +364,7 @@ render::RenderPipelineDescriptor SpritePipeline::specialize(Key key) const {
 
     return render::RenderPipelineDescriptor{
         .label         = "sprite_pipeline",
-        .layouts       = {view_layout_descriptor, material_layout_descriptor},
+        .layouts       = {view_layout, material_layout},
         .vertex        = std::move(vertex),
         .primitive     = wgpu::PrimitiveState()
                              .setTopology(wgpu::PrimitiveTopology::eTriangleList)
@@ -490,6 +490,7 @@ void sprite_render::prepare_sprite_view_bind_groups(
     Commands commands,
     Res<wgpu::Device> device,
     Res<SpritePipeline> sprite_pipeline,
+    Res<render::PipelineServer> pipeline_server,
     Res<render::view::ViewUniforms> view_uniforms,
     Query<Item<Entity, const core_graph::Tonemapping&>, With<render::view::ExtractedView>> views,
     Res<core_graph::TonemappingLuts> tonemapping_luts,
@@ -508,7 +509,7 @@ void sprite_render::prepare_sprite_view_bind_groups(
         commands.entity(entity).insert(SpriteViewBindGroup{
             device->createBindGroup(wgpu::BindGroupDescriptor()
                                         .setLabel("mesh2d_view_bind_group")
-                                        .setLayout(sprite_pipeline->view_layout)
+                                        .setLayout(pipeline_server->get_bind_group_layout(sprite_pipeline->view_layout))
                                         .setEntries(entries.entries())),
         });
     }
@@ -525,7 +526,8 @@ void sprite_render::prepare_sprite_image_bind_groups(
     Res<ExtractedSlices> extracted_slices,
     ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
     Res<SpriteAssetEvents> events,
-    ResMut<SpriteBatches> batches) {
+    ResMut<SpriteBatches> batches,
+    Res<render::PipelineServer> pipeline_server) {
     for (const auto& event : events->images) {
         using Type = assets::AssetEvent<image::Image>::Type;
         if (event.type == Type::Unused || event.type == Type::Modified || event.type == Type::Removed) {
@@ -543,7 +545,7 @@ void sprite_render::prepare_sprite_image_bind_groups(
                     image_id, device->createBindGroup(
                                   wgpu::BindGroupDescriptor()
                                       .setLabel("sprite_material_bind_group")
-                                      .setLayout(sprite_pipeline->material_layout)
+                                      .setLayout(pipeline_server->get_bind_group_layout(sprite_pipeline->material_layout))
                                       .setEntries(std::array{
                                           wgpu::BindGroupEntry().setBinding(0).setTextureView(gpu_image->texture_view),
                                           wgpu::BindGroupEntry().setBinding(1).setSampler(gpu_image->sampler),
@@ -714,19 +716,14 @@ void SpriteRenderPlugin::ready(App& app) {
             const auto material_entries = BindGroupLayoutEntries<>::sequential(
                 wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
                 sampler(wgpu::SamplerBindingType::eFiltering));
-            // The layouts come from the pipeline cache's interning, as Bevy's do
-            // (`PipelineCache::get_bind_group_layout`), so the bind groups below
-            // and the pipeline share one native layout per descriptor.
+            // The layouts are descriptors, as Bevy's are; the pipeline cache
+            // interns them, and the bind groups fetch the interned layout.
             commands.insert_resource(SpritePipeline{
-                .view_layout_descriptor =
+                .view_layout =
                     BindGroupLayoutDescriptor().set_label("sprite_view_layout").set_entries(view_entries.entries()),
-                .material_layout_descriptor = BindGroupLayoutDescriptor()
-                                                  .set_label("sprite_material_layout")
-                                                  .set_entries(material_entries.entries()),
-                .view_layout = pipeline_server->get_bind_group_layout(
-                    BindGroupLayoutDescriptor().set_label("sprite_view_layout").set_entries(view_entries.entries())),
-                .material_layout = pipeline_server->get_bind_group_layout(
-                    BindGroupLayoutDescriptor().set_label("sprite_material_layout").set_entries(material_entries.entries())),
+                .material_layout = BindGroupLayoutDescriptor()
+                                       .set_label("sprite_material_layout")
+                                       .set_entries(material_entries.entries()),
                 .shader = asset_server->load<shader::Shader>("embedded://sprite/sprite.slang"),
             });
         }).set_name("init sprite pipeline"));

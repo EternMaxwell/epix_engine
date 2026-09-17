@@ -159,11 +159,10 @@ EPIX_EXPORT namespace epix::sprite_render {
     struct SpritePipeline {
         using Key = SpritePipelineKey;
 
-        // Descriptors for the pipeline, and the interned layouts the bind groups use.
-        render::BindGroupLayoutDescriptor view_layout_descriptor;
-        render::BindGroupLayoutDescriptor material_layout_descriptor;
-        wgpu::BindGroupLayout view_layout;
-        wgpu::BindGroupLayout material_layout;
+        // Descriptors, as Bevy's are; the pipeline cache interns them and the
+        // bind groups fetch the interned layout at their call sites.
+        render::BindGroupLayoutDescriptor view_layout;
+        render::BindGroupLayoutDescriptor material_layout;
         assets::Handle<shader::Shader> shader;
 
         render::RenderPipelineDescriptor specialize(Key key) const;
@@ -396,6 +395,7 @@ EPIX_EXPORT namespace epix::sprite_render {
 
     void prepare_sprite_view_bind_groups(
         ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<SpritePipeline> sprite_pipeline,
+        ecs::Res<render::PipelineServer> pipeline_server,
         ecs::Res<render::view::ViewUniforms> view_uniforms,
         ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>, ecs::With<render::view::ExtractedView>>
             views,
@@ -408,7 +408,8 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Res<render::RenderAssets<image::Image>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,
         ecs::Res<ExtractedSlices> extracted_slices,
         ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
-        ecs::Res<SpriteAssetEvents> events, ecs::ResMut<SpriteBatches> batches);
+        ecs::Res<SpriteAssetEvents> events, ecs::ResMut<SpriteBatches> batches,
+        ecs::Res<render::PipelineServer> pipeline_server);
 }  // namespace epix::sprite_render
 
 template <>
