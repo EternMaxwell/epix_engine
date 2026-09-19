@@ -295,7 +295,7 @@ struct SortedGeometryNode : render::graph::Node {
                 .setLabel("sorted-phase-geometry-preprocess-pipeline")
                 .setLayout(preprocess_pipeline_layout)
                 .setCompute(
-                    wgpu::ProgrammableStageDescriptor().setModule(preprocess_shader).setEntryPoint("preprocessMain")));
+                    wgpu::ComputeState().setModule(preprocess_shader).setEntryPoint("preprocessMain")));
         render::render_resource::AsBindGroup<sorted_phase_geometry::PreprocessBindings>::Param preprocess_param;
         auto preprocess_bind_group = render::render_resource::as_bind_group<sorted_phase_geometry::PreprocessBindings>(
             device->get(), pipeline->preprocess_bind_group_layout,

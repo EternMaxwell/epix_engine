@@ -246,10 +246,10 @@ Image Image::from_dynamic(DynamicImage dyn_img, bool is_srgb, assets::RenderAsse
         format = wgpu::TextureFormat::eRG16Uint;
     } else if (std::holds_alternative<Rgb16Image>(dyn_img)) {
         data   = to_bytes(dyn_img.into_rgba16().data);
-        format = wgpu::TextureFormat::eRgba16Unorm;
+        format = wgpu::TextureFormat::eRGBA16Unorm;
     } else if (const auto* image = std::get_if<Rgba16Image>(&dyn_img)) {
         data   = to_bytes(image->data);
-        format = wgpu::TextureFormat::eRgba16Unorm;
+        format = wgpu::TextureFormat::eRGBA16Unorm;
     } else if (const auto* image = std::get_if<Rgb32FImage>(&dyn_img)) {
         format = wgpu::TextureFormat::eRGBA32Float;
         data   = std::vector<std::byte>(image->pixel_count() * 4 * sizeof(float));

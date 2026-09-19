@@ -3,6 +3,7 @@
 
 // include header to deal with partial specialization problem in MSVC
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstring>
 #include <epix/render.hpp>
@@ -65,7 +66,7 @@ wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constrain
  *  mapping rather than a cast. The native enum also encodes "every backend" as
  *  zero, which is why the all-backends case is returned directly: a native
  *  instance cannot express "no backend at all", and Epix has no DX11 backend. */
-wgpu::InstanceBackend to_instance_backend(const Backends& backends) {
+[[maybe_unused]] wgpu::InstanceBackend to_instance_backend(const Backends& backends) {
     if (backends == Backends::all()) return wgpu::InstanceBackend::eAll;
     std::uint32_t bits = 0;
     if (backends.contains(Backends::Vulkan)) bits |= WGPUInstanceBackend_Vulkan;
@@ -75,15 +76,6 @@ wgpu::InstanceBackend to_instance_backend(const Backends& backends) {
     if (backends.contains(Backends::BrowserWebGpu)) bits |= WGPUInstanceBackend_BrowserWebGPU;
     return static_cast<wgpu::InstanceBackend>(bits);
 }
-
-/** The `WGPUInstanceFlag` bits the vendored wgpu-native v25 accepts: Debug,
- *  Validation and DiscardHalLabels (its `wgpu.h` declares no others).
- *  `InstanceFlags` keeps Bevy's wider bit set -- GPU-based validation,
- *  indirect-call validation, non-compliant-adapter opt-in -- for a runtime that
- *  accepts it, so the conversion masks to what this one defines rather than
- *  handing it bits whose treatment is unspecified. */
-constexpr std::uint32_t kSupportedInstanceFlags =
-    WGPUInstanceFlag_Debug | WGPUInstanceFlag_Validation | WGPUInstanceFlag_DiscardHalLabels;
 
 /** Routes wgpu-native's own log stream into spdlog when `EPIX_WGPU_LOG` names a
  *  level (`error`, `warn`, `info`, `debug` or `trace`).
@@ -338,17 +330,21 @@ void RenderPlugin::attach(App& app) {
         // `WGPU_BACKEND` (via `Backends::from_env`) plus `WGPU_VALIDATION` and
         // `WGPU_DEBUG` (via `InstanceFlags::with_env`) reach the runtime.
         //
-        // Bevy's `instance_memory_budget_thresholds` has no counterpart in the
-        // vendored v25 extras struct, and `memory_hints` is a device field, so
-        // both stay in `WgpuSettings` for a runtime that exposes them.
+        // Bevy's `instance_memory_budget_thresholds` still has no counterpart in
+        // the conversion below, and `memory_hints` is a device field, so both
+        // stay in `WgpuSettings` for a runtime that exposes them.
         wgpu::InstanceDescriptor instance_descriptor;
-        wgpu::InstanceExtras instance_extras;
         install_wgpu_log_handler();
-        instance_extras.setBackends(to_instance_backend(*settings->backends))
-            .setFlags(static_cast<wgpu::InstanceFlag>(settings->instance_flags.bits() & kSupportedInstanceFlags))
-            .setDx12ShaderCompiler(settings->dx12_shader_compiler)
-            .setGles3MinorVersion(settings->gles3_minor_version);
-        instance = wgpu::createInstance(instance_descriptor.setNextInChain(instance_extras));
+        // SPIR-V shader assets are gated on an instance feature, and Epix still
+        // loads explicitly authored SPIR-V even though Slang now emits WGSL.
+        const std::array<wgpu::InstanceFeatureName, 1> required_instance_features{
+            wgpu::InstanceFeatureName::eShaderSourceSPIRV};
+        instance_descriptor.setRequiredFeatures(required_instance_features);
+        // The `InstanceExtras` chain is deliberately left unset: on this runtime
+        // `wgpuCreateInstance` crashes when the extras struct is chained at all
+        // (with or without field setters), so `backends`, `flags`, the DX12
+        // compiler and the GLES version cannot reach the instance yet.
+        instance = wgpu::createInstance(instance_descriptor);
         spdlog::debug("[render] WebGPU instance created.");
         wgpu::Surface surface = app.world()
                                     .get_resource<AnonymousSurface>()
@@ -449,6 +445,14 @@ void RenderPlugin::attach(App& app) {
             if (adapter_info.adapter_type == wgpu::AdapterType::eDiscreteGPU) {
                 std::erase(required_features, wgpu::FeatureName(wgpu::NativeFeature::eMappablePrimaryBuffers));
             }
+            // The runtime refuses experimental features unless the instance opted
+            // into them and exposes no switch for that, so the adapter's
+            // experimental entries are not auto-requested; they remain available
+            // through WgpuSettings::features once it does.
+            std::erase_if(required_features, [](wgpu::FeatureName feature) {
+                return feature == wgpu::FeatureName(wgpu::NativeFeature::eRayQuery) ||
+                       feature == wgpu::FeatureName(wgpu::NativeFeature::eCooperativeMatrix);
+            });
             wgpu::Limits supported_limits;
             if (adapter.getLimits(&supported_limits) == wgpu::Status::eSuccess) required_limits = supported_limits;
         }
@@ -459,10 +463,6 @@ void RenderPlugin::attach(App& app) {
         // default is TextureAdapterSpecificFormatFeatures, which intentionally
         // remains enabled even when that feature appears in disabled_features.
         required_features.insert(required_features.end(), settings->features.begin(), settings->features.end());
-        // TEMPORARY Slang compatibility requirement; remove alongside the Vulkan
-        // restriction once wgpu-native can reliably ingest Slang-produced SPIR-V
-        // through Naga.
-        required_features.push_back(wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough));
         std::ranges::sort(required_features, {},
                           [](const wgpu::FeatureName feature) { return static_cast<std::uint32_t>(feature); });
         required_features.erase(std::unique(required_features.begin(), required_features.end()),

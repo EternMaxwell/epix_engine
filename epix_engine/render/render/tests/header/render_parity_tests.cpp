@@ -25,13 +25,15 @@ using namespace epix::render;
 TEST(WebGpuWrapper, NativeEnumExtensionsUseDescriptorFacingTypes) {
     EXPECT_EQ(static_cast<std::uint32_t>(wgpu::SType::eDeviceExtras),
               static_cast<std::uint32_t>(WGPUSType_DeviceExtras));
-    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::FeatureName::ePushConstants),
-              static_cast<std::uint32_t>(WGPUNativeFeature_PushConstants));
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::FeatureName::eImmediates),
+              static_cast<std::uint32_t>(WGPUNativeFeature_Immediates));
     EXPECT_EQ(static_cast<std::uint32_t>(wgpu::QueryType::ePipelineStatistics),
               static_cast<std::uint32_t>(WGPUNativeQueryType_PipelineStatistics));
+    // R16Unorm was a native extension in the previous header generation and is a
+    // core format now, so the descriptor-facing type is TextureFormat itself.
     EXPECT_EQ(static_cast<std::uint32_t>(wgpu::TextureFormat::eR16Unorm),
-              static_cast<std::uint32_t>(WGPUNativeTextureFormat_R16Unorm));
-    EXPECT_EQ(wgpu::to_string(wgpu::TextureFormat::eRgba16Unorm), "Rgba16Unorm");
+              static_cast<std::uint32_t>(WGPUTextureFormat_R16Unorm));
+    EXPECT_EQ(wgpu::to_string(wgpu::TextureFormat::eRGBA16Unorm), "RGBA16Unorm");
 }
 
 // The wrapper generator once parsed a flag declaration's value with a
@@ -3294,12 +3296,12 @@ TEST(PipelineDescriptor, ShaderDefsPerStage) {
     EXPECT_NE(vs.shader_defs.size(), fs.shader_defs.size());
 
     // push_constant_ranges carried per descriptor (Bevy pipeline.rs:115,181).
-    wgpu::PushConstantRange range;
+    PushConstantRange range;
     range.start  = 0;
     range.end    = 4;
     range.stages = wgpu::ShaderStage::eVertex;
     VertexState vs2{shader_handle, {}, std::nullopt, {}};
-    std::vector<wgpu::PushConstantRange> ranges{range};
+    std::vector<PushConstantRange> ranges{range};
     RenderPipelineDescriptor rpd{
         "", {}, ranges, vs2, wgpu::PrimitiveState(), std::nullopt, wgpu::MultisampleState(), std::nullopt};
     ASSERT_EQ(rpd.push_constant_ranges.size(), 1u);

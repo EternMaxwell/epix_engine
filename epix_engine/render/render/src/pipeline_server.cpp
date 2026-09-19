@@ -67,12 +67,15 @@ std::expected<wgpu::ShaderModule, ShaderCacheError> load_module(const wgpu::Devi
         if (!mod) return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModule failed"));
         return mod;
     } else {
+        // SPIR-V moved from its own descriptor and entry point to a chained
+        // `ShaderSourceSPIRV` on the ordinary shader-module descriptor, which the
+        // runtime now validates through naga before the backend sees it.
         const auto& bytes = std::get<ShaderCacheSource::SpirV>(source.data).bytes;
-        auto mod = device.createShaderModuleSpirV(wgpu::ShaderModuleDescriptorSpirV()
-                                                      .setSource(reinterpret_cast<const uint32_t*>(bytes.data()))
-                                                      .setSourceSize(bytes.size() / sizeof(uint32_t)));
-        if (!mod)
-            return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModuleSpirV failed"));
+        desc.setNextInChain(wgpu::ShaderSourceSPIRV()
+                                .setCode(reinterpret_cast<const std::uint32_t*>(bytes.data()))
+                                .setCodeSize(static_cast<std::uint32_t>(bytes.size() / sizeof(std::uint32_t))));
+        auto mod = device.createShaderModule(desc);
+        if (!mod) return std::unexpected(ShaderCacheError::create_module_failed("WebGPU createShaderModule failed"));
         return mod;
     }
 }
@@ -362,7 +365,7 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
             }
             desc.setLabel(std::string_view(descriptor.label))
                 .setLayout(layout)
-                .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint(
+                .setCompute(wgpu::ComputeState().setModule(module).setEntryPoint(
                     descriptor.entry_point.transform([](auto&& s) { return std::string_view(s); })
                         .value_or(std::string_view("main"))));
             auto pipeline = device.createComputePipeline(desc);

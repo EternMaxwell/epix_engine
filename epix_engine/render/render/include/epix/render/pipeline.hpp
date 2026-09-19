@@ -138,6 +138,20 @@ EPIX_EXPORT struct FragmentState {
         return std::forward<decltype(self)>(self);
     }
 };
+/** @brief One push-constant range (Bevy `PushConstantRange`).
+ *
+ *  wgpu renamed push constants to immediates and removed the range type from
+ *  its API, keeping only one immediate size on the pipeline layout, so this is
+ *  Epix's own type. The range list is retained to keep Bevy's descriptor shape
+ *  and is reduced to that size when the layout is created. */
+EPIX_EXPORT struct PushConstantRange {
+    wgpu::ShaderStage stages = wgpu::ShaderStage::eNone;
+    std::uint32_t start      = 0;
+    std::uint32_t end        = 0;
+
+    friend constexpr bool operator==(const PushConstantRange&, const PushConstantRange&) = default;
+};
+
 /** @brief Full descriptor for creating a render pipeline, including
  * layout, vertex/fragment stages, primitive state, depth-stencil, and
  * multisampling. Uses a builder pattern with `set_*` methods. */
@@ -145,7 +159,7 @@ EPIX_EXPORT struct RenderPipelineDescriptor {
     std::string label;
     std::vector<BindGroupLayoutDescriptor> layouts;
     /** @brief Push constant ranges (Bevy RenderPipelineDescriptor::push_constant_ranges). */
-    std::vector<wgpu::PushConstantRange> push_constant_ranges;
+    std::vector<PushConstantRange> push_constant_ranges;
     VertexState vertex;
     wgpu::PrimitiveState primitive;
     std::optional<wgpu::DepthStencilState> depth_stencil;
@@ -167,10 +181,10 @@ EPIX_EXPORT struct RenderPipelineDescriptor {
         return std::forward<decltype(self)>(self);
     }
     auto&& set_push_constant_ranges(this auto&& self, std::ranges::range auto&& ranges)
-        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, wgpu::PushConstantRange>
+        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, PushConstantRange>
     {
         self.push_constant_ranges =
-            std::ranges::to<std::vector<wgpu::PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
+            std::ranges::to<std::vector<PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_vertex(this auto&& self, VertexState vertex) {
@@ -207,7 +221,7 @@ EPIX_EXPORT struct ComputePipelineDescriptor {
     std::string label;
     std::vector<BindGroupLayoutDescriptor> layouts;
     /** @brief Push constant ranges (Bevy ComputePipelineDescriptor::push_constant_ranges). */
-    std::vector<wgpu::PushConstantRange> push_constant_ranges;
+    std::vector<PushConstantRange> push_constant_ranges;
     assets::Handle<shader::Shader> shader;
     /** @brief Shader definitions for this pipeline (Bevy
      * ComputePipelineDescriptor::shader_defs). */
@@ -229,10 +243,10 @@ EPIX_EXPORT struct ComputePipelineDescriptor {
         return std::forward<decltype(self)>(self);
     }
     auto&& set_push_constant_ranges(this auto&& self, std::ranges::range auto&& ranges)
-        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, wgpu::PushConstantRange>
+        requires std::convertible_to<std::ranges::range_value_t<decltype(ranges)>, PushConstantRange>
     {
         self.push_constant_ranges =
-            std::ranges::to<std::vector<wgpu::PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
+            std::ranges::to<std::vector<PushConstantRange>>(std::forward<decltype(ranges)>(ranges));
         return std::forward<decltype(self)>(self);
     }
     auto&& set_shader(this auto&& self, assets::Handle<shader::Shader> shader) {

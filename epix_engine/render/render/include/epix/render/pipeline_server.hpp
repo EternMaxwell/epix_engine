@@ -88,7 +88,7 @@ EPIX_EXPORT struct LayoutCache {
      * incl. push_constant_ranges, pipeline_cache.rs:210-228). */
     wgpu::PipelineLayout get(const wgpu::Device& device,
                              std::ranges::range auto&& layouts,
-                             std::span<const wgpu::PushConstantRange> push_constant_ranges = {})
+                             std::span<const PushConstantRange> push_constant_ranges = {})
         requires std::convertible_to<std::ranges::range_value_t<decltype(layouts)>, wgpu::BindGroupLayout>
     {
         LayoutCacheKey key;
@@ -105,11 +105,14 @@ EPIX_EXPORT struct LayoutCache {
         wgpu::PipelineLayoutDescriptor descriptor;
         descriptor.setBindGroupLayouts(layouts);
         if (!push_constant_ranges.empty()) {
-            // wgpu-native exposes push constants via the PipelineLayoutExtras
-            // chained struct on the layout descriptor.
-            wgpu::PipelineLayoutExtras extras;
-            extras.setPushConstantRanges(push_constant_ranges);
-            descriptor.setNextInChain(extras);
+            // wgpu replaced the per-range push-constant list with one immediate
+            // size on the layout descriptor, so the ranges reduce to their
+            // highest `end`.
+            std::uint32_t immediate_size = 0;
+            for (const auto& range : push_constant_ranges) {
+                immediate_size = std::max(immediate_size, range.end);
+            }
+            descriptor.setImmediateSize(immediate_size);
         }
         wgpu::PipelineLayout layout = device.createPipelineLayout(descriptor);
         cache[key]                  = layout;

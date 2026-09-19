@@ -5,7 +5,7 @@ include(FetchContent)
 
 # Set default version if not specified
 if (NOT DEFINED EPIX_WGPU_NATIVE_VERSION)
-    set(EPIX_WGPU_NATIVE_VERSION "v25.0.2.2" CACHE STRING "Version of wgpu-native to fetch")
+    set(EPIX_WGPU_NATIVE_VERSION "v29.0.1.1" CACHE STRING "Version of wgpu-native to fetch")
 endif()
 
 # Set binary mirror

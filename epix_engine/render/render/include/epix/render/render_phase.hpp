@@ -926,9 +926,13 @@ EPIX_EXPORT class TrackedRenderPass {
      * TrackedRenderPass::set_blend_constant). */
     void set_blend_constant(wgpu::Color color) { m_pass.setBlendConstant(color); }
 
-    /** @brief Set push constants (Bevy TrackedRenderPass::set_push_constants). */
+    /** @brief Set push constants (Bevy TrackedRenderPass::set_push_constants).
+     *  wgpu renamed push constants to immediates and dropped the stage set, so
+     *  the stages argument is retained only to keep Bevy's signature: immediates
+     *  are visible to every stage the layout grants them to. */
     void set_push_constants(wgpu::ShaderStage stages, std::uint32_t offset, const void* data, std::size_t size) {
-        m_pass.setPushConstants(stages, offset, static_cast<std::uint32_t>(size), data);
+        (void)stages;
+        m_pass.setImmediates(offset, data, size);
     }
 
     /** @brief Issue an indirect draw (Bevy

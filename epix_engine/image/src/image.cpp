@@ -282,7 +282,7 @@ std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eRG8Snorm:
         case wgpu::TextureFormat::eRG8Uint:
         case wgpu::TextureFormat::eRG8Sint:
-        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
         case wgpu::TextureFormat::eRG16Sint:
         case wgpu::TextureFormat::eRG16Float:
@@ -310,7 +310,7 @@ std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eRGBA8Sint:
         case wgpu::TextureFormat::eBGRA8Unorm:
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
-        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
         case wgpu::TextureFormat::eRGBA16Float:
@@ -397,7 +397,7 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
         case wgpu::TextureFormat::eRGBA8Sint:
         case wgpu::TextureFormat::eBGRA8Unorm:
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
-        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
         case wgpu::TextureFormat::eRG16Sint:
         case wgpu::TextureFormat::eRG16Float:
@@ -410,7 +410,7 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
         case wgpu::TextureFormat::eRG11B10Ufloat:
         case wgpu::TextureFormat::eDepth32Float:
             return 4;
-        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
         case wgpu::TextureFormat::eRGBA16Sint:
         case wgpu::TextureFormat::eRGBA16Float:
@@ -929,7 +929,7 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
         case wgpu::TextureFormat::eRG8Uint:
             return glm::vec4{static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[1]) / 255.0f, 0.0f,
                              1.0f};
-        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
             return glm::vec4{normalized_u16(0), normalized_u16(2), 0.0f, 1.0f};
         case wgpu::TextureFormat::eRG32Uint:
@@ -955,7 +955,7 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
                              srgb_to_linear(static_cast<float>(raw[1]) / 255.0f),
                              srgb_to_linear(static_cast<float>(raw[0]) / 255.0f),
                              static_cast<float>(raw[3]) / 255.0f};
-        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
             return glm::vec4{normalized_u16(0), normalized_u16(2), normalized_u16(4), normalized_u16(6)};
         case wgpu::TextureFormat::eRGBA32Uint:
@@ -997,7 +997,7 @@ bool write_pixel_color(wgpu::TextureFormat format,
             raw[0] = to_u8(color.r);
             raw[1] = to_u8(color.g);
             return true;
-        case wgpu::TextureFormat::eRg16Unorm:
+        case wgpu::TextureFormat::eRG16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
             store_scalar(bytes, 0, to_u16(color.r));
             store_scalar(bytes, 2, to_u16(color.g));
@@ -1039,7 +1039,7 @@ bool write_pixel_color(wgpu::TextureFormat format,
             raw[2] = to_u8(linear_to_srgb(color.r));
             raw[3] = to_u8(color.a);
             return true;
-        case wgpu::TextureFormat::eRgba16Unorm:
+        case wgpu::TextureFormat::eRGBA16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
             for (std::size_t channel = 0; channel < 4; ++channel) {
                 store_scalar(bytes, channel * 2, to_u16(color[static_cast<glm::length_t>(channel)]));

@@ -38,7 +38,7 @@ EPIX_EXPORT struct GpuPreprocessingSupport {
         if (!compute_supported || is_gl_backend) return {};
 
         const bool culling_features = device.hasFeature(wgpu::FeatureName::eIndirectFirstInstance) &&
-                                      device.hasFeature(wgpu::FeatureName(wgpu::NativeFeature::ePushConstants));
+                                      device.hasFeature(wgpu::FeatureName(wgpu::NativeFeature::eImmediates));
         const bool culling_limits =
             limits.maxStorageTexturesPerShaderStage >= 12 && limits.maxComputeWorkgroupStorageSize != 0;
         return {culling_features && culling_limits ? GpuPreprocessingMode::Culling

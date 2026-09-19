@@ -485,7 +485,7 @@ TEST(Image, ColorAccessorsMatchBevyIntegerHalfFloatAndUnsupportedFormats) {
     std::memcpy(&rgba_u32_red, rgba_u32_bytes->data(), sizeof(rgba_u32_red));
     EXPECT_EQ(rgba_u32_red, 0x80000000u);  // Bevy multiplies this format in f32.
 
-    auto rgba_unorm16 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRgba16Unorm);
+    auto rgba_unorm16 = epix::image::Image::create2d(1, 1, wgpu::TextureFormat::eRGBA16Unorm);
     ASSERT_TRUE(rgba_unorm16.set_color_at(0, 0, glm::vec4{0.5f, 0.25f, 0.75f, 1.0f}).has_value());
     const auto rgba_unorm16_bytes = rgba_unorm16.pixel_bytes({0u, 0u, 0u});
     ASSERT_TRUE(rgba_unorm16_bytes.has_value());
@@ -852,9 +852,9 @@ TEST(TextureFormatPixelSize, MatchesWgpuTypesBlockCopySizes) {
     EXPECT_EQ(size(wgpu::TextureFormat::eRGB10A2Unorm), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eR32Float), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eDepth32Float), 4u);
-    EXPECT_EQ(size(wgpu::TextureFormat::eRg16Unorm), 4u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRG16Unorm), 4u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRGBA16Float), 8u);
-    EXPECT_EQ(size(wgpu::TextureFormat::eRgba16Unorm), 8u);
+    EXPECT_EQ(size(wgpu::TextureFormat::eRGBA16Unorm), 8u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRG32Uint), 8u);
     EXPECT_EQ(size(wgpu::TextureFormat::eRGBA32Float), 16u);
 
@@ -901,12 +901,12 @@ TEST(ImageNew, BuildsDescriptorPayloadAndUsage) {
     EXPECT_EQ(uninitialized.usage(), static_cast<epix::assets::RenderAssetUsages>(epix::assets::MAIN_WORLD));
 }
 
-TEST(ImageDynamicConversion, UsesNativeRgba16UnormFormat) {
+TEST(ImageDynamicConversion, UsesRgba16UnormFormat) {
     epix::image::Rgba16Image rgba{1, 1, {1u, 2u, 3u, 4u}};
     auto image = epix::image::Image::from_dynamic(
         epix::image::DynamicImage{std::move(rgba)}, true, epix::assets::MAIN_WORLD);
 
-    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRgba16Unorm);
+    EXPECT_EQ(image.texture_format(), wgpu::TextureFormat::eRGBA16Unorm);
     ASSERT_EQ(image.raw_view().size(), 4u * sizeof(std::uint16_t));
     std::uint16_t first{};
     std::memcpy(&first, image.raw_view().data(), sizeof(first));

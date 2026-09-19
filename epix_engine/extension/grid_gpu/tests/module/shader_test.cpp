@@ -123,7 +123,10 @@ struct GpuCtx {
 
 static std::optional<GpuCtx> make_gpu_ctx() {
     GpuCtx ctx;
-    ctx.instance = wgpu::createInstance();
+    // SPIR-V shader input is gated on an instance feature since the headers moved
+    // it there; the SVO tests compile their shaders to SPIR-V.
+    ctx.instance = wgpu::createInstance(wgpu::InstanceDescriptor().setRequiredFeatures(
+        std::array{wgpu::InstanceFeatureName::eShaderSourceSPIRV}));
     if (!ctx.instance) return std::nullopt;
 
     auto try_adapter = [&](wgpu::RequestAdapterOptions opts) { return ctx.instance.requestAdapter(opts); };
@@ -141,7 +144,6 @@ static std::optional<GpuCtx> make_gpu_ctx() {
         wgpu::DeviceDescriptor()
             .setLabel("SvoTestDevice")
             .setDefaultQueue(wgpu::QueueDescriptor().setLabel("SvoTestQueue"))
-            .setRequiredFeatures(std::array{wgpu::FeatureName(wgpu::NativeFeature::eSpirvShaderPassthrough)})
             .setDeviceLostCallbackInfo(
                 wgpu::DeviceLostCallbackInfo()
                     .setMode(wgpu::CallbackMode::eAllowSpontaneous)
@@ -202,13 +204,13 @@ static wgpu::ShaderModule create_shader_module_from_compiled(const wgpu::Device&
                                                              std::string_view label) {
     auto desc = wgpu::ShaderModuleDescriptor().setLabel(label);
     if (const auto* spirv = std::get_if<std::vector<std::uint32_t>>(&shader.data)) {
-        // Use wgpu-native specific createShaderModuleSpirV which goes through
-        // naga translation, rather than ShaderSourceSPIRV passthrough which
-        // sends raw SPIR-V directly to the driver (can hang on some drivers).
-        return device.createShaderModuleSpirV(wgpu::ShaderModuleDescriptorSpirV()
-                                                  .setLabel(label)
-                                                  .setSourceSize(static_cast<std::uint32_t>(spirv->size()))
-                                                  .setSource(spirv->data()));
+        // SPIR-V now arrives as a chained source on the ordinary descriptor and
+        // is validated by naga before the driver sees it, so the passthrough
+        // entry point this used to need no longer exists.
+        return device.createShaderModule(
+            desc.setNextInChain(wgpu::ShaderSourceSPIRV()
+                                    .setCodeSize(static_cast<std::uint32_t>(spirv->size()))
+                                    .setCode(spirv->data())));
     }
 
     const auto& wgsl = std::get<std::string>(shader.data);
@@ -464,7 +466,7 @@ void computeMain()
         wgpu::ComputePipelineDescriptor()
             .setLabel("SvoLookupPipeline")
             .setLayout(pl)
-            .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint("computeMain")));
+            .setCompute(wgpu::ComputeState().setModule(module).setEntryPoint("computeMain")));
     ASSERT_TRUE(pipeline);
 
     auto bg = gpu->device.createBindGroup(
@@ -587,7 +589,7 @@ void computeMain()
     ASSERT_TRUE(module);
 
     auto pipeline = gpu->device.createComputePipeline(wgpu::ComputePipelineDescriptor().setLayout(pl).setCompute(
-        wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint("computeMain")));
+        wgpu::ComputeState().setModule(module).setEntryPoint("computeMain")));
     ASSERT_TRUE(pipeline);
 
     auto bg = gpu->device.createBindGroup(wgpu::BindGroupDescriptor().setLayout(bgl).setEntries(std::array{
@@ -705,7 +707,7 @@ void computeMain()
     ASSERT_TRUE(module);
 
     auto pipeline = gpu->device.createComputePipeline(wgpu::ComputePipelineDescriptor().setLayout(pl).setCompute(
-        wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint("computeMain")));
+        wgpu::ComputeState().setModule(module).setEntryPoint("computeMain")));
     ASSERT_TRUE(pipeline);
 
     auto bg = gpu->device.createBindGroup(wgpu::BindGroupDescriptor().setLayout(bgl).setEntries(std::array{
@@ -879,7 +881,7 @@ void computeMain(uint3 dtid : SV_DispatchThreadID)
         wgpu::ComputePipelineDescriptor()
             .setLabel("LargePipeline")
             .setLayout(pl)
-            .setCompute(wgpu::ProgrammableStageDescriptor().setModule(module).setEntryPoint("computeMain")));
+            .setCompute(wgpu::ComputeState().setModule(module).setEntryPoint("computeMain")));
     ASSERT_TRUE(pipeline);
 
     auto bg = gpu->device.createBindGroup(

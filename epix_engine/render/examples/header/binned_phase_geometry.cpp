@@ -357,7 +357,7 @@ struct BinnedGeometryNode {
             device->get().createComputePipeline(wgpu::ComputePipelineDescriptor()
                                                     .setLabel("binned-phase-geometry-preprocess-pipeline")
                                                     .setLayout(preprocess_pipeline_layout)
-                                                    .setCompute(wgpu::ProgrammableStageDescriptor()
+                                                    .setCompute(wgpu::ComputeState()
                                                                     .setModule(preprocess_shader_module)
                                                                     .setEntryPoint("preprocessMain")));
         pipeline->preprocess_bind_group = device->get().createBindGroup(
