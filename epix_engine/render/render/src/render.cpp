@@ -179,10 +179,20 @@ void epix::render::render_system(World& world) {
             submit_readback_commands(world, encoder);
         });
     if (!result) {
-        // Match Bevy's render_system: the encoder is not submitted and this
-        // typed failure reaches the application's terminate handler rather
-        // than being silently converted into a stale frame.
-        throw std::runtime_error(std::format("Render graph failed to run: {}", result.error().to_string()));
+        // Bevy `render_system` (renderer/mod.rs:60-79): on `Err` it logs the
+        // failure headline, then walks the error's `source()` chain link by link
+        // before failing hard. Epix's runner error is a variant rather than a
+        // `std::error::Error`, so the chain is walked explicitly: the top-level
+        // message, then the failing node when the variant carries one.
+        spdlog::error("Error running render graph:");
+        spdlog::error("> {}", result.error().to_string());
+        if (const auto* node_error = std::get_if<graph::RunnerNodeRunError>(std::addressof(result.error()))) {
+            spdlog::error("> failed node: {}", node_error->node.type_index().short_name());
+        }
+        // The encoder is not submitted and this typed failure reaches the
+        // application's terminate handler rather than being silently converted
+        // into a stale frame, matching Bevy's `panic!` here.
+        throw std::runtime_error(std::format("Error running render graph: {}", result.error().to_string()));
     }
     // Bevy renderer::render_system presents immediately after graph submission,
     // while temporary extracted views still exist to drive ViewTarget::needs_present.
@@ -208,7 +218,21 @@ void RenderPlugin::attach(App& app) {
                                     });
         extract_schedule.configure_sets(ecs::sets(AssetExtractionSystems{}));
         render_app.add_schedule(std::move(extract_schedule))
-            .add_schedule(Schedule(render::RenderStartup))
+            // `RenderStartup` runs the render world's one-time setup, where a
+            // system may read a resource an earlier system in the same schedule
+            // created through `Commands` (Bevy's
+            // `init_material_2d_pipeline.after(init_mesh_2d_pipeline)`). Bevy makes
+            // that work by auto-inserting `apply_deferred` sync points between
+            // systems whose commands a later system observes; Epix has no automatic
+            // insertion, so this startup schedule asks for `ApplyDirect`, which
+            // applies each deferred system's commands as soon as it returns — a
+            // superset of the sync points Bevy would insert, scoped to this one
+            // schedule. Replacing it with true auto-insertion is tracked as the
+            // faithful fix.
+            .add_schedule(Schedule(render::RenderStartup)
+                              .with_schedule_config(ecs::ScheduleConfig{
+                                  .executor_config = {.deferred = ecs::DeferredApply::ApplyDirect},
+                              }))
             .add_schedule(render::Render.render_schedule())
             .set_extract_fn([should_run_startup](App& render_app, World& main_world) {
                 if (*should_run_startup) {
@@ -373,8 +397,32 @@ void RenderPlugin::attach(App& app) {
                     }))
                 .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
                     [](wgpu::Device const& device, wgpu::ErrorType type, wgpu::StringView message) {
-                        std::stacktrace stack = std::stacktrace::current();
-                        spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", std::string_view(message), stack);
+                        // Report the wgpu message first, and never let anything in
+                        // this handler escape: an exception thrown here (the
+                        // stacktrace capture and its formatting have both been seen
+                        // to throw `Bad optional access`) replaces the real
+                        // validation error with an unrelated crash, which is how a
+                        // pipeline-creation failure ends up reported as a render
+                        // system error. Note that the `StringView` conversion itself
+                        // can throw (`Bad optional access` on an empty view), so it
+                        // must be inside the guard too — leaving it outside defeated
+                        // this handler entirely.
+                        (void)device;
+                        (void)type;
+                        try {
+                            const std::string_view text(message);
+                            // Record it for the object-creation probes: this
+                            // wrapper/wgpu-native hands back a non-null handle
+                            // even when creation failed, so the handle alone
+                            // cannot tell a caller that it failed.
+                            GpuValidationErrorProbe::last_message = std::string(text);
+                            std::stacktrace stack = std::stacktrace::current();
+                            spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", text, stack);
+                        } catch (const std::exception& e) {
+                            spdlog::error("WebGPU Uncaptured error (message conversion failed: {})", e.what());
+                        } catch (...) {
+                            spdlog::error("WebGPU Uncaptured error (message conversion failed)");
+                        }
                     }));
         if (settings->device_label.has_value()) {
             automatic_device_descriptor->setLabel(wgpu::StringView(*settings->device_label));

@@ -458,7 +458,13 @@ struct SortedRenderPhase {
                 } else {
                     auto&& error = result.error();
                     if (error.type == DrawError::ErrorType::Skip) {
-                        // skip: do not log, still advance past the batch
+                        // A skip is a normal outcome in Bevy, not an error: the
+                        // command returns `RenderCommandResult::Skip` for data
+                        // that is simply not ready (see `DrawMesh2d`), so it is
+                        // traced rather than reported.
+                        spdlog::trace("[render] Draw function {} skipped item {:#x}: {}.",
+                                      static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                                      error.message.empty() ? to_str(error) : error.message);
                     } else if (!error.message.empty()) {
                         spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
                                       static_cast<std::uint32_t>(item.draw_function()), item.entity().index,

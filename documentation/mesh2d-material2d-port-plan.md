@@ -162,3 +162,48 @@ unchanged until step 10.
 - **`Mesh2dUniform`** - absent (0 references); port it in step 2 (`mesh.rs:199-227`).
 - **`Material2dBindGroupId`** - absent (0 references); it is defined by the material pipeline, so step 5's `CompareData` is finalized in step 8.
 - **`RenderMesh2dInstance`** exists but with Epix's simplified shape (`sprite_render/include/epix/sprite_render/mesh2d.hpp:90`); step 4 replaces its fields with Bevy's (`material_bind_group_id`, `mesh_asset_id`, `transforms`, `tag`, `automatic_batching`).
+
+## Batch state (2026-10, steps 4-10 atomic, uncommitted)
+
+Implemented in the working tree, deliberately red until the batch's build is green:
+
+- **Step 4** - `RenderMesh2dInstance`/`Mesh2dMarker`/`RenderMesh2dInstances` in `mesh2d_pipeline.hpp`
+  (Bevy's own layout; the classes moved out of `mesh2d.hpp` to break the include cycle), and
+  `extract_mesh2d` in `mesh2d.cpp` (Bevy `mesh.rs:249-282`).
+- **Step 5** - `Mesh2dViewBindGroup`/`Mesh2dBindGroup` with their prepares, `SetMesh2dViewBindGroup<I>`,
+  `SetMesh2dBindGroup<I>`, `DrawMesh2d`, and the `GetBatchData`/`GetFullBatchData<Mesh2dPipeline>`
+  specializations.
+- **Step 6** - `Material2d<M>`, `Material2dKey<M>`, `PreparedMaterial2d<M>` (Bevy's `bindings`,
+  `bind_group`, `key`, `properties`), `Material2dProperties`, `Material2dPipeline<M>::specialize`,
+  `init_material_2d_pipeline<M>`, `alpha_mode_pipeline_key`, `tonemapping_pipeline_key`.
+- **Step 7** - `ColorMaterial` with its flags/uniform, the `AsBindGroup` and `AsBindGroupShaderType`
+  specializations, and the embedded `color_material.slang` fragment. The mesh2d Slang was split so a
+  material fragment can import `mesh2d_vertex_output` and `mesh2d_view_bindings`, matching Bevy's
+  shader-module layout; both helpers live in `mesh2d_pipeline.hpp` because `mesh2d.hpp` includes
+  `material2d.hpp` (so the material header cannot be the lower layer).
+- **Step 8** - `Material2dPlugin<M>`, `ColorMaterialPlugin`, `EntitiesNeedingSpecialization<M>`,
+  `EntitySpecializationTickPair<M>`, `SpecializedMaterial2dPipelineCache<M>`,
+  `SpecializedMaterial2dViewPipelineCache<M>`, `RenderMaterial2dInstances<M>`,
+  `check_entities_needing_specialization<M>`, `extract_entities_needs_specialization<M>`,
+  `extract_mesh_materials_2d<M>`, `specialize_material2d_meshes<M>`, `queue_material2d_meshes<M>`,
+  `SetMaterial2dBindGroup<M, I>`, `Material2dDrawSequence<M, P>` and the
+  `RenderAsset<PreparedMaterial2d<M>>` preparation. `Material2dDrawSequence` takes the phase as a
+  parameter because Bevy's command impl is phase-generic while Epix's `RenderCommandSequence` is
+  phase-bound.
+- **Step 9** - `ViewKeyCache`, `ViewSpecializationTicks`, `check_views_need_specialization`,
+  `init_batched_instance_buffer`, and the `Mesh2dRenderPlugin` render-world build. Bevy's
+  `load_mesh2d_bindings` has no counterpart: Epix's mesh2d shader carries those bindings behind
+  `PER_OBJECT_BUFFER_BATCH_SIZE`.
+- **Step 10** - `MeshMaterial2d<M>` replaced the fixed aggregate (and `MeshTextureMaterial2d`, whose
+  role `ColorMaterial` absorbs since its texture is optional); 65 flat and 5 textured sites migrated
+  across 33 files, each given an explicit `.mode` matching its legacy default (the flat component
+  defaulted to `Opaque`, the textured one to `Blend`, and `ColorMaterial` defaults to `Blend` - so
+  omitting `.mode` would have silently flipped the flat sites to blending).
+- **Legacy retired** - `mesh2d.cpp` 990 → 54 lines and `mesh2d.hpp` 266 → 58 lines; `Mesh2dPipelineCache`,
+  `ExtractedMesh2d`, `MeshBatch`, `MeshInstanceData`, `MeshInstanceBuffer`, `BindMesh2dInstances`,
+  `BindMesh2dTexture`, `DrawMesh2dBatch`, `prepare_mesh_instances` and the legacy queues are gone.
+
+Still open: the batch's first build is triaging compiler errors (the tree has ~50 new API call sites
+written against Bevy's logic before any compilation); then CTest, the pixel-identical captures, and
+the two `alpha_mask` examples still need `ColorMaterialPlugin` added to their plugin lists.
+

@@ -15,7 +15,7 @@
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
-#include <epix/sprite_render/mesh2d.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
@@ -657,6 +657,7 @@ void sync_pixel_body_to_sand(
 
 void build_pixel_body_meshes(Commands cmd,
                              ResMut<assets::Assets<mesh::Mesh>> meshes,
+                             ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
                              Query<Item<Entity, Mut<PixelBody>, const Parent&>> bodies,
                              Query<Item<const PixelBodyWorld&>> worlds) {
     for (auto&& [body_ent, body_mut, parent] : bodies.iter()) {
@@ -706,10 +707,10 @@ void build_pixel_body_meshes(Commands cmd,
         } else {
             auto child             = cmd.entity(body_ent)
                                          .spawn(mesh::Mesh2d{handle},
-                                                sprite_render::MeshMaterial2d{
-                                                    .color      = glm::vec4(1.0f),
-                                                    .alpha_mode = sprite_render::AlphaMode2dOpaque{},
-                                                },
+                                                sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                                    materials->emplace(sprite_render::ColorMaterial{
+                                                        .mode = sprite_render::AlphaMode2dOpaque{},
+                                                    })},
                                                 transform::Transform{.translation = glm::vec3(0.0f)})
                                          .id();
             body.mesh_child_entity = child;

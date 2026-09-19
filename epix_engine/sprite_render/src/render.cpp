@@ -494,7 +494,7 @@ void sprite_render::prepare_sprite_view_bind_groups(
     Res<render::view::ViewUniforms> view_uniforms,
     Query<Item<Entity, const core_graph::Tonemapping&>, With<render::view::ExtractedView>> views,
     Res<core_graph::TonemappingLuts> tonemapping_luts,
-    Res<render::RenderAssets<image::Image>> images,
+    Res<render::RenderAssets<render::texture::GpuImage>> images,
     Res<render::texture::FallbackImage> fallback_image) {
     const auto binding = view_uniforms->uniforms.binding();
     if (!binding) return;
@@ -521,7 +521,7 @@ void sprite_render::prepare_sprite_image_bind_groups(
     ResMut<SpriteMeta> sprite_meta,
     Res<SpritePipeline> sprite_pipeline,
     ResMut<ImageBindGroups> image_bind_groups,
-    Res<render::RenderAssets<image::Image>> gpu_images,
+    Res<render::RenderAssets<render::texture::GpuImage>> gpu_images,
     Res<ExtractedSprites> extracted_sprites,
     Res<ExtractedSlices> extracted_slices,
     ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,

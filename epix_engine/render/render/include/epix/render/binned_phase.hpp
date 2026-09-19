@@ -613,10 +613,20 @@ class BinnedRenderPhase {
             return;
         }
         auto result = draw_function->get().draw(world, render_pass, view, item);
-        if (!result && result.error().type != DrawError::ErrorType::Skip) {
-            spdlog::error("[render] Draw function {} failed for binned item {:#x}: {}",
-                          static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
-                          result.error().message);
+        if (!result) {
+            // A skip is a normal outcome in Bevy (`RenderCommandResult::Skip`),
+            // so it is traced; only a genuine failure is reported. Bevy's binned
+            // phase instead propagates with `draw_function.draw(...)?`
+            // (render_phase/mod.rs); that divergence is tracked separately.
+            if (result.error().type == DrawError::ErrorType::Skip) {
+                spdlog::trace("[render] Draw function {} skipped binned item {:#x}: {}",
+                              static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                              result.error().message);
+            } else {
+                spdlog::error("[render] Draw function {} failed for binned item {:#x}: {}",
+                              static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
+                              result.error().message);
+            }
         }
     }
 

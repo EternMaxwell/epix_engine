@@ -45,7 +45,7 @@ template <>
 struct epix::render::render_resource::AsBindGroupShaderType<ImageAssetClearInput, ImageAssetClearShader> {
     static ImageAssetClearShader as_bind_group_shader_type(
         const ImageAssetClearInput& input,
-        const epix::render::RenderAssets<epix::image::Image>& images) {
+        const epix::render::RenderAssets<epix::render::texture::GpuImage>& images) {
         for (const auto& [_, image] : images.iter()) {
             if (image.had_data) return {.color = glm::vec4(0.05f, 0.72f, 0.88f, 1.0f)};
         }
@@ -75,7 +75,7 @@ struct ImageAssetClearPassNode : render::graph::Node {
         if (!view) return {};
         const auto& target = std::get<1>(*view);
 
-        const auto images = world.get_resource<render::RenderAssets<image::Image>>();
+        const auto images = world.get_resource<render::RenderAssets<render::texture::GpuImage>>();
         const glm::vec4 color = images
                                     ? render::render_resource::as_bind_group_shader_type<ImageAssetClearShader>(
                                           ImageAssetClearInput{}, images->get())

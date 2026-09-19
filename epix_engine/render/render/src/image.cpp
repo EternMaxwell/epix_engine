@@ -9,7 +9,7 @@ namespace epix::render {
 void TexturePlugin::attach(app::App& app) {
     // Bevy texture::TexturePlugin owns image render-asset extraction and the
     // manually managed texture-view resource.
-    app.add_plugins(RenderAssetPlugin<image::Image>{});
+    app.add_plugins(RenderAssetPlugin<texture::GpuImage>{});
     app.world_mut().init_resource<texture::ManualTextureViews>();
     app.add_plugins(ExtractResourcePlugin<texture::ManualTextureViews>{});
 
@@ -68,7 +68,7 @@ wgpu::TextureViewDimension view_dimension_cast(image::ImageType type) noexcept {
 }
 }  // namespace
 
-std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<image::Image>::prepare_asset(
+std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<texture::GpuImage>::prepare_asset(
     image::Image&& asset, assets::AssetId<image::Image> id, Param param, const texture::GpuImage* previous) {
     (void)id;
     auto& [device, queue, default_sampler] = param;
@@ -193,7 +193,7 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<im
     return gpu_image;
 }
 
-epix::assets::RenderAssetUsages RenderAsset<image::Image>::usage(const image::Image& asset) noexcept {
+epix::assets::RenderAssetUsages RenderAsset<texture::GpuImage>::asset_usage(const image::Image& asset) noexcept {
     return static_cast<assets::RenderAssetUsages>(asset.usage());
 }
 

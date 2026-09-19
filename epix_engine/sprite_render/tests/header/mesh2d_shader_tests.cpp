@@ -113,7 +113,9 @@ render::CachedPipelineId queue_mesh2d_pipeline(App& app,
 
     render::RenderPipelineDescriptor descriptor{
         .label         = "mesh2d_pipeline_test",
-        .layouts       = {view_layout, mesh_layout},
+        // TEST PROBE: the example's configuration (3 pipeline layouts, 4x MSAA)
+        // instead of the 2-layout/1-sample one this test previously covered.
+        .layouts       = {view_layout, mesh_layout, view_layout},
         .vertex        = std::move(vertex),
         .primitive     = wgpu::PrimitiveState()
                              .setTopology(wgpu::PrimitiveTopology::eTriangleList)
@@ -123,7 +125,7 @@ render::CachedPipelineId queue_mesh2d_pipeline(App& app,
                              .setFormat(core_graph::core_2d::CORE_2D_DEPTH_FORMAT)
                              .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
                              .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
-        .multisample   = wgpu::MultisampleState().setCount(1).setMask(~0u).setAlphaToCoverageEnabled(false),
+        .multisample   = wgpu::MultisampleState().setCount(4).setMask(~0u).setAlphaToCoverageEnabled(false),
         .fragment      = std::move(fragment),
     };
     return app.resource<render::PipelineServer>().queue_render_pipeline(std::move(descriptor));
@@ -226,11 +228,35 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
     auto fallback = queue_mesh2d_pipeline(app, view_layout, uniform_mesh_layout, shader_handle,
                                           std::move(fallback_defs));
 
+    // The example meshes do not all carry the same attributes (`make_box2d` has
+    // positions+uvs, `make_gradient_quad`/`make_circle` have positions+colours),
+    // so the pipeline is specialized once per attribute subset. Those subsets
+    // were previously untested, and they are the variants that a real scene
+    // exercises.
+    const std::vector<shader::ShaderDefVal> uvs_only_defs{
+        shader::ShaderDefVal::from_bool("VERTEX_POSITIONS"),
+        shader::ShaderDefVal::from_bool("VERTEX_UVS"),
+        shader::ShaderDefVal::from_bool("TONEMAP_IN_SHADER"),
+        shader::ShaderDefVal::from_bool("TONEMAP_METHOD_TONY_MC_MAPFACE"),
+    };
+    auto uvs_only = queue_mesh2d_pipeline(app, view_layout, mesh2d_pipeline.mesh_layout, shader_handle, uvs_only_defs);
+
+    const std::vector<shader::ShaderDefVal> colors_only_defs{
+        shader::ShaderDefVal::from_bool("VERTEX_POSITIONS"),
+        shader::ShaderDefVal::from_bool("VERTEX_COLORS"),
+        shader::ShaderDefVal::from_bool("TONEMAP_IN_SHADER"),
+        shader::ShaderDefVal::from_bool("TONEMAP_METHOD_TONY_MC_MAPFACE"),
+    };
+    auto colors_only =
+        queue_mesh2d_pipeline(app, view_layout, mesh2d_pipeline.mesh_layout, shader_handle, colors_only_defs);
+
     {
         auto& pipelines = app.resource_mut<render::PipelineServer>();
         pipelines.block_on_render_pipeline(plain);
         pipelines.block_on_render_pipeline(tonemapped);
         pipelines.block_on_render_pipeline(fallback);
+        pipelines.block_on_render_pipeline(uvs_only);
+        pipelines.block_on_render_pipeline(colors_only);
     }
     const auto& pipelines = app.resource<render::PipelineServer>();
 
@@ -268,4 +294,8 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
         << "mesh2d shader failed to compile with TONEMAP_IN_SHADER: " << describe(tonemapped);
     EXPECT_TRUE(pipelines.get_render_pipeline(fallback).has_value())
         << "mesh2d shader failed to compile for the uniform-array fallback: " << describe(fallback);
+    EXPECT_TRUE(pipelines.get_render_pipeline(uvs_only).has_value())
+        << "mesh2d shader failed to compile for the positions+uvs variant: " << describe(uvs_only);
+    EXPECT_TRUE(pipelines.get_render_pipeline(colors_only).has_value())
+        << "mesh2d shader failed to compile for the positions+colours variant: " << describe(colors_only);
 }

@@ -2678,6 +2678,7 @@ struct Plugin {
     void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials   = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
 
@@ -2690,7 +2691,8 @@ struct Plugin {
         auto mesh_handle = mesh_assets.emplace(build_mesh(sim, thread_pool.get()));
 
         world.spawn(mesh::Mesh2d{mesh_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f), .alpha_mode = sprite_render::AlphaMode2dOpaque{}},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{.mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{});
 
         world.insert_resource(FluidState{.sim          = std::move(sim),
@@ -2817,6 +2819,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(Plugin{});
 

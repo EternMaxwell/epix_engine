@@ -227,8 +227,8 @@ EPIX_EXPORT void prepare_buffers(
     ecs::Res<wgpu::Device> device,
     ecs::ResMut<readback::GpuReadbacks> readbacks,
     ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
-    ecs::Res<RenderAssets<epix::image::Image>> gpu_images,
-    ecs::Res<RenderAssets<ShaderStorageBuffer>> ssbos,
+    ecs::Res<RenderAssets<texture::GpuImage>> gpu_images,
+    ecs::Res<RenderAssets<GpuShaderStorageBuffer>> ssbos,
     ecs::Query<ecs::Item<ecs::Entity, const sync_world::MainEntity&, const Readback&>> handles);
 
 /** @brief Render system (after the graph): map the staging buffers of

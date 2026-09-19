@@ -8,7 +8,7 @@
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/sprite.hpp>
-#include <epix/sprite_render/mesh2d.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
@@ -36,6 +36,7 @@ struct LinearPolygonPrimitivesExamplePlugin {
     void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials   = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         mesh::Mesh segment  = mesh::Segment2d{{-105.0f, -75.0f}, {105.0f, 75.0f}};
         mesh::Mesh polyline = mesh::Polyline2d{{
@@ -68,13 +69,22 @@ struct LinearPolygonPrimitivesExamplePlugin {
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
         world.spawn(mesh::Mesh2d{segment_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.98f, 0.52f, 0.34f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.98f, 0.52f, 0.34f, 1.0f),
+                            .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-320.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{polygon_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.39f, 0.84f, 0.62f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.39f, 0.84f, 0.62f, 1.0f),
+                            .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {0.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{polyline_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.40f, 0.67f, 1.0f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.40f, 0.67f, 1.0f, 1.0f),
+                            .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {320.0f, 0.0f, 0.0f}});
     }
 };
@@ -106,6 +116,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(LinearPolygonPrimitivesExamplePlugin{});
 
     app.run();

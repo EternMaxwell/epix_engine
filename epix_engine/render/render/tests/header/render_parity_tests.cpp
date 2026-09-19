@@ -331,7 +331,7 @@ template <>
 struct epix::render::render_resource::AsBindGroupShaderType<ImageAwareShaderSource, ImageAwareShaderValue> {
     static ImageAwareShaderValue as_bind_group_shader_type(
         const ImageAwareShaderSource& source,
-        const epix::render::RenderAssets<epix::image::Image>& images) {
+        const epix::render::RenderAssets<epix::render::texture::GpuImage>& images) {
         return {.value = images.contains(source.image_id) ? 1.0f : source.missing_image_value};
     }
 };
@@ -359,16 +359,16 @@ struct IncrementalExtractIdShiftC {};
 static bool g_incremental_prepare_already_retried = false;
 
 template <>
-struct epix::render::RenderAsset<IncrementalExtractSource> {
+struct epix::render::RenderAsset<std::vector<std::uint32_t>> {
+    using SourceAsset    = IncrementalExtractSource;
     using ExtractedAsset = IncrementalExtractPayload;
-    using ProcessedAsset = std::vector<std::uint32_t>;
     using Param          = std::tuple<>;
     using ExtractError   = IncrementalExtractError;
 
-    std::expected<ExtractedAsset, ExtractError> extract(const IncrementalExtractSource& source,
-                                                         epix::assets::AssetId<IncrementalExtractSource>,
+    std::expected<ExtractedAsset, ExtractError> extract(const SourceAsset& source,
+                                                         epix::assets::AssetId<SourceAsset>,
                                                          RenderAssetExtractionReason reason,
-                                                         const ProcessedAsset* previous_asset) const {
+                                                         const std::vector<std::uint32_t>* previous_asset) const {
         if (source.fail_extraction) {
             return std::unexpected(ExtractError{"incremental extraction rejected"});
         }
@@ -380,15 +380,16 @@ struct epix::render::RenderAsset<IncrementalExtractSource> {
             .had_previous_asset = previous_asset != nullptr,
         };
     }
-    std::expected<ProcessedAsset, PrepareAssetError<ExtractedAsset>> prepare_asset(
-        ExtractedAsset&& payload, epix::assets::AssetId<IncrementalExtractSource>, Param, const ProcessedAsset*) const {
+    std::expected<std::vector<std::uint32_t>, PrepareAssetError<ExtractedAsset>> prepare_asset(
+        ExtractedAsset&& payload, epix::assets::AssetId<SourceAsset>, Param,
+        const std::vector<std::uint32_t>*) const {
         if (payload.values == std::vector<std::uint32_t>{99} && !g_incremental_prepare_already_retried) {
             g_incremental_prepare_already_retried = true;
             return std::unexpected(PrepareAssetError<ExtractedAsset>{RetryNextAssetUpdate<ExtractedAsset>{std::move(payload)}});
         }
         return std::move(payload.values);
     }
-    assets::RenderAssetUsages usage(const IncrementalExtractSource&) const {
+    assets::RenderAssetUsages asset_usage(const SourceAsset&) const {
         return static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD | assets::RENDER_WORLD);
     }
 };
@@ -2276,7 +2277,7 @@ TEST(AsBindGroup, DefaultPreparationPropagatesUnpreparedError) {
 // Bevy's AsBindGroupShaderType accepts processed image assets so an otherwise
 // ordinary CPU value can derive its shader value from render-world metadata.
 TEST(AsBindGroupShaderType, DefaultAndImageAwareConversions) {
-    RenderAssets<epix::image::Image> images;
+    RenderAssets<epix::render::texture::GpuImage> images;
     const auto image_id = epix::assets::AssetId<epix::image::Image>::invalid();
 
     const float converted = render_resource::as_bind_group_shader_type<float>(3.5f, images);
@@ -3060,7 +3061,7 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
     ASSERT_TRUE(stored.data.has_value());
     EXPECT_EQ(stored.size, 4u);
 
-    RenderAsset<ShaderStorageBuffer> impl;
+    RenderAsset<epix::render::GpuShaderStorageBuffer> impl;
     auto extracted = impl.take_gpu_data(stored, nullptr);
     ASSERT_TRUE(extracted.has_value());
     ASSERT_TRUE(extracted->data.has_value());
@@ -3078,12 +3079,12 @@ TEST(ShaderStorageBuffer, TakeGpuData) {
 }
 
 TEST(RenderAsset, ExtractsCompactPayloadFromDualWorldSource) {
-    static_assert(RenderAssetImpl<IncrementalExtractSource>);
+    static_assert(RenderAssetImpl<std::vector<std::uint32_t>>);
     IncrementalExtractSource source{
         .resident_data = std::vector<std::uint32_t>(4096, 7),
         .dirty_region  = {17, 19, 23},
     };
-    RenderAsset<IncrementalExtractSource> asset;
+    RenderAsset<std::vector<std::uint32_t>> asset;
     const std::vector<std::uint32_t> previous = source.resident_data;
     const auto payload = asset.extract(source,
                                        epix::assets::AssetId<IncrementalExtractSource>::invalid(),
@@ -3104,7 +3105,7 @@ TEST(RenderAsset, NewAssetExtractsCompletePayload) {
         .resident_data = std::vector<std::uint32_t>(4096, 7),
         .dirty_region  = {17, 19, 23},
     };
-    RenderAsset<IncrementalExtractSource> asset;
+    RenderAsset<std::vector<std::uint32_t>> asset;
     const auto payload = asset.extract(source,
                                        epix::assets::AssetId<IncrementalExtractSource>::invalid(),
                                        RenderAssetExtractionReason::Added,
@@ -3121,8 +3122,8 @@ TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
     epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
-    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
+    render_world.insert_resource(ExtractedAssets<std::vector<std::uint32_t>>{});
+    render_world.insert_resource(RenderAssets<std::vector<std::uint32_t>>{});
 
     main_world.insert_resource(IncrementalExtractIdShiftA{});
     main_world.insert_resource(IncrementalExtractIdShiftB{});
@@ -3134,10 +3135,10 @@ TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>>().push(
         epix::assets::AssetEvent<IncrementalExtractSource>::added(handle.id()));
 
-    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
+    auto system = make_system_unique(extract_render_asset<std::vector<std::uint32_t>>);
     system->initialize(render_world);
     ASSERT_TRUE(system->run({}, render_world).has_value());
-    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
+    const auto& extracted = render_world.resource<ExtractedAssets<std::vector<std::uint32_t>>>();
     EXPECT_TRUE(extracted.extracted.empty());
     EXPECT_TRUE(extracted.added.empty());
 }
@@ -3145,35 +3146,35 @@ TEST(RenderAsset, ExtractSystemLogsCompactExtractionFailureAndContinues) {
 TEST(RenderAsset, PrepareSystemRetriesRetryNextUpdatePayload) {
     g_incremental_prepare_already_retried = false;
     epix::ecs::World world(2);
-    world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
-    world.insert_resource(RenderAssets<IncrementalExtractSource>{});
-    world.insert_resource(PrepareNextFrameAssets<IncrementalExtractSource>{});
+    world.insert_resource(ExtractedAssets<std::vector<std::uint32_t>>{});
+    world.insert_resource(RenderAssets<std::vector<std::uint32_t>>{});
+    world.insert_resource(PrepareNextFrameAssets<std::vector<std::uint32_t>>{});
     world.insert_resource(RenderAssetBytesPerFrameLimiter{});
 
     epix::assets::Assets<IncrementalExtractSource> store;
     const auto id = store.emplace(IncrementalExtractSource{}).id();
-    world.resource_mut<ExtractedAssets<IncrementalExtractSource>>().extracted.emplace_back(
+    world.resource_mut<ExtractedAssets<std::vector<std::uint32_t>>>().extracted.emplace_back(
         id, IncrementalExtractPayload{.values = {99}});
 
-    auto system = make_system_unique(prepare_assets<IncrementalExtractSource>);
+    auto system = make_system_unique(prepare_assets<std::vector<std::uint32_t>>);
     system->initialize(world);
     ASSERT_TRUE(system->run({}, world).has_value());
-    EXPECT_EQ(world.resource<RenderAssets<IncrementalExtractSource>>().get(id), nullptr);
-    ASSERT_EQ(world.resource<PrepareNextFrameAssets<IncrementalExtractSource>>().pending.size(), 1u);
+    EXPECT_EQ(world.resource<RenderAssets<std::vector<std::uint32_t>>>().get(id), nullptr);
+    ASSERT_EQ(world.resource<PrepareNextFrameAssets<std::vector<std::uint32_t>>>().pending.size(), 1u);
 
     ASSERT_TRUE(system->run({}, world).has_value());
-    const auto* prepared = world.resource<RenderAssets<IncrementalExtractSource>>().get(id);
+    const auto* prepared = world.resource<RenderAssets<std::vector<std::uint32_t>>>().get(id);
     ASSERT_NE(prepared, nullptr);
     EXPECT_EQ(*prepared, (std::vector<std::uint32_t>{99}));
-    EXPECT_TRUE(world.resource<PrepareNextFrameAssets<IncrementalExtractSource>>().pending.empty());
+    EXPECT_TRUE(world.resource<PrepareNextFrameAssets<std::vector<std::uint32_t>>>().pending.empty());
 }
 
 TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
     epix::ecs::World main_world(2);
     epix::ecs::World render_world(2);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(ExtractedAssets<IncrementalExtractSource>{});
-    render_world.insert_resource(RenderAssets<IncrementalExtractSource>{});
+    render_world.insert_resource(ExtractedAssets<std::vector<std::uint32_t>>{});
+    render_world.insert_resource(RenderAssets<std::vector<std::uint32_t>>{});
 
     // Keep main-world resource ids distinct from the render-world ids used by
     // ExtractedWorld, as production's sub-app setup does.
@@ -3184,16 +3185,16 @@ TEST(RenderAsset, ExtractSystemTransfersCompactPayloadForDualWorldAsset) {
     main_world.insert_resource(epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>{});
     auto handle = main_world.resource_mut<epix::assets::Assets<IncrementalExtractSource>>().emplace(
         IncrementalExtractSource{.resident_data = std::vector<std::uint32_t>(4096, 7), .dirty_region = {29, 31}});
-    render_world.resource_mut<RenderAssets<IncrementalExtractSource>>().emplace(handle.id(),
+    render_world.resource_mut<RenderAssets<std::vector<std::uint32_t>>>().emplace(handle.id(),
                                                                                    std::vector<std::uint32_t>(4096, 7));
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<IncrementalExtractSource>>>().push(
         epix::assets::AssetEvent<IncrementalExtractSource>::modified(handle.id()));
 
-    auto system = make_system_unique(extract_render_asset<IncrementalExtractSource>);
+    auto system = make_system_unique(extract_render_asset<std::vector<std::uint32_t>>);
     system->initialize(render_world);
     ASSERT_TRUE(system->run({}, render_world).has_value());
 
-    const auto& extracted = render_world.resource<ExtractedAssets<IncrementalExtractSource>>();
+    const auto& extracted = render_world.resource<ExtractedAssets<std::vector<std::uint32_t>>>();
     ASSERT_EQ(extracted.extracted.size(), 1u);
     EXPECT_EQ(extracted.extracted.front().first, handle.id());
     EXPECT_EQ(extracted.extracted.front().second.values, (std::vector<std::uint32_t>{29, 31}));
@@ -3441,12 +3442,12 @@ TEST(GpuImage, AspectRatioAndSize2d) {
 // GpuImage's RenderAsset moves render-only Image data exactly once while the
 // source metadata remains resident (Bevy gpu_image.rs::take_gpu_data).
 TEST(GpuImage, TakeGpuData) {
-    static_assert(RenderAssetImpl<epix::image::Image>);
-    static_assert(HasTakeGpuData<epix::image::Image>);
+    static_assert(RenderAssetImpl<epix::render::texture::GpuImage>);
+    static_assert(HasTakeGpuData<epix::render::texture::GpuImage>);
 
     auto stored = epix::image::Image::create2d(3, 2, wgpu::TextureFormat::eRGBA8Unorm);
     stored.set_usage(epix::assets::RenderAssetUsages::RENDER_WORLD);
-    RenderAsset<epix::image::Image> impl;
+    RenderAsset<epix::render::texture::GpuImage> impl;
     EXPECT_EQ(impl.byte_len(stored), std::optional<std::size_t>{24});
 
     auto extracted = impl.take_gpu_data(stored, nullptr);

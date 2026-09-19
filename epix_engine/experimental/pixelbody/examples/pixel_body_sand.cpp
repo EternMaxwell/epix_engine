@@ -462,6 +462,7 @@ void dirty_rect_overlay_system(
     Commands cmd,
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
     Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
     ParamSet<Query<Item<Entity, const fs::SandChunkPos&, const fs::SandChunkDirtyRect&, const transform::Transform&>>,
              Query<Item<Mut<transform::Transform>>, With<DirtyRectOverlay>>> qs) {
@@ -513,8 +514,11 @@ void dirty_rect_overlay_system(
             } else {
                 auto handle               = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
                 auto e                    = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                                      sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.30f},
-                                                                           .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                                      sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                                          materials->emplace(sprite_render::ColorMaterial{
+                                                              .color = {1.0f, 0.3f, 0.1f, 0.30f},
+                                                              .mode  = sprite_render::AlphaMode2dBlend{},
+                                                          })},
                                                       transform::Transform{.translation = center, .scaler = scaler})
                                                 .id();
                 st.dirty_rect_overlays[c] = e;
@@ -526,6 +530,7 @@ void dirty_rect_overlay_system(
 void freefall_overlay_system(Commands cmd,
                              ResMut<AppState> app_state,
                              ResMut<assets::Assets<mesh::Mesh>> meshes,
+                             ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
                              Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
                              Query<Item<Entity, const ext::grid::Chunk<fs::kDim>&, const transform::Transform&>> chunks,
                              Query<Item<Mut<mesh::Mesh2d>>, With<FreefallOverlay>> overlay_meshes) {
@@ -582,8 +587,11 @@ void freefall_overlay_system(Commands cmd,
             }
         } else {
             auto e = cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
-                               sprite_render::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                                    .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                               sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                   materials->emplace(sprite_render::ColorMaterial{
+                                       .color = {0.0f, 0.9f, 1.0f, 0.45f},
+                                       .mode  = sprite_render::AlphaMode2dBlend{},
+                                   })},
                                transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, -0.5f}})
                          .id();
             st.freefall_overlays[c] = e;
@@ -595,6 +603,7 @@ void chunk_chain_overlay_system(
     Commands cmd,
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
     ParamSet<Query<Item<Entity, Ref<pb::SandStaticBody>, const transform::Transform&>>,
              Query<Item<Mut<mesh::Mesh2d>, Mut<transform::Transform>>, With<ChunkChainOverlay>>> qs) {
     auto& st = *app_state;
@@ -669,7 +678,11 @@ void chunk_chain_overlay_system(
             } else {
                 auto handle = meshes->emplace(build_mesh(*entry.ssb));
                 auto e      = cmd.spawn(ChunkChainOverlay{}, mesh::Mesh2d{handle},
-                                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                        sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                            materials->emplace(sprite_render::ColorMaterial{
+                                                .color = color,
+                                                .mode  = sprite_render::AlphaMode2dBlend{},
+                                            })},
                                         transform::Transform{.translation = overlay_tr})
                                   .id();
                 st.chunk_chain_overlays[entry.entity] = e;
@@ -682,8 +695,10 @@ void body_outline_overlay_system(
     Commands cmd,
     ResMut<AppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
     ParamSet<Query<Item<Entity, Ref<pb::PixelBody>, const transform::Transform&>>,
-             Query<Item<Mut<mesh::Mesh2d>, Mut<sprite_render::MeshMaterial2d>, Mut<transform::Transform>>,
+             Query<Item<Mut<mesh::Mesh2d>, Mut<sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>>,
+                         Mut<transform::Transform>>,
                    With<BodyOutlineOverlay>>> qs) {
     auto& st = *app_state;
     if (!st.show_body_outlines) {
@@ -754,13 +769,19 @@ void body_outline_overlay_system(
                         auto handle   = meshes->emplace(build_mesh(*entry.body));
                         m2d.get_mut() = mesh::Mesh2d{handle};
                     }
-                    mat.get_mut().color = color;
+                    // The tint lives in the material asset now, so the overlay's
+                    // colour is written through Assets<ColorMaterial>.
+                    if (auto* material = materials->get_mut(mat.get().handle)) material->color = color;
                     ovt.get_mut()       = transform::Transform{.translation = t, .rotation = entry.rotation};
                 }
             } else {
                 auto handle = meshes->emplace(build_mesh(*entry.body));
                 auto e      = cmd.spawn(BodyOutlineOverlay{}, mesh::Mesh2d{handle},
-                                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                        sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                            materials->emplace(sprite_render::ColorMaterial{
+                                                .color = color,
+                                                .mode  = sprite_render::AlphaMode2dBlend{},
+                                            })},
                                         transform::Transform{.translation = t, .rotation = entry.rotation})
                                   .id();
                 st.body_outline_overlays[entry.entity] = e;
@@ -792,6 +813,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(imgui::ImGuiPlugin{})
         .add_plugins(time::TimePlugin{})
         .add_plugins(fs::FallingSandPlugin{})

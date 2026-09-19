@@ -74,6 +74,7 @@ struct MeshBatchingTestPlugin {
     void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials   = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
 
@@ -103,7 +104,9 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.0f);
 
             world.spawn(mesh::Mesh2d{shape_handles[i % 3]},
-                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dOpaque{}},
+                        sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                            materials.emplace(sprite_render::ColorMaterial{
+                                .color = color, .mode = sprite_render::AlphaMode2dOpaque{}})},
                         transform::Transform{.translation = translation});
         }
 
@@ -113,7 +116,9 @@ struct MeshBatchingTestPlugin {
             glm::vec3 translation(pos_dist(rng), pos_dist(rng), 0.01f);
 
             world.spawn(mesh::Mesh2d{box_handle},
-                        sprite_render::MeshMaterial2d{.color = color, .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                        sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                            materials.emplace(sprite_render::ColorMaterial{
+                                .color = color, .mode = sprite_render::AlphaMode2dBlend{}})},
                         transform::Transform{.translation = translation});
         }
     }
@@ -147,6 +152,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(CamControlPlugin{})
         .add_plugins(MeshBatchingTestPlugin{});
 

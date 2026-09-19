@@ -436,7 +436,7 @@ image::Image setup_tonemapping_lut_image(std::span<const std::byte> ktx2) {
 }  // namespace
 
 std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
-    const render::RenderAssets<image::Image>& images,
+    const render::RenderAssets<render::texture::GpuImage>& images,
     const TonemappingLuts& tonemapping_luts,
     Tonemapping tonemapping,
     const render::texture::FallbackImage& fallback_image) {
@@ -600,7 +600,7 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
     const auto& tonemapping_pipeline = world.resource<TonemappingPipeline>();
     const auto& tonemapping_luts     = world.resource<TonemappingLuts>();
     const auto& view_uniforms        = world.resource<render::view::ViewUniforms>();
-    const auto& gpu_images           = world.resource<render::RenderAssets<image::Image>>();
+    const auto& gpu_images           = world.resource<render::RenderAssets<render::texture::GpuImage>>();
     const auto& fallback_image       = world.resource<render::texture::FallbackImage>();
 
     const auto pipeline = pipeline_server.get_render_pipeline(view_tonemapping_pipeline.pipeline_id);

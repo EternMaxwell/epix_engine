@@ -563,7 +563,7 @@ EPIX_EXPORT struct MeshAllocator {
 
     /** @brief Free allocations for removed/modified meshes, then remove empty
      * slabs in one pass (Bevy `MeshAllocator::free_meshes`). */
-    void free_meshes(const ExtractedAssets<::epix::mesh::Mesh>& extracted_meshes) {
+    void free_meshes(const ExtractedAssets<::epix::render::mesh::RenderMesh>& extracted_meshes) {
         std::unordered_set<SlabId> empty_slabs;
         const auto free_mesh = [&](const epix::assets::AssetId<::epix::mesh::Mesh>& id) {
             if (auto vertex = mesh_id_to_vertex_slab.find(id); vertex != mesh_id_to_vertex_slab.end()) {
@@ -620,13 +620,13 @@ EPIX_EXPORT struct MeshAllocator {
     /** @brief Allocate every extracted mesh, grow affected slabs once, then
      * upload all new payloads (Bevy `MeshAllocator::allocate_meshes`). */
     void allocate_meshes(const MeshAllocatorSettings& settings,
-                         const ExtractedAssets<::epix::mesh::Mesh>& extracted_meshes,
+                         const ExtractedAssets<::epix::render::mesh::RenderMesh>& extracted_meshes,
                          ::epix::mesh::MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
                          const wgpu::Device& device, const wgpu::Queue& queue);
 
     friend void allocate_and_free_meshes(
         ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
-        ecs::Res<ExtractedAssets<::epix::mesh::Mesh>> extracted_meshes,
+        ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
         ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
         ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue);
 
@@ -659,7 +659,7 @@ EPIX_EXPORT struct MeshAllocatorPlugin {
  * update their shared GPU slabs (Bevy `allocate_and_free_meshes`). */
 EPIX_EXPORT void allocate_and_free_meshes(
     ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
-    ecs::Res<ExtractedAssets<::epix::mesh::Mesh>> extracted_meshes,
+    ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
     ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts, ecs::Res<wgpu::Device> device,
     ecs::Res<wgpu::Queue> queue);
 }  // namespace epix::render::mesh

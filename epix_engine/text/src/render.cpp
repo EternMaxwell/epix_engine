@@ -359,7 +359,7 @@ struct DrawTextBatch {
         const PhaseItem& item,
         ecs::Item<const TextViewBindGroup&>,
         std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        std::tuple<ecs::Res<render::RenderAssets<mesh::Mesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
+        std::tuple<ecs::Res<render::RenderAssets<render::mesh::RenderMesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
         const wgpu::RenderPassEncoder& encoder) {
         if (!entity_item) {
             return std::unexpected(render::phase::RenderCommandError{
@@ -513,8 +513,8 @@ void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
                                Opt<const ::epix::camera::RenderLayers&>,
                                const ::epix::render::view::RenderVisibleEntities&>> views,
                     Query<Item<Entity, const ExtractedText2d&>> texts,
-                    Res<render::RenderAssets<image::Image>> images,
-                    Res<render::RenderAssets<mesh::Mesh>> gpu_meshes,
+                    Res<render::RenderAssets<render::texture::GpuImage>> images,
+                    Res<render::RenderAssets<render::mesh::RenderMesh>> gpu_meshes,
                     Res<TransparentTextDrawFunction> draw_function_id,
                     ResMut<Text2dPipelineCache> pipeline_cache,
                     ResMut<render::PipelineServer> pipeline_server,
@@ -587,7 +587,7 @@ void prepare_text_view_bind_groups(ecs::Commands commands,
 
 void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
                           Query<Item<TextBatch&, const ExtractedText2d&>> texts,
-                          Res<render::RenderAssets<image::Image>> images,
+                          Res<render::RenderAssets<render::texture::GpuImage>> images,
                           Res<wgpu::Device> device,
                           Res<wgpu::Queue> queue,
                           Res<Text2dPipelineCache> pipeline_cache,

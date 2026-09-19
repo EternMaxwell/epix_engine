@@ -399,13 +399,13 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Res<render::view::ViewUniforms> view_uniforms,
         ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>, ecs::With<render::view::ExtractedView>>
             views,
-        ecs::Res<core_graph::TonemappingLuts> tonemapping_luts, ecs::Res<render::RenderAssets<image::Image>> images,
+        ecs::Res<core_graph::TonemappingLuts> tonemapping_luts, ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
         ecs::Res<render::texture::FallbackImage> fallback_image);
 
     void prepare_sprite_image_bind_groups(
         ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue, ecs::ResMut<SpriteMeta> sprite_meta,
         ecs::Res<SpritePipeline> sprite_pipeline, ecs::ResMut<ImageBindGroups> image_bind_groups,
-        ecs::Res<render::RenderAssets<image::Image>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,
+        ecs::Res<render::RenderAssets<render::texture::GpuImage>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,
         ecs::Res<ExtractedSlices> extracted_slices,
         ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
         ecs::Res<SpriteAssetEvents> events, ecs::ResMut<SpriteBatches> batches,

@@ -311,8 +311,22 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                                              .setEntryPoint(descriptor.fragment->entry_point
                                                                 .transform([](auto&& s) { return std::string_view(s); })
                                                                 .value_or(std::string_view("main"))));
+            // `createRenderPipeline` returns a non-null handle even when it
+            // failed in this wrapper/wgpu-native, so the null test alone would
+            // cache an invalid pipeline. That invalid pipeline then reaches
+            // `setPipeline`, poisons the encoder, makes `finish()` produce an
+            // invalid command buffer and makes the submit fatal — so the probe
+            // is what actually detects the failure.
+            GpuValidationErrorProbe::last_message.reset();
             auto pipeline = device.createRenderPipeline(pipelineDesc);
-            if (!pipeline) return std::unexpected(PipelineError::CreationFailure);
+            if (!pipeline || GpuValidationErrorProbe::last_message) {
+                spdlog::error("[render] Failed to create render pipeline '{}': {}",
+                              descriptor.label.empty() ? std::string_view("<unnamed>")
+                                                       : std::string_view(descriptor.label),
+                              GpuValidationErrorProbe::last_message.value_or(
+                                  "wgpu returned an invalid pipeline without reporting a reason"));
+                return std::unexpected(PipelineError::CreationFailure);
+            }
             return Pipeline{RenderPipeline(std::move(pipeline))};
         };
         schedule_creation(std::move(task));

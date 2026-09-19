@@ -635,6 +635,7 @@ void freefall_overlay_system(
     Commands cmd,
     ResMut<SandAppState> app_state,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
     Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
     Query<Item<Entity, const fs::ChunkElementGrid&, const transform::Transform&, const Parent&>> chunks,
     Query<Item<Mut<mesh::Mesh2d>>, With<FreefallOverlay>> overlay_meshes) {
@@ -713,8 +714,11 @@ void freefall_overlay_system(
             // Spawn new overlay as sibling with same world position.
             auto overlay_ent =
                 cmd.spawn(FreefallOverlay{}, mesh::Mesh2d{handle},
-                          sprite_render::MeshMaterial2d{.color      = {0.0f, 0.9f, 1.0f, 0.45f},
-                                               .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                          sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                              materials->emplace(sprite_render::ColorMaterial{
+                                  .color = {0.0f, 0.9f, 1.0f, 0.45f},
+                                  .mode  = sprite_render::AlphaMode2dBlend{},
+                              })},
                           transform::Transform{.translation = tf.translation + glm::vec3{0.0f, 0.0f, 0.5f}},
                           camera::RenderLayers::layer(2))
                     .id();
@@ -732,6 +736,7 @@ void freefall_overlay_system(
 void dirty_rect_overlay_system(Commands cmd,
                                ResMut<SandAppState> app_state,
                                ResMut<assets::Assets<mesh::Mesh>> meshes,
+                               ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
                                Query<Item<const fs::SandWorld&>, With<fs::SimulatedByPlugin>> worlds,
                                ParamSet<Query<Item<Entity,
                                                    const fs::SandChunkPos&,
@@ -792,8 +797,11 @@ void dirty_rect_overlay_system(Commands cmd,
                 // Spawn a new overlay entity (unit quad scaled to dirty-rect size).
                 auto handle      = meshes->emplace(mesh::make_box2d(1.0f, 1.0f));
                 auto overlay_ent = cmd.spawn(DirtyRectOverlay{}, mesh::Mesh2d{handle},
-                                             sprite_render::MeshMaterial2d{.color      = {1.0f, 0.3f, 0.1f, 0.35f},
-                                                                  .alpha_mode = sprite_render::AlphaMode2dBlend{}},
+                                             sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                                 materials->emplace(sprite_render::ColorMaterial{
+                                                     .color = {1.0f, 0.3f, 0.1f, 0.35f},
+                                                     .mode  = sprite_render::AlphaMode2dBlend{},
+                                                 })},
                                              transform::Transform{.translation = {center_x, center_y, 1.0f},
                                                                   .scaler      = {width, height, 1.0f}},
                                              camera::RenderLayers::layer(1))
@@ -1265,6 +1273,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(imgui::ImGuiPlugin{
             .enable_docking   = true,
             .enable_viewports = true,

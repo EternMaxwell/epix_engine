@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/extension/fallingsand.hpp>
-#include <epix/sprite_render/mesh2d.hpp>
+#include <epix/sprite_render.hpp>
 #include <future>
 #include <optional>
 #include <ranges>
@@ -187,6 +187,7 @@ void setup_chunk_dirty_rects(
 void setup_chunk_render_children(
     Commands cmd,
     ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
     Query<Item<Entity, const Parent&>, Filter<With<ChunkElementGrid, SandChunkPos>, Without<SandChunkRenderChildren>>>
         new_chunks,
     Query<Entity, With<SandWorld, transform::Transform, MeshBuildByPlugin>> mesh_worlds) {
@@ -200,9 +201,10 @@ void setup_chunk_render_children(
                                                                assets::RenderAssetUsages::RENDER_WORLD)});
             auto mesh_ent = cmd.entity(chunk_entity)
                                 .spawn(SandChunkMesh{}, mesh::Mesh2d{empty_mesh},
-                                       sprite_render::MeshMaterial2d{
-                                           .color      = glm::vec4(1.0f),
-                                           .alpha_mode = sprite_render::AlphaMode2dOpaque{},
+                                       sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                           materials->emplace(sprite_render::ColorMaterial{
+                                               .mode = sprite_render::AlphaMode2dOpaque{},
+                                           }),
                                        },
                                        transform::Transform{.translation = glm::vec3(0.0f)})
                                 .id();
@@ -372,7 +374,8 @@ void build_body_debug_meshes(
     Query<Item<Entity, Ref<ChunkElementGrid>, Mut<SandChunkRenderChildren>, Mut<SandChunkDirtyRect>, const Parent&>>
         chunks,
     Query<Item<const SandWorld&, Opt<const SandWorldDebug&>>, Filter<With<SandWorld, MeshBuildByPlugin>>> worlds,
-    ResMut<assets::Assets<mesh::Mesh>> meshes) {
+    ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials) {
     for (auto&& [chunk_entity, elem_ref, render_children_mut, dirty_rect, parent_comp] : chunks.iter()) {
         auto world_data = worlds.get(parent_comp.entity());
         if (!world_data.has_value()) continue;
@@ -392,9 +395,10 @@ void build_body_debug_meshes(
             } else {
                 auto de              = cmd.entity(chunk_entity)
                                            .spawn(SandChunkBodyDebug{}, mesh::Mesh2d{handle},
-                                                  sprite_render::MeshMaterial2d{
-                                                      .color      = glm::vec4(1.0f),
-                                                      .alpha_mode = sprite_render::AlphaMode2dBlend{},
+                                                  sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                                      materials->emplace(sprite_render::ColorMaterial{
+                                                          .mode = sprite_render::AlphaMode2dBlend{},
+                                                      }),
                                                   },
                                                   transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.3f)})
                                            .id();
@@ -415,7 +419,8 @@ void update_chunk_outlines(
     Commands cmd,
     Query<Item<Entity, Mut<SandChunkRenderChildren>, const Parent&>> chunks,
     Query<Item<const SandWorld&, Opt<const SandWorldDebug&>>, With<SandWorld, transform::Transform>> worlds,
-    ResMut<assets::Assets<mesh::Mesh>> meshes) {
+    ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ResMut<assets::Assets<sprite_render::ColorMaterial>> materials) {
     for (auto&& [chunk_entity, render_children, parent_comp] : chunks.iter()) {
         auto world_data = worlds.get(parent_comp.entity());
         if (!world_data.has_value()) continue;
@@ -430,9 +435,11 @@ void update_chunk_outlines(
             auto outline_mesh = meshes->emplace(build_chunk_outline_mesh(cwidth, current_cell_size));
             auto oe           = cmd.entity(chunk_entity)
                                     .spawn(SandChunkOutline{}, mesh::Mesh2d{outline_mesh},
-                                           sprite_render::MeshMaterial2d{
-                                               .color      = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
-                                               .alpha_mode = sprite_render::AlphaMode2dBlend{},
+                                           sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                                               materials->emplace(sprite_render::ColorMaterial{
+                                                   .color = glm::vec4(1.0f, 1.0f, 1.0f, 0.55f),
+                                                   .mode  = sprite_render::AlphaMode2dBlend{},
+                                               }),
                                            },
                                            transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.01f)},
                                            ::epix::camera::RenderLayers::layer(2))

@@ -130,7 +130,7 @@ struct TonemappingComparisonNode {
 
         const auto& tonemapping_pipeline = world.resource<core_graph::TonemappingPipeline>();
         const auto& tonemapping_luts     = world.resource<core_graph::TonemappingLuts>();
-        const auto& gpu_images           = world.resource<render::RenderAssets<image::Image>>();
+        const auto& gpu_images           = world.resource<render::RenderAssets<render::texture::GpuImage>>();
         const auto& fallback_image       = world.resource<render::texture::FallbackImage>();
         const auto& view_uniforms        = world.resource<render::view::ViewUniforms>();
         const auto* uniform_buffer       = view_uniforms.uniforms.buffer();

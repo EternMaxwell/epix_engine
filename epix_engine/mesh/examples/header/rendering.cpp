@@ -8,7 +8,7 @@
 #include <epix/input.hpp>
 #include <epix/mesh.hpp>
 #include <epix/sprite.hpp>
-#include <epix/sprite_render/mesh2d.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
 #include <epix/window.hpp>
@@ -46,6 +46,7 @@ struct MeshRenderingVisualTestPlugin {
     void ready(app::App& app) {
         auto& world        = app.world_mut();
         auto& mesh_assets  = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials    = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
         auto& image_assets = world.resource_mut<assets::Assets<image::Image>>();
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
@@ -62,40 +63,47 @@ struct MeshRenderingVisualTestPlugin {
         auto transparent_box    = mesh_assets.emplace(mesh::make_box2d(160.0f, 160.0f));
         auto textured_box       = mesh_assets.emplace(mesh::make_box2d_uv(160.0f, 160.0f));
 
-        world.spawn(mesh::Mesh2d{solid_box}, sprite_render::MeshMaterial2d{.color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f)},
+        world.spawn(mesh::Mesh2d{solid_box},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.95f, 0.31f, 0.20f, 1.0f),
+                            .mode  = sprite_render::AlphaMode2dOpaque{},
+                        })},
                     transform::Transform{
                         .translation = glm::vec3(-300.0f, 0.0f, 0.0f),
                     });
 
-        world.spawn(mesh::Mesh2d{gradient_quad}, sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f)},
+        world.spawn(mesh::Mesh2d{gradient_quad},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{.mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{
                         .translation = glm::vec3(0.0f, 0.0f, 0.0f),
                     });
 
         world.spawn(mesh::Mesh2d{transparent_circle},
-                    sprite_render::MeshMaterial2d{
-                        .color      = glm::vec4(0.16f, 0.62f, 0.96f, 0.55f),
-                        .alpha_mode = sprite_render::AlphaMode2dBlend{},
-                    },
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.16f, 0.62f, 0.96f, 0.55f),
+                            .mode  = sprite_render::AlphaMode2dBlend{},
+                        })},
                     transform::Transform{
                         .translation = glm::vec3(250.0f, 36.0f, 0.1f),
                     });
 
         world.spawn(mesh::Mesh2d{transparent_box},
-                    sprite_render::MeshMaterial2d{
-                        .color      = glm::vec4(0.99f, 0.68f, 0.20f, 0.50f),
-                        .alpha_mode = sprite_render::AlphaMode2dBlend{},
-                    },
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.99f, 0.68f, 0.20f, 0.50f),
+                            .mode  = sprite_render::AlphaMode2dBlend{},
+                        })},
                     transform::Transform{
                         .translation = glm::vec3(300.0f, -18.0f, 0.0f),
                     });
 
         world.spawn(mesh::Mesh2d{textured_box},
-                    sprite_render::MeshTextureMaterial2d{
-                        .image      = texture_handle,
-                        .color      = glm::vec4(1.0f),
-                        .alpha_mode = sprite_render::AlphaMode2dOpaque{},
-                    },
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .mode = sprite_render::AlphaMode2dOpaque{}, .texture = texture_handle})},
                     transform::Transform{
                         .translation = glm::vec3(-120.0f, -220.0f, 0.0f),
                     });
@@ -129,6 +137,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(MeshRenderingVisualTestPlugin{});
 
     app.run();

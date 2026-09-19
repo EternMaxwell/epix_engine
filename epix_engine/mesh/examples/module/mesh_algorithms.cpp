@@ -55,6 +55,7 @@ struct MeshAlgorithmsExamplePlugin {
     void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials   = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         auto indexed    = make_indexed_gradient_quad();
         auto duplicated = indexed;
@@ -75,13 +76,19 @@ struct MeshAlgorithmsExamplePlugin {
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
         world.spawn(mesh::Mesh2d{indexed_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(1.0f, 0.78f, 0.72f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(1.0f, 0.78f, 0.72f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {-280.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{duplicated_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.78f, 1.0f, 0.88f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.78f, 1.0f, 0.88f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {0.0f, 0.0f, 0.0f}});
         world.spawn(mesh::Mesh2d{inverted_handle},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.76f, 0.86f, 1.0f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .color = glm::vec4(0.76f, 0.86f, 1.0f, 1.0f), .mode = sprite_render::AlphaMode2dOpaque{}})},
                     transform::Transform{.translation = {280.0f, 0.0f, 0.0f}});
 
         std::println(
@@ -118,6 +125,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(MeshAlgorithmsExamplePlugin{});
 
     app.run();

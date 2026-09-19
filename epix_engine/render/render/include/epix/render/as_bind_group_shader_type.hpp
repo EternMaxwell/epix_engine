@@ -15,7 +15,7 @@ namespace epix::render::render_resource {
  *
  * This is the C++ counterpart to Bevy 0.18's `AsBindGroupShaderType<T>`.
  * Specialize it when conversion needs render-world image metadata; the
- * `RenderAssets<image::Image>` argument contains the processed `GpuImage`
+ * `RenderAssets<texture::GpuImage>` argument contains the processed `GpuImage`
  * values. The default implementation covers normal implicit conversions and
  * deliberately ignores that resource.
  *
@@ -25,7 +25,7 @@ namespace epix::render::render_resource {
 EPIX_EXPORT template <typename C, ShaderType T>
 struct AsBindGroupShaderType {
     /** @brief Convert @p value to its shader representation. */
-    static T as_bind_group_shader_type(const C& value, const RenderAssets<image::Image>& images)
+    static T as_bind_group_shader_type(const C& value, const RenderAssets<texture::GpuImage>& images)
         requires std::convertible_to<const C&, T>
     {
         (void)images;
@@ -36,7 +36,7 @@ struct AsBindGroupShaderType {
 /** @brief Invoke `AsBindGroupShaderType` without spelling its specialization.
  * This is the C++ call-site counterpart to Bevy's trait method. */
 EPIX_EXPORT template <ShaderType T, typename C>
-T as_bind_group_shader_type(const C& value, const RenderAssets<image::Image>& images) {
+T as_bind_group_shader_type(const C& value, const RenderAssets<texture::GpuImage>& images) {
     return AsBindGroupShaderType<C, T>::as_bind_group_shader_type(value, images);
 }
 

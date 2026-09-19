@@ -7,8 +7,11 @@ using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::render;
 
-std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> RenderAsset<ShaderStorageBuffer>::prepare_asset(
-    ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param, const ProcessedAsset* previous) {
+std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>>
+RenderAsset<GpuShaderStorageBuffer>::prepare_asset(ShaderStorageBuffer&& asset,
+                                                   assets::AssetId<ShaderStorageBuffer> id,
+                                                   Param param,
+                                                   const GpuShaderStorageBuffer* previous) {
     (void)id;
     (void)previous;
     auto& [device, queue] = param;
@@ -33,12 +36,13 @@ std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> Re
     return result;
 }
 
-epix::assets::RenderAssetUsages RenderAsset<ShaderStorageBuffer>::usage(const ShaderStorageBuffer& asset) noexcept {
+epix::assets::RenderAssetUsages RenderAsset<GpuShaderStorageBuffer>::asset_usage(
+    const ShaderStorageBuffer& asset) noexcept {
     return asset.asset_usage;
 }
 
 void StoragePlugin::attach(App& app) {
     spdlog::debug("[render.storage] Attaching StoragePlugin.");
     epix::assets::app_register_asset<ShaderStorageBuffer>(app);
-    app.add_plugins(RenderAssetPlugin<ShaderStorageBuffer>{});
+    app.add_plugins(RenderAssetPlugin<GpuShaderStorageBuffer>{});
 }

@@ -133,6 +133,18 @@ EPIX_EXPORT using Pipeline = std::variant<RenderPipeline, ComputePipeline>;
 EPIX_EXPORT enum PipelineError {
     CreationFailure,
 };
+/** @brief Thread-local record of the most recent wgpu validation error message
+ *  raised on this thread.
+ *
+ *  This wrapper/wgpu-native returns a *non-null* handle even when a GPU object
+ *  could not be created, so a null-handle test cannot detect failure: the reason
+ *  is only delivered through the uncaptured-error callback. `render.cpp`'s
+ *  callback stores the message here, and creation sites reset it beforehand and
+ *  check it afterwards — which is what makes a failed creation both detectable
+ *  and reportable instead of being cached as a valid object. */
+EPIX_EXPORT struct GpuValidationErrorProbe {
+    static inline thread_local std::optional<std::string> last_message{};
+};
 /** @brief Variant of errors that can occur during pipeline server
  * operations. */
 EPIX_EXPORT using PipelineServerError = std::variant<PipelineError, shader::ShaderCacheError>;

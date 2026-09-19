@@ -33,6 +33,7 @@ struct AlphaMaskVisualTestPlugin {
         auto& world = app.world_mut();
         auto& meshes = world.resource_mut<assets::Assets<mesh::Mesh>>();
         auto& images = world.resource_mut<assets::Assets<image::Image>>();
+        auto& materials = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         world.spawn(camera::Camera2d{}, transform::Transform{});
 
@@ -47,11 +48,16 @@ struct AlphaMaskVisualTestPlugin {
         const auto foreground = meshes.emplace(mesh::make_box2d_uv(440.0f, 300.0f));
 
         world.spawn(mesh::Mesh2d{background},
-                    sprite_render::MeshMaterial2d{.color = glm::vec4(0.98f, 0.35f, 0.08f, 1.0f)},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .mode  = sprite_render::AlphaMode2dOpaque{},
+                            .color = glm::vec4(0.98f, 0.35f, 0.08f, 1.0f),
+                        })},
                     transform::Transform{.translation = glm::vec3(0.0f, 0.0f, -0.1f)});
         world.spawn(mesh::Mesh2d{foreground},
-                    sprite_render::MeshTextureMaterial2d{.image = image,
-                                                 .alpha_mode = sprite_render::AlphaMode2dMask{.cutoff = 0.5f}},
+                    sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                        materials.emplace(sprite_render::ColorMaterial{
+                            .mode = sprite_render::AlphaMode2dMask{.cutoff = 0.5f}, .texture = image})},
                     transform::Transform{});
     }
 };

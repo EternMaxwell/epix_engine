@@ -573,7 +573,7 @@ concept GetFullBatchDataImpl = GetBatchDataImpl<T> && requires(GetFullBatchData<
     requires std::constructible_from<GetFullBatchData<T>>;
     requires std::is_empty_v<GetFullBatchData<T>>;
     typename GetFullBatchData<T>::BufferInputData;
-    requires render_resource::ShaderWritable<typename GetFullBatchData<T>::BufferInputData>;
+    requires render_resource::PodElement<typename GetFullBatchData<T>::BufferInputData>;
     requires std::default_initializable<typename GetFullBatchData<T>::BufferInputData>;
     {
         batch.get_binned_batch_data(std::declval<typename GetBatchData<T>::Param&>(),
@@ -1155,6 +1155,11 @@ struct CpuBinnedRenderPhasePlugin {
         if (!render_app) return;
         auto& render_world = render_app->get().world_mut();
         render_world.init_resource<phase::ViewBinnedRenderPhases<BPI>>();
+        // The batch systems read this, and Epix initializes a system's parameters
+        // when it is first dispatched, so the buffer must already exist here
+        // rather than being created later by another system.
+        render_world.init_resource<BatchedInstanceBuffers<typename GetBatchData<Adapter>::BufferData,
+                                                          typename GetFullBatchData<Adapter>::BufferInputData>>();
         render_app->get().add_systems(Render,
                                       ecs::into(phase::sweep_old_entities<BPI>).in_set(RenderSystems::QueueSweep));
         render_app->get().add_systems(Render,

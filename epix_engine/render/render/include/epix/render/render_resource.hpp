@@ -20,9 +20,11 @@
 #include <type_traits>
 #include <unordered_map>
 #include <utility>
+#include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render::render_resource {
@@ -120,6 +122,16 @@ constexpr std::size_t element_offset(std::size_t index, std::size_t element_size
     return index * align_up(element_size, alignment);
 }
 
+/** @brief Create a buffer already holding @p contents (Bevy
+ *  `RenderDevice::create_buffer_with_data`).
+ *
+ *  Epix uses `wgpu::Device` directly, which has no equivalent, so this is the
+ *  same mapped-at-creation write wgpu's own `create_buffer_init` performs. */
+EPIX_EXPORT wgpu::Buffer create_buffer_with_data(const wgpu::Device& device,
+                                                 std::span<const std::byte> contents,
+                                                 wgpu::BufferUsage usage,
+                                                 std::string_view label = {});
+
 /**
  * @brief Stores a single value to be transferred to the GPU and made
  * accessible to shaders as a uniform buffer (Bevy `UniformBuffer<T>`).
@@ -182,17 +194,19 @@ public:
      * uniform_buffer.rs:129-142). */
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
         const std::size_t size = ShaderTypeInfo<T>::shader_size;
+        std::vector<std::uint8_t> encoded(size);
+        ShaderTypeInfo<T>::write_into(value, encoded);
+
+        // Bevy creates the buffer with its contents on the first write and
+        // only uses the queue to update an existing buffer
+        // (uniform_buffer.rs:129-142).
         if (!gpu_buffer || capacity < size || changed) {
-            capacity = size;
-            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setLabel(label ? label->c_str() : "")
-                                                 .setUsage(usage)
-                                                 .setSize(capacity));
+            capacity   = size;
+            gpu_buffer = create_buffer_with_data(
+                device, std::as_bytes(std::span{encoded}), usage,
+                label ? std::string_view(*label) : std::string_view{});
             changed = false;
-        }
-        if (gpu_buffer) {
-            std::vector<std::uint8_t> encoded(size);
-            ShaderTypeInfo<T>::write_into(value, encoded);
+        } else {
             queue.writeBuffer(gpu_buffer, 0, encoded.data(), encoded.size());
         }
     }
@@ -593,6 +607,61 @@ template <std::floating_point T>
 struct RawBufferElementInfo<T> {
     static constexpr bool has_no_uninit = true;
 };
+/** @brief The unit type occupies no storage, so it trivially has no
+ *  uninitialized bytes. This escape hatch is genuinely needed: unlike the `Pod`
+ *  contract, whose bytewise-copyable and standard-layout halves C++ *can* check,
+ *  "no uninitialized bytes" is not expressible in C++ before reflection, so every
+ *  element type — including this one — must assert it. Needed because
+ *  `Mesh2dPipeline`'s `GetFullBatchData::BufferInputData` is the unit type, as in
+ *  Bevy (`mesh2d/mesh.rs:354`). */
+template <>
+struct RawBufferElementInfo<std::monostate> {
+    static constexpr bool has_no_uninit = true;
+};
+
+/**
+ * @brief Escape hatch for types that satisfy `bytemuck::Pod` but whose validity
+ * C++ cannot verify.
+ *
+ * `PodElement` is satisfied in two ways. C++ itself decides the cases it can:
+ * a type is accepted when it is bytewise-copyable and standard-layout, which is
+ * as close as the language gets to proving that a value may be copied as bytes
+ * and that every bit pattern is meaningful. What C++ still cannot express is
+ * the absence of padding — proving it needs reflection over the members — so a
+ * type that *is* `Pod` but that the automatic check rejects asserts it here
+ * instead, by specializing this marker with `is_pod = true`.
+ *
+ * A type C++ can already verify needs no specialization at all.
+ *
+ * @todo Replace this escape hatch once C++26 static reflection is available in
+ * our supported toolchain, as the `RawBufferElementInfo` note above describes:
+ * the reflected check verifies every data member is itself `Pod` and that the
+ * type has no padding, which shrinks this marker's remaining purpose to nothing
+ * and lets it be deleted.
+ */
+template <typename T>
+struct PodElementInfo;
+
+namespace detail {
+/** @brief The half of the `Pod` contract C++ can check: bytewise-copyable, and
+ *  standard layout (no virtuals, no reference or base-class layout surprises). */
+template <typename T>
+concept PodElementVerified = std::is_trivially_copyable_v<T> && std::is_standard_layout_v<T>;
+
+/** @brief Types whose `Pod` validity is asserted through the escape hatch
+ *  because `PodElementVerified` cannot decide them. */
+template <typename T>
+concept PodElementDeclared = requires { PodElementInfo<T>::is_pod; } && PodElementInfo<T>::is_pod;
+}  // namespace detail
+
+/** @brief Satisfied when `T` is `Pod` in the `bytemuck::Pod` sense: every bit
+ *  pattern is a valid value and the type may be copied bytewise. Deliberately
+ *  stronger than `RawBufferElement` above, which mirrors the weaker
+ *  `bytemuck::NoUninit` ("no uninitialized bytes") and says nothing about which
+ *  values are valid. Bevy bounds batching buffers by `Pod + Default + Sync +
+ *  Send` (`GetFullBatchData::BufferInputData`, batching/mod.rs:109). */
+template <typename T>
+concept PodElement = detail::PodElementVerified<T> || detail::PodElementDeclared<T>;
 
 /**
  * @brief GPU-layout encoded vector with a lazily-created GPU buffer (Bevy
@@ -1010,13 +1079,16 @@ public:
             return wgpu::BufferBindingLayout()
                 .setType(wgpu::BufferBindingType::eUniform)
                 .setHasDynamicOffset(wgpu::Bool(true))
-                // The fallback is a runtime-sized array.  As in Bevy, leave
-                // validation of its concrete size to wgpu at bind time.
+                // Divergence from Bevy, which sets
+                // `min_binding_size = Some(BD::min_size())` on both branches:
+                // Epix leaves it 0 and defers size validation to wgpu at bind
+                // time. Recorded in the mesh/core-graph tracker.
                 .setMinBindingSize(0);
         }
         return wgpu::BufferBindingLayout()
             .setType(wgpu::BufferBindingType::eReadOnlyStorage)
             .setHasDynamicOffset(wgpu::Bool(false))
+            // See the note above: Bevy sets the element's minimum size here.
             .setMinBindingSize(0);
     }
 

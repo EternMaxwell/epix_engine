@@ -33,7 +33,7 @@ bool initialize_mesh_allocator_test_app(epix::app::App& app) {
     world.init_resource<mesh_allocator::MeshAllocatorSettings>();
     world.init_resource<mesh_allocator::MeshAllocator>();
     world.init_resource<mesh::MeshVertexBufferLayouts>();
-    world.init_resource<epix::render::ExtractedAssets<mesh::Mesh>>();
+    world.init_resource<epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>>();
     app.add_systems(epix::app::Update, epix::ecs::into(mesh_allocator::allocate_and_free_meshes));
     return true;
 }
@@ -115,7 +115,7 @@ TEST(MeshModule, RenderAssetByteLenMatchesBevyContract) {
                           std::array{glm::vec4{1.0f, 1.0f, 1.0f, 1.0f}, glm::vec4{0.5f, 0.5f, 0.5f, 0.5f}});
     mesh.insert_indices(mesh::Indices{std::vector<std::uint16_t>{0, 1, 0}});
 
-    const epix::render::RenderAsset<mesh::Mesh> asset{};
+    const epix::render::RenderAsset<epix::render::mesh::RenderMesh> asset{};
     const auto len = asset.byte_len(mesh);
     ASSERT_TRUE(len.has_value());
     // (12 float3 + 16 float4) * 2 vertices + (3 * 2-byte u16 indices) = 62.
@@ -192,7 +192,7 @@ TEST(MorphPlugin, InheritsOnlyChangedNodeWeightsToDirectMeshChildren) {
 TEST(MeshRenderAsset, MorphImageRetriesThenSetsTextureAndPipelineKey) {
     epix::app::App app = epix::app::App::create();
     auto& world        = app.world_mut();
-    world.init_resource<epix::render::RenderAssets<epix::image::Image>>();
+    world.init_resource<epix::render::RenderAssets<epix::render::texture::GpuImage>>();
     world.init_resource<mesh::MeshVertexBufferLayouts>();
 
     const epix::assets::AssetId<epix::image::Image> image_id = epix::assets::AssetId<epix::image::Image>::invalid();
@@ -205,9 +205,9 @@ TEST(MeshRenderAsset, MorphImageRetriesThenSetsTextureAndPipelineKey) {
 
     app.add_systems(
         epix::app::Update,
-        epix::ecs::into([&](epix::render::RenderAsset<mesh::Mesh>::Param params) {
+        epix::ecs::into([&](epix::render::RenderAsset<epix::render::mesh::RenderMesh>::Param params) {
             if (!pending) return;
-            epix::render::RenderAsset<mesh::Mesh> adapter;
+            epix::render::RenderAsset<epix::render::mesh::RenderMesh> adapter;
             auto result = adapter.prepare_asset(std::move(*pending), epix::assets::AssetId<mesh::Mesh>::invalid(),
                                                 params, nullptr);
             pending.reset();
@@ -224,7 +224,7 @@ TEST(MeshRenderAsset, MorphImageRetriesThenSetsTextureAndPipelineKey) {
     EXPECT_TRUE(pending.has_value());
     EXPECT_FALSE(prepared.has_value());
 
-    world.resource_mut<epix::render::RenderAssets<epix::image::Image>>().emplace(image_id,
+    world.resource_mut<epix::render::RenderAssets<epix::render::texture::GpuImage>>().emplace(image_id,
                                                                                  epix::render::texture::GpuImage{});
     app.update();
     ASSERT_TRUE(prepared.has_value());
@@ -317,7 +317,7 @@ TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
     auto second    = store.remove_untracked(id2);
     ASSERT_TRUE(first.has_value());
     ASSERT_TRUE(second.has_value());
-    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
+    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>>();
     extracted.extracted.emplace_back(id1, std::move(*first));
     extracted.extracted.emplace_back(id2, std::move(*second));
     extracted.added.insert(id1);
@@ -337,7 +337,7 @@ TEST(MeshModule, AllocateAndFreeMeshesMatchesBevyFrameFlow) {
     const auto usage = static_cast<std::uint64_t>(vertex1->buffer->getUsage());
     EXPECT_NE(usage & static_cast<std::uint64_t>(wgpu::BufferUsage::eStorage), 0u);
 
-    epix::render::ExtractedAssets<mesh::Mesh> removals;
+    epix::render::ExtractedAssets<epix::render::mesh::RenderMesh> removals;
     removals.removed.insert(id1);
     removals.removed.insert(id2);
     world.insert_resource(std::move(removals));
@@ -365,7 +365,7 @@ TEST(MeshModule, AllocateAndFreeMeshesUsesLargeObjectSlabs) {
     const auto id                    = store.add(std::move(source)).id();
     auto extracted_mesh              = store.remove_untracked(id);
     ASSERT_TRUE(extracted_mesh.has_value());
-    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<mesh::Mesh>>();
+    auto& extracted = world.resource_mut<epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>>();
     extracted.extracted.emplace_back(id, std::move(*extracted_mesh));
     extracted.added.insert(id);
 
@@ -594,7 +594,7 @@ TEST(MeshModule, TransfersRenderWorldOnlyGpuDataOnce) {
     mesh::Mesh source = mesh::make_box2d(24.0f, 12.0f);
     ASSERT_GT(source.count_vertices(), 0u);
 
-    epix::render::RenderAsset<mesh::Mesh> render_asset;
+    epix::render::RenderAsset<epix::render::mesh::RenderMesh> render_asset;
     auto extracted = render_asset.take_gpu_data(source, nullptr);
     ASSERT_TRUE(extracted.has_value());
     EXPECT_GT(extracted->count_vertices(), 0u);
@@ -616,8 +616,8 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
     epix::ecs::World main_world(7);
     epix::ecs::World render_world(7);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(epix::render::ExtractedAssets<mesh::Mesh>{});
-    render_world.insert_resource(epix::render::RenderAssets<mesh::Mesh>{});
+    render_world.insert_resource(epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>{});
+    render_world.insert_resource(epix::render::RenderAssets<epix::render::mesh::RenderMesh>{});
 
     // Keep the extracted resource ids distinct from render-world ids, as they
     // are in the production main/render-world split.
@@ -633,11 +633,11 @@ TEST(MeshModule, ExtractSystemMovesRenderWorldOnlyMeshToRenderWorld) {
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
         epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
 
-    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<mesh::Mesh>);
+    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<epix::render::mesh::RenderMesh>);
     system->initialize(render_world);
     ASSERT_TRUE(system->run({}, render_world).has_value());
 
-    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<mesh::Mesh>>();
+    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>>();
     ASSERT_EQ(extracted.extracted.size(), 1u);
     EXPECT_EQ(extracted.extracted.front().first, handle.id());
     EXPECT_GT(extracted.extracted.front().second.count_vertices(), 0u);
@@ -657,8 +657,8 @@ TEST(MeshModule, ExtractSystemClonesDualWorldMesh) {
     epix::ecs::World main_world(7);
     epix::ecs::World render_world(7);
     render_world.insert_resource(epix::app::ExtractedWorld{main_world});
-    render_world.insert_resource(epix::render::ExtractedAssets<mesh::Mesh>{});
-    render_world.insert_resource(epix::render::RenderAssets<mesh::Mesh>{});
+    render_world.insert_resource(epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>{});
+    render_world.insert_resource(epix::render::RenderAssets<epix::render::mesh::RenderMesh>{});
     main_world.insert_resource(ResourceIdShiftA{});
     main_world.insert_resource(ResourceIdShiftB{});
     main_world.insert_resource(ResourceIdShiftC{});
@@ -669,11 +669,11 @@ TEST(MeshModule, ExtractSystemClonesDualWorldMesh) {
     main_world.resource_mut<epix::ecs::Events<epix::assets::AssetEvent<mesh::Mesh>>>().push(
         epix::assets::AssetEvent<mesh::Mesh>::added(handle.id()));
 
-    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<mesh::Mesh>);
+    auto system = epix::ecs::make_system_unique(epix::render::extract_render_asset<epix::render::mesh::RenderMesh>);
     system->initialize(render_world);
     ASSERT_TRUE(system->run({}, render_world).has_value());
 
-    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<mesh::Mesh>>();
+    const auto& extracted = render_world.resource<epix::render::ExtractedAssets<epix::render::mesh::RenderMesh>>();
     ASSERT_EQ(extracted.extracted.size(), 1u);
     EXPECT_GT(extracted.extracted.front().second.count_vertices(), 0u);
     const auto source = main_world.resource<epix::assets::Assets<mesh::Mesh>>().get(handle.id());

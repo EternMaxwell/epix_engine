@@ -220,19 +220,19 @@ EPIX_EXPORT struct FallbackImageFormatMsaaCache {
 }  // namespace epix::render::texture
 
 template <>
-struct epix::render::RenderAsset<epix::image::Image> {
+struct epix::render::RenderAsset<epix::render::texture::GpuImage> {
     using Param          = std::tuple<epix::ecs::Res<wgpu::Device>,
                                       epix::ecs::Res<wgpu::Queue>,
                                       epix::ecs::Res<epix::render::DefaultImageSampler>>;
-    using ProcessedAsset = epix::render::texture::GpuImage;
+    using SourceAsset    = epix::image::Image;
     using ExtractedAsset = epix::image::Image;
 
-    std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::image::Image>> prepare_asset(
-        epix::image::Image&& asset,
-        epix::assets::AssetId<epix::image::Image> id,
-        Param param,
-        const epix::render::texture::GpuImage* previous);
-    epix::assets::RenderAssetUsages usage(const epix::image::Image& asset) noexcept;
+    std::expected<epix::render::texture::GpuImage, epix::render::PrepareAssetError<epix::image::Image>>
+    prepare_asset(epix::image::Image&& asset,
+                  epix::assets::AssetId<epix::image::Image> id,
+                  Param param,
+                  const epix::render::texture::GpuImage* previous);
+    epix::assets::RenderAssetUsages asset_usage(const epix::image::Image& asset) noexcept;
     std::optional<std::size_t> byte_len(const epix::image::Image& asset) const noexcept {
         return asset.has_data() ? std::optional{asset.raw_view().size_bytes()} : std::nullopt;
     }

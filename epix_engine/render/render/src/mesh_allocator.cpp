@@ -8,7 +8,7 @@ using namespace epix::ecs;
 
 void epix::render::mesh::MeshAllocator::allocate_meshes(
     const MeshAllocatorSettings& settings,
-    const render::ExtractedAssets<::epix::mesh::Mesh>& extracted_meshes,
+    const render::ExtractedAssets<::epix::render::mesh::RenderMesh>& extracted_meshes,
     ::epix::mesh::MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
     const wgpu::Device& device, const wgpu::Queue& queue) {
     detail::SlabsToReallocate slabs_to_reallocate;
@@ -72,7 +72,7 @@ epix::render::mesh::MeshAllocator epix::render::mesh::MeshAllocator::from_world(
 
 void epix::render::mesh::allocate_and_free_meshes(
     ResMut<MeshAllocator> mesh_allocator, Res<MeshAllocatorSettings> mesh_allocator_settings,
-    Res<render::ExtractedAssets<::epix::mesh::Mesh>> extracted_meshes,
+    Res<render::ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
     ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts, Res<wgpu::Device> device,
     Res<wgpu::Queue> queue) {
     mesh_allocator->free_meshes(*extracted_meshes);
@@ -84,7 +84,7 @@ void epix::render::mesh::MeshAllocatorPlugin::attach(app::App& app) {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<MeshAllocatorSettings>();
         render_app->get().add_systems(render::Render, into(allocate_and_free_meshes)
-                                                          .before(render::prepare_assets<::epix::mesh::Mesh>)
+                                                          .before(render::prepare_assets<::epix::render::mesh::RenderMesh>)
                                                           .in_set(render::RenderSystems::PrepareAssets)
                                                           .set_name("allocate and free meshes"));
     }
@@ -97,7 +97,7 @@ void epix::render::mesh::MeshAllocatorPlugin::ready(app::App& app) {
 }
 
 void epix::render::mesh::MeshRenderAssetPlugin::attach(app::App& app) {
-    app.add_plugins(render::RenderAssetPlugin<::epix::mesh::Mesh, image::Image>{});
+    app.add_plugins(render::RenderAssetPlugin<::epix::render::mesh::RenderMesh, epix::render::texture::GpuImage>{});
     app.add_plugins(MeshAllocatorPlugin{});
 
     if (auto render_app = app.get_sub_app_mut(render::Render)) {

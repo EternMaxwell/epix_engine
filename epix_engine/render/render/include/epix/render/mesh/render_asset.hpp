@@ -57,14 +57,15 @@ EPIX_EXPORT struct MorphPlugin {
 // MeshAllocator (see allocate_and_free_meshes); RenderAsset preparation here
 // only builds the metadata.
 template <>
-struct epix::render::RenderAsset<epix::mesh::Mesh> {
-    using ProcessedAsset = epix::render::mesh::RenderMesh;
+struct epix::render::RenderAsset<epix::render::mesh::RenderMesh> {
+    using SourceAsset    = epix::mesh::Mesh;
     using ExtractedAsset = epix::mesh::Mesh;
-    using Param = std::tuple<epix::ecs::Res<epix::render::RenderAssets<epix::image::Image>>,
+    using Param = std::tuple<epix::ecs::Res<epix::render::RenderAssets<epix::render::texture::GpuImage>>,
                              epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
 
-    std::expected<ProcessedAsset, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
-        epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params, const ProcessedAsset*) {
+    std::expected<epix::render::mesh::RenderMesh, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
+        epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params,
+        const epix::render::mesh::RenderMesh*) {
         // Bevy passes `SystemParamItem<Self::Param>` already resolved.
         auto&& [images, layouts] = params;
 
@@ -98,7 +99,7 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         };
     }
 
-    epix::assets::RenderAssetUsages usage(const epix::mesh::Mesh& mesh) noexcept { return mesh.asset_usage; }
+    epix::assets::RenderAssetUsages asset_usage(const epix::mesh::Mesh& mesh) noexcept { return mesh.asset_usage; }
 
     /** @brief Estimated GPU payload in bytes (Bevy `RenderAsset::byte_len` for
      * `RenderMesh`). Sums the per-vertex attribute stride over the vertex count,
@@ -114,8 +115,8 @@ struct epix::render::RenderAsset<epix::mesh::Mesh> {
         return vertex_size * vertex_count + index_bytes;
     }
 
-    std::expected<epix::mesh::Mesh, epix::render::AssetExtractionError> take_gpu_data(epix::mesh::Mesh& source,
-                                                                                      const ProcessedAsset*) const {
+    std::expected<epix::mesh::Mesh, epix::render::AssetExtractionError> take_gpu_data(
+        epix::mesh::Mesh& source, const epix::render::mesh::RenderMesh*) const {
         if (auto extracted = source.take_gpu_data()) {
             return std::move(*extracted);
         }

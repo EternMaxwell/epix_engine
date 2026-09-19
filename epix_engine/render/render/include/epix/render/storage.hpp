@@ -82,14 +82,15 @@ EPIX_EXPORT struct GpuShaderStorageBuffer {
 };
 
 template <>
-struct RenderAsset<ShaderStorageBuffer> {
+struct RenderAsset<GpuShaderStorageBuffer> {
     using Param          = std::tuple<epix::ecs::Res<wgpu::Device>, epix::ecs::Res<wgpu::Queue>>;
-    using ProcessedAsset = GpuShaderStorageBuffer;
+    using SourceAsset    = ShaderStorageBuffer;
     using ExtractedAsset = ShaderStorageBuffer;
 
-    std::expected<ProcessedAsset, PrepareAssetError<ShaderStorageBuffer>> prepare_asset(
-        ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param, const ProcessedAsset* previous);
-    assets::RenderAssetUsages usage(const ShaderStorageBuffer& asset) noexcept;
+    std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> prepare_asset(
+        ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param,
+        const GpuShaderStorageBuffer* previous);
+    assets::RenderAssetUsages asset_usage(const ShaderStorageBuffer& asset) noexcept;
 
     /** @brief Move the data out of the stored asset so it stays in Assets<T>
      * (Bevy RenderAsset::take_gpu_data).

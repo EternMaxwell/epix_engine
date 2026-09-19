@@ -119,7 +119,7 @@ EPIX_EXPORT struct ViewTonemappingPipeline {
  * render module's 3D fallback image while the selected LUT is unavailable
  * (Bevy `get_lut_bindings`). */
 EPIX_EXPORT std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
-    const render::RenderAssets<image::Image>& images,
+    const render::RenderAssets<render::texture::GpuImage>& images,
     const TonemappingLuts& tonemapping_luts,
     Tonemapping tonemapping,
     const render::texture::FallbackImage& fallback_image);

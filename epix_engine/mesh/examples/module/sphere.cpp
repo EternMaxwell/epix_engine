@@ -40,6 +40,7 @@ struct SphereExamplePlugin {
     void ready(app::App& app) {
         auto& world       = app.world_mut();
         auto& mesh_assets = world.resource_mut<assets::Assets<mesh::Mesh>>();
+        auto& materials   = world.resource_mut<assets::Assets<sprite_render::ColorMaterial>>();
 
         // `SphereKind::Uv { sectors, stacks }` walks `stacks + 1` rings of `sectors + 1` vertices with
         // the seam duplicated, so the vertex count is `(stacks + 1) * (sectors + 1)`.
@@ -76,8 +77,12 @@ struct SphereExamplePlugin {
         orthographic.scaling_mode = camera::ScalingMode{camera::ScalingMode::FixedVertical{.viewport_height = 2.4f}};
         world.spawn(camera::Camera2d{}, transform::Transform{}, camera::Projection::orthographic(orthographic));
 
-        const auto place = [&world](const assets::Handle<mesh::Mesh>& handle, glm::vec3 translation, glm::vec4 color) {
-            world.spawn(mesh::Mesh2d{handle}, sprite_render::MeshMaterial2d{.color = color},
+        const auto place = [&world, &materials](const assets::Handle<mesh::Mesh>& handle, glm::vec3 translation,
+                                                glm::vec4 color) {
+            world.spawn(mesh::Mesh2d{handle},
+                        sprite_render::MeshMaterial2d<sprite_render::ColorMaterial>{
+                            materials.emplace(sprite_render::ColorMaterial{
+                                .color = color, .mode = sprite_render::AlphaMode2dOpaque{}})},
                         transform::Transform{.translation = translation});
         };
         place(coarse_handle, {-1.5f, 0.0f, 0.0f}, glm::vec4(0.98f, 0.72f, 0.30f, 1.0f));
@@ -114,6 +119,7 @@ int main() {
         .add_plugins(mesh::MeshPlugin{})
         .add_plugins(sprite::SpritePlugin{})
         .add_plugins(sprite_render::Mesh2dRenderPlugin{})
+        .add_plugins(sprite_render::ColorMaterialPlugin{})
         .add_plugins(SphereExamplePlugin{});
 
     app.run();

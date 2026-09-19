@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -34,6 +34,13 @@ EPIX_EXPORT struct Tick {
     constexpr std::uint32_t get(this Tick self) noexcept { return self.tick; }
     /** @brief Set the raw tick value. */
     constexpr void set(this Tick& self, std::uint32_t t) noexcept { self.tick = t; }
+    /** @brief Compare ticks by their raw value (Bevy derives `PartialEq`/`Eq`
+     *  for `Tick`). Note this is an exact comparison of the counters, not a
+     *  wrap-safe one: `newer_than()` below is the change-detection predicate
+     *  that stays correct across a counter wrap. */
+    constexpr bool operator==(this Tick self, Tick other) noexcept { return self.tick == other.tick; }
+    /** @brief Order ticks by their raw value (Bevy derives `PartialOrd`/`Ord`). */
+    constexpr auto operator<=>(this Tick self, Tick other) noexcept { return self.tick <=> other.tick; }
     /** @brief Check whether this tick is newer than last_run relative to this_run.
      *  Returns true if the component/resource was changed since the system
      *  last ran. */

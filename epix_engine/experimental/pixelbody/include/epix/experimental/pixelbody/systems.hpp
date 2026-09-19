@@ -11,6 +11,7 @@
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
 #include <epix/common.hpp>
@@ -95,6 +96,7 @@ void sync_pixel_body_to_sand(ecs::Commands cmd,
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
 void build_pixel_body_meshes(ecs::Commands cmd,
                              ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
+                             ecs::ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
                              ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
                              ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds);
 
