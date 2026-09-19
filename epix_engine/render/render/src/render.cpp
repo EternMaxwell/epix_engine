@@ -4,6 +4,7 @@
 // include header to deal with partial specialization problem in MSVC
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <epix/render.hpp>
 #include <format>
 #include <memory>
@@ -83,6 +84,53 @@ wgpu::InstanceBackend to_instance_backend(const Backends& backends) {
  *  handing it bits whose treatment is unspecified. */
 constexpr std::uint32_t kSupportedInstanceFlags =
     WGPUInstanceFlag_Debug | WGPUInstanceFlag_Validation | WGPUInstanceFlag_DiscardHalLabels;
+
+/** Routes wgpu-native's own log stream into spdlog when `EPIX_WGPU_LOG` names a
+ *  level (`error`, `warn`, `info`, `debug` or `trace`).
+ *
+ *  Off by default, because the runtime prints nothing at its default level and
+ *  the engine's own reporting is the normal path. It exists because this runtime
+ *  can invalidate a device without delivering either the device-lost or the
+ *  uncaptured-error callback, and its log stream is then the only place the
+ *  reason can appear. Use it together with `SPDLOG_LEVEL` to see the levels
+ *  below `info`. */
+void install_wgpu_log_handler() {
+    const char* configured = std::getenv("EPIX_WGPU_LOG");
+    if (!configured || configured[0] == '\0') return;
+    const std::string_view name(configured);
+    WGPULogLevel level = WGPULogLevel_Off;
+    if (name == "error") level = WGPULogLevel_Error;
+    else if (name == "warn") level = WGPULogLevel_Warn;
+    else if (name == "info") level = WGPULogLevel_Info;
+    else if (name == "debug") level = WGPULogLevel_Debug;
+    else if (name == "trace") level = WGPULogLevel_Trace;
+    else {
+        spdlog::warn("[render] Unknown EPIX_WGPU_LOG value '{}'; expected error|warn|info|debug|trace", name);
+        return;
+    }
+    wgpuSetLogCallback(
+        [](WGPULogLevel native_level, WGPUStringView message, void*) {
+            // Never let a throw escape the runtime's callback.
+            try {
+                const std::string_view text =
+                    message.data ? std::string_view(message.data,
+                                                    message.length == WGPU_STRLEN ? std::strlen(message.data)
+                                                                                  : message.length)
+                                 : std::string_view{};
+                switch (native_level) {
+                    case WGPULogLevel_Error: spdlog::error("[wgpu] {}", text); break;
+                    case WGPULogLevel_Warn: spdlog::warn("[wgpu] {}", text); break;
+                    case WGPULogLevel_Info: spdlog::info("[wgpu] {}", text); break;
+                    case WGPULogLevel_Debug: spdlog::debug("[wgpu] {}", text); break;
+                    case WGPULogLevel_Trace: spdlog::trace("[wgpu] {}", text); break;
+                    default: break;
+                }
+            } catch (...) {
+            }
+        },
+        nullptr);
+    wgpuSetLogLevel(level);
+}
 
 }  // namespace
 
@@ -295,6 +343,7 @@ void RenderPlugin::attach(App& app) {
         // both stay in `WgpuSettings` for a runtime that exposes them.
         wgpu::InstanceDescriptor instance_descriptor;
         wgpu::InstanceExtras instance_extras;
+        install_wgpu_log_handler();
         instance_extras.setBackends(to_instance_backend(*settings->backends))
             .setFlags(static_cast<wgpu::InstanceFlag>(settings->instance_flags.bits() & kSupportedInstanceFlags))
             .setDx12ShaderCompiler(settings->dx12_shader_compiler)
@@ -425,11 +474,38 @@ void RenderPlugin::attach(App& app) {
             wgpu::DeviceDescriptor()
                 .setDefaultQueue(wgpu::QueueDescriptor().setLabel("Render Queue"))
                 .setRequiredFeatures(required_features)
-                .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo().setCallback(
-                    [](wgpu::Device const& device, wgpu::DeviceLostReason reason, wgpu::StringView message) {
-                        std::stacktrace stack = std::stacktrace::current();
-                        spdlog::error("WebGPU Device lost: {}, with stack:\n{}", std::string_view(message), stack);
-                    }))
+                .setDeviceLostCallbackInfo(wgpu::DeviceLostCallbackInfo()
+                                               // `mode` is not optional: a callback
+                                               // registered without a dispatchable
+                                               // `WGPUCallbackMode` is never invoked, which
+                                               // is why this handler had never fired for a
+                                               // lost device. The uncaptured-error handler
+                                               // needs no mode because that callback is not
+                                               // future-backed.
+                                               .setMode(wgpu::CallbackMode::eAllowSpontaneous)
+                                               .setCallback([](wgpu::Device const& device,
+                                                               wgpu::DeviceLostReason reason,
+                                                               wgpu::StringView message) {
+                                                   (void)device;
+                                                   // Report the reason first, and never let
+                                                   // anything here escape: this runs inside the
+                                                   // runtime's callback, where an exception
+                                                   // replaces the real reason with an
+                                                   // unrelated crash. Both the `StringView`
+                                                   // conversion and the stacktrace capture
+                                                   // have been seen to throw.
+                                                   try {
+                                                       std::stacktrace stack = std::stacktrace::current();
+                                                       spdlog::error("WebGPU Device lost: reason={}, {}, with stack:\n{}",
+                                                                     wgpu::to_string(reason),
+                                                                     std::string_view(message), stack);
+                                                   } catch (const std::exception& e) {
+                                                       spdlog::error("WebGPU Device lost (message conversion failed: {})",
+                                                                     e.what());
+                                                   } catch (...) {
+                                                       spdlog::error("WebGPU Device lost (message conversion failed)");
+                                                   }
+                                               }))
                 .setUncapturedErrorCallbackInfo(wgpu::UncapturedErrorCallbackInfo().setCallback(
                     [](wgpu::Device const& device, wgpu::ErrorType type, wgpu::StringView message) {
                         // Report the wgpu message first, and never let anything in
