@@ -408,7 +408,7 @@ struct ShaderCache::SlangCompiler {
         if (import_key != identity) vfs_.add(import_key, preprocessed, identity);
     }
 
-    std::expected<std::string, ShaderCacheError> compile(
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile(
         assets::AssetId<Shader> id,
         const Shader& shader,
         std::span<const ShaderDefVal> shader_defs,
@@ -443,13 +443,13 @@ struct ShaderCache::SlangCompiler {
             macros.push_back({def.name.c_str(), def_values.back().c_str()});
         }
 
-        // TEMPORARY: Slang emits WGSL instead of SPIR-V. The runtime this engine
-        // targets validates SPIR-V through naga, which rejects the
-        // `DrawParameters` capability that Slang declares for every vertex
-        // shader, so WGSL -- naga's native frontend -- is the only ingestible
-        // form today. Restore SLANG_SPIRV once naga supports that capability.
+        // Slang compiles straight to SPIR-V, which the backend ingests through
+        // its SPIR-V frontend. Shaders must avoid the HLSL builtins that make
+        // Slang declare the `DrawParameters` capability (`SV_VertexID`,
+        // `SV_InstanceID`); the Vulkan builtins read the same `VertexIndex` /
+        // `InstanceIndex` values without it.
         slang::TargetDesc target_desc = {};
-        target_desc.format            = SLANG_WGSL;
+        target_desc.format            = SLANG_SPIRV;
 
         const char* search_paths[]                     = {""};
         slang::CompilerOptionEntry compiler_options[1] = {};
@@ -547,11 +547,11 @@ struct ShaderCache::SlangCompiler {
             }
         }
 
-        const auto* wgsl_text = static_cast<const char*>(spirv_code->getBufferPointer());
-        return std::string(wgsl_text, spirv_code->getBufferSize());
+        const auto* code = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(code, code + spirv_code->getBufferSize());
     }
 
-    std::expected<std::string, ShaderCacheError> compile_ir_root(
+    std::expected<std::vector<std::uint8_t>, ShaderCacheError> compile_ir_root(
         assets::AssetId<Shader> id,
         const Shader& shader,
         std::span<const ShaderDefVal> shader_defs,
@@ -575,13 +575,13 @@ struct ShaderCache::SlangCompiler {
             macros.push_back({def.name.c_str(), def_values.back().c_str()});
         }
 
-        // TEMPORARY: Slang emits WGSL instead of SPIR-V. The runtime this engine
-        // targets validates SPIR-V through naga, which rejects the
-        // `DrawParameters` capability that Slang declares for every vertex
-        // shader, so WGSL -- naga's native frontend -- is the only ingestible
-        // form today. Restore SLANG_SPIRV once naga supports that capability.
+        // Slang compiles straight to SPIR-V, which the backend ingests through
+        // its SPIR-V frontend. Shaders must avoid the HLSL builtins that make
+        // Slang declare the `DrawParameters` capability (`SV_VertexID`,
+        // `SV_InstanceID`); the Vulkan builtins read the same `VertexIndex` /
+        // `InstanceIndex` values without it.
         slang::TargetDesc target_desc = {};
-        target_desc.format            = SLANG_WGSL;
+        target_desc.format            = SLANG_SPIRV;
 
         const char* search_paths[]                     = {""};
         slang::CompilerOptionEntry compiler_options[1] = {};
@@ -671,8 +671,8 @@ struct ShaderCache::SlangCompiler {
             }
         }
 
-        const auto* wgsl_text = static_cast<const char*>(spirv_code->getBufferPointer());
-        return std::string(wgsl_text, spirv_code->getBufferSize());
+        const auto* code = static_cast<const std::uint8_t*>(spirv_code->getBufferPointer());
+        return std::vector<std::uint8_t>(code, code + spirv_code->getBufferSize());
     }
 
    private:
@@ -869,16 +869,16 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
     spdlog::debug("[shader.cache] Compiling shader '{}' with {} defs.", assets::UntypedAssetId(id), merged_defs.size());
 
     ShaderCacheSource source;
-    std::string slang_wgsl;      // backing storage for the Slang-compiled WGSL
-    std::string composed_wgsl;   // backing storage for WGSL composition
+    std::vector<std::uint8_t> slang_spirv;  // backing storage for the Slang-compiled SPIR-V
+    std::string composed_wgsl;              // backing storage for WGSL composition
     if (std::holds_alternative<Source::SpirV>(shader.source.data)) {
         const auto& bytes = std::get<Source::SpirV>(shader.source.data).bytes;
         source            = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(bytes)}};
     } else if (std::holds_alternative<Source::Slang>(shader.source.data)) {
-        auto wgsl = slang_->compile(id, shader, merged_defs, shaders_);
-        if (!wgsl) return std::unexpected(wgsl.error());
-        slang_wgsl = std::move(wgsl.value());
-        source     = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(slang_wgsl)}};
+        auto spirv = slang_->compile(id, shader, merged_defs, shaders_);
+        if (!spirv) return std::unexpected(spirv.error());
+        slang_spirv = std::move(spirv.value());
+        source      = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv)}};
     } else if (std::holds_alternative<Source::SlangIr>(shader.source.data)) {
         // Keep explicit .slang-module assets as dependency-only modules.
         if (shader.path.path.extension() == ".slang-module") {
@@ -890,10 +890,10 @@ std::expected<std::shared_ptr<wgpu::ShaderModule>, ShaderCacheError> ShaderCache
 
         // Processed .slang assets may carry SlangIr roots when
         // preprocess_slang_to_ir is enabled. Compile those as root modules.
-        auto wgsl = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
-        if (!wgsl) return std::unexpected(wgsl.error());
-        slang_wgsl = std::move(wgsl.value());
-        source     = ShaderCacheSource{ShaderCacheSource::Wgsl{std::string_view(slang_wgsl)}};
+        auto spirv = slang_->compile_ir_root(id, shader, merged_defs, shaders_);
+        if (!spirv) return std::unexpected(spirv.error());
+        slang_spirv = std::move(spirv.value());
+        source      = ShaderCacheSource{ShaderCacheSource::SpirV{std::span<const std::uint8_t>(slang_spirv)}};
     } else {
         for (const auto& imp : shader.imports) {
             if (auto res = add_import_to_composer(composer_, data_, shaders_, id, imp); !res)

@@ -176,7 +176,10 @@ int main() {
             // Load font
             auto font_handle = asset_server->load<text::font::Font>("embedded://fonts/default.ttf");
 
-            // Spawn main text
+            // Spawn main text. `Anchor::TOP_LEFT` makes the block's top-left corner
+            // sit on the entity transform, which is the origin this example's bounds
+            // and ink outlines are measured from (Bevy's `Text2d` anchors the block
+            // through the required `Anchor` component).
             auto text_entity = cmd.spawn(text::TextBundle{.text{"Hello, Epix Engine!\nInteractive text test."},
                                                           .font{
                                                               .font            = font_handle,
@@ -186,7 +189,8 @@ int main() {
                                                           },
                                                           .layout{.justify = text::Justify::Left},
                                                           .bounds{.width = 400.0f}},
-                                         text::Text2d{}, transform::Transform{}, text::TextColor{}, MainText{})
+                                         text::Text2d{}, sprite::Anchor{sprite::Anchor::TOP_LEFT},
+                                         transform::Transform{}, text::TextColor{}, MainText{})
                                    .id();
 
             // Bounds outline mesh (will be updated each frame)

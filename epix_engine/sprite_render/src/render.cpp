@@ -28,8 +28,11 @@ namespace {
 constexpr std::string_view kSpriteShaderPath = "sprite/sprite.slang";
 
 // Slang representation of pinned Bevy 0.18 sprite.wgsl and
-// sprite_view_bindings.wgsl. The quad corners come from SV_VertexID, while
-// all per-sprite data arrives in the one 80-byte instance-rate stream.
+// sprite_view_bindings.wgsl. The quad corners come from the raw Vulkan
+// `VertexIndex` (`SV_VulkanVertexID`; the HLSL `SV_VertexID` would make Slang
+// read `BaseVertex` and declare the `DrawParameters` capability that the SPIR-V
+// frontend rejects), while all per-sprite data arrives in the one 80-byte
+// instance-rate stream.
 constexpr std::string_view kSpriteShader = R"slang(
 import epix.view;
 #ifdef TONEMAP_IN_SHADER
@@ -44,7 +47,7 @@ import epix.tonemapping;
 [[vk::binding(1, 1)]] SamplerState sprite_sampler;
 
 struct VertexInput {
-    uint index : SV_VertexID;
+    uint index : SV_VulkanVertexID;
     [[vk::location(0)]] float4 i_model_transpose_col0;
     [[vk::location(1)]] float4 i_model_transpose_col1;
     [[vk::location(2)]] float4 i_model_transpose_col2;

@@ -189,7 +189,14 @@ struct AsBindGroup<epix::sprite_render::ColorMaterial> {
         auto uniform = create_buffer_with_data(device, std::as_bytes(std::span{encoded}),
                                                wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst);
 
-        const auto* image            = material.texture ? images->try_get(*material.texture) : nullptr;
+        const auto* image = material.texture ? images->try_get(*material.texture) : nullptr;
+        if (material.texture && image == nullptr) {
+            // Bevy's derive retries when a material declares a texture that is not
+            // prepared yet (`as_bind_group.rs:568`: `images.get(handle).ok_or_else(||
+            // AsBindGroupError::RetryNextUpdate)`); only a material with no texture
+            // at all uses the fallback image.
+            return std::unexpected(AsBindGroupError{RetryBindGroupNextUpdate{}});
+        }
         const auto& texture_view     = image ? image->texture_view : fallback_image->d2.texture_view;
         const auto& sampler          = image ? image->sampler : fallback_image->d2.sampler;
 

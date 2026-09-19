@@ -19,9 +19,12 @@ struct VOut {
     [[vk::location(0)]] float2 uv;
 };
 // Bevy fullscreen_vertex_shader/fullscreen.wgsl. The three generated vertices
-// have UVs (0,0), (0,2), and (2,0), covering the whole target.
+// have UVs (0,0), (0,2), and (2,0), covering the whole target. `SV_VulkanVertexID`
+// is the raw Vulkan `VertexIndex`; the HLSL `SV_VertexID` would make Slang read
+// `BaseVertex` and declare the `DrawParameters` capability, which the SPIR-V
+// frontend rejects.
 [shader("vertex")]
-VOut fullscreen_vertex_shader(uint vertex_index : SV_VertexID) {
+VOut fullscreen_vertex_shader(uint vertex_index : SV_VulkanVertexID) {
     float2 uv = float2(float(vertex_index >> 1), float(vertex_index & 1)) * 2.0f;
     VOut o;
     o.uv  = uv;

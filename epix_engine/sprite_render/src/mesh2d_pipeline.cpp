@@ -128,7 +128,11 @@ Mesh2d mesh2d_instance(uint instance_index) {
 }
 
 struct VertexInput {
-    uint instance_index : SV_InstanceID;
+    // Raw Vulkan `InstanceIndex` (base instance included), matching what the WGSL
+    // path gets from `@builtin(instance_index)`. The HLSL `SV_InstanceID` would
+    // instead read `BaseInstance` and declare the `DrawParameters` capability,
+    // which the SPIR-V frontend rejects.
+    uint instance_index : SV_VulkanInstanceID;
 #ifdef VERTEX_POSITIONS
     [[vk::location(0)]] float3 position;
 #endif
