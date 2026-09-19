@@ -22,8 +22,8 @@ void report(Query<Item<Entity, Ref<Position>>> query) {
 Use `Mut<T>` for tracked mutable access:
 
 ```cpp
-void clamp(Query<Item<Mut<Position>>> query) {
-    for (auto&& [position] : query.iter()) {
+void clamp(Query<Mut<Position>> query) {
+    for (auto&& position : query.iter()) {
         if (position->x > 100.0f) position->x = 100.0f;
     }
 }

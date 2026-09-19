@@ -127,7 +127,7 @@ std::vector<std::optional<sprite_render::TileData>> make_tile_data(SeededRng& rn
 /** @brief Rewrite 50 random tiles whenever the timer fires (Bevy's
  *  `update_tilemap`). */
 void update_tilemap(Res<time::Time<>> time,
-                    Query<Item<Mut<sprite_render::TilemapChunkTileData>&, Mut<UpdateTimer>&>> query,
+                    Query<Item<Mut<sprite_render::TilemapChunkTileData>, Mut<UpdateTimer>>> query,
                     ResMut<SeededRng> rng) {
     for (auto&& [tile_data, timer] : query.iter()) {
         auto& value = timer.get_mut().timer;
@@ -150,14 +150,14 @@ void update_tilemap(Res<time::Time<>> time,
  *  `move_player`), which is what makes `calculate_tile_transform`'s x axis
  *  visible. */
 void move_player(Res<time::Time<>> time,
-                 Query<Item<Mut<transform::Transform>&>, Filter<With<MovePlayer>>> player,
-                 Query<Item<const sprite_render::TilemapChunk&>> chunks) {
+                 Query<Mut<transform::Transform>, With<MovePlayer>> player,
+                 Query<const sprite_render::TilemapChunk&> chunks) {
     const auto t = (std::sin(time->elapsed_secs()) + 1.0f) / 2.0f;
-    for (auto&& [chunk] : chunks.iter()) {
+    for (auto&& chunk : chunks.iter()) {
         const auto origin = chunk.calculate_tile_transform(glm::uvec2(0u, 0u)).translation.x;
         const auto destination =
             chunk.calculate_tile_transform(glm::uvec2(kChunkSize.x - 1u, 0u)).translation.x;
-        for (auto&& [transform] : player.iter()) {
+        for (auto&& transform : player.iter()) {
             transform.get_mut().translation.x = origin + (destination - origin) * t;
         }
     }

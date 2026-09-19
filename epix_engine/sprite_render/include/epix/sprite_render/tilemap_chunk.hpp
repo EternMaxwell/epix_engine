@@ -191,7 +191,7 @@ EPIX_EXPORT struct TilemapChunkMaterialPlugin {
 EPIX_EXPORT void update_tilemap_chunk_indices(
     ecs::Query<ecs::Item<ecs::Entity, const TilemapChunk&, const TilemapChunkTileData&,
                          const MeshMaterial2d<TilemapChunkMaterial>&>,
-               ecs::Filter<ecs::Modified<TilemapChunkTileData>>>
+               ecs::Modified<TilemapChunkTileData>>
         query,
     ecs::ResMut<assets::Assets<TilemapChunkMaterial>> materials,
     ecs::ResMut<assets::Assets<image::Image>> images);

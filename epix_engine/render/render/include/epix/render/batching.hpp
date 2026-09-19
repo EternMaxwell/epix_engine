@@ -614,6 +614,17 @@ void batch_and_prepare_gpu_binned_phase(
     bool enable_gpu_occlusion_culling,
     typename GetBatchData<Adapter>::Param& batch_param) {
     using BufferData  = typename GetBatchData<Adapter>::BufferData;
+    // A phase built with `GpuPreprocessingMode::None` keeps the `DynamicUniform`
+    // batch-set variant and is prepared exclusively by the CPU path
+    // (`no_gpu_preprocessing::batch_and_prepare_binned_render_phase`). Bevy's GPU
+    // path likewise only ever fills the `Direct` and `MultidrawIndirect` variants
+    // (`gpu_preprocessing.rs:1556-1580`), leaving a `None` phase untouched.
+    // Writing into the dynamic variant from here used to produce batches whose
+    // `instance_range` counts work-item outputs rather than CPU instance-buffer
+    // slots, so such a phase drew with other entities' instance data.
+    if (std::holds_alternative<std::vector<std::vector<phase::BinnedRenderPhaseBatch>>>(render_phase.batch_sets)) {
+        return;
+    }
     auto& output_data = phase_buffers.data_buffer;
     auto& work_items  = get_or_create_work_item_buffer(phase_buffers.work_item_buffers, retained_view,
                                                        no_indirect_drawing, enable_gpu_occlusion_culling);
@@ -625,11 +636,7 @@ void batch_and_prepare_gpu_binned_phase(
         return static_cast<std::uint32_t>(output_data.add_multiple(count));
     };
     const auto append_direct_batch = [&](const phase::BinnedRenderPhaseBatch& batch) {
-        if (auto* direct = std::get_if<1>(&render_phase.batch_sets)) {
-            direct->push_back(batch);
-        } else if (auto* dynamic = std::get_if<0>(&render_phase.batch_sets)) {
-            dynamic->push_back({batch});
-        }
+        if (auto* direct = std::get_if<1>(&render_phase.batch_sets)) direct->push_back(batch);
     };
 
     // In culling mode each multidrawable batch set owns one contiguous range

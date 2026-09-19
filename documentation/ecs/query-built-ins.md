@@ -38,8 +38,8 @@ optional access counts as a write for conflict detection.
 when mutable access is requested.
 
 ```cpp
-void move_changed(Query<Item<Mut<Position>>> query) {
-    for (auto&& [position] : query.iter()) {
+void move_changed(Query<Mut<Position>> query) {
+    for (auto&& position : query.iter()) {
         if (position.is_added()) initialize(position.get_mut());
         position->x += 1.0f;
     }
@@ -62,9 +62,29 @@ Filters occupy the second `Query<D, F>` template argument:
 | `Modified<T>` | component was modified since the system last ran | no |
 
 ```cpp
-Query<Item<Entity, const Health&>,
-      std::tuple<With<Player>, Without<Dead>, Modified<Health>>>
+Query<Item<Entity, const Health&>, Filter<With<Player>, Without<Dead>, Modified<Health>>>
 ```
+
+## Query shape
+
+`Query<D, F = Filter<>>` takes exactly one data type and one filter type, so the
+`Item<...>` and `Filter<...>` wrappers are needed only when that group holds more
+than one element — they are the C++ counterparts of Bevy's `(&A, &B)` data tuple
+and `(With<X>, With<Y>)` filter tuple:
+
+| Shape | Written as |
+| --- | --- |
+| one component | `Query<&Health>` / `Query<Mut<Position>>` |
+| one component, one filter | `Query<Mut<Position>, With<Player>>` |
+| two components | `Query<Item<&Health, &Name>>` |
+| two components, two filters | `Query<Item<&Health, &Name>, Filter<With<Player>, Without<Dead>>>` |
+
+A mutable item is the `Mut<T>` wrapper itself; `Mut<T>&` names a different item
+(a raw mutable component reference that marks the component modified on fetch)
+and, like any other type that is not valid query data, makes the query match
+nothing instead of failing to compile. Since such a mistake produces no error,
+check a new system's shape against this page and against the `QueryData`
+specializations in `epix/ecs/query`, not against another call site.
 
 Access conflicts are detected when the system/query is initialized. For
 example, `Mut<T>` cannot coexist with another query parameter that reads or

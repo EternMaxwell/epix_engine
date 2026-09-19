@@ -133,7 +133,7 @@ void epix::sprite_render::TilemapChunk::on_insert(epix::ecs::World& world, epix:
 void epix::sprite_render::update_tilemap_chunk_indices(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const TilemapChunk&, const TilemapChunkTileData&,
                                      const MeshMaterial2d<TilemapChunkMaterial>&>,
-                     epix::ecs::Filter<epix::ecs::Modified<TilemapChunkTileData>>>
+                     epix::ecs::Modified<TilemapChunkTileData>>
         query,
     epix::ecs::ResMut<assets::Assets<TilemapChunkMaterial>> materials,
     epix::ecs::ResMut<assets::Assets<image::Image>> images) {

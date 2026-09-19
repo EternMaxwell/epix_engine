@@ -169,7 +169,7 @@ void epix::sprite_render::global_color_changed(ecs::Res<Wireframe2dConfig> confi
 
 void epix::sprite_render::wireframe_color_changed(
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
-    ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>&, const Wireframe2dColor&>,
+    ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>, const Wireframe2dColor&>,
                ecs::Filter<ecs::With<Wireframe2d>, ecs::Modified<Wireframe2dColor>>>
         colors_changed) {
     // Bevy `wireframe_color_changed` (`:579-592`): a changed colour allocates a
@@ -186,7 +186,7 @@ void epix::sprite_render::apply_wireframe_material(
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
                ecs::Filter<ecs::With<Wireframe2d>, ecs::Without<Mesh2dWireframe>>>
         wireframes,
-    ecs::Query<ecs::Item<ecs::Entity>, ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>>
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>>
         no_wireframes,
     ecs::RemovedComponents<Wireframe2d> removed_wireframes,
     ecs::Res<GlobalWireframeMaterial> global_material) {
@@ -196,7 +196,7 @@ void epix::sprite_render::apply_wireframe_material(
     for (auto entity : removed_wireframes.read()) {
         commands.entity(entity).remove<Mesh2dWireframe>();
     }
-    for (auto&& [entity] : no_wireframes.iter()) {
+    for (auto entity : no_wireframes.iter()) {
         commands.entity(entity).remove<Mesh2dWireframe>();
     }
 
@@ -216,7 +216,7 @@ void epix::sprite_render::apply_global_wireframe_material(
                ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
                            ecs::Without<Mesh2dWireframe>>>
         meshes_without_material,
-    ecs::Query<ecs::Item<ecs::Entity>,
+    ecs::Query<ecs::Entity,
                ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
                            ecs::With<Mesh2dWireframe>>>
         meshes_with_global_material,
@@ -234,7 +234,7 @@ void epix::sprite_render::apply_global_wireframe_material(
         }
         if (!material_to_spawn.empty()) commands.try_insert_batch(material_to_spawn);
     } else {
-        for (auto&& [entity] : meshes_with_global_material.iter()) {
+        for (auto entity : meshes_with_global_material.iter()) {
             commands.entity(entity).remove<Mesh2dWireframe>();
         }
     }
@@ -243,8 +243,7 @@ void epix::sprite_render::apply_global_wireframe_material(
 void epix::sprite_render::extract_wireframe_materials(
     ecs::ResMut<RenderWireframeInstances> material_instances,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, const Mesh2dWireframe&>,
-                            ecs::Filter<ecs::Or<ecs::Modified<camera::ViewVisibility>,
-                                                ecs::Modified<Mesh2dWireframe>>>>>
+                            ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<Mesh2dWireframe>>>>
         changed_meshes,
     app::Extract<ecs::RemovedComponents<camera::ViewVisibility>> removed_visibilities,
     app::Extract<ecs::RemovedComponents<Mesh2dWireframe>> removed_materials) {
@@ -289,7 +288,7 @@ void epix::sprite_render::extract_wireframe_2d_camera(
 void epix::sprite_render::extract_wireframe_entities_needing_specialization(
     app::Extract<ecs::Res<WireframeEntitiesNeedingSpecialization>> entities_needing_specialization,
     ecs::ResMut<WireframeEntitySpecializationTicks> entity_specialization_ticks,
-    ecs::Query<ecs::Item<const render::view::ExtractedView&>> views,
+    ecs::Query<const render::view::ExtractedView&> views,
     ecs::ResMut<SpecializedWireframePipelineCache> specialized_wireframe_pipeline_cache,
     app::Extract<ecs::RemovedComponents<mesh::Mesh2d>> removed_meshes,
     ecs::SystemChangeTick ticks) {
@@ -300,7 +299,7 @@ void epix::sprite_render::extract_wireframe_entities_needing_specialization(
     }
     for (auto entity : removed_meshes.read()) {
         const auto main_entity = render::sync_world::MainEntity{entity};
-        for (auto&& [view] : views.iter()) {
+        for (auto&& view : views.iter()) {
             if (auto cache = specialized_wireframe_pipeline_cache->map.find(view.retained_view_entity);
                 cache != specialized_wireframe_pipeline_cache->map.end()) {
                 cache->second.map.erase(main_entity);
@@ -310,14 +309,14 @@ void epix::sprite_render::extract_wireframe_entities_needing_specialization(
 }
 
 void epix::sprite_render::check_wireframe_entities_needing_specialization(
-    ecs::Query<ecs::Item<ecs::Entity>,
-               ecs::Filter<ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
-                                   ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>>
+    ecs::Query<ecs::Entity,
+               ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
+                       ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>
         needs_specialization,
     ecs::ResMut<WireframeEntitiesNeedingSpecialization> entities_needing_specialization) {
     // Bevy `check_wireframe_entities_needing_specialization` (`:710-726`).
     entities_needing_specialization->entities.clear();
-    for (auto&& [entity] : needs_specialization.iter()) {
+    for (auto entity : needs_specialization.iter()) {
         entities_needing_specialization->entities.push_back(entity);
     }
 }

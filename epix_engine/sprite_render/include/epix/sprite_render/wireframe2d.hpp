@@ -352,7 +352,7 @@ EPIX_EXPORT void global_color_changed(ecs::Res<Wireframe2dConfig> config,
 /** @brief Bevy `wireframe_color_changed` (`:579-592`). */
 EPIX_EXPORT void wireframe_color_changed(
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
-    ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>&, const Wireframe2dColor&>,
+    ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>, const Wireframe2dColor&>,
                ecs::Filter<ecs::With<Wireframe2d>, ecs::Modified<Wireframe2dColor>>> colors_changed);
 /** @brief Bevy `apply_wireframe_material` (`:594-619`). */
 EPIX_EXPORT void apply_wireframe_material(ecs::Commands commands,
@@ -361,7 +361,7 @@ EPIX_EXPORT void apply_wireframe_material(ecs::Commands commands,
                                                      ecs::Filter<ecs::With<Wireframe2d>,
                                                                  ecs::Without<Mesh2dWireframe>>>
                                               wireframes,
-                                          ecs::Query<ecs::Item<ecs::Entity>,
+                                          ecs::Query<ecs::Entity,
                                                      ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>>
                                               no_wireframes,
                                           ecs::RemovedComponents<Wireframe2d> removed_wireframes,
@@ -373,7 +373,7 @@ EPIX_EXPORT void apply_global_wireframe_material(
                ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
                            ecs::Without<Mesh2dWireframe>>>
         meshes_without_material,
-    ecs::Query<ecs::Item<ecs::Entity>,
+    ecs::Query<ecs::Entity,
                ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
                            ecs::With<Mesh2dWireframe>>>
         meshes_with_global_material,
@@ -383,7 +383,7 @@ EPIX_EXPORT void apply_global_wireframe_material(
 EPIX_EXPORT void extract_wireframe_materials(
     ecs::ResMut<RenderWireframeInstances> material_instances,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, const Mesh2dWireframe&>,
-                            ecs::Filter<ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<Mesh2dWireframe>>>>>
+                            ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<Mesh2dWireframe>>>>
         changed_meshes,
     app::Extract<ecs::RemovedComponents<camera::ViewVisibility>> removed_visibilities,
     app::Extract<ecs::RemovedComponents<Mesh2dWireframe>> removed_materials);
@@ -396,15 +396,15 @@ EPIX_EXPORT void extract_wireframe_2d_camera(
 EPIX_EXPORT void extract_wireframe_entities_needing_specialization(
     app::Extract<ecs::Res<WireframeEntitiesNeedingSpecialization>> entities_needing_specialization,
     ecs::ResMut<WireframeEntitySpecializationTicks> entity_specialization_ticks,
-    ecs::Query<ecs::Item<const render::view::ExtractedView&>> views,
+    ecs::Query<const render::view::ExtractedView&> views,
     ecs::ResMut<SpecializedWireframePipelineCache> specialized_wireframe_pipeline_cache,
     app::Extract<ecs::RemovedComponents<mesh::Mesh2d>> removed_meshes,
     ecs::SystemChangeTick ticks);
 /** @brief Bevy `check_wireframe_entities_needing_specialization` (`:710-726`). */
 EPIX_EXPORT void check_wireframe_entities_needing_specialization(
-    ecs::Query<ecs::Item<ecs::Entity>,
-               ecs::Filter<ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
-                                   ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>>
+    ecs::Query<ecs::Entity,
+               ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
+                       ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>
         needs_specialization,
     ecs::ResMut<WireframeEntitiesNeedingSpecialization> entities_needing_specialization);
 /** @brief Bevy `specialize_wireframes` (`:728-808`). */
