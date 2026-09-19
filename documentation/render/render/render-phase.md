@@ -210,6 +210,15 @@ A render command is a struct template `R<P>` with:
 `ViewData` and `EntityData` are `Query` item types resolved automatically by
 `RenderCommandState`.
 
+`RenderCommandState::prepare` refreshes only those two query states, exactly like
+Bevy (`draw.rs:319-322`); `Param` is fetched in `draw`, once per item
+(`draw.rs:332`). Fetching it in `prepare` instead would demand it from every draw
+function registered for the phase — including one the phase holds no item for —
+so a sprite-only phase would require `Mesh2dBindGroup`, which exists only while
+mesh2d instances were uploaded. A parameter that cannot be fetched fails by name
+(`Render command R<P> cannot draw: parameter Res<..> Resource does not exist.`),
+the equivalent of Bevy's panic at that fetch site.
+
 ### RenderCommandError
 
 ```cpp

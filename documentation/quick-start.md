@@ -144,7 +144,7 @@ A rendered 2D app typically combines these plugins:
 - `SpritePlugin`, `Mesh`, or `Text` modules depending on what you draw.
 
 The compact real example to study first is
-[../epix_engine/sprite/examples/module/basic.cpp](../epix_engine/sprite/examples/module/basic.cpp).
+[../epix_engine/sprite_render/examples/sprite/module/basic.cpp](../epix_engine/sprite_render/examples/sprite/module/basic.cpp).
 It creates a window, render app, camera, in-memory texture, and a single sprite.
 
 From there, read:

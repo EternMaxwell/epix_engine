@@ -116,17 +116,16 @@ may be required the first time you configure a clean build directory.
 
 ## Examples
 
-When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables from each
-module's `examples/` directory. Examples are intentionally varied because they
-exercise different engine layers. Good starting points are:
+When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables for every module that adds examples.
+Examples are often located in `examples` subfolder of a module, some examples:
 
 - [../epix_engine/window/examples/glfw/module/module_test.cpp](../epix_engine/window/examples/glfw/module/module_test.cpp)
 	for a simple GLFW window app.
 - [../epix_engine/render/examples/module/render_plugin.cpp](../epix_engine/render/examples/module/render_plugin.cpp)
 	for the render plugin path.
-- [../epix_engine/sprite/examples/module/basic.cpp](../epix_engine/sprite/examples/module/basic.cpp)
+- [../epix_engine/sprite_render/examples/sprite/module/basic.cpp](../epix_engine/sprite_render/examples/sprite/module/basic.cpp)
 	for a small 2D sprite app.
-- [../epix_engine/text/examples/module/text_interactive.cpp](../epix_engine/text/examples/module/text_interactive.cpp)
+- [../epix_engine/sprite_render/examples/text/module/text_interactive.cpp](../epix_engine/sprite_render/examples/text/module/text_interactive.cpp)
 	for text rendering.
 
 Run examples from the build tree produced by your generator. For debugging,

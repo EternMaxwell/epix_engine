@@ -589,31 +589,46 @@ struct RenderCommandState {
     void prepare(const epix::ecs::World& world) {
         // Bevy `RenderCommandState::prepare` updates the view and item query
         // archetypes here and nowhere else (draw.rs:319-322); `draw` reads them
-        // through the manual API, which never mutates the query state.
+        // through the manual API, which never mutates the query state. It
+        // deliberately does not fetch `C::Param`: every draw function registered
+        // for a phase is prepared, including ones that phase holds no item for,
+        // so fetching here demands resources that exist only while such an item
+        // is drawn -- `Mesh2dBindGroup`, for instance, exists only while mesh2d
+        // instances were uploaded, and a sprite-only phase must not need it.
         view_state->update_archetypes(world);
         entity_state->update_archetypes(world);
-        // The command's own parameters are read-only (Bevy requires
-        // `C::Param: ReadOnlySystemParam`), so fetching them from a `const
-        // World` is sound; `SystemParam::get_param` is not const-qualified.
-        command_parameters = epix::ecs::SystemParam<system_param>::get_param(
-            *command_parameter_state, meta, const_cast<epix::ecs::World&>(world), world.change_tick());
         command.prepare(world);
     }
     std::expected<void, DrawError> draw(const epix::ecs::World& world,
                                         const wgpu::RenderPassEncoder& ctx,
                                         epix::ecs::Entity view,
                                         const P& item) {
-        if (!command_parameters) {
-            throw std::runtime_error("Failed to get system parameters for render command.");
-        }
         auto& mutable_world = const_cast<epix::ecs::World&>(world);
+        // The command's own parameters are read-only (Bevy requires
+        // `C::Param: ReadOnlySystemParam`), so fetching them from a `const
+        // World` is sound; `SystemParam::get_param` is not const-qualified.
+        // Bevy fetches them here, once per item (`self.state.get(world)`,
+        // draw.rs:332), and panics when one cannot be fetched. Epix validates
+        // first so the failure names the command and the parameter: a bare
+        // "Bad optional access" would surface from whichever task happened to
+        // run the phase.
+        if (const auto valid = epix::ecs::SystemParam<system_param>::validate_param(*command_parameter_state, meta,
+                                                                                   mutable_world);
+            !valid) {
+            const auto& error = valid.error();
+            throw std::runtime_error(std::format("Render command {} cannot draw: parameter {} {}",
+                                                 meta::type_id<command_type>::short_name(),
+                                                 error.param_type.short_name(), error.message));
+        }
+        auto command_parameters = epix::ecs::SystemParam<system_param>::get_param(
+            *command_parameter_state, meta, mutable_world, world.change_tick());
         auto view_query     = view_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
         auto view_query_result = view_query.get(view);
         if (!view_query_result) return std::unexpected(DrawError::invalid_view_query());
         auto entity_query = entity_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
         auto entity_query_result = entity_query.get(item.entity());
         auto result =
-            command.render(item, *view_query_result, entity_query_result, *command_parameters, ctx);
+            command.render(item, *view_query_result, entity_query_result, std::move(command_parameters), ctx);
         if (!result) {
             if (result.error().type == RenderCommandError::Type::Skip) {
                 return std::unexpected(DrawError::skip(std::move(result.error().message)));
@@ -635,7 +650,6 @@ struct RenderCommandState {
     std::optional<view_state_type> view_state;
     std::optional<entity_state_type> entity_state;
     std::optional<command_state_type> command_parameter_state;
-    std::optional<command_item_type> command_parameters;
     command_type command;
 };
 

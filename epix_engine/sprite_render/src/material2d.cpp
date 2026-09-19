@@ -1,5 +1,6 @@
 #include <epix/sprite_render/color_material.hpp>
 #include <epix/sprite_render/material2d.hpp>
+#include <epix/sprite_render/tilemap_chunk.hpp>
 
 #include <string>
 #include <utility>
@@ -287,6 +288,11 @@ void epix::sprite_render::Material2dPlugin<M>::ready(epix::app::App& app) {
                            .in_set(epix::render::RenderSystems::QueueMeshes)
                            .set_name("queue material2d meshes"));
 }
+
+// `TilemapChunkMaterialPlugin` lives in its own translation unit
+// (`tilemap_chunk_material.cpp`), which cannot see these template bodies, so the
+// one 2D material type defined outside this file is instantiated here.
+template struct epix::sprite_render::Material2dPlugin<epix::sprite_render::TilemapChunkMaterial>;
 
 void epix::sprite_render::ColorMaterialPlugin::attach(epix::app::App& app) {
     // Bevy `ColorMaterialPlugin::build` (color_material.rs:14-32): publish the

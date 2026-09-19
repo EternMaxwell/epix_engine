@@ -669,7 +669,11 @@ void SpriteRenderPlugin::attach(App& app) {
     spdlog::debug("[sprite] Attaching SpriteRenderPlugin.");
     app.configure_sets(sets(SpriteSystems::ExtractSprites, SpriteSystems::ComputeSlices));
     if (!app.get_plugin<image::TextureAtlasPlugin>()) app.add_plugins(image::TextureAtlasPlugin{});
-    app.add_plugins(Mesh2dRenderPlugin{}, render::SyncComponentPlugin<sprite::Sprite>{});
+    // Bevy `SpriteRenderPlugin::build` (`lib.rs:71-76`) adds this tuple; Epix's
+    // plugin registry skips an already-added type, so an application may still
+    // add any of them itself.
+    app.add_plugins(Mesh2dRenderPlugin{}, ColorMaterialPlugin{}, TilemapChunkPlugin{}, TilemapChunkMaterialPlugin{},
+                    render::SyncComponentPlugin<sprite::Sprite>{});
     app.add_systems(app::PostUpdate, into(sprite_render::compute_slices_on_asset_event)
                                          .in_set(SpriteSystems::ComputeSlices)
                                          .before(assets::AssetSystems::WriteEvents)

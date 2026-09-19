@@ -33,6 +33,22 @@ auto taken = world.take_resource<Settings>();
 bool removed = world.remove_resource<NonCopyableSettings>();
 ```
 
+## Missing resources
+
+`resource<T>()`, `resource_mut<T>()` and the `Res<T>`/`ResMut<T>` system params all
+fail with the resource's name:
+
+```
+Requested resource Settings does not exist in the `World`. Did you forget to add
+it using `app.insert_resource` / `app.init_resource`? Resources are also
+implicitly added by plugins.
+```
+
+The name is the point: the failing lookup can run inside a deferred command or a
+task-pool job, where an anonymous `std::bad_optional_access` identifies neither
+the resource nor the caller. Use `get_resource<T>()`/`get_resource_mut<T>()`, or
+`std::optional<Res<T>>` in a system, when a resource is genuinely optional.
+
 ## Consequences
 
 - Resource access and `Query` access to the same component type address the

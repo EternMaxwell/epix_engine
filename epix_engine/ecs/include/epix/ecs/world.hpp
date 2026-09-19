@@ -8,12 +8,15 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <exception>
 #include <expected>
+#include <format>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -306,18 +309,24 @@ EPIX_EXPORT struct World {
             });
     }
     /** @brief Get a const reference to a resource. Throws if not present.
+     *
+     * The failure names the resource; see `internal::missing_resource`.
      *  @tparam T Resource type. */
     template <typename T>
         requires std::movable<T>
     const T& resource() const {
-        return get_resource<T>().value().get();
+        const auto value = get_resource<T>();
+        if (!value) [[unlikely]] internal::missing_resource<T>();
+        return value->get();
     }
     /** @brief Get a mutable reference to a resource. Throws if not present.
      *  @tparam T Resource type. */
     template <typename T>
         requires std::movable<T>
     T& resource_mut() {
-        return get_resource_mut<T>().value().get();
+        const auto value = get_resource_mut<T>();
+        if (!value) [[unlikely]] internal::missing_resource<T>();
+        return value->get();
     }
 
     /** @brief Get or initialize a resource. If the resource does not exist, it is

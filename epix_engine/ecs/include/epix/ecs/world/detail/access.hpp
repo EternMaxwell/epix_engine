@@ -4,8 +4,10 @@
 #include <cstdint>
 #include <epix/common.hpp>
 #include <epix/utils.hpp>
+#include <format>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #endif
 
 #include <epix/ecs/core/tick.hpp>
@@ -32,6 +34,22 @@ EPIX_EXPORT struct Storage;
 EPIX_EXPORT struct RemovedComponentEvents;
 
 namespace internal {
+/** @brief Report a missing resource by name (Bevy's `World::resource` panic).
+ *
+ * A resource lookup that fails has to say *which* resource is missing: the
+ * alternative, `std::optional::value()`, surfaces as a bare "Bad optional
+ * access" from wherever the lookup happened to run — an exclusive system, a
+ * deferred command, or a command-buffer generation task on the task pool — and
+ * nothing in the message identifies the resource or the caller.
+ */
+template <typename T>
+[[noreturn]] void missing_resource() {
+    throw std::runtime_error(std::format(
+        "Requested resource {} does not exist in the `World`. Did you forget to add it using "
+        "`app.insert_resource` / `app.init_resource`? Resources are also implicitly added by plugins.",
+        meta::type_id<T>().name()));
+}
+
 struct Bundles;
 struct CommandQueue;
 WorldId world_id(const World& world) noexcept;
