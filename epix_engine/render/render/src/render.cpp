@@ -56,6 +56,34 @@ wgpu::Limits constrain_limits(wgpu::Limits limits, const wgpu::Limits& constrain
     return limits;
 }
 
+/** Maps Bevy's `Backends` onto the native `WGPUInstanceBackend` flags.
+ *
+ *  The two bit layouts differ (`Backends` is wgpu's: Noop 1<<0, Vulkan 1<<1,
+ *  Metal 1<<2, DX12 1<<3, GL 1<<4, BrowserWebGPU 1<<5; the native enum has no
+ *  Noop bit, starts Vulkan at 1<<0 and adds DX11), so this is an explicit
+ *  mapping rather than a cast. The native enum also encodes "every backend" as
+ *  zero, which is why the all-backends case is returned directly: a native
+ *  instance cannot express "no backend at all", and Epix has no DX11 backend. */
+wgpu::InstanceBackend to_instance_backend(const Backends& backends) {
+    if (backends == Backends::all()) return wgpu::InstanceBackend::eAll;
+    std::uint32_t bits = 0;
+    if (backends.contains(Backends::Vulkan)) bits |= WGPUInstanceBackend_Vulkan;
+    if (backends.contains(Backends::Gl)) bits |= WGPUInstanceBackend_GL;
+    if (backends.contains(Backends::Metal)) bits |= WGPUInstanceBackend_Metal;
+    if (backends.contains(Backends::Dx12)) bits |= WGPUInstanceBackend_DX12;
+    if (backends.contains(Backends::BrowserWebGpu)) bits |= WGPUInstanceBackend_BrowserWebGPU;
+    return static_cast<wgpu::InstanceBackend>(bits);
+}
+
+/** The `WGPUInstanceFlag` bits the vendored wgpu-native v25 accepts: Debug,
+ *  Validation and DiscardHalLabels (its `wgpu.h` declares no others).
+ *  `InstanceFlags` keeps Bevy's wider bit set -- GPU-based validation,
+ *  indirect-call validation, non-compliant-adapter opt-in -- for a runtime that
+ *  accepts it, so the conversion masks to what this one defines rather than
+ *  handing it bits whose treatment is unspecified. */
+constexpr std::uint32_t kSupportedInstanceFlags =
+    WGPUInstanceFlag_Debug | WGPUInstanceFlag_Validation | WGPUInstanceFlag_DiscardHalLabels;
+
 }  // namespace
 
 RenderAdapterInfo RenderAdapterInfo::from_adapter(const wgpu::Adapter& adapter) {
@@ -255,16 +283,23 @@ void RenderPlugin::attach(App& app) {
     std::optional<wgpu::DeviceDescriptor> automatic_device_descriptor;
 
     if (auto* settings = render_creation.automatic_settings()) {
-        // TEMPORARY wgpu-native workaround: this vendored runtime corrupts an
-        // InstanceExtras chain when an instance owns a window surface. Keep
-        // WgpuSettings is Bevy-shaped, but construct the native instance with
-        // its defaults until that runtime bug is fixed. The current native
-        // v25 C API also has no `memory_budget_thresholds` instance field or
-        // `memory_hints` device field. Keep both settings in the public
-        // creation path so updating that API only replaces this local native
-        // descriptor construction. The renderer-local Vulkan adapter coercion
-        // below is still what preserves Slang's SPIR-V passthrough requirement.
-        instance = wgpu::createInstance();
+        // Bevy hands `WgpuSettings` straight to wgpu's instance descriptor
+        // (`renderer/mod.rs:30-60`: `backends`, `flags`, `backend_options`);
+        // the native API carries the same surface on the `WGPUInstanceExtras`
+        // chained struct. Converting the settings here is what makes
+        // `WGPU_BACKEND` (via `Backends::from_env`) plus `WGPU_VALIDATION` and
+        // `WGPU_DEBUG` (via `InstanceFlags::with_env`) reach the runtime.
+        //
+        // Bevy's `instance_memory_budget_thresholds` has no counterpart in the
+        // vendored v25 extras struct, and `memory_hints` is a device field, so
+        // both stay in `WgpuSettings` for a runtime that exposes them.
+        wgpu::InstanceDescriptor instance_descriptor;
+        wgpu::InstanceExtras instance_extras;
+        instance_extras.setBackends(to_instance_backend(*settings->backends))
+            .setFlags(static_cast<wgpu::InstanceFlag>(settings->instance_flags.bits() & kSupportedInstanceFlags))
+            .setDx12ShaderCompiler(settings->dx12_shader_compiler)
+            .setGles3MinorVersion(settings->gles3_minor_version);
+        instance = wgpu::createInstance(instance_descriptor.setNextInChain(instance_extras));
         spdlog::debug("[render] WebGPU instance created.");
         wgpu::Surface surface = app.world()
                                     .get_resource<AnonymousSurface>()

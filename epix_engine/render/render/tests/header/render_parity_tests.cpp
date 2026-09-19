@@ -34,6 +34,33 @@ TEST(WebGpuWrapper, NativeEnumExtensionsUseDescriptorFacingTypes) {
     EXPECT_EQ(wgpu::to_string(wgpu::TextureFormat::eRgba16Unorm), "Rgba16Unorm");
 }
 
+// The wrapper generator once parsed a flag declaration's value with a
+// single-token pattern, so every entry declared as a constant expression
+// (`static const WGPUFlags WGPUX_Foo = 1 << 3;`) was dropped without a trace:
+// `InstanceFlag` came out as `{Empty, Force32}` and `InstanceBackend` as
+// `{All, Force32}`. The engine configures its instance from exactly those two
+// enums, so both the members and their bit values are asserted here.
+TEST(WebGpuWrapper, NativeFlagEnumsExposeEveryDeclaredMember) {
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eAll), 0u);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eVulkan), 1u << 0);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eGL), 1u << 1);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eMetal), 1u << 2);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eDX12), 1u << 3);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eBrowserWebGPU), 1u << 5);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::ePrimary),
+              (1u << 0) | (1u << 2) | (1u << 3) | (1u << 5));
+
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceFlag::eDebug), 1u << 0);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceFlag::eValidation), 1u << 1);
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceFlag::eDiscardHalLabels), 1u << 2);
+
+    // The bitwise operators the instance configuration relies on.
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceFlag::eDebug | wgpu::InstanceFlag::eValidation),
+              (1u << 0) | (1u << 1));
+    EXPECT_EQ(static_cast<std::uint32_t>(wgpu::InstanceBackend::eVulkan | wgpu::InstanceBackend::eDX12),
+              (1u << 0) | (1u << 3));
+}
+
 struct EarlyExtractInstance {
     int value = 0;
 };
