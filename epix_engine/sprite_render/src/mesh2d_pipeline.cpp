@@ -91,10 +91,14 @@ import epix.tonemapping;
 // Group 0's view bindings come from `epix.mesh2d_view_bindings`.
 
 struct Mesh2d {
-    // WGSL mat3x4, three columns of vec4; column_major keeps the same 48 bytes.
-    column_major float4x3 world_from_local;
-    // WGSL mat2x4, two columns of vec4 holding the packed inverse transpose.
-    column_major float4x2 local_from_world_transpose_a;
+    // Bevy's `Mesh2dUniform` packs the affine as three `Vec4` rows (the Rust side
+    // is `[Vec4; 3]`, and its WGSL `mat3x4` is three columns of `vec4`). Declared
+    // as an explicit array so the 16-byte stride is unambiguous: a Slang
+    // `float4x3` is a matrix whose columns are `vec3`, which this layout is not.
+    float4 world_from_local[3];
+    // Bevy's `local_from_world_transpose_a`: two `Vec4` holding the packed
+    // inverse transpose of the 3x3.
+    float4 local_from_world_transpose_a[2];
     float local_from_world_transpose_b;
     // 'flags' is a bit field; the type is 32 bits, so up to 32 options.
     uint flags;
@@ -145,35 +149,25 @@ struct VertexInput {
 // `VertexOutput` comes from `epix.mesh2d_vertex_output`, the module a material's
 // fragment shader also imports.
 
-// mesh2d_functions.wgsl's helpers. The stored columns are Bevy's transposed
-// affine, so element [row][col] is axis col's row component, and row 3 holds the
-// translation.
-float3 mesh2d_position_local_to_world(float4x3 world_from_local, float3 position) {
-    return float3(world_from_local[0][0] * position.x + world_from_local[0][1] * position.y +
-                      world_from_local[0][2] * position.z + world_from_local[3][0],
-                  world_from_local[1][0] * position.x + world_from_local[1][1] * position.y +
-                      world_from_local[1][2] * position.z + world_from_local[3][1],
-                  world_from_local[2][0] * position.x + world_from_local[2][1] * position.y +
-                      world_from_local[2][2] * position.z + world_from_local[3][2]);
+// mesh2d_functions.wgsl's helpers. The three packed `vec4` are the affine's
+// rows - each row's `w` is that row's translation component - which is what
+// Bevy's `affine3_to_square` reconstructs before multiplying.
+float3 mesh2d_position_local_to_world(float4 rows[3], float3 position) {
+    return float3(dot(rows[0].xyz, position) + rows[0].w, dot(rows[1].xyz, position) + rows[1].w,
+                  dot(rows[2].xyz, position) + rows[2].w);
 }
 
-float3 mesh2d_normal_local_to_world(float4x2 packed_a, float packed_b, float3 normal) {
-    // mat2x4_f32_to_mat3x3_unpack: the columns of the inverse transpose, where
-    // column 0 is (a[0].xyz, a[0].w), column 1 is (a[1].x, a[1].y, a[1].z, a[1].w)
-    // and column 2 is (b, ...) respectively.
-    float3 c0 = float3(packed_a[0][0], packed_a[1][0], packed_a[2][0]);
-    float3 c1 = float3(packed_a[3][0], packed_a[0][1], packed_a[1][1]);
-    float3 c2 = float3(packed_a[2][1], packed_a[3][1], packed_b);
+float3 mesh2d_normal_local_to_world(float4 packed_a[2], float packed_b, float3 normal) {
+    // Bevy's `mat2x4_f32_to_mat3x3_unpack`: the columns of the inverse transpose
+    // are (a[0].xyz), (a[0].w, a[1].xy) and (a[1].zw, b).
+    const float3 c0 = packed_a[0].xyz;
+    const float3 c1 = float3(packed_a[0].w, packed_a[1].xy);
+    const float3 c2 = float3(packed_a[1].zw, packed_b);
     return c0 * normal.x + c1 * normal.y + c2 * normal.z;
 }
 
-float4 mesh2d_tangent_local_to_world(float4x3 world_from_local, float4 tangent) {
-    return float4(world_from_local[0][0] * tangent.x + world_from_local[0][1] * tangent.y +
-                      world_from_local[0][2] * tangent.z,
-                  world_from_local[1][0] * tangent.x + world_from_local[1][1] * tangent.y +
-                      world_from_local[1][2] * tangent.z,
-                  world_from_local[2][0] * tangent.x + world_from_local[2][1] * tangent.y +
-                      world_from_local[2][2] * tangent.z,
+float4 mesh2d_tangent_local_to_world(float4 rows[3], float4 tangent) {
+    return float4(dot(rows[0].xyz, tangent.xyz), dot(rows[1].xyz, tangent.xyz), dot(rows[2].xyz, tangent.xyz),
                   tangent.w);
 }
 
