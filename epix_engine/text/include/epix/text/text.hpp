@@ -57,7 +57,8 @@ EPIX_EXPORT struct Text {
     static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
 };
 
-/** @brief Information about a single shaped glyph within a text layout. */
+/** @brief Information about a single shaped glyph within a text layout
+ * (Bevy `PositionedGlyph`, `glyph.rs:15-30`). */
 EPIX_EXPORT struct GlyphInfo {
     /** @brief Index of the glyph in the font. */
     std::uint32_t glyph_index;
@@ -71,6 +72,15 @@ EPIX_EXPORT struct GlyphInfo {
     float x_advance;
     /** @brief Vertical advance to the next glyph. */
     float y_advance;
+    /** @brief Position of the glyph quad's center in the text block's bounding
+     * box, in the block's +Y-down space (Bevy `PositionedGlyph::position`,
+     * `pipeline.rs:441-453`). */
+    glm::vec2 position{0.0f};
+    /** @brief Width and height of the glyph's atlas bitmap. */
+    glm::vec2 size{0.0f};
+    /** @brief The atlas this glyph was rasterized into (Bevy
+     * `PositionedGlyph::atlas_info`). */
+    font::GlyphAtlasInfo atlas_info{};
 };
 
 /** @brief Forward declaration for text layout parameters. */
@@ -106,9 +116,16 @@ EPIX_EXPORT struct ShapedText {
     float descent() const noexcept { return descent_; }
     /** @brief Get a read-only span of the shaped glyph positions. */
     std::span<const GlyphInfo> glyphs() const noexcept { return std::span<const GlyphInfo>(glyphs_); }
+    /** @brief Size of the text block, relative to its top-left corner (Bevy
+     * `TextLayoutInfo::size`, `pipeline.rs:484`).
+     *
+     * This is the maximum line advance width by the summed line heights, not
+     * the ink extent of the glyphs; `width()`/`height()` report the latter. */
+    glm::vec2 size() const noexcept { return size_; }
 
    private:
     std::vector<GlyphInfo> glyphs_;
+    glm::vec2 size_{0.0f};
     float left_    = 0.0f;
     float right_   = 0.0f;
     float top_     = 0.0f;
@@ -120,7 +137,9 @@ EPIX_EXPORT struct ShapedText {
                                  const TextFont& font,
                                  const TextLayout& layout,
                                  const TextBounds& bounds,
-                                 font::FontAtlas& atlas);
+                                 font::FontAtlasSet& atlas_set,
+                                 assets::Assets<image::Image>& textures,
+                                 assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
 };
 
 /** @brief Shape text into positioned glyphs using the given font, layout,
@@ -129,11 +148,22 @@ EPIX_EXPORT struct ShapedText {
  * @param font Font configuration (size, anti-aliasing, etc.).
  * @param layout Justification and wrapping settings.
  * @param bounds Optional width/height constraints.
- * @param atlas Font atlas used for glyph rasterization.
+ * @param atlas_set Font atlases used for glyph rasterization and placement;
+ * glyphs are added to the atlas they fit in, creating a new atlas when none
+ * has room (Bevy `add_glyph_to_atlas`, `font_atlas.rs:126-182`).
+ * @param textures Image asset storage holding the atlas images.
+ * @param atlas_layouts Texture atlas layout asset storage. Both asset stores
+ * are required because the layout step places glyphs exactly as Bevy's
+ * `TextPipeline::update_text_layout_info` does (`pipeline.rs:419-453`).
  * @return A ShapedText containing the final glyph positions and metrics.
  */
-EPIX_EXPORT ShapedText shape_text(
-    const Text& text, const TextFont& font, const TextLayout& layout, const TextBounds& bounds, font::FontAtlas& atlas);
+EPIX_EXPORT ShapedText shape_text(const Text& text,
+                                  const TextFont& font,
+                                  const TextLayout& layout,
+                                  const TextBounds& bounds,
+                                  font::FontAtlasSet& atlas_set,
+                                  assets::Assets<image::Image>& textures,
+                                  assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
 
 /** @brief Text horizontal justification mode. */
 EPIX_EXPORT enum class Justify {

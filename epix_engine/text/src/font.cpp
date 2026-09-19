@@ -12,11 +12,11 @@
 #include <cstring>
 #include <epix/assets.hpp>
 #include <epix/image.hpp>
-#include <epix/mesh.hpp>
 #include <epix/meta.hpp>
 #include <epix/text.hpp>
 #include <exception>
 #include <expected>
+#include <format>
 #include <fstream>
 #include <functional>
 #include <memory>
@@ -36,13 +36,29 @@ using namespace epix;
 using namespace epix::text::font;
 
 namespace {
-void apply_pending_font_atlas_updates(ecs::ResMut<FontAtlasSets> atlas_sets,
-                                      ecs::ResMut<assets::Assets<image::Image>> images);
 void add_font_atlas_set(ecs::ResMut<FontAtlasSets> atlas_sets,
                         ecs::Res<FontLibrary> font_lib,
                         ecs::EventReader<assets::AssetEvent<Font>> reader,
                         ecs::Res<assets::Assets<Font>> fonts);
 void register_default_embedded_font(app::App& app);
+
+/** @brief The smallest power of two strictly greater than `value`, floored at
+ * one (Bevy `1u32 << (32 - value.leading_zeros())`, `font_atlas.rs:160`). */
+std::uint32_t next_power_of_two_above(std::uint32_t value) noexcept {
+    if (value >= (1u << 31u)) {
+        return value;
+    }
+    return 1u << (32u - static_cast<std::uint32_t>(std::countl_zero(value)));
+}
+
+/** @brief Bevy's `FontSmoothing::None` threshold: alpha above 50% becomes
+ * fully opaque, everything else fully transparent (`font_atlas.rs:212-225`). */
+void apply_alpha_threshold(image::Image& glyph_texture) {
+    auto bytes = glyph_texture.raw_view_mut();
+    for (std::size_t index = 3; index < bytes.size(); index += 4) {
+        bytes[index] = static_cast<std::byte>(std::to_integer<std::uint8_t>(bytes[index]) > 127 ? 255 : 0);
+    }
+}
 
 Font make_default_embedded_font() {
     Font font{std::make_unique<std::byte[]>(font_data_array_size), static_cast<std::size_t>(font_data_array_size)};
@@ -98,151 +114,70 @@ FontLibrary::~FontLibrary() {
     }
 }
 
-std::uint32_t FontAtlas::get_glyph_index(char32_t codepoint) {
-    return static_cast<std::uint32_t>(FT_Get_Char_Index(reinterpret_cast<FT_Face>(font_face), codepoint));
+std::string TextError::to_string() const {
+    switch (code) {
+        case TextErrorCode::FailedToAddGlyph:
+            return std::format("FailedToAddGlyph({})", glyph_id);
+        case TextErrorCode::FailedToGetGlyphImage:
+            return std::format("FailedToGetGlyphImage({})", glyph_id);
+        case TextErrorCode::MissingAtlasLayout:
+            return "MissingAtlasLayout";
+        case TextErrorCode::MissingAtlasTexture:
+            return "MissingAtlasTexture";
+        case TextErrorCode::InconsistentAtlasState:
+            return "InconsistentAtlasState";
+    }
+    return "UnknownTextError";
 }
 
-void FontAtlas::apply_pending(assets::Assets<image::Image>& assets) {
-    if (pending_glyphs.empty()) {
-        return;
+FontAtlas FontAtlas::create(assets::Assets<image::Image>& textures,
+                            assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+                            glm::uvec2 size,
+                            bool font_smoothing) {
+    // Bevy: `Image::new_fill(size, D2, &[0, 0, 0, 0], Rgba8UnormSrgb, MAIN_WORLD | RENDER_WORLD)`
+    // (font_atlas.rs:40-47). The main-world usage flag is required because the
+    // atlas is updated in place as more glyphs arrive.
+    const std::size_t byte_size = static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) * 4u;
+    image::Image image{
+        wgpu::Extent3D{size.x, size.y, 1u},
+        wgpu::TextureDimension::e2D,
+        std::vector<std::byte>(byte_size, std::byte{0}),
+        wgpu::TextureFormat::eRGBA8UnormSrgb,
+        static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                              assets::RenderAssetUsages::RENDER_WORLD)};
+    if (!font_smoothing) {
+        image.set_sampler(image::ImageSampler::nearest());
     }
-    add_image_if_missing(assets);
-
-    const auto pixel_size   = std::size_t{4};
-    const auto layer_stride = static_cast<std::size_t>(atlas_width) * atlas_height * pixel_size;
-    std::span<std::byte> atlas_data;
-
-    {
-        auto atlas_image_ref = assets.try_get_mut(this->image.value());
-        auto& current        = atlas_image_ref.value().get();
-        if (current.width() != atlas_width || current.height() != atlas_height ||
-            current.depth_or_layers() != atlas_layers) {
-            auto new_atlas     = make_atlas_image();
-            atlas_data         = new_atlas.raw_view_mut();
-            auto current_bytes = current.raw_view();
-            auto copy_size     = std::min(atlas_data.size(), current_bytes.size());
-            std::memcpy(atlas_data.data(), current_bytes.data(), copy_size);
-            current = std::move(new_atlas);
-        }
-        atlas_data = current.raw_view_mut();
-    }
-
-    for (auto& pending : pending_glyphs) {
-        auto it = atlas_locs.find(pending.glyph_index);
-        if (it == atlas_locs.end()) {
-            continue;
-        }
-
-        auto&& rect     = it->second;
-        const auto* src = pending.bitmap_data.get();
-        for (std::uint32_t row = 0; row < rect.height; ++row) {
-            for (std::uint32_t col = 0; col < rect.width; ++col) {
-                auto offset = (static_cast<std::size_t>(row) * rect.width + col) * 4;
-                auto atlas_offset =
-                    static_cast<std::size_t>(rect.layer) * layer_stride +
-                    (static_cast<std::size_t>(rect.y + row) * atlas_width + (rect.x + col)) * pixel_size;
-                std::memcpy(atlas_data.data() + atlas_offset, src + offset, pixel_size);
-            }
-        }
-    }
-
-    pending_glyphs.clear();
+    auto texture       = textures.add(std::move(image));
+    auto texture_atlas = atlas_layouts.add(image::TextureAtlasLayout::new_empty(size));
+    return FontAtlas{image::DynamicTextureAtlasBuilder(size, 1), std::move(texture_atlas), std::move(texture)};
 }
 
-AtlasRect FontAtlas::get_glyph_atlas_loc(std::uint32_t glyph_index) {
-    if (auto it = atlas_locs.find(glyph_index); it != atlas_locs.end()) {
-        return it->second;
+std::expected<void, TextError> FontAtlas::add_glyph(assets::Assets<image::Image>& textures,
+                                                    assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+                                                    std::uint32_t key,
+                                                    const image::Image& glyph_texture,
+                                                    glm::ivec2 offset) {
+    auto atlas_layout = atlas_layouts.get_mut(this->texture_atlas.id());
+    if (!atlas_layout) {
+        return std::unexpected(TextError{TextErrorCode::MissingAtlasLayout, key});
     }
-    cache_glyph_index(glyph_index);
-    return atlas_locs.at(glyph_index);
+    auto atlas_texture = textures.get_mut(this->texture.id());
+    if (!atlas_texture) {
+        return std::unexpected(TextError{TextErrorCode::MissingAtlasTexture, key});
+    }
+
+    auto glyph_index = dynamic_texture_atlas_builder.add_texture(atlas_layout->get(), glyph_texture, atlas_texture->get());
+    if (!glyph_index) {
+        return std::unexpected(TextError{TextErrorCode::FailedToAddGlyph, key});
+    }
+
+    glyph_to_atlas_index.insert_or_assign(key, GlyphAtlasLocation{*glyph_index, offset});
+    return {};
 }
 
-const Glyph& FontAtlas::get_glyph(std::uint32_t glyph_index) {
-    if (auto it = glyphs.find(glyph_index); it != glyphs.end()) {
-        return it->second;
-    }
-    cache_glyph_index(glyph_index);
-    return glyphs.at(glyph_index);
-}
-
-std::array<float, 5> FontAtlas::get_glyph_uv_rect(std::uint32_t glyph_index) {
-    auto loc    = get_glyph_atlas_loc(glyph_index);
-    float u0    = static_cast<float>(loc.x) / static_cast<float>(atlas_width);
-    float v0    = static_cast<float>(loc.y) / static_cast<float>(atlas_height);
-    float u1    = static_cast<float>(loc.x + loc.width) / static_cast<float>(atlas_width);
-    float v1    = static_cast<float>(loc.y + loc.height) / static_cast<float>(atlas_height);
-    float layer = static_cast<float>(loc.layer);
-    return {u0, v0, u1, v1, layer};
-}
-
-std::expected<AtlasRect, FontAtlas::FontAtlasError> FontAtlas::place_char_bitmap_size(std::uint32_t width,
-                                                                                      std::uint32_t height) {
-    if (width == 0 || height == 0) {
-        return AtlasRect::rect3d(0, 0, 0, 0, 0, 1);
-    }
-
-    constexpr std::uint32_t padding = 1;
-    const std::uint32_t padded_w    = width + padding;
-    const std::uint32_t padded_h    = height + padding;
-
-    if (padded_w > atlas_width || padded_h > atlas_height) {
-        return std::unexpected(
-            FontAtlasError{FontAtlasError::Code::TooLargeForLayer, width, height, atlas_width, atlas_height});
-    }
-
-    for (std::uint32_t layer = 0; layer < atlas_layers; ++layer) {
-        auto& state = layer_states[layer];
-        if (state.x + padded_w <= atlas_width) {
-            auto new_row_height = std::max(state.row_height, padded_h);
-            if (state.y + new_row_height <= atlas_height) {
-                auto placed_x = state.x;
-                auto placed_y = state.y;
-                state.x += padded_w;
-                state.row_height = new_row_height;
-                return AtlasRect::rect3d(placed_x, placed_y, layer, width, height, 1);
-            }
-        }
-
-        if (state.y + state.row_height + padded_h <= atlas_height) {
-            state.x = 0;
-            state.y += state.row_height;
-            state.row_height = padded_h;
-            auto placed_x    = state.x;
-            auto placed_y    = state.y;
-            state.x += padded_w;
-            return AtlasRect::rect3d(placed_x, placed_y, layer, width, height, 1);
-        }
-    }
-
-    if (atlas_layers < max_texture_array_layers) {
-        auto layer = atlas_layers;
-        ++atlas_layers;
-        layer_states.push_back(LayerState{.x = padded_w, .y = 0, .row_height = padded_h});
-        return AtlasRect::rect3d(0, 0, layer, width, height, 1);
-    }
-
-    return std::unexpected(FontAtlasError{FontAtlasError::Code::AtlasFull, width, height, atlas_width, atlas_height});
-}
-
-image::Image FontAtlas::make_atlas_image() {
-    auto img = image::Image::create2d_array(atlas_width, atlas_height, atlas_layers, wgpu::TextureFormat::eRGBA8Unorm);
-    // Bevy's default asset usage keeps the image in both worlds.
-    img.set_usage(static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
-                                                         assets::RenderAssetUsages::RENDER_WORLD));
-    return img;
-}
-
-bool FontAtlas::add_image_if_missing(assets::Assets<image::Image>& assets) {
-    if (image) {
-        return false;
-    }
-    auto atlas_image = make_atlas_image();
-    image            = assets.emplace(std::move(atlas_image));
-    return true;
-}
-
-std::optional<std::tuple<Glyph, std::unique_ptr<std::byte[]>, std::pair<std::uint32_t, std::uint32_t>>>
-FontAtlas::generate_glyph(std::uint32_t glyph_index) {
+std::optional<std::tuple<Glyph, image::Image, glm::ivec2>> FontAtlasSet::generate_glyph(float font_size,
+                                                                                        std::uint32_t glyph_index) {
     auto ft_face   = reinterpret_cast<FT_Face>(font_face);
     auto size_26_6 = static_cast<FT_F26Dot6>(font_size * 64.0f);
     FT_Set_Char_Size(ft_face, size_26_6, 0, 0, 0);
@@ -261,22 +196,41 @@ FontAtlas::generate_glyph(std::uint32_t glyph_index) {
         return std::nullopt;
     }
 
-    FT_Bitmap& bitmap    = ft_face->glyph->bitmap;
-    std::uint32_t width  = static_cast<std::uint32_t>(bitmap.width);
-    std::uint32_t height = static_cast<std::uint32_t>(bitmap.rows);
-    auto bitmap_data     = std::make_unique<std::byte[]>(static_cast<std::size_t>(width) * height * 4);
+    auto* bitmap_glyph = reinterpret_cast<FT_BitmapGlyph>(ft_glyph);
+    FT_Bitmap& bitmap  = bitmap_glyph->bitmap;
+    const std::uint32_t width  = static_cast<std::uint32_t>(bitmap.width);
+    const std::uint32_t height = static_cast<std::uint32_t>(bitmap.rows);
+    const std::ptrdiff_t pitch = bitmap.pitch;
+    const auto* buffer         = reinterpret_cast<const std::uint8_t*>(bitmap.buffer);
+
+    // Bevy's glyph images are white RGB with the rasterized coverage in alpha,
+    // stored top row first (font_atlas.rs:210-232), which is also FreeType's
+    // native bitmap row order.
+    std::vector<std::byte> data(static_cast<std::size_t>(width) * height * 4u);
     for (std::uint32_t row = 0; row < height; ++row) {
-        const auto* src_row = reinterpret_cast<const std::uint8_t*>(bitmap.buffer) + (height - 1 - row) * bitmap.pitch;
+        const auto* src_row = pitch >= 0 ? buffer + static_cast<std::ptrdiff_t>(row) * pitch
+                                         : buffer + static_cast<std::ptrdiff_t>(height - 1u - row) * -pitch;
         for (std::uint32_t col = 0; col < width; ++col) {
             auto alpha              = src_row[col];
             auto offset             = (static_cast<std::size_t>(row) * width + col) * 4;
-            bitmap_data[offset + 0] = static_cast<std::byte>(255);
-            bitmap_data[offset + 1] = static_cast<std::byte>(255);
-            bitmap_data[offset + 2] = static_cast<std::byte>(255);
-            bitmap_data[offset + 3] = static_cast<std::byte>(alpha);
+            data[offset + 0]        = static_cast<std::byte>(255);
+            data[offset + 1]        = static_cast<std::byte>(255);
+            data[offset + 2]        = static_cast<std::byte>(255);
+            data[offset + 3]        = static_cast<std::byte>(alpha);
         }
     }
-    FT_Done_Glyph(ft_glyph);
+
+    image::Image glyph_texture{
+        wgpu::Extent3D{width, height, 1u},
+        wgpu::TextureDimension::e2D,
+        std::move(data),
+        wgpu::TextureFormat::eRGBA8UnormSrgb,
+        static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD)};
+
+    // Swash (and therefore Bevy) reports the bitmap placement relative to the
+    // glyph origin in a +Y-down space; FreeType's `FT_BitmapGlyph` carries the
+    // same placement.
+    const glm::ivec2 offset{bitmap_glyph->left, bitmap_glyph->top};
 
     Glyph glyph;
     auto& metrics      = ft_face->glyph->metrics;
@@ -289,58 +243,90 @@ FontAtlas::generate_glyph(std::uint32_t glyph_index) {
     glyph.vertBearingY = static_cast<float>(metrics.vertBearingY) / 64.0f;
     glyph.vertAdvance  = static_cast<float>(metrics.vertAdvance) / 64.0f;
 
-    return std::make_tuple(glyph, std::move(bitmap_data), std::make_pair(width, height));
+    FT_Done_Glyph(ft_glyph);
+    return std::make_tuple(glyph, std::move(glyph_texture), offset);
 }
 
-void FontAtlas::cache_glyph_index(std::uint32_t glyph_index) {
-    auto generated = generate_glyph(glyph_index);
+const Glyph& FontAtlasSet::get_glyph(const FontAtlasKey& key, std::uint32_t glyph_index) {
+    auto& entries = glyphs[key];
+    if (auto it = entries.find(glyph_index); it != entries.end()) {
+        return it->second.metrics;
+    }
+
+    auto& entry = entries[glyph_index];
+    if (auto generated = generate_glyph(key.size, glyph_index)) {
+        entry.metrics = std::get<0>(*generated);
+    } else {
+        entry.metrics = Glyph{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
+    }
+    return entry.metrics;
+}
+
+std::expected<GlyphAtlasInfo, TextError> FontAtlasSet::add_glyph_to_atlas(
+    assets::Assets<image::Image>& textures,
+    assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+    const FontAtlasKey& key,
+    std::uint32_t glyph_index) {
+    auto& entries = glyphs[key];
+    if (auto it = entries.find(glyph_index); it != entries.end() && it->second.placed) {
+        return it->second.atlas_info;
+    }
+
+    auto generated = generate_glyph(key.size, glyph_index);
     if (!generated) {
-        atlas_locs[glyph_index] = AtlasRect::rect3d(0, 0, 0, 0, 0, 1);
-        glyphs[glyph_index]     = Glyph{0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-        return;
+        return std::unexpected(TextError{TextErrorCode::FailedToGetGlyphImage, glyph_index});
+    }
+    auto& [metrics, glyph_texture, offset] = *generated;
+    if (!key.anti_aliased) {
+        apply_alpha_threshold(glyph_texture);
     }
 
-    auto& [glyph, bitmap_data, size] = *generated;
-    auto placement                   = place_char_bitmap_size(size.first, size.second);
-    if (!placement) {
-        auto error = placement.error();
-        spdlog::error("[text] Failed to place glyph {} into atlas {}x{}.", glyph_index, error.atlas_w, error.atlas_h);
-        atlas_locs[glyph_index] = AtlasRect::rect3d(0, 0, 0, 0, 0, 1);
-        glyphs[glyph_index]     = glyph;
-        return;
+    // Bevy tries every atlas in order and only creates a new one when none of
+    // them has room (font_atlas.rs:149-178).
+    auto& atlases = storage[key];
+    for (auto& atlas : atlases) {
+        if (atlas.add_glyph(textures, atlas_layouts, glyph_index, glyph_texture, offset)) {
+            auto& entry      = entries[glyph_index];
+            entry.metrics    = metrics;
+            entry.atlas_info = GlyphAtlasInfo{atlas.texture.id(), atlas.texture_atlas.id(),
+                                              *atlas.get_glyph_index(glyph_index)};
+            entry.placed     = true;
+            return entry.atlas_info;
+        }
     }
 
-    atlas_locs[glyph_index] = *placement;
-    glyphs[glyph_index]     = glyph;
-    pending_glyphs.push_back(PendingGlyph{glyph_index, std::move(bitmap_data)});
+    // Pick the higher of 512 or the smallest power of two greater than the
+    // glyph's largest dimension (font_atlas.rs:153-167).
+    const std::uint32_t glyph_max_size = std::max(glyph_texture.height(), glyph_texture.width());
+    const std::uint32_t containing     = std::max(next_power_of_two_above(glyph_max_size), 512u);
+    FontAtlas new_atlas = FontAtlas::create(textures, atlas_layouts, glm::uvec2{containing}, key.anti_aliased);
+    if (auto added = new_atlas.add_glyph(textures, atlas_layouts, glyph_index, glyph_texture, offset); !added) {
+        return std::unexpected(added.error());
+    }
+
+    auto& entry      = entries[glyph_index];
+    entry.metrics    = metrics;
+    entry.atlas_info = GlyphAtlasInfo{new_atlas.texture.id(), new_atlas.texture_atlas.id(),
+                                      *new_atlas.get_glyph_index(glyph_index)};
+    entry.placed     = true;
+    const auto atlas_info = entry.atlas_info;
+    atlases.push_back(std::move(new_atlas));
+    return atlas_info;
 }
 
-std::optional<std::reference_wrapper<FontAtlas>> FontAtlasSet::get_mut(const FontAtlasKey& key) {
+std::optional<std::reference_wrapper<std::vector<FontAtlas>>> FontAtlasSet::get_mut(const FontAtlasKey& key) {
     if (auto it = storage.find(key); it != storage.end()) {
         return std::ref(it->second);
     }
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const FontAtlas>> FontAtlasSet::get(const FontAtlasKey& key) const {
+std::optional<std::reference_wrapper<const std::vector<FontAtlas>>> FontAtlasSet::get(
+    const FontAtlasKey& key) const {
     if (auto it = storage.find(key); it != storage.end()) {
         return std::cref(it->second);
     }
     return std::nullopt;
-}
-
-FontAtlas& FontAtlasSet::get_or_insert(const FontAtlasKey& key) {
-    if (auto it = storage.find(key); it != storage.end()) {
-        return it->second;
-    }
-    auto clamped_size = std::max(1.0f, key.size);
-    auto atlas_width  = std::bit_ceil(
-        std::clamp(static_cast<std::uint32_t>(std::ceil(clamped_size * 16.0f)), 1024u, max_texture_dimension_2d));
-    auto atlas_height   = std::bit_ceil(std::clamp(static_cast<std::uint32_t>(std::ceil(clamped_size * 8.0f)), 512u,
-                                                   std::min(2048u, max_texture_dimension_2d)));
-    auto [it, inserted] = storage.emplace(
-        key, FontAtlas(font_face, atlas_width, atlas_height, key.size, key.anti_aliased, max_texture_array_layers));
-    return it->second;
 }
 
 std::optional<std::reference_wrapper<FontAtlasSet>> FontAtlasSets::get_mut(const assets::AssetId<Font>& font_id) {
@@ -363,13 +349,12 @@ bool FontAtlasSets::contains(const assets::AssetId<Font>& font_id) const { retur
 void FontAtlasSets::erase(const assets::AssetId<Font>& font_id) { storage.erase(font_id); }
 
 void FontAtlasSets::add(const assets::AssetId<Font>& font_id, void* face) {
-    storage.emplace(font_id, FontAtlasSet(face, max_texture_dimension_2d, max_texture_array_layers));
+    storage.emplace(font_id, FontAtlasSet(face, max_texture_dimension_2d));
 }
 
 FontAtlasSets::FontAtlasSets(ecs::World& world) {
     if (auto limits = world.get_resource<wgpu::Limits>(); limits) {
         max_texture_dimension_2d = limits->get().maxTextureDimension2D;
-        max_texture_array_layers = limits->get().maxTextureArrayLayers;
     }
 }
 
@@ -380,15 +365,6 @@ struct DefaultFontHandle {
 }  // namespace epix::text::font
 
 namespace {
-void apply_pending_font_atlas_updates(ecs::ResMut<FontAtlasSets> atlas_sets,
-                                      ecs::ResMut<assets::Assets<image::Image>> images) {
-    for (auto& [font_id, atlas_set] : atlas_sets->iter_mut()) {
-        for (auto& [key, atlas] : atlas_set.iter_mut()) {
-            atlas.apply_pending(*images);
-        }
-    }
-}
-
 void add_font_atlas_set(ecs::ResMut<FontAtlasSets> atlas_sets,
                         ecs::Res<FontLibrary> font_lib,
                         ecs::EventReader<assets::AssetEvent<Font>> reader,
@@ -445,15 +421,11 @@ void FontPlugin::attach(app::App& app) {
     assets::app_register_loader<FontLoader>(app);
     app.world_mut().init_resource<FontLibrary>();
     app.world_mut().init_resource<FontAtlasSets>();
-    app.configure_sets(ecs::sets(FontSystems::AddFontAtlasSet, FontSystems::ApplyPendingFontAtlasUpdates));
+    app.configure_sets(ecs::sets(FontSystems::AddFontAtlasSet));
     app.add_systems(app::First, ecs::into(add_font_atlas_set)
                                     .in_set(FontSystems::AddFontAtlasSet)
                                     .after(assets::AssetSystems::WriteEvents)
                                     .set_name("add font atlas set"));
-    app.add_systems(app::PostUpdate, ecs::into(apply_pending_font_atlas_updates)
-                                         .in_set(FontSystems::ApplyPendingFontAtlasUpdates)
-                                         .before(assets::AssetSystems::WriteEvents)
-                                         .set_name("apply pending font atlas updates"));
 }
 
 void FontPlugin::ready(app::App& app) {

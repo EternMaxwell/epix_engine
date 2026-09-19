@@ -30,7 +30,10 @@ import epix.app;
 import epix.assets;
 import epix.image;
 import epix.transform;
-import epix.mesh;
+import epix.camera;
+import epix.sprite;
+import epix.sprite_render;
+import epix.core_graph;
 import webgpu;
 extern "C++" {
 #include <epix/text.hpp>

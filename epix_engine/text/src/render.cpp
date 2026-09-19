@@ -1,740 +1,142 @@
 #include <spdlog/spdlog.h>
 
 #include <array>
-#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <epix/camera.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/render.hpp>
+#include <epix/sprite.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/text.hpp>
-#include <expected>
-#include <format>
+#include <glm/glm.hpp>
 #include <optional>
-#include <ranges>
-#include <span>
-#include <string>
-#include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
-#include <webgpu/webgpu.hpp>
 
 using namespace epix::ecs;
 using namespace epix::app;
 using namespace epix::text;
 using namespace epix;
 
+void Text2d::on_add(ecs::World& world, ecs::HookContext context) {
+    // Bevy: `#[component(on_add = visibility::add_visibility_class::<Sprite>)]`
+    // (`bevy_sprite/src/text2d.rs:95`). A `Text2d` entity is collected under
+    // the `Sprite` visibility class, which is how the sprite queue finds its
+    // glyph sprites without a `Sprite` component.
+    camera::add_visibility_class<sprite::Sprite>(world, context);
+}
+
 void Text2d::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
     registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
     registrator.register_required<TextColor>([] { return TextColor{}; });
     registrator.register_required<camera::Visibility>([] { return camera::Visibility{}; });
-    registrator.register_required<camera::VisibilityClass>(
-        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<Text2d>())}; });
+    registrator.register_required<sprite::Anchor>([] { return sprite::Anchor{}; });
+    // Bevy's `Text2d` requires `VisibilityClass` for its `on_add` hook to have
+    // something to append to (`bevy_sprite/src/text2d.rs:82-90`).
+    registrator.register_required<camera::VisibilityClass>([] { return camera::VisibilityClass{}; });
 }
 
 namespace {
-constexpr std::string_view kTextVertexShader = R"(
-import epix.view;
-
-struct TextInstance {
-    float4x4 model;
-    float4 color;
-};
-
-[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view_uniform;
-[[vk::binding(0, 1)]] StructuredBuffer<TextInstance> text_instances;
-
-struct VertexInput {
-    [[vk::location(0)]] float3 position;
-    [[vk::location(1)]] float3 uv_layer;
-    uint instance_index : SV_VulkanInstanceID;
-};
-
-struct VertexOutput {
-    float4 position : SV_Position;
-    [[vk::location(0)]] float4 color;
-    [[vk::location(1)]] float3 uv_layer;
-};
-
-[shader("vertex")]
-VertexOutput main(VertexInput input) {
-    TextInstance instance = text_instances[input.instance_index];
-
-    VertexOutput output;
-    output.position = mul(view_uniform.clip_from_view, mul(view_uniform.view_from_world, mul(instance.model, float4(input.position, 1.0))));
-    output.color = instance.color;
-    output.uv_layer = input.uv_layer;
-    return output;
-}
-)";
-
-constexpr std::string_view kTextFragmentShader = R"(
-[[vk::binding(0, 2)]] SamplerState text_sampler;
-[[vk::binding(1, 2)]] Texture2DArray<float4> text_texture;
-
-struct FragmentInput {
-    [[vk::location(0)]] float4 color;
-    [[vk::location(1)]] float3 uv_layer;
-};
-
-[shader("fragment")]
-float4 main(FragmentInput input) : SV_Target {
-    return text_texture.Sample(text_sampler, input.uv_layer) * input.color;
-}
-)";
-
-constexpr std::string_view kTextVertexShaderAssetPath   = "text/text_vertex.slang";
-constexpr std::string_view kTextFragmentShaderAssetPath = "text/text_fragment.slang";
-
-std::span<const std::byte> shader_bytes(std::string_view source) {
-    return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
-}
-
-struct TextShaderHandles {
-    assets::Handle<shader::Shader> vertex_shader;
-    assets::Handle<shader::Shader> fragment_shader;
-};
-
-std::optional<TextShaderHandles> load_text_shader_handles(World& world) {
-    auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
-    auto server   = world.get_resource<assets::AssetServer>();
-    if (!registry || !server) {
-        spdlog::warn(
-            "[text] EmbeddedAssetRegistry or AssetServer is not available. Internal text shaders were not registered.");
-        return std::nullopt;
-    }
-
-    registry->get().insert_asset_static(kTextVertexShaderAssetPath, shader_bytes(kTextVertexShader));
-    registry->get().insert_asset_static(kTextFragmentShaderAssetPath, shader_bytes(kTextFragmentShader));
-
-    return TextShaderHandles{
-        .vertex_shader   = server->get().load<shader::Shader>("embedded://text/text_vertex.slang"),
-        .fragment_shader = server->get().load<shader::Shader>("embedded://text/text_fragment.slang"),
-    };
-}
-
-const mesh::MeshVertexAttribute kTextUvLayerAttribute{
-    "Text_UvLayer",
-    mesh::MeshVertexAttributeId{mesh::Mesh::FIRST_AVAILABLE_CUSTOM_ATTRIBUTE},
-    wgpu::VertexFormat::eFloat32x3,
-};
-
-struct ExtractedText2d {
-    Entity source_entity;
-    assets::AssetId<mesh::Mesh> mesh;
-    glm::mat4 model;
-    glm::vec4 color;
-    float depth;
-    assets::AssetId<image::Image> font_image;
-    camera::RenderLayers render_layer = camera::RenderLayers::layer(0);
-};
-
-struct TextBatch {
-    std::optional<wgpu::BindGroup> texture_bind_group;
-    std::uint32_t instance_start = 0;
-};
-
-struct TextInstanceData {
-    glm::mat4 model;
-    glm::vec4 color;
-};
-
-struct TextInstanceBuffer {
-    wgpu::Buffer buffer;
-    wgpu::BindGroup bind_group;
-    std::vector<TextInstanceData> instances;
-};
-
-struct Text2dPipelineCache {
-    // Descriptors, as Bevy's are; the pipeline cache interns them and the bind
-    // groups fetch the interned layout at their call sites.
-    render::BindGroupLayoutDescriptor view_layout;
-    render::BindGroupLayoutDescriptor instance_layout;
-    render::BindGroupLayoutDescriptor texture_layout;
-    assets::Handle<shader::Shader> vertex_shader;
-    assets::Handle<shader::Shader> fragment_shader;
-    std::unordered_map<std::uint64_t, render::CachedPipelineId> pipelines;
-
-    explicit Text2dPipelineCache(World& world, const TextShaderHandles& shader_handles)
-        : view_layout(render::view::view_uniform_layout_descriptor()),
-          instance_layout(render::BindGroupLayoutDescriptor()
-                              .set_label("TextInstanceLayout")
-                              .set_entries(std::array{
-                                  wgpu::BindGroupLayoutEntry()
-                                      .setBinding(0)
-                                      .setVisibility(wgpu::ShaderStage::eVertex)
-                                      .setBuffer(wgpu::BufferBindingLayout()
-                                                     .setType(wgpu::BufferBindingType::eReadOnlyStorage)
-                                                     .setHasDynamicOffset(false)
-                                                     .setMinBindingSize(sizeof(TextInstanceData))),
-                              })),
-          texture_layout(render::BindGroupLayoutDescriptor()
-                             .set_label("TextTextureLayout")
-                             .set_entries(std::array{
-                                 wgpu::BindGroupLayoutEntry()
-                                     .setBinding(0)
-                                     .setVisibility(wgpu::ShaderStage::eFragment)
-                                     .setSampler(wgpu::SamplerBindingLayout().setType(
-                                         wgpu::SamplerBindingType::eFiltering)),
-                                 wgpu::BindGroupLayoutEntry()
-                                     .setBinding(1)
-                                     .setVisibility(wgpu::ShaderStage::eFragment)
-                                     .setTexture(wgpu::TextureBindingLayout()
-                                                     .setSampleType(wgpu::TextureSampleType::eFloat)
-                                                     .setViewDimension(wgpu::TextureViewDimension::e2DArray)
-                                                     .setMultisampled(false)),
-                             })),
-          vertex_shader(shader_handles.vertex_shader),
-          fragment_shader(shader_handles.fragment_shader) {}
-
-    std::optional<render::CachedPipelineId> specialize(render::PipelineServer& pipeline_server,
-                                                       const mesh::MeshVertexBufferLayoutRef& layout_ref,
-                                                       wgpu::TextureFormat color_format,
-                                                       std::uint32_t sample_count) {
-        if (!layout_ref.value) return std::nullopt;
-        const std::uint64_t key =
-            (static_cast<std::uint64_t>(reinterpret_cast<std::uintptr_t>(layout_ref.value.get())) << 32) ^
-            ((static_cast<std::uint64_t>(static_cast<std::uint32_t>(color_format)) << 32) | sample_count);
-        if (auto it = pipelines.find(key); it != pipelines.end()) {
-            return it->second;
-        }
-
-        const std::array requested_attributes{
-            mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0),
-            kTextUvLayerAttribute.at_shader_location(1),
-        };
-        const auto specialized_layout = layout_ref.value->get_layout(requested_attributes);
-        if (!specialized_layout) {
-            spdlog::warn("[text] Skip pipeline specialization: mesh layout is missing requested attribute {} ({}).",
-                         specialized_layout.error().name, specialized_layout.error().id.value);
-            return std::nullopt;
-        }
-
-        const auto& layout = *specialized_layout;
-        // `VertexState::buffers` holds mesh vertex-buffer layouts, exactly as
-        // Bevy's does, so the specialized layout is used directly.
-        std::vector<mesh::VertexBufferLayout> vertex_buffers;
-        if (!layout.attributes.empty()) vertex_buffers.push_back(layout);
-
-        render::VertexState vertex_state{.shader = vertex_shader};
-        vertex_state.set_buffers(vertex_buffers);
-
-        auto color_blend = wgpu::BlendComponent()
-                               .setOperation(wgpu::BlendOperation::eAdd)
-                               .setSrcFactor(wgpu::BlendFactor::eSrcAlpha)
-                               .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha);
-        auto alpha_blend = wgpu::BlendComponent()
-                               .setOperation(wgpu::BlendOperation::eAdd)
-                               .setSrcFactor(wgpu::BlendFactor::eOne)
-                               .setDstFactor(wgpu::BlendFactor::eOneMinusSrcAlpha);
-
-        render::FragmentState fragment_state{.shader = fragment_shader};
-        fragment_state.add_target(wgpu::ColorTargetState()
-                                      .setFormat(color_format)
-                                      .setWriteMask(wgpu::ColorWriteMask::eAll)
-                                      .setBlend(wgpu::BlendState().setColor(color_blend).setAlpha(alpha_blend)));
-
-        render::RenderPipelineDescriptor pipeline_desc{
-            .label         = std::format("text-{}", wgpu::to_string(color_format)),
-            .layouts       = std::vector<render::BindGroupLayoutDescriptor>{view_layout, instance_layout, texture_layout},
-            .vertex        = std::move(vertex_state),
-            .primitive     = wgpu::PrimitiveState()
-                                 .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                                 .setFrontFace(wgpu::FrontFace::eCCW)
-                                 .setCullMode(wgpu::CullMode::eNone),
-            .depth_stencil = wgpu::DepthStencilState()
-                                 .setFormat(wgpu::TextureFormat::eDepth32Float)
-                                 .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
-                                 // Core2D uses Bevy's reverse-Z depth convention.
-                                 .setDepthCompare(wgpu::CompareFunction::eGreaterEqual),
-            .multisample =
-                wgpu::MultisampleState().setCount(sample_count).setMask(~0u).setAlphaToCoverageEnabled(false),
-            .fragment = std::move(fragment_state),
-        };
-
-        auto pipeline_id = pipeline_server.queue_render_pipeline(std::move(pipeline_desc));
-        pipelines.emplace(key, pipeline_id);
-        return pipeline_id;
-    }
-};
-
-struct TransparentTextDrawFunction {
-    render::phase::DrawFunctionId value;
-};
-
-/** @brief Per-view bind group for the text view bindings (the same shape as
- *  Bevy's per-pipeline view bind groups, e.g. `Mesh2dViewBindGroup`). */
-struct TextViewBindGroup {
-    wgpu::BindGroup value;
-};
-
-/** @brief Render command binding the text view bind group at `Slot`. */
-template <size_t Slot>
-struct SetTextViewBindGroup {
-    template <render::phase::PhaseItem PhaseItem>
-    struct Command {
-        void prepare(const World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const PhaseItem&,
-            ecs::Item<const TextViewBindGroup&> view_bind_group,
-            std::optional<ecs::Item<>> entity_item,
-            std::tuple<>,
-            const wgpu::RenderPassEncoder& encoder) {
-            (void)entity_item;
-            encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).value, std::span<const std::uint32_t>{});
-            return {};
-        }
-    };
-};
-
-template <size_t Slot>
-struct BindTextInstances {
-    template <render::phase::PhaseItem PhaseItem>
-    struct Command {
-        void prepare(const World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const PhaseItem& item,
-            ecs::Item<const TextViewBindGroup&>,
-            std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>>,
-            ecs::Res<TextInstanceBuffer> instances,
-            const wgpu::RenderPassEncoder& encoder) {
-            if (!instances->bind_group) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Failure,
-                    .message = std::format("[text] Text instance buffer bind group is not ready for entity {:#x}.",
-                                           item.entity().index),
-                });
-            }
-
-            encoder.setBindGroup(Slot, instances->bind_group, std::span<const std::uint32_t>{});
-            return {};
-        }
-    };
-};
-
-template <size_t Slot>
-struct BindTextTexture {
-    template <render::phase::PhaseItem PhaseItem>
-    struct Command {
-        void prepare(const World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const PhaseItem& item,
-            ecs::Item<const TextViewBindGroup&>,
-            std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-            std::tuple<>,
-            const wgpu::RenderPassEncoder& encoder) {
-            if (!entity_item) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Failure,
-                    .message =
-                        std::format("[text] Text entity {:#x} is missing TextBatch or ExtractedText2d during draw.",
-                                    item.entity().index),
-                });
-            }
-
-            auto&& [batch, extracted] = **entity_item;
-            if (!batch.texture_bind_group) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Failure,
-                    .message =
-                        std::format("[text] Entity {:#x} requires texture {} but TextBatch has no texture bind group.",
-                                    item.entity().index, extracted.font_image.to_string_short()),
-                });
-            }
-
-            encoder.setBindGroup(Slot, *batch.texture_bind_group, std::span<const std::uint32_t>{});
-            return {};
-        }
-    };
-};
-
-template <render::phase::PhaseItem PhaseItem>
-struct DrawTextBatch {
-    void prepare(const World&) {}
-
-    std::expected<void, render::phase::RenderCommandError> render(
-        const PhaseItem& item,
-        ecs::Item<const TextViewBindGroup&>,
-        std::optional<ecs::Item<const TextBatch&, const ExtractedText2d&>> entity_item,
-        std::tuple<ecs::Res<render::RenderAssets<render::mesh::RenderMesh>>, ecs::Res<render::mesh::MeshAllocator>> params,
-        const wgpu::RenderPassEncoder& encoder) {
-        if (!entity_item) {
-            return std::unexpected(render::phase::RenderCommandError{
-                .type    = render::phase::RenderCommandError::Type::Failure,
-                .message = std::format("[text] Text entity {:#x} is missing TextBatch or ExtractedText2d during draw.",
-                                       item.entity().index),
-            });
-        }
-
-        auto&& [batch, extracted] = **entity_item;
-        auto&& [render_meshes, mesh_allocator] = params;
-        auto* render_mesh = render_meshes->try_get(extracted.mesh);
-        if (!render_mesh) {
-            return std::unexpected(render::phase::RenderCommandError{
-                .type    = render::phase::RenderCommandError::Type::Failure,
-                .message = std::format("[text] GPU mesh {} for entity {:#x} is missing at draw time.",
-                                       extracted.mesh.to_string_short(), item.entity().index),
-            });
-        }
-
-        const auto vertex_slice = mesh_allocator->mesh_vertex_slice(extracted.mesh);
-        if (!vertex_slice) {
-            return std::unexpected(render::phase::RenderCommandError{
-                .type    = render::phase::RenderCommandError::Type::Failure,
-                .message = std::format("[text] Mesh {} for entity {:#x} has no MeshAllocator vertex slice at draw time.",
-                                       extracted.mesh.to_string_short(), item.entity().index),
-            });
-        }
-        const std::uint64_t stride = render_mesh->layout.value->layout().array_stride;
-        encoder.setVertexBuffer(0, *vertex_slice->buffer,
-                                static_cast<std::uint64_t>(vertex_slice->range.first) * stride,
-                                static_cast<std::uint64_t>(vertex_slice->range.second - vertex_slice->range.first) *
-                                    stride);
-
-        if (render_mesh->indexed()) {
-            const auto index_slice = mesh_allocator->mesh_index_slice(extracted.mesh);
-            if (!index_slice) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Failure,
-                    .message = std::format("[text] Indexed mesh {} for entity {:#x} has no MeshAllocator index slice.",
-                                           extracted.mesh.to_string_short(), item.entity().index),
-                });
-            }
-            const auto* info       = render_mesh->buffer_info.indexed_info();
-            const wgpu::IndexFormat format = info ? info->index_format : wgpu::IndexFormat::eUint16;
-            const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
-            encoder.setIndexBuffer(*index_slice->buffer, format,
-                                   static_cast<std::uint64_t>(index_slice->range.first) * element_size,
-                                   static_cast<std::uint64_t>(index_slice->range.second - index_slice->range.first) *
-                                       element_size);
-            encoder.drawIndexed(static_cast<std::uint32_t>(index_slice->range.second - index_slice->range.first),
-                                render::phase::batch_range_len(item.batch_range()), 0, 0, item.batch_range().first);
-        } else {
-            encoder.draw(static_cast<std::uint32_t>(vertex_slice->range.second - vertex_slice->range.first),
-                         render::phase::batch_range_len(item.batch_range()), 0, item.batch_range().first);
-        }
-        return {};
-    }
-};
-
-void ensure_text_instance_buffer(TextInstanceBuffer& instance_buffer,
-                                 const Text2dPipelineCache& pipeline_cache,
-                                 const render::PipelineServer& pipeline_server,
-                                 const wgpu::Device& device,
-                                 std::size_t required_bytes) {
-    if (required_bytes == 0) {
-        return;
-    }
-
-    std::size_t current_size = instance_buffer.buffer ? instance_buffer.buffer.getSize() : 0;
-    if (required_bytes > current_size) {
-        std::size_t buffer_size = std::bit_ceil(required_bytes);
-        instance_buffer.buffer =
-            device.createBuffer(wgpu::BufferDescriptor()
-                                    .setLabel("TextInstanceBuffer")
-                                    .setSize(buffer_size)
-                                    .setUsage(wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst));
-        instance_buffer.bind_group = device.createBindGroup(wgpu::BindGroupDescriptor()
-                                                                .setLabel("TextInstanceBindGroup")
-                                                                .setLayout(pipeline_server.get_bind_group_layout(
-                                                                    pipeline_cache.instance_layout))
-                                                                .setEntries(std::array{
-                                                                    wgpu::BindGroupEntry()
-                                                                        .setBinding(0)
-                                                                        .setBuffer(instance_buffer.buffer)
-                                                                        .setOffset(0)
-                                                                        .setSize(buffer_size),
-                                                                }));
-    }
-}
-
-void validate_text_2d(Query<Item<Entity, Has<TextColor>, Has<transform::Transform>>, With<Text2d>> query) {
-    for (auto&& [entity, has_color, has_transform] : query.iter()) {
-        if (has_color && has_transform) {
-            continue;
-        }
-
-        std::string missing;
-        if (!has_color) {
-            missing += "TextColor";
-        }
-        if (!has_transform) {
-            if (!missing.empty()) {
-                missing += ", ";
-            }
-            missing += "Transform";
-        }
-        spdlog::warn("[text] Entity {:#x} with Text2d is missing required components: {}.", entity.index, missing);
-    }
-}
-
-void extract_texts_2d(Commands cmd,
-                      Extract<Query<Item<Entity,
-                                         const TextMesh&,
-                                         const Text2d&,
-                                         Opt<const TextColor&>,
-                                         const TextImage&,
-                                         const transform::GlobalTransform&,
-                                         const camera::ViewVisibility&,
-                                         Opt<const camera::RenderLayers&>>,
-                                    Without<render::CustomRendered>>> texts) {
-    for (auto&& [entity, text_mesh, text2d, text_color, text_image, transform, view_visibility, opt_layer] :
+/** @brief Extract 2D text into the sprite render path (Bevy
+ * `extract_text2d_sprite`, `bevy_sprite_render/src/text2d/mod.rs:25-344`).
+ *
+ * Each glyph becomes one `ExtractedSlice` whose offset is the glyph quad's
+ * center in world space, and every run of consecutive glyphs sharing an atlas
+ * texture becomes one `ExtractedSprite` with `ExtractedSpriteKind::Slices`.
+ * The sprite queue, batching and draw commands are Bevy's own, so text is
+ * rendered by `SpritePipeline` exactly as `Sprite` is. */
+void extract_text2d_sprite(
+    Commands cmd,
+    ResMut<sprite_render::ExtractedSprites> extracted_sprites,
+    ResMut<sprite_render::ExtractedSlices> extracted_slices,
+    Extract<Res<assets::Assets<image::TextureAtlasLayout>>> texture_atlases,
+    Extract<Query<Item<Entity,
+                       const camera::ViewVisibility&,
+                       const ShapedText&,
+                       const TextBounds&,
+                       const sprite::Anchor&,
+                       Opt<const TextColor&>,
+                       const transform::GlobalTransform&>,
+                  Filter<With<Text2d>, Without<render::CustomRendered>>>>
+        texts) {
+    for (auto&& [main_entity, view_visibility, layout_info, text_bounds, anchor, text_color, global_transform] :
          texts.iter()) {
-        // Bevy extract_text2d gates on ViewVisibility just like the other
-        // 2D renderable extractors.
+        // Bevy gates 2D text extraction on `ViewVisibility` (`text2d/mod.rs:71-73`).
         if (!view_visibility.get()) continue;
+
         glm::vec4 color{1.0f};
         if (text_color) {
             auto&& value = text_color->get();
             color        = glm::vec4(value.r, value.g, value.b, value.a);
         }
 
-        auto model = transform.matrix;
-        model[3] += glm::vec4(text2d.offset, 0.0f, 0.0f);
-        cmd.spawn(epix::render::sync_world::TemporaryRenderEntity{},
-                  ExtractedText2d{
-                      .source_entity = entity,
-                      .mesh          = text_mesh.mesh().id(),
-                      .model         = model,
-                      .color         = color,
-                      .depth         = model[3][2],
-                      .font_image    = text_image.image,
-                      .render_layer  = opt_layer ? *opt_layer : camera::RenderLayers::layer(0),
-                  },
-                  TextBatch{});
+        detail::extract_text2d_layout(
+            layout_info, main_entity, text_bounds, anchor, color, global_transform, *texture_atlases,
+            extracted_sprites->sprites, extracted_slices->slices,
+            [&cmd] { return cmd.spawn(render::sync_world::TemporaryRenderEntity{}).id(); });
     }
 }
 
-void queue_texts_2d(Query<Item<const render::view::ExtractedView&,
-                               const render::view::ViewTarget&,
-                               Opt<const ::epix::camera::RenderLayers&>,
-                               const ::epix::render::view::RenderVisibleEntities&>> views,
-                    Query<Item<Entity, const ExtractedText2d&>> texts,
-                    Res<render::RenderAssets<render::texture::GpuImage>> images,
-                    Res<render::RenderAssets<render::mesh::RenderMesh>> gpu_meshes,
-                    Res<TransparentTextDrawFunction> draw_function_id,
-                    ResMut<Text2dPipelineCache> pipeline_cache,
-                    ResMut<render::PipelineServer> pipeline_server,
-                    ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases) {
-    for (auto&& [view, target, opt_camera_layers, visible_entities] : views.iter()) {
-        auto phase = phases->find(view.retained_view_entity);
-        if (phase == phases->end()) continue;
-        const auto& camera_layers =
-            opt_camera_layers ? opt_camera_layers->get() : ::epix::camera::RenderLayers::layer(0);
+/** @brief Compute and insert the `Aabb` of a 2D text entity (Bevy
+ * `calculate_bounds_text2d`, `bevy_sprite/src/text2d.rs:316-347`). */
+void calculate_bounds_text2d(
+    Commands commands,
+    Query<Item<Entity, const ShapedText&, const sprite::Anchor&, const TextBounds&>,
+          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>>>
+        new_text_aabb,
+    Query<Item<const ShapedText&, const sprite::Anchor&, const TextBounds&, Mut<camera::Aabb>>,
+          Filter<Modified<ShapedText>, Without<camera::NoFrustumCulling>>>
+        update_text_aabb) {
+    auto text_aabb = [](const ShapedText& layout_info, const sprite::Anchor& anchor, const TextBounds& text_bounds) {
+        const glm::vec2 size{text_bounds.width.value_or(layout_info.size().x),
+                             text_bounds.height.value_or(layout_info.size().y)};
+        const auto top_left = sprite::Anchor::TOP_LEFT.as_vec() - anchor.as_vec();
+        const float x1      = top_left.x * size.x;
+        const float x2      = (top_left.x + 1.0f) * size.x;
+        const float y1      = (top_left.y - 1.0f) * size.y;
+        const float y2      = top_left.y * size.y;
+        return camera::Aabb::from_min_max(glm::vec3{x1, y1, 0.0f}, glm::vec3{x2, y2, 0.0f});
+    };
 
-        for (auto&& [entity, text] : texts.iter()) {
-            if (!images->try_get(text.font_image)) {
-                continue;
-            }
-            if (!camera_layers.intersects(text.render_layer)) {
-                continue;
-            }
-            if (const auto& visible = visible_entities.template get<Text2d>();
-                std::ranges::find(visible, text.source_entity,
-                                  [](const auto& entity) { return entity.second.id(); }) == visible.end()) {
-                continue;
-            }
-            const auto* render_mesh = gpu_meshes->try_get(text.mesh);
-            if (!render_mesh) {
-                continue;
-            }
-            auto pipeline_id = pipeline_cache->specialize(*pipeline_server, render_mesh->layout, target.format,
-                                                          target.color_attachment_sample_count());
-            if (!pipeline_id) {
-                spdlog::warn("[text] Failed to specialize text pipeline for target format {}.",
-                             wgpu::to_string(target.format));
-                continue;
-            }
-
-            phase->second.add(core_graph::core_2d::Transparent2D{
-                .representative_entity = {entity, render::sync_world::MainEntity{text.source_entity}},
-                .depth                 = text.depth,
-                .pipeline_id           = *pipeline_id,
-                .draw_func             = draw_function_id->value,
-                .batch_range_value     = {0, 1},
-                .indexed_value         = false,
-            });
-        }
+    for (auto&& [entity, layout_info, anchor, text_bounds] : new_text_aabb.iter()) {
+        commands.entity(entity).insert_if_new(text_aabb(layout_info, anchor, text_bounds));
     }
-}
-
-void prepare_text_view_bind_groups(ecs::Commands commands,
-                                   ecs::Res<render::PipelineServer> pipeline_server,
-                                   ecs::Res<wgpu::Device> device,
-                                   ecs::Res<Text2dPipelineCache> pipeline_cache,
-                                   ecs::Res<render::view::ViewUniforms> view_uniforms,
-                                   ecs::Query<ecs::Item<ecs::Entity>, ecs::With<render::view::ExtractedView>> views) {
-    // One bind group per view, built from the text pipeline's own view layout.
-    const auto binding = view_uniforms->uniforms.binding();
-    if (!binding) return;
-
-    const auto layout = pipeline_server->get_bind_group_layout(pipeline_cache->view_layout);
-    for (auto&& [entity] : views.iter()) {
-        const auto entries = render::render_resource::BindGroupEntries<>::sequential(
-            render::render_resource::BindGroupEntries<>::buffer_binding(binding->get(), 0,
-                                                                        sizeof(render::view::ViewUniform)));
-        commands.entity(entity).insert(TextViewBindGroup{
-            device->createBindGroup(wgpu::BindGroupDescriptor()
-                                        .setLabel("text_view_bind_group")
-                                        .setLayout(layout)
-                                        .setEntries(entries.entries())),
-        });
-    }
-}
-
-void prepare_text_batches(ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
-                          Query<Item<TextBatch&, const ExtractedText2d&>> texts,
-                          Res<render::RenderAssets<render::texture::GpuImage>> images,
-                          Res<wgpu::Device> device,
-                          Res<wgpu::Queue> queue,
-                          Res<Text2dPipelineCache> pipeline_cache,
-                          Res<render::PipelineServer> pipeline_server,
-                          ResMut<TextInstanceBuffer> instance_buffer) {
-    instance_buffer->instances.clear();
-    std::unordered_map<assets::AssetId<image::Image>, wgpu::BindGroup> texture_bind_group_cache;
-
-    for (auto& [retained_view_entity, phase] : *phases) {
-        (void)retained_view_entity;
-        for (std::size_t item_index = 0; item_index < phase.items.size(); ++item_index) {
-            auto& item     = phase.items[item_index];
-            auto text_item = texts.get(item.entity());
-            if (!text_item) {
-                continue;
-            }
-
-            auto&& [batch, text] = *text_item;
-            auto gpu_image       = images->try_get(text.font_image);
-            if (!gpu_image) {
-                continue;
-            }
-
-            batch.instance_start = static_cast<std::uint32_t>(instance_buffer->instances.size());
-            if (auto it = texture_bind_group_cache.find(text.font_image); it != texture_bind_group_cache.end()) {
-                batch.texture_bind_group = it->second;
-            } else {
-                batch.texture_bind_group = device->createBindGroup(
-                    wgpu::BindGroupDescriptor()
-                        .setLabel("TextTextureBindGroup")
-                        .setLayout(pipeline_server->get_bind_group_layout(pipeline_cache->texture_layout))
-                        .setEntries(std::array{
-                            wgpu::BindGroupEntry().setBinding(0).setSampler(gpu_image->sampler),
-                            wgpu::BindGroupEntry().setBinding(1).setTextureView(gpu_image->texture_view),
-                        }));
-                texture_bind_group_cache.emplace(text.font_image, *batch.texture_bind_group);
-            }
-
-            instance_buffer->instances.push_back(TextInstanceData{.model = text.model, .color = text.color});
-            item.batch_range() = {batch.instance_start, static_cast<std::uint32_t>(instance_buffer->instances.size())};
-        }
-    }
-
-    auto required_bytes = instance_buffer->instances.size() * sizeof(TextInstanceData);
-    ensure_text_instance_buffer(*instance_buffer, *pipeline_cache, *pipeline_server, *device, required_bytes);
-    if (required_bytes != 0) {
-        queue->writeBuffer(instance_buffer->buffer, 0, instance_buffer->instances.data(), required_bytes);
+    for (auto&& [layout_info, anchor, text_bounds, aabb] : update_text_aabb.iter()) {
+        aabb.get_mut() = text_aabb(layout_info, anchor, text_bounds);
     }
 }
 }  // namespace
 
-TextMesh TextMesh::from_shaped_text(const ShapedText& shaped,
-                                    assets::Assets<mesh::Mesh>& mesh_assets,
-                                    font::FontAtlas& atlas) {
-    mesh::Mesh mesh(wgpu::PrimitiveTopology::eTriangleList, assets::RenderAssetUsages::RENDER_WORLD);
-    (void)mesh.insert_attribute(
-        mesh::Mesh::ATTRIBUTE_POSITION,
-        std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {
-            std::array<glm::vec3, 4> positions;
-            auto glyph   = atlas.get_glyph(glyph_info.glyph_index);
-            float x0     = glyph_info.x_offset + glyph.horiBearingX;
-            float y0     = glyph_info.y_offset - glyph.height + glyph.horiBearingY;
-            float x1     = x0 + glyph.width;
-            float y1     = y0 + glyph.height;
-            positions[0] = glm::vec3{x0, y0, 0.0f};
-            positions[1] = glm::vec3{x1, y0, 0.0f};
-            positions[2] = glm::vec3{x1, y1, 0.0f};
-            positions[3] = glm::vec3{x0, y1, 0.0f};
-            return positions;
-        })));
-    (void)mesh.insert_attribute(
-        kTextUvLayerAttribute,
-        std::views::join(std::views::transform(shaped.glyphs(), [&](const GlyphInfo& glyph_info) {
-            std::array<glm::vec3, 4> uvs;
-            auto uv = atlas.get_glyph_uv_rect(glyph_info.glyph_index);
-            uvs[0]  = glm::vec3{uv[0], uv[1], uv[4]};
-            uvs[1]  = glm::vec3{uv[2], uv[1], uv[4]};
-            uvs[2]  = glm::vec3{uv[2], uv[3], uv[4]};
-            uvs[3]  = glm::vec3{uv[0], uv[3], uv[4]};
-            return uvs;
-        })));
-    mesh.insert_indices(
-        mesh::Indices{std::ranges::to<std::vector<std::uint32_t>>(std::views::join(std::views::transform(
-            std::views::iota(0u, static_cast<std::uint32_t>(shaped.glyphs().size())), [](std::uint32_t glyph_index) {
-                auto base = glyph_index * 4;
-                return std::array<std::uint32_t, 6>{base + 0, base + 1, base + 2, base + 2, base + 3, base + 0};
-            })))});
-    auto mesh_handle = mesh_assets.emplace(std::move(mesh));
-    return TextMesh(mesh_handle, shaped.left(), shaped.right(), shaped.top(), shaped.bottom(), shaped.ascent(),
-                    shaped.descent());
-}
-
 void TextRenderPlugin::attach(App& app) {
     spdlog::debug("[text] Attaching TextRenderPlugin.");
     app.add_plugins(core_graph::core_2d::Core2dPlugin{});
-
-    if (!app.world_mut().get_resource<TextShaderHandles>()) {
-        if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
-            app.world_mut().insert_resource(std::move(*shader_handles));
-        }
+    // Bevy's 2D text extraction lives in `bevy_sprite_render` behind the
+    // `bevy_text` feature, so text rendering depends on the sprite render
+    // plugin being present.
+    if (!app.get_plugin<sprite_render::SpriteRenderPlugin>()) {
+        app.add_plugins(sprite_render::SpriteRenderPlugin{});
     }
+    if (!app.get_plugin<sprite::SpritePlugin>()) {
+        app.add_plugins(sprite::SpritePlugin{});
+    }
+    app.add_systems(app::PostUpdate, into(calculate_bounds_text2d).set_name("calculate_bounds_text2d"));
 }
 
 void TextRenderPlugin::ready(App& app) {
     spdlog::debug("[text] Readying TextRenderPlugin.");
-    if (!app.world_mut().get_resource<TextShaderHandles>()) {
-        if (auto shader_handles = load_text_shader_handles(app.world_mut())) {
-            app.world_mut().insert_resource(std::move(*shader_handles));
-        }
-    }
-
-    auto shader_handles = app.world_mut().get_resource<TextShaderHandles>();
-    if (!shader_handles) {
-        spdlog::error("[text] TextRenderPlugin could not load internal text shaders through AssetServer.");
-        return;
-    }
-
     auto render_app = app.get_sub_app_mut(render::Render);
     if (!render_app) {
         spdlog::error("[text] TextRenderPlugin requires render::RenderPlugin to be added before it.");
         return;
     }
 
-    auto& world = render_app->get().world_mut();
-    if (!world.get_resource<TextInstanceBuffer>()) {
-        world.insert_resource(TextInstanceBuffer{});
-    }
-    if (!world.get_resource<Text2dPipelineCache>()) {
-        world.insert_resource(Text2dPipelineCache(world, shader_handles->get()));
-    }
     auto& render_subapp = render_app->get();
-    world.insert_resource(TransparentTextDrawFunction{
-        .value =
-            render::phase::app_add_render_commands<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-                                                   SetTextViewBindGroup<0>::Command,
-                                                   BindTextInstances<1>::Command, BindTextTexture<2>::Command,
-                                                   DrawTextBatch>(render_subapp)});
-
-#ifndef NDEBUG
-    app.add_systems(Last, into(validate_text_2d).set_name("validate_text_2d"));
-#endif
-    render_subapp.add_systems(render::ExtractSchedule, into(extract_texts_2d).set_name("extract texts"))
-        .add_systems(render::Render, into(queue_texts_2d).in_set(render::RenderSystems::Queue).set_name("queue texts"))
-        .add_systems(render::Render, into(prepare_text_batches)
-                                         .in_set(render::RenderSystems::PrepareResources)
-                                         .set_name("prepare text batches"))
-        .add_systems(render::Render, into(prepare_text_view_bind_groups)
-                                         .in_set(render::RenderSystems::PrepareBindGroups)
-                                         .set_name("prepare text view bind groups"));
+    // Bevy registers the text extractor `.after(SpriteSystems::ExtractSprites)`
+    // (`bevy_sprite_render/src/lib.rs:104-105`) because sprite extraction
+    // clears the extracted sprite and slice stores each frame.
+    render_subapp.add_systems(render::ExtractSchedule,
+                              into(extract_text2d_sprite)
+                                  .after(sprite_render::SpriteSystems::ExtractSprites)
+                                  .set_name("extract text2d sprite"));
 }

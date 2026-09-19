@@ -8,7 +8,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/image.hpp>
-#include <epix/mesh.hpp>
 #include <epix/text.hpp>
 #include <limits>
 #include <ranges>
@@ -27,10 +26,12 @@ void Text::register_required_components(ecs::RequiredComponentsRegistrator& regi
 }
 
 namespace {
-void shape_changed_text(
-    Commands cmd,
-    Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>, Has<ShapedText>>> texts,
-    ResMut<font::FontAtlasSets> atlas_sets) {
+void shape_changed_text(Commands cmd,
+                        Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>, Has<ShapedText>>>
+                            texts,
+                        ResMut<font::FontAtlasSets> atlas_sets,
+                        ResMut<assets::Assets<image::Image>> textures,
+                        ResMut<assets::Assets<image::TextureAtlasLayout>> atlas_layouts) {
     for (auto&& [entity, text_item, font_item, layout_item, bounds_item, has_shaped] : texts.iter()) {
         if (has_shaped && !text_item.is_modified() && !text_item.is_added() && !font_item.is_modified() &&
             !font_item.is_added() && !layout_item.is_modified() && !layout_item.is_added() &&
@@ -43,35 +44,14 @@ void shape_changed_text(
         if (!atlas_set) {
             continue;
         }
-        auto& atlas  = atlas_set->get().get_or_insert(font_item.get());
-        auto shaped  = shape_text(text_item.get(), font_item.get(), layout_item.get(), bounds_item.get(), atlas);
+        // Bevy lays text out and places the glyphs in the atlas in the same
+        // step (`TextPipeline::update_text_layout_info`), so both asset stores
+        // are threaded through here.
+        auto shaped =
+            shape_text(text_item.get(), font_item.get(), layout_item.get(), bounds_item.get(), atlas_set->get(),
+                       *textures, *atlas_layouts);
         auto measure = TextMeasure{.width = shaped.width(), .height = shaped.height()};
         cmd.entity(entity).insert(std::move(shaped), measure);
-    }
-}
-
-void regen_mesh_for_shaped_text(Commands cmd,
-                                Query<Item<Entity, Ref<ShapedText>, Ref<TextFont>, Ref<TextMeasure>>> shaped_texts,
-                                ResMut<assets::Assets<mesh::Mesh>> mesh_assets,
-                                ResMut<font::FontAtlasSets> atlas_sets) {
-    for (auto&& [entity, shaped_item, font_item, measure_item] : shaped_texts.iter()) {
-        if (!shaped_item.is_modified() && !shaped_item.is_added()) {
-            continue;
-        }
-        spdlog::trace("[text] regen_mesh_for_shaped_text: regenerating mesh for entity {}.", entity.index);
-
-        auto atlas_set = atlas_sets->get_mut(font_item.get().font.id());
-        if (!atlas_set) {
-            continue;
-        }
-        auto& atlas       = atlas_set->get().get_or_insert(font_item.get());
-        auto image_handle = atlas.image_handle();
-        if (!image_handle) {
-            continue;
-        }
-
-        cmd.entity(entity).insert(TextMesh::from_shaped_text(shaped_item.get(), mesh_assets, atlas),
-                                  TextImage{.image = image_handle->id()});
     }
 }
 }  // namespace
@@ -80,13 +60,62 @@ ShapedText epix::text::shape_text(const Text& text,
                                   const TextFont& font,
                                   const TextLayout& layout,
                                   const TextBounds& bounds,
-                                  font::FontAtlas& atlas) {
+                                  font::FontAtlasSet& atlas_set,
+                                  assets::Assets<image::Image>& textures,
+                                  assets::Assets<image::TextureAtlasLayout>& atlas_layouts) {
     ShapedText out;
 
-    auto face_ptr = atlas.get_font_face();
+    auto face_ptr = atlas_set.get_font_face();
     if (!face_ptr) {
         return out;
     }
+
+    const auto atlas_key = static_cast<font::FontAtlasKey>(font);
+
+    /** @brief Rasterize and place a glyph, returning its atlas placement and
+     * bitmap size (Bevy `pipeline.rs:427-446`). */
+    auto place_glyph = [&](std::uint32_t glyph_index)
+        -> std::optional<std::tuple<font::GlyphAtlasInfo, glm::vec2, glm::vec2>> {
+        auto atlas_info = atlas_set.add_glyph_to_atlas(textures, atlas_layouts, atlas_key, glyph_index);
+        if (!atlas_info) {
+            spdlog::error("[text] Failed to place glyph {}: {}.", glyph_index, atlas_info.error().to_string());
+            return std::nullopt;
+        }
+        auto layout_asset = atlas_layouts.get(atlas_info->texture_atlas);
+        if (!layout_asset || atlas_info->location.glyph_index >= layout_asset->get().textures.size()) {
+            spdlog::error("[text] Atlas layout {} has no rectangle {}.", atlas_info->texture_atlas.to_string_short(),
+                          atlas_info->location.glyph_index);
+            return std::nullopt;
+        }
+        return std::make_tuple(*atlas_info,
+                               glm::vec2{layout_asset->get().textures[atlas_info->location.glyph_index].size()},
+                               glm::vec2{atlas_info->location.offset});
+    };
+
+    /** @brief Build one laid-out glyph.
+     *
+     * `x_offset`/`y_offset` stay the layout's absolute +Y-up pen position, as
+     * they always were; `position` is Bevy's glyph quad center in the block's
+     * +Y-down space (`pipeline.rs:441-453`):
+     * `x = glyph_size.x / 2 + location.offset.x + physical_glyph.x` and
+     * `y = line_y.round() + physical_glyph.y - location.offset.y + glyph_size.y / 2`. */
+    auto make_glyph_info = [](std::uint32_t glyph_index, std::uint32_t cluster, float x_offset, float y_offset,
+                              float pen_x, float baseline_down, float y_offset_down, float x_advance, float y_advance,
+                              const font::GlyphAtlasInfo& atlas_info, glm::vec2 glyph_size,
+                              glm::vec2 placement) -> GlyphInfo {
+        return GlyphInfo{
+            .glyph_index = glyph_index,
+            .cluster     = cluster,
+            .x_offset    = x_offset,
+            .y_offset    = y_offset,
+            .x_advance   = x_advance,
+            .y_advance   = y_advance,
+            .position    = glm::vec2{std::round(pen_x) + placement.x + glyph_size.x * 0.5f,
+                                     std::round(baseline_down) + y_offset_down - placement.y + glyph_size.y * 0.5f},
+            .size        = glyph_size,
+            .atlas_info  = atlas_info,
+        };
+    };
 
     auto ft_face = reinterpret_cast<FT_Face>(face_ptr);
     FT_Set_Char_Size(ft_face, static_cast<FT_F26Dot6>(font.size * 64.0f), 0, 0, 0);
@@ -115,27 +144,38 @@ ShapedText epix::text::shape_text(const Text& text,
         pen_positions.reserve(glyph_count);
         out.glyphs_.reserve(glyph_count);
 
-        float pen_x = 0.0f;
+        // Bevy's `run.line_y` for a single-line block: the first baseline sits
+        // one ascent below the block's top edge, and the block's +Y axis points
+        // down (`pipeline.rs:450-451`).
+        const float baseline_down = ft_ascender;
+        float pen_x               = 0.0f;
+        float advance_width       = 0.0f;
         for (unsigned int index = 0; index < glyph_count; ++index) {
+            const auto glyph_index = static_cast<std::uint32_t>(infos[index].codepoint);
+            const auto cluster     = static_cast<std::uint32_t>(infos[index].cluster);
+            const float x_offset   = static_cast<float>(static_cast<double>(positions[index].x_offset) / 64.0);
+            // HarfBuzz offsets/advances are +Y-up; the layout space is +Y-down.
+            const float y_offset_down = -static_cast<float>(static_cast<double>(positions[index].y_offset) / 64.0);
+            const float x_advance     = static_cast<float>(static_cast<double>(positions[index].x_advance) / 64.0);
+            const float y_advance_down = -static_cast<float>(static_cast<double>(positions[index].y_advance) / 64.0);
             pen_positions.push_back(pen_x);
-            GlyphInfo glyph_info{
-                .glyph_index = static_cast<std::uint32_t>(infos[index].codepoint),
-                .cluster     = static_cast<std::uint32_t>(infos[index].cluster),
-                .x_offset    = static_cast<float>(static_cast<double>(positions[index].x_offset) / 64.0),
-                .y_offset    = static_cast<float>(static_cast<double>(positions[index].y_offset) / 64.0),
-                .x_advance   = static_cast<float>(static_cast<double>(positions[index].x_advance) / 64.0),
-                .y_advance   = static_cast<float>(static_cast<double>(positions[index].y_advance) / 64.0),
-            };
-            atlas.get_glyph_atlas_loc(glyph_info.glyph_index);
-            out.glyphs_.push_back(glyph_info);
-            pen_x += glyph_info.x_advance;
+
+            if (auto placed = place_glyph(glyph_index)) {
+                auto&& [atlas_info, glyph_size, placement] = *placed;
+                out.glyphs_.push_back(make_glyph_info(glyph_index, cluster, pen_x + x_offset,
+                                                      baseline_down + y_offset_down, pen_x, baseline_down,
+                                                      y_offset_down, x_advance, y_advance_down, atlas_info, glyph_size,
+                                                      placement));
+            }
+            pen_x += x_advance;
+            advance_width += x_advance;
         }
 
         float min_x = std::numeric_limits<float>::infinity();
         float max_x = -std::numeric_limits<float>::infinity();
         for (std::size_t index = 0; index < out.glyphs_.size(); ++index) {
             const auto& glyph = out.glyphs_[index];
-            auto metrics      = atlas.get_glyph(glyph.glyph_index);
+            auto metrics      = atlas_set.get_glyph(atlas_key, glyph.glyph_index);
             auto pen          = pen_positions[index];
             min_x             = std::min(min_x, pen + (glyph.x_offset + std::min(0.0f, metrics.horiBearingX)));
             max_x             = std::max(max_x, pen + (glyph.x_offset + metrics.horiBearingX + metrics.width));
@@ -151,12 +191,10 @@ ShapedText epix::text::shape_text(const Text& text,
         out.descent_ = -ft_descender;
         out.top_     = 0.0f;
         out.bottom_  = -final_line_height;
-
-        float baseline_y = -ft_ascender;
-        for (std::size_t index = 0; index < out.glyphs_.size(); ++index) {
-            out.glyphs_[index].x_offset = pen_positions[index] + out.glyphs_[index].x_offset;
-            out.glyphs_[index].y_offset = baseline_y + (-out.glyphs_[index].y_offset);
-        }
+        // Bevy `TextLayoutInfo::size` is the block's advance box, rounded up
+        // (`box_size.x = run.line_w`, `box_size.y += run.line_height`,
+        // `layout_info.size = box_size.ceil()`, `pipeline.rs:356-358,484`).
+        out.size_ = glm::vec2{std::ceil(advance_width), std::ceil(final_line_height)};
 
         hb_buffer_destroy(buffer);
         hb_font_destroy(hb_font);
@@ -366,7 +404,7 @@ ShapedText epix::text::shape_text(const Text& text,
         float max_x       = -std::numeric_limits<float>::infinity();
         for (std::size_t index = begin; index < end; ++index) {
             for (const auto& entry : shaped_tokens[index].entries) {
-                auto metrics = atlas.get_glyph(entry.glyph_index);
+                auto metrics = atlas_set.get_glyph(atlas_key, entry.glyph_index);
                 min_x        = std::min(min_x, pen + (entry.x_offset + std::min(0.0f, metrics.horiBearingX)));
                 max_x        = std::max(max_x, pen + (entry.x_offset + metrics.horiBearingX + metrics.width));
                 pen += entry.x_advance;
@@ -389,6 +427,7 @@ ShapedText epix::text::shape_text(const Text& text,
     out.top_     = 0.0f;
     out.bottom_  = -static_cast<float>(lines.size()) * final_line_height;
 
+    float box_width = 0.0f;
     for (std::size_t line_index = 0; line_index < lines.size(); ++line_index) {
         auto [begin, end] = lines[line_index];
         int spaces        = 0;
@@ -401,6 +440,7 @@ ShapedText epix::text::shape_text(const Text& text,
                 }
             }
         }
+        box_width = std::max(box_width, width);
 
         float start_x = 0.0f;
         if (layout.justify == Justify::Center) {
@@ -414,19 +454,22 @@ ShapedText epix::text::shape_text(const Text& text,
             extra_per_space = (full_width - width) / static_cast<float>(spaces);
         }
 
-        float pen_x      = start_x;
-        float baseline_y = -ft_ascender - static_cast<float>(line_index) * final_line_height;
+        float pen_x = start_x;
+        // The layout's +Y-up baselines (`baseline_y`) converted to Bevy's
+        // +Y-down block space, where the first baseline is one ascent below the
+        // block's top edge (`pipeline.rs:450-451`).
+        float baseline_y          = -ft_ascender - static_cast<float>(line_index) * final_line_height;
+        const float baseline_down = ft_ascender + static_cast<float>(line_index) * final_line_height;
         for (std::size_t index = begin; index < end; ++index) {
             for (const auto& entry : shaped_tokens[index].entries) {
-                atlas.get_glyph_atlas_loc(entry.glyph_index);
-                out.glyphs_.push_back(GlyphInfo{
-                    .glyph_index = entry.glyph_index,
-                    .cluster     = entry.cluster,
-                    .x_offset    = pen_x + static_cast<float>(entry.x_offset),
-                    .y_offset    = baseline_y + static_cast<float>(entry.y_offset),
-                    .x_advance   = static_cast<float>(entry.x_advance),
-                    .y_advance   = 0.0f,
-                });
+                if (auto placed = place_glyph(entry.glyph_index)) {
+                    auto&& [atlas_info, glyph_size, placement] = *placed;
+                    out.glyphs_.push_back(make_glyph_info(
+                        entry.glyph_index, entry.cluster, pen_x + static_cast<float>(entry.x_offset),
+                        baseline_y + static_cast<float>(entry.y_offset), pen_x, baseline_down,
+                        static_cast<float>(entry.y_offset), static_cast<float>(entry.x_advance), 0.0f, atlas_info,
+                        glyph_size, placement));
+                }
                 pen_x += static_cast<float>(entry.x_advance);
             }
             if (extra_per_space != 0.0f) {
@@ -441,16 +484,16 @@ ShapedText epix::text::shape_text(const Text& text,
         }
     }
 
+    // Bevy `pipeline.rs:356-358,484`.
+    out.size_ = glm::vec2{std::ceil(box_width), std::ceil(static_cast<float>(lines.size()) * final_line_height)};
+
     hb_font_destroy(hb_font);
     return out;
 }
 
 void TextPlugin::attach(App& app) {
     app.add_plugins(font::FontPlugin{});
-    app.add_plugins(mesh::MeshPlugin{});
     app.add_systems(PostUpdate, into(shape_changed_text)
                                     .set_name("shape_changed_text")
-                                    .after(font::FontSystems::AddFontAtlasSet)
-                                    .before(font::FontSystems::ApplyPendingFontAtlasUpdates));
-    app.add_systems(Last, into(regen_mesh_for_shaped_text).set_name("regen_mesh_for_shaped_text"));
+                                    .after(font::FontSystems::AddFontAtlasSet));
 }

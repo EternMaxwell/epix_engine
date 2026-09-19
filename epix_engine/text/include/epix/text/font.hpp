@@ -12,10 +12,12 @@
 #include <exception>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <string>
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
@@ -32,41 +34,6 @@ EPIX_EXPORT struct Font {
     std::unique_ptr<std::byte[]> data;
     /** @brief Size of the font data in bytes. */
     std::size_t size = 0;
-};
-
-/** @brief Rectangle region within a font atlas image, optionally spanning
- * multiple layers.
- */
-EPIX_EXPORT struct AtlasRect {
-    /** @brief X offset in pixels within the atlas layer. */
-    std::uint32_t x = 0;
-    /** @brief Y offset in pixels within the atlas layer. */
-    std::uint32_t y = 0;
-    /** @brief Layer index in a texture array atlas. */
-    std::uint32_t layer = 0;
-    /** @brief Width of the rectangle in pixels. */
-    std::uint32_t width = 0;
-    /** @brief Height of the rectangle in pixels. */
-    std::uint32_t height = 0;
-    /** @brief Depth (number of layers) of the rectangle. */
-    std::uint32_t depth = 1;
-
-    /** @brief Create a 3D rect with the given dimensions starting at origin.
-     * @return AtlasRect with x=0, y=0, layer=0. */
-    static AtlasRect rect3d(std::uint32_t width, std::uint32_t height, std::uint32_t depth) noexcept {
-        return AtlasRect{.width = width, .height = height, .depth = depth};
-    }
-
-    /** @brief Create a 3D rect with explicit position and dimensions.
-     * @return AtlasRect with the specified position and size. */
-    static AtlasRect rect3d(std::uint32_t x,
-                            std::uint32_t y,
-                            std::uint32_t layer,
-                            std::uint32_t width,
-                            std::uint32_t height,
-                            std::uint32_t depth) noexcept {
-        return AtlasRect{.x = x, .y = y, .layer = layer, .width = width, .height = height, .depth = depth};
-    }
 };
 }  // namespace epix::text::font
 
@@ -132,116 +99,121 @@ EPIX_EXPORT struct Glyph {
     float vertAdvance;
 };
 
-/** @brief Texture atlas that packs rendered glyphs for a specific font
- * face, size, and anti-aliasing setting.
+/** @brief Location of a rasterized glyph inside a font atlas image (Bevy
+ * `GlyphAtlasLocation`, `glyph.rs:54-65`).
  *
- * Glyphs are rasterized on demand and placed into a layered texture
- * atlas. Call `apply_pending()` to upload newly rasterized glyphs to the
- * image asset.
+ * `glyph_index` is the index into the atlas image's `TextureAtlasLayout`
+ * rectangles, and `offset` is the bitmap's placement relative to the glyph's
+ * pen position, in the atlas image's +Y-down space.
+ */
+EPIX_EXPORT struct GlyphAtlasLocation {
+    /** @brief Index of the glyph in the atlas layout's texture list. */
+    std::size_t glyph_index = 0;
+    /** @brief Required placement offset of the glyph bitmap (Bevy `offset`). */
+    glm::ivec2 offset{0};
+
+    bool operator==(const GlyphAtlasLocation&) const = default;
+};
+
+/** @brief Atlas placement of a rasterized glyph (Bevy `GlyphAtlasInfo`,
+ * `glyph.rs:32-52`). */
+EPIX_EXPORT struct GlyphAtlasInfo {
+    /** @brief The `Image` asset holding the atlas this glyph was placed in. */
+    assets::AssetId<image::Image> texture{assets::AssetId<image::Image>::invalid()};
+    /** @brief The `TextureAtlasLayout` asset describing that atlas. */
+    assets::AssetId<image::TextureAtlasLayout> texture_atlas{
+        assets::AssetId<image::TextureAtlasLayout>::invalid()};
+    /** @brief Location and offset of the glyph within the atlas. */
+    GlyphAtlasLocation location{};
+
+    bool operator==(const GlyphAtlasInfo&) const = default;
+};
+
+/** @brief Failure modes of the glyph atlas path (the `TextError` alternatives
+ * `bevy_text` reports while rasterizing and placing glyphs,
+ * `font_atlas.rs:110` / `pipeline.rs:263-271`). */
+EPIX_EXPORT enum class TextErrorCode {
+    /** @brief The glyph did not fit in any atlas, or space allocation failed. */
+    FailedToAddGlyph,
+    /** @brief The glyph's bitmap could not be produced. */
+    FailedToGetGlyphImage,
+    /** @brief The atlas' `TextureAtlasLayout` asset is missing. */
+    MissingAtlasLayout,
+    /** @brief The atlas' `Image` asset is missing. */
+    MissingAtlasTexture,
+    /** @brief The glyph could not be found after it was added. */
+    InconsistentAtlasState,
+};
+
+/** @brief Error produced while rasterizing or placing a glyph (Bevy
+ * `TextError`). */
+EPIX_EXPORT struct TextError {
+    /** @brief Which failure occurred. */
+    TextErrorCode code = TextErrorCode::FailedToAddGlyph;
+    /** @brief The font glyph id the failure refers to, when applicable. */
+    std::uint32_t glyph_id = 0;
+
+    /** @brief Bevy `TextError`'s `Display` text. */
+    std::string to_string() const;
+    bool operator==(const TextError&) const = default;
+};
+
+/** @brief One texture atlas holding rasterized glyphs (Bevy `FontAtlas`,
+ * `font_atlas.rs:21-30`).
+ *
+ * The atlas is a single `TextureDimension::D2` image whose glyph rectangles
+ * are recorded in a `TextureAtlasLayout`; glyphs that do not fit any existing
+ * atlas cause an additional `FontAtlas` to be created for the same
+ * `FontAtlasKey` (`font_atlas.rs:149-178`).
  */
 EPIX_EXPORT struct FontAtlas {
-    friend struct FontAtlasSet;
+    /** @brief Updates the atlas' `TextureAtlasLayout` when glyphs are added. */
+    image::DynamicTextureAtlasBuilder dynamic_texture_atlas_builder;
+    /** @brief Glyph key to its location in this atlas. */
+    std::unordered_map<std::uint32_t, GlyphAtlasLocation> glyph_to_atlas_index;
+    /** @brief The layout that holds the rasterized glyph rectangles. */
+    assets::Handle<image::TextureAtlasLayout> texture_atlas;
+    /** @brief The texture where this font atlas is located. */
+    assets::Handle<image::Image> texture;
 
-   public:
-    FontAtlas(const FontAtlas&)            = delete;
-    FontAtlas(FontAtlas&&)                 = default;
-    FontAtlas& operator=(const FontAtlas&) = delete;
-    FontAtlas& operator=(FontAtlas&&)      = default;
+    FontAtlas(image::DynamicTextureAtlasBuilder builder,
+              assets::Handle<image::TextureAtlasLayout> texture_atlas,
+              assets::Handle<image::Image> texture)
+        : dynamic_texture_atlas_builder(std::move(builder)),
+          texture_atlas(std::move(texture_atlas)),
+          texture(std::move(texture)) {}
 
-    /** @brief Get the handle to the atlas image asset, if created. */
-    const std::optional<assets::Handle<image::Image>>& image_handle() const noexcept { return image; }
-    /** @brief Upload all pending rasterized glyphs to the image asset. */
-    void apply_pending(assets::Assets<image::Image>& assets);
-    /** @brief Map a Unicode codepoint to its glyph index, rasterizing if needed. */
-    std::uint32_t get_glyph_index(char32_t codepoint);
-    /** @brief Get the underlying FreeType font face pointer. */
-    void* get_font_face() const noexcept { return font_face; }
-    /** @brief Get the font size in pixels used for this atlas. */
-    float get_font_size() const noexcept { return font_size; }
+    /** @brief Create a new `FontAtlas` of `size`, adding it to the asset
+     * collections (Bevy `FontAtlas::new`, `font_atlas.rs:34-59`). */
+    static FontAtlas create(assets::Assets<image::Image>& textures,
+                            assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+                            glm::uvec2 size,
+                            bool font_smoothing);
 
-    /** @brief Get the atlas rectangle location for a glyph by index. */
-    AtlasRect get_glyph_atlas_loc(std::uint32_t glyph_index);
-    /** @brief Get the glyph metrics for a glyph by index. */
-    const Glyph& get_glyph(std::uint32_t glyph_index);
-    /** @brief Get the atlas image width in pixels. */
-    std::uint32_t get_image_width() const noexcept { return atlas_width; }
-    /** @brief Get the atlas image height in pixels. */
-    std::uint32_t get_image_height() const noexcept { return atlas_height; }
-    /** @brief Get the number of atlas image layers. */
-    std::uint32_t get_image_layers() const noexcept { return atlas_layers; }
+    /** @brief Get the location of a glyph in this atlas, if present. */
+    std::optional<GlyphAtlasLocation> get_glyph_index(std::uint32_t key) const {
+        if (auto it = glyph_to_atlas_index.find(key); it != glyph_to_atlas_index.end()) return it->second;
+        return std::nullopt;
+    }
+    /** @brief Whether this atlas contains the given glyph. */
+    bool has_glyph(std::uint32_t key) const { return glyph_to_atlas_index.contains(key); }
 
-    /** @brief Get the UV rect [u0, v0, u1, v1, layer] for a glyph. */
-    std::array<float, 5> get_glyph_uv_rect(std::uint32_t glyph_index);
-
-   private:
-    void* font_face;
-    std::optional<assets::Handle<image::Image>> image;
-    std::unordered_map<std::uint32_t, AtlasRect> atlas_locs;
-    std::unordered_map<std::uint32_t, Glyph> glyphs;
-    std::uint32_t atlas_width;
-    std::uint32_t atlas_height;
-    std::uint32_t atlas_layers;
-    std::uint32_t max_texture_array_layers;
-
-    float font_size;
-    bool font_antialiased;
-
-    struct LayerState {
-        std::uint32_t x          = 0;
-        std::uint32_t y          = 0;
-        std::uint32_t row_height = 0;
-    };
-
-    std::vector<LayerState> layer_states;
-
-    struct PendingGlyph {
-        std::uint32_t glyph_index;
-        std::unique_ptr<std::byte[]> bitmap_data;
-    };
-    std::vector<PendingGlyph> pending_glyphs;
-
-    struct FontAtlasError {
-        enum class Code {
-            InvalidSize,
-            TooLargeForLayer,
-            AtlasFull,
-        } code;
-        std::uint32_t glyph_width  = 0;
-        std::uint32_t glyph_height = 0;
-        std::uint32_t atlas_w      = 0;
-        std::uint32_t atlas_h      = 0;
-    };
-
-    FontAtlas(void* face,
-              std::uint32_t atlas_width,
-              std::uint32_t atlas_height,
-              float font_size,
-              bool font_antialiased,
-              std::uint32_t max_texture_array_layers,
-              std::uint32_t atlas_layers = 1)
-        : font_face(face),
-          atlas_width(atlas_width),
-          atlas_height(atlas_height),
-          atlas_layers(atlas_layers),
-          max_texture_array_layers(max_texture_array_layers),
-          font_size(font_size),
-          font_antialiased(font_antialiased),
-          layer_states(atlas_layers) {}
-
-    std::expected<AtlasRect, FontAtlasError> place_char_bitmap_size(std::uint32_t width, std::uint32_t height);
-
-    bool add_image_if_missing(assets::Assets<image::Image>& assets);
-
-    image::Image make_atlas_image();
-
-    std::optional<std::tuple<Glyph, std::unique_ptr<std::byte[]>, std::pair<std::uint32_t, std::uint32_t>>>
-    generate_glyph(std::uint32_t glyph_index);
-
-    void cache_glyph_index(std::uint32_t glyph_index);
+    /** @brief Add a glyph to the atlas, updating both its texture and layout
+     * (Bevy `FontAtlas::add_glyph`, `font_atlas.rs:82-112`). */
+    std::expected<void, TextError> add_glyph(assets::Assets<image::Image>& textures,
+                                             assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+                                             std::uint32_t key,
+                                             const image::Image& glyph_texture,
+                                             glm::ivec2 offset);
 };
 
 /** @brief Key identifying a specific atlas configuration (size +
- * anti-aliasing). */
+ * anti-aliasing).
+ *
+ * Bevy keys `FontAtlasSet` by `(font, font_size.to_bits(), font_smoothing)`
+ * (`font_atlas_set.rs:7-12`); Epix stores one set per font asset, so the key
+ * only has to distinguish size and smoothing.
+ */
 EPIX_EXPORT struct FontAtlasKey {
     /** @brief Font size in pixels used for rasterization. */
     float size;
@@ -262,40 +234,82 @@ EPIX_EXPORT struct FontAtlasKeyHash {
     }
 };
 
-/** @brief Collection of FontAtlas instances for a single font face,
- * keyed by size and anti-aliasing settings.
+/** @brief Collection of `FontAtlas` instances for a single font face, keyed by
+ * size and anti-aliasing settings (Bevy `FontAtlasSet`, `font_atlas_set.rs:19-25`).
+ *
+ * Each key maps to a `std::vector<FontAtlas>`: glyphs are placed in the first
+ * atlas with room for them and a new one is appended when none fits
+ * (`font_atlas.rs:149-178`).
  */
 EPIX_EXPORT struct FontAtlasSet {
     friend struct FontAtlasSets;
 
    public:
-    FontAtlasSet(void* face,
-                 std::uint32_t max_texture_dimension_2d = 8192,
-                 std::uint32_t max_texture_array_layers = 256)
-        : font_face(face),
-          max_texture_dimension_2d(max_texture_dimension_2d),
-          max_texture_array_layers(max_texture_array_layers) {}
+    /** @brief Metrics and atlas placement of one rasterized glyph.
+     *
+     * Epix keeps this cache per `(FontAtlasKey, glyph)`; Bevy keeps the same
+     * information in cosmic-text's glyph cache and in
+     * `FontAtlas::glyph_to_atlas_index` (`pipeline.rs:419-439`). */
+    struct GlyphEntry {
+        /** @brief Font metrics of the rasterized glyph. */
+        Glyph metrics;
+        /** @brief Where the glyph bitmap was placed in an atlas. */
+        GlyphAtlasInfo atlas_info;
+        /** @brief Whether `atlas_info` has been filled in yet. */
+        bool placed = false;
+    };
+
+    FontAtlasSet(void* face, std::uint32_t max_texture_dimension_2d = 8192)
+        : font_face(face), max_texture_dimension_2d(max_texture_dimension_2d) {}
     FontAtlasSet(const FontAtlasSet&)            = delete;
     FontAtlasSet(FontAtlasSet&&)                 = default;
     FontAtlasSet& operator=(const FontAtlasSet&) = delete;
     FontAtlasSet& operator=(FontAtlasSet&&)      = default;
 
-    /** @brief Get a mutable reference to the atlas for the given key, if it exists. */
-    std::optional<std::reference_wrapper<FontAtlas>> get_mut(const FontAtlasKey& key);
-    /** @brief Get a const reference to the atlas for the given key, if it exists. */
-    std::optional<std::reference_wrapper<const FontAtlas>> get(const FontAtlasKey& key) const;
-    /** @brief Get or create the atlas for the given key. */
-    FontAtlas& get_or_insert(const FontAtlasKey& key);
-    /** @brief Iterate over all stored (key, atlas) pairs (const). */
+    /** @brief Get the atlases for the given key, if any exist. */
+    std::optional<std::reference_wrapper<std::vector<FontAtlas>>> get_mut(const FontAtlasKey& key);
+    /** @brief Get the atlases for the given key, if any exist. */
+    std::optional<std::reference_wrapper<const std::vector<FontAtlas>>> get(const FontAtlasKey& key) const;
+    /** @brief Iterate over all stored (key, atlases) pairs (const). */
     auto iter() const { return std::views::all(storage); }
-    /** @brief Iterate over all stored (key, atlas) pairs (mutable). */
+    /** @brief Iterate over all stored (key, atlases) pairs (mutable). */
     auto iter_mut() { return std::views::all(storage); }
+
+    /** @brief Rasterize a glyph and place it into an atlas, creating a new
+     * atlas when no existing one has room (Bevy `add_glyph_to_atlas`,
+     * `font_atlas.rs:126-182`).
+     * @return The glyph's atlas placement, or a `TextError`. */
+    std::expected<GlyphAtlasInfo, TextError> add_glyph_to_atlas(
+        assets::Assets<image::Image>& textures,
+        assets::Assets<image::TextureAtlasLayout>& atlas_layouts,
+        const FontAtlasKey& key,
+        std::uint32_t glyph_index);
+
+    /** @brief Get the font metrics of a rasterized glyph, rasterizing it and
+     * caching it on first use. */
+    const Glyph& get_glyph(const FontAtlasKey& key, std::uint32_t glyph_index);
+
+    /** @brief Get the underlying FreeType font face pointer. */
+    void* get_font_face() const noexcept { return font_face; }
+    /** @brief Get the maximum 2D texture dimension available to atlases. */
+    std::uint32_t get_max_texture_dimension_2d() const noexcept { return max_texture_dimension_2d; }
 
    private:
     void* font_face = nullptr;
     std::uint32_t max_texture_dimension_2d;
-    std::uint32_t max_texture_array_layers;
-    std::unordered_map<FontAtlasKey, FontAtlas, FontAtlasKeyHash> storage;
+    std::unordered_map<FontAtlasKey, std::vector<FontAtlas>, FontAtlasKeyHash> storage;
+    std::unordered_map<FontAtlasKey, std::unordered_map<std::uint32_t, GlyphEntry>, FontAtlasKeyHash> glyphs;
+
+    /** @brief Rasterize a glyph, caching its metrics and bitmap placement
+     * metadata.
+     *
+     * Epix's counterpart to `bevy_text`'s `get_outlined_glyph_texture`
+     * (`font_atlas.rs:185-248`): the rasterizer is FreeType rather than swash,
+     * but the produced bitmap is the same RGBA (white RGB, coverage alpha)
+     * top-row-first image, with the placement offset in the atlas image's
+     * +Y-down space. */
+    std::optional<std::tuple<Glyph, image::Image, glm::ivec2>> generate_glyph(float font_size,
+                                                                              std::uint32_t glyph_index);
 };
 
 /** @brief System resource managing FontAtlasSet instances for all loaded
@@ -313,8 +327,6 @@ EPIX_EXPORT struct FontAtlasSets {
 
     /** @brief Get the maximum 2D texture dimension for atlases. */
     std::uint32_t get_max_texture_dimension_2d() const noexcept { return max_texture_dimension_2d; }
-    /** @brief Get the maximum texture array layer count. */
-    std::uint32_t get_max_texture_array_layers() const noexcept { return max_texture_array_layers; }
 
     /** @brief Get a mutable reference to the atlas set for a font, if it exists. */
     std::optional<std::reference_wrapper<FontAtlasSet>> get_mut(const assets::AssetId<Font>& font_id);
@@ -333,7 +345,6 @@ EPIX_EXPORT struct FontAtlasSets {
 
    private:
     std::uint32_t max_texture_dimension_2d = 8192;
-    std::uint32_t max_texture_array_layers = 256;
     std::unordered_map<assets::AssetId<Font>, FontAtlasSet> storage;
 };
 
@@ -341,12 +352,9 @@ EPIX_EXPORT struct FontAtlasSets {
 EPIX_EXPORT enum class FontSystems {
     /** @brief System that creates a FontAtlasSet for newly loaded fonts. */
     AddFontAtlasSet,
-    /** @brief System that uploads pending glyph data to atlas images. */
-    ApplyPendingFontAtlasUpdates,
 };
 
-/** @brief Plugin that registers font loading, atlas management, and glyph
- * update systems. */
+/** @brief Plugin that registers font loading and atlas management systems. */
 EPIX_EXPORT struct FontPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
