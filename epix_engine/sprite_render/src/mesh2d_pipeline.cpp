@@ -470,6 +470,14 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     render::VertexState vertex_state{.shader = shader};
     vertex_state.set_buffers(vertex_buffers);
     vertex_state.set_shader_defs(shader_defs);
+    // The embedded mesh2d shader names its entry points `vertex` and `fragment`
+    // (its Bevy WGSL equivalent uses `vs_main`/`fs_main`), and wgpu does not
+    // infer the name: leaving it unset sends the engine's "main" default, which
+    // `vkCreateGraphicsPipelines` rejects because the module declares no such
+    // entry point (VUID-VkPipelineShaderStageCreateInfo-pName-00707). The
+    // headless mesh2d shader test always set these explicitly, which is why it
+    // passed while every live mesh2d pipeline failed.
+    vertex_state.set_entry_point("vertex");
 
     auto color_target = wgpu::ColorTargetState().setFormat(format).setWriteMask(wgpu::ColorWriteMask::eAll);
     if (blend_alpha) {
@@ -487,6 +495,7 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     render::FragmentState fragment_state{.shader = shader};
     fragment_state.add_target(color_target);
     fragment_state.set_shader_defs(shader_defs);
+    fragment_state.set_entry_point("fragment");
 
     return render::RenderPipelineDescriptor{
         .label  = blend_alpha ? "transparent_mesh2d_pipeline" : "opaque_mesh2d_pipeline",

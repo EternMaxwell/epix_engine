@@ -61,7 +61,7 @@ float4 alpha_discard(ColorMaterial material, float4 output_color) {
 }
 
 [shader("fragment")]
-float4 fragmentMain(epix::mesh2d_vertex_output::VertexOutput mesh) : SV_Target {
+float4 fragment(epix::mesh2d_vertex_output::VertexOutput mesh) : SV_Target {
     float4 output_color = material.color;
 
 #ifdef VERTEX_COLORS
