@@ -145,8 +145,13 @@ void probe_skybox(Query<Item<const render::camera::ExtractedCamera&,
                   With<core_graph::Skybox>>
                       views,
                   Res<render::RenderAssets<render::texture::GpuImage>> images,
-                  Local<bool> logged) {
-    if (*logged) return;
+                  Local<int> frames) {
+    // One-shot, but only after the prepare systems have run for several frames: a
+    // probe that fires at an arbitrary point in the schedule reads whatever
+    // happens to exist at that instant, which is what made the first version of
+    // this probe report different values on different runs.
+    *frames += 1;
+    if (*frames != 30) return;
     for (auto&& [camera, skybox, pipeline_id, bind_group, prepass_pipeline, prepass_bind_group, previous_offset,
                  view_offset] : views.iter()) {
         const auto image = images->get(skybox.image);
@@ -159,7 +164,6 @@ void probe_skybox(Query<Item<const render::camera::ExtractedCamera&,
         spdlog::info("[skybox] prepass probe: pipeline={} bind_group={} view_offset={} previous_offset={}",
                      prepass_pipeline.has_value(), prepass_bind_group.has_value(), view_offset.has_value(),
                      previous_offset.has_value());
-        *logged = true;
         return;
     }
 }
@@ -228,7 +232,10 @@ int main() {
     app.add_systems(Update, into(probe_main_world).set_name("probe main world"));
 
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        render_app->get().add_systems(render::Render, into(probe_skybox).set_name("probe skybox"));
+        render_app->get().add_systems(render::Render,
+                                      into(probe_skybox)
+                                          .after(epix::core_graph::prepare_skybox_prepass_bind_groups)
+                                          .set_name("probe skybox"));
     }
 
     app.run();
