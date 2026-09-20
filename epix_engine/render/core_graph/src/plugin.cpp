@@ -54,7 +54,8 @@ void CoreGraphPlugin::attach(App& app) {
     }
 
     app.add_plugins(core_graph::core_2d::Core2dPlugin{}, core_graph::core_3d::Core3dPlugin{}, BlitPlugin{},
-                    UpscalingPlugin{}, TonemappingPlugin{}, core_graph::core_3d::CopyDeferredLightingIdPlugin{});
+                    UpscalingPlugin{}, TonemappingPlugin{}, core_graph::core_3d::CopyDeferredLightingIdPlugin{},
+                    mip_generation::MipGenerationPlugin{});
     if (auto render_app = app.get_sub_app_mut(render::Render);
         render_app && fullscreen_shader && !render_app->get().world().get_resource<FullscreenShader>()) {
         render_app->get().world_mut().insert_resource(std::move(*fullscreen_shader));

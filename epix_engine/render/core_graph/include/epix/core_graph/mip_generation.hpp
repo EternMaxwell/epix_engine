@@ -101,6 +101,48 @@ EPIX_EXPORT wgpu::TextureView create_depth_pyramid_dummy_texture(const wgpu::Dev
                                                                 const char* texture_label,
                                                                 const char* texture_view_label);
 
+/** @brief Identifies the `downsample_depth` shader (Bevy `DownsampleDepthShader`). */
+EPIX_EXPORT struct DownsampleDepthShader {
+    assets::Handle<shader::Shader> handle;
+};
+
+/** @brief Stores all depth buffer downsampling pipelines (Bevy
+ *  `DownsampleDepthPipelines`). Two phases, each with a non-multisampled and a
+ *  multisampled variant, plus one sampler shared by all of them. */
+EPIX_EXPORT struct DownsampleDepthPipelines {
+    /** @brief The first phase, for a non-multisampled depth buffer. */
+    DownsampleDepthPipeline first;
+    /** @brief The second phase, for a non-multisampled depth buffer. */
+    DownsampleDepthPipeline second;
+    /** @brief The first phase, for a multisampled depth buffer. */
+    DownsampleDepthPipeline first_multisample;
+    /** @brief The second phase, for a multisampled depth buffer. */
+    DownsampleDepthPipeline second_multisample;
+    /** @brief The sampler the downsample shader samples the depth buffer with. */
+    wgpu::Sampler sampler;
+};
+
+/** @brief `RenderStartup` system that creates the four downsample pipelines
+ *  (Bevy `create_downsample_depth_pipelines`). It runs once and only when the
+ *  device supports GPU preprocessing culling, which is the subsystem the
+ *  pyramid feeds. */
+EPIX_EXPORT void create_downsample_depth_pipelines(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::ResMut<render::SpecializedComputePipelines<DownsampleDepthPipeline>> specialized_compute_pipelines,
+    ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support,
+    ecs::Res<DownsampleDepthShader> downsample_depth_shader,
+    ecs::Local<bool> has_run);
+
+/** @brief Installs the depth-pyramid machinery (Bevy `MipGenerationPlugin`).
+ *
+ *  The pyramid resource, the two `prepare_*` systems and the node that
+ *  dispatches the passes are the remaining step of the port. */
+EPIX_EXPORT struct MipGenerationPlugin {
+    void attach(app::App& app) const;
+};
+
 }  // namespace epix::core_graph::mip_generation
 
 template <>

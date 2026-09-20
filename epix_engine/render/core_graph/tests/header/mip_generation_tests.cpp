@@ -217,4 +217,75 @@ void downsample_depth_first() {
     EXPECT_TRUE(app.resource<epix::render::PipelineServer>().get_compute_pipeline(id).has_value());
 }
 
+/** @brief `MipGenerationPlugin` installs the shader and, when the device
+ *  supports culling, specializes Bevy's four downsample pipelines (Bevy
+ *  `MipGenerationPlugin::build` + `create_downsample_depth_pipelines`,
+ *  `experimental/mip_generation/mod.rs:73-122`, `:334-417`). All four must
+ *  compile: both phases for a plain depth buffer and for a multisampled one. */
+TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
+    auto app = epix::app::App::create();
+    add_core_graph_test_prerequisites(app);
+    try {
+        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    epix::core_graph::mip_generation::MipGenerationPlugin{}.attach(app);
+
+    auto render_app = app.get_sub_app_mut(epix::render::Render);
+    ASSERT_TRUE(render_app.has_value());
+
+    // The plugin only loads the embedded shader handle; the asset itself is
+    // loaded by the main app's asset systems.
+    const auto shader = render_app->get().world().get_resource<DownsampleDepthShader>();
+    ASSERT_TRUE(shader.has_value());
+    for (int attempt = 0;
+         attempt < 1000 &&
+         !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader->get().handle.id());
+         ++attempt) {
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+
+    // Force culling support so the creation system always takes the pipeline
+    // path, whatever this machine's adapter reports.
+    render_app->get().world_mut().insert_resource(epix::render::batching::GpuPreprocessingSupport{
+        epix::render::batching::GpuPreprocessingMode::Culling});
+
+    render_app->get().run_schedule(epix::render::RenderStartup);
+
+    const auto pipelines = render_app->get().world().get_resource<DownsampleDepthPipelines>();
+    ASSERT_TRUE(pipelines.has_value());
+    EXPECT_FALSE(!pipelines->get().sampler);
+    // The plugin specializes all four keys (Bevy `create_downsample_depth_pipelines`).
+    EXPECT_TRUE(pipelines->get().first.pipeline_id.has_value());
+    EXPECT_TRUE(pipelines->get().second.pipeline_id.has_value());
+    EXPECT_TRUE(pipelines->get().first_multisample.pipeline_id.has_value());
+    EXPECT_TRUE(pipelines->get().second_multisample.pipeline_id.has_value());
+
+    // The real `downsample_depth` shader must compile, not just load: queue the
+    // four descriptors Bevy's plugin specializes and wait for the cache. This
+    // runs through the main world's pipeline server because a headless test does
+    // not reach the render app's per-frame cache processing.
+    auto& pipeline_server = app.resource<epix::render::PipelineServer>();
+    const auto compiled = [&](const DownsampleDepthPipeline& pipeline, DownsampleDepthPipelineKey key) {
+        const auto id = pipeline_server.queue_compute_pipeline(pipeline.specialize(key));
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            app.run_schedule(epix::app::Last);
+            if (pipeline_server.get_compute_pipeline(id).has_value()) return true;
+            std::this_thread::yield();
+        }
+        return false;
+    };
+    EXPECT_TRUE(compiled(pipelines->get().first, DownsampleDepthPipelineKey{}));
+    EXPECT_TRUE(compiled(pipelines->get().second,
+                         DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE}));
+    EXPECT_TRUE(compiled(pipelines->get().first_multisample,
+                         DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::MULTISAMPLE}));
+    EXPECT_TRUE(compiled(pipelines->get().second_multisample,
+                         DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::MULTISAMPLE |
+                                                    DownsampleDepthPipelineKey::SECOND_PHASE}));
+}
+
 }  // namespace
