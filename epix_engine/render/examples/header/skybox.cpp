@@ -175,6 +175,26 @@ void log_progress(Res<time::Time<>> time) {
     }
 }
 
+/** @brief One-shot main-world probe. `PreviousViewData` present here but absent
+ *  in the render world means the extraction drops it; absent here means the
+ *  producer never matched its query. */
+void probe_main_world(Query<Item<Opt<const transform::GlobalTransform&>,
+                                  Opt<const ::epix::camera::Camera&>,
+                                  Opt<const core_graph::PreviousViewData&>>,
+                              With<core_graph::Skybox>>
+                          cameras,
+                      Local<int> frames) {
+    if (*frames > 60) return;
+    *frames += 1;
+    if (*frames != 60) return;
+    for (auto&& [global_transform, camera, previous_view_data] : cameras.iter()) {
+        spdlog::info("[skybox] main-world probe: global_transform={} camera={} previous_view_data={}",
+                     global_transform.has_value(), camera.has_value(), previous_view_data.has_value());
+        return;
+    }
+    spdlog::warn("[skybox] main-world probe: no entity with a Skybox was found");
+}
+
 }  // namespace
 
 int main() {
@@ -205,6 +225,7 @@ int main() {
     app.add_systems(Startup, into(spawn_scene).set_name("spawn skybox scene"));
     app.add_systems(Update, into(orbit_camera).set_name("orbit camera"));
     app.add_systems(Update, into(log_progress).set_name("log progress"));
+    app.add_systems(Update, into(probe_main_world).set_name("probe main world"));
 
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().add_systems(render::Render, into(probe_skybox).set_name("probe skybox"));
