@@ -1,10 +1,34 @@
+#include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/core_graph/skybox.hpp>
 #include <epix/image.hpp>
+#include <epix/render.hpp>
+#include <epix/task.hpp>
+#include <epix/time.hpp>
+#include <epix/window.hpp>
+#include <epix/core_graph/core3d.hpp>
 #include <gtest/gtest.h>
 
 using namespace epix::core_graph;
 
 namespace {
+
+/** @brief Asset loading spawns tasks on the IO pool, so a test that loads the
+ *  embedded shader needs it initialized. */
+struct SkyboxTaskPoolInit {
+    SkyboxTaskPoolInit() {
+        epix::task::IoTaskPool::get_or_init(epix::task::TaskPool{epix::task::TaskPoolBuilder{}.num_threads(4).build()});
+    }
+} g_skybox_task_pool_init;
+
+void add_skybox_test_prerequisites(epix::app::App& app) {
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{})
+        .add_plugins(epix::render::FrameCountPlugin{});
+}
 
 /** @brief The component's defaults are Bevy's: the default image, no brightness
  *  scale and no rotation (`skybox/mod.rs:99-107`). */
@@ -80,8 +104,8 @@ TEST(Skybox, SpecializeBuildsBevyDescriptor) {
     ASSERT_TRUE(descriptor.fragment.has_value());
     ASSERT_EQ(descriptor.fragment->targets.size(), 1u);
     EXPECT_EQ(descriptor.fragment->targets[0].format, epix::image::bevy_default<wgpu::TextureFormat>());
-    EXPECT_EQ(descriptor.vertex.entry_point, std::optional<std::string>{"vertex"});
-    EXPECT_EQ(descriptor.fragment->entry_point, std::optional<std::string>{"fragment"});
+    EXPECT_EQ(descriptor.vertex.entry_point, std::optional<std::string>{"skybox_vertex"});
+    EXPECT_EQ(descriptor.fragment->entry_point, std::optional<std::string>{"skybox_fragment"});
 
     const auto hdr = pipeline.specialize(SkyboxPipelineKey{
         .hdr = true, .samples = 1, .depth_format = wgpu::TextureFormat::eDepth32Float});
@@ -89,6 +113,49 @@ TEST(Skybox, SpecializeBuildsBevyDescriptor) {
     ASSERT_EQ(hdr.fragment->targets.size(), 1u);
     EXPECT_EQ(hdr.fragment->targets[0].format, epix::render::view::ViewTarget::TEXTURE_FORMAT_HDR);
     EXPECT_EQ(hdr.multisample.count, 1u);
+}
+
+/** @brief The ported Slang shader compiles into the specialized skybox
+ *  pipeline: the cube texture and sampler bindings, the view uniform and the
+ *  skybox uniforms all match the layout, and both entry points exist. */
+TEST(Skybox, PipelineCompilesWithThePortedShader) {
+    auto app = epix::app::App::create();
+    add_skybox_test_prerequisites(app);
+    try {
+        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    SkyboxPlugin{}.attach(app);
+
+    const auto render_app = app.get_sub_app_mut(epix::render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    render_app->get().run_schedule(epix::render::RenderStartup);
+
+    const auto pipeline = render_app->get().world().get_resource<SkyboxPipeline>();
+    ASSERT_TRUE(pipeline.has_value()) << "init_skybox_pipeline did not insert SkyboxPipeline";
+
+    auto& asset_server = app.resource<epix::assets::AssetServer>();
+    for (int attempt = 0; attempt < 1000 &&
+                          !asset_server.is_loaded_with_dependencies(pipeline->get().shader.id());
+         ++attempt) {
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(asset_server.is_loaded_with_dependencies(pipeline->get().shader.id()))
+        << "embedded://core_pipeline/skybox.slang failed to load";
+
+    auto& pipeline_server = app.resource<epix::render::PipelineServer>();
+    const auto id         = pipeline_server.queue_render_pipeline(pipeline->get().specialize(SkyboxPipelineKey{
+        .hdr = false, .samples = 1, .depth_format = epix::core_graph::core_3d::CORE_3D_DEPTH_FORMAT}));
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        app.run_schedule(epix::app::Last);
+        if (pipeline_server.get_render_pipeline(id).has_value()) break;
+        std::this_thread::yield();
+    }
+    EXPECT_TRUE(pipeline_server.get_render_pipeline(id).has_value())
+        << "the ported skybox shader failed to compile";
 }
 
 }  // namespace

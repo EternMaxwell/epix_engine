@@ -1039,6 +1039,8 @@ void Core3dPlugin::attach(App& app) {
         [] { return render::camera::CameraRenderGraph{Core3d}; });
     app.world_mut().register_required_components_with<::epix::camera::Camera3d>([] { return Tonemapping{}; });
     app.add_plugins(render::ExtractComponentPlugin<::epix::camera::Camera3d>{});
+    // Bevy Core3dPlugin installs the skybox plugin (core_3d/mod.rs:150).
+    app.add_plugins(SkyboxPlugin{});
     // Bevy registers this in the main world's PostUpdate (core_3d/mod.rs:151).
     app.add_systems(::epix::app::PostUpdate, into(check_msaa).set_name("check msaa"));
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {

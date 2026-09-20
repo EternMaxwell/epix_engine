@@ -85,6 +85,15 @@ EPIX_EXPORT struct SkyboxPipeline {
     [[nodiscard]] render::RenderPipelineDescriptor specialize(Key key) const;
 };
 
+/** @brief Installs the skybox pipeline (Bevy `SkyboxPlugin`, `skybox/mod.rs:44-75`).
+ *
+ *  The shader is registered and loaded here, the specialization cache is
+ *  initialized and the pipeline itself is built in `RenderStartup`, exactly as
+ *  Bevy's `init_skybox_pipeline` does. */
+EPIX_EXPORT struct SkyboxPlugin {
+    void attach(app::App& app) const;
+};
+
 }  // namespace epix::core_graph
 
 template <>
