@@ -254,6 +254,15 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
         epix::render::batching::GpuPreprocessingMode::Culling});
 
     render_app->get().run_schedule(epix::render::RenderStartup);
+    // `create_downsample_depth_pipelines` runs in `RenderSystems::Prepare`, as in
+    // Bevy, so the render schedule has to run for it. A headless render app logs
+    // validation errors for the systems that expect a live frame (frame count,
+    // clear color, view attachments); that is a harness limitation and unrelated
+    // to this plugin, so the run only needs to reach the prepare set.
+    for (int attempt = 0; attempt < 5; ++attempt) {
+        render_app->get().run_schedule(epix::render::Render);
+        std::this_thread::yield();
+    }
 
     const auto pipelines = render_app->get().world().get_resource<DownsampleDepthPipelines>();
     ASSERT_TRUE(pipelines.has_value());

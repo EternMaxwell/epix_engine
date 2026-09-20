@@ -135,10 +135,102 @@ EPIX_EXPORT void create_downsample_depth_pipelines(
     ecs::Res<DownsampleDepthShader> downsample_depth_shader,
     ecs::Local<bool> has_run);
 
-/** @brief Installs the depth-pyramid machinery (Bevy `MipGenerationPlugin`).
- *
- *  The pyramid resource, the two `prepare_*` systems and the node that
- *  dispatches the passes are the remaining step of the port. */
+/** @brief `RenderStartup` system that creates the placeholder pyramid texture
+ *  (Bevy `init_depth_pyramid_dummy_texture`). */
+EPIX_EXPORT void init_depth_pyramid_dummy_texture(ecs::Commands commands, ecs::Res<wgpu::Device> render_device);
+
+/** @brief A hierarchical Z-buffer for one view: a series of mipmaps of the depth
+ *  buffer, bound to the downsample shader as storage images (Bevy
+ *  `ViewDepthPyramid`). */
+EPIX_EXPORT struct ViewDepthPyramid {
+    /** @brief A texture view containing the entire depth pyramid. */
+    wgpu::TextureView all_mips;
+    /** @brief One view per pyramid mip, or the dummy texture for unused mips. */
+    std::array<wgpu::TextureView, DEPTH_PYRAMID_MIP_COUNT> mips;
+    /** @brief The total number of mipmap levels. */
+    std::uint32_t mip_count = 0;
+
+    /** @brief Allocates a depth pyramid for a depth buffer of `size` (Bevy
+     *  `ViewDepthPyramid::new`). */
+    static ViewDepthPyramid create(const wgpu::Device& device,
+                                   render::render_resource::TextureCache& texture_cache,
+                                   const wgpu::TextureView& dummy_texture,
+                                   glm::uvec2 size,
+                                   const char* texture_label,
+                                   const char* texture_view_label);
+
+    /** @brief Creates the bind group that attaches `source` and this pyramid to
+     *  the downsample shader (Bevy `ViewDepthPyramid::create_bind_group`). */
+    [[nodiscard]] wgpu::BindGroup create_bind_group(const wgpu::Device& device,
+                                                    const char* label,
+                                                    const wgpu::BindGroupLayout& layout,
+                                                    const wgpu::TextureView& source,
+                                                    const wgpu::Sampler& sampler) const;
+
+    /** @brief Runs the two downsample passes (Bevy
+     *  `ViewDepthPyramid::downsample_depth`). */
+    void downsample_depth(const char* label,
+                          render::graph::RenderContext& render_context,
+                          glm::uvec2 view_size,
+                          const wgpu::BindGroup& bind_group,
+                          const render::ComputePipeline& first_phase,
+                          const render::ComputePipeline& second_phase) const;
+};
+
+/** @brief The bind group attaching one view's depth buffer and pyramid to the
+ *  downsample shader (Bevy `ViewDownsampleDepthBindGroup`). */
+EPIX_EXPORT struct ViewDownsampleDepthBindGroup {
+    wgpu::BindGroup bind_group;
+};
+
+/** @brief Creates depth pyramids for the views that have occlusion culling
+ *  enabled (Bevy `prepare_view_depth_pyramids`). The dummy texture is optional
+ *  so the system runs and does nothing when the platform has no pyramid
+ *  support, which is Bevy's `resource_exists` gate. */
+EPIX_EXPORT void prepare_view_depth_pyramids(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::ResMut<render::render_resource::TextureCache> texture_cache,
+    std::optional<ecs::Res<DepthPyramidDummyTexture>> depth_pyramid_dummy_texture,
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&>,
+               ecs::Filter<ecs::With<render::experimental::OcclusionCulling>,
+                           ecs::Without<render::view::NoIndirectDrawing>>>
+        views);
+
+/** @brief Creates the downsample bind groups for the views with a depth
+ *  pyramid (Bevy `prepare_downsample_depth_view_bind_groups`). The pipelines are
+ *  optional for the same reason as above. */
+EPIX_EXPORT void prepare_downsample_depth_view_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    std::optional<ecs::Res<DownsampleDepthPipelines>> downsample_depth_pipelines,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ViewDepthPyramid&,
+                         ecs::Opt<const render::view::ViewDepthTexture&>,
+                         ecs::Opt<const render::experimental::OcclusionCullingSubview&>>,
+               ecs::Filter<ecs::Or<ecs::With<render::view::ViewDepthTexture>,
+                                   ecs::With<render::experimental::OcclusionCullingSubview>>>>
+        view_depth_textures);
+
+/** @brief Produces the hierarchical Z-buffer for a view (Bevy
+ *  `DownsampleDepthNode`), installed twice: before the late prepass and at the
+ *  end of the main phase. */
+EPIX_EXPORT struct DownsampleDepthNode {
+    using ViewQuery = ecs::Item<const ViewDepthPyramid&,
+                                const ViewDownsampleDepthBindGroup&,
+                                const render::view::ViewDepthTexture&>;
+    void update(ecs::World&) {}
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                        render::graph::RenderContext& render_context,
+                                                        typename ecs::QueryData<ViewQuery>::Item view,
+                                                        const ecs::World& world) const;
+};
+
+/** @brief Installs the depth-pyramid machinery (Bevy `MipGenerationPlugin`):
+ *  the shader and its four pipelines, the two prepare systems that give every
+ *  occlusion-culling view a pyramid and a bind group, and the node that runs
+ *  the downsample passes at Bevy's two graph labels. */
 EPIX_EXPORT struct MipGenerationPlugin {
     void attach(app::App& app) const;
 };
