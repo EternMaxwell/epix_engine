@@ -510,6 +510,17 @@ std::optional<wgpu::TextureView> ViewPrepassTextures::deferred_view() const {
 }
 
 namespace {
+/** @brief Everything the prepass skybox draw needs, gathered from one view.
+ *  Bevy's prepass node carries these as query items (`prepass/node.rs:215-235`). */
+struct SkyboxPrepassDraw {
+    ::epix::render::CachedPipelineId pipeline_id;
+    wgpu::BindGroup bind_group;
+    /** @brief This view's `ViewUniform` entry offset (the first dynamic offset). */
+    std::uint32_t view_uniform_offset = 0;
+    /** @brief This view's `PreviousViewData` entry offset (the second). */
+    std::uint32_t previous_view_uniform_offset = 0;
+};
+
 /** @brief Shared body of Bevy's `run_prepass` (`prepass/node.rs:107`). */
 std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
                                                      graph::RenderContext& render_context,
@@ -523,6 +534,23 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
     // A deferred prepass replaces this one entirely, so a deferred view leaves
     // the bins empty; bail out instead of looking at them (Bevy node.rs:127).
     if (has_deferred) return {};
+
+    // The skybox's motion-vector draw (Bevy `prepass/node.rs:215-235`). Bevy reads
+    // these off the view's query; looking them up here keeps the node queries
+    // untouched, and the draw runs only when all four exist, which is the
+    // condition Bevy's `if let` expresses.
+    const auto skybox_prepass_draw = [&]() -> std::optional<SkyboxPrepassDraw> {
+        const auto entity          = graph.view_entity();
+        const auto pipeline        = world.entity(entity).get<::epix::core_graph::RenderSkyboxPrepassPipeline>();
+        const auto bind_group      = world.entity(entity).get<::epix::core_graph::SkyboxPrepassBindGroup>();
+        const auto view_offset     = world.entity(entity).get<::epix::render::view::ViewUniformOffset>();
+        const auto previous_offset = world.entity(entity).get<::epix::core_graph::PreviousViewUniformOffset>();
+        if (!pipeline || !bind_group || !view_offset || !previous_offset) return std::nullopt;
+        return SkyboxPrepassDraw{.pipeline_id                  = pipeline->get().pipeline_id,
+                                 .bind_group                   = bind_group->get().bind_group,
+                                 .view_uniform_offset          = view_offset->get().offset,
+                                 .previous_view_uniform_offset = previous_offset->get().offset};
+    }();
 
     const auto opaque_prepass_phases = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
     const auto alpha_mask_prepass_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
@@ -569,7 +597,8 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
 
     render_context.add_command_buffer_generation_task(
         [color_attachments, has_any_color, depth_attachment, viewport, view_entity, world_ptr, opaque_ptr, mask_ptr,
-         has_prepass_depth, prepass_depth_texture, prepass_copy_size, depth_texture_copy, label](wgpu::Device device) {
+         has_prepass_depth, prepass_depth_texture, prepass_copy_size, depth_texture_copy, skybox_prepass_draw,
+         label](wgpu::Device device) {
             auto encoder = device.createCommandEncoder(
                 wgpu::CommandEncoderDescriptor().setLabel("prepass_command_encoder"));
 
@@ -588,6 +617,26 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
                 }
                 if (!opaque_ptr->is_empty()) opaque_ptr->render(render_pass, *world_ptr, view_entity);
                 if (!mask_ptr->is_empty()) mask_ptr->render(render_pass, *world_ptr, view_entity);
+
+                // Skybox draw using a fullscreen triangle, after the phase items,
+                // with both dynamic offsets (Bevy `prepass/node.rs:215-235`).
+                if (skybox_prepass_draw) {
+                    const auto pipeline_server = world_ptr->get_resource<::epix::render::PipelineServer>();
+                    const auto pipeline =
+                        pipeline_server
+                            ? pipeline_server->get().get_render_pipeline(skybox_prepass_draw->pipeline_id)
+                            : std::expected<std::reference_wrapper<const ::epix::render::RenderPipeline>,
+                                            ::epix::render::GetPipelineError>{std::unexpect,
+                                                                              ::epix::render::GetPipelineError{}};
+                    if (pipeline) {
+                        render_pass.setPipeline(pipeline->get().pipeline());
+                        const std::array offsets{skybox_prepass_draw->view_uniform_offset,
+                                                 skybox_prepass_draw->previous_view_uniform_offset};
+                        render_pass.setBindGroup(0, skybox_prepass_draw->bind_group, offsets);
+                        render_pass.draw(3, 1, 0, 0);
+                    }
+                }
+
                 render_pass.end();
             }
 
