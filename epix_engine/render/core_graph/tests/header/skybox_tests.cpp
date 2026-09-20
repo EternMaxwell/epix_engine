@@ -122,12 +122,12 @@ TEST(Skybox, PipelineCompilesWithThePortedShader) {
     auto app = epix::app::App::create();
     add_skybox_test_prerequisites(app);
     try {
-        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(epix::render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
 
-    SkyboxPlugin{}.attach(app);
+    app.add_plugins(SkyboxPlugin{});
 
     const auto render_app = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render_app.has_value());

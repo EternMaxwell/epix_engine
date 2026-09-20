@@ -78,10 +78,10 @@ ProcessedShaderEnv make_processed_shader_env(const memory::Directory& source_dir
     plugin.watch_for_changes_override = watching;
     plugin.register_asset_source(AssetSourceId{},
                                  make_processed_memory_source_builder(source_dir, processed_dir, watching));
-    plugin.attach(app);
+    app.add_plugins(plugin);
 
     ShaderPlugin shader_plugin;
-    shader_plugin.attach(app);
+    app.add_plugins(shader_plugin);
     return {std::move(app), processed_dir};
 }
 
@@ -196,7 +196,7 @@ static AssetProcessor make_processor_for_direct_test() {
     App app = App::create();
     AssetPlugin plugin;
     plugin.mode = AssetServerMode::Processed;
-    plugin.attach(app);
+    app.add_plugins(plugin);
     auto res = app.get_resource<AssetProcessor>();
     EXPECT_TRUE(res.has_value());
     return res->get();

@@ -8,7 +8,7 @@ using namespace epix::ecs;
 
 TEST(VisibilityPlugin, StandaloneRegistersVisibilityRequirements) {
     auto app = epix::app::App::create();
-    ::epix::camera::VisibilityPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::VisibilityPlugin{});
     const Entity entity = app.world_mut().spawn(::epix::camera::Visibility{}).id();
     EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::InheritedVisibility>());
     EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::ViewVisibility>());

@@ -266,7 +266,7 @@ TEST(Core3dPlugin, AddsCameraRequirementsAndExtractsCamera3d) {
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
@@ -637,7 +637,7 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }

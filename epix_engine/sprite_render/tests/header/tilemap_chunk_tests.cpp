@@ -46,10 +46,10 @@ App make_shader_asset_app() {
 
     AssetPlugin asset_plugin;
     asset_plugin.mode = AssetServerMode::Unprocessed;
-    asset_plugin.attach(app);
+    app.add_plugins(asset_plugin);
 
     ShaderPlugin shader_plugin;
-    shader_plugin.attach(app);
+    app.add_plugins(shader_plugin);
 
     return app;
 }

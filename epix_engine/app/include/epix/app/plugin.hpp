@@ -165,9 +165,14 @@ struct Plugins {
             spdlog::debug("[app] Attaching plugin [type = {}].", meta::type_id<T>::name());
             wrapper->attach(app);
         } catch (const std::exception& e) {
+            // A plugin that cannot attach is an error the caller has to see, so the
+            // diagnostic is logged and the exception is then propagated rather than
+            // swallowed.
             spdlog::error("Error attaching plugin[type = {}]: {}", meta::type_id<T>::name(), e.what());
+            throw;
         } catch (...) {
             spdlog::error("Unknown error attaching plugin[type = {}]", meta::type_id<T>::name());
+            throw;
         }
     }
 

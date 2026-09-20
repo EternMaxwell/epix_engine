@@ -252,7 +252,7 @@ TEST(MeshModule, MeshAllocatorPluginPreservesSettingsResource) {
     render_app->world_mut().insert_resource(custom);
     app.insert_sub_app(epix::render::Render, std::move(render_app));
 
-    mesh_allocator::MeshAllocatorPlugin{}.attach(app);
+    app.add_plugins(mesh_allocator::MeshAllocatorPlugin{});
 
     auto render = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render.has_value());

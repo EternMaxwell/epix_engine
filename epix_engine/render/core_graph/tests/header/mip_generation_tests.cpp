@@ -134,7 +134,7 @@ TEST(MipGeneration, LayoutAndDummyTextureAreValidOnDevice) {
     auto app = epix::app::App::create();
     add_core_graph_test_prerequisites(app);
     try {
-        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(epix::render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
@@ -190,7 +190,7 @@ void downsample_depth_first() {
     auto app = epix::app::App::create();
     add_core_graph_test_prerequisites(app);
     try {
-        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(epix::render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
@@ -226,12 +226,12 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
     auto app = epix::app::App::create();
     add_core_graph_test_prerequisites(app);
     try {
-        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(epix::render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
 
-    epix::core_graph::mip_generation::MipGenerationPlugin{}.attach(app);
+    app.add_plugins(epix::core_graph::mip_generation::MipGenerationPlugin{});
 
     auto render_app = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render_app.has_value());
@@ -314,11 +314,11 @@ TEST(MipGeneration, DownsampleDepthWritesTheReducedDepthIntoThePyramid) {
     auto app = epix::app::App::create();
     add_core_graph_test_prerequisites(app);
     try {
-        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(epix::render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
-    epix::core_graph::mip_generation::MipGenerationPlugin{}.attach(app);
+    app.add_plugins(epix::core_graph::mip_generation::MipGenerationPlugin{});
 
     const auto render_app = app.get_sub_app_mut(epix::render::Render);
     ASSERT_TRUE(render_app.has_value());

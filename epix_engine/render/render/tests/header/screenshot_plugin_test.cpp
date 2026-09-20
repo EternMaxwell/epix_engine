@@ -34,7 +34,7 @@ TEST(ScreenshotPlugin, WindowRenderPluginInstallsAndCapturesComponentRequest) {
         .add_plugins(FrameCountPlugin{});
 
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available: " << error.what();
     }

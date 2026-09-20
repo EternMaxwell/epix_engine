@@ -145,7 +145,7 @@ TEST(Mesh2dShader, CompilesAfterInitMesh2dPipelineLoadsIt) {
     app.add_events<epix::window::WindowClosed>();
     add_render_prerequisites(app);
     try {
-        render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(render::RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }

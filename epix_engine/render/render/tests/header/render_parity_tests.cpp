@@ -1191,9 +1191,9 @@ TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
     wgpu::Limits limits{};
     app.get_sub_app_mut(Render)->get().world_mut().insert_resource(
         batching::BatchedInstanceBuffer<std::uint32_t>{limits});
-    batching::BatchingPlugin{}.attach(app);
-    phase::SortedRenderPhasePlugin<CpuBatchTestItem, CpuBatchSystemAdapter>{}.attach(app);
-    phase::BinnedRenderPhasePlugin<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>{}.attach(app);
+    app.add_plugins(batching::BatchingPlugin{});
+    app.add_plugins(phase::SortedRenderPhasePlugin<CpuBatchTestItem, CpuBatchSystemAdapter>{});
+    app.add_plugins(phase::BinnedRenderPhasePlugin<CpuBinnedBatchTestItem, CpuBinnedBatchTestAdapter>{});
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
@@ -1947,7 +1947,7 @@ TEST(ManualTextureView, MatchesBevyDefaultFormatAndMapWrapper) {
 TEST(WindowRenderPlugin, InstallsWindowResourcesInTheRenderWorld) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);
-    window::WindowRenderPlugin{}.attach(app);
+    app.add_plugins(window::WindowRenderPlugin{});
     const auto& render_world = app.sub_app(Render).world();
     EXPECT_TRUE(render_world.get_resource<window::ExtractedWindows>().has_value());
     EXPECT_TRUE(render_world.get_resource<window::WindowSurfaces>().has_value());
@@ -1994,7 +1994,7 @@ TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);
 
-    ::epix::render::camera::CameraPlugin{}.attach(app);
+    app.add_plugins(::epix::render::camera::CameraPlugin{});
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
@@ -2006,12 +2006,12 @@ TEST(RenderCameraPlugin, DoesNotInventRenderWorldClearColor) {
 
 TEST(RenderPlugins, TolerateMissingRenderSubApp) {
     auto app = epix::app::App::create();
-    EXPECT_NO_THROW(GlobalsPlugin{}.attach(app));
-    EXPECT_NO_THROW(view::RenderVisibilityRangePlugin{}.attach(app));
-    EXPECT_NO_THROW(ExtractInstancesPlugin<EarlyExtractInstance>{}.attach(app));
-    EXPECT_NO_THROW(ExtractResourcePlugin<FrameCount>{}.attach(app));
-    EXPECT_NO_THROW(GpuComponentArrayBufferPlugin<EarlyExtractInstance>{}.attach(app));
-    EXPECT_NO_THROW(UniformComponentPlugin<UniformPluginProbe>{}.attach(app));
+    EXPECT_NO_THROW(app.add_plugins(GlobalsPlugin{}));
+    EXPECT_NO_THROW(app.add_plugins(view::RenderVisibilityRangePlugin{}));
+    EXPECT_NO_THROW(app.add_plugins(ExtractInstancesPlugin<EarlyExtractInstance>{}));
+    EXPECT_NO_THROW(app.add_plugins(ExtractResourcePlugin<FrameCount>{}));
+    EXPECT_NO_THROW(app.add_plugins(GpuComponentArrayBufferPlugin<EarlyExtractInstance>{}));
+    EXPECT_NO_THROW(app.add_plugins(UniformComponentPlugin<UniformPluginProbe>{}));
 }
 
 TEST(ExtractedInstances, MapAccessUsesLazyRanges) {
@@ -2035,7 +2035,7 @@ TEST(GlobalsPlugin, LeavesRenderFrameCountToExtraction) {
     auto app = epix::app::App::create();
     app.add_sub_app(Render);
 
-    GlobalsPlugin{}.attach(app);
+    app.add_plugins(GlobalsPlugin{});
 
     const auto render_app = app.get_sub_app(Render);
     ASSERT_TRUE(render_app.has_value());
@@ -2047,7 +2047,7 @@ TEST(GlobalsPlugin, LeavesRenderFrameCountToExtraction) {
 TEST(ViewPlugin, ToleratesMissingRenderSubAppWithoutMainWorldGpuState) {
     auto app = epix::app::App::create();
 
-    EXPECT_NO_THROW(view::ViewPlugin{}.attach(app));
+    EXPECT_NO_THROW(app.add_plugins(view::ViewPlugin{}));
     // The view uniform buffer and its per-view offsets are render-app state in
     // Bevy, so attaching without a render sub-app must leave the main world
     // without them (and without the render-device-dependent resources that used
@@ -2555,7 +2555,7 @@ TEST(RenderContext, DefersAndParallelizesCommandBufferGenerationTasks) {
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(FrameCountPlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }

@@ -227,7 +227,7 @@ TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
@@ -279,7 +279,7 @@ TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
         .add_plugins(epix::assets::AssetPlugin{})
         .add_plugins(epix::image::ImagePlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
     }
@@ -576,7 +576,7 @@ TEST(FullscreenMaterial, StructuredForBevyParity) {
                   typename ::epix::core_graph::FullscreenMaterialNode<C3FullscreenMaterialProbe>::ViewQuery>);
 
     auto app = epix::app::App::create();
-    EXPECT_NO_THROW(::epix::core_graph::FullscreenMaterialPlugin<C3FullscreenMaterialProbe>{}.attach(app));
+    EXPECT_NO_THROW(app.add_plugins(::epix::core_graph::FullscreenMaterialPlugin<C3FullscreenMaterialProbe>{}));
 }
 
 // C3: the routing key for a fullscreen material's node is the material's own

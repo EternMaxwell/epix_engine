@@ -33,7 +33,7 @@ TEST(CameraMarkers, SupplyCameraRenderTargetRequirements) {
 
 TEST(VisibilityPlugin, StandaloneRegistersVisibilityRequirements) {
     auto app = epix::app::App::create();
-    ::epix::camera::VisibilityPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::VisibilityPlugin{});
     const Entity entity = app.world_mut().spawn(::epix::camera::Visibility{}).id();
     EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::InheritedVisibility>());
     EXPECT_TRUE(app.world().entity(entity).contains<::epix::camera::ViewVisibility>());
@@ -258,7 +258,7 @@ TEST(CameraSystem, MatchesBevyChangeSensitiveLogicalAndDpiUpdates) {
     };
 
     auto app = epix::app::App::create();
-    ::epix::camera::CameraPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::CameraPlugin{});
     const Entity window = app.world_mut()
                               .spawn(::epix::window::Window{.physical_size = {400, 200}, .scale_factor = 1.0f},
                                      ::epix::window::PrimaryWindow{})
@@ -317,7 +317,7 @@ TEST(CameraPlugin, PreservesPreconfiguredClearColor) {
     const ::epix::camera::ClearColor configured{0.25f, 0.5f, 0.75f, 1.0f};
     app.world_mut().insert_resource(configured);
 
-    ::epix::camera::CameraPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::CameraPlugin{});
 
     const auto& clear_color = app.world().resource<::epix::camera::ClearColor>();
     EXPECT_EQ(clear_color.to_vec4(), configured.to_vec4());
@@ -514,7 +514,7 @@ TEST(CameraFrustum, CustomFarMatchesProjectionFrustumConstruction) {
 
 TEST(ViewVisibility, TracksVisibleToHiddenTransition) {
     ::epix::app::App app = ::epix::app::App::create();
-    ::epix::camera::CameraPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::CameraPlugin{});
     const Entity entity = app.world_mut().spawn(epix::camera::ViewVisibility::hidden()).id();
     app.world_mut().get_entity_mut(entity).transform([](EntityWorldMut&& world_entity) -> int {
         world_entity.get_mut<epix::camera::ViewVisibility>().value().get_mut().set_visible();
@@ -645,7 +645,7 @@ TEST(MeshAabb, MeshSpecializationIsOwnedByCameraAndComputesBounds) {
 
 TEST(VisibilityPlugin, Mesh2dReceivesRequiredVisibilityComponents) {
     ::epix::app::App app = ::epix::app::App::create();
-    ::epix::camera::VisibilityPlugin{}.attach(app);
+    app.add_plugins(::epix::camera::VisibilityPlugin{});
     const auto entity = app.world_mut()
                             .spawn(::epix::mesh::Mesh2d{::epix::assets::Handle<::epix::mesh::Mesh>{
                                 ::epix::assets::AssetId<::epix::mesh::Mesh>::invalid()}})

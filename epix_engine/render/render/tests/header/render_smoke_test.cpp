@@ -57,7 +57,7 @@ void namespace_probe() {}
     app.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(app);
     try {
-        RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+        app.add_plugins(RenderPlugin{.synchronous_pipeline_compilation = true});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
@@ -142,7 +142,7 @@ TEST(RenderWorld, EndToEndSyncAndExtract) {
         .add_plugins(epix::image::ImagePlugin{})
         .add_plugins(FrameCountPlugin{});
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
@@ -238,7 +238,7 @@ TEST(ViewTarget, LdrMainTextureUsesBevyDefaultSrgbFormat) {
     app.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(app);
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& error) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
     }
@@ -282,7 +282,7 @@ TEST(RenderWorld, ManualRenderCreationUsesSuppliedResources) {
     provider.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(provider);
     try {
-        RenderPlugin{}.attach(provider);
+        provider.add_plugins(RenderPlugin{});
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
@@ -301,7 +301,7 @@ TEST(RenderWorld, ManualRenderCreationUsesSuppliedResources) {
     add_render_test_prerequisites(manual);
     RenderPlugin plugin;
     plugin.render_creation = RenderCreation::manual(resources);
-    plugin.attach(manual);
+    manual.add_plugins(plugin);
 
     const auto& manual_device = manual.world().resource<wgpu::Device>();
     EXPECT_EQ(manual_device, resources.device);
@@ -356,7 +356,7 @@ TEST(RenderWorld, TrackedRenderPassSkipsRedundantBinds) {
     app.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(app);
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
@@ -451,7 +451,7 @@ TEST(RenderWorld, TrackedRenderPassExtendedState) {
     app.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(app);
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;
@@ -503,7 +503,7 @@ TEST(RenderWorld, ExtractVisibleComponentsSkipsCulled) {
     app.add_events<epix::window::WindowClosed>();
     add_render_test_prerequisites(app);
     try {
-        RenderPlugin{}.attach(app);
+        app.add_plugins(RenderPlugin{});
     } catch (const std::exception& e) {
         GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << e.what();
         return;

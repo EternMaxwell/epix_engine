@@ -55,7 +55,7 @@ TEST(ImagePlugin, InstallsBevyFallbackImageAssets) {
 
 TEST(ImagePlugin, RequiresExplicitAssetPlugin) {
     App app = App::create();
-    EXPECT_THROW(epix::image::ImagePlugin{}.attach(app), std::bad_optional_access);
+    EXPECT_THROW(app.add_plugins(epix::image::ImagePlugin{}), std::bad_optional_access);
 }
 
 TEST(TextureAtlasPlugin, RegistersLayoutAssets) {
