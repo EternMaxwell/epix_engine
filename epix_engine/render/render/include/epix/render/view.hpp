@@ -483,45 +483,6 @@ namespace epix::render::view {
 struct UniformBuffer {
     wgpu::Buffer buffer;
 };
-/** @brief Component holding the bind group for the view uniform buffer. */
-EPIX_EXPORT struct ViewBindGroup {
-    /** @brief Bind group exposing the ViewUniform to shaders. */
-    wgpu::BindGroup bind_group;
-};
-/** @brief Resource holding the bind group layout for view uniform
- * binding. */
-/** @brief The group-0 view uniform layout descriptor, shared by the pipelines
- *  that bind the view uniform (the descriptor form of the layout below). */
-EPIX_EXPORT BindGroupLayoutDescriptor view_uniform_layout_descriptor();
-
-/** @brief The view uniform bind group layout, interned once for the pipelines
- * binding. */
-EPIX_EXPORT struct ViewUniformBindingLayout {
-    wgpu::BindGroupLayout layout;
-    explicit ViewUniformBindingLayout(epix::ecs::World& world)
-        : layout(world.resource<render::PipelineServer>().get_bind_group_layout(
-              view_uniform_layout_descriptor())) {}
-};
-/** @brief Render command template that binds the view uniform buffer at
- * the specified bind group slot.
- * @tparam Slot Bind group index. */
-EPIX_EXPORT template <std::size_t Slot>
-struct BindViewUniform {
-    template <render::phase::PhaseItem P>
-    struct Command {
-        void prepare(const epix::ecs::World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const P&,
-            epix::ecs::Item<const ViewBindGroup&> view_bind_group,
-            std::optional<epix::ecs::Item<>> entity_item,
-            std::tuple<>,
-            const wgpu::RenderPassEncoder& encoder) {
-            encoder.setBindGroup(Slot, std::get<0>(*view_bind_group).bind_group, std::span<const std::uint32_t>{});
-            return {};
-        }
-    };
-};
 }  // namespace epix::render::view
 namespace epix::render::camera {
 /** @brief Manual mip bias for the camera's textures (Bevy MipBias). Defined below; forward-declared for

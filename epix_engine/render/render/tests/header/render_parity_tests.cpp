@@ -2048,7 +2048,12 @@ TEST(ViewPlugin, ToleratesMissingRenderSubAppWithoutMainWorldGpuState) {
     auto app = epix::app::App::create();
 
     EXPECT_NO_THROW(view::ViewPlugin{}.attach(app));
-    EXPECT_FALSE(app.world().get_resource<view::ViewUniformBindingLayout>().has_value());
+    // The view uniform buffer and its per-view offsets are render-app state in
+    // Bevy, so attaching without a render sub-app must leave the main world
+    // without them (and without the render-device-dependent resources that used
+    // to be created there).
+    EXPECT_FALSE(app.world().get_resource<view::ViewUniforms>().has_value());
+    EXPECT_FALSE(app.world().get_resource<view::ViewTargetAttachments>().has_value());
 }
 
 TEST(RenderCameraPlugin, CameraMarkersInheritRegisteredMsaaRequirement) {

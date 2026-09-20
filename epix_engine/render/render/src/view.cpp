@@ -85,21 +85,6 @@ public struct View {
 )";
 }  // namespace
 
-namespace epix::render::view {
-BindGroupLayoutDescriptor view_uniform_layout_descriptor() {
-    return BindGroupLayoutDescriptor().set_label("view_uniform_layout").set_entries(std::array{
-        wgpu::BindGroupLayoutEntry()
-            .setVisibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)
-            .setBinding(0)
-            .setBuffer(wgpu::BufferBindingLayout()
-                           .setType(wgpu::BufferBindingType::eUniform)
-                           .setHasDynamicOffset(false)
-                           .setMinBindingSize(sizeof(ViewUniform))),
-    });
-}
-
-}  // namespace epix::render::view
-
 void epix::render::view::update_manual_texture_view_cameras(
     Query<Item<Mut<::epix::camera::Camera>, Mut<::epix::camera::Projection>, const ::epix::camera::RenderTarget&>> cameras,
     Res<texture::ManualTextureViews> manual_texture_views) {
@@ -312,7 +297,6 @@ void create_uniform_for_view(Commands cmd,
                                         Opt<const ::epix::camera::MainPassResolutionOverride&>>> views,
                              Res<wgpu::Device> device,
                              ResMut<view::ViewUniforms> view_uniforms,
-                             Res<ViewUniformBindingLayout> uniform_layout,
                              Res<wgpu::Queue> queue,
                              Res<FrameCount> frame_count) {
     // Populate the ViewUniforms dynamic uniform buffer (Bevy prepare_view_uniforms,
@@ -370,33 +354,8 @@ void create_uniform_for_view(Commands cmd,
         cmd.entity(entity).insert(ViewUniformOffset{offset});
     }
     // wgpu-native lacks wgpu's mapped write-buffer view. Releasing the
-    // writer queues the one staged upload before bind-group construction.
+    // writer queues the one staged upload before the pipelines bind it.
     writer.reset();
-    // Build per-view bind groups with dynamic offsets into the uploaded buffer.
-    const auto* buffer = view_uniforms->uniforms.buffer();
-    if (!buffer) {
-        spdlog::error("Failed to create uniform buffer for views");
-        return;
-    }
-    std::size_t index = 0;
-    for (auto&& [entity, view, camera, opt_mip_bias, opt_frustum, opt_temporal_jitter, opt_resolution_override] :
-         views.iter()) {
-        (void)opt_mip_bias;
-        (void)opt_frustum;
-        (void)opt_temporal_jitter;
-        (void)opt_resolution_override;
-        std::uint32_t offset       = view_uniforms->offsets[index];
-        wgpu::BindGroup bind_group = device.get().createBindGroup(
-            wgpu::BindGroupDescriptor()
-                .setLayout(uniform_layout->layout)
-                .setEntries(std::array{
-                    wgpu::BindGroupEntry().setBinding(0).setBuffer(*buffer).setOffset(offset).setSize(
-                        sizeof(ViewUniform)),
-                })
-                .setLabel("ViewUniformBindGroup"));
-        cmd.entity(entity).insert(ViewBindGroup{std::move(bind_group)});
-        index++;
-    }
 }
 
 void view::ViewPlugin::attach(App& app) {
@@ -433,11 +392,9 @@ void view::ViewPlugin::attach(App& app) {
     // Bevy ViewPlugin adds RenderVisibilityRangePlugin (view/mod.rs:105-110).
     app.add_plugins(RenderVisibilityRangePlugin{});
     if (auto sub_app = app.get_sub_app_mut(render::Render)) {
-        // Bevy creates this render-device-dependent state only in the
-        // RenderApp. Keeping it out of the main world also permits ViewPlugin
-        // to be used without a renderer, as Bevy permits.
-        auto& render_world = sub_app->get().world_mut();
-        render_world.insert_resource(ViewUniformBindingLayout(render_world));
+        // Bevy creates this render-device-dependent state only in the RenderApp;
+        // keeping it out of the main world also permits ViewPlugin to be used
+        // without a renderer, as Bevy permits.
         // Bevy view/mod.rs:141-142: ViewUniforms + ViewTargetAttachments are
         // initialized in the render app (clear_view_attachments needs the latter).
         sub_app->get().world_mut().init_resource<ViewTargetAttachments>();
