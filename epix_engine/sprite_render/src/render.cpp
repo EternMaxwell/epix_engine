@@ -703,9 +703,10 @@ void SpriteRenderPlugin::ready(App& app) {
     world.init_resource<ExtractedSlices>();
     world.init_resource<SpriteAssetEvents>();
     world.init_resource<SpriteBatches>();
-    render::phase::app_add_render_commands<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-                                           SetSpriteViewBindGroup<0>::Command, SetSpriteTextureBindGroup<1>::Command,
-                                           DrawSpriteBatch>(render_subapp);
+    // Bevy `add_render_command::<Transparent2D, DrawSprite>` (`render/mod.rs`);
+    // the id is not kept, `queue_sprites` resolves it from this phase's
+    // `DrawFunctions` under the same `DrawSprite` name.
+    render::phase::app_add_render_command<DrawSprite>(render_subapp);
 
     render_subapp.add_systems(
         render::RenderStartup,

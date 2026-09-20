@@ -1,12 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/traits.hpp>
@@ -31,11 +32,10 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
-#include <epix/render/label.hpp>
 
 #include <epix/render/graph.hpp>
+#include <epix/render/label.hpp>
 #include <epix/render/pipeline.hpp>
 #include <epix/render/pipeline_server.hpp>
 #include <epix/render/retained_view_entity.hpp>
@@ -407,7 +407,9 @@ struct SortedRenderPhase {
 
     /** @brief Length of the item's batch range, at least 1 (Bevy
      * batch_range().len()). */
-    std::size_t batch_size(const T& item) const { return std::max<std::size_t>(1, batch_range_len(item.batch_range())); }
+    std::size_t batch_size(const T& item) const {
+        return std::max<std::size_t>(1, batch_range_len(item.batch_range()));
+    }
 
    public:
     void add(const T& item) { items.push_back(item); }
@@ -513,52 +515,62 @@ EPIX_EXPORT struct RenderCommandError {
     std::string message;
 };
 
-template <template <typename> typename R, typename P>
-using render_command_traits = traits::function_traits<decltype(&R<P>::render)>;
+/** @brief The render command trait: what one command needs for one phase - its
+ *  parameter type, its view and item queries, and its render entry point.
+ *
+ *  This is the C++ shape of Bevy's `impl RenderCommand<P> for C`
+ *  (`render_phase/draw.rs:270-330`), whose associated `Param`/`ViewQuery`/
+ *  `ItemQuery` are resolved per (command, phase) pair. A command author declares
+ *  a specialisation of it - partially, when the command is generic over the
+ *  phase, as Bevy's `SetItemPipeline` is
+ *  (`impl<P: CachedRenderPipelinePhaseItem> RenderCommand<P> for SetItemPipeline`)
+ *  or when it is generic over something else and shared across phases, as
+ *  `DrawMaterial2d<M>` is. Each specialisation carries the three types and the
+ *  `render` function itself; `prepare` may be inherited or declared.
+ *  @tparam C The command type.
+ *  @tparam P The phase item type. */
+EPIX_EXPORT template <typename C, typename P>
+struct RenderCommand;
 
-/** @brief Concept for a struct template that forms a render command
- * within a draw function sequence.
- * @tparam R The command template (parameterized on PhaseItem).
- * @tparam P The phase item type. */
-EPIX_EXPORT template <template <typename> typename R, typename P>
-concept RenderCommand = requires {
+/** @brief Concept for a render command implementation for phase `P`: the
+ *  `RenderCommand<C, P>` specialisation must carry Bevy's three associated types
+ *  and a callable `render` plus `prepare`.
+ *  @tparam C The command type.
+ *  @tparam P The phase item type. */
+EPIX_EXPORT template <typename C, typename P>
+concept RenderCommandImpl = requires {
     requires PhaseItem<P>;
-    requires std::is_member_function_pointer_v<decltype(&R<P>::render)>;
-    requires requires(R<P>& command, const epix::ecs::World& world) {
+    typename RenderCommand<C, P>::Param;
+    typename RenderCommand<C, P>::ViewQuery;
+    typename RenderCommand<C, P>::ItemQuery;
+    requires ecs::system_param<typename RenderCommand<C, P>::Param>;
+    requires epix::ecs::SystemParam<typename RenderCommand<C, P>::Param>::readonly;
+    requires ecs::readonly_query_data<typename RenderCommand<C, P>::ViewQuery>;
+    requires ecs::readonly_query_data<typename RenderCommand<C, P>::ItemQuery>;
+    requires std::constructible_from<RenderCommand<C, P>>;
+    requires std::movable<RenderCommand<C, P>>;
+    requires requires(RenderCommand<C, P>& command, const epix::ecs::World& world) {
         { command.prepare(world) };
     };
-    requires std::constructible_from<R<P>>;
-    requires std::movable<R<P>>;
-    requires render_command_traits<R, P>::arity == 5;
-    requires std::same_as<std::expected<void, RenderCommandError>, typename render_command_traits<R, P>::return_type>;
-    requires std::same_as<const P&, std::tuple_element_t<0, typename render_command_traits<R, P>::args_tuple>>;
-    requires ecs::query_data<std::tuple_element_t<1, typename render_command_traits<R, P>::args_tuple>>;
-    requires traits::specialization_of<std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>,
-                                       std::optional>;
-    requires ecs::query_data<
-        typename std::tuple_element_t<2, typename render_command_traits<R, P>::args_tuple>::value_type>;
-    requires ecs::system_param<typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>;
-    /** Bevy additionally requires `C::Param: ReadOnlySystemParam` and
-     * `ViewQuery`/`ItemQuery: ReadOnlyQueryData` (draw.rs:313-316): a render
-     * command must never mutate the world while a pass is being recorded, which
-     * is also what makes the shared draw-function state safe to use from
-     * concurrently recorded views. */
-    requires epix::ecs::SystemParam<
-        typename std::tuple_element_t<3, typename render_command_traits<R, P>::args_tuple>>::readonly;
-    requires std::convertible_to<const wgpu::RenderPassEncoder&,
-                                 std::tuple_element_t<4, typename render_command_traits<R, P>::args_tuple>>;
+    requires requires(RenderCommand<C, P>& command, const epix::ecs::World& world,
+                      const wgpu::RenderPassEncoder& render_pass, epix::ecs::Entity view, const P& item) {
+        {
+            command.render(item, std::declval<typename RenderCommand<C, P>::ViewQuery>(),
+                           std::declval<std::optional<typename RenderCommand<C, P>::ItemQuery>>(),
+                           std::declval<typename RenderCommand<C, P>::Param>(), render_pass)
+        } -> std::same_as<std::expected<void, RenderCommandError>>;
+    };
 };
 
-template <template <typename> typename R, PhaseItem P>
-    requires RenderCommand<R, P>
+template <typename C, PhaseItem P>
+    requires RenderCommandImpl<C, P>
 struct RenderCommandState {
-    using command_type       = R<P>;
-    using func_traits        = render_command_traits<R, P>;
-    using view_query_data    = std::tuple_element_t<1, typename func_traits::args_tuple>;
-    using entity_query_data  = typename std::tuple_element_t<2, typename func_traits::args_tuple>::value_type;
+    using command_type       = RenderCommand<C, P>;
+    using view_query_data    = typename command_type::ViewQuery;
+    using entity_query_data  = typename command_type::ItemQuery;
     using view_query_param   = epix::ecs::Query<view_query_data>;
     using entity_query_param = epix::ecs::Query<entity_query_data>;
-    using system_param       = std::tuple_element_t<3, typename func_traits::args_tuple>;
+    using system_param       = typename command_type::Param;
 
    private:
     /** @brief Only used to initialize and access-validate the three states as
@@ -567,8 +579,7 @@ struct RenderCommandState {
      * together in `RenderCommandState::new` (draw.rs:302-310). Nothing is ever
      * fetched through the combined set; the three parts are moved out and held
      * separately below. */
-    using combined_param =
-        epix::ecs::ROSystemParam<std::tuple<view_query_param, entity_query_param, system_param>>;
+    using combined_param = epix::ecs::ROSystemParam<std::tuple<view_query_param, entity_query_param, system_param>>;
     using combined_state = typename combined_param::State;
     using combined_items =
         typename epix::ecs::SystemParam<std::tuple<view_query_param, entity_query_param, system_param>>::Item;
@@ -612,23 +623,22 @@ struct RenderCommandState {
         // first so the failure names the command and the parameter: a bare
         // "Bad optional access" would surface from whichever task happened to
         // run the phase.
-        if (const auto valid = epix::ecs::SystemParam<system_param>::validate_param(*command_parameter_state, meta,
-                                                                                   mutable_world);
+        if (const auto valid =
+                epix::ecs::SystemParam<system_param>::validate_param(*command_parameter_state, meta, mutable_world);
             !valid) {
             const auto& error = valid.error();
             throw std::runtime_error(std::format("Render command {} cannot draw: parameter {} {}",
                                                  meta::type_id<command_type>::short_name(),
                                                  error.param_type.short_name(), error.message));
         }
-        auto command_parameters = epix::ecs::SystemParam<system_param>::get_param(
-            *command_parameter_state, meta, mutable_world, world.change_tick());
-        auto view_query     = view_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
+        auto command_parameters = epix::ecs::SystemParam<system_param>::get_param(*command_parameter_state, meta,
+                                                                                  mutable_world, world.change_tick());
+        auto view_query        = view_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
         auto view_query_result = view_query.get(view);
         if (!view_query_result) return std::unexpected(DrawError::invalid_view_query());
         auto entity_query = entity_state->query_manual_with_ticks(mutable_world, meta.last_run, world.change_tick());
         auto entity_query_result = entity_query.get(item.entity());
-        auto result =
-            command.render(item, *view_query_result, entity_query_result, std::move(command_parameters), ctx);
+        auto result = command.render(item, *view_query_result, entity_query_result, std::move(command_parameters), ctx);
         if (!result) {
             if (result.error().type == RenderCommandError::Type::Skip) {
                 return std::unexpected(DrawError::skip(std::move(result.error().message)));
@@ -653,11 +663,19 @@ struct RenderCommandState {
     command_type command;
 };
 
-/** @brief Render command that sets the cached render pipeline on the
- * encoder for a CachedRenderPipelinePhaseItem.
- * @tparam P The phase item type. */
+/** @brief Render command that sets the cached render pipeline on the encoder
+ *  for a `CachedRenderPipelinePhaseItem` (Bevy `SetItemPipeline`,
+ *  `render_phase/draw.rs:334-352`). One type serves every such phase through a
+ *  single partial specialisation of the trait, exactly as Bevy implements
+ *  `RenderCommand<P>` for the unit struct. */
+EPIX_EXPORT struct SetItemPipeline {};
+
 EPIX_EXPORT template <CachedRenderPipelinePhaseItem P>
-struct SetItemPipeline {
+struct RenderCommand<::epix::render::phase::SetItemPipeline, P> {
+    using Param     = epix::ecs::Res<PipelineServer>;
+    using ViewQuery = epix::ecs::Item<>;
+    using ItemQuery = epix::ecs::Item<>;
+
     void prepare(const epix::ecs::World&) noexcept {}
 
     std::expected<void, RenderCommandError> render(const P& item,
@@ -684,19 +702,24 @@ struct SetItemPipeline {
         return {};
     }
 };
-template <PhaseItem P, template <typename> typename... R>
-    requires(RenderCommand<R, P> && ...)
+template <PhaseItem P, typename... R>
+    requires(RenderCommandImpl<R, P> && ...)
 struct RenderCommandSequence {
    public:
+    /** @brief The phase this sequence draws. Bevy's command tuple is only a
+     *  tuple, so the phase is passed alongside it everywhere; Epix's sequence
+     *  carries it, which is what lets one named sequence identify both. */
+    using phase_item = P;
+
     explicit RenderCommandSequence(epix::ecs::World& world)
         : m_commands([&]<size_t... I>(std::index_sequence<I...>) {
               return std::tuple<RenderCommandState<R, P>...>{((void)I, RenderCommandState<R, P>(world))...};
-          }(std::index_sequence_for<R<P>...>{})) {}
+          }(std::index_sequence_for<R...>{})) {}
 
     void prepare(const epix::ecs::World& world) {
         [&]<size_t... I>(std::index_sequence<I...>) {
             (std::get<I>(m_commands).prepare(world), ...);
-        }(std::index_sequence_for<R<P>...>{});
+        }(std::index_sequence_for<R...>{});
     }
 
     std::expected<void, DrawError> draw(const epix::ecs::World& world,
@@ -723,12 +746,40 @@ struct RenderCommandSequence {
  * @tparam P The phase item type.
  * @tparam R Render command templates to chain.
  * @return The DrawFunctionId of the registered sequence. */
-EPIX_EXPORT template <PhaseItem P, template <typename> typename... R>
-    requires(RenderCommand<R, P> && ...)
+EPIX_EXPORT template <PhaseItem P, typename... R>
+    requires(RenderCommandImpl<R, P> && ...)
 DrawFunctionId app_add_render_commands(app::App& app) {
     auto& world          = app.world_mut();
     auto& draw_functions = world.resource_mut<DrawFunctions<P>>();
     return draw_functions.write()->template add<RenderCommandSequence<P, R...>>(world);
+}
+
+/** @brief `T` is a `RenderCommandSequence` instantiation. The sequence type is
+ *  the key `app_add_render_commands` files its draw function under, so it is
+ *  also what a phase's `DrawFunctions` registry is looked up with
+ *  (`DrawFunctions<P>::read()->id<Sequence>()`). */
+EPIX_EXPORT template <typename T>
+struct is_render_command_sequence : std::false_type {};
+EPIX_EXPORT template <PhaseItem P, typename... R>
+struct is_render_command_sequence<RenderCommandSequence<P, R...>> : std::true_type {};
+
+/** @brief Register one named render command sequence as a draw function for its
+ *  phase (Bevy `add_render_command::<P, C>`, `render_phase/draw.rs:376-390`).
+ *
+ *  Bevy passes the command type `C` - a tuple for a multi-command draw - and
+ *  maps that type to the new id, so the same name is used again for the
+ *  `DrawFunctions::<P>::read().id::<C>()` lookup (`DrawMaterial2d<M>`,
+ *  `DrawSprite`, `DrawWireframe2d`). Epix's `RenderCommandSequence` carries the
+ *  phase it draws, so the sequence type alone identifies both and this entry
+ *  point takes `C` rather than `<P, C>`.
+ *  @tparam C A `RenderCommandSequence` instantiation, named once by the caller.
+ *  @return The DrawFunctionId of the registered sequence. */
+EPIX_EXPORT template <typename C>
+    requires is_render_command_sequence<C>::value
+DrawFunctionId app_add_render_command(app::App& app) {
+    auto& world          = app.world_mut();
+    auto& draw_functions = world.resource_mut<DrawFunctions<typename C::phase_item>>();
+    return draw_functions.write()->template add<C>(world);
 }
 
 /** @brief Sort all retained views for a sorted phase type (Bevy
@@ -755,17 +806,17 @@ concept PhaseItemBatchSetKey = std::equality_comparable<T> && std::totally_order
  * `BinnedPhaseItem`). Bins own the key data; a phase item is constructed only
  * at draw time from the selected key pair and representative entity. */
 EPIX_EXPORT template <typename P>
-concept BinnedPhaseItem = PhaseItem<P> && requires(typename P::BatchSetKey batch_set_key,
-                                                    typename P::BinKey bin_key,
-                                                    std::pair<epix::ecs::Entity, sync_world::MainEntity>
-                                                        representative_entity,
-                                                    std::pair<std::uint32_t, std::uint32_t> batch_range,
-                                                    PhaseItemExtraIndex extra_index) {
-    typename P::BinKey;
-    typename P::BatchSetKey;
-    requires PhaseItemBatchSetKey<typename P::BatchSetKey>;
-    { P::create(batch_set_key, bin_key, representative_entity, batch_range, extra_index) } -> std::same_as<P>;
-};
+concept BinnedPhaseItem =
+    PhaseItem<P> && requires(typename P::BatchSetKey batch_set_key,
+                             typename P::BinKey bin_key,
+                             std::pair<epix::ecs::Entity, sync_world::MainEntity> representative_entity,
+                             std::pair<std::uint32_t, std::uint32_t> batch_range,
+                             PhaseItemExtraIndex extra_index) {
+        typename P::BinKey;
+        typename P::BatchSetKey;
+        requires PhaseItemBatchSetKey<typename P::BatchSetKey>;
+        { P::create(batch_set_key, bin_key, representative_entity, batch_range, extra_index) } -> std::same_as<P>;
+    };
 
 /**
  * @brief How a binned phase item is batched when rendered (Bevy `BatchMode`).

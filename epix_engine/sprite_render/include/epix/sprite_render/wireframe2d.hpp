@@ -224,39 +224,54 @@ static_assert(render::phase::BinnedPhaseItem<Wireframe2dPhaseItem>);
  *
  *  Bevy declares `PushConstantRange { FRAGMENT, 0..16 }` and writes the
  *  material's `[f32; 4]`; Epix writes the same 16 bytes to the fragment stage. */
-EPIX_EXPORT struct SetWireframe2dPushConstants {
-    template <render::phase::PhaseItem P>
-    struct Command {
-        void prepare(const ecs::World&) noexcept {}
+EPIX_EXPORT struct SetWireframe2dPushConstants {};
 
-        std::expected<void, render::phase::RenderCommandError> render(
-            const P& item,
-            ecs::Item<>,
-            std::optional<ecs::Item<>>,
-            std::tuple<ecs::Res<RenderWireframeInstances>, ecs::Res<render::RenderAssets<RenderWireframeMaterial>>> params,
-            const wgpu::RenderPassEncoder& encoder) {
-            auto&& [wireframe_instances, wireframe_assets] = params;
-            const auto material_it = wireframe_instances->instances.find(item.main_entity());
-            if (material_it == wireframe_instances->instances.end()) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Failure,
-                    .message = "No wireframe material found for entity",
-                });
-            }
-            const auto* material = wireframe_assets->try_get(material_it->second);
-            if (!material) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Failure,
-                    .message = "No wireframe material found for entity",
-                });
-            }
-            // wgpu v29 renamed push constants to immediates; the range is the
-            // same 16 bytes at offset 0 in the fragment stage.
-            encoder.setImmediates(0, &material->color, sizeof(glm::vec4));
-            return {};
+}  // namespace epix::sprite_render
+
+namespace epix::render::phase {
+/** @brief The wireframe push-constant command's trait specialisation (Bevy
+ *  `impl<P: PhaseItem> RenderCommand<P> for SetWireframe2dPushConstants`,
+ *  `:277-309`). It lives here rather than in `sprite_render` because the trait
+ *  it specialises does. */
+EPIX_EXPORT template <PhaseItem P>
+struct RenderCommand<::epix::sprite_render::SetWireframe2dPushConstants, P> {
+    using Param     = std::tuple<epix::ecs::Res<::epix::sprite_render::RenderWireframeInstances>,
+                                 epix::ecs::Res<::epix::render::RenderAssets<
+                                     ::epix::sprite_render::RenderWireframeMaterial>>>;
+    using ViewQuery = epix::ecs::Item<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) noexcept {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   epix::ecs::Item<>,
+                                                   std::optional<epix::ecs::Item<>>,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        auto&& [wireframe_instances, wireframe_assets] = params;
+        const auto material_it = wireframe_instances->instances.find(item.main_entity());
+        if (material_it == wireframe_instances->instances.end()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "No wireframe material found for entity",
+            });
         }
-    };
+        const auto* material = wireframe_assets->try_get(material_it->second);
+        if (!material) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "No wireframe material found for entity",
+            });
+        }
+        // wgpu v29 renamed push constants to immediates; the range is the same
+        // 16 bytes at offset 0 in the fragment stage.
+        encoder.setImmediates(0, &material->color, sizeof(glm::vec4));
+        return {};
+    }
 };
+}  // namespace epix::render::phase
+
+namespace epix::sprite_render {
 
 /** @brief The state that holds every view's specialized wireframe pipelines
  *  (Bevy `SpecializedWireframeViewPipelineCache`, `:508-515`): material entity
@@ -304,13 +319,14 @@ EPIX_EXPORT void init_wireframe_2d_pipeline(ecs::Commands commands,
                                             ecs::Res<Mesh2dPipeline> mesh_2d_pipeline,
                                             ecs::Res<assets::AssetServer> asset_server);
 
-/** @brief The draw command sequence registered for `Wireframe2dPhaseItem`
- *  (Bevy `DrawWireframe2d`, `:311-317`), kept as an id because the sequence's
- *  type cannot be named through `app_add_render_commands`. */
-EPIX_EXPORT struct Wireframe2dDrawFunction {
-    /** @brief The registered draw function. */
-    render::phase::DrawFunctionId value;
-};
+/** @brief Bevy's `DrawWireframe2d` command list (`:311-317`), named once here
+ *  and reused for both the registration and the
+ *  `DrawFunctions<Wireframe2dPhaseItem>::read()->id<DrawWireframe2d>()` lookup
+ *  `queue_wireframes` performs. */
+EPIX_EXPORT using DrawWireframe2d =
+    render::phase::RenderCommandSequence<Wireframe2dPhaseItem, render::phase::SetItemPipeline,
+                                         SetMesh2dViewBindGroup<0>, SetMesh2dBindGroup<1>,
+                                         SetWireframe2dPushConstants, DrawMesh2d>;
 
 /** @brief The graph node that draws the wireframe phase (Bevy
  *  `Wireframe2dNode`, `:358-409`). */
@@ -422,9 +438,11 @@ EPIX_EXPORT void specialize_wireframes(
     ecs::Res<Wireframe2dPipeline> pipeline,
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::SystemChangeTick ticks);
-/** @brief Bevy `queue_wireframes` (`:810-874`). */
+/** @brief Bevy `queue_wireframes` (`:810-874`). Bevy takes the phase's
+ *  `DrawFunctions` and resolves `DrawWireframe2d` from them here, rather than
+ *  the plugin stashing the id in a resource. */
 EPIX_EXPORT void queue_wireframes(
-    ecs::Res<Wireframe2dDrawFunction> custom_draw_functions,
+    ecs::Res<render::phase::DrawFunctions<Wireframe2dPhaseItem>> draw_functions,
     ecs::Res<RenderMesh2dInstances> render_mesh_instances,
     ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
     ecs::Res<SpecializedWireframePipelineCache> specialized_wireframe_pipeline_cache,

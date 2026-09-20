@@ -201,22 +201,57 @@ struct SetMaterial2dBindGroup {
     };
 };
 
-/** @brief The draw functions one material's sequence was registered with, one
- *  per 2D phase. Bevy looks these up from `DrawFunctions<P>` while preparing;
- *  Epix stores them, because the sequence's type cannot be named here: passing
- *  `SetMaterial2dBindGroup<M, I>::Command` as a template-template argument is a
- *  dependent template argument this toolchain rejects, so the alias cannot be
- *  written at all. */
-EPIX_EXPORT template <typename M>
-struct Material2dDrawFunctions {
-    /** @brief The `Opaque2D` draw function. */
-    render::phase::DrawFunctionId opaque{};
-    /** @brief The `AlphaMask2D` draw function. */
-    render::phase::DrawFunctionId alpha_mask{};
-    /** @brief The `Transparent2D` draw function. */
-    render::phase::DrawFunctionId transparent{};
-};
+}  // namespace epix::sprite_render
 
+namespace epix::render::phase {
+/** @brief The material bind-group command's trait specialisation: one command
+ *  type, every phase (Bevy `impl<P: PhaseItem, M: Material2d, const I: usize>
+ *  RenderCommand<P> for SetMaterial2dBindGroup<M, I>`). */
+EPIX_EXPORT template <typename M, std::size_t I, PhaseItem P>
+    requires std::derived_from<M, ::epix::sprite_render::Material2d<M>>
+struct RenderCommand<::epix::sprite_render::SetMaterial2dBindGroup<M, I>, P> {
+    using Param     = std::tuple<epix::ecs::Res<::epix::render::RenderAssets<
+                                     ::epix::sprite_render::PreparedMaterial2d<M>>>,
+                                 epix::ecs::Res<::epix::sprite_render::RenderMaterial2dInstances<M>>>;
+    using ViewQuery = std::tuple<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(
+        const P& item,
+        std::tuple<>,
+        std::optional<epix::ecs::Item<>> entity_item,
+        Param params,
+        const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        auto&& [materials, instances] = params;
+
+        const auto instance = instances->instances.find(item.main_entity());
+        if (instance == instances->instances.end()) return {};
+        const auto* prepared = materials->try_get(instance->second);
+        if (!prepared) return {};
+
+        encoder.setBindGroup(I, prepared->bind_group, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
+}  // namespace epix::render::phase
+
+namespace epix::sprite_render {
+
+/** @brief Bevy's `DrawMaterial2d<M>` command list (`material.rs`): the draw
+ *  sequence every 2D phase of this material registers, `SetItemPipeline`, the
+ *  mesh2d view and instance bind groups, the material's own bind group and
+ *  `DrawMesh2d`. Bevy's version is a tuple and so needs no phase parameter;
+ *  Epix's `RenderCommandSequence` carries its phase, so the phase is the second
+ *  argument here. The name is what both the registration and the draw-function
+ *  lookup in `prepare_asset` use, so the command list is written once. */
+template <typename M, typename P>
+using DrawMaterial2d =
+    render::phase::RenderCommandSequence<P, render::phase::SetItemPipeline, SetMesh2dViewBindGroup<0>,
+                                         SetMesh2dBindGroup<1>,
+                                         SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>, DrawMesh2d>;
 
 /** @brief The pipeline data of one 2D material type (Bevy
  *  `Material2dPipeline<M>`, `material.rs:380-388`). */
@@ -366,13 +401,16 @@ struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
     using Param          = std::tuple<
         epix::ecs::Res<wgpu::Device>, epix::ecs::Res<epix::render::PipelineServer>,
         epix::ecs::Res<epix::sprite_render::Material2dPipeline<M>>,
-        epix::ecs::Res<epix::sprite_render::Material2dDrawFunctions<M>>,
+        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Opaque2D>>,
+        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::AlphaMask2D>>,
+        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Transparent2D>>,
         typename epix::render::render_resource::AsBindGroup<M>::Param>;
 
     std::expected<epix::sprite_render::PreparedMaterial2d<M>, epix::render::PrepareAssetError<M>> prepare_asset(
         M&& material, epix::assets::AssetId<M>, Param params,
         const epix::sprite_render::PreparedMaterial2d<M>*) {
-        auto&& [device, pipeline_server, pipeline, material_draw_functions, material_param] = params;
+        auto&& [device, pipeline_server, pipeline, opaque_draw_functions, alpha_mask_draw_functions,
+                transparent_draw_functions, material_param] = params;
 
         const auto bind_group_data =
             epix::render::render_resource::AsBindGroup<M>::bind_group_data(material);
@@ -387,14 +425,28 @@ struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
             return std::unexpected(epix::render::PrepareAssetError<M>{std::move(error)});
         }
 
+        // Bevy resolves the draw function from the phase the material's alpha
+        // mode selects, by the name the sequence was registered under
+        // (`material.rs`: `opaque_draw_functions.read().id::<DrawMaterial2d<M>>()`
+        // and its two siblings), rather than storing the ids at registration
+        // time.
         const auto alpha_mode = material.alpha_mode();
         epix::render::phase::DrawFunctionId draw_function_id{};
         if (std::holds_alternative<epix::sprite_render::AlphaMode2dOpaque>(alpha_mode)) {
-            draw_function_id = material_draw_functions->opaque;
+            draw_function_id =
+                opaque_draw_functions->read()
+                    ->template id<
+                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Opaque2D>>();
         } else if (std::holds_alternative<epix::sprite_render::AlphaMode2dMask>(alpha_mode)) {
-            draw_function_id = material_draw_functions->alpha_mask;
+            draw_function_id =
+                alpha_mask_draw_functions->read()
+                    ->template id<
+                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::AlphaMask2D>>();
         } else {
-            draw_function_id = material_draw_functions->transparent;
+            draw_function_id =
+                transparent_draw_functions->read()
+                    ->template id<
+                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Transparent2D>>();
         }
 
         // `as_bind_group` already returns a `PreparedBindGroup`, which owns both

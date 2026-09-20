@@ -408,135 +408,160 @@ EPIX_EXPORT void prepare_mesh2d_bind_group(
     ecs::Res<render::batching::BatchedInstanceBuffer<Mesh2dUniform>> mesh2d_uniforms);
 
 /** @brief Binds the mesh2d view bind group at slot `I` (Bevy
- *  `SetMesh2dViewBindGroup`, `mesh.rs:719-737`). */
+ *  `SetMesh2dViewBindGroup`, `mesh.rs:719-737`). Its `RenderCommand<C, P>`
+ *  specialisation is generic over the phase, as Bevy's `impl<P: PhaseItem>
+ *  RenderCommand<P> for SetMesh2dViewBindGroup<I>` is. */
 EPIX_EXPORT template <std::size_t I>
-struct SetMesh2dViewBindGroup {
-    template <render::phase::PhaseItem P>
-    struct Command {
-        void prepare(const epix::ecs::World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const P&,
-            epix::ecs::Item<const render::view::ViewUniformOffset&, const Mesh2dViewBindGroup&> view,
-            std::optional<epix::ecs::Item<>> entity_item,
-            std::tuple<>,
-            const wgpu::RenderPassEncoder& encoder) {
-            (void)entity_item;
-            const auto& offset     = std::get<0>(view);
-            const auto& bind_group = std::get<1>(view);
-            encoder.setBindGroup(I, bind_group.value, offset.offset);
-            return {};
-        }
-    };
-};
+struct SetMesh2dViewBindGroup {};
 
 /** @brief Binds the mesh2d instance bind group at slot `I`, passing the item's
  *  dynamic offset when it has one (Bevy `SetMesh2dBindGroup`,
  *  `mesh.rs:739-766`). */
 EPIX_EXPORT template <std::size_t I>
-struct SetMesh2dBindGroup {
-    template <render::phase::PhaseItem P>
-    struct Command {
-        void prepare(const epix::ecs::World&) {}
-
-        std::expected<void, render::phase::RenderCommandError> render(
-            const P& item,
-            std::tuple<>,
-            std::optional<epix::ecs::Item<>> entity_item,
-            epix::ecs::Res<Mesh2dBindGroup> mesh2d_bind_group,
-            const wgpu::RenderPassEncoder& encoder) {
-            (void)entity_item;
-            // Bevy supplies a dynamic offset only when the item carries one.
-            std::array<std::uint32_t, 1> dynamic_offsets{};
-            std::size_t offset_count = 0;
-            const auto& extra_index  = item.extra_index();
-            if (extra_index.type == render::phase::PhaseItemExtraIndex::Type::DynamicOffset) {
-                dynamic_offsets[offset_count++] = extra_index.value;
-            }
-            encoder.setBindGroup(I, mesh2d_bind_group->value,
-                                 std::span<const std::uint32_t>{dynamic_offsets.data(), offset_count});
-            return {};
-        }
-    };
-};
+struct SetMesh2dBindGroup {};
 
 /** @brief Draws one batched 2D mesh from the mesh allocator (Bevy
  *  `DrawMesh2d`, `mesh.rs:768-828`).  Missing instance data, a missing GPU mesh
  *  or a missing allocator slice all skip, as they do in Bevy. */
-EPIX_EXPORT template <render::phase::PhaseItem P>
-struct DrawMesh2d {
+EPIX_EXPORT struct DrawMesh2d {};
+
+}  // namespace epix::sprite_render
+
+namespace epix::render::phase {
+/** @brief The mesh2d draw commands' trait specialisations: each command is one
+ *  tag type whose `RenderCommand<C, P>` specialisation is generic over the
+ *  phase, matching Bevy's `impl<P: PhaseItem> RenderCommand<P> for
+ *  SetMesh2dViewBindGroup<I>` and the two that follow it (`mesh.rs:719-828`).
+ *  They live here rather than in `sprite_render` because the trait they
+ *  specialise does. */
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::sprite_render::SetMesh2dViewBindGroup<I>, P> {
+    using Param     = std::tuple<>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ViewUniformOffset&,
+                                      const ::epix::sprite_render::Mesh2dViewBindGroup&>;
+    using ItemQuery = epix::ecs::Item<>;
+
     void prepare(const epix::ecs::World&) {}
 
-    std::expected<void, render::phase::RenderCommandError> render(
-            const P& item,
-            std::tuple<>,
-            std::optional<epix::ecs::Item<>> entity_item,
-            std::tuple<epix::ecs::Res<render::RenderAssets<render::mesh::RenderMesh>>, epix::ecs::Res<RenderMesh2dInstances>,
-                       epix::ecs::Res<render::mesh::MeshAllocator>>
-                params,
-            const wgpu::RenderPassEncoder& encoder) {
-            (void)entity_item;
-            auto&& [render_meshes, instances, mesh_allocator] = params;
-
-            const auto instance = instances->find(item.main_entity());
-            if (instance == instances->end()) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Skip,
-                    .message = std::format("[mesh2d] Main entity {:#x} has no RenderMesh2dInstance during draw.",
-                                           item.main_entity().id().index),
-                });
-            }
-            const auto mesh_asset_id = instance->second.mesh_asset_id;
-
-            auto* render_mesh = render_meshes->try_get(mesh_asset_id);
-            if (!render_mesh) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Skip,
-                    .message =
-                        std::format("[mesh2d] GPU mesh {} is missing from RenderAssets<Mesh> at draw time.",
-                                    mesh_asset_id.to_string_short()),
-                });
-            }
-            const auto vertex_slice = mesh_allocator->mesh_vertex_slice(mesh_asset_id);
-            if (!vertex_slice) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type = render::phase::RenderCommandError::Type::Skip,
-                    .message = std::format("[mesh2d] Mesh {} has no MeshAllocator vertex slice at draw time.",
-                                           mesh_asset_id.to_string_short()),
-                });
-            }
-
-            const auto& layout      = render_mesh->layout.value->layout();
-            const auto stride       = static_cast<std::uint64_t>(layout.array_stride);
-            const auto vertex_first = static_cast<std::uint64_t>(vertex_slice->range.first);
-            const auto vertex_count = static_cast<std::uint64_t>(vertex_slice->range.second - vertex_first);
-            encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_first * stride, vertex_count * stride);
-
-            const auto& batch_range = item.batch_range();
-            const auto batch_size   = render::phase::batch_range_len(batch_range);
-            if (render_mesh->indexed()) {
-                const auto index_slice = mesh_allocator->mesh_index_slice(mesh_asset_id);
-                if (!index_slice) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type = render::phase::RenderCommandError::Type::Skip,
-                        .message = std::format("[mesh2d] Indexed mesh {} has no MeshAllocator index slice.",
-                                               mesh_asset_id.to_string_short()),
-                    });
-                }
-                const auto* info                 = render_mesh->buffer_info.indexed_info();
-                const wgpu::IndexFormat format   = info ? info->index_format : wgpu::IndexFormat::eUint16;
-                const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
-                const auto index_first           = static_cast<std::uint64_t>(index_slice->range.first);
-                const auto index_count           = static_cast<std::uint64_t>(index_slice->range.second - index_first);
-                encoder.setIndexBuffer(*index_slice->buffer, format, index_first * element_size,
-                                       index_count * element_size);
-                encoder.drawIndexed(static_cast<std::uint32_t>(index_count), batch_size, 0, 0, batch_range.first);
-            } else {
-                encoder.draw(static_cast<std::uint32_t>(vertex_count), batch_size, 0, batch_range.first);
-            }
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        const auto& offset     = std::get<0>(view);
+        const auto& bind_group = std::get<1>(view);
+        encoder.setBindGroup(I, bind_group.value, offset.offset);
         return {};
     }
 };
+
+EPIX_EXPORT template <std::size_t I, PhaseItem P>
+struct RenderCommand<::epix::sprite_render::SetMesh2dBindGroup<I>, P> {
+    using Param     = epix::ecs::Res<::epix::sprite_render::Mesh2dBindGroup>;
+    using ViewQuery = std::tuple<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   std::tuple<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param mesh2d_bind_group,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        // Bevy supplies a dynamic offset only when the item carries one.
+        std::array<std::uint32_t, 1> dynamic_offsets{};
+        std::size_t offset_count = 0;
+        const auto& extra_index  = item.extra_index();
+        if (extra_index.type == PhaseItemExtraIndex::Type::DynamicOffset) {
+            dynamic_offsets[offset_count++] = extra_index.value;
+        }
+        encoder.setBindGroup(I, mesh2d_bind_group->value,
+                             std::span<const std::uint32_t>{dynamic_offsets.data(), offset_count});
+        return {};
+    }
+};
+
+EPIX_EXPORT template <PhaseItem P>
+struct RenderCommand<::epix::sprite_render::DrawMesh2d, P> {
+    using Param     = std::tuple<epix::ecs::Res<::epix::render::RenderAssets<::epix::render::mesh::RenderMesh>>,
+                                 epix::ecs::Res<::epix::sprite_render::RenderMesh2dInstances>,
+                                 epix::ecs::Res<::epix::render::mesh::MeshAllocator>>;
+    using ViewQuery = std::tuple<>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   std::tuple<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        (void)entity_item;
+        auto&& [render_meshes, instances, mesh_allocator] = params;
+
+        const auto instance = instances->find(item.main_entity());
+        if (instance == instances->end()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh2d] Main entity {:#x} has no RenderMesh2dInstance during draw.",
+                                       item.main_entity().id().index),
+            });
+        }
+        const auto mesh_asset_id = instance->second.mesh_asset_id;
+
+        auto* render_mesh = render_meshes->try_get(mesh_asset_id);
+        if (!render_mesh) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh2d] GPU mesh {} is missing from RenderAssets<Mesh> at draw time.",
+                                       mesh_asset_id.to_string_short()),
+            });
+        }
+        const auto vertex_slice = mesh_allocator->mesh_vertex_slice(mesh_asset_id);
+        if (!vertex_slice) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = std::format("[mesh2d] Mesh {} has no MeshAllocator vertex slice at draw time.",
+                                       mesh_asset_id.to_string_short()),
+            });
+        }
+
+        const auto& layout      = render_mesh->layout.value->layout();
+        const auto stride       = static_cast<std::uint64_t>(layout.array_stride);
+        const auto vertex_first = static_cast<std::uint64_t>(vertex_slice->range.first);
+        const auto vertex_count = static_cast<std::uint64_t>(vertex_slice->range.second - vertex_first);
+        encoder.setVertexBuffer(0, *vertex_slice->buffer, vertex_first * stride, vertex_count * stride);
+
+        const auto& batch_range = item.batch_range();
+        const auto batch_size   = batch_range_len(batch_range);
+        if (render_mesh->indexed()) {
+            const auto index_slice = mesh_allocator->mesh_index_slice(mesh_asset_id);
+            if (!index_slice) {
+                return std::unexpected(RenderCommandError{
+                    .type    = RenderCommandError::Type::Skip,
+                    .message = std::format("[mesh2d] Indexed mesh {} has no MeshAllocator index slice.",
+                                           mesh_asset_id.to_string_short()),
+                });
+            }
+            const auto* info                 = render_mesh->buffer_info.indexed_info();
+            const wgpu::IndexFormat format   = info ? info->index_format : wgpu::IndexFormat::eUint16;
+            const std::uint64_t element_size = format == wgpu::IndexFormat::eUint16 ? 2 : 4;
+            const auto index_first           = static_cast<std::uint64_t>(index_slice->range.first);
+            const auto index_count           = static_cast<std::uint64_t>(index_slice->range.second - index_first);
+            encoder.setIndexBuffer(*index_slice->buffer, format, index_first * element_size,
+                                   index_count * element_size);
+            encoder.drawIndexed(static_cast<std::uint32_t>(index_count), batch_size, 0, 0, batch_range.first);
+        } else {
+            encoder.draw(static_cast<std::uint32_t>(vertex_count), batch_size, 0, batch_range.first);
+        }
+        return {};
+    }
+};
+}  // namespace epix::render::phase
+
+namespace epix::sprite_render {
 
 /** @brief The mesh2d pipeline key of each view, refreshed when it changes
  *  (Bevy `ViewKeyCache`, `mesh.rs:116-117`). */

@@ -381,7 +381,7 @@ void epix::sprite_render::specialize_wireframes(
 }
 
 void epix::sprite_render::queue_wireframes(
-    ecs::Res<Wireframe2dDrawFunction> custom_draw_functions,
+    ecs::Res<render::phase::DrawFunctions<Wireframe2dPhaseItem>> draw_functions,
     ecs::Res<RenderMesh2dInstances> render_mesh_instances,
     ecs::Res<render::mesh::MeshAllocator> mesh_allocator,
     ecs::Res<SpecializedWireframePipelineCache> specialized_wireframe_pipeline_cache,
@@ -391,6 +391,7 @@ void epix::sprite_render::queue_wireframes(
     // Bevy `queue_wireframes` (`:810-874`). The skip order is Bevy's: phase,
     // view cache, material instance, cached pipeline entry, cached-entity tick,
     // mesh instance.
+    const auto draw_function = draw_functions->read()->template id<DrawWireframe2d>();
     for (auto&& [view, visible_entities] : views.iter()) {
         const auto phase_it = wireframe_2d_phases->phases.find(view.retained_view_entity);
         if (phase_it == wireframe_2d_phases->phases.end()) continue;
@@ -414,7 +415,7 @@ void epix::sprite_render::queue_wireframes(
             const Wireframe2dBatchSetKey batch_set_key{
                 .pipeline      = pipeline_id,
                 .asset_id      = material_it->second,
-                .draw_function = custom_draw_functions->value,
+                .draw_function = draw_function,
                 .vertex_slab   = vertex_slab.value_or(render::mesh::SlabId{}),
                 .index_slab    = index_slab,
             };
@@ -478,12 +479,10 @@ void epix::sprite_render::Wireframe2dPlugin::ready(app::App& app) {
 
     // Bevy `add_render_command::<Wireframe2dPhaseItem, DrawWireframe2d>`
     // (`:118`): the sequence is `SetItemPipeline`, the view and mesh bind
-    // groups, the colour push constants and `DrawMesh2d`.
-    render.world_mut().insert_resource(Wireframe2dDrawFunction{
-        .value = render::phase::app_add_render_commands<Wireframe2dPhaseItem, render::phase::SetItemPipeline,
-                                                        SetMesh2dViewBindGroup<0>::Command,
-                                                        SetMesh2dBindGroup<1>::Command,
-                                                        SetWireframe2dPushConstants::Command, DrawMesh2d>(render)});
+    // groups, the colour push constants and `DrawMesh2d`. The id is not kept:
+    // `queue_wireframes` resolves it from this phase's registry by the same
+    // name, as Bevy does.
+    render::phase::app_add_render_command<DrawWireframe2d>(render);
 
     // Bevy `add_render_graph_node::<ViewNodeRunner<Wireframe2dNode>>(Core2d,
     // Node2d::Wireframe)` with `EndMainPass -> Wireframe -> PostProcessing`

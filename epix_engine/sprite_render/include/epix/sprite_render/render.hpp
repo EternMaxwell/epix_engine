@@ -252,99 +252,133 @@ EPIX_EXPORT namespace epix::sprite_render {
     bool prepare_sprite_indices(SpriteMeta& sprite_meta);
     }  // namespace detail
 
+    /** @brief Binds the sprite view bind group at `Slot` (Bevy
+     *  `SetSpriteViewBindGroup`, `render/mod.rs`). Its `RenderCommand<C, P>`
+     *  specialisation is generic over the phase. */
     template <std::size_t Slot>
-    struct SetSpriteViewBindGroup {
-        template <render::phase::PhaseItem PhaseItem>
-        struct Command {
-            void prepare(const ecs::World&) noexcept {}
+    struct SetSpriteViewBindGroup {};
 
-            std::expected<void, render::phase::RenderCommandError> render(
-                const PhaseItem&,
-                ecs::Item<const render::view::ViewUniformOffset&, const SpriteViewBindGroup&> view,
-                std::optional<ecs::Item<>>,
-                std::tuple<>,
-                const wgpu::RenderPassEncoder& encoder) {
-                const auto& offset     = std::get<0>(view);
-                const auto& bind_group = std::get<1>(view);
-                encoder.setBindGroup(Slot, bind_group.value, offset.offset);
-                return {};
-            }
-        };
-    };
-
+    /** @brief Binds the sprite image bind group at `Slot` (Bevy
+     *  `SetSpriteTextureBindGroup`, `render/mod.rs`). */
     template <std::size_t Slot>
-    struct SetSpriteTextureBindGroup {
-        template <render::phase::PhaseItem PhaseItem>
-        struct Command {
-            void prepare(const ecs::World&) noexcept {}
+    struct SetSpriteTextureBindGroup {};
 
-            std::expected<void, render::phase::RenderCommandError> render(
-                const PhaseItem& item,
-                ecs::Item<const render::view::ExtractedView&> view_item,
-                std::optional<ecs::Item<>>,
-                std::tuple<ecs::Res<ImageBindGroups>, ecs::Res<SpriteBatches>> params,
-                const wgpu::RenderPassEncoder& encoder) {
-                const auto& view                    = std::get<0>(view_item);
-                auto&& [image_bind_groups, batches] = params;
-                const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
-                if (batch == batches->values.end()) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type    = render::phase::RenderCommandError::Type::Skip,
-                        .message = "sprite item has no prepared batch",
-                    });
-                }
-                const auto bind_group = image_bind_groups->values.find(batch->second.image_handle_id);
-                if (bind_group == image_bind_groups->values.end()) {
-                    return std::unexpected(render::phase::RenderCommandError{
-                        .type    = render::phase::RenderCommandError::Type::Failure,
-                        .message = "sprite batch has no prepared image bind group",
-                    });
-                }
-                encoder.setBindGroup(Slot, bind_group->second, std::span<const std::uint32_t>{});
-                return {};
-            }
-        };
-    };
+    /** @brief Draws one sprite batch (Bevy `DrawSpriteBatch`,
+     *  `render/mod.rs`). */
+    struct DrawSpriteBatch {};
 
-    template <render::phase::PhaseItem PhaseItem>
-    struct DrawSpriteBatch {
-        void prepare(const ecs::World&) noexcept {}
+}  // namespace epix::sprite_render
 
-        std::expected<void, render::phase::RenderCommandError> render(
-            const PhaseItem& item,
-            ecs::Item<const render::view::ExtractedView&> view_item,
-            std::optional<ecs::Item<>>,
-            std::tuple<ecs::Res<SpriteMeta>, ecs::Res<SpriteBatches>> params,
-            const wgpu::RenderPassEncoder& encoder) {
-            const auto& view              = std::get<0>(view_item);
-            auto&& [sprite_meta, batches] = params;
-            const auto batch = batches->values.find(SpriteBatchKey{view.retained_view_entity, item.entity()});
-            if (batch == batches->values.end()) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Skip,
-                    .message = "sprite item has no prepared batch",
-                });
-            }
-            const auto* indices   = sprite_meta->sprite_index_buffer.buffer();
-            const auto* instances = sprite_meta->sprite_instance_buffer.buffer();
-            if (!indices || !instances) {
-                return std::unexpected(render::phase::RenderCommandError{
-                    .type    = render::phase::RenderCommandError::Type::Failure,
-                    .message = "sprite batch buffers are not prepared",
-                });
-            }
-            encoder.setIndexBuffer(*indices, wgpu::IndexFormat::eUint32, 0, indices->getSize());
-            encoder.setVertexBuffer(0, *instances, 0, instances->getSize());
-            encoder.drawIndexed(6, batch->second.range.second - batch->second.range.first, 0, 0,
-                                batch->second.range.first);
-            return {};
+namespace epix::render::phase {
+/** @brief The sprite draw commands' trait specialisations (Bevy
+ *  `impl<P: PhaseItem> RenderCommand<P> for SetSpriteViewBindGroup<const N:
+ *  usize>` and the two that follow, `render/mod.rs`). They live here rather
+ *  than in `sprite_render` because the trait they specialise does. */
+EPIX_EXPORT template <std::size_t Slot, PhaseItem P>
+struct RenderCommand<::epix::sprite_render::SetSpriteViewBindGroup<Slot>, P> {
+    using Param     = std::tuple<>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ViewUniformOffset&,
+                                      const ::epix::sprite_render::SpriteViewBindGroup&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) noexcept {}
+
+    std::expected<void, RenderCommandError> render(const P&,
+                                                   ViewQuery view,
+                                                   std::optional<epix::ecs::Item<>>,
+                                                   Param,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        const auto& offset     = std::get<0>(view);
+        const auto& bind_group = std::get<1>(view);
+        encoder.setBindGroup(Slot, bind_group.value, offset.offset);
+        return {};
+    }
+};
+
+EPIX_EXPORT template <std::size_t Slot, PhaseItem P>
+struct RenderCommand<::epix::sprite_render::SetSpriteTextureBindGroup<Slot>, P> {
+    using Param     = std::tuple<epix::ecs::Res<::epix::sprite_render::ImageBindGroups>,
+                                 epix::ecs::Res<::epix::sprite_render::SpriteBatches>>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ExtractedView&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) noexcept {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   ViewQuery view_item,
+                                                   std::optional<epix::ecs::Item<>>,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        const auto& view                    = std::get<0>(view_item);
+        auto&& [image_bind_groups, batches] = params;
+        const auto batch =
+            batches->values.find(::epix::sprite_render::SpriteBatchKey{view.retained_view_entity, item.entity()});
+        if (batch == batches->values.end()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = "sprite item has no prepared batch",
+            });
         }
-    };
+        const auto bind_group = image_bind_groups->values.find(batch->second.image_handle_id);
+        if (bind_group == image_bind_groups->values.end()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "sprite batch has no prepared image bind group",
+            });
+        }
+        encoder.setBindGroup(Slot, bind_group->second, std::span<const std::uint32_t>{});
+        return {};
+    }
+};
 
+EPIX_EXPORT template <PhaseItem P>
+struct RenderCommand<::epix::sprite_render::DrawSpriteBatch, P> {
+    using Param     = std::tuple<epix::ecs::Res<::epix::sprite_render::SpriteMeta>,
+                                 epix::ecs::Res<::epix::sprite_render::SpriteBatches>>;
+    using ViewQuery = epix::ecs::Item<const ::epix::render::view::ExtractedView&>;
+    using ItemQuery = epix::ecs::Item<>;
+
+    void prepare(const epix::ecs::World&) noexcept {}
+
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   ViewQuery view_item,
+                                                   std::optional<epix::ecs::Item<>>,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
+        const auto& view              = std::get<0>(view_item);
+        auto&& [sprite_meta, batches] = params;
+        const auto batch =
+            batches->values.find(::epix::sprite_render::SpriteBatchKey{view.retained_view_entity, item.entity()});
+        if (batch == batches->values.end()) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Skip,
+                .message = "sprite item has no prepared batch",
+            });
+        }
+        const auto* indices   = sprite_meta->sprite_index_buffer.buffer();
+        const auto* instances = sprite_meta->sprite_instance_buffer.buffer();
+        if (!indices || !instances) {
+            return std::unexpected(RenderCommandError{
+                .type    = RenderCommandError::Type::Failure,
+                .message = "sprite batch buffers are not prepared",
+            });
+        }
+        encoder.setIndexBuffer(*indices, wgpu::IndexFormat::eUint32, 0, indices->getSize());
+        encoder.setVertexBuffer(0, *instances, 0, instances->getSize());
+        encoder.drawIndexed(6, batch->second.range.second - batch->second.range.first, 0, 0,
+                            batch->second.range.first);
+        return {};
+    }
+};
+}  // namespace epix::render::phase
+
+EPIX_EXPORT namespace epix::sprite_render {
+    /** @brief Bevy's `DrawSprite` command list (`render/mod.rs:838-843`), named
+     *  once here and reused for both the registration and the
+     *  `DrawFunctions<Transparent2D>::read()->id<DrawSprite>()` lookup. */
     using DrawSprite =
         render::phase::RenderCommandSequence<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
-                                             SetSpriteViewBindGroup<0>::Command, SetSpriteTextureBindGroup<1>::Command,
-                                             DrawSpriteBatch>;
+                                             SetSpriteViewBindGroup<0>, SetSpriteTextureBindGroup<1>, DrawSpriteBatch>;
 
     struct SpriteRenderPlugin {
         void attach(app::App& app);

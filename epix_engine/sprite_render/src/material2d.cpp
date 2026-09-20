@@ -254,23 +254,16 @@ void epix::sprite_render::Material2dPlugin<M>::ready(epix::app::App& app) {
     render.world_mut().init_resource<RenderMaterial2dInstances<M>>();
     render.world_mut().init_resource<epix::render::SpecializedMeshPipelines<Material2dPipeline<M>>>();
 
-    // The material's draw sequence, one registration per phase it can land in.
-    // The returned ids are kept because the sequence's type cannot be named (see
-    // `Material2dDrawFunctions`).
-    Material2dDrawFunctions<M> draw_functions{};
-    draw_functions.opaque = epix::render::phase::app_add_render_commands<
-        epix::core_graph::core_2d::Opaque2D, epix::render::phase::SetItemPipeline, SetMesh2dViewBindGroup<0>::Command,
-        SetMesh2dBindGroup<1>::Command, SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>::Command, DrawMesh2d>(
-        render);
-    draw_functions.alpha_mask = epix::render::phase::app_add_render_commands<
-        epix::core_graph::core_2d::AlphaMask2D, epix::render::phase::SetItemPipeline,
-        SetMesh2dViewBindGroup<0>::Command, SetMesh2dBindGroup<1>::Command,
-        SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>::Command, DrawMesh2d>(render);
-    draw_functions.transparent = epix::render::phase::app_add_render_commands<
-        epix::core_graph::core_2d::Transparent2D, epix::render::phase::SetItemPipeline,
-        SetMesh2dViewBindGroup<0>::Command, SetMesh2dBindGroup<1>::Command,
-        SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>::Command, DrawMesh2d>(render);
-    render.world_mut().insert_resource(draw_functions);
+    // The material's draw sequence, one registration per phase it can land in
+    // (Bevy `add_render_command::<P, DrawMaterial2d<M>>`, `material.rs`). No id
+    // is kept: `prepare_asset` resolves the draw function from the phase's own
+    // `DrawFunctions` under the same `DrawMaterial2d<M, P>` name.
+    epix::render::phase::app_add_render_command<
+        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Opaque2D>>(render);
+    epix::render::phase::app_add_render_command<
+        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::AlphaMask2D>>(render);
+    epix::render::phase::app_add_render_command<
+        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Transparent2D>>(render);
 
     render.add_systems(epix::render::RenderStartup,
                        epix::ecs::into(init_material_2d_pipeline<M>)

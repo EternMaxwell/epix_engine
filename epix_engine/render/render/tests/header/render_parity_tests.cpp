@@ -4405,7 +4405,10 @@ TEST(SetItemPipeline, SkipsOnPipelineMiss) {
     item.m_entity   = epix::ecs::Entity::from_index(1);
     item.m_pipeline = CachedPipelineId{42u};  // uncached
 
-    phase::SetItemPipeline<CachedPipelineTestItem> command;
+    // `SetItemPipeline` is a tag type now: its state and `render` live in the
+    // `RenderCommand<C, P>` specialisation, which is what the command sequence
+    // instantiates (draw.rs:270-352).
+    phase::RenderCommand<phase::SetItemPipeline, CachedPipelineTestItem> command;
     auto result = command.render(item, epix::ecs::Item<>{}, std::optional<epix::ecs::Item<>>{}, params,
                                  wgpu::RenderPassEncoder{});
     ASSERT_FALSE(result.has_value());
