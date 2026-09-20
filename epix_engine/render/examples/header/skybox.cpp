@@ -94,8 +94,15 @@ void spawn_scene(Commands commands, ResMut<assets::Assets<image::Image>> images)
     }
 
     const auto handle = images->emplace(std::move(*cubemap));
+    // The prepass markers make this example exercise the skybox's motion-vector
+    // prepass too: with a `MotionVectorPrepass` the view gets the prepass
+    // pipeline, its bind group and the previous-frame offsets, and the prepass
+    // node draws the skybox's velocity after its phase items - the only way that
+    // path runs in a real frame.
     commands.spawn(::epix::camera::Camera3d{}, transform::Transform::from_xyz(0.0f, 0.0f, kOrbitRadius),
-                   core_graph::Skybox{.image = handle, .brightness = kSkyboxBrightness}, OrbitCamera{});
+                   core_graph::Skybox{.image = handle, .brightness = kSkyboxBrightness},
+                   core_graph::core_3d::DepthPrepass{}, core_graph::core_3d::NormalPrepass{},
+                   core_graph::core_3d::MotionVectorPrepass{}, OrbitCamera{});
     spdlog::info("[skybox] spawned a cubemap camera orbiting the origin at radius {}", kOrbitRadius);
 }
 
@@ -130,18 +137,28 @@ void orbit_camera(Res<time::Time<>> time, Query<Mut<transform::Transform>, With<
 void probe_skybox(Query<Item<const render::camera::ExtractedCamera&,
                              const core_graph::Skybox&,
                              Opt<const core_graph::SkyboxPipelineId&>,
-                             Opt<const core_graph::SkyboxBindGroup&>>,
+                             Opt<const core_graph::SkyboxBindGroup&>,
+                             Opt<const core_graph::RenderSkyboxPrepassPipeline&>,
+                             Opt<const core_graph::SkyboxPrepassBindGroup&>,
+                             Opt<const core_graph::PreviousViewUniformOffset&>,
+                             Opt<const render::view::ViewUniformOffset&>>,
                   With<core_graph::Skybox>>
                       views,
                   Res<render::RenderAssets<render::texture::GpuImage>> images,
                   Local<bool> logged) {
     if (*logged) return;
-    for (auto&& [camera, skybox, pipeline_id, bind_group] : views.iter()) {
+    for (auto&& [camera, skybox, pipeline_id, bind_group, prepass_pipeline, prepass_bind_group, previous_offset,
+                 view_offset] : views.iter()) {
         const auto image = images->get(skybox.image);
         spdlog::info("[skybox] probe: exposure={} pipeline_id={} bind_group={} gpu_image={} size={}x{}x{}",
                      camera.exposure, pipeline_id.has_value(), bind_group.has_value(), static_cast<bool>(image),
                      image ? image->size.width : 0u, image ? image->size.height : 0u,
                      image ? image->size.depthOrArrayLayers : 0u);
+        // The prepass draw's four preconditions: all present means the prepass
+        // node's skybox branch runs for this view.
+        spdlog::info("[skybox] prepass probe: pipeline={} bind_group={} view_offset={} previous_offset={}",
+                     prepass_pipeline.has_value(), prepass_bind_group.has_value(), view_offset.has_value(),
+                     previous_offset.has_value());
         *logged = true;
         return;
     }
