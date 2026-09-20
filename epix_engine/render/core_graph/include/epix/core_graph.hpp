@@ -7,6 +7,7 @@
 #include <epix/core_graph/fullscreen.hpp>
 #include <epix/core_graph/fullscreen_material.hpp>
 #include <epix/core_graph/mip_generation.hpp>
+#include <epix/core_graph/prepass.hpp>
 #include <epix/core_graph/skybox.hpp>
 #include <epix/core_graph/tonemapping.hpp>
 #include <epix/core_graph/upscaling.hpp>
