@@ -1068,6 +1068,31 @@ void Core3dPlugin::attach(App& app) {
     app.add_plugins(render::ExtractComponentPlugin<::epix::camera::Camera3d>{});
     // Bevy Core3dPlugin installs the skybox plugin (core_3d/mod.rs:150).
     app.add_plugins(SkyboxPlugin{});
+
+    // The motion-vector prepass's previous-frame view data: the main world stores
+    // the camera's current matrices (`update_previous_view_data`), the extraction
+    // carries them to the render world one frame late, and the prepare system
+    // stamps each view with its buffer offset.
+    app.add_plugins(render::ExtractComponentPlugin<PreviousViewData>{});
+    app.add_systems(epix::app::Update, into(update_previous_view_data).set_name("update previous view data"));
+    if (auto render_sub_app = app.get_sub_app_mut(render::Render)) {
+        render_sub_app->get().add_systems(render::RenderStartup,
+                                          into([](Commands commands, Res<wgpu::Device> device) {
+                                              // A dynamic uniform buffer needs the device's
+                                              // alignment, which a default-constructed one
+                                              // does not have.
+                                              wgpu::Limits limits{};
+                                              device->getLimits(&limits);
+                                              commands.insert_resource(PreviousViewUniforms{
+                                                  .uniforms = render::render_resource::
+                                                      DynamicUniformBuffer<PreviousViewData>::new_with_alignment(
+                                                          limits.minUniformBufferOffsetAlignment)});
+                                          }).set_name("init previous view uniforms"));
+        render_sub_app->get().add_systems(render::Render,
+                                          into(prepare_previous_view_uniforms)
+                                              .in_set(render::RenderSystems::Prepare)
+                                              .set_name("prepare previous view uniforms"));
+    }
     // Bevy registers this in the main world's PostUpdate (core_3d/mod.rs:151).
     app.add_systems(::epix::app::PostUpdate, into(check_msaa).set_name("check msaa"));
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {

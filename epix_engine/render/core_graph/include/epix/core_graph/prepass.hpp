@@ -71,6 +71,19 @@ EPIX_EXPORT std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool no
                                                                         bool motion_vector_prepass,
                                                                         bool deferred_prepass);
 
+/** @brief Stores each camera's *current* matrices as `PreviousViewData`, which
+ *  the render world reads one frame late and therefore as the previous frame's
+ *  (Bevy `update_previous_view_data`, `bevy_pbr/src/prepass/mod.rs:189-206`).
+ *
+ *  Bevy schedules it in the PBR prepass; Epix's prepass nodes live in
+ *  `core_graph`, so it belongs here, and it only needs the camera's global matrix
+ *  and its projection. */
+EPIX_EXPORT void update_previous_view_data(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
+               ecs::With<camera::Camera3d>>
+        cameras);
+
 /** @brief Uploads every view's `PreviousViewData` into `PreviousViewUniforms`
  *  and stamps the view with its offset (Bevy `prepare_previous_view_uniforms`,
  *  `bevy_pbr/src/prepass/mod.rs`).
@@ -88,3 +101,16 @@ EPIX_EXPORT void prepare_previous_view_uniforms(
     ecs::Query<ecs::Item<ecs::Entity, const PreviousViewData&>> views);
 
 }  // namespace epix::core_graph
+
+namespace epix::render {
+/** @brief Extracts the previous-frame view data onto the view, so the render
+ *  world reads what the main world stored last frame (Bevy copies the component
+ *  along with the camera during extraction). */
+template <>
+struct ExtractComponent<core_graph::PreviousViewData> {
+    using QueryData   = const core_graph::PreviousViewData&;
+    using QueryFilter = epix::ecs::Filter<>;
+    using Out         = core_graph::PreviousViewData;
+    static std::optional<Out> extract_component(const core_graph::PreviousViewData& item) { return item; }
+};
+}  // namespace epix::render

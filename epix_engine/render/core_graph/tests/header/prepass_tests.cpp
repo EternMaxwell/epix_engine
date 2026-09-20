@@ -162,4 +162,45 @@ TEST(Prepass, PreparePreviousViewUniformsStampsEachView) {
     static_cast<void>(second);
 }
 
+/** @brief `update_previous_view_data` derives Bevy's five matrices from the
+ *  camera's global transform and its projection
+ *  (`bevy_pbr/src/prepass/mod.rs:189-206`), storing the *current* frame's so the
+ *  render world reads them one frame late. */
+TEST(Prepass, UpdatePreviousViewDataDerivesTheMatrixSet) {
+    auto app = epix::app::App::create();
+    app.add_plugins(epix::transform::TransformPlugin{});
+
+    const glm::mat4 world_from_view =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 5.0f)) * glm::rotate(glm::mat4(1.0f), 0.5f, glm::vec3(0.0f, 1.0f, 0.0f));
+    const auto camera = app.world_mut().spawn(epix::camera::Camera3d{}, epix::camera::Camera{},
+                                              epix::transform::GlobalTransform{.matrix = world_from_view});
+    static_cast<void>(camera);
+
+    app.add_systems(epix::app::Update, epix::ecs::into(update_previous_view_data).set_name("probe previous view data"));
+    app.run_schedule(epix::app::Update);
+
+    const auto close = [](const glm::mat4& left, const glm::mat4& right, float epsilon = 1e-3f) {
+        for (int column = 0; column < 4; ++column) {
+            for (int row = 0; row < 4; ++row) {
+                const float difference = left[column][row] - right[column][row];
+                if (difference > epsilon || difference < -epsilon) return false;
+            }
+        }
+        return true;
+    };
+
+    auto query = app.world_mut().query<const PreviousViewData&>();
+    auto found = false;
+    for (auto&& data : query.iter(app.world())) {
+        found = true;
+        // The global transform is the world-from-view matrix, and every other
+        // matrix follows from it and the projection.
+        EXPECT_TRUE(close(data.view_from_world, glm::inverse(world_from_view)));
+        EXPECT_TRUE(close(data.clip_from_world, data.clip_from_view * data.view_from_world));
+        EXPECT_TRUE(close(data.world_from_clip, glm::inverse(data.clip_from_world)));
+        EXPECT_TRUE(close(data.view_from_clip, glm::inverse(data.clip_from_view)));
+    }
+    EXPECT_TRUE(found) << "no PreviousViewData was inserted for the Camera3d";
+}
+
 }  // namespace

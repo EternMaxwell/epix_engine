@@ -36,6 +36,30 @@ std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass
     return targets;
 }
 
+void update_previous_view_data(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
+               ecs::With<camera::Camera3d>>
+        cameras) {
+    // Bevy `update_previous_view_data` (`bevy_pbr/src/prepass/mod.rs:189-206`):
+    // the camera's global transform is the world-from-view matrix, and every other
+    // matrix is derived from it and the projection.
+    for (auto&& [entity, camera, camera_transform] : cameras.iter()) {
+        const glm::mat4 world_from_view = camera_transform.matrix;
+        const glm::mat4 view_from_world = glm::inverse(world_from_view);
+        const glm::mat4 clip_from_view  = camera.clip_from_view();
+        const glm::mat4 view_from_clip  = glm::inverse(clip_from_view);
+
+        commands.entity(entity).insert(PreviousViewData{
+            .view_from_world = view_from_world,
+            .clip_from_world = clip_from_view * view_from_world,
+            .clip_from_view  = clip_from_view,
+            .world_from_clip = world_from_view * view_from_clip,
+            .view_from_clip  = view_from_clip,
+        });
+    }
+}
+
 void prepare_previous_view_uniforms(ecs::Commands commands,
                                     ecs::Res<wgpu::Device> device,
                                     ecs::Res<wgpu::Queue> queue,
