@@ -679,10 +679,11 @@ std::expected<void, graph::NodeRunError> LatePrepassNode::run(graph::GraphContex
     // Bevy only needs a late prepass when occlusion culling is active and the
     // view allows indirect drawing (prepass/node.rs:87-92). The `OcclusionCulling`
     // component exists in Epix but nothing yet splits the bins into a
-    // previously-visible early set and a newly-visible late set
-    // (`PreviousViewUniformOffset` has no producer), so a late pass would draw
-    // the early bins a second time. The early node owns the whole prepass until
-    // that subsystem lands (C14-D2).
+    // previously-visible early set and a newly-visible late set, so a late pass
+    // would draw the early bins a second time. The early node owns the whole
+    // prepass until that splitter lands (C14-D2); its other prerequisite, the
+    // previous frame's view data, is now produced (`update_previous_view_data`
+    // and `prepare_previous_view_uniforms`).
     static_cast<void>(graph);
     static_cast<void>(render_context);
     static_cast<void>(view);
