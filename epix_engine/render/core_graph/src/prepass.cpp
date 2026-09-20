@@ -22,6 +22,20 @@ std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(
     };
 }
 
+std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass, bool motion_vector_prepass,
+                                                             bool deferred_prepass) {
+    // Epix's fragment target list holds values, so a location the shader does not
+    // write becomes a target with an `Undefined` format rather than a hole.
+    const auto unwritten =
+        wgpu::ColorTargetState().setFormat(wgpu::TextureFormat::eUndefined).setWriteMask(wgpu::ColorWriteMask::eAll);
+
+    std::vector<wgpu::ColorTargetState> targets;
+    for (const auto& descriptor : prepass_target_descriptors(normal_prepass, motion_vector_prepass, deferred_prepass)) {
+        targets.push_back(descriptor.value_or(unwritten));
+    }
+    return targets;
+}
+
 void prepare_previous_view_uniforms(ecs::Commands commands,
                                     ecs::Res<wgpu::Device> device,
                                     ecs::Res<wgpu::Queue> queue,

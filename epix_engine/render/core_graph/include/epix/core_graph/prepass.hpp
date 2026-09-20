@@ -56,6 +56,21 @@ EPIX_EXPORT struct PreviousViewUniformOffset {
 EPIX_EXPORT std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(
     bool normal_prepass, bool motion_vector_prepass, bool deferred_prepass);
 
+/** @brief Converts a `prepass_target_descriptors` set into the target list a
+ *  fragment stage can carry.
+ *
+ *  Bevy stores `Option<ColorTargetState>` per location and leaves unwritten ones
+ *  `None`, but Epix's `FragmentState::targets` cannot hold a hole - the wrapper's
+ *  targets are values (`webgpu.hpp:5882-5890`) and so is the C ABI's array
+ *  (`webgpu.h:4794-4801`) - so an unwritten location is spelled as a target with
+ *  an `Undefined` format. wgpu accepts that while the shader writes a later
+ *  location, which is what the prepass skybox does (verified by
+ *  `SkyboxPrepass.UndefinedFormatTargetIsAcceptedAsAnUnwrittenSlot` in
+ *  `core_graph/tests/header/skybox_tests.cpp`). */
+EPIX_EXPORT std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass,
+                                                                        bool motion_vector_prepass,
+                                                                        bool deferred_prepass);
+
 /** @brief Uploads every view's `PreviousViewData` into `PreviousViewUniforms`
  *  and stamps the view with its offset (Bevy `prepare_previous_view_uniforms`,
  *  `bevy_pbr/src/prepass/mod.rs`).

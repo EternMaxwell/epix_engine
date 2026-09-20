@@ -84,6 +84,31 @@ TEST(Prepass, SkyboxPrepassTargetsAreNormalsAndMotionVectors) {
     EXPECT_FALSE(targets[3].has_value());
 }
 
+/** @brief The pipeline-ready form of that set keeps all four locations and
+ *  spells the unwritten ones as `Undefined`-format targets, which is the only
+ *  encoding Epix's fragment target list can carry. */
+TEST(Prepass, PipelineTargetsSpellUnwrittenLocationsAsUndefined) {
+    const auto targets = prepass_pipeline_targets(true, true, false);
+    ASSERT_EQ(targets.size(), 4u);
+    EXPECT_EQ(targets[0].format, epix::core_graph::core_3d::NORMAL_PREPASS_FORMAT);
+    EXPECT_EQ(targets[1].format, epix::core_graph::core_3d::MOTION_VECTOR_PREPASS_FORMAT);
+    EXPECT_EQ(targets[2].format, wgpu::TextureFormat::eUndefined)
+        << "the deferred G-buffer location is unwritten here";
+    EXPECT_EQ(targets[3].format, wgpu::TextureFormat::eUndefined)
+        << "the deferred lighting id location is unwritten here";
+    for (const auto& target : targets) {
+        EXPECT_EQ(target.writeMask, wgpu::ColorWriteMask::eAll);
+    }
+
+    // The deferred set is the mirror image: its first two locations are holes.
+    const auto deferred = prepass_pipeline_targets(false, false, true);
+    ASSERT_EQ(deferred.size(), 4u);
+    EXPECT_EQ(deferred[0].format, wgpu::TextureFormat::eUndefined);
+    EXPECT_EQ(deferred[1].format, wgpu::TextureFormat::eUndefined);
+    EXPECT_EQ(deferred[2].format, epix::core_graph::core_3d::DEFERRED_PREPASS_FORMAT);
+    EXPECT_EQ(deferred[3].format, epix::core_graph::core_3d::DEFERRED_LIGHTING_PASS_ID_FORMAT);
+}
+
 /** @brief `prepare_previous_view_uniforms` gives every view an entry in the
  *  buffer and stamps it with that entry's byte offset, which is what a prepass
  *  bind group passes as the dynamic offset (Bevy
