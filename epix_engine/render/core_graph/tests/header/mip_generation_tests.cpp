@@ -155,4 +155,66 @@ TEST(MipGeneration, LayoutAndDummyTextureAreValidOnDevice) {
     EXPECT_FALSE(!dummy);
 }
 
+/** @brief The depth-pyramid bindings are expressible in Slang and accepted by
+ *  wgpu against the depth-typed layout.
+ *
+ *  wgpu requires the shader's depth binding to be a depth image, and Slang's
+ *  SPIR-V backend does not set the `Depth` operand for a plain `Texture2D<float>`
+ *  (gfx-rs/wgpu#7332). Two Slang-specific forms are needed: the built-in
+ *  `DepthTexture2D`/`DepthTexture2DMS` types, whose `_Texture` specialization
+ *  sets `isShadow` and therefore emits a depth image, and an explicit
+ *  `[[vk::image_format("r32f")]]` on every write-only storage image, without
+ *  which Slang emits a storage image of unknown format and the module demands
+ *  the `StorageImageReadWithoutFormat` capability that wgpu does not support. */
+TEST(MipGeneration, DepthTextureBindingCompilesWithSlangDepthType) {
+    static constexpr std::string_view kProbeSource = R"slang(
+// Slang's built-in depth-texture type. Its `_Texture` specialization sets
+// `isShadow`, which is what makes the SPIR-V backend emit a depth image;
+// declaring a plain `Texture2D<float>` yields a sampled float image that wgpu
+// rejects against the depth-typed layout entry (gfx-rs/wgpu#7332).
+[[vk::binding(0, 0)]] DepthTexture2D mip_0;
+[[vk::binding(1, 0)]] [[vk::image_format("r32f")]] RWTexture2D<float> mip_1;
+[[vk::binding(13, 0)]] SamplerState samplr;
+
+struct Constants { uint max_mip_level; };
+[[vk::push_constant]] ConstantBuffer<Constants> constants;
+
+[shader("compute")]
+[numthreads(1, 1, 1)]
+void downsample_depth_first() {
+    const float value = mip_0.Load(int3(0, 0, 0));
+    mip_1[uint2(0, 0)] = value + float(constants.max_mip_level);
+}
+)slang";
+
+    auto app = epix::app::App::create();
+    add_core_graph_test_prerequisites(app);
+    try {
+        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+
+    app.resource_mut<epix::assets::EmbeddedAssetRegistry>().insert_asset_static(
+        "mip_generation_tests/depth_binding.slang", std::as_bytes(std::span(kProbeSource)));
+    const auto shader = app.resource<epix::assets::AssetServer>().load<epix::shader::Shader>(
+        "embedded://mip_generation_tests/depth_binding.slang");
+    for (int attempt = 0;
+         attempt < 1000 && !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader.id());
+         ++attempt) {
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+
+    const DownsampleDepthPipeline pipeline{
+        .bind_group_layout = create_downsample_depth_bind_group_layout(false),
+        .pipeline_id       = std::nullopt,
+        .shader            = shader,
+    };
+    const auto id = app.resource<epix::render::PipelineServer>().queue_compute_pipeline(
+        pipeline.specialize(DownsampleDepthPipelineKey{}));
+    app.run_schedule(epix::app::Last);
+    EXPECT_TRUE(app.resource<epix::render::PipelineServer>().get_compute_pipeline(id).has_value());
+}
+
 }  // namespace
