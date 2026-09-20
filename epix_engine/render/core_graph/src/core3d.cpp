@@ -293,7 +293,7 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
                                                                    graph::RenderContext& render_context,
                                                                    typename ecs::QueryData<ViewQuery>::Item view,
                                                                    const World& world) const {
-    auto&& [camera, extracted_view, target, depth] = view;
+    auto&& [camera, extracted_view, target, depth, view_uniform_offset, skybox_pipeline_id, skybox_bind_group] = view;
     const auto opaque_phases                       = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3d>>();
     const auto alpha_mask_phases                   = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3d>>();
     if (!opaque_phases || !alpha_mask_phases) return {};
@@ -312,26 +312,53 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
     const auto* world_ptr            = std::addressof(world);
     const auto* opaque_phase_ptr     = std::addressof(opaque_phase->second);
     const auto* alpha_mask_phase_ptr = std::addressof(alpha_mask_phase->second);
-    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, viewport, view_entity,
-                                                       world_ptr, opaque_phase_ptr,
-                                                       alpha_mask_phase_ptr](wgpu::Device device) {
-        auto encoder = device.createCommandEncoder(
-            wgpu::CommandEncoderDescriptor().setLabel("main_opaque_pass_3d_command_encoder"));
-        auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
-                                                       .setLabel("main_opaque_pass_3d")
-                                                       .setColorAttachments(color_attachments)
-                                                       .setDepthStencilAttachment(depth_attachment));
-        if (viewport) {
-            const auto& vp = *viewport;
-            render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                    static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
-                                    static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
-        }
-        if (!opaque_phase_ptr->is_empty()) opaque_phase_ptr->render(render_pass, *world_ptr, view_entity);
-        if (!alpha_mask_phase_ptr->is_empty()) alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity);
-        render_pass.end();
-        return encoder.finish();
-    });
+    // Bevy draws the skybox after the two binned phases, from the view's
+    // specialized pipeline and its bind group with both dynamic offsets
+    // (`main_opaque_pass_3d_node.rs:119-133`).
+    const auto skybox_pipeline = skybox_pipeline_id ? std::optional{skybox_pipeline_id->get().pipeline_id}
+                                                   : std::nullopt;
+    const auto skybox_group    = skybox_bind_group
+                                     ? std::optional{std::pair{skybox_bind_group->get().bind_group,
+                                                               skybox_bind_group->get().uniform_offset}}
+                                     : std::nullopt;
+    render_context.add_command_buffer_generation_task(
+        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_phase_ptr,
+         alpha_mask_phase_ptr, view_uniform_offset, skybox_pipeline, skybox_group](wgpu::Device device) {
+            auto encoder = device.createCommandEncoder(
+                wgpu::CommandEncoderDescriptor().setLabel("main_opaque_pass_3d_command_encoder"));
+            auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                           .setLabel("main_opaque_pass_3d")
+                                                           .setColorAttachments(color_attachments)
+                                                           .setDepthStencilAttachment(depth_attachment));
+            if (viewport) {
+                const auto& vp = *viewport;
+                render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                        static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
+                                        static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+            }
+            if (!opaque_phase_ptr->is_empty()) opaque_phase_ptr->render(render_pass, *world_ptr, view_entity);
+            if (!alpha_mask_phase_ptr->is_empty()) alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity);
+
+            // Skybox draw using a fullscreen triangle.
+            if (skybox_pipeline && skybox_group) {
+                const auto pipeline_server = world_ptr->get_resource<render::PipelineServer>();
+                const auto pipeline =
+                    pipeline_server
+                        ? pipeline_server->get().get_render_pipeline(*skybox_pipeline)
+                        : std::expected<std::reference_wrapper<const render::RenderPipeline>,
+                                        render::GetPipelineError>{
+                              std::unexpect, render::GetPipelineError{}};
+                if (pipeline) {
+                    render_pass.setPipeline(pipeline->get().pipeline());
+                    const std::array offsets{view_uniform_offset.offset, skybox_group->second};
+                    render_pass.setBindGroup(0, skybox_group->first, offsets);
+                    render_pass.draw(3, 1, 0, 0);
+                }
+            }
+
+            render_pass.end();
+            return encoder.finish();
+        });
     return {};
 }
 

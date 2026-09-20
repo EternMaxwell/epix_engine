@@ -1,6 +1,7 @@
 #include <epix/core_graph/skybox.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/core_graph/core3d.hpp>
 #include <epix/render/view.hpp>
 #include <spdlog/spdlog.h>
 #endif

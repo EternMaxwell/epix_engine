@@ -14,7 +14,6 @@
 #include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
 #endif
-#include <epix/core_graph/core3d.hpp>
 
 namespace epix::core_graph {
 
