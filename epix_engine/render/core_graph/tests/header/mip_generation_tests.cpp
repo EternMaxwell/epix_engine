@@ -297,4 +297,195 @@ TEST(MipGeneration, PluginCreatesAllFourDownsamplePipelines) {
                                                     DownsampleDepthPipelineKey::SECOND_PHASE}));
 }
 
+/** @brief The shader actually reduces the depth buffer: clear a depth texture to
+ *  a known value, run both downsample passes over it, read the first pyramid mip
+ *  back and check every texel holds that value.
+ *
+ *  A uniform input cannot distinguish the min-reduction from a passthrough, but
+ *  it does prove the whole path end to end: the depth-typed binding, the twelve
+ *  storage bindings, the mip-count push constant, both phases (this texture has
+ *  seven mips, so the second phase runs), and the storage writes landing in the
+ *  pyramid. */
+TEST(MipGeneration, DownsampleDepthWritesTheReducedDepthIntoThePyramid) {
+    constexpr std::uint32_t kDepthSize   = 128;
+    constexpr std::uint32_t kPyramidSize = kDepthSize / 2;
+    constexpr float kClearDepth          = 0.25f;
+
+    auto app = epix::app::App::create();
+    add_core_graph_test_prerequisites(app);
+    try {
+        epix::render::RenderPlugin{.synchronous_pipeline_compilation = true}.attach(app);
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan not available, skipping GPU test: " << error.what();
+    }
+    epix::core_graph::mip_generation::MipGenerationPlugin{}.attach(app);
+
+    const auto render_app = app.get_sub_app_mut(epix::render::Render);
+    ASSERT_TRUE(render_app.has_value());
+    const auto shader = render_app->get().world().get_resource<DownsampleDepthShader>();
+    ASSERT_TRUE(shader.has_value());
+    for (int attempt = 0;
+         attempt < 1000 &&
+         !app.resource<epix::assets::AssetServer>().is_loaded_with_dependencies(shader->get().handle.id());
+         ++attempt) {
+        app.run_schedule(epix::app::Last);
+        std::this_thread::yield();
+    }
+    // Compile the two phases through the pipeline server, exactly as the plugin
+    // does at runtime.
+    auto& pipeline_server = app.resource<epix::render::PipelineServer>();
+    const auto layout_desc = create_downsample_depth_bind_group_layout(false);
+    const DownsampleDepthPipeline pipeline_desc{
+        .bind_group_layout = layout_desc,
+        .pipeline_id       = std::nullopt,
+        .shader            = shader->get().handle,
+    };
+    const auto first_id  = pipeline_server.queue_compute_pipeline(
+        pipeline_desc.specialize(DownsampleDepthPipelineKey{}));
+    const auto second_id = pipeline_server.queue_compute_pipeline(
+        pipeline_desc.specialize(DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE}));
+    for (int attempt = 0; attempt < 200; ++attempt) {
+        app.run_schedule(epix::app::Last);
+        if (pipeline_server.get_compute_pipeline(first_id).has_value() &&
+            pipeline_server.get_compute_pipeline(second_id).has_value()) {
+            break;
+        }
+        std::this_thread::yield();
+    }
+    const auto first_pipeline  = pipeline_server.get_compute_pipeline(first_id);
+    const auto second_pipeline = pipeline_server.get_compute_pipeline(second_id);
+    ASSERT_TRUE(first_pipeline.has_value());
+    ASSERT_TRUE(second_pipeline.has_value());
+
+    const auto device = render_app->get().world().resource<wgpu::Device>();
+    const auto queue  = render_app->get().world().resource<wgpu::Queue>();
+    const auto instance = render_app->get().world().resource<wgpu::Instance>();
+
+    const auto depth_texture = device.createTexture(wgpu::TextureDescriptor()
+                                                        .setLabel("mip generation test depth")
+                                                        .setSize({kDepthSize, kDepthSize, 1})
+                                                        .setFormat(wgpu::TextureFormat::eDepth32Float)
+                                                        .setUsage(wgpu::TextureUsage::eRenderAttachment |
+                                                                  wgpu::TextureUsage::eTextureBinding)
+                                                        .setDimension(wgpu::TextureDimension::e2D)
+                                                        .setMipLevelCount(1)
+                                                        .setSampleCount(1));
+    const auto depth_view = depth_texture.createView();
+
+    const std::uint32_t mip_count =
+        max_mips_for_size(glm::uvec2(kPyramidSize, kPyramidSize));
+    ASSERT_GE(mip_count, 7u) << "the second phase only runs for a seven-mip pyramid";
+    const auto pyramid_texture = device.createTexture(wgpu::TextureDescriptor()
+                                                          .setLabel("mip generation test pyramid")
+                                                          .setSize({kPyramidSize, kPyramidSize, 1})
+                                                          .setFormat(wgpu::TextureFormat::eR32Float)
+                                                          .setUsage(wgpu::TextureUsage::eStorageBinding |
+                                                                    wgpu::TextureUsage::eTextureBinding |
+                                                                    wgpu::TextureUsage::eCopySrc)
+                                                          .setDimension(wgpu::TextureDimension::e2D)
+                                                          .setMipLevelCount(mip_count)
+                                                          .setSampleCount(1));
+
+    const auto dummy    = create_depth_pyramid_dummy_texture(device, "test dummy texture",
+                                                             "test dummy texture view");
+    ViewDepthPyramid pyramid;
+    pyramid.all_mips  = pyramid_texture.createView();
+    pyramid.mip_count = mip_count;
+    for (std::size_t level = 0; level < DEPTH_PYRAMID_MIP_COUNT; ++level) {
+        pyramid.mips[level] =
+            level < mip_count
+                ? pyramid_texture.createView(wgpu::TextureViewDescriptor()
+                                                 .setFormat(wgpu::TextureFormat::eR32Float)
+                                                 .setDimension(wgpu::TextureViewDimension::e2D)
+                                                 .setBaseMipLevel(static_cast<std::uint32_t>(level))
+                                                 .setMipLevelCount(1)
+                                                 .setBaseArrayLayer(0)
+                                                 .setArrayLayerCount(1))
+                : dummy;
+    }
+
+    const auto sampler = device.createSampler(wgpu::SamplerDescriptor()
+                                                  .setLabel("mip generation test sampler")
+                                                  .setMagFilter(wgpu::FilterMode::eNearest)
+                                                  .setMinFilter(wgpu::FilterMode::eNearest)
+                                                  .setMipmapFilter(wgpu::MipmapFilterMode::eNearest));
+    const auto bind_group = pyramid.create_bind_group(
+        device, "mip generation test bind group", pipeline_server.get_bind_group_layout(layout_desc),
+        depth_view, sampler);
+
+    const std::uint32_t row_bytes   = kPyramidSize * sizeof(float);
+    const std::uint64_t buffer_size = static_cast<std::uint64_t>(row_bytes) * kPyramidSize;
+    const auto readback = device.createBuffer(wgpu::BufferDescriptor()
+                                                  .setLabel("mip generation test readback")
+                                                  .setSize(buffer_size)
+                                                  .setUsage(wgpu::BufferUsage::eCopyDst |
+                                                            wgpu::BufferUsage::eMapRead));
+
+    const auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("mip test"));
+    {
+        // Clear the depth buffer to the value every pyramid texel must become.
+        wgpu::RenderPassDepthStencilAttachment depth_attachment;
+        depth_attachment.setView(depth_view)
+            .setDepthClearValue(kClearDepth)
+            .setDepthLoadOp(wgpu::LoadOp::eClear)
+            .setDepthStoreOp(wgpu::StoreOp::eStore);
+        wgpu::RenderPassDescriptor clear_descriptor;
+        clear_descriptor.setLabel("mip generation depth clear");
+        clear_descriptor.setDepthStencilAttachment(depth_attachment);
+        auto pass = encoder.beginRenderPass(clear_descriptor);
+        pass.end();
+    }
+    {
+        // Bevy `ViewDepthPyramid::downsample_depth`: the first phase tiles the
+        // view in 64x64 workgroups, the second runs one workgroup.
+        auto pass = encoder.beginComputePass(wgpu::ComputePassDescriptor().setLabel("downsample depth"));
+        pass.setPipeline(first_pipeline->get().pipeline());
+        pass.setImmediates(0, &pyramid.mip_count, sizeof(pyramid.mip_count));
+        pass.setBindGroup(0, bind_group, std::span<const std::uint32_t>{});
+        pass.dispatchWorkgroups((kDepthSize + 63u) / 64u, (kDepthSize + 63u) / 64u, 1);
+        if (pyramid.mip_count >= 7u) {
+            pass.setPipeline(second_pipeline->get().pipeline());
+            pass.dispatchWorkgroups(1, 1, 1);
+        }
+        pass.end();
+    }
+    wgpu::TexelCopyTextureInfo source_info;
+    source_info.setTexture(pyramid_texture).setMipLevel(0).setOrigin(wgpu::Origin3D{0, 0, 0}).setAspect(
+        wgpu::TextureAspect::eAll);
+    wgpu::TexelCopyBufferInfo destination_info;
+    destination_info.setBuffer(readback).setLayout(wgpu::TexelCopyBufferLayout()
+                                                      .setOffset(0)
+                                                      .setBytesPerRow(row_bytes)
+                                                      .setRowsPerImage(kPyramidSize));
+    encoder.copyTextureToBuffer(source_info, destination_info, wgpu::Extent3D{kPyramidSize, kPyramidSize, 1});
+    queue.submit(encoder.finish());
+
+    bool mapped = false, succeeded = false;
+    (void)readback.mapAsync(wgpu::MapMode::eRead, 0, buffer_size,
+                            wgpu::BufferMapCallbackInfo()
+                                .setMode(wgpu::CallbackMode::eAllowProcessEvents)
+                                .setCallback(wgpu::BufferMapCallback(
+                                    [&](wgpu::MapAsyncStatus status, wgpu::StringView) {
+                                        succeeded = status == wgpu::MapAsyncStatus::eSuccess;
+                                        mapped    = true;
+                                    })));
+    for (int attempt = 0; attempt < 1000 && !mapped; ++attempt) {
+        // Wait for the submission rather than merely polling once: the map
+        // callback is delivered through the instance's event loop, which the
+        // blocking poll also drives.
+        device.poll(true);
+        instance.processEvents();
+        std::this_thread::yield();
+    }
+    ASSERT_TRUE(mapped) << "the pyramid readback never completed";
+    ASSERT_TRUE(succeeded) << "the pyramid readback failed";
+
+    const auto* values = static_cast<const float*>(readback.getConstMappedRange(0, buffer_size));
+    ASSERT_NE(values, nullptr);
+    for (std::uint32_t index = 0; index < kPyramidSize * kPyramidSize; ++index) {
+        ASSERT_FLOAT_EQ(values[index], kClearDepth) << "pyramid texel " << index;
+    }
+    readback.unmap();
+}
+
 }  // namespace
