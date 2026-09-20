@@ -26,7 +26,10 @@ struct SkyboxUniforms {
     float4x4 transform;
 };
 
-[[vk::binding(0, 0)]] TextureCube<float> skybox_texture;
+// WGSL's `texture_cube<f32>` samples to a `vec4<f32>`; the HLSL/Slang texture
+// element type is the *sampled* type, so `TextureCube<float>` would sample to a
+// scalar (the red channel alone) and broadcasting it would grey every skybox out.
+[[vk::binding(0, 0)]] TextureCube<float4> skybox_texture;
 [[vk::binding(1, 0)]] SamplerState skybox_sampler;
 [[vk::binding(2, 0)]] ConstantBuffer<epix::view::View> view;
 [[vk::binding(3, 0)]] ConstantBuffer<SkyboxUniforms> uniforms;
