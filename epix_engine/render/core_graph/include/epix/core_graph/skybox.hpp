@@ -14,6 +14,7 @@
 #include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
 #endif
+#include <epix/core_graph/fullscreen.hpp>
 
 namespace epix::core_graph {
 
@@ -111,6 +112,98 @@ EPIX_EXPORT struct SkyboxBindGroup {
     std::uint32_t uniform_offset = 0;
 };
 
+namespace core_3d {
+/** @brief The prepass markers the motion-vector skybox keys off. They are
+ *  declared rather than included, because `core3d.hpp` includes this header and
+ *  that include cannot run the other way (both are core_graph). */
+struct NormalPrepass;
+struct MotionVectorPrepass;
+}  // namespace core_3d
+
+/** @brief The per-view previous-frame data this header's prepass systems bind;
+ *  its definition is in `core_graph/prepass.hpp`, which cannot be included here
+ *  for the same reason as the markers above. */
+struct PreviousViewUniforms;
+
+/** @brief Uniquely identifies a configuration of the skybox's motion-vector
+ *  prepass pipeline (Bevy `SkyboxPrepassPipelineKey`,
+ *  `skybox/prepass.rs:46-50`). */
+EPIX_EXPORT struct SkyboxPrepassPipelineKey {
+    /** @brief The view's MSAA sample count. */
+    std::uint32_t samples = 1;
+    /** @brief True when the view also writes normals, which adds a target. */
+    bool normal_prepass = false;
+
+    [[nodiscard]] bool operator==(const SkyboxPrepassPipelineKey&) const noexcept;
+};
+
+/** @brief Writes the skybox's motion vectors into the prepass targets, so TAA
+ *  and motion blur treat the skybox correctly (Bevy `SkyboxPrepassPipeline`,
+ *  `skybox/prepass.rs:33-43`).
+ *
+ *  Its bind group is the view uniform and the previous view uniform, both
+ *  dynamic, and it renders into the prepass colour attachments rather than a
+ *  colour target of its own. */
+EPIX_EXPORT struct SkyboxPrepassPipeline {
+    using Key = SkyboxPrepassPipelineKey;
+
+    /** @brief The bind group layout shared by every specialized pipeline. */
+    render::BindGroupLayoutDescriptor bind_group_layout;
+    /** @brief The shared fullscreen-triangle vertex shader. */
+    FullscreenShader fullscreen_shader;
+    /** @brief The motion-vector fragment shader. */
+    assets::Handle<shader::Shader> fragment_shader;
+
+    /** @brief Creates the pipeline and its layout (Bevy
+     *  `init_skybox_prepass_pipeline`, `:62-81`). */
+    static SkyboxPrepassPipeline create(FullscreenShader fullscreen_shader,
+                                        assets::Handle<shader::Shader> fragment_shader);
+
+    /** @brief Builds the render descriptor for `key` (Bevy
+     *  `SpecializedRenderPipeline for SkyboxPrepassPipeline`, `:83-111`): the
+     *  fullscreen vertex stage, the main skybox's depth state without a depth
+     *  write, and the prepass targets for the requested prepasses with motion
+     *  vectors always written and deferred never. */
+    [[nodiscard]] render::RenderPipelineDescriptor specialize(Key key) const;
+};
+
+/** @brief The specialized skybox prepass pipeline chosen for one view (Bevy
+ *  `RenderSkyboxPrepassPipeline`). */
+EPIX_EXPORT struct RenderSkyboxPrepassPipeline {
+    render::CachedPipelineId pipeline_id;
+};
+
+/** @brief A view's skybox prepass bind group, which the prepass node adds to its
+ *  render pass (Bevy `SkyboxPrepassBindGroup`). */
+EPIX_EXPORT struct SkyboxPrepassBindGroup {
+    wgpu::BindGroup bind_group;
+};
+
+/** @brief Specializes the prepass pipeline for every view that has a `Skybox`
+ *  and a `MotionVectorPrepass` (Bevy `prepare_skybox_prepass_pipelines`,
+ *  `skybox/prepass.rs:113-133`). */
+EPIX_EXPORT void prepare_skybox_prepass_pipelines(
+    ecs::Commands commands,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPrepassPipeline>> pipelines,
+    ecs::Res<SkyboxPrepassPipeline> pipeline,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Has<core_3d::NormalPrepass>, ecs::Has<core_3d::MotionVectorPrepass>,
+                         const render::view::Msaa&>,
+               ecs::With<Skybox>>
+        views);
+
+/** @brief Creates each view's prepass bind group from the view uniforms and the
+ *  previous view uniforms, so the prepass can compute the camera's motion
+ *  (Bevy `prepare_skybox_prepass_bind_groups`, `skybox/prepass.rs:138-163`). */
+EPIX_EXPORT void prepare_skybox_prepass_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<SkyboxPrepassPipeline> pipeline,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Res<PreviousViewUniforms> previous_view_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Has<core_3d::MotionVectorPrepass>>, ecs::With<Skybox>> views);
+
 /** @brief Derives each view's `SkyboxUniforms` from its `Skybox` and uploads
  *  them, inserting the view's `DynamicUniformIndex` (Bevy derives the uniforms
  *  during extraction and uploads them through
@@ -175,4 +268,9 @@ struct ExtractComponent<core_graph::Skybox> {
 template <>
 struct std::hash<epix::core_graph::SkyboxPipelineKey> {
     std::size_t operator()(const epix::core_graph::SkyboxPipelineKey& key) const noexcept;
+};
+
+template <>
+struct std::hash<epix::core_graph::SkyboxPrepassPipelineKey> {
+    std::size_t operator()(const epix::core_graph::SkyboxPrepassPipelineKey& key) const noexcept;
 };
