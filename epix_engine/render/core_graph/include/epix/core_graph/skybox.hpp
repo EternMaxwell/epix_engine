@@ -49,6 +49,19 @@ EPIX_EXPORT struct SkyboxUniforms {
     glm::mat4 transform{1.0f};
 };
 
+}  // namespace epix::core_graph
+
+namespace epix::render::render_resource {
+/** @brief `SkyboxUniforms` is laid out to match the shader's constant buffer
+ *  (brightness at offset 0, matrix at 16, 80 bytes), so it uses the raw
+ *  encoder. */
+template <>
+struct ShaderTypeInfo<::epix::core_graph::SkyboxUniforms>
+    : RawShaderType<::epix::core_graph::SkyboxUniforms> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::core_graph {
+
 /** @brief Uniquely identifies a configuration of the skybox shader (Bevy
  *  `SkyboxPipelineKey`, `skybox/mod.rs:182-187`). */
 EPIX_EXPORT struct SkyboxPipelineKey {
@@ -85,6 +98,58 @@ EPIX_EXPORT struct SkyboxPipeline {
     [[nodiscard]] render::RenderPipelineDescriptor specialize(Key key) const;
 };
 
+/** @brief The specialized skybox pipeline chosen for one view (Bevy
+ *  `SkyboxPipelineId`). */
+EPIX_EXPORT struct SkyboxPipelineId {
+    render::CachedPipelineId pipeline_id;
+};
+
+/** @brief A view's skybox bind group and the dynamic offset of its uniform
+ *  entry (Bevy `SkyboxBindGroup(pub (BindGroup, u32))`). */
+EPIX_EXPORT struct SkyboxBindGroup {
+    wgpu::BindGroup bind_group;
+    /** @brief The byte offset of this view's `SkyboxUniforms` entry. */
+    std::uint32_t uniform_offset = 0;
+};
+
+/** @brief Derives each view's `SkyboxUniforms` from its `Skybox` and uploads
+ *  them, inserting the view's `DynamicUniformIndex` (Bevy derives the uniforms
+ *  during extraction and uploads them through
+ *  `UniformComponentPlugin<SkyboxUniforms>`; `ExtractComponent<C>::Out` is a
+ *  single component here, so the derivation and the upload share one system).
+ *  The brightness is scaled by the view's extracted exposure, as Bevy's
+ *  extraction does. */
+EPIX_EXPORT void prepare_skybox_uniforms(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<wgpu::Queue> queue,
+    ecs::ResMut<render::ComponentUniforms<SkyboxUniforms>> skybox_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, const Skybox&, const render::camera::ExtractedCamera&>> views);
+
+/** @brief Specializes the skybox pipeline for every view with a `Skybox` (Bevy
+ *  `prepare_skybox_pipelines`, `skybox/mod.rs:243-265`). */
+EPIX_EXPORT void prepare_skybox_pipelines(
+    ecs::Commands commands,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPipeline>> pipelines,
+    ecs::Res<SkyboxPipeline> pipeline,
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>,
+               ecs::With<Skybox>>
+        views);
+
+/** @brief Creates each view's skybox bind group from its cubemap's cube view,
+ *  the view uniform and its skybox uniforms (Bevy `prepare_skybox_bind_groups`,
+ *  `skybox/mod.rs:270-302`). */
+EPIX_EXPORT void prepare_skybox_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<SkyboxPipeline> pipeline,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Res<render::ComponentUniforms<SkyboxUniforms>> skybox_uniforms,
+    ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+    ecs::Query<ecs::Item<ecs::Entity, const Skybox&, const render::DynamicUniformIndex<SkyboxUniforms>&>> views);
+
 /** @brief Installs the skybox pipeline (Bevy `SkyboxPlugin`, `skybox/mod.rs:44-75`).
  *
  *  The shader is registered and loaded here, the specialization cache is
@@ -95,6 +160,18 @@ EPIX_EXPORT struct SkyboxPlugin {
 };
 
 }  // namespace epix::core_graph
+
+namespace epix::render {
+/** @brief Extracts the skybox marker onto the view (Bevy's extraction also
+ *  derives `SkyboxUniforms`; see `prepare_skybox_uniforms`). */
+template <>
+struct ExtractComponent<core_graph::Skybox> {
+    using QueryData   = const core_graph::Skybox&;
+    using QueryFilter = epix::ecs::Filter<>;
+    using Out         = core_graph::Skybox;
+    static std::optional<Out> extract_component(const core_graph::Skybox& item) { return item; }
+};
+}  // namespace epix::render
 
 template <>
 struct std::hash<epix::core_graph::SkyboxPipelineKey> {

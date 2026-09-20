@@ -158,6 +158,88 @@ render::RenderPipelineDescriptor SkyboxPipeline::specialize(Key key) const {
     };
 }
 
+void prepare_skybox_uniforms(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<wgpu::Queue> queue,
+    ecs::ResMut<render::ComponentUniforms<SkyboxUniforms>> skybox_uniforms,
+    ecs::Query<ecs::Item<ecs::Entity, const Skybox&, const render::camera::ExtractedCamera&>> views) {
+    // Bevy's extraction derives `brightness * exposure` and the inverse-rotation
+    // matrix and lets `UniformComponentPlugin` upload them (`skybox/mod.rs:109-148`);
+    // the exposure comes from the extracted camera here because the render world
+    // does not carry the main world's `Exposure` component.
+    auto& uniforms = skybox_uniforms->uniforms_mut();
+    uniforms.clear();
+    for (auto&& [entity, skybox, camera] : views.iter()) {
+        const SkyboxUniforms value{
+            .brightness = skybox.brightness * camera.exposure,
+            .transform  = glm::mat4_cast(glm::inverse(skybox.rotation)),
+        };
+        const std::size_t offset = uniforms.push(value);
+        commands.entity(entity).insert(render::DynamicUniformIndex<SkyboxUniforms>{
+            static_cast<std::uint32_t>(offset)});
+    }
+    uniforms.write_buffer(device.get(), queue.get());
+}
+
+void prepare_skybox_pipelines(
+    ecs::Commands commands,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPipeline>> pipelines,
+    ecs::Res<SkyboxPipeline> pipeline,
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>,
+               ecs::With<Skybox>>
+        views) {
+    // Bevy `prepare_skybox_pipelines` (`skybox/mod.rs:243-265`).
+    for (auto&& [entity, view, msaa] : views.iter()) {
+        const auto pipeline_id = pipelines->specialize(
+            *pipeline_server, *pipeline,
+            SkyboxPipelineKey{.hdr          = view.hdr,
+                              .samples      = render::view::samples(msaa),
+                              .depth_format = core_3d::CORE_3D_DEPTH_FORMAT});
+        commands.entity(entity).insert(SkyboxPipelineId{pipeline_id});
+    }
+}
+
+void prepare_skybox_bind_groups(
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> device,
+    ecs::Res<render::PipelineServer> pipeline_server,
+    ecs::Res<SkyboxPipeline> pipeline,
+    ecs::Res<render::view::ViewUniforms> view_uniforms,
+    ecs::Res<render::ComponentUniforms<SkyboxUniforms>> skybox_uniforms,
+    ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+    ecs::Query<ecs::Item<ecs::Entity, const Skybox&, const render::DynamicUniformIndex<SkyboxUniforms>&>> views) {
+    // Bevy `prepare_skybox_bind_groups` (`skybox/mod.rs:270-302`): the cube view,
+    // its sampler, the dynamic view uniform and the dynamic skybox uniforms.
+    const auto view_binding = view_uniforms->uniforms.binding();
+    if (!view_binding) return;
+    const auto skybox_binding = skybox_uniforms->uniforms().binding();
+    if (!skybox_binding) return;
+
+    const auto layout = pipeline_server->get_bind_group_layout(pipeline->bind_group_layout);
+    for (auto&& [entity, skybox, uniform_index] : views.iter()) {
+        const auto image = images->get(skybox.image);
+        if (!image) continue;
+
+        const auto entries = render::render_resource::BindGroupEntries<>::sequential(
+            render::render_resource::BindGroupEntries<>::texture_binding(image->texture_view),
+            render::render_resource::BindGroupEntries<>::sampler_binding(image->sampler),
+            render::render_resource::BindGroupEntries<>::buffer_binding(view_binding->get(), 0,
+                                                                       sizeof(render::view::ViewUniform)),
+            render::render_resource::BindGroupEntries<>::buffer_binding(skybox_binding->get(), 0,
+                                                                       sizeof(SkyboxUniforms)));
+        commands.entity(entity).insert(SkyboxBindGroup{
+            .bind_group =
+                device->createBindGroup(wgpu::BindGroupDescriptor()
+                                            .setLabel("skybox_bind_group")
+                                            .setLayout(layout)
+                                            .setEntries(entries.entries())),
+            .uniform_offset = uniform_index.index(),
+        });
+    }
+}
+
 void SkyboxPlugin::attach(app::App& app) const {
     // Bevy `SkyboxPlugin::build` (`skybox/mod.rs:44-75`): the shaders are
     // embedded, the specialization cache is initialized, and the pipeline
@@ -171,9 +253,12 @@ void SkyboxPlugin::attach(app::App& app) const {
         spdlog::warn("[core_graph.skybox] EmbeddedAssetRegistry or AssetServer not available; skybox disabled.");
     }
 
+    app.add_plugins(render::ExtractComponentPlugin<Skybox>{});
+
     auto sub_app = app.get_sub_app_mut(render::Render);
     if (!sub_app || !shader) return;
 
+    sub_app->get().world_mut().insert_resource(render::ComponentUniforms<SkyboxUniforms>{});
     sub_app->get().world_mut().init_resource<render::SpecializedRenderPipelines<SkyboxPipeline>>();
     sub_app->get().add_systems(
         render::RenderStartup,
@@ -181,6 +266,18 @@ void SkyboxPlugin::attach(app::App& app) const {
             // Bevy `init_skybox_pipeline` (`:177-180`).
             commands.insert_resource(SkyboxPipeline::create(shader));
         }).set_name("init skybox pipeline"));
+    sub_app->get().add_systems(render::Render,
+                               into(prepare_skybox_pipelines)
+                                   .in_set(render::RenderSystems::Prepare)
+                                   .set_name("prepare skybox pipelines"));
+    sub_app->get().add_systems(render::Render,
+                               into(prepare_skybox_uniforms)
+                                   .in_set(render::RenderSystems::PrepareResources)
+                                   .set_name("prepare skybox uniforms"));
+    sub_app->get().add_systems(render::Render,
+                               into(prepare_skybox_bind_groups)
+                                   .in_set(render::RenderSystems::PrepareBindGroups)
+                                   .set_name("prepare skybox bind groups"));
 }
 
 }  // namespace epix::core_graph
