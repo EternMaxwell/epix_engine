@@ -681,4 +681,70 @@ TEST(Cluster, ExtractedClusterDataCarriesHeadersBeforeObjects) {
     EXPECT_EQ(extracted.data[1].kind, ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity);
 }
 
+/** @brief The cluster fill walk takes each cluster's offset from the current
+ *  index count, skips objects with no global index, and stops the whole view at
+ *  MAX_INDICES in the uniform form only (Bevy `prepare_clusters`,
+ *  `bevy_pbr/src/cluster.rs:302-330`). */
+TEST(Cluster, PrepareClusterBindingsFollowsTheRecordWalk) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::ExtractedClusterableObjectElement;
+    using epix::pbr::prepare_view_cluster_bindings;
+    using epix::pbr::ViewClusterBindings;
+    using epix::pbr::VIEW_CLUSTER_MAX_INDICES;
+
+    const auto header = [](std::uint32_t points) {
+        ClusterableObjectCounts counts{};
+        counts.point_lights = points;
+        return ExtractedClusterableObjectElement{.kind = ExtractedClusterableObjectElement::Kind::ClusterHeader,
+                                                 .counts = counts};
+    };
+    const auto object = [](epix::ecs::Entity entity) {
+        return ExtractedClusterableObjectElement{
+            .kind = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity, .entity = entity};
+    };
+
+    // Distinct entities: a default-constructed Entity is the same value each
+    // time, which would collapse these into one map key.
+    const epix::ecs::Entity first    = epix::ecs::Entity::from_index(1);
+    const epix::ecs::Entity second   = epix::ecs::Entity::from_index(2);
+    const epix::ecs::Entity unmapped = epix::ecs::Entity::from_index(3);
+
+    std::unordered_map<epix::ecs::Entity, std::size_t> entity_to_index;
+    entity_to_index[first]  = 4;
+    entity_to_index[second] = 9;
+
+    // Header, two objects, header, one object: the second cluster's offset is 2,
+    // the number of indices the first cluster added.
+    const std::vector<ExtractedClusterableObjectElement> records{header(2), object(first), object(second), header(1),
+                                                                object(first)};
+    const auto bindings = prepare_view_cluster_bindings(records, entity_to_index, wgpu::BufferBindingType::eStorage, true);
+    EXPECT_EQ(bindings.indices_count(), 3u);
+    EXPECT_EQ(bindings.offsets_count(), 2u);
+    const auto& offsets =
+        std::get<epix::pbr::ViewClusterBuffersStorage>(bindings.buffers.buffers).cluster_offsets_and_counts.get().data;
+    ASSERT_EQ(offsets.size(), 2u);
+    EXPECT_EQ(offsets[0][0], glm::uvec4(0u, 2u, 0u, 0u)) << "the first cluster starts at index 0";
+    EXPECT_EQ(offsets[1][0], glm::uvec4(2u, 1u, 0u, 0u)) << "the second starts where the first stopped";
+    const auto& indices =
+        std::get<epix::pbr::ViewClusterBuffersStorage>(bindings.buffers.buffers).clusterable_object_index_lists.get().data;
+    EXPECT_EQ(indices, (std::vector<std::uint32_t>{4u, 9u, 4u})) << "the objects' global indices, in order";
+
+    // An object with no entry in the global map contributes nothing.
+    entity_to_index.erase(second);
+    const auto skipped =
+        prepare_view_cluster_bindings(records, entity_to_index, wgpu::BufferBindingType::eStorage, true);
+    EXPECT_EQ(skipped.indices_count(), 2u) << "the unmapped object is skipped, not an error";
+
+    // The uniform form stops at MAX_INDICES; the storage form does not.
+    std::vector<ExtractedClusterableObjectElement> many{header(1)};
+    for (std::size_t i = 0; i < VIEW_CLUSTER_MAX_INDICES + 10; ++i) many.push_back(object(first));
+    const auto capped =
+        prepare_view_cluster_bindings(many, entity_to_index, wgpu::BufferBindingType::eUniform, false);
+    EXPECT_EQ(capped.indices_count(), VIEW_CLUSTER_MAX_INDICES) << "the walk breaks at the limit";
+    const auto uncapped =
+        prepare_view_cluster_bindings(many, entity_to_index, wgpu::BufferBindingType::eStorage, true);
+    EXPECT_EQ(uncapped.indices_count(), VIEW_CLUSTER_MAX_INDICES + 10)
+        << "with storage buffers the index list is unbounded";
+}
+
 }  // namespace

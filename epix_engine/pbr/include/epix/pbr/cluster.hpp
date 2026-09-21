@@ -499,5 +499,38 @@ EPIX_EXPORT struct ExtractedClusterableObjects {
     std::vector<ExtractedClusterableObjectElement> data;
 };
 
+/** @brief Walk a view's extracted records and fill its cluster bindings (Bevy
+ *  `prepare_clusters`, `bevy_pbr/src/cluster.rs:302-330`).
+ *
+ *  Bevy inlines this walk in the system, which then uploads the buffers and
+ *  inserts the bindings; it is a function here so the walk itself - which is
+ *  where the behaviour lives - can be verified without a device.
+ *
+ *  Three rules come from the walk: a cluster's offset is the *current* index
+ *  count, so it points at the first index the cluster's objects will add; an
+ *  object with no entry in the global index map is skipped; and in the uniform
+ *  form, where the index list cannot grow past `MAX_INDICES`, hitting that limit
+ *  stops the walk for the whole view, keeping what was already written. The
+ *  storage form has no such limit. */
+EPIX_EXPORT inline ViewClusterBindings prepare_view_cluster_bindings(
+    const std::vector<ExtractedClusterableObjectElement>& data,
+    const std::unordered_map<ecs::Entity, std::size_t>& entity_to_index, wgpu::BufferBindingType binding_type,
+    bool supports_storage_buffers) {
+    ViewClusterBindings bindings{binding_type};
+    bindings.clear();
+
+    for (const auto& record : data) {
+        if (record.kind == ExtractedClusterableObjectElement::Kind::ClusterHeader) {
+            bindings.push_offset_and_counts(bindings.indices_count(), record.counts);
+            continue;
+        }
+        const auto found = entity_to_index.find(record.entity);
+        if (found == entity_to_index.end()) continue;
+        if (bindings.indices_count() >= VIEW_CLUSTER_MAX_INDICES && !supports_storage_buffers) break;
+        bindings.push_index(found->second);
+    }
+    return bindings;
+}
+
 }  // namespace epix::pbr
 
