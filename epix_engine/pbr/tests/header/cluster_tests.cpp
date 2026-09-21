@@ -1695,4 +1695,41 @@ TEST(Cluster, UniformClusterableObjectCapMatchesBevy) {
     EXPECT_FALSE(exactly_at.exceeded);
 }
 
+/** @brief The extracted light types carry what the light preparation needs, and
+ *  the point light flags include the spot-light Y flip (Bevy
+ *  `render/light.rs:69-122`). */
+TEST(Cluster, ExtractedLightsAndFlagsMatchBevy) {
+    using epix::pbr::ExtractedDirectionalLight;
+    using epix::pbr::ExtractedPointLight;
+    using epix::pbr::PointLightFlags;
+
+    // The point light flags, which must match mesh_view_types.wgsl.
+    EXPECT_EQ(PointLightFlags::SHADOWS_ENABLED, 1u);
+    EXPECT_EQ(PointLightFlags::SPOT_LIGHT_Y_NEGATIVE, 2u);
+    EXPECT_EQ(PointLightFlags::VOLUMETRIC, 4u);
+    EXPECT_EQ(PointLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE, 8u);
+    EXPECT_EQ(PointLightFlags::NONE, 0u);
+    EXPECT_EQ(PointLightFlags::UNINITIALIZED, 0xFFFFu);
+
+    // An extracted point light: a spot light is one of these with angles set,
+    // which is why the flags carry a spot-light bit.
+    ExtractedPointLight point;
+    EXPECT_FALSE(point.spot_light_angles.has_value()) << "a plain point light has no cone";
+    point.spot_light_angles = std::pair{0.1f, 0.5f};
+    ASSERT_TRUE(point.spot_light_angles.has_value());
+    EXPECT_FLOAT_EQ(point.spot_light_angles->first, 0.1f) << "the inner angle";
+    EXPECT_FLOAT_EQ(point.spot_light_angles->second, 0.5f) << "and the outer";
+    EXPECT_TRUE(point.affects_lightmapped_mesh_diffuse) << "diffuse lightmapped light applies by default";
+    EXPECT_FALSE(point.shadows_enabled);
+    EXPECT_EQ(point.color, glm::vec4(1.0f));
+
+    // An extracted directional light carries its cascades and frusta per view.
+    ExtractedDirectionalLight directional;
+    EXPECT_TRUE(directional.cascades.empty());
+    EXPECT_TRUE(directional.frusta.empty());
+    EXPECT_FALSE(directional.soft_shadow_size.has_value()) << "no PCSS by default";
+    EXPECT_EQ(directional.cascade_shadow_config.bounds.size(), 4u) << "the default cascade configuration";
+    EXPECT_TRUE(directional.affects_lightmapped_mesh_diffuse);
+}
+
 }  // namespace

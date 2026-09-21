@@ -32,6 +32,18 @@ EPIX_EXPORT inline std::vector<float> calculate_cascade_bounds(std::size_t num_c
     return bounds;
 }
 
+/** @brief The builder's defaults (Bevy `CascadeShadowConfigBuilder::default`,
+ *  `bevy_light/src/cascade.rs:133-155`), named so that both the builder and a
+ *  default-constructed `CascadeShadowConfig` come from one source.
+ *
+ *  Bevy uses one cascade on WebGL2 without WebGPU and four everywhere else; Epix
+ *  targets the four-cascade case. */
+EPIX_EXPORT inline constexpr std::size_t DEFAULT_CASCADE_COUNT = 4;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MINIMUM_DISTANCE = 0.1f;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MAXIMUM_DISTANCE = 150.0f;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_FIRST_FAR_BOUND = 10.0f;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_OVERLAP_PROPORTION = 0.2f;
+
 /** @brief Builds a `CascadeShadowConfig`, validating first (Bevy
  *  `CascadeShadowConfigBuilder`, `cascade.rs:57-156`).
  *
@@ -39,28 +51,33 @@ EPIX_EXPORT inline std::vector<float> calculate_cascade_bounds(std::size_t num_c
  *  typed exception, so the same five conditions throw `std::invalid_argument`
  *  with Bevy's wording. */
 EPIX_EXPORT struct CascadeShadowConfigBuilder {
-    /** @brief The number of cascades. Bevy uses one on WebGL2 without WebGPU and
-     *  four everywhere else; Epix targets the four-cascade case. */
-    std::size_t num_cascades = 4;
+    /** @brief The number of cascades. */
+    std::size_t num_cascades = DEFAULT_CASCADE_COUNT;
     /** @brief The distance to the near boundary of the first cascade. */
-    float minimum_distance = 0.1f;
+    float minimum_distance = DEFAULT_CASCADE_MINIMUM_DISTANCE;
     /** @brief The maximum shadow distance. */
-    float maximum_distance = 150.0f;
+    float maximum_distance = DEFAULT_CASCADE_MAXIMUM_DISTANCE;
     /** @brief The distance to the far boundary of the first cascade. */
-    float first_cascade_far_bound = 10.0f;
+    float first_cascade_far_bound = DEFAULT_CASCADE_FIRST_FAR_BOUND;
     /** @brief The proportion of overlap each cascade has with the previous one. */
-    float overlap_proportion = 0.2f;
+    float overlap_proportion = DEFAULT_CASCADE_OVERLAP_PROPORTION;
 };
 
 /** @brief A directional light's cascade configuration (Bevy
- *  `CascadeShadowConfig`, `cascade.rs:24-37`). */
+ *  `CascadeShadowConfig`, `cascade.rs:24-37`).
+ *
+ *  Bevy's `Default` builds from the default builder, which a C++ aggregate
+ *  cannot express by calling a function declared below it - so the bounds are
+ *  defaulted from the same named defaults the builder uses, and the two cannot
+ *  drift apart. */
 EPIX_EXPORT struct CascadeShadowConfig {
     /** @brief The positive distance to the far boundary of each cascade. */
-    std::vector<float> bounds;
+    std::vector<float> bounds = calculate_cascade_bounds(DEFAULT_CASCADE_COUNT, DEFAULT_CASCADE_FIRST_FAR_BOUND,
+                                                         DEFAULT_CASCADE_MAXIMUM_DISTANCE);
     /** @brief The proportion of overlap each cascade has with the previous one. */
-    float overlap_proportion = 0.0f;
+    float overlap_proportion = DEFAULT_CASCADE_OVERLAP_PROPORTION;
     /** @brief The positive distance to the near boundary of the first cascade. */
-    float minimum_distance = 0.0f;
+    float minimum_distance = DEFAULT_CASCADE_MINIMUM_DISTANCE;
 };
 
 EPIX_EXPORT inline CascadeShadowConfig build_cascade_shadow_config(const CascadeShadowConfigBuilder& builder) {
