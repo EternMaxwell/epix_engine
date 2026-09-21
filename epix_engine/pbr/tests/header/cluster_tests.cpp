@@ -651,4 +651,34 @@ TEST(Cluster, ViewClusterBindingsPackBothForms) {
     EXPECT_FALSE(storage_bindings.offsets_and_counts_binding().has_value());
 }
 
+/** @brief The extracted cluster data carries the view's geometry and, per
+ *  cluster, a header followed by that cluster's objects (Bevy
+ *  `ExtractedClusterConfig`/`ExtractedClusterableObjects`,
+ *  `bevy_pbr/src/cluster.rs:95-111`). */
+TEST(Cluster, ExtractedClusterDataCarriesHeadersBeforeObjects) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::ExtractedClusterableObjectElement;
+    using epix::pbr::ExtractedClusterableObjects;
+    using epix::pbr::ExtractedClusterConfig;
+
+    const ExtractedClusterConfig config{};
+    EXPECT_FLOAT_EQ(config.near_plane, 0.0f);
+    EXPECT_FLOAT_EQ(config.far_plane, 0.0f);
+    EXPECT_EQ(config.dimensions, glm::uvec3(1, 1, 1));
+
+    // A flat list in cluster order: header, then that cluster's objects.
+    ExtractedClusterableObjects extracted;
+    ClusterableObjectCounts counts{};
+    counts.point_lights = 2;
+    extracted.data.push_back(ExtractedClusterableObjectElement{
+        .kind = ExtractedClusterableObjectElement::Kind::ClusterHeader, .counts = counts});
+    extracted.data.push_back(ExtractedClusterableObjectElement{
+        .kind = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity, .entity = epix::ecs::Entity{}});
+
+    ASSERT_EQ(extracted.data.size(), 2u);
+    EXPECT_EQ(extracted.data[0].kind, ExtractedClusterableObjectElement::Kind::ClusterHeader);
+    EXPECT_EQ(extracted.data[0].counts.point_lights, 2u) << "the header states what follows";
+    EXPECT_EQ(extracted.data[1].kind, ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity);
+}
+
 }  // namespace

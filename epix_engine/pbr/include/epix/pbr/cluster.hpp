@@ -457,5 +457,47 @@ EPIX_EXPORT struct ViewClusterBindings {
     }
 };
 
+/** @brief A view's cluster geometry, extracted from the main world (Bevy
+ *  `ExtractedClusterConfig`, `bevy_pbr/src/cluster.rs:95-101`): the special near
+ *  value the first slice uses, the far plane, and the number of clusters in X, Y
+ *  and Z. */
+EPIX_EXPORT struct ExtractedClusterConfig {
+    /** @brief Special near value for cluster calculations. Spelled
+     *  `near_plane`/`far_plane` rather than Bevy's `near`/`far`, because those
+     *  two are macros in the Windows SDK and a macro expands a whole token. */
+    float near_plane = 0.0f;
+    float far_plane  = 0.0f;
+    /** @brief The number of clusters in X, Y and Z in the view frustum. */
+    glm::uvec3 dimensions{1, 1, 1};
+};
+
+/** @brief One entry of a view's extracted clusterable objects (Bevy
+ *  `ExtractedClusterableObjectElement`, `cluster.rs:103-106`): either a cluster's
+ *  header, which carries the counts for the cluster that follows, or one
+ *  clusterable object's entity.
+ *
+ *  The data is a flat list in cluster order, so the header-then-entities
+ *  sequence is what lets `prepare_lights` fill the index lists without an
+ *  intermediate structure. */
+EPIX_EXPORT struct ExtractedClusterableObjectElement {
+    enum class Kind {
+        /** @brief The counts for the cluster whose objects follow. */
+        ClusterHeader,
+        /** @brief One clusterable object. */
+        ClusterableObjectEntity,
+    } kind = Kind::ClusterHeader;
+
+    /** @brief The counts, when `kind` is `ClusterHeader`. */
+    ClusterableObjectCounts counts{};
+    /** @brief The object, when `kind` is `ClusterableObjectEntity`. */
+    ecs::Entity entity{};
+};
+
+/** @brief The clusterable objects a view extracted, as the flat list above (Bevy
+ *  `ExtractedClusterableObjects`, `cluster.rs:108-111`). */
+EPIX_EXPORT struct ExtractedClusterableObjects {
+    std::vector<ExtractedClusterableObjectElement> data;
+};
+
 }  // namespace epix::pbr
 
