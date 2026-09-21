@@ -275,4 +275,49 @@ EPIX_EXPORT inline std::tuple<bool, bool, ecs::Entity> directional_light_sort_ke
     return {light.volumetric, light.shadows_enabled, entity};
 };
 
+/** @brief A spot light's packed cone data (Bevy `prepare_lights`,
+ *  `render/light.rs:918-933`): the light direction's x and z components, then the
+ *  spot scale and offset that the shader uses to attenuate between the inner and
+ *  outer angles.
+ *
+ *  The scale is `1 / max(cos(inner) - cos(outer), 1e-4)`, so the guard keeps it
+ *  finite when the two angles coincide or the inner one is the wider - the cone
+ *  the shader computes would otherwise divide by zero. The returned second value
+ *  is `tan(outer)`, the tangent the shader needs for the cone test. */
+EPIX_EXPORT inline std::pair<glm::vec4, float> spot_light_custom_data(float inner_angle, float outer_angle,
+                                                                     glm::vec3 light_direction) {
+    const float cos_outer = std::cos(outer_angle);
+    const float spot_scale = 1.0f / std::max(std::cos(inner_angle) - cos_outer, 1e-4f);
+    const float spot_offset = -cos_outer * spot_scale;
+    return {glm::vec4(light_direction.x, light_direction.z, spot_scale, spot_offset), std::tan(outer_angle)};
+}
+
+/** @brief A point light's packed cube-face data (Bevy `render/light.rs:936-946`):
+ *  the lower-right 2x2 values of the cube-face projection matrix, which the
+ *  shader uses to reconstruct the direction to each of the six faces. */
+EPIX_EXPORT inline glm::vec4 point_light_custom_data(const glm::mat4& cube_face_projection) {
+    return glm::vec4(cube_face_projection[2][2], cube_face_projection[2][3], cube_face_projection[3][2],
+                     cube_face_projection[3][3]);
+}
+
+/** @brief Whether a spot light's `SPOT_LIGHT_Y_NEGATIVE` flag is set (Bevy
+ *  `render/light.rs:920-923`).
+ *
+ *  Bevy tests `is_sign_negative`, not `< 0.0`, so a direction of exactly `-0.0`
+ *  counts as negative - which is what the shader expects, since it flips the cone
+ *  around Y for these lights. */
+EPIX_EXPORT inline bool spot_light_y_negative(glm::vec3 light_direction) {
+    return std::signbit(light_direction.y);
+}
+
+/** @brief A light's colour premultiplied by its intensity, with the inverse
+ *  square of the range in w (Bevy `render/light.rs:952-957`).
+ *
+ *  Bevy multiplies the whole `vec4` including alpha - "we don't use the alpha at
+ *  all", so there is no reason to touch only the first three components - then
+ *  takes the xyz and puts `1 / range²` in w. */
+EPIX_EXPORT inline glm::vec4 pack_light_color_intensity_range(glm::vec4 color, float intensity, float range) {
+    return glm::vec4(glm::vec3(color * intensity), 1.0f / (range * range));
+}
+
 }  // namespace epix::pbr

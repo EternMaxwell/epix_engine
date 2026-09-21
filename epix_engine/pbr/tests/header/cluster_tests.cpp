@@ -1809,4 +1809,54 @@ TEST(Cluster, LightCountsAndSortKeysMatchBevy) {
     EXPECT_LT(shadowed, volumetric) << "the volumetric flag dominates both";
 }
 
+/** @brief The point and spot light GPU data: the cone's scale and offset with
+ *  their guard, the cube-face projection's lower-right 2x2, the Y-sign flag and
+ *  the colour/range packing (Bevy `render/light.rs:915-976`). */
+TEST(Cluster, PointAndSpotLightGpuDataMatchesBevy) {
+    using epix::pbr::pack_light_color_intensity_range;
+    using epix::pbr::point_light_custom_data;
+    using epix::pbr::spot_light_custom_data;
+    using epix::pbr::spot_light_y_negative;
+
+    // A 45-degree spot light with a 30-degree inner angle.
+    const float inner = glm::radians(30.0f);
+    const float outer = glm::radians(45.0f);
+    const glm::vec3 direction = glm::normalize(glm::vec3(1.0f, 0.0f, -1.0f));
+    const auto [cone, tan_angle] = spot_light_custom_data(inner, outer, direction);
+    EXPECT_NEAR(cone.x, direction.x, 1e-6f) << "the direction's x";
+    EXPECT_NEAR(cone.y, direction.z, 1e-6f) << "and its z, in y's place";
+    const float cos_outer = std::cos(outer);
+    EXPECT_NEAR(cone.z, 1.0f / (std::cos(inner) - cos_outer), 1e-3f) << "the spot scale";
+    EXPECT_NEAR(cone.w, -cos_outer * cone.z, 1e-5f) << "and the offset, from the same scale";
+    EXPECT_NEAR(tan_angle, std::tan(outer), 1e-5f) << "the tangent of the outer angle";
+
+    // The guard: equal angles would divide by zero without it.
+    const auto [degenerate, _tan] = spot_light_custom_data(outer, outer, direction);
+    static_cast<void>(_tan);
+    EXPECT_TRUE(std::isfinite(degenerate.z)) << "the scale stays finite when the angles coincide";
+    EXPECT_NEAR(degenerate.z, 1e4f, 1.0f) << "clamped by the 1e-4 guard";
+    EXPECT_TRUE(std::isfinite(degenerate.w));
+
+    // The point light's cube-face data is the projection's lower-right 2x2.
+    glm::mat4 projection{1.0f};
+    projection[2][2] = 7.0f;
+    projection[2][3] = 8.0f;
+    projection[3][2] = 9.0f;
+    projection[3][3] = 10.0f;
+    EXPECT_EQ(point_light_custom_data(projection), glm::vec4(7.0f, 8.0f, 9.0f, 10.0f));
+
+    // The Y-sign test follows is_sign_negative, so negative zero counts.
+    EXPECT_TRUE(spot_light_y_negative(glm::vec3(0.0f, -1.0f, 0.0f)));
+    EXPECT_FALSE(spot_light_y_negative(glm::vec3(0.0f, 1.0f, 0.0f)));
+    EXPECT_TRUE(spot_light_y_negative(glm::vec3(0.0f, -0.0f, 0.0f)))
+        << "is_sign_negative is true for negative zero, and the shader relies on that";
+
+    // Colour and range packing: premultiplied by intensity, inverse square in w.
+    const glm::vec4 packed = pack_light_color_intensity_range(glm::vec4(0.5f, 0.25f, 0.125f, 1.0f), 100.0f, 20.0f);
+    EXPECT_NEAR(packed.x, 50.0f, 1e-4f);
+    EXPECT_NEAR(packed.y, 25.0f, 1e-4f);
+    EXPECT_NEAR(packed.z, 12.5f, 1e-4f);
+    EXPECT_NEAR(packed.w, 1.0f / 400.0f, 1e-6f) << "the inverse square of the range";
+}
+
 }  // namespace
