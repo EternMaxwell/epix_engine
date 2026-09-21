@@ -2346,4 +2346,57 @@ TEST(Cluster, CubeFaceShadowViewsMatchBevy) {
     EXPECT_EQ(cube_face_projection(z_near), epix::camera::perspective_infinite_reverse_rh(glm::radians(90.0f), 1.0f, z_near));
 }
 
+/** @brief A point light's six faces take consecutive array layers, are named the
+ *  way Bevy names them, and each gets its own projection (Bevy
+ *  `render/light.rs:1290-1360`). */
+TEST(Cluster, PointLightShadowViewRequestsMatchBevy) {
+    using epix::pbr::point_light_shadow_array_layer;
+    using epix::pbr::point_light_shadow_pass_name;
+    using epix::pbr::point_light_shadow_view_requests;
+    using epix::pbr::POINT_LIGHT_CUBE_FACE_COUNT;
+
+    // Layers are not shared between lights, and never repeat.
+    EXPECT_EQ(point_light_shadow_array_layer(0, 0), 0u);
+    EXPECT_EQ(point_light_shadow_array_layer(0, 5), 5u);
+    EXPECT_EQ(point_light_shadow_array_layer(1, 0), 6u) << "the second light starts after the first's six";
+    EXPECT_EQ(point_light_shadow_array_layer(3, 2), 20u);
+
+    // The pass names Bevy uses, including the face spelling.
+    EXPECT_EQ(point_light_shadow_pass_name(0, 0), "shadow_point_light_0_+x");
+    EXPECT_EQ(point_light_shadow_pass_name(2, 5), "shadow_point_light_2_-z");
+
+    // Two shadow-casting lights give twelve views, each on its own layer.
+    const auto first  = epix::ecs::Entity::from_index(1);
+    const auto second = epix::ecs::Entity::from_index(2);
+    const std::vector<std::pair<epix::ecs::Entity, glm::vec3>> lights{
+        {first, glm::vec3(1.0f, 2.0f, 3.0f)}, {second, glm::vec3(-4.0f, 0.0f, 1.0f)}};
+    const float z_near = 0.1f;
+    const auto requests = point_light_shadow_view_requests(lights, z_near, 1024);
+    ASSERT_EQ(requests.size(), 2u * POINT_LIGHT_CUBE_FACE_COUNT);
+
+    std::vector<std::uint32_t> layers;
+    for (const auto& request : requests) {
+        layers.push_back(request.array_layer);
+        EXPECT_EQ(request.viewport_size, 1024u) << "the shadow map's side is the view's viewport";
+        EXPECT_EQ(request.owner.kind, epix::pbr::LightEntity::Kind::Point);
+        EXPECT_EQ(request.clip_from_world, request.clip_from_world) << "a usable matrix";
+    }
+    std::sort(layers.begin(), layers.end());
+    EXPECT_EQ(std::adjacent_find(layers.begin(), layers.end()), layers.end()) << "no two views share a layer";
+    EXPECT_EQ(layers.front(), 0u);
+    EXPECT_EQ(layers.back(), 11u) << "twelve views over layers 0 to 11";
+
+    // The first light's first face and the second light's first face belong to
+    // different lights and different layers.
+    EXPECT_EQ(requests[0].light_entity, first);
+    EXPECT_EQ(requests[0].owner.face_index, 0u);
+    EXPECT_EQ(requests[POINT_LIGHT_CUBE_FACE_COUNT].light_entity, second);
+    EXPECT_EQ(requests[POINT_LIGHT_CUBE_FACE_COUNT].array_layer, 6u);
+
+    // A light's own faces point in six different directions: their projections
+    // differ, which is what stops a face being reused for the wrong side.
+    EXPECT_NE(requests[0].clip_from_world, requests[1].clip_from_world);
+    EXPECT_NE(requests[0].clip_from_world, requests[4].clip_from_world);
+}
+
 }  // namespace

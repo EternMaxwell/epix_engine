@@ -133,4 +133,69 @@ EPIX_EXPORT inline glm::mat4 point_light_face_clip_from_world(
            glm::inverse(point_light_face_world_from_view(rotations, light_translation, face_index));
 }
 
+/** @brief The texture array layer a point light's face writes to (Bevy
+ *  `render/light.rs:1293`): each light owns six consecutive layers of the shared
+ *  cubemap array. */
+EPIX_EXPORT inline std::uint32_t point_light_shadow_array_layer(std::size_t light_index, std::size_t face_index) {
+    return static_cast<std::uint32_t>(light_index * POINT_LIGHT_CUBE_FACE_COUNT + face_index);
+}
+
+/** @brief The pass name Bevy gives a point light's face (Bevy
+ *  `render/light.rs:1328-1332`), which is what shows up in a capture and a
+ *  profiler, so it is worth keeping identical. */
+EPIX_EXPORT inline std::string point_light_shadow_pass_name(std::size_t light_index, std::size_t face_index) {
+    return "shadow_point_light_" + std::to_string(light_index) + "_" +
+           std::string(camera::face_index_to_name(face_index));
+}
+
+/** @brief One shadow view a view's lights need (Bevy `prepare_lights`,
+ *  `render/light.rs:1290-1360` for the point-light case). */
+EPIX_EXPORT struct ShadowViewRequest {
+    /** @brief The render-world light entity this view belongs to. */
+    ecs::Entity light_entity{};
+    /** @brief What the view belongs to, as Bevy's `LightEntity` records it. */
+    LightEntity owner{};
+    /** @brief The layer of the shared shadow texture array the view writes. */
+    std::uint32_t array_layer = 0;
+    /** @brief The pass name the view is labelled with. */
+    std::string pass_name;
+    /** @brief The view's projection into the world. */
+    glm::mat4 clip_from_world{1.0f};
+    /** @brief The shadow map's side in pixels, which is the view's viewport. */
+    std::uint32_t viewport_size = 0;
+};
+
+/** @brief Every face view a view's shadow-casting point lights need (Bevy
+ *  `prepare_lights`, `render/light.rs:1250-1360`).
+ *
+ *  The caller passes the lights in sorted order, already trimmed to
+ *  `point_light_shadow_view_count`, with their translations. Each contributes six
+ *  faces on consecutive array layers, each with its own projection. Bevy creates
+ *  one single-layer depth view per face and caches it by layer, so a light's six
+ *  faces never share an attachment. */
+EPIX_EXPORT inline std::vector<ShadowViewRequest> point_light_shadow_view_requests(
+    const std::vector<std::pair<ecs::Entity, glm::vec3>>& shadow_casting_lights, float shadow_map_near_z,
+    std::uint32_t shadow_map_size) {
+    std::vector<ShadowViewRequest> requests;
+    requests.reserve(shadow_casting_lights.size() * POINT_LIGHT_CUBE_FACE_COUNT);
+
+    const auto rotations = cube_face_view_rotations();
+    for (std::size_t light_index = 0; light_index < shadow_casting_lights.size(); ++light_index) {
+        const auto& [entity, translation] = shadow_casting_lights[light_index];
+        for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+            requests.push_back(ShadowViewRequest{
+                .light_entity  = entity,
+                .owner         = LightEntity{.kind = LightEntity::Kind::Point,
+                                             .light_entity = entity,
+                                             .cascade_index = 0,
+                                             .face_index = face},
+                .array_layer   = point_light_shadow_array_layer(light_index, face),
+                .pass_name     = point_light_shadow_pass_name(light_index, face),
+                .clip_from_world = point_light_face_clip_from_world(rotations, translation, face, shadow_map_near_z),
+                .viewport_size = shadow_map_size});
+        }
+    }
+    return requests;
+}
+
 }  // namespace epix::pbr
