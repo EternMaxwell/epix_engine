@@ -1314,4 +1314,51 @@ TEST(Cluster, ClusterIndexEstimateMatchesBevy) {
     EXPECT_NEAR(two, 2.0f * inside, 1e-3f);
 }
 
+/** @brief The dynamic-resizing reduction scales both axes by the square root of
+ *  the index ratio, and the orthographic cluster planes place their boundaries
+ *  with the y axis inverted (Bevy `assign.rs:434-451,484-503`). */
+TEST(Cluster, ClusterReductionAndOrthographicPlanesMatchBevy) {
+    using epix::camera::HalfSpace;
+    using epix::pbr::orthographic_cluster_xy_planes;
+    using epix::pbr::reduce_cluster_dimensions_for_index_limit;
+    using epix::pbr::VIEW_CLUSTER_MAX_INDICES;
+
+    // An estimate four times the limit halves both axes; z is untouched.
+    const glm::uvec3 reduced =
+        reduce_cluster_dimensions_for_index_limit(glm::uvec3(17, 9, 24), 4.0f * VIEW_CLUSTER_MAX_INDICES,
+                                                  VIEW_CLUSTER_MAX_INDICES);
+    EXPECT_EQ(reduced, glm::uvec3(8, 4, 24)) << "floor(17 * 0.5) and floor(9 * 0.5)";
+
+    // Under the limit nothing changes; far over it both axes clamp at one.
+    EXPECT_EQ(reduce_cluster_dimensions_for_index_limit(glm::uvec3(17, 9, 24), 100.0f, VIEW_CLUSTER_MAX_INDICES),
+              glm::uvec3(17, 9, 24));
+    const glm::uvec3 clamped = reduce_cluster_dimensions_for_index_limit(
+        glm::uvec3(17, 9, 24), 1e12f, VIEW_CLUSTER_MAX_INDICES);
+    EXPECT_EQ(clamped.x, 1u) << "never zero";
+    EXPECT_EQ(clamped.y, 1u);
+    EXPECT_EQ(clamped.z, 24u) << "z is never adjusted";
+
+    // Orthographic x and y planes: one more than the cluster count per axis,
+    // spanning the view, with the y order inverted.
+    const float z_near = 0.1f;
+    const float z_far  = 100.0f;
+    const glm::mat4 ortho      = glm::orthoRH_ZO(-1.0f, 1.0f, -0.75f, 0.75f, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(ortho);
+    const auto [x_planes, y_planes] = orthographic_cluster_xy_planes(view_from_clip, glm::uvec3(4, 4, 1));
+
+    ASSERT_EQ(x_planes.size(), 5u) << "dimensions.x + 1";
+    ASSERT_EQ(y_planes.size(), 5u);
+    // The x boundaries run left to right across the view's x extent.
+    EXPECT_NEAR(x_planes.front().d(), -1.0f, 1e-3f);
+    EXPECT_NEAR(x_planes[2].d(), 0.0f, 1e-3f);
+    EXPECT_NEAR(x_planes.back().d(), 1.0f, 1e-3f);
+    // The y boundaries run top to bottom, so they start high and end low.
+    EXPECT_NEAR(y_planes.front().d(), 0.75f, 1e-3f) << "the top of the view is the first plane";
+    EXPECT_NEAR(y_planes[2].d(), 0.0f, 1e-3f);
+    EXPECT_NEAR(y_planes.back().d(), -0.75f, 1e-3f) << "and the bottom is the last";
+    // Each plane carries its axis as the normal.
+    EXPECT_EQ(x_planes[1].normal(), glm::vec3(1.0f, 0.0f, 0.0f));
+    EXPECT_EQ(y_planes[1].normal(), glm::vec3(0.0f, 1.0f, 0.0f));
+}
+
 }  // namespace

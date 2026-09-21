@@ -16,6 +16,7 @@
 #include <optional>
 #include <tuple>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 #include <epix/common.hpp>
 #endif
@@ -667,6 +668,57 @@ EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObje
         estimate += (xy_count.x + x_overlap) * (xy_count.y + y_overlap) * z_count;
     }
     return estimate;
+}
+
+/** @brief Shrink a view's X/Y cluster counts so its indices fit the limit (Bevy
+ *  `assign_objects_to_clusters`'s dynamic-resizing branch,
+ *  `bevy_light/src/cluster/assign.rs:434-451`).
+ *
+ *  The estimate is conservative, so Bevy scales both axes by the square root of
+ *  the ratio between the limit and the estimate rather than trying to solve
+ *  exactly, floors the result and clamps it at one. The z count is untouched: z
+ *  slices are not adjusted. */
+EPIX_EXPORT inline glm::uvec3 reduce_cluster_dimensions_for_index_limit(glm::uvec3 dimensions, float index_estimate,
+                                                                       std::size_t max_indices) {
+    if (index_estimate <= static_cast<float>(max_indices)) return dimensions;
+    const float index_ratio = static_cast<float>(max_indices) / index_estimate;
+    const float xy_ratio    = std::sqrt(index_ratio);
+    return glm::uvec3(
+        std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.x) * xy_ratio)), 1u),
+        std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.y) * xy_ratio)), 1u),
+        dimensions.z);
+}
+
+/** @brief An orthographic view's x and y cluster planes in view space (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:484-503`).
+ *
+ *  Each plane is placed at the view-space position its slice boundary unprojects
+ *  to at the near plane, with an axis-aligned normal and that position as its d.
+ *  The x boundaries run from -1 to 1 across the view, but the y ones are
+ *  *inverted* - `1 - y / slices` - because NDC y grows upward while the plane
+ *  index grows downward. There are `dimensions + 1` planes per axis, the last
+ *  being the far edge. */
+EPIX_EXPORT inline std::pair<std::vector<camera::HalfSpace>, std::vector<camera::HalfSpace>>
+orthographic_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimensions) {
+    std::vector<camera::HalfSpace> x_planes;
+    x_planes.reserve(dimensions.x + 1);
+    const float x_slices = static_cast<float>(dimensions.x);
+    for (std::uint32_t x = 0; x <= dimensions.x; ++x) {
+        const float x_pos  = (static_cast<float>(x) / x_slices) * 2.0f - 1.0f;
+        const float view_x = clip_to_view(view_from_clip, glm::vec4(x_pos, 0.0f, 1.0f, 1.0f)).x;
+        x_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(1.0f, 0.0f, 0.0f, view_x)));
+    }
+
+    std::vector<camera::HalfSpace> y_planes;
+    y_planes.reserve(dimensions.y + 1);
+    const float y_slices = static_cast<float>(dimensions.y);
+    for (std::uint32_t y = 0; y <= dimensions.y; ++y) {
+        // Inverted: the top of the view is the first plane.
+        const float y_pos  = (1.0f - static_cast<float>(y) / y_slices) * 2.0f - 1.0f;
+        const float view_y = clip_to_view(view_from_clip, glm::vec4(0.0f, y_pos, 1.0f, 1.0f)).y;
+        y_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(0.0f, 1.0f, 0.0f, view_y)));
+    }
+    return {x_planes, y_planes};
 }
 
 /** @brief The clusterable objects visible to any view (Bevy
