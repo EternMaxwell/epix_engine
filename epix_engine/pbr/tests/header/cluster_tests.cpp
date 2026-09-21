@@ -2469,4 +2469,76 @@ TEST(Cluster, DirectionalShadowViewRequestsMatchBevy) {
     EXPECT_EQ(squeezed.size(), 4u) << "only the first light's four cascades fit the six layers";
 }
 
+/** @brief The far plane is the largest object depth plus its range, the first
+ *  slice follows the projection and the slice count, and the far plane is raised
+ *  to meet it (Bevy `assign.rs:337-369`). */
+TEST(Cluster, ViewFarZAndFirstSliceDepthMatchBevy) {
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::ClusterFarZMode;
+    using epix::pbr::far_z_at_least_first_slice_depth;
+    using epix::pbr::first_slice_depth;
+    using epix::pbr::view_far_z;
+
+    const auto object_at = [](float z, float range) {
+        ClusterableObjectAssignmentData object;
+        object.transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, z));
+        object.range     = range;
+        return object;
+    };
+    const glm::mat4 identity{1.0f};
+    const glm::vec3 unit_scale{1.0f};
+
+    // A constant mode ignores the objects entirely.
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode::constant_far(42.0f), {object_at(-100.0f, 5.0f)}, identity, unit_scale),
+                    42.0f);
+
+    // Maximum range: view space looks down -Z, so a depth is -z, plus the range.
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode{}, {}, identity, unit_scale), 0.0f) << "no objects, no depth";
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode{}, {object_at(-10.0f, 2.0f)}, identity, unit_scale), 12.0f);
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode{}, {object_at(-10.0f, 2.0f), object_at(-30.0f, 1.0f)}, identity, unit_scale),
+                    31.0f)
+        << "the furthest object wins";
+    // The object's range is scaled by the view's z scale, the depth is not.
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode{}, {object_at(-10.0f, 2.0f)}, identity, glm::vec3(1.0f, 1.0f, 3.0f)), 16.0f);
+
+    // A view's own transform changes the measured depth: a 90-degree turn about Y
+    // maps world +X to the view's -Z, so an object out along +X is in front of it.
+    // (Out along -X it would be behind the view, and the depth is floored at zero,
+    // so it would contribute nothing.)
+    const glm::mat4 turned = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    ClusterableObjectAssignmentData sideways;
+    sideways.transform = glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 0.0f, 0.0f));
+    sideways.range     = 0.0f;
+    EXPECT_NEAR(view_far_z(ClusterFarZMode{}, {sideways}, turned, unit_scale), 5.0f, 1e-4f)
+        << "the row picks up the axis that faces the view";
+
+    ClusterableObjectAssignmentData behind = sideways;
+    behind.transform = glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 0.0f, 0.0f));
+    EXPECT_FLOAT_EQ(view_far_z(ClusterFarZMode{}, {behind}, turned, unit_scale), 0.0f)
+        << "an object behind the view contributes no depth";
+
+    // First slice depth: an orthographic view derives it from its projection.
+    const float z_near = 0.1f;
+    const glm::mat4 ortho = glm::orthoRH_ZO(-1.0f, 1.0f, -0.75f, 0.75f, 100.0f, z_near);
+    const ClusterConfig defaults{};
+    EXPECT_NEAR(first_slice_depth(defaults, true, 8, ortho, unit_scale, 100.0f), z_near, 1e-3f)
+        << "the orthographic near plane";
+
+    // A perspective view with several slices uses the configured depth.
+    EXPECT_FLOAT_EQ(first_slice_depth(defaults, false, 8, glm::mat4(1.0f), unit_scale, 500.0f), 5.0f)
+        << "the configured first slice depth";
+    // With a single slice it must reach the far plane instead, and the scale still
+    // applies to whichever wins.
+    EXPECT_FLOAT_EQ(first_slice_depth(defaults, false, 1, glm::mat4(1.0f), unit_scale, 500.0f), 500.0f);
+    EXPECT_FLOAT_EQ(first_slice_depth(defaults, false, 1, glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 2.0f), 500.0f), 1000.0f)
+        << "including when the far plane is what won";
+    EXPECT_FLOAT_EQ(first_slice_depth(defaults, false, 8, glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 2.0f), 500.0f), 10.0f)
+        << "and when the configuration won";
+
+    // The far plane is raised to meet the first slice, never left behind it.
+    EXPECT_FLOAT_EQ(far_z_at_least_first_slice_depth(10.0f, 20.0f), 20.0f);
+    EXPECT_FLOAT_EQ(far_z_at_least_first_slice_depth(30.0f, 20.0f), 30.0f) << "already beyond it";
+}
+
 }  // namespace

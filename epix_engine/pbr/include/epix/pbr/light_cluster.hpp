@@ -1051,6 +1051,62 @@ EPIX_EXPORT UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_
     return limited;
 }
 
+/** @brief The furthest depth a view's clusters reach (Bevy
+ *  `assign_objects_to_clusters`, `bevy_light/src/cluster/assign.rs:337-350`).
+ *
+ *  A constant mode is taken as given; the maximum-range mode measures each
+ *  object's view-space depth - negated, because view space looks down -Z - plus
+ *  its range scaled by the view's z scale, and takes the largest. With no objects
+ *  the result is zero.
+ *
+ *  Note the row: glam's `Mat4::row(2)` is the third *row*, while a glm matrix is
+ *  column-major, so the row is assembled from the fourth element of each column
+ *  here. Reading `view_from_world[2]` would silently use a column instead. */
+EPIX_EXPORT inline float view_far_z(const ClusterFarZMode& mode,
+                                    const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
+                                    const glm::mat4& view_from_world, glm::vec3 view_from_world_scale) {
+    if (mode.kind == ClusterFarZMode::Kind::Constant) return mode.constant;
+
+    const glm::vec4 row{view_from_world[0][2], view_from_world[1][2], view_from_world[2][2], view_from_world[3][2]};
+    float far_z = 0.0f;
+    for (const ClusterableObjectAssignmentData& object : clusterable_objects) {
+        const glm::vec3 translation = glm::vec3(object.transform[3]);
+        const float depth = -glm::dot(row, glm::vec4(translation, 1.0f)) + object.range * view_from_world_scale.z;
+        far_z             = std::max(far_z, depth);
+    }
+    return far_z;
+}
+
+/** @brief The depth of the first cluster slice (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:351-369`).
+ *
+ *  An orthographic view derives it from its reverse-Z projection matrix instead of
+ *  reading the configuration. A perspective view with a single slice has to reach
+ *  as far as the objects do, so its first slice is the larger of the configured
+ *  depth and the far plane; with more slices the configured depth stands. The
+ *  result is then scaled by the view's z scale - and the far plane is raised to
+ *  meet it, so the first slice can never be beyond the far plane. */
+EPIX_EXPORT inline float first_slice_depth(const ClusterConfig& config, bool is_orthographic,
+                                           std::uint32_t cluster_dimensions_z, const glm::mat4& clip_from_view,
+                                           glm::vec3 view_from_world_scale, float far_z) {
+    float depth = 0.0f;
+    if (is_orthographic) {
+        depth = orthographic_first_slice_depth(clip_from_view);
+    } else if (cluster_dimensions_z == 1) {
+        depth = std::max(config.first_slice_depth(), far_z);
+    } else {
+        depth = config.first_slice_depth();
+    }
+    return depth * view_from_world_scale.z;
+}
+
+/** @brief The far plane a view's clusters actually use, which is at least as far
+ *  as the first slice (Bevy `assign.rs:369`): clustering misbehaves if the first
+ *  slice reaches past the far plane, so the far plane is raised to meet it. */
+EPIX_EXPORT inline float far_z_at_least_first_slice_depth(float far_z, float first_slice_depth) {
+    return std::max(far_z, first_slice_depth);
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
