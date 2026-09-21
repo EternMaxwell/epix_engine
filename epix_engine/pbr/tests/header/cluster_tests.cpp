@@ -1643,4 +1643,56 @@ TEST(Cluster, ClusterInsertionCountsByKind) {
     EXPECT_EQ(clusters[cluster_index(dims, 1, 2, 2)].entities.size(), 0u) << "the row is at y 1 only";
 }
 
+/** @brief The uniform-buffer cap keeps only the objects in view, reports when
+ *  more were in view than it can hold, and drops the rest (Bevy
+ *  `assign.rs:262-294`). */
+TEST(Cluster, UniformClusterableObjectCapMatchesBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::limit_clusterable_objects_for_uniform_buffer;
+
+    const auto object_at = [](std::uint32_t index, float x) {
+        ClusterableObjectAssignmentData object;
+        object.entity    = epix::ecs::Entity::from_index(index);
+        object.transform = glm::translate(glm::mat4(1.0f), glm::vec3(x, 0.0f, -10.0f));
+        object.range     = 1.0f;
+        return object;
+    };
+    // Objects at a positive x are "in view" in this test.
+    const auto in_view = [](const Sphere& sphere) { return sphere.center.x > 0.0f; };
+
+    // Under the cap: everything in view is kept and nothing is reported.
+    const auto under = limit_clusterable_objects_for_uniform_buffer(
+        {object_at(1, 1.0f), object_at(2, 2.0f), object_at(3, -1.0f)}, in_view, 3);
+    EXPECT_EQ(under.objects.size(), 2u) << "the out-of-view object is dropped";
+    EXPECT_FALSE(under.exceeded);
+
+    // Over the cap: the survivors are truncated and the excess is reported.
+    const auto over = limit_clusterable_objects_for_uniform_buffer(
+        {object_at(1, 1.0f), object_at(2, 2.0f), object_at(3, 3.0f), object_at(4, 4.0f), object_at(5, 5.0f)}, in_view, 3);
+    EXPECT_EQ(over.objects.size(), 3u) << "truncated to the cap";
+    EXPECT_TRUE(over.exceeded) << "more were in view than it can hold";
+
+    // Objects outside the view never trigger the report, however many there are.
+    std::vector<ClusterableObjectAssignmentData> outside;
+    for (std::uint32_t i = 0; i < 50; ++i) outside.push_back(object_at(i + 1, -1.0f));
+    outside.push_back(object_at(100, 1.0f));
+    const auto mostly_outside = limit_clusterable_objects_for_uniform_buffer(std::move(outside), in_view, 3);
+    EXPECT_EQ(mostly_outside.objects.size(), 1u);
+    EXPECT_FALSE(mostly_outside.exceeded) << "the cap counts what is in view, not what exists";
+
+    // Exactly one over the cap is still reported, since Bevy keeps that extra
+    // object precisely to detect it.
+    const auto exactly_one_over = limit_clusterable_objects_for_uniform_buffer(
+        {object_at(1, 1.0f), object_at(2, 2.0f), object_at(3, 3.0f), object_at(4, 4.0f)}, in_view, 3);
+    EXPECT_EQ(exactly_one_over.objects.size(), 3u);
+    EXPECT_TRUE(exactly_one_over.exceeded);
+
+    // Exactly at the cap is not reported.
+    const auto exactly_at = limit_clusterable_objects_for_uniform_buffer(
+        {object_at(1, 1.0f), object_at(2, 2.0f), object_at(3, 3.0f)}, in_view, 3);
+    EXPECT_EQ(exactly_at.objects.size(), 3u);
+    EXPECT_FALSE(exactly_at.exceeded);
+}
+
 }  // namespace

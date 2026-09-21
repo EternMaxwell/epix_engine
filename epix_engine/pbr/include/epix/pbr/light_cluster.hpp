@@ -1004,6 +1004,52 @@ EPIX_EXPORT inline void insert_object_into_cluster_row(std::vector<VisibleCluste
     }
 }
 
+/** @brief What the uniform-buffer cap did to a view's clusterable objects (Bevy
+ *  `assign_objects_to_clusters`, `bevy_light/src/cluster/assign.rs:262-294`). */
+EPIX_EXPORT struct UniformClusterableObjectLimit {
+    /** @brief The objects that remain, at most `max_objects`. */
+    std::vector<ClusterableObjectAssignmentData> objects;
+    /** @brief Whether more objects were in view than the cap allows, which Bevy
+     *  reports once with a warning. */
+    bool exceeded = false;
+};
+
+/** @brief Cap a view's clusterable objects at what a uniform buffer can hold
+ *  (Bevy `assign.rs:262-294`).
+ *
+ *  Only objects the view frustum intersects are kept, and Bevy stops collecting
+ *  one past the cap rather than counting the lot - that extra object is there
+ *  purely to tell whether the cap was exceeded, so objects outside the view
+ *  never trigger the warning. The survivors are then truncated to the cap.
+ *
+ *  This path exists because a uniform buffer cannot grow: on a device without
+ *  the three storage bindings clustered forward wants, the clusterable objects
+ *  live in a fixed buffer of `MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS`, and
+ *  anything past it is dropped. The frustum test is a predicate, as in the index
+ *  estimate, so the capping behaviour can be verified on its own. */
+template <typename InView>
+    requires std::invocable<InView&, const camera::Sphere&>
+EPIX_EXPORT UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_buffer(
+    std::vector<ClusterableObjectAssignmentData> objects, InView&& in_view, std::size_t max_objects) {
+    UniformClusterableObjectLimit limited;
+    limited.objects.reserve(std::min(objects.size(), max_objects + 1));
+
+    std::size_t in_view_count = 0;
+    for (ClusterableObjectAssignmentData& object : objects) {
+        // One past the cap is kept: it is what reveals the cap was exceeded.
+        if (in_view_count == max_objects + 1) break;
+        if (!in_view(object.sphere())) continue;
+        ++in_view_count;
+        limited.objects.push_back(std::move(object));
+    }
+
+    // The retained length is what Bevy warns about, so objects outside the view
+    // never contribute to it.
+    limited.exceeded = limited.objects.size() > max_objects;
+    if (limited.objects.size() > max_objects) limited.objects.resize(max_objects);
+    return limited;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
