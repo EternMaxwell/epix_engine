@@ -1926,20 +1926,20 @@ TEST(Cluster, PointLightFlagsAndCascadeCountMatchBevy) {
     // and clamped per light and then by the device.
     ExtractedDirectionalLight light;
     light.shadows_enabled = true;
-    light.render_layers   = 0b01;
+    light.render_layers   = epix::camera::RenderLayers::layer(0);
     EXPECT_EQ(light.cascade_shadow_config.bounds.size(), 4u) << "the default is four cascades";
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light}, 128), 4u);
-    EXPECT_EQ(num_directional_cascades_enabled({0b10u}, {light}, 128), 0u) << "the layers do not intersect";
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light}, 2), 2u) << "clamped by the device's layers";
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0)}, {light}, 128), 4u);
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(1)}, {light}, 128), 0u) << "the layers do not intersect";
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0)}, {light}, 2), 2u) << "clamped by the device's layers";
     // The maximum across views, not the sum.
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u, 0b10u}, {light}, 128), 4u);
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0), epix::camera::RenderLayers::layer(1)}, {light}, 128), 4u);
     ExtractedDirectionalLight second = light;
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light, second}, 128), 8u) << "two lights in one view";
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0)}, {light, second}, 128), 8u) << "two lights in one view";
     second.shadows_enabled = false;
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light, second}, 128), 4u) << "a light without shadows";
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0)}, {light, second}, 128), 4u) << "a light without shadows";
     second = light;
     second.cascade_shadow_config.bounds.resize(10);
-    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {second}, 128), 4u) << "clamped per light to four cascades";
+    EXPECT_EQ(num_directional_cascades_enabled({epix::camera::RenderLayers::layer(0)}, {second}, 128), 4u) << "clamped per light to four cascades";
 }
 
 /** @brief The `GpuLights` assembly: the ambient colour, the cluster factors and
@@ -2237,18 +2237,20 @@ TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
     using epix::pbr::directional_shadow_slices;
     using epix::pbr::ExtractedDirectionalLight;
 
-    const auto make_light = [](bool shadows, std::uint32_t layers) {
+    const auto make_light = [](bool shadows, epix::camera::RenderLayers layers) {
         ExtractedDirectionalLight light;
         light.shadows_enabled = shadows;
-        light.render_layers   = layers;
+        light.render_layers   = std::move(layers);
         return light;
     };
+    const auto layer0 = epix::camera::RenderLayers::layer(0);
+    const auto layer1 = epix::camera::RenderLayers::layer(1);
 
     std::size_t total = 0;
     // Two shadow-casting lights in the view: the first takes layers 0-3, the
     // second 4-7, and the view's total is eight.
-    const std::vector<ExtractedDirectionalLight> two{make_light(true, 0b01), make_light(true, 0b01)};
-    const auto slices = directional_shadow_slices(two, 0b01, 0, 32, &total);
+    const std::vector<ExtractedDirectionalLight> two{make_light(true, layer0), make_light(true, layer0)};
+    const auto slices = directional_shadow_slices(two, layer0, 0, 32, &total);
     ASSERT_EQ(slices.size(), 2u);
     EXPECT_EQ(slices[0].base_index, 0u);
     EXPECT_EQ(slices[0].num_cascades, 4u) << "the default four cascades";
@@ -2258,10 +2260,10 @@ TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
     // A light on another layer is skipped without consuming a layer. Bevy filters
     // before enumerating, so the light indices are dense over the lights that are
     // in the view - the skipped light does not occupy a position.
-    const std::vector<ExtractedDirectionalLight> mixed{make_light(true, 0b01), make_light(true, 0b10),
-                                                      make_light(true, 0b01)};
+    const std::vector<ExtractedDirectionalLight> mixed{make_light(true, layer0), make_light(true, layer1),
+                                                      make_light(true, layer0)};
     total = 0;
-    const auto filtered = directional_shadow_slices(mixed, 0b01, 0, 32, &total);
+    const auto filtered = directional_shadow_slices(mixed, layer0, 0, 32, &total);
     ASSERT_EQ(filtered.size(), 2u);
     EXPECT_EQ(filtered[0].light_index, 0u);
     EXPECT_EQ(filtered[1].light_index, 1u) << "dense over the lights in the view";
@@ -2271,9 +2273,9 @@ TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
     // A light without shadows consumes nothing, so the next one starts where it
     // would have.
     total = 0;
-    const std::vector<ExtractedDirectionalLight> gap{make_light(true, 0b01), make_light(false, 0b01),
-                                                     make_light(true, 0b01)};
-    const auto skipped = directional_shadow_slices(gap, 0b01, 0, 32, &total);
+    const std::vector<ExtractedDirectionalLight> gap{make_light(true, layer0), make_light(false, layer0),
+                                                     make_light(true, layer0)};
+    const auto skipped = directional_shadow_slices(gap, layer0, 0, 32, &total);
     ASSERT_EQ(skipped.size(), 3u);
     EXPECT_EQ(skipped[1].num_cascades, 0u) << "no shadows";
     EXPECT_EQ(skipped[1].base_index, 0u) << "and no slice assigned";
@@ -2283,8 +2285,8 @@ TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
     // When the layers run out, the light that does not fit is dropped rather than
     // overlapping the previous one.
     total = 0;
-    const std::vector<ExtractedDirectionalLight> tight{make_light(true, 0b01), make_light(true, 0b01)};
-    const auto squeezed = directional_shadow_slices(tight, 0b01, 0, 6, &total);
+    const std::vector<ExtractedDirectionalLight> tight{make_light(true, layer0), make_light(true, layer0)};
+    const auto squeezed = directional_shadow_slices(tight, layer0, 0, 6, &total);
     ASSERT_EQ(squeezed.size(), 2u);
     EXPECT_EQ(squeezed[0].num_cascades, 4u);
     EXPECT_EQ(squeezed[1].num_cascades, 0u) << "six layers cannot hold a second four-cascade light";
@@ -2397,6 +2399,74 @@ TEST(Cluster, PointLightShadowViewRequestsMatchBevy) {
     // differ, which is what stops a face being reused for the wrong side.
     EXPECT_NE(requests[0].clip_from_world, requests[1].clip_from_world);
     EXPECT_NE(requests[0].clip_from_world, requests[4].clip_from_world);
+}
+
+/** @brief Directional cascades take layers after each other across lights, each
+ *  view gets its own attachment layer, the GPU cascade's far bound comes from the
+ *  configuration's bounds, and the pass names are Bevy's (Bevy
+ *  `render/light.rs:1484-1600`). */
+TEST(Cluster, DirectionalShadowViewRequestsMatchBevy) {
+    using epix::pbr::Cascade;
+    using epix::pbr::directional_shadow_pass_name;
+    using epix::pbr::directional_shadow_slices;
+    using epix::pbr::directional_shadow_view_requests;
+    using epix::pbr::ExtractedDirectionalLight;
+    using epix::pbr::fill_gpu_directional_cascades;
+    using epix::pbr::GpuDirectionalCascade;
+    using epix::pbr::GpuDirectionalLight;
+
+    const auto layer0 = epix::camera::RenderLayers::layer(0);
+
+    EXPECT_EQ(directional_shadow_pass_name(0, 0), "shadow_directional_light_0_cascade_0");
+    EXPECT_EQ(directional_shadow_pass_name(3, 2), "shadow_directional_light_3_cascade_2");
+
+    // The GPU cascade takes its matrix and texel size from the cascade, but its
+    // far bound from the configuration's bounds - which is a different array.
+    const std::vector<Cascade> cascades{Cascade{.clip_from_world = glm::mat4(2.0f), .texel_size = 0.5f},
+                                        Cascade{.clip_from_world = glm::mat4(3.0f), .texel_size = 0.25f}};
+    const std::vector<float> bounds{10.0f, 20.0f, 30.0f, 40.0f};
+    GpuDirectionalLight light;
+    light.cascades[3] = GpuDirectionalCascade{.texel_size = 99.0f};  // stale, must be cleared
+    fill_gpu_directional_cascades(light, cascades, bounds);
+    EXPECT_EQ(light.cascades[0].clip_from_world, glm::mat4(2.0f));
+    EXPECT_FLOAT_EQ(light.cascades[0].texel_size, 0.5f);
+    EXPECT_FLOAT_EQ(light.cascades[0].far_bound, 10.0f) << "from the bounds, not the cascade";
+    EXPECT_FLOAT_EQ(light.cascades[1].far_bound, 20.0f);
+    EXPECT_FLOAT_EQ(light.cascades[3].texel_size, 0.0f) << "cascades past the built ones are cleared";
+
+    // Two shadow-casting lights, four cascades each.
+    const auto first  = epix::ecs::Entity::from_index(1);
+    const auto second = epix::ecs::Entity::from_index(2);
+    const std::vector<ExtractedDirectionalLight> lights{ExtractedDirectionalLight{.shadows_enabled = true},
+                                                       ExtractedDirectionalLight{.shadows_enabled = true}};
+    std::size_t total = 0;
+    const auto slices = directional_shadow_slices(lights, layer0, 0, 32, &total);
+    ASSERT_EQ(slices.size(), 2u);
+
+    std::vector<std::vector<Cascade>> per_light{
+        {Cascade{.clip_from_world = glm::mat4(2.0f)}, Cascade{.clip_from_world = glm::mat4(3.0f)},
+         Cascade{.clip_from_world = glm::mat4(4.0f)}, Cascade{.clip_from_world = glm::mat4(5.0f)}},
+        {Cascade{.clip_from_world = glm::mat4(6.0f)}, Cascade{.clip_from_world = glm::mat4(7.0f)},
+         Cascade{.clip_from_world = glm::mat4(8.0f)}, Cascade{.clip_from_world = glm::mat4(9.0f)}}};
+    const auto requests = directional_shadow_view_requests({first, second}, per_light, slices, 2048);
+    ASSERT_EQ(requests.size(), 8u) << "two lights of four cascades";
+    EXPECT_EQ(requests[0].array_layer, 0u);
+    EXPECT_EQ(requests[3].array_layer, 3u);
+    EXPECT_EQ(requests[4].array_layer, 4u) << "the second light starts where the first stopped";
+    EXPECT_EQ(requests[7].array_layer, 7u);
+    EXPECT_EQ(requests[0].light_entity, first);
+    EXPECT_EQ(requests[4].light_entity, second);
+    EXPECT_EQ(requests[5].owner.kind, epix::pbr::LightEntity::Kind::Directional);
+    EXPECT_EQ(requests[5].owner.cascade_index, 1u) << "the owner records which cascade";
+    EXPECT_EQ(requests[0].viewport_size, 2048u);
+    EXPECT_EQ(requests[0].pass_name, "shadow_directional_light_0_cascade_0");
+    EXPECT_EQ(requests[6].clip_from_world, glm::mat4(8.0f)) << "the cascade's own matrix";
+    EXPECT_NE(requests[0].clip_from_world, requests[1].clip_from_world) << "each cascade differs";
+
+    // A light with no cascades granted contributes no views at all.
+    const auto squeezed_slices = directional_shadow_slices(lights, layer0, 0, 6, &total);
+    const auto squeezed        = directional_shadow_view_requests({first, second}, per_light, squeezed_slices, 2048);
+    EXPECT_EQ(squeezed.size(), 4u) << "only the first light's four cascades fit the six layers";
 }
 
 }  // namespace

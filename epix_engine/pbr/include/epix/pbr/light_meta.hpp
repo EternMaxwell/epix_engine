@@ -224,8 +224,9 @@ EPIX_EXPORT struct ExtractedDirectionalLight {
     std::unordered_map<ecs::Entity, std::vector<Cascade>> cascades;
     /** @brief The shadow frusta built for each view. */
     std::unordered_map<ecs::Entity, std::vector<camera::Frustum>> frusta;
-    /** @brief The render layers the light is visible through. */
-    std::uint32_t render_layers = 0;
+    /** @brief The render layers the light is visible through. Bevy's default is
+     *  layer 0, which is distinct from belonging to none. */
+    camera::RenderLayers render_layers = camera::RenderLayers::layer(0);
     /** @brief The soft shadow size, when PCSS is in use. */
     std::optional<float> soft_shadow_size;
     /** @brief Whether this light uses two-phase occlusion culling. */
@@ -439,14 +440,14 @@ EPIX_EXPORT inline std::uint32_t point_light_gpu_flags(std::size_t index, const 
  *  layer count. The maximum rather than the sum matters because the views are
  *  rendered one at a time. */
 EPIX_EXPORT inline std::size_t num_directional_cascades_enabled(
-    const std::vector<std::uint32_t>& view_render_layers,
+    const std::vector<camera::RenderLayers>& view_render_layers,
     const std::vector<ExtractedDirectionalLight>& directional_lights, std::size_t max_texture_array_layers) {
     std::size_t enabled = 0;
-    for (std::uint32_t view_layers : view_render_layers) {
+    for (const camera::RenderLayers& view_layers : view_render_layers) {
         std::size_t for_this_view = 0;
         for (const ExtractedDirectionalLight& light : directional_lights) {
             if (!light.shadows_enabled) continue;
-            if ((light.render_layers & view_layers) == 0) continue;
+            if (!light.render_layers.intersects(view_layers)) continue;
             for_this_view += std::min(light.cascade_shadow_config.bounds.size(), MAX_CASCADES_PER_LIGHT);
         }
         enabled = std::max(enabled, for_this_view);
@@ -591,7 +592,7 @@ EPIX_EXPORT struct DirectionalShadowSlice {
  *  and leaves the running index where it was, which is why the index and the
  *  light's position in the list are tracked separately. */
 EPIX_EXPORT inline std::vector<DirectionalShadowSlice> directional_shadow_slices(
-    const std::vector<ExtractedDirectionalLight>& directional_lights, std::uint32_t view_layers,
+    const std::vector<ExtractedDirectionalLight>& directional_lights, const camera::RenderLayers& view_layers,
     std::size_t directional_volumetric_enabled_count, std::size_t max_texture_array_layers,
     std::size_t* out_total_cascades = nullptr) {
     std::vector<DirectionalShadowSlice> slices;
@@ -601,7 +602,7 @@ EPIX_EXPORT inline std::vector<DirectionalShadowSlice> directional_shadow_slices
     std::size_t index  = 0;
     for (const ExtractedDirectionalLight& light : directional_lights) {
         if (slices.size() >= MAX_DIRECTIONAL_LIGHTS) break;
-        if ((light.render_layers & view_layers) == 0) continue;
+        if (!light.render_layers.intersects(view_layers)) continue;
 
         const auto flags = directional_light_gpu_flags(light, index, directional_volumetric_enabled_count, base,
                                                       max_texture_array_layers);

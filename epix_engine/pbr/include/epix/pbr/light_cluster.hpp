@@ -597,8 +597,9 @@ EPIX_EXPORT struct ClusterableObjectAssignmentData {
     /** @brief The object's range, which becomes the sphere's radius. */
     float range = 0.0f;
     ClusterableObjectType object_type{};
-    /** @brief The render layers the object is visible through. */
-    std::uint32_t render_layers = 0;
+    /** @brief The render layers the object is visible through. Bevy's default is
+     *  layer 0, which is distinct from belonging to none. */
+    camera::RenderLayers render_layers = camera::RenderLayers::layer(0);
 
     /** @brief The sphere the object occupies (Bevy
      *  `ClusterableObjectAssignmentData::sphere`, `assign.rs:45-52`): centred on

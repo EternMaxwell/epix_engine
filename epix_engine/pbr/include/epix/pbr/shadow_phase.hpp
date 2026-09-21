@@ -198,4 +198,68 @@ EPIX_EXPORT inline std::vector<ShadowViewRequest> point_light_shadow_view_reques
     return requests;
 }
 
+/** @brief The pass name Bevy gives a directional light's cascade (Bevy
+ *  `render/light.rs:1582-1584`). */
+EPIX_EXPORT inline std::string directional_shadow_pass_name(std::size_t light_index, std::size_t cascade_index) {
+    return "shadow_directional_light_" + std::to_string(light_index) + "_cascade_" + std::to_string(cascade_index);
+}
+
+/** @brief Fill a light's GPU cascades from its extracted cascades and its
+ *  configuration's bounds (Bevy `render/light.rs:1536-1541`).
+ *
+ *  Two sources deliberately: the matrix and texel size come from the built
+ *  cascade, but `far_bound` comes from `cascade_shadow_config.bounds` rather than
+ *  from the cascade itself. The shader uses it to fade the cascade out at its
+ *  configured far distance, so taking it from the wrong array would shift every
+ *  cascade's fade. At most `MAX_CASCADES_PER_LIGHT` are written. */
+EPIX_EXPORT inline void fill_gpu_directional_cascades(GpuDirectionalLight& light,
+                                                     const std::vector<Cascade>& cascades,
+                                                     const std::vector<float>& bounds) {
+    const std::size_t count = std::min({cascades.size(), bounds.size(), MAX_CASCADES_PER_LIGHT});
+    for (std::size_t cascade_index = 0; cascade_index < count; ++cascade_index) {
+        light.cascades[cascade_index].clip_from_world = cascades[cascade_index].clip_from_world;
+        light.cascades[cascade_index].texel_size      = cascades[cascade_index].texel_size;
+        light.cascades[cascade_index].far_bound       = bounds[cascade_index];
+    }
+    for (std::size_t cascade_index = count; cascade_index < MAX_CASCADES_PER_LIGHT; ++cascade_index) {
+        light.cascades[cascade_index] = GpuDirectionalCascade{};
+    }
+}
+
+/** @brief Every cascade view a view's shadow-casting directional lights need
+ *  (Bevy `prepare_lights`, `render/light.rs:1484-1600`).
+ *
+ *  Each light contributes one view per cascade, on consecutive layers of the
+ *  shared array starting at the `base_index` its slice reports. Unlike point and
+ *  spot lights, whose faces share an attachment, each directional view gets its
+ *  own - Bevy's own note says so, because the view must be cleared per view - and
+ *  the layers being distinct is what forces that. The viewport is the configured
+ *  shadow map size, and the owner records the cascade index. */
+EPIX_EXPORT inline std::vector<ShadowViewRequest> directional_shadow_view_requests(
+    const std::vector<ecs::Entity>& light_entities, const std::vector<std::vector<Cascade>>& cascades,
+    const std::vector<DirectionalShadowSlice>& slices, std::uint32_t shadow_map_size) {
+    std::vector<ShadowViewRequest> requests;
+
+    for (const DirectionalShadowSlice& slice : slices) {
+        if (slice.num_cascades == 0) continue;
+        if (slice.light_index >= light_entities.size() || slice.light_index >= cascades.size()) continue;
+
+        const ecs::Entity entity = light_entities[slice.light_index];
+        for (std::uint32_t cascade_index = 0; cascade_index < slice.num_cascades; ++cascade_index) {
+            if (cascade_index >= cascades[slice.light_index].size()) break;
+            requests.push_back(ShadowViewRequest{
+                .light_entity  = entity,
+                .owner         = LightEntity{.kind = LightEntity::Kind::Directional,
+                                             .light_entity = entity,
+                                             .cascade_index = cascade_index,
+                                             .face_index = 0},
+                .array_layer   = slice.base_index + cascade_index,
+                .pass_name     = directional_shadow_pass_name(slice.light_index, cascade_index),
+                .clip_from_world = cascades[slice.light_index][cascade_index].clip_from_world,
+                .viewport_size = shadow_map_size});
+        }
+    }
+    return requests;
+}
+
 }  // namespace epix::pbr
