@@ -4,6 +4,7 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/probe.hpp>
 #include <epix/pbr/spot_light.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
@@ -264,6 +265,27 @@ TEST(Cluster, CascadesAreKeyedPerView) {
     cascades.cascades[view] = std::vector<Cascade>(4);
     ASSERT_EQ(cascades.cascades.size(), 1u);
     EXPECT_EQ(cascades.cascades.at(view).size(), 4u) << "the default config has four cascades";
+}
+
+/** @brief `EnvironmentMapLight` carries Bevy's defaults: no intensity, identity
+ *  rotation, and a diffuse lightmapped contribution, with both cubemap handles
+ *  defaulting to the engine's default image in place of Bevy's
+ *  `Handle::default()` (`bevy_light/src/probe.rs:99-108`). */
+TEST(Cluster, EnvironmentMapLightMatchesBevyDefaults) {
+    using epix::pbr::EnvironmentMapLight;
+    using epix::pbr::LightProbe;
+
+    const EnvironmentMapLight environment{};
+    EXPECT_EQ(environment.diffuse_map.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+    EXPECT_EQ(environment.specular_map.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+    EXPECT_FLOAT_EQ(environment.intensity, 0.0f);
+    EXPECT_EQ(environment.rotation, glm::quat(1.0f, 0.0f, 0.0f, 0.0f)) << "Bevy's Quat::IDENTITY";
+    EXPECT_TRUE(environment.affects_lightmapped_mesh_diffuse);
+
+    // The marker carries no state; it is the entity's transform that gives the
+    // probe its region.
+    const LightProbe probe{};
+    static_cast<void>(probe);
 }
 
 }  // namespace
