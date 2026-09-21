@@ -893,4 +893,43 @@ TEST(Cluster, NdcPositionToClusterMatchesBevy) {
     EXPECT_NEAR(crossed.z, -2.0f, 1e-5f) << "the result lies on the requested plane";
 }
 
+/** @brief Screen positions map to NDC with Y flipped and unproject to view space
+ *  (Bevy `screen_to_view` and `clip_to_view`,
+ *  `bevy_light/src/cluster/assign.rs:1111-1125`). */
+TEST(Cluster, ScreenToViewMatchesBevy) {
+    using epix::pbr::clip_to_view;
+    using epix::pbr::screen_to_view;
+
+    // With an identity unprojection the mapping is visible directly: the
+    // top-left corner maps to (-1, 1), and the bottom-left to (-1, -1).
+    const glm::mat4 identity{1.0f};
+    const glm::vec2 screen_size{800.0f, 600.0f};
+    const auto top_left = screen_to_view(screen_size, identity, glm::vec2(0.0f, 0.0f), 0.5f);
+    EXPECT_FLOAT_EQ(top_left.x, -1.0f);
+    EXPECT_FLOAT_EQ(top_left.y, 1.0f) << "screen Y is flipped";
+    EXPECT_FLOAT_EQ(top_left.z, 0.5f);
+    const auto bottom_left = screen_to_view(screen_size, identity, glm::vec2(0.0f, 600.0f), 0.5f);
+    EXPECT_FLOAT_EQ(bottom_left.y, -1.0f);
+    const auto centre = screen_to_view(screen_size, identity, glm::vec2(400.0f, 300.0f), 0.5f);
+    EXPECT_NEAR(centre.x, 0.0f, 1e-6f);
+    EXPECT_NEAR(centre.y, 0.0f, 1e-6f);
+
+    // clip_to_view divides by w.
+    const glm::vec4 homogeneous = clip_to_view(identity, glm::vec4(2.0f, 4.0f, 6.0f, 2.0f));
+    EXPECT_EQ(homogeneous, glm::vec4(1.0f, 2.0f, 3.0f, 1.0f));
+
+    // Round trip through a real perspective projection: a view-space point
+    // projected to the screen and unprojected at its own NDC depth comes back.
+    const glm::mat4 projection = glm::perspective(glm::radians(60.0f), screen_size.x / screen_size.y, 0.1f, 100.0f);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+    const glm::vec4 view_point{0.3f, -0.2f, -2.0f, 1.0f};
+    const glm::vec4 clip_point = projection * view_point;
+    const glm::vec3 ndc        = glm::vec3(clip_point) / clip_point.w;
+    const glm::vec2 screen{(ndc.x * 0.5f + 0.5f) * screen_size.x, (1.0f - (ndc.y * 0.5f + 0.5f)) * screen_size.y};
+    const glm::vec4 recovered = screen_to_view(screen_size, view_from_clip, screen, ndc.z);
+    EXPECT_NEAR(recovered.x, view_point.x, 1e-3f);
+    EXPECT_NEAR(recovered.y, view_point.y, 1e-3f);
+    EXPECT_NEAR(recovered.z, view_point.z, 1e-3f);
+}
+
 }  // namespace

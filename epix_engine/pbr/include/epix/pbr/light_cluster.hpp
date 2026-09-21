@@ -232,6 +232,26 @@ EPIX_EXPORT inline glm::vec3 line_intersection_to_z_plane(glm::vec3 origin, glm:
     return origin + t * v;
 }
 
+/** @brief Convert a clip-space point to view space, dividing by w (Bevy
+ *  `clip_to_view`, `bevy_light/src/cluster/assign.rs:1111-1114`). */
+EPIX_EXPORT inline glm::vec4 clip_to_view(const glm::mat4& view_from_clip, glm::vec4 clip) {
+    const glm::vec4 view = view_from_clip * clip;
+    return view / view.w;
+}
+
+/** @brief Convert a screen position to view space at a given NDC depth (Bevy
+ *  `screen_to_view`, `assign.rs:1116-1125`).
+ *
+ *  The screen position is divided by the screen size, mapped to `[-1, 1]` with Y
+ *  flipped - screen Y grows downward, NDC Y upward - and then unprojected with
+ *  `view_from_clip`, which is the inverse of the view's projection. */
+EPIX_EXPORT inline glm::vec4 screen_to_view(glm::vec2 screen_size, const glm::mat4& view_from_clip, glm::vec2 screen,
+                                            float ndc_z) {
+    const glm::vec2 tex_coord = screen / screen_size;
+    const glm::vec4 clip{tex_coord.x * 2.0f - 1.0f, (1.0f - tex_coord.y) * 2.0f - 1.0f, ndc_z, 1.0f};
+    return clip_to_view(view_from_clip, clip);
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
