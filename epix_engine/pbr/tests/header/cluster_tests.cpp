@@ -559,4 +559,39 @@ TEST(Cluster, ViewClusterLimitsAndStoragePackingMatchBevy) {
     EXPECT_EQ(packed[1], glm::uvec4(44u, 55u, 0u, 0u));
 }
 
+/** @brief The uniform index list packs four byte-indices into each `u32`, so
+ *  sixteen fit a `uvec4` (Bevy `ViewClusterBindings::push_index`,
+ *  `bevy_pbr/src/cluster.rs:418-424`). */
+TEST(Cluster, UniformIndexListPacksFourIndicesPerWord) {
+    using epix::pbr::pack_index_into_uniform_word;
+    using epix::pbr::uniform_index_lists_array_index;
+    using epix::pbr::uniform_index_lists_component;
+    using epix::pbr::uniform_index_lists_sub_index;
+    using epix::pbr::VIEW_CLUSTER_MAX_INDICES;
+
+    // Sixteen indices per uvec4, four per word, four bytes per word.
+    EXPECT_EQ(uniform_index_lists_array_index(0), 0u);
+    EXPECT_EQ(uniform_index_lists_array_index(15), 0u);
+    EXPECT_EQ(uniform_index_lists_array_index(16), 1u);
+    EXPECT_EQ(uniform_index_lists_component(4), 1u);
+    EXPECT_EQ(uniform_index_lists_component(8), 2u);
+    EXPECT_EQ(uniform_index_lists_component(12), 3u);
+    EXPECT_EQ(uniform_index_lists_sub_index(0), 0u);
+    EXPECT_EQ(uniform_index_lists_sub_index(3), 3u);
+
+    // Index 0 fills the low byte, index 3 the high byte of the same word.
+    std::uint32_t word = 0;
+    word = pack_index_into_uniform_word(word, 0, 0x11u);
+    EXPECT_EQ(word, 0x00000011u);
+    word = pack_index_into_uniform_word(word, 1, 0x22u);
+    word = pack_index_into_uniform_word(word, 2, 0x33u);
+    word = pack_index_into_uniform_word(word, 3, 0x44u);
+    EXPECT_EQ(word, 0x44332211u) << "four indices, low byte first";
+    EXPECT_EQ(pack_index_into_uniform_word(0u, 4, 0x55u), 0x00000055u) << "index 4 starts the next word";
+
+    // The last index the list can hold still lands inside its array.
+    const std::size_t last = VIEW_CLUSTER_MAX_INDICES - 1;
+    EXPECT_LT(uniform_index_lists_array_index(last), 4096u) << "1024 uvec4s hold 16384 indices";
+}
+
 }  // namespace

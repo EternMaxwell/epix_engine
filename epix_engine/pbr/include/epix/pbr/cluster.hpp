@@ -276,5 +276,30 @@ EPIX_EXPORT inline GpuClusterOffsetsAndCounts pack_cluster_offsets_and_counts_st
     };
 }
 
+/** @brief Where an index lands in the uniform form of the index list (Bevy
+ *  `ViewClusterBindings::push_index`, `bevy_pbr/src/cluster.rs:418-424`).
+ *
+ *  A `uvec4` holds sixteen indices - four per word - so the entry is word
+ *  `n_indices >> 4` of the array, component `(n_indices >> 2) & 3` within it,
+ *  and byte `n_indices & 3` of that word. Each index occupies one byte, which is
+ *  why the uniform form cannot hold more than 255 clusterable objects per view. */
+EPIX_EXPORT inline constexpr std::size_t uniform_index_lists_array_index(std::size_t n_indices) noexcept {
+    return n_indices >> 4;
+}
+EPIX_EXPORT inline constexpr std::size_t uniform_index_lists_component(std::size_t n_indices) noexcept {
+    return (n_indices >> 2) & 3;
+}
+EPIX_EXPORT inline constexpr std::size_t uniform_index_lists_sub_index(std::size_t n_indices) noexcept {
+    return n_indices & 3;
+}
+
+/** @brief Or one index into the word it belongs to, which is Bevy's
+ *  `|= index << (8 * sub_index)` (`cluster.rs:423-424`); the caller has already
+ *  cleared the word if the slot must be empty. */
+EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word, std::size_t n_indices,
+                                                              std::uint32_t index) {
+    return word | (index << (8 * uniform_index_lists_sub_index(n_indices)));
+}
+
 }  // namespace epix::pbr
 
