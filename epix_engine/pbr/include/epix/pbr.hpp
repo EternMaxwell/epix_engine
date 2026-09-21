@@ -4,6 +4,7 @@
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/point_light.hpp>

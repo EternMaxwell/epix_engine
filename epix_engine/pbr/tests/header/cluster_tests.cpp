@@ -1,6 +1,7 @@
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/spot_light.hpp>
@@ -211,6 +212,38 @@ TEST(Cluster, CascadeShadowConfigMatchesBevy) {
         .num_cascades = 1, .minimum_distance = 0.1f, .maximum_distance = 150.0f, .first_cascade_far_bound = 0.05f});
     ASSERT_EQ(one_cascade.bounds.size(), 1u);
     EXPECT_FLOAT_EQ(one_cascade.bounds[0], 150.0f);
+}
+
+/** @brief `DirectionalLight` carries Bevy's defaults - ambient daylight as the
+ *  illuminance, shadows off, and the directional shadow biases - and its shadow
+ *  map defaults to 2048 per cascade, rounded to a power of two when set
+ *  otherwise (`bevy_light/src/directional_light.rs:140-202`). */
+TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
+    using epix::pbr::DirectionalLight;
+    using epix::pbr::DirectionalLightShadowMap;
+    using epix::pbr::DirectionalLightTexture;
+    using epix::pbr::lux::AMBIENT_DAYLIGHT;
+    using epix::pbr::validated_shadow_map_size;
+
+    const DirectionalLight light{};
+    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(light.illuminance, AMBIENT_DAYLIGHT);
+    EXPECT_FLOAT_EQ(light.illuminance, 10'000.0f) << "Bevy defaults to ambient daylight";
+    EXPECT_FALSE(light.shadows_enabled);
+    EXPECT_TRUE(light.affects_lightmapped_mesh_diffuse);
+    EXPECT_FLOAT_EQ(light.shadow_depth_bias, DirectionalLight::DEFAULT_SHADOW_DEPTH_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_depth_bias, 0.02f);
+    EXPECT_FLOAT_EQ(light.shadow_normal_bias, DirectionalLight::DEFAULT_SHADOW_NORMAL_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_normal_bias, 1.8f);
+
+    const DirectionalLightShadowMap shadow_map{};
+    EXPECT_EQ(shadow_map.size, 2048u) << "the width and height of each cascade";
+    EXPECT_EQ(validated_shadow_map_size(2048), 2048u) << "a power of two is left alone";
+    EXPECT_EQ(validated_shadow_map_size(3000), 4096u) << "anything else rounds up";
+    EXPECT_EQ(validated_shadow_map_size(1), 1u);
+
+    const DirectionalLightTexture texture{};
+    EXPECT_FALSE(texture.tiled) << "Bevy centres a single tile by default";
 }
 
 }  // namespace
