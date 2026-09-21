@@ -349,4 +349,24 @@ TEST(Cluster, VolumetricFogMatchesBevyDefaults) {
     static_cast<void>(light);
 }
 
+/** @brief `ClusterZConfig`'s default slices at 5.0 with the max-range far-Z mode
+ *  (`cluster/mod.rs:221-228`), and `ClusteredDecal` defaults to no textures and
+ *  tag zero (`cluster/mod.rs:164-219`). */
+TEST(Cluster, ClusterZConfigAndDecalMatchBevyDefaults) {
+    using epix::pbr::ClusterFarZMode;
+    using epix::pbr::ClusteredDecal;
+    using epix::pbr::ClusterZConfig;
+
+    const ClusterZConfig z_config{};
+    EXPECT_FLOAT_EQ(z_config.first_slice_depth, 5.0f) << "Bevy's Default, not zero";
+    EXPECT_EQ(z_config.far_z_mode, ClusterFarZMode::MaxClusterableObjectRange);
+
+    const ClusteredDecal decal{};
+    EXPECT_FALSE(decal.base_color_texture.has_value());
+    EXPECT_FALSE(decal.normal_map_texture.has_value());
+    EXPECT_FALSE(decal.metallic_roughness_texture.has_value());
+    EXPECT_FALSE(decal.emissive_texture.has_value());
+    EXPECT_EQ(decal.tag, 0u);
+}
+
 }  // namespace

@@ -3,9 +3,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
+#include <optional>
 #include <unordered_set>
 #include <vector>
 #include <epix/common.hpp>
@@ -44,8 +47,9 @@ EPIX_EXPORT enum class ClusterFarZMode {
 /** @brief The depth-slicing configuration (Bevy `ClusterZConfig`,
  *  `cluster/mod.rs:62-67`). */
 EPIX_EXPORT struct ClusterZConfig {
-    /** @brief Far Z plane of the first depth slice. */
-    float first_slice_depth = 0.0f;
+    /** @brief Far Z plane of the first depth slice. Bevy's `Default` sets 5.0
+     *  (`cluster/mod.rs:221-228`). */
+    float first_slice_depth = 5.0f;
     /** @brief How the furthest slice's far Z is evaluated. */
     ClusterFarZMode far_z_mode = ClusterFarZMode::MaxClusterableObjectRange;
     /** @brief The value used when `far_z_mode` is `Constant`. */
@@ -114,6 +118,35 @@ EPIX_EXPORT struct Clusters {
     float far_plane = 0.0f;
     /** @brief One entry per cluster: the objects that fall in it. */
     std::vector<VisibleClusterableObjects> clusterable_objects;
+};
+
+/** @brief A clustered decal: a 1×1×1 cube centred on its origin that projects
+ *  images onto surfaces in its -Z direction (Bevy `ClusteredDecal`,
+ *  `cluster/mod.rs:164-219`). Clustered decals need bindless textures, so they
+ *  cannot be used on WebGL2 or WebGPU, and they work with forward or deferred
+ *  rendering without a prepass.
+ *
+ *  Every texture is optional and defaults to none, as in Bevy. */
+EPIX_EXPORT struct ClusteredDecal {
+    /** @brief The base colour texture. It must be a 2D image, and if it has an
+     *  alpha channel that channel is alpha-blended with the surface and with any
+     *  other decals. Every decal image in a scene must share one sampler. */
+    std::optional<assets::Handle<image::Image>> base_color_texture;
+    /** @brief The normal map, combined with the surface's own normal map by the
+     *  Whiteout method. It must be three-channel and in OpenGL format, i.e. the
+     *  green channel points up. */
+    std::optional<assets::Handle<image::Image>> normal_map_texture;
+    /** @brief The metallic-roughness map, blended onto the surface using the
+     *  base colour's alpha. Metallic is in blue and roughness in green, following
+     *  glTF. */
+    std::optional<assets::Handle<image::Image>> metallic_roughness_texture;
+    /** @brief The emissive map, which makes the decal glow; it is blended by the
+     *  alpha channel. */
+    std::optional<assets::Handle<image::Image>> emissive_texture;
+    /** @brief An application-specific tag, exposed to shaders for whatever use a
+     *  custom shader has - for example restricting which surfaces the decal
+     *  affects. */
+    std::uint32_t tag = 0;
 };
 
 /** @brief The clusterable objects visible to any view (Bevy
