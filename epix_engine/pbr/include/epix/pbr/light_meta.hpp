@@ -19,6 +19,7 @@
 #endif
 #include <epix/camera/projection.hpp>
 #include <epix/camera/visibility.hpp>
+#include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
@@ -65,6 +66,35 @@ EPIX_EXPORT struct ViewShadowBindings {
     wgpu::Texture directional_light_depth_texture;
     wgpu::TextureView directional_light_depth_texture_view;
 };
+
+/** @brief A shadow view: the depth attachment one light face or cascade renders
+ *  into, and the pass name it runs under (Bevy `ShadowView`,
+ *  `render/light.rs:651-655`). */
+EPIX_EXPORT struct ShadowView {
+    render::render_resource::DepthAttachment depth_attachment;
+    std::string pass_name;
+
+    ShadowView() = default;
+    ShadowView(render::render_resource::DepthAttachment attachment, std::string name)
+        : depth_attachment(std::move(attachment)), pass_name(std::move(name)) {}
+};
+
+/** @brief The ambient light that applies to a view (Bevy `prepare_lights`,
+ *  `render/light.rs:1153-1158`).
+ *
+ *  Bevy copies the scene-wide `GlobalAmbientLight` resource into a local
+ *  `AmbientLight` - the two are separate types with the same fields, and the copy
+ *  is what lets the camera's override share a type with it - then a camera-level
+ *  `AmbientLight` *replaces* it rather than blending with it. The resolved colour
+ *  and brightness become the light uniform's `ambient_color`, and
+ *  `affects_lightmapped_meshes` becomes its own flag. */
+EPIX_EXPORT inline AmbientLight resolve_ambient_light(const AmbientLight* camera_override,
+                                                     const GlobalAmbientLight& global) {
+    if (camera_override != nullptr) return *camera_override;
+    return AmbientLight{.color = global.color,
+                        .brightness = global.brightness,
+                        .affects_lightmapped_meshes = global.affects_lightmapped_meshes};
+}
 
 /** @brief What a shadow view belongs to (Bevy `LightEntity`,
  *  `light.rs:690-703`): a directional light's cascade, a point light's cubemap

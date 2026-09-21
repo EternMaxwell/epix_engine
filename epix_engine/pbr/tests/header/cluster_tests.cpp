@@ -2098,4 +2098,47 @@ TEST(Cluster, CubeFaceProjectionUsesTheSharedReverseZMatrix) {
         << "a 30-degree half angle gives a 60-degree field of view";
 }
 
+/** @brief A camera's ambient light replaces the scene-wide one wholesale, and a
+ *  shadow view pairs a depth attachment with its pass name (Bevy
+ *  `render/light.rs:651-655,1153-1158`). */
+TEST(Cluster, AmbientResolutionAndShadowViewMatchBevy) {
+    using epix::pbr::AmbientLight;
+    using epix::pbr::GlobalAmbientLight;
+    using epix::pbr::resolve_ambient_light;
+    using epix::pbr::ShadowView;
+
+    GlobalAmbientLight global;
+    global.color      = glm::vec4(0.25f, 0.5f, 0.75f, 1.0f);
+    global.brightness = 200.0f;
+    global.affects_lightmapped_meshes = false;
+
+    // Without an override every field comes from the global, including the
+    // lightmap flag - the copy Bevy makes is field for field.
+    const auto from_global = resolve_ambient_light(nullptr, global);
+    EXPECT_EQ(from_global.color, global.color);
+    EXPECT_FLOAT_EQ(from_global.brightness, 200.0f);
+    EXPECT_FALSE(from_global.affects_lightmapped_meshes);
+
+    // An override replaces all three, rather than blending with the global: a
+    // camera can turn the lightmapped contribution back on while dimming.
+    AmbientLight override_light;
+    override_light.color      = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
+    override_light.brightness = 10.0f;
+    override_light.affects_lightmapped_meshes = true;
+    const auto from_camera = resolve_ambient_light(&override_light, global);
+    EXPECT_EQ(from_camera.color, override_light.color) << "not blended with the global colour";
+    EXPECT_FLOAT_EQ(from_camera.brightness, 10.0f) << "nor with its brightness";
+    EXPECT_TRUE(from_camera.affects_lightmapped_meshes) << "the flag is replaced too";
+
+    // The resolved pair feeds the uniform the way the light path packs it:
+    // colour premultiplied by brightness, and the flag on its own.
+    EXPECT_EQ(epix::pbr::pack_ambient_color(from_camera.color, from_camera.brightness), glm::vec4(10.0f, 0.0f, 0.0f, 10.0f));
+
+    // A shadow view carries the attachment and the pass name together.
+    const ShadowView shadow_view{epix::render::render_resource::DepthAttachment{wgpu::TextureView{}}, "point_light_shadow_map"};
+    EXPECT_EQ(shadow_view.pass_name, "point_light_shadow_map");
+    EXPECT_FALSE(shadow_view.depth_attachment.clear_value.has_value())
+        << "a depth attachment without a clear value does not clear";
+}
+
 }  // namespace
