@@ -964,6 +964,46 @@ EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_
     return cull;
 }
 
+/** @brief Record that an object affects a cluster: push its entity and bump the
+ *  counter for its kind (Bevy `assign.rs:766-838`).
+ *
+ *  This is the only place the per-cluster counts are incremented, and the kind
+ *  decides which counter - a point light increments `point_lights`, a spot light
+ *  `spot_lights`, and the probes, volumes and decals their own. The counts are
+ *  what `prepare_lights` writes into the offsets and counts buffer, so a missing
+ *  or doubled increment here shifts every later cluster's indices. */
+EPIX_EXPORT inline void insert_object_into_cluster(VisibleClusterableObjects& cluster, ecs::Entity entity,
+                                                  const ClusterableObjectType& object_type) {
+    cluster.entities.push_back(entity);
+    switch (object_type.kind) {
+        case ClusterableObjectType::Kind::PointLight: cluster.counts.point_lights += 1; break;
+        case ClusterableObjectType::Kind::SpotLight: cluster.counts.spot_lights += 1; break;
+        case ClusterableObjectType::Kind::ReflectionProbe: cluster.counts.reflection_probes += 1; break;
+        case ClusterableObjectType::Kind::IrradianceVolume: cluster.counts.irradiance_volumes += 1; break;
+        case ClusterableObjectType::Kind::Decal: cluster.counts.decals += 1; break;
+    }
+}
+
+/** @brief Record an object across a row of x clusters at one (y, z) (Bevy
+ *  `assign.rs:780-789` and the other insertion arms).
+ *
+ *  Bevy repeats the same loop for every kind - point lights, spot lights,
+ *  reflection probes, irradiance volumes and decals all affect every cluster
+ *  their sphere reaches, with only the counting differing - advancing the flat
+ *  index by the z count each step, which walks along x in the layout
+ *  `cluster_index` defines. The probes' and decals' loops carry a TODO about
+ *  culling them more aggressively with their oriented boxes. */
+EPIX_EXPORT inline void insert_object_into_cluster_row(std::vector<VisibleClusterableObjects>& clusters,
+                                                      glm::uvec3 dimensions, std::uint32_t y, std::uint32_t z,
+                                                      std::uint32_t min_x, std::uint32_t max_x, ecs::Entity entity,
+                                                      const ClusterableObjectType& object_type) {
+    std::size_t index = cluster_index(dimensions, min_x, y, z);
+    for (std::uint32_t x = min_x; x <= max_x; ++x) {
+        insert_object_into_cluster(clusters[index], entity, object_type);
+        index += dimensions.z;
+    }
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {

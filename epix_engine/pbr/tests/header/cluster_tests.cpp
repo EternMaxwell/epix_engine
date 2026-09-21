@@ -1593,4 +1593,54 @@ TEST(Cluster, SpotLightClusterCullMatchesBevy) {
     EXPECT_TRUE(past.front_cull) << "and once it clears range + radius";
 }
 
+/** @brief Each kind of clusterable object increments its own counter, and a row
+ *  insertion walks along x without touching other clusters (Bevy
+ *  `assign.rs:766-838`). */
+TEST(Cluster, ClusterInsertionCountsByKind) {
+    using epix::pbr::ClusterableObjectType;
+    using epix::pbr::cluster_index;
+    using epix::pbr::insert_object_into_cluster;
+    using epix::pbr::insert_object_into_cluster_row;
+    using epix::pbr::VisibleClusterableObjects;
+
+    const auto kind = [](ClusterableObjectType::Kind which) {
+        return ClusterableObjectType{.kind = which};
+    };
+
+    // Each kind bumps exactly one counter and leaves the rest alone, which
+    // matters because these counts become the shader's offsets and counts.
+    VisibleClusterableObjects cluster;
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(1), kind(ClusterableObjectType::Kind::PointLight));
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(2), kind(ClusterableObjectType::Kind::PointLight));
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(3), kind(ClusterableObjectType::Kind::SpotLight));
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(4),
+                               kind(ClusterableObjectType::Kind::ReflectionProbe));
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(5),
+                               kind(ClusterableObjectType::Kind::IrradianceVolume));
+    insert_object_into_cluster(cluster, epix::ecs::Entity::from_index(6), kind(ClusterableObjectType::Kind::Decal));
+
+    EXPECT_EQ(cluster.counts.point_lights, 2u);
+    EXPECT_EQ(cluster.counts.spot_lights, 1u);
+    EXPECT_EQ(cluster.counts.reflection_probes, 1u);
+    EXPECT_EQ(cluster.counts.irradiance_volumes, 1u);
+    EXPECT_EQ(cluster.counts.decals, 1u);
+    EXPECT_EQ(cluster.entities.size(), 6u) << "every object is also listed";
+
+    // A row insertion covers x from min to max at one (y, z) and nothing else.
+    const glm::uvec3 dims{4, 4, 8};
+    std::vector<VisibleClusterableObjects> clusters(dims.x * dims.y * dims.z);
+    insert_object_into_cluster_row(clusters, dims, 1, 2, 1, 2, epix::ecs::Entity::from_index(7),
+                                   kind(ClusterableObjectType::Kind::PointLight));
+
+    EXPECT_EQ(clusters[cluster_index(dims, 0, 1, 2)].entities.size(), 0u) << "before the row";
+    EXPECT_EQ(clusters[cluster_index(dims, 3, 1, 2)].entities.size(), 0u) << "after it";
+    for (std::uint32_t x = 1; x <= 2; ++x) {
+        const auto& cell = clusters[cluster_index(dims, x, 1, 2)];
+        EXPECT_EQ(cell.entities.size(), 1u) << "x = " << x;
+        EXPECT_EQ(cell.counts.point_lights, 1u);
+    }
+    // A different y at the same x must be untouched.
+    EXPECT_EQ(clusters[cluster_index(dims, 1, 2, 2)].entities.size(), 0u) << "the row is at y 1 only";
+}
+
 }  // namespace
