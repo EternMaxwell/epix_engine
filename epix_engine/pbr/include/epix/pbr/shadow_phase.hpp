@@ -1,14 +1,19 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
+#include <epix/transform.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <optional>
 #include <utility>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/light_meta.hpp>
 
 namespace epix::pbr {
 
@@ -84,5 +89,48 @@ EPIX_EXPORT struct Shadow {
 static_assert(render::phase::PhaseItem<Shadow>);
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Shadow>);
 static_assert(render::phase::PhaseItemBatchSetKey<ShadowBatchSetKey>);
+
+/** @brief The rotation of each cubemap face's shadow view (Bevy `prepare_lights`,
+ *  `render/light.rs:757-760`): the identity transform aimed at each face's target
+ *  with that face's own up vector, precomputed once because every point light's
+ *  faces use the same six.
+ *
+ *  The table's +Z and -Z entries are deliberately swapped relative to their names,
+ *  which is what reconciles right-handed view space with left-handed cubemap
+ *  coordinates; the forward axis here is -Z, so each entry's -Z points at its
+ *  target. */
+EPIX_EXPORT inline std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT> cube_face_view_rotations() {
+    std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT> rotations{};
+    for (std::size_t face = 0; face < camera::CubeMapFaces.size(); ++face) {
+        transform::Transform oriented;
+        oriented.look_at(camera::CubeMapFaces[face].target, camera::CubeMapFaces[face].up);
+        rotations[face] = glm::mat4_cast(oriented.rotation);
+    }
+    return rotations;
+}
+
+/** @brief One cube face's world-from-view matrix (Bevy `render/light.rs:1273-1288`):
+ *  the light's translation combined with the face's rotation, and nothing else.
+ *
+ *  The light's own scale and rotation are deliberately ignored - scale so the
+ *  light's radius and range are not scaled by the view transform, rotation so the
+ *  shadow projections stay aligned with the world axes. */
+EPIX_EXPORT inline glm::mat4 point_light_face_world_from_view(
+    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations, glm::vec3 light_translation,
+    std::size_t face_index) {
+    glm::mat4 world_from_view = rotations[face_index % POINT_LIGHT_CUBE_FACE_COUNT];
+    world_from_view[3]        = glm::vec4(light_translation, 1.0f);
+    return world_from_view;
+}
+
+/** @brief One face's clip-from-world matrix, which is what a shadow pass renders
+ *  with (Bevy `render/light.rs:1280-1290`): the cube-face projection against the
+ *  face's inverse view. */
+EPIX_EXPORT inline glm::mat4 point_light_face_clip_from_world(
+    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations, glm::vec3 light_translation,
+    std::size_t face_index, float shadow_map_near_z) {
+    return cube_face_projection(shadow_map_near_z) *
+           glm::inverse(point_light_face_world_from_view(rotations, light_translation, face_index));
+}
 
 }  // namespace epix::pbr

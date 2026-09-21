@@ -2291,4 +2291,59 @@ TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
     EXPECT_EQ(total, 4u) << "so only the first light's cascades count";
 }
 
+/** @brief The cubemap face rotations aim each face's forward axis at its target,
+ *  and a face's clip-from-world puts that target direction at the centre of the
+ *  face (Bevy `render/light.rs:757-760,1273-1290`). */
+TEST(Cluster, CubeFaceShadowViewsMatchBevy) {
+    using epix::pbr::cube_face_projection;
+    using epix::pbr::cube_face_view_rotations;
+    using epix::pbr::point_light_face_clip_from_world;
+    using epix::pbr::point_light_face_world_from_view;
+    using epix::pbr::POINT_LIGHT_CUBE_FACE_COUNT;
+
+    const auto rotations = cube_face_view_rotations();
+    // The faces in WebGPU layer order, with the deliberate +Z/-Z swap.
+    const std::array<glm::vec3, 6> expected_targets{glm::vec3(1.0f, 0.0f, 0.0f),  glm::vec3(-1.0f, 0.0f, 0.0f),
+                                                    glm::vec3(0.0f, 1.0f, 0.0f),  glm::vec3(0.0f, -1.0f, 0.0f),
+                                                    glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
+    for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+        // Forward is -Z, so the rotation must send -Z to the face's target.
+        const glm::vec3 forward = glm::normalize(glm::vec3(rotations[face] * glm::vec4(0.0f, 0.0f, -1.0f, 0.0f)));
+        EXPECT_NEAR(forward.x, expected_targets[face].x, 1e-5f) << "face " << face;
+        EXPECT_NEAR(forward.y, expected_targets[face].y, 1e-5f) << "face " << face;
+        EXPECT_NEAR(forward.z, expected_targets[face].z, 1e-5f) << "face " << face;
+    }
+
+    // The light's own rotation and scale are ignored: only its translation moves
+    // the face views, so all six share one origin.
+    const glm::vec3 light_position{3.0f, -2.0f, 5.0f};
+    for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+        const glm::mat4 world_from_view = point_light_face_world_from_view(rotations, light_position, face);
+        EXPECT_EQ(glm::vec3(world_from_view[3]), light_position) << "face " << face << " is centred on the light";
+        // The basis stays orthonormal, so the projection is not skewed.
+        EXPECT_NEAR(glm::length(glm::vec3(world_from_view[0])), 1.0f, 1e-5f);
+        EXPECT_NEAR(glm::length(glm::vec3(world_from_view[1])), 1.0f, 1e-5f);
+        EXPECT_NEAR(glm::length(glm::vec3(world_from_view[2])), 1.0f, 1e-5f);
+    }
+
+    // A point one unit along a face's target direction from the light lands at the
+    // centre of that face's projection - which is what makes the six faces cover
+    // the whole sphere with no gap or overlap.
+    const float z_near = 0.1f;
+    for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+        const glm::vec3 sample = light_position + expected_targets[face];
+        const glm::vec4 clip =
+            point_light_face_clip_from_world(rotations, light_position, face, z_near) * glm::vec4(sample, 1.0f);
+        ASSERT_GT(clip.w, 0.0f) << "face " << face << " looks at the sample rather than away from it";
+        const glm::vec2 ndc = glm::vec2(clip) / clip.w;
+        EXPECT_NEAR(ndc.x, 0.0f, 1e-4f) << "face " << face << " centres its own target direction";
+        EXPECT_NEAR(ndc.y, 0.0f, 1e-4f) << "face " << face;
+        // And it is inside the near plane, so it is not clipped.
+        EXPECT_GT(clip.w, z_near) << "the sample is in front of the near plane";
+    }
+
+    // The face projection itself is the shared cube-face one.
+    EXPECT_EQ(cube_face_projection(z_near), epix::camera::perspective_infinite_reverse_rh(glm::radians(90.0f), 1.0f, z_near));
+}
+
 }  // namespace
