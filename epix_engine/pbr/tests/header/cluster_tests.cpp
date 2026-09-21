@@ -1,4 +1,5 @@
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/light_cluster.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <vector>
@@ -59,6 +60,41 @@ TEST(Cluster, RuntimeSizedClusterBuffersFollowTheData) {
     std::vector<std::uint8_t> encoded(ShaderTypeInfo<GpuClusterableObjectsStorage>::size_for(objects));
     ShaderTypeInfo<GpuClusterableObjectsStorage>::write_into(objects, encoded);
     EXPECT_EQ(encoded.size(), 240u);
+}
+
+/** @brief The light-side clustered-forward types (Bevy `bevy_light`'s
+ *  `cluster/mod.rs`) carry Bevy's defaults: clustering disabled, zeroed counts,
+ *  a single cluster, and no storage-buffer support until the device is asked. */
+TEST(Cluster, LightSideTypesMatchBevyDefaults) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::Clusters;
+    using epix::pbr::GlobalClusterSettings;
+    using epix::pbr::VisibleClusterableObjects;
+
+    const GlobalClusterSettings settings{};
+    EXPECT_FALSE(settings.supports_storage_buffers);
+    EXPECT_EQ(settings.max_uniform_buffer_clusterable_objects, 0u);
+
+    const ClusterConfig config{};
+    EXPECT_EQ(config.kind, ClusterConfig::Kind::None) << "Bevy's ClusterConfig default disables clustering";
+    EXPECT_FALSE(config.dynamic_resizing);
+
+    const ClusterableObjectCounts counts{};
+    EXPECT_EQ(counts.point_lights, 0u);
+    EXPECT_EQ(counts.spot_lights, 0u);
+    EXPECT_EQ(counts.reflection_probes, 0u);
+    EXPECT_EQ(counts.irradiance_volumes, 0u);
+    EXPECT_EQ(counts.decals, 0u);
+
+    const Clusters clusters{};
+    EXPECT_EQ(clusters.dimensions, glm::uvec3(1, 1, 1)) << "a view starts as one cluster";
+    EXPECT_EQ(clusters.tile_size, glm::uvec2(0, 0));
+    EXPECT_TRUE(clusters.clusterable_objects.empty());
+
+    VisibleClusterableObjects visible{};
+    visible.entities.push_back(epix::ecs::Entity{});
+    EXPECT_EQ(visible.entities.size(), 1u);
 }
 
 }  // namespace
