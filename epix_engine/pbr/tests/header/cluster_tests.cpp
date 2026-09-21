@@ -6,6 +6,7 @@
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/spot_light.hpp>
+#include <epix/pbr/volumetric.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <vector>
@@ -315,6 +316,37 @@ TEST(Cluster, ProbeComponentsMatchBevyDefaults) {
     EXPECT_EQ(volume.voxels.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
     EXPECT_FLOAT_EQ(volume.intensity, 0.0f);
     EXPECT_TRUE(volume.affects_lightmapped_meshes);
+}
+
+/** @brief Volumetric fog carries Bevy's defaults (`bevy_light/src/volumetric.rs`):
+ *  a 64-step raymarch with no jitter and a 0.1 ambient contribution on the fog
+ *  component, and a fog volume with 0.3 absorption and scattering, 0.1 density,
+ *  and no density texture. Note `scattering_asymmetry`: Bevy's doc says 0.8, its
+ *  implementation sets 0.5, and this port follows the implementation. */
+TEST(Cluster, VolumetricFogMatchesBevyDefaults) {
+    using epix::pbr::FogVolume;
+    using epix::pbr::VolumetricFog;
+    using epix::pbr::VolumetricLight;
+
+    const VolumetricFog fog{};
+    EXPECT_EQ(fog.ambient_color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(fog.ambient_intensity, 0.1f);
+    EXPECT_FLOAT_EQ(fog.jitter, 0.0f);
+    EXPECT_EQ(fog.step_count, 64u);
+
+    const FogVolume volume{};
+    EXPECT_EQ(volume.fog_color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(volume.density_factor, 0.1f);
+    EXPECT_FALSE(volume.density_texture.has_value()) << "Bevy's default is Option::None, not a default image";
+    EXPECT_EQ(volume.density_texture_offset, glm::vec3(0.0f, 0.0f, 0.0f));
+    EXPECT_FLOAT_EQ(volume.absorption, 0.3f);
+    EXPECT_FLOAT_EQ(volume.scattering, 0.3f);
+    EXPECT_FLOAT_EQ(volume.scattering_asymmetry, 0.5f) << "the implementation's value, not the doc's 0.8";
+    EXPECT_EQ(volume.light_tint, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(volume.light_intensity, 1.0f);
+
+    const VolumetricLight light{};
+    static_cast<void>(light);
 }
 
 }  // namespace

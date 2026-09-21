@@ -10,3 +10,4 @@
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/spot_light.hpp>
+#include <epix/pbr/volumetric.hpp>
