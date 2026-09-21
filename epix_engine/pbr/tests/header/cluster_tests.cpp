@@ -1534,4 +1534,63 @@ TEST(Cluster, SphereRefinementAndClusterIndexMatchBevy) {
     EXPECT_LE(ortho_result.min_x, ortho_result.max_x);
 }
 
+/** @brief A spot light culls a cluster by its cone, by its range or by the
+ *  cluster being behind it, and a cluster's bounding sphere takes its radius from
+ *  the AABB's half extents (Bevy `assign.rs:739-765`). */
+TEST(Cluster, SpotLightClusterCullMatchesBevy) {
+    using epix::camera::Aabb;
+    using epix::pbr::cluster_bounding_sphere;
+    using epix::pbr::spot_light_cluster_cull;
+
+    // The cluster's bounding sphere: the box's centre, and the length of its
+    // half extents as the radius.
+    const Aabb aabb = Aabb::from_min_max(glm::vec3(-1.0f, -2.0f, -3.0f), glm::vec3(1.0f, 2.0f, 3.0f));
+    const auto sphere = cluster_bounding_sphere(aabb);
+    EXPECT_EQ(sphere.center, glm::vec3(0.0f));
+    EXPECT_NEAR(sphere.radius, std::sqrt(1.0f + 4.0f + 9.0f), 1e-5f);
+
+    // A light at the origin whose cone points down -Z. Note the direction used
+    // here is the transform's *back* axis, as Bevy computes it
+    // (`view_from_world * transform.back()`), so it points away from where the
+    // light shines - which is what makes v1_len positive for a cluster in front.
+    const glm::vec3 light_center{0.0f};
+    const glm::vec3 direction{0.0f, 0.0f, 1.0f};
+    const float sin45 = std::sqrt(0.5f);
+    const float cos45 = std::sqrt(0.5f);
+    const float range = 20.0f;
+
+    // Directly in front, inside the cone and the range: no cull.
+    const auto ahead = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                               glm::vec3(0.0f, 0.0f, -10.0f), 1.0f);
+    EXPECT_FALSE(ahead.culled()) << "a cluster in the cone within range is lit";
+    EXPECT_FALSE(ahead.front_cull);
+    EXPECT_FALSE(ahead.back_cull);
+    EXPECT_FALSE(ahead.angle_cull);
+
+    // Far to the side: outside the cone.
+    const auto sideways = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                                  glm::vec3(50.0f, 0.0f, -10.0f), 1.0f);
+    EXPECT_TRUE(sideways.angle_cull) << "well outside a 45-degree cone";
+
+    // Along the axis but beyond the range: a front cull, not an angle cull.
+    const auto beyond = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                                glm::vec3(0.0f, 0.0f, -100.0f), 1.0f);
+    EXPECT_TRUE(beyond.front_cull) << "past the light's range";
+    EXPECT_FALSE(beyond.angle_cull) << "it is on the axis, so the cone does not cull it";
+
+    // Behind the light: a back cull.
+    const auto behind = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                                glm::vec3(0.0f, 0.0f, 10.0f), 1.0f);
+    EXPECT_TRUE(behind.back_cull) << "behind the light's origin";
+
+    // A cluster straddling the range boundary is only culled once its sphere is
+    // fully past range + radius, since the radius is added to the reach.
+    const auto straddling = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                                    glm::vec3(0.0f, 0.0f, -(range + 0.5f)), 1.0f);
+    EXPECT_FALSE(straddling.front_cull) << "the cluster's sphere still overlaps the range";
+    const auto past = spot_light_cluster_cull(light_center, range, direction, sin45, cos45,
+                                             glm::vec3(0.0f, 0.0f, -(range + 1.5f)), 1.0f);
+    EXPECT_TRUE(past.front_cull) << "and once it clears range + radius";
+}
+
 }  // namespace

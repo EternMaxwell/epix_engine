@@ -916,6 +916,54 @@ EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(
     return range;
 }
 
+/** @brief The bounding sphere of a cluster's AABB (Bevy `assign.rs:739-742`):
+ *  centred on the box, with the length of the box's half extents as its radius. */
+EPIX_EXPORT inline camera::Sphere cluster_bounding_sphere(const camera::Aabb& aabb) {
+    return camera::Sphere{.center = aabb.center, .radius = glm::length(aabb.half_extents)};
+}
+
+/** @brief The three ways a spot light can be culled from a cluster (Bevy
+ *  `assign.rs:747-765`, based on Bart Wronski's *cull that cone*). */
+EPIX_EXPORT struct SpotLightClusterCull {
+    /** @brief The cluster sphere lies outside the light's cone. */
+    bool angle_cull = false;
+    /** @brief The cluster is further along the light's axis than its range
+     *  reaches. */
+    bool front_cull = false;
+    /** @brief The cluster is behind the light. */
+    bool back_cull = false;
+
+    /** @brief Whether any of the three culls applies, i.e. the light does not
+     *  affect the cluster. */
+    bool culled() const noexcept { return angle_cull || front_cull || back_cull; }
+};
+
+/** @brief Test a spot light's cone against a cluster's bounding sphere (Bevy
+ *  `assign.rs:747-765`).
+ *
+ *  `angle_cos * sqrt(dist² - v1²) - v1 * angle_sin` is the distance from the cone
+ *  surface to the cluster along the closest point, so it culls when it exceeds
+ *  the cluster's radius. `v1` is the cluster centre's offset along the light
+ *  direction: past the range is a front cull, and behind the light is a back
+ *  cull. The range passed in is already scaled by the view's largest axis scale,
+ *  as Bevy scales it. */
+EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center, float light_range_scaled,
+                                                               glm::vec3 light_direction, float angle_sin,
+                                                               float angle_cos, glm::vec3 cluster_center,
+                                                               float cluster_radius) {
+    const glm::vec3 offset   = light_center - cluster_center;
+    const float distance_sq  = glm::dot(offset, offset);
+    const float v1_len       = glm::dot(offset, light_direction);
+
+    SpotLightClusterCull cull;
+    const float distance_closest_point =
+        angle_cos * std::sqrt(distance_sq - v1_len * v1_len) - v1_len * angle_sin;
+    cull.angle_cull = distance_closest_point > cluster_radius;
+    cull.front_cull = v1_len > cluster_radius + light_range_scaled;
+    cull.back_cull  = v1_len < -cluster_radius;
+    return cull;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
