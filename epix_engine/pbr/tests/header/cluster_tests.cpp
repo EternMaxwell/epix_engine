@@ -1210,4 +1210,49 @@ TEST(Cluster, DimensionsForScreenSizeMatchBevy) {
     EXPECT_THROW(defaults.dimensions_for_screen_size(glm::uvec2(0, 1080)), std::invalid_argument);
 }
 
+/** @brief `Clusters::update` computes whole-pixel tiles and then recomputes the
+ *  dimensions from them, so an uneven screen yields fewer clusters than
+ *  requested, and `clear` resets to no clusters (Bevy `Clusters::update` and
+ *  `clear`, `bevy_light/src/cluster/mod.rs:315-340`). */
+TEST(Cluster, ClustersUpdateDerivesTilesThenDimensions) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::Clusters;
+    using epix::pbr::VisibleClusterableObjects;
+
+    // 1920x1080 over a 17x9 grid: tiles of 113 by 120 pixels, which divides
+    // evenly enough that the recomputed dimensions match the request.
+    Clusters clusters;
+    clusters.update(glm::uvec2(1920, 1080), glm::uvec3(17, 9, 24));
+    EXPECT_EQ(clusters.tile_size, glm::uvec2(113, 120)) << "ceil(1920/17) by ceil(1080/9)";
+    EXPECT_EQ(clusters.dimensions, glm::uvec3(17, 9, 24));
+
+    // 10 pixels over a 7x7 request: one-pixel tiles, so only five clusters fit
+    // across - fewer than asked for, because tiles are whole pixels.
+    clusters.update(glm::uvec2(10, 10), glm::uvec3(7, 7, 1));
+    EXPECT_EQ(clusters.tile_size, glm::uvec2(2, 2)) << "ceil(10/7)";
+    EXPECT_EQ(clusters.dimensions, glm::uvec3(5, 5, 1)) << "recomputed from the tile size, not the request";
+
+    // A request finer than the screen cannot produce sub-pixel tiles.
+    clusters.update(glm::uvec2(10, 10), glm::uvec3(100, 100, 1));
+    EXPECT_EQ(clusters.tile_size, glm::uvec2(1, 1)) << "floored at one pixel";
+    EXPECT_EQ(clusters.dimensions, glm::uvec3(10, 10, 1));
+
+    // The z count is taken from the request unchanged.
+    clusters.update(glm::uvec2(10, 10), glm::uvec3(2, 2, 7));
+    EXPECT_EQ(clusters.dimensions.z, 7u);
+
+    // Clear zeroes the layout, including the dimensions.
+    clusters.near_plane = 0.5f;
+    clusters.far_plane  = 90.0f;
+    clusters.clusterable_objects.push_back(VisibleClusterableObjects{});
+    clusters.clear();
+    EXPECT_EQ(clusters.tile_size, glm::uvec2(1, 1));
+    EXPECT_EQ(clusters.dimensions, glm::uvec3(0u)) << "zero, not one, after a clear";
+    EXPECT_FLOAT_EQ(clusters.near_plane, 0.0f);
+    EXPECT_FLOAT_EQ(clusters.far_plane, 0.0f);
+    EXPECT_TRUE(clusters.clusterable_objects.empty());
+
+    static_cast<void>(ClusterableObjectCounts{});
+}
+
 }  // namespace

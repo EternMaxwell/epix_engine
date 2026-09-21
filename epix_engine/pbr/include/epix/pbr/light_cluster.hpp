@@ -227,6 +227,34 @@ EPIX_EXPORT struct Clusters {
     float far_plane = 0.0f;
     /** @brief One entry per cluster: the objects that fall in it. */
     std::vector<VisibleClusterableObjects> clusterable_objects;
+
+    /** @brief Set the tile size and dimensions for a screen size (Bevy
+     *  `Clusters::update`, `cluster/mod.rs:315-333`).
+     *
+     *  The tile size is computed first, as whole pixels covering the requested
+     *  grid, and the dimensions are then *recomputed* from that tile size rather
+     *  than kept - so a screen that does not divide evenly yields fewer clusters
+     *  than requested, never fractional ones. Both are floored at one, and the z
+     *  count is the requested one. */
+    void update(glm::uvec2 screen_size, glm::uvec3 requested_dimensions) {
+        const glm::vec2 requested_xy{requested_dimensions.x, requested_dimensions.y};
+        const glm::vec2 screen{screen_size};
+        tile_size = glm::max(glm::uvec2(glm::ceil(screen / requested_xy)), glm::uvec2(1u));
+
+        const glm::uvec3 derived{glm::ceil(screen / glm::vec2(tile_size)), requested_dimensions.z};
+        dimensions = glm::max(derived, glm::uvec3(1u));
+    }
+
+    /** @brief Reset to a state with no clusters (Bevy `Clusters::clear`,
+     *  `cluster/mod.rs:334-340`). Note the dimensions become zero, where
+     *  `update` would floor them at one. */
+    void clear() {
+        tile_size  = glm::uvec2(1u);
+        dimensions = glm::uvec3(0u);
+        near_plane = 0.0f;
+        far_plane  = 0.0f;
+        clusterable_objects.clear();
+    }
 };
 
 /** @brief A clustered decal: a 1×1×1 cube centred on its origin that projects
