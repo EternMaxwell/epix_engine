@@ -7,6 +7,7 @@
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
+#include <epix/pbr/shadow_phase.hpp>
 #include <epix/pbr/spot_light.hpp>
 #include <epix/pbr/volumetric.hpp>
 #include <gtest/gtest.h>
@@ -2178,6 +2179,55 @@ TEST(Cluster, ShadowTextureBudgetsMatchBevy) {
     EXPECT_EQ(point_light_shadow_view_count(20, 8), 8u) << "capped by the device's cubemaps";
     EXPECT_EQ(point_light_shadow_view_count(0, 8), 0u);
     EXPECT_EQ(point_light_shadow_view_count(3, 0), 0u) << "a device with no cubemaps allocates no views";
+}
+
+/** @brief The shadow phase item groups work by the same keys the opaque 3D phase
+ *  uses, minus the lightmap; a shadow item's entity pair and batch-set key are
+ *  what the phase reads (Bevy `Shadow`, `ShadowBatchSetKey`, `ShadowBinKey`,
+ *  `render/light.rs:2082-2136`). */
+TEST(Cluster, ShadowPhaseItemMatchesBevy) {
+    using epix::pbr::Shadow;
+    using epix::pbr::ShadowBatchSetKey;
+    using epix::pbr::ShadowBinKey;
+    using epix::render::mesh::SlabId;
+
+    // A batch set is indexed only when there is an index slab, which selects the
+    // indirect-command layout.
+    ShadowBatchSetKey unindexed;
+    unindexed.vertex_slab = SlabId{0};
+    EXPECT_FALSE(unindexed.indexed()) << "no index slab";
+    ShadowBatchSetKey indexed = unindexed;
+    indexed.index_slab        = SlabId{1};
+    EXPECT_TRUE(indexed.indexed());
+    EXPECT_NE(unindexed, indexed) << "the index slab is part of the key";
+
+    // The key compares field for field, so two objects with the same pipeline,
+    // draw function, material and slabs land in one batch set.
+    ShadowBatchSetKey same = unindexed;
+    EXPECT_EQ(unindexed, same);
+    same.material_bind_group_index = 2;
+    EXPECT_NE(unindexed, same) << "a different material bind group separates them";
+
+    // Shadow items are binned by asset.
+    const auto asset_id = epix::assets::UntypedAssetId{epix::image::DEFAULT_IMAGE_HANDLE.id()};
+    ShadowBinKey first_bin{.asset_id = asset_id};
+    ShadowBinKey second_bin{.asset_id = asset_id};
+    EXPECT_EQ(first_bin, second_bin) << "the same asset bins together";
+
+    // A phase item carries the render entity and the main-world entity it
+    // represents, and takes its pipeline and draw function from its batch set.
+    const auto render_entity = epix::ecs::Entity::from_index(7);
+    const auto main_entity   = epix::ecs::Entity::from_index(8);
+    Shadow item = Shadow::create(unindexed, first_bin, {render_entity, epix::render::sync_world::MainEntity{main_entity}},
+                                 {0u, 5u}, epix::render::phase::PhaseItemExtraIndex{});
+    EXPECT_EQ(item.entity(), render_entity) << "the render-world entity";
+    EXPECT_EQ(item.main_entity().id(), main_entity) << "and the main-world entity it stands for";
+    EXPECT_EQ(item.batch_range().first, 0u);
+    EXPECT_EQ(item.batch_range().second, 5u);
+    item.batch_range().second = 9u;
+    EXPECT_EQ(item.batch_range().second, 9u) << "the range is mutable, as the batcher needs";
+    EXPECT_EQ(item.cached_pipeline(), unindexed.pipeline_id);
+    EXPECT_EQ(item.draw_function(), unindexed.draw_func);
 }
 
 }  // namespace
