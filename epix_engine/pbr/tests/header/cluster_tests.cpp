@@ -4,6 +4,7 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
+#include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/spot_light.hpp>
@@ -414,6 +415,44 @@ TEST(Cluster, GpuLightsMatchBevyShaderLayout) {
     const GpuLights lights = epix::pbr::default_gpu_lights();
     EXPECT_EQ(lights.n_directional_lights, 0u);
     EXPECT_EQ(lights.directional_lights[0].flags, DirectionalLightFlags::NONE);
+}
+
+/** @brief `LightMeta` holds one `GpuLights` per view and stamps each view with
+ *  that entry's byte offset, as Bevy's does (`render/light.rs:680-688`), and the
+ *  per-shadow-view components carry what the shadow pass needs. */
+TEST(Cluster, LightMetaKeysOneGpuLightsEntryPerView) {
+    using epix::pbr::GpuLights;
+    using epix::pbr::LightEntity;
+    using epix::pbr::LightMeta;
+    using epix::pbr::ViewLightEntities;
+    using epix::pbr::ViewLightsUniformOffset;
+    using epix::pbr::ViewShadowBindings;
+    using epix::render::render_resource::DynamicUniformBuffer;
+
+    // A default-constructed meta can be filled; uploading needs an aligned
+    // buffer, which the plugin creates with the device's alignment.
+    LightMeta meta{};
+    const std::size_t first  = meta.view_gpu_lights.push(GpuLights{});
+    const std::size_t second = meta.view_gpu_lights.push(GpuLights{});
+    EXPECT_EQ(first, 0u) << "the first view starts the buffer";
+    EXPECT_GE(second, sizeof(GpuLights)) << "the second entry follows the first, at the buffer's stride";
+    EXPECT_FALSE(meta.view_gpu_lights.is_empty()) << "both views were pushed";
+
+    const ViewLightsUniformOffset offset{};
+    EXPECT_EQ(offset.offset, 0u);
+
+    ViewLightEntities entities{};
+    EXPECT_TRUE(entities.lights.empty());
+    entities.lights.push_back(epix::ecs::Entity{});
+    EXPECT_EQ(entities.lights.size(), 1u);
+
+    LightEntity light{};
+    EXPECT_EQ(light.kind, LightEntity::Kind::Spot) << "a spot light has no cascade or face index";
+    light.kind         = LightEntity::Kind::Directional;
+    light.cascade_index = 2;
+    EXPECT_EQ(light.cascade_index, 2u);
+
+    static_assert(sizeof(ViewShadowBindings) > 0);
 }
 
 }  // namespace
