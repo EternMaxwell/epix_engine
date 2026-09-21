@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -216,6 +217,33 @@ EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& fru
                    .clip_from_cascade   = clip_from_cascade,
                    .clip_from_world     = clip_from_cascade * cascade_from_world,
                    .texel_size          = cascade_texel_size};
+}
+
+/** @brief The cascades a directional light builds for one view (Bevy
+ *  `build_directional_light_cascades`, `cascade.rs:216-251`).
+ *
+ *  `slice_corners` holds the camera-frustum corners of each cascade's slice, in
+ *  the order `calculate_cascade` expects, which the caller gets from its
+ *  projection at the bounds `cascade_bounds` returns - kept as an input so the
+ *  assembly here does not depend on a projection type.
+ *
+ *  The light matrix is built from the light's **rotation alone**. Bevy's comment
+ *  is emphatic about it: the matrix must have an orthogonal upper-left 3x3 and
+ *  zero translation for the shadows to be numerically stable, and nothing stops a
+ *  user putting scale or translation on a light's transform, so the transform's
+ *  matrix is deliberately not used. */
+EPIX_EXPORT inline std::vector<Cascade> build_view_cascades(
+    const std::vector<std::array<glm::vec3, 8>>& slice_corners, float cascade_texture_size,
+    const glm::quat& light_rotation, const glm::mat4& view_to_world) {
+    const glm::mat4 world_from_light   = glm::mat4_cast(light_rotation);
+    const glm::mat4 light_from_camera  = glm::transpose(world_from_light) * view_to_world;
+
+    std::vector<Cascade> cascades;
+    cascades.reserve(slice_corners.size());
+    for (const std::array<glm::vec3, 8>& corners : slice_corners) {
+        cascades.push_back(calculate_cascade(corners, cascade_texture_size, world_from_light, light_from_camera));
+    }
+    return cascades;
 }
 
 }  // namespace epix::pbr

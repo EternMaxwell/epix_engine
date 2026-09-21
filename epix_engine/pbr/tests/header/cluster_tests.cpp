@@ -2612,4 +2612,56 @@ TEST(Cluster, CascadeCalculationMatchesBevy) {
     EXPECT_NEAR(clip_from_world.y / clip_from_world.w, 0.0f, 1e-4f);
 }
 
+/** @brief The per-view assembly builds one cascade per frustum slice, from a
+ *  light matrix made of the light's rotation alone (Bevy
+ *  `build_directional_light_cascades`, `cascade.rs:216-251`). */
+TEST(Cluster, BuildViewCascadesMatchesBevy) {
+    using epix::pbr::build_view_cascades;
+
+    // A unit cube's corners in the order calculate_cascade wants: bottom-right,
+    // top-right, top-left, bottom-left for the near plane, then the far plane.
+    const float half = 0.5f;
+    const std::array<glm::vec3, 8> near_slice{glm::vec3(half, -half, -half), glm::vec3(half, half, -half),
+                                              glm::vec3(-half, half, -half), glm::vec3(-half, -half, -half),
+                                              glm::vec3(half, -half, half),  glm::vec3(half, half, half),
+                                              glm::vec3(-half, half, half),  glm::vec3(-half, -half, half)};
+
+    const float texture_size = 1024.0f;
+    const auto identity_cascades =
+        build_view_cascades({near_slice, near_slice}, texture_size, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f));
+    ASSERT_EQ(identity_cascades.size(), 2u) << "one cascade per slice";
+
+    // The cube's body diagonal is sqrt(3), so the ceiled diameter is 2 and the
+    // texel size is 2 / texture_size. The far-plane diagonal is only sqrt(2), so
+    // the body diagonal is what wins.
+    EXPECT_FLOAT_EQ(identity_cascades[0].texel_size, 2.0f / texture_size);
+    for (const auto& cascade : identity_cascades) {
+        EXPECT_FLOAT_EQ(cascade.texel_size, 2.0f / texture_size) << "the same slice gives the same texel size";
+        // The light matrix is a pure rotation: unit axes, no translation.
+        EXPECT_FLOAT_EQ(cascade.world_from_cascade[3][0], std::floor(cascade.world_from_cascade[3][0] / cascade.texel_size) * cascade.texel_size);
+        EXPECT_NEAR(glm::length(glm::vec3(cascade.world_from_cascade[0])), 1.0f, 1e-5f);
+        EXPECT_NEAR(glm::length(glm::vec3(cascade.world_from_cascade[1])), 1.0f, 1e-5f);
+        EXPECT_NEAR(glm::length(glm::vec3(cascade.world_from_cascade[2])), 1.0f, 1e-5f);
+    }
+
+    // Rotating the light changes the light space, so the cascades differ - and a
+    // rotation about Y leaves the cube's light-space extent the same, since the
+    // cube is symmetric, but the matrices themselves still change.
+    const glm::quat turned = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    const auto turned_cascades = build_view_cascades({near_slice}, texture_size, turned, glm::mat4(1.0f));
+    ASSERT_EQ(turned_cascades.size(), 1u);
+    EXPECT_NE(turned_cascades[0].clip_from_world, identity_cascades[0].clip_from_world)
+        << "the light's rotation reaches the cascade's matrices";
+
+    // A view transform reaches them too, through the light-from-camera matrix.
+    const glm::mat4 moved_view = glm::translate(glm::mat4(1.0f), glm::vec3(10.0f, 0.0f, 0.0f));
+    const auto moved           = build_view_cascades({near_slice}, texture_size, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), moved_view);
+    ASSERT_EQ(moved.size(), 1u);
+    EXPECT_NE(moved[0].clip_from_world, identity_cascades[0].clip_from_world)
+        << "moving the view moves the slice's corners in light space";
+
+    // No slices, no cascades.
+    EXPECT_TRUE(build_view_cascades({}, texture_size, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f)).empty());
+}
+
 }  // namespace
