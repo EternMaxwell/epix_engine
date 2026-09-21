@@ -747,4 +747,61 @@ TEST(Cluster, PrepareClusterBindingsFollowsTheRecordWalk) {
         << "with storage buffers the index list is unbounded";
 }
 
+/** @brief Extraction turns a view's clusters into a flat record list - a header
+ *  per cluster, then that cluster's synced objects - and carries the geometry
+ *  across; an unsynced object is skipped (Bevy `extract_clusters`,
+ *  `bevy_pbr/src/cluster.rs:259-285`). */
+TEST(Cluster, ExtractViewClustersBuildsHeadersThenSyncedObjects) {
+    using epix::pbr::extract_view_clusters;
+    using epix::pbr::ExtractedClusterableObjectElement;
+    using epix::pbr::VisibleClusterableObjects;
+    using epix::pbr::Clusters;
+
+    const epix::ecs::Entity main_a = epix::ecs::Entity::from_index(10);
+    const epix::ecs::Entity main_b = epix::ecs::Entity::from_index(11);
+    const epix::ecs::Entity unsynced = epix::ecs::Entity::from_index(12);
+    const epix::ecs::Entity render_a = epix::ecs::Entity::from_index(20);
+    const epix::ecs::Entity render_b = epix::ecs::Entity::from_index(21);
+
+    Clusters clusters;
+    clusters.near_plane  = 0.1f;
+    clusters.far_plane   = 100.0f;
+    clusters.dimensions  = glm::uvec3(4, 4, 8);
+    VisibleClusterableObjects first_cluster;
+    first_cluster.counts.point_lights = 2;
+    first_cluster.entities            = {main_a, unsynced};
+    VisibleClusterableObjects second_cluster;
+    second_cluster.counts.spot_lights = 1;
+    second_cluster.entities           = {main_b};
+    clusters.clusterable_objects      = {first_cluster, second_cluster};
+
+    // The mapper reports only the entities that were synced to the render world.
+    const auto mapper = [&](epix::ecs::Entity main, epix::ecs::Entity& out) {
+        if (main == main_a) {
+            out = render_a;
+            return true;
+        }
+        if (main == main_b) {
+            out = render_b;
+            return true;
+        }
+        return false;  // `unsynced` has no render entity
+    };
+
+    const auto extracted = extract_view_clusters(clusters, mapper);
+    ASSERT_EQ(extracted.objects.data.size(), 4u) << "two headers and two synced objects; the unsynced one is skipped";
+    EXPECT_EQ(extracted.objects.data[0].kind, ExtractedClusterableObjectElement::Kind::ClusterHeader);
+    EXPECT_EQ(extracted.objects.data[0].counts.point_lights, 2u);
+    ASSERT_EQ(extracted.objects.data[1].kind, ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity);
+    EXPECT_EQ(extracted.objects.data[1].entity, render_a) << "the render entity, not the main one";
+    EXPECT_EQ(extracted.objects.data[2].kind, ExtractedClusterableObjectElement::Kind::ClusterHeader)
+        << "the unsynced object contributed nothing";
+    EXPECT_EQ(extracted.objects.data[2].counts.spot_lights, 1u);
+    EXPECT_EQ(extracted.objects.data[3].entity, render_b);
+
+    EXPECT_FLOAT_EQ(extracted.config.near_plane, 0.1f);
+    EXPECT_FLOAT_EQ(extracted.config.far_plane, 100.0f);
+    EXPECT_EQ(extracted.config.dimensions, glm::uvec3(4, 4, 8));
+}
+
 }  // namespace

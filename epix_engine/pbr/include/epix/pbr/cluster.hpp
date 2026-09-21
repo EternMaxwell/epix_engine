@@ -532,5 +532,50 @@ EPIX_EXPORT inline ViewClusterBindings prepare_view_cluster_bindings(
     return bindings;
 }
 
+/** @brief What one view's extraction produces (Bevy `extract_clusters`,
+ *  `bevy_pbr/src/cluster.rs:278-285`): the flat records plus the view's cluster
+ *  geometry. */
+EPIX_EXPORT struct ExtractedViewClusters {
+    ExtractedClusterableObjects objects;
+    ExtractedClusterConfig config;
+};
+
+/** @brief Build a view's extracted cluster records from its `Clusters`
+ *  component (Bevy `extract_clusters`, `bevy_pbr/src/cluster.rs:259-285`).
+ *
+ *  The mapper is called with each clusterable object's main-world entity and
+ *  fills the render-world entity to record; returning false means that entity
+ *  was not synced, and Bevy skips it rather than failing - the same
+ *  `mapper.get(...).is_ok()` shape. Bevy also reserves
+ *  `clusters.len() + total_entities` up front, which the reserve below mirrors.
+ *
+ *  The system half - the `Extract` query with `RenderEntity`, the removal from
+ *  inactive cameras, and the component insertion - lands with the plugin that
+ *  schedules it; this is the part with the behaviour. */
+template <typename Mapper>
+    requires std::invocable<Mapper&, ecs::Entity, ecs::Entity&>
+EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters, Mapper&& mapper) {
+    std::size_t entity_count = 0;
+    for (const auto& cluster : clusters.clusterable_objects) entity_count += cluster.entities.size();
+
+    ExtractedViewClusters extracted;
+    extracted.objects.data.reserve(clusters.clusterable_objects.size() + entity_count);
+    for (const auto& cluster : clusters.clusterable_objects) {
+        extracted.objects.data.push_back(ExtractedClusterableObjectElement{
+            .kind = ExtractedClusterableObjectElement::Kind::ClusterHeader, .counts = cluster.counts});
+        for (const ecs::Entity clusterable : cluster.entities) {
+            ecs::Entity render_entity{};
+            if (!mapper(clusterable, render_entity)) continue;  // not synced: Bevy skips it
+            extracted.objects.data.push_back(ExtractedClusterableObjectElement{
+                .kind = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity,
+                .entity = render_entity});
+        }
+    }
+
+    extracted.config = ExtractedClusterConfig{
+        .near_plane = clusters.near_plane, .far_plane = clusters.far_plane, .dimensions = clusters.dimensions};
+    return extracted;
+}
+
 }  // namespace epix::pbr
 
