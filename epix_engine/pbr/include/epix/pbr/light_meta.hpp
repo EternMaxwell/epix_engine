@@ -419,4 +419,61 @@ EPIX_EXPORT inline std::int32_t spot_light_shadowmap_offset(std::size_t num_dire
     return static_cast<std::int32_t>(num_directional_cascades_enabled) - static_cast<std::int32_t>(point_light_count);
 }
 
+/** @brief A directional light's flags and the cascades it was granted (Bevy
+ *  `render/light.rs:1171-1196`).
+ *
+ *  The two are one computation in Bevy because they are coupled: a light only has
+ *  its shadow flag set if its cascades still fit in the array layers the earlier
+ *  lights have not taken, and the number granted is what the caller adds to the
+ *  running total. A light that does not fit keeps its other flags but loses its
+ *  shadows silently.
+ *
+ *  As with point lights, the volumetric flag requires shadows as well as
+ *  volumetrics, and the index is a position in the sorted list, which puts
+ *  volumetric and shadow-casting lights first. */
+EPIX_EXPORT struct DirectionalLightFlagsAndCascades {
+    std::uint32_t flags = DirectionalLightFlags::NONE;
+    /** @brief The cascades granted, zero when the light does not fit. */
+    std::uint32_t num_cascades = 0;
+};
+
+/** @brief Compute a directional light's flags and granted cascades (Bevy
+ *  `render/light.rs:1171-1196`). */
+EPIX_EXPORT inline DirectionalLightFlagsAndCascades directional_light_gpu_flags(
+    const ExtractedDirectionalLight& light, std::size_t index, std::size_t directional_volumetric_enabled_count,
+    std::size_t cascades_used_so_far, std::size_t max_texture_array_layers) {
+    DirectionalLightFlagsAndCascades result;
+
+    if (light.volumetric && light.shadows_enabled && index < directional_volumetric_enabled_count) {
+        result.flags |= DirectionalLightFlags::VOLUMETRIC;
+    }
+
+    if (light.shadows_enabled) {
+        const std::size_t cascades = std::min(light.cascade_shadow_config.bounds.size(), MAX_CASCADES_PER_LIGHT);
+        // The budget is what the earlier lights in this view left behind.
+        if (cascades_used_so_far + cascades <= max_texture_array_layers) {
+            result.flags |= DirectionalLightFlags::SHADOWS_ENABLED;
+            result.num_cascades = static_cast<std::uint32_t>(cascades);
+        }
+    }
+
+    if (light.affects_lightmapped_mesh_diffuse) {
+        result.flags |= DirectionalLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE;
+    }
+    return result;
+}
+
+/** @brief A directional light's colour premultiplied by its illuminance (Bevy
+ *  `render/light.rs:1205-1207`), the whole `vec4` as for point lights. */
+EPIX_EXPORT inline glm::vec4 pack_directional_color(glm::vec4 color, float illuminance) {
+    return color * illuminance;
+}
+
+/** @brief The sentinel a light's `decal_index` carries when it has no clustered
+ *  decal (Bevy `render/light.rs:1219-1223`: `unwrap_or(u32::MAX)`).
+ *
+ *  The same value is used for point and directional lights, and the shader tests
+ *  for it rather than reading decal zero. */
+EPIX_EXPORT inline constexpr std::uint32_t NO_CLUSTERED_DECAL = 0xFFFFFFFFu;
+
 }  // namespace epix::pbr

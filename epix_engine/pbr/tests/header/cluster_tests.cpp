@@ -1985,4 +1985,58 @@ TEST(Cluster, GpuLightsAssemblyMatchesBevy) {
     EXPECT_EQ(spot_light_shadowmap_offset(0, 3), -3);
 }
 
+/** @brief A directional light's flags and cascades are one computation, since a
+ *  light only keeps its shadows if its cascades fit the remaining array layers,
+ *  and the volumetric flag again requires shadows (Bevy
+ *  `render/light.rs:1171-1225`). */
+TEST(Cluster, DirectionalLightFlagsAndCascadesMatchBevy) {
+    using epix::pbr::directional_light_gpu_flags;
+    using epix::pbr::DirectionalLightFlags;
+    using epix::pbr::ExtractedDirectionalLight;
+    using epix::pbr::NO_CLUSTERED_DECAL;
+    using epix::pbr::pack_directional_color;
+
+    ExtractedDirectionalLight light;
+    light.shadows_enabled                  = true;
+    light.volumetric                       = true;
+    light.affects_lightmapped_mesh_diffuse = true;
+
+    // Room to spare: shadows and volumetrics are granted, and four cascades.
+    const auto roomy = directional_light_gpu_flags(light, 0, 4, 0, 32);
+    EXPECT_TRUE((roomy.flags & DirectionalLightFlags::SHADOWS_ENABLED) != 0u);
+    EXPECT_TRUE((roomy.flags & DirectionalLightFlags::VOLUMETRIC) != 0u);
+    EXPECT_TRUE((roomy.flags & DirectionalLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE) != 0u);
+    EXPECT_EQ(roomy.num_cascades, 4u) << "the default configuration's four";
+
+    // No room left: the light keeps its other flags but silently loses its
+    // shadows and its cascades.
+    const auto squeezed = directional_light_gpu_flags(light, 0, 4, 30, 32);
+    EXPECT_EQ(squeezed.flags & DirectionalLightFlags::SHADOWS_ENABLED, 0u)
+        << "two layers left cannot hold four cascades";
+    EXPECT_EQ(squeezed.num_cascades, 0u);
+    EXPECT_TRUE((squeezed.flags & DirectionalLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE) != 0u)
+        << "the other flags are unaffected";
+
+    // Exactly fitting is enough.
+    const auto exact = directional_light_gpu_flags(light, 0, 4, 28, 32);
+    EXPECT_TRUE((exact.flags & DirectionalLightFlags::SHADOWS_ENABLED) != 0u);
+
+    // The volumetric flag requires shadows, and both must be inside the count.
+    ExtractedDirectionalLight no_shadows = light;
+    no_shadows.shadows_enabled           = false;
+    const auto unshadowed                = directional_light_gpu_flags(no_shadows, 0, 4, 0, 32);
+    EXPECT_EQ(unshadowed.flags & DirectionalLightFlags::VOLUMETRIC, 0u) << "volumetrics need shadows";
+    EXPECT_EQ(unshadowed.num_cascades, 0u);
+    const auto beyond_count = directional_light_gpu_flags(light, 5, 4, 0, 32);
+    EXPECT_EQ(beyond_count.flags & DirectionalLightFlags::VOLUMETRIC, 0u)
+        << "past the volumetric light count in the sorted list";
+
+    // The colour is premultiplied by illuminance, alpha included.
+    EXPECT_EQ(pack_directional_color(glm::vec4(0.5f, 0.25f, 0.125f, 1.0f), 10000.0f),
+              glm::vec4(5000.0f, 2500.0f, 1250.0f, 10000.0f));
+
+    // A light without a clustered decal carries the sentinel, not zero.
+    EXPECT_EQ(NO_CLUSTERED_DECAL, 0xFFFFFFFFu);
+}
+
 }  // namespace
