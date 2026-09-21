@@ -75,6 +75,28 @@ EPIX_EXPORT struct GpuClusterOffsetsAndCountsStorage {
     std::vector<GpuClusterOffsetsAndCounts> data;
 };
 
+/** @brief Bits each of a cluster's two counts occupies in the packed word; this
+ *  must match `CLUSTER_COUNT_SIZE` in `pbr.wgsl` and be large enough for
+ *  `MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS` (Bevy `cluster.rs:31-36`). */
+EPIX_EXPORT inline constexpr std::uint32_t CLUSTER_COUNT_SIZE = 9;
+/** @brief The mask for the offset field, which takes the remaining bits. */
+EPIX_EXPORT inline constexpr std::uint32_t CLUSTER_OFFSET_MASK = (1u << (32 - (CLUSTER_COUNT_SIZE * 2))) - 1;
+/** @brief The mask for each count field. */
+EPIX_EXPORT inline constexpr std::uint32_t CLUSTER_COUNT_MASK = (1u << CLUSTER_COUNT_SIZE) - 1;
+
+/** @brief Pack a cluster's offset and its point and spot light counts into one
+ *  word (Bevy `pack_offset_and_counts`, `cluster.rs:551-555`).
+ *
+ *  This is the path taken when the device cannot offer the three storage
+ *  bindings clustered forward wants, so the cluster data goes into uniform
+ *  buffers instead. Each field is masked to its width, which is what Bevy's
+ *  `& MASK` does: an out-of-range value silently keeps only the low bits. */
+EPIX_EXPORT inline std::uint32_t pack_offset_and_counts(std::size_t offset, std::uint32_t point_count,
+                                                        std::uint32_t spot_count) {
+    return ((static_cast<std::uint32_t>(offset) & CLUSTER_OFFSET_MASK) << (CLUSTER_COUNT_SIZE * 2)) |
+           ((point_count & CLUSTER_COUNT_MASK) << CLUSTER_COUNT_SIZE) | (spot_count & CLUSTER_COUNT_MASK);
+}
+
 }  // namespace epix::pbr
 
 namespace epix::render::render_resource {

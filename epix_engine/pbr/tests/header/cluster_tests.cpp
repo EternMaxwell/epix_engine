@@ -455,4 +455,32 @@ TEST(Cluster, LightMetaKeysOneGpuLightsEntryPerView) {
     static_assert(sizeof(ViewShadowBindings) > 0);
 }
 
+/** @brief The packed cluster word carries an offset and two counts in the widths
+ *  `pbr.wgsl` expects (Bevy `pack_offset_and_counts`, `cluster.rs:31-36,551-555`),
+ *  each field masked so that an out-of-range value keeps only its low bits. */
+TEST(Cluster, PackOffsetAndCountsMatchesBevy) {
+    using epix::pbr::CLUSTER_COUNT_MASK;
+    using epix::pbr::CLUSTER_COUNT_SIZE;
+    using epix::pbr::CLUSTER_OFFSET_MASK;
+    using epix::pbr::pack_offset_and_counts;
+
+    EXPECT_EQ(CLUSTER_COUNT_SIZE, 9u);
+    EXPECT_EQ(CLUSTER_COUNT_MASK, 0x1FFu);
+    EXPECT_EQ(CLUSTER_OFFSET_MASK, 0x3FFFu) << "the remaining 14 bits";
+    EXPECT_LE(epix::pbr::MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS, CLUSTER_COUNT_MASK)
+        << "a count field must hold every uniform-buffer clusterable object";
+
+    const std::uint32_t packed = pack_offset_and_counts(5, 3, 7);
+    EXPECT_EQ(packed & CLUSTER_COUNT_MASK, 7u) << "spot count in the low bits";
+    EXPECT_EQ((packed >> CLUSTER_COUNT_SIZE) & CLUSTER_COUNT_MASK, 3u) << "point count above it";
+    EXPECT_EQ(packed >> (CLUSTER_COUNT_SIZE * 2), 5u) << "offset in the high bits";
+
+    // Bevy masks rather than validates, so values above a field's width wrap.
+    const std::uint32_t wrapped = pack_offset_and_counts(CLUSTER_OFFSET_MASK + 1u, 0, 0);
+    EXPECT_EQ(wrapped, 0u) << "an offset one past the mask wraps to zero";
+
+    const std::uint32_t maxed = pack_offset_and_counts(CLUSTER_OFFSET_MASK, CLUSTER_COUNT_MASK, CLUSTER_COUNT_MASK);
+    EXPECT_EQ(maxed, 0xFFFFFFFFu) << "all fields full";
+}
+
 }  // namespace
