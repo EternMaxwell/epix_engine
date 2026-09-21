@@ -804,4 +804,44 @@ TEST(Cluster, ExtractViewClustersBuildsHeadersThenSyncedObjects) {
     EXPECT_EQ(extracted.config.dimensions, glm::uvec3(4, 4, 8));
 }
 
+/** @brief The cluster factors and z-slice boundaries follow Bevy's formulas for
+ *  both projection kinds (Bevy `calculate_cluster_factors` and
+ *  `z_slice_to_view_z`, `bevy_light/src/cluster/assign.rs:863-878,950-967`). */
+TEST(Cluster, ClusterFactorsAndZSlicesMatchBevy) {
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::z_slice_to_view_z;
+
+    const float near_plane = 0.1f;
+    const float far_plane  = 100.0f;
+    const float z_slices   = 8.0f;
+
+    // Perspective: the second factor is ln(near) times the first, which is the
+    // relation the shader relies on to recover a view Z.
+    const glm::vec2 perspective = calculate_cluster_factors(near_plane, far_plane, z_slices, false);
+    EXPECT_NEAR(perspective.x, (z_slices - 1.0f) / std::log(far_plane / near_plane), 1e-6f);
+    EXPECT_NEAR(perspective.y / perspective.x, std::log(near_plane), 1e-5f);
+
+    // Orthographic: linear slices.
+    const glm::vec2 orthographic = calculate_cluster_factors(near_plane, far_plane, z_slices, true);
+    EXPECT_FLOAT_EQ(orthographic.x, -near_plane);
+    EXPECT_NEAR(orthographic.y, z_slices / (near_plane - far_plane), 1e-6f);
+
+    // Perspective slice boundaries: 0 at the first, -near at the second, and
+    // geometric in between.
+    EXPECT_FLOAT_EQ(z_slice_to_view_z(near_plane, far_plane, 8, 0, false), 0.0f);
+    EXPECT_NEAR(z_slice_to_view_z(near_plane, far_plane, 8, 1, false), -near_plane, 1e-5f);
+    const float second = z_slice_to_view_z(near_plane, far_plane, 8, 2, false);
+    const float ratio  = std::pow(far_plane / near_plane, 1.0f / 7.0f);
+    EXPECT_NEAR(second / z_slice_to_view_z(near_plane, far_plane, 8, 1, false), ratio, 1e-4f)
+        << "each slice multiplies the previous by the same ratio";
+    EXPECT_NEAR(z_slice_to_view_z(near_plane, far_plane, 8, 7, false), -near_plane * std::pow(far_plane / near_plane, 6.0f / 7.0f),
+                1e-3f);
+
+    // Orthographic boundaries run evenly from -near to -far.
+    EXPECT_FLOAT_EQ(z_slice_to_view_z(near_plane, far_plane, 8, 0, true), -near_plane);
+    EXPECT_FLOAT_EQ(z_slice_to_view_z(near_plane, far_plane, 8, 8, true), -far_plane);
+    const float step = (far_plane - near_plane) / 8.0f;
+    EXPECT_NEAR(z_slice_to_view_z(near_plane, far_plane, 8, 3, true), -near_plane - 3.0f * step, 1e-5f);
+}
+
 }  // namespace

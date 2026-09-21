@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
@@ -148,6 +149,39 @@ EPIX_EXPORT struct ClusteredDecal {
      *  affects. */
     std::uint32_t tag = 0;
 };
+
+/** @brief The cluster factors a view's clusters use (Bevy
+ *  `calculate_cluster_factors`, `bevy_light/src/cluster/assign.rs:863-878`).
+ *
+ *  For a perspective projection they are `(z_slices - 1) / ln(far / near)` and
+ *  `ln(near)` times that, which is what lets the shader recover a view Z from a
+ *  z-slice index; for an orthographic one the slices are linear, so they are
+ *  `-near` and `z_slices / (near - far)`. These are the values that end up in
+ *  `GpuLights::cluster_factors` (Bevy `mesh_types.wgsl`). */
+EPIX_EXPORT inline glm::vec2 calculate_cluster_factors(float near_plane, float far_plane, float z_slices,
+                                                      bool is_orthographic) {
+    if (is_orthographic) return glm::vec2(-near_plane, z_slices / (-far_plane - -near_plane));
+    const float z_slices_of_ln_zfar_over_znear = (z_slices - 1.0f) / std::log(far_plane / near_plane);
+    return glm::vec2(z_slices_of_ln_zfar_over_znear, std::log(near_plane) * z_slices_of_ln_zfar_over_znear);
+}
+
+/** @brief The view Z at a z-slice boundary (Bevy `z_slice_to_view_z`,
+ *  `assign.rs:950-967`), the inverse of `view_z_to_z_slice` in the same file.
+ *
+ *  Both are view-space Z, which is negative in front of the camera, so the
+ *  values run from 0 (or `-near`) at the first slice to `-far` at the last. The
+ *  perspective slices are geometric - each one multiplies by
+ *  `(far / near)^(1 / (z_slices - 1))` - while the orthographic ones are evenly
+ *  spaced. */
+EPIX_EXPORT inline float z_slice_to_view_z(float near_plane, float far_plane, std::uint32_t z_slices,
+                                           std::uint32_t z_slice, bool is_orthographic) {
+    if (is_orthographic) {
+        return -near_plane - (far_plane - near_plane) * static_cast<float>(z_slice) / static_cast<float>(z_slices);
+    }
+    if (z_slice == 0) return 0.0f;
+    return -near_plane * std::pow(far_plane / near_plane, static_cast<float>(z_slice - 1) /
+                                                          static_cast<float>(z_slices - 1));
+}
 
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
