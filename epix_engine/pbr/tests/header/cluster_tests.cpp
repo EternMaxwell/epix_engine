@@ -86,8 +86,10 @@ TEST(Cluster, LightSideTypesMatchBevyDefaults) {
     EXPECT_EQ(settings.max_uniform_buffer_clusterable_objects, 0u);
 
     const ClusterConfig config{};
-    EXPECT_EQ(config.kind, ClusterConfig::Kind::None) << "Bevy's ClusterConfig default disables clustering";
-    EXPECT_FALSE(config.dynamic_resizing);
+    EXPECT_EQ(config.kind, ClusterConfig::Kind::FixedZ) << "Bevy's ClusterConfig default is FixedZ, not None";
+    EXPECT_EQ(config.total, 4096u) << "at most 4096 clusters";
+    EXPECT_EQ(config.z_slices, 24u) << "in 24 depth slices";
+    EXPECT_TRUE(config.dynamic_resizing) << "and it resizes dynamically";
 
     const ClusterableObjectCounts counts{};
     EXPECT_EQ(counts.point_lights, 0u);
@@ -1163,6 +1165,49 @@ TEST(Cluster, ClusterConfigAccessorsMatchBevy) {
 
     const ClusterConfig xyz{.kind = ClusterConfig::Kind::XYZ, .dynamic_resizing = false};
     EXPECT_FALSE(xyz.may_resize_dynamically()) << "each strategy carries its own setting";
+}
+
+/** @brief The default strategy is `FixedZ` at 4096 clusters and 24 slices, and
+ *  `dimensions_for_screen_size` derives square clusters from the aspect ratio
+ *  (Bevy `ClusterConfig::default` and `dimensions_for_screen_size`,
+ *  `bevy_light/src/cluster/mod.rs:230-280`). */
+TEST(Cluster, DimensionsForScreenSizeMatchBevy) {
+    using epix::pbr::ClusterConfig;
+
+    const ClusterConfig defaults{};
+    EXPECT_EQ(defaults.kind, ClusterConfig::Kind::FixedZ);
+    EXPECT_EQ(defaults.total, 4096u);
+    EXPECT_EQ(defaults.z_slices, 24u);
+    EXPECT_TRUE(defaults.dynamic_resizing);
+    EXPECT_FLOAT_EQ(defaults.z_config.first_slice_depth, 5.0f) << "the first slice reaches 5.0";
+
+    // 16:9 at 4096 clusters over 24 slices: 170.67 per layer, so y = sqrt(170.67 / 1.7778) = 9.798
+    // and x = 9.798 * 1.7778 = 17.42, truncating to 17 by 9.
+    const glm::uvec3 wide = defaults.dimensions_for_screen_size(glm::uvec2(1920, 1080));
+    EXPECT_EQ(wide, glm::uvec3(17, 9, 24));
+
+    // A portrait screen keeps the same number of clusters, arranged the other way.
+    const glm::uvec3 tall = defaults.dimensions_for_screen_size(glm::uvec2(1080, 1920));
+    EXPECT_EQ(tall.z, 24u);
+    EXPECT_LT(tall.x, wide.x) << "fewer columns when the screen is tall";
+    EXPECT_GT(tall.y, wide.y) << "and more rows";
+
+    // The other strategies are direct.
+    const ClusterConfig single{.kind = ClusterConfig::Kind::Single};
+    EXPECT_EQ(single.dimensions_for_screen_size(glm::uvec2(1920, 1080)), glm::uvec3(1, 1, 1));
+    const ClusterConfig explicit_xyz{.kind = ClusterConfig::Kind::XYZ, .dimensions = glm::uvec3(8, 6, 4)};
+    EXPECT_EQ(explicit_xyz.dimensions_for_screen_size(glm::uvec2(1920, 1080)), glm::uvec3(8, 6, 4));
+    const ClusterConfig off{.kind = ClusterConfig::Kind::None};
+    EXPECT_EQ(off.dimensions_for_screen_size(glm::uvec2(1920, 1080)), glm::uvec3(0u));
+
+    // A total below the slice count clamps to the total rather than dividing by
+    // more slices than there are clusters, and the extremes keep a valid grid.
+    const ClusterConfig tiny{.kind = ClusterConfig::Kind::FixedZ, .total = 1, .z_slices = 8};
+    const glm::uvec3 tiny_dims = tiny.dimensions_for_screen_size(glm::uvec2(1920, 1080));
+    EXPECT_EQ(tiny_dims, glm::uvec3(1, 1, 1)) << "one cluster means one of everything";
+
+    // Zero dimensions are an error rather than a silent grid.
+    EXPECT_THROW(defaults.dimensions_for_screen_size(glm::uvec2(0, 1080)), std::invalid_argument);
 }
 
 }  // namespace

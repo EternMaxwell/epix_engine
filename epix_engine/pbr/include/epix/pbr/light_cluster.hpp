@@ -78,7 +78,13 @@ EPIX_EXPORT struct ClusterZConfig {
 };
 
 /** @brief A view's clustering strategy (Bevy `ClusterConfig`,
- *  `cluster/mod.rs:72-99`). */
+ *  `cluster/mod.rs:72-99`).
+ *
+ *  Bevy's `Default` is `FixedZ { total: 4096, z_slices: 24, z_config:
+ *  ClusterZConfig::default(), dynamic_resizing: true }` - 24 depth slices with
+ *  square clusters and at most 4096 clusters, using the maximum light distance as
+ *  the far depth and a first slice reaching 5.0 (`cluster/mod.rs:230-241`) - and
+ *  those are the defaults here. */
 EPIX_EXPORT struct ClusterConfig {
     /** @brief Which strategy the view uses. */
     enum class Kind {
@@ -91,18 +97,60 @@ EPIX_EXPORT struct ClusterConfig {
         /** @brief A fixed number of Z slices with X/Y derived to give square
          *  clusters, with a dynamic-resizing option. */
         FixedZ,
-    } kind = Kind::None;
+    } kind = Kind::FixedZ;
 
     /** @brief `XYZ` dimensions (`ClusterConfig::XYZ::dimensions`). */
     glm::uvec3 dimensions{1, 1, 1};
     /** @brief `FixedZ` total cluster count. */
-    std::uint32_t total = 0;
+    std::uint32_t total = 4096;
     /** @brief `FixedZ` slice count. */
-    std::uint32_t z_slices = 0;
+    std::uint32_t z_slices = 24;
     /** @brief The depth-slicing configuration for `XYZ` and `FixedZ`. */
     ClusterZConfig z_config{};
     /** @brief Whether X/Y may resize to stay inside the index limit. */
-    bool dynamic_resizing = false;
+    bool dynamic_resizing = true;
+
+    /** @brief The cluster dimensions a view of this screen size gets (Bevy
+     *  `ClusterConfig::dimensions_for_screen_size`, `cluster/mod.rs:244-280`).
+     *
+     *  The `FixedZ` case is the interesting one: it divides the total by the
+     *  slice count to get the clusters per layer, then solves for the X and Y
+     *  that give square clusters at this aspect ratio - `y =
+     *  sqrt(per_layer / ratio)`, `x = y * ratio` - truncating both to integers.
+     *  If either truncates to zero the layer is forced into a single row or
+     *  column, which is how a tiny total still yields a valid configuration. A
+     *  total below the slice count is clamped to it first, with Bevy warning. */
+    glm::uvec3 dimensions_for_screen_size(glm::uvec2 screen_size) const {
+        switch (kind) {
+            case Kind::None: return glm::uvec3(0u);
+            case Kind::Single: return glm::uvec3(1u);
+            case Kind::XYZ: return dimensions;
+            case Kind::FixedZ: break;
+        }
+        if (screen_size.x == 0 || screen_size.y == 0) {
+            throw std::invalid_argument("Failed to calculate aspect ratio for Cluster: screen dimensions must be " \
+                                        "positive, non-zero values");
+        }
+        const float aspect_ratio = static_cast<float>(screen_size.x) / static_cast<float>(screen_size.y);
+        std::uint32_t slices     = z_slices;
+        if (total < slices) slices = total;
+        const float per_layer = static_cast<float>(total) / static_cast<float>(slices);
+
+        const float y_float = std::sqrt(per_layer / aspect_ratio);
+        std::uint32_t x     = static_cast<std::uint32_t>(y_float * aspect_ratio);
+        std::uint32_t y     = static_cast<std::uint32_t>(y_float);
+
+        // Check the extremes, where truncation would leave no clusters at all.
+        if (x == 0) {
+            x = 1;
+            y = static_cast<std::uint32_t>(per_layer);
+        }
+        if (y == 0) {
+            x = static_cast<std::uint32_t>(per_layer);
+            y = 1;
+        }
+        return glm::uvec3(x, y, slices);
+    }
 
     /** @brief The depth of the first slice, in view space (Bevy
      *  `ClusterConfig::first_slice_depth`, `cluster/mod.rs:282-289`): zero for
