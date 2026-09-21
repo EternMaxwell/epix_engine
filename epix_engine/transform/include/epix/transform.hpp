@@ -87,7 +87,8 @@ EPIX_EXPORT namespace epix::transform {
         glm::vec3 local_y(this const TransformT& t) noexcept {
             return glm::normalize(t.rotation * glm::vec3(0.0f, 1.0f, 0.0f));
         }
-        /** @brief Local Z axis direction (forward). */
+        /** @brief Local Z axis direction, which is the *backward* axis: the
+         *  engine is right-handed with -Z forward, as Bevy's `back()` is. */
         glm::vec3 local_z(this const TransformT& t) noexcept {
             return glm::normalize(t.rotation * glm::vec3(0.0f, 0.0f, 1.0f));
         }

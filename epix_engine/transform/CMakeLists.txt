@@ -3,3 +3,5 @@ target_link_libraries(epix_transform PUBLIC epix_common)
 target_link_libraries(epix_transform PUBLIC epix_ecs)
 target_link_libraries(epix_transform PUBLIC epix_app)
 target_link_libraries(epix_transform PUBLIC glm::glm)
+
+epix_add_tests(transform LINK_LIBS epix_transform)
