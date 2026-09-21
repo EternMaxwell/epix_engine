@@ -2546,4 +2546,70 @@ TEST(Cluster, ViewFarZAndFirstSliceDepthMatchBevy) {
     EXPECT_FLOAT_EQ(far_z_at_least_first_slice_depth(30.0f, 20.0f), 30.0f) << "already beyond it";
 }
 
+/** @brief Cascades overlap by the configured proportion, and each cascade's
+ *  diameter, texel snapping and centre follow Bevy's stability rules (Bevy
+ *  `cascade.rs:232-333`). */
+TEST(Cluster, CascadeCalculationMatchesBevy) {
+    using epix::pbr::calculate_cascade;
+    using epix::pbr::cascade_bounds;
+    using epix::pbr::default_cascade_shadow_config;
+
+    // The overlap rule: the first cascade starts at the minimum distance, each
+    // later one at the previous far bound scaled by 1 - overlap.
+    const auto config = default_cascade_shadow_config();
+    ASSERT_EQ(config.bounds.size(), 4u);
+    const auto bounds = cascade_bounds(config);
+    ASSERT_EQ(bounds.size(), 4u);
+    EXPECT_NEAR(bounds[0].first, 0.1f, 1e-5f) << "the minimum distance";
+    for (std::size_t i = 0; i < bounds.size(); ++i) {
+        EXPECT_FLOAT_EQ(bounds[i].second, config.bounds[i]);
+        if (i > 0) {
+            EXPECT_NEAR(bounds[i].first, (1.0f - config.overlap_proportion) * config.bounds[i - 1], 1e-4f)
+                << "cascade " << i << " starts inside the previous one";
+        }
+    }
+
+    // A cascade of a known frustum slice, with the light looking down -Z so light
+    // space and camera space coincide.
+    const float z_near = 0.1f;
+    const float z_far  = 10.0f;
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = z_near;
+    const auto corners      = projection.get_frustum_corners(-z_near, -z_far);
+
+    const float texture_size = 1024.0f;
+    const glm::mat4 identity{1.0f};
+    const auto cascade = calculate_cascade(corners, texture_size, identity, identity);
+
+    // The diameter is an integer - the rule that makes the texel size exactly
+    // representable - and the texel size divides it.
+    const float diameter = cascade.texel_size * texture_size;
+    EXPECT_FLOAT_EQ(diameter, std::ceil(diameter)) << "an integer diameter";
+    EXPECT_LT(cascade.texel_size, 1.0f);
+    EXPECT_GT(cascade.texel_size, 0.0f);
+
+    // The centre is snapped to integer multiples of the texel size, so it survives
+    // the round trip through a float exactly.
+    const glm::vec3 centre = glm::vec3(cascade.world_from_cascade[3]);
+    const float snapped_x  = centre.x / cascade.texel_size;
+    const float snapped_y  = centre.y / cascade.texel_size;
+    EXPECT_NEAR(snapped_x, std::floor(snapped_x), 1e-3f) << "x is an integer number of texels";
+    EXPECT_NEAR(snapped_y, std::floor(snapped_y), 1e-3f) << "and so is y";
+
+    // The cascade's own projection maps its centre to the middle of the view.
+    const glm::vec4 clip = cascade.clip_from_cascade * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_NEAR(clip.x / clip.w, 0.0f, 1e-5f);
+    EXPECT_NEAR(clip.y / clip.w, 0.0f, 1e-5f);
+    EXPECT_NEAR(clip.z / clip.w, 1.0f, 1e-5f) << "reverse-Z, so the near plane is depth one";
+
+    // The combined matrix puts the world position of the cascade's centre at the
+    // middle of the shadow map, which is what makes the cascade cover the slice.
+    const glm::vec4 clip_from_world = cascade.clip_from_world * glm::vec4(centre, 1.0f);
+    ASSERT_GT(clip_from_world.w, 0.0f);
+    EXPECT_NEAR(clip_from_world.x / clip_from_world.w, 0.0f, 1e-4f);
+    EXPECT_NEAR(clip_from_world.y / clip_from_world.w, 0.0f, 1e-4f);
+}
+
 }  // namespace

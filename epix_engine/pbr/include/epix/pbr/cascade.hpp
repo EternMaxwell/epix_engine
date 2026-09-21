@@ -1,13 +1,16 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <epix/common.hpp>
 #endif
@@ -136,5 +139,83 @@ EPIX_EXPORT struct Cascade {
 EPIX_EXPORT struct Cascades {
     std::unordered_map<ecs::Entity, std::vector<Cascade>> cascades;
 };
+
+/** @brief The near and far bound of each cascade (Bevy `cascade.rs:232-248`).
+ *
+ *  The first cascade starts at the configuration's minimum distance; each later
+ *  one starts at the previous far bound scaled by `1 - overlap_proportion`, which
+ *  is what makes consecutive cascades overlap. */
+EPIX_EXPORT inline std::vector<std::pair<float, float>> cascade_bounds(const CascadeShadowConfig& config) {
+    const float overlap_factor = 1.0f - config.overlap_proportion;
+
+    std::vector<std::pair<float, float>> bounds;
+    bounds.reserve(config.bounds.size());
+    float near_bound = config.minimum_distance;
+    for (float far_bound : config.bounds) {
+        bounds.emplace_back(near_bound, far_bound);
+        near_bound = overlap_factor * far_bound;
+    }
+    return bounds;
+}
+
+/** @brief One cascade from a slice of the camera frustum (Bevy `calculate_cascade`,
+ *  `cascade.rs:261-333`).
+ *
+ *  The corners must be ordered bottom-right, top-right, top-left, bottom-left for
+ *  the near plane, then the same order for the far plane.
+ *
+ *  Three details exist purely for shadow stability, and Bevy's comments say so:
+ *  the cascade's diameter is the larger of the body and far-plane diagonals
+ *  *ceiled to an integer*, so the texel size is an exact multiple of a power of
+ *  two; the near-plane centre is snapped to integer multiples of that texel size so
+ *  it is exactly representable; and the inverse is formed directly rather than by
+ *  inverting `world_from_cascade`, which would risk numerical instability in a
+ *  matrix that must stay stable frame to frame. The projection is a right-handed
+ *  orthographic one, reverse-Z, which is where it differs from the reference
+ *  material Bevy cites. */
+EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& frustum_corners,
+                                            float cascade_texture_size, const glm::mat4& world_from_light,
+                                            const glm::mat4& light_from_camera) {
+    glm::vec3 minimum(std::numeric_limits<float>::max());
+    glm::vec3 maximum(std::numeric_limits<float>::lowest());
+    for (const glm::vec3& corner : frustum_corners) {
+        const glm::vec3 in_light = glm::vec3(light_from_camera * glm::vec4(corner, 1.0f));
+        minimum                  = glm::min(minimum, in_light);
+        maximum                  = glm::max(maximum, in_light);
+    }
+
+    // The diagonals are measured on the original camera-space corners, because the
+    // light-space ones can differ slightly in floating point. lengths are squared
+    // (glm has no length_squared, so they are the dot product with themselves).
+    const glm::vec3 body_a = frustum_corners[0] - frustum_corners[6];
+    const glm::vec3 far_a  = frustum_corners[4] - frustum_corners[6];
+    const float body_diagonal     = glm::dot(body_a, body_a);
+    const float far_diagonal      = glm::dot(far_a, far_a);
+    const float cascade_diameter  = std::ceil(std::sqrt(std::max(body_diagonal, far_diagonal)));
+    const float cascade_texel_size = cascade_diameter / cascade_texture_size;
+
+    // max.z is the near plane for a right-handed y-up view.
+    const glm::vec3 near_plane_center{
+        std::floor(0.5f * (minimum.x + maximum.x) / cascade_texel_size) * cascade_texel_size,
+        std::floor(0.5f * (minimum.y + maximum.y) / cascade_texel_size) * cascade_texel_size, maximum.z};
+
+    glm::mat4 cascade_from_world = glm::transpose(world_from_light);
+    cascade_from_world[3]        = glm::vec4(-near_plane_center, 1.0f);
+
+    glm::mat4 world_from_cascade = world_from_light;
+    world_from_cascade[3] = glm::vec4(glm::vec3(world_from_light * glm::vec4(near_plane_center, 1.0f)), 1.0f);
+
+    glm::mat4 clip_from_cascade{0.0f};
+    clip_from_cascade[0][0] = 2.0f / cascade_diameter;
+    clip_from_cascade[1][1] = 2.0f / cascade_diameter;
+    clip_from_cascade[2][2] = 1.0f / (maximum.z - minimum.z);
+    clip_from_cascade[3][2] = 1.0f;
+    clip_from_cascade[3][3] = 1.0f;
+
+    return Cascade{.world_from_cascade = world_from_cascade,
+                   .clip_from_cascade   = clip_from_cascade,
+                   .clip_from_world     = clip_from_cascade * cascade_from_world,
+                   .texel_size          = cascade_texel_size};
+}
 
 }  // namespace epix::pbr
