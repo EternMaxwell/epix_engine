@@ -1,3 +1,4 @@
+#include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <gtest/gtest.h>
@@ -95,6 +96,27 @@ TEST(Cluster, LightSideTypesMatchBevyDefaults) {
     VisibleClusterableObjects visible{};
     visible.entities.push_back(epix::ecs::Entity{});
     EXPECT_EQ(visible.entities.size(), 1u);
+}
+
+/** @brief The ambient light component and resource carry Bevy's defaults: white
+ *  at a brightness of 80, affecting lightmapped meshes, with `NONE` differing
+ *  only in brightness (`bevy_light/src/ambient_light.rs:31-96`). */
+TEST(Cluster, AmbientLightMatchesBevyDefaults) {
+    using epix::pbr::AmbientLight;
+    using epix::pbr::GlobalAmbientLight;
+
+    const AmbientLight ambient{};
+    EXPECT_EQ(ambient.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(ambient.brightness, 80.0f);
+    EXPECT_TRUE(ambient.affects_lightmapped_meshes);
+
+    const GlobalAmbientLight global{};
+    EXPECT_FLOAT_EQ(global.brightness, 80.0f);
+
+    const GlobalAmbientLight none = GlobalAmbientLight::NONE;
+    EXPECT_FLOAT_EQ(none.brightness, 0.0f) << "Bevy's NONE is the default with zero brightness";
+    EXPECT_EQ(none.color, global.color);
+    EXPECT_TRUE(none.affects_lightmapped_meshes);
 }
 
 }  // namespace
