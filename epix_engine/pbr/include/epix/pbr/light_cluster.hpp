@@ -607,6 +607,68 @@ EPIX_EXPORT struct ClusterableObjectAssignmentData {
     }
 };
 
+/** @brief An orthographic view's view-space near plane, derived from its
+ *  reverse-Z projection matrix (Bevy `assign.rs:352-361`).
+ *
+ *  Bevy derives rather than reads it: for glam's reverse-Z orthographic matrix
+ *  the third column's z is `r * far` and the diagonal's z is `r` with
+ *  `r = 1 / (far - near)`, so `(m32 - 1) / m22` recovers `near`. */
+EPIX_EXPORT inline float orthographic_first_slice_depth(const glm::mat4& clip_from_view) {
+    return (clip_from_view[3][2] - 1.0f) / clip_from_view[2][2];
+}
+
+/** @brief How many cluster indices a view's clusterable objects are expected to
+ *  need (Bevy `assign_objects_to_clusters`'s dynamic-resizing estimate,
+ *  `bevy_light/src/cluster/assign.rs:377-432`).
+ *
+ *  Each object in view contributes the product of three things: its extent in
+ *  NDC scaled to the cluster grid in x and y, its exact slice count in z, and an
+ *  overlap allowance of one extra cluster per axis side - except where the
+ *  object's bound already reaches the NDC edge, where the extra would fall
+ *  outside the view and is not counted. Bevy notes this overestimates index
+ *  counts by at most 50% when the object's whole range is in view, and more when
+ *  only part of it is.
+ *
+ *  The frustum test is a predicate because it is the caller's, which keeps this
+ *  arithmetic verifiable on its own; Bevy performs the same test inline and skips
+ *  objects outside the view. The result is compared against the view's cluster
+ *  index limit by the caller. */
+template <typename InView>
+    requires std::invocable<InView&, const camera::Sphere&>
+EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
+                                               const glm::mat4& view_from_world, glm::vec3 view_from_world_scale,
+                                               const glm::mat4& clip_from_view, glm::vec2 cluster_factors,
+                                               glm::uvec3 cluster_dimensions, bool is_orthographic,
+                                               InView&& in_view) {
+    float estimate = 0.0f;
+    for (const ClusterableObjectAssignmentData& object : clusterable_objects) {
+        const camera::Sphere object_sphere = object.sphere();
+        if (!in_view(object_sphere)) continue;
+
+        const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(
+            view_from_world, view_from_world_scale, clip_from_view, object_sphere);
+
+        // The slice count in z is exact, since the slices are not adjusted here.
+        const std::uint32_t z_min =
+            view_z_to_z_slice(cluster_factors, cluster_dimensions.z, aabb_min.z, is_orthographic);
+        const std::uint32_t z_max =
+            view_z_to_z_slice(cluster_factors, cluster_dimensions.z, aabb_max.z, is_orthographic);
+        const auto z_count = static_cast<float>(std::max(z_min, z_max) - std::min(z_min, z_max) + 1);
+
+        // In x and y the extent is scaled from [-1, 1] to the cluster grid, in
+        // floats so that a large initial tile size does not overestimate.
+        const glm::vec2 xy_count = (glm::vec2(aabb_max) - glm::vec2(aabb_min)) * 0.5f *
+                                   glm::vec2(cluster_dimensions.x, cluster_dimensions.y);
+
+        // One extra cluster per side, except where the object already reaches
+        // the edge of the view.
+        const float x_overlap = (aabb_min.x <= -1.0f ? 0.0f : 1.0f) + (aabb_max.x >= 1.0f ? 0.0f : 1.0f);
+        const float y_overlap = (aabb_min.y <= -1.0f ? 0.0f : 1.0f) + (aabb_max.y >= 1.0f ? 0.0f : 1.0f);
+        estimate += (xy_count.x + x_overlap) * (xy_count.y + y_overlap) * z_count;
+    }
+    return estimate;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {

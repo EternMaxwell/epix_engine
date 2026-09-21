@@ -1255,4 +1255,63 @@ TEST(Cluster, ClustersUpdateDerivesTilesThenDimensions) {
     static_cast<void>(ClusterableObjectCounts{});
 }
 
+/** @brief An orthographic view's near plane is derived from its reverse-Z
+ *  matrix, and the dynamic-resizing estimate scales a clusterable object's NDC
+ *  extent to the grid, counting one extra cluster per axis side unless the
+ *  object reaches the NDC edge (Bevy `assign.rs:352-361,377-432`). */
+TEST(Cluster, ClusterIndexEstimateMatchesBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::estimate_cluster_index_count;
+    using epix::pbr::orthographic_first_slice_depth;
+
+    const float z_near = 0.1f;
+    const float z_far  = 100.0f;
+    // Reverse-Z orthographic: near and far swapped, as the cluster code expects.
+    const glm::mat4 ortho = glm::orthoRH_ZO(-1.0f, 1.0f, -0.75f, 0.75f, z_far, z_near);
+    EXPECT_NEAR(orthographic_first_slice_depth(ortho), z_near, 1e-3f)
+        << "(m32 - 1) / m22 recovers the near plane";
+
+    const glm::vec2 screen{800.0f, 600.0f};
+    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::uvec3 dims{17, 9, 24};
+    const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(dims.z), false);
+    const glm::mat4 identity{1.0f};
+
+    ClusterableObjectAssignmentData small;
+    small.transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -10.0f));
+    small.range     = 1.0f;
+
+    const auto in_view = [](const Sphere&) { return true; };
+    const auto none_in_view = [](const Sphere&) { return false; };
+
+    const float inside = estimate_cluster_index_count({small}, identity, glm::vec3(1.0f), projection, factors, dims, false,
+                                                     in_view);
+    EXPECT_GT(inside, 0.0f) << "an object in view contributes indices";
+    EXPECT_FLOAT_EQ(estimate_cluster_index_count({small}, identity, glm::vec3(1.0f), projection, factors, dims, false,
+                                                 none_in_view),
+                    0.0f)
+        << "and an object outside the view contributes none";
+
+    // A very large object reaches the NDC edges, so its overlap allowance is
+    // smaller than that of a small object: one extra cluster per side at most,
+    // against two for an object nowhere near an edge.
+    ClusterableObjectAssignmentData huge;
+    huge.transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -10.0f));
+    huge.range     = 1000.0f;
+    const float huge_estimate =
+        estimate_cluster_index_count({huge}, identity, glm::vec3(1.0f), projection, factors, dims, false, in_view);
+    const float area_ratio = huge_estimate / inside;
+    EXPECT_GT(area_ratio, 1.0f) << "a larger object needs more clusters";
+    // Its overlap term is 1*1 rather than 2*2, so the ratio is well below the
+    // 100x ratio of their radii.
+    EXPECT_LT(area_ratio, 100.0f) << "but not in proportion to radius, because the overlap is capped";
+
+    // The estimate sums over objects.
+    const float two = estimate_cluster_index_count({small, small}, identity, glm::vec3(1.0f), projection, factors, dims,
+                                                   false, in_view);
+    EXPECT_NEAR(two, 2.0f * inside, 1e-3f);
+}
+
 }  // namespace
