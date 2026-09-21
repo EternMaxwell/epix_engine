@@ -844,4 +844,53 @@ TEST(Cluster, ClusterFactorsAndZSlicesMatchBevy) {
     EXPECT_NEAR(z_slice_to_view_z(near_plane, far_plane, 8, 3, true), -near_plane - 3.0f * step, 1e-5f);
 }
 
+/** @brief Which cluster a fragment lands in, and where a line crosses a cluster
+ *  plane (Bevy `view_z_to_z_slice`, `ndc_position_to_cluster` and
+ *  `line_intersection_to_z_plane`, `bevy_light/src/cluster/assign.rs:969-988,
+ *  1086-1109`). */
+TEST(Cluster, NdcPositionToClusterMatchesBevy) {
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::line_intersection_to_z_plane;
+    using epix::pbr::ndc_position_to_cluster;
+    using epix::pbr::view_z_to_z_slice;
+
+    const float near_plane = 0.1f;
+    const float far_plane  = 100.0f;
+    const glm::vec2 factors = calculate_cluster_factors(near_plane, far_plane, 8.0f, false);
+
+    // The z-slice of a view Z: -near is the far edge of the first slice, and
+    // anything at or past the far plane clamps to the last slice.
+    EXPECT_EQ(view_z_to_z_slice(factors, 8, -near_plane, false), 1u)
+        << "the first slice spans 0 to -near, so -near is slice 1";
+    EXPECT_EQ(view_z_to_z_slice(factors, 8, -far_plane, false), 7u);
+    EXPECT_EQ(view_z_to_z_slice(factors, 8, -1000.0f, false), 7u) << "clamped, as Bevy's min does";
+    std::uint32_t previous = 0;
+    for (float view_z = -near_plane; view_z >= -far_plane; view_z *= 1.1f) {
+        const std::uint32_t slice = view_z_to_z_slice(factors, 8, view_z, false);
+        EXPECT_GE(slice, previous) << "slices never go backwards as the fragment recedes";
+        EXPECT_LE(slice, 7u);
+        previous = slice;
+    }
+
+    // Orthographic: linear, so -near is slice 0.
+    const glm::vec2 ortho = calculate_cluster_factors(near_plane, far_plane, 8.0f, true);
+    EXPECT_EQ(view_z_to_z_slice(ortho, 8, -near_plane, true), 0u);
+    EXPECT_EQ(view_z_to_z_slice(ortho, 8, -far_plane, true), 7u);
+
+    // NDC maps to the grid with Y flipped; the centre is the middle cluster and
+    // the corners clamp to the edges.
+    const glm::uvec3 dims{4, 4, 8};
+    EXPECT_EQ(ndc_position_to_cluster(dims, factors, false, glm::vec3(0.0f, 0.0f, 0.0f), -near_plane), glm::uvec3(2, 2, 1));
+    EXPECT_EQ(ndc_position_to_cluster(dims, factors, false, glm::vec3(-1.0f, 1.0f, 0.0f), -near_plane), glm::uvec3(0, 0, 1))
+        << "the top-left corner";
+    EXPECT_EQ(ndc_position_to_cluster(dims, factors, false, glm::vec3(1.0f, -1.0f, 0.0f), -near_plane), glm::uvec3(3, 3, 1))
+        << "the bottom-right corner lands in the last cluster, not past it";
+
+    // A line from the origin toward (2, 2, 4) crosses z = -2 at (-1, -1, -2).
+    const glm::vec3 crossed = line_intersection_to_z_plane(glm::vec3(0.0f), glm::vec3(2.0f, 2.0f, 4.0f), -2.0f);
+    EXPECT_NEAR(crossed.x, -1.0f, 1e-5f);
+    EXPECT_NEAR(crossed.y, -1.0f, 1e-5f);
+    EXPECT_NEAR(crossed.z, -2.0f, 1e-5f) << "the result lies on the requested plane";
+}
+
 }  // namespace

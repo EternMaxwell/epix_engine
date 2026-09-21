@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -181,6 +182,54 @@ EPIX_EXPORT inline float z_slice_to_view_z(float near_plane, float far_plane, st
     if (z_slice == 0) return 0.0f;
     return -near_plane * std::pow(far_plane / near_plane, static_cast<float>(z_slice - 1) /
                                                           static_cast<float>(z_slices - 1));
+}
+
+/** @brief Where a view-space Z falls in the z-slices (Bevy `view_z_to_z_slice`,
+ *  `assign.rs:1093-1109`).
+ *
+ *  The perspective branch is `ln(-view_z) * factors.x - factors.y + 1`, which is
+ *  `pbr.wgsl`'s formula and must be kept in sync with it, so a slice boundary
+ *  maps to its slice index rather than being an exact inverse of
+ *  `z_slice_to_view_z`. The result is then clamped to `z_slices - 1`, because
+ *  the far plane used for clustering may be closer than the furthest object. */
+EPIX_EXPORT inline std::uint32_t view_z_to_z_slice(glm::vec2 cluster_factors, std::uint32_t z_slices, float view_z,
+                                                  bool is_orthographic) {
+    std::uint32_t z_slice = 0;
+    if (is_orthographic) {
+        z_slice = static_cast<std::uint32_t>(std::floor((view_z - cluster_factors.x) * cluster_factors.y));
+    } else {
+        z_slice = static_cast<std::uint32_t>(std::log(-view_z) * cluster_factors.x - cluster_factors.y + 1.0f);
+    }
+    return std::min(z_slice, z_slices - 1);
+}
+
+/** @brief Which cluster a fragment falls in (Bevy `ndc_position_to_cluster`,
+ *  `assign.rs:969-988`).
+ *
+ *  The NDC position is flipped in Y and mapped to `[0, 1]`, scaled to the
+ *  cluster grid and floored, and the z component comes from
+ *  `view_z_to_z_slice`; the result is clamped to the grid, so a fragment exactly
+ *  on the far edge lands in the last cluster rather than one past it. */
+EPIX_EXPORT inline glm::uvec3 ndc_position_to_cluster(glm::uvec3 cluster_dimensions, glm::vec2 cluster_factors,
+                                                      bool is_orthographic, glm::vec3 ndc_position, float view_z) {
+    const glm::vec2 dimensions = glm::vec2(cluster_dimensions);
+    const glm::vec2 frag_coord = glm::clamp(glm::vec2(ndc_position) * glm::vec2(0.5f, -0.5f) + glm::vec2(0.5f),
+                                            glm::vec2(0.0f), glm::vec2(1.0f));
+    const glm::vec2 xy = glm::floor(frag_coord * dimensions);
+
+    const std::uint32_t z_slice =
+        view_z_to_z_slice(cluster_factors, cluster_dimensions.z, view_z, is_orthographic);
+    const glm::uvec3 cluster{static_cast<std::uint32_t>(xy.x), static_cast<std::uint32_t>(xy.y), z_slice};
+    return glm::min(cluster, cluster_dimensions - glm::uvec3(1u));
+}
+
+/** @brief Where the line from `origin` to `p` crosses the view-space z plane
+ *  (Bevy `line_intersection_to_z_plane`, `assign.rs:1086-1090`), used to find a
+ *  cluster's corners on its near and far planes. */
+EPIX_EXPORT inline glm::vec3 line_intersection_to_z_plane(glm::vec3 origin, glm::vec3 p, float z) {
+    const glm::vec3 v = p - origin;
+    const float t     = (z - origin.z) / v.z;
+    return origin + t * v;
 }
 
 /** @brief The clusterable objects visible to any view (Bevy
