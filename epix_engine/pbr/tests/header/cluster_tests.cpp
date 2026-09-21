@@ -2,6 +2,7 @@
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/spot_light.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <vector>
@@ -143,6 +144,30 @@ TEST(Cluster, PointLightMatchesBevyDefaults) {
 
     const PointLightShadowMap shadow_map{};
     EXPECT_EQ(shadow_map.size, 1024u) << "each of the six cubemap faces";
+}
+
+/** @brief `SpotLight` differs from `PointLight` in its shadow biases, its cone
+ *  angles and its intensity literal, and shares the rest of Bevy's defaults
+ *  (`bevy_light/src/spot_light.rs:128-155`). */
+TEST(Cluster, SpotLightMatchesBevyDefaults) {
+    using epix::pbr::SpotLight;
+
+    const SpotLight light{};
+    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(light.intensity, 1'000'000.0f);
+    EXPECT_FLOAT_EQ(light.range, 20.0f);
+    EXPECT_FLOAT_EQ(light.radius, 0.0f);
+    EXPECT_FALSE(light.shadows_enabled);
+    EXPECT_TRUE(light.affects_lightmapped_mesh_diffuse);
+    EXPECT_FLOAT_EQ(light.shadow_depth_bias, SpotLight::DEFAULT_SHADOW_DEPTH_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_depth_bias, 0.02f) << "the spot bias differs from the point light's";
+    EXPECT_FLOAT_EQ(light.shadow_normal_bias, SpotLight::DEFAULT_SHADOW_NORMAL_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_normal_bias, 1.8f);
+    EXPECT_FLOAT_EQ(light.shadow_map_near_z, SpotLight::DEFAULT_SHADOW_MAP_NEAR_Z);
+    EXPECT_FLOAT_EQ(light.inner_angle, 0.0f);
+    EXPECT_FLOAT_EQ(light.outer_angle, 0.7853981633974483f) << "Bevy's quarter arc";
+    EXPECT_LT(light.inner_angle, light.outer_angle) << "Bevy requires inner <= outer";
+    EXPECT_LT(light.outer_angle, 1.5707963267948966f) << "outer_angle must stay below pi/2";
 }
 
 }  // namespace
