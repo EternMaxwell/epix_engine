@@ -1941,4 +1941,48 @@ TEST(Cluster, PointLightFlagsAndCascadeCountMatchBevy) {
     EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {second}, 128), 4u) << "clamped per light to four cascades";
 }
 
+/** @brief The `GpuLights` assembly: the ambient colour, the cluster factors and
+ *  dimensions, and the spot-light shadow-map offset (Bevy
+ *  `render/light.rs:1228-1247`). */
+TEST(Cluster, GpuLightsAssemblyMatchesBevy) {
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::pack_ambient_color;
+    using epix::pbr::pack_cluster_dimensions;
+    using epix::pbr::pack_cluster_factors;
+    using epix::pbr::spot_light_shadowmap_offset;
+
+    // The ambient colour is the light's linear colour scaled by its brightness.
+    EXPECT_EQ(pack_ambient_color(glm::vec4(0.5f, 0.25f, 0.125f, 1.0f), 80.0f), glm::vec4(40.0f, 20.0f, 10.0f, 80.0f))
+        << "brightness scales all four components, alpha included";
+
+    // The cluster factors: grid over viewport in x and y, the log pair in z and w.
+    const glm::uvec3 dims{17, 9, 24};
+    const glm::vec2 viewport{1920.0f, 1080.0f};
+    const glm::vec2 logs = calculate_cluster_factors(0.1f, 150.0f, static_cast<float>(dims.z), false);
+    const glm::vec4 factors = pack_cluster_factors(dims, viewport, logs);
+    EXPECT_NEAR(factors.x, 17.0f / 1920.0f, 1e-6f) << "one cluster's screen width";
+    EXPECT_NEAR(factors.y, 9.0f / 1080.0f, 1e-6f) << "and its height";
+    EXPECT_FLOAT_EQ(factors.z, logs.x) << "the log factors pass through";
+    EXPECT_FLOAT_EQ(factors.w, logs.y);
+
+    // The dimensions word carries the counts and their product.
+    const glm::uvec4 packed_dims = pack_cluster_dimensions(dims);
+    EXPECT_EQ(packed_dims.x, 17u);
+    EXPECT_EQ(packed_dims.y, 9u);
+    EXPECT_EQ(packed_dims.z, 24u);
+    EXPECT_EQ(packed_dims.w, 17u * 9u * 24u) << "the total cluster count";
+
+    // The shadow-map offset converts a spot light's index to its shadow map's.
+    // With four cascades and two point lights it is +2, and the mapping holds:
+    // light index + offset = shadow map index.
+    const std::int32_t offset = spot_light_shadowmap_offset(4, 2);
+    EXPECT_EQ(offset, 2);
+    const std::size_t spot_light_index = 2;  // the first spot light, after two point lights
+    EXPECT_EQ(static_cast<std::size_t>(static_cast<std::int32_t>(spot_light_index) + offset), 4u)
+        << "the first spot light's shadow map sits after the four directional cascades";
+    // More point lights than cascades gives a negative offset, which is fine as
+    // the field is signed.
+    EXPECT_EQ(spot_light_shadowmap_offset(0, 3), -3);
+}
+
 }  // namespace

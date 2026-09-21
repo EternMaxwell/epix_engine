@@ -377,4 +377,46 @@ EPIX_EXPORT inline std::size_t num_directional_cascades_enabled(
     return std::min(enabled, max_texture_array_layers);
 }
 
+/** @brief The ambient colour a view's lights carry (Bevy `render/light.rs:1230-1231`):
+ *  the ambient light's colour, which is already linear, scaled by its
+ *  brightness. The light is the camera's override when it has one and the global
+ *  ambient otherwise, resolved by the caller. */
+EPIX_EXPORT inline glm::vec4 pack_ambient_color(glm::vec4 linear_color, float brightness) {
+    return linear_color * brightness;
+}
+
+/** @brief The cluster factors a view's lights carry (Bevy `render/light.rs:1232-1237`).
+ *
+ *  The x and y components are the cluster grid's dimensions divided by the view's
+ *  width and height - how much of the screen one cluster covers - while z and w
+ *  are `calculate_cluster_factors`' log-based pair, which the shader uses to
+ *  recover a view Z from a slice index. */
+EPIX_EXPORT inline glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions, glm::vec2 viewport_size,
+                                                 glm::vec2 log_factors) {
+    return glm::vec4(static_cast<float>(cluster_dimensions.x) / viewport_size.x,
+                     static_cast<float>(cluster_dimensions.y) / viewport_size.y, log_factors.x, log_factors.y);
+}
+
+/** @brief The dimensions word of a view's lights (Bevy `render/light.rs:1238`):
+ *  x, y and z are the cluster counts, and w is how many clusters there are in
+ *  total. */
+EPIX_EXPORT inline glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensions) {
+    return glm::uvec4(cluster_dimensions,
+                      cluster_dimensions.x * cluster_dimensions.y * cluster_dimensions.z);
+}
+
+/** @brief The offset that turns a spot light's index into its shadow map's
+ *  (Bevy `render/light.rs:1240-1244`).
+ *
+ *  Bevy derives it in the comment: spot lights begin in the light array at
+ *  `point_light_count`, while their shadow maps begin in the directional light
+ *  array at the number of directional cascades - so subtracting the point-light
+ *  count and adding the cascade count converts one index to the other. Adding the
+ *  two in the wrong order, or the wrong way round, silently reads the wrong
+ *  shadow map. */
+EPIX_EXPORT inline std::int32_t spot_light_shadowmap_offset(std::size_t num_directional_cascades_enabled,
+                                                           std::size_t point_light_count) {
+    return static_cast<std::int32_t>(num_directional_cascades_enabled) - static_cast<std::int32_t>(point_light_count);
+}
+
 }  // namespace epix::pbr
