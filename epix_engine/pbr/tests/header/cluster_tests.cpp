@@ -923,7 +923,8 @@ TEST(Cluster, ScreenToViewMatchesBevy) {
 
     // Round trip through a real perspective projection: a view-space point
     // projected to the screen and unprojected at its own NDC depth comes back.
-    const glm::mat4 projection = glm::perspective(glm::radians(60.0f), screen_size.x / screen_size.y, 0.1f, 100.0f);
+    const glm::mat4 projection =
+        epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), screen_size.x / screen_size.y, 0.1f);
     const glm::mat4 view_from_clip = glm::inverse(projection);
     const glm::vec4 view_point{0.3f, -0.2f, -2.0f, 1.0f};
     const glm::vec4 clip_point = projection * view_point;
@@ -979,7 +980,11 @@ TEST(Cluster, ComputeAabbForClusterMatchesBevy) {
     EXPECT_GT(last.half_extents.y, first.half_extents.y);
 
     // Orthographic: depth slices are evenly spaced from -near.
-    const glm::mat4 ortho = glm::ortho(-1.0f, 1.0f, -0.75f, 0.75f, z_near, z_far);
+    epix::camera::OrthographicProjection ortho_projection;
+    ortho_projection.rect       = {.left = -1.0f, .right = 1.0f, .bottom = -0.75f, .top = 0.75f};
+    ortho_projection.near_plane = z_near;
+    ortho_projection.far_plane  = z_far;
+    const glm::mat4 ortho       = ortho_projection.get_clip_from_view();
     const auto ortho_first =
         compute_aabb_for_cluster(z_near, z_far, tile, screen, glm::inverse(ortho), true, dims, glm::uvec3(0, 0, 0));
     EXPECT_NEAR(ortho_first.max().z, -z_near, 1e-4f);
