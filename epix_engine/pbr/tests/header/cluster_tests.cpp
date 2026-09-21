@@ -246,4 +246,24 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
     EXPECT_FALSE(texture.tiled) << "Bevy centres a single tile by default";
 }
 
+/** @brief `Cascade` carries the three shadow transforms and the texel size, and
+ *  `Cascades` keys one list of them per view (Bevy `cascade.rs:164-184`). */
+TEST(Cluster, CascadesAreKeyedPerView) {
+    using epix::pbr::Cascade;
+    using epix::pbr::Cascades;
+
+    const Cascade cascade{};
+    EXPECT_EQ(cascade.world_from_cascade, glm::mat4(1.0f)) << "an identity default, as Bevy's Mat4 default is";
+    EXPECT_EQ(cascade.clip_from_cascade, glm::mat4(1.0f));
+    EXPECT_EQ(cascade.clip_from_world, glm::mat4(1.0f));
+    EXPECT_FLOAT_EQ(cascade.texel_size, 0.0f);
+
+    Cascades cascades;
+    EXPECT_TRUE(cascades.cascades.empty());
+    const auto view = epix::ecs::Entity{};
+    cascades.cascades[view] = std::vector<Cascade>(4);
+    ASSERT_EQ(cascades.cascades.size(), 1u);
+    EXPECT_EQ(cascades.cascades.at(view).size(), 4u) << "the default config has four cascades";
+}
+
 }  // namespace

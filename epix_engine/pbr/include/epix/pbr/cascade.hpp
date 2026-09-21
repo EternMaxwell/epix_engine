@@ -3,8 +3,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <cmath>
 #include <cstddef>
+#include <epix/ecs.hpp>
+#include <glm/glm.hpp>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <epix/common.hpp>
 #endif
@@ -94,5 +97,27 @@ EPIX_EXPORT inline CascadeShadowConfig build_cascade_shadow_config(const Cascade
 EPIX_EXPORT inline CascadeShadowConfig default_cascade_shadow_config() {
     return build_cascade_shadow_config(CascadeShadowConfigBuilder{});
 }
+
+/** @brief One cascade of a directional light's shadow map (Bevy `Cascade`,
+ *  `bevy_light/src/cascade.rs:169-184`). */
+EPIX_EXPORT struct Cascade {
+    /** @brief The cascade's view transform in the world. */
+    glm::mat4 world_from_cascade{1.0f};
+    /** @brief The cascade's projection. */
+    glm::mat4 clip_from_cascade{1.0f};
+    /** @brief The combined transform, which shadow-maps the cascade. */
+    glm::mat4 clip_from_world{1.0f};
+    /** @brief The cascade's texel size in world units, used to scale shadow
+     *  normal biases. */
+    float texel_size = 0.0f;
+};
+
+/** @brief A directional light's cascades, keyed by the view they were built for
+ *  (Bevy `Cascades`, `cascade.rs:164-168`, whose map is Bevy's
+ *  `EntityHashMap<Vec<Cascade>>`). It is a component of the light entity, and
+ *  `build_directional_light_cascades` fills it per visible view. */
+EPIX_EXPORT struct Cascades {
+    std::unordered_map<ecs::Entity, std::vector<Cascade>> cascades;
+};
 
 }  // namespace epix::pbr
