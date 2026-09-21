@@ -44,6 +44,14 @@ template <typename T>
 struct RawShaderType {
     static constexpr std::size_t shader_size = sizeof(T);
 
+    /** @brief The encoded size for one value. A fixed-size type answers
+     *  `shader_size` for every value; a runtime-sized type specialises
+     *  `ShaderTypeInfo` itself and derives the size from the value, as Bevy's
+     *  `#[shader(size(runtime))]` types do — there `shader_size` is the fixed
+     *  header (also the binding's `min_binding_size`) and the written size
+     *  follows the data. */
+    static std::size_t size_for(const T&) noexcept { return shader_size; }
+
     static void write_into(const T& value, std::span<std::uint8_t> destination) {
         if (destination.size() < shader_size) throw std::out_of_range("Shader destination is too small.");
         std::memcpy(destination.data(), std::addressof(value), shader_size);
@@ -466,7 +474,18 @@ public:
     }
 
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
-        const std::size_t size = ShaderTypeInfo<T>::shader_size;
+        // A runtime-sized shader type answers a value-dependent encoded size
+        // through `size_for`, while `shader_size` stays the fixed minimum that a
+        // binding declares as its `min_binding_size`.
+        const std::size_t size = [&]() -> std::size_t {
+            if constexpr (requires(const T& probe) {
+                              { ShaderTypeInfo<T>::size_for(probe) } -> std::convertible_to<std::size_t>;
+                          }) {
+                return ShaderTypeInfo<T>::size_for(value);
+            } else {
+                return ShaderTypeInfo<T>::shader_size;
+            }
+        }();
         if (!gpu_buffer || capacity < size || changed) {
             capacity = size;
             gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
