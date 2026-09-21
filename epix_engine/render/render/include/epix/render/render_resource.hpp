@@ -68,7 +68,12 @@ struct RawShaderType {
 template <typename T>
 concept ShaderType = requires {
     { ShaderTypeInfo<T>::shader_size } -> std::convertible_to<std::size_t>;
-} && (ShaderTypeInfo<T>::shader_size > 0);
+};
+/** A runtime-sized type may report a zero minimum: Bevy's
+ *  `#[shader(size(runtime))]` struct whose only member is the runtime array has
+ *  `min_size() == 0`, which wgpu reads as "no minimum binding size". The
+ *  previous `> 0` guard added nothing, since the primary `ShaderTypeInfo`
+ *  template is undefined and therefore already rejects unspecialised types. */
 
 template <typename T>
 concept ShaderWritable = ShaderType<T> && requires(const T& value, std::span<std::uint8_t> destination) {
