@@ -1035,4 +1035,54 @@ TEST(Cluster, PlaneProjectionsMatchBevy) {
         << "ten units from a plane the sphere does not reach";
 }
 
+/** @brief A clusterable object's bounds project into clamped NDC x/y with the
+ *  unadjusted view z packed back in, and an object at the camera still yields
+ *  sane bounds (Bevy `cluster_space_clusterable_object_aabb`,
+ *  `bevy_light/src/cluster/assign.rs:995-1083`). */
+TEST(Cluster, ClusterSpaceClusterableObjectAabbMatchesBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::cluster_space_clusterable_object_aabb;
+
+    const float z_near        = 0.1f;
+    const float z_far         = 100.0f;
+    const glm::vec2 screen{800.0f, 600.0f};
+    // Reverse-Z, as the cluster code assumes: the near plane is at NDC z 1.
+    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+    static_cast<void>(view_from_clip);
+    const glm::mat4 view_from_world{1.0f};
+
+    // An object ten units in front of the camera projects to the middle of NDC,
+    // and its view z comes back untouched.
+    const Sphere ahead{.center = glm::vec3(0.0f, 0.0f, -10.0f), .radius = 1.0f};
+    const auto bounds = cluster_space_clusterable_object_aabb(view_from_world, glm::vec3(1.0f), projection, ahead);
+    EXPECT_LT(bounds.first.z, 0.0f) << "view z is negative in front of the camera";
+    EXPECT_NEAR(bounds.first.z, -11.0f, 1e-4f) << "the unadjusted view z of the near face";
+    EXPECT_NEAR(bounds.second.z, -9.0f, 1e-4f) << "and of the far face";
+    EXPECT_GT(bounds.first.x, -1.0f);
+    EXPECT_LT(bounds.second.x, 1.0f);
+    EXPECT_GT(bounds.first.y, -1.0f);
+    EXPECT_LT(bounds.second.y, 1.0f);
+    // A centred object is symmetric about the origin in NDC.
+    EXPECT_NEAR(bounds.first.x, -bounds.second.x, 1e-3f);
+    EXPECT_NEAR(bounds.first.y, -bounds.second.y, 1e-3f);
+
+    // An object at the camera has its view z clamped in front of it, so the
+    // projection does not flip and the bounds still clamp into NDC.
+    const Sphere at_camera{.center = glm::vec3(0.0f, 0.0f, 0.0f), .radius = 1.0f};
+    const auto clamped = cluster_space_clusterable_object_aabb(view_from_world, glm::vec3(1.0f), projection, at_camera);
+    EXPECT_GE(clamped.first.x, -1.0f);
+    EXPECT_LE(clamped.second.x, 1.0f);
+    EXPECT_GE(clamped.first.y, -1.0f);
+    EXPECT_LE(clamped.second.y, 1.0f);
+    EXPECT_LE(clamped.first.z, 0.0f) << "clamped to just in front of the camera, never behind it";
+
+    // A scaled object's bounds scale with it.
+    const Sphere scaled{.center = glm::vec3(0.0f, 0.0f, -10.0f), .radius = 1.0f};
+    const auto wider = cluster_space_clusterable_object_aabb(view_from_world, glm::vec3(3.0f, 1.0f, 1.0f), projection, scaled);
+    EXPECT_GT(wider.second.x - wider.first.x, bounds.second.x - bounds.first.x)
+        << "a three-times-wider object covers more of NDC";
+    EXPECT_NEAR(wider.second.y - wider.first.y, bounds.second.y - bounds.first.y, 1e-3f);
+}
+
 }  // namespace

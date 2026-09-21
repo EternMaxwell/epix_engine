@@ -2,9 +2,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <epix/assets.hpp>
 #include <epix/camera/visibility.hpp>
 #include <epix/ecs.hpp>
@@ -351,6 +353,56 @@ EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_y(const camera
     return camera::Sphere{
         .center = y_object.center + distance_to_plane * y_plane.normal(),
         .radius = std::sqrt(y_object.radius * y_object.radius - distance_to_plane * distance_to_plane)};
+}
+
+/** @brief A clusterable object's bounds in the space clusters are indexed in
+ *  (Bevy `cluster_space_clusterable_object_aabb`, `assign.rs:995-1083`).
+ *
+ *  Returns a minimum and maximum whose X and Y are NDC in `[-1, 1]` and whose Z
+ *  is left in *view* space, unadjusted - Bevy packs the view Z back in after
+ *  clamping the projected coordinates, because the z-range test is done in view
+ *  space.
+ *
+ *  Two details are the whole reason this is more than a projection. View z is
+ *  clamped in front of the camera first, since behind it (or at exactly zero)
+ *  perspective flips the axes and the min/max reasoning breaks. And all four
+ *  combinations of the min/max x/y with the min/max z are projected, because
+ *  under perspective the point with the greatest z can have the *smaller* screen
+ *  position, so projecting only the two corners would miss the true bounds. */
+EPIX_EXPORT inline std::pair<glm::vec3, glm::vec3> cluster_space_clusterable_object_aabb(
+    const glm::mat4& view_from_world, glm::vec3 view_from_world_scale, const glm::mat4& clip_from_view,
+    const camera::Sphere& clusterable_object_sphere) {
+    const camera::Aabb view_aabb{
+        .center       = glm::vec3(view_from_world * glm::vec4(clusterable_object_sphere.center, 1.0f)),
+        .half_extents = clusterable_object_sphere.radius * glm::abs(view_from_world_scale)};
+    glm::vec3 view_min = view_aabb.min();
+    glm::vec3 view_max = view_aabb.max();
+
+    // Constrain view z to be negative, i.e. in front of the camera.
+    const float closest = -std::numeric_limits<float>::min();
+    view_min.z          = std::min(view_min.z, closest);
+    view_max.z          = std::min(view_max.z, closest);
+
+    // The four combinations of the x/y bounds with the near and far z, since
+    // perspective can invert which one projects smaller.
+    const std::array<glm::vec4, 4> corners{glm::vec4(view_min.x, view_min.y, view_min.z, 1.0f),
+                                           glm::vec4(view_min.x, view_min.y, view_max.z, 1.0f),
+                                           glm::vec4(view_max.x, view_max.y, view_min.z, 1.0f),
+                                           glm::vec4(view_max.x, view_max.y, view_max.z, 1.0f)};
+
+    glm::vec3 ndc_min{std::numeric_limits<float>::infinity()};
+    glm::vec3 ndc_max{-std::numeric_limits<float>::infinity()};
+    for (const glm::vec4& corner : corners) {
+        const glm::vec4 clip = clip_from_view * corner;
+        const glm::vec3 ndc  = glm::vec3(clip) / clip.w;
+        ndc_min              = glm::min(ndc_min, ndc);
+        ndc_max              = glm::max(ndc_max, ndc);
+    }
+
+    // Clamp X and Y to NDC, and pack the *unadjusted* view Z back in.
+    const glm::vec2 clamped_min = glm::clamp(glm::vec2(ndc_min), glm::vec2(-1.0f), glm::vec2(1.0f));
+    const glm::vec2 clamped_max = glm::clamp(glm::vec2(ndc_max), glm::vec2(-1.0f), glm::vec2(1.0f));
+    return {glm::vec3(clamped_min, view_min.z), glm::vec3(clamped_max, view_max.z)};
 }
 
 /** @brief The clusterable objects visible to any view (Bevy
