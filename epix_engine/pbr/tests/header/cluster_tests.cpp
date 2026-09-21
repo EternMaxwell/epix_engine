@@ -1732,4 +1732,81 @@ TEST(Cluster, ExtractedLightsAndFlagsMatchBevy) {
     EXPECT_TRUE(directional.affects_lightmapped_mesh_diffuse);
 }
 
+/** @brief The frame's light counts respect the device's texture limits, and the
+ *  sort keys put shadows and volumetrics first with the entity as a stable
+ *  tiebreak (Bevy `prepare_lights`, `render/light.rs:806-879`). */
+TEST(Cluster, LightCountsAndSortKeysMatchBevy) {
+    using epix::pbr::count_lights;
+    using epix::pbr::directional_light_sort_key;
+    using epix::pbr::ExtractedDirectionalLight;
+    using epix::pbr::ExtractedPointLight;
+    using epix::pbr::point_light_sort_key;
+    using epix::pbr::point_or_spot_light_to_clusterable;
+    using epix::pbr::ClusterableObjectType;
+
+    const auto point_light = [](bool shadows, bool volumetric, std::optional<std::pair<float, float>> angles) {
+        ExtractedPointLight light;
+        light.shadows_enabled   = shadows;
+        light.volumetric        = volumetric;
+        light.spot_light_angles = angles;
+        return light;
+    };
+    const std::pair<float, float> cone{0.1f, 0.5f};
+
+    // A point light becomes a PointLight, one with angles becomes a SpotLight
+    // carrying its outer angle.
+    const auto as_point = point_or_spot_light_to_clusterable(point_light(true, false, std::nullopt));
+    EXPECT_EQ(as_point.kind, ClusterableObjectType::Kind::PointLight);
+    EXPECT_TRUE(as_point.shadows_enabled);
+    const auto as_spot = point_or_spot_light_to_clusterable(point_light(false, true, cone));
+    EXPECT_EQ(as_spot.kind, ClusterableObjectType::Kind::SpotLight);
+    EXPECT_FLOAT_EQ(as_spot.outer_angle, 0.5f) << "the outer angle, not the inner";
+
+    // Counts with room to spare: nothing binds.
+    const std::vector<ExtractedPointLight> points{point_light(false, false, std::nullopt),
+                                                  point_light(true, true, std::nullopt),
+                                                  point_light(true, true, cone)};
+    const std::vector<ExtractedDirectionalLight> directionals{ExtractedDirectionalLight{.shadows_enabled = true}};
+    const auto roomy = count_lights(points, directionals, 128, 21);
+    EXPECT_EQ(roomy.point_lights, 2u);
+    EXPECT_EQ(roomy.point_light_shadow_maps, 1u);
+    EXPECT_EQ(roomy.point_light_volumetric_enabled, 1u);
+    EXPECT_EQ(roomy.spot_lights, 1u);
+    EXPECT_EQ(roomy.spot_light_shadow_maps, 1u);
+    EXPECT_EQ(roomy.directional_shadow_enabled, 1u);
+    EXPECT_EQ(roomy.directional_volumetric_enabled, 0u);
+
+    // With a tight device, the caps bind - point lights by the cubemap limit,
+    // spot lights by the layers left after the directional shadow maps.
+    const auto tight = count_lights(points, directionals, 4, 1);
+    EXPECT_EQ(tight.point_light_shadow_maps, 1u) << "capped by max_texture_cubes";
+    EXPECT_LE(tight.spot_lights, 4u - tight.directional_shadow_enabled * 4u)
+        << "spot lights share the array with the directional shadow maps";
+
+    // Point lights sort as point-then-spot, shadows and volumetrics first.
+    const auto shadowy = point_light_sort_key(epix::ecs::Entity::from_index(9), point_light(true, false, std::nullopt));
+    const auto plain   = point_light_sort_key(epix::ecs::Entity::from_index(1), point_light(false, false, std::nullopt));
+    EXPECT_LT(shadowy, plain) << "shadows enabled sorts first, even with a larger entity";
+    const auto spot = point_light_sort_key(epix::ecs::Entity::from_index(2), point_light(true, true, cone));
+    EXPECT_LT(shadowy, spot) << "point lights before spot lights";
+
+    // Two identical lights are ordered by entity, so the set is deterministic.
+    const auto first  = point_light_sort_key(epix::ecs::Entity::from_index(3), point_light(false, false, std::nullopt));
+    const auto second = point_light_sort_key(epix::ecs::Entity::from_index(4), point_light(false, false, std::nullopt));
+    EXPECT_LT(first, second) << "the entity breaks the tie";
+
+    // Directional lights sort by the raw booleans, so - contrary to the comment
+    // above Bevy's sort - lights with volumetric off come first, and with
+    // shadows off before shadows on. The code is what is matched.
+    const auto volumetric = directional_light_sort_key(epix::ecs::Entity::from_index(9),
+                                                      ExtractedDirectionalLight{.shadows_enabled = false, .volumetric = true});
+    const auto plain_directional = directional_light_sort_key(
+        epix::ecs::Entity::from_index(1), ExtractedDirectionalLight{.shadows_enabled = false, .volumetric = false});
+    EXPECT_LT(plain_directional, volumetric) << "ascending booleans put false first";
+    const auto shadowed = directional_light_sort_key(epix::ecs::Entity::from_index(2),
+                                                     ExtractedDirectionalLight{.shadows_enabled = true, .volumetric = false});
+    EXPECT_LT(plain_directional, shadowed) << "and among equals, no shadows before shadows";
+    EXPECT_LT(shadowed, volumetric) << "the volumetric flag dominates both";
+}
+
 }  // namespace

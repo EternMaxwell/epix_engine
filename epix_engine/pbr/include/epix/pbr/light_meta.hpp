@@ -5,8 +5,10 @@
 #include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
+#include <algorithm>
 #include <optional>
 #include <string>
+#include <tuple>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -16,6 +18,7 @@
 #include <epix/camera/visibility.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/gpu_lights.hpp>
+#include <epix/pbr/light_cluster.hpp>
 
 namespace epix::pbr {
 
@@ -152,6 +155,124 @@ EPIX_EXPORT struct ExtractedDirectionalLight {
     bool occlusion_culling = false;
     float sun_disk_angular_size = 0.0f;
     float sun_disk_intensity    = 0.0f;
+};
+
+/** @brief How many lights of each kind a frame has, after the device's limits
+ *  (Bevy `prepare_lights`, `render/light.rs:806-853`).
+ *
+ *  Each count is capped by what the device can bind: point lights and
+ *  directional cascades by the cubemap and array-layer limits respectively, and
+ *  spot lights by whatever layers the directional shadow maps have not already
+ *  taken, since they share one texture array. */
+EPIX_EXPORT struct LightCounts {
+    /** @brief Point lights, i.e. those without spot angles. */
+    std::size_t point_lights = 0;
+    std::size_t point_light_volumetric_enabled = 0;
+    std::size_t point_light_shadow_maps = 0;
+    /** @brief Spot lights, i.e. point lights carrying spot angles. */
+    std::size_t spot_lights = 0;
+    std::size_t spot_light_volumetric_enabled = 0;
+    std::size_t spot_light_shadow_maps = 0;
+    /** @brief Directional lights, counted only up to `MAX_DIRECTIONAL_LIGHTS`. */
+    std::size_t directional_volumetric_enabled = 0;
+    std::size_t directional_shadow_enabled = 0;
+};
+
+/** @brief Count a frame's lights against the device's texture limits (Bevy
+ *  `prepare_lights`, `light.rs:806-853`).
+ *
+ *  `max_texture_array_layers` and `max_texture_cubes` come from the device
+ *  (`max_texture_cubes` is a sixth of the layer count, since a cubemap is six
+ *  layers). The directional counts are taken first because the spot-light counts
+ *  subtract the layers the directional shadow maps occupy. */
+EPIX_EXPORT inline LightCounts count_lights(const std::vector<ExtractedPointLight>& point_lights,
+                                            const std::vector<ExtractedDirectionalLight>& directional_lights,
+                                            std::size_t max_texture_array_layers, std::size_t max_texture_cubes) {
+    LightCounts counts;
+
+    const auto is_spot = [](const ExtractedPointLight& light) { return light.spot_light_angles.has_value(); };
+    const auto capped  = [](std::size_t value, std::size_t cap) { return std::min(value, cap); };
+
+    std::size_t points = 0;
+    std::size_t point_volumetric = 0;
+    std::size_t point_shadows = 0;
+    std::size_t spots = 0;
+    std::size_t spot_volumetric = 0;
+    std::size_t spot_shadows = 0;
+    for (const ExtractedPointLight& light : point_lights) {
+        if (is_spot(light)) {
+            ++spots;
+            if (light.volumetric) ++spot_volumetric;
+            if (light.shadows_enabled) ++spot_shadows;
+        } else {
+            ++points;
+            if (light.volumetric) ++point_volumetric;
+            if (light.shadows_enabled) ++point_shadows;
+        }
+    }
+
+    const std::size_t directional_limit = max_texture_array_layers / MAX_CASCADES_PER_LIGHT;
+    std::size_t directional_volumetric = 0;
+    std::size_t directional_shadows    = 0;
+    for (std::size_t i = 0; i < std::min(directional_lights.size(), MAX_DIRECTIONAL_LIGHTS); ++i) {
+        if (directional_lights[i].volumetric) ++directional_volumetric;
+        if (directional_lights[i].shadows_enabled) ++directional_shadows;
+    }
+
+    counts.point_lights                      = points;
+    counts.point_light_volumetric_enabled    = capped(point_volumetric, max_texture_cubes);
+    counts.point_light_shadow_maps           = capped(point_shadows, max_texture_cubes);
+    counts.directional_volumetric_enabled    = capped(directional_volumetric, directional_limit);
+    counts.directional_shadow_enabled        = capped(directional_shadows, directional_limit);
+    // Spot lights share the texture array with the directional shadow maps.
+    const std::size_t spot_limit = max_texture_array_layers - counts.directional_shadow_enabled * MAX_CASCADES_PER_LIGHT;
+    counts.spot_lights                    = capped(spots, spot_limit);
+    counts.spot_light_volumetric_enabled  = capped(spot_volumetric, spot_limit);
+    counts.spot_light_shadow_maps         = capped(spot_shadows, spot_limit);
+    return counts;
+}
+
+/** @brief The clusterable form of an extracted point light (Bevy
+ *  `point_or_spot_light_to_clusterable`, `light.rs:2362-2375`): a point light
+ *  becomes `PointLight`, and one carrying spot angles becomes `SpotLight` with
+ *  its outer angle. */
+EPIX_EXPORT inline ClusterableObjectType point_or_spot_light_to_clusterable(const ExtractedPointLight& light) {
+    if (light.spot_light_angles.has_value()) {
+        return ClusterableObjectType{.kind = ClusterableObjectType::Kind::SpotLight,
+                                     .shadows_enabled = light.shadows_enabled,
+                                     .volumetric = light.volumetric,
+                                     .outer_angle = light.spot_light_angles->second};
+    }
+    return ClusterableObjectType{
+        .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = light.shadows_enabled, .volumetric = light.volumetric};
+}
+
+/** @brief The key point lights are sorted by (Bevy `light.rs:860-865`):
+ *  point-light-versus-spot-light and then shadows and volumetrics first, from the
+ *  clusterable ordering, with the entity as a stable tiebreak.
+ *
+ *  Bevy's reasons, in its own order: the shader iterates point lights and spot
+ *  lights as contiguous blocks, the sort puts the shadow-casting ones first so a
+ *  light's index can select a shadow map, and the entity keys a consistent set
+ *  when the light limit cuts the list. */
+EPIX_EXPORT inline std::tuple<std::uint8_t, bool, bool, ecs::Entity> point_light_sort_key(
+    ecs::Entity entity, const ExtractedPointLight& light) {
+    const auto ordering = point_or_spot_light_to_clusterable(light).ordering();
+    return {std::get<0>(ordering), std::get<1>(ordering), std::get<2>(ordering), entity};
+}
+
+/** @brief The key directional lights are sorted by (Bevy `light.rs:877-879`):
+ *  volumetric first, then shadows, then the entity as a stable tiebreak.
+ *
+ *  The flags are Bevy's plain ascending booleans, so `false` sorts before `true`
+ *  - which means lights with volumetric and shadows *disabled* come first, the
+ *  opposite of what Bevy's comment above the sort describes. The code is what is
+ *  ported, and the discrepancy is recorded rather than quietly "corrected",
+ *  since the shadow-map indexing downstream is written against whichever order
+ *  the sort actually produces. */
+EPIX_EXPORT inline std::tuple<bool, bool, ecs::Entity> directional_light_sort_key(
+    ecs::Entity entity, const ExtractedDirectionalLight& light) {
+    return {light.volumetric, light.shadows_enabled, entity};
 };
 
 }  // namespace epix::pbr
