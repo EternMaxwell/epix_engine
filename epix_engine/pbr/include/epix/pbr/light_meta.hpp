@@ -320,4 +320,61 @@ EPIX_EXPORT inline glm::vec4 pack_light_color_intensity_range(glm::vec4 color, f
     return glm::vec4(glm::vec3(color * intensity), 1.0f / (range * range));
 }
 
+/** @brief The flags word for a point light, given its position in the sorted
+ *  list (Bevy `prepare_lights`, `render/light.rs:887-916`).
+ *
+ *  The index arithmetic is the point of this function. The lights are sorted so
+ *  point lights come first and, within each block, shadow-casting ones first -
+ *  so a global index below `point_light_shadow_maps_count` selects a shadow map
+ *  directly, while a spot light has to subtract the point-light count to find its
+ *  own position in the spot block. Getting either comparison wrong silently
+ *  assigns the wrong lights shadow maps.
+ *
+ *  Two further details: the volumetric flag requires shadows as well as
+ *  volumetrics, and the lightmapped flag stands alone. */
+EPIX_EXPORT inline std::uint32_t point_light_gpu_flags(std::size_t index, const ExtractedPointLight& light,
+                                                      const LightCounts& counts) {
+    std::uint32_t flags     = PointLightFlags::NONE;
+    const bool is_spot      = light.spot_light_angles.has_value();
+    const std::size_t in_block = is_spot ? index - counts.point_lights : index;
+
+    if (light.shadows_enabled &&
+        (index < counts.point_light_shadow_maps || (is_spot && in_block < counts.spot_light_shadow_maps))) {
+        flags |= PointLightFlags::SHADOWS_ENABLED;
+    }
+    if (light.shadows_enabled && light.volumetric &&
+        (index < counts.point_light_volumetric_enabled ||
+         (is_spot && in_block < counts.spot_light_volumetric_enabled))) {
+        flags |= PointLightFlags::VOLUMETRIC;
+    }
+    if (light.affects_lightmapped_mesh_diffuse) {
+        flags |= PointLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE;
+    }
+    return flags;
+}
+
+/** @brief How many directional cascade shadow maps the frame needs (Bevy
+ *  `prepare_lights`, `render/light.rs:979-1010`).
+ *
+ *  Bevy sums each view's shadow-casting, layer-matching directional lights - each
+ *  contributing `min(cascade bounds, MAX_CASCADES_PER_LIGHT)` cascades - and
+ *  takes the largest total across views, then clamps it to the device's array
+ *  layer count. The maximum rather than the sum matters because the views are
+ *  rendered one at a time. */
+EPIX_EXPORT inline std::size_t num_directional_cascades_enabled(
+    const std::vector<std::uint32_t>& view_render_layers,
+    const std::vector<ExtractedDirectionalLight>& directional_lights, std::size_t max_texture_array_layers) {
+    std::size_t enabled = 0;
+    for (std::uint32_t view_layers : view_render_layers) {
+        std::size_t for_this_view = 0;
+        for (const ExtractedDirectionalLight& light : directional_lights) {
+            if (!light.shadows_enabled) continue;
+            if ((light.render_layers & view_layers) == 0) continue;
+            for_this_view += std::min(light.cascade_shadow_config.bounds.size(), MAX_CASCADES_PER_LIGHT);
+        }
+        enabled = std::max(enabled, for_this_view);
+    }
+    return std::min(enabled, max_texture_array_layers);
+}
+
 }  // namespace epix::pbr

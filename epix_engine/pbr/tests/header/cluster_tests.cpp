@@ -1859,4 +1859,86 @@ TEST(Cluster, PointAndSpotLightGpuDataMatchesBevy) {
     EXPECT_NEAR(packed.w, 1.0f / 400.0f, 1e-6f) << "the inverse square of the range";
 }
 
+/** @brief A point light's flags come from its position in the sorted list, where
+ *  a spot light must subtract the point-light count, and the cascade count is
+ *  the largest per-view total clamped to the device (Bevy
+ *  `render/light.rs:887-916,979-1010`). */
+TEST(Cluster, PointLightFlagsAndCascadeCountMatchBevy) {
+    using epix::pbr::count_lights;
+    using epix::pbr::ExtractedDirectionalLight;
+    using epix::pbr::ExtractedPointLight;
+    using epix::pbr::LightCounts;
+    using epix::pbr::num_directional_cascades_enabled;
+    using epix::pbr::point_light_gpu_flags;
+    using epix::pbr::PointLightFlags;
+
+    const auto point_light = [](bool shadows, bool volumetric, bool is_spot, bool lightmapped) {
+        ExtractedPointLight light;
+        light.shadows_enabled                  = shadows;
+        light.volumetric                       = volumetric;
+        light.affects_lightmapped_mesh_diffuse = lightmapped;
+        if (is_spot) light.spot_light_angles = std::pair{0.1f, 0.5f};
+        return light;
+    };
+
+    // Two point lights and two spot lights, all shadow-casting, sorted so point
+    // lights come first. Only the first of each block can have a shadow map.
+    LightCounts counts;
+    counts.point_lights              = 2;
+    counts.point_light_shadow_maps   = 1;
+    counts.spot_lights               = 2;
+    counts.spot_light_shadow_maps    = 1;
+    const auto shadowy_spot = point_light(true, false, true, false);
+
+    const auto point_zero = point_light_gpu_flags(0, point_light(true, false, false, true), counts);
+    EXPECT_TRUE((point_zero & PointLightFlags::SHADOWS_ENABLED) != 0u) << "index 0 takes the point light's map";
+    EXPECT_TRUE((point_zero & PointLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE) != 0u);
+    const auto point_one = point_light_gpu_flags(1, point_light(true, false, false, false), counts);
+    EXPECT_EQ(point_one & PointLightFlags::SHADOWS_ENABLED, 0u) << "the second point light exceeds the map count";
+
+    // The spot block starts at index 2, so the first spot light's in-block
+    // position is 0 and it takes the spot map; the second does not. Using the
+    // global index here instead would give the first spot light no map and the
+    // second one a map.
+    const auto spot_zero = point_light_gpu_flags(2, shadowy_spot, counts);
+    EXPECT_TRUE((spot_zero & PointLightFlags::SHADOWS_ENABLED) != 0u) << "the spot block's first light";
+    const auto spot_one = point_light_gpu_flags(3, shadowy_spot, counts);
+    EXPECT_EQ(spot_one & PointLightFlags::SHADOWS_ENABLED, 0u) << "and its second does not";
+
+    // Volumetrics need shadows as well, and both must be within their counts.
+    LightCounts volumetric_counts = counts;
+    volumetric_counts.point_light_volumetric_enabled = 1;
+    volumetric_counts.spot_light_volumetric_enabled  = 1;
+    EXPECT_EQ(point_light_gpu_flags(0, point_light(true, false, false, false), volumetric_counts) &
+                  PointLightFlags::VOLUMETRIC,
+              0u)
+        << "volumetric off";
+    EXPECT_EQ(point_light_gpu_flags(0, point_light(false, true, false, false), volumetric_counts) &
+                  PointLightFlags::VOLUMETRIC,
+              0u)
+        << "volumetric on but shadows off, which Bevy requires";
+    EXPECT_TRUE((point_light_gpu_flags(0, point_light(true, true, false, false), volumetric_counts) &
+                 PointLightFlags::VOLUMETRIC) != 0u)
+        << "both on, and within the count";
+
+    // The cascade count is the largest per-view total, filtered by render layers
+    // and clamped per light and then by the device.
+    ExtractedDirectionalLight light;
+    light.shadows_enabled = true;
+    light.render_layers   = 0b01;
+    EXPECT_EQ(light.cascade_shadow_config.bounds.size(), 4u) << "the default is four cascades";
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light}, 128), 4u);
+    EXPECT_EQ(num_directional_cascades_enabled({0b10u}, {light}, 128), 0u) << "the layers do not intersect";
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light}, 2), 2u) << "clamped by the device's layers";
+    // The maximum across views, not the sum.
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u, 0b10u}, {light}, 128), 4u);
+    ExtractedDirectionalLight second = light;
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light, second}, 128), 8u) << "two lights in one view";
+    second.shadows_enabled = false;
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {light, second}, 128), 4u) << "a light without shadows";
+    second = light;
+    second.cascade_shadow_config.bounds.resize(10);
+    EXPECT_EQ(num_directional_cascades_enabled({0b01u}, {second}, 128), 4u) << "clamped per light to four cascades";
+}
+
 }  // namespace
