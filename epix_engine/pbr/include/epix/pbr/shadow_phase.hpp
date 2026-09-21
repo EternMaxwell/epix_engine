@@ -262,4 +262,36 @@ EPIX_EXPORT inline std::vector<ShadowViewRequest> directional_shadow_view_reques
     return requests;
 }
 
+/** @brief The six cubemap frusta of a point light (Bevy `update_point_light_frusta`,
+ *  `bevy_light/src/point_light.rs:196-244`).
+ *
+ *  Each face's frustum is its clip-from-world with an explicit far plane at the
+ *  light's range, which is what makes the shadow map's far plane follow the light
+ *  rather than an arbitrary distance - and what the `custom_far` variant exists
+ *  for.
+ *
+ *  Note what that far plane is: Bevy orients it by the light's *backward* axis and
+ *  uses the same one for all six faces, rather than one per face. It therefore cuts
+ *  the space behind the light, and the forward faces are bounded by it only
+ *  indirectly - a face whose direction is perpendicular to the backward axis keeps
+ *  a frustum reaching the range because its own extent stays on the near side. A
+ *  reader would expect six far planes; there is one, and this reproduces Bevy.
+ *
+ *  The light's scale and rotation are ignored here as they are for the views: its
+ *  translation alone places them, and `light_back` is the light's backward axis,
+ *  the local +Z axis after the engine's handedness fix. */
+EPIX_EXPORT inline std::array<camera::Frustum, POINT_LIGHT_CUBE_FACE_COUNT> point_light_cubemap_frusta(
+    glm::vec3 light_translation, glm::vec3 light_back, float range, float shadow_map_near_z) {
+    const auto rotations = cube_face_view_rotations();
+
+    std::array<camera::Frustum, POINT_LIGHT_CUBE_FACE_COUNT> frusta{};
+    for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+        const glm::mat4 world_from_view = point_light_face_world_from_view(rotations, light_translation, face);
+        const glm::mat4 clip_from_world = cube_face_projection(shadow_map_near_z) * glm::inverse(world_from_view);
+        frusta[face] = camera::Frustum::from_clip_from_world_custom_far(clip_from_world, light_translation, light_back,
+                                                                      range);
+    }
+    return frusta;
+}
+
 }  // namespace epix::pbr

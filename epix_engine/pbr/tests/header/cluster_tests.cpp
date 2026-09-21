@@ -2664,4 +2664,64 @@ TEST(Cluster, BuildViewCascadesMatchesBevy) {
     EXPECT_TRUE(build_view_cascades({}, texture_size, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f)).empty());
 }
 
+/** @brief A point light's six cubemap frusta are 90-degree pyramids whose far
+ *  plane sits at the light's range, so a sphere beyond it is outside and a sphere
+ *  beside the axis is outside that face (Bevy `update_point_light_frusta`,
+ *  `bevy_light/src/point_light.rs:196-244`). */
+TEST(Cluster, PointLightCubemapFrustaMatchBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::point_light_cubemap_frusta;
+
+    const glm::vec3 light_position{2.0f, -1.0f, 4.0f};
+    const glm::vec3 light_back{0.0f, 0.0f, 1.0f};  // the light's backward axis
+    const float range     = 20.0f;
+    const float z_near    = 0.1f;
+    const auto frusta     = point_light_cubemap_frusta(light_position, light_back, range, z_near);
+
+    const auto face_direction = [](std::size_t face) {
+        const std::array<glm::vec3, 6> directions{glm::vec3(1.0f, 0.0f, 0.0f),  glm::vec3(-1.0f, 0.0f, 0.0f),
+                                                  glm::vec3(0.0f, 1.0f, 0.0f),  glm::vec3(0.0f, -1.0f, 0.0f),
+                                                  glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
+        return directions[face];
+    };
+
+    // A small sphere at the light itself is inside every face's frustum.
+    const Sphere at_light{.center = light_position, .radius = 0.01f};
+    for (std::size_t face = 0; face < frusta.size(); ++face) {
+        EXPECT_TRUE(frusta[face].intersects_sphere(at_light)) << "face " << face << " contains the light";
+    }
+
+    // The far plane is the light's, not each face's: Bevy orients one plane by the
+    // light's backward axis and gives it to all six faces. So the void behind the
+    // light is cut for every face...
+    const Sphere behind{.center = light_position - light_back * (range + 1.0f), .radius = 0.01f};
+    for (std::size_t face = 0; face < frusta.size(); ++face) {
+        EXPECT_FALSE(frusta[face].intersects_sphere(behind))
+            << "face " << face << " is bounded behind the light at the range";
+    }
+    // ...and in front of it, along the backward axis, is inside.
+    const Sphere in_front{.center = light_position + light_back * (range - 1.0f), .radius = 0.01f};
+    EXPECT_TRUE(frusta[5].intersects_sphere(in_front)) << "the face pointing along the backward axis reaches it";
+
+    // All six faces share that one far plane, which is the part a reader would get
+    // wrong: there are not six of them.
+    for (std::size_t face = 1; face < frusta.size(); ++face) {
+        EXPECT_EQ(frusta[face].planes[5], frusta[0].planes[5]) << "face " << face << " reuses the light's far plane";
+    }
+    // The other five planes do differ per face, so the six frusta are genuinely
+    // six pyramids rather than one repeated.
+    EXPECT_NE(frusta[0].planes[0], frusta[1].planes[0]) << "opposite faces have opposite side planes";
+    EXPECT_NE(frusta[0].planes[1], frusta[4].planes[1]);
+
+    // Flipping the light's backward axis cuts the other side instead, which is what
+    // shows the parameter is the light's own axis: the +Z-facing face now reaches
+    // past the light and stops on the far side of it.
+    const auto flipped = point_light_cubemap_frusta(light_position, -light_back, range, z_near);
+    const Sphere past_flipped{.center = light_position + light_back * (range + 1.0f), .radius = 0.01f};
+    EXPECT_TRUE(flipped[5].intersects_sphere(in_front)) << "the flipped plane leaves this side open";
+    EXPECT_FALSE(flipped[5].intersects_sphere(past_flipped)) << "and bounds the other side at the range";
+    EXPECT_TRUE(frusta[5].intersects_sphere(past_flipped))
+        << "whereas the unflipped frustum of the same face has no such bound";
+}
+
 }  // namespace
