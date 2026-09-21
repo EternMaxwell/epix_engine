@@ -1408,4 +1408,64 @@ TEST(Cluster, ClusterPlanesMatchBevy) {
     EXPECT_NEAR(y_planes[2].d(), 0.0f, 1e-4f) << "and so does the centre y plane";
 }
 
+/** @brief An object's cluster range is ordered from its two projected corners,
+ *  and its centre's z and y rows follow Bevy's asymmetric off-screen conventions
+ *  (Bevy `assign.rs:570-641`). */
+TEST(Cluster, ClusterAssignmentBoundsMatchBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::cluster_assignment_bounds;
+
+    const float z_near = 0.1f;
+    const float z_far  = 100.0f;
+    const float aspect = 800.0f / 600.0f;
+    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+    const glm::uvec3 dims{4, 4, 8};
+    const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(dims.z), false);
+    const glm::mat4 identity{1.0f};
+
+    // An object in front of the camera: its bounds span a couple of clusters and
+    // its centre sits inside the grid.
+    const Sphere ahead{.center = glm::vec3(0.0f, 0.0f, -10.0f), .radius = 1.0f};
+    const auto centered = cluster_assignment_bounds(ahead, identity, 1.0f, projection, factors, dims, false,
+                                                    glm::vec3(-0.1f, -0.1f, -11.0f), glm::vec3(0.1f, 0.1f, -9.0f));
+    EXPECT_LE(centered.min_cluster.x, centered.max_cluster.x) << "the range is ordered";
+    EXPECT_LE(centered.min_cluster.y, centered.max_cluster.y);
+    EXPECT_LE(centered.min_cluster.z, centered.max_cluster.z);
+    EXPECT_NEAR(centered.view_sphere.center.z, -10.0f, 1e-4f) << "the sphere is transformed into view space";
+    EXPECT_FLOAT_EQ(centered.view_sphere.radius, 1.0f);
+    ASSERT_TRUE(centered.z_center.has_value());
+    ASSERT_TRUE(centered.y_center.has_value());
+    EXPECT_EQ(*centered.y_center, 2u) << "the centre of the grid";
+    // View z -10 is mid-range, not near the camera: the slices are geometric, so
+    // far more of them are close in than far out.
+    EXPECT_EQ(*centered.z_center, epix::pbr::view_z_to_z_slice(factors, dims.z, -10.0f, false));
+    EXPECT_EQ(*centered.z_center, 5u);
+
+    // The range is ordered even when the corners project the other way round.
+    const auto swapped = cluster_assignment_bounds(ahead, identity, 1.0f, projection, factors, dims, false,
+                                                   glm::vec3(0.1f, 0.1f, -11.0f), glm::vec3(-0.1f, -0.1f, -9.0f));
+    EXPECT_EQ(swapped.min_cluster, centered.min_cluster) << "order comes from min/max, not from the arguments";
+    EXPECT_EQ(swapped.max_cluster, centered.max_cluster);
+
+    // The radius scales with the largest axis scale, so a non-uniform scale
+    // cannot shrink it.
+    const auto stretched = cluster_assignment_bounds(ahead, identity, 3.0f, projection, factors, dims, false,
+                                                     glm::vec3(-0.1f, -0.1f, -11.0f), glm::vec3(0.1f, 0.1f, -9.0f));
+    EXPECT_FLOAT_EQ(stretched.view_sphere.radius, 3.0f) << "radius * the largest scale";
+
+    // A centre above the view has no row, but one below it gets the sentinel.
+    const Sphere above{.center = glm::vec3(0.0f, 100.0f, -10.0f), .radius = 0.1f};
+    const auto above_bounds = cluster_assignment_bounds(above, identity, 1.0f, projection, factors, dims, false,
+                                                        glm::vec3(0.0f, 0.9f, -10.1f), glm::vec3(0.0f, 1.0f, -9.9f));
+    EXPECT_FALSE(above_bounds.y_center.has_value()) << "above the view: no row";
+
+    const Sphere below{.center = glm::vec3(0.0f, -100.0f, -10.0f), .radius = 0.1f};
+    const auto below_bounds = cluster_assignment_bounds(below, identity, 1.0f, projection, factors, dims, false,
+                                                        glm::vec3(0.0f, -1.0f, -10.1f), glm::vec3(0.0f, -0.9f, -9.9f));
+    ASSERT_TRUE(below_bounds.y_center.has_value()) << "below the view: a sentinel rather than nothing";
+    EXPECT_EQ(*below_bounds.y_center, dims.y + 1) << "one past the last row";
+}
+
 }  // namespace

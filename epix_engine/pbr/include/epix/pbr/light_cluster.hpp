@@ -773,6 +773,67 @@ EPIX_EXPORT inline std::vector<camera::HalfSpace> cluster_z_planes(float first_s
     return z_planes;
 }
 
+/** @brief Where an object's centre falls and how far its bounds reach in the
+ *  cluster grid, before the sphere is refined against the cluster planes (Bevy
+ *  `assign_objects_to_clusters`, `bevy_light/src/cluster/assign.rs:570-641`). */
+EPIX_EXPORT struct ClusterAssignmentBounds {
+    /** @brief The first and last cluster, in each axis, that the object's
+     *  cluster-space bounds reach. */
+    glm::uvec3 min_cluster{0u};
+    glm::uvec3 max_cluster{0u};
+    /** @brief The z slice containing the object's centre, or nothing when the
+     *  centre projects past the far plane. */
+    std::optional<std::uint32_t> z_center;
+    /** @brief The y row containing the object's centre. The two off-screen cases
+     *  are *not* symmetric: a centre above the view gives nothing, while one
+     *  below it gives `dimensions.y + 1`, a sentinel past the last row, because
+     *  NDC y grows upward while the rows grow downward. */
+    std::optional<std::uint32_t> y_center;
+    /** @brief The object's sphere in view space: its centre transformed, and its
+     *  radius scaled by the largest axis scale, so a non-uniform scale cannot
+     *  shrink it. */
+    camera::Sphere view_sphere{};
+};
+
+/** @brief Compute an object's cluster range and centre rows from its
+ *  cluster-space bounds (Bevy `assign.rs:570-641`).
+ *
+ *  The range comes from `ndc_position_to_cluster` applied to both corners of the
+ *  object's bounds, then ordered so the minimum is the smaller of the two - the
+ *  projection can invert them. */
+EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(
+    const camera::Sphere& object_sphere, const glm::mat4& view_from_world, float view_from_world_scale_max,
+    const glm::mat4& clip_from_view, glm::vec2 cluster_factors, glm::uvec3 cluster_dimensions, bool is_orthographic,
+    glm::vec3 bounds_ndc_min, glm::vec3 bounds_ndc_max) {
+    ClusterAssignmentBounds bounds;
+
+    const glm::uvec3 corner_min = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
+                                                          bounds_ndc_min, bounds_ndc_min.z);
+    const glm::uvec3 corner_max = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
+                                                          bounds_ndc_max, bounds_ndc_max.z);
+    bounds.min_cluster          = glm::min(corner_min, corner_max);
+    bounds.max_cluster          = glm::max(corner_min, corner_max);
+
+    bounds.view_sphere = camera::Sphere{
+        .center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
+        .radius = object_sphere.radius * view_from_world_scale_max};
+
+    const glm::vec4 center_clip = clip_from_view * glm::vec4(bounds.view_sphere.center, 1.0f);
+    const glm::vec3 center_ndc  = glm::vec3(center_clip) / center_clip.w;
+    const glm::uvec3 center_cluster =
+        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, center_ndc, bounds.view_sphere.center.z);
+
+    if (center_ndc.z <= 1.0f) bounds.z_center = center_cluster.z;
+    if (center_ndc.y > 1.0f) {
+        bounds.y_center = std::nullopt;
+    } else if (center_ndc.y < -1.0f) {
+        bounds.y_center = cluster_dimensions.y + 1;  // the sentinel past the last row
+    } else {
+        bounds.y_center = center_cluster.y;
+    }
+    return bounds;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
