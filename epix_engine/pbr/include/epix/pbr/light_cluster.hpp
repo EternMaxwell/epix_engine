@@ -307,6 +307,52 @@ EPIX_EXPORT inline camera::Aabb compute_aabb_for_cluster(float z_near, float z_f
     return camera::Aabb::from_min_max(cluster_min, cluster_max);
 }
 
+/** @brief The signed distance from a point to an x-plane (Bevy `get_distance_x`,
+ *  `bevy_light/src/cluster/assign.rs:1128-1138`).
+ *
+ *  Bevy's note is the reason this is a function: for an x-plane the normal's y
+ *  and the plane's d are both zero, so the general point-to-plane formula
+ *  reduces to the dot product of the normal's x and z with the point's. The
+ *  orthographic case is simpler still - the distance is just the x difference. */
+EPIX_EXPORT inline float get_distance_x(const camera::HalfSpace& plane, glm::vec3 point, bool is_orthographic) {
+    if (is_orthographic) return point.x - plane.d();
+    return glm::dot(glm::vec2(plane.normal_d.x, plane.normal_d.z), glm::vec2(point.x, point.z));
+}
+
+/** @brief Project a sphere onto a z-plane, or nothing when it does not reach it
+ *  (Bevy `project_to_plane_z`, `assign.rs:1141-1160`).
+ *
+ *  The projected sphere keeps the centre's x and y, takes the plane's z, and its
+ *  radius shrinks by Pythagoras: `sqrt(r² - distance²)`. The `std::nullopt` case
+ *  is what tells the caller the object does not intersect that plane. */
+EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_z(const camera::Sphere& z_object,
+                                                                   const camera::HalfSpace& z_plane) {
+    const float z                  = z_plane.d() / z_plane.normal_d.z;
+    const float distance_to_plane  = z - z_object.center.z;
+    if (std::abs(distance_to_plane) > z_object.radius) return std::nullopt;
+    return camera::Sphere{.center = glm::vec3(z_object.center.x, z_object.center.y, z),
+                          .radius = std::sqrt(z_object.radius * z_object.radius -
+                                              distance_to_plane * distance_to_plane)};
+}
+
+/** @brief Project a sphere onto a y-plane, or nothing when it does not reach it
+ *  (Bevy `project_to_plane_y`, `assign.rs:1163-1181`).
+ *
+ *  Unlike the z case the centre moves: it is displaced along the plane's normal
+ *  by the signed distance, and the radius shrinks the same way. */
+EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_y(const camera::Sphere& y_object,
+                                                                   const camera::HalfSpace& y_plane,
+                                                                   bool is_orthographic) {
+    const float distance_to_plane =
+        is_orthographic ? y_plane.d() - y_object.center.y
+                        : -glm::dot(glm::vec2(y_object.center.y, y_object.center.z),
+                                    glm::vec2(y_plane.normal_d.y, y_plane.normal_d.z));
+    if (std::abs(distance_to_plane) > y_object.radius) return std::nullopt;
+    return camera::Sphere{
+        .center = y_object.center + distance_to_plane * y_plane.normal(),
+        .radius = std::sqrt(y_object.radius * y_object.radius - distance_to_plane * distance_to_plane)};
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {

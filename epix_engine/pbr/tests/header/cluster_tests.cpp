@@ -983,4 +983,56 @@ TEST(Cluster, ComputeAabbForClusterMatchesBevy) {
     EXPECT_NEAR(ortho_first.min().z, -z_near - (z_far - z_near) / 8.0f, 1e-3f) << "one eighth of the depth range";
 }
 
+/** @brief The plane helpers reduce the point-to-plane formulas using each
+ *  plane's known normal shape (Bevy `get_distance_x`, `project_to_plane_z` and
+ *  `project_to_plane_y`, `bevy_light/src/cluster/assign.rs:1128-1181`). */
+TEST(Cluster, PlaneProjectionsMatchBevy) {
+    using epix::camera::HalfSpace;
+    using epix::camera::Sphere;
+    using epix::pbr::get_distance_x;
+    using epix::pbr::project_to_plane_y;
+    using epix::pbr::project_to_plane_z;
+
+    // An x-plane with a unit normal along +x, two units behind the origin.
+    const HalfSpace x_plane = HalfSpace::from_normal_d(glm::vec4(1.0f, 0.0f, 0.0f, -2.0f));
+    EXPECT_FLOAT_EQ(x_plane.d(), -2.0f);
+    EXPECT_FLOAT_EQ(get_distance_x(x_plane, glm::vec3(3.0f, 5.0f, 7.0f), false), 3.0f)
+        << "the dot product of the normal with the point's x and z";
+    EXPECT_FLOAT_EQ(get_distance_x(x_plane, glm::vec3(3.0f, 5.0f, 7.0f), true), 5.0f)
+        << "orthographic is the x difference from d";
+
+    // A z-plane at z = -4: a sphere straddling it projects, one beyond it does not.
+    const HalfSpace z_plane = HalfSpace::from_normal_d(glm::vec4(0.0f, 0.0f, 1.0f, -4.0f));
+    const Sphere straddling{.center = glm::vec3(1.0f, 2.0f, -3.0f), .radius = 2.0f};
+    const auto projected = project_to_plane_z(straddling, z_plane);
+    ASSERT_TRUE(projected.has_value());
+    EXPECT_EQ(projected->center, glm::vec3(1.0f, 2.0f, -4.0f)) << "x and y are kept, z comes from the plane";
+    EXPECT_NEAR(projected->radius, std::sqrt(4.0f - 1.0f), 1e-5f) << "Pythagoras on the one unit of overlap";
+
+    const Sphere beyond{.center = glm::vec3(0.0f, 0.0f, 0.0f), .radius = 1.0f};
+    EXPECT_FALSE(project_to_plane_z(beyond, z_plane).has_value()) << "four units away from a radius of one";
+
+    // A y-plane. Note the two branches differ in whether d participates: these
+    // helpers run in cluster space, where the planes pass through the origin, so
+    // the perspective branch measures the centre's projection along the normal
+    // and ignores d, while the orthographic branch uses d directly.
+    const HalfSpace y_plane_origin = HalfSpace::from_normal_d(glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+    const Sphere near_y{.center = glm::vec3(0.5f, 1.0f, -3.0f), .radius = 1.5f};
+    const auto projected_y = project_to_plane_y(near_y, y_plane_origin, false);
+    ASSERT_TRUE(projected_y.has_value());
+    EXPECT_EQ(projected_y->center, glm::vec3(0.5f, 0.0f, -3.0f))
+        << "moved along the normal by minus the centre's projection onto it";
+    EXPECT_NEAR(projected_y->radius, std::sqrt(2.25f - 1.0f), 1e-5f);
+
+    const HalfSpace y_plane_at_two = HalfSpace::from_normal_d(glm::vec4(0.0f, 1.0f, 0.0f, 2.0f));
+    const auto orthographic_y = project_to_plane_y(near_y, y_plane_at_two, true);
+    ASSERT_TRUE(orthographic_y.has_value());
+    EXPECT_EQ(orthographic_y->center, glm::vec3(0.5f, 2.0f, -3.0f))
+        << "the orthographic branch moves the centre to d along the normal";
+
+    const Sphere far_y{.center = glm::vec3(0.0f, -10.0f, 0.0f), .radius = 1.0f};
+    EXPECT_FALSE(project_to_plane_y(far_y, y_plane_origin, false).has_value())
+        << "ten units from a plane the sphere does not reach";
+}
+
 }  // namespace
