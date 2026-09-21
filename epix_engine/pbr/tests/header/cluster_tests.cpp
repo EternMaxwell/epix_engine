@@ -2,6 +2,7 @@
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/directional_light.hpp>
+#include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
@@ -367,6 +368,52 @@ TEST(Cluster, ClusterZConfigAndDecalMatchBevyDefaults) {
     EXPECT_FALSE(decal.metallic_roughness_texture.has_value());
     EXPECT_FALSE(decal.emissive_texture.has_value());
     EXPECT_EQ(decal.tag, 0u);
+}
+
+/** @brief The GPU light uniform matches Bevy's shader layout, padding included
+ *  (`bevy_pbr/src/render/light.rs:124-174`): a cascade is 80 bytes because a
+ *  shader type's size rounds up to its largest member's alignment, a directional
+ *  light is 384, and the whole uniform is 3904 with four trailing pad bytes. */
+TEST(Cluster, GpuLightsMatchBevyShaderLayout) {
+    using epix::pbr::DirectionalLightFlags;
+    using epix::pbr::GpuDirectionalCascade;
+    using epix::pbr::GpuDirectionalLight;
+    using epix::pbr::GpuLights;
+    using epix::pbr::MAX_CASCADES_PER_LIGHT;
+    using epix::pbr::MAX_DIRECTIONAL_LIGHTS;
+
+    EXPECT_EQ(sizeof(GpuDirectionalCascade), 80u) << "64-byte matrix, two floats, then padding to 16";
+    EXPECT_EQ(offsetof(GpuDirectionalCascade, texel_size), 64u);
+    EXPECT_EQ(offsetof(GpuDirectionalCascade, far_bound), 68u);
+
+    EXPECT_EQ(MAX_CASCADES_PER_LIGHT, 4u);
+    EXPECT_EQ(MAX_DIRECTIONAL_LIGHTS, 10u);
+    EXPECT_EQ(sizeof(GpuDirectionalLight), 400u) << "four 80-byte cascades, then fields sized to a 16-byte multiple";
+    EXPECT_EQ(offsetof(GpuDirectionalLight, color), 320u) << "four 80-byte cascades precede the colour";
+    EXPECT_EQ(offsetof(GpuDirectionalLight, dir_to_light), 336u);
+    EXPECT_EQ(offsetof(GpuDirectionalLight, flags), 348u) << "a vec3 followed by a scalar packs into one slot";
+    EXPECT_EQ(offsetof(GpuDirectionalLight, soft_shadow_size), 352u);
+    EXPECT_EQ(offsetof(GpuDirectionalLight, num_cascades), 364u);
+    EXPECT_EQ(offsetof(GpuDirectionalLight, sun_disk_intensity), 384u);
+
+    EXPECT_EQ(sizeof(GpuLights), 4064u);
+    EXPECT_EQ(offsetof(GpuLights, ambient_color), 4000u) << "ten 400-byte lights precede the ambient colour";
+    EXPECT_EQ(offsetof(GpuLights, cluster_dimensions), 4016u);
+    EXPECT_EQ(offsetof(GpuLights, cluster_factors), 4032u);
+    EXPECT_EQ(offsetof(GpuLights, n_directional_lights), 4048u);
+
+    EXPECT_EQ(DirectionalLightFlags::SHADOWS_ENABLED, 1u);
+    EXPECT_EQ(DirectionalLightFlags::VOLUMETRIC, 2u);
+    EXPECT_EQ(DirectionalLightFlags::AFFECTS_LIGHTMAPPED_MESH_DIFFUSE, 4u);
+    EXPECT_EQ(DirectionalLightFlags::NONE, 0u);
+    EXPECT_EQ(DirectionalLightFlags::UNINITIALIZED, 0xFFFFu);
+
+    // The uniform is a typed uniform buffer payload, so it must satisfy the
+    // engine's shader-type concept.
+    static_assert(epix::render::render_resource::ShaderWritable<GpuLights>);
+    const GpuLights lights = epix::pbr::default_gpu_lights();
+    EXPECT_EQ(lights.n_directional_lights, 0u);
+    EXPECT_EQ(lights.directional_lights[0].flags, DirectionalLightFlags::NONE);
 }
 
 }  // namespace
