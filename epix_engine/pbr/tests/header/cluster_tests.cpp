@@ -1,4 +1,5 @@
 #include <epix/pbr/ambient_light.hpp>
+#include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
@@ -168,6 +169,48 @@ TEST(Cluster, SpotLightMatchesBevyDefaults) {
     EXPECT_FLOAT_EQ(light.outer_angle, 0.7853981633974483f) << "Bevy's quarter arc";
     EXPECT_LT(light.inner_angle, light.outer_angle) << "Bevy requires inner <= outer";
     EXPECT_LT(light.outer_angle, 1.5707963267948966f) << "outer_angle must stay below pi/2";
+}
+
+/** @brief Cascade bounds are geometric between the first far bound and the
+ *  maximum distance, with a single cascade simply reaching the maximum (Bevy
+ *  `calculate_cascade_bounds`, `cascade.rs:39-54`), and the builder validates
+ *  Bevy's five conditions by throwing rather than asserting. */
+TEST(Cluster, CascadeShadowConfigMatchesBevy) {
+    using epix::pbr::build_cascade_shadow_config;
+    using epix::pbr::CascadeShadowConfigBuilder;
+    using epix::pbr::calculate_cascade_bounds;
+    using epix::pbr::default_cascade_shadow_config;
+
+    const auto single = calculate_cascade_bounds(1, 10.0f, 150.0f);
+    ASSERT_EQ(single.size(), 1u);
+    EXPECT_FLOAT_EQ(single[0], 150.0f);
+
+    const auto four = calculate_cascade_bounds(4, 10.0f, 150.0f);
+    ASSERT_EQ(four.size(), 4u);
+    EXPECT_NEAR(four.front(), 10.0f, 1e-4f) << "the first bound is the first cascade's far bound";
+    EXPECT_NEAR(four.back(), 150.0f, 1e-3f) << "the last bound is the maximum distance";
+    for (std::size_t i = 1; i < four.size(); ++i) {
+        EXPECT_GT(four[i], four[i - 1]) << "bounds increase with distance";
+    }
+
+    const auto defaults = default_cascade_shadow_config();
+    EXPECT_EQ(defaults.bounds.size(), 4u) << "Bevy's default is four cascades";
+    EXPECT_FLOAT_EQ(defaults.overlap_proportion, 0.2f);
+    EXPECT_FLOAT_EQ(defaults.minimum_distance, 0.1f);
+
+    // Bevy asserts on each invalid case; Epix throws with Bevy's wording.
+    EXPECT_THROW(build_cascade_shadow_config(CascadeShadowConfigBuilder{.num_cascades = 0}), std::invalid_argument);
+    EXPECT_THROW(build_cascade_shadow_config(CascadeShadowConfigBuilder{.minimum_distance = -1.0f}), std::invalid_argument);
+    EXPECT_THROW(build_cascade_shadow_config(CascadeShadowConfigBuilder{.maximum_distance = 0.05f}), std::invalid_argument);
+    EXPECT_THROW(build_cascade_shadow_config(CascadeShadowConfigBuilder{.overlap_proportion = 1.0f}), std::invalid_argument);
+    EXPECT_THROW(build_cascade_shadow_config(CascadeShadowConfigBuilder{.first_cascade_far_bound = 0.05f}),
+                 std::invalid_argument);
+
+    // The single-cascade case skips the first-bound comparison, as Bevy does.
+    const auto one_cascade = build_cascade_shadow_config(CascadeShadowConfigBuilder{
+        .num_cascades = 1, .minimum_distance = 0.1f, .maximum_distance = 150.0f, .first_cascade_far_bound = 0.05f});
+    ASSERT_EQ(one_cascade.bounds.size(), 1u);
+    EXPECT_FLOAT_EQ(one_cascade.bounds[0], 150.0f);
 }
 
 }  // namespace
