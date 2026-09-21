@@ -150,6 +150,27 @@ EPIX_EXPORT struct OrthographicProjection {
     Frustum compute_frustum(const ::epix::transform::GlobalTransform& camera_transform) const;
 };
 
+/** @brief The right-handed infinite reverse-Z perspective projection Bevy uses
+ *  (`Mat4::perspective_infinite_reverse_rh`, from its math dependency).
+ *
+ *  Bevy keeps this in `bevy_math`, where both `bevy_camera`'s perspective
+ *  projection and `bevy_pbr`'s light shadow projections call it; glm has no
+ *  reverse-Z entry, so the engine keeps the one implementation here, beside the
+ *  other projection maths and the `bevy_camera` primitives.
+ *
+ *  `fov_y_radians` is the full vertical field of view. The near plane maps to
+ *  depth 1 and infinity to 0, which is what the engine's `GreaterEqual` depth
+ *  comparisons expect; `z_near` is required to be positive, as glam asserts. */
+EPIX_EXPORT inline glm::mat4 perspective_infinite_reverse_rh(float fov_y_radians, float aspect_ratio, float z_near) {
+    const float f = 1.0f / std::tan(fov_y_radians * 0.5f);
+    glm::mat4 matrix(0.0f);
+    matrix[0][0] = f / aspect_ratio;
+    matrix[1][1] = f;
+    matrix[2][3] = -1.0f;
+    matrix[3][2] = z_near;
+    return matrix;
+}
+
 /** @brief Perspective camera projection with field of view, aspect ratio,
  * and near/far planes. */
 EPIX_EXPORT struct PerspectiveProjection {
@@ -166,12 +187,7 @@ EPIX_EXPORT struct PerspectiveProjection {
     /** @brief Compute Bevy's infinite right-handed reverse-Z perspective
      * projection, including its optional oblique clip-plane adjustment. */
     glm::mat4 get_clip_from_view() const {
-        const float f = 1.0f / std::tan(fov * 0.5f);
-        glm::mat4 matrix(0.0f);
-        matrix[0][0] = f / aspect_ratio;
-        matrix[1][1] = f;
-        matrix[2][3] = -1.0f;
-        matrix[3][2] = near_plane;
+        glm::mat4 matrix = perspective_infinite_reverse_rh(fov, aspect_ratio, near_plane);
         const glm::vec4 default_plane{0.0f, 0.0f, -1.0f, -near_plane};
         if (near_clip_plane == default_plane) return matrix;
         const glm::vec4 q_prime{std::copysign(1.0f, near_clip_plane.x), std::copysign(1.0f, near_clip_plane.y), 0.0f,

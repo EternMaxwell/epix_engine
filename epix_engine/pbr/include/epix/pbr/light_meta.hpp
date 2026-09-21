@@ -6,7 +6,9 @@
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <algorithm>
+#include <numbers>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -15,6 +17,7 @@
 #include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
 #endif
+#include <epix/camera/projection.hpp>
 #include <epix/camera/visibility.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/gpu_lights.hpp>
@@ -475,5 +478,20 @@ EPIX_EXPORT inline glm::vec4 pack_directional_color(glm::vec4 color, float illum
  *  The same value is used for point and directional lights, and the shader tests
  *  for it rather than reading decal zero. */
 EPIX_EXPORT inline constexpr std::uint32_t NO_CLUSTERED_DECAL = 0xFFFFFFFFu;
+
+/** @brief The projection a point light's cube faces use (Bevy
+ *  `render/light.rs:900-904,1280-1284`): a 90-degree field of view, since each
+ *  cube face spans a quarter turn, with a square aspect and the light's shadow map
+ *  near plane. A spot light uses the same matrix with twice its outer angle
+ *  (`bevy_light/src/spot_light.rs:187-190`).
+ *
+ *  Bevy calls that function inline at each site; it is named here because the
+ *  parameters are the point, and it names the engine's single implementation
+ *  rather than a second copy. The near plane is the light's `shadow_map_near_z`,
+ *  and there is no far plane: the projection is infinite, and a light's `range`
+ *  bounds what matters. */
+EPIX_EXPORT inline glm::mat4 cube_face_projection(float shadow_map_near_z) {
+    return camera::perspective_infinite_reverse_rh(std::numbers::pi_v<float> / 2.0f, 1.0f, shadow_map_near_z);
+}
 
 }  // namespace epix::pbr

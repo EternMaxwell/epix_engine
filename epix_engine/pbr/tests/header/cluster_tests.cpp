@@ -951,7 +951,7 @@ TEST(Cluster, ComputeAabbForClusterMatchesBevy) {
     // matrix: the near and far planes are swapped, putting the near plane at NDC
     // z 1. An OpenGL-style matrix here would unproject the far plane instead and
     // mirror the corners through the origin.
-    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::mat4 projection = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), screen.x / screen.y, z_near);
     const glm::mat4 view_from_clip = glm::inverse(projection);
 
     // The first cluster starts at the camera and ends at the near plane. Note
@@ -1049,7 +1049,7 @@ TEST(Cluster, ClusterSpaceClusterableObjectAabbMatchesBevy) {
     const float z_far         = 100.0f;
     const glm::vec2 screen{800.0f, 600.0f};
     // Reverse-Z, as the cluster code assumes: the near plane is at NDC z 1.
-    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::mat4 projection     = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), screen.x / screen.y, z_near);
     const glm::mat4 view_from_clip = glm::inverse(projection);
     static_cast<void>(view_from_clip);
     const glm::mat4 view_from_world{1.0f};
@@ -1274,7 +1274,7 @@ TEST(Cluster, ClusterIndexEstimateMatchesBevy) {
         << "(m32 - 1) / m22 recovers the near plane";
 
     const glm::vec2 screen{800.0f, 600.0f};
-    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::mat4 projection = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), screen.x / screen.y, z_near);
     const glm::uvec3 dims{17, 9, 24};
     const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(dims.z), false);
     const glm::mat4 identity{1.0f};
@@ -1371,7 +1371,7 @@ TEST(Cluster, ClusterPlanesMatchBevy) {
     const float z_near = 0.1f;
     const float z_far  = 100.0f;
     const float screen_aspect = 800.0f / 600.0f;
-    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen_aspect, z_far, z_near);
+    const glm::mat4 projection = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), screen_aspect, z_near);
     const glm::mat4 view_from_clip = glm::inverse(projection);
     const glm::uvec3 dims{4, 4, 8};
 
@@ -1419,7 +1419,7 @@ TEST(Cluster, ClusterAssignmentBoundsMatchBevy) {
     const float z_near = 0.1f;
     const float z_far  = 100.0f;
     const float aspect = 800.0f / 600.0f;
-    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, z_far, z_near);
+    const glm::mat4 projection     = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), aspect, z_near);
     const glm::mat4 view_from_clip = glm::inverse(projection);
     const glm::uvec3 dims{4, 4, 8};
     const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(dims.z), false);
@@ -1490,7 +1490,7 @@ TEST(Cluster, SphereRefinementAndClusterIndexMatchBevy) {
     const float z_near = 0.1f;
     const float z_far  = 100.0f;
     const float aspect = 800.0f / 600.0f;
-    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, z_far, z_near);
+    const glm::mat4 projection     = epix::camera::perspective_infinite_reverse_rh(glm::radians(60.0f), aspect, z_near);
     const glm::mat4 view_from_clip = glm::inverse(projection);
     const glm::uvec3 grid{8, 8, 8};
     const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(grid.z), false);
@@ -2037,6 +2037,65 @@ TEST(Cluster, DirectionalLightFlagsAndCascadesMatchBevy) {
 
     // A light without a clustered decal carries the sentinel, not zero.
     EXPECT_EQ(NO_CLUSTERED_DECAL, 0xFFFFFFFFu);
+}
+
+/** @brief The projection the light shadow path uses is the engine's one
+ *  reverse-Z implementation, shared with the camera (Bevy `render/light.rs:900`,
+ *  `bevy_camera`'s `PerspectiveProjection`, and
+ *  `epix::camera::perspective_infinite_reverse_rh`). */
+TEST(Cluster, CubeFaceProjectionUsesTheSharedReverseZMatrix) {
+    using epix::camera::perspective_infinite_reverse_rh;
+    using epix::camera::PerspectiveProjection;
+    using epix::pbr::cube_face_projection;
+    using epix::pbr::point_light_custom_data;
+
+    const float z_near = 0.1f;
+    const glm::mat4 projection = cube_face_projection(z_near);
+
+    // One implementation, two callers, as in Bevy: the cube-face matrix is the
+    // shared function, and the camera's own projection is built from it too.
+    EXPECT_EQ(projection, perspective_infinite_reverse_rh(glm::radians(90.0f), 1.0f, z_near))
+        << "the light path calls the shared function";
+    PerspectiveProjection camera_projection;
+    camera_projection.fov          = glm::radians(90.0f);
+    camera_projection.aspect_ratio = 1.0f;
+    camera_projection.near_plane   = z_near;
+    camera_projection.near_clip_plane = glm::vec4(0.0f, 0.0f, -1.0f, -z_near);
+    EXPECT_EQ(projection, camera_projection.get_clip_from_view())
+        << "and so does the camera's projection, so the two cannot drift";
+
+    // f = 1 / tan(45 degrees) = 1, with a square aspect, so the x and y scales
+    // are both one.
+    EXPECT_NEAR(projection[0][0], 1.0f, 1e-5f);
+    EXPECT_NEAR(projection[1][1], 1.0f, 1e-5f);
+    // The depth layout: reverse-Z with an infinite far plane.
+    EXPECT_FLOAT_EQ(projection[2][2], 0.0f) << "nothing scales z";
+    EXPECT_FLOAT_EQ(projection[2][3], -1.0f) << "w becomes -z";
+    EXPECT_FLOAT_EQ(projection[3][2], z_near) << "the near plane's offset";
+    EXPECT_FLOAT_EQ(projection[3][3], 0.0f);
+
+    // The depth orientation the light path depends on: near maps to one and
+    // infinity to zero, which is what the GreaterEqual depth comparisons expect.
+    const auto ndc_z = [&](float view_z) {
+        const glm::vec4 clip = projection * glm::vec4(0.0f, 0.0f, view_z, 1.0f);
+        return clip.z / clip.w;
+    };
+    EXPECT_NEAR(ndc_z(-z_near), 1.0f, 1e-4f) << "the near plane is depth one";
+    EXPECT_NEAR(ndc_z(-1.0f), z_near, 1e-3f) << "ndc_z = z_near / -view_z";
+    EXPECT_NEAR(ndc_z(-1.0e6f), 0.0f, 1e-5f) << "and infinity approaches zero";
+    EXPECT_GT(ndc_z(-z_near), ndc_z(-1.0f)) << "nearer is greater, which is what reverse-Z means";
+    EXPECT_GT(ndc_z(-1.0f), ndc_z(-1.0e6f));
+
+    // The light's custom data picks out the depth row and column the shader
+    // reads: (0, -1, near, 0).
+    EXPECT_EQ(point_light_custom_data(projection), glm::vec4(0.0f, -1.0f, z_near, 0.0f))
+        << "what the shader actually receives";
+
+    // A spot light's projection is the same function at twice its outer angle.
+    const float outer_angle = glm::radians(30.0f);
+    const glm::mat4 spot    = perspective_infinite_reverse_rh(outer_angle * 2.0f, 1.0f, z_near);
+    EXPECT_NEAR(spot[1][1], 1.0f / std::tan(outer_angle), 1e-5f)
+        << "a 30-degree half angle gives a 60-degree field of view";
 }
 
 }  // namespace
