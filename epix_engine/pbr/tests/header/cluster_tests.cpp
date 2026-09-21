@@ -519,4 +519,44 @@ TEST(Cluster, GpuClusterableObjectsClampsUniformAndReplacesStorage) {
     EXPECT_TRUE(meta.entity_to_index.empty());
 }
 
+/** @brief A view's cluster limits follow from the 16 KiB uniform binding limit,
+ *  and the storage form's offset/count layout keeps Bevy's field order
+ *  (`bevy_pbr/src/cluster.rs:339-341,378-401`). */
+TEST(Cluster, ViewClusterLimitsAndStoragePackingMatchBevy) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::pack_cluster_offsets_and_counts_storage;
+    using epix::pbr::uniform_offsets_array_index;
+    using epix::pbr::uniform_offsets_component;
+    using epix::pbr::VIEW_CLUSTER_MAX_INDICES;
+    using epix::pbr::VIEW_CLUSTER_MAX_OFFSETS;
+    using epix::pbr::VIEW_CLUSTER_MAX_UNIFORM_ITEMS;
+
+    EXPECT_EQ(VIEW_CLUSTER_MAX_OFFSETS, 4096u) << "16384 bytes of uvec4s";
+    EXPECT_EQ(VIEW_CLUSTER_MAX_UNIFORM_ITEMS, 1024u) << "four offsets per uvec4";
+    EXPECT_EQ(VIEW_CLUSTER_MAX_INDICES, 16384u) << "16384 u32 indices";
+    EXPECT_EQ(VIEW_CLUSTER_MAX_OFFSETS * sizeof(std::uint32_t), 16384u) << "4096 four-byte words is the binding limit";
+    EXPECT_EQ(VIEW_CLUSTER_MAX_UNIFORM_ITEMS * sizeof(glm::uvec4), 16384u) << "the same space as uvec4s";
+
+    // Four packed words share one uvec4.
+    EXPECT_EQ(uniform_offsets_array_index(0), 0u);
+    EXPECT_EQ(uniform_offsets_component(0), 0u);
+    EXPECT_EQ(uniform_offsets_array_index(3), 0u);
+    EXPECT_EQ(uniform_offsets_component(3), 3u);
+    EXPECT_EQ(uniform_offsets_array_index(4), 1u);
+    EXPECT_EQ(uniform_offsets_component(4), 0u);
+    EXPECT_EQ(uniform_offsets_array_index(VIEW_CLUSTER_MAX_OFFSETS - 1), VIEW_CLUSTER_MAX_UNIFORM_ITEMS - 1)
+        << "the last offset still lands inside the array";
+
+    // The storage form carries all five counts, in Bevy's order.
+    ClusterableObjectCounts counts{};
+    counts.point_lights       = 11;
+    counts.spot_lights        = 22;
+    counts.reflection_probes  = 33;
+    counts.irradiance_volumes = 44;
+    counts.decals             = 55;
+    const auto packed = pack_cluster_offsets_and_counts_storage(7, counts);
+    EXPECT_EQ(packed[0], glm::uvec4(7u, 11u, 22u, 33u));
+    EXPECT_EQ(packed[1], glm::uvec4(44u, 55u, 0u, 0u));
+}
+
 }  // namespace

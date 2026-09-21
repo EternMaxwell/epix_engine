@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/pbr/light_cluster.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <optional>
@@ -235,6 +236,45 @@ EPIX_EXPORT struct GlobalClusterableObjectMeta {
     explicit GlobalClusterableObjectMeta(wgpu::BufferBindingType binding_type)
         : gpu_clusterable_objects(GpuClusterableObjects::from_binding_type(binding_type)) {}
 };
+
+/** @brief A view's cluster-binding limits (Bevy `ViewClusterBindings`,
+ *  `bevy_pbr/src/cluster.rs:339-341`).
+ *
+ *  `MAX_OFFSETS` and `MAX_INDICES` come from the 16 KiB uniform buffer binding
+ *  limit: 16384 bytes of `uvec4`s is 4096 offsets, and 16384 `u32` indices fit
+ *  the index list. `MAX_UNIFORM_ITEMS` is the number of `uvec4`s those offsets
+ *  occupy, four offsets to a `uvec4`. */
+EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_OFFSETS = 16384 / 4;
+EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_UNIFORM_ITEMS = VIEW_CLUSTER_MAX_OFFSETS / 4;
+EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_INDICES = 16384;
+
+/** @brief Where a cluster's packed offset and counts go in the uniform form of
+ *  the offset list (Bevy `ViewClusterBindings::push_offset_and_counts`,
+ *  `cluster.rs:378-383`): four packed words per `uvec4`, so the entry is word
+ *  `n_offsets >> 2` of the array and component `n_offsets & 3` within it. */
+EPIX_EXPORT inline constexpr std::size_t uniform_offsets_array_index(std::size_t n_offsets) noexcept {
+    return n_offsets >> 2;
+}
+EPIX_EXPORT inline constexpr std::size_t uniform_offsets_component(std::size_t n_offsets) noexcept {
+    return n_offsets & 3;
+}
+
+/** @brief The two `uvec4`s a cluster occupies in the storage form of the offset
+ *  list (Bevy `ViewClusterBindings::push_offset_and_counts`,
+ *  `cluster.rs:393-401`), in Bevy's field order: offset, point lights, spot
+ *  lights and reflection probes in the first, irradiance volumes, decals and two
+ *  zeroes in the second.
+ *
+ *  The uniform form cannot carry the probe counts at all, which is why it packs
+ *  only the point and spot counts - see `pack_offset_and_counts`. */
+EPIX_EXPORT inline GpuClusterOffsetsAndCounts pack_cluster_offsets_and_counts_storage(
+    std::size_t offset, const ClusterableObjectCounts& counts) {
+    return GpuClusterOffsetsAndCounts{
+        glm::uvec4(static_cast<std::uint32_t>(offset), counts.point_lights, counts.spot_lights,
+                   counts.reflection_probes),
+        glm::uvec4(counts.irradiance_volumes, counts.decals, 0u, 0u),
+    };
+}
 
 }  // namespace epix::pbr
 
