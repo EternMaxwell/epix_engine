@@ -1361,4 +1361,51 @@ TEST(Cluster, ClusterReductionAndOrthographicPlanesMatchBevy) {
     EXPECT_EQ(y_planes[1].normal(), glm::vec3(0.0f, 1.0f, 0.0f));
 }
 
+/** @brief The z planes sit at the slice boundaries with a `-Z` normal, and the
+ *  perspective x/y planes are the ones through the eye and two near-plane
+ *  corners (Bevy `assign.rs:504-534`). */
+TEST(Cluster, ClusterPlanesMatchBevy) {
+    using epix::pbr::cluster_z_planes;
+    using epix::pbr::perspective_cluster_xy_planes;
+
+    const float z_near = 0.1f;
+    const float z_far  = 100.0f;
+    const float screen_aspect = 800.0f / 600.0f;
+    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen_aspect, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+    const glm::uvec3 dims{4, 4, 8};
+
+    // Z planes: one per slice boundary, from 0 to -far, each holding its
+    // boundary under Bevy's n . x = d convention.
+    const auto z_planes = cluster_z_planes(z_near, z_far, dims.z, false);
+    ASSERT_EQ(z_planes.size(), dims.z + 1);
+    EXPECT_NEAR(z_planes.front().d(), 0.0f, 1e-4f) << "the first perspective boundary is at view z 0";
+    EXPECT_NEAR(z_planes.back().d(), z_far, 1e-3f) << "the last is at -far, so d is +far";
+    for (std::size_t i = 0; i < z_planes.size(); ++i) {
+        EXPECT_EQ(z_planes[i].normal(), glm::vec3(0.0f, 0.0f, -1.0f));
+        const float view_z = -z_planes[i].d();
+        EXPECT_NEAR(glm::dot(z_planes[i].normal(), glm::vec3(0.0f, 0.0f, view_z)), z_planes[i].d(), 1e-4f)
+            << "a point at that view z lies on the plane";
+    }
+
+    // Perspective x/y planes: one more than the count per axis, and each holds
+    // its own near-plane corner under the same convention.
+    const auto [x_planes, y_planes] = perspective_cluster_xy_planes(view_from_clip, dims);
+    ASSERT_EQ(x_planes.size(), dims.x + 1);
+    ASSERT_EQ(y_planes.size(), dims.y + 1);
+    for (std::size_t i = 0; i < x_planes.size(); ++i) {
+        const float x_pos = (static_cast<float>(i) / static_cast<float>(dims.x)) * 2.0f - 1.0f;
+        const glm::vec3 corner = glm::vec3(view_from_clip * glm::vec4(x_pos, -1.0f, 1.0f, 1.0f));
+        // The unprojected corner itself satisfies the plane equation.
+        EXPECT_NEAR(glm::dot(x_planes[i].normal(), corner), x_planes[i].d(), 1e-2f)
+            << "the boundary's corner lies on its plane";
+    }
+    // For a symmetric frustum the x planes' normals have no y component, and the
+    // centre plane is the view's own y axis plane.
+    EXPECT_NEAR(x_planes[2].normal().y, 0.0f, 1e-4f);
+    EXPECT_NEAR(x_planes[2].d(), 0.0f, 1e-4f) << "the centre x plane passes through the view axis";
+    EXPECT_NEAR(y_planes[2].normal().x, 0.0f, 1e-4f);
+    EXPECT_NEAR(y_planes[2].d(), 0.0f, 1e-4f) << "and so does the centre y plane";
+}
+
 }  // namespace

@@ -721,6 +721,58 @@ orthographic_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimen
     return {x_planes, y_planes};
 }
 
+/** @brief A perspective view's x and y cluster planes in view space (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:504-525`).
+ *
+ *  Unlike the orthographic case these are not axis-aligned. Each boundary
+ *  unprojects two points on the near plane - the bottom and top of the view for
+ *  an x boundary, the left and right for a y boundary - and the plane is the one
+ *  through them and the eye, found by crossing them. The y boundaries are
+ *  inverted here too, for the same reason as the orthographic ones. */
+EPIX_EXPORT inline std::pair<std::vector<camera::HalfSpace>, std::vector<camera::HalfSpace>>
+perspective_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimensions) {
+    std::vector<camera::HalfSpace> x_planes;
+    x_planes.reserve(dimensions.x + 1);
+    const float x_slices = static_cast<float>(dimensions.x);
+    for (std::uint32_t x = 0; x <= dimensions.x; ++x) {
+        const float x_pos = (static_cast<float>(x) / x_slices) * 2.0f - 1.0f;
+        const glm::vec3 bottom = glm::vec3(clip_to_view(view_from_clip, glm::vec4(x_pos, -1.0f, 1.0f, 1.0f)));
+        const glm::vec3 top    = glm::vec3(clip_to_view(view_from_clip, glm::vec4(x_pos, 1.0f, 1.0f, 1.0f)));
+        const glm::vec3 normal = glm::cross(bottom, top);
+        x_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(normal, glm::dot(bottom, normal))));
+    }
+
+    std::vector<camera::HalfSpace> y_planes;
+    y_planes.reserve(dimensions.y + 1);
+    const float y_slices = static_cast<float>(dimensions.y);
+    for (std::uint32_t y = 0; y <= dimensions.y; ++y) {
+        const float y_pos = (1.0f - static_cast<float>(y) / y_slices) * 2.0f - 1.0f;
+        const glm::vec3 left  = glm::vec3(clip_to_view(view_from_clip, glm::vec4(-1.0f, y_pos, 1.0f, 1.0f)));
+        const glm::vec3 right = glm::vec3(clip_to_view(view_from_clip, glm::vec4(1.0f, y_pos, 1.0f, 1.0f)));
+        const glm::vec3 normal = glm::cross(right, left);
+        y_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(normal, glm::dot(right, normal))));
+    }
+    return {x_planes, y_planes};
+}
+
+/** @brief A view's z cluster planes in view space (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:528-534`).
+ *
+ *  The boundaries come from `z_slice_to_view_z`, and each plane carries the
+ *  normal `-Z` with `d = -view_z`, so under Bevy's `n . x = d` convention a point
+ *  at that view z lies on it. There are `z_slices + 1` planes, the first at 0 (or
+ *  `-near` for an orthographic view) and the last at `-far`. */
+EPIX_EXPORT inline std::vector<camera::HalfSpace> cluster_z_planes(float first_slice_depth, float far_z,
+                                                                  std::uint32_t z_slices, bool is_orthographic) {
+    std::vector<camera::HalfSpace> z_planes;
+    z_planes.reserve(z_slices + 1);
+    for (std::uint32_t z = 0; z <= z_slices; ++z) {
+        const float view_z = z_slice_to_view_z(first_slice_depth, far_z, z_slices, z, is_orthographic);
+        z_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(0.0f, 0.0f, -1.0f, -view_z)));
+    }
+    return z_planes;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
