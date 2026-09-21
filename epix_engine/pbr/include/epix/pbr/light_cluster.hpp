@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/camera/visibility.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
@@ -250,6 +251,60 @@ EPIX_EXPORT inline glm::vec4 screen_to_view(glm::vec2 screen_size, const glm::ma
     const glm::vec2 tex_coord = screen / screen_size;
     const glm::vec4 clip{tex_coord.x * 2.0f - 1.0f, (1.0f - tex_coord.y) * 2.0f - 1.0f, ndc_z, 1.0f};
     return clip_to_view(view_from_clip, clip);
+}
+
+/** @brief The view-space bounds of one cluster (Bevy `compute_aabb_for_cluster`,
+ *  `bevy_light/src/cluster/assign.rs:880-947`).
+ *
+ *  The cluster's screen tile is unprojected at the near plane and then cut by
+ *  the cluster's near and far planes. The two projection kinds differ in how
+ *  those planes are found: an orthographic view uses linear depth slicing, while
+ *  a perspective one takes them geometrically - the first cluster starting at
+ *  z 0 and the rest at `-near * (far / near)^((k - 1) / (slices - 1))`. The four
+ *  intersections with the near and far planes are then bounded, which is why the
+ *  corners are computed by intersecting lines from the origin rather than by
+ *  scaling the near-plane corners. */
+EPIX_EXPORT inline camera::Aabb compute_aabb_for_cluster(float z_near, float z_far, glm::vec2 tile_size,
+                                                        glm::vec2 screen_size, const glm::mat4& view_from_clip,
+                                                        bool is_orthographic, glm::uvec3 cluster_dimensions,
+                                                        glm::uvec3 ijk) {
+    const glm::vec3 index = glm::vec3(ijk);
+    const glm::vec2 p_min = glm::vec2(index) * tile_size;
+    const glm::vec2 p_max = p_min + tile_size;
+
+    glm::vec3 cluster_min{0.0f};
+    glm::vec3 cluster_max{0.0f};
+    if (is_orthographic) {
+        glm::vec3 minimum = glm::vec3(screen_to_view(screen_size, view_from_clip, p_min, 0.0f));
+        glm::vec3 maximum = glm::vec3(screen_to_view(screen_size, view_from_clip, p_max, 0.0f));
+
+        const float slices = static_cast<float>(cluster_dimensions.z);
+        minimum.z          = -z_near + (z_near - z_far) * index.z / slices;
+        maximum.z          = -z_near + (z_near - z_far) * (index.z + 1.0f) / slices;
+
+        cluster_min = glm::min(minimum, maximum);
+        cluster_max = glm::max(minimum, maximum);
+    } else {
+        const glm::vec3 minimum = glm::vec3(screen_to_view(screen_size, view_from_clip, p_min, 1.0f));
+        const glm::vec3 maximum = glm::vec3(screen_to_view(screen_size, view_from_clip, p_max, 1.0f));
+
+        const float z_far_over_z_near = -z_far / -z_near;
+        const float slices            = static_cast<float>(cluster_dimensions.z);
+        const float cluster_near =
+            index.z == 0.0f ? 0.0f : -z_near * std::pow(z_far_over_z_near, (index.z - 1.0f) / (slices - 1.0f));
+        const float cluster_far =
+            cluster_dimensions.z == 1 ? -z_far : -z_near * std::pow(z_far_over_z_near, index.z / (slices - 1.0f));
+
+        const glm::vec3 minimum_near = line_intersection_to_z_plane(glm::vec3(0.0f), minimum, cluster_near);
+        const glm::vec3 minimum_far  = line_intersection_to_z_plane(glm::vec3(0.0f), minimum, cluster_far);
+        const glm::vec3 maximum_near = line_intersection_to_z_plane(glm::vec3(0.0f), maximum, cluster_near);
+        const glm::vec3 maximum_far  = line_intersection_to_z_plane(glm::vec3(0.0f), maximum, cluster_far);
+
+        cluster_min = glm::min(glm::min(minimum_near, minimum_far), glm::min(maximum_near, maximum_far));
+        cluster_max = glm::max(glm::max(minimum_near, minimum_far), glm::max(maximum_near, maximum_far));
+    }
+
+    return camera::Aabb::from_min_max(cluster_min, cluster_max);
 }
 
 /** @brief The clusterable objects visible to any view (Bevy

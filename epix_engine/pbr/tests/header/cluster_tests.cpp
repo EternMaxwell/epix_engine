@@ -932,4 +932,55 @@ TEST(Cluster, ScreenToViewMatchesBevy) {
     EXPECT_NEAR(recovered.z, view_point.z, 1e-3f);
 }
 
+/** @brief A cluster's view-space bounds: the first perspective cluster spans z 0
+ *  to -near, the far clusters grow with distance, and the orthographic case
+ *  slices depth linearly (Bevy `compute_aabb_for_cluster`,
+ *  `bevy_light/src/cluster/assign.rs:880-947`). */
+TEST(Cluster, ComputeAabbForClusterMatchesBevy) {
+    using epix::pbr::compute_aabb_for_cluster;
+
+    const float z_near        = 0.1f;
+    const float z_far         = 100.0f;
+    const glm::vec2 screen{800.0f, 600.0f};
+    const glm::uvec3 dims{4, 4, 8};
+    const glm::vec2 tile{screen.x / static_cast<float>(dims.x), screen.y / static_cast<float>(dims.y)};
+    // Bevy's perspective branch unprojects at ndc_z 1.0, which is the near plane
+    // because its projections are reverse-Z. So this test builds a reverse-Z
+    // matrix: the near and far planes are swapped, putting the near plane at NDC
+    // z 1. An OpenGL-style matrix here would unproject the far plane instead and
+    // mirror the corners through the origin.
+    const glm::mat4 projection = glm::perspectiveRH_ZO(glm::radians(60.0f), screen.x / screen.y, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+
+    // The first cluster starts at the camera and ends at the near plane. Note
+    // that the origin itself is one of the four intersections - cluster_near is
+    // 0 for the first slice - so the box reaches from the view origin out to the
+    // tile's near-plane corner rather than being centred on it.
+    const auto first = compute_aabb_for_cluster(z_near, z_far, tile, screen, view_from_clip, false, dims, glm::uvec3(0, 0, 0));
+    EXPECT_NEAR(first.max().z, 0.0f, 1e-4f) << "the first perspective slice begins at 0";
+    EXPECT_NEAR(first.min().z, -z_near, 1e-4f) << "and ends at the near plane";
+
+    // Its x and y reach the near plane's half-extents at a 60 degree vertical fov.
+    const float half_height = z_near * std::tan(glm::radians(30.0f));
+    const float half_width  = half_height * (screen.x / screen.y);
+    EXPECT_NEAR(std::min(first.min().x, first.max().x), -half_width, 1e-3f) << "the top-left tile's outer corner";
+    EXPECT_NEAR(std::max(first.min().y, first.max().y), half_height, 1e-3f);
+    EXPECT_NEAR(std::max(first.min().x, first.max().x), 0.0f, 1e-3f) << "the view origin is a corner of the box";
+    EXPECT_NEAR(std::min(first.min().y, first.max().y), 0.0f, 1e-3f);
+
+    // The last cluster reaches the far plane, and clusters grow with distance.
+    const auto last = compute_aabb_for_cluster(z_near, z_far, tile, screen, view_from_clip, false, dims, glm::uvec3(3, 3, 7));
+    EXPECT_NEAR(last.min().z, -z_far, 1e-3f) << "the last slice ends at the far plane";
+    EXPECT_NEAR(last.max().z, -z_near * std::pow(z_far / z_near, 6.0f / 7.0f), 1e-3f);
+    EXPECT_GT(last.half_extents.x, first.half_extents.x) << "a distant cluster covers more of the view";
+    EXPECT_GT(last.half_extents.y, first.half_extents.y);
+
+    // Orthographic: depth slices are evenly spaced from -near.
+    const glm::mat4 ortho = glm::ortho(-1.0f, 1.0f, -0.75f, 0.75f, z_near, z_far);
+    const auto ortho_first =
+        compute_aabb_for_cluster(z_near, z_far, tile, screen, glm::inverse(ortho), true, dims, glm::uvec3(0, 0, 0));
+    EXPECT_NEAR(ortho_first.max().z, -z_near, 1e-4f);
+    EXPECT_NEAR(ortho_first.min().z, -z_near - (z_far - z_near) / 8.0f, 1e-3f) << "one eighth of the depth range";
+}
+
 }  // namespace
