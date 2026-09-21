@@ -361,7 +361,7 @@ TEST(Cluster, ClusterZConfigAndDecalMatchBevyDefaults) {
 
     const ClusterZConfig z_config{};
     EXPECT_FLOAT_EQ(z_config.first_slice_depth, 5.0f) << "Bevy's Default, not zero";
-    EXPECT_EQ(z_config.far_z_mode, ClusterFarZMode::MaxClusterableObjectRange);
+    EXPECT_EQ(z_config.far_z_mode.kind, ClusterFarZMode::Kind::MaxClusterableObjectRange);
 
     const ClusteredDecal decal{};
     EXPECT_FALSE(decal.base_color_texture.has_value());
@@ -1129,6 +1129,40 @@ TEST(Cluster, ClusterableObjectOrderingAndSphereMatchBevy) {
     const auto sphere = data.sphere();
     EXPECT_EQ(sphere.center, glm::vec3(3.0f, -4.0f, 5.0f));
     EXPECT_FLOAT_EQ(sphere.radius, 2.5f);
+}
+
+/** @brief The cluster configuration's accessors map each strategy to its z
+ *  settings (Bevy `ClusterConfig`'s impl, `cluster/mod.rs:282-311`), and the
+ *  constant far-Z mode carries its value as Bevy's `Constant(f32)` variant does
+ *  (`cluster/mod.rs:49-57`). */
+TEST(Cluster, ClusterConfigAccessorsMatchBevy) {
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::ClusterFarZMode;
+    using epix::pbr::ClusterZConfig;
+
+    const ClusterConfig none{.kind = ClusterConfig::Kind::None};
+    EXPECT_FLOAT_EQ(none.first_slice_depth(), 0.0f) << "no z configuration";
+    EXPECT_EQ(none.far_z_mode().kind, ClusterFarZMode::Kind::Constant);
+    EXPECT_FLOAT_EQ(none.far_z_mode().constant, 0.0f) << "a constant zero far plane when clustering is off";
+    EXPECT_FALSE(none.may_resize_dynamically());
+
+    const ClusterConfig single{.kind = ClusterConfig::Kind::Single};
+    EXPECT_FLOAT_EQ(single.first_slice_depth(), 0.0f);
+    EXPECT_EQ(single.far_z_mode().kind, ClusterFarZMode::Kind::MaxClusterableObjectRange)
+        << "a single cluster reaches the visible range";
+    EXPECT_FALSE(single.may_resize_dynamically());
+
+    ClusterConfig fixed{.kind = ClusterConfig::Kind::FixedZ};
+    fixed.z_config           = ClusterZConfig{.first_slice_depth = 5.0f,
+                                              .far_z_mode = ClusterFarZMode::constant_far(120.0f)};
+    fixed.dynamic_resizing   = true;
+    EXPECT_FLOAT_EQ(fixed.first_slice_depth(), 5.0f) << "from the z configuration";
+    EXPECT_EQ(fixed.far_z_mode().kind, ClusterFarZMode::Kind::Constant);
+    EXPECT_FLOAT_EQ(fixed.far_z_mode().constant, 120.0f) << "the value travels with the mode";
+    EXPECT_TRUE(fixed.may_resize_dynamically());
+
+    const ClusterConfig xyz{.kind = ClusterConfig::Kind::XYZ, .dynamic_resizing = false};
+    EXPECT_FALSE(xyz.may_resize_dynamically()) << "each strategy carries its own setting";
 }
 
 }  // namespace

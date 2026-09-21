@@ -41,13 +41,30 @@ EPIX_EXPORT struct GlobalClusterSettings {
 };
 
 /** @brief How the far Z plane of the furthest depth slice is chosen (Bevy
- *  `ClusterFarZMode`, `cluster/mod.rs:49-57`). */
-EPIX_EXPORT enum class ClusterFarZMode {
-    /** @brief Derive it from the currently visible objects, which uses clusters
-     *  better but costs CPU time and more indices. */
-    MaxClusterableObjectRange,
-    /** @brief A constant far Z. */
-    Constant,
+ *  `ClusterFarZMode`, `cluster/mod.rs:49-57`).
+ *
+ *  Bevy's `Constant` variant carries its value, which a C++ enum cannot, so the
+ *  value lives beside the kind here rather than in `ClusterZConfig`; setting
+ *  `kind` to `Constant` without `constant` leaves a zero far plane. */
+EPIX_EXPORT struct ClusterFarZMode {
+    enum class Kind {
+        /** @brief Derive it from the currently visible objects, which uses
+         *  clusters better but costs CPU time and more indices. */
+        MaxClusterableObjectRange,
+        /** @brief A constant far Z, carried in `constant`. */
+        Constant,
+    } kind = Kind::MaxClusterableObjectRange;
+
+    /** @brief The far Z used when `kind` is `Constant`. */
+    float constant = 0.0f;
+
+    /** @brief Bevy's `ClusterFarZMode::Constant(far)`. */
+    static ClusterFarZMode constant_far(float far_z_value) noexcept {
+        ClusterFarZMode mode;
+        mode.kind     = Kind::Constant;
+        mode.constant = far_z_value;
+        return mode;
+    }
 };
 
 /** @brief The depth-slicing configuration (Bevy `ClusterZConfig`,
@@ -57,9 +74,7 @@ EPIX_EXPORT struct ClusterZConfig {
      *  (`cluster/mod.rs:221-228`). */
     float first_slice_depth = 5.0f;
     /** @brief How the furthest slice's far Z is evaluated. */
-    ClusterFarZMode far_z_mode = ClusterFarZMode::MaxClusterableObjectRange;
-    /** @brief The value used when `far_z_mode` is `Constant`. */
-    float constant_far_z = 0.0f;
+    ClusterFarZMode far_z_mode{};
 };
 
 /** @brief A view's clustering strategy (Bevy `ClusterConfig`,
@@ -88,6 +103,46 @@ EPIX_EXPORT struct ClusterConfig {
     ClusterZConfig z_config{};
     /** @brief Whether X/Y may resize to stay inside the index limit. */
     bool dynamic_resizing = false;
+
+    /** @brief The depth of the first slice, in view space (Bevy
+     *  `ClusterConfig::first_slice_depth`, `cluster/mod.rs:282-289`): zero for
+     *  the strategies that have no z configuration. */
+    float first_slice_depth() const noexcept {
+        switch (kind) {
+            case Kind::None:
+            case Kind::Single: return 0.0f;
+            case Kind::XYZ:
+            case Kind::FixedZ: return z_config.first_slice_depth;
+        }
+        return 0.0f;
+    }
+
+    /** @brief How the furthest slice's far Z is chosen (Bevy
+     *  `ClusterConfig::far_z_mode`, `cluster/mod.rs:291-299`): a constant zero
+     *  when clustering is off, the visible range for a single cluster, otherwise
+     *  the view's own configuration. */
+    ClusterFarZMode far_z_mode() const noexcept {
+        switch (kind) {
+            case Kind::None: return ClusterFarZMode::constant_far(0.0f);
+            case Kind::Single: return ClusterFarZMode{};
+            case Kind::XYZ:
+            case Kind::FixedZ: return z_config.far_z_mode;
+        }
+        return ClusterFarZMode{};
+    }
+
+    /** @brief Whether the view resizes its X/Y clusters to stay inside the index
+     *  limit (Bevy `ClusterConfig::dynamic_resizing`, `cluster/mod.rs:301-311`);
+     *  false for the strategies that have no such setting. */
+    bool may_resize_dynamically() const noexcept {
+        switch (kind) {
+            case Kind::None:
+            case Kind::Single: return false;
+            case Kind::XYZ:
+            case Kind::FixedZ: return dynamic_resizing;
+        }
+        return false;
+    }
 };
 
 /** @brief The number of each kind of clusterable object in one cluster (Bevy
