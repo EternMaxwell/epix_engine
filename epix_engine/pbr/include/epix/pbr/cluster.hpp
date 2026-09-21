@@ -301,5 +301,161 @@ EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word
     return word | (index << (8 * uniform_index_lists_sub_index(n_indices)));
 }
 
+/** @brief The uniform form of a view's cluster index list (Bevy
+ *  `GpuClusterableObjectIndexListsUniform`, `cluster.rs:557-560`). Its elements
+ *  are `uvec4`s because every array in a std140 layout is 16-byte aligned, which
+ *  is what the index packing above assumes. */
+EPIX_EXPORT struct GpuClusterableObjectIndexListsUniform {
+    std::array<glm::uvec4, VIEW_CLUSTER_MAX_UNIFORM_ITEMS> data{};
+};
+
+/** @brief The uniform form of a view's cluster offsets and counts (Bevy
+ *  `GpuClusterOffsetsAndCountsUniform`, `cluster.rs:113-116`), with the same
+ *  `uvec4` element rule. */
+EPIX_EXPORT struct GpuClusterOffsetsAndCountsUniform {
+    std::array<glm::uvec4, VIEW_CLUSTER_MAX_UNIFORM_ITEMS> data{};
+};
+
+}  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+template <>
+struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectIndexListsUniform>
+    : RawShaderType<::epix::pbr::GpuClusterableObjectIndexListsUniform> {};
+template <>
+struct ShaderTypeInfo<::epix::pbr::GpuClusterOffsetsAndCountsUniform>
+    : RawShaderType<::epix::pbr::GpuClusterOffsetsAndCountsUniform> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief A view's cluster buffers in the uniform form (Bevy
+ *  `ViewClusterBuffers::Uniform`, `cluster.rs:512-517`). */
+EPIX_EXPORT struct ViewClusterBuffersUniform {
+    render::render_resource::UniformBuffer<GpuClusterableObjectIndexListsUniform> clusterable_object_index_lists;
+    render::render_resource::UniformBuffer<GpuClusterOffsetsAndCountsUniform> cluster_offsets_and_counts;
+};
+
+/** @brief A view's cluster buffers in the storage form (Bevy
+ *  `ViewClusterBuffers::Storage`, `cluster.rs:519-524`). */
+EPIX_EXPORT struct ViewClusterBuffersStorage {
+    render::render_resource::StorageBuffer<GpuClusterableObjectIndexListsStorage> clusterable_object_index_lists;
+    render::render_resource::StorageBuffer<GpuClusterOffsetsAndCountsStorage> cluster_offsets_and_counts;
+};
+
+/** @brief A view's cluster buffers, in whichever form the device supports (Bevy
+ *  `ViewClusterBuffers`, `cluster.rs:504-525`). */
+EPIX_EXPORT struct ViewClusterBuffers {
+    std::variant<ViewClusterBuffersUniform, ViewClusterBuffersStorage> buffers;
+
+    /** @brief The form the device supports. */
+    static ViewClusterBuffers from_binding_type(wgpu::BufferBindingType binding_type) {
+        if (binding_type == wgpu::BufferBindingType::eUniform) return uniform();
+        return storage();
+    }
+    static ViewClusterBuffers uniform() { return ViewClusterBuffers{.buffers = ViewClusterBuffersUniform{}}; }
+    static ViewClusterBuffers storage() { return ViewClusterBuffers{.buffers = ViewClusterBuffersStorage{}}; }
+};
+
+/** @brief One view's cluster bindings: the two cluster buffers plus the counts of
+ *  what has been written into them (Bevy `ViewClusterBindings`,
+ *  `cluster.rs:147-151` and its `impl` at `:338-502`).
+ *
+ *  `push_offset_and_counts` and `push_index` are where the two forms diverge: the
+ *  uniform form packs into preallocated `uvec4` arrays and drops an offset that
+ *  would overrun the array (Bevy warns and returns, leaving the count untouched),
+ *  while the storage form appends to its vectors and has no bound. Both are
+ *  CPU-side, so they are verifiable without a device. */
+EPIX_EXPORT struct ViewClusterBindings {
+    std::size_t n_indices = 0;
+    std::size_t n_offsets = 0;
+    ViewClusterBuffers buffers;
+
+    ViewClusterBindings() = default;
+    explicit ViewClusterBindings(wgpu::BufferBindingType binding_type)
+        : buffers(ViewClusterBuffers::from_binding_type(binding_type)) {}
+
+    /** @brief Zero the buffers, keeping their allocation (Bevy
+     *  `ViewClusterBindings::clear`, `cluster.rs:351-370`). */
+    void clear() {
+        if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
+            uniform->clusterable_object_index_lists.get_mut().data = {};
+            uniform->cluster_offsets_and_counts.get_mut().data    = {};
+            return;
+        }
+        auto& storage = std::get<ViewClusterBuffersStorage>(buffers.buffers);
+        storage.clusterable_object_index_lists.get_mut().data.clear();
+        storage.cluster_offsets_and_counts.get_mut().data.clear();
+    }
+
+    /** @brief Record one cluster's offset and counts (Bevy
+     *  `ViewClusterBindings::push_offset_and_counts`, `cluster.rs:372-406`). */
+    void push_offset_and_counts(std::size_t offset, const ClusterableObjectCounts& counts) {
+        if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
+            const std::size_t array_index = uniform_offsets_array_index(n_offsets);
+            if (array_index >= VIEW_CLUSTER_MAX_UNIFORM_ITEMS) return;  // Bevy warns and returns here
+            const std::size_t component = uniform_offsets_component(n_offsets);
+            uniform->cluster_offsets_and_counts.get_mut().data[array_index][component] =
+                pack_offset_and_counts(offset, counts.point_lights, counts.spot_lights);
+        } else {
+            auto& storage = std::get<ViewClusterBuffersStorage>(buffers.buffers);
+            storage.cluster_offsets_and_counts.get_mut().data.push_back(
+                pack_cluster_offsets_and_counts_storage(offset, counts));
+        }
+        ++n_offsets;
+    }
+
+    /** @brief Record one clusterable object index (Bevy
+     *  `ViewClusterBindings::push_index`, `cluster.rs:412-438`). Bevy does not
+     *  bound this one, so neither does this. */
+    void push_index(std::size_t index) {
+        if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
+            const std::size_t array_index = uniform_index_lists_array_index(n_indices);
+            const std::size_t component   = uniform_index_lists_component(n_indices);
+            auto& word                    = uniform->clusterable_object_index_lists.get_mut().data[array_index][component];
+            word = pack_index_into_uniform_word(word, n_indices, static_cast<std::uint32_t>(index));
+        } else {
+            std::get<ViewClusterBuffersStorage>(buffers.buffers)
+                .clusterable_object_index_lists.get_mut()
+                .data.push_back(static_cast<std::uint32_t>(index));
+        }
+        ++n_indices;
+    }
+
+    /** @brief The number of indices pushed (Bevy `n_indices`). */
+    std::size_t indices_count() const noexcept { return n_indices; }
+    /** @brief The number of offsets pushed (Bevy `n_offsets`). */
+    std::size_t offsets_count() const noexcept { return n_offsets; }
+
+    /** @brief Upload both cluster buffers (Bevy
+     *  `ViewClusterBindings::write_buffers`, `cluster.rs:440-457`). */
+    void write_buffers(const wgpu::Device& device, const wgpu::Queue& queue) {
+        if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
+            uniform->clusterable_object_index_lists.write_buffer(device, queue);
+            uniform->cluster_offsets_and_counts.write_buffer(device, queue);
+            return;
+        }
+        auto& storage = std::get<ViewClusterBuffersStorage>(buffers.buffers);
+        storage.clusterable_object_index_lists.write_buffer(device, queue);
+        storage.cluster_offsets_and_counts.write_buffer(device, queue);
+    }
+
+    /** @brief The index list buffer, once written (Bevy
+     *  `clusterable_object_index_lists_binding`, `cluster.rs:459-470`). */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> clusterable_object_index_lists_binding() const {
+        if (const auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers))
+            return uniform->clusterable_object_index_lists.binding();
+        return std::get<ViewClusterBuffersStorage>(buffers.buffers).clusterable_object_index_lists.binding();
+    }
+
+    /** @brief The offsets and counts buffer, once written (Bevy
+     *  `offsets_and_counts_binding`, `cluster.rs:472-483`). */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> offsets_and_counts_binding() const {
+        if (const auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers))
+            return uniform->cluster_offsets_and_counts.binding();
+        return std::get<ViewClusterBuffersStorage>(buffers.buffers).cluster_offsets_and_counts.binding();
+    }
+};
+
 }  // namespace epix::pbr
 

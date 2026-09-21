@@ -594,4 +594,61 @@ TEST(Cluster, UniformIndexListPacksFourIndicesPerWord) {
     EXPECT_LT(uniform_index_lists_array_index(last), 4096u) << "1024 uvec4s hold 16384 indices";
 }
 
+/** @brief A view's cluster bindings write the packed data the two shader forms
+ *  expect, and the uniform form drops an offset that would overrun its array
+ *  (Bevy `ViewClusterBindings`, `bevy_pbr/src/cluster.rs:338-457`). */
+TEST(Cluster, ViewClusterBindingsPackBothForms) {
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::pack_offset_and_counts;
+    using epix::pbr::ViewClusterBindings;
+    using epix::pbr::ViewClusterBuffersStorage;
+    using epix::pbr::ViewClusterBuffersUniform;
+    using epix::pbr::VIEW_CLUSTER_MAX_UNIFORM_ITEMS;
+
+    ClusterableObjectCounts counts{};
+    counts.point_lights = 3;
+    counts.spot_lights  = 7;
+
+    // The uniform form packs into the preallocated uvec4 arrays.
+    ViewClusterBindings uniform_bindings{wgpu::BufferBindingType::eUniform};
+    ASSERT_TRUE(std::holds_alternative<ViewClusterBuffersUniform>(uniform_bindings.buffers.buffers));
+    uniform_bindings.push_offset_and_counts(5, counts);
+    EXPECT_EQ(uniform_bindings.offsets_count(), 1u);
+    auto& uniform = std::get<ViewClusterBuffersUniform>(uniform_bindings.buffers.buffers);
+    EXPECT_EQ(uniform.cluster_offsets_and_counts.get().data[0][0], pack_offset_and_counts(5, 3, 7));
+
+    uniform_bindings.push_index(0x11);
+    uniform_bindings.push_index(0x22);
+    EXPECT_EQ(uniform_bindings.indices_count(), 2u);
+    EXPECT_EQ(uniform.clusterable_object_index_lists.get().data[0][0], 0x00002211u);
+
+    // An offset past the array is dropped, as Bevy warns and returns.
+    ViewClusterBindings full{wgpu::BufferBindingType::eUniform};
+    for (std::size_t i = 0; i < VIEW_CLUSTER_MAX_UNIFORM_ITEMS * 4; ++i) full.push_offset_and_counts(i, counts);
+    EXPECT_EQ(full.offsets_count(), VIEW_CLUSTER_MAX_UNIFORM_ITEMS * 4);
+    full.push_offset_and_counts(999, counts);
+    EXPECT_EQ(full.offsets_count(), VIEW_CLUSTER_MAX_UNIFORM_ITEMS * 4) << "the overrunning offset is not counted";
+
+    // The storage form appends and has no bound.
+    ViewClusterBindings storage_bindings{wgpu::BufferBindingType::eStorage};
+    ASSERT_TRUE(std::holds_alternative<ViewClusterBuffersStorage>(storage_bindings.buffers.buffers));
+    storage_bindings.push_offset_and_counts(9, counts);
+    storage_bindings.push_index(0x33);
+    auto& storage = std::get<ViewClusterBuffersStorage>(storage_bindings.buffers.buffers);
+    ASSERT_EQ(storage.cluster_offsets_and_counts.get().data.size(), 1u);
+    EXPECT_EQ(storage.cluster_offsets_and_counts.get().data[0][0], glm::uvec4(9u, 3u, 7u, 0u));
+    ASSERT_EQ(storage.clusterable_object_index_lists.get().data.size(), 1u);
+    EXPECT_EQ(storage.clusterable_object_index_lists.get().data[0], 0x33u);
+
+    // Clear zeroes the uniform arrays and empties the vectors.
+    uniform_bindings.clear();
+    EXPECT_EQ(uniform.cluster_offsets_and_counts.get().data[0], glm::uvec4(0u)) << "clear zeroes the array";
+    storage_bindings.clear();
+    EXPECT_TRUE(storage.cluster_offsets_and_counts.get().data.empty());
+
+    // Nothing has been uploaded, so nothing is bindable.
+    EXPECT_FALSE(uniform_bindings.clusterable_object_index_lists_binding().has_value());
+    EXPECT_FALSE(storage_bindings.offsets_and_counts_binding().has_value());
+}
+
 }  // namespace
