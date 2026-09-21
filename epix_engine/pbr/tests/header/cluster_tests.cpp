@@ -1,6 +1,7 @@
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/light_cluster.hpp>
+#include <epix/pbr/point_light.hpp>
 #include <gtest/gtest.h>
 #include <cstdint>
 #include <vector>
@@ -117,6 +118,31 @@ TEST(Cluster, AmbientLightMatchesBevyDefaults) {
     EXPECT_FLOAT_EQ(none.brightness, 0.0f) << "Bevy's NONE is the default with zero brightness";
     EXPECT_EQ(none.color, global.color);
     EXPECT_TRUE(none.affects_lightmapped_meshes);
+}
+
+/** @brief `PointLight` carries Bevy's defaults: white, a very large cinema
+ *  light's luminous power, a range of 20, no radius, shadows off, diffuse
+ *  lightmapped contribution on, and Bevy's three shadow constants
+ *  (`bevy_light/src/point_light.rs:128-150`). */
+TEST(Cluster, PointLightMatchesBevyDefaults) {
+    using epix::pbr::PointLight;
+    using epix::pbr::PointLightShadowMap;
+    using epix::pbr::VERY_LARGE_CINEMA_LIGHT;
+
+    const PointLight light{};
+    EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
+    EXPECT_FLOAT_EQ(light.intensity, VERY_LARGE_CINEMA_LIGHT);
+    EXPECT_FLOAT_EQ(light.intensity, 1'000'000.0f);
+    EXPECT_FLOAT_EQ(light.range, 20.0f);
+    EXPECT_FLOAT_EQ(light.radius, 0.0f);
+    EXPECT_FALSE(light.shadows_enabled);
+    EXPECT_TRUE(light.affects_lightmapped_mesh_diffuse);
+    EXPECT_FLOAT_EQ(light.shadow_depth_bias, PointLight::DEFAULT_SHADOW_DEPTH_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_normal_bias, PointLight::DEFAULT_SHADOW_NORMAL_BIAS);
+    EXPECT_FLOAT_EQ(light.shadow_map_near_z, PointLight::DEFAULT_SHADOW_MAP_NEAR_Z);
+
+    const PointLightShadowMap shadow_map{};
+    EXPECT_EQ(shadow_map.size, 1024u) << "each of the six cubemap faces";
 }
 
 }  // namespace
