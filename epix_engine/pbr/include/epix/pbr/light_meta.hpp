@@ -96,6 +96,50 @@ EPIX_EXPORT inline AmbientLight resolve_ambient_light(const AmbientLight* camera
                         .affects_lightmapped_meshes = global.affects_lightmapped_meshes};
 }
 
+/** @brief A point light's shadow map is a cubemap, so it takes six layers (Bevy
+ *  `render/light.rs:1278`, which spawns one view per face). */
+EPIX_EXPORT inline constexpr std::size_t POINT_LIGHT_CUBE_FACE_COUNT = 6;
+
+/** @brief How many layers the point-light shadow texture needs (Bevy
+ *  `render/light.rs:1030`): six per shadow-casting point light, and at least one
+ *  cubemap even when nothing casts, because the texture is created regardless. */
+EPIX_EXPORT inline std::uint32_t point_light_shadow_texture_layers(std::size_t point_light_shadow_maps_count) {
+    return static_cast<std::uint32_t>(std::max<std::size_t>(point_light_shadow_maps_count, 1) *
+                                      POINT_LIGHT_CUBE_FACE_COUNT);
+}
+
+/** @brief How many layers the directional shadow texture needs (Bevy
+ *  `render/light.rs:1080-1082`): the directional cascades plus the spot-light
+ *  shadow maps, again at least one.
+ *
+ *  The two share this single array - which is why a spot light's shadow map index
+ *  is offset by the cascade count rather than starting at zero - and the spot
+ *  count is already capped by the layers left over after the cascades. */
+EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_layers(std::size_t num_directional_cascades_enabled,
+                                                                        std::size_t spot_light_shadow_maps_count) {
+    return static_cast<std::uint32_t>(
+        std::max<std::size_t>(num_directional_cascades_enabled + spot_light_shadow_maps_count, 1));
+}
+
+/** @brief The side of the directional shadow map texture (Bevy
+ *  `render/light.rs:1076-1079`): the configured size clamped to the device's
+ *  maximum 2D dimension, so an oversized request degrades rather than failing.
+ *  A point light's is not clamped separately, since its cubemap faces are the
+ *  same size. */
+EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_size(std::size_t shadow_map_size,
+                                                                      std::size_t max_texture_dimension_2d) {
+    return static_cast<std::uint32_t>(std::min(shadow_map_size, max_texture_dimension_2d));
+}
+
+/** @brief How many point lights get shadow maps (Bevy `render/light.rs:1250-1253`):
+ *  the first `point_light_count` in the sorted list, capped by the device's
+ *  cubemap count. The lights are sorted shadow-casting first, so the cap keeps the
+ *  ones that matter, and each of these gets `POINT_LIGHT_CUBE_FACE_COUNT` views. */
+EPIX_EXPORT inline std::size_t point_light_shadow_view_count(std::size_t point_light_count,
+                                                            std::size_t max_texture_cubes) {
+    return std::min(point_light_count, max_texture_cubes);
+}
+
 /** @brief What a shadow view belongs to (Bevy `LightEntity`,
  *  `light.rs:690-703`): a directional light's cascade, a point light's cubemap
  *  face, or a spot light. */

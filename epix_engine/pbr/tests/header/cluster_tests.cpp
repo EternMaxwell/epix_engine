@@ -2141,4 +2141,43 @@ TEST(Cluster, AmbientResolutionAndShadowViewMatchBevy) {
         << "a depth attachment without a clear value does not clear";
 }
 
+/** @brief The shadow textures are budgeted from the device's limits, the point
+ *  one being a cubemap array and the directional one shared with the spot shadow
+ *  maps (Bevy `render/light.rs:1030,1076-1082,1250-1253`). */
+TEST(Cluster, ShadowTextureBudgetsMatchBevy) {
+    using epix::pbr::directional_light_shadow_texture_layers;
+    using epix::pbr::directional_light_shadow_texture_size;
+    using epix::pbr::point_light_shadow_texture_layers;
+    using epix::pbr::point_light_shadow_view_count;
+    using epix::pbr::POINT_LIGHT_CUBE_FACE_COUNT;
+
+    EXPECT_EQ(POINT_LIGHT_CUBE_FACE_COUNT, 6u);
+
+    // A point light's shadow map is a cubemap: six layers each.
+    EXPECT_EQ(point_light_shadow_texture_layers(0), 6u) << "at least one cubemap, even with nothing casting";
+    EXPECT_EQ(point_light_shadow_texture_layers(1), 6u);
+    EXPECT_EQ(point_light_shadow_texture_layers(4), 24u);
+    EXPECT_EQ(point_light_shadow_texture_layers(10), 60u);
+
+    // The directional array holds the cascades and the spot shadow maps together,
+    // because they share one texture.
+    EXPECT_EQ(directional_light_shadow_texture_layers(0, 0), 1u) << "at least one layer";
+    EXPECT_EQ(directional_light_shadow_texture_layers(4, 0), 4u);
+    EXPECT_EQ(directional_light_shadow_texture_layers(4, 3), 7u);
+    EXPECT_EQ(directional_light_shadow_texture_layers(1, 1), 2u);
+
+    // The directional size is clamped to the device; a point light's faces are
+    // the same size and are not clamped by this path.
+    EXPECT_EQ(directional_light_shadow_texture_size(2048, 8192), 2048u) << "under the limit, unchanged";
+    EXPECT_EQ(directional_light_shadow_texture_size(2048, 1024), 1024u) << "oversized requests degrade";
+    EXPECT_EQ(directional_light_shadow_texture_size(4096, 4096), 4096u) << "exactly at the limit";
+    EXPECT_EQ(directional_light_shadow_texture_size(64, 1024), 64u) << "the power-of-two floor still applies";
+
+    // Only as many point lights get shadow maps as the device has cubemaps.
+    EXPECT_EQ(point_light_shadow_view_count(3, 8), 3u);
+    EXPECT_EQ(point_light_shadow_view_count(20, 8), 8u) << "capped by the device's cubemaps";
+    EXPECT_EQ(point_light_shadow_view_count(0, 8), 0u);
+    EXPECT_EQ(point_light_shadow_view_count(3, 0), 0u) << "a device with no cubemaps allocates no views";
+}
+
 }  // namespace
