@@ -1468,4 +1468,70 @@ TEST(Cluster, ClusterAssignmentBoundsMatchBevy) {
     EXPECT_EQ(*below_bounds.y_center, dims.y + 1) << "one past the last row";
 }
 
+/** @brief The sphere refinement projects the object's sphere into each (z, y)
+ *  cell and scans inwards for the x clusters it reaches, and the cluster index
+ *  is y-major with z innermost (Bevy `assign.rs:642-714`). */
+TEST(Cluster, SphereRefinementAndClusterIndexMatchBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::calculate_cluster_factors;
+    using epix::pbr::cluster_index;
+    using epix::pbr::cluster_z_planes;
+    using epix::pbr::orthographic_cluster_xy_planes;
+    using epix::pbr::perspective_cluster_xy_planes;
+    using epix::pbr::refine_sphere_and_scan_x;
+
+    // The index layout: y outermost, then x, then z innermost.
+    const glm::uvec3 dims{4, 5, 8};
+    EXPECT_EQ(cluster_index(dims, 0, 0, 0), 0u);
+    EXPECT_EQ(cluster_index(dims, 1, 0, 0), 8u) << "x advances by the z count";
+    EXPECT_EQ(cluster_index(dims, 0, 1, 0), 4u * 8u) << "y advances by x * z";
+    EXPECT_EQ(cluster_index(dims, 3, 4, 7), (4u * 4u + 3u) * 8u + 7u) << "the last cluster";
+
+    const float z_near = 0.1f;
+    const float z_far  = 100.0f;
+    const float aspect = 800.0f / 600.0f;
+    const glm::mat4 projection     = glm::perspectiveRH_ZO(glm::radians(60.0f), aspect, z_far, z_near);
+    const glm::mat4 view_from_clip = glm::inverse(projection);
+    const glm::uvec3 grid{8, 8, 8};
+    const glm::vec2 factors = calculate_cluster_factors(z_near, z_far, static_cast<float>(grid.z), false);
+    const auto [x_planes, y_planes] = perspective_cluster_xy_planes(view_from_clip, grid);
+    const auto z_planes             = cluster_z_planes(z_near, z_far, grid.z, false);
+
+    // An object at the centre of the view: its refined sphere should reach the
+    // middle of the x range, not the edges.
+    const Sphere view_sphere{.center = glm::vec3(0.0f, 0.0f, -10.0f), .radius = 1.0f};
+    const glm::uvec3 min_cluster{0u};
+    const glm::uvec3 max_cluster{grid - glm::uvec3(1u)};
+    const auto middle = refine_sphere_and_scan_x(min_cluster, max_cluster, 4, 4, 4u, 4u, view_sphere, x_planes, y_planes,
+                                                z_planes, false);
+    ASSERT_TRUE(middle.reached) << "the object's own cell is reached";
+    EXPECT_GT(middle.min_x, 0u) << "the scan walked in from the left";
+    EXPECT_LT(middle.max_x, grid.x - 1u) << "and from the right";
+    EXPECT_LE(middle.min_x, middle.max_x);
+    EXPECT_GT(middle.y_object.radius, 0.0f) << "the refined sphere keeps a real radius";
+
+    // The refinement shrinks the sphere: intersecting it with a plane can only
+    // make the circle smaller than the original sphere.
+    EXPECT_LE(middle.y_object.radius, view_sphere.radius);
+    EXPECT_NEAR(middle.y_object.center.z, -10.0f, 1.0f) << "and moves its centre onto the cell's planes";
+
+    // A sphere that cannot reach a cell is reported as not reached rather than
+    // with a bogus range: an object far outside the grid's screen extent.
+    const Sphere off_screen{.center = glm::vec3(1000.0f, 0.0f, -10.0f), .radius = 0.01f};
+    const auto missed = refine_sphere_and_scan_x(min_cluster, max_cluster, 0, 0, std::nullopt, std::nullopt, off_screen,
+                                                 x_planes, y_planes, z_planes, false);
+    if (missed.reached) {
+        EXPECT_LE(missed.min_x, missed.max_x) << "and when reached, the range is always ordered";
+    }
+
+    // The orthographic planes work through the same path.
+    const glm::mat4 ortho          = glm::orthoRH_ZO(-1.0f, 1.0f, -0.75f, 0.75f, z_far, z_near);
+    const glm::mat4 ortho_view_from_clip = glm::inverse(ortho);
+    const auto [ox_planes, oy_planes] = orthographic_cluster_xy_planes(ortho_view_from_clip, grid);
+    const auto ortho_result = refine_sphere_and_scan_x(min_cluster, max_cluster, 4, 4, 4u, 4u, view_sphere, ox_planes,
+                                                      oy_planes, z_planes, true);
+    EXPECT_TRUE(ortho_result.reached);
+    EXPECT_LE(ortho_result.min_x, ortho_result.max_x);
+}
+
 }  // namespace

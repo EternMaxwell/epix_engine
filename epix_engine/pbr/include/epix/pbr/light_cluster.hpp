@@ -834,6 +834,88 @@ EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(
     return bounds;
 }
 
+/** @brief The cluster index a (x, y, z) coordinate maps to (Bevy's
+ *  `(y * dimensions.x + min_x) * dimensions.z + z`, `assign.rs:712-714`): y
+ *  outermost, then x, then z innermost. */
+EPIX_EXPORT inline std::size_t cluster_index(glm::uvec3 dimensions, std::uint32_t x, std::uint32_t y,
+                                             std::uint32_t z) noexcept {
+    return (static_cast<std::size_t>(y) * dimensions.x + x) * dimensions.z + z;
+}
+
+/** @brief What one (z, y) pair of the refinement contributes (Bevy
+ *  `assign_objects_to_clusters`'s inner loops, `assign.rs:642-711`). */
+EPIX_EXPORT struct ClusterXRange {
+    /** @brief False when the refined sphere misses this z slice or y row
+     *  entirely, in which case the x range is meaningless. */
+    bool reached = false;
+    /** @brief The first and last x clusters the refined sphere reaches. */
+    std::uint32_t min_x = 0;
+    std::uint32_t max_x = 0;
+    /** @brief The sphere after both refinements; this is the sphere the x scan
+     *  tests against. */
+    camera::Sphere y_object{};
+};
+
+/** @brief Refine the object's view-space sphere into one (z, y) cell and scan
+ *  for the x clusters it reaches (Bevy `assign.rs:642-711`).
+ *
+ *  This is the Iterative Sphere Refinement of Persson et al, *Practical
+ *  Clustered Shading* (Just Cause 3), which Bevy cites here. The z and y steps
+ *  each intersect the sphere with the plane of the cell it is entering and take
+ *  the *circle* of intersection as the new sphere: the plane nearer the object
+ *  has the larger circle, so when the object's centre is beyond the cell the
+ *  nearer plane of the pair is used. The refinement matters because a sphere
+ *  under perspective is not a sphere - it stretches and warps - so assuming its
+ *  widest projection is centre-plus-radius is wrong.
+ *
+ *  The x scan then walks inwards from both ends of the object's cluster range,
+ *  stopping at the first plane the refined sphere actually reaches on each side
+ *  (`distance + radius > 0`). */
+EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(
+    glm::uvec3 min_cluster, glm::uvec3 max_cluster, std::uint32_t z, std::uint32_t y,
+    const std::optional<std::uint32_t>& z_center, const std::optional<std::uint32_t>& y_center,
+    const camera::Sphere& view_sphere, const std::vector<camera::HalfSpace>& x_planes,
+    const std::vector<camera::HalfSpace>& y_planes, const std::vector<camera::HalfSpace>& z_planes,
+    bool is_orthographic) {
+    ClusterXRange range;
+
+    camera::Sphere z_object = view_sphere;
+    if (!z_center.has_value() || z != *z_center) {
+        // The nearer plane of the pair has the larger intersection circle.
+        const std::size_t plane_index = (z_center.has_value() && z < *z_center) ? z + 1 : z;
+        const auto projected          = project_to_plane_z(z_object, z_planes[plane_index]);
+        if (!projected.has_value()) return range;
+        z_object = *projected;
+    }
+
+    camera::Sphere y_object = z_object;
+    if (!y_center.has_value() || y != *y_center) {
+        const std::size_t plane_index = (y_center.has_value() && y < *y_center) ? y + 1 : y;
+        const auto projected = project_to_plane_y(y_object, y_planes[plane_index], is_orthographic);
+        if (!projected.has_value()) return range;
+        y_object = *projected;
+    }
+
+    // Walk in from the left while the sphere does not reach the next plane.
+    std::uint32_t min_x = min_cluster.x;
+    while (min_x < max_cluster.x &&
+           -get_distance_x(x_planes[min_x + 1], y_object.center, is_orthographic) + y_object.radius <= 0.0f) {
+        ++min_x;
+    }
+    // And in from the right.
+    std::uint32_t max_x = max_cluster.x;
+    while (max_x > min_x &&
+           get_distance_x(x_planes[max_x], y_object.center, is_orthographic) + y_object.radius <= 0.0f) {
+        --max_x;
+    }
+
+    range.reached = true;
+    range.min_x   = min_x;
+    range.max_x   = max_x;
+    range.y_object = y_object;
+    return range;
+}
+
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */
 EPIX_EXPORT struct GlobalVisibleClusterableObjects {
