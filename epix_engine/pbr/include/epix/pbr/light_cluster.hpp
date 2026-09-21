@@ -14,6 +14,7 @@
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <optional>
+#include <tuple>
 #include <unordered_set>
 #include <vector>
 #include <epix/common.hpp>
@@ -404,6 +405,76 @@ EPIX_EXPORT inline std::pair<glm::vec3, glm::vec3> cluster_space_clusterable_obj
     const glm::vec2 clamped_max = glm::clamp(glm::vec2(ndc_max), glm::vec2(-1.0f), glm::vec2(1.0f));
     return {glm::vec3(clamped_min, view_min.z), glm::vec3(clamped_max, view_max.z)};
 }
+
+/** @brief What kind of clusterable object this is, with the type-specific data
+ *  the assignment needs (Bevy `ClusterableObjectType`,
+ *  `bevy_light/src/cluster/assign.rs:57-95`). */
+EPIX_EXPORT struct ClusterableObjectType {
+    enum class Kind {
+        PointLight,
+        SpotLight,
+        ReflectionProbe,
+        IrradianceVolume,
+        Decal,
+    } kind = Kind::PointLight;
+
+    /** @brief Whether this light casts shadows; used for sorting the light
+     *  list. */
+    bool shadows_enabled = false;
+    /** @brief Whether this light interacts with volumetrics; also used for
+     *  sorting. */
+    bool volumetric = false;
+    /** @brief The outer angle of a spot light's cone, in radians. */
+    float outer_angle = 0.0f;
+
+    /** @brief The sort key that decides the order indices to clusterable objects
+     *  are stored in the offsets and counts list (Bevy
+     *  `ClusterableObjectType::ordering`, `assign.rs:105-120`).
+     *
+     *  Bevy sorts first by type - point lights, then spot lights, then
+     *  reflection probes, irradiance volumes and decals - and then, for lights,
+     *  by whether shadows are enabled and whether volumetrics are, both
+     *  *enabled first*. The booleans are therefore negated: ascending order puts
+     *  `false` first, so `!shadows_enabled` is what makes a shadow-casting light
+     *  sort before one that does not cast. Inverting either negation reverses
+     *  the light list. */
+    std::tuple<std::uint8_t, bool, bool> ordering() const noexcept {
+        switch (kind) {
+            case Kind::PointLight: return {0u, !shadows_enabled, !volumetric};
+            case Kind::SpotLight: return {1u, !shadows_enabled, !volumetric};
+            case Kind::ReflectionProbe: return {2u, false, false};
+            case Kind::IrradianceVolume: return {3u, false, false};
+            case Kind::Decal: return {4u, false, false};
+        }
+        return {0u, false, false};
+    }
+};
+
+/** @brief One clusterable object, ready to be assigned to clusters (Bevy
+ *  `ClusterableObjectAssignmentData`, `assign.rs:35-52`).
+ *
+ *  Bevy stores the entity's `GlobalTransform`, though only its translation is
+ *  ever used for the sphere - its own TODO notes that scale is ignored; the
+ *  transform is kept because a spot light's direction comes from it. */
+EPIX_EXPORT struct ClusterableObjectAssignmentData {
+    ecs::Entity entity{};
+    /** @brief The object's global transform. Only the translation is used for the
+     *  sphere; Bevy reconstructs a point light's transform from its translation
+     *  alone, which is noted there as a TODO about ignoring scale. */
+    glm::mat4 transform{1.0f};
+    /** @brief The object's range, which becomes the sphere's radius. */
+    float range = 0.0f;
+    ClusterableObjectType object_type{};
+    /** @brief The render layers the object is visible through. */
+    std::uint32_t render_layers = 0;
+
+    /** @brief The sphere the object occupies (Bevy
+     *  `ClusterableObjectAssignmentData::sphere`, `assign.rs:45-52`): centred on
+     *  the transform's translation, with the range as its radius. */
+    camera::Sphere sphere() const {
+        return camera::Sphere{.center = glm::vec3(transform[3]), .radius = range};
+    }
+};
 
 /** @brief The clusterable objects visible to any view (Bevy
  *  `GlobalVisibleClusterableObjects`, `cluster/mod.rs:126-128`). */

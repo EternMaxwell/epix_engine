@@ -1085,4 +1085,50 @@ TEST(Cluster, ClusterSpaceClusterableObjectAabbMatchesBevy) {
     EXPECT_NEAR(wider.second.y - wider.first.y, bounds.second.y - bounds.first.y, 1e-3f);
 }
 
+/** @brief The assignment ordering sorts by type and then puts shadow-casting and
+ *  volumetric lights first, which the negated booleans achieve (Bevy
+ *  `ClusterableObjectType::ordering`,
+ *  `bevy_light/src/cluster/assign.rs:105-120`), and an object's sphere is its
+ *  translation with the range as radius (`assign.rs:45-52`). */
+TEST(Cluster, ClusterableObjectOrderingAndSphereMatchBevy) {
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::ClusterableObjectType;
+
+    const ClusterableObjectType point_shadowy{.kind = ClusterableObjectType::Kind::PointLight,
+                                              .shadows_enabled = true,
+                                              .volumetric = true};
+    const ClusterableObjectType point_plain{.kind = ClusterableObjectType::Kind::PointLight};
+    const ClusterableObjectType spot{.kind = ClusterableObjectType::Kind::SpotLight};
+    const ClusterableObjectType probe{.kind = ClusterableObjectType::Kind::ReflectionProbe};
+    const ClusterableObjectType volume{.kind = ClusterableObjectType::Kind::IrradianceVolume};
+    const ClusterableObjectType decal{.kind = ClusterableObjectType::Kind::Decal};
+
+    // Type codes, in Bevy's order.
+    EXPECT_EQ(std::get<0>(point_shadowy.ordering()), 0u);
+    EXPECT_EQ(std::get<0>(spot.ordering()), 1u);
+    EXPECT_EQ(std::get<0>(probe.ordering()), 2u);
+    EXPECT_EQ(std::get<0>(volume.ordering()), 3u);
+    EXPECT_EQ(std::get<0>(decal.ordering()), 4u);
+
+    // The booleans are negated so that ascending order puts enabled first.
+    EXPECT_EQ(std::get<1>(point_shadowy.ordering()), false) << "a shadow-casting light sorts before a plain one";
+    EXPECT_EQ(std::get<1>(point_plain.ordering()), true);
+    EXPECT_EQ(std::get<2>(point_shadowy.ordering()), false) << "and a volumetric one before a non-volumetric one";
+    EXPECT_EQ(std::get<2>(point_plain.ordering()), true);
+    EXPECT_LT(point_shadowy.ordering(), point_plain.ordering()) << "which is what the negation buys";
+    EXPECT_LT(point_plain.ordering(), spot.ordering()) << "point lights come before spot lights";
+    EXPECT_LT(spot.ordering(), probe.ordering());
+    EXPECT_LT(probe.ordering(), decal.ordering());
+    // Non-lights carry no shadow or volumetric distinction.
+    EXPECT_EQ(probe.ordering(), std::make_tuple(std::uint8_t{2}, false, false));
+
+    // The sphere comes from the transform's translation and the range.
+    ClusterableObjectAssignmentData data;
+    data.transform = glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, -4.0f, 5.0f));
+    data.range     = 2.5f;
+    const auto sphere = data.sphere();
+    EXPECT_EQ(sphere.center, glm::vec3(3.0f, -4.0f, 5.0f));
+    EXPECT_FLOAT_EQ(sphere.radius, 2.5f);
+}
+
 }  // namespace
