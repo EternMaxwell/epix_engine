@@ -288,4 +288,33 @@ TEST(Cluster, EnvironmentMapLightMatchesBevyDefaults) {
     static_cast<void>(probe);
 }
 
+/** @brief The remaining probe components carry Bevy's defaults
+ *  (`bevy_light/src/probe.rs:116-221`): a runtime-filtered environment map with
+ *  no intensity, an atmosphere environment light at intensity 1 whose cubemap is
+ *  512 square, and an irradiance volume with no intensity whose flag is spelled
+ *  `affects_lightmapped_meshes` rather than the other lights'
+ *  `..._diffuse`. */
+TEST(Cluster, ProbeComponentsMatchBevyDefaults) {
+    using epix::pbr::AtmosphereEnvironmentMapLight;
+    using epix::pbr::GeneratedEnvironmentMapLight;
+    using epix::pbr::IrradianceVolume;
+
+    const GeneratedEnvironmentMapLight generated{};
+    EXPECT_EQ(generated.environment_map.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+    EXPECT_FLOAT_EQ(generated.intensity, 0.0f);
+    EXPECT_EQ(generated.rotation, glm::quat(1.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_TRUE(generated.affects_lightmapped_mesh_diffuse);
+
+    const AtmosphereEnvironmentMapLight atmosphere{};
+    EXPECT_FLOAT_EQ(atmosphere.intensity, 1.0f) << "Bevy's default matches the atmosphere's own intensity";
+    EXPECT_TRUE(atmosphere.affects_lightmapped_mesh_diffuse);
+    EXPECT_EQ(atmosphere.size, glm::uvec2(512, 512));
+    EXPECT_EQ(atmosphere.size.x & (atmosphere.size.x - 1), 0u) << "the cubemap size must be a power of two";
+
+    const IrradianceVolume volume{};
+    EXPECT_EQ(volume.voxels.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+    EXPECT_FLOAT_EQ(volume.intensity, 0.0f);
+    EXPECT_TRUE(volume.affects_lightmapped_meshes);
+}
+
 }  // namespace

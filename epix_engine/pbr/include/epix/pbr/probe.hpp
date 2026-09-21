@@ -43,4 +43,53 @@ EPIX_EXPORT struct EnvironmentMapLight {
     bool affects_lightmapped_mesh_diffuse = true;
 };
 
+/** @brief An environment map filtered on the GPU at runtime (Bevy
+ *  `GeneratedEnvironmentMapLight`, `bevy_light/src/probe.rs:116-141`). The
+ *  source cubemap must be a power of two in size. */
+EPIX_EXPORT struct GeneratedEnvironmentMapLight {
+    /** @brief The source cubemap, filtered on the GPU at runtime. */
+    assets::Handle<image::Image> environment_map = image::DEFAULT_IMAGE_HANDLE;
+    /** @brief Scale applied to both maps; afterwards the values are in cd/m². */
+    float intensity = 0.0f;
+    /** @brief World-space rotation applied to the cubemap. */
+    glm::quat rotation{1.0f, 0.0f, 0.0f, 0.0f};
+    /** @brief Whether this light contributes diffuse lighting to meshes with
+     *  lightmaps. */
+    bool affects_lightmapped_mesh_diffuse = true;
+};
+
+/** @brief Lets the atmosphere contribute environment lighting to a scene (Bevy
+ *  `AtmosphereEnvironmentMapLight`, `probe.rs:152-173`). Attached to a `Camera3d`
+ *  it lights the whole view; attached to a `LightProbe`, only that region. Bevy
+ *  generates an environment map from the atmosphere and inserts a
+ *  `GeneratedEnvironmentMapLight` for it. */
+EPIX_EXPORT struct AtmosphereEnvironmentMapLight {
+    /** @brief How bright the atmosphere's environment lighting is. Bevy's
+     *  default of 1.0 matches the atmosphere's own intensity. */
+    float intensity = 1.0f;
+    /** @brief Whether the diffuse contribution affects lightmapped meshes. */
+    bool affects_lightmapped_mesh_diffuse = true;
+    /** @brief Cubemap resolution in pixels, which must be a power of two. */
+    glm::uvec2 size{512, 512};
+};
+
+/** @brief An irradiance volume: a voxel grid of ambient cubes (Bevy
+ *  `IrradianceVolume`, `probe.rs:182-221`). Bevy requires `LightProbe` on the
+ *  entity and typically uses the volume through that probe's `Transform`.
+ *
+ *  Note the flag's name: Bevy spells it `affects_lightmapped_meshes` here, where
+ *  the other lights spell it `affects_lightmapped_mesh_diffuse`. */
+EPIX_EXPORT struct IrradianceVolume {
+    /** @brief The 3D texture of ambient cubes, in the format
+     *  `bevy_pbr::irradiance_volume` describes. */
+    assets::Handle<image::Image> voxels = image::DEFAULT_IMAGE_HANDLE;
+    /** @brief Scale applied to the volume's light; afterwards the values are in
+     *  cd/m². */
+    float intensity = 0.0f;
+    /** @brief Whether the volume lights meshes with lightmaps; baking tools that
+     *  already captured the indirect light set this false to avoid counting it
+     *  twice. */
+    bool affects_lightmapped_meshes = true;
+};
+
 }  // namespace epix::pbr
