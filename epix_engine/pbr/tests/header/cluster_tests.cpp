@@ -483,4 +483,40 @@ TEST(Cluster, PackOffsetAndCountsMatchesBevy) {
     EXPECT_EQ(maxed, 0xFFFFFFFFu) << "all fields full";
 }
 
+/** @brief The scene's clusterable objects use the buffer form the device offers,
+ *  and `set` clamps in the uniform case while replacing the list in the storage
+ *  case (Bevy `GpuClusterableObjects`, `cluster.rs:171-232`). */
+TEST(Cluster, GpuClusterableObjectsClampsUniformAndReplacesStorage) {
+    using epix::pbr::GlobalClusterableObjectMeta;
+    using epix::pbr::GpuClusterableObject;
+    using epix::pbr::GpuClusterableObjects;
+    using epix::pbr::MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS;
+
+    // The device's binding type chooses the form.
+    const auto uniform_form = GpuClusterableObjects::from_binding_type(wgpu::BufferBindingType::eUniform);
+    EXPECT_TRUE(std::holds_alternative<GpuClusterableObjects::Uniform>(uniform_form.buffer));
+    const auto storage_form = GpuClusterableObjects::from_binding_type(wgpu::BufferBindingType::eStorage);
+    EXPECT_TRUE(std::holds_alternative<GpuClusterableObjects::Storage>(storage_form.buffer));
+
+    // A uniform buffer cannot grow, so more objects than it holds are dropped.
+    auto uniform_objects = GpuClusterableObjects::uniform();
+    uniform_objects.set(std::vector<GpuClusterableObject>(MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS + 50));
+    EXPECT_EQ(std::get<GpuClusterableObjects::Uniform>(uniform_objects.buffer).get().data.size(),
+              MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS);
+
+    // The storage form keeps the whole list.
+    auto storage_objects = GpuClusterableObjects::storage();
+    storage_objects.set(std::vector<GpuClusterableObject>(MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS + 50));
+    EXPECT_EQ(std::get<GpuClusterableObjects::Storage>(storage_objects.buffer).get().data.size(),
+              MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS + 50);
+
+    // Nothing has been uploaded yet, so there is no buffer to bind.
+    EXPECT_FALSE(uniform_objects.binding().has_value());
+    EXPECT_FALSE(storage_objects.binding().has_value());
+
+    const GlobalClusterableObjectMeta meta{wgpu::BufferBindingType::eStorage};
+    EXPECT_TRUE(std::holds_alternative<GpuClusterableObjects::Storage>(meta.gpu_clusterable_objects.buffer));
+    EXPECT_TRUE(meta.entity_to_index.empty());
+}
+
 }  // namespace

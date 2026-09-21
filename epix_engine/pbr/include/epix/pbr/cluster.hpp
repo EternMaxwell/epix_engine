@@ -1,11 +1,15 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
+#include <optional>
+#include <unordered_map>
+#include <variant>
 #include <vector>
 #include <epix/common.hpp>
 #endif
@@ -159,3 +163,78 @@ struct ShaderTypeInfo<::epix::pbr::GpuClusterOffsetsAndCountsStorage> {
     }
 };
 }  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief The clustered objects of the whole scene, in whichever buffer form the
+ *  device supports (Bevy `GpuClusterableObjects`, `bevy_pbr/src/cluster.rs:78-81`
+ *  and its `impl` at `:171-232`).
+ *
+ *  It sits after the `ShaderTypeInfo` specialisations above, because
+ *  `UniformBuffer`/`StorageBuffer` require their element types to be shader
+ *  types, and those specialisations are what makes them so.
+ *
+ *  `set` clamps to `MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS` in the uniform case,
+ *  because a uniform buffer cannot grow, and replaces the list in the storage
+ *  case. */
+EPIX_EXPORT struct GpuClusterableObjects {
+    using Uniform = render::render_resource::UniformBuffer<GpuClusterableObjectsUniform>;
+    using Storage = render::render_resource::StorageBuffer<GpuClusterableObjectsStorage>;
+
+    std::variant<Uniform, Storage> buffer;
+
+    /** @brief The form the device supports (Bevy `GpuClusterableObjects::new`). */
+    static GpuClusterableObjects from_binding_type(wgpu::BufferBindingType binding_type) {
+        if (binding_type == wgpu::BufferBindingType::eUniform) return GpuClusterableObjects{.buffer = Uniform{}};
+        return GpuClusterableObjects{.buffer = Storage{}};
+    }
+
+    /** @brief The uniform form, used when the device lacks three storage
+     *  bindings. */
+    static GpuClusterableObjects uniform() { return GpuClusterableObjects{.buffer = Uniform{}}; }
+    /** @brief The storage form. */
+    static GpuClusterableObjects storage() { return GpuClusterableObjects{.buffer = Storage{}}; }
+
+    /** @brief Store the frame's clusterable objects (Bevy
+     *  `GpuClusterableObjects::set`, `cluster.rs:187-202`). */
+    void set(std::vector<GpuClusterableObject> clusterable_objects) {
+        if (auto* uniform = std::get_if<Uniform>(&buffer)) {
+            const std::size_t count = std::min(clusterable_objects.size(), MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS);
+            auto& destination       = uniform->get_mut().data;
+            for (std::size_t index = 0; index < count; ++index) destination[index] = clusterable_objects[index];
+            return;
+        }
+        std::get<Storage>(buffer).get_mut().data = std::move(clusterable_objects);
+    }
+
+    /** @brief Upload the stored objects, in whichever form is held. */
+    void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
+        if (auto* uniform = std::get_if<Uniform>(&buffer)) {
+            uniform->write_buffer(device, queue);
+            return;
+        }
+        std::get<Storage>(buffer).write_buffer(device, queue);
+    }
+
+    /** @brief The buffer to bind, once written (Bevy
+     *  `GpuClusterableObjects::binding`). */
+    std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const {
+        if (const auto* uniform = std::get_if<Uniform>(&buffer)) return uniform->binding();
+        return std::get<Storage>(buffer).binding();
+    }
+};
+
+/** @brief The scene-wide clustered objects and the entity-to-index map that
+ *  `prepare_lights` fills (Bevy `GlobalClusterableObjectMeta`,
+ *  `cluster.rs:72-76,162-169`). */
+EPIX_EXPORT struct GlobalClusterableObjectMeta {
+    GpuClusterableObjects gpu_clusterable_objects;
+    std::unordered_map<ecs::Entity, std::size_t> entity_to_index;
+
+    GlobalClusterableObjectMeta() = default;
+    explicit GlobalClusterableObjectMeta(wgpu::BufferBindingType binding_type)
+        : gpu_clusterable_objects(GpuClusterableObjects::from_binding_type(binding_type)) {}
+};
+
+}  // namespace epix::pbr
+
