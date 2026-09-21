@@ -2230,4 +2230,65 @@ TEST(Cluster, ShadowPhaseItemMatchesBevy) {
     EXPECT_EQ(item.draw_function(), unindexed.draw_func);
 }
 
+/** @brief Each shadow-casting directional light takes the next slice of the
+ *  view's shared shadow array, while lights without shadows - or on other layers
+ *  - consume none (Bevy `prepare_lights`, `render/light.rs:1484-1525`). */
+TEST(Cluster, DirectionalShadowSlicesMatchBevy) {
+    using epix::pbr::directional_shadow_slices;
+    using epix::pbr::ExtractedDirectionalLight;
+
+    const auto make_light = [](bool shadows, std::uint32_t layers) {
+        ExtractedDirectionalLight light;
+        light.shadows_enabled = shadows;
+        light.render_layers   = layers;
+        return light;
+    };
+
+    std::size_t total = 0;
+    // Two shadow-casting lights in the view: the first takes layers 0-3, the
+    // second 4-7, and the view's total is eight.
+    const std::vector<ExtractedDirectionalLight> two{make_light(true, 0b01), make_light(true, 0b01)};
+    const auto slices = directional_shadow_slices(two, 0b01, 0, 32, &total);
+    ASSERT_EQ(slices.size(), 2u);
+    EXPECT_EQ(slices[0].base_index, 0u);
+    EXPECT_EQ(slices[0].num_cascades, 4u) << "the default four cascades";
+    EXPECT_EQ(slices[1].base_index, 4u) << "where the first light stopped";
+    EXPECT_EQ(total, 8u);
+
+    // A light on another layer is skipped without consuming a layer. Bevy filters
+    // before enumerating, so the light indices are dense over the lights that are
+    // in the view - the skipped light does not occupy a position.
+    const std::vector<ExtractedDirectionalLight> mixed{make_light(true, 0b01), make_light(true, 0b10),
+                                                      make_light(true, 0b01)};
+    total = 0;
+    const auto filtered = directional_shadow_slices(mixed, 0b01, 0, 32, &total);
+    ASSERT_EQ(filtered.size(), 2u);
+    EXPECT_EQ(filtered[0].light_index, 0u);
+    EXPECT_EQ(filtered[1].light_index, 1u) << "dense over the lights in the view";
+    EXPECT_EQ(filtered[1].base_index, 4u) << "and the skipped light consumed no layers";
+    EXPECT_EQ(total, 8u);
+
+    // A light without shadows consumes nothing, so the next one starts where it
+    // would have.
+    total = 0;
+    const std::vector<ExtractedDirectionalLight> gap{make_light(true, 0b01), make_light(false, 0b01),
+                                                     make_light(true, 0b01)};
+    const auto skipped = directional_shadow_slices(gap, 0b01, 0, 32, &total);
+    ASSERT_EQ(skipped.size(), 3u);
+    EXPECT_EQ(skipped[1].num_cascades, 0u) << "no shadows";
+    EXPECT_EQ(skipped[1].base_index, 0u) << "and no slice assigned";
+    EXPECT_EQ(skipped[2].base_index, 4u) << "the third light starts where the first stopped";
+    EXPECT_EQ(total, 8u);
+
+    // When the layers run out, the light that does not fit is dropped rather than
+    // overlapping the previous one.
+    total = 0;
+    const std::vector<ExtractedDirectionalLight> tight{make_light(true, 0b01), make_light(true, 0b01)};
+    const auto squeezed = directional_shadow_slices(tight, 0b01, 0, 6, &total);
+    ASSERT_EQ(squeezed.size(), 2u);
+    EXPECT_EQ(squeezed[0].num_cascades, 4u);
+    EXPECT_EQ(squeezed[1].num_cascades, 0u) << "six layers cannot hold a second four-cascade light";
+    EXPECT_EQ(total, 4u) << "so only the first light's cascades count";
+}
+
 }  // namespace

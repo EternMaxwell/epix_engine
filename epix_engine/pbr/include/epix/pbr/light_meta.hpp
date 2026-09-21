@@ -568,4 +568,52 @@ EPIX_EXPORT inline glm::mat4 cube_face_projection(float shadow_map_near_z) {
     return camera::perspective_infinite_reverse_rh(std::numbers::pi_v<float> / 2.0f, 1.0f, shadow_map_near_z);
 }
 
+/** @brief Where one directional light's cascades sit in a view's shared shadow
+ *  array (Bevy `prepare_lights`, `render/light.rs:1484-1525`). */
+EPIX_EXPORT struct DirectionalShadowSlice {
+    /** @brief The light's position in the view's sorted light list, which is also
+     *  its index in the light uniform's directional array. */
+    std::size_t light_index = 0;
+    /** @brief The first layer of the shared array this light's cascades use, which
+     *  is what its `depth_texture_base_index` carries. */
+    std::uint32_t base_index = 0;
+    /** @brief How many cascades it was granted; zero when it has no shadows. */
+    std::uint32_t num_cascades = 0;
+};
+
+/** @brief Assign each of a view's directional lights its slice of the shadow
+ *  array (Bevy `prepare_lights`, `render/light.rs:1484-1525`).
+ *
+ *  The lights are walked in sorted order and taken up to `MAX_DIRECTIONAL_LIGHTS`,
+ *  skipping any whose render layers do not intersect the view's without consuming
+ *  a layer. A light whose flags lack `SHADOWS_ENABLED` - either because it casts
+ *  none or because its cascades did not fit the layers left - consumes nothing
+ *  and leaves the running index where it was, which is why the index and the
+ *  light's position in the list are tracked separately. */
+EPIX_EXPORT inline std::vector<DirectionalShadowSlice> directional_shadow_slices(
+    const std::vector<ExtractedDirectionalLight>& directional_lights, std::uint32_t view_layers,
+    std::size_t directional_volumetric_enabled_count, std::size_t max_texture_array_layers,
+    std::size_t* out_total_cascades = nullptr) {
+    std::vector<DirectionalShadowSlice> slices;
+    slices.reserve(std::min(directional_lights.size(), MAX_DIRECTIONAL_LIGHTS));
+
+    std::uint32_t base = 0;
+    std::size_t index  = 0;
+    for (const ExtractedDirectionalLight& light : directional_lights) {
+        if (slices.size() >= MAX_DIRECTIONAL_LIGHTS) break;
+        if ((light.render_layers & view_layers) == 0) continue;
+
+        const auto flags = directional_light_gpu_flags(light, index, directional_volumetric_enabled_count, base,
+                                                      max_texture_array_layers);
+        const bool shadowed = (flags.flags & DirectionalLightFlags::SHADOWS_ENABLED) != 0u;
+        slices.push_back(DirectionalShadowSlice{
+            .light_index = index, .base_index = shadowed ? base : 0u, .num_cascades = flags.num_cascades});
+        if (shadowed) base += flags.num_cascades;
+        ++index;
+    }
+
+    if (out_total_cascades != nullptr) *out_total_cascades = base;
+    return slices;
+}
+
 }  // namespace epix::pbr
