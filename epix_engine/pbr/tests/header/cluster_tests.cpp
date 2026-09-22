@@ -3674,4 +3674,59 @@ TEST(Cluster, RenderMeshInstanceSharedMatchesBevy) {
     EXPECT_FALSE(shared.should_batch());
 }
 
+/** @brief The instance record set dispatches to whichever side is in use, and the
+ *  two sides hold different data (Bevy `RenderMeshInstances`,
+ *  `render/mesh.rs:903-968`). */
+TEST(Cluster, RenderMeshInstancesDispatchMatchesBevy) {
+    using epix::pbr::MaterialBindGroupIndex;
+    using epix::pbr::MaterialBindGroupSlot;
+    using epix::pbr::RenderMeshInstanceCpu;
+    using epix::pbr::RenderMeshInstanceFlags;
+    using epix::pbr::RenderMeshInstanceGpu;
+    using epix::pbr::RenderMeshInstanceShared;
+    using epix::pbr::RenderMeshInstances;
+
+    const auto entity = epix::render::sync_world::MainEntity{epix::ecs::Entity::from_index(5)};
+    const auto id     = epix::assets::AssetId<epix::mesh::Mesh>::invalid();
+    const auto shared = [&id] {
+        RenderMeshInstanceShared record{.mesh_asset_id = id,
+                                        .material_bindings_index = {MaterialBindGroupIndex{0u}, MaterialBindGroupSlot{0u}},
+                                        .flags = {}};
+        return record;
+    };
+
+    // The CPU side: the shared record plus the transform.
+    RenderMeshInstances cpu = RenderMeshInstances::make(false);
+    EXPECT_TRUE(cpu.is_cpu_building());
+    EXPECT_FALSE(cpu.mesh_asset_id(entity).has_value()) << "nothing recorded for this entity yet";
+    cpu.cpu_instances.emplace(entity, RenderMeshInstanceCpu{shared(), epix::pbr::MeshTransforms{}});
+    ASSERT_TRUE(cpu.mesh_asset_id(entity).has_value());
+    EXPECT_EQ(*cpu.mesh_asset_id(entity), id);
+    EXPECT_TRUE(cpu.gpu_instances.empty()) << "only one side is populated";
+
+    // The GPU side: the shared record plus a world centre and a uniform index, and
+    // the dispatch follows the kind rather than the populated map.
+    RenderMeshInstances gpu = RenderMeshInstances::make(true);
+    EXPECT_FALSE(gpu.is_cpu_building());
+    gpu.gpu_instances.emplace(entity, RenderMeshInstanceGpu{shared(), glm::vec3(1.0f, 0.0f, 0.0f), 3u});
+    ASSERT_TRUE(gpu.mesh_asset_id(entity).has_value());
+    EXPECT_EQ(*gpu.mesh_asset_id(entity), id);
+    EXPECT_EQ(gpu.gpu_instances.at(entity).current_uniform_index, 3u);
+
+    // Flags reach the side in use, and are ignored for an unknown entity.
+    RenderMeshInstanceFlags flags;
+    flags.insert(RenderMeshInstanceFlags::SHADOW_CASTER);
+    cpu.insert_mesh_instance_flags(entity, flags);
+    EXPECT_TRUE(cpu.cpu_instances.at(entity).shared.flags.contains(RenderMeshInstanceFlags::SHADOW_CASTER));
+    EXPECT_FALSE(gpu.gpu_instances.at(entity).shared.flags.contains(RenderMeshInstanceFlags::SHADOW_CASTER))
+        << "the other record set was not touched";
+    gpu.insert_mesh_instance_flags(entity, flags);
+    EXPECT_TRUE(gpu.gpu_instances.at(entity).shared.flags.contains(RenderMeshInstanceFlags::SHADOW_CASTER));
+
+    const auto unknown = epix::render::sync_world::MainEntity{epix::ecs::Entity::from_index(99)};
+    cpu.insert_mesh_instance_flags(unknown, flags);  // must not throw or insert
+    EXPECT_EQ(cpu.cpu_instances.size(), 1u);
+    EXPECT_FALSE(cpu.mesh_asset_id(unknown).has_value());
+}
+
 }  // namespace

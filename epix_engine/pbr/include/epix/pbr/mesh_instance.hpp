@@ -7,9 +7,11 @@
 #include <epix/mesh.hpp>
 #include <glm/glm.hpp>
 #include <optional>
+#include <unordered_map>
 #include <epix/common.hpp>
 #endif
 #include <epix/pbr/material_bindings.hpp>
+#include <epix/pbr/mesh_uniform.hpp>
 
 namespace epix::pbr {
 
@@ -88,6 +90,87 @@ EPIX_EXPORT struct RenderMeshInstanceShared {
     /** @brief Whether this instance may be batched automatically (Bevy
      *  `RenderMeshInstanceShared::should_batch`, `render/mesh.rs:894-900`). */
     bool should_batch() const noexcept { return flags.should_batch(); }
+};
+
+/** @brief The CPU data the render world keeps for an instance when *not* using GPU
+ *  uniform building (Bevy `RenderMeshInstanceCpu`, `render/mesh.rs:702-714`).
+ *
+ *  It pairs the shared record with the transform, which is what the CPU path turns
+ *  into a `MeshUniform` itself rather than handing the transform to the GPU. */
+EPIX_EXPORT struct RenderMeshInstanceCpu {
+    RenderMeshInstanceShared shared;
+    MeshTransforms transforms;
+};
+
+/** @brief The CPU data the render world keeps for an instance when using GPU
+ *  uniform building (Bevy `RenderMeshInstanceGpu`, `render/mesh.rs:716-731`).
+ *
+ *  The transform is absent because the GPU builds the uniform from a
+ *  `MeshInputUniform`; what stays here is a world-space centre for view-dependent
+ *  sorting and the index of this instance's input uniform, which is Bevy's
+ *  `NonMaxU32` - a `u32` that is never `u32::MAX` - and is documented here since the
+ *  port has no non-max integer type. */
+EPIX_EXPORT struct RenderMeshInstanceGpu {
+    RenderMeshInstanceShared shared;
+    glm::vec3 center{0.0f};
+    std::uint32_t current_uniform_index = 0;
+};
+
+/** @brief Information the render world keeps about each mesh-holding entity (Bevy
+ *  `RenderMeshInstances`, `render/mesh.rs:903-924`).
+ *
+ *  Which side is populated depends on whether the uniform builder runs on the CPU or
+ *  the GPU, so Bevy models it as an enum rather than merging the two shapes. The
+ *  accessors dispatch; the two sides are otherwise separate, and only one of them is
+ *  ever used in a given frame. */
+EPIX_EXPORT struct RenderMeshInstances {
+    using CpuMap = std::unordered_map<render::sync_world::MainEntity, RenderMeshInstanceCpu>;
+    using GpuMap = std::unordered_map<render::sync_world::MainEntity, RenderMeshInstanceGpu>;
+
+    enum class Kind { CpuBuilding, GpuBuilding };
+
+    Kind kind = Kind::CpuBuilding;
+    CpuMap cpu_instances;
+    GpuMap gpu_instances;
+
+    /** @brief The record set for the side in use (Bevy `RenderMeshInstances::new`,
+     *  `render/mesh.rs:926-934`). */
+    static RenderMeshInstances make(bool use_gpu_instance_buffer_builder) {
+        RenderMeshInstances instances;
+        instances.kind = use_gpu_instance_buffer_builder ? Kind::GpuBuilding : Kind::CpuBuilding;
+        return instances;
+    }
+
+    bool is_cpu_building() const noexcept { return kind == Kind::CpuBuilding; }
+
+    /** @brief The mesh asset attached to an entity, if any (Bevy
+     *  `RenderMeshInstances::mesh_asset_id`, `render/mesh.rs:936-942`). */
+    std::optional<assets::AssetId<mesh::Mesh>> mesh_asset_id(render::sync_world::MainEntity entity) const {
+        if (is_cpu_building()) {
+            const auto found = cpu_instances.find(entity);
+            if (found == cpu_instances.end()) return std::nullopt;
+            return found->second.shared.mesh_asset_id;
+        }
+        const auto found = gpu_instances.find(entity);
+        if (found == gpu_instances.end()) return std::nullopt;
+        return found->second.shared.mesh_asset_id;
+    }
+
+    /** @brief Insert flags into the instance on whichever side is in use (Bevy
+     *  `RenderMeshInstances::insert_mesh_instance_flags`, `render/mesh.rs:957-968`).
+     *
+     *  Silently does nothing for an entity with no record, as Bevy does. */
+    void insert_mesh_instance_flags(render::sync_world::MainEntity entity, RenderMeshInstanceFlags flags) {
+        if (is_cpu_building()) {
+            const auto found = cpu_instances.find(entity);
+            if (found == cpu_instances.end()) return;
+            found->second.shared.flags.insert(static_cast<RenderMeshInstanceFlags::Bits>(flags.bits));
+            return;
+        }
+        const auto found = gpu_instances.find(entity);
+        if (found == gpu_instances.end()) return;
+        found->second.shared.flags.insert(static_cast<RenderMeshInstanceFlags::Bits>(flags.bits));
+    }
 };
 
 }  // namespace epix::pbr
