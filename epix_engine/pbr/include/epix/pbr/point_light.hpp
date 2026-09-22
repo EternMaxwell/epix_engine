@@ -6,15 +6,9 @@
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/light_consts.hpp>
 
 namespace epix::pbr {
-
-/** @brief The default luminous power of a point light, in lumens (Bevy
- *  `light_consts::lumens::VERY_LARGE_CINEMA_LIGHT`,
- *  `bevy_light/src/lib.rs:89`). Bevy's `light_consts` module is otherwise a
- *  table of watts-to-lumens approximations, which lands when a second entry is
- *  needed. */
-EPIX_EXPORT inline constexpr float VERY_LARGE_CINEMA_LIGHT = 1'000'000.0f;
 
 /** @brief A light that emits in all directions from a central point (Bevy
  *  `PointLight`, `bevy_light/src/point_light.rs:51-150`).
@@ -31,7 +25,7 @@ EPIX_EXPORT struct PointLight {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Luminous power in lumens, i.e. the light emitted in all
      *  directions. */
-    float intensity = VERY_LARGE_CINEMA_LIGHT;
+    float intensity = light_consts::lumens::VERY_LARGE_CINEMA_LIGHT;
     /** @brief Cut-off for the light's area of effect; tune together with
      *  `intensity` to avoid hard cut-offs. */
     float range = 20.0f;

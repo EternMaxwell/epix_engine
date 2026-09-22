@@ -7,6 +7,7 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
+#include <epix/pbr/light_consts.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/mesh_pipeline_key.hpp>
 #include <epix/pbr/point_light.hpp>

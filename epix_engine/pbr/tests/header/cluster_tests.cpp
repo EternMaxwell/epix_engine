@@ -137,7 +137,7 @@ TEST(Cluster, AmbientLightMatchesBevyDefaults) {
 TEST(Cluster, PointLightMatchesBevyDefaults) {
     using epix::pbr::PointLight;
     using epix::pbr::PointLightShadowMap;
-    using epix::pbr::VERY_LARGE_CINEMA_LIGHT;
+    using epix::pbr::light_consts::lumens::VERY_LARGE_CINEMA_LIGHT;
 
     const PointLight light{};
     EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -229,7 +229,7 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
     using epix::pbr::DirectionalLight;
     using epix::pbr::DirectionalLightShadowMap;
     using epix::pbr::DirectionalLightTexture;
-    using epix::pbr::lux::AMBIENT_DAYLIGHT;
+    using epix::pbr::light_consts::lux::AMBIENT_DAYLIGHT;
     using epix::pbr::validated_shadow_map_size;
 
     const DirectionalLight light{};
@@ -2787,6 +2787,47 @@ TEST(Cluster, DirectionalCascadeFrustaMatchBevy) {
         }
     }
     EXPECT_EQ(Frustum::NEAR_PLANE_IDX, 4u) << "Bevy's index for the near plane";
+}
+
+/** @brief The light unit tables carry Bevy's values (Bevy `light_consts`,
+ *  `bevy_light/src/lib.rs:70-130`). */
+TEST(Cluster, LightConstsMatchBevy) {
+    using namespace epix::pbr::light_consts;
+
+    // The watts-to-lumens approximations.
+    EXPECT_FLOAT_EQ(lumens::LUMENS_PER_LED_WATTS, 90.0f);
+    EXPECT_FLOAT_EQ(lumens::LUMENS_PER_INCANDESCENT_WATTS, 13.8f);
+    EXPECT_FLOAT_EQ(lumens::LUMENS_PER_HALOGEN_WATTS, 19.8f);
+    EXPECT_FLOAT_EQ(lumens::VERY_LARGE_CINEMA_LIGHT, 1'000'000.0f);
+
+    // The lux presets, from starlight to raw sunlight - a range of nine orders of
+    // magnitude, which is why the values are spelled out rather than inferred.
+    EXPECT_FLOAT_EQ(lux::MOONLESS_NIGHT, 0.0001f);
+    EXPECT_FLOAT_EQ(lux::FULL_MOON_NIGHT, 0.05f);
+    EXPECT_FLOAT_EQ(lux::CIVIL_TWILIGHT, 3.4f);
+    EXPECT_FLOAT_EQ(lux::LIVING_ROOM, 50.0f);
+    EXPECT_FLOAT_EQ(lux::HALLWAY, 80.0f);
+    EXPECT_FLOAT_EQ(lux::DARK_OVERCAST_DAY, 100.0f);
+    EXPECT_FLOAT_EQ(lux::OFFICE, 320.0f);
+    EXPECT_FLOAT_EQ(lux::CLEAR_SUNRISE, 400.0f);
+    EXPECT_FLOAT_EQ(lux::OVERCAST_DAY, 1'000.0f);
+    EXPECT_FLOAT_EQ(lux::AMBIENT_DAYLIGHT, 10'000.0f);
+    EXPECT_FLOAT_EQ(lux::FULL_DAYLIGHT, 20'000.0f);
+    EXPECT_FLOAT_EQ(lux::DIRECT_SUNLIGHT, 100'000.0f);
+    EXPECT_FLOAT_EQ(lux::RAW_SUNLIGHT, 130'000.0f);
+
+    // The presets are ordered as their names suggest, which is the one property a
+    // transcription error would break.
+    EXPECT_LT(lux::MOONLESS_NIGHT, lux::FULL_MOON_NIGHT);
+    EXPECT_LT(lux::CIVIL_TWILIGHT, lux::LIVING_ROOM);
+    EXPECT_LT(lux::HALLWAY, lux::DARK_OVERCAST_DAY);
+    EXPECT_LT(lux::OVERCAST_DAY, lux::AMBIENT_DAYLIGHT);
+    EXPECT_LT(lux::FULL_DAYLIGHT, lux::DIRECT_SUNLIGHT);
+    EXPECT_LT(lux::DIRECT_SUNLIGHT, lux::RAW_SUNLIGHT);
+
+    // And the two lights use the table rather than copies of it.
+    EXPECT_FLOAT_EQ(epix::pbr::PointLight{}.intensity, lumens::VERY_LARGE_CINEMA_LIGHT);
+    EXPECT_FLOAT_EQ(epix::pbr::DirectionalLight{}.illuminance, lux::AMBIENT_DAYLIGHT);
 }
 
 }  // namespace

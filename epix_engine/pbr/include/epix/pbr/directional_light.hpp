@@ -8,17 +8,9 @@
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/light_consts.hpp>
 
 namespace epix::pbr {
-
-/** @brief The illuminance presets Bevy keeps in `light_consts::lux`
- *  (`bevy_light/src/lib.rs:102-122`); only the entries used so far are ported. */
-namespace lux {
-/** @brief Overcast day, 1 000 lux. */
-EPIX_EXPORT inline constexpr float OVERCAST_DAY = 1'000.0f;
-/** @brief Ambient daylight, 10 000 lux; Bevy's `DirectionalLight` default. */
-EPIX_EXPORT inline constexpr float AMBIENT_DAYLIGHT = 10'000.0f;
-}  // namespace lux
 
 /** @brief A directional light (Bevy `DirectionalLight`,
  *  `bevy_light/src/directional_light.rs:70-157`): a good approximation of a
@@ -38,7 +30,7 @@ EPIX_EXPORT struct DirectionalLight {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief Illuminance in lux (lumens per square meter). Bevy's default is
      *  ambient daylight, 10 000 lux. */
-    float illuminance = lux::AMBIENT_DAYLIGHT;
+    float illuminance = light_consts::lux::AMBIENT_DAYLIGHT;
     /** @brief Whether this light casts shadows, via cascaded shadow maps. */
     bool shadows_enabled = false;
     /** @brief Whether this light contributes diffuse lighting to meshes with
