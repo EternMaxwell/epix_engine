@@ -5,6 +5,7 @@
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_markers.hpp>
 #include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_instance.hpp>
@@ -3812,6 +3813,33 @@ TEST(Cluster, MeshCullingDataMatchesBevy) {
     EXPECT_TRUE(std::isinf(without.aabb_half_extents.z));
     EXPECT_EQ(without.aabb_half_extents.w, 0.0f) << "the padding stays zero even here";
     EXPECT_GT(without.aabb_half_extents.x, 1e9f) << "infinite is larger than any real extent";
+}
+
+/** @brief The shadow opt-out markers are distinct types, so a mesh can cast without
+ *  receiving or the reverse, and both are usable as query filters (Bevy
+ *  `NotShadowCaster`/`NotShadowReceiver`, `bevy_light/src/lib.rs:211-222`). */
+TEST(Cluster, ShadowMarkersMatchBevy) {
+    using epix::pbr::NotShadowCaster;
+    using epix::pbr::NotShadowReceiver;
+
+    // Distinct types rather than one flag: the two are independent, and Bevy's
+    // light-visibility query filters on the caster one alone.
+    EXPECT_FALSE((std::is_same_v<NotShadowCaster, NotShadowReceiver>));
+    EXPECT_TRUE(std::is_empty_v<NotShadowCaster>) << "a marker carries no data";
+    EXPECT_TRUE(std::is_empty_v<NotShadowReceiver>);
+    EXPECT_TRUE(std::is_default_constructible_v<NotShadowCaster>);
+    EXPECT_TRUE(std::is_default_constructible_v<NotShadowReceiver>);
+
+    // Being spawnable and queryable by presence is what makes them markers, and a
+    // world holding one of each keeps them apart.
+    epix::ecs::World world(2);
+    const auto caster_only   = world.spawn(NotShadowCaster{}).id();
+    const auto receiver_only = world.spawn(NotShadowReceiver{}).id();
+    EXPECT_TRUE(world.entity(caster_only).contains<NotShadowCaster>());
+    EXPECT_FALSE(world.entity(caster_only).contains<NotShadowReceiver>())
+        << "carrying one marker does not imply the other";
+    EXPECT_TRUE(world.entity(receiver_only).contains<NotShadowReceiver>());
+    EXPECT_FALSE(world.entity(receiver_only).contains<NotShadowCaster>());
 }
 
 }  // namespace
