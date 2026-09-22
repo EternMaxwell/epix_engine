@@ -45,4 +45,32 @@ EPIX_EXPORT void update_directional_light_frusta(
                 ecs::Without<::epix::camera::Camera>>
         lights);
 
+/** @brief Clear each shadow-casting directional light's cascades (Bevy
+ *  `clear_directional_light_cascades`, `bevy_light/src/cascade.rs:186-193`).
+ *
+ *  Runs before the cascades are rebuilt each frame, so a view that no longer has
+ *  cascades does not keep the ones it had - the builder only inserts. Lights
+ *  without shadows keep whatever they have, which is nothing, since the builder
+ *  skips them too. */
+EPIX_EXPORT void clear_directional_light_cascades(
+    ecs::Query<ecs::Item<ecs::Ref<DirectionalLight>, ecs::Mut<Cascades>>> lights);
+
+/** @brief Build every directional light's cascades for every active view (Bevy
+ *  `build_directional_light_cascades`, `bevy_light/src/cascade.rs:195-253`).
+ *
+ *  The light matrix is built from the light's **rotation alone** with no
+ *  translation - Epix's `GlobalTransform` carries only a matrix, so the rotation is
+ *  recovered from its upper-left 3x3 with each column normalised. That matters:
+ *  Bevy's comment is explicit that the matrix must have an orthogonal upper-left
+ *  3x3 and zero translation for the shadows to be numerically stable, and a light's
+ *  transform is free to carry scale. */
+EPIX_EXPORT void build_directional_light_cascades(
+    ecs::Res<DirectionalLightShadowMap> shadow_map,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<::epix::camera::Projection>,
+                         ecs::Ref<::epix::camera::Camera>>>
+        views,
+    ecs::Query<ecs::Item<ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<DirectionalLight>,
+                         ecs::Ref<CascadeShadowConfig>, ecs::Mut<Cascades>>>
+        lights);
+
 }  // namespace epix::pbr

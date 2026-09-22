@@ -2975,4 +2975,101 @@ TEST(Cluster, UpdatePointLightFrustaSystemRebuildsFrusta) {
     EXPECT_EQ(unclustered[0].planes, epix::camera::Frustum{}.planes) << "not clustered, nothing to cull for";
 }
 
+/** @brief The cascade builder fills a cascades map per active view, and the clear
+ *  system empties it (Bevy `cascade.rs:186-253`). */
+TEST(Cluster, DirectionalCascadeSystemsBuildAndClear) {
+    using epix::pbr::build_directional_light_cascades;
+    using epix::pbr::Cascade;
+    using epix::pbr::CascadeShadowConfig;
+    using epix::pbr::Cascades;
+    using epix::pbr::clear_directional_light_cascades;
+    using epix::pbr::default_cascade_shadow_config;
+    using epix::pbr::DirectionalLight;
+    using epix::pbr::DirectionalLightShadowMap;
+
+    const auto spawn_view = [](epix::ecs::World& world, bool active = true) {
+        epix::camera::PerspectiveProjection projection;
+        projection.fov          = glm::radians(90.0f);
+        projection.aspect_ratio = 1.0f;
+        projection.near_plane   = 0.1f;
+        epix::camera::Projection wrapper;
+        wrapper.projection = projection;
+        return world
+            .spawn(epix::camera::Camera{.is_active = active}, wrapper, epix::transform::GlobalTransform{})
+            .id();
+    };
+
+    // One view, one shadow-casting light: the light gets that many cascades, and
+    // they are the four the default configuration asks for.
+    {
+        epix::app::App app = epix::app::App::create();
+        const auto view    = spawn_view(app.world_mut());
+        const auto light   = app.world_mut()
+                               .spawn(DirectionalLight{.shadows_enabled = true}, default_cascade_shadow_config(),
+                                      Cascades{}, epix::transform::GlobalTransform{})
+                               .id();
+        app.world_mut().insert_resource(DirectionalLightShadowMap{});
+        app.add_systems(epix::app::Update, epix::ecs::into(build_directional_light_cascades));
+        app.update();
+
+        const auto& cascades = app.world_mut().entity(light).get<Cascades>()->get().cascades;
+        ASSERT_EQ(cascades.size(), 1u) << "one entry per active view";
+        ASSERT_TRUE(cascades.contains(view));
+        ASSERT_EQ(cascades.at(view).size(), 4u) << "the default configuration's four cascades";
+        for (const Cascade& cascade : cascades.at(view)) {
+            EXPECT_NE(cascade.clip_from_world, glm::mat4(1.0f)) << "the cascade was actually built";
+            EXPECT_GT(cascade.texel_size, 0.0f);
+        }
+    }
+
+    // A light without shadows builds none.
+    {
+        epix::app::App app = epix::app::App::create();
+        spawn_view(app.world_mut());
+        const auto light = app.world_mut()
+                               .spawn(DirectionalLight{.shadows_enabled = false}, default_cascade_shadow_config(),
+                                      Cascades{}, epix::transform::GlobalTransform{})
+                               .id();
+        app.world_mut().insert_resource(DirectionalLightShadowMap{});
+        app.add_systems(epix::app::Update, epix::ecs::into(build_directional_light_cascades));
+        app.update();
+        EXPECT_TRUE(app.world_mut().entity(light).get<Cascades>()->get().cascades.empty());
+    }
+
+    // An inactive view is skipped: Bevy filters on `camera.is_active`.
+    {
+        epix::app::App app = epix::app::App::create();
+        spawn_view(app.world_mut(), false);  // inactive
+        const auto light = app.world_mut()
+                               .spawn(DirectionalLight{.shadows_enabled = true}, default_cascade_shadow_config(),
+                                      Cascades{}, epix::transform::GlobalTransform{})
+                               .id();
+        app.world_mut().insert_resource(DirectionalLightShadowMap{});
+        app.add_systems(epix::app::Update, epix::ecs::into(build_directional_light_cascades));
+        app.update();
+        EXPECT_TRUE(app.world_mut().entity(light).get<Cascades>()->get().cascades.empty())
+            << "an inactive view needs no cascades";
+    }
+
+    // The clear system empties a populated map, and leaves a shadowless light's
+    // (empty) map alone.
+    {
+        epix::app::App app = epix::app::App::create();
+        const auto view    = epix::ecs::Entity::from_index(3);
+        Cascades populated;
+        populated.cascades[view] = {Cascade{}};
+        const auto shadowed = app.world_mut()
+                                .spawn(DirectionalLight{.shadows_enabled = true}, populated)
+                                .id();
+        const auto unshadowed = app.world_mut()
+                                  .spawn(DirectionalLight{.shadows_enabled = false}, populated)
+                                  .id();
+        app.add_systems(epix::app::Update, epix::ecs::into(clear_directional_light_cascades));
+        app.update();
+        EXPECT_TRUE(app.world_mut().entity(shadowed).get<Cascades>()->get().cascades.empty());
+        EXPECT_EQ(app.world_mut().entity(unshadowed).get<Cascades>()->get().cascades.size(), 1u)
+            << "a light without shadows is skipped by the clear too";
+    }
+}
+
 }  // namespace
