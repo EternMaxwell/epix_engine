@@ -194,7 +194,9 @@ void epix::sprite_render::queue_material2d_meshes(
                     batch_set_key,
                     epix::core_graph::core_2d::Opaque2DBinKey{.pipeline_id = pipeline_id,
                                                               .draw_func = material->properties.draw_function_id,
-                                                              .asset_id = material_it->second,
+                                                              // Bevy bins by the mesh asset id
+                                                              // (`mesh2d/material.rs:874`), not by the material.
+                                                              .asset_id = mesh_instance_it->second.mesh_asset_id,
                                                               .material_bind_group_id = bind_group_id.value},
                     std::pair{visible_render_entity, visible_main_entity},
                     epix::render::phase::InputUniformIndex{}, phase_type, current_change_tick);
@@ -203,7 +205,9 @@ void epix::sprite_render::queue_material2d_meshes(
                     batch_set_key,
                     epix::core_graph::core_2d::AlphaMask2DBinKey{.pipeline_id = pipeline_id,
                                                                  .draw_func = material->properties.draw_function_id,
-                                                                 .asset_id = material_it->second,
+                                                                 // Bevy bins by the mesh asset id
+                                                                 // (`mesh2d/material.rs:892`).
+                                                                 .asset_id = mesh_instance_it->second.mesh_asset_id,
                                                                  .material_bind_group_id = bind_group_id.value},
                     std::pair{visible_render_entity, visible_main_entity},
                     epix::render::phase::InputUniformIndex{}, phase_type, current_change_tick);
