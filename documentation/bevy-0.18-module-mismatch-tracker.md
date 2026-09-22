@@ -146,15 +146,16 @@ audited again rather than patched around.
 Counts are computed by parsing the row tables in `tmp/audit/sections/**` (see the footnote below the table), never copied from a section's prose. One row per audited module; all six modules now have at least one merged section, so no row's counts are placeholders.
 
 | Module | Tracker prefixes | Bevy counterpart crate(s) | Rows so far | ✅ | ❌ | ⚠️ | 🚫 | ⛔ | REVIEW | Status of the audit |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `mesh` | `MSH`, `PRT` | `bevy_mesh` | 151 | 133 | 5 | 7 | 5 | 1 | 0 | partial — the Lead-verified packing/accessor rows plus all of `bevy_mesh/src/mesh.rs`; `vertex.rs`/`index.rs` bodies, `components.rs`, `skinning.rs`, `morph.rs`, `lib.rs`, `conversions.rs`, `mikktspace.rs` and `primitives/**` still to be audited |
 | `image` | `IMG` | `bevy_image` | 409 | 198 | 0 | 117 | 81 | 13 | 0 | partial — `bevy_image/src/image.rs` plus the loader/conversion/atlas/decoder files are now covered: `image_loader.rs`, `image_texture_conversion.rs`, `lib.rs`, `serialized_image.rs`, `compressed_image_saver.rs`, `texture_atlas.rs`, `texture_atlas_builder.rs`, `dynamic_texture_atlas_builder.rs` and the format files `ktx2.rs`, `basis.rs`, `dds.rs`, `exr_texture_loader.rs`, `hdr_texture_loader.rs`; the `PARENT: render` consumers (`GpuImage`/`RenderAsset<Image>` preparation, `fallback_image.hpp`, `screenshot.cpp`) still to be audited |
-| `sprite` | `SPR` | `bevy_sprite` | 185 | 126 | 3 | 22 | 26 | 8 | 0 | complete — every `bevy_sprite` source file has rows: `lib.rs`, `sprite.rs` and `texture_slice/{border_rect.rs,mod.rs,slicer.rs}` in `sprite-core.md`, plus `text2d.rs` and `picking_backend.rs` in `sprite-text2d-picking.md` |
-| `sprite_render` | `SRD` | `bevy_sprite_render` | 473 | 434 | 6 | 27 | 3 | 1 | 2 | complete — every `bevy_sprite_render` source file has rows: `lib.rs`, `render/mod.rs`, `render/{sprite.wgsl,sprite_view_bindings.wgsl}` and `texture_slice/{mod.rs,computed_slices.rs}` in `sprite_render-render.md`, plus `mesh2d/**` (incl. `wireframe2d`), `text2d/mod.rs` and `tilemap_chunk/**` in `sprite_render-mesh2d.md` |
-| `pbr` | `PBR` | `bevy_pbr` + `bevy_light` | 535 | 311 | 109 | 43 | 67 | 3 | 2 | partial — `bevy_pbr/src/render/mesh.rs` plus the whole `bevy_light` crate and `bevy_pbr/src/render/light.rs`, `cluster.rs` and `components.rs`; materials, bind groups, `mesh_view_bindings.rs`, skinning and morph, GPU preprocessing, lightmap, meshlet, deferred, SSR and volumetric fog still to be audited |
+| `sprite` | `SPR` | `bevy_sprite` | 185 | 127 | 2 | 22 | 26 | 8 | 0 | complete — every `bevy_sprite` source file has rows: `lib.rs`, `sprite.rs` and `texture_slice/{border_rect.rs,mod.rs,slicer.rs}` in `sprite-core.md`, plus `text2d.rs` and `picking_backend.rs` in `sprite-text2d-picking.md` |
+| `sprite_render` | `SRD` | `bevy_sprite_render` | 473 | 435 | 5 | 27 | 3 | 1 | 2 | complete — every `bevy_sprite_render` source file has rows: `lib.rs`, `render/mod.rs`, `render/{sprite.wgsl,sprite_view_bindings.wgsl}` and `texture_slice/{mod.rs,computed_slices.rs}` in `sprite_render-render.md`, plus `mesh2d/**` (incl. `wireframe2d`), `text2d/mod.rs` and `tilemap_chunk/**` in `sprite_render-mesh2d.md` |
+| `pbr` | `PBR` | `bevy_pbr` + `bevy_light` | 535 | 322 | 101 | 44 | 63 | 3 | 2 | partial — `bevy_pbr/src/render/mesh.rs` plus the whole `bevy_light` crate and `bevy_pbr/src/render/light.rs`, `cluster.rs` and `components.rs`; materials, bind groups, `mesh_view_bindings.rs`, skinning and morph, GPU preprocessing, lightmap, meshlet, deferred, SSR and volumetric fog still to be audited |
 | `render/core_graph` | `CGR` | `bevy_core_pipeline` | 511 | 430 | 6 | 30 | 39 | 4 | 2 | partial — all of `bevy_core_pipeline` outside the cross-owned `core_2d/**`/`core_3d/**` boundary; the two core_graph blocks between them cover the module's pass nodes, prepass, deferred, skybox, tonemapping, upscaling, blit, mip generation and fullscreen material |
-| **total** | `MSH`, `IMG`, `SPR`, `SRD`, `PBR`, `CGR`, `PRT` | | **2264** | 1632 | 129 | 246 | 221 | 30 | 6 | 12 section files merged; 632 non-✅ rows in the open mismatch index |
+| **total** | `MSH`, `IMG`, `SPR`, `SRD`, `PBR`, `CGR`, `PRT` |  | **2264** | 1645 | 119 | 247 | 217 | 30 | 6 | 12 section files merged; 619 non-✅ rows in the open mismatch index |
 
-**Footnote — counts are computed, not copied.** Every number above is parsed from the row tables in `tmp/audit/sections/**`, so a stale prose summary cannot change a verdict. `mesh-lead-verified.md` was the first section whose prose disagreed with its rows — it read ✅ 9 for a set that computes to ✅ 11, because the text was written before `MSH-1012`/`MSH-1013` were resolved from `REVIEW` to ✅; the source section was corrected when that build was reviewed, and its prose and rows agree. Its narrative is what resolves that duplicate pair: the two private helpers are audited in both mesh sections under two ID blocks, and `mesh-mesh_rs.md` (`MSH-151`, `MSH-155`) carries the verdict, which is why the `MSH-1012`/`MSH-1013` rows point there rather than re-deriving it. The counts each section's rows compute to are: `mesh-lead-verified.md` 16 (✅ 11 · ❌ 4 · ⛔ 1), `mesh-mesh_rs.md` 135 (✅ 122 · ❌ 1 · ⚠️ 7 · 🚫 5), `image-image_rs.md` 170 (✅ 83 · ❌ 0 · ⚠️ 53 · 🚫 23 · ⛔ 11), `image-loader-atlas.md` 239 (✅ 115 · ⚠️ 64 · 🚫 58 · ⛔ 2), `sprite-core.md` 149 (✅ 124 · ❌ 1 · ⚠️ 5 · 🚫 12 · ⛔ 7), `sprite-text2d-picking.md` 36 (✅ 2 · ❌ 2 · ⚠️ 17 · 🚫 14 · ⛔ 1), `sprite_render-render.md` 197 (✅ 181 · ❌ 1 · ⚠️ 13 · ⛔ 1 · REVIEW 1), `sprite_render-mesh2d.md` 276 (✅ 253 · ❌ 5 · ⚠️ 14 · 🚫 3 · REVIEW 1), `core_graph-core3d-core2d.md` 211 (✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2), `core_graph-rest.md` 300 (✅ 243 · ⚠️ 26 · 🚫 30 · ⛔ 1), `pbr-render-mesh.md` 179 (✅ 68 · ❌ 93 · ⚠️ 15 · ⛔ 1 · REVIEW 2) and `pbr-lights.md` 356 (✅ 243 · ❌ 16 · ⚠️ 28 · 🚫 67 · ⛔ 2). `sprite-core.md` was re-derived after commit `ace3545e` fixed `SPR-117`/`SPR-120`/`SPR-128`/`SPR-129`: those four rows are ✅ in the merged section and have left the open mismatch index, which is why the module's counts read ✅ 124 · ❌ 1 · ⚠️ 5 where the previous build read ✅ 120 · ❌ 4 · ⚠️ 6. `pbr-render-mesh.md` and `image-loader-atlas.md` are the two section files stored with CRLF line endings; both are merged here with the repository's LF convention, content unchanged. The two new sections are merged on the same terms: `sprite_render-mesh2d.md` carries the `SRD-300`..`SRD-575` block and `pbr-lights.md` the `PBR-500`..`PBR-855` block. `core_graph-core3d-core2d.md` was re-derived after commit `a82ee144` fixed `CGR-202`/`CGR-206`/`CGR-210`/`CGR-215`/`CGR-220`/`CGR-224` and retracted `CGR-184`, which is why `render/core_graph` then read ✅ 185 · ❌ 7 where the build before it read ✅ 178 · ❌ 14 — those seven rows are ✅ in the merged section and have left the open mismatch index. The previous build re-derived the three sections whose rows changed: `mesh-mesh_rs.md` after commit `9c537148` fixed `MSH-159`/`MSH-161`/`MSH-167`, `sprite_render-mesh2d.md` after `e95d0269` fixed `SRD-414`/`SRD-415`, and `pbr-lights.md` after `c43326c0` fixed `PBR-595`; those six rows are ✅ in the merged sections and have left the open mismatch index, which is why `mesh` now reads ✅ 133 · ❌ 5, `sprite_render` ✅ 434 · ❌ 6 and `pbr` ✅ 311 · ❌ 109. The previous build re-derived the two core_graph sections whose rows changed: `core_graph-core3d-core2d.md` after commit `ac02885e` fixed `CGR-116`/`CGR-185`, and `core_graph-rest.md` after the same commit fixed `CGR-520`/`CGR-526`/`CGR-542`/`CGR-547`; those six rows are ✅ in the merged sections and have left the open mismatch index, which is why `render/core_graph` read ✅ 430 · ❌ 6 · 🚫 39 where the build before it read ✅ 424 · ❌ 11 · 🚫 40. This build re-derives `image-image_rs.md` after commit `455bcb5c` fixed `IMG-139`/`IMG-189`/`IMG-202`/`IMG-213`/`IMG-218` and moved `IMG-138` to ⚠️ for its FFI-bound half: those five rows are ✅ in the merged section and have left the open mismatch index, which is why `image` now reads ✅ 198 · ❌ 0 · ⚠️ 117 where the previous build read ✅ 193 · ❌ 6 · ⚠️ 116, and the Open mismatch index now holds 632 rows. `pbr-lights.md` was a section whose narrative prose disagreed with its rows in an earlier build — "The 20 ❌ rows are the actionable findings" and "which is why 239 rows are ✅" against a computed ✅ 243 · ❌ 16; those two sentences were corrected in the section, which now reads ✅ 243 · ❌ 16 · ⚠️ 28 · 🚫 67 · ⛔ 2 and agrees with its rows. `core_graph-core3d-core2d.md`'s per-status table was corrected in this build: it now reads ✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2, which is what its rows compute, so the table disagreement the previous build recorded under it is resolved. Three prose figures that disagreed with their rows when this file was assembled were corrected in place after assembly, so the file is now internally consistent: `core_graph-core3d-core2d.md`'s closing narrative (it counted the nine rows fixed by `a82ee144`/`ac02885e` as open), `image-image_rs.md`'s non-✅ list header (it read "(92)" where its rows compute 87) and the "Next candidates" item that still listed the six `image.rs` ❌ rows as open after batch 9. The rule stands: rows win, and any future disagreement is recorded here rather than silently patched.
+**Footnote — counts are computed, not copied.** Every number above is parsed from the row tables in `tmp/audit/sections/**`, so a stale prose summary cannot change a verdict; each section's own count line is compared against its parsed rows, and a disagreement is recorded here rather than silently patched. The counts each section's rows compute to are: `mesh-lead-verified.md` 16 (✅ 11 · ❌ 4 · ⛔ 1), `mesh-mesh_rs.md` 135 (✅ 122 · ❌ 1 · ⚠️ 7 · 🚫 5), `image-image_rs.md` 170 (✅ 83 · ⚠️ 53 · 🚫 23 · ⛔ 11), `image-loader-atlas.md` 239 (✅ 115 · ⚠️ 64 · 🚫 58 · ⛔ 2), `sprite-core.md` 149 (✅ 125 · ⚠️ 5 · 🚫 12 · ⛔ 7), `sprite-text2d-picking.md` 36 (✅ 2 · ❌ 2 · ⚠️ 17 · 🚫 14 · ⛔ 1), `sprite_render-render.md` 197 (✅ 182 · ⚠️ 13 · ⛔ 1 · REVIEW 1), `sprite_render-mesh2d.md` 276 (✅ 253 · ❌ 5 · ⚠️ 14 · 🚫 3 · REVIEW 1), `core_graph-core3d-core2d.md` 211 (✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2), `core_graph-rest.md` 300 (✅ 243 · ⚠️ 26 · 🚫 30 · ⛔ 1), `pbr-render-mesh.md` 179 (✅ 68 · ❌ 93 · ⚠️ 15 · ⛔ 1 · REVIEW 2), `pbr-lights.md` 356 (✅ 254 · ❌ 8 · ⚠️ 29 · 🚫 63 · ⛔ 2). **All twelve sections' count lines agree with their rows — no count-line disagreement is open.** This build re-derived the one section whose rows changed: `pbr-lights.md` after commit `5d582feb` ported `shrink_entities` and fixed `PBR-520`/`PBR-526`/`PBR-530` (❌ → ✅); those three rows are ✅ in the merged section and have left the open mismatch index, which is why `pbr` now reads ✅ 322 · ❌ 101 · ⚠️ 44 · 🚫 63 · ⛔ 3 and the Open mismatch index holds 619 rows. **Sentences in the merged sections' prose still disagree with their own rows**, and are recorded here rather than patched, because the sections are merged verbatim: of the 580 status labels the twelve sections' prose attaches to an ID, 3 no longer match their row, all in `pbr-lights.md` — numbered entries 23 ("`PBR-604`/`605` 🚫") and 24 ("`PBR-606` ❌") still list as open the three rows `9badb75a` fixed, which entry 26 of that same list and the rows themselves record as ✅; that section's summary also reads "the twelve fixed so far" while the parenthetical in the same sentence lists fifteen fixed IDs (`PBR-707`/`708`/`713`, `PBR-595`, `PBR-604`/`605`/`606`/`609`, `PBR-576`/`682`/`798`/`840`, `PBR-520`/`526`/`530`), and "which is why 251 rows are ✅" where its rows compute ✅ 254; `sprite-core.md`'s preamble still records "4 rows are ❌ and directly actionable" (`SPR-117`/`120`/`129`/`212`) although its rows compute ❌ 0 — all four were fixed in `ace3545e` and `78b29a14`, as that section's own count note already says. The section count lines, not those sentences, are what every number above is derived from. One wording note on the Open mismatch index below: its **Epix file that must change** column is filled with the first repository path in the row's Epix cell, else the first repository path in the row's difference cell, and repeats the section's own `none`/`—` only when neither cell names one — 13 of the 619 rows take their path from the difference cell that way, so the column's own note reads more narrowly than the column is actually filled. Earlier disagreements are all corrected in the source sections: `mesh-lead-verified.md` read ✅ 9 for a set that computes to ✅ 11, and its narrative is what resolves the `MSH-1012`/`MSH-1013` pair — the two private helpers are audited in both mesh sections under two ID blocks, and `mesh-mesh_rs.md` (`MSH-151`, `MSH-155`) carries the verdict, which is why those two rows point there rather than re-deriving it; `pbr-lights.md`'s narrative read "The 20 ❌ rows are the actionable findings" and "which is why 239 rows are ✅" against a computed ✅ 243 · ❌ 16, and its numbered list then carried entries for `PBR-576`, `PBR-611`, `PBR-682`, `PBR-798` and `PBR-840` as open after those rows had moved to ✅ (that list has since been rewritten, except for entries 23 and 24 noted above); `core_graph-core3d-core2d.md`'s per-status table was corrected to ✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2; `image-image_rs.md`'s non-✅ list header read "(92)" where its rows compute 87; and the "Next candidates" list that still held the six `image.rs` ❌ rows as open after batch 9 was replaced by the batch 1-13 list. The rule stands: rows win, and any future disagreement is recorded here rather than silently patched. Three section files are stored with CRLF line endings (`image-loader-atlas.md`, `pbr-render-mesh.md`, `pbr-lights.md`); all are merged here with the repository's LF convention, content unchanged. Every summary in the Open mismatch index is its row's own `Difference / required alignment` text cut to its first clause(s) — all 619 were re-checked against the merged sections and each is a prefix of that text — and every **ID** and **Status** cell is copied from its row unchanged.
 
 ## Open mismatch index
 
@@ -197,7 +198,7 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `image` | IMG-127 | ⚠️ | Private `m_sampler` + `sampler()`, `set_sampler()`, `sampler_descriptor()`, `get_or_init_sampler_descriptor()`, `set_sampler_descriptor()`; shape-only divergence, behaviour identical. | `epix_engine/image/include/epix/image/image.hpp` |
 | `image` | IMG-129 | ⚠️ | Private `m_usage` with `usage()`/`set_usage()`; default `MAIN_WORLD \| RENDER_WORLD` == `RenderAssetUsages::default()`. | `epix_engine/image/include/epix/image/image.hpp` |
 | `image` | IMG-130 | ⚠️ | Private `m_copy_on_resize` with accessors; default `false` in both. | `epix_engine/image/include/epix/image/image.hpp` |
-| `image` | IMG-138 | ⚠️ | Bevy has four variants; Epix three. The naming divergence is **fixed** (commit `455bcb5c`: `White` → `OpaqueWhite`); Bevy's fourth variant `Zero` stays absent as the FFI-bound half recorded in IMG-140. | `epix_engine/image/include/epix/image/image.hpp` |
+| `image` | IMG-138 | ⚠️ | Bevy has four variants; Epix three. The name divergence is **fixed** (commit `455bcb5c`: `White` → `OpaqueWhite`, see IMG-139). | `epix_engine/image/include/epix/image/image.hpp` |
 | `image` | IMG-140 | ⚠️ | Absent: the bindings' `WGPUSamplerDescriptor` has no `borderColor` at all (libs/webgpu-wrapper/webgpu/webgpu.h:1695-1711) and `AddressModeClampToZero` is commented out (webgpu/wgpu.h:37) → record as an FFI gap, not a Bevy divergence. | `libs/webgpu-wrapper/webgpu/webgpu.h` |
 | `image` | IMG-141 | ⚠️ | Same 12 fields in Bevy's order (zpp_bits `members<12>` preserves it for serialization); `label` is `std::string`, not `Option<String>`. | `epix_engine/image/include/epix/image/image.hpp` |
 | `image` | IMG-142 | ⚠️ | `std::string` default `""`; Bevy's `None` and `Some("")` collapse into one value (IMG-161 sets the wgpu label only when non-empty). | `epix_engine/image/include/epix/image/image.hpp` |
@@ -255,7 +256,7 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `image` | IMG-255 | ⚠️ | Epix-only writer (`ImageSaveError::SaveFailed`, refuses formats without a channel description); used by `render/render/src/screenshot.cpp:165`. | `epix_engine/image/src/image_loader.cpp` |
 | `image` | IMG-256 | ⚠️ | Epix-only CPU sampler returning `std::array<float,4>` (missing channels 0, `/255` or `/65535` normalization). | `epix_engine/image/src/image.cpp` |
 | `image` | IMG-257 | ⚠️ | Epix-only writers (`ImageWriteError::OutOfBounds`/`DataSizeMismatch`; `write_raw` requires exactly one pixel, `write` accepts ≥ component count). | `epix_engine/image/src/image.cpp` |
-| `image` | IMG-258 | ⚠️ | Epix-only stb resampler returning a new image; **no callers found**. Keeping it under Bevy's name is the actionable half of IMG-189. | `epix_engine/image/src/image.cpp` |
+| `image` | IMG-258 | ⚠️ | Epix-only stb resampler returning a new image; **no callers found**. Renamed `resampled` in `455bcb5c` so Bevy's in-place `resize` owns that name; the extension itself is kept as an accepted Epix addition. | `epix_engine/image/src/image.cpp` |
 | `image` | IMG-259 | ⚠️ | Epix-only separable Gaussian blur over a float working image (round-trips through `read_color_at`/`write_color_at`); **no callers found**. | `epix_engine/image/src/image.cpp` |
 | `image` | IMG-260 | ⚠️ | Epix port of the wgpu-types method (the bindings do not expose it). Verified equal for every spelling in the wrapper's `TextureFormat` enum, including `Depth24PlusStencil8`/`Depth32FloatStencil8` → 2 (the `TextureAspect::All` count) and … | `epix_engine/image/include/epix/image/image.hpp` |
 | `image` | IMG-261 | ⚠️ | Epix approximation used only by its own CPU-side helpers (`sample`/`write`/`resize`/`blur`); covers `R32Float` and `RGBA32Float`, where `sample_type() == Float` also covers `R16Float`/`Rg16Float`/`Rgba16Float`/`Rg32Float`. | `epix_engine/image/include/epix/image/image.hpp` |
@@ -409,7 +410,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `sprite` | SPR-193 | 🚫 | No Epix test covers `custom_size` combined with `rect` scaling. | `—` |
 | `sprite` | SPR-194 | 🚫 | No Epix test covers the zero-size `Err` early return. | `—` |
 | `sprite` | SPR-208 | ⛔ | `PARENT: sprite_render`. The Bevy counterpart is outside this section's file set, so it gets no rows here; note only that Epix stores `std::vector<sprite::TextureSlice>` and maps them lazily through `extract_slices`, and that … | `epix_engine/sprite_render/include/epix/sprite_render/render.hpp` |
-| `sprite` | SPR-212 | ❌ | Named `BorderRect::zero()` (a `static constexpr` function) instead of Bevy's associated constant `ZERO`. | `epix_engine/sprite/include/epix/sprite/texture_slice.hpp` |
 | `sprite` | SPR-215 | 🚫 | No Epix counterpart: `BorderRect::all(x)` is the only route, so `border: 10.0.into()` has no equivalent. A non-explicit `BorderRect(float)` constructor would restore it. (`From` is itself a Rust trait — the gap is the omitted constructor, not the trait.) | `—` |
 | `sprite` | SPR-216 | 🚫 | No Epix counterpart, so the `[min_x, max_x, min_y, max_y]` literal form (`min_inset = (min_x, min_y)`, `max_inset = (max_x, max_y)`) is unavailable. A four-float constructor — or a named helper that preserves that field order — would restore it. | `—` |
 | `sprite` | SPR-230 | ⚠️ | Epix adds `= 1.0f`; Bevy's payload field has no default (see SPR-157). No behaviour change for sites that name it, as every Epix site does (`epix_engine/sprite_render/examples/sprite/header/texture_slice.cpp:95`). | `epix_engine/sprite/include/epix/sprite/texture_slice.hpp` |
@@ -459,7 +459,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `sprite_render` | SRD-125 | ⚠️ | Epix registers in `RenderSystems::Queue` but has no `ambiguous_with`; no ambiguity checker exists (declaration is diagnostic-only in Bevy, and both engines leave the two systems unordered). | `epix_engine/sprite_render/src/render.cpp` |
 | `sprite_render` | SRD-155 | ⚠️ | Epix omits the two index defs because the Slang shader declares `dt_lut_texture`/`dt_lut_sampler` at fixed `[[vk::binding(1,0)]]`/`(2,0)` and passes them into `tone_mapping` explicitly. | `epix_engine/sprite_render/src/render.cpp` |
 | `sprite_render` | SRD-195 | ⚠️ | Epix adds `Without<render::CustomRendered>` (Epix-only marker), so a marked sprite is never extracted; Bevy has no such marker/filter. Asserted by epix_engine/sprite_render/tests/header/render_parity_tests.cpp:297-320. | `epix_engine/sprite_render/src/render.cpp` |
-| `sprite_render` | SRD-216 | ❌ | Epix names it `queue_sprites_2d`; no other `queue_sprites` exists in the repo, so the suffix is unexplained — rename to `queue_sprites`. | `epix_engine/sprite_render/src/render.cpp` |
 | `sprite_render` | SRD-252 | ⚠️ | Same lookup and same `Skip` result; a missing image bind group is `Failure` in Epix where Bevy `unwrap()`s (both fatal, Epix reports instead of panicking). | `epix_engine/sprite_render/include/epix/sprite_render/render.hpp` |
 | `sprite_render` | SRD-255 | ⚠️ | Draw call identical (`first_index 0`, `base_vertex 0`, `first_instance = range.start`, count = range length); Epix returns `Failure` for unprepared buffers where Bevy has two `unwrap()` panics. | `epix_engine/sprite_render/include/epix/sprite_render/render.hpp` |
 | `sprite_render` | SRD-257 | ⚠️ | No Epix shader-library asset for this path; the three bindings are declared inline at the top of the sprite Slang literal. | `epix_engine/sprite_render/src/render.cpp` |
@@ -616,16 +615,12 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-517 | 🚫 | Absent. | `—` |
 | `pbr` | PBR-518 | 🚫 | Absent. | `—` |
 | `pbr` | PBR-519 | 🚫 | Absent. | `—` |
-| `pbr` | PBR-520 | ❌ | No counterpart helper: Epix uses `shrink_to_fit()`, which always shrinks to `len`, where Bevy shrinks to `capacity/(reserve/2)` only when `capacity > 2*len` — a needless reallocation on every frame for a list that is already tight. | `epix_engine/pbr/src/light_systems.cpp` |
-| `pbr` | PBR-526 | ❌ | See PBR-520: `shrink_to_fit` instead of `shrink_entities`' capacity heuristic; identical contents, different allocation behaviour. | `epix_engine/pbr/src/light_systems.cpp` |
-| `pbr` | PBR-530 | ❌ | No shrink at all in the Epix point/spot pass: neither the six cubemap face lists nor the spot list is shrunk, so the per-frame growth/shrink cycle Bevy bounds is left unbounded here. | `—` |
 | `pbr` | PBR-532 | ⚠️ | `bevy_color::Color` (colour-space-carrying) becomes a linear `glm::vec4`; identical for white, but a user-set sRGB `Color` would take a different path than Bevy's `LinearRgba::from`. | `epix_engine/pbr/include/epix/pbr/ambient_light.hpp` |
 | `pbr` | PBR-537 | ⚠️ | `Color` → linear `glm::vec4`, as PBR-532. | `epix_engine/pbr/include/epix/pbr/ambient_light.hpp` |
 | `pbr` | PBR-551 | ⚠️ | Five validations with Bevy's exact wording (including Bevy's own "maximum_distance must be non-negative" wording on the `minimum_distance` check) but as `std::invalid_argument` rather than `assert!` — Epix's established convention for Bevy panics. | `epix_engine/pbr/include/epix/pbr/cascade.hpp` |
 | `pbr` | PBR-561 | ⚠️ | Bevy uses `transform.rotation()`, i.e. glam's affine decomposition which negates the x scale on a negative determinant; Epix normalises the three matrix columns without that sign correction, so a mirrored (negative-determinant) light transform yields a … | `epix_engine/pbr/src/light_systems.cpp` |
 | `pbr` | PBR-567 | ⚠️ | Feature-gated field not ported; the pinned feature set excludes the PCSS experiment, and `ExtractedDirectionalLight::soft_shadow_size` does exist for the future port. | `—` |
 | `pbr` | PBR-571 | ⚠️ | Bevy's `Handle<Image>` has no default and must be supplied; Epix's `assets::Handle` has no default constructor either, so `image` defaults to `image::DEFAULT_IMAGE_HANDLE` (documented, matches the skybox convention); `tiled` false. | `epix_engine/pbr/include/epix/pbr/directional_light.hpp` |
-| `pbr` | PBR-576 | ❌ | Epix has the value function but no system: no `ResMut<DirectionalLightShadowMap>` write, no `is_changed()` gate, and no warning when the size is corrected. | `—` |
 | `pbr` | PBR-578 | ⚠️ | Same gate (`shadows_enabled && visibility.get()`), same whole-map rebuild keyed by view — but Epix pushes each cascade's near plane to infinity here via `directional_view_frustum`, where Bevy does that only for the transient shadow view in `prepare_lights` … | `epix_engine/pbr/src/light_systems.cpp` |
 | `pbr` | PBR-579 | 🚫 | Missing type; the sun disk fields *are* carried in `ExtractedDirectionalLight` (light_meta.hpp:234-235) but nothing can set them. | `—` |
 | `pbr` | PBR-580 | 🚫 | Missing with the type. | `—` |
@@ -635,13 +630,9 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-588 | 🚫 | Missing type; light textures (gobo/cookie) have no component to attach, and no render path to read them. | `—` |
 | `pbr` | PBR-589 | 🚫 | Missing; `camera::CubemapLayout` exists in Epix but nothing consumes it for lights. | `—` |
 | `pbr` | PBR-599 | ⚠️ | Not ported with the PCSS experiment, exactly as for point lights (PBR-585). | `—` |
-| `pbr` | PBR-604 | 🚫 | Missing. Bevy reproduces the shader's `orthonormalize` deliberately (so CPU and GPU agree if glam changes); Epix has only glm's unrelated `gtx/orthonormalize` extension, which is not the same function. | `—` |
-| `pbr` | PBR-605 | 🚫 | Missing; it is what turns a light's back axis into the orthonormal basis both the frustum system and the spot shadow views need. | `—` |
-| `pbr` | PBR-606 | ❌ | The arithmetic exists only inline inside `cube_face_projection`, which hardcodes π/2 — there is no `angle * 2.0` entry point, so a spot light's projection (`perspective_infinite_reverse_rh(2*outer_angle, 1.0, near_z)`) cannot be produced. | `epix_engine/pbr/include/epix/pbr/light_meta.hpp` |
 | `pbr` | PBR-607 | 🚫 | Missing; the spot cone texture has no component, and its border-must-be-black note has nowhere to live. | `—` |
 | `pbr` | PBR-608 | 🚫 | Missing with the type. | `—` |
-| `pbr` | PBR-609 | 🚫 | Absent: nothing ever writes a spot light's `Frustum`. `SpotLight` is queried with `&Frustum` by `check_point_light_mesh_visibility` (`light_systems.cpp:323-325`), so every spot light culls against a default (never valid) frustum until this lands. | `—` |
-| `pbr` | PBR-611 | 🚫 | No constructor; `LightProbe{}` is the aggregate, so the API shape (Bevy's `#[inline] pub fn new()`) has no counterpart. | `—` |
+| `pbr` | PBR-611 | ⚠️ | Bevy's `#[inline] pub fn new() -> Self` has no counterpart; `LightProbe{}` is the aggregate, which is how C++ constructs an empty marker. Adding a `new()` would be unidiomatic API with no caller, so the aggregate is recorded as the counterpart instead. | `epix_engine/pbr/include/epix/pbr/probe.hpp` |
 | `pbr` | PBR-613 | ⚠️ | `Handle::default()` (a null handle) becomes `image::DEFAULT_IMAGE_HANDLE`, an existing engine convention; observationally different only if code tests for a null handle. | `epix_engine/pbr/include/epix/pbr/probe.hpp` |
 | `pbr` | PBR-635 | ⚠️ | Epix models the gathered list as free functions over a `std::vector<RenderLightProbe>` + an index map, not a per-view component; the `LightProbeRecord` stand-in replaces Bevy's `LightProbeInfo<C>` (generic only because asset ids differ per probe type). | `epix_engine/pbr/include/epix/pbr/light_probe.hpp` |
 | `pbr` | PBR-637 | ❌ | The value function exists (`environment_map_uniform_from(rotation)` = inverse of `mat4_cast(rotation)`, matching Bevy's `Transform::from_rotation(r).to_matrix().inverse()`), but there is no extraction system: nothing inserts `EnvironmentMapUniform` on views, … | `epix_engine/pbr/include/epix/pbr/light_probe.hpp` |
@@ -653,7 +644,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-663 | ⚠️ | Spelled `near_plane`/`far_plane` because `near`/`far` are Windows SDK macros (the same reason Epix's camera spells `get_far()`); documented. **See PBR-731 — the fields are never written.** | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp` |
 | `pbr` | PBR-665 | 🚫 | Missing: it is the `VisibilityClass` a clustered point/spot/directional light is registered under, and the four light components' `on_add` hook that installs it is missing with the plugin. | `—` |
 | `pbr` | PBR-676 | ⚠️ | Arithmetic is identical (`per_layer = total/z_slices`, `y = sqrt(per_layer/ratio)`, `x = y*ratio`, both truncated, the x==0 / y==0 fallbacks, `UVec3(x, y, z_slices)`), and both clamp `z_slices` to `total`; Bevy's `expect` on a zero-sized viewport becomes a … | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp` |
-| `pbr` | PBR-682 | ❌ | Bevy's `debug_assert!(x*y*z <= 4096)` (the uniform-buffer cluster limit) has no counterpart, and the same assert in `assign_objects_to_clusters` (`assign.rs:458-461`) is missing too, so an over-large configuration is silent. | `—` |
 | `pbr` | PBR-684 | 🚫 | Missing system: nothing inserts `(Clusters::default(), config)` on active `Camera3d` entities without `Clusters`, so no view ever has cluster state to fill. | `—` |
 | `pbr` | PBR-685 | 🚫 | The three accessors are absent; `VisibleClusterableObjects` is used as a plain struct in Epix, so nothing is broken by their absence today, but the API surface is missing. | `—` |
 | `pbr` | PBR-686 | ⚠️ | Epix exposes the set directly and callers use `entities.contains/insert` (`light_systems.cpp:23,161,292`) where Bevy goes through `contains()`; same behaviour, different encapsulation. | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp` |
@@ -692,7 +682,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-793 | 🚫 | Missing, including the `update` → `update_archetypes` forwarding that both nodes need. | `—` |
 | `pbr` | PBR-794 | 🚫 | Missing: the `is_late && !occlusion_culling` skip, the depth attachment fetch with `StoreOp::Store`, the deferred command-buffer generation, the `TrackedRenderPass`, the diagnostic pass span and `shadow_phase.render(&mut render_pass, world, … | `—` |
 | `pbr` | PBR-796 | ❌ | Bevy warns once when the directional-light count exceeds `MAX_DIRECTIONAL_LIGHTS`, once when a light's configured cascades exceed `MAX_CASCADES_PER_LIGHT`, once when the uniform clusterable-object cap is exceeded, once when the cluster index list fills, and … | `—` |
-| `pbr` | PBR-798 | ❌ | No `static_assert` guards the 80 × 204 = 16 320-byte budget; the Epix comment states the size but nothing enforces it, so a future field addition would silently overrun the WebGL2 uniform binding. | `—` |
 | `pbr` | PBR-801 | 🚫 | Missing: nothing queries the device for the three storage-buffer bindings or for clustered-decal usability, so `GlobalClusterSettings` is never built and `assign_objects_to_clusters` returns immediately (light_systems.cpp:155). | `—` |
 | `pbr` | PBR-810 | ⚠️ | Renamed `near_plane`/`far_plane` for the Windows-macro reason (PBR-663); `dimensions` defaults to (1,1,1) where Bevy's `Default` would be zero. | `epix_engine/pbr/include/epix/pbr/cluster.hpp` |
 | `pbr` | PBR-811 | ⚠️ | Rust's two payload-carrying variants become a `Kind` tag plus both payloads (`counts`, `entity`) live in the struct — the same flattening as PBR-653, and the record order (header, then its objects) is what the walk depends on. | `epix_engine/pbr/include/epix/pbr/cluster.hpp` |
@@ -701,7 +690,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-826 | ❌ | The pure walk exists (`extract_view_clusters`: flat records in cluster order, `mapper` failure skips the entity, the same reserve) but the *system* half is missing: no `Extract` query over `(RenderEntity, &Clusters, &Camera)`, no removal of … | `epix_engine/pbr/include/epix/pbr/cluster.hpp` |
 | `pbr` | PBR-827 | ❌ | Same split: `prepare_view_cluster_bindings` reproduces the walk (offset = current index count, skip an object with no global index, `break` on the uniform form's `MAX_INDICES`) but the system is missing, so the bindings are never built, written or inserted, … | `epix_engine/pbr/include/epix/pbr/cluster.hpp` |
 | `pbr` | PBR-836 | 🚫 | Missing: both minimum sizes, needed for the bind group layout entries. | `—` |
-| `pbr` | PBR-840 | ❌ | Missing `static_assert` (the Epix size is exactly 16 384, so the assertion would hold — but nothing checks it). | `—` |
 | `pbr` | PBR-842 | 🚫 | Missing: the render-world mirror of `VisibleMeshEntities` as `(Entity, MainEntity)` pairs, produced by `extract_lights` and consumed by the shadow pass. | `—` |
 | `pbr` | PBR-843 | 🚫 | Missing with the type. | `—` |
 | `pbr` | PBR-844 | 🚫 | Missing: six faces of render visible entities; `check_point_light_mesh_visibility` produces the main-world counterpart only. | `—` |
@@ -794,8 +782,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `render/core_graph` | CGR-643 | ⚠️ | Same 14 entries in the same order: binding 0 depth (`texture_2d` or `texture_2d_multisampled`), bindings 1-12 `R32Float` storage textures, binding 13 non-filtering sampler; labels differ only in case. | `epix_engine/render/core_graph/src/mip_generation.cpp` |
 | `render/core_graph` | CGR-676 | ⚠️ | Bevy `Component + ExtractComponent + Clone + Copy + ShaderType + WriteInto + Default`; Epix `ShaderWritable + copy-constructible/assignable + default-initializable + ExtractComponentImpl` plus required `fragment_shader()`/`node_edges()`. | `epix_engine/render/core_graph/include/epix/core_graph/fullscreen_material.hpp` |
 | `render/core_graph` | CGR-681 | ⚠️ | Bevy's label wraps `core::any::type_name::<Self>()` and implements only `dyn_clone`; Epix derives the label from `NodeLabel::from_type<T>()` and models it as a `NodeLabel` subtype so the graph accepts it directly. | `epix_engine/render/core_graph/include/epix/core_graph/fullscreen_material.hpp` |
-
-<!-- open mismatch index: 632 non-✅ rows — mesh 18, image 211, sprite 59, sprite_render 39, pbr 224, render/core_graph 81 -->
 
 ## Fix batches
 
@@ -931,20 +917,75 @@ verified; the fixing commit is recorded here.
 | Status | **committed as `455bcb5c`** — `fix(image): match Bevy's sampler border name, colour-access rule, ASTC list and resize naming (IMG-139, IMG-189, IMG-202, IMG-213, IMG-218)` |
 | Remaining | `IMG-138`'s other half — Bevy's fourth variant `Zero` — stays absent because the vendored `WGPUSamplerDescriptor` has no `borderColor` field; that is the FFI gap `IMG-140` records, not an open mismatch. |
 
+### Batch 10 — the spot light's basis, projection and frusta (PBR-604, PBR-605, PBR-606, PBR-609)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `PBR-604`, `PBR-605`, `PBR-606`, `PBR-609` |
+| Bevy behaviour | `bevy_light/src/spot_light.rs` holds `orthonormalize` (`:164-175`, the shader's basis reproduced so CPU and GPU agree), `spot_light_world_from_view` (`:179-185`), `spot_light_clip_from_view` (`:187-190`, twice the outer angle) and `update_spot_light_frusta` (`:204-237`). |
+| Epix divergence | None of the four existed; the projection's arithmetic was only inline in `cube_face_projection`, which hardcodes the point light's π/2, and every spot light kept the default, never-valid `Frustum` that `check_point_light_mesh_visibility` culls meshes against. |
+| Change | All four ported into Bevy's own files: the three functions into `spot_light.hpp`, the system into `light_systems.cpp` with its declaration in `light_systems.hpp`. The system keeps Bevy's change filter, its two skips and its "not scheduled on its own" status, as with the other light systems. |
+| Files | `epix_engine/pbr/include/epix/pbr/spot_light.hpp`, `epix_engine/pbr/include/epix/pbr/light_systems.hpp`, `epix_engine/pbr/src/light_systems.cpp`, `epix_engine/pbr/tests/header/cluster_tests.cpp` |
+| Tests | `Cluster.SpotLightBasisAndProjectionMatchBevy` (orthonormal, right-handed, the requested axis as the third column, scale not applied to the translation, projection equal to `perspective_inverse_reverse_rh(2*angle, 1, near_z)`) and `Cluster.UpdateSpotLightFrustaRebuildsFrusta` (cone contains the light and a point half-way down its forward axis, excludes a point 60° off axis and one beyond `range`, and both skip cases leave the default frustum). |
+| Verification | Whole-tree build `BUILD_EXIT=0` (`tmp/audit-build-pbr-spot.log`); CTest `92/92`; pbr cluster tests 101/101; 63-example sweep on both streams (`tmp/audit-sweep-pbr-spot/`) with only the pre-existing flag; `mesh_rendering` capture byte-identical to baseline. |
+| Parent modules touched | none — `pbr` only. |
+| Status | **committed as `9badb75a`** — `feat(pbr): port the spot light's basis, projection and frustum system (PBR-604, PBR-605, PBR-606, PBR-609)` |
+
+### Batch 11 — two Bevy name renames (SPR-212, SRD-216)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `SPR-212`, `SRD-216` |
+| Bevy behaviour | `BorderRect::ZERO` is an associated constant; the sprite queue system is `queue_sprites`. |
+| Epix divergence | The constant was a function-shaped `zero()` (inconsistent with `Anchor::BOTTOM_LEFT` in the same module), and the system carried an unexplained `_2d` suffix. |
+| Change | `BorderRect::ZERO` is now an out-of-class `static const` like `Anchor`'s constants — an in-class `constexpr` initializer cannot name the class it is inside, which the first attempt hit and the build caught; the system was renamed at its declaration, definition and registration. |
+| Files | `epix_engine/sprite/include/epix/sprite/texture_slice.hpp`, `epix_engine/sprite/src/texture_slice.cpp`, `epix_engine/sprite/tests/header/sprite_parity_tests.cpp`, `epix_engine/sprite_render/include/epix/sprite_render/render.hpp`, `epix_engine/sprite_render/src/render.cpp` |
+| Verification | Whole-tree build `BUILD_EXIT=0` (`tmp/audit-build-renames.log` failed on the in-class initializer, `…renames2.log` clean); CTest `92/92`; 63-example sweep on both streams (`tmp/audit-sweep-renames/`) with only the pre-existing flag; `texture_slice` capture inspected (six nine-slice variants, the stretched bordered rect and the tiled grid). |
+| Parent modules touched | none — `sprite` and `sprite_render` only. |
+| Status | **committed as `78b29a14`** (sprite) and **`ddc844a4`** (sprite_render) |
+
+### Batch 12 — the shadow-map-size validator, the cluster-count guard and Bevy's size assertions (PBR-576, PBR-682, PBR-798, PBR-840)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `PBR-576`, `PBR-682`, `PBR-798`, `PBR-840` (and `PBR-611`, recorded as a divergence rather than fixed) |
+| Bevy behaviour | `validate_shadow_map_size` is a system that reads a changed `DirectionalLightShadowMap`, rounds a non-power-of-two size up and warns (`directional_light.rs:198-204`); `Clusters::update` asserts at most 4096 clusters (`cluster/mod.rs:331-332`); `cluster.rs` carries two compile-time assertions that the clusterable-object array and the index list fit the 16 KiB WebGL2 uniform binding (`:24-25`, `:562-564`). |
+| Epix divergence | The validator existed only as a value function with no system, no warning and no change gate; the cluster-count assertion was absent; the two size budgets were comments rather than `static_assert`s. |
+| Change | The system is ported with Bevy's gate, rounding and warning, and the value function is folded back into it (the earlier helper fold-back precedent); the 4096 assertion sits in `Clusters::update`, which the assignment path also calls; both budgets are `static_assert`s now. `LightProbe::new` is recorded as ⚠️ instead of 🚫: the aggregate `LightProbe{}` is the C++ counterpart, and a `new()` would be unidiomatic API with no caller. |
+| Files | `epix_engine/pbr/include/epix/pbr/{cluster,directional_light,light_cluster,light_systems}.hpp`, `epix_engine/pbr/src/light_systems.cpp`, `epix_engine/pbr/tests/header/cluster_tests.cpp` |
+| Tests | New `Cluster.ValidateShadowMapSizeSystemRoundsUpChangedSizes` (3000 → 4096, the second run leaves it alone, an explicit power of two is untouched); the existing layout test gained the index-list budget assertion. |
+| Verification | Whole-tree build `BUILD_EXIT=0` (`tmp/audit-build-pbr-guards.log`); CTest `92/92`; pbr cluster tests 102/102; 63-example sweep on both streams (`tmp/audit-sweep-pbr-guards/`) with only the pre-existing flag; `mesh_rendering` capture byte-identical to baseline. |
+| Parent modules touched | none — `pbr` only. |
+| Status | **committed as `636a72c6`** — `feat(pbr): port the shadow-map-size validator, the cluster-count guard and Bevy's size assertions (PBR-576, PBR-682, PBR-798, PBR-840)` |
+
+### Batch 13 — bound the light visibility lists as Bevy does (PBR-520, PBR-526, PBR-530)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `PBR-520`, `PBR-526`, `PBR-530` |
+| Bevy behaviour | `shrink_entities` (`bevy_light/src/lib.rs:286-300`) reclaims a list only when its capacity exceeds twice its length, and then only to half the ratio; it is called after the cascade walk (`:444-449`), after each point light's cubemap walk (`:604-606`) and after each spot light's walk (`:682`). |
+| Epix divergence | The directional pass used `shrink_to_fit()`, which reallocates down to the length on every frame for every cascade, and the point/spot pass never shrank its lists at all. |
+| Change | `shrink_entities` ported with Bevy's arithmetic (including the empty-list case and the `shrink_to(n)` semantics, which C++ expresses by rebuilding at the computed capacity) and called at Bevy's three sites. |
+| Files | `epix_engine/pbr/include/epix/pbr/shadow_phase.hpp`, `epix_engine/pbr/src/light_systems.cpp`, `epix_engine/pbr/tests/header/cluster_tests.cpp` |
+| Tests | `Cluster.ShrinkEntitiesOnlyReclaimsLooseCapacity`: a loose buffer is reclaimed with its entities preserved, an already-tight list keeps its capacity, an empty list releases its buffer. |
+| Verification | Whole-tree build `BUILD_EXIT=0` (`tmp/audit-build-pbr-shrink.log`); CTest `92/92`; pbr cluster tests 103/103; 63-example sweep on both streams (`tmp/audit-sweep-pbr-shrink/`) with only the pre-existing flag; `mesh_batching` capture byte-identical to baseline. |
+| Parent modules touched | none — `pbr` only. |
+| Status | **committed as `5d582feb`** — `feat(pbr): bound the light visibility lists the way Bevy does (PBR-520, PBR-526, PBR-530)` |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:
 
-1. `PBR-606` — no `spot_light_clip_from_view`; the arithmetic only exists inline in `cube_face_projection`, which hardcodes π/2, so a spot light's projection cannot be produced. Worth doing together with `update_spot_light_frusta`, which is the only consumer, so the function does not land as dead code.
-2. `SRD-305` — `BatchedInstanceBuffer<Mesh2dUniform>` has two CPU writers, so the buffer is uploaded twice per frame where Bevy registers one; the fix may belong in the generic `CpuBinnedRenderPhasePlugin` (`PARENT: render`), which would need approval.
-3. `SPR-212` (`BorderRect::ZERO` spelled `zero()`) and `SRD-216` (`queue_sprites_2d` should be `queue_sprites`) — renames. The six `image.rs` ❌ rows are done (batch 9); `IMG-138`'s `Zero` variant stays behind the FFI gap.
-4. `SPR-212` (`BorderRect::ZERO` spelled `zero()`) and `SRD-216` (`queue_sprites_2d` should be `queue_sprites`) — renames.
-5. `CGR-172`, `CGR-174`, `CGR-187`–`CGR-197` — the prepass double-buffer feature (markers, `FrameCount`, the `_1`/`_2` textures, `package_double_buffered_texture`).
-6. `CGR-106`, `CGR-232` — the label enums are named `Core3dNodes`/`Core2dNodes` where Bevy's are `Node3d`/`Node2d` (pending the user's decision on whether that naming is a convention or a defect).
+1. `PBR-607`, `PBR-608` (`SpotLightTexture` and its image handle) — the remaining additive light type; unconsumed until the render half lands.
+2. `PBR-688`, `PBR-796` — the six warning sites Bevy logs (cluster z-slices, the directional-light and cascade caps, the uniform object cap, the index-list fill and the packed-offset overrun); every condition is already detected, only the diagnostics are missing.
+3. `SRD-305` — `BatchedInstanceBuffer<Mesh2dUniform>` has two CPU writers, so the buffer is uploaded twice per frame where Bevy registers one; the fix may belong in the generic `CpuBinnedRenderPhasePlugin` (`PARENT: render`), which would need approval.
+4. `CGR-172`, `CGR-174`, `CGR-187`–`CGR-197` — the prepass double-buffer feature (markers, `FrameCount`, the `_1`/`_2` textures, `package_double_buffered_texture`).
+5. `CGR-106`, `CGR-232` — the label enums are named `Core3dNodes`/`Core2dNodes` where Bevy's are `Node3d`/`Node2d` (pending the user's decision on whether that naming is a convention or a defect).
+6. `SRD-195`, `SRD-330` — the Epix-only `CustomRendered` extraction filter (pending a decision on whether it is sanctioned).
 
 ## Parent-module divergences
 
-Every row whose section marked it `PARENT:`, plus every `PRT-` row — a divergence that belongs to a parent module (`render`, `pbr`, `assets`, `camera`, …) or to a subsystem Epix does not have, rather than to the audited module itself. Fixing any of these requires the parent module to be audited and the user to approve before committing (see `_policy.md`, "Commits").
+Every row whose section marked it `PARENT:` in its difference cell, plus every non-✅ row whose **Entity** or **Epix** cell carries the marker — a divergence that belongs to a parent module (`render`, `pbr`, `assets`, `camera`, `transform`, …) or to a subsystem Epix does not have, rather than to the audited module itself. The three rows a section marked `PARENT:` in the Entity cell *and* graded ✅ (`PBR-851`, `PBR-852`, `PBR-853`) are coverage evidence and stay in their merged section only. Fixing any of these requires the parent module to be audited and the user to approve before committing (see `_policy.md`, "Commits").
 
 | Audited module | ID | Status | Parent module | Entity | Why it is a parent-module row (section wording) |
 | --- | --- | --- | --- | --- | --- |
@@ -972,6 +1013,10 @@ Every row whose section marked it `PARENT:`, plus every `PRT-` row — a diverge
 | `sprite` | SPR-433 | 🚫 | no picking subsystem (`bevy_picking` absent from Epix) | `impl Plugin for SpritePickingPlugin` (+ `fn build`) | PARENT: `init_resource::<SpritePickingSettings>()` + `add_systems(PreUpdate, sprite_picking.in_set(PickingSystems::Backend))` have no host; `PickingSystems` does not exist in Epix. |
 | `sprite` | SPR-434 | 🚫 | no picking subsystem (`bevy_picking` absent from Epix) | `sprite_picking` | PARENT: no pointers, `RayMap`, `PointerHits` or message-writer equivalent; Epix input exposes raw `MouseMove`/`MouseScroll`/`MouseButtonInput` events only (epix_engine/input/include/epix/input/events.hpp:26-40). |
 | `sprite` | SPR-435 | 🚫 | no picking subsystem (`bevy_picking` absent from Epix) | `sprite_picking` body (sprite hit test) | PARENT: none of the stages exist — z-sorted visible sprites, `RenderLayers` camera/sprite intersection, world→sprite transform + ray/plane lerp, `compute_pixel_space_point`, alpha-threshold or bounding-box acceptance, `Pickable::should_block_lower` occlusion and … |
+| `pbr` | PBR-849 | 🚫 | `render` | `ViewBinnedRenderPhases::retain` (PARENT: render) | `PARENT: render`, marked in the Entity cell. The type exists with `prepare_for_new_frame`, but there is no `retain`: Epix cannot expire the phases of shadow views that no longer exist, which `prepare_lights` does as its last act. |
+| `pbr` | PBR-850 | ⛔ | `render` | `ViewBinnedRenderPhases<Shadow>` resource initialisation (PARENT: render) | `PARENT: render`, marked in the Entity cell. The `Shadow` phase's registration and resource init belong to the `bevy_pbr/src/render/mesh.rs` audit (`PBR-100`..`PBR-278`); recorded here only so this section is not read as claiming the phase exists. |
+| `pbr` | PBR-854 | ⚠️ | `camera` | `Frustum::{from_clip_from_world, from_clip_from_world_custom_far}`, `Sphere::intersects_obb`, `HalfSpace::new` (PARENT: camera) | `PARENT: camera`, marked in the Entity cell. Plane extraction, the custom-far construction and the OBB tests match; `from_normal_d` guards a zero-length normal where Bevy's `HalfSpace::new` multiplies by `length_recip()` and would produce NaN for the inactive `(0,0,0,∞)` plane. Recorded for the camera audit, not fixed here. |
+| `pbr` | PBR-855 | ⚠️ | `transform` | `GlobalTransform::{rotation, scale, back}` (PARENT: transform) | `PARENT: transform`, marked in the Entity cell. Epix stores only a matrix, so Bevy's affine decomposition is replaced by column normalisation (`from_matrix`) and `local_z` is a normalised column; `scale().length()` for probe/decal ranges is reproduced by `transform_scale_length`, but the negative-determinant sign correction in Bevy's `scale`/`rotation` has no counterpart (see PBR-561 and PBR-595). |
 | `render/core_graph` | CGR-302 | ✅ | `render` | `sort_phase_system::<T>` used by both core plugins | PARENT: render. Epix provides `sort_phase_system<T>` over `ViewSortedRenderPhases` and both plugins register it in `RenderSystems::PhaseSort` exactly as Bevy does. |
 | `render/core_graph` | CGR-303 | ✅ | `render` | `ViewBinnedRenderPhases::{prepare_for_new_frame, retain/get}` + `ViewSortedRenderPhases::{insert_or_clear, retain/get}` | PARENT: render. `prepare_for_new_frame(view, mode)` reuses an existing phase (clearing it) or emplaces a new one; `insert_or_clear` matches Bevy's sorted-phase semantics; Epix's `erase_if` replaces `retain`. |
 | `render/core_graph` | CGR-304 | ✅ | `render` | `Msaa` + `samples()` used for every depth/prepass sample count | PARENT: render. `Msaa::Off..=Eight` map to 1/2/4/8; `samples(msaa)` is the numeric form used by all texture descriptors above. |
@@ -985,7 +1030,7 @@ Every row whose section marked it `PARENT:`, plus every `PRT-` row — a diverge
 | `render/core_graph` | CGR-513 | ⚠️ | `pbr` | `prepare_previous_view_uniforms` (Epix-only in core_graph) | PARENT: pbr`. |
 | `render/core_graph` | CGR-592 | 🚫 | `pbr` | `oit_draw.wgsl`: `oit_draw` (`OIT_ENABLED`), `pack_24bit_depth_8bit_alpha`, `unpack_24bit_depth_8bit_alpha` | PARENT: pbr` — `epix_engine/pbr/include/epix/pbr/mesh_pipeline.hpp:128-131` already emits `OIT_ENABLED` and an `oit_mesh_pipeline` for the `BLEND_ALPHA \| OIT_ENABLED` key (locked by `cluster_tests.cpp:4290-4301`), but nothing consumes the def and the layer buffers … |
 
-<!-- parent-module rows: 36 -->
+<!-- parent-module rows: 40 -->
 
 ## Audited sections
 
@@ -2176,13 +2221,12 @@ Supporting Bevy reads (for classification only, no rows): `bevy_camera/src/visib
 - `epix_engine/assets/include/epix/assets/id.hpp:23-60`, `assets/include/epix/assets/handle.hpp:65-134`, `assets/src/id.cpp`, `assets/include/epix/assets.hpp:50-120`, `assets/src/plugin.cpp:101-102`.
 - `epix_engine/render/render/include/epix/render/view.hpp:569-597` (`RenderVisibleEntities` is visibility-class keyed).
 - Prior records consulted: `tmp/audit/_policy.md`; `tmp/audit/sections/sprite-text2d-picking.md` (row SPR-418 and its "Not audited" note that the slice entities were unclaimed); `tmp/audit/sections/image-image_rs.md` row IMG-264 (already owns the `DEFAULT_IMAGE_HANDLE` finding).
-- Roadmap decisions for the Lead: 4 rows are ❌ and directly actionable (SPR-117/120 AABB insert mode — one fix, SPR-129 visibility-class append, SPR-212 `BorderRect::ZERO` rename).
+- Roadmap decisions for the Lead: the four ❌ rows this section opened with (SPR-117/120 AABB insert mode, SPR-129 visibility-class append, SPR-212 `BorderRect::ZERO` rename) were all fixed — `ace3545e` and `78b29a14` — so the module now has no ❌ rows.
 
 ## Summary
 
-Counts: **✅ 124**, **❌ 1**, **⚠️ 5**, **🚫 12**, **⛔ 7**, **REVIEW 0** — 149 rows.
-(SPR-117, SPR-120, SPR-128 and SPR-129 were fixed in commit `ace3545e`; see
-`## Fix batches` in the tracker for the batch record.)
+Counts: **✅ 125**, **❌ 0**, **⚠️ 5**, **🚫 12**, **⛔ 7**, **REVIEW 0** — 149 rows.
+(SPR-117/120/128/129 were fixed in `ace3545e` and SPR-212 in `78b29a14`; see `## Fix batches` in the tracker.)
 
 Non-✅ IDs (1–14 are real divergences and gaps; 15–29 are the absent test arms the 🚫 rows record):
 
@@ -2204,7 +2248,7 @@ Non-✅ IDs (1–14 are real divergences and gaps; 15–29 are the absent test a
 20. SPR-193 🚫 — no Epix test covers `custom_size` combined with `rect` scaling.
 21. SPR-194 🚫 — no Epix test covers the zero-`custom_size` `Err` early return.
 22. SPR-208 ⛔ — `ComputedTextureSlices` lives in `sprite_render`; its Bevy counterpart is `bevy_sprite_render/src/texture_slice/computed_slices.rs`, outside this section's file set.
-23. SPR-212 ❌ — `BorderRect::ZERO` is spelled `BorderRect::zero()` (rename-only; Epix already uses SCREAMING_CASE for `Anchor::BOTTOM_LEFT`, so this is not C++-forced).
+23. *(SPR-212 ✅ fixed in `78b29a14` — `BorderRect::ZERO` is the associated constant now.)*
 24. SPR-215 🚫 — no `From<f32> for BorderRect`.
 25. SPR-216 🚫 — no `From<[f32; 4]> for BorderRect` (`[min_x, max_x, min_y, max_y]` ordering).
 26. SPR-230 ⚠️ — `SliceScaleModeTile::stretch_value` has a default initialiser (`1.0f`) Bevy's `Tile { stretch_value }` does not have; see SPR-157.
@@ -2345,7 +2389,7 @@ Non-✅ IDs (1–14 are real divergences and gaps; 15–29 are the absent test a
 | SPR-209 | type | `BorderRect` | bevy_sprite/src/texture_slice/border_rect.rs:10-15 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:17-43 | ✅ | Same two `Vec2` insets; `Default, Copy, Clone, PartialEq, Debug` ↔ value semantics and a defaulted `operator==`. |
 | SPR-210 | field | `BorderRect::min_inset` | bevy_sprite/src/texture_slice/border_rect.rs:12 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:18 | ✅ | Same name/type; defaults to zero. |
 | SPR-211 | field | `BorderRect::max_inset` | bevy_sprite/src/texture_slice/border_rect.rs:14 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:19 | ✅ | Same name/type; defaults to zero. |
-| SPR-212 | const | `BorderRect::ZERO` | bevy_sprite/src/texture_slice/border_rect.rs:19 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:21 | ❌ | Named `BorderRect::zero()` (a `static constexpr` function) instead of Bevy's associated constant `ZERO`. Rename-only, no behaviour change; not C++-forced, since Epix already uses SCREAMING_CASE associated constants (`Anchor::BOTTOM_LEFT`, `SpritePipelineKey::NONE`). The Epix test at `epix_engine/sprite/tests/header/sprite_parity_tests.cpp:49` pins the current spelling. |
+| SPR-212 | const | `BorderRect::ZERO` | bevy_sprite/src/texture_slice/border_rect.rs:19 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:21-25 | ✅ | **Fixed** (commit `78b29a14`): now the associated constant `BorderRect::ZERO`, defined out of class like `Anchor`'s constants — a class is not complete inside a static data member's initializer, which the first in-class `constexpr` attempt hit. |
 | SPR-213 | method | `BorderRect::all(inset)` | bevy_sprite/src/texture_slice/border_rect.rs:22-29 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:22-24 | ✅ | Both insets become `Vec2::splat(inset)`. |
 | SPR-214 | method | `BorderRect::axes(horizontal, vertical)` | bevy_sprite/src/texture_slice/border_rect.rs:32-40 | epix_engine/sprite/include/epix/sprite/texture_slice.hpp:25-28 | ✅ | Same `Vec2::new(horizontal, vertical)` for both insets; the doc wording is carried over. |
 | SPR-215 | impl | `From<f32> for BorderRect` | bevy_sprite/src/texture_slice/border_rect.rs:43-47 | — | 🚫 | No Epix counterpart: `BorderRect::all(x)` is the only route, so `border: 10.0.into()` has no equivalent. A non-explicit `BorderRect(float)` constructor would restore it. (`From` is itself a Rust trait — the gap is the omitted constructor, not the trait.) |
@@ -2545,7 +2589,8 @@ Epix files read:
 
 ## Summary
 
-Counts: ✅ 181 · ❌ 1 · ⚠️ 13 · 🚫 0 · ⛔ 1 · REVIEW 1 (total 197 rows, SRD-100..SRD-296).
+Counts: ✅ 182 · ❌ 0 · ⚠️ 13 · 🚫 0 · ⛔ 1 · REVIEW 1 (total 197 rows, SRD-100..SRD-296).
+(SRD-216 was fixed in commit `ddc844a4`; see `## Fix batches` in the tracker.)
 
 Non-✅ rows:
 
@@ -2558,7 +2603,7 @@ Non-✅ rows:
 7. **SRD-125** ⚠️ — `ambiguous_with(queue_material2d_meshes::<ColorMaterial>)` has no Epix counterpart; Epix has no ambiguity-reporting subsystem (the declaration is diagnostic-only in Bevy, schedule order is unordered in both).
 8. **SRD-155** ⚠️ — Bevy's `TONEMAPPING_LUT_TEXTURE_BINDING_INDEX`/`_SAMPLER_` uint shader defs are unnecessary in Epix, which declares the LUT bindings at fixed Slang locations and passes them to `tone_mapping`.
 9. **SRD-195** ⚠️ — Epix extends the extraction query with `Without<render::CustomRendered>`, an Epix-only marker; a marked sprite is not extracted (Bevy has no such marker and no such filter; asserted by Epix's own parity test).
-10. **SRD-216** ❌ — Epix names the queue system `queue_sprites_2d`; Bevy's name is `queue_sprites` and no name clash justifies the suffix.
+10. *(SRD-216 ✅ fixed in `ddc844a4` — the system is `queue_sprites`.)*
 11. **SRD-252** ⚠️ — a missing image bind group returns `RenderCommandError::Failure` in Epix where Bevy `unwrap()`s; same fatal outcome, Epix's error-return convention.
 12. **SRD-255** ⚠️ — unprepared sprite buffers return `Failure` instead of Bevy's two `unwrap()` panics; same fatal outcome.
 13. **SRD-257** ⚠️ — no `bevy_sprite::sprite_view_bindings` module (`#define_import_path`); the bindings are merged into the sprite Slang file.
@@ -2695,7 +2740,7 @@ Decisions for the Lead: (a) whether to accept `CustomRendered` as a sanctioned E
 | SRD-213 | type | batch key `(RetainedViewEntity, Entity)` / `SpriteBatchKey` + hash | bevy_sprite_render/src/render/mod.rs:458 | epix_engine/sprite_render/include/epix/sprite_render/render.hpp:215-227 | ✅ | Struct with defaulted `==` and a boost-style hash; same key identity. |
 | SRD-214 | type | `ImageBindGroups` (Resource, Default) | bevy_sprite_render/src/render/mod.rs:466-469 | epix_engine/sprite_render/include/epix/sprite_render/render.hpp:233-235 | ✅ | Same. |
 | SRD-215 | field | `values: HashMap<AssetId<Image>, BindGroup>` | bevy_sprite_render/src/render/mod.rs:468 | epix_engine/sprite_render/include/epix/sprite_render/render.hpp:234 | ✅ | Epix field is public. |
-| SRD-216 | system | `queue_sprites` | bevy_sprite_render/src/render/mod.rs:471-561 | epix_engine/sprite_render/src/render.cpp:445-490, epix_engine/sprite_render/include/epix/sprite_render/render.hpp:418 | ❌ | Epix names it `queue_sprites_2d`; no other `queue_sprites` exists in the repo, so the suffix is unexplained — rename to `queue_sprites`. |
+| SRD-216 | system | `queue_sprites` | bevy_sprite_render/src/render/mod.rs:471-561 | epix_engine/sprite_render/src/render.cpp:445-490, epix_engine/sprite_render/include/epix/sprite_render/render.hpp:418 | ✅ | **Fixed** (commit `ddc844a4`): renamed at its declaration, definition and registration; no other `queue_sprites` exists in the repo, and the system's own name string was already "queue sprites". |
 | SRD-217 | def | resolve `DrawSprite` id once, then iterate views | bevy_sprite_render/src/render/mod.rs:487-489 | epix_engine/sprite_render/src/render.cpp:458-459 | ✅ | Same lookup + view query. |
 | SRD-218 | def | fetch the view's `Transparent2d` phase, `continue` when absent | bevy_sprite_render/src/render/mod.rs:490-493 | epix_engine/sprite_render/src/render.cpp:460-461 | ✅ | `get_mut` vs `find`/`end`. |
 | SRD-219 | def | base key: `from_hdr(view.hdr) OR from_msaa_samples(msaa.samples())` | bevy_sprite_render/src/render/mod.rs:495-496 | epix_engine/sprite_render/src/render.cpp:463-466, 290-303 | ✅ | Same construction, factored into `detail::view_pipeline_key`. |
@@ -4534,23 +4579,22 @@ Epix files read:
 
 ## Summary
 
-Counts: ✅ 243 · ❌ 16 · ⚠️ 28 · 🚫 67 · ⛔ 2 · REVIEW 0 (356 rows, `PBR-500`..`PBR-855`).
-(PBR-595 was fixed in commit `c43326c0`; see `## Fix batches` in the tracker.)
+Counts: ✅ 254 · ❌ 8 · ⚠️ 29 · 🚫 63 · ⛔ 2 · REVIEW 0 (356 rows, `PBR-500`..`PBR-855`).
+(PBR-595 in `c43326c0`; PBR-604/605/606/609 in `9badb75a`; PBR-576/682/798/840 in `636a72c6`, which also turned PBR-611 into a recorded divergence; PBR-520/526/530 in `5d582feb`. See `## Fix batches` in the tracker.)
 (PBR-707, PBR-708 and PBR-713 were fixed in commit `cf484b87`; see `## Fix batches` in the tracker.)
 
-The 16 ❌ rows are the actionable findings, after the four fixed in this batch
-(PBR-707, PBR-708, PBR-713 in `cf484b87` and PBR-595 in `c43326c0`). Twelve are
-defects or missing guards in code that *is*
-ported: three list-shrinking omissions
-(PBR-520, PBR-526, PBR-530), two absent compile-time size assertions (PBR-798, PBR-840), two
-diagnostic gaps (PBR-688, PBR-796), and one each in the shadow-map
-validator (PBR-576), the spot-light projection (PBR-606), the environment-map uniform extractor
-(PBR-637), the cluster-count guard (PBR-682) and the unread `NotShadowReceiver` (PBR-508). The other
+The 8 ❌ rows are the actionable findings, after the fifteen fixed so far
+(PBR-707/708/713 in `cf484b87`, PBR-595 in `c43326c0`, PBR-604/605/606/609 in
+`9badb75a`, PBR-576/682/798/840 in `636a72c6` and PBR-520/526/530 in
+`5d582feb`). Two are diagnostic gaps
+(PBR-688, PBR-796), and one each in
+the environment-map uniform extractor
+(PBR-637) and the unread `NotShadowReceiver` (PBR-508). The other
 four are whole-system halves whose pure functions already exist: `prepare_lights`' shadow textures
 (PBR-777) and light views (PBR-778), and the `extract_clusters`/`prepare_clusters` system halves
 (PBR-826, PBR-827).
 
-The 67 🚫 rows are dominated by one fact: **Epix has no render-world light half and no light
+The 63 🚫 rows are dominated by one fact: **Epix has no render-world light half and no light
 plugin.** `LightPlugin`, `ShadowFilteringMethod`, `SimulationLightSystems`, `add_clusters`,
 `make_global_cluster_settings`, `init_global_clusterable_object_meta`, `init_shadow_samplers`,
 `extract_lights`/`extract_ambient_light*`, `prepare_lights`, `queue_shadows`, `specialize_shadows`,
@@ -4558,9 +4602,9 @@ both shadow graph nodes and the three `Render*VisibleEntities` types are all abs
 `epix_engine/pbr` registers a component or a resource. What *is* ported is ported well: the whole
 cluster-assignment arithmetic, the cascade split and frustum construction, the GPU uniform layout
 (with explicit tail padding where glm's alignment differs from Rust's `ShaderType`), and the
-flag/bit contracts all match, which is why 243 rows are ✅.
+flag/bit contracts all match, which is why 254 rows are ✅.
 
-The 28 ⚠️ rows partition as: enum-payload flattening (5: PBR-653/657/694/771/811), the PCSS
+The 29 ⚠️ rows partition as: enum-payload flattening (5: PBR-653/657/694/771/811), the PCSS
 feature-gated light fields (3: PBR-567/585/599), explicit shader-type tail padding where glm's
 alignment differs from Rust's `ShaderType` (3: PBR-745/746/750), Windows-macro and `_value`
 renamings (3: PBR-663/786/810), `Color`-less linear colours (2: PBR-532/537), typed exceptions in
@@ -4578,27 +4622,27 @@ Non-✅ rows with reasons:
 4. PBR-509 🚫 — `TransmittedShadowReceiver` missing.
 5. PBR-510/511/512/513 🚫 — `ShadowFilteringMethod` and its three modes (`Hardware2x2`, default `Gaussian`, `Temporal`) missing.
 6. PBR-514/515/516/517/518/519 🚫 — `SimulationLightSystems` and its five sets missing.
-7. PBR-520 ❌ — no `shrink_entities`; `shrink_to_fit` always reallocates where Bevy's capacity heuristic does not.
-8. PBR-526 ❌ — the directional visibility pass uses that unconditional `shrink_to_fit`.
-9. PBR-530 ❌ — the point/spot pass never shrinks the cubemap or spot lists at all.
+7. *(PBR-520 ✅ ported in `5d582feb`.)*
+8. *(PBR-526 ✅ fixed in `5d582feb`.)*
+9. *(PBR-530 ✅ fixed in `5d582feb`.)*
 10. PBR-532 ⚠️ — `AmbientLight::color` is a linear `glm::vec4`, not `bevy_color::Color`.
 11. PBR-537 ⚠️ — `GlobalAmbientLight::color` likewise.
 12. PBR-551 ⚠️ — builder validations throw `std::invalid_argument` where Bevy asserts.
 13. PBR-561 ⚠️ — light rotation recovered by column normalisation, without glam's negative-determinant sign fix.
 14. PBR-567 ⚠️ — `DirectionalLight::soft_shadow_size` not ported (PCSS feature).
 15. PBR-571 ⚠️ — `DirectionalLightTexture::image` defaults to the engine default handle.
-16. PBR-576 ❌ — `validate_shadow_map_size` has no system: no resource write, no change gate, no warning.
+16. *(PBR-576 ✅ fixed in `636a72c6` — the system now has Bevy's gate, rounding and warning.)*
 17. PBR-578 ⚠️ — cascade frusta are stored with the near plane already at infinity; Bevy pushes it only in `prepare_lights`.
 18. PBR-579/580/581/582 🚫 — `SunDisk`, its two fields, `EARTH`/`OFF` and both `Default` impls missing.
 19. PBR-585 ⚠️ — point-light `soft_shadows_enabled` not ported.
 20. PBR-588/589 🚫 — `PointLightTexture` and its two fields missing.
 21. *(PBR-595 ✅ fixed in `c43326c0` — the back axis is normalised, so a scaled light's far plane stays at `range`.)*
 22. PBR-599 ⚠️ — spot-light `soft_shadows_enabled` not ported.
-23. PBR-604/605 🚫 — `orthonormalize` and `spot_light_world_from_view` missing.
-24. PBR-606 ❌ — no `spot_light_clip_from_view`; the π/2-only `cube_face_projection` cannot express `2*outer_angle`.
+23. *(PBR-604/605 ✅ ported in `9badb75a`.)*
+24. *(PBR-606 ✅ ported in `9badb75a`.)*
 25. PBR-607/608 🚫 — `SpotLightTexture` and its field missing.
-26. PBR-609 🚫 — `update_spot_light_frusta` missing, so spot lights cull against a default frustum.
-27. PBR-611 🚫 — `LightProbe::new` missing.
+26. *(PBR-609 ✅ ported in `9badb75a`, together with `orthonormalize` (PBR-604), `spot_light_world_from_view` (PBR-605) and `spot_light_clip_from_view` (PBR-606).)*
+27. *(PBR-611 ⚠️ — the aggregate `LightProbe{}` is the C++ counterpart of Bevy's `new()`; recorded rather than fixed.)*
 28. PBR-613 ⚠️ — environment-map handles default to the engine default image rather than a null handle.
 29. PBR-635 ⚠️ — probe gather modelled as free functions/records, not a per-view component.
 30. PBR-637 ❌ — `gather_environment_map_uniform`'s value function exists but no system inserts the uniform on views.
@@ -4610,7 +4654,7 @@ Non-✅ rows with reasons:
 36. PBR-663 ⚠️ — `Clusters::near`/`far` renamed `near_plane`/`far_plane` for the Windows macro (**and see PBR-707**).
 37. PBR-665 🚫 — `ClusterVisibilityClass` missing, with the light components' on-add hooks.
 38. PBR-676 ⚠️ — the aspect-ratio `expect` becomes a throw, and the "more z-slices than total clusters" warning is not emitted.
-39. PBR-682 ❌ — the `<= 4096` cluster debug asserts are missing here and in `assign_objects_to_clusters`.
+39. *(PBR-682 ✅ fixed in `636a72c6` — the assertion lives in `Clusters::update`, which both paths reach.)*
 40. PBR-684 🚫 — `add_clusters` missing: no view ever gets a `Clusters` component.
 41. PBR-685 🚫 — `VisibleClusterableObjects::{iter, len, is_empty}` missing.
 42. PBR-686 ⚠️ — `GlobalVisibleClusterableObjects` is used through its raw set instead of `iter`/`contains`.
@@ -4641,7 +4685,7 @@ Non-✅ rows with reasons:
 67. PBR-790 ⚠️ — the `PhaseItem` mutators become const/non-const overloads.
 68. PBR-792/793/794 🚫 — both shadow-pass graph nodes, their `FromWorld`/`Node` impls and `ShadowPassNode::run` missing.
 69. PBR-796 ❌ — five Bevy warnings (max directional lights, max cascades, uniform-object cap, cluster index list full, packed offset out of bounds) are never emitted.
-70. PBR-798 ❌ — the compile-time 16 KiB `GpuClusterableObject` budget assertion is missing.
+70. *(PBR-798 ✅ fixed in `636a72c6` — the 16 KiB budget is a `static_assert`.)*
 71. PBR-801 🚫 — `make_global_cluster_settings` missing, so `assign_objects_to_clusters` returns immediately without the resource.
 72. PBR-810 ⚠️ — `ExtractedClusterConfig`'s near/far renamed, and `dimensions` defaults to (1,1,1).
 73. PBR-811 ⚠️ — `ExtractedClusterableObjectElement`'s two variants flattened to a tag plus both payloads.
@@ -4650,7 +4694,7 @@ Non-✅ rows with reasons:
 76. PBR-826 ❌ — `extract_clusters` missing its system half (the pure walk exists as `extract_view_clusters`).
 77. PBR-827 ❌ — `prepare_clusters` missing its system half (the walk exists as `prepare_view_cluster_bindings`).
 78. PBR-836 🚫 — both `ViewClusterBindings::min_size_*` helpers missing.
-79. PBR-840 ❌ — the index-lists 16 KiB `static_assert` is missing.
+79. *(PBR-840 ✅ fixed in `636a72c6` — the index-list 16 KiB budget is a `static_assert` too.)*
 80. PBR-842/843/844/845/846/847/848 🚫 — the three render-world visible-entity components, their fields and `RenderCubemapVisibleEntities`' four accessors missing.
 81. PBR-849 🚫 — `ViewBinnedRenderPhases::retain` missing (PARENT: render), so stale shadow phases cannot expire.
 82. PBR-850 ⛔ — the `Shadow` phase's registration and resource init belong to the `render/mesh.rs` section.
@@ -4683,17 +4727,17 @@ Non-✅ rows with reasons:
 | PBR-517 | field | `SimulationLightSystems::UpdateDirectionalLightCascades` | `bevy_light/src/lib.rs:278` | — | 🚫 | Absent. |
 | PBR-518 | field | `SimulationLightSystems::UpdateLightFrusta` | `bevy_light/src/lib.rs:279` | — | 🚫 | Absent. |
 | PBR-519 | field | `SimulationLightSystems::CheckLightVisibility` | `bevy_light/src/lib.rs:283` | — | 🚫 | Absent. |
-| PBR-520 | fn | `shrink_entities` | `bevy_light/src/lib.rs:286-300` | `epix_engine/pbr/src/light_systems.cpp:538` | ❌ | No counterpart helper: Epix uses `shrink_to_fit()`, which always shrinks to `len`, where Bevy shrinks to `capacity/(reserve/2)` only when `capacity > 2*len` — a needless reallocation on every frame for a list that is already tight. |
+| PBR-520 | fn | `shrink_entities` | `bevy_light/src/lib.rs:286-300` | `epix_engine/pbr/include/epix/pbr/shadow_phase.hpp:374-397` | ✅ | **Ported** (commit `5d582feb`) with Bevy's arithmetic, including the empty-list case; C++ has no `shrink_to(n)`, so the reclaimed case rebuilds at the computed capacity, which is what Rust's `shrink_to` does internally. Pinned by `Cluster.ShrinkEntitiesOnlyReclaimsLooseCapacity`. |
 | PBR-521 | system | `check_dir_light_mesh_visibility` | `bevy_light/src/lib.rs:302-333` | `epix_engine/pbr/include/epix/pbr/light_systems.hpp:184-196`, `epix_engine/pbr/src/light_systems.cpp:438` | ✅ | Same query shape, same `Commands` for deferred marking; Bevy's `Without<SpotLight>` is expressed as `ecs::Opt<const SpotLight&>` plus a runtime skip (`light_systems.cpp:465`), and Bevy's `Local<Parallel<…>>` queues are plain vectors — same results. |
 | PBR-522 | def | `check_dir_light_mesh_visibility` — per-view cascade-list reconciliation | `bevy_light/src/lib.rs:339-358` | `epix_engine/pbr/src/light_systems.cpp:471-487` | ✅ | Resize-to-cascade-count, clear, then drop views the light no longer has; Epix additionally re-inserts a missing view's list with the frusta's length, which Bevy's `or_insert_with` does too. |
 | PBR-523 | def | `check_dir_light_mesh_visibility` — shadow/visibility gate | `bevy_light/src/lib.rs:361-365` | `epix_engine/pbr/src/light_systems.cpp:490-492` | ✅ | `!shadows_enabled \|\| !light_view_visibility.get()` leaves the lists empty. |
 | PBR-524 | def | `check_dir_light_mesh_visibility` — per-cascade culling | `bevy_light/src/lib.rs:394-427` | `epix_engine/pbr/src/light_systems.cpp:499-533` | ✅ | Layer test, per-view `VisibilityRange` test, near-plane-disabled OBB test (`intersects_obb(.., false, true)`), the no-AABB/no-transform arm that is visible to every cascade, and the `defer_visible_entities` push. |
 | PBR-525 | def | `check_dir_light_mesh_visibility` — deferred `ViewVisibility::set_visible` | `bevy_light/src/lib.rs:454-463` | `epix_engine/pbr/src/light_systems.cpp:543-554` | ✅ | Queued as a command for the same reason (parallelism with the point/spot pass). |
-| PBR-526 | def | `check_dir_light_mesh_visibility` — list shrinking | `bevy_light/src/lib.rs:444-449` | `epix_engine/pbr/src/light_systems.cpp:537-539` | ❌ | See PBR-520: `shrink_to_fit` instead of `shrink_entities`' capacity heuristic; identical contents, different allocation behaviour. |
+| PBR-526 | def | `check_dir_light_mesh_visibility` — list shrinking | `bevy_light/src/lib.rs:444-449` | `epix_engine/pbr/src/light_systems.cpp:608-609` | ✅ | **Fixed** (commit `5d582feb`): the cascade lists now go through `shrink_entities` at the same point Bevy shrinks them, instead of `shrink_to_fit()`. |
 | PBR-527 | system | `check_point_light_mesh_visibility` | `bevy_light/src/lib.rs:466-503` | `epix_engine/pbr/include/epix/pbr/light_systems.hpp:146-162`, `epix_engine/pbr/src/light_systems.cpp:317` | ✅ | Same queries and same `Option<Res<VisibleEntityRanges>>`; Bevy's `Local<EntityHashSet>` dedup is replaced by a per-light membership test against the views' visible sets (`light_systems.cpp:302-309`) — same set of lights processed, at O(lights × views × entities) instead of O(entities). |
 | PBR-528 | def | `check_point_light_mesh_visibility` — point-light branch | `bevy_light/src/lib.rs:513-607` | `epix_engine/pbr/src/light_systems.cpp:341-393` | ✅ | Faces cleared first, empty when shadows are off, light sphere from translation+range, cheap sphere/OBB prune, then per-face `intersects_obb(.., true, true)`; layers and `entity_is_in_range_of_any_view` hoisted out of the per-face loop with the same effect. |
 | PBR-529 | def | `check_point_light_mesh_visibility` — spot-light branch | `bevy_light/src/lib.rs:609-683` | `epix_engine/pbr/src/light_systems.cpp:395-435` | ✅ | Same single-cone arm, including the no-AABB arm. |
-| PBR-530 | def | `check_point_light_mesh_visibility` — list shrinking | `bevy_light/src/lib.rs:604-606,682` | — | ❌ | No shrink at all in the Epix point/spot pass: neither the six cubemap face lists nor the spot list is shrunk, so the per-frame growth/shrink cycle Bevy bounds is left unbounded here. |
+| PBR-530 | def | `check_point_light_mesh_visibility` — list shrinking | `bevy_light/src/lib.rs:604-606,682` | `epix_engine/pbr/src/light_systems.cpp:457-461,504-506` | ✅ | **Fixed** (commit `5d582feb`): each cubemap face list and the spot list are bounded after their walks, where Bevy calls `shrink_entities`; the point/spot pass had no shrink at all before. |
 
 ### bevy_light/src/ambient_light.rs
 
@@ -4749,7 +4793,7 @@ Non-✅ rows with reasons:
 | PBR-573 | field | `DirectionalLightShadowMap::size` | `bevy_light/src/directional_light.rs:189` | `epix_engine/pbr/include/epix/pbr/directional_light.hpp:57` | ✅ | Default 2048 (usize → std::size_t). |
 | PBR-574 | impl | `impl Default for DirectionalLightShadowMap` | `bevy_light/src/directional_light.rs:192-196` | `epix_engine/pbr/include/epix/pbr/directional_light.hpp:57` | ✅ | 2048. |
 | PBR-575 | fn | `validate_shadow_map_size` | `bevy_light/src/directional_light.rs:198-204` | `epix_engine/pbr/include/epix/pbr/directional_light.hpp:63-68` | ✅ | Round-up-to-power-of-two arithmetic is identical including `0 → 1` (Rust's `0usize.next_power_of_two()` is 1). |
-| PBR-576 | def | `validate_shadow_map_size` — system half | `bevy_light/src/directional_light.rs:198-203` | — | ❌ | Epix has the value function but no system: no `ResMut<DirectionalLightShadowMap>` write, no `is_changed()` gate, and no warning when the size is corrected. |
+| PBR-576 | def | `validate_shadow_map_size` — system half | `bevy_light/src/directional_light.rs:198-204` | `epix_engine/pbr/src/light_systems.cpp:12-27` | ✅ | **Fixed** (commit `636a72c6`): the system exists with Bevy's `is_changed` gate, its rounding and its warning; the value function that used to stand in for it is folded back in, as the earlier helper fold-back did. Pinned by `Cluster.ValidateShadowMapSizeSystemRoundsUpChangedSizes`. |
 | PBR-577 | system | `update_directional_light_frusta` declaration | `bevy_light/src/directional_light.rs:206-218` | `epix_engine/pbr/include/epix/pbr/light_systems.hpp:46-50` | ✅ | Same query plus `Without<Camera>`, which is a query-shape constraint with no runtime counterpart (documented). |
 | PBR-578 | def | `update_directional_light_frusta` | `bevy_light/src/directional_light.rs:220-241` | `epix_engine/pbr/src/light_systems.cpp:44-67` | ⚠️ | Same gate (`shadows_enabled && visibility.get()`), same whole-map rebuild keyed by view — but Epix pushes each cascade's near plane to infinity here via `directional_view_frustum`, where Bevy does that only for the transient shadow view in `prepare_lights` (light.rs:1565-1571). Rendering is unaffected today because both consumers of `CascadesFrusta` ignore the near plane, but the stored component's contents differ from Bevy's. |
 | PBR-579 | type | `SunDisk` (component, `#[require(DirectionalLight)]`) | `bevy_light/src/directional_light.rs:256` | — | 🚫 | Missing type; the sun disk fields *are* carried in `ExtractedDirectionalLight` (light_meta.hpp:234-235) but nothing can set them. |
@@ -4786,19 +4830,19 @@ Non-✅ rows with reasons:
 | PBR-601 | field | `SpotLight::{outer_angle, inner_angle}` | `bevy_light/src/spot_light.rs:119-125` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:48-52` | ✅ | π/4 and 0.0; the `< π/2` bound is documented, not enforced, as in Bevy. |
 | PBR-602 | const | `SpotLight::{DEFAULT_SHADOW_DEPTH_BIAS, DEFAULT_SHADOW_NORMAL_BIAS, DEFAULT_SHADOW_MAP_NEAR_Z}` | `bevy_light/src/spot_light.rs:129-131` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:55-59` | ✅ | 0.02, 1.8, 0.1. |
 | PBR-603 | impl | `impl Default for SpotLight` | `bevy_light/src/spot_light.rs:134-156` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:39-52` | ✅ | Defaults agree with the three constants, and the inner/outer angle initialiser order matches Bevy's. |
-| PBR-604 | fn | `orthonormalize` | `bevy_light/src/spot_light.rs:164-175` | — | 🚫 | Missing. Bevy reproduces the shader's `orthonormalize` deliberately (so CPU and GPU agree if glam changes); Epix has only glm's unrelated `gtx/orthonormalize` extension, which is not the same function. |
-| PBR-605 | fn | `spot_light_world_from_view` | `bevy_light/src/spot_light.rs:179-185` | — | 🚫 | Missing; it is what turns a light's back axis into the orthonormal basis both the frustum system and the spot shadow views need. |
-| PBR-606 | fn | `spot_light_clip_from_view` | `bevy_light/src/spot_light.rs:187-190` | `epix_engine/pbr/include/epix/pbr/light_meta.hpp:568-570` | ❌ | The arithmetic exists only inline inside `cube_face_projection`, which hardcodes π/2 — there is no `angle * 2.0` entry point, so a spot light's projection (`perspective_infinite_reverse_rh(2*outer_angle, 1.0, near_z)`) cannot be produced. |
+| PBR-604 | fn | `orthonormalize` | `bevy_light/src/spot_light.rs:164-175` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:63-73` | ✅ | **Ported** (commit `9badb75a`): the same arithmetic Bevy writes out, so the CPU and GPU bases cannot drift apart if glam's helper changes — deliberately not glm's unrelated `gtx/orthonormalize`. |
+| PBR-605 | fn | `spot_light_world_from_view` | `bevy_light/src/spot_light.rs:179-185` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:75-87` | ✅ | **Ported** (commit `9badb75a`): the basis placed at the light's translation, from the normalised third column (Bevy's `back()`), with scale deliberately not applied. |
+| PBR-606 | fn | `spot_light_clip_from_view` | `bevy_light/src/spot_light.rs:187-190` | `epix_engine/pbr/include/epix/pbr/spot_light.hpp:89-96` | ✅ | **Ported** (commit `9badb75a`): `perspective_infinite_reverse_rh(angle * 2.0f, 1.0f, near_z)`, Bevy's own entry point in Bevy's own file. `cube_face_projection` keeps its hardcoded π/2 for the point-light case. |
 | PBR-607 | type | `SpotLightTexture` (component, `#[require(SpotLight)]`) | `bevy_light/src/spot_light.rs:198` | — | 🚫 | Missing; the spot cone texture has no component, and its border-must-be-black note has nowhere to live. |
 | PBR-608 | field | `SpotLightTexture::image` | `bevy_light/src/spot_light.rs:201` | — | 🚫 | Missing with the type. |
-| PBR-609 | system | `update_spot_light_frusta` | `bevy_light/src/spot_light.rs:204-237` | — | 🚫 | Absent: nothing ever writes a spot light's `Frustum`. `SpotLight` is queried with `&Frustum` by `check_point_light_mesh_visibility` (`light_systems.cpp:323-325`), so every spot light culls against a default (never valid) frustum until this lands. |
+| PBR-609 | system | `update_spot_light_frusta` | `bevy_light/src/spot_light.rs:204-237` | `epix_engine/pbr/src/light_systems.cpp:45-74` | ✅ | **Ported** (commit `9badb75a`): the cone is built from the light's backward axis, its outer angle and its shadow map near plane, bounded at `range` by the custom far plane, with Bevy's change filter in the query and Bevy's two skips (no shadows, no cluster). Registered by tests only, like the other light systems, until a plugin can schedule Bevy's real set. Pinned by `Cluster.UpdateSpotLightFrustaRebuildsFrusta`. |
 
 ### bevy_light/src/probe.rs
 
 | ID | Kind | Entity | Bevy (file:line) | Epix (file:line) | Status | Difference / required alignment |
 | --- | --- | --- | --- | --- | --- | --- |
 | PBR-610 | type | `LightProbe` (marker component, `#[require(Transform, Visibility)]`) | `bevy_light/src/probe.rs:51` | `epix_engine/pbr/include/epix/pbr/probe.hpp:23` | ✅ | Empty marker; required components unregistered (PBR-502). |
-| PBR-611 | method | `LightProbe::new` | `bevy_light/src/probe.rs:56-58` | — | 🚫 | No constructor; `LightProbe{}` is the aggregate, so the API shape (Bevy's `#[inline] pub fn new()`) has no counterpart. |
+| PBR-611 | method | `LightProbe::new` | `bevy_light/src/probe.rs:56-58` | `epix_engine/pbr/include/epix/pbr/probe.hpp:23` | ⚠️ | Bevy's `#[inline] pub fn new() -> Self` has no counterpart; `LightProbe{}` is the aggregate, which is how C++ constructs an empty marker. Adding a `new()` would be unidiomatic API with no caller, so the aggregate is recorded as the counterpart instead. |
 | PBR-612 | type | `EnvironmentMapLight` (component) | `bevy_light/src/probe.rs:67` | `epix_engine/pbr/include/epix/pbr/probe.hpp:31` | ✅ | Five fields. |
 | PBR-613 | field | `EnvironmentMapLight::{diffuse_map, specular_map}` | `bevy_light/src/probe.rs:69-73` | `epix_engine/pbr/include/epix/pbr/probe.hpp:33-35` | ⚠️ | `Handle::default()` (a null handle) becomes `image::DEFAULT_IMAGE_HANDLE`, an existing engine convention; observationally different only if code tests for a null handle. |
 | PBR-614 | field | `EnvironmentMapLight::intensity` | `bevy_light/src/probe.rs:81` | `epix_engine/pbr/include/epix/pbr/probe.hpp:37` | ✅ | 0.0. |
@@ -4879,7 +4923,7 @@ Non-✅ rows with reasons:
 | PBR-679 | method | `ClusterConfig::far_z_mode` | `bevy_light/src/cluster/mod.rs:291-299` | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp:173-181` | ✅ | `Constant(0.0)` for `None`, maximum-range for `Single`, else the z config's mode. |
 | PBR-680 | method | `ClusterConfig::dynamic_resizing` | `bevy_light/src/cluster/mod.rs:301-311` | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp:186-194` | ✅ | false for `None`/`Single`; renamed `may_resize_dynamically` (Bevy's name would collide with the field). |
 | PBR-681 | method | `Clusters::update` | `bevy_light/src/cluster/mod.rs:315-333` | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp:240-247` | ✅ | Tile size `ceil(screen / requested_xy)` floored at one, then dimensions recomputed from the tile size with z taken from the request and the whole vector floored at one — same double-ceiling discipline. |
-| PBR-682 | def | `Clusters::update` — cluster-count guard | `bevy_light/src/cluster/mod.rs:331-332` | — | ❌ | Bevy's `debug_assert!(x*y*z <= 4096)` (the uniform-buffer cluster limit) has no counterpart, and the same assert in `assign_objects_to_clusters` (`assign.rs:458-461`) is missing too, so an over-large configuration is silent. |
+| PBR-682 | def | `Clusters::update` — cluster-count guard | `bevy_light/src/cluster/mod.rs:331-332` | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp:246-248` | ✅ | **Fixed** (commit `636a72c6`): the 4096-cluster assertion is in `Clusters::update`, which the assignment path also calls — Bevy's second copy (`assign.rs:458-461`) guards the same condition, so one assertion covers both. |
 | PBR-683 | method | `Clusters::clear` | `bevy_light/src/cluster/mod.rs:334-340` | `epix_engine/pbr/include/epix/pbr/light_cluster.hpp:252-258` | ✅ | `tile_size = 1`, `dimensions = 0`, near/far zero, objects cleared. |
 | PBR-684 | system | `add_clusters` | `bevy_light/src/cluster/mod.rs:343-359` | — | 🚫 | Missing system: nothing inserts `(Clusters::default(), config)` on active `Camera3d` entities without `Clusters`, so no view ever has cluster state to fill. |
 | PBR-685 | method | `VisibleClusterableObjects::{iter, len, is_empty}` | `bevy_light/src/cluster/mod.rs:362-376` | — | 🚫 | The three accessors are absent; `VisibleClusterableObjects` is used as a plain struct in Epix, so nothing is broken by their absence today, but the API surface is missing. |
@@ -5015,7 +5059,7 @@ Non-✅ rows with reasons:
 | ID | Kind | Entity | Bevy (file:line) | Epix (file:line) | Status | Difference / required alignment |
 | --- | --- | --- | --- | --- | --- | --- |
 | PBR-797 | const | `MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS` | `bevy_pbr/src/cluster.rs:21` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:23` | ✅ | 204. |
-| PBR-798 | const | `const _: () = assert!(size_of::<GpuClusterableObject>() * 204 <= 16384)` | `bevy_pbr/src/cluster.rs:24-25` | — | ❌ | No `static_assert` guards the 80 × 204 = 16 320-byte budget; the Epix comment states the size but nothing enforces it, so a future field addition would silently overrun the WebGL2 uniform binding. |
+| PBR-798 | const | `const _: () = assert!(size_of::<GpuClusterableObject>() * 204 <= 16384)` | `bevy_pbr/src/cluster.rs:24-25` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:53-56` | ✅ | **Fixed** (commit `636a72c6`): a `static_assert` on the same budget, so a future field addition fails the build instead of overrunning the WebGL2 uniform binding. The runtime assertion in the layout test stays. |
 | PBR-799 | const | `CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT` | `bevy_pbr/src/cluster.rs:29` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:28` | ✅ | 3. |
 | PBR-800 | const | `CLUSTER_COUNT_SIZE` / `CLUSTER_OFFSET_MASK` / `CLUSTER_COUNT_MASK` | `bevy_pbr/src/cluster.rs:33-36` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:86-90` | ✅ | 9 bits per count and the derived masks, identical expressions. |
 | PBR-801 | fn | `make_global_cluster_settings` | `bevy_pbr/src/cluster.rs:38-53` | — | 🚫 | Missing: nothing queries the device for the three storage-buffer bindings or for clustered-decal usability, so `GlobalClusterSettings` is never built and `assign_objects_to_clusters` returns immediately (light_systems.cpp:155). |
@@ -5057,7 +5101,7 @@ Non-✅ rows with reasons:
 | PBR-837 | method | `ViewClusterBuffers::{new, uniform, storage}` | `bevy_pbr/src/cluster.rs:504-525` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:352-357` | ✅ | Same dispatch. |
 | PBR-838 | fn | `pack_offset_and_counts` | `bevy_pbr/src/cluster.rs:551-555` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:99-103` | ✅ | `(offset & 0x3FFF) << 18 \| (points & 0x1FF) << 9 \| (spots & 0x1FF)`, with the bit diagram and the endianness note reproduced. |
 | PBR-839 | type | `GpuClusterableObjectIndexListsUniform` | `bevy_pbr/src/cluster.rs:557-560` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:308-310` | ✅ | 1024 `uvec4`s. |
-| PBR-840 | const | `const _: () = assert!(GpuClusterableObjectIndexListsUniform::SHADER_SIZE <= 16384)` | `bevy_pbr/src/cluster.rs:562-564` | — | ❌ | Missing `static_assert` (the Epix size is exactly 16 384, so the assertion would hold — but nothing checks it). |
+| PBR-840 | const | `const _: () = assert!(GpuClusterableObjectIndexListsUniform::SHADER_SIZE <= 16384)` | `bevy_pbr/src/cluster.rs:562-564` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:316-318` | ✅ | **Fixed** (commit `636a72c6`): the `static_assert` Bevy has, plus a runtime assertion in the layout test. |
 | PBR-841 | impl | `impl Default for GpuClusterableObjectIndexListsUniform` / `GpuClusterOffsetsAndCountsUniform` | `bevy_pbr/src/cluster.rs:566-580` | `epix_engine/pbr/include/epix/pbr/cluster.hpp:308-317` | ✅ | Zeroed arrays in both. |
 
 ### bevy_pbr/src/components.rs
@@ -5134,6 +5178,6 @@ The six modules are only partly covered: the sections above audit specific Bevy 
 - **A fixed row moves to ✅ with the fixing commit**, carrying the evidence the row needs: the focused module tests for logic-only/value-only changes, or a whole-tree build plus the full CTest sweep plus the example sweep on both output streams plus stable client-area captures for anything that can affect rendering (see `_policy.md`, "Verification policy").
 - **The Audit index counts are recomputed, never hand-edited.** Adding or merging a section means re-parsing the row tables under `tmp/audit/sections/**` and recomputing every count; where a section's prose summary disagrees with its own rows, the computed number wins and the disagreement is recorded as a footnote under the index (see the `mesh-lead-verified.md` footnote).
 - **A section file may only be merged into this file verbatim.** The files under `tmp/audit/sections/` are the working papers — they may be edited, split or superseded — while this file is the record: `## Audited sections` reproduces each one under its `<!-- section: … -->` marker without rewriting, renumbering, reordering or summarising a single row, and a correction is made in the section file and re-merged rather than patched here.
-- **Every non-✅ row appears in the Open mismatch index, and every `PARENT:`/`PRT-` row in the parent-module table.** A new section must extend both; a row that reaches ✅ leaves the Open mismatch index and stays in the merged section as coverage evidence.
+- **Every non-✅ row appears in the Open mismatch index, and every non-✅ `PARENT:`/`PRT-` row in the parent-module table** — a `PARENT:` marker counts wherever the section puts it, in the difference cell or in the Entity/Epix cell, so a divergence recorded only on the entity is not missed; the ✅ rows a section marked `PARENT:` in the difference cell stay in the table as coverage evidence. A new section must extend both tables; a row that reaches ✅ leaves the Open mismatch index and stays in the merged section as coverage evidence.
 - **A parent-module fix is approved before committing** (`render`, `app`, `ecs`, `assets`, `camera`, `transform`, …): the mismatch IDs, the changed files and the evidence go to the user first, and a parent module that turns out to diverge is audited again rather than patched around.
 - **A new section file is merged verbatim; only the counts and the two index tables are recomputed.** Adding a section appends its file under `## Audited sections` behind a `<!-- section: … -->` marker in the declared order, then re-derives the Audit index counts, the Open mismatch index and the parent-module table from the parsed rows; the hand-written prose, the fix batches and the already-merged sections are copied unchanged.
