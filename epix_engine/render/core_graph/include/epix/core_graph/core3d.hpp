@@ -661,8 +661,7 @@ EPIX_EXPORT struct CopyDeferredLightingIdPlugin {
 /** @brief Bevy `MainOpaquePass3dNode`: renders the opaque and alpha-mask
  *  binned phases into one deferred command buffer against the shared depth
  *  target, then draws the view's skybox with a fullscreen triangle when it has
- *  one (Bevy `main_opaque_pass_3d_node.rs:119-133`). Bevy's optional
- *  `MainPassResolutionOverride` input has no Epix counterpart yet. */
+ *  one (Bevy `main_opaque_pass_3d_node.rs:119-133`). */
 EPIX_EXPORT struct MainOpaquePass3dNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
@@ -670,7 +669,8 @@ EPIX_EXPORT struct MainOpaquePass3dNode {
                                 const render::view::ViewDepthTexture&,
                                 const render::view::ViewUniformOffset&,
                                 ecs::Opt<const SkyboxPipelineId&>,
-                                ecs::Opt<const SkyboxBindGroup&>>;
+                                ecs::Opt<const SkyboxBindGroup&>,
+                                ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,
@@ -687,7 +687,8 @@ EPIX_EXPORT struct MainTransmissivePass3dNode {
                                 const ::epix::camera::Camera3d&,
                                 const render::view::ViewTarget&,
                                 ecs::Opt<const ViewTransmissionTexture&>,
-                                const render::view::ViewDepthTexture&>;
+                                const render::view::ViewDepthTexture&,
+                                ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,
@@ -701,7 +702,8 @@ EPIX_EXPORT struct MainTransparentPass3dNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewTarget&,
-                                const render::view::ViewDepthTexture&>;
+                                const render::view::ViewDepthTexture&,
+                                ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,

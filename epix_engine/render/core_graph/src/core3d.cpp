@@ -276,14 +276,14 @@ void epix::core_graph::core_3d::prepare_core_3d_transmission_textures(
             };
             it = textures.emplace(target, texture_cache->get(*device, key, descriptor)).first;
         }
+        // Bevy `SamplerDescriptor { label, mag_filter: Linear, min_filter: Linear,
+        // ..Default::default() }` (`bevy_core_pipeline/src/core_3d/mod.rs:941-946`).
+        // The rest of the descriptor comes from the wrapper's default
+        // constructor, which applies wgpu-native's `WGPU_SAMPLER_DESCRIPTOR_INIT`.
         const auto sampler = device->createSampler(wgpu::SamplerDescriptor()
                                                        .setLabel("view_transmission_sampler")
                                                        .setMagFilter(wgpu::FilterMode::eLinear)
-                                                       .setMinFilter(wgpu::FilterMode::eLinear)
-                                                       // wgpu-native's C++ descriptor
-                                                       // does not initialize this required
-                                                       // field like Rust wgpu's Default does.
-                                                       .setMaxAnisotropy(1));
+                                                       .setMinFilter(wgpu::FilterMode::eLinear));
         cmd.entity(entity).insert(ViewTransmissionTexture{
             .texture = it->second.texture, .view = it->second.default_view, .sampler = sampler});
     }
@@ -293,7 +293,8 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
                                                                    graph::RenderContext& render_context,
                                                                    typename ecs::QueryData<ViewQuery>::Item view,
                                                                    const World& world) const {
-    auto&& [camera, extracted_view, target, depth, view_uniform_offset, skybox_pipeline_id, skybox_bind_group] = view;
+    auto&& [camera, extracted_view, target, depth, view_uniform_offset, skybox_pipeline_id, skybox_bind_group,
+            resolution_override] = view;
     const auto opaque_phases                       = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3d>>();
     const auto alpha_mask_phases                   = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3d>>();
     if (!opaque_phases || !alpha_mask_phases) return {};
@@ -307,7 +308,10 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
 
     const auto color_attachments     = std::array{target.get_color_attachment()};
     const auto depth_attachment      = depth.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport              = camera.viewport;
+    // Bevy `Viewport::from_viewport_and_override(camera.viewport.as_ref(),
+    // resolution_override)` (`main_opaque_pass_3d_node.rs:95-99`).
+    const auto viewport = ::epix::camera::Viewport::from_viewport_and_override(
+        camera.viewport, resolution_override.transform([](const auto& value) { return value.get().size; }));
     const auto view_entity           = graph.view_entity();
     const auto* world_ptr            = std::addressof(world);
     const auto* opaque_phase_ptr     = std::addressof(opaque_phase->second);
@@ -366,7 +370,7 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
                                                                          graph::RenderContext& render_context,
                                                                          typename ecs::QueryData<ViewQuery>::Item view,
                                                                          const World& world) const {
-    auto&& [camera, extracted_view, camera_3d, target, transmission, depth] = view;
+    auto&& [camera, extracted_view, camera_3d, target, transmission, depth, resolution_override] = view;
     const auto transmissive_phases = world.get_resource<phase::ViewSortedRenderPhases<Transmissive3d>>();
     if (!transmissive_phases) return {};
     const auto transmissive_phase = transmissive_phases->get().find(extracted_view.retained_view_entity);
@@ -375,11 +379,16 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
     if (!camera.physical_target_size) return {};
 
     const auto view_entity = graph.view_entity();
-    const auto viewport    = camera.viewport;
-    const auto size        = *camera.physical_target_size;
-    const auto steps       = camera_3d.screen_space_specular_transmission_steps;
-    const auto* world_ptr  = std::addressof(world);
-    const auto* phase_ptr  = std::addressof(transmissive_phase->second);
+    // Bevy uses the raw camera viewport for the stepped passes and
+    // `Viewport::from_viewport_and_override` on the zero-step path
+    // (`main_transmissive_pass_3d_node.rs:104-106,123-128`).
+    const auto stepped_viewport = camera.viewport;
+    const auto plain_viewport   = ::epix::camera::Viewport::from_viewport_and_override(
+        camera.viewport, resolution_override.transform([](const auto& value) { return value.get().size; }));
+    const auto size       = *camera.physical_target_size;
+    const auto steps      = camera_3d.screen_space_specular_transmission_steps;
+    const auto* world_ptr = std::addressof(world);
+    const auto* phase_ptr = std::addressof(transmissive_phase->second);
 
     const auto color_attachments = std::array{target.get_color_attachment()};
     const auto depth_attachment  = depth.get_attachment(wgpu::StoreOp::eStore);
@@ -396,9 +405,9 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
         return {};
     }
     const auto main_texture = target.main_texture();
-    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, viewport, size, steps,
-                                                       view_entity, world_ptr, phase_ptr, transmission_texture,
-                                                       main_texture](wgpu::Device device) {
+    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, stepped_viewport,
+                                                       plain_viewport, size, steps, view_entity, world_ptr, phase_ptr,
+                                                       transmission_texture, main_texture](wgpu::Device device) {
         auto encoder = device.createCommandEncoder(
             wgpu::CommandEncoderDescriptor().setLabel("main_transmissive_pass_3d_command_encoder"));
         // A null range draws every retained item in one pass, matching the
@@ -408,6 +417,7 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
                                                            .setLabel("main_transmissive_pass_3d")
                                                            .setColorAttachments(color_attachments)
                                                            .setDepthStencilAttachment(depth_attachment));
+            const auto& viewport = range ? stepped_viewport : plain_viewport;
             if (viewport) {
                 const auto& vp = *viewport;
                 render_pass.setViewport(static_cast<float>(vp.physical_position.x),
@@ -448,7 +458,7 @@ std::expected<void, graph::NodeRunError> MainTransparentPass3dNode::run(graph::G
                                                                         graph::RenderContext& render_context,
                                                                         typename ecs::QueryData<ViewQuery>::Item view,
                                                                         const World& world) const {
-    auto&& [camera, extracted_view, target, depth] = view;
+    auto&& [camera, extracted_view, target, depth, resolution_override] = view;
     const auto transparent_phases                  = world.get_resource<phase::ViewSortedRenderPhases<Transparent3d>>();
     if (!transparent_phases) return {};
     const auto transparent_phase = transparent_phases->get().find(extracted_view.retained_view_entity);
@@ -456,7 +466,8 @@ std::expected<void, graph::NodeRunError> MainTransparentPass3dNode::run(graph::G
 
     const auto color_attachments      = std::array{target.get_color_attachment()};
     const auto depth_attachment       = depth.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport               = camera.viewport;
+    const auto viewport               = ::epix::camera::Viewport::from_viewport_and_override(
+        camera.viewport, resolution_override.transform([](const auto& value) { return value.get().size; }));
     const auto view_entity            = graph.view_entity();
     const auto* world_ptr             = std::addressof(world);
     const auto* transparent_phase_ptr = std::addressof(transparent_phase->second);
