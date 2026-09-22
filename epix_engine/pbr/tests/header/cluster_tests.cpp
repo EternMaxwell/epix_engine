@@ -5,6 +5,7 @@
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
+#include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
@@ -2916,6 +2917,62 @@ TEST(Cluster, ShouldUpdateDirectionalCascadeFrustaMatchesBevy) {
     EXPECT_TRUE(should_update_directional_cascade_frusta(true, true));
     EXPECT_FALSE(should_update_point_light_frusta(false, false, true, true))
         << "the point-light gate does have change detection";
+}
+
+/** @brief The point-light frusta system actually rebuilds them for a clustered,
+ *  shadow-casting light, and leaves them alone otherwise (Bevy
+ *  `update_point_light_frusta`, `point_light.rs:188-244`). */
+TEST(Cluster, UpdatePointLightFrustaSystemRebuildsFrusta) {
+    using epix::pbr::GlobalVisibleClusterableObjects;
+    using epix::pbr::PointLight;
+    using epix::pbr::update_point_light_frusta;
+
+    const glm::mat4 world_from_light = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, -1.0f, 4.0f));
+    const float range                = 20.0f;
+
+    const auto run_with = [&](bool shadows_enabled, bool clustered) {
+        epix::app::App app = epix::app::App::create();
+        const auto light   = app.world_mut()
+                               .spawn(epix::transform::GlobalTransform{world_from_light},
+                                      PointLight{.shadows_enabled = shadows_enabled, .range = range},
+                                      epix::camera::CubemapFrusta{})
+                               .id();
+        app.world_mut().insert_resource(
+            GlobalVisibleClusterableObjects{.entities = clustered ? std::unordered_set<epix::ecs::Entity>{light}
+                                                                 : std::unordered_set<epix::ecs::Entity>{}});
+        app.add_systems(epix::app::Update, epix::ecs::into(update_point_light_frusta));
+        app.update();
+        return app.world_mut().entity(light).get<epix::camera::CubemapFrusta>()->get().frusta;
+    };
+
+    // A shadow-casting, clustered light gets its six face pyramids: a small sphere
+    // at the light is inside each, and one beyond the range on the far side of the
+    // light's shared far plane is inside none. That plane is oriented by the light's
+    // backward axis and sits at translation - range * backward, so for an unrotated
+    // transform (backward = +Z) it bounds the -Z side, and the +Z side is open.
+    const auto frusta = run_with(true, true);
+    const epix::camera::Sphere at_light{.center = glm::vec3(2.0f, -1.0f, 4.0f), .radius = 0.01f};
+    const epix::camera::Sphere beyond_bound{.center = glm::vec3(2.0f, -1.0f, 4.0f - range - 1.0f), .radius = 0.01f};
+    for (std::size_t face = 0; face < frusta.size(); ++face) {
+        EXPECT_TRUE(frusta[face].intersects_sphere(at_light)) << "face " << face << " contains the light";
+        EXPECT_FALSE(frusta[face].intersects_sphere(beyond_bound))
+            << "face " << face << " is bounded on the far side of that plane";
+    }
+    // The open side really is open, which is the asymmetry worth pinning: a sphere
+    // beyond the range in the +Z direction is still inside the +Z face.
+    const epix::camera::Sphere open_side{.center = glm::vec3(2.0f, -1.0f, 4.0f + range + 1.0f), .radius = 0.01f};
+    EXPECT_TRUE(frusta[5].intersects_sphere(open_side)) << "the +Z face has no far bound";
+    // They are not the default-constructed planes any more, which is how a system
+    // that quietly did nothing would look.
+    EXPECT_NE(frusta[0].planes, epix::camera::Frustum{}.planes);
+
+    // A light without shadows keeps empty frusta: the gate skips it.
+    const auto unshadowed = run_with(false, true);
+    EXPECT_EQ(unshadowed[0].planes, epix::camera::Frustum{}.planes) << "no shadows, no frusta";
+
+    // So does a light in no cluster, even with shadows enabled.
+    const auto unclustered = run_with(true, false);
+    EXPECT_EQ(unclustered[0].planes, epix::camera::Frustum{}.planes) << "not clustered, nothing to cull for";
 }
 
 }  // namespace
