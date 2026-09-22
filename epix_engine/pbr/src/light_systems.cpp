@@ -1,5 +1,7 @@
 #include <epix/pbr/light_systems.hpp>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <cstddef>
 #include <glm/glm.hpp>
@@ -8,6 +10,21 @@
 #include <glm/gtx/component_wise.hpp>
 
 namespace epix::pbr {
+
+void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map) {
+    // Bevy `validate_shadow_map_size` (directional_light.rs:198-204): only a
+    // changed resource is inspected, and a size that is not a power of two is
+    // corrected with a warning - unstable cascade positioning is the reason the
+    // requirement exists. `0` is not a power of two either, and rounds up to 1.
+    auto& size = (*shadow_map).size;
+    if (!shadow_map.is_modified() || (size != 0 && (size & (size - 1)) == 0)) return;
+
+    std::size_t power_of_two = 1;
+    while (power_of_two < size) power_of_two <<= 1;
+    spdlog::warn("[pbr] Non-power-of-two DirectionalLightShadowMap sizes are not supported, correcting {} to {}",
+                 size, power_of_two);
+    size = power_of_two;
+}
 
 void update_point_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,

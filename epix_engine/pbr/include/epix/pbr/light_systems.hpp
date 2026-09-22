@@ -20,6 +20,14 @@
 
 namespace epix::pbr {
 
+/** @brief Round a non-power-of-two shadow map size up, warning about it (Bevy
+ *  `validate_shadow_map_size`, `bevy_light/src/directional_light.rs:198-204`).
+ *
+ *  Only a modified resource is inspected, as Bevy's `is_changed()` gate does, and
+ *  nothing is written when the size is already a power of two. Bevy's
+ *  `next_power_of_two` maps `0` to `1`, which the loop here reproduces. */
+EPIX_EXPORT void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map);
+
 /** @brief Rebuild the cubemap frusta of every point light that needs it (Bevy
  *  `update_point_light_frusta`, `bevy_light/src/point_light.rs:188-244`).
  *

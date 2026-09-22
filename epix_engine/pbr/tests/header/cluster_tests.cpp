@@ -39,6 +39,10 @@ TEST(Cluster, GpuClusterableObjectMatchesBevyLayout) {
     EXPECT_LE(sizeof(GpuClusterableObject) * epix::pbr::MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS, 16384u);
     EXPECT_EQ(epix::pbr::MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS, 204u);
     EXPECT_EQ(epix::pbr::CLUSTERED_FORWARD_STORAGE_BUFFER_COUNT, 3u);
+    // Bevy's companion guard on the index list (`cluster.rs:562-564`); the same
+    // budget is now a `static_assert` in the header, so a field addition fails the
+    // build rather than the device.
+    EXPECT_LE(sizeof(epix::pbr::GpuClusterableObjectIndexListsUniform), 16384u);
 }
 
 /** @brief The uniform form is a full array; the three storage forms are
@@ -238,7 +242,6 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
     using epix::pbr::DirectionalLightShadowMap;
     using epix::pbr::DirectionalLightTexture;
     using epix::pbr::light_consts::lux::AMBIENT_DAYLIGHT;
-    using epix::pbr::validate_shadow_map_size;
 
     const DirectionalLight light{};
     EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -253,12 +256,33 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
 
     const DirectionalLightShadowMap shadow_map{};
     EXPECT_EQ(shadow_map.size, 2048u) << "the width and height of each cascade";
-    EXPECT_EQ(validate_shadow_map_size(2048), 2048u) << "a power of two is left alone";
-    EXPECT_EQ(validate_shadow_map_size(3000), 4096u) << "anything else rounds up";
-    EXPECT_EQ(validate_shadow_map_size(1), 1u);
 
     const DirectionalLightTexture texture{};
     EXPECT_FALSE(texture.tiled) << "Bevy centres a single tile by default";
+}
+
+/** @brief `validate_shadow_map_size` corrects a non-power-of-two size once, and
+ *  only when the resource changed (Bevy `directional_light.rs:198-204`). */
+TEST(Cluster, ValidateShadowMapSizeSystemRoundsUpChangedSizes) {
+    using epix::pbr::DirectionalLightShadowMap;
+    using epix::pbr::validate_shadow_map_size;
+
+    epix::app::App app = epix::app::App::create();
+    app.world_mut().insert_resource(DirectionalLightShadowMap{.size = 3000});
+    app.add_systems(epix::app::Update, epix::ecs::into(validate_shadow_map_size));
+
+    app.update();
+    EXPECT_EQ(app.world().resource<DirectionalLightShadowMap>().size, 4096u)
+        << "anything that is not a power of two rounds up";
+
+    // A power of two is left alone, and an untouched resource is not inspected at
+    // all: the second run leaves it as the first one did.
+    app.update();
+    EXPECT_EQ(app.world().resource<DirectionalLightShadowMap>().size, 4096u);
+
+    app.world_mut().resource_mut<DirectionalLightShadowMap>().size = 1024;
+    app.update();
+    EXPECT_EQ(app.world().resource<DirectionalLightShadowMap>().size, 1024u);
 }
 
 /** @brief `Cascade` carries the three shadow transforms and the texel size, and

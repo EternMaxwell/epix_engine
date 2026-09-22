@@ -244,6 +244,10 @@ EPIX_EXPORT struct Clusters {
 
         const glm::uvec3 derived{glm::ceil(screen / glm::vec2(tile_size)), requested_dimensions.z};
         dimensions = glm::max(derived, glm::uvec3(1u));
+
+        // Maximum 4096 clusters, because that is what the uniform buffer holds
+        // (Bevy's `debug_assert!`, `cluster/mod.rs:331-332`).
+        assert(dimensions.x * dimensions.y * dimensions.z <= 4096);
     }
 
     /** @brief Reset to a state with no clusters (Bevy `Clusters::clear`,

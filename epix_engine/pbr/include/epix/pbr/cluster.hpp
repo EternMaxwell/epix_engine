@@ -50,6 +50,12 @@ EPIX_EXPORT struct GpuClusterableObject {
     float pad = 0.0f;
 };
 
+// Bevy's compile-time guard (`cluster.rs:24-25`): the full uniform array has to
+// stay inside the WebGL2 uniform binding, so a future field addition that
+// overruns it fails the build instead of the device.
+static_assert(sizeof(GpuClusterableObject) * MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS <= 16384,
+              "GpuClusterableObject must fit the 16 KiB WebGL2 uniform binding");
+
 /** @brief The fixed-size form: a full uniform array of clusterable objects
  *  (Bevy `GpuClusterableObjectsUniform`, `cluster.rs:83-86`). */
 EPIX_EXPORT struct GpuClusterableObjectsUniform {
@@ -308,6 +314,11 @@ EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word
 EPIX_EXPORT struct GpuClusterableObjectIndexListsUniform {
     std::array<glm::uvec4, VIEW_CLUSTER_MAX_UNIFORM_ITEMS> data{};
 };
+
+// Bevy's compile-time guard (`cluster.rs:562-564`): the index list is exactly at
+// the binding's limit, so it is the assertion that keeps it there.
+static_assert(sizeof(GpuClusterableObjectIndexListsUniform) <= 16384,
+              "the cluster index list must fit the 16 KiB WebGL2 uniform binding");
 
 /** @brief The uniform form of a view's cluster offsets and counts (Bevy
  *  `GpuClusterOffsetsAndCountsUniform`, `cluster.rs:113-116`), with the same
