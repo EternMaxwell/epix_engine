@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/ecs.hpp>
+#include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <numbers>
 #include <type_traits>
@@ -207,6 +209,19 @@ static_assert(offsetof(GpuFog, directional_light_exponent) == 44);
 static_assert(offsetof(GpuFog, bi) == 48);
 static_assert(offsetof(GpuFog, mode) == 60);
 
+}  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+/** @brief `GpuFog` is uploaded as raw bytes: the struct is already padded to the
+ *  shader's 64-byte layout with its offsets asserted, so a derived layout has nothing
+ *  to add. This must precede `FogMeta`, which instantiates
+ *  `DynamicUniformBuffer<GpuFog>` and so checks the `ShaderWritable` concept there. */
+template <>
+struct ShaderTypeInfo<::epix::pbr::GpuFog> : RawShaderType<::epix::pbr::GpuFog> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
 /** @brief The GPU fog for a camera's fog component (Bevy `prepare_fog`,
  *  `render/fog.rs:64-113`).
  *
@@ -245,5 +260,24 @@ EPIX_EXPORT inline GpuFog gpu_fog_from(const DistanceFog& fog) {
 EPIX_EXPORT struct ViewFogUniformOffset {
     std::uint32_t offset = 0;
 };
+
+/** @brief One `GpuFog` per view (Bevy `FogMeta`, `render/fog.rs:44-46`). */
+EPIX_EXPORT struct FogMeta {
+    render::render_resource::DynamicUniformBuffer<GpuFog> gpu_fogs;
+};
+
+/** @brief Writes one `GpuFog` per view and stamps each view with its offset (Bevy
+ *  `prepare_fog`, `render/fog.rs:49-120`).
+ *
+ *  A view without a `DistanceFog` still gets an entry, with the mode off and every
+ *  field zero: "no fog" is expressed on the GPU rather than by leaving the binding
+ *  absent, which is what lets one bind group serve both kinds of view. The writer's
+ *  capacity is the view count, so all the offsets are valid by construction. */
+EPIX_EXPORT void prepare_fog(
+    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+    ecs::ResMut<FogMeta> fog_meta,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const DistanceFog&>>,
+               ecs::With<::epix::render::view::ExtractedView>>
+        views);
 
 }  // namespace epix::pbr
