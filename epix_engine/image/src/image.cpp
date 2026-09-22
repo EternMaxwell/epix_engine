@@ -103,6 +103,32 @@ bool is_compressed_texture_format(wgpu::TextureFormat format) noexcept {
         case wgpu::TextureFormat::eEACRG11Snorm:
         case wgpu::TextureFormat::eASTC4x4Unorm:
         case wgpu::TextureFormat::eASTC4x4UnormSrgb:
+        case wgpu::TextureFormat::eASTC5x4Unorm:
+        case wgpu::TextureFormat::eASTC5x4UnormSrgb:
+        case wgpu::TextureFormat::eASTC5x5Unorm:
+        case wgpu::TextureFormat::eASTC5x5UnormSrgb:
+        case wgpu::TextureFormat::eASTC6x5Unorm:
+        case wgpu::TextureFormat::eASTC6x5UnormSrgb:
+        case wgpu::TextureFormat::eASTC6x6Unorm:
+        case wgpu::TextureFormat::eASTC6x6UnormSrgb:
+        case wgpu::TextureFormat::eASTC8x5Unorm:
+        case wgpu::TextureFormat::eASTC8x5UnormSrgb:
+        case wgpu::TextureFormat::eASTC8x6Unorm:
+        case wgpu::TextureFormat::eASTC8x6UnormSrgb:
+        case wgpu::TextureFormat::eASTC8x8Unorm:
+        case wgpu::TextureFormat::eASTC8x8UnormSrgb:
+        case wgpu::TextureFormat::eASTC10x5Unorm:
+        case wgpu::TextureFormat::eASTC10x5UnormSrgb:
+        case wgpu::TextureFormat::eASTC10x6Unorm:
+        case wgpu::TextureFormat::eASTC10x6UnormSrgb:
+        case wgpu::TextureFormat::eASTC10x8Unorm:
+        case wgpu::TextureFormat::eASTC10x8UnormSrgb:
+        case wgpu::TextureFormat::eASTC10x10Unorm:
+        case wgpu::TextureFormat::eASTC10x10UnormSrgb:
+        case wgpu::TextureFormat::eASTC12x10Unorm:
+        case wgpu::TextureFormat::eASTC12x10UnormSrgb:
+        case wgpu::TextureFormat::eASTC12x12Unorm:
+        case wgpu::TextureFormat::eASTC12x12UnormSrgb:
             return true;
         default:
             return false;
@@ -721,7 +747,7 @@ std::optional<std::size_t> Image::pixel_data_offset(const glm::uvec3& coords) co
     return pixel_offset * *pixel_size;
 }
 
-void Image::resize_size(const wgpu::Extent3D& new_size) {
+void Image::resize(const wgpu::Extent3D& new_size) {
     texture_descriptor.size = new_size;
     if (!m_has_data) return;
     if (const auto pixel_size = texture_format_pixel_size(texture_descriptor.format)) {
@@ -1095,13 +1121,6 @@ std::expected<void, TextureAccessError> write_color_at(Image& image, const glm::
     return {};
 }
 
-/** @brief True when the image is a 2D texture with a single layer (Bevy's
- * `get_color_at`/`set_color_at` dimension requirement). */
-bool is_plain_2d(const Image& image) noexcept {
-    return image.texture_descriptor.dimension == wgpu::TextureDimension::e2D &&
-           image.texture_descriptor.size.depthOrArrayLayers == 1;
-}
-
 /** @brief True when the image is a 3D texture or a layered 2D texture (Bevy's
  * `*_at_3d` dimension requirement). */
 bool is_3d_or_layered(const Image& image) noexcept {
@@ -1129,7 +1148,11 @@ std::string to_string(const TextureAccessError& error) {
 }
 
 std::expected<glm::vec4, TextureAccessError> Image::get_color_at(std::uint32_t x, std::uint32_t y) const {
-    if (!is_plain_2d(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    // Bevy checks the dimension only and reads layer 0, so a layered 2D image is
+    // readable here (`image.rs:1535-1540`).
+    if (texture_descriptor.dimension != wgpu::TextureDimension::e2D) {
+        return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    }
     return read_color_at(*this, glm::uvec3{x, y, 0});
 }
 
@@ -1148,7 +1171,10 @@ std::expected<glm::vec4, TextureAccessError> Image::get_color_at_3d(std::uint32_
 }
 
 std::expected<void, TextureAccessError> Image::set_color_at(std::uint32_t x, std::uint32_t y, const glm::vec4& color) {
-    if (!is_plain_2d(*this)) return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    // Same dimension-only rule as `get_color_at` (`image.rs:1591-1596`).
+    if (texture_descriptor.dimension != wgpu::TextureDimension::e2D) {
+        return std::unexpected(TextureAccessError{TextureAccessError::WrongDimension{}});
+    }
     return write_color_at(*this, glm::uvec3{x, y, 0}, color);
 }
 
@@ -1303,7 +1329,7 @@ std::optional<Image> Image::convert(wgpu::TextureFormat new_format) const {
     return std::nullopt;
 }
 
-Image Image::resize(std::uint32_t newW, std::uint32_t newH) const {
+Image Image::resampled(std::uint32_t newW, std::uint32_t newH) const {
     const wgpu::TextureFormat format     = texture_descriptor.format;
     const std::uint8_t components        = texture_format_components(format);
     const std::size_t pixel_size         = texture_format_pixel_size(format).value_or(0);

@@ -459,7 +459,7 @@ EPIX_EXPORT enum class ImageSamplerBorderColor {
     /** @brief RGBA color [0, 0, 0, 1]. */
     OpaqueBlack,
     /** @brief RGBA color [1, 1, 1, 1]. */
-    White,
+    OpaqueWhite,
 };
 
 /** @brief Sampler configuration for an image (Bevy `ImageSamplerDescriptor`,
@@ -1102,9 +1102,11 @@ EPIX_EXPORT class Image {
      * `from_dynamic`'s RGBA widening. */
     std::optional<Image> convert(wgpu::TextureFormat new_format) const;
     /**
-     * @brief Resize image to new width and height, return the resized image.
+     * @brief Resample the image to a new width and height and return it
+     * (Epix-only extension; Bevy's `Image::resize` is the in-place
+     * `resize(Extent3D)` below).
      */
-    Image resize(std::uint32_t newW, std::uint32_t newH) const;
+    Image resampled(std::uint32_t newW, std::uint32_t newH) const;
     /**
      * @brief Apply Gaussian blur to the image and return the blurred image.
      */
@@ -1127,7 +1129,7 @@ EPIX_EXPORT class Image {
      * Does not scale the contents (Bevy `Image::resize`).
      *
      * Use `resize_in_place` to keep pixel data intact. */
-    void resize_size(const wgpu::Extent3D& new_size);
+    void resize(const wgpu::Extent3D& new_size);
 
     /** @brief Changes the size if the total pixel count stays the same, otherwise
      * returns `TextureReinterpretationError::IncompatibleSizes` (Bevy

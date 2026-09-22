@@ -234,16 +234,62 @@ TEST(Image, ResizeReplacesSizeAndReallocsData) {
     const auto before = image.raw_view()[static_cast<std::size_t>((1 * 2 + 1) * 4)];
     EXPECT_EQ(before, std::byte(255));
 
-    image.resize_size(wgpu::Extent3D{4, 3, 1});
+    image.resize(wgpu::Extent3D{4, 3, 1});
     EXPECT_EQ(image.width(), 4u);
     EXPECT_EQ(image.height(), 3u);
     EXPECT_EQ(image.raw_view().size(), 4u * 3u * 4u);
     // The existing bytes stay at their original offsets in the grown buffer.
     EXPECT_EQ(image.raw_view()[static_cast<std::size_t>((1 * 2 + 1) * 4)], before);
 
-    image.resize_size(wgpu::Extent3D{1, 1, 1});
+    image.resize(wgpu::Extent3D{1, 1, 1});
     EXPECT_EQ(image.width(), 1u);
     EXPECT_EQ(image.raw_view().size(), 4u);
+}
+
+// Bevy's `get_color_at`/`set_color_at` check the dimension only and touch layer 0
+// (`image.rs:1535-1540,1591-1596`), so a layered 2D image is addressable; Epix
+// additionally required `depthOrArrayLayers == 1` and rejected it.
+TEST(Image, ColorAccessAcceptsLayered2dImages) {
+    auto layered = epix::image::Image::create2d_array(2, 2, 3, wgpu::TextureFormat::eRGBA8Unorm);
+
+    ASSERT_TRUE(layered.set_color_at(1, 0, glm::vec4(0.25f, 0.5f, 0.75f, 1.0f)).has_value());
+    const auto color = layered.get_color_at(1, 0);
+    ASSERT_TRUE(color.has_value());
+    EXPECT_NEAR(color->r, 0.25f, 0.01f);
+    EXPECT_NEAR(color->g, 0.5f, 0.01f);
+    EXPECT_NEAR(color->b, 0.75f, 0.01f);
+
+    // The dimension check stays: a 3D texture is still the wrong dimension here,
+    // and a layered 2D image is still what the `*_at_3d` forms want.
+    auto volume = epix::image::Image::create3d(2, 2, 2, wgpu::TextureFormat::eRGBA8Unorm);
+    const auto rejected = volume.get_color_at(0, 0);
+    ASSERT_FALSE(rejected.has_value());
+    EXPECT_NE(std::get_if<epix::image::TextureAccessError::WrongDimension>(&rejected.error().value), nullptr);
+    EXPECT_TRUE(layered.get_color_at_3d(1, 0, 0).has_value());
+}
+
+// Every ASTC block is a compressed format in wgpu, so `is_compressed` has to
+// answer for all 14 of them in both colour spaces (`image.rs:1413-1423`, which
+// asks `required_features()`); Epix listed only the 4x4 pair.
+TEST(Image, IsCompressedCoversEveryAstcBlock) {
+    constexpr std::array astc_blocks{
+        wgpu::TextureFormat::eASTC4x4Unorm,   wgpu::TextureFormat::eASTC5x4Unorm,
+        wgpu::TextureFormat::eASTC5x5Unorm,   wgpu::TextureFormat::eASTC6x5Unorm,
+        wgpu::TextureFormat::eASTC6x6Unorm,   wgpu::TextureFormat::eASTC8x5Unorm,
+        wgpu::TextureFormat::eASTC8x6Unorm,   wgpu::TextureFormat::eASTC8x8Unorm,
+        wgpu::TextureFormat::eASTC10x5Unorm,  wgpu::TextureFormat::eASTC10x6Unorm,
+        wgpu::TextureFormat::eASTC10x8Unorm,  wgpu::TextureFormat::eASTC10x10Unorm,
+        wgpu::TextureFormat::eASTC12x10Unorm, wgpu::TextureFormat::eASTC12x12Unorm,
+    };
+    for (const auto format : astc_blocks) {
+        const auto linear = epix::image::Image::create(epix::image::ImageType::e2D, 4, 4, 1, format);
+        EXPECT_TRUE(linear.is_compressed()) << "linear ASTC block " << static_cast<int>(format);
+        const auto srgb_format = static_cast<wgpu::TextureFormat>(static_cast<int>(format) + 1);
+        const auto srgb        = epix::image::Image::create(epix::image::ImageType::e2D, 4, 4, 1, srgb_format);
+        EXPECT_TRUE(srgb.is_compressed()) << "sRGB ASTC block " << static_cast<int>(srgb_format);
+    }
+    EXPECT_TRUE(epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eBC1RGBAUnorm).is_compressed());
+    EXPECT_FALSE(epix::image::Image::create2d(4, 4, wgpu::TextureFormat::eRGBA8Unorm).is_compressed());
 }
 
 // resize_in_place keeps pixel data anchored at the top-left and fills growth with
