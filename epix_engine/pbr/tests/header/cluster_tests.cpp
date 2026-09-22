@@ -2937,10 +2937,10 @@ TEST(Cluster, UpdatePointLightFrustaSystemRebuildsFrusta) {
     const glm::mat4 world_from_light = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, -1.0f, 4.0f));
     const float range                = 20.0f;
 
-    const auto run_with = [&](bool shadows_enabled, bool clustered) {
+    const auto run_with = [&](bool shadows_enabled, bool clustered, std::optional<glm::mat4> light_transform = std::nullopt) {
         epix::app::App app = epix::app::App::create();
         const auto light   = app.world_mut()
-                               .spawn(epix::transform::GlobalTransform{world_from_light},
+                               .spawn(epix::transform::GlobalTransform{light_transform.value_or(world_from_light)},
                                       PointLight{.shadows_enabled = shadows_enabled, .range = range},
                                       epix::camera::CubemapFrusta{})
                                .id();
@@ -2980,6 +2980,17 @@ TEST(Cluster, UpdatePointLightFrustaSystemRebuildsFrusta) {
     // So does a light in no cluster, even with shadows enabled.
     const auto unclustered = run_with(true, false);
     EXPECT_EQ(unclustered[0].planes, epix::camera::Frustum{}.planes) << "not clustered, nothing to cull for";
+
+    // A transform that carries a scale must bound its frusta at `range` all the
+    // same: Bevy passes `transform.back()`, a unit direction, so the far plane
+    // cannot move with the light's scale.
+    const auto scaled = run_with(true, true, glm::scale(world_from_light, glm::vec3(3.0f)));
+    const epix::camera::Sphere scaled_beyond_bound{.center = glm::vec3(2.0f, -1.0f, 4.0f - range - 1.0f),
+                                                   .radius = 0.01f};
+    for (std::size_t face = 0; face < scaled.size(); ++face) {
+        EXPECT_FALSE(scaled[face].intersects_sphere(scaled_beyond_bound))
+            << "face " << face << " of a scaled light is still bounded at range";
+    }
 }
 
 /** @brief The cascade builder fills a cascades map per active view, and the clear

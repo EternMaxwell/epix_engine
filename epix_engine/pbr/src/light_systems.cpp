@@ -27,10 +27,12 @@ void update_point_light_frusta(
         // Epix's GlobalTransform is a matrix, so the light's world position is its
         // translation column and its backward axis is the third column - the local
         // +Z of a right-handed transform. The light's scale and rotation are
-        // deliberately not used, as in Bevy.
+        // deliberately not used, as in Bevy: Bevy passes `transform.back()`, a unit
+        // direction, and the far plane's distance is measured along it, so the
+        // column has to be normalised or a scaled light's frusta reach `s * range`.
         const glm::mat4 world_from_light = transform.get().matrix;
         const glm::vec3 translation      = glm::vec3(world_from_light[3]);
-        const glm::vec3 backward         = glm::vec3(world_from_light[2]);
+        const glm::vec3 backward         = glm::normalize(glm::vec3(world_from_light[2]));
 
         const auto frusta = point_light_cubemap_frusta(translation, backward, point_light.get().range,
                                                       point_light.get().shadow_map_near_z);
