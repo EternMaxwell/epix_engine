@@ -7,6 +7,7 @@
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_markers.hpp>
 #include <epix/pbr/light_systems.hpp>
+#include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
@@ -3840,6 +3841,62 @@ TEST(Cluster, ShadowMarkersMatchBevy) {
         << "carrying one marker does not imply the other";
     EXPECT_TRUE(world.entity(receiver_only).contains<NotShadowReceiver>());
     EXPECT_FALSE(world.entity(receiver_only).contains<NotShadowCaster>());
+}
+
+/** @brief The per-face visibility of a mesh to a point light: conservative when
+ *  there is nothing to cull against, bounded by the light's range, and per-face
+ *  otherwise (Bevy `check_point_light_mesh_visibility`,
+ *  `bevy_light/src/lib.rs:565-590`). */
+TEST(Cluster, PointLightFaceVisibilityMatchesBevy) {
+    using epix::camera::Aabb;
+    using epix::camera::Sphere;
+    using epix::pbr::point_light_cubemap_frusta;
+    using epix::pbr::point_light_face_visibility;
+
+    const glm::vec3 light_position{0.0f, 0.0f, 0.0f};
+    const float range     = 10.0f;
+    const float z_near    = 0.1f;
+    const auto frusta     = point_light_cubemap_frusta(light_position, glm::vec3(0.0f, 0.0f, 1.0f), range, z_near);
+    const Sphere light_sphere{.center = light_position, .radius = range};
+
+    const auto box_at = [](glm::vec3 position) {
+        return Aabb{.center = position, .half_extents = glm::vec3(0.1f)};
+    };
+    const glm::mat4 identity{1.0f};
+    const auto count_visible = [](const std::array<bool, 6>& visible) {
+        return static_cast<std::size_t>(std::count(visible.begin(), visible.end(), true));
+    };
+
+    // Nothing to cull against: visible to every face. The conservative answer, and
+    // the opposite of dropping the mesh everywhere.
+    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, std::nullopt, identity, false)), 6u);
+    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(2.0f, 0.0f, 0.0f)),
+                                                       std::nullopt, false)),
+              6u);
+
+    // NoFrustumCulling: every face, and the range does not bound it either.
+    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(500.0f, 0.0f, 0.0f)),
+                                                       identity, true)),
+              6u);
+
+    // Inside the light's range on the +X axis: the +X face only. The faces are
+    // 90-degree pyramids, so the axis is squarely inside one and outside the rest.
+    const auto on_axis = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(2.0f, 0.0f, 0.0f)), identity,
+                                                    false);
+    EXPECT_TRUE(on_axis[0]) << "the +X face sees it";
+    EXPECT_EQ(count_visible(on_axis), 1u) << "and no other face does";
+
+    // The -Y face for a box below the light, which is a different index than +X.
+    const auto below = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(0.0f, -2.0f, 0.0f)), identity,
+                                                  false);
+    EXPECT_TRUE(below[3]) << "the -Y face is index 3";
+    EXPECT_EQ(count_visible(below), 1u);
+
+    // Beyond the light's range on that same axis: no face at all, even though it
+    // sits squarely on the +X axis.
+    const auto beyond = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(range + 5.0f, 0.0f, 0.0f)),
+                                                   identity, false);
+    EXPECT_EQ(count_visible(beyond), 0u) << "the light's range bounds it, not the face's axis";
 }
 
 }  // namespace
