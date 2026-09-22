@@ -724,6 +724,20 @@ EPIX_EXPORT struct Mesh {
      * accumulates the previous attribute sizes. */
     MeshVertexBufferLayoutRef get_mesh_vertex_buffer_layout(MeshVertexBufferLayouts& mesh_vertex_buffer_layouts) const;
 
+    /** @brief Size of a single vertex in bytes: the sum of every attribute's
+     * format size (Bevy `Mesh::get_vertex_size`). */
+    std::uint64_t get_vertex_size() const;
+    /** @brief Size required for the vertex buffer in bytes (Bevy
+     * `Mesh::get_vertex_buffer_size`). */
+    std::size_t get_vertex_buffer_size() const;
+    /** @brief The vertex data packed into Bevy's interleaved vertex-buffer form:
+     * the attributes of each vertex in ascending attribute-ID order, truncated to
+     * the smallest attribute length (Bevy `Mesh::create_packed_vertex_buffer_data`). */
+    std::vector<std::uint8_t> create_packed_vertex_buffer_data() const;
+    /** @brief Writes the packed vertex data into `slice`, which must hold at least
+     * `get_vertex_buffer_size()` bytes (Bevy `Mesh::write_packed_vertex_buffer_data`). */
+    void write_packed_vertex_buffer_data(std::span<std::uint8_t> slice) const;
+
     /** @brief Insert or replace semantically tagged attribute values. */
     void insert_attribute(MeshVertexAttribute attribute, VertexAttributeValues values) {
         auto result = try_insert_attribute(std::move(attribute), std::move(values));

@@ -39,20 +39,21 @@ bool initialize_mesh_allocator_test_app(epix::app::App& app) {
 }
 }  // namespace
 
-// Bevy MeshVertexBufferLayout::array_stride: sum of attribute sizes.
-TEST(MeshModule, VertexArrayStride) {
+// Bevy Mesh::get_vertex_size: sum of attribute format sizes.
+TEST(MeshModule, MeshGetVertexSize) {
     // Without a color only the position attribute exists (12).
     auto plain = mesh::make_box2d(20.0f, 10.0f);
-    EXPECT_EQ(mesh_allocator::vertex_array_stride(plain), 12u);
+    EXPECT_EQ(plain.get_vertex_size(), 12u);
     // With a color: position (12) + color (16) = 28.
     auto box = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f));
-    EXPECT_EQ(mesh_allocator::vertex_array_stride(box), 28u);
+    EXPECT_EQ(box.get_vertex_size(), 28u);
 }
 
-// packed_vertex_bytes interleaves per-vertex attributes in ID order (Bevy).
-TEST(MeshModule, PackedVertexBytesInterleave) {
+// create_packed_vertex_buffer_data interleaves per-vertex attributes in ID order (Bevy).
+TEST(MeshModule, MeshPackedVertexDataInterleave) {
     const auto box    = mesh::make_box2d(20.0f, 10.0f, glm::vec4(1.0f, 0.5f, 0.25f, 0.0f));
-    const auto packed = mesh_allocator::packed_vertex_bytes(box);
+    const auto packed = box.create_packed_vertex_buffer_data();
+    EXPECT_EQ(packed.size(), box.get_vertex_buffer_size());
     // 4 verts * (12 pos + 16 color) = 112 bytes.
     EXPECT_EQ(packed.size(), 112u);
     // Vertex 0's color begins at byte 12 (position is 12 bytes).
@@ -70,7 +71,7 @@ TEST(MeshModule, PackedVertexBytesPreservesSemanticIntegerValues) {
     mesh::Mesh value(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
     value.insert_attribute(custom, mesh::VertexAttributeValues::Snorm16x2{{{1, -2}, {3, -4}}});
 
-    const auto packed = mesh_allocator::packed_vertex_bytes(value);
+    const auto packed = value.create_packed_vertex_buffer_data();
     ASSERT_EQ(packed.size(), 4u * sizeof(std::int16_t));
     std::array<std::int16_t, 4> components{};
     std::memcpy(components.data(), packed.data(), packed.size());

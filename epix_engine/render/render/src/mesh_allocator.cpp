@@ -14,11 +14,11 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
     detail::SlabsToReallocate slabs_to_reallocate;
 
     for (const auto& [id, source_mesh] : extracted_meshes.extracted) {
-        const auto vertex_layout = source_mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
-        if (!vertex_layout.value || vertex_layout.value->layout().array_stride == 0) continue;
-        const auto vertex_stride = vertex_layout.value->layout().array_stride;
-        const auto vertex_bytes  = static_cast<std::uint64_t>(source_mesh.count_vertices()) * vertex_stride;
+        const auto vertex_bytes = static_cast<std::uint64_t>(source_mesh.get_vertex_buffer_size());
         if (vertex_bytes == 0) continue;
+        const auto vertex_layout = source_mesh.get_mesh_vertex_buffer_layout(mesh_vertex_buffer_layouts);
+        if (!vertex_layout.value) continue;
+        const auto vertex_stride = vertex_layout.value->layout().array_stride;
 
         const auto element_layout = detail::ElementLayout::make(detail::ElementClass::Vertex, vertex_stride);
         if (general_vertex_slabs_supported) {
@@ -45,7 +45,7 @@ void epix::render::mesh::MeshAllocator::allocate_meshes(
     for (const auto& [id, source_mesh] : extracted_meshes.extracted) {
         if (const auto vertex_slab = mesh_id_to_vertex_slab.find(id);
             vertex_slab != mesh_id_to_vertex_slab.end()) {
-            const auto packed = packed_vertex_bytes(source_mesh);
+            const auto packed = source_mesh.create_packed_vertex_buffer_data();
             if (!packed.empty()) {
                 copy_element_data(device, queue, vertex_slab->second, id, packed.data(), packed.size(),
                                   wgpu::BufferUsage::eVertex);

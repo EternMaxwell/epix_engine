@@ -2406,6 +2406,47 @@ TEST(MeshModule, EmptyMeshDataExtractsOnceAndPreservesAccessState) {
     EXPECT_FALSE(source.take_gpu_data().has_value());
 }
 
+// Bevy `Mesh::get_vertex_size`, `Mesh::get_vertex_buffer_size`,
+// `Mesh::create_packed_vertex_buffer_data` and
+// `Mesh::write_packed_vertex_buffer_data` (`bevy_mesh/src/mesh.rs:818-968`): the
+// vertex size is the sum of the attribute format sizes, the buffer size is that
+// size times the vertex count, and the packed data interleaves each vertex's
+// attributes in ascending attribute-ID order.
+TEST(MeshModule, VertexPackingMatchesBevy) {
+    mesh::Mesh source(wgpu::PrimitiveTopology::eTriangleList, epix::assets::RenderAssetUsages::RENDER_WORLD);
+    EXPECT_EQ(source.get_vertex_size(), 0u);
+    EXPECT_EQ(source.get_vertex_buffer_size(), 0u);
+    EXPECT_TRUE(source.create_packed_vertex_buffer_data().empty());
+
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                            std::array{glm::vec3{0.0f, 1.0f, 2.0f}, glm::vec3{3.0f, 4.0f, 5.0f}});
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_COLOR,
+                            std::array{glm::vec4{1.0f, 0.5f, 0.25f, 0.0f}, glm::vec4{0.0f, 0.25f, 0.5f, 1.0f}});
+
+    EXPECT_EQ(source.get_vertex_size(), 28u);
+    EXPECT_EQ(source.get_vertex_buffer_size(), 56u);
+
+    const auto packed = source.create_packed_vertex_buffer_data();
+    ASSERT_EQ(packed.size(), 56u);
+    // Vertex 0's position and color, then vertex 1's, in attribute-ID order.
+    std::array<float, 7> first_vertex{};
+    std::memcpy(first_vertex.data(), packed.data(), 28);
+    EXPECT_EQ(first_vertex, (std::array<float, 7>{0.0f, 1.0f, 2.0f, 1.0f, 0.5f, 0.25f, 0.0f}));
+    std::array<float, 7> second_vertex{};
+    std::memcpy(second_vertex.data(), packed.data() + 28, 28);
+    EXPECT_EQ(second_vertex, (std::array<float, 7>{3.0f, 4.0f, 5.0f, 0.0f, 0.25f, 0.5f, 1.0f}));
+
+    // The write form fills a caller-provided buffer with the same bytes.
+    std::vector<std::uint8_t> buffer(source.get_vertex_buffer_size(), 0);
+    source.write_packed_vertex_buffer_data(buffer);
+    EXPECT_EQ(buffer, packed);
+
+    // Attributes of different lengths are truncated to the smallest, as in Bevy.
+    source.insert_attribute(mesh::Mesh::ATTRIBUTE_UV_0, std::array{glm::vec2{0.0f, 0.0f}});
+    EXPECT_EQ(source.count_vertices(), 1u);
+    EXPECT_EQ(source.get_vertex_buffer_size(), 36u);
+}
+
 // Bevy `Capsule3d` / `Capsule3dMeshBuilder` defaults and constructors
 // (`bevy_math/src/primitives/dim3.rs`, `bevy_mesh/src/primitives/dim3/capsule.rs:9-94`).
 TEST(MeshPrimitives, Capsule3dDefaultsAndConstructorsMatchBevy) {

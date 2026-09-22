@@ -1,8 +1,10 @@
 
 
+#include <algorithm>
 #include <array>
 #include <cassert>
 #include <cmath>
+#include <cstring>
 #include <epix/assets.hpp>
 #include <epix/mesh.hpp>
 #include <limits>
@@ -142,6 +144,43 @@ MeshVertexBufferLayoutRef Mesh::get_mesh_vertex_buffer_layout(
             .attributes   = std::move(attributes),
         },
     });
+}
+
+std::uint64_t Mesh::get_vertex_size() const {
+    std::uint64_t vertex_size = 0;
+    for (const auto& [attribute, values] : attributes()) {
+        vertex_size += vertex_format_size(attribute.format);
+    }
+    return vertex_size;
+}
+
+std::size_t Mesh::get_vertex_buffer_size() const {
+    return count_vertices() * static_cast<std::size_t>(get_vertex_size());
+}
+
+std::vector<std::uint8_t> Mesh::create_packed_vertex_buffer_data() const {
+    std::vector<std::uint8_t> attributes_interleaved_buffer(get_vertex_buffer_size(), 0);
+    write_packed_vertex_buffer_data(attributes_interleaved_buffer);
+    return attributes_interleaved_buffer;
+}
+
+void Mesh::write_packed_vertex_buffer_data(std::span<std::uint8_t> slice) const {
+    const auto vertex_size  = static_cast<std::size_t>(get_vertex_size());
+    const auto vertex_count = count_vertices();
+    assert(slice.size() >= vertex_count * vertex_size);
+    // Bundle into interleaved buffers.
+    std::size_t attribute_offset = 0;
+    for (const auto& [attribute, values] : attributes()) {
+        const auto attribute_size = vertex_format_size(attribute.format);
+        const auto bytes          = values.get_bytes();
+        const auto written        = attribute_size == 0 ? std::size_t{0}
+                                                        : std::min(vertex_count, bytes.size() / attribute_size);
+        for (std::size_t vertex_index = 0; vertex_index < written; ++vertex_index) {
+            const auto offset = vertex_index * vertex_size + attribute_offset;
+            std::memcpy(slice.data() + offset, bytes.data() + vertex_index * attribute_size, attribute_size);
+        }
+        attribute_offset += attribute_size;
+    }
 }
 
 std::optional<std::reference_wrapper<const VertexAttributeValues>> Mesh::attribute(
