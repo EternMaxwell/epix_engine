@@ -3192,4 +3192,42 @@ TEST(Cluster, UniformCapacityCutMatchesBevy) {
     }
 }
 
+/** @brief A cluster's bounding sphere is computed once and cached per cluster
+ *  index, not shared between clusters (Bevy `assign.rs:722-745`). */
+TEST(Cluster, CachedClusterSphereComputesOnce) {
+    using epix::camera::Sphere;
+    using epix::pbr::cached_cluster_sphere;
+
+    std::vector<std::optional<Sphere>> cache(4);
+    std::size_t computations = 0;
+    const auto compute_for = [&computations](float x) {
+        return [&computations, x] {
+            ++computations;
+            return Sphere{.center = glm::vec3(x, 0.0f, 0.0f), .radius = 1.0f};
+        };
+    };
+
+    // First use computes; the same index afterwards does not.
+    const Sphere& first = cached_cluster_sphere(cache, 1, compute_for(10.0f));
+    EXPECT_EQ(computations, 1u);
+    EXPECT_FLOAT_EQ(first.center.x, 10.0f);
+    const Sphere& again = cached_cluster_sphere(cache, 1, compute_for(99.0f));
+    EXPECT_EQ(computations, 1u) << "the cached value is reused, so the second callable never runs";
+    EXPECT_FLOAT_EQ(again.center.x, 10.0f) << "and the cached sphere is what comes back";
+    EXPECT_EQ(&first, &again) << "the same slot";
+
+    // A different index is a different slot with its own computation - the mistake
+    // this guards against is reusing a neighbouring cluster's bounds.
+    const Sphere& other = cached_cluster_sphere(cache, 2, compute_for(20.0f));
+    EXPECT_EQ(computations, 2u);
+    EXPECT_FLOAT_EQ(other.center.x, 20.0f);
+    EXPECT_NE(&first, &other);
+    EXPECT_EQ(cache[1]->center.x, 10.0f) << "the first slot is untouched";
+    EXPECT_EQ(cache[2]->center.x, 20.0f);
+
+    // Untouched indices stay empty: the cache is filled lazily, not up front.
+    EXPECT_FALSE(cache[0].has_value());
+    EXPECT_FALSE(cache[3].has_value());
+}
+
 }  // namespace

@@ -1206,4 +1206,28 @@ EPIX_EXPORT inline std::size_t limit_clusterable_objects_to_uniform_capacity(
     return objects.size();
 }
 
+/** @brief The bounding sphere of one cluster, computed on first use and cached
+ *  (Bevy `assign_objects_to_clusters`, `assign.rs:475-477,722-745`).
+ *
+ *  Bevy fills a slot per cluster with `None` before the object loop and computes
+ *  each cluster's sphere the first time a spot light's cone tests against it,
+ *  because most clusters are never tested - only the ones a cone reaches - so
+ *  computing all of them up front would be work thrown away. The cache is per view
+ *  and indexed by the same cluster index the assignment uses.
+ *
+ *  The computation is a callable so the caching is verifiable on its own: a test
+ *  can count how many times it runs. Getting the cache wrong is quiet - a slot
+ *  shared between indices would reuse a neighbouring cluster's bounds, which would
+ *  cull a light that should light that cluster. */
+template <typename Compute>
+requires std::invocable<Compute&>
+EPIX_EXPORT inline const camera::Sphere& cached_cluster_sphere(std::vector<std::optional<camera::Sphere>>& cache,
+                                                              std::size_t cluster_index, Compute&& compute) {
+    std::optional<camera::Sphere>& slot = cache[cluster_index];
+    if (!slot.has_value()) {
+        slot = compute();
+    }
+    return *slot;
+}
+
 }  // namespace epix::pbr
