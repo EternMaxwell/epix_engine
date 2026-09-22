@@ -6,6 +6,7 @@
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_systems.hpp>
+#include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
@@ -3545,6 +3546,44 @@ TEST(Cluster, AssignObjectsToClustersGuards) {
         EXPECT_TRUE(app.world_mut().entity(view).get<Clusters>()->get().clusterable_objects.empty())
             << "a view with no viewport cannot cluster anything";
     }
+}
+
+/** @brief The mesh uniform's layout is what the shader expects, and its
+ *  transform record is a plain pair of matrices (Bevy `MeshUniform` and
+ *  `MeshTransforms`, `bevy_pbr/src/render/mesh.rs:448-494`). */
+TEST(Cluster, MeshUniformLayoutMatchesBevy) {
+    using epix::pbr::MeshTransforms;
+    using epix::pbr::MeshUniform;
+
+    // 16-byte aligned in size, with the members where the shader reads them. The
+    // vec4 arrays are the affine's columns, so the second transform starts after
+    // three of them, and the packed inverse transpose follows after three more.
+    EXPECT_EQ(sizeof(MeshUniform), 176u) << "the shader's uniform requires 16-byte alignment";
+    EXPECT_EQ(offsetof(MeshUniform, world_from_local), 0u);
+    EXPECT_EQ(offsetof(MeshUniform, previous_world_from_local), 48u);
+    EXPECT_EQ(offsetof(MeshUniform, local_from_world_transpose_a), 96u);
+    EXPECT_EQ(offsetof(MeshUniform, local_from_world_transpose_b), 128u);
+    EXPECT_EQ(offsetof(MeshUniform, flags), 132u);
+    EXPECT_EQ(offsetof(MeshUniform, lightmap_uv_rect), 136u) << "uvec2 needs 8-byte alignment";
+    EXPECT_EQ(offsetof(MeshUniform, first_vertex_index), 144u);
+    EXPECT_EQ(offsetof(MeshUniform, current_skin_index), 148u);
+    EXPECT_EQ(offsetof(MeshUniform, material_and_lightmap_bind_group_slot), 152u);
+    EXPECT_EQ(offsetof(MeshUniform, tag), 156u);
+    EXPECT_EQ(offsetof(MeshUniform, pad), 160u);
+
+    // The defaults: identity transforms, no skin, nothing packed into the slots.
+    const MeshUniform uniform;
+    EXPECT_EQ(uniform.world_from_local[0], glm::vec4(0.0f));
+    EXPECT_EQ(uniform.flags, 0u);
+    EXPECT_EQ(uniform.lightmap_uv_rect, glm::uvec2(0u, 0u));
+    EXPECT_EQ(uniform.material_and_lightmap_bind_group_slot, 0u);
+    EXPECT_EQ(uniform.current_skin_index, 0xFFFFFFFFu) << "u32::MAX is Bevy's no-skin marker";
+
+    const MeshTransforms transforms;
+    EXPECT_EQ(transforms.world_from_local, glm::mat4(1.0f));
+    EXPECT_EQ(transforms.previous_world_from_local, glm::mat4(1.0f))
+        << "an instance that has not moved has the same previous transform";
+    EXPECT_EQ(transforms.flags, 0u);
 }
 
 }  // namespace
