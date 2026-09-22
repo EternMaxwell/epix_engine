@@ -2830,4 +2830,40 @@ TEST(Cluster, LightConstsMatchBevy) {
     EXPECT_FLOAT_EQ(epix::pbr::DirectionalLight{}.illuminance, lux::AMBIENT_DAYLIGHT);
 }
 
+/** @brief The frusta map is rebuilt from the cascades map, preserving the views as
+ *  keys rather than renumbering them (Bevy `update_directional_light_frusta`,
+ *  `directional_light.rs:228-240`). */
+TEST(Cluster, ToCascadesFrustaMatchesBevy) {
+    using epix::pbr::build_view_cascades;
+    using epix::pbr::Cascades;
+    using epix::pbr::to_cascades_frusta;
+
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    const auto slice        = projection.get_frustum_corners(-1.0f, -10.0f);
+
+    // Two views, one with two cascades and one with a single cascade, keyed by
+    // entities that are not in ascending order - a rebuild that renumbered the keys
+    // would attach the wrong frusta to the wrong view.
+    const auto first_view  = epix::ecs::Entity::from_index(7);
+    const auto second_view = epix::ecs::Entity::from_index(2);
+    Cascades cascades;
+    cascades.cascades.emplace(first_view, build_view_cascades({slice, slice}, 1024.0f, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f)));
+    cascades.cascades.emplace(second_view, build_view_cascades({slice}, 1024.0f, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f)));
+
+    const auto frusta = to_cascades_frusta(cascades);
+    ASSERT_EQ(frusta.frusta.size(), 2u);
+    ASSERT_TRUE(frusta.frusta.contains(first_view)) << "the first view keeps its key";
+    ASSERT_TRUE(frusta.frusta.contains(second_view)) << "and so does the second";
+    EXPECT_EQ(frusta.frusta.at(first_view).size(), 2u) << "one frustum per cascade";
+    EXPECT_EQ(frusta.frusta.at(second_view).size(), 1u);
+    EXPECT_EQ(frusta.frusta.at(first_view)[0].planes,
+              epix::camera::Frustum::from_clip_from_world(cascades.cascades.at(first_view)[0].clip_from_world).planes);
+
+    // An empty map gives an empty map: no stale frusta survive a rebuild.
+    EXPECT_TRUE(to_cascades_frusta(Cascades{}).frusta.empty());
+}
+
 }  // namespace

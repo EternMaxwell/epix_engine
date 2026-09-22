@@ -322,4 +322,19 @@ EPIX_EXPORT inline camera::Frustum directional_view_frustum(const camera::Frustu
     return pushed;
 }
 
+/** @brief Fill the frusta of every cascade a light built, keyed by the same views
+ *  (Bevy `update_directional_light_frusta`, `bevy_light/src/directional_light.rs:228-240`).
+ *
+ *  Bevy's system rebuilds the whole map from the light's `Cascades` rather than
+ *  patching it, so a view the light no longer has cascades for loses its frusta -
+ *  the keys are the *view* entities and must be preserved rather than renumbered.
+ *  Only shadow-casting lights are processed; the caller filters those. */
+EPIX_EXPORT inline camera::CascadesFrusta to_cascades_frusta(const Cascades& cascades) {
+    camera::CascadesFrusta frusta;
+    for (const auto& [view, view_cascades] : cascades.cascades) {
+        frusta.frusta.emplace(view, directional_cascade_frusta(view_cascades));
+    }
+    return frusta;
+}
+
 }  // namespace epix::pbr
