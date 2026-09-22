@@ -4696,4 +4696,48 @@ TEST(Cluster, RenderLightProbeLayoutMatchesBevy) {
     EXPECT_EQ(epix::pbr::STANDARD_MATERIAL_FRAGMENT_SHADER_MIN_TEXTURE_BINDINGS, 16u);
 }
 
+/** @brief The per-view light probe uniform: two eight-entry lists, their counts, and
+ *  the view environment map fallback, laid out as std140 (Bevy `LightProbesUniform`,
+ *  `light_probe/mod.rs:88-134`). */
+TEST(Cluster, LightProbesUniformLayoutMatchesBevy) {
+    using epix::pbr::LightProbesBuffer;
+    using epix::pbr::LightProbesUniform;
+    using epix::pbr::MAX_VIEW_LIGHT_PROBES;
+    using epix::pbr::RenderLightProbe;
+    using epix::pbr::ViewLightProbesUniformOffset;
+
+    // The size is the assertion that matters: two arrays at the probe stride plus six
+    // scalars, rounded to a multiple of 16.
+    EXPECT_EQ(sizeof(LightProbesUniform), 1056u);
+    EXPECT_EQ(sizeof(LightProbesUniform::reflection_probes), MAX_VIEW_LIGHT_PROBES * sizeof(RenderLightProbe));
+    EXPECT_EQ(sizeof(LightProbesUniform::reflection_probes), 512u);
+    EXPECT_EQ(offsetof(LightProbesUniform, irradiance_volumes), 512u)
+        << "the second array follows the first with no gap";
+    EXPECT_EQ(offsetof(LightProbesUniform, reflection_probe_count), 1024u);
+    EXPECT_EQ(offsetof(LightProbesUniform, irradiance_volume_count), 1028u)
+        << "the scalars pack tightly after the arrays";
+    EXPECT_EQ(offsetof(LightProbesUniform, view_cubemap_index), 1032u);
+    EXPECT_EQ(offsetof(LightProbesUniform, intensity_for_view), 1040u);
+    EXPECT_EQ(offsetof(LightProbesUniform, tail_padding), 1048u) << "the six scalars take 24 bytes";
+
+    // The default is all zeroes, including the counts, so a view with no probes reads
+    // two empty lists rather than garbage.
+    const LightProbesUniform defaults;
+    EXPECT_EQ(defaults.reflection_probe_count, 0);
+    EXPECT_EQ(defaults.irradiance_volume_count, 0);
+    EXPECT_EQ(defaults.view_cubemap_index, 0);
+    EXPECT_EQ(defaults.smallest_specular_mip_level_for_view, 0u);
+    EXPECT_FLOAT_EQ(defaults.intensity_for_view, 0.0f);
+    EXPECT_EQ(defaults.view_environment_map_affects_lightmapped_mesh_diffuse, 0u);
+    for (const RenderLightProbe& probe : defaults.reflection_probes) {
+        EXPECT_EQ(probe.texture_index, 0);
+    }
+
+    // The buffer and offset types instantiate, which is what proves the shader-type
+    // specialization is in place and ordered before them.
+    const LightProbesBuffer buffer;
+    (void)buffer;
+    EXPECT_EQ(ViewLightProbesUniformOffset{}.offset, 0u);
+}
+
 }  // namespace

@@ -67,6 +67,71 @@ struct ShaderTypeInfo<::epix::pbr::RenderLightProbe> : RawShaderType<::epix::pbr
 
 namespace epix::pbr {
 
+/** @brief The light probes a view takes into account, as the shader reads them (Bevy
+ *  `LightProbesUniform`, `light_probe/mod.rs:88-125`).
+ *
+ *  Both lists are sorted nearest to farthest from the camera and padded out to
+ *  `MAX_VIEW_LIGHT_PROBES` entries, with the counts saying how many are real: the
+ *  shader walks the list in order and stops at the count, so the entries past it are
+ *  never read but still occupy the layout.
+ *
+ *  The uniform's size follows from std140 rather than from the fields adding up. Each
+ *  array element is a `RenderLightProbe` at its 64-byte stride, so the two arrays are
+ *  512 bytes each; the six scalars then pack into 24 contiguous bytes, and the struct
+ *  rounds up to a multiple of 16. The tail padding makes that explicit - without it the
+ *  struct would come out at 1048 and the view environment map fields would sit in the
+ *  wrong place for every array after the first. */
+EPIX_EXPORT struct LightProbesUniform {
+    std::array<RenderLightProbe, MAX_VIEW_LIGHT_PROBES> reflection_probes{};
+    std::array<RenderLightProbe, MAX_VIEW_LIGHT_PROBES> irradiance_volumes{};
+    /** @brief How many reflection probes in the list are real. */
+    std::int32_t reflection_probe_count = 0;
+    /** @brief How many irradiance volumes in the list are real. */
+    std::int32_t irradiance_volume_count = 0;
+    /** @brief The view's own environment maps, used when no probe contains the
+     *  fragment. */
+    std::int32_t view_cubemap_index = 0;
+    /** @brief The smallest valid specular mip level for the view's cubemap. */
+    std::uint32_t smallest_specular_mip_level_for_view = 0;
+    /** @brief The intensity of the view's environment cubemap. */
+    float intensity_for_view = 0.0f;
+    /** @brief Whether the view's environment map affects lightmapped meshes: 1 if it
+     *  does, 0 otherwise. */
+    std::uint32_t view_environment_map_affects_lightmapped_mesh_diffuse = 0;
+    /** @brief Explicit std140 tail padding; see the class comment. */
+    std::array<std::uint32_t, 2> tail_padding{};
+};
+static_assert(sizeof(LightProbesUniform) == 1056, "LightProbesUniform must match the shader's layout");
+static_assert(offsetof(LightProbesUniform, reflection_probes) == 0);
+static_assert(offsetof(LightProbesUniform, irradiance_volumes) == 512);
+static_assert(offsetof(LightProbesUniform, reflection_probe_count) == 1024);
+static_assert(offsetof(LightProbesUniform, view_cubemap_index) == 1032);
+static_assert(offsetof(LightProbesUniform, tail_padding) == 1048);
+
+}  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+/** @brief `LightProbesUniform` is uploaded as raw bytes; the struct is already padded
+ *  to the shader's std140 layout with its offsets asserted. */
+template <>
+struct ShaderTypeInfo<::epix::pbr::LightProbesUniform>
+    : RawShaderType<::epix::pbr::LightProbesUniform> {};
+}  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief One `LightProbesUniform` per view (Bevy `LightProbesBuffer`,
+ *  `light_probe/mod.rs:127-129`). */
+EPIX_EXPORT struct LightProbesBuffer {
+    render::render_resource::DynamicUniformBuffer<LightProbesUniform> uniforms;
+};
+
+/** @brief A view's offset into the light probe buffer (Bevy
+ *  `ViewLightProbesUniformOffset`, `light_probe/mod.rs:131-134`). */
+EPIX_EXPORT struct ViewLightProbesUniformOffset {
+    std::uint32_t offset = 0;
+};
+
 /** @brief The uniform built from an `EnvironmentMapLight` and read by the environment
  *  map shader (Bevy `EnvironmentMapUniform`, `light_probe/mod.rs:266-280`).
  *
