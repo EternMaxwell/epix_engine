@@ -1230,4 +1230,31 @@ EPIX_EXPORT inline const camera::Sphere& cached_cluster_sphere(std::vector<std::
     return *slot;
 }
 
+/** @brief The cluster an object's centre falls in, in the form the refinement
+ *  wants (Bevy `assign_objects_to_clusters`, `assign.rs:630-641`).
+ *
+ *  `z_center` is the object's z cluster when its centre is in front of the far
+ *  plane, and nothing otherwise. `y_center` is stranger: nothing when the centre is
+ *  *above* the view, but `dimensions.y + 1` - a value no real y can equal - when it
+ *  is *below*. Both forms mean the same thing to the caller, which only asks
+ *  whether a slice holds the centre, so the asymmetry reads as an accident in Bevy
+ *  rather than a distinction. It is reproduced as written: choosing which form was
+ *  intended would be a divergence, and this is the kind of thing that looks like a
+ *  bug to "fix". */
+EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> cluster_center_coordinates(
+    glm::uvec3 cluster_coordinates, glm::vec3 object_center_ndc, glm::uvec3 dimensions) {
+    const std::optional<std::uint32_t> z_center =
+        object_center_ndc.z <= 1.0f ? std::optional<std::uint32_t>{cluster_coordinates.z} : std::nullopt;
+
+    std::optional<std::uint32_t> y_center;
+    if (object_center_ndc.y > 1.0f) {
+        y_center = std::nullopt;
+    } else if (object_center_ndc.y < -1.0f) {
+        y_center = dimensions.y + 1;
+    } else {
+        y_center = cluster_coordinates.y;
+    }
+    return {z_center, y_center};
+}
+
 }  // namespace epix::pbr
