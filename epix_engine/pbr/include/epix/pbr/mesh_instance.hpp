@@ -116,7 +116,26 @@ EPIX_EXPORT struct RenderMeshInstanceGpu {
     std::uint32_t current_uniform_index = 0;
 };
 
-/** @brief Information the render world keeps about each mesh-holding entity (Bevy
+/** @brief What a queueing system needs in order to place a mesh entity in the
+ *  right batch (Bevy `RenderMeshQueueData`, `render/mesh.rs:1319-1334`).
+ *
+ *  Bevy derefs it to the shared record, so it is the shared data plus a world-space
+ *  centre and the instance's uniform index; the pointer carries that delegation here.
+ *
+ *  The centre is what the two sides differ on. The GPU path stores it and hands it
+ *  back; the CPU path derives it on the spot, by taking the shared local-space
+ *  centre through the instance's transform - which is why the CPU record keeps the
+ *  transform and the GPU record does not need it. The CPU path has no uniform, so it
+ *  reports a default index rather than inventing one. */
+EPIX_EXPORT struct RenderMeshQueueData {
+    const RenderMeshInstanceShared* shared = nullptr;
+    glm::vec3 center{0.0f};
+    render::phase::InputUniformIndex current_uniform_index{};
+
+    const RenderMeshInstanceShared& record() const noexcept { return *shared; }
+};
+
+/** @brief The mesh instance records, one side of which is in use (Bevy
  *  `RenderMeshInstances`, `render/mesh.rs:903-924`).
  *
  *  Which side is populated depends on whether the uniform builder runs on the CPU or
@@ -154,6 +173,31 @@ EPIX_EXPORT struct RenderMeshInstances {
         const auto found = gpu_instances.find(entity);
         if (found == gpu_instances.end()) return std::nullopt;
         return found->second.shared.mesh_asset_id;
+    }
+
+    /** @brief What a queueing system needs for an entity, if it holds a mesh (Bevy
+     *  `RenderMeshInstances::render_mesh_queue_data`, `render/mesh.rs:944-954`). */
+    std::optional<RenderMeshQueueData> render_mesh_queue_data(render::sync_world::MainEntity entity) const {
+        if (is_cpu_building()) {
+            const auto found = cpu_instances.find(entity);
+            if (found == cpu_instances.end()) return std::nullopt;
+            const RenderMeshInstanceCpu& instance = found->second;
+            // The local-space centre through the instance's transform; the third
+            // column carries the translation, as for any affine matrix.
+            const glm::vec3 center =
+                glm::mat3(instance.transforms.world_from_local) * instance.shared.center +
+                glm::vec3(instance.transforms.world_from_local[3]);
+            return RenderMeshQueueData{.shared = &instance.shared,
+                                       .center = center,
+                                       .current_uniform_index = render::phase::InputUniformIndex{}};
+        }
+        const auto found = gpu_instances.find(entity);
+        if (found == gpu_instances.end()) return std::nullopt;
+        const RenderMeshInstanceGpu& instance = found->second;
+        return RenderMeshQueueData{.shared = &instance.shared,
+                                   .center = instance.center,
+                                   .current_uniform_index = render::phase::InputUniformIndex{
+                                       instance.current_uniform_index}};
     }
 
     /** @brief Insert flags into the instance on whichever side is in use (Bevy

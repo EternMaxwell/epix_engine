@@ -3729,4 +3729,58 @@ TEST(Cluster, RenderMeshInstancesDispatchMatchesBevy) {
     EXPECT_FALSE(cpu.mesh_asset_id(unknown).has_value());
 }
 
+/** @brief The queue data differs between the two sides in how its world-space
+ *  centre is obtained, and the CPU side reports a default uniform index (Bevy
+ *  `render/mesh.rs:944-1017`). */
+TEST(Cluster, RenderMeshQueueDataMatchesBevy) {
+    using epix::pbr::MaterialBindGroupIndex;
+    using epix::pbr::MaterialBindGroupSlot;
+    using epix::pbr::MeshTransforms;
+    using epix::pbr::RenderMeshInstanceCpu;
+    using epix::pbr::RenderMeshInstanceGpu;
+    using epix::pbr::RenderMeshInstanceShared;
+    using epix::pbr::RenderMeshInstances;
+
+    const auto entity = epix::render::sync_world::MainEntity{epix::ecs::Entity::from_index(11)};
+    const auto shared = [] {
+        return RenderMeshInstanceShared{
+            .mesh_asset_id = epix::assets::AssetId<epix::mesh::Mesh>::invalid(),
+            .material_bindings_index = {MaterialBindGroupIndex{0u}, MaterialBindGroupSlot{0u}},
+            .flags = {}};
+    };
+
+    // The CPU side derives the centre from the local one through the transform,
+    // including rotation and translation.
+    RenderMeshInstances cpu = RenderMeshInstances::make(false);
+    RenderMeshInstanceCpu cpu_instance{shared(), MeshTransforms{}};
+    cpu_instance.shared.center = glm::vec3(1.0f, 0.0f, 0.0f);
+    cpu_instance.transforms.world_from_local =
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 5.0f, 0.0f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+    cpu.cpu_instances.emplace(entity, cpu_instance);
+
+    const auto cpu_data = cpu.render_mesh_queue_data(entity);
+    ASSERT_TRUE(cpu_data.has_value());
+    // Rotating (1,0,0) by 90 degrees about Z gives (0,1,0), then translated by 5 in y.
+    EXPECT_NEAR(cpu_data->center.x, 0.0f, 1e-5f);
+    EXPECT_NEAR(cpu_data->center.y, 6.0f, 1e-5f);
+    EXPECT_NEAR(cpu_data->center.z, 0.0f, 1e-5f);
+    EXPECT_EQ(cpu_data->current_uniform_index.index, 0u) << "the CPU path has no uniform";
+    EXPECT_EQ(cpu_data->record().mesh_asset_id, epix::assets::AssetId<epix::mesh::Mesh>::invalid())
+        << "the shared record is reachable through the queue data";
+
+    // The GPU side hands back the centre it stored, and its uniform index.
+    RenderMeshInstances gpu = RenderMeshInstances::make(true);
+    gpu.gpu_instances.emplace(entity, RenderMeshInstanceGpu{shared(), glm::vec3(7.0f, 8.0f, 9.0f), 4u});
+    const auto gpu_data = gpu.render_mesh_queue_data(entity);
+    ASSERT_TRUE(gpu_data.has_value());
+    EXPECT_EQ(gpu_data->center, glm::vec3(7.0f, 8.0f, 9.0f)) << "stored, not derived";
+    EXPECT_EQ(gpu_data->current_uniform_index.index, 4u);
+
+    // An entity with no record has no queue data on either side.
+    const auto unknown = epix::render::sync_world::MainEntity{epix::ecs::Entity::from_index(42)};
+    EXPECT_FALSE(cpu.render_mesh_queue_data(unknown).has_value());
+    EXPECT_FALSE(gpu.render_mesh_queue_data(unknown).has_value());
+}
+
 }  // namespace
