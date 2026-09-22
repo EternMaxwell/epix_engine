@@ -2,6 +2,7 @@
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/directional_light.hpp>
+#include <epix/pbr/fog.hpp>
 #include <epix/pbr/gpu_lights.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
@@ -4502,6 +4503,62 @@ TEST(Cluster, MeshMorphSkinningSetupMatchesBevy) {
     const auto uniforms = setup_morph_and_skinning_defs(key_with({}), true, 6, true);
     EXPECT_TRUE(has_def(uniforms, "SKINS_USE_UNIFORM_BUFFERS"));
     EXPECT_FALSE(has_def(skinned, "SKINS_USE_UNIFORM_BUFFERS"));
+}
+
+/** @brief The fog falloff arithmetic behind Bevy's visibility-based constructors (Bevy
+ *  `bevy_pbr/src/fog.rs:318-462`). */
+TEST(Cluster, FogFalloffArithmeticMatchesBevy) {
+    using epix::pbr::fog_atmospheric_extinction;
+    using epix::pbr::fog_atmospheric_inscattering;
+    using epix::pbr::fog_exponential_density;
+    using epix::pbr::fog_exponential_squared_density;
+    using epix::pbr::koschmieder;
+    using epix::pbr::REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD;
+
+    // The revised threshold is five percent, not the two percent of the original
+    // Koschmieder law.
+    EXPECT_FLOAT_EQ(REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD, 0.05f);
+
+    // The exponent falls as visibility rises: you can see further, so the fog is
+    // thinner.
+    EXPECT_GT(koschmieder(100.0f, 0.05f), koschmieder(200.0f, 0.05f));
+    EXPECT_NEAR(koschmieder(100.0f, 0.05f), 0.029957f, 1e-6f);
+    EXPECT_NEAR(koschmieder(1.0f, 0.5f), 0.693147f, 1e-6f) << "-ln(0.5)";
+    // A threshold of one means no fog at all: -ln(1) is zero.
+    EXPECT_FLOAT_EQ(koschmieder(100.0f, 1.0f), 0.0f);
+
+    // The exponential density is the exponent itself, while the squared one divides by
+    // the visibility *again* - so it is not simply the square root of the first.
+    EXPECT_FLOAT_EQ(fog_exponential_density(150.0f, 0.05f), koschmieder(150.0f, 0.05f));
+    const float plain   = fog_exponential_density(150.0f, 0.05f);
+    const float squared = fog_exponential_squared_density(150.0f, 0.05f);
+    EXPECT_NEAR(squared, std::sqrt(plain / 150.0f), 1e-9f);
+    EXPECT_LT(squared, std::sqrt(plain)) << "the second division by visibility matters";
+
+    // Fading a colour towards black as extinction means inverting it first, so a blue
+    // extinction gives blue results: the blue channel's coefficient is the *smallest*,
+    // since a small coefficient is what leaves that channel visible.
+    const glm::vec3 blue{0.0f, 0.0f, 1.0f};
+    const glm::vec3 red{1.0f, 0.0f, 0.0f};
+    const auto blue_extinction = fog_atmospheric_extinction(blue, 1.0f, 100.0f, 0.05f);
+    const auto red_extinction  = fog_atmospheric_extinction(red, 1.0f, 100.0f, 0.05f);
+    EXPECT_LT(blue_extinction.z, blue_extinction.x) << "a blue extinction leaves blue visible";
+    EXPECT_LT(red_extinction.x, red_extinction.z);
+    EXPECT_NEAR(blue_extinction.z, 0.0f, 1e-6f) << "fully blue means blue is not attenuated at all";
+    // A white colour, being 1 everywhere, inverts to zero extinction on every channel.
+    EXPECT_NEAR(glm::length(fog_atmospheric_extinction(glm::vec3(1.0f), 1.0f, 100.0f, 0.05f)), 0.0f, 1e-6f);
+    // The alpha channel scales the extinction, which is how it modulates the effect
+    // without touching the falloff mode - checked on a channel that is not already zero.
+    const auto faded = fog_atmospheric_extinction(blue, 0.5f, 100.0f, 0.05f);
+    EXPECT_LT(faded.x, blue_extinction.x);
+    EXPECT_GT(faded.x, 0.0f);
+
+    // In-scattering is *not* inverted: it is the colour you see.
+    const auto scattering = fog_atmospheric_inscattering(blue);
+    EXPECT_NEAR(scattering.z, 1.0f, 1e-6f) << "1^e is 1";
+    EXPECT_NEAR(scattering.x, 0.0f, 1e-6f) << "0^e is 0";
+    EXPECT_LT(fog_atmospheric_inscattering(glm::vec3(0.5f)).x, 0.5f)
+        << "a partial channel raised to e falls further";
 }
 
 }  // namespace
