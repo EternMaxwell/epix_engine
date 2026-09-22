@@ -235,4 +235,53 @@ EPIX_EXPORT inline float light_probe_camera_distance_sort_key(const glm::mat4& w
     return glm::dot(offset, offset);
 }
 
+/** @brief What one gathered probe contributes to the uniform, standing in for Bevy's
+ *  `LightProbeInfo<C>`, which is generic only because the asset ids differ per probe
+ *  type. `texture_id` is that asset id, flattened to a number the way the
+ *  render-world texture bookkeeping does. */
+EPIX_EXPORT struct LightProbeRecord {
+    std::array<glm::vec4, 3> light_from_world_transposed{};
+    std::uint64_t texture_id = 0;
+    float intensity = 0.0f;
+    bool affects_lightmapped_mesh_diffuse = false;
+};
+
+/** @brief Fills one of a view's probe lists from the gathered probes (Bevy
+ *  `RenderViewLightProbes::maybe_gather_light_probes`,
+ *  `light_probe/mod.rs:634-650`).
+ *
+ *  Two rules, and they are easy to confuse with each other:
+ *
+ *  - The cap is applied **before** the loop, so it keeps the *first*
+ *    `MAX_VIEW_LIGHT_PROBES` probes - which is only meaningful because the list arrives
+ *    sorted nearest-first. A cap applied after sorting by anything else would keep an
+ *    arbitrary eight.
+ *  - `texture_index` **deduplicates textures, not probes**. Two probes sharing a
+ *    cubemap get the same index but still occupy two entries in the list, because they
+ *    cover different regions of the scene and the shader has to test each one's
+ *    bounds. Returning a list also makes the index assignment order-dependent, which is
+ *    why the returned indices are per-view.
+ *
+ *  `indices` maps a texture id to its slot in the view's binding arrays and is updated
+ *  in place, exactly as Bevy's `get_or_insert_cubemap` does. */
+EPIX_EXPORT inline void light_probes_gather_list(
+    std::vector<RenderLightProbe>& out, std::unordered_map<std::uint64_t, std::uint32_t>& indices,
+    const std::vector<LightProbeRecord>& probes) {
+    const std::size_t count = std::min(probes.size(), MAX_VIEW_LIGHT_PROBES);
+    for (std::size_t i = 0; i < count; ++i) {
+        const LightProbeRecord& probe = probes[i];
+
+        // The texture's slot, inserted on first sight; identical textures share it.
+        auto [entry, inserted] = indices.try_emplace(probe.texture_id, static_cast<std::uint32_t>(indices.size()));
+        (void)inserted;
+
+        out.push_back(RenderLightProbe{
+            .light_from_world_transposed = probe.light_from_world_transposed,
+            .texture_index = static_cast<std::int32_t>(entry->second),
+            .intensity = probe.intensity,
+            .affects_lightmapped_mesh_diffuse = probe.affects_lightmapped_mesh_diffuse ? 1u : 0u,
+        });
+    }
+}
+
 }  // namespace epix::pbr

@@ -4826,4 +4826,66 @@ TEST(Cluster, LightProbeCullAndSortKeyMatchBevy) {
                     light_probe_camera_distance_sort_key(near_probe, camera));
 }
 
+/** @brief Gathering a view's probe list: the cap keeps the nearest eight, and the
+ *  texture index deduplicates textures rather than probes (Bevy
+ *  `maybe_gather_light_probes`, `light_probe/mod.rs:634-650`). */
+TEST(Cluster, LightProbesGatherListMatchesBevy) {
+    using epix::pbr::LightProbeRecord;
+    using epix::pbr::light_probes_gather_list;
+    using epix::pbr::MAX_VIEW_LIGHT_PROBES;
+    using epix::pbr::RenderLightProbe;
+
+    const auto probe = [](std::uint64_t texture_id, float intensity) {
+        LightProbeRecord record;
+        record.texture_id = texture_id;
+        record.intensity  = intensity;
+        return record;
+    };
+
+    // The cap applies before the loop, so the *first* eight survive. The list arrives
+    // sorted nearest-first, which is what makes that the nearest eight.
+    std::vector<LightProbeRecord> many;
+    for (std::uint64_t i = 0; i < 12; ++i) many.push_back(probe(i, static_cast<float>(i)));
+    std::vector<RenderLightProbe> list;
+    std::unordered_map<std::uint64_t, std::uint32_t> indices;
+    light_probes_gather_list(list, indices, many);
+    ASSERT_EQ(list.size(), MAX_VIEW_LIGHT_PROBES);
+    EXPECT_FLOAT_EQ(list.front().intensity, 0.0f) << "the first probe is kept";
+    EXPECT_FLOAT_EQ(list.back().intensity, 7.0f) << "and the eighth, not the twelfth";
+    EXPECT_EQ(indices.size(), MAX_VIEW_LIGHT_PROBES) << "each distinct texture gets a slot";
+
+    // Deduplication is on textures, not probes: two probes sharing a cubemap share an
+    // index but still occupy two entries, since they cover different regions.
+    std::vector<RenderLightProbe> shared_list;
+    std::unordered_map<std::uint64_t, std::uint32_t> shared_indices;
+    const std::vector<LightProbeRecord> shared = {probe(42, 1.0f), probe(7, 2.0f), probe(42, 3.0f)};
+    light_probes_gather_list(shared_list, shared_indices, shared);
+    ASSERT_EQ(shared_list.size(), 3u) << "one entry per probe";
+    EXPECT_EQ(shared_indices.size(), 2u) << "but one slot per distinct texture";
+    EXPECT_EQ(shared_list[0].texture_index, shared_list[2].texture_index)
+        << "the two probes sharing a cubemap share its index";
+    EXPECT_NE(shared_list[1].texture_index, shared_list[0].texture_index);
+    EXPECT_FLOAT_EQ(shared_list[2].intensity, 3.0f) << "each keeps its own intensity";
+
+    // The flags and the transform pass through: the transposition happened when the
+    // probe info was built, not here.
+    LightProbeRecord flagged;
+    flagged.texture_id = 5;
+    flagged.affects_lightmapped_mesh_diffuse = true;
+    flagged.light_from_world_transposed[2] = glm::vec4(1.0f, 2.0f, 3.0f, 4.0f);
+    std::vector<RenderLightProbe> flagged_list;
+    std::unordered_map<std::uint64_t, std::uint32_t> flagged_indices;
+    light_probes_gather_list(flagged_list, flagged_indices, {flagged});
+    ASSERT_EQ(flagged_list.size(), 1u);
+    EXPECT_EQ(flagged_list[0].affects_lightmapped_mesh_diffuse, 1u) << "the bool becomes 1, not true";
+    EXPECT_EQ(flagged_list[0].light_from_world_transposed[2], glm::vec4(1.0f, 2.0f, 3.0f, 4.0f));
+
+    // An empty gather leaves both outputs untouched.
+    std::vector<RenderLightProbe> empty_list;
+    std::unordered_map<std::uint64_t, std::uint32_t> empty_indices;
+    light_probes_gather_list(empty_list, empty_indices, {});
+    EXPECT_TRUE(empty_list.empty());
+    EXPECT_TRUE(empty_indices.empty());
+}
+
 }  // namespace
