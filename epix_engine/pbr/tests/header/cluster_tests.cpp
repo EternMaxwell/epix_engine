@@ -3424,4 +3424,54 @@ TEST(Cluster, AssignObjectToViewClustersMatchesBevy) {
     EXPECT_GT(point_clusters, small_clusters) << "a 5 unit range covers more than a 2 unit one";
 }
 
+/** @brief A probe's and a decal's range is the length of the scale *vector*, and a
+ *  probe's kind follows whether it carries an environment map (Bevy
+ *  `assign.rs:210-243`). */
+TEST(Cluster, ProbeAndDecalAssignmentDataMatchBevy) {
+    using epix::pbr::ClusterableObjectType;
+    using epix::pbr::decal_assignment_data;
+    using epix::pbr::light_probe_assignment_data;
+    using epix::pbr::transform_scale_length;
+
+    const auto entity = epix::ecs::Entity::from_index(9);
+
+    // The scale length is the length of the scale vector, not its largest
+    // component and not the uniform scale either: an unscaled transform has the
+    // scale (1,1,1) and therefore the range sqrt(3), a uniform scale of 2 gives
+    // sqrt(12), and an anisotropic (2,3,4) gives sqrt(29). Taking the max, or
+    // assuming an unscaled probe has range one, would both be plausible "fixes" and
+    // both divergences.
+    EXPECT_NEAR(transform_scale_length(glm::mat4(1.0f)), std::sqrt(3.0f), 1e-5f)
+        << "even with no scale the range is the length of (1,1,1)";
+    EXPECT_NEAR(transform_scale_length(glm::scale(glm::mat4(1.0f), glm::vec3(2.0f))), std::sqrt(12.0f), 1e-4f);
+    EXPECT_NEAR(transform_scale_length(glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 3.0f, 4.0f))), std::sqrt(29.0f), 1e-4f);
+    // Rotation and translation do not change it - only the scale does.
+    const glm::mat4 rotated = glm::rotate(glm::mat4(1.0f), glm::radians(40.0f), glm::vec3(0.1f, 1.0f, 0.2f));
+    EXPECT_NEAR(transform_scale_length(rotated * glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 3.0f, 4.0f))),
+                std::sqrt(29.0f), 1e-4f);
+
+    // A probe with an environment map is a reflection probe, otherwise an
+    // irradiance volume, and both take the scale length as their range.
+    const glm::mat4 probe_transform = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 2.0f, 3.0f)) *
+                                      glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 3.0f, 4.0f));
+    const auto reflection = light_probe_assignment_data(entity, probe_transform, true);
+    EXPECT_EQ(reflection.object_type.kind, ClusterableObjectType::Kind::ReflectionProbe);
+    EXPECT_NEAR(reflection.range, std::sqrt(29.0f), 1e-4f);
+    EXPECT_EQ(reflection.transform, probe_transform) << "the probe keeps its whole transform";
+    const auto volume = light_probe_assignment_data(entity, probe_transform, false);
+    EXPECT_EQ(volume.object_type.kind, ClusterableObjectType::Kind::IrradianceVolume);
+    EXPECT_FLOAT_EQ(volume.range, reflection.range) << "only the kind differs";
+
+    // A decal is a decal, with the same range rule.
+    const glm::mat4 decal_transform = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 3.0f, 4.0f));
+    const auto decal                = decal_assignment_data(entity, decal_transform);
+    EXPECT_EQ(decal.object_type.kind, ClusterableObjectType::Kind::Decal);
+    EXPECT_NEAR(decal.range, std::sqrt(29.0f), 1e-4f);
+    EXPECT_EQ(decal.transform, decal_transform);
+    // None of the three carries a cone or a shadow flag.
+    EXPECT_FALSE(decal.object_type.shadows_enabled);
+    EXPECT_FALSE(volume.object_type.shadows_enabled);
+    EXPECT_FLOAT_EQ(decal.object_type.outer_angle, 0.0f);
+}
+
 }  // namespace

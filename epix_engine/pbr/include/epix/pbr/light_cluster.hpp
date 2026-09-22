@@ -1359,4 +1359,53 @@ EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleCluste
     return true;
 }
 
+/** @brief The length of a transform matrix's scale (Bevy
+ *  `GlobalTransform::scale().length()`, reached for probes through
+ *  `radius_vec3a(Vec3A::ONE)`).
+ *
+ *  A probe's and a decal's range is this length, so a uniformly scaled probe of 2
+ *  covers `sqrt(12)` - the length of the scale *vector* - rather than twice as far,
+ *  and an unscaled transform, whose scale is (1,1,1), has a range of `sqrt(3)`
+ *  rather than one. Taking the largest component, or treating an unscaled object as
+ *  range one, would both look like simplifications and both be divergences. */
+EPIX_EXPORT inline float transform_scale_length(const glm::mat4& world_from_local) {
+    const glm::vec3 scale{glm::length(glm::vec3(world_from_local[0])), glm::length(glm::vec3(world_from_local[1])),
+                          glm::length(glm::vec3(world_from_local[2]))};
+    return glm::length(scale);
+}
+
+/** @brief Assignment data for a light probe (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:210-230`).
+ *
+ *  Probes are only gathered when the device has storage buffers: a uniform cannot
+ *  hold their indices, and the platforms without storage buffers typically lack the
+ *  bindless textures probes need anyway. A probe carrying an environment map is a
+ *  reflection probe; otherwise it is an irradiance volume. Its range is its scale
+ *  length, and its layers are the default. */
+EPIX_EXPORT inline ClusterableObjectAssignmentData light_probe_assignment_data(ecs::Entity entity,
+                                                                              const glm::mat4& world_from_probe,
+                                                                              bool is_reflection_probe) {
+    ClusterableObjectAssignmentData data;
+    data.entity      = entity;
+    data.transform   = world_from_probe;
+    data.range       = transform_scale_length(world_from_probe);
+    data.object_type = ClusterableObjectType{.kind = is_reflection_probe
+                                                        ? ClusterableObjectType::Kind::ReflectionProbe
+                                                        : ClusterableObjectType::Kind::IrradianceVolume};
+    return data;
+}
+
+/** @brief Assignment data for a clustered decal (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:232-243`). Only gathered when the platform supports clustered decals,
+ *  and its range is its scale length like a probe's. */
+EPIX_EXPORT inline ClusterableObjectAssignmentData decal_assignment_data(ecs::Entity entity,
+                                                                        const glm::mat4& world_from_decal) {
+    ClusterableObjectAssignmentData data;
+    data.entity      = entity;
+    data.transform   = world_from_decal;
+    data.range       = transform_scale_length(world_from_decal);
+    data.object_type = ClusterableObjectType{.kind = ClusterableObjectType::Kind::Decal};
+    return data;
+}
+
 }  // namespace epix::pbr
