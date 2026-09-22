@@ -76,4 +76,47 @@ EPIX_EXPORT void build_directional_light_cascades(
                          const CascadeShadowConfig&, ecs::Mut<Cascades>>>
         lights);
 
+/** @brief Assign every clusterable object to the clusters of every view (Bevy
+ *  `assign_objects_to_clusters`, `bevy_light/src/cluster/assign.rs:124-841`).
+ *
+ *  The whole flow: clear the global set and gather the clusterable objects -
+ *  visible point lights, visible spot lights, probes when the device has storage
+ *  buffers, decals when the platform supports them - then cut them to what a
+ *  uniform buffer holds when there are no storage buffers, then per view build its
+ *  cluster grid and hand each object to `assign_object_to_view_clusters`.
+ *
+ *  A view with no cluster configuration has its clusters cleared and its visible
+ *  objects removed; a view with a zero-sized viewport is skipped with its clusters
+ *  cleared. The per-cluster bindings themselves are sized by the function that owns
+ *  the device, not here.
+ *
+ *  The view's clusters are written unconditionally, so they are a plain reference
+ *  rather than a `Mut`; the visible-object list is likewise only ever appended to
+ *  when present. Nothing here reads change ticks, so the reads are references too.
+ *
+ *  Runs after visibility and transform propagation, as Bevy schedules it. */
+EPIX_EXPORT void assign_objects_to_clusters(
+    ecs::Commands commands,
+    ecs::ResMut<GlobalVisibleClusterableObjects> global_clusterable_objects,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Camera&,
+                         const ::epix::camera::Frustum&, const ClusterConfig&, Clusters&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<VisibleClusterableObjects&>>>
+        views,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const PointLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>>
+        point_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>>
+        spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, ecs::Has<EnvironmentMapLight>>,
+               ecs::With<LightProbe>>
+        light_probes,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&>, ecs::With<ClusteredDecal>> decals,
+    ecs::Local<std::vector<ClusterableObjectAssignmentData>> clusterable_objects,
+    ecs::Local<std::vector<std::optional<::epix::camera::Sphere>>> cluster_spheres,
+    ecs::Local<bool> warning_emitted,
+    std::optional<ecs::Res<GlobalClusterSettings>> global_cluster_settings);
+
 }  // namespace epix::pbr

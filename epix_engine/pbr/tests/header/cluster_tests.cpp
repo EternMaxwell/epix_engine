@@ -3474,4 +3474,77 @@ TEST(Cluster, ProbeAndDecalAssignmentDataMatchBevy) {
     EXPECT_FLOAT_EQ(decal.object_type.outer_angle, 0.0f);
 }
 
+/** @brief The assignment system's guard paths: no settings resource is a no-op, a
+ *  view with no cluster configuration has its clusters cleared, and a view with no
+ *  viewport is skipped with its clusters cleared (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:163-165,311-327`). */
+TEST(Cluster, AssignObjectsToClustersGuards) {
+    using epix::pbr::assign_objects_to_clusters;
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::Clusters;
+    using epix::pbr::GlobalClusterSettings;
+    using epix::pbr::GlobalVisibleClusterableObjects;
+
+    const auto spawn_view = [](epix::ecs::World& world, ClusterConfig config) {
+        // The system takes the clustered set as a ResMut, so it has to exist before
+        // the system can even validate - Bevy's plugin initialises it the same way.
+        world.insert_resource(GlobalVisibleClusterableObjects{});
+
+        epix::camera::Camera camera;
+        epix::camera::PerspectiveProjection projection;
+        projection.fov          = glm::radians(60.0f);
+        projection.aspect_ratio = 1.0f;
+        projection.near_plane   = 0.1f;
+        camera.computed.clip_from_view = projection.get_clip_from_view();
+        const auto frustum = epix::camera::Frustum::from_clip_from_world(camera.computed.clip_from_view);
+        Clusters clusters;
+        clusters.clusterable_objects.resize(8);
+        return world.spawn(camera, frustum, config, clusters, epix::transform::GlobalTransform{}).id();
+    };
+    const auto add_system = [](epix::app::App& app) {
+        app.add_systems(epix::app::Update, epix::ecs::into(assign_objects_to_clusters));
+    };
+
+    // Without the settings resource the system returns before touching anything.
+    {
+        epix::app::App app = epix::app::App::create();
+        ClusterConfig config;
+        config.kind = ClusterConfig::Kind::XYZ;
+        const auto view = spawn_view(app.world_mut(), config);
+        add_system(app);
+        app.update();
+        EXPECT_EQ(app.world_mut().entity(view).get<Clusters>()->get().clusterable_objects.size(), 8u)
+            << "nothing was cleared";
+    }
+
+    // With settings, a view whose configuration is None has its clusters cleared -
+    // that is the one place a view's clusters are emptied and the system continues.
+    {
+        epix::app::App app = epix::app::App::create();
+        ClusterConfig config;
+        config.kind = ClusterConfig::Kind::None;
+        const auto view = spawn_view(app.world_mut(), config);
+        app.world_mut().insert_resource(GlobalClusterSettings{});
+        add_system(app);
+        app.update();
+        EXPECT_TRUE(app.world_mut().entity(view).get<Clusters>()->get().clusterable_objects.empty())
+            << "a view with no cluster configuration keeps no clusters";
+    }
+
+    // A view with a configuration but no viewport is also cleared and skipped: the
+    // camera has no target info, so its physical viewport size is absent.
+    {
+        epix::app::App app = epix::app::App::create();
+        ClusterConfig config;
+        config.kind = ClusterConfig::Kind::XYZ;
+        config.dimensions = glm::uvec3(2u, 2u, 2u);
+        const auto view = spawn_view(app.world_mut(), config);
+        app.world_mut().insert_resource(GlobalClusterSettings{});
+        add_system(app);
+        app.update();
+        EXPECT_TRUE(app.world_mut().entity(view).get<Clusters>()->get().clusterable_objects.empty())
+            << "a view with no viewport cannot cluster anything";
+    }
+}
+
 }  // namespace
