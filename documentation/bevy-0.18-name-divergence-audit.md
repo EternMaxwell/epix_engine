@@ -102,19 +102,28 @@ Verified against `bevy_mesh/src` this round.
 | ND-43 | `vertex_format_size` | `VertexFormat::size` — unverified but reads as a rename |
 | ND-44 | `perimeter_range`, `perimeter_step_range` | `Extrudable`'s perimeter internals (`primitives/extrusion.rs:67,137`) |
 
-**Category B — extractions:** `make_circle`, `make_box2d`, `make_box2d_uv`, `from_polygon`, `from_inner_and_outer`, `try_convert_vertex_attribute_values`, `vertex_arrays_to_vectors`, `extracted_to_render_world`. Each is builder or conversion glue Bevy writes inline; the container for each needs its own lookup before folding.
+**Category B — extractions:** `make_circle`, `make_box2d`, `make_box2d_uv`, `from_polygon`, `from_inner_and_outer`, `try_convert_vertex_attribute_values`, `vertex_arrays_to_vectors`, `extracted_to_render_world`. Each is builder or conversion glue Bevy writes inline; the container for each needs its own lookup before folding. `perimeter_range` and `perimeter_step_range` were here and have moved to category A above.
 
 **Category C — keep:** every `with_*` builder setter (`with_resolution`, `with_rings`, `with_latitudes`, `with_longitudes`, `with_segments`, `with_major_resolution`, `with_minor_resolution`, `with_angle_range`, `with_normal`, `with_uv_mode`, `with_uv_profile`, `with_kind`) — Bevy exposes those as **public fields** on the builder structs, so C++ needs accessors. Also `as_u16`, `sizeof`, `get_if`, `bits_`, `serialize_serialized_mesh`, `deserialize_serialized_mesh` (Epix utilities and serde-shaped code).
 
 
 ## core_graph (7 names)
 
-- **ND-30** `split_transmissive_range` — unverified; likely inside Core3D's transmissive handling.
-- **ND-31** `max_mips_for_size`, `depth_pyramid_mip_count`, `depth_pyramid_size` — likely extractions from the depth pyramid's prepare.
-- **ND-32** `prepass_pipeline_targets` — likely an extraction from the prepass target setup.
-- **ND-33** `prepare_skybox_uniforms` — reads like a Bevy system name; **needs a re-check** before classifying.
-- **ND-34** `fullscreen_material_sub_graph` — container unverified.
+- **ND-30** `split_transmissive_range` — **B.** Bevy splits the transmissive items *inline* in `main_transmissive_pass_3d_node` (`bevy_core_pipeline/src/core_3d/main_transmissive_pass_3d_node.rs:81-110`, "split them into N = `screen_space_specular_transmission_steps`"). No separate function exists.
+- **ND-31** `max_mips_for_size` — **A, rename.** Bevy calls this `ImageSize::max_mips(TextureDimension::D2)` (`experimental/mip_generation/mod.rs:597`). `depth_pyramid_size` is Bevy's `ImageSize` type; `depth_pyramid_mip_count` is the local it assigns to.
+- **ND-32** `prepass_pipeline_targets` — **B.** No counterpart name found in Bevy; the target list is assembled inline where the prepass pipelines are prepared.
+- **ND-33** `prepare_skybox_uniforms` — **B, split.** Bevy has `prepare_skybox_pipelines` and `prepare_skybox_bind_groups` (`skybox/mod.rs:243,270`, plus the prepass variants at `skybox/prepass.rs:114,138`). This name is absent from Bevy; it groups work Bevy separates.
+- **ND-34** `fullscreen_material_sub_graph` — container still unverified.
 - Category C: `add_to`, `epix_core2d_bin_key_hash`.
+
+## mesh rows completed
+
+- **ND-44** `perimeter_range`, `perimeter_step_range` — **A, rename.** Bevy's `Extrudable` trait declares `fn perimeter(&self) -> Vec<PerimeterSegment>` (`bevy_mesh/src/primitives/extrusion.rs:85`, implemented per shape throughout `dim2.rs`).
+- **ND-43** `vertex_format_size` — **B/C, not a rename.** Checked: Bevy's `VertexFormat` has no `size()`; the `fn size()` implementations in the tree belong to `Window`, `URect`, `IRect`, `ImageSize` and `BatchedUniformBuffer`. This is an Epix helper.
+
+## Still unverified
+
+`size_for` and `from_binding_type` — both absent from Bevy by name. `from_binding_type` is a static member of `GpuClusterableObjects`, and Bevy's counterpart there is `GpuClusterableObjects::new(buffer_binding_type)` (`bevy_pbr/src/cluster.rs:172`), which makes it a likely **A**. `size_for` has no counterpart on `ClusterableObjectType`, so **B/C**.
 
 ## image (47 names)
 
