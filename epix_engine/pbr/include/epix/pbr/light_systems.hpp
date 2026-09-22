@@ -12,7 +12,10 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
+#include <epix/pbr/spot_light.hpp>
+#include <epix/pbr/volumetric.hpp>
 
 namespace epix::pbr {
 
@@ -40,8 +43,8 @@ EPIX_EXPORT void update_point_light_frusta(
  *  light. Unlike the point-light system this has no change detection: every
  *  shadow-casting, visible light is rebuilt each time it runs. */
 EPIX_EXPORT void update_directional_light_frusta(
-    ecs::Query<ecs::Item<ecs::Ref<Cascades>, ecs::Ref<DirectionalLight>,
-                         ecs::Ref<::epix::camera::ViewVisibility>, ecs::Mut<::epix::camera::CascadesFrusta>>,
+    ecs::Query<ecs::Item<const Cascades&, const DirectionalLight&, const ::epix::camera::ViewVisibility&,
+                         ecs::Mut<::epix::camera::CascadesFrusta>>,
                 ecs::Without<::epix::camera::Camera>>
         lights);
 
@@ -51,9 +54,9 @@ EPIX_EXPORT void update_directional_light_frusta(
  *  Runs before the cascades are rebuilt each frame, so a view that no longer has
  *  cascades does not keep the ones it had - the builder only inserts. Lights
  *  without shadows keep whatever they have, which is nothing, since the builder
- *  skips them too. */
+ *  skips them too - and because they are skipped, the write is a `Mut`. */
 EPIX_EXPORT void clear_directional_light_cascades(
-    ecs::Query<ecs::Item<ecs::Ref<DirectionalLight>, ecs::Mut<Cascades>>> lights);
+    ecs::Query<ecs::Item<const DirectionalLight&, ecs::Mut<Cascades>>> lights);
 
 /** @brief Build every directional light's cascades for every active view (Bevy
  *  `build_directional_light_cascades`, `bevy_light/src/cascade.rs:195-253`).
@@ -66,11 +69,11 @@ EPIX_EXPORT void clear_directional_light_cascades(
  *  transform is free to carry scale. */
 EPIX_EXPORT void build_directional_light_cascades(
     ecs::Res<DirectionalLightShadowMap> shadow_map,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<::epix::camera::Projection>,
-                         ecs::Ref<::epix::camera::Camera>>>
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&,
+                         const ::epix::camera::Camera&>>
         views,
-    ecs::Query<ecs::Item<ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<DirectionalLight>,
-                         ecs::Ref<CascadeShadowConfig>, ecs::Mut<Cascades>>>
+    ecs::Query<ecs::Item<const ::epix::transform::GlobalTransform&, const DirectionalLight&,
+                         const CascadeShadowConfig&, ecs::Mut<Cascades>>>
         lights);
 
 }  // namespace epix::pbr
