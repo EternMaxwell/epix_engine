@@ -3783,4 +3783,35 @@ TEST(Cluster, RenderMeshQueueDataMatchesBevy) {
     EXPECT_FALSE(gpu.render_mesh_queue_data(unknown).has_value());
 }
 
+/** @brief The mesh culling data is a model-space AABB padded to two vec4s, and a
+ *  mesh with no AABB gets an infinite one rather than a zero one (Bevy
+ *  `MeshCullingData`, `render/mesh.rs:562-574,1280-1296`). */
+TEST(Cluster, MeshCullingDataMatchesBevy) {
+    using epix::pbr::MeshCullingData;
+
+    // The layout the shader reads: two vec4s, the second after the first.
+    EXPECT_EQ(sizeof(MeshCullingData), 32u);
+    EXPECT_EQ(offsetof(MeshCullingData, aabb_center), 0u);
+    EXPECT_EQ(offsetof(MeshCullingData, aabb_half_extents), 16u);
+
+    // An AABB's centre and half extents, with the padding word left at zero.
+    const epix::camera::Aabb aabb{.center = glm::vec3(1.0f, 2.0f, 3.0f),
+                                  .half_extents = glm::vec3(0.5f, 1.0f, 2.0f)};
+    const MeshCullingData from_aabb = MeshCullingData::make(aabb);
+    EXPECT_EQ(glm::vec3(from_aabb.aabb_center), glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_EQ(from_aabb.aabb_center.w, 0.0f) << "the fourth float is padding";
+    EXPECT_EQ(glm::vec3(from_aabb.aabb_half_extents), glm::vec3(0.5f, 1.0f, 2.0f));
+    EXPECT_EQ(from_aabb.aabb_half_extents.w, 0.0f);
+
+    // No AABB means never culled, not always culled: the half extents are infinite
+    // so a test asking "is it outside" can never answer yes.
+    const MeshCullingData without = MeshCullingData::make(std::nullopt);
+    EXPECT_EQ(glm::vec3(without.aabb_center), glm::vec3(0.0f));
+    EXPECT_TRUE(std::isinf(without.aabb_half_extents.x));
+    EXPECT_TRUE(std::isinf(without.aabb_half_extents.y));
+    EXPECT_TRUE(std::isinf(without.aabb_half_extents.z));
+    EXPECT_EQ(without.aabb_half_extents.w, 0.0f) << "the padding stays zero even here";
+    EXPECT_GT(without.aabb_half_extents.x, 1e9f) << "infinite is larger than any real extent";
+}
+
 }  // namespace

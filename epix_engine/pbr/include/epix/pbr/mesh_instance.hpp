@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <limits>
 #include <epix/assets.hpp>
 #include <epix/camera/visibility.hpp>
 #include <epix/mesh.hpp>
@@ -216,5 +217,35 @@ EPIX_EXPORT struct RenderMeshInstances {
         found->second.shared.flags.insert(static_cast<RenderMeshInstanceFlags::Bits>(flags.bits));
     }
 };
+
+/** @brief What the GPU needs in order to cull a mesh instance (Bevy
+ *  `MeshCullingData`, `bevy_pbr/src/render/mesh.rs:562-574,1280-1296`).
+ *
+ *  A model-space AABB: its centre and its half extents, each padded with an unused
+ *  fourth float because the shader reads them as `vec4`s.
+ *
+ *  A mesh with no AABB gets an **infinitely large** one rather than a zero-sized
+ *  one, and the choice matters: culling is a test for being outside, so an infinite
+ *  box means the instance is never culled. A zero box would make it always culled -
+ *  an invisible mesh instead of a visible one. */
+EPIX_EXPORT struct MeshCullingData {
+    glm::vec4 aabb_center{0.0f};
+    glm::vec4 aabb_half_extents{0.0f};
+
+    /** @brief The culling data for an AABB, or the conservative infinite box when
+     *  there is none (Bevy `MeshCullingData::new`, `render/mesh.rs:1285-1296`). */
+    static MeshCullingData make(const std::optional<::epix::camera::Aabb>& aabb) {
+        if (!aabb.has_value()) {
+            return MeshCullingData{.aabb_center = glm::vec4(0.0f),
+                                   .aabb_half_extents = glm::vec4(glm::vec3(std::numeric_limits<float>::infinity()),
+                                                                  0.0f)};
+        }
+        return MeshCullingData{.aabb_center = glm::vec4(aabb->center, 0.0f),
+                               .aabb_half_extents = glm::vec4(aabb->half_extents, 0.0f)};
+    }
+};
+
+static_assert(sizeof(MeshCullingData) == 32, "two vec4s, which is what the shader reads");
+static_assert(offsetof(MeshCullingData, aabb_half_extents) == 16);
 
 }  // namespace epix::pbr
