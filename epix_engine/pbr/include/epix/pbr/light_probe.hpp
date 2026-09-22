@@ -168,6 +168,22 @@ EPIX_EXPORT struct ViewEnvironmentMapUniformOffset {
     std::uint32_t offset = 0;
 };
 
+/** @brief Extract each `Camera3d` view's environment map rotation into an
+ *  `EnvironmentMapUniform`, defaulting to the identity when the view has no
+ *  `EnvironmentMapLight` (Bevy `gather_environment_map_uniform`,
+ *  `light_probe/mod.rs:324-343`, an `ExtractSchedule` system).
+ *
+ *  Bevy writes this rather than using `ExtractComponentPlugin` precisely so that a
+ *  view without the component still gets the default instance - which is what makes
+ *  `prepare_environment_uniform_buffer`'s offset-0 arm cover only views that
+ *  extraction never saw. */
+EPIX_EXPORT void gather_environment_map_uniform(
+    app::Extract<ecs::Query<ecs::Item<::epix::render::sync_world::RenderEntity,
+                                     ecs::Opt<const EnvironmentMapLight&>>,
+                            ecs::With<::epix::camera::Camera3d>>>
+        views,
+    ecs::Commands commands);
+
 /** @brief Writes one environment map uniform per view (Bevy
  *  `prepare_environment_uniform_buffer`, `light_probe/mod.rs:404-428`).
  *

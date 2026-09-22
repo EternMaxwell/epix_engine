@@ -3067,10 +3067,6 @@ TEST(Cluster, SpotLightBasisAndProjectionMatchBevy) {
               epix::camera::perspective_infinite_reverse_rh(outer_angle * 2.0f, 1.0f, near_z));
 }
 
-/** @brief `update_spot_light_frusta` writes a valid cone for a shadow-casting,
- *  clustered spot light and leaves every other light alone (Bevy
- *  `spot_light.rs:204-237`). Until it runs, a spot light culls meshes against
- *  the default `Frustum`, which contains nothing. */
 /** @brief Captures everything logged through spdlog while it is alive, so a
  *  diagnostic Bevy emits can be asserted rather than assumed. */
 namespace {
@@ -3217,6 +3213,10 @@ TEST(Cluster, ShrinkEntitiesOnlyReclaimsLooseCapacity) {
     EXPECT_EQ(empty.capacity(), 0u);
 }
 
+/** @brief `update_spot_light_frusta` writes a valid cone for a shadow-casting,
+ *  clustered spot light and leaves every other light alone (Bevy
+ *  `spot_light.rs:204-237`). Until it runs, a spot light culls meshes against
+ *  the default `Frustum`, which contains nothing. */
 TEST(Cluster, UpdateSpotLightFrustaRebuildsFrusta) {
     using epix::pbr::GlobalVisibleClusterableObjects;
     using epix::pbr::SpotLight;
@@ -5288,6 +5288,64 @@ TEST(Cluster, LightProbesGatherListMatchesBevy) {
     light_probes_gather_list(empty_list, empty_indices, {});
     EXPECT_TRUE(empty_list.empty());
     EXPECT_TRUE(empty_indices.empty());
+}
+
+/** @brief `gather_environment_map_uniform` gives every `Camera3d` view an
+ *  `EnvironmentMapUniform` - the inverse of the light's rotation, or the identity
+ *  when the view has no `EnvironmentMapLight` (Bevy `light_probe/mod.rs:324-343`).
+ *
+ *  Bevy writes this instead of using `ExtractComponentPlugin` precisely so that a
+ *  view without the component still gets the default instance, which is the second
+ *  view below. The system reads the main world through `ExtractedWorld` and writes
+ *  through `Commands`, so a pair of bare worlds drives it exactly as extraction
+ *  does - down to the render entity each command targets. */
+TEST(LightProbe, GatherEnvironmentMapUniformCoversEveryCamera3dView) {
+    using epix::pbr::EnvironmentMapLight;
+    using epix::pbr::EnvironmentMapUniform;
+
+    epix::ecs::World main_world(3);
+    epix::ecs::World render_world(3);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+
+    constexpr float kAngle   = 0.7f;
+    const glm::quat rotation = glm::angleAxis(kAngle, glm::vec3(0.0f, 1.0f, 0.0f));
+    EnvironmentMapLight with_light;
+    with_light.rotation = rotation;
+
+    // A main-world view pointing at its render-world entity, which is where the
+    // uniform lands.
+    const auto add_view = [&](bool camera3d, bool has_light) {
+        const auto render_entity = render_world.spawn().id();
+        auto view                = main_world.spawn(epix::render::sync_world::RenderEntity{render_entity});
+        if (camera3d) view.insert(epix::camera::Camera3d{});
+        if (has_light) view.insert(with_light);
+        return render_entity;
+    };
+    const auto rotated = add_view(true, true);
+    const auto plain   = add_view(true, false);
+    // A 2D camera is not one of this system's views, even when it carries a light.
+    const auto camera2d = add_view(false, true);
+
+    auto system = epix::ecs::make_system_unique(epix::pbr::gather_environment_map_uniform);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    system->apply_deferred(render_world);
+
+    const auto uniform_of = [&](epix::ecs::Entity render_entity) {
+        return render_world.entity(render_entity).get<EnvironmentMapUniform>().transform(
+            [](const auto& value) { return value.get(); });
+    };
+
+    const auto rotated_uniform = uniform_of(rotated);
+    ASSERT_TRUE(rotated_uniform.has_value()) << "a Camera3d with a light gets a uniform";
+    EXPECT_EQ(rotated_uniform->transform, glm::inverse(glm::mat4_cast(rotation)))
+        << "the uniform holds the inverse of the light's rotation";
+
+    const auto plain_uniform = uniform_of(plain);
+    ASSERT_TRUE(plain_uniform.has_value()) << "and so does one without the component";
+    EXPECT_EQ(plain_uniform->transform, glm::mat4(1.0f)) << "defaulting to the identity";
+
+    EXPECT_FALSE(uniform_of(camera2d).has_value()) << "a Camera2d is not a view of this system";
 }
 
 }  // namespace

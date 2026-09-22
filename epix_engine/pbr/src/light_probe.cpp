@@ -10,6 +10,23 @@
 
 namespace epix::pbr {
 
+void gather_environment_map_uniform(
+    app::Extract<ecs::Query<ecs::Item<::epix::render::sync_world::RenderEntity,
+                                     ecs::Opt<const EnvironmentMapLight&>>,
+                            ecs::With<::epix::camera::Camera3d>>>
+        views,
+    ecs::Commands commands) {
+    // Bevy `gather_environment_map_uniform` (light_probe/mod.rs:324-343): every
+    // Camera3d view gets a uniform, and a view without the component gets the
+    // default instance rather than nothing.
+    for (auto&& [render_entity, environment_map_light] : views.iter()) {
+        commands.entity(render_entity.id())
+            .insert(environment_map_light.has_value()
+                        ? environment_map_uniform_from(environment_map_light->get().rotation)
+                        : environment_map_uniform_default());
+    }
+}
+
 void prepare_environment_uniform_buffer(ecs::Commands commands, ecs::Res<wgpu::Device> render_device,
                                         ecs::Res<wgpu::Queue> render_queue,
                                         ecs::ResMut<EnvironmentMapUniformBuffer> environment_uniform_buffer,
