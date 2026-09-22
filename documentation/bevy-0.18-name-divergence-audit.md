@@ -57,7 +57,7 @@ Still unverified rows are listed with their suspicion intact below; the six abov
 | ND-15 | `size_for` | **no counterpart** — `ClusterableObjectType` exists but has no `size_for`, so this is an extraction, not a rename. Reclassified to **B**. |
 | ND-16 | `is_cpu_building` | **false positive** — it is a *member* of its struct (`mesh_instance.hpp:164`), not a free function (see ND-46) |
 | ND-17 | `from_binding_type` | static member of `GpuClusterableObjects` — counterpart unverified |
-| ND-18 | `indices_count` / `offsets_count` | members of `ViewClusterBindings`; Bevy may expose these as fields rather than methods — needs Bevy's field names |
+| ND-18 | `indices_count` / `offsets_count` | **Category C — field accessors.** Bevy's `ViewClusterBindings` has private fields `n_indices` and `n_offsets` (`bevy_pbr/src/cluster.rs:148-149`). Rust reads them in-crate; C++ needs accessors, so the divergence is forced. Naming them `n_indices()`/`n_offsets()` would mirror Bevy's fields more closely if preferred. |
 
 ### Category B — extractions
 
@@ -81,7 +81,7 @@ Still unverified rows are listed with their suspicion intact below; the six abov
 
 ## camera (20 names)
 
-Category A / C, all small: `as_orthographic`, `as_perspective`, `get_custom`, `is_inverted`, `get_far`, `far_value`, `update_projection`, `from_normal_d`, `layer_bit`, `set_view_visible`, `all_except` (variant/bit accessors and helpers Rust writes inline — **category C**, keep). `check_visibility_system` — **confirmed A**: Bevy's `check_visibility` is at `bevy_camera/src/visibility/mod.rs:588`, so this is a rename of an instantiated system. `crop_to_sub_view`, `from_view_projection`, `from_primary`, `from_window`, `from_texture`, `from_manual_texture_view`, `RenderTargetId` — counterpart unverified. `exposure_from_physical_camera` — **checked, absent from Bevy 0.18's crates**, so it is not a rename; classification pending a look at how 0.18 handles physical-camera exposure.
+Category A / C, all small: `as_orthographic`, `as_perspective`, `get_custom`, `is_inverted`, `get_far`, `far_value`, `update_projection`, `from_normal_d`, `layer_bit`, `set_view_visible`, `all_except` (variant/bit accessors and helpers Rust writes inline — **category C**, keep). `check_visibility_system` — **confirmed A**: Bevy's `check_visibility` is at `bevy_camera/src/visibility/mod.rs:588`, so this is a rename of an instantiated system. Sub-view helpers, checked against Bevy's `SubCameraView` (`bevy_camera/src/camera.rs:141`, fields `full_size`, `offset`, `size`): `full_size` is already Bevy's field name and is an accessor for it — **C**; `sub_size` maps to Bevy's `size` — **A**; `crop_to_sub_view` and `clip_from_view_for_sub` have no counterpart name in Bevy, so they are **B** unless `SubCameraView`'s impl turns out to carry them. `from_view_projection`, `from_primary`, `from_window`, `from_texture`, `from_manual_texture_view`, `RenderTargetId` — **checked, absent from Bevy by name**, so these are Epix-shaped factories and helpers rather than renames; `exposure_from_physical_camera` likewise absent, classification pending.
 
 ## mesh (28 names)
 
