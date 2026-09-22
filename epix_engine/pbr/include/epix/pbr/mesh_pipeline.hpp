@@ -243,6 +243,66 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key
     // The bit is LIGHTMAPPED but the def is LIGHTMAP: Bevy's own naming, kept as is.
     if (key.contains(MeshPipelineKey::LIGHTMAPPED)) defs.emplace_back("LIGHTMAP");
     if (key.contains(MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING)) defs.emplace_back("LIGHTMAP_BICUBIC_SAMPLING");
+    if (key.contains(MeshPipelineKey::TEMPORAL_JITTER)) defs.emplace_back("TEMPORAL_JITTER");
+    if (key.contains(MeshPipelineKey::VISIBILITY_RANGE_DITHER)) defs.emplace_back("VISIBILITY_RANGE_DITHER");
+    if (key.contains(MeshPipelineKey::DISTANCE_FOG)) defs.emplace_back("DISTANCE_FOG");
+    if (key.contains(MeshPipelineKey::ATMOSPHERE)) defs.emplace_back("ATMOSPHERE");
+
+    // The shadow filter method is one of three, and its zero value is hardware 2x2 - so
+    // a key with no filter bits selects that, as it does in Bevy.
+    const MeshPipelineKey shadow_filter = key.intersection(MeshPipelineKey::SHADOW_FILTER_METHOD_RESERVED_BITS);
+    if (shadow_filter == MeshPipelineKey::SHADOW_FILTER_METHOD_HARDWARE_2X2) {
+        defs.emplace_back("SHADOW_FILTER_METHOD_HARDWARE_2X2");
+    } else if (shadow_filter == MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN) {
+        defs.emplace_back("SHADOW_FILTER_METHOD_GAUSSIAN");
+    } else if (shadow_filter == MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL) {
+        defs.emplace_back("SHADOW_FILTER_METHOD_TEMPORAL");
+    }
+
+    // Screen-space specular transmission carries its blur tap count as a valued def,
+    // and the mask is two bits so the four cases are exhaustive - Bevy marks the
+    // default unreachable rather than choosing one.
+    const MeshPipelineKey blur =
+        key.intersection(MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS);
+    std::uint32_t blur_taps = 4;
+    if (blur == MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_MEDIUM) {
+        blur_taps = 8;
+    } else if (blur == MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_HIGH) {
+        blur_taps = 16;
+    } else if (blur == MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA) {
+        blur_taps = 32;
+    }
+    defs.push_back(Def::from_uint("SCREEN_SPACE_SPECULAR_TRANSMISSION_BLUR_TAPS", blur_taps));
+    return defs;
+}
+
+/** @brief The defs a mesh pipeline adds from what the device and the platform allow
+ *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2660-2690`).
+ *
+ *  These depend on the pipeline's own capabilities rather than on the key: binding
+ *  arrays decide whether light probes and lightmaps can live in arrays, the
+ *  irradiance-volume constant whether volumes exist at all, and clustered decals
+ *  whether decals do. The per-object batch size is a *valued* def, and its absence is
+ *  meaningful - no def means storage buffers are in use, so the shader declares an
+ *  unbounded array.
+ *
+ *  Bevy's `pbr_light_textures` feature defs inside the clustered-decal branch are
+ *  feature-gated and so have no counterpart here. */
+EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_capability_shader_defs(
+    bool binding_arrays_are_usable, bool irradiance_volumes_are_usable, bool clustered_decals_are_usable,
+    std::optional<std::uint32_t> per_object_buffer_batch_size) {
+    using Def = ::epix::shader::ShaderDefVal;
+
+    std::vector<Def> defs;
+    if (binding_arrays_are_usable) {
+        defs.emplace_back("MULTIPLE_LIGHT_PROBES_IN_ARRAY");
+        defs.emplace_back("MULTIPLE_LIGHTMAPS_IN_ARRAY");
+    }
+    if (irradiance_volumes_are_usable) defs.emplace_back("IRRADIANCE_VOLUMES_ARE_USABLE");
+    if (clustered_decals_are_usable) defs.emplace_back("CLUSTERED_DECALS_ARE_USABLE");
+    if (per_object_buffer_batch_size.has_value()) {
+        defs.push_back(Def::from_uint("PER_OBJECT_BUFFER_BATCH_SIZE", *per_object_buffer_batch_size));
+    }
     return defs;
 }
 

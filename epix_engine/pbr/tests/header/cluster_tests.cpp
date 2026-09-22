@@ -4276,16 +4276,24 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
         MeshPipelineKey::NONE | MeshPipelineKey::DEPTH_PREPASS | MeshPipelineKey::HAS_PREVIOUS_MORPH |
             MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
         true);
-    ASSERT_EQ(defs.size(), 3u) << "two of the key's own plus the view projection";
-    EXPECT_EQ(defs[0].name, "DEPTH_PREPASS");
-    EXPECT_EQ(defs[1].name, "HAS_PREVIOUS_MORPH");
-    EXPECT_EQ(defs[2].name, "VIEW_PROJECTION_PERSPECTIVE");
-    // A key with no projection bits is nonstandard - the constant is zero in Bevy too -
-    // so even a bare key yields that one def. A real key always carries a projection,
-    // set from the camera's.
-    const auto bare = specialize_mesh_key_shader_defs(MeshPipelineKey::NONE, true);
-    ASSERT_EQ(bare.size(), 1u);
-    EXPECT_EQ(bare[0].name, "VIEW_PROJECTION_NONSTANDARD");
+    // Membership rather than a total, because some defs come from defaults the key
+    // carries - the blur tap count is always present, for one.
+    const auto defs_have = [&defs](std::string_view name) {
+        return std::any_of(defs.begin(), defs.end(), [name](const auto& def) { return def.name == name; });
+    };
+    EXPECT_TRUE(defs_have("DEPTH_PREPASS"));
+    EXPECT_TRUE(defs_have("HAS_PREVIOUS_MORPH"));
+    EXPECT_TRUE(defs_have("VIEW_PROJECTION_PERSPECTIVE"));
+    EXPECT_TRUE(defs_have("SCREEN_SPACE_SPECULAR_TRANSMISSION_BLUR_TAPS"))
+        << "the blur tap count is pushed whatever the key's blur bits are";
+    const auto bare_key_defs = specialize_mesh_key_shader_defs(MeshPipelineKey::NONE, true);
+    EXPECT_TRUE(std::any_of(bare_key_defs.begin(), bare_key_defs.end(),
+                            [](const auto& def) { return def.name == "VIEW_PROJECTION_NONSTANDARD"; }));
+    // Hardware 2x2 is the zero value of the filter bits, in Bevy as here, so a key with
+    // no filter bits selects it rather than yielding nothing.
+    EXPECT_TRUE(std::any_of(bare_key_defs.begin(), bare_key_defs.end(), [](const auto& def) {
+        return def.name == "SHADOW_FILTER_METHOD_HARDWARE_2X2";
+    })) << "the zero filter value is hardware 2x2";
     // A valued def carries its index, and the tonemap method is one def of eight.
     const auto tonemapped = specialize_mesh_key_shader_defs(
         MeshPipelineKey::TONEMAP_IN_SHADER | MeshPipelineKey::TONEMAP_METHOD_AGX | MeshPipelineKey::DEBAND_DITHER, true);
@@ -4318,6 +4326,57 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
 
     // The def is LIGHTMAP while the bit is LIGHTMAPPED, which is Bevy's own naming.
     EXPECT_TRUE(has_name(specialize_mesh_key_shader_defs(MeshPipelineKey::LIGHTMAPPED, true), "LIGHTMAP"));
+
+    // The shadow filter method: one of three when set, and *no* def when the key
+    // carries none - unlike the view projection, whose zero value is a real case.
+    const auto gaussian = specialize_mesh_key_shader_defs(MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN, true);
+    EXPECT_TRUE(has_name(gaussian, "SHADOW_FILTER_METHOD_GAUSSIAN"));
+    EXPECT_FALSE(has_name(gaussian, "SHADOW_FILTER_METHOD_TEMPORAL"));
+    const auto temporal = specialize_mesh_key_shader_defs(MeshPipelineKey::SHADOW_FILTER_METHOD_TEMPORAL, true);
+    EXPECT_TRUE(has_name(temporal, "SHADOW_FILTER_METHOD_TEMPORAL"));
+    EXPECT_FALSE(has_name(temporal, "SHADOW_FILTER_METHOD_HARDWARE_2X2"));
+
+    // Screen-space specular transmission carries its blur tap count as a valued def,
+    // always present, defaulting to the low quality's four taps.
+    const auto blur_low = specialize_mesh_key_shader_defs(
+        MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_LOW, true);
+    const auto taps = std::find_if(blur_low.begin(), blur_low.end(), [](const auto& def) {
+        return def.name == "SCREEN_SPACE_SPECULAR_TRANSMISSION_BLUR_TAPS";
+    });
+    ASSERT_NE(taps, blur_low.end());
+    ASSERT_TRUE(std::holds_alternative<std::int32_t>(taps->value) || std::holds_alternative<std::uint32_t>(taps->value));
+    const auto tap_count = std::holds_alternative<std::uint32_t>(taps->value)
+                               ? std::get<std::uint32_t>(taps->value)
+                               : static_cast<std::uint32_t>(std::get<std::int32_t>(taps->value));
+    EXPECT_EQ(tap_count, 4u);
+    const auto blur_ultra = specialize_mesh_key_shader_defs(
+        MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA, true);
+    const auto ultra_taps = std::find_if(blur_ultra.begin(), blur_ultra.end(), [](const auto& def) {
+        return def.name == "SCREEN_SPACE_SPECULAR_TRANSMISSION_BLUR_TAPS";
+    });
+    ASSERT_NE(ultra_taps, blur_ultra.end());
+    EXPECT_EQ(std::get<std::uint32_t>(ultra_taps->value), 32u);
+
+    // The capability defs follow the pipeline's flags, not the key, and the batch size
+    // is a valued def whose absence means storage buffers are in use.
+    using epix::pbr::specialize_mesh_capability_shader_defs;
+    const auto capable = specialize_mesh_capability_shader_defs(true, true, true, 64u);
+    const auto has_cap = [&capable](std::string_view name) {
+        return std::any_of(capable.begin(), capable.end(),
+                           [name](const auto& def) { return def.name == name; });
+    };
+    EXPECT_TRUE(has_cap("MULTIPLE_LIGHT_PROBES_IN_ARRAY"));
+    EXPECT_TRUE(has_cap("MULTIPLE_LIGHTMAPS_IN_ARRAY"));
+    EXPECT_TRUE(has_cap("IRRADIANCE_VOLUMES_ARE_USABLE"));
+    EXPECT_TRUE(has_cap("CLUSTERED_DECALS_ARE_USABLE"));
+    const auto batch = std::find_if(capable.begin(), capable.end(), [](const auto& def) {
+        return def.name == "PER_OBJECT_BUFFER_BATCH_SIZE";
+    });
+    ASSERT_NE(batch, capable.end());
+    EXPECT_EQ(std::get<std::uint32_t>(batch->value), 64u);
+    // Nothing capable and no batch size: no defs at all, which is what tells the
+    // shader to declare an unbounded array.
+    EXPECT_TRUE(specialize_mesh_capability_shader_defs(false, false, false, std::nullopt).empty());
 }
 
 }  // namespace
