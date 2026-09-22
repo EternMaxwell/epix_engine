@@ -3,8 +3,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <epix/camera/visibility.hpp>
+#include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <optional>
+#include <unordered_map>
+#include <vector>
 #include <epix/common.hpp>
 #endif
 #include <epix/pbr/light_meta.hpp>
@@ -75,6 +78,49 @@ EPIX_EXPORT inline bool spot_light_mesh_visible(const ::epix::camera::Sphere& li
     if (no_frustum_culling) return true;
     if (!light_sphere.intersects_obb(*aabb, *world_from_local)) return false;
     return frustum.intersects_obb(*aabb, *world_from_local, true, true);
+}
+
+/** @brief Reconcile a directional light's per-view cascade lists with the cascades it
+ *  actually has (Bevy `check_dir_light_mesh_visibility`,
+ *  `bevy_light/src/lib.rs:339-358`).
+ *
+ *  Three steps, and the order is the point:
+ *
+ *  1. For each view already recorded: if the light still has frusta for it, resize
+ *     its list to the cascade count and clear each cascade; otherwise remember the
+ *     view for removal.
+ *  2. For each view the frusta *do* have: ensure an entry exists, sized to the
+ *     cascade count. A view whose cascades were rebuilt keeps its lists, while a view
+ *     seen for the first time gets its own empty ones.
+ *  3. Remove the views that are gone - which is why they were only remembered in
+ *     step 1: erasing while iterating the map would invalidate the iteration.
+ *
+ *  Resizing matters as much as clearing: if a light's cascade count shrinks, the
+ *  extra lists have to go, or the shadow pass would keep rendering cascades the light
+ *  no longer has. */
+EPIX_EXPORT inline void reconcile_cascade_visible_entities(
+    ::epix::camera::CascadesVisibleEntities& visible_entities,
+    const std::unordered_map<ecs::Entity, std::vector<::epix::camera::Frustum>>& frusta_by_view) {
+    std::vector<ecs::Entity> to_remove;
+
+    for (auto& [view, lists] : visible_entities.entities) {
+        const auto found = frusta_by_view.find(view);
+        if (found == frusta_by_view.end()) {
+            to_remove.push_back(view);
+            continue;
+        }
+        lists.resize(found->second.size());
+        for (::epix::camera::VisibleMeshEntities& cascade : lists) cascade.entities.clear();
+    }
+
+    for (const auto& [view, frusta] : frusta_by_view) {
+        auto [entry, inserted] = visible_entities.entities.try_emplace(view);
+        if (inserted || entry->second.size() != frusta.size()) {
+            entry->second.resize(frusta.size());
+        }
+    }
+
+    for (ecs::Entity view : to_remove) visible_entities.entities.erase(view);
 }
 
 }  // namespace epix::pbr

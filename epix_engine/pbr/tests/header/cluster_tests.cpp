@@ -4023,4 +4023,67 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
     }
 }
 
+/** @brief The directional light's per-view cascade lists are reconciled with the
+ *  cascades it has: stale views removed, surviving lists cleared and resized, new
+ *  views added (Bevy `check_dir_light_mesh_visibility`,
+ *  `bevy_light/src/lib.rs:339-358`). */
+TEST(Cluster, ReconcileCascadeVisibleEntitiesMatchesBevy) {
+    using epix::camera::CascadesVisibleEntities;
+    using epix::camera::Frustum;
+    using epix::camera::VisibleMeshEntities;
+    using epix::pbr::reconcile_cascade_visible_entities;
+
+    const auto view_a = epix::ecs::Entity::from_index(1);
+    const auto view_b = epix::ecs::Entity::from_index(2);
+    const auto view_c = epix::ecs::Entity::from_index(3);
+    const auto frusta = [](std::size_t count) { return std::vector<Frustum>(count, Frustum{}); };
+    const auto list_of = [](std::size_t cascades, epix::ecs::Entity stale) {
+        std::vector<VisibleMeshEntities> lists(cascades);
+        for (VisibleMeshEntities& list : lists) list.entities.push_back(stale);
+        return lists;
+    };
+
+    // view_a has two cascades and keeps them; view_b is recorded but the light no
+    // longer has frusta for it; view_c is new.
+    CascadesVisibleEntities visible;
+    visible.entities.emplace(view_a, list_of(2, epix::ecs::Entity::from_index(90)));
+    visible.entities.emplace(view_b, list_of(1, epix::ecs::Entity::from_index(91)));
+
+    std::unordered_map<epix::ecs::Entity, std::vector<Frustum>> frusta_by_view;
+    frusta_by_view.emplace(view_a, frusta(2));
+    frusta_by_view.emplace(view_c, frusta(3));
+
+    reconcile_cascade_visible_entities(visible, frusta_by_view);
+
+    // view_b is gone, with its stale entities.
+    EXPECT_EQ(visible.entities.find(view_b), visible.entities.end());
+    // view_a survives, cleared, at its cascade count.
+    ASSERT_EQ(visible.entities.count(view_a), 1u);
+    EXPECT_EQ(visible.entities.at(view_a).size(), 2u);
+    for (const VisibleMeshEntities& list : visible.entities.at(view_a)) {
+        EXPECT_TRUE(list.entities.empty()) << "the previous frame's entities are cleared";
+    }
+    // view_c was added, sized to its cascades and empty.
+    ASSERT_EQ(visible.entities.count(view_c), 1u);
+    EXPECT_EQ(visible.entities.at(view_c).size(), 3u);
+    for (const VisibleMeshEntities& list : visible.entities.at(view_c)) {
+        EXPECT_TRUE(list.entities.empty());
+    }
+
+    // A cascade count that shrinks drops the extra lists rather than leaving them
+    // for the shadow pass to keep rendering.
+    CascadesVisibleEntities shrinking;
+    shrinking.entities.emplace(view_a, list_of(4, epix::ecs::Entity::from_index(92)));
+    std::unordered_map<epix::ecs::Entity, std::vector<Frustum>> fewer;
+    fewer.emplace(view_a, frusta(2));
+    reconcile_cascade_visible_entities(shrinking, fewer);
+    EXPECT_EQ(shrinking.entities.at(view_a).size(), 2u);
+
+    // A light with no cascades at all loses every view entry.
+    CascadesVisibleEntities emptied;
+    emptied.entities.emplace(view_a, list_of(2, epix::ecs::Entity::from_index(93)));
+    reconcile_cascade_visible_entities(emptied, {});
+    EXPECT_TRUE(emptied.entities.empty());
+}
+
 }  // namespace
