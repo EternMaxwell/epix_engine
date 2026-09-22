@@ -44,6 +44,23 @@ sprite::Sprite sprite::Sprite::from_color(glm::vec4 tint, glm::vec2 size) {
     return sprite;
 }
 
+void sprite::Sprite::on_add(ecs::World& world, ecs::HookContext context) {
+    // Bevy `#[component(on_add = visibility::add_visibility_class::<Sprite>)]`
+    // (`bevy_sprite/src/sprite.rs:17`): the class is appended to whatever the
+    // entity already carries, so a `Mesh2d` + `Sprite` entity ends up in both
+    // classes and stays visible to the sprite queue.
+    camera::add_visibility_class<sprite::Sprite>(world, context);
+}
+
+void sprite::Sprite::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
+    // Bevy `#[require(Transform, Visibility, VisibilityClass, Anchor)]`
+    // (`bevy_sprite/src/sprite.rs:15`).
+    registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
+    registrator.register_required<camera::Visibility>([] { return camera::Visibility{}; });
+    registrator.register_required<camera::VisibilityClass>([] { return camera::VisibilityClass{}; });
+    registrator.register_required<sprite::Anchor>([] { return sprite::Anchor{}; });
+}
+
 std::expected<glm::vec2, glm::vec2> sprite::Sprite::compute_pixel_space_point(
     glm::vec2 point_relative_to_sprite,
     Anchor anchor,
@@ -133,7 +150,9 @@ void sprite::calculate_bounds_2d(
     for (auto&& [entity, mesh2d] : new_mesh_aabb.iter()) {
         if (const auto mesh_asset = meshes->get(mesh2d.handle.id())) {
             if (const auto aabb = camera::MeshAabb<mesh::Mesh>::compute_aabb(mesh_asset->get())) {
-                commands.entity(entity).insert_if_new(*aabb);
+                // Bevy `commands.entity(entity).try_insert(aabb)`
+                // (`bevy_sprite/src/lib.rs:153`): an existing Aabb is replaced.
+                commands.entity(entity).insert(*aabb);
             }
         }
     }
@@ -152,7 +171,9 @@ void sprite::calculate_bounds_2d(
 
     for (auto&& [entity, value, anchor] : new_sprite_aabb.iter()) {
         if (const auto size = sprite_size(value, *images, *atlases)) {
-            commands.entity(entity).insert_if_new(sprite_aabb(*size, anchor));
+            // Bevy `commands.entity(entity).try_insert(sprite_aabb)`
+            // (`bevy_sprite/src/lib.rs:190`).
+            commands.entity(entity).insert(sprite_aabb(*size, anchor));
         }
     }
 
@@ -173,11 +194,10 @@ void sprite::SpritePlugin::attach(App& app) {
     if (!app.get_plugin<image::TextureAtlasPlugin>()) {
         app.add_plugins(image::TextureAtlasPlugin{});
     }
-    app.world_mut().register_required_components<sprite::Sprite, transform::Transform>();
-    app.world_mut().register_required_components<sprite::Sprite, camera::Visibility>();
-    app.world_mut().register_required_components<sprite::Sprite, sprite::Anchor>();
-    app.world_mut().register_required_components_with<sprite::Sprite>(
-        [] { return camera::VisibilityClass{meta::type_index(meta::type_id<sprite::Sprite>())}; });
+    // The requirements and the visibility-class hook belong to the component
+    // (`bevy_sprite/src/sprite.rs:15-17`); registering it here wires them before
+    // anything can spawn a `Sprite`.
+    app.world_mut().registrator().register_component<sprite::Sprite>();
     app.add_systems(app::PostUpdate, into(sprite::calculate_bounds_2d)
                                          .in_set(camera::VisibilitySystems::CalculateBounds)
                                          .before(camera::VisibilitySystems::CheckVisibility)

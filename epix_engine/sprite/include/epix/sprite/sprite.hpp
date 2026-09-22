@@ -104,6 +104,15 @@ struct Sprite {
     static Sprite from_atlas_image(assets::Handle<image::Image> image, image::TextureAtlas atlas);
     static Sprite from_color(glm::vec4 color, glm::vec2 size);
 
+    /** @brief Appends `Sprite` to this entity's `VisibilityClass`, keeping any
+     * class already there (Bevy
+     * `#[component(on_add = visibility::add_visibility_class::<Sprite>)]`,
+     * `bevy_sprite/src/sprite.rs:17`). */
+    static void on_add(ecs::World& world, ecs::HookContext context);
+    /** @brief Bevy's `#[require(Transform, Visibility, VisibilityClass, Anchor)]`
+     * (`bevy_sprite/src/sprite.rs:15`). */
+    static void register_required_components(ecs::RequiredComponentsRegistrator& registrator);
+
     std::expected<glm::vec2, glm::vec2> compute_pixel_space_point(
         glm::vec2 point_relative_to_sprite,
         Anchor anchor,

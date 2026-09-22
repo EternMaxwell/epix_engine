@@ -1,13 +1,20 @@
 #include <gtest/gtest.h>
 
+#include <algorithm>
+#include <array>
+#include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
+#include <epix/meta.hpp>
 #include <epix/sprite.hpp>
 #include <epix/task.hpp>
 #include <epix/transform.hpp>
+#include <utility>
+#include <vector>
+#include <webgpu/webgpu.hpp>
 
 namespace sprite = epix::sprite;
 namespace image  = epix::image;
@@ -155,6 +162,63 @@ TEST(SpritePlugin, InstallsAtlasPluginAndRequiredComponents) {
     EXPECT_TRUE(app.world().entity(entity).contains<epix::camera::Visibility>());
     EXPECT_TRUE(app.world().entity(entity).contains<epix::camera::VisibilityClass>());
     EXPECT_TRUE(app.world().entity(entity).contains<sprite::Anchor>());
+}
+
+// Bevy `#[component(on_add = visibility::add_visibility_class::<Sprite>)]`
+// (`bevy_sprite/src/sprite.rs:17`) appends the class, so an entity that already
+// carries another visibility class - a `Mesh2d` entity, for example - ends up in
+// both and stays visible to the sprite queue.
+TEST(Sprite, VisibilityClassHookAppendsToAnExistingClass) {
+    auto app = epix::app::App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
+    app.add_plugins(image::ImagePlugin{});
+    app.add_plugins(epix::mesh::MeshPlugin{});
+    app.add_plugins(epix::camera::CameraPlugin{});
+    app.add_plugins(sprite::SpritePlugin{});
+
+    const auto other = epix::meta::type_index(epix::meta::type_id<epix::mesh::Mesh2d>());
+    const auto entity = app.world_mut().spawn(epix::camera::VisibilityClass{other}).id();
+    app.world_mut().entity_mut(entity).insert(sprite::Sprite{});
+
+    const auto classes = app.world().entity(entity).get<epix::camera::VisibilityClass>();
+    ASSERT_TRUE(classes.has_value());
+    const auto& values = classes->get().classes;
+    EXPECT_NE(std::ranges::find(values, other), values.end());
+    EXPECT_NE(std::ranges::find(values, epix::meta::type_index(epix::meta::type_id<sprite::Sprite>())), values.end());
+}
+
+// Bevy's `calculate_bounds_2d` inserts with `try_insert`
+// (`bevy_sprite/src/lib.rs:153,190`), so on an entity that has both a `Mesh2d`
+// and a `Sprite` the sprite bounds are the ones that survive; `insert_if_new`
+// left the mesh bounds in place.
+TEST(CalculateBounds2d, SpriteAabbReplacesMeshAabbForDualEntities) {
+    auto app = epix::app::App::create();
+    app.add_plugins(epix::assets::AssetPlugin{});
+    app.add_plugins(image::ImagePlugin{});
+    app.add_plugins(epix::mesh::MeshPlugin{});
+    app.add_plugins(epix::camera::CameraPlugin{});
+    app.add_plugins(sprite::SpritePlugin{});
+
+    auto mesh = epix::mesh::Mesh{wgpu::PrimitiveTopology::eTriangleList,
+                                 epix::assets::RenderAssetUsages::RENDER_WORLD};
+    mesh.insert_attribute(epix::mesh::Mesh::ATTRIBUTE_POSITION,
+                          std::array{glm::vec3{-2.0f, -2.0f, 0.0f}, glm::vec3{2.0f, -2.0f, 0.0f},
+                                     glm::vec3{0.0f, 2.0f, 0.0f}});
+    mesh.insert_indices(epix::mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    const auto mesh_handle = app.world_mut().resource_mut<epix::assets::Assets<epix::mesh::Mesh>>().emplace(
+        std::move(mesh));
+    const auto image_handle = app.world_mut().resource_mut<epix::assets::Assets<image::Image>>().emplace(
+        image::Image::create2d(20, 10, wgpu::TextureFormat::eRGBA8Unorm));
+
+    const auto entity = app.world_mut()
+                            .spawn(epix::mesh::Mesh2d{mesh_handle}, sprite::Sprite::from_image(image_handle),
+                                   sprite::Anchor::CENTER)
+                            .id();
+    app.update();
+
+    const auto aabb = app.world().entity(entity).get<epix::camera::Aabb>();
+    ASSERT_TRUE(aabb.has_value());
+    EXPECT_EQ(aabb->get().half_extents, glm::vec3(10.0f, 5.0f, 0.0f));
 }
 
 TEST(CalculateBounds2d, CreatesAndUpdatesSpriteAabb) {
