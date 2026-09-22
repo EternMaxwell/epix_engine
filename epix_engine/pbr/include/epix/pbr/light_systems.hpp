@@ -12,7 +12,6 @@
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_markers.hpp>
-#include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>

@@ -364,16 +364,30 @@ void check_point_light_mesh_visibility(
                 continue;
             }
 
-            const std::optional<Aabb> aabb = maybe_aabb.has_value() ? std::optional<Aabb>{maybe_aabb->get()} : std::nullopt;
-            const std::optional<glm::mat4> world_from_local =
-                maybe_transform.has_value() ? std::optional<glm::mat4>{maybe_transform->get().matrix} : std::nullopt;
+            // If we have an aabb and transform, do frustum culling.
+            if (maybe_aabb.has_value() && maybe_transform.has_value()) {
+                const Aabb& aabb                 = maybe_aabb->get();
+                const glm::mat4 world_from_local = maybe_transform->get().matrix;
 
-            const auto faces = point_light_face_visibility(light_sphere, cubemap_frusta.frusta, aabb, world_from_local,
-                                                          maybe_no_culling.has_value());
-            for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
-                if (!faces[face]) continue;
+                // A cheap sphere-versus-OBB test prunes most meshes outside the light's
+                // sphere before any face is considered.
+                if (!maybe_no_culling.has_value() && !light_sphere.intersects_obb(aabb, world_from_local)) {
+                    continue;
+                }
+
+                for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+                    if (maybe_no_culling.has_value() ||
+                        cubemap_frusta.frusta[face].intersects_obb(aabb, world_from_local, true, true)) {
+                        visibility.set_visible();
+                        cubemap_visible.data[face].entities.push_back(mesh_entity);
+                    }
+                }
+            } else {
+                // Nothing to cull against: visible to every face.
                 visibility.set_visible();
-                cubemap_visible.data[face].entities.push_back(mesh_entity);
+                for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) {
+                    face.entities.push_back(mesh_entity);
+                }
             }
         }
     }
@@ -401,33 +415,25 @@ void check_point_light_mesh_visibility(
                 continue;
             }
 
-            const std::optional<Aabb> aabb = maybe_aabb.has_value() ? std::optional<Aabb>{maybe_aabb->get()} : std::nullopt;
-            const std::optional<glm::mat4> world_from_local =
-                maybe_transform.has_value() ? std::optional<glm::mat4>{maybe_transform->get().matrix} : std::nullopt;
+            // The same two tests as the point branch, against a single cone.
+            if (maybe_aabb.has_value() && maybe_transform.has_value()) {
+                const Aabb& aabb                 = maybe_aabb->get();
+                const glm::mat4 world_from_local = maybe_transform->get().matrix;
 
-            if (!spot_light_mesh_visible(light_sphere, frustum, aabb, world_from_local, maybe_no_culling.has_value())) continue;
-            visibility.set_visible();
-            visible_meshes.entities.push_back(mesh_entity);
+                if (!maybe_no_culling.has_value() && !light_sphere.intersects_obb(aabb, world_from_local)) {
+                    continue;
+                }
+                if (maybe_no_culling.has_value() || frustum.intersects_obb(aabb, world_from_local, true, true)) {
+                    visibility.set_visible();
+                    visible_meshes.entities.push_back(mesh_entity);
+                }
+            } else {
+                visibility.set_visible();
+                visible_meshes.entities.push_back(mesh_entity);
+            }
         }
     }
 }
-
-namespace {
-/** @brief The candidate-mesh checks the light-visibility systems share.
- *
- *  Returns false when the mesh should be skipped: it carries no `Mesh3d`, it opted out
- *  with `NotShadowCaster`, it is itself a directional light, or the light's layers do
- *  not intersect its own. Factored out because the point, spot and directional loops
- *  make exactly these checks, and writing them three times is how they drift apart. */
-bool mesh_candidate_passes(const ::epix::camera::RenderLayers& light_layers,
-                           const std::optional<std::reference_wrapper<const ::epix::camera::RenderLayers>>& mesh_layers,
-                           bool has_mesh3d, bool opted_out_of_casting, bool is_directional_light) {
-    if (!has_mesh3d) return false;
-    if (opted_out_of_casting) return false;
-    if (is_directional_light) return false;
-    return light_layers.intersects(layers_or_default(mesh_layers));
-}
-}  // namespace
 
 void check_dir_light_mesh_visibility(
     ecs::Commands commands,
@@ -458,7 +464,27 @@ void check_dir_light_mesh_visibility(
          directional_lights.iter()) {
         if (maybe_spot.has_value()) continue;  // Bevy's Without<SpotLight>
 
-        reconcile_cascade_visible_entities(visible, frusta.frusta);
+        // Reconcile the per-view cascade lists with the cascades this light has. Views
+        // are only remembered for removal here, since erasing while iterating would
+        // invalidate the iteration. Resizing matters as much as clearing: a light whose
+        // cascade count shrank must not keep rendering the cascades it no longer has.
+        std::vector<ecs::Entity> views_to_remove;
+        for (auto& [view, cascade_lists] : visible.entities) {
+            const auto found = frusta.frusta.find(view);
+            if (found == frusta.frusta.end()) {
+                views_to_remove.push_back(view);
+                continue;
+            }
+            cascade_lists.resize(found->second.size());
+            for (::epix::camera::VisibleMeshEntities& cascade : cascade_lists) cascade.entities.clear();
+        }
+        for (const auto& [view, view_frusta] : frusta.frusta) {
+            auto [entry, inserted] = visible.entities.try_emplace(view);
+            if (inserted || entry->second.size() != view_frusta.size()) {
+                entry->second.resize(view_frusta.size());
+            }
+        }
+        for (ecs::Entity view : views_to_remove) visible.entities.erase(view);
 
         // Shadows off, or the light itself not visible: the lists stay empty.
         if (!directional_light.shadows_enabled || !light_visibility.get()) continue;
@@ -474,10 +500,12 @@ void check_dir_light_mesh_visibility(
                          maybe_no_culling, maybe_mesh3d, maybe_not_shadow_caster, maybe_directional] :
                  visible_entities.iter()) {
                 if (!inherited.get()) continue;
-                if (!mesh_candidate_passes(light_layers, maybe_mesh_layers, maybe_mesh3d.has_value(),
-                                           maybe_not_shadow_caster.has_value(), maybe_directional.has_value())) {
-                    continue;
-                }
+                // Bevy's query filters, as presence tests: it asks for meshes With<Mesh3d>,
+                // Without<NotShadowCaster> and Without<DirectionalLight>.
+                if (!maybe_mesh3d.has_value()) continue;
+                if (maybe_not_shadow_caster.has_value()) continue;
+                if (maybe_directional.has_value()) continue;
+                if (!light_layers.intersects(layers_or_default(maybe_mesh_layers))) continue;
                 // Per view, not "any view": a cascade belongs to one view.
                 if (maybe_range.has_value() && ranges != nullptr && !ranges->entity_is_in_range_of_view(mesh_entity, view)) {
                     continue;

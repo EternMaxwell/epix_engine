@@ -9,7 +9,6 @@
 #include <epix/pbr/light_markers.hpp>
 #include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/light_systems.hpp>
-#include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/mesh_pipeline.hpp>
@@ -3850,99 +3849,139 @@ TEST(Cluster, ShadowMarkersMatchBevy) {
  *  there is nothing to cull against, bounded by the light's range, and per-face
  *  otherwise (Bevy `check_point_light_mesh_visibility`,
  *  `bevy_light/src/lib.rs:565-590`). */
-TEST(Cluster, PointLightFaceVisibilityMatchesBevy) {
+TEST(Cluster, PointLightFacesComeFromTheVisibilitySystem) {
     using epix::camera::Aabb;
-    using epix::camera::Sphere;
+    using epix::pbr::check_point_light_mesh_visibility;
     using epix::pbr::point_light_cubemap_frusta;
-    using epix::pbr::point_light_face_visibility;
+    using epix::pbr::PointLight;
+    using epix::pbr::VisibleClusterableObjects;
 
-    const glm::vec3 light_position{0.0f, 0.0f, 0.0f};
-    const float range     = 10.0f;
-    const float z_near    = 0.1f;
-    const auto frusta     = point_light_cubemap_frusta(light_position, glm::vec3(0.0f, 0.0f, 1.0f), range, z_near);
-    const Sphere light_sphere{.center = light_position, .radius = range};
+    epix::app::App app = epix::app::App::create();
 
-    const auto box_at = [](glm::vec3 position) {
-        return Aabb{.center = position, .half_extents = glm::vec3(0.1f)};
+    // A point light at the origin with its cube frusta built the way the shadow phase
+    // builds them, plus a view that has the light in its clustered-object set.
+    const float range = 10.0f;
+    epix::camera::CubemapFrusta cubemap;
+    cubemap.frusta = point_light_cubemap_frusta(glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f), range, 0.1f);
+    const auto light = app.world_mut()
+                           .spawn(PointLight{.shadows_enabled = true, .range = range},
+                                  epix::transform::GlobalTransform{}, cubemap,
+                                  epix::camera::CubemapVisibleEntities{})
+                           .id();
+    VisibleClusterableObjects view_objects;
+    view_objects.entities.push_back(light);
+    app.world_mut().spawn(view_objects);
+
+    const auto mesh_at = [&app](glm::vec3 position) {
+        return app.world_mut()
+            .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+                   epix::transform::GlobalTransform{}, Aabb{.center = position, .half_extents = glm::vec3(0.1f)})
+            .id();
     };
-    const glm::mat4 identity{1.0f};
-    const auto count_visible = [](const std::array<bool, 6>& visible) {
-        return static_cast<std::size_t>(std::count(visible.begin(), visible.end(), true));
+    const auto on_x_axis = mesh_at(glm::vec3(2.0f, 0.0f, 0.0f));
+    const auto below     = mesh_at(glm::vec3(0.0f, -2.0f, 0.0f));
+    const auto beyond    = mesh_at(glm::vec3(range + 5.0f, 0.0f, 0.0f));
+    // Nothing to cull against, and culling switched off: both are visible everywhere.
+    const auto unbounded = app.world_mut()
+                               .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+                                      epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{})
+                               .id();
+    const auto no_culling = app.world_mut()
+                                .spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+                                       epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{},
+                                       Aabb{.center = glm::vec3(500.0f, 0.0f, 0.0f),
+                                            .half_extents = glm::vec3(0.1f)},
+                                       epix::camera::NoFrustumCulling{})
+                                .id();
+
+    app.add_systems(epix::app::Update, epix::ecs::into(check_point_light_mesh_visibility));
+    app.update();
+
+    const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
+    const auto face_count = [&faces](epix::ecs::Entity entity) {
+        std::size_t count = 0;
+        for (const auto& face : faces.data) {
+            count += static_cast<std::size_t>(std::count(face.entities.begin(), face.entities.end(), entity));
+        }
+        return count;
+    };
+    const auto in_face = [&faces](std::size_t index, epix::ecs::Entity entity) {
+        const auto& list = faces.data[index].entities;
+        return std::find(list.begin(), list.end(), entity) != list.end();
     };
 
-    // Nothing to cull against: visible to every face. The conservative answer, and
-    // the opposite of dropping the mesh everywhere.
-    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, std::nullopt, identity, false)), 6u);
-    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(2.0f, 0.0f, 0.0f)),
-                                                       std::nullopt, false)),
-              6u);
-
-    // NoFrustumCulling: every face, and the range does not bound it either.
-    EXPECT_EQ(count_visible(point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(500.0f, 0.0f, 0.0f)),
-                                                       identity, true)),
-              6u);
-
-    // Inside the light's range on the +X axis: the +X face only. The faces are
-    // 90-degree pyramids, so the axis is squarely inside one and outside the rest.
-    const auto on_axis = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(2.0f, 0.0f, 0.0f)), identity,
-                                                    false);
-    EXPECT_TRUE(on_axis[0]) << "the +X face sees it";
-    EXPECT_EQ(count_visible(on_axis), 1u) << "and no other face does";
-
-    // The -Y face for a box below the light, which is a different index than +X.
-    const auto below = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(0.0f, -2.0f, 0.0f)), identity,
-                                                  false);
-    EXPECT_TRUE(below[3]) << "the -Y face is index 3";
-    EXPECT_EQ(count_visible(below), 1u);
-
-    // Beyond the light's range on that same axis: no face at all, even though it
-    // sits squarely on the +X axis.
-    const auto beyond = point_light_face_visibility(light_sphere, frusta, box_at(glm::vec3(range + 5.0f, 0.0f, 0.0f)),
-                                                   identity, false);
-    EXPECT_EQ(count_visible(beyond), 0u) << "the light's range bounds it, not the face's axis";
+    // On the +X axis inside the light's range: the +X face only, since the six faces are
+    // 90-degree pyramids and the axis is squarely inside one of them.
+    EXPECT_TRUE(in_face(0, on_x_axis)) << "the +X face sees it";
+    EXPECT_EQ(face_count(on_x_axis), 1u) << "and no other face does";
+    // The -Y face is index 3, a different index than +X.
+    EXPECT_TRUE(in_face(3, below)) << "the -Y face is index 3";
+    EXPECT_EQ(face_count(below), 1u);
+    // Beyond the light's range on that same axis: no face at all, because the range
+    // bounds it and the face's axis does not.
+    EXPECT_EQ(face_count(beyond), 0u) << "the light's range bounds it, not the face's axis";
+    // Nothing to cull against means every face, and NoFrustumCulling means every face
+    // and no range bound either.
+    EXPECT_EQ(face_count(unbounded), 6u);
+    EXPECT_EQ(face_count(no_culling), 6u);
+    EXPECT_TRUE(app.world_mut().entity(on_x_axis).get<epix::camera::ViewVisibility>()->get().get())
+        << "the light marked what it recorded as visible";
 }
 
 /** @brief The spot-light counterpart: one cone rather than six faces, with the same
  *  two conservative cases (Bevy `bevy_light/src/lib.rs:656-674`). */
-TEST(Cluster, SpotLightMeshVisibilityMatchesBevy) {
+TEST(Cluster, SpotLightMeshesComeFromTheVisibilitySystem) {
     using epix::camera::Aabb;
     using epix::camera::Frustum;
-    using epix::camera::Sphere;
-    using epix::pbr::spot_light_mesh_visible;
+    using epix::pbr::check_point_light_mesh_visibility;
+    using epix::pbr::SpotLight;
+    using epix::pbr::VisibleClusterableObjects;
+
+    epix::app::App app = epix::app::App::create();
 
     // A 90-degree cone looking down -Z from the origin, so anything on -Z inside the
-    // light's range is visible to it.
+    // light's range is seen by it.
     epix::camera::PerspectiveProjection projection;
     projection.fov          = glm::radians(90.0f);
     projection.aspect_ratio = 1.0f;
     projection.near_plane   = 0.1f;
-    const Frustum cone = Frustum::from_clip_from_world(projection.get_clip_from_view());
+    const float range = 10.0f;
+    const auto light  = app.world_mut()
+                           .spawn(SpotLight{.shadows_enabled = true, .range = range},
+                                  epix::transform::GlobalTransform{},
+                                  Frustum::from_clip_from_world(projection.get_clip_from_view()),
+                                  epix::camera::VisibleMeshEntities{})
+                           .id();
+    VisibleClusterableObjects view_objects;
+    view_objects.entities.push_back(light);
+    app.world_mut().spawn(view_objects);
 
-    const glm::vec3 light_position{0.0f, 0.0f, 0.0f};
-    const float range          = 10.0f;
-    const Sphere light_sphere{.center = light_position, .radius = range};
-    const glm::mat4 identity{1.0f};
-    const auto box_at = [](glm::vec3 position) {
-        return Aabb{.center = position, .half_extents = glm::vec3(0.1f)};
+    const auto mesh_at = [&app](std::optional<glm::vec3> position) {
+        auto commands = app.world_mut().spawn(epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{},
+                                              epix::camera::ViewVisibility::hidden(), epix::transform::GlobalTransform{});
+        if (position.has_value()) {
+            commands.insert(Aabb{.center = *position, .half_extents = glm::vec3(0.1f)});
+        }
+        return commands.id();
     };
+    const auto inside  = mesh_at(glm::vec3(0.0f, 0.0f, -2.0f));
+    const auto behind  = mesh_at(glm::vec3(0.0f, 0.0f, 2.0f));
+    const auto beyond  = mesh_at(glm::vec3(0.0f, 0.0f, -(range + 5.0f)));
+    const auto no_aabb = mesh_at(std::nullopt);
 
-    // Nothing to cull against, and NoFrustumCulling: visible, and the range does not
-    // bound the second case either.
-    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, std::nullopt, identity, false));
-    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -2.0f)), std::nullopt, false));
-    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(500.0f, 0.0f, 0.0f)), identity, true));
+    app.add_systems(epix::app::Update, epix::ecs::into(check_point_light_mesh_visibility));
+    app.update();
 
-    // Inside the cone and the range: visible.
-    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -2.0f)), identity, false));
-
-    // Behind the light: outside the cone, so not visible - the case a sphere test
-    // alone would get wrong, since it is inside the light's range.
-    EXPECT_FALSE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, 2.0f)), identity, false))
-        << "in range but behind the cone";
-
-    // In front but beyond the range: the range bounds it before the cone is asked.
-    EXPECT_FALSE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -(range + 5.0f))), identity,
-                                        false));
+    const auto& recorded = app.world_mut().entity(light).get<epix::camera::VisibleMeshEntities>()->get().entities;
+    const auto is_recorded = [&recorded](epix::ecs::Entity entity) {
+        return std::find(recorded.begin(), recorded.end(), entity) != recorded.end();
+    };
+    EXPECT_TRUE(is_recorded(inside)) << "inside the cone and the range";
+    EXPECT_FALSE(is_recorded(behind))
+        << "in range but behind the cone - the case a sphere test alone would wrongly keep";
+    EXPECT_FALSE(is_recorded(beyond))
+        << "on the cone's axis but beyond the range - the case a frustum test alone would wrongly keep";
+    EXPECT_TRUE(is_recorded(no_aabb)) << "nothing to cull against is visible";
 }
 
 /** @brief The visibility system's wiring: it clears stale lists, leaves a light
@@ -4030,63 +4069,60 @@ TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
  *  cascades it has: stale views removed, surviving lists cleared and resized, new
  *  views added (Bevy `check_dir_light_mesh_visibility`,
  *  `bevy_light/src/lib.rs:339-358`). */
-TEST(Cluster, ReconcileCascadeVisibleEntitiesMatchesBevy) {
+TEST(Cluster, CascadeListsAreReconciledByTheVisibilitySystem) {
+    using epix::camera::CascadesFrusta;
     using epix::camera::CascadesVisibleEntities;
     using epix::camera::Frustum;
     using epix::camera::VisibleMeshEntities;
-    using epix::pbr::reconcile_cascade_visible_entities;
+    using epix::pbr::check_dir_light_mesh_visibility;
+    using epix::pbr::DirectionalLight;
+
+    epix::app::App app = epix::app::App::create();
 
     const auto view_a = epix::ecs::Entity::from_index(1);
-    const auto view_b = epix::ecs::Entity::from_index(2);
-    const auto view_c = epix::ecs::Entity::from_index(3);
-    const auto frusta = [](std::size_t count) { return std::vector<Frustum>(count, Frustum{}); };
-    const auto list_of = [](std::size_t cascades, epix::ecs::Entity stale) {
+    const auto view_b = epix::ecs::Entity::from_index(2);  // recorded, but the light has no frusta for it
+    const auto view_c = epix::ecs::Entity::from_index(3);  // the light has frusta, nothing recorded yet
+
+    const auto lists_of = [](std::size_t cascades, epix::ecs::Entity stale) {
         std::vector<VisibleMeshEntities> lists(cascades);
         for (VisibleMeshEntities& list : lists) list.entities.push_back(stale);
         return lists;
     };
 
-    // view_a has two cascades and keeps them; view_b is recorded but the light no
-    // longer has frusta for it; view_c is new.
+    CascadesFrusta frusta;
+    frusta.frusta.emplace(view_a, std::vector<Frustum>(2, Frustum{}));
+    frusta.frusta.emplace(view_c, std::vector<Frustum>(3, Frustum{}));
+
+    // view_a has four cascades recorded but only two frusta now, so the count shrank;
+    // view_b is stale; view_c is new.
     CascadesVisibleEntities visible;
-    visible.entities.emplace(view_a, list_of(2, epix::ecs::Entity::from_index(90)));
-    visible.entities.emplace(view_b, list_of(1, epix::ecs::Entity::from_index(91)));
+    visible.entities.emplace(view_a, lists_of(4, epix::ecs::Entity::from_index(90)));
+    visible.entities.emplace(view_b, lists_of(1, epix::ecs::Entity::from_index(91)));
 
-    std::unordered_map<epix::ecs::Entity, std::vector<Frustum>> frusta_by_view;
-    frusta_by_view.emplace(view_a, frusta(2));
-    frusta_by_view.emplace(view_c, frusta(3));
+    epix::camera::ViewVisibility light_visibility;
+    light_visibility.set_visible();
+    const auto light = app.world_mut()
+                           .spawn(DirectionalLight{.shadows_enabled = false}, std::move(frusta), std::move(visible),
+                                  std::move(light_visibility))
+                           .id();
 
-    reconcile_cascade_visible_entities(visible, frusta_by_view);
+    app.add_systems(epix::app::Update, epix::ecs::into(check_dir_light_mesh_visibility));
+    app.update();
 
-    // view_b is gone, with its stale entities.
-    EXPECT_EQ(visible.entities.find(view_b), visible.entities.end());
-    // view_a survives, cleared, at its cascade count.
-    ASSERT_EQ(visible.entities.count(view_a), 1u);
-    EXPECT_EQ(visible.entities.at(view_a).size(), 2u);
-    for (const VisibleMeshEntities& list : visible.entities.at(view_a)) {
+    const auto& reconciled = app.world_mut().entity(light).get<CascadesVisibleEntities>()->get().entities;
+    // The reconciliation happens before the shadows-enabled check, so a light that casts
+    // no shadows still has its lists brought in line.
+    EXPECT_EQ(reconciled.find(view_b), reconciled.end()) << "the view the light no longer has frusta for is gone";
+    ASSERT_EQ(reconciled.count(view_a), 1u);
+    EXPECT_EQ(reconciled.at(view_a).size(), 2u) << "a shrunken cascade count drops the extra lists";
+    for (const VisibleMeshEntities& list : reconciled.at(view_a)) {
         EXPECT_TRUE(list.entities.empty()) << "the previous frame's entities are cleared";
     }
-    // view_c was added, sized to its cascades and empty.
-    ASSERT_EQ(visible.entities.count(view_c), 1u);
-    EXPECT_EQ(visible.entities.at(view_c).size(), 3u);
-    for (const VisibleMeshEntities& list : visible.entities.at(view_c)) {
+    ASSERT_EQ(reconciled.count(view_c), 1u) << "a view the light has frusta for gets lists";
+    EXPECT_EQ(reconciled.at(view_c).size(), 3u);
+    for (const VisibleMeshEntities& list : reconciled.at(view_c)) {
         EXPECT_TRUE(list.entities.empty());
     }
-
-    // A cascade count that shrinks drops the extra lists rather than leaving them
-    // for the shadow pass to keep rendering.
-    CascadesVisibleEntities shrinking;
-    shrinking.entities.emplace(view_a, list_of(4, epix::ecs::Entity::from_index(92)));
-    std::unordered_map<epix::ecs::Entity, std::vector<Frustum>> fewer;
-    fewer.emplace(view_a, frusta(2));
-    reconcile_cascade_visible_entities(shrinking, fewer);
-    EXPECT_EQ(shrinking.entities.at(view_a).size(), 2u);
-
-    // A light with no cascades at all loses every view entry.
-    CascadesVisibleEntities emptied;
-    emptied.entities.emplace(view_a, list_of(2, epix::ecs::Entity::from_index(93)));
-    reconcile_cascade_visible_entities(emptied, {});
-    EXPECT_TRUE(emptied.entities.empty());
 }
 
 /** @brief The directional visibility system records a mesh per cascade and marks it
