@@ -1153,4 +1153,57 @@ EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
     return data;
 }
 
+/** @brief Cut a view's clusterable objects down to what the uniform path can hold
+ *  (Bevy `assign_objects_to_clusters`, `assign.rs:245-295`).
+ *
+ *  Only used when the object count exceeds the uniform limit and the device has no
+ *  storage buffers; the caller decides that. What happens then is a two-step
+ *  reduction that is easy to get subtly wrong:
+ *
+ *  First the objects are sorted by the same key the offsets list uses - type, then
+ *  shadow and volumetric flags, then entity - so the ones that survive the cut are
+ *  the ones a clustered lookup should prefer. Then they are retained only if they
+ *  intersect at least one view's frustum, since an object no view can see costs a
+ *  slot for nothing.
+ *
+ *  The subtlety is the count: the retain keeps going one object *past* the limit,
+ *  because the caller warns when the result still exceeds it, and a count capped at
+ *  the limit could not tell "exactly at capacity" from "over it". Truncation
+ *  happens after that check, so the extra object only ever serves to set the flag -
+ *  `warning_emitted` is set rather than a message logged here. */
+EPIX_EXPORT inline std::size_t limit_clusterable_objects_to_uniform_capacity(
+    std::vector<ClusterableObjectAssignmentData>& objects, const std::vector<camera::Frustum>& view_frusta,
+    std::size_t max_uniform_buffer_clusterable_objects, bool* warning_emitted) {
+    std::sort(objects.begin(), objects.end(),
+              [](const ClusterableObjectAssignmentData& lhs, const ClusterableObjectAssignmentData& rhs) {
+                  return std::tuple{lhs.object_type.ordering(), lhs.entity} <
+                         std::tuple{rhs.object_type.ordering(), rhs.entity};
+              });
+
+    std::size_t kept_in_view = 0;
+    objects.erase(std::remove_if(objects.begin(), objects.end(),
+                                 [&](const ClusterableObjectAssignmentData& object) {
+                                     // One past the limit is kept, so the caller can
+                                     // tell that the limit was exceeded.
+                                     if (kept_in_view == max_uniform_buffer_clusterable_objects + 1) return true;
+
+                                     const camera::Sphere sphere = object.sphere();
+                                     bool in_view                = false;
+                                     for (const camera::Frustum& frustum : view_frusta) {
+                                         in_view = in_view || frustum.intersects_sphere(sphere, true);
+                                     }
+                                     if (in_view) ++kept_in_view;
+                                     return !in_view;
+                                 }),
+                  objects.end());
+
+    if (objects.size() > max_uniform_buffer_clusterable_objects && warning_emitted != nullptr) {
+        *warning_emitted = true;
+    }
+    if (objects.size() > max_uniform_buffer_clusterable_objects) {
+        objects.resize(max_uniform_buffer_clusterable_objects);
+    }
+    return objects.size();
+}
+
 }  // namespace epix::pbr

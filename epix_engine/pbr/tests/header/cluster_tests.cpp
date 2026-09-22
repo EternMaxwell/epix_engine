@@ -3119,4 +3119,77 @@ TEST(Cluster, ClusterableAssignmentDataMatchesBevy) {
         << "and it is not every layer";
 }
 
+/** @brief The uniform-path capacity cut: sort by the lookup key, drop what no view
+ *  can see, keep one past the limit so over-capacity is detectable, then truncate
+ *  and flag (Bevy `assign.rs:245-295`). */
+TEST(Cluster, UniformCapacityCutMatchesBevy) {
+    using epix::camera::Frustum;
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::ClusterableObjectType;
+    using epix::pbr::limit_clusterable_objects_to_uniform_capacity;
+
+    // A view frustum placed five units back along +Z, looking down -Z, 90 degrees
+    // wide. Note the projection is infinite, so distance alone never leaves it - an
+    // out-of-view object has to be off to the side.
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    const Frustum containing =
+        Frustum::from_clip_from_world(projection.get_clip_from_view() * glm::inverse(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 5.0f))));
+
+    const auto object = [](std::size_t index, ClusterableObjectType::Kind kind, glm::vec3 position) {
+        ClusterableObjectAssignmentData data;
+        data.entity      = epix::ecs::Entity::from_index(static_cast<std::uint32_t>(index));
+        data.transform   = glm::translate(glm::mat4(1.0f), position);
+        data.object_type = ClusterableObjectType{.kind = kind};
+        return data;
+    };
+    const glm::vec3 in_view{0.0f, 0.0f, -4.0f};
+    const glm::vec3 out_of_view{500.0f, 0.0f, -4.0f};  // well outside a 90-degree cone
+
+    // Under the limit nothing is touched and no warning is raised.
+    {
+        std::vector<ClusterableObjectAssignmentData> objects{object(1, ClusterableObjectType::Kind::SpotLight, in_view),
+                                                             object(2, ClusterableObjectType::Kind::PointLight, in_view)};
+        bool warned = false;
+        EXPECT_EQ(limit_clusterable_objects_to_uniform_capacity(objects, {containing}, 3, &warned), 2u);
+        EXPECT_FALSE(warned);
+        // Even under the limit the sort applies, so the point light is first.
+        EXPECT_EQ(objects[0].object_type.kind, ClusterableObjectType::Kind::PointLight);
+    }
+
+    // Over the limit: warning raised, truncated to exactly the limit.
+    {
+        std::vector<ClusterableObjectAssignmentData> objects{object(1, ClusterableObjectType::Kind::PointLight, in_view),
+                                                             object(2, ClusterableObjectType::Kind::PointLight, in_view),
+                                                             object(3, ClusterableObjectType::Kind::PointLight, in_view)};
+        bool warned = false;
+        EXPECT_EQ(limit_clusterable_objects_to_uniform_capacity(objects, {containing}, 2, &warned), 2u);
+        EXPECT_TRUE(warned) << "the third object is what makes the excess visible";
+        EXPECT_EQ(objects.size(), 2u);
+    }
+
+    // Objects outside every frustum are dropped, and do not count towards the
+    // limit - so three objects with one far away fit under a limit of two.
+    {
+        std::vector<ClusterableObjectAssignmentData> objects{object(1, ClusterableObjectType::Kind::PointLight, in_view),
+                                                             object(2, ClusterableObjectType::Kind::PointLight, in_view),
+                                                             object(3, ClusterableObjectType::Kind::PointLight, out_of_view)};
+        bool warned = false;
+        EXPECT_EQ(limit_clusterable_objects_to_uniform_capacity(objects, {containing}, 2, &warned), 2u);
+        EXPECT_FALSE(warned) << "only two were in view, so the limit was not exceeded";
+    }
+
+    // A second call with the flag already set still truncates: the flag records
+    // that the warning was emitted, not that the cut was skipped.
+    {
+        std::vector<ClusterableObjectAssignmentData> objects{object(1, ClusterableObjectType::Kind::PointLight, in_view),
+                                                             object(2, ClusterableObjectType::Kind::PointLight, in_view)};
+        bool warned = true;
+        EXPECT_EQ(limit_clusterable_objects_to_uniform_capacity(objects, {containing}, 1, &warned), 1u);
+        EXPECT_TRUE(warned);
+    }
+}
+
 }  // namespace
