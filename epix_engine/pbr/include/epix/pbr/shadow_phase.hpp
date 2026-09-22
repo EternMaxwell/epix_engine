@@ -357,4 +357,21 @@ EPIX_EXPORT inline bool should_update_point_light_frusta(bool light_changed, boo
     return in_global_lights;
 }
 
+/** @brief Whether a directional light's cascade frusta need rebuilding (Bevy
+ *  `update_directional_light_frusta`, `bevy_light/src/directional_light.rs:220-226`).
+ *
+ *  Deliberately simpler than the point-light gate, and the difference is the
+ *  point: this one has no change detection and no cluster-membership test, so it
+ *  rebuilds the frusta every frame for any light that casts shadows and is itself
+ *  visible. Only the light's own visibility matters - the frusta cull meshes into
+ *  the cascades, so a light nothing is looking at has none to cull for. Adding a
+ *  change check here would be a divergence from Bevy rather than an optimization.
+ *
+ *  Bevy's query also excludes entities with a `Camera`, which is a query-shape
+ *  constraint to keep it from conflicting with camera queries rather than a
+ *  runtime condition, so it has no counterpart here. */
+EPIX_EXPORT inline bool should_update_directional_cascade_frusta(bool shadows_enabled, bool light_visible) {
+    return shadows_enabled && light_visible;
+}
+
 }  // namespace epix::pbr

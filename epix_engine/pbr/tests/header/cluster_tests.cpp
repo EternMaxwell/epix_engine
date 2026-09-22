@@ -2895,4 +2895,27 @@ TEST(Cluster, ShouldUpdatePointLightFrustaMatchesBevy) {
     EXPECT_FALSE(should_update_point_light_frusta(true, true, false, false));
 }
 
+/** @brief A directional light's cascade frusta are rebuilt whenever it casts
+ *  shadows and is itself visible - with no change detection, unlike the point-light
+ *  gate (Bevy `update_directional_light_frusta`,
+ *  `directional_light.rs:220-226`). */
+TEST(Cluster, ShouldUpdateDirectionalCascadeFrustaMatchesBevy) {
+    using epix::pbr::should_update_directional_cascade_frusta;
+    using epix::pbr::should_update_point_light_frusta;
+
+    EXPECT_TRUE(should_update_directional_cascade_frusta(true, true));
+    EXPECT_FALSE(should_update_directional_cascade_frusta(false, true)) << "no shadows, no frusta";
+    EXPECT_FALSE(should_update_directional_cascade_frusta(true, false)) << "a light nothing looks at needs none";
+    EXPECT_FALSE(should_update_directional_cascade_frusta(false, false));
+
+    // The asymmetry with the point-light gate is intentional and worth pinning: a
+    // directional light is rebuilt even in the case the point-light gate skips - a
+    // shadow-casting, visible light in no changed state at all - because Bevy's
+    // directional system has no change detection. A future "optimization" adding
+    // one would be a divergence.
+    EXPECT_TRUE(should_update_directional_cascade_frusta(true, true));
+    EXPECT_FALSE(should_update_point_light_frusta(false, false, true, true))
+        << "the point-light gate does have change detection";
+}
+
 }  // namespace
