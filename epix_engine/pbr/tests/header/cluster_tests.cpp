@@ -3294,4 +3294,45 @@ TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
     }
 }
 
+/** @brief The view-space object sphere scales its radius by the view's largest
+ *  scale component, and the cluster range is ordered component-wise because the y
+ *  flip can invert it (Bevy `assign.rs:570-599`). */
+TEST(Cluster, ViewSpaceSphereAndClusterRangeMatchBevy) {
+    using epix::camera::Sphere;
+    using epix::pbr::object_cluster_range;
+    using epix::pbr::view_space_object_sphere;
+
+    // The centre goes through the view matrix; the radius is scaled by the max
+    // component of the view's scale, not by an axis or an average. With scale
+    // (2, 3, 4) and radius 1, the result is 4 - using 2 or 3 would thin the range
+    // and drop clusters the object reaches.
+    const glm::mat4 view_from_world =
+        glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, 2.0f, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 3.0f, 4.0f));
+    const Sphere object{.center = glm::vec3(1.0f, 1.0f, -6.0f), .radius = 1.0f};
+    const Sphere in_view_space = view_space_object_sphere(view_from_world, 4.0f, object);
+    EXPECT_FLOAT_EQ(in_view_space.center.x, 1.0f * 2.0f - 5.0f) << "x through the view scale and translation";
+    EXPECT_FLOAT_EQ(in_view_space.center.y, 1.0f * 3.0f + 2.0f);
+    EXPECT_FLOAT_EQ(in_view_space.center.z, -6.0f * 4.0f);
+    EXPECT_FLOAT_EQ(in_view_space.radius, 4.0f) << "the largest scale component";
+    // A max of 1 (no view scale) leaves the radius alone.
+    EXPECT_FLOAT_EQ(view_space_object_sphere(glm::mat4(1.0f), 1.0f, object).radius, 1.0f);
+
+    // The y flip in cluster space means an AABB's maximum y corner usually lands in
+    // a lower row, so the pair has to be ordered before it is used as a range.
+    const glm::uvec3 dimensions{16u, 9u, 24u};
+    const glm::vec2 cluster_factors{1.0f, 0.0f};
+    const glm::vec3 aabb_min{-0.5f, -0.25f, -5.0f};
+    const glm::vec3 aabb_max{0.5f, 0.25f, -2.0f};
+    const auto [min_cluster, max_cluster] =
+        object_cluster_range(dimensions, cluster_factors, true, aabb_min, aabb_max);
+
+    for (int axis = 0; axis < 3; ++axis) {
+        EXPECT_LE(min_cluster[axis], max_cluster[axis]) << "axis " << axis << " is ordered";
+        EXPECT_LT(max_cluster[axis], dimensions[axis]) << "axis " << axis << " is inside the grid";
+    }
+    // The range genuinely spans rows: x from the left half and y across the centre.
+    EXPECT_LT(min_cluster.x, max_cluster.x);
+    EXPECT_LT(min_cluster.y, max_cluster.y) << "the y flip would invert this pair unordered";
+}
+
 }  // namespace

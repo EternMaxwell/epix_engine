@@ -1214,4 +1214,39 @@ EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::ui
     return {z_center, y_center};
 }
 
+/** @brief An object's sphere in view space (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:594-599`).
+ *
+ *  The centre is taken through the view matrix, and the radius is scaled by the
+ *  view's **largest** scale component rather than by one axis or by an average:
+ *  under a non-uniform view scale the object's extent is bounded by the biggest
+ *  stretch, so using that keeps the cluster range a superset of what the object
+ *  really covers. Using a smaller factor would thin the range and drop clusters the
+ *  object reaches. */
+EPIX_EXPORT inline camera::Sphere view_space_object_sphere(const glm::mat4& view_from_world,
+                                                          float view_from_world_scale_max,
+                                                          const camera::Sphere& object_sphere) {
+    return camera::Sphere{.center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
+                          .radius = object_sphere.radius * view_from_world_scale_max};
+}
+
+/** @brief The ordered cluster range an object's bounds cover (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:570-585`).
+ *
+ *  Both corners are converted independently and then swapped component-wise,
+ *  because which corner lands nearer the view's origin is not fixed: the y axis is
+ *  flipped on the way into cluster space, so an AABB's maximum y corner usually
+ *  converts to a *lower* cluster row than its minimum. Bevy orders the pair here,
+ *  and the loops that follow treat it as a range. */
+EPIX_EXPORT inline std::pair<glm::uvec3, glm::uvec3> object_cluster_range(glm::uvec3 dimensions,
+                                                                         glm::vec2 cluster_factors,
+                                                                         bool is_orthographic, glm::vec3 aabb_min,
+                                                                         glm::vec3 aabb_max) {
+    const glm::uvec3 min_cluster =
+        ndc_position_to_cluster(dimensions, cluster_factors, is_orthographic, aabb_min, aabb_min.z);
+    const glm::uvec3 max_cluster =
+        ndc_position_to_cluster(dimensions, cluster_factors, is_orthographic, aabb_max, aabb_max.z);
+    return {glm::min(min_cluster, max_cluster), glm::max(min_cluster, max_cluster)};
+}
+
 }  // namespace epix::pbr
