@@ -4203,4 +4203,81 @@ TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
     EXPECT_TRUE(empty.vertex_attributes.empty());
 }
 
+/** @brief The pass a mesh key selects, and the defs a key adds beside the vertex and
+ *  pass ones (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2453-2538`). */
+TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
+    using epix::pbr::MeshPipelineKey;
+    using epix::pbr::specialize_mesh_key_shader_defs;
+    using epix::pbr::specialize_mesh_pass;
+
+    // The default key is the opaque pass: depth written, and opaque unless something
+    // downstream has to composite it.
+    const auto opaque = specialize_mesh_pass(MeshPipelineKey::NONE);
+    EXPECT_EQ(opaque.label, "opaque_mesh_pipeline");
+    EXPECT_FALSE(opaque.blend);
+    EXPECT_TRUE(opaque.depth_write_enabled);
+    EXPECT_TRUE(opaque.is_opaque);
+    EXPECT_TRUE(opaque.shader_defs.empty());
+
+    // Alpha blending: blends, and does not write depth.
+    const auto alpha = specialize_mesh_pass(MeshPipelineKey::BLEND_ALPHA);
+    EXPECT_EQ(alpha.label, "alpha_blend_mesh_pipeline");
+    EXPECT_TRUE(alpha.blend);
+    EXPECT_FALSE(alpha.depth_write_enabled);
+    EXPECT_FALSE(alpha.premultiply_alpha);
+
+    // Premultiplied alpha and multiply both ask the shader to premultiply, and each
+    // adds its own def as well.
+    const auto premultiplied = specialize_mesh_pass(MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA);
+    EXPECT_EQ(premultiplied.label, "premultiplied_alpha_mesh_pipeline");
+    EXPECT_TRUE(premultiplied.premultiply_alpha);
+    EXPECT_TRUE(premultiplied.blend_premultiplied);
+    EXPECT_FALSE(premultiplied.blend_multiply);
+    const auto multiply = specialize_mesh_pass(MeshPipelineKey::BLEND_MULTIPLY);
+    EXPECT_EQ(multiply.label, "multiply_mesh_pipeline");
+    EXPECT_TRUE(multiply.premultiply_alpha);
+    EXPECT_TRUE(multiply.blend_multiply);
+    EXPECT_FALSE(multiply.blend_premultiplied);
+
+    // Alpha to coverage: depth written, coverage on, and its own def.
+    const auto coverage = specialize_mesh_pass(MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE);
+    EXPECT_EQ(coverage.label, "alpha_to_coverage_mesh_pipeline");
+    EXPECT_FALSE(coverage.blend) << "coverage replaces rather than blends";
+    EXPECT_TRUE(coverage.alpha_to_coverage);
+    EXPECT_TRUE(coverage.depth_write_enabled);
+    EXPECT_EQ(std::find(coverage.shader_defs.begin(), coverage.shader_defs.end(), std::string("ALPHA_TO_COVERAGE")) !=
+                  coverage.shader_defs.end(),
+              true);
+
+    // OIT takes precedence over plain alpha blending, and the OIT pass itself blends
+    // nothing - the resolve does that - so it adds its own def instead.
+    MeshPipelineKey oit_alpha = MeshPipelineKey::BLEND_ALPHA;
+    oit_alpha = oit_alpha | MeshPipelineKey::OIT_ENABLED;
+    const auto oit = specialize_mesh_pass(oit_alpha);
+    EXPECT_EQ(oit.label, "oit_mesh_pipeline");
+    EXPECT_FALSE(oit.blend);
+    EXPECT_FALSE(oit.depth_write_enabled);
+    EXPECT_NE(std::find(oit.shader_defs.begin(), oit.shader_defs.end(), std::string("OIT_ENABLED")), oit.shader_defs.end());
+    // Without the blend bits, OIT is not enough on its own: the arm needs both.
+    const auto oit_only = specialize_mesh_pass(MeshPipelineKey::OIT_ENABLED);
+    EXPECT_EQ(oit_only.label, "opaque_mesh_pipeline") << "OIT alone does not select the OIT pass";
+
+    // Reading the view transmission texture makes an otherwise opaque pass not
+    // opaque, in both arms that can say so.
+    for (const MeshPipelineKey base : {MeshPipelineKey::NONE, MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE}) {
+        EXPECT_TRUE(specialize_mesh_pass(base).is_opaque);
+        EXPECT_FALSE(specialize_mesh_pass(base | MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE).is_opaque)
+            << "something downstream still composites it";
+    }
+
+    // The key-driven defs are independent of the pass and each appears only for its
+    // own bit.
+    const auto defs = specialize_mesh_key_shader_defs(
+        MeshPipelineKey::NONE | MeshPipelineKey::DEPTH_PREPASS | MeshPipelineKey::HAS_PREVIOUS_MORPH);
+    ASSERT_EQ(defs.size(), 2u);
+    EXPECT_EQ(defs[0], "DEPTH_PREPASS");
+    EXPECT_EQ(defs[1], "HAS_PREVIOUS_MORPH");
+    EXPECT_TRUE(specialize_mesh_key_shader_defs(MeshPipelineKey::NONE).empty());
+}
+
 }  // namespace

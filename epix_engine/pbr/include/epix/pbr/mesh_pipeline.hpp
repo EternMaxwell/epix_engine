@@ -6,6 +6,7 @@
 #include <vector>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/mesh_pipeline_key.hpp>
 
 namespace epix::pbr {
 
@@ -88,6 +89,93 @@ EPIX_EXPORT inline MeshPipelineVertexSpecialization specialize_mesh_vertex_layou
         result.shader_defs.emplace_back("MULTISAMPLED");
     }
     return result;
+}
+
+/** @brief The pass a mesh pipeline's key selects (Bevy `MeshPipeline::specialize`,
+ *  `render/mesh.rs:2459-2519`).
+ *
+ *  The key's blend bits choose one of five passes, and the OIT case takes precedence
+ *  over plain alpha blending: an OIT pass blends nothing itself (`BlendState::None`)
+ *  because the resolved layers do the blending, which Bevy notes as a TODO about tail
+ *  blending needing alpha. Everything but the blending passes writes depth.
+ *
+ *  `is_opaque` is not "the opaque arm": an alpha-to-coverage or plain pass that reads
+ *  the view transmission texture is not opaque, because something downstream still has
+ *  to composite it. That flag travels with the pipeline and is easy to set from the
+ *  arm alone. */
+EPIX_EXPORT struct MeshPassState {
+    std::string label;
+    /** @brief Whether the pass blends. Bevy passes `None` where replacement suffices. */
+    bool blend = false;
+    /** @brief Whether the key's blend adds the premultiply, premultiplied or multiply
+     *  shader defs. */
+    bool premultiply_alpha = false;
+    bool blend_premultiplied = false;
+    bool blend_multiply = false;
+    bool alpha_to_coverage = false;
+    bool depth_write_enabled = true;
+    bool is_opaque = false;
+    std::vector<std::string> shader_defs;
+};
+
+/** @brief The pass a key selects (Bevy `MeshPipeline::specialize`,
+ *  `render/mesh.rs:2459-2519`). */
+EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key) {
+    MeshPassState state;
+    const MeshPipelineKey pass = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
+
+    if (key.contains(MeshPipelineKey::OIT_ENABLED) && pass == MeshPipelineKey::BLEND_ALPHA) {
+        state.label       = "oit_mesh_pipeline";
+        state.blend       = false;
+        state.shader_defs.emplace_back("OIT_ENABLED");
+        state.depth_write_enabled = false;
+    } else if (pass == MeshPipelineKey::BLEND_ALPHA) {
+        state.label = "alpha_blend_mesh_pipeline";
+        state.blend = true;
+        // A transparent fragment blends but must not write depth.
+        state.depth_write_enabled = false;
+    } else if (pass == MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA) {
+        state.label              = "premultiplied_alpha_mesh_pipeline";
+        state.blend              = true;
+        state.premultiply_alpha  = true;
+        state.blend_premultiplied = true;
+        state.depth_write_enabled = false;
+    } else if (pass == MeshPipelineKey::BLEND_MULTIPLY) {
+        state.label               = "multiply_mesh_pipeline";
+        state.blend               = true;
+        state.premultiply_alpha   = true;
+        state.blend_multiply      = true;
+        state.depth_write_enabled = false;
+    } else if (pass == MeshPipelineKey::BLEND_ALPHA_TO_COVERAGE) {
+        state.label               = "alpha_to_coverage_mesh_pipeline";
+        state.blend               = false;
+        state.depth_write_enabled = true;
+        state.is_opaque           = !key.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
+        state.alpha_to_coverage   = true;
+        state.shader_defs.emplace_back("ALPHA_TO_COVERAGE");
+    } else {
+        state.label               = "opaque_mesh_pipeline";
+        state.blend               = false;
+        state.depth_write_enabled = true;
+        state.is_opaque           = !key.contains(MeshPipelineKey::READS_VIEW_TRANSMISSION_TEXTURE);
+    }
+    return state;
+}
+
+/** @brief The shader defs a key adds besides the pass and vertex ones (Bevy
+ *  `MeshPipeline::specialize`, `render/mesh.rs:2453-2538`): screen-space ambient
+ *  occlusion, each prepass, and the two "had previous data" defs motion vectors need. */
+EPIX_EXPORT inline std::vector<std::string> specialize_mesh_key_shader_defs(const MeshPipelineKey& key) {
+    std::vector<std::string> defs;
+    if (key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION)) {
+        defs.emplace_back("SCREEN_SPACE_AMBIENT_OCCLUSION");
+    }
+    if (key.contains(MeshPipelineKey::NORMAL_PREPASS)) defs.emplace_back("NORMAL_PREPASS");
+    if (key.contains(MeshPipelineKey::DEPTH_PREPASS)) defs.emplace_back("DEPTH_PREPASS");
+    if (key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS)) defs.emplace_back("MOTION_VECTOR_PREPASS");
+    if (key.contains(MeshPipelineKey::HAS_PREVIOUS_SKIN)) defs.emplace_back("HAS_PREVIOUS_SKIN");
+    if (key.contains(MeshPipelineKey::HAS_PREVIOUS_MORPH)) defs.emplace_back("HAS_PREVIOUS_MORPH");
+    return defs;
 }
 
 }  // namespace epix::pbr
