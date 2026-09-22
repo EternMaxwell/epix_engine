@@ -2,8 +2,14 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/camera/visibility.hpp>
+#include <epix/mesh.hpp>
+#include <glm/glm.hpp>
+#include <optional>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/material_bindings.hpp>
 
 namespace epix::pbr {
 
@@ -45,6 +51,43 @@ EPIX_EXPORT struct RenderMeshInstanceFlags {
     constexpr bool should_batch() const noexcept { return contains(AUTOMATIC_BATCHING); }
 
     bool operator==(const RenderMeshInstanceFlags&) const = default;
+};
+
+/** @brief The index of a lightmap slab (Bevy `LightmapSlabIndex`,
+ *  `bevy_pbr/src/lightmap/mod.rs:177`).
+ *
+ *  Bevy wraps a `NonMaxU32` - a `u32` that is never `u32::MAX` - so a slab index
+ *  can never collide with a sentinel. The invariant is documented rather than
+ *  enforced here, since the port has no non-max integer type. */
+EPIX_EXPORT struct LightmapSlabIndex {
+    std::uint32_t index = 0;
+    auto operator<=>(const LightmapSlabIndex&) const = default;
+};
+
+/** @brief CPU data the render world keeps for each entity holding a mesh, shared
+ *  by both uniform-building paths (Bevy `RenderMeshInstanceShared`,
+ *  `bevy_pbr/src/render/mesh.rs:735-755`).
+ *
+ *  There is no default constructor, and that matches Bevy: the mesh id is what the
+ *  record is *about*, and Epix's `AssetId` deletes its own default constructor for
+ *  the same reason, offering `invalid()` as an explicit sentinel instead.
+ *
+ *  `center` is a representative local-space position taken from the mesh's
+ *  AABB, used as a spatial proxy for view-dependent sorting rather than a true
+ *  centre; `render_layers` is absent when the instance carries no layer component,
+ *  which is not the same as belonging to none. */
+EPIX_EXPORT struct RenderMeshInstanceShared {
+    assets::AssetId<mesh::Mesh> mesh_asset_id;
+    MaterialBindingId material_bindings_index{};
+    RenderMeshInstanceFlags flags{};
+    std::optional<LightmapSlabIndex> lightmap_slab_index;
+    std::uint32_t tag = 0;
+    std::optional<::epix::camera::RenderLayers> render_layers;
+    glm::vec3 center{0.0f};
+
+    /** @brief Whether this instance may be batched automatically (Bevy
+     *  `RenderMeshInstanceShared::should_batch`, `render/mesh.rs:894-900`). */
+    bool should_batch() const noexcept { return flags.should_batch(); }
 };
 
 }  // namespace epix::pbr

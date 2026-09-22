@@ -3632,4 +3632,46 @@ TEST(Cluster, MeshInstanceFlagsMatchBevy) {
         << "and so is a different slot";
 }
 
+/** @brief The shared instance record keeps the mesh id it is about, carries the
+ *  absence of a lightmap and of render layers distinctly, and delegates the
+ *  batching question to its flags (Bevy `RenderMeshInstanceShared`,
+ *  `render/mesh.rs:735-755,894-900`). */
+TEST(Cluster, RenderMeshInstanceSharedMatchesBevy) {
+    using epix::pbr::LightmapSlabIndex;
+    using epix::pbr::MaterialBindGroupIndex;
+    using epix::pbr::MaterialBindGroupSlot;
+    using epix::pbr::RenderMeshInstanceFlags;
+    using epix::pbr::RenderMeshInstanceShared;
+
+    RenderMeshInstanceShared shared{.mesh_asset_id = epix::assets::AssetId<epix::mesh::Mesh>::invalid(),
+                                   .material_bindings_index = {MaterialBindGroupIndex{2u}, MaterialBindGroupSlot{0u}},
+                                   .flags = {},
+                                   .tag   = 7u,
+                                   .center = glm::vec3(1.0f, 2.0f, 3.0f)};
+
+    EXPECT_EQ(shared.mesh_asset_id, epix::assets::AssetId<epix::mesh::Mesh>::invalid());
+    EXPECT_EQ(shared.material_bindings_index.group.index, 2u);
+    EXPECT_EQ(shared.tag, 7u);
+    EXPECT_EQ(shared.center, glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_EQ(shared.flags.bits, 0u);
+    EXPECT_FALSE(shared.should_batch()) << "nothing set the batching bit";
+
+    // Absent lightmap and absent layers are distinct from a lightmap at slab 0 and
+    // from belonging to no layer.
+    EXPECT_FALSE(shared.lightmap_slab_index.has_value());
+    EXPECT_FALSE(shared.render_layers.has_value());
+    shared.lightmap_slab_index = LightmapSlabIndex{0u};
+    shared.render_layers       = epix::camera::RenderLayers::layer(0);
+    ASSERT_TRUE(shared.lightmap_slab_index.has_value());
+    EXPECT_EQ(shared.lightmap_slab_index->index, 0u);
+    ASSERT_TRUE(shared.render_layers.has_value());
+    EXPECT_TRUE(shared.render_layers->intersects(epix::camera::RenderLayers::layer(0)));
+
+    // The batching bit is the flags' bit, not a second copy of it.
+    shared.flags.insert(RenderMeshInstanceFlags::AUTOMATIC_BATCHING);
+    EXPECT_TRUE(shared.should_batch());
+    shared.flags = {};
+    EXPECT_FALSE(shared.should_batch());
+}
+
 }  // namespace
