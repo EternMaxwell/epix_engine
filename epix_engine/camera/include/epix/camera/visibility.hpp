@@ -444,6 +444,11 @@ EPIX_EXPORT struct Sphere {
  * when dot(normal, p) + d >= 0. */
 EPIX_EXPORT struct Frustum {
     /** @brief The six planes: left, right, top, bottom, near, far. */
+    /** @brief The index of the near plane among `planes` (Bevy
+     *  `Frustum::NEAR_PLANE_IDX`, `primitives.rs:293`). The far plane is index 5,
+     *  which is what Bevy's private `FAR_PLANE_IDX` names. */
+    static constexpr std::size_t NEAR_PLANE_IDX = 4;
+
     std::array<glm::vec4, 6> planes = [] {
         std::array<glm::vec4, 6> result{};
         result.fill(glm::vec4(0.0f, 0.0f, 0.0f, std::numeric_limits<float>::infinity()));

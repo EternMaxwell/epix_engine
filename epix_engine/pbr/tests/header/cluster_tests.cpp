@@ -2724,4 +2724,69 @@ TEST(Cluster, PointLightCubemapFrustaMatchBevy) {
         << "whereas the unflipped frustum of the same face has no such bound";
 }
 
+/** @brief Each cascade gets its own frustum, and a cascade view's near plane is
+ *  pushed to infinity so it culls nothing in front of the light (Bevy
+ *  `update_directional_light_frusta` and `prepare_lights`,
+ *  `bevy_light/src/directional_light.rs:228-240`, `render/light.rs:1565-1571`). */
+TEST(Cluster, DirectionalCascadeFrustaMatchBevy) {
+    using epix::camera::Frustum;
+    using epix::camera::Sphere;
+    using epix::pbr::build_view_cascades;
+    using epix::pbr::directional_cascade_frusta;
+    using epix::pbr::directional_view_frustum;
+
+    // A realistic slice: a real projection's corners between 1 and 10 units in
+    // front of the light, so the whole slice is on the light's forward side. (A
+    // synthetic cube straddling the light does not work here: the near plane is
+    // then not the binding one and the push changes nothing.)
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    const std::array<glm::vec3, 8> slice = projection.get_frustum_corners(-1.0f, -10.0f);
+
+    const auto cascades = build_view_cascades({slice, slice}, 1024.0f, glm::quat(1.0f, 0.0f, 0.0f, 0.0f), glm::mat4(1.0f));
+    ASSERT_EQ(cascades.size(), 2u);
+
+    // One frustum per cascade, from that cascade's clip-from-world.
+    const auto frusta = directional_cascade_frusta(cascades);
+    ASSERT_EQ(frusta.size(), 2u);
+    EXPECT_EQ(frusta[0].planes, Frustum::from_clip_from_world(cascades[0].clip_from_world).planes);
+    EXPECT_EQ(frusta[1].planes, Frustum::from_clip_from_world(cascades[1].clip_from_world).planes);
+
+    // A sphere between the light and the slice, well beyond the slice's near plane.
+    // It is *not* culled, and pushing the near plane to infinity does not free it
+    // either - which is the real behaviour and worth stating: Bevy's plane 4 is
+    // `row3 + row2`, the negative-one-to-one near plane, and under the zero-to-one
+    // convention (the one the engine uses) that half-space admits every point in
+    // front of the view. The true near bound would be `row3 - row2`, which Bevy does
+    // not compute, because the GPU clips there anyway. So the push is faithful and
+    // inert: it changes the plane and culls nothing.
+    const Sphere in_front_of_slice{.center = glm::vec3(0.0f, 0.0f, -0.5f), .radius = 0.001f};
+    const Frustum pushed = directional_view_frustum(frusta[0]);
+    EXPECT_TRUE(frusta[0].intersects_sphere(in_front_of_slice))
+        << "the near plane slot does not bound this, under a zero-to-one projection";
+    EXPECT_TRUE(pushed.intersects_sphere(in_front_of_slice));
+
+    // Over a range of probes the two frusta agree exactly: the push removes no
+    // space, which is all the infinity distance can do.
+    for (int step = -12; step <= 12; ++step) {
+        const Sphere probe{.center = glm::vec3(0.0f, 0.0f, static_cast<float>(step) * 1.0f), .radius = 0.001f};
+        EXPECT_EQ(frusta[0].intersects_sphere(probe), pushed.intersects_sphere(probe))
+            << "the push changes no culling at z = " << probe.center.z;
+    }
+
+    // Everything else is untouched: the push changes one plane and leaves the rest.
+    for (std::size_t plane = 0; plane < frusta[0].planes.size(); ++plane) {
+        if (plane == Frustum::NEAR_PLANE_IDX) {
+            EXPECT_EQ(glm::vec3(pushed.planes[plane]), glm::vec3(frusta[0].planes[plane]))
+                << "the normal is kept";
+            EXPECT_FALSE(std::isfinite(pushed.planes[plane].w)) << "only the distance becomes infinite";
+        } else {
+            EXPECT_EQ(pushed.planes[plane], frusta[0].planes[plane]) << "plane " << plane << " is unchanged";
+        }
+    }
+    EXPECT_EQ(Frustum::NEAR_PLANE_IDX, 4u) << "Bevy's index for the near plane";
+}
+
 }  // namespace

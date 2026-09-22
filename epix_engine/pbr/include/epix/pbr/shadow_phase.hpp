@@ -294,4 +294,32 @@ EPIX_EXPORT inline std::array<camera::Frustum, POINT_LIGHT_CUBE_FACE_COUNT> poin
     return frusta;
 }
 
+/** @brief The frustum of each of a directional light's cascades (Bevy
+ *  `update_directional_light_frusta`, `bevy_light/src/directional_light.rs:228-240`):
+ *  one per cascade, straight from its clip-from-world, keyed by view. */
+EPIX_EXPORT inline std::vector<camera::Frustum> directional_cascade_frusta(const std::vector<Cascade>& cascades) {
+    std::vector<camera::Frustum> frusta;
+    frusta.reserve(cascades.size());
+    for (const Cascade& cascade : cascades) {
+        frusta.push_back(camera::Frustum::from_clip_from_world(cascade.clip_from_world));
+    }
+    return frusta;
+}
+
+/** @brief A cascade view's frustum with its near plane pushed to infinity (Bevy
+ *  `prepare_lights`, `render/light.rs:1565-1571`).
+ *
+ *  A cascade's projection is infinite, so its near plane must not cull what is in
+ *  front of the light: Bevy replaces the plane's distance with infinity, keeping
+ *  its normal and removing the bound. Without this, geometry between the light and
+ *  the cascade's near plane would be culled out of shadows it should cast - and the
+ *  cascade's own near plane is the light's, not the camera's. */
+EPIX_EXPORT inline camera::Frustum directional_view_frustum(const camera::Frustum& frustum) {
+    camera::Frustum pushed = frustum;
+    const glm::vec4 near_plane = pushed.planes[camera::Frustum::NEAR_PLANE_IDX];
+    pushed.planes[camera::Frustum::NEAR_PLANE_IDX] =
+        glm::vec4(glm::vec3(near_plane), std::numeric_limits<float>::infinity());
+    return pushed;
+}
+
 }  // namespace epix::pbr
