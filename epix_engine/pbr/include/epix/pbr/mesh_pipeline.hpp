@@ -306,4 +306,48 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_cap
     return defs;
 }
 
+/** @brief The mesh pipeline's primitive state (Bevy `MeshPipeline::specialize`,
+ *  `render/mesh.rs:2710-2715`): back-face culling and no depth clipping, with the
+ *  topology from the key so a mesh's primitive topology reaches the pipeline. */
+EPIX_EXPORT inline wgpu::PrimitiveState mesh_pipeline_primitive_state(
+    wgpu::PrimitiveTopology topology) {
+    wgpu::PrimitiveState state;
+    state.setTopology(topology).setCullMode(wgpu::CullMode::eBack).setUnclippedDepth(false);
+    return state;
+}
+
+/** @brief The mesh pipeline's depth state (Bevy `MeshPipeline::specialize`,
+ *  `render/mesh.rs:2716-2731`).
+ *
+ *  The compare is `GreaterEqual` because the engine renders with an infinite
+ *  reverse-Z projection: near is depth 1 and far is 0, so a fragment passes when it
+ *  is nearer than what is stored, which is the *opposite* of a conventional
+ *  `Less`-compare pipeline. Stencil is ignored with zero masks, and the depth bias is
+ *  zero - per-light bias is applied in the vertex transform, not here. */
+EPIX_EXPORT inline wgpu::DepthStencilState mesh_pipeline_depth_state(wgpu::TextureFormat format,
+                                                                    bool depth_write_enabled) {
+    wgpu::DepthStencilState state;
+    state.setFormat(format)
+        .setDepthWriteEnabled(depth_write_enabled ? wgpu::OptionalBool::eTrue : wgpu::OptionalBool::eFalse)
+        .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
+        .setStencilFront(wgpu::StencilFaceState{}.setCompare(wgpu::CompareFunction::eAlways))
+        .setStencilBack(wgpu::StencilFaceState{}.setCompare(wgpu::CompareFunction::eAlways))
+        .setStencilReadMask(0)
+        .setStencilWriteMask(0)
+        .setDepthBias(0)
+        .setDepthBiasSlopeScale(0.0f)
+        .setDepthBiasClamp(0.0f);
+    return state;
+}
+
+/** @brief The mesh pipeline's multisample state (Bevy `MeshPipeline::specialize`,
+ *  `render/mesh.rs:2732-2736`): the sample count from the key, the full sample mask,
+ *  and alpha-to-coverage only for the pass that asked for it. */
+EPIX_EXPORT inline wgpu::MultisampleState mesh_pipeline_multisample_state(std::uint32_t msaa_samples,
+                                                                         bool alpha_to_coverage_enabled) {
+    wgpu::MultisampleState state;
+    state.setCount(msaa_samples).setMask(0xFFFFFFFFu).setAlphaToCoverageEnabled(alpha_to_coverage_enabled);
+    return state;
+}
+
 }  // namespace epix::pbr

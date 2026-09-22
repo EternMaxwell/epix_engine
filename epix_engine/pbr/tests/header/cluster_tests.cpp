@@ -4379,4 +4379,44 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
     EXPECT_TRUE(specialize_mesh_capability_shader_defs(false, false, false, std::nullopt).empty());
 }
 
+/** @brief The mesh pipeline's fixed state: back-face culling, the reverse-Z depth
+ *  compare, an ignored stencil and a zero bias, and multisampling from the key (Bevy
+ *  `MeshPipeline::specialize`, `render/mesh.rs:2710-2736`). */
+TEST(Cluster, MeshPipelineFixedStateMatchesBevy) {
+    using epix::pbr::mesh_pipeline_depth_state;
+    using epix::pbr::mesh_pipeline_multisample_state;
+    using epix::pbr::mesh_pipeline_primitive_state;
+
+    // Back-face culling, with the topology the caller took from the key.
+    const auto primitive = mesh_pipeline_primitive_state(wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(primitive.cullMode, wgpu::CullMode::eBack);
+    EXPECT_EQ(primitive.topology, wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_FALSE(primitive.unclippedDepth);
+
+    // The reverse-Z compare, which is the pin worth having: a conventional pipeline
+    // would use Less, and using it here would invert every depth test.
+    const auto depth = mesh_pipeline_depth_state(wgpu::TextureFormat::eDepth32Float, true);
+    EXPECT_EQ(depth.depthCompare, wgpu::CompareFunction::eGreaterEqual)
+        << "near is depth 1 under the engine's infinite reverse-Z projection";
+    EXPECT_EQ(depth.format, wgpu::TextureFormat::eDepth32Float);
+    EXPECT_EQ(depth.depthWriteEnabled, wgpu::OptionalBool::eTrue);
+    EXPECT_EQ(depth.stencilReadMask, 0u);
+    EXPECT_EQ(depth.stencilWriteMask, 0u);
+    EXPECT_EQ(depth.depthBias, 0);
+    EXPECT_EQ(depth.depthBiasSlopeScale, 0.0f);
+    EXPECT_EQ(depth.depthBiasClamp, 0.0f);
+    // The transparent passes disable the depth write; everything else keeps it.
+    EXPECT_EQ(mesh_pipeline_depth_state(wgpu::TextureFormat::eDepth32Float, false).depthWriteEnabled,
+              wgpu::OptionalBool::eFalse);
+
+    // Multisampling follows the key, and alpha-to-coverage the pass.
+    const auto single = mesh_pipeline_multisample_state(1, false);
+    EXPECT_EQ(single.count, 1u);
+    EXPECT_EQ(single.mask, 0xFFFFFFFFu) << "every sample contributes";
+    EXPECT_FALSE(single.alphaToCoverageEnabled);
+    const auto coverage = mesh_pipeline_multisample_state(4, true);
+    EXPECT_EQ(coverage.count, 4u);
+    EXPECT_TRUE(coverage.alphaToCoverageEnabled);
+}
+
 }  // namespace
