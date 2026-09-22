@@ -2993,6 +2993,107 @@ TEST(Cluster, UpdatePointLightFrustaSystemRebuildsFrusta) {
     }
 }
 
+/** @brief Bevy's `orthonormalize`, `spot_light_world_from_view` and
+ *  `spot_light_clip_from_view` (`bevy_light/src/spot_light.rs:164-190`). The
+ *  basis is `Vec3::any_orthonormal_pair`'s construction, reproduced so the CPU
+ *  and the fragment shader agree. */
+TEST(Cluster, SpotLightBasisAndProjectionMatchBevy) {
+    using epix::pbr::orthonormalize;
+    using epix::pbr::spot_light_clip_from_view;
+    using epix::pbr::spot_light_world_from_view;
+
+    const std::array axes{glm::vec3(0.0f, 0.0f, 1.0f), glm::vec3(0.0f, 0.0f, -1.0f), glm::vec3(0.6f, 0.0f, 0.8f),
+                          glm::normalize(glm::vec3(-0.3f, 0.4f, 0.866f)), glm::normalize(glm::vec3(1.0f, 1.0f, -1.0f))};
+    for (const glm::vec3 axis : axes) {
+        const glm::mat3 basis = orthonormalize(axis);
+        // The third column is the axis that was passed in, unit-length by contract.
+        EXPECT_NEAR(glm::length(basis[2] - axis), 0.0f, 1e-5f);
+        EXPECT_NEAR(glm::length(basis[0]), 1.0f, 1e-4f);
+        EXPECT_NEAR(glm::length(basis[1]), 1.0f, 1e-4f);
+        EXPECT_NEAR(glm::dot(basis[0], basis[1]), 0.0f, 1e-4f);
+        EXPECT_NEAR(glm::dot(basis[0], basis[2]), 0.0f, 1e-4f);
+        EXPECT_NEAR(glm::dot(basis[1], basis[2]), 0.0f, 1e-4f);
+        // Right-handed: x cross y is z.
+        EXPECT_NEAR(glm::length(glm::cross(basis[0], basis[1]) - basis[2]), 0.0f, 1e-4f);
+    }
+
+    // The light's translation is placed without its scale, which is what keeps the
+    // shadow view from scaling the light's radius and range.
+    const glm::mat4 scaled = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 2.0f, 3.0f)) *
+                             glm::scale(glm::mat4(1.0f), glm::vec3(4.0f, 4.0f, 4.0f));
+    const glm::mat4 world_from_view =
+        spot_light_world_from_view(epix::transform::GlobalTransform{scaled});
+    EXPECT_EQ(glm::vec3(world_from_view[3]), glm::vec3(1.0f, 2.0f, 3.0f));
+    EXPECT_NEAR(glm::length(glm::vec3(world_from_view[0])), 1.0f, 1e-5f)
+        << "the basis columns stay unit-length under a scaled light";
+    EXPECT_EQ(glm::vec3(world_from_view[2]), glm::vec3(0.0f, 0.0f, 1.0f));
+
+    // The spot's field of view is twice the angle from its centre to the outer edge.
+    const float outer_angle = 0.6f;
+    const float near_z      = 0.1f;
+    EXPECT_EQ(spot_light_clip_from_view(outer_angle, near_z),
+              epix::camera::perspective_infinite_reverse_rh(outer_angle * 2.0f, 1.0f, near_z));
+}
+
+/** @brief `update_spot_light_frusta` writes a valid cone for a shadow-casting,
+ *  clustered spot light and leaves every other light alone (Bevy
+ *  `spot_light.rs:204-237`). Until it runs, a spot light culls meshes against
+ *  the default `Frustum`, which contains nothing. */
+TEST(Cluster, UpdateSpotLightFrustaRebuildsFrusta) {
+    using epix::pbr::GlobalVisibleClusterableObjects;
+    using epix::pbr::SpotLight;
+    using epix::pbr::update_spot_light_frusta;
+
+    const float range      = 20.0f;
+    const float outer      = glm::radians(45.0f);
+    const auto light_at    = glm::vec3(2.0f, -1.0f, 4.0f);
+    const auto transform   = glm::translate(glm::mat4(1.0f), light_at);
+
+    const auto run_with = [&](bool shadows_enabled, bool clustered) {
+        epix::app::App app = epix::app::App::create();
+        SpotLight light;
+        light.shadows_enabled = shadows_enabled;
+        light.outer_angle     = outer;
+        light.range           = range;
+        const auto entity     = app.world_mut()
+                                    .spawn(epix::transform::GlobalTransform{transform}, light,
+                                           epix::camera::Frustum{})
+                                    .id();
+        app.world_mut().insert_resource(
+            GlobalVisibleClusterableObjects{.entities = clustered ? std::unordered_set<epix::ecs::Entity>{entity}
+                                                                 : std::unordered_set<epix::ecs::Entity>{}});
+        app.add_systems(epix::app::Update, epix::ecs::into(update_spot_light_frusta));
+        app.update();
+        return app.world_mut().entity(entity).get<epix::camera::Frustum>()->get();
+    };
+
+    const auto frustum = run_with(true, true);
+    EXPECT_NE(frustum.planes, epix::camera::Frustum{}.planes)
+        << "the light no longer carries a default frustum";
+
+    // Inside the cone: at the light, and half-way down the axis. The cone opens
+    // along the light's forward direction, which is the negation of `back()` - so
+    // -Z for an unrotated transform, as the custom far plane's placement shows.
+    EXPECT_TRUE(frustum.intersects_sphere(epix::camera::Sphere{.center = light_at, .radius = 0.01f}));
+    EXPECT_TRUE(frustum.intersects_sphere(
+        epix::camera::Sphere{.center = light_at + glm::vec3(0.0f, 0.0f, -range * 0.5f), .radius = 0.01f}))
+        << "the cone opens along the light's forward axis";
+
+    // Outside the cone: 60 degrees off the axis at the same distance.
+    const float off_axis = range * std::tan(glm::radians(60.0f));
+    EXPECT_FALSE(frustum.intersects_sphere(
+        epix::camera::Sphere{.center = light_at + glm::vec3(off_axis, 0.0f, -range), .radius = 0.01f}))
+        << "the cone is bounded at twice the outer angle";
+
+    // Bounded at `range` along the axis, which is what the custom far plane is for.
+    EXPECT_FALSE(frustum.intersects_sphere(
+        epix::camera::Sphere{.center = light_at + glm::vec3(0.0f, 0.0f, -(range + 1.0f)), .radius = 0.01f}));
+
+    // A light without shadows, or in no cluster, keeps the default frustum.
+    EXPECT_EQ(run_with(false, true).planes, epix::camera::Frustum{}.planes) << "no shadows, no frusta";
+    EXPECT_EQ(run_with(true, false).planes, epix::camera::Frustum{}.planes) << "not clustered, nothing to cull for";
+}
+
 /** @brief The cascade builder fills a cascades map per active view, and the clear
  *  system empties it (Bevy `cascade.rs:186-253`). */
 TEST(Cluster, DirectionalCascadeSystemsBuildAndClear) {

@@ -43,6 +43,37 @@ void update_point_light_frusta(
     }
 }
 
+void update_spot_light_frusta(
+    ecs::Res<GlobalVisibleClusterableObjects> global_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
+                         ecs::Mut<::epix::camera::Frustum>>,
+               ecs::Filter<ecs::Or<ecs::Modified<::epix::transform::GlobalTransform>, ecs::Modified<SpotLight>>>>
+        lights) {
+    // Bevy `update_spot_light_frusta` (bevy_light/src/spot_light.rs:204-237). The
+    // change filter is in the query, as Bevy's is, so a light that neither moved
+    // nor changed keeps the frustum it has.
+    const auto& clustered = global_lights.get().entities;
+
+    for (auto&& [entity, transform, spot_light, frustum] : lights.iter()) {
+        // A light that casts no shadows needs no frusta, and one in no cluster is
+        // culled for no view.
+        if (!spot_light.shadows_enabled || !clustered.contains(entity)) continue;
+
+        // Scale is deliberately not applied: the shadow view must not scale the
+        // light's radius and range. The backward axis is the normalised third
+        // column, as in the point-light system.
+        const glm::vec3 view_backward = glm::normalize(glm::vec3(transform.matrix[2]));
+
+        const glm::mat4 world_from_view = spot_light_world_from_view(transform);
+        const glm::mat4 clip_from_view =
+            spot_light_clip_from_view(spot_light.outer_angle, spot_light.shadow_map_near_z);
+        const glm::mat4 clip_from_world = clip_from_view * glm::inverse(world_from_view);
+
+        *frustum = ::epix::camera::Frustum::from_clip_from_world_custom_far(
+            clip_from_world, glm::vec3(transform.matrix[3]), view_backward, spot_light.range);
+    }
+}
+
 void update_directional_light_frusta(
     ecs::Query<ecs::Item<const Cascades&, const DirectionalLight&, const ::epix::camera::ViewVisibility&,
                          ecs::Mut<::epix::camera::CascadesFrusta>>,

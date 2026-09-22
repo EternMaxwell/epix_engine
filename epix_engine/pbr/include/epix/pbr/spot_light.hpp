@@ -1,7 +1,10 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <cmath>
+#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
 #endif
@@ -58,5 +61,42 @@ EPIX_EXPORT struct SpotLight {
     /** @brief Bevy's `SpotLight::DEFAULT_SHADOW_MAP_NEAR_Z` (`:131`). */
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_MAP_NEAR_Z = 0.1f;
 };
+
+/** @brief A right-handed orthonormal basis from a unit Z vector (Bevy
+ *  `orthonormalize`, `bevy_light/src/spot_light.rs:164-175`).
+ *
+ *  Bevy reproduces the fragment shader's construction here on purpose, so the
+ *  CPU and GPU bases cannot drift apart if glam's own helper changes; the same
+ *  arithmetic is written out for the same reason. */
+EPIX_EXPORT inline glm::mat3 orthonormalize(glm::vec3 z_basis) noexcept {
+    const float sign = std::copysign(1.0f, z_basis.z);
+    const float a    = -1.0f / (sign + z_basis.z);
+    const float b    = z_basis.x * z_basis.y * a;
+    const glm::vec3 x_basis{1.0f + sign * z_basis.x * z_basis.x * a, sign * b, -sign * z_basis.x};
+    const glm::vec3 y_basis{b, sign + z_basis.y * z_basis.y * a, -z_basis.y};
+    return glm::mat3{x_basis, y_basis, z_basis};
+}
+
+/** @brief The orthonormal basis a spot light's shadow view is built from (Bevy
+ *  `spot_light_world_from_view`, `bevy_light/src/spot_light.rs:179-185`).
+ *
+ *  `orthonormalize` applied to the light's backward axis - Bevy's
+ *  `transform.back()`, which is the normalised local +Z column of Epix's
+ *  matrix-only `GlobalTransform` - placed at the light's translation. Scale is
+ *  deliberately not applied, as in Bevy. */
+EPIX_EXPORT inline glm::mat4 spot_light_world_from_view(const ::epix::transform::GlobalTransform& transform) noexcept {
+    const glm::vec3 fwd_dir = glm::normalize(glm::vec3(transform.matrix[2]));
+    glm::mat4 world_from_view{orthonormalize(fwd_dir)};
+    world_from_view[3] = glm::vec4(glm::vec3(transform.matrix[3]), 1.0f);
+    return world_from_view;
+}
+
+/** @brief The projection a spot light's shadow view uses (Bevy
+ *  `spot_light_clip_from_view`, `bevy_light/src/spot_light.rs:187-190`): the
+ *  spot's field of view is **twice** the angle from its centre to the outer
+ *  edge, with a square aspect and the light's shadow map near plane. */
+EPIX_EXPORT inline glm::mat4 spot_light_clip_from_view(float angle, float near_z) {
+    return camera::perspective_infinite_reverse_rh(angle * 2.0f, 1.0f, near_z);
+}
 
 }  // namespace epix::pbr

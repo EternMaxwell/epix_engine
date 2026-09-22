@@ -35,6 +35,24 @@ EPIX_EXPORT void update_point_light_frusta(
                          ecs::Mut<::epix::camera::CubemapFrusta>>>
         lights);
 
+/** @brief Rebuild the frustum of every spot light that needs it (Bevy
+ *  `update_spot_light_frusta`, `bevy_light/src/spot_light.rs:204-237`).
+ *
+ *  The cone is built from the light's backward axis, its outer angle and its
+ *  shadow map near plane, and the far side is bounded at the light's `range`.
+ *  Like the point-light system this only runs for a light that casts shadows and
+ *  is in some view's cluster set, and Bevy's change filter - a modified
+ *  `GlobalTransform` or `SpotLight` - is expressed in the query.
+ *
+ *  Without this a spot light keeps the default, never-valid `Frustum` that
+ *  `check_point_light_mesh_visibility` culls against. */
+EPIX_EXPORT void update_spot_light_frusta(
+    ecs::Res<GlobalVisibleClusterableObjects> global_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
+                         ecs::Mut<::epix::camera::Frustum>>,
+               ecs::Filter<ecs::Or<ecs::Modified<::epix::transform::GlobalTransform>, ecs::Modified<SpotLight>>>>
+        lights);
+
 /** @brief Rebuild the cascade frusta of every directional light that needs it
  *  (Bevy `update_directional_light_frusta`,
  *  `bevy_light/src/directional_light.rs:206-241`).
