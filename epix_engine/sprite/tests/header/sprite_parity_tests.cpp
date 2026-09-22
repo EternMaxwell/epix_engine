@@ -53,7 +53,7 @@ TEST(SpriteImageMode, HelpersMatchBevy) {
 }
 
 TEST(BorderRect, ConstructorsAndArithmeticMatchBevy) {
-    EXPECT_EQ(sprite::BorderRect::zero(), sprite::BorderRect::all(0.0f));
+    EXPECT_EQ(sprite::BorderRect::ZERO, sprite::BorderRect::all(0.0f));
     EXPECT_EQ(sprite::BorderRect::axes(2.0f, 3.0f),
               (sprite::BorderRect{glm::vec2(2.0f, 3.0f), glm::vec2(2.0f, 3.0f)}));
 

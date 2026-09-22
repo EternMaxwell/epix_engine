@@ -7,6 +7,8 @@
 #include <cmath>
 
 namespace epix::sprite {
+const BorderRect BorderRect::ZERO{glm::vec2(0.0f), glm::vec2(0.0f)};
+
 namespace {
 using Corners = std::array<TextureSlice, 4>;
 

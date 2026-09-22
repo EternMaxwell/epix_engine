@@ -18,7 +18,11 @@ struct BorderRect {
     glm::vec2 min_inset{0.0f};
     glm::vec2 max_inset{0.0f};
 
-    static constexpr BorderRect zero() noexcept { return all(0.0f); }
+    /** @brief The zero border (Bevy `BorderRect::ZERO`).
+     *
+     *  Defined out of class like `Anchor`'s constants: a class is not complete
+     *  inside a static data member's initializer. */
+    static const BorderRect ZERO;
     static constexpr BorderRect all(float inset) noexcept {
         return BorderRect{glm::vec2(inset), glm::vec2(inset)};
     }
