@@ -415,7 +415,7 @@ EPIX_EXPORT namespace epix::sprite_render {
                                 ecs::Filter<ecs::Without<render::CustomRendered>>>> sprites,
         app::Extract<ecs::Res<assets::Assets<image::TextureAtlasLayout>>> atlases);
 
-    void queue_sprites_2d(
+    void queue_sprites(
         ecs::Local<std::unordered_set<std::uint32_t>> view_entities,
         ecs::Query<ecs::Item<const render::view::RenderVisibleEntities&, const render::view::ExtractedView&,
                              const render::view::Msaa&, ecs::Opt<const core_graph::Tonemapping&>,

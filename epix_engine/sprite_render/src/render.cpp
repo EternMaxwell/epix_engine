@@ -442,7 +442,7 @@ void sprite_render::extract_sprites(ResMut<ExtractedSprites> extracted_sprites,
     }
 }
 
-void sprite_render::queue_sprites_2d(
+void sprite_render::queue_sprites(
     Local<std::unordered_set<std::uint32_t>> view_entities,
     Query<Item<const render::view::RenderVisibleEntities&,
                const render::view::ExtractedView&,
@@ -744,7 +744,7 @@ void SpriteRenderPlugin::ready(App& app) {
                      into(sprite_render::extract_sprite_events).set_name("extract sprite image events"))
         .add_systems(
             render::Render,
-            into(sprite_render::queue_sprites_2d).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
+            into(sprite_render::queue_sprites).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
         .add_systems(
             render::Render,
             into(sprite_render::prepare_sprite_image_bind_groups, sprite_render::prepare_sprite_view_bind_groups)
