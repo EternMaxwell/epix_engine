@@ -1249,4 +1249,114 @@ EPIX_EXPORT inline std::pair<glm::uvec3, glm::uvec3> object_cluster_range(glm::u
     return {glm::min(min_cluster, max_cluster), glm::max(min_cluster, max_cluster)};
 }
 
+/** @brief The per-view data the assignment loop needs (Bevy keeps these as locals
+ *  inside `assign_objects_to_clusters`, built once per view before the object
+ *  loop). */
+EPIX_EXPORT struct ViewClusterAssignment {
+    glm::uvec3 dimensions{};
+    glm::vec2 tile_size{};
+    glm::vec2 screen_size{};
+    glm::vec2 cluster_factors{};
+    glm::mat4 view_from_world{1.0f};
+    glm::mat4 view_from_clip{1.0f};
+    glm::mat4 clip_from_view{1.0f};
+    /** @brief The largest component of the view's scale, which bounds an object's
+     *  extent under a non-uniform view. */
+    float view_from_world_scale_max = 1.0f;
+    bool is_orthographic = false;
+    float first_slice_depth = 0.0f;
+    float far_z = 0.0f;
+    /** @brief `dimensions + 1` planes per axis, bounding each slice. */
+    std::vector<camera::HalfSpace> x_planes;
+    std::vector<camera::HalfSpace> y_planes;
+    std::vector<camera::HalfSpace> z_planes;
+};
+
+/** @brief Assign one object to the clusters of one view (Bevy
+ *  `assign_objects_to_clusters`, `assign.rs:540-840`).
+ *
+ *  Returns false when the object's sphere misses the view frustum entirely, in
+ *  which case nothing was assigned and the caller should not record the object as
+ *  visible to that view - Bevy adds it to the global and per-view visible sets up
+ *  there, behind the same test, with a note that an object intersecting the frustum
+ *  must therefore be visible.
+ *
+ *  The shape of the rest is: the object's bounds in cluster space give a cluster
+ *  range; its view-space sphere and the cluster it centres in drive the iterative
+ *  refinement, which walks each (z, y) cell and returns the x clusters the refined
+ *  sphere reaches; and every reached cluster gets the object. Spot lights are the
+ *  exception - each cluster they reach is tested against the light's cone first,
+ *  using that cluster's bounding sphere, which is why the cache exists. */
+EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleClusterableObjects>& clusters,
+                                                      const ViewClusterAssignment& view,
+                                                      const camera::Frustum& view_frustum,
+                                                      std::vector<std::optional<camera::Sphere>>& cluster_spheres,
+                                                      const ClusterableObjectAssignmentData& object) {
+    const camera::Sphere object_sphere = object.sphere();
+    if (!view_frustum.intersects_sphere(object_sphere, true)) return false;
+
+    const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(
+        view.view_from_world, glm::vec3(view.view_from_world_scale_max), view.clip_from_view, object_sphere);
+    const auto [min_cluster, max_cluster] = object_cluster_range(
+        view.dimensions, view.cluster_factors, view.is_orthographic, aabb_min, aabb_max);
+
+    const camera::Sphere view_sphere =
+        view_space_object_sphere(view.view_from_world, view.view_from_world_scale_max, object_sphere);
+
+    const bool is_spot_light = object.object_type.kind == ClusterableObjectType::Kind::SpotLight;
+    glm::vec3 light_direction{0.0f};
+    float angle_sin = 0.0f;
+    float angle_cos = 1.0f;
+    if (is_spot_light) {
+        // The cone's direction is the light's backward axis - the local +Z column of
+        // its transform - taken into view space.
+        light_direction = glm::normalize(
+            glm::vec3(view.view_from_world * glm::vec4(glm::vec3(object.transform[2]), 0.0f)));
+        angle_sin = std::sin(object.object_type.outer_angle);
+        angle_cos = std::cos(object.object_type.outer_angle);
+    }
+
+    const glm::vec4 center_clip = view.clip_from_view * glm::vec4(view_sphere.center, 1.0f);
+    const glm::vec3 center_ndc  = glm::vec3(center_clip) / center_clip.w;
+    const glm::uvec3 center_cluster = ndc_position_to_cluster(view.dimensions, view.cluster_factors,
+                                                             view.is_orthographic, center_ndc, view_sphere.center.z);
+    const auto [z_center, y_center] = cluster_center_coordinates(center_cluster, center_ndc, view.dimensions);
+
+    for (std::uint32_t z = min_cluster.z; z <= max_cluster.z; ++z) {
+        for (std::uint32_t y = min_cluster.y; y <= max_cluster.y; ++y) {
+            const ClusterXRange range = refine_sphere_and_scan_x(min_cluster, max_cluster, z, y, z_center, y_center,
+                                                                view_sphere, view.x_planes, view.y_planes,
+                                                                view.z_planes, view.is_orthographic);
+            if (!range.reached) continue;
+
+            if (!is_spot_light) {
+                // Every cluster the refined sphere reaches is affected.
+                insert_object_into_cluster_row(clusters, view.dimensions, y, z, range.min_x, range.max_x,
+                                               object.entity, object.object_type);
+                continue;
+            }
+
+            for (std::uint32_t x = range.min_x; x <= range.max_x; ++x) {
+                const std::size_t index = cluster_index(view.dimensions, x, y, z);
+                const camera::Sphere& cluster_sphere = cached_cluster_sphere(
+                    cluster_spheres, index,
+                    [&] {
+                        return cluster_bounding_sphere(compute_aabb_for_cluster(
+                            view.first_slice_depth, view.far_z, view.tile_size, view.screen_size, view.view_from_clip,
+                            view.is_orthographic, view.dimensions, glm::uvec3(x, y, z)));
+                    });
+
+                const SpotLightClusterCull cull =
+                    spot_light_cluster_cull(view_sphere.center, object.range * view.view_from_world_scale_max,
+                                            light_direction, angle_sin, angle_cos, cluster_sphere.center,
+                                            cluster_sphere.radius);
+                if (!cull.culled()) {
+                    insert_object_into_cluster(clusters[index], object.entity, object.object_type);
+                }
+            }
+        }
+    }
+    return true;
+}
+
 }  // namespace epix::pbr

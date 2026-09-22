@@ -3335,4 +3335,93 @@ TEST(Cluster, ViewSpaceSphereAndClusterRangeMatchBevy) {
     EXPECT_LT(min_cluster.y, max_cluster.y) << "the y flip would invert this pair unordered";
 }
 
+/** @brief The assignment loop puts an object into the clusters it reaches, culls it
+ *  entirely outside the view, and narrows a spot light by its cone (Bevy
+ *  `assign.rs:540-840`). */
+TEST(Cluster, AssignObjectToViewClustersMatchesBevy) {
+    using epix::pbr::assign_object_to_view_clusters;
+    using epix::pbr::ClusterableObjectAssignmentData;
+    using epix::pbr::ClusterableObjectType;
+    using epix::pbr::ViewClusterAssignment;
+    using epix::pbr::VisibleClusterableObjects;
+
+    const glm::uvec3 dimensions{8u, 8u, 8u};
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+
+    // A view at the origin looking down -Z with its clusters spread from 1 to 50.
+    const glm::mat4 view_from_world = glm::mat4(1.0f);
+    const glm::mat4 clip_from_view  = projection.get_clip_from_view();
+    const float first_slice = 1.0f;
+    const float far_z       = 50.0f;
+    const glm::vec2 tile{1.0f / 8.0f, 1.0f / 8.0f};
+
+    ViewClusterAssignment view;
+    view.dimensions                = dimensions;
+    view.tile_size                 = tile;
+    view.screen_size               = glm::vec2(64.0f, 64.0f);
+    view.cluster_factors           = epix::pbr::calculate_cluster_factors(projection.near_plane, far_z, 8.0f, false);
+    view.view_from_world           = view_from_world;
+    view.clip_from_view            = clip_from_view;
+    view.view_from_clip            = glm::inverse(clip_from_view);
+    view.is_orthographic           = false;
+    view.first_slice_depth         = first_slice;
+    view.far_z                     = far_z;
+    const auto xy_planes           = epix::pbr::perspective_cluster_xy_planes(view.view_from_clip, dimensions);
+    view.x_planes                  = xy_planes.first;
+    view.y_planes                  = xy_planes.second;
+    view.z_planes                  = epix::pbr::cluster_z_planes(first_slice, far_z, dimensions.z, false);
+    const auto frustum             = epix::camera::Frustum::from_clip_from_world(clip_from_view);
+
+    const auto count_assignments = [](const std::vector<VisibleClusterableObjects>& clusters) {
+        std::size_t total = 0;
+        for (const VisibleClusterableObjects& cluster : clusters) total += cluster.entities.size();
+        return total;
+    };
+    const auto make_object = [](ClusterableObjectType::Kind kind, glm::vec3 position, float range, float outer_angle) {
+        ClusterableObjectAssignmentData data;
+        data.entity     = epix::ecs::Entity::from_index(1);
+        data.transform  = glm::translate(glm::mat4(1.0f), position);
+        data.range      = range;
+        data.object_type = ClusterableObjectType{.kind = kind, .outer_angle = outer_angle};
+        return data;
+    };
+
+    const auto assign = [&](const ClusterableObjectAssignmentData& object) {
+        std::vector<VisibleClusterableObjects> clusters(8u * 8u * 8u);
+        std::vector<std::optional<epix::camera::Sphere>> cache(8u * 8u * 8u);
+        const bool in_view = assign_object_to_view_clusters(clusters, view, frustum, cache, object);
+        return std::pair{in_view, count_assignments(clusters)};
+    };
+
+    // A point light in front of the view reaches clusters; one behind it reaches
+    // none and is reported as outside.
+    const auto [point_in_view, point_clusters] =
+        assign(make_object(ClusterableObjectType::Kind::PointLight, glm::vec3(0.0f, 0.0f, -10.0f), 5.0f, 0.0f));
+    EXPECT_TRUE(point_in_view);
+    EXPECT_GT(point_clusters, 0u) << "a light in front of the view affects clusters";
+    const auto [point_behind, behind_clusters] =
+        assign(make_object(ClusterableObjectType::Kind::PointLight, glm::vec3(0.0f, 0.0f, 10.0f), 5.0f, 0.0f));
+    EXPECT_FALSE(point_behind) << "behind the view it is outside the frustum";
+    EXPECT_EQ(behind_clusters, 0u);
+
+    // A narrow spot light reaches fewer clusters than a wide one, which is the cone
+    // test doing its work.
+    const auto [narrow_in_view, narrow_clusters] = assign(
+        make_object(ClusterableObjectType::Kind::SpotLight, glm::vec3(0.0f, 0.0f, -10.0f), 20.0f, glm::radians(10.0f)));
+    const auto [wide_in_view, wide_clusters] = assign(
+        make_object(ClusterableObjectType::Kind::SpotLight, glm::vec3(0.0f, 0.0f, -10.0f), 20.0f, glm::radians(45.0f)));
+    EXPECT_TRUE(narrow_in_view);
+    EXPECT_TRUE(wide_in_view);
+    EXPECT_GT(wide_clusters, narrow_clusters) << "a 45-degree cone covers more clusters than a 10-degree one";
+
+    // A bigger range reaches more clusters than a smaller one.
+    const auto [small_in_view, small_clusters] =
+        assign(make_object(ClusterableObjectType::Kind::PointLight, glm::vec3(0.0f, 0.0f, -10.0f), 2.0f, 0.0f));
+    EXPECT_TRUE(small_in_view);
+    EXPECT_GT(point_clusters, small_clusters) << "a 5 unit range covers more than a 2 unit one";
+}
+
 }  // namespace
