@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -134,7 +135,11 @@ EPIX_EXPORT struct ClusterConfig {
         }
         const float aspect_ratio = static_cast<float>(screen_size.x) / static_cast<float>(screen_size.y);
         std::uint32_t slices     = z_slices;
-        if (total < slices) slices = total;
+        if (total < slices) {
+            // Bevy warns before clamping (cluster/mod.rs:257-260).
+            spdlog::warn("[pbr] ClusterConfig has more z-slices than total clusters!");
+            slices = total;
+        }
         const float per_layer = static_cast<float>(total) / static_cast<float>(slices);
 
         const float y_float = std::sqrt(per_layer / aspect_ratio);

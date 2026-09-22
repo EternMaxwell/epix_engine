@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -404,7 +405,11 @@ EPIX_EXPORT struct ViewClusterBindings {
     void push_offset_and_counts(std::size_t offset, const ClusterableObjectCounts& counts) {
         if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
             const std::size_t array_index = uniform_offsets_array_index(n_offsets);
-            if (array_index >= VIEW_CLUSTER_MAX_UNIFORM_ITEMS) return;  // Bevy warns and returns here
+            if (array_index >= VIEW_CLUSTER_MAX_UNIFORM_ITEMS) {
+                // Bevy warns and returns without counting the offset (cluster.rs:380-383).
+                spdlog::warn("[pbr] cluster offset and count out of bounds!");
+                return;
+            }
             const std::size_t component = uniform_offsets_component(n_offsets);
             uniform->cluster_offsets_and_counts.get_mut().data[array_index][component] =
                 pack_offset_and_counts(offset, counts.point_lights, counts.spot_lights);
@@ -537,7 +542,13 @@ EPIX_EXPORT inline ViewClusterBindings prepare_view_cluster_bindings(
         }
         const auto found = entity_to_index.find(record.entity);
         if (found == entity_to_index.end()) continue;
-        if (bindings.indices_count() >= VIEW_CLUSTER_MAX_INDICES && !supports_storage_buffers) break;
+        if (bindings.indices_count() >= VIEW_CLUSTER_MAX_INDICES && !supports_storage_buffers) {
+            // Bevy warns here, once per view that overflows (cluster.rs:317-325).
+            spdlog::warn(
+                "[pbr] Clusterable object index lists are full! The clusterable objects in the view are present in too "
+                "many clusters.");
+            break;
+        }
         bindings.push_index(found->second);
     }
     return bindings;

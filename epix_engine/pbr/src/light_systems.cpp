@@ -255,7 +255,10 @@ void assign_objects_to_clusters(
         auto limited = limit_clusterable_objects_for_uniform_buffer(std::move(objects), in_any_view,
                                                                     settings.max_uniform_buffer_clusterable_objects);
         if (limited.exceeded && !*warning_emitted) {
-            *warning_emitted = true;  // Bevy warns once that the limit was exceeded.
+            // Bevy's warning, emitted once per app (assign.rs:281-290).
+            spdlog::warn("[pbr] max_uniform_buffer_clusterable_objects ({}) exceeded",
+                         settings.max_uniform_buffer_clusterable_objects);
+            *warning_emitted = true;
         }
         objects = std::move(limited.objects);
     }

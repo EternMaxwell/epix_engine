@@ -19,7 +19,15 @@
 #include <epix/pbr/spot_light.hpp>
 #include <epix/pbr/volumetric.hpp>
 #include <gtest/gtest.h>
+#include <spdlog/sinks/base_sink.h>
+#include <spdlog/spdlog.h>
+#include <algorithm>
 #include <cstdint>
+#include <memory>
+#include <mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <vector>
 
 /** @brief The clustered-light GPU types match Bevy's layout and sizing
@@ -3063,6 +3071,114 @@ TEST(Cluster, SpotLightBasisAndProjectionMatchBevy) {
  *  clustered spot light and leaves every other light alone (Bevy
  *  `spot_light.rs:204-237`). Until it runs, a spot light culls meshes against
  *  the default `Frustum`, which contains nothing. */
+/** @brief Captures everything logged through spdlog while it is alive, so a
+ *  diagnostic Bevy emits can be asserted rather than assumed. */
+namespace {
+struct CapturingSink final : spdlog::sinks::base_sink<std::mutex> {
+    std::vector<std::string> messages;
+
+   protected:
+    void sink_it_(const spdlog::details::log_msg& message) override {
+        messages.emplace_back(message.payload.data(), message.payload.size());
+    }
+    void flush_() override {}
+};
+
+/** @brief Redirects the default logger's sinks for the lifetime of the object. */
+class LogCapture {
+   public:
+    LogCapture() : previous(spdlog::default_logger()->sinks()) {
+        sink = std::make_shared<CapturingSink>();
+        spdlog::default_logger()->sinks() = {sink};
+    }
+    ~LogCapture() { spdlog::default_logger()->sinks() = previous; }
+    LogCapture(const LogCapture&)            = delete;
+    LogCapture& operator=(const LogCapture&) = delete;
+
+    bool contains(std::string_view needle) const {
+        return std::ranges::any_of(messages(), [needle](const std::string& message) {
+            return message.find(needle) != std::string::npos;
+        });
+    }
+    std::size_t count_containing(std::string_view needle) const {
+        return static_cast<std::size_t>(std::ranges::count_if(messages(), [needle](const std::string& message) {
+            return message.find(needle) != std::string::npos;
+        }));
+    }
+    void clear() const { sink->messages.clear(); }
+
+   private:
+    const std::vector<std::string>& messages() const { return sink->messages; }
+
+    std::shared_ptr<CapturingSink> sink;
+    std::vector<spdlog::sink_ptr> previous;
+};
+}  // namespace
+
+/** @brief The diagnostics Bevy logs from the cluster code. Each one is a real
+ *  branch, not decoration: the z-slice clamp, the uniform offset overflow and the
+ *  index-list overflow all change what is written, and Bevy says so. */
+TEST(Cluster, ClusterDiagnosticsMatchBevy) {
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::ExtractedClusterableObjectElement;
+    using epix::pbr::ViewClusterBindings;
+    using epix::pbr::VIEW_CLUSTER_MAX_INDICES;
+    using epix::pbr::VIEW_CLUSTER_MAX_UNIFORM_ITEMS;
+    using epix::pbr::prepare_view_cluster_bindings;
+
+    const LogCapture capture;
+
+    // A FixedZ configuration with fewer total clusters than z-slices is clamped,
+    // and Bevy warns first (`cluster/mod.rs:257-260`).
+    ClusterConfig config;
+    config.kind     = ClusterConfig::Kind::FixedZ;
+    config.total    = 8;
+    config.z_slices = 24;
+    const auto dimensions = config.dimensions_for_screen_size({1920, 1080});
+    EXPECT_EQ(dimensions.z, 8u) << "the slice count is clamped to the total";
+    EXPECT_TRUE(capture.contains("ClusterConfig has more z-slices than total clusters!"));
+
+    // Pushing more offsets than the uniform list holds warns and drops the offset
+    // (`cluster.rs:380-383`).
+    capture.clear();
+    ViewClusterBindings bindings{wgpu::BufferBindingType::eUniform};
+    for (std::size_t index = 0; index < VIEW_CLUSTER_MAX_UNIFORM_ITEMS * 4 + 1; ++index) {
+        bindings.push_offset_and_counts(0, ClusterableObjectCounts{});
+    }
+    EXPECT_EQ(bindings.offsets_count(), VIEW_CLUSTER_MAX_UNIFORM_ITEMS * 4)
+        << "the overflowing offset is not counted";
+    EXPECT_TRUE(capture.contains("cluster offset and count out of bounds!"));
+
+    // Walking past the index-list limit stops the walk for the view with a
+    // warning, which only the uniform form has (`cluster.rs:317-325`).
+    capture.clear();
+    std::vector<ExtractedClusterableObjectElement> records;
+    records.reserve(VIEW_CLUSTER_MAX_INDICES + 1);
+    records.push_back(ExtractedClusterableObjectElement{.kind = ExtractedClusterableObjectElement::Kind::ClusterHeader});
+    for (std::size_t index = 0; index <= VIEW_CLUSTER_MAX_INDICES; ++index) {
+        ExtractedClusterableObjectElement record;
+        record.kind   = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity;
+        record.entity = epix::ecs::Entity::from_index(static_cast<std::uint32_t>(index));
+        records.push_back(record);
+    }
+    std::unordered_map<epix::ecs::Entity, std::size_t> entity_to_index;
+    for (std::size_t index = 0; index <= VIEW_CLUSTER_MAX_INDICES; ++index) {
+        entity_to_index.emplace(epix::ecs::Entity::from_index(static_cast<std::uint32_t>(index)), index);
+    }
+    const auto uniform_bindings =
+        prepare_view_cluster_bindings(records, entity_to_index, wgpu::BufferBindingType::eUniform, false);
+    EXPECT_EQ(uniform_bindings.indices_count(), VIEW_CLUSTER_MAX_INDICES);
+    EXPECT_TRUE(capture.contains("Clusterable object index lists are full!"));
+
+    // The storage form has no such limit, so it must not warn (`cluster.rs:317-319`).
+    capture.clear();
+    const auto storage_bindings =
+        prepare_view_cluster_bindings(records, entity_to_index, wgpu::BufferBindingType::eStorage, true);
+    EXPECT_EQ(storage_bindings.indices_count(), VIEW_CLUSTER_MAX_INDICES + 1);
+    EXPECT_FALSE(capture.contains("Clusterable object index lists are full!"));
+}
+
 /** @brief Bevy's `shrink_entities`: reclaim only when the capacity is more than
  *  twice the length, and then only to half the ratio, so a list that is already
  *  tight is left alone instead of reallocating every frame
