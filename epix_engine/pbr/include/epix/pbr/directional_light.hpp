@@ -52,7 +52,7 @@ EPIX_EXPORT struct DirectionalLight {
  *  (Bevy `DirectionalLightShadowMap`, `directional_light.rs:183-195`); `size` is
  *  the width and height of each cascade and defaults to 2048. Bevy requires it
  *  to be a power of two to avoid unstable cascade positioning, and
- *  `validated_shadow_map_size` rounds it up when it is not. */
+ *  `validate_shadow_map_size` rounds it up when it is not. */
 EPIX_EXPORT struct DirectionalLightShadowMap {
     std::size_t size = 2048;
 };
@@ -60,7 +60,7 @@ EPIX_EXPORT struct DirectionalLightShadowMap {
 /** @brief Round a shadow map size up to a power of two, as Bevy's
  *  `validate_shadow_map_size` does (`directional_light.rs:198-202`). Returns the
  *  size unchanged when it is already a power of two. */
-EPIX_EXPORT inline std::size_t validated_shadow_map_size(std::size_t size) {
+EPIX_EXPORT inline std::size_t validate_shadow_map_size(std::size_t size) {
     if (size == 0) return 1;
     std::size_t power_of_two = 1;
     while (power_of_two < size) power_of_two <<= 1;

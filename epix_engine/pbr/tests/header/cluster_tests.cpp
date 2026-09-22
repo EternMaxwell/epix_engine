@@ -238,7 +238,7 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
     using epix::pbr::DirectionalLightShadowMap;
     using epix::pbr::DirectionalLightTexture;
     using epix::pbr::light_consts::lux::AMBIENT_DAYLIGHT;
-    using epix::pbr::validated_shadow_map_size;
+    using epix::pbr::validate_shadow_map_size;
 
     const DirectionalLight light{};
     EXPECT_EQ(light.color, glm::vec4(1.0f, 1.0f, 1.0f, 1.0f));
@@ -253,9 +253,9 @@ TEST(Cluster, DirectionalLightMatchesBevyDefaults) {
 
     const DirectionalLightShadowMap shadow_map{};
     EXPECT_EQ(shadow_map.size, 2048u) << "the width and height of each cascade";
-    EXPECT_EQ(validated_shadow_map_size(2048), 2048u) << "a power of two is left alone";
-    EXPECT_EQ(validated_shadow_map_size(3000), 4096u) << "anything else rounds up";
-    EXPECT_EQ(validated_shadow_map_size(1), 1u);
+    EXPECT_EQ(validate_shadow_map_size(2048), 2048u) << "a power of two is left alone";
+    EXPECT_EQ(validate_shadow_map_size(3000), 4096u) << "anything else rounds up";
+    EXPECT_EQ(validate_shadow_map_size(1), 1u);
 
     const DirectionalLightTexture texture{};
     EXPECT_FALSE(texture.tiled) << "Bevy centres a single tile by default";
@@ -3248,7 +3248,7 @@ TEST(Cluster, CachedClusterSphereComputesOnce) {
  *  uses for a centre below the view while using nothing for one above it (Bevy
  *  `assign.rs:630-641`). */
 TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
-    using epix::pbr::cluster_center_coordinates;
+    using epix::pbr::ndc_position_to_cluster;
 
     const glm::uvec3 dimensions{16u, 9u, 24u};
     const glm::uvec3 coordinates{3u, 4u, 5u};
@@ -3256,7 +3256,7 @@ TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
     // Inside the view: both are the object's own cluster.
     {
         const auto [z_center, y_center] =
-            cluster_center_coordinates(coordinates, glm::vec3(0.0f, 0.0f, 0.5f), dimensions);
+            ndc_position_to_cluster(coordinates, glm::vec3(0.0f, 0.0f, 0.5f), dimensions);
         ASSERT_TRUE(z_center.has_value());
         ASSERT_TRUE(y_center.has_value());
         EXPECT_EQ(*z_center, 5u);
@@ -3266,10 +3266,10 @@ TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
     // z is kept up to and including the far plane, and dropped beyond it.
     {
         const auto [at_far, y_at_far] =
-            cluster_center_coordinates(coordinates, glm::vec3(0.0f, 0.0f, 1.0f), dimensions);
+            ndc_position_to_cluster(coordinates, glm::vec3(0.0f, 0.0f, 1.0f), dimensions);
         EXPECT_TRUE(at_far.has_value()) << "the far plane itself still counts";
         const auto [beyond, y_beyond] =
-            cluster_center_coordinates(coordinates, glm::vec3(0.0f, 0.0f, 1.0001f), dimensions);
+            ndc_position_to_cluster(coordinates, glm::vec3(0.0f, 0.0f, 1.0001f), dimensions);
         EXPECT_FALSE(beyond.has_value()) << "beyond the far plane there is no slice";
         EXPECT_EQ(y_at_far, y_beyond) << "and y is unaffected by z";
     }
@@ -3278,11 +3278,11 @@ TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
     // no real y can equal - so both mean "no slice holds the centre".
     {
         const auto [z_above, y_above] =
-            cluster_center_coordinates(coordinates, glm::vec3(0.0f, 1.5f, 0.5f), dimensions);
+            ndc_position_to_cluster(coordinates, glm::vec3(0.0f, 1.5f, 0.5f), dimensions);
         EXPECT_TRUE(z_above.has_value());
         EXPECT_FALSE(y_above.has_value()) << "above the view: nothing";
         const auto [z_below, y_below] =
-            cluster_center_coordinates(coordinates, glm::vec3(0.0f, -1.5f, 0.5f), dimensions);
+            ndc_position_to_cluster(coordinates, glm::vec3(0.0f, -1.5f, 0.5f), dimensions);
         EXPECT_TRUE(z_below.has_value());
         ASSERT_TRUE(y_below.has_value()) << "below the view: a value rather than nothing";
         EXPECT_EQ(*y_below, dimensions.y + 1u) << "and it is one past the last row";
@@ -3291,11 +3291,11 @@ TEST(Cluster, ClusterCenterCoordinatesMatchBevy) {
 
     // The boundaries are inclusive: exactly 1 is inside, exactly -1 is inside.
     {
-        const auto [z, y] = cluster_center_coordinates(coordinates, glm::vec3(0.0f, 1.0f, 0.5f), dimensions);
+        const auto [z, y] = ndc_position_to_cluster(coordinates, glm::vec3(0.0f, 1.0f, 0.5f), dimensions);
         EXPECT_TRUE(z.has_value());
         ASSERT_TRUE(y.has_value());
         EXPECT_EQ(*y, 4u) << "ndc y of exactly 1 is still in the view";
-        const auto [z_low, y_low] = cluster_center_coordinates(coordinates, glm::vec3(0.0f, -1.0f, 0.5f), dimensions);
+        const auto [z_low, y_low] = ndc_position_to_cluster(coordinates, glm::vec3(0.0f, -1.0f, 0.5f), dimensions);
         ASSERT_TRUE(y_low.has_value());
         EXPECT_EQ(*y_low, 4u) << "and so is exactly -1";
     }

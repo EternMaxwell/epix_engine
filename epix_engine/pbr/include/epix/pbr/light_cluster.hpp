@@ -1198,7 +1198,7 @@ EPIX_EXPORT inline const camera::Sphere& cached_cluster_sphere(std::vector<std::
  *  rather than a distinction. It is reproduced as written: choosing which form was
  *  intended would be a divergence, and this is the kind of thing that looks like a
  *  bug to "fix". */
-EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> cluster_center_coordinates(
+EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::uint32_t>> ndc_position_to_cluster(
     glm::uvec3 cluster_coordinates, glm::vec3 object_center_ndc, glm::uvec3 dimensions) {
     const std::optional<std::uint32_t> z_center =
         object_center_ndc.z <= 1.0f ? std::optional<std::uint32_t>{cluster_coordinates.z} : std::nullopt;
@@ -1320,7 +1320,7 @@ EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleCluste
     const glm::vec3 center_ndc  = glm::vec3(center_clip) / center_clip.w;
     const glm::uvec3 center_cluster = ndc_position_to_cluster(view.dimensions, view.cluster_factors,
                                                              view.is_orthographic, center_ndc, view_sphere.center.z);
-    const auto [z_center, y_center] = cluster_center_coordinates(center_cluster, center_ndc, view.dimensions);
+    const auto [z_center, y_center] = ndc_position_to_cluster(center_cluster, center_ndc, view.dimensions);
 
     for (std::uint32_t z = min_cluster.z; z <= max_cluster.z; ++z) {
         for (std::uint32_t y = min_cluster.y; y <= max_cluster.y; ++y) {
