@@ -4665,4 +4665,35 @@ TEST(Cluster, EnvironmentMapUniformMatchesBevy) {
                                     epix::render::render_resource::ShaderTypeInfo<EnvironmentMapUniform>>);
 }
 
+/** @brief One light probe as the shader reads it, including the std140 padding that
+ *  keeps its size equal to its array stride (Bevy `RenderLightProbe`,
+ *  `light_probe/mod.rs:64-86`). */
+TEST(Cluster, RenderLightProbeLayoutMatchesBevy) {
+    using epix::pbr::RenderLightProbe;
+
+    // The shader reads these by offset, so the size is the assertion that matters: the
+    // fields add up to 60 but std140 pads a struct holding a vec4 array to 16.
+    EXPECT_EQ(sizeof(RenderLightProbe), 64u);
+    EXPECT_EQ(offsetof(RenderLightProbe, light_from_world_transposed), 0u);
+    EXPECT_EQ(offsetof(RenderLightProbe, texture_index), 48u);
+    EXPECT_EQ(offsetof(RenderLightProbe, affects_lightmapped_mesh_diffuse), 56u);
+    EXPECT_EQ(offsetof(RenderLightProbe, tail_padding), 60u);
+
+    // The transform is three rows, not three columns: the shader transforms fragments
+    // into the probe's space.
+    EXPECT_EQ(sizeof(RenderLightProbe::light_from_world_transposed), 48u);
+    const RenderLightProbe defaults;
+    for (const glm::vec4& row : defaults.light_from_world_transposed) {
+        EXPECT_EQ(row, glm::vec4(0.0f)) << "Bevy's ShaderType default is zeroed, unlike the identity a Transform would give";
+    }
+    EXPECT_EQ(defaults.texture_index, 0);
+    EXPECT_FLOAT_EQ(defaults.intensity, 0.0f);
+    EXPECT_EQ(defaults.affects_lightmapped_mesh_diffuse, 0u);
+
+    // The two constants the uniform's array sizing follows.
+    EXPECT_EQ(epix::pbr::MAX_VIEW_LIGHT_PROBES, 8u)
+        << "small because the shader linearly searches the list per fragment";
+    EXPECT_EQ(epix::pbr::STANDARD_MATERIAL_FRAGMENT_SHADER_MIN_TEXTURE_BINDINGS, 16u);
+}
+
 }  // namespace
