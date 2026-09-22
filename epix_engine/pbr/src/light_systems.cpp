@@ -1,5 +1,6 @@
 #include <epix/pbr/light_systems.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <glm/glm.hpp>
 // `compMax` is a gtx extension, and glm guards those behind this define.
@@ -291,6 +292,122 @@ void assign_objects_to_clusters(
                 (*global_clusterable_objects).entities.insert(object.entity);
                 if (visible.has_value()) visible->get().entities.push_back(object.entity);
             }
+        }
+    }
+}
+
+namespace {
+/** @brief Whether any view's visible set names this light (the union Bevy's
+ *  `checked_lights` walks). */
+bool light_is_visible_to_any_view(
+    const ecs::Query<ecs::Item<const VisibleClusterableObjects&>>& visible_lights, ecs::Entity light) {
+    for (auto&& [visible] : visible_lights.iter()) {
+        // The per-view list is a vector in Bevy and here.
+        if (std::find(visible.entities.begin(), visible.entities.end(), light) != visible.entities.end()) return true;
+    }
+    return false;
+}
+
+::epix::camera::RenderLayers layers_or_default(
+    const std::optional<std::reference_wrapper<const ::epix::camera::RenderLayers>>& layers) {
+    return layers.has_value() ? layers->get() : ::epix::camera::RenderLayers::layer(0);
+}
+}  // namespace
+
+void check_point_light_mesh_visibility(
+    ecs::Query<ecs::Item<const VisibleClusterableObjects&>> visible_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const PointLight&, const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::CubemapFrusta&, ::epix::camera::CubemapVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
+        point_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const SpotLight&, const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Frustum&, ::epix::camera::VisibleMeshEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
+        spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&, ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
+        visible_entities,
+    std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges) {
+    using ::epix::camera::Aabb;
+    using ::epix::camera::RenderLayers;
+    using ::epix::camera::Sphere;
+
+    const ::epix::camera::VisibleEntityRanges* ranges =
+        visible_entity_ranges.has_value() ? &visible_entity_ranges->get() : nullptr;
+
+    for (auto&& [light_entity, point_light, transform, cubemap_frusta, cubemap_visible, maybe_layers] :
+         point_lights.iter()) {
+        if (!light_is_visible_to_any_view(visible_lights, light_entity)) continue;
+
+        // Clear first, and leave empty when shadows are off: a light without shadow
+        // mapping must have no visible entities rather than stale ones.
+        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) face.entities.clear();
+        if (!point_light.shadows_enabled) continue;
+
+        const RenderLayers light_layers = layers_or_default(maybe_layers);
+        const Sphere light_sphere{.center = glm::vec3(transform.matrix[3]), .radius = point_light.range};
+
+        for (auto&& [mesh_entity, inherited, visibility, maybe_mesh_layers, maybe_aabb, maybe_transform, maybe_range,
+                     maybe_no_culling, maybe_mesh3d, maybe_not_shadow_caster, maybe_directional_light] :
+             visible_entities.iter()) {
+            if (!inherited.get()) continue;
+            // Bevy's query filters, as presence tests: it asks for meshes With<Mesh3d>,
+            // Without<NotShadowCaster> and Without<DirectionalLight>.
+            if (!maybe_mesh3d.has_value()) continue;
+            if (maybe_not_shadow_caster.has_value()) continue;
+            if (maybe_directional_light.has_value()) continue;
+            if (!light_layers.intersects(layers_or_default(maybe_mesh_layers))) continue;
+            if (maybe_range.has_value() && ranges != nullptr && !ranges->entity_is_in_range_of_any_view(mesh_entity)) {
+                continue;
+            }
+
+            const std::optional<Aabb> aabb = maybe_aabb.has_value() ? std::optional<Aabb>{maybe_aabb->get()} : std::nullopt;
+            const std::optional<glm::mat4> world_from_local =
+                maybe_transform.has_value() ? std::optional<glm::mat4>{maybe_transform->get().matrix} : std::nullopt;
+
+            const auto faces = point_light_face_visibility(light_sphere, cubemap_frusta.frusta, aabb, world_from_local,
+                                                          maybe_no_culling.has_value());
+            for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
+                if (!faces[face]) continue;
+                visibility.set_visible();
+                cubemap_visible.data[face].entities.push_back(mesh_entity);
+            }
+        }
+    }
+
+    for (auto&& [light_entity, spot_light, transform, frustum, visible_meshes, maybe_layers] : spot_lights.iter()) {
+        if (!light_is_visible_to_any_view(visible_lights, light_entity)) continue;
+
+        visible_meshes.entities.clear();
+        if (!spot_light.shadows_enabled) continue;
+
+        const RenderLayers light_layers = layers_or_default(maybe_layers);
+        const Sphere light_sphere{.center = glm::vec3(transform.matrix[3]), .radius = spot_light.range};
+
+        for (auto&& [mesh_entity, inherited, visibility, maybe_mesh_layers, maybe_aabb, maybe_transform, maybe_range,
+                     maybe_no_culling, maybe_mesh3d, maybe_not_shadow_caster, maybe_directional_light] :
+             visible_entities.iter()) {
+            if (!inherited.get()) continue;
+            // Bevy's query filters, as presence tests: it asks for meshes With<Mesh3d>,
+            // Without<NotShadowCaster> and Without<DirectionalLight>.
+            if (!maybe_mesh3d.has_value()) continue;
+            if (maybe_not_shadow_caster.has_value()) continue;
+            if (maybe_directional_light.has_value()) continue;
+            if (!light_layers.intersects(layers_or_default(maybe_mesh_layers))) continue;
+            if (maybe_range.has_value() && ranges != nullptr && !ranges->entity_is_in_range_of_any_view(mesh_entity)) {
+                continue;
+            }
+
+            const std::optional<Aabb> aabb = maybe_aabb.has_value() ? std::optional<Aabb>{maybe_aabb->get()} : std::nullopt;
+            const std::optional<glm::mat4> world_from_local =
+                maybe_transform.has_value() ? std::optional<glm::mat4>{maybe_transform->get().matrix} : std::nullopt;
+
+            if (!spot_light_mesh_visible(light_sphere, frustum, aabb, world_from_local, maybe_no_culling.has_value())) continue;
+            visibility.set_visible();
+            visible_meshes.entities.push_back(mesh_entity);
         }
     }
 }

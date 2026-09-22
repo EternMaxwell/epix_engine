@@ -11,6 +11,8 @@
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/light_cluster.hpp>
+#include <epix/pbr/light_markers.hpp>
+#include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
@@ -118,5 +120,46 @@ EPIX_EXPORT void assign_objects_to_clusters(
     ecs::Local<std::vector<std::optional<::epix::camera::Sphere>>> cluster_spheres,
     ecs::Local<bool> warning_emitted,
     std::optional<ecs::Res<GlobalClusterSettings>> global_cluster_settings);
+
+/** @brief Mark the meshes each visible light can see, for shadow mapping (Bevy
+ *  `check_point_light_mesh_visibility`, `bevy_light/src/lib.rs:466-686`).
+ *
+ *  Despite the name this handles spot lights too, as Bevy's does: both are point-like
+ *  lights whose shadow maps are built from what they can see, and the two branches
+ *  differ only in six cube faces versus one cone.
+ *
+ *  For each light it clears the visible lists, skips the light entirely when shadows
+ *  are disabled - a light without shadow mapping must have no visible entities, so its
+ *  lists stay empty rather than stale - and then walks the candidate meshes, which
+ *  the query has already filtered to those carrying a mesh and not carrying
+ *  `NotShadowCaster`. A candidate is skipped when it is not inherited-visible, when
+ *  the light's layers do not intersect the mesh's, or when the visibility range says
+ *  it is in range of no view. What survives is offered to
+ *  `point_light_face_visibility` or `spot_light_mesh_visible`, and a mesh visible to a
+ *  face is marked visible and recorded for it.
+ *
+ *  Bevy iterates the entities of the views' `VisibleClusterableObjects` components and
+ *  looks each up, deduplicating with a local set. The same set is used here to decide
+ *  whether a light is visible to any view at all, which visits each light once instead
+ *  of once per view - the same result, since the set is a union, without needing a
+ *  by-entity query lookup. Bevy's parallel per-face queues are plain vectors here;
+ *  again the same result, without the parallel-for machinery. */
+EPIX_EXPORT void check_point_light_mesh_visibility(
+    ecs::Query<ecs::Item<const VisibleClusterableObjects&>> visible_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const PointLight&, const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::CubemapFrusta&, ::epix::camera::CubemapVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
+        point_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const SpotLight&, const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Frustum&, ::epix::camera::VisibleMeshEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
+        spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&, ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
+        visible_entities,
+    std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
 
 }  // namespace epix::pbr

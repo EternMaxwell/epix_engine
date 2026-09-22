@@ -3942,4 +3942,85 @@ TEST(Cluster, SpotLightMeshVisibilityMatchesBevy) {
                                         false));
 }
 
+/** @brief The visibility system's wiring: it clears stale lists, leaves a light
+ *  without shadows empty, honours the caster opt-out and inherited visibility, and
+ *  marks a mesh visible only for the faces that see it (Bevy
+ *  `check_point_light_mesh_visibility`, `bevy_light/src/lib.rs:466-607`). */
+TEST(Cluster, CheckPointLightMeshVisibilityWiring) {
+    using epix::pbr::check_point_light_mesh_visibility;
+    using epix::pbr::GlobalVisibleClusterableObjects;
+    using epix::pbr::NotShadowCaster;
+    using epix::pbr::PointLight;
+    using epix::pbr::VisibleClusterableObjects;
+
+    const auto build = [](epix::app::App& app, bool shadows_enabled) {
+        // A light at the origin looking down -Z, with its cube frusta and a
+        // pre-populated visible list so the clearing is observable.
+        epix::camera::CubemapVisibleEntities visible;
+        visible.data[0].entities.push_back(epix::ecs::Entity::from_index(900));
+        const auto light = app.world_mut()
+                               .spawn(PointLight{.shadows_enabled = shadows_enabled, .range = 10.0f},
+                                      epix::transform::GlobalTransform{}, epix::camera::CubemapFrusta{},
+                                      std::move(visible))
+                               .id();
+
+        // A view that has the light in its clustered-object set.
+        VisibleClusterableObjects view_objects;
+        view_objects.entities.push_back(light);
+        app.world_mut().spawn(view_objects);
+
+        // Three candidate meshes: one ordinary, one opted out of casting, one not
+        // inherited-visible. All carry Mesh3d, as Bevy's query requires.
+        const auto mesh = [&app](float x, bool cast, bool inherited_visible) {
+            auto commands = app.world_mut().spawn(
+                epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+                epix::transform::GlobalTransform{},
+                epix::camera::Aabb{.center = glm::vec3(x, 0.0f, -2.0f), .half_extents = glm::vec3(0.1f)});
+            if (!cast) commands.insert(NotShadowCaster{});
+            if (!inherited_visible) commands.insert(epix::camera::NoFrustumCulling{});
+            return commands.id();
+        };
+        const auto ordinary   = mesh(0.0f, true, true);
+        const auto opted_out  = mesh(0.5f, false, true);
+        const auto no_culling = mesh(-0.5f, true, false);
+
+        app.add_systems(epix::app::Update, epix::ecs::into(check_point_light_mesh_visibility));
+        app.update();
+        return std::tuple{light, ordinary, opted_out, no_culling};
+    };
+
+    // A shadow-casting light: the stale entry is gone, the ordinary mesh is recorded
+    // for the faces that see it, and the opted-out mesh is not.
+    {
+        epix::app::App app = epix::app::App::create();
+        const auto [light, ordinary, opted_out, no_culling] = build(app, true);
+        const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
+        std::vector<epix::ecs::Entity> recorded;
+        for (const auto& face : faces.data) {
+            recorded.insert(recorded.end(), face.entities.begin(), face.entities.end());
+        }
+        EXPECT_EQ(std::find(recorded.begin(), recorded.end(), epix::ecs::Entity::from_index(900)), recorded.end())
+            << "the stale entry was cleared";
+        EXPECT_NE(std::find(recorded.begin(), recorded.end(), ordinary), recorded.end())
+            << "the ordinary mesh casts and is in the light's range";
+        EXPECT_EQ(std::find(recorded.begin(), recorded.end(), opted_out), recorded.end())
+            << "NotShadowCaster keeps a mesh out of every shadow map";
+        EXPECT_TRUE(app.world_mut().entity(ordinary).get<epix::camera::ViewVisibility>()->get().get())
+            << "the light marked it visible";
+    }
+
+    // A light without shadows: its lists are cleared and nothing is recorded, so a
+    // light that stops casting stops shadowing rather than going stale.
+    {
+        epix::app::App app = epix::app::App::create();
+        const auto [light, ordinary, opted_out, no_culling] = build(app, false);
+        const auto& faces = app.world_mut().entity(light).get<epix::camera::CubemapVisibleEntities>()->get();
+        for (const auto& face : faces.data) {
+            EXPECT_TRUE(face.entities.empty());
+        }
+        EXPECT_FALSE(app.world_mut().entity(ordinary).get<epix::camera::ViewVisibility>()->get().get())
+            << "and no mesh was marked visible";
+    }
+}
+
 }  // namespace
