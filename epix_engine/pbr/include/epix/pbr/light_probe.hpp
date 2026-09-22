@@ -168,4 +168,20 @@ EPIX_EXPORT struct ViewEnvironmentMapUniformOffset {
     std::uint32_t offset = 0;
 };
 
+/** @brief Writes one environment map uniform per view (Bevy
+ *  `prepare_environment_uniform_buffer`, `light_probe/mod.rs:404-428`).
+ *
+ *  Note how this differs from fog's equivalent: a view *without* the component gets
+ *  offset **0** rather than a written entry. Fog has to write a real entry for every
+ *  view because "no fog" is a mode the shader reads; here the absence is the shader's
+ *  business, and offset 0 is the identity transform the default uniform already holds.
+ *  Writing the default would work too, but it would spend a uniform slot per view that
+ *  has no environment map at all. */
+EPIX_EXPORT void prepare_environment_uniform_buffer(
+    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+    ecs::ResMut<EnvironmentMapUniformBuffer> environment_uniform_buffer,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const EnvironmentMapUniform&>>,
+               ecs::With<::epix::render::view::ExtractedView>>
+        views);
+
 }  // namespace epix::pbr
