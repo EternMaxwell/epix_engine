@@ -37,18 +37,27 @@ Categories:
 
 ### Category A — renames, counterpart **unverified**
 
+**Member/free check now done** (by reading each definition's scope): `refine_sphere_and_scan_x`, `cached_cluster_sphere`, `view_space_object_sphere`, `estimate_cluster_index_count`, `object_cluster_range` and `transform_scale_length` are **free functions** in `light_cluster.hpp`, while Bevy has the equivalent work as methods on `ClusterConfig`/`ClusterZConfig` — so by ND-47's third cause these are the cases where a member was possible and a free function was written instead. Their fix is member-isation, not renaming. `from_binding_type` is a static member of `GpuClusterableObjects`, and `indices_count`/`offsets_count` are members of `ViewClusterBindings`, so those three are not free functions at all.
+
+**Counterpart check now done, by reading `assign.rs`** (not inferred):
+
+| ID | Epix name | Verdict | Evidence |
+| --- | --- | --- | --- |
+| ND-9 | `refine_sphere_and_scan_x` | **A, but split** | It merges three Bevy functions: `project_to_plane_z` (`assign.rs:655`, defined 1141), `project_to_plane_y` (`:675`, defined 1163) and `get_distance_x` (`:686`, `:701`, defined 1128). The fix is to split it into those names, not to rename it wholesale. |
+| ND-10 | `cached_cluster_sphere` | **B** | Bevy holds this as `cluster_aabb_spheres: Local<Vec<Option<Sphere>>>` (`:159`), cleared and refilled per view (`:476-477`) and written in the per-cluster loop (`:724`). It is inline state, not a function. |
+| ND-11 | `view_space_object_sphere` | **A — rename** | `cluster_space_clusterable_object_aabb` (`:995`, called at `:391`, `:563`). |
+| ND-12 | `estimate_cluster_index_count` | **B** | No Bevy function; the counting is inline in the assignment's second pass. |
+| ND-13 | `object_cluster_range` | **A — rename** | `compute_aabb_for_cluster` (`:880`, called at `:729`). |
+| ND-14 | `transform_scale_length` | **B** | No Bevy function; part of the aabb and scale work inside the assignment. |
+
+Still unverified rows are listed with their suspicion intact below; the six above are settled.
+
 | ID | Epix name | Suspected Bevy counterpart |
 | --- | --- | --- |
-| ND-9 | `refine_sphere_and_scan_x` | `cluster_space_clusterable_object_aabb` (`assign.rs:995`) or its X-scan |
-| ND-10 | `cached_cluster_sphere` | `project_to_plane_y` / `project_to_plane_z` caching (`assign.rs:1141-1163`) |
-| ND-11 | `view_space_object_sphere` | `cluster_space_clusterable_object_aabb` (`assign.rs:995`) |
-| ND-12 | `estimate_cluster_index_count` | `calculate_cluster_factors` (`assign.rs:863`) |
-| ND-13 | `object_cluster_range` | `compute_aabb_for_cluster` (`assign.rs:880`) |
-| ND-14 | `transform_scale_length` | `compute_aabb_for_cluster`'s scale term |
 | ND-15 | `size_for` | **no counterpart** — `ClusterableObjectType` exists but has no `size_for`, so this is an extraction, not a rename. Reclassified to **B**. |
-| ND-16 | `is_cpu_building` | `MeshCullingData::is_cpu_building`? unverified |
-| ND-17 | `from_binding_type` | `MeshPipelineKey::from_binding_type`? unverified |
-| ND-18 | `indices_count` / `offsets_count` | public fields on `ViewClusterBindings` — likely C, not A |
+| ND-16 | `is_cpu_building` | **false positive** — it is a *member* of its struct (`mesh_instance.hpp:164`), not a free function (see ND-46) |
+| ND-17 | `from_binding_type` | static member of `GpuClusterableObjects` — counterpart unverified |
+| ND-18 | `indices_count` / `offsets_count` | members of `ViewClusterBindings`; Bevy may expose these as fields rather than methods — needs Bevy's field names |
 
 ### Category B — extractions
 
