@@ -6,6 +6,8 @@
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_systems.hpp>
+#include <epix/pbr/material_bindings.hpp>
+#include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
@@ -3584,6 +3586,50 @@ TEST(Cluster, MeshUniformLayoutMatchesBevy) {
     EXPECT_EQ(transforms.previous_world_from_local, glm::mat4(1.0f))
         << "an instance that has not moved has the same previous transform";
     EXPECT_EQ(transforms.flags, 0u);
+}
+
+/** @brief The mesh instance flags keep Bevy's bit values, since the shader tests
+ *  them by position, and the batching predicate reads one of them (Bevy
+ *  `RenderMeshInstanceFlags`, `render/mesh.rs:683-699,894-900`). */
+TEST(Cluster, MeshInstanceFlagsMatchBevy) {
+    using epix::pbr::MaterialBindingId;
+    using epix::pbr::MaterialBindGroupIndex;
+    using epix::pbr::MaterialBindGroupSlot;
+    using epix::pbr::RenderMeshInstanceFlags;
+    using Bits = RenderMeshInstanceFlags::Bits;
+
+    // The values, not just the distinctness: these travel to the shader.
+    EXPECT_EQ(static_cast<std::uint8_t>(Bits::SHADOW_CASTER), 1u);
+    EXPECT_EQ(static_cast<std::uint8_t>(Bits::AUTOMATIC_BATCHING), 2u);
+    EXPECT_EQ(static_cast<std::uint8_t>(Bits::HAS_PREVIOUS_TRANSFORM), 4u);
+    EXPECT_EQ(static_cast<std::uint8_t>(Bits::HAS_PREVIOUS_SKIN), 8u);
+    EXPECT_EQ(static_cast<std::uint8_t>(Bits::HAS_PREVIOUS_MORPH), 16u);
+
+    RenderMeshInstanceFlags flags;
+    EXPECT_EQ(flags.bits, 0u);
+    EXPECT_FALSE(flags.should_batch());
+    flags.insert(Bits::AUTOMATIC_BATCHING);
+    EXPECT_TRUE(flags.contains(Bits::AUTOMATIC_BATCHING));
+    EXPECT_TRUE(flags.should_batch());
+    EXPECT_FALSE(flags.contains(Bits::SHADOW_CASTER)) << "setting one flag does not set another";
+    flags.insert(Bits::SHADOW_CASTER);
+    EXPECT_TRUE(flags.contains(Bits::SHADOW_CASTER));
+    EXPECT_TRUE(flags.contains(Bits::AUTOMATIC_BATCHING));
+    flags.remove(Bits::AUTOMATIC_BATCHING);
+    EXPECT_FALSE(flags.contains(Bits::AUTOMATIC_BATCHING));
+    EXPECT_TRUE(flags.contains(Bits::SHADOW_CASTER)) << "removing one leaves the others";
+    EXPECT_FALSE(flags.should_batch());
+
+    // A material binding is a group and a slot, both defaulting to zero: that is
+    // what a non-bindless material reports, with the single material in slot 0.
+    const MaterialBindingId binding;
+    EXPECT_EQ(binding.group.index, 0u);
+    EXPECT_EQ(binding.slot.slot, 0u);
+    EXPECT_EQ(binding, (MaterialBindingId{MaterialBindGroupIndex{0u}, MaterialBindGroupSlot{0u}}));
+    EXPECT_NE(binding, (MaterialBindingId{MaterialBindGroupIndex{1u}, MaterialBindGroupSlot{0u}}))
+        << "a different bind group is a different binding";
+    EXPECT_NE(binding, (MaterialBindingId{MaterialBindGroupIndex{0u}, MaterialBindGroupSlot{3u}}))
+        << "and so is a different slot";
 }
 
 }  // namespace
