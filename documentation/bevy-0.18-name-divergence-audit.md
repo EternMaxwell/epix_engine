@@ -73,7 +73,27 @@ Category A / C, all small: `as_orthographic`, `as_perspective`, `get_custom`, `i
 
 ## mesh (28 names)
 
-Category B mostly: `add_attribute`, `get_attribute_mut`, `set_attributes`, `set_array_stride`, `set_shader_location`, `set_step_mode`, `set_primitive_type`, `with_primitive_type`, `vertex_format_size`, `try_build`, `make_circle`, `make_box2d`, `make_box2d_uv`, `from_polygon`, `from_inner_and_outer`, `perimeter_range`, `perimeter_step_range`, `try_convert_vertex_attribute_values`, `vertex_arrays_to_vectors`, `extracted_to_render_world`, `mesh_triangles_view`, `lowest_morph_texture_2d` — counterparts unverified, each needs its own Bevy-container lookup. Category C: `as_u16`, `sizeof`, `get_if`, `bits_`, `serialize_serialized_mesh`, `deserialize_serialized_mesh` (serde-shaped, forced).
+Verified against `bevy_mesh/src` this round.
+
+**Category A — renames, counterpart confirmed:**
+
+| ID | Epix name | Bevy counterpart |
+| --- | --- | --- |
+| ND-35 | `add_attribute` | `Mesh::insert_attribute` (`mesh.rs:370`) |
+| ND-36 | `get_attribute_mut` | `Mesh::attribute_mut` (`mesh.rs:587`) |
+| ND-37 | `set_attributes` | `Mesh::attributes_mut` (`mesh.rs:652`) |
+| ND-38 | `set_primitive_type`, `with_primitive_type` | `Mesh::primitive_topology` / `BaseMeshPipelineKey::from_primitive_topology` (`mesh.rs:356`, `lib.rs:72`) |
+| ND-39 | `try_build` | `MeshBuilder::build` (`primitives/mod.rs:45` and every builder) |
+| ND-40 | `mesh_triangles_view` | `Mesh::triangles` (`mesh.rs:2054`) |
+| ND-41 | `lowest_morph_texture_2d` | `Mesh::morph_targets` family (`mesh.rs:2226-2328`) |
+| ND-42 | `set_array_stride`, `set_shader_location`, `set_step_mode` | `VertexBufferLayout` — Bevy builds these via `from_vertex_formats` and fields (`vertex.rs:414`) |
+| ND-43 | `vertex_format_size` | `VertexFormat::size` — unverified but reads as a rename |
+| ND-44 | `perimeter_range`, `perimeter_step_range` | `Extrudable`'s perimeter internals (`primitives/extrusion.rs:67,137`) |
+
+**Category B — extractions:** `make_circle`, `make_box2d`, `make_box2d_uv`, `from_polygon`, `from_inner_and_outer`, `try_convert_vertex_attribute_values`, `vertex_arrays_to_vectors`, `extracted_to_render_world`. Each is builder or conversion glue Bevy writes inline; the container for each needs its own lookup before folding.
+
+**Category C — keep:** every `with_*` builder setter (`with_resolution`, `with_rings`, `with_latitudes`, `with_longitudes`, `with_segments`, `with_major_resolution`, `with_minor_resolution`, `with_angle_range`, `with_normal`, `with_uv_mode`, `with_uv_profile`, `with_kind`) — Bevy exposes those as **public fields** on the builder structs, so C++ needs accessors. Also `as_u16`, `sizeof`, `get_if`, `bits_`, `serialize_serialized_mesh`, `deserialize_serialized_mesh` (Epix utilities and serde-shaped code).
+
 
 ## core_graph (7 names)
 
