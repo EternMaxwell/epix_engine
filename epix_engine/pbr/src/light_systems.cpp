@@ -271,6 +271,21 @@ void assign_objects_to_clusters(
         assignment.dimensions = clusters.dimensions;
         assignment.tile_size  = glm::vec2(clusters.tile_size);
 
+        // Bevy `assign.rs:454-477`: the near/far depths of the grid are recorded
+        // after the update, and the per-cluster lists are cleared and resized to
+        // the cluster count - which changes with the dimensions, and which a
+        // fresh `Clusters` starts without.
+        clusters.near_plane = first_slice;
+        clusters.far_plane  = far_z;
+        for (auto& cluster : clusters.clusterable_objects) {
+            cluster.entities.clear();
+            cluster.counts = ClusterableObjectCounts{};
+        }
+        clusters.clusterable_objects.resize(static_cast<std::size_t>(clusters.dimensions.x) *
+                                            clusters.dimensions.y * clusters.dimensions.z);
+
+        assignment.layers = layers_of(layers);
+
         if (is_orthographic) {
             const auto planes   = orthographic_cluster_xy_planes(assignment.view_from_clip, assignment.dimensions);
             assignment.x_planes = planes.first;

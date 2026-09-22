@@ -3554,6 +3554,82 @@ TEST(Cluster, AssignObjectsToClustersGuards) {
     }
 }
 
+/** @brief A view that does cluster gets its grid depths and a per-cluster list
+ *  sized to the cluster count, and an object on a layer the view does not render
+ *  is left out (Bevy `assign_objects_to_clusters`, `assign.rs:454-477,539-543`).
+ *
+ *  Epix's `Clusters` starts with an empty per-cluster list, so before the fix the
+ *  assignment wrote past its end and never recorded the grid depths. */
+TEST(Cluster, AssignmentWritesGridDepthsAndPerClusterLists) {
+    using epix::pbr::assign_objects_to_clusters;
+    using epix::pbr::ClusterConfig;
+    using epix::pbr::Clusters;
+    using epix::pbr::GlobalClusterSettings;
+    using epix::pbr::GlobalVisibleClusterableObjects;
+
+    const auto run_view = [](epix::camera::RenderLayers light_layers, epix::camera::RenderLayers view_layers) {
+        epix::app::App app = epix::app::App::create();
+        auto& world        = app.world_mut();
+        // Storage buffers supported, so the object list is not cut down to the
+        // uniform-buffer limit the device would impose.
+        GlobalClusterSettings settings;
+        settings.supports_storage_buffers              = true;
+        settings.view_cluster_bindings_max_indices     = 65536;
+        world.insert_resource(settings);
+        world.insert_resource(GlobalVisibleClusterableObjects{});
+        app.add_systems(epix::app::Update, epix::ecs::into(assign_objects_to_clusters));
+
+        epix::camera::Camera camera;
+        epix::camera::PerspectiveProjection projection;
+        projection.fov          = glm::radians(60.0f);
+        projection.aspect_ratio = 1.0f;
+        projection.near_plane   = 0.1f;
+        camera.computed.clip_from_view = projection.get_clip_from_view();
+        // The viewport is what `physical_viewport_size` reads, so setting it is
+        // what lets the system past its "no viewport" guard.
+        camera.viewport = epix::camera::Viewport{.physical_size = {64u, 64u}};
+
+        ClusterConfig config;
+        config.kind = ClusterConfig::Kind::XYZ;
+
+        const auto view = world
+                              .spawn(camera,
+                                     epix::camera::Frustum::from_clip_from_world(camera.computed.clip_from_view),
+                                     config, Clusters{}, view_layers, epix::transform::GlobalTransform{})
+                              .id();
+
+        auto light = epix::pbr::PointLight{};
+        light.range = 2.0f;
+        auto light_visibility = epix::camera::ViewVisibility::hidden();
+        light_visibility.set_visible();
+        // Ten units in front of the view, which is also what fixes the far depth
+        // of the grid (`view_far_z`, MaxClusterableObjectRange).
+        world.spawn(epix::transform::GlobalTransform{glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, -10.0f))},
+                    light, light_layers, light_visibility);
+
+        app.update();
+        return world.entity(view).get<Clusters>()->get();
+    };
+
+    const auto clusters = run_view(epix::camera::RenderLayers::layer(0), epix::camera::RenderLayers::layer(0));
+    const std::size_t expected = static_cast<std::size_t>(clusters.dimensions.x) * clusters.dimensions.y *
+                                 clusters.dimensions.z;
+    EXPECT_EQ(clusters.clusterable_objects.size(), expected)
+        << "the per-cluster list is sized to the grid the view derived";
+    EXPECT_GT(clusters.near_plane, 0.0f) << "the first slice depth is recorded";
+    EXPECT_GT(clusters.far_plane, 0.0f) << "the far depth is recorded";
+    EXPECT_GE(clusters.far_plane, clusters.near_plane);
+    std::size_t assigned = 0;
+    for (const auto& cluster : clusters.clusterable_objects) assigned += cluster.entities.size();
+    EXPECT_GT(assigned, 0u) << "the light in front of the view reaches clusters";
+
+    // The same light on a layer the view does not render is not clustered.
+    const auto excluded = run_view(epix::camera::RenderLayers::layer(3), epix::camera::RenderLayers::layer(0));
+    std::size_t excluded_assigned = 0;
+    for (const auto& cluster : excluded.clusterable_objects) excluded_assigned += cluster.entities.size();
+    EXPECT_EQ(excluded_assigned, 0u) << "an object on another layer never reaches the view's clusters";
+}
+
 /** @brief The mesh uniform's layout is what the shader expects, and its
  *  transform record is a plain pair of matrices (Bevy `MeshUniform` and
  *  `MeshTransforms`, `bevy_pbr/src/render/mesh.rs:448-494`). */

@@ -1266,6 +1266,10 @@ EPIX_EXPORT struct ViewClusterAssignment {
     bool is_orthographic = false;
     float first_slice_depth = 0.0f;
     float far_z = 0.0f;
+    /** @brief The view's render layers; a clusterable object only reaches a view
+     *  whose layers it overlaps (Bevy tests `view_layers.intersects(...)` inside
+     *  the assignment loop, `assign.rs:541`). */
+    camera::RenderLayers layers = camera::RenderLayers::layer(0);
     /** @brief `dimensions + 1` planes per axis, bounding each slice. */
     std::vector<camera::HalfSpace> x_planes;
     std::vector<camera::HalfSpace> y_planes;
@@ -1293,6 +1297,10 @@ EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleCluste
                                                       std::vector<std::optional<camera::Sphere>>& cluster_spheres,
                                                       const ClusterableObjectAssignmentData& object) {
     const camera::Sphere object_sphere = object.sphere();
+    // Bevy tests the render layers before anything else in the loop
+    // (`assign.rs:539-543`), so an object on another layer never reaches this
+    // view's clusters.
+    if (!view.layers.intersects(object.render_layers)) return false;
     if (!view_frustum.intersects_sphere(object_sphere, true)) return false;
 
     const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(
