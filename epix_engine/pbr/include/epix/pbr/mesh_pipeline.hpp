@@ -350,4 +350,94 @@ EPIX_EXPORT inline wgpu::MultisampleState mesh_pipeline_multisample_state(std::u
     return state;
 }
 
+/** @brief Which mesh bind-group layout a key's mesh needs (Bevy's `MeshLayouts`
+ *  fields, `render/mesh.rs:2312-2370`).
+ *
+ *  Named rather than handed back as a layout because a layout is a device object;
+ *  the assembly that owns the device maps this to the real one. */
+EPIX_EXPORT enum class MeshLayoutKind {
+    ModelOnly,
+    Lightmapped,
+    Morphed,
+    MorphedMotion,
+    Skinned,
+    SkinnedMotion,
+    MorphedSkinned,
+    MorphedSkinnedMotion,
+};
+
+/** @brief What the morph and skinning step contributes (Bevy
+ *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`). */
+EPIX_EXPORT struct MeshMorphSkinningSetup {
+    std::vector<::epix::shader::ShaderDefVal> shader_defs;
+    std::vector<MeshVertexAttributeLocation> vertex_attributes;
+    MeshLayoutKind layout = MeshLayoutKind::ModelOnly;
+    /** @brief Whether the skinned attributes were added, which is what the joint
+     *  locations in `vertex_attributes` mean. */
+    bool skinned = false;
+};
+
+/** @brief The defs, skinned vertex attributes and layout a mesh needs (Bevy
+ *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
+ *
+ *  `offset` is the shader location the mesh's own attributes ended at, so the joint
+ *  index and weight land immediately after them - which is why the caller passes the
+ *  count of attributes it already placed rather than a constant.
+ *
+ *  The eight cases are a precedence, not a cross product. Two rules matter: the
+ *  **lightmapped layout is only used when the mesh is neither skinned nor morphed**,
+ *  so a skinned lightmapped mesh takes the skinned layout - there is no skinned
+ *  lightmapped layout; and among the skinned and morphed families **motion vectors
+ *  choose which variant**, so a morphed motion-vector mesh takes the morphed motion
+ *  layout. Lightmapping is checked *after* motion only because it is the last family,
+ *  not because motion outranks it. A version that treated the four flags as
+ *  independent would produce a layout that does not exist. */
+EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key, bool is_skinned,
+                                                                       std::uint32_t offset,
+                                                                       bool skins_use_uniform_buffers) {
+    using Def = ::epix::shader::ShaderDefVal;
+
+    const bool is_morphed            = key.intersects(MeshPipelineKey::MORPH_TARGETS);
+    const bool is_lightmapped        = key.intersects(MeshPipelineKey::LIGHTMAPPED);
+    const bool motion_vector_prepass = key.intersects(MeshPipelineKey::MOTION_VECTOR_PREPASS);
+
+    MeshMorphSkinningSetup setup;
+    if (skins_use_uniform_buffers) setup.shader_defs.emplace_back("SKINS_USE_UNIFORM_BUFFERS");
+
+    const auto add_skin_data = [&] {
+        setup.shader_defs.emplace_back("SKINNED");
+        setup.vertex_attributes.push_back({.name = "joint_index", .shader_location = offset});
+        setup.vertex_attributes.push_back({.name = "joint_weight", .shader_location = offset + 1});
+        setup.skinned = true;
+    };
+    const auto add_morph = [&] { setup.shader_defs.emplace_back("MORPH_TARGETS"); };
+
+    if (is_skinned && !is_morphed && motion_vector_prepass) {
+        add_skin_data();
+        setup.layout = MeshLayoutKind::SkinnedMotion;
+    } else if (is_skinned && !is_morphed) {
+        add_skin_data();
+        setup.layout = MeshLayoutKind::Skinned;
+    } else if (is_skinned && is_morphed && motion_vector_prepass) {
+        add_skin_data();
+        add_morph();
+        setup.layout = MeshLayoutKind::MorphedSkinnedMotion;
+    } else if (is_skinned && is_morphed) {
+        add_skin_data();
+        add_morph();
+        setup.layout = MeshLayoutKind::MorphedSkinned;
+    } else if (is_morphed && motion_vector_prepass) {
+        add_morph();
+        setup.layout = MeshLayoutKind::MorphedMotion;
+    } else if (is_morphed) {
+        add_morph();
+        setup.layout = MeshLayoutKind::Morphed;
+    } else if (is_lightmapped) {
+        setup.layout = MeshLayoutKind::Lightmapped;
+    } else {
+        setup.layout = MeshLayoutKind::ModelOnly;
+    }
+    return setup;
+}
+
 }  // namespace epix::pbr
