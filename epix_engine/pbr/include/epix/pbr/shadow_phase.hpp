@@ -337,4 +337,24 @@ EPIX_EXPORT inline camera::CascadesFrusta to_cascades_frusta(const Cascades& cas
     return frusta;
 }
 
+/** @brief Whether a point light's cubemap frusta need rebuilding (Bevy
+ *  `update_point_light_frusta`, `bevy_light/src/point_light.rs:205-219`).
+ *
+ *  Two early-outs, and both matter. The first skips the light when neither it nor
+ *  the set of clustered lights changed, which is what keeps a static scene from
+ *  recomputing every frustum each frame. The second skips it when it casts no
+ *  shadows - the frusta exist to cull meshes into the shadow map, so a light
+ *  without shadows has no use for them - or when it is in no cluster, in which case
+ *  it is not being lit for any view either.
+ *
+ *  The change flag is per light: a light whose transform or parameters changed is
+ *  rebuilt even when the cluster set did not, and every light is rebuilt when the
+ *  cluster set changed, since a light's range may then bound different geometry. */
+EPIX_EXPORT inline bool should_update_point_light_frusta(bool light_changed, bool global_lights_changed,
+                                                        bool shadows_enabled, bool in_global_lights) {
+    if (!global_lights_changed && !light_changed) return false;
+    if (!shadows_enabled) return false;
+    return in_global_lights;
+}
+
 }  // namespace epix::pbr

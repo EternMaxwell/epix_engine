@@ -2866,4 +2866,33 @@ TEST(Cluster, ToCascadesFrustaMatchesBevy) {
     EXPECT_TRUE(to_cascades_frusta(Cascades{}).frusta.empty());
 }
 
+/** @brief A point light's frusta are rebuilt only when something that matters
+ *  changed, and only for a shadow-casting light that is in some cluster (Bevy
+ *  `update_point_light_frusta`, `point_light.rs:205-219`). */
+TEST(Cluster, ShouldUpdatePointLightFrustaMatchesBevy) {
+    using epix::pbr::should_update_point_light_frusta;
+
+    // Nothing changed and the light is fine: skipped, which is the common frame.
+    EXPECT_FALSE(should_update_point_light_frusta(false, false, true, true));
+
+    // The light itself changed: rebuilt.
+    EXPECT_TRUE(should_update_point_light_frusta(true, false, true, true));
+    // The clustered set changed: every light is rebuilt, since their ranges may
+    // bound different geometry now.
+    EXPECT_TRUE(should_update_point_light_frusta(false, true, true, true));
+
+    // A light without shadows never needs frusta, whatever changed.
+    EXPECT_FALSE(should_update_point_light_frusta(true, false, false, true));
+    EXPECT_FALSE(should_update_point_light_frusta(false, true, false, true));
+
+    // A light in no cluster is not being lit for any view, so its frusta are not
+    // needed - even when it changed and casts shadows.
+    EXPECT_FALSE(should_update_point_light_frusta(true, false, true, false));
+    EXPECT_FALSE(should_update_point_light_frusta(false, true, true, false));
+
+    // The order of the checks is observable: a shadowless light outside every
+    // cluster is still skipped, so shadowlessness cannot be the only gate.
+    EXPECT_FALSE(should_update_point_light_frusta(true, true, false, false));
+}
+
 }  // namespace
