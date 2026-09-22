@@ -821,8 +821,8 @@ void Mesh::compute_normals() {
 }
 
 std::expected<void, MeshAccessError> Mesh::try_compute_normals() {
-    assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
-           "`compute_normals` can only work on `TriangleList`s");
+    detail::assert_precondition(primitive_type == wgpu::PrimitiveTopology::eTriangleList,
+                        "`compute_normals` can only work on `TriangleList`s");
     auto stored_indices = try_indices_option();
     if (!stored_indices) return std::unexpected(stored_indices.error());
     if (!stored_indices->has_value()) return try_compute_flat_normals();
@@ -837,17 +837,18 @@ void Mesh::compute_flat_normals() {
 std::expected<void, MeshAccessError> Mesh::try_compute_flat_normals() {
     auto stored_indices = try_indices_option();
     if (!stored_indices) return std::unexpected(stored_indices.error());
-    assert(!stored_indices->has_value() &&
-           "`compute_flat_normals` can't work on indexed geometry. Consider calling either "
-           "`Mesh::compute_smooth_normals` or `Mesh::duplicate_vertices` followed by "
-           "`Mesh::compute_flat_normals`.");
-    assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
-           "`compute_flat_normals` can only work on `TriangleList`s");
+    detail::assert_precondition(!stored_indices->has_value(),
+                        "`compute_flat_normals` can't work on indexed geometry. Consider calling either "
+                        "`Mesh::compute_smooth_normals` or `Mesh::duplicate_vertices` followed by "
+                        "`Mesh::compute_flat_normals`.");
+    detail::assert_precondition(primitive_type == wgpu::PrimitiveTopology::eTriangleList,
+                        "`compute_flat_normals` can only work on `TriangleList`s");
 
     auto position_data = try_attribute(Mesh::ATTRIBUTE_POSITION);
     if (!position_data) return std::unexpected(position_data.error());
     const auto* positions = position_data->get().as_float3();
-    assert(positions != nullptr && "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+    detail::assert_precondition(positions != nullptr,
+                        "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
 
     // One normal per face, repeated for that face's three vertices.
     std::vector<glm::vec3> normals;
@@ -870,6 +871,13 @@ std::expected<void, MeshAccessError> Mesh::try_compute_smooth_normals() {
     return try_compute_custom_smooth_normals([](std::array<std::size_t, 3> face,
                                                 std::span<const VertexAttributeValues::Float32x3Value> positions,
                                                 std::span<glm::vec3> normals) {
+        // Rust's slice indexing panics on an out-of-range index; a span's
+        // `operator[]` is undefined behaviour in a release build, so the face is
+        // checked the way Bevy's indexing checks it.
+        detail::assert_precondition(face[0] < positions.size() && face[1] < positions.size() &&
+                                        face[2] < positions.size() && face[0] < normals.size() &&
+                                        face[1] < normals.size() && face[2] < normals.size(),
+                                    "`Mesh` index out of bounds while computing smooth normals");
         const glm::vec3 pa = to_vec3(positions[face[0]]);
         const glm::vec3 pb = to_vec3(positions[face[1]]);
         const glm::vec3 pc = to_vec3(positions[face[2]]);
@@ -905,6 +913,10 @@ std::expected<void, MeshAccessError> Mesh::try_compute_area_weighted_normals() {
     return try_compute_custom_smooth_normals([](std::array<std::size_t, 3> face,
                                                 std::span<const VertexAttributeValues::Float32x3Value> positions,
                                                 std::span<glm::vec3> normals) {
+        detail::assert_precondition(face[0] < positions.size() && face[1] < positions.size() &&
+                                        face[2] < positions.size() && face[0] < normals.size() &&
+                                        face[1] < normals.size() && face[2] < normals.size(),
+                                    "`Mesh` index out of bounds while computing area-weighted normals");
         // The double-area face normal is already weighted by the triangle's area.
         const glm::vec3 normal = triangle_area_normal(positions[face[0]], positions[face[1]], positions[face[2]]);
         for (const std::size_t index : face) normals[index] += normal;

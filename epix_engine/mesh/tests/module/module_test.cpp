@@ -3649,6 +3649,34 @@ TEST(MeshAlgorithms, ComputeNormalsReportsBevyAccessErrors) {
     EXPECT_THROW(extracted.normalize_joint_weights(), std::logic_error);
 }
 
+// Bevy's `assert!`/`expect` panic in every build profile, where C++'s `assert`
+// is removed by `NDEBUG`: these guards have to hold in a release build too
+// (`bevy_mesh/src/mesh.rs:1148-1210,1439-1470`).
+TEST(MeshAlgorithms, NormalPreconditionsHoldInReleaseBuilds) {
+    const auto position_only = [](wgpu::PrimitiveTopology topology) {
+        mesh::Mesh value(topology, epix::assets::RenderAssetUsages::MAIN_WORLD);
+        value.insert_attribute(mesh::Mesh::ATTRIBUTE_POSITION,
+                               std::vector<glm::vec3>{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}});
+        return value;
+    };
+
+    // `compute_normals` only accepts triangle lists, and the check must survive
+    // `NDEBUG` (this preset builds with it defined).
+    mesh::Mesh lines = position_only(wgpu::PrimitiveTopology::eLineList);
+    EXPECT_THROW(lines.try_compute_normals(), std::logic_error);
+
+    // Flat normals reject indexed geometry. (A non-`float3` position attribute
+    // cannot be built through `insert_attribute`, which rejects the format
+    // outright, so that guard is unreachable from here in Bevy too.)
+    mesh::Mesh indexed = position_only(wgpu::PrimitiveTopology::eTriangleList);
+    indexed.insert_indices(mesh::Mesh::Indices{std::vector<std::uint16_t>{0, 1, 2}});
+    EXPECT_THROW(indexed.try_compute_flat_normals(), std::logic_error);
+
+    // Smooth normals need indices as well as a triangle list.
+    mesh::Mesh unindexed = position_only(wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_THROW(unindexed.try_compute_smooth_normals(), std::logic_error);
+}
+
 // Joint weights are clamped at zero, normalised to a sum of one, and an all-zero set hands the
 // vertex to the first joint (Bevy `Mesh::normalize_joint_weights`).
 TEST(MeshAlgorithms, NormalizeJointWeightsMatchesBevy) {

@@ -42,6 +42,16 @@ struct Mesh;
 class SerializedMesh;
 class MeshDeserializer;
 
+namespace detail {
+/** @brief Rust's `assert!(condition, message)`: it panics in every build.
+ *
+ *  C++'s `assert` disappears under `NDEBUG`, so a release build would sail past
+ *  these preconditions instead of failing the way Bevy does. */
+inline void assert_precondition(bool condition, std::string_view message) {
+    if (!condition) throw std::logic_error(std::string(message));
+}
+}  // namespace detail
+
 /** @brief C++ counterpart of Bevy's `MeshBuilder` trait. */
 template <typename T>
 concept MeshBuilder = requires(const T& builder) {
@@ -925,16 +935,18 @@ EPIX_EXPORT struct Mesh {
      * `Mesh::try_compute_custom_smooth_normals`). */
     template <typename PerTriangle>
     std::expected<void, MeshAccessError> try_compute_custom_smooth_normals(PerTriangle&& per_triangle) {
-        assert(primitive_type == wgpu::PrimitiveTopology::eTriangleList &&
-               "smooth normals can only be computed on `TriangleList`s");
+        detail::assert_precondition(primitive_type == wgpu::PrimitiveTopology::eTriangleList,
+                                    "smooth normals can only be computed on `TriangleList`s");
         auto stored_indices = try_indices_option();
         if (!stored_indices) return std::unexpected(stored_indices.error());
-        assert(stored_indices->has_value() && "smooth normals can only be computed on indexed meshes");
+        detail::assert_precondition(stored_indices->has_value(),
+                                    "smooth normals can only be computed on indexed meshes");
 
         auto position_data = try_attribute(ATTRIBUTE_POSITION);
         if (!position_data) return std::unexpected(position_data.error());
         const auto* positions = position_data->get().as_float3();
-        assert(positions != nullptr && "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+        detail::assert_precondition(positions != nullptr,
+                                    "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
 
         std::vector<glm::vec3> normals(positions->size(), glm::vec3{0.0f});
 
