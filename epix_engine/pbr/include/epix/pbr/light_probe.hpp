@@ -184,4 +184,24 @@ EPIX_EXPORT void prepare_environment_uniform_buffer(
                ecs::With<::epix::render::view::ExtractedView>>
         views);
 
+/** @brief The uniform a view's `EnvironmentMapLight` produces (Bevy
+ *  `gather_environment_map_uniform`, `light_probe/mod.rs:320-343`).
+ *
+ *  The transform is the **inverse** of the light's rotation, not the rotation itself:
+ *  the shader uses it to carry the sample direction out of the probe's space, so
+ *  storing the inverse saves it from inverting per fragment. It is a full matrix rather
+ *  than the quaternion because that is how the uniform is declared.
+ *
+ *  Between this and `prepare_environment_uniform_buffer`, every view ends up with an
+ *  offset: a view that is a `Camera3d` gets a uniform here even without an
+ *  `EnvironmentMapLight`, holding the identity, and the offset-0 arm there covers only
+ *  views that extraction never saw at all. */
+EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_from(glm::quat rotation) {
+    return EnvironmentMapUniform{.transform = glm::inverse(glm::mat4_cast(rotation))};
+}
+
+/** @brief The uniform for a view with no environment map light: the identity, so the
+ *  sample direction passes through unrotated (Bevy `EnvironmentMapUniform::default`). */
+EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_default() { return EnvironmentMapUniform{}; }
+
 }  // namespace epix::pbr

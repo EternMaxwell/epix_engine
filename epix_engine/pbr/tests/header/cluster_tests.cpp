@@ -4740,4 +4740,38 @@ TEST(Cluster, LightProbesUniformLayoutMatchesBevy) {
     EXPECT_EQ(ViewLightProbesUniformOffset{}.offset, 0u);
 }
 
+/** @brief The environment map uniform's transform is the inverse of the light's
+ *  rotation, and a lightless view gets the identity (Bevy `gather_environment_map_uniform`,
+ *  `light_probe/mod.rs:320-343`). */
+TEST(Cluster, EnvironmentMapUniformRotationMatchesBevy) {
+    using epix::pbr::environment_map_uniform_default;
+    using epix::pbr::environment_map_uniform_from;
+
+    // No light: the identity, so the sample direction is unrotated.
+    EXPECT_EQ(environment_map_uniform_default().transform, glm::mat4(1.0f));
+
+    // A rotation about Y by 90 degrees, and the property that matters: the stored
+    // transform undoes it, which is what the inversion is for.
+    const glm::quat rotation = glm::angleAxis(glm::radians(90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+    const auto uniform       = environment_map_uniform_from(rotation);
+    const glm::mat4 rotation_matrix = glm::mat4_cast(rotation);
+    EXPECT_EQ(uniform.transform, glm::inverse(rotation_matrix));
+    const glm::mat4 round_trip = uniform.transform * rotation_matrix;
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 4; ++row) {
+            EXPECT_NEAR(round_trip[column][row], column == row ? 1.0f : 0.0f, 1e-5f)
+                << "the stored transform must undo the rotation, not repeat it";
+        }
+    }
+    // Concretely: rotating (0,0,1) by 90 degrees about Y gives (1,0,0), so the stored
+    // inverse must map (1,0,0) back to (0,0,1).
+    const glm::vec3 forward = glm::vec3(uniform.transform * glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_NEAR(forward.x, 0.0f, 1e-5f);
+    EXPECT_NEAR(forward.z, 1.0f, 1e-5f);
+
+    // An identity rotation inverts to the identity, so the two construction paths agree.
+    EXPECT_EQ(environment_map_uniform_from(glm::quat(1.0f, 0.0f, 0.0f, 0.0f)).transform,
+              environment_map_uniform_default().transform);
+}
+
 }  // namespace
