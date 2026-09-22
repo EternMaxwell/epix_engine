@@ -204,4 +204,35 @@ EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_from(glm::quat 
  *  sample direction passes through unrotated (Bevy `EnvironmentMapUniform::default`). */
 EPIX_EXPORT inline EnvironmentMapUniform environment_map_uniform_default() { return EnvironmentMapUniform{}; }
 
+/** @brief Whether a light probe is inside a view's frustum (Bevy
+ *  `LightProbeInfo::frustum_cull`, `light_probe/mod.rs:561-573`).
+ *
+ *  The probe is tested as a **unit cube at its own origin**, so its scale is what
+ *  defines the region it covers - a probe scaled to 4×4×4 covers that much space
+ *  without any extent field. Testing one cube for every probe is also why the frustum
+ *  needs no per-probe geometry.
+ *
+ *  Note the two flags: the near plane *is* tested and the far plane is not. A probe
+ *  beyond the far plane still lights the scene, which is the conservative choice - if
+ *  it were culled on the far plane, a probe the camera has not reached yet would stop
+ *  contributing the moment the camera's far plane moved inside it. */
+EPIX_EXPORT inline bool light_probe_frustum_cull(const glm::mat4& world_from_light,
+                                                 const ::epix::camera::Frustum& view_frustum) {
+    const ::epix::camera::Aabb unit_cube{.center = glm::vec3(0.0f), .half_extents = glm::vec3(0.5f)};
+    return view_frustum.intersects_obb(unit_cube, world_from_light, true, false);
+}
+
+/** @brief A light probe's sort key: its **squared** distance from the camera (Bevy
+ *  `LightProbeInfo::camera_distance_sort_key`, `light_probe/mod.rs:575-582`).
+ *
+ *  Squared because only the ordering matters and the square root is monotonic, and a
+ *  float rather than Bevy's `FloatOrd` because that wrapper exists to make the sort
+ *  total in the presence of NaN, which the sort here does not need. The lists come out
+ *  nearest-first, which is the order the shader walks them in. */
+EPIX_EXPORT inline float light_probe_camera_distance_sort_key(const glm::mat4& world_from_light,
+                                                              glm::vec3 view_translation) {
+    const glm::vec3 offset = glm::vec3(world_from_light[3]) - view_translation;
+    return glm::dot(offset, offset);
+}
+
 }  // namespace epix::pbr

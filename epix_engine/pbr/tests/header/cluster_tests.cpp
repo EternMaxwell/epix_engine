@@ -4774,4 +4774,56 @@ TEST(Cluster, EnvironmentMapUniformRotationMatchesBevy) {
               environment_map_uniform_default().transform);
 }
 
+/** @brief Probe culling and ordering: a unit cube scaled by the probe's transform, the
+ *  far plane not tested, and squared camera distance as the sort key (Bevy
+ *  `light_probe/mod.rs:561-582`). */
+TEST(Cluster, LightProbeCullAndSortKeyMatchBevy) {
+    using epix::pbr::light_probe_camera_distance_sort_key;
+    using epix::pbr::light_probe_frustum_cull;
+
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    projection.far_plane    = 100.0f;
+    const auto frustum      = epix::camera::Frustum::from_clip_from_world(projection.get_clip_from_view());
+
+    // A unit-scale probe at the origin sits inside the frustum.
+    EXPECT_TRUE(light_probe_frustum_cull(glm::mat4(1.0f), frustum));
+
+    // The probe's scale is what defines its region: translate it far to the side and it
+    // leaves the frustum; scale it up enough and it reaches back in, with no extent
+    // field changing.
+    glm::mat4 off_to_the_side{1.0f};
+    off_to_the_side[3] = glm::vec4(200.0f, 0.0f, -2.0f, 1.0f);
+    EXPECT_FALSE(light_probe_frustum_cull(off_to_the_side, frustum));
+    glm::mat4 scaled{1.0f};
+    scaled[0][0] = scaled[1][1] = scaled[2][2] = 500.0f;
+    scaled[3] = glm::vec4(200.0f, 0.0f, -2.0f, 1.0f);
+    EXPECT_TRUE(light_probe_frustum_cull(scaled, frustum)) << "a big enough probe covers back into view";
+
+    // The far plane is not tested: a probe beyond it still contributes, which is the
+    // conservative choice for something the camera has not reached yet.
+    glm::mat4 beyond_far{1.0f};
+    beyond_far[3] = glm::vec4(0.0f, 0.0f, -500.0f, 1.0f);
+    EXPECT_TRUE(light_probe_frustum_cull(beyond_far, frustum))
+        << "culling on the far plane would drop probes the camera has not reached";
+
+    // The sort key is squared distance, so the ordering is by proximity and equal
+    // distances tie exactly rather than approximately.
+    glm::mat4 near_probe{1.0f};
+    near_probe[3] = glm::vec4(0.0f, 0.0f, -3.0f, 1.0f);
+    glm::mat4 far_probe{1.0f};
+    far_probe[3] = glm::vec4(0.0f, 0.0f, -9.0f, 1.0f);
+    const glm::vec3 camera{0.0f, 0.0f, 0.0f};
+    EXPECT_LT(light_probe_camera_distance_sort_key(near_probe, camera),
+              light_probe_camera_distance_sort_key(far_probe, camera));
+    EXPECT_FLOAT_EQ(light_probe_camera_distance_sort_key(near_probe, camera), 9.0f) << "squared, not the distance";
+    // A probe behind the camera sorts after one in front, since distance is unsigned.
+    glm::mat4 behind{1.0f};
+    behind[3] = glm::vec4(0.0f, 0.0f, 3.0f, 1.0f);
+    EXPECT_FLOAT_EQ(light_probe_camera_distance_sort_key(behind, camera),
+                    light_probe_camera_distance_sort_key(near_probe, camera));
+}
+
 }  // namespace
