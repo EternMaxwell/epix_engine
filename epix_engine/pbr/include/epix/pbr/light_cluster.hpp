@@ -1113,4 +1113,44 @@ EPIX_EXPORT struct GlobalVisibleClusterableObjects {
     std::unordered_set<ecs::Entity> entities;
 };
 
+/** @brief Assignment data for a point light (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:170-188`).
+ *
+ *  The transform is reduced to a translation: a point light's reach is a sphere, so
+ *  nothing about its rotation or scale can change what it covers, and Bevy builds a
+ *  fresh `GlobalTransform::from_translation` rather than keeping the entity's - its
+ *  own comment calls the ignored scale a TODO. A spot light cannot do the same,
+ *  which is the asymmetry between the two: its cone direction lives in the
+ *  transform, so flattening it would leave every spot light pointing the same way. */
+EPIX_EXPORT inline ClusterableObjectAssignmentData point_light_assignment_data(
+    ecs::Entity entity, glm::vec3 translation, float range, bool shadows_enabled, bool volumetric,
+    const camera::RenderLayers& render_layers) {
+    ClusterableObjectAssignmentData data;
+    data.entity        = entity;
+    data.transform     = glm::translate(glm::mat4(1.0f), translation);
+    data.range         = range;
+    data.object_type   = ClusterableObjectType{
+        .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = shadows_enabled, .volumetric = volumetric};
+    data.render_layers = render_layers;
+    return data;
+}
+
+/** @brief Assignment data for a spot light (Bevy `assign_objects_to_clusters`,
+ *  `assign.rs:189-215`), which keeps the entity's full transform so the cone's
+ *  direction survives, and carries the outer angle the cone test needs. */
+EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
+    ecs::Entity entity, const glm::mat4& world_from_light, float range, float outer_angle, bool shadows_enabled,
+    bool volumetric, const camera::RenderLayers& render_layers) {
+    ClusterableObjectAssignmentData data;
+    data.entity      = entity;
+    data.transform   = world_from_light;
+    data.range       = range;
+    data.object_type = ClusterableObjectType{.kind = ClusterableObjectType::Kind::SpotLight,
+                                             .shadows_enabled = shadows_enabled,
+                                             .volumetric      = volumetric,
+                                             .outer_angle     = outer_angle};
+    data.render_layers = render_layers;
+    return data;
+}
+
 }  // namespace epix::pbr

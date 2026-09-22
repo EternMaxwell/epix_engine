@@ -3072,4 +3072,51 @@ TEST(Cluster, DirectionalCascadeSystemsBuildAndClear) {
     }
 }
 
+/** @brief A point light's assignment data drops its rotation and scale while a spot
+ *  light's keeps them, because a point light's reach is a sphere and a spot light's
+ *  direction lives in its transform (Bevy `assign.rs:170-215`). */
+TEST(Cluster, ClusterableAssignmentDataMatchesBevy) {
+    using epix::pbr::point_light_assignment_data;
+    using epix::pbr::spot_light_assignment_data;
+
+    const auto entity = epix::ecs::Entity::from_index(4);
+    // A light that is both rotated and scaled - the case the reduction exists for.
+    const glm::mat4 world_from_light =
+        glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, -2.0f, 5.0f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(35.0f), glm::vec3(0.0f, 1.0f, 0.0f)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(4.0f, 4.0f, 4.0f));
+    const glm::vec3 translation = glm::vec3(world_from_light[3]);
+
+    const auto point = point_light_assignment_data(entity, translation, 7.5f, true, false,
+                                                  epix::camera::RenderLayers::layer(2));
+    // Translation kept, basis reduced to identity: no rotation, no scale.
+    EXPECT_EQ(glm::vec3(point.transform[3]), translation);
+    for (int column = 0; column < 3; ++column) {
+        EXPECT_FLOAT_EQ(glm::length(glm::vec3(point.transform[column])), 1.0f)
+            << "column " << column << " is unit length, so the scale is gone";
+    }
+    EXPECT_EQ(point.transform, glm::translate(glm::mat4(1.0f), translation));
+    EXPECT_FLOAT_EQ(point.range, 7.5f);
+    EXPECT_EQ(point.object_type.kind, epix::pbr::ClusterableObjectType::Kind::PointLight);
+    EXPECT_TRUE(point.object_type.shadows_enabled);
+    EXPECT_FLOAT_EQ(point.object_type.outer_angle, 0.0f) << "a point light has no cone";
+    EXPECT_EQ(point.render_layers, epix::camera::RenderLayers::layer(2)) << "the layers are carried through";
+
+    // The spot light keeps everything: same matrix, angle recorded.
+    const auto spot = spot_light_assignment_data(entity, world_from_light, 7.5f, 0.4f, true, true,
+                                                epix::camera::RenderLayers::layer(2));
+    EXPECT_EQ(spot.transform, world_from_light) << "the cone's direction needs the whole transform";
+    EXPECT_EQ(spot.object_type.kind, epix::pbr::ClusterableObjectType::Kind::SpotLight);
+    EXPECT_FLOAT_EQ(spot.object_type.outer_angle, 0.4f);
+    EXPECT_TRUE(spot.object_type.volumetric) << "volumetrics reach the sort key";
+    EXPECT_NE(spot.transform, point.transform) << "the two kinds are not built the same way";
+
+    // Layers left unset default to layer 0, Bevy's default, which is distinct from
+    // belonging to none.
+    const auto defaulted = point_light_assignment_data(entity, translation, 1.0f, false, false, {});
+    EXPECT_TRUE(defaulted.render_layers.intersects(epix::camera::RenderLayers::layer(0)));
+    EXPECT_FALSE(defaulted.render_layers.intersects(epix::camera::RenderLayers::layer(1)))
+        << "and it is not every layer";
+}
+
 }  // namespace
