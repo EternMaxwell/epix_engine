@@ -619,6 +619,49 @@ TEST(Core3dMsaa, DisablesMsaaOnlyForDeferredViews) {
     EXPECT_EQ(msaa_of(plain_msaa).value().get(), view::Msaa::Sample4);
 }
 
+// CGR-116/CGR-185: Bevy `configure_occlusion_culling_view_targets`
+// (`core_3d/mod.rs:960-975`) adds `TEXTURE_BINDING` to the depth-texture usage of
+// every view that runs occlusion culling - the culling pass samples that texture.
+// The three filters are all load-bearing: without `DepthPrepass` there is no
+// depth texture to sample, and `NoIndirectDrawing` opts the view out of the
+// culling path entirely.
+TEST(Core3dOcclusionCullingTargets, AddsTextureBindingOnlyToCullingViews) {
+    epix::app::App app = epix::app::App::create();
+    app.add_plugins(epix::app::TaskPoolPlugin{}).add_plugins(epix::time::TimePlugin{});
+    app.add_systems(epix::app::Update,
+                    epix::ecs::into(epix::core_graph::core_3d::configure_occlusion_culling_view_targets));
+
+    using namespace epix::core_graph::core_3d;
+    const auto spawn = [&app](bool culling, bool no_indirect_drawing, bool depth_prepass) {
+        ::epix::camera::Camera3d camera_3d;
+        camera_3d.depth_texture_usages =
+            ::epix::camera::Camera3dDepthTextureUsage(wgpu::TextureUsage::eRenderAttachment);
+        auto entity = app.world_mut().spawn(camera_3d);
+        if (culling) entity.insert(epix::render::experimental::OcclusionCulling{});
+        if (no_indirect_drawing) entity.insert(::epix::render::view::NoIndirectDrawing{});
+        if (depth_prepass) entity.insert(DepthPrepass{});
+        return entity.id();
+    };
+    const auto culling            = spawn(true, false, true);
+    const auto no_indirect        = spawn(true, true, true);
+    const auto no_depth_prepass   = spawn(true, false, false);
+    const auto no_occlusion       = spawn(false, false, true);
+
+    app.update();
+
+    const auto usage_bits_of = [&](Entity entity) {
+        const auto camera_3d = app.world().get_entity(entity).and_then(
+            [](const EntityRef& ref) { return ref.get<::epix::camera::Camera3d>(); });
+        return camera_3d.value().get().depth_texture_usages.bits;
+    };
+    const auto sampler_flag = static_cast<std::uint32_t>(wgpu::TextureUsage::eTextureBinding);
+    EXPECT_NE(usage_bits_of(culling) & sampler_flag, 0u)
+        << "a culling view's depth texture has to be sampleable";
+    EXPECT_EQ(usage_bits_of(no_indirect) & sampler_flag, 0u);
+    EXPECT_EQ(usage_bits_of(no_depth_prepass) & sampler_flag, 0u);
+    EXPECT_EQ(usage_bits_of(no_occlusion) & sampler_flag, 0u);
+}
+
 // C14/C15: `extract_camera_prepass_phase` is Bevy's single extraction system for
 // both the prepass and the deferred phases. It prepares each binned phase pair
 // only for an active camera that asked for the matching component, drops the

@@ -539,7 +539,8 @@ EPIX_EXPORT struct EarlyPrepassNode {
                                 const render::view::ViewDepthTexture&,
                                 const ViewPrepassTextures&,
                                 const render::view::ViewUniformOffset&,
-                                ecs::Has<DeferredPrepass>>;
+                                ecs::Has<DeferredPrepass>,
+                                ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,
@@ -573,7 +574,10 @@ EPIX_EXPORT struct EarlyDeferredGBufferPrepassNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewDepthTexture&,
-                                const ViewPrepassTextures&>;
+                                const ViewPrepassTextures&,
+                                ecs::Opt<const ::epix::camera::MainPassResolutionOverride&>,
+                                ecs::Has<render::experimental::OcclusionCulling>,
+                                ecs::Has<render::view::NoIndirectDrawing>>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,
@@ -748,6 +752,17 @@ EPIX_EXPORT void extract_core_3d_camera_phases(
  * `core_3d/mod.rs:978`). Registered in `PostUpdate` by `Core3dPlugin`. */
 EPIX_EXPORT void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
                                        ecs::With<::epix::camera::Camera, DeferredPrepass>> deferred_views);
+
+/** @brief Add `TEXTURE_BINDING` to the depth-texture usage of every view that
+ * runs occlusion culling, because the culling pass samples that texture (Bevy
+ * `configure_occlusion_culling_view_targets`, `core_3d/mod.rs:960-975`).
+ * Registered in `RenderSystems::ManageViews` by `Core3dPlugin`, ahead of the
+ * `PrepareResources` system that reads the usage. */
+EPIX_EXPORT void configure_occlusion_culling_view_targets(
+    ecs::Query<ecs::Item<ecs::Mut<::epix::camera::Camera3d>>,
+               ecs::Filter<ecs::With<render::experimental::OcclusionCulling>,
+                           ecs::Without<render::view::NoIndirectDrawing>,
+                           ecs::With<DepthPrepass>>> view_targets);
 
 /** @brief Prepare depth attachments for live Core3D views (Bevy
  * `prepare_core_3d_depth_textures`). The general view plugin deliberately

@@ -130,6 +130,20 @@ void epix::core_graph::core_3d::check_msaa(Query<Item<Mut<render::view::Msaa>>,
     }
 }
 
+void epix::core_graph::core_3d::configure_occlusion_culling_view_targets(
+    Query<Item<Mut<::epix::camera::Camera3d>>,
+          Filter<With<render::experimental::OcclusionCulling>, Without<render::view::NoIndirectDrawing>,
+                 With<DepthPrepass>>>
+        view_targets) {
+    // Bevy `configure_occlusion_culling_view_targets` (core_3d/mod.rs:960-975):
+    // the occlusion-culling pass samples the depth texture, so a view that runs
+    // it needs `TEXTURE_BINDING` on top of whatever it already asked for.
+    for (auto&& [camera_3d] : view_targets.iter()) {
+        auto& usage = camera_3d.get_mut().depth_texture_usages;
+        usage.bits |= static_cast<std::uint32_t>(wgpu::TextureUsage::eTextureBinding);
+    }
+}
+
 void epix::core_graph::core_3d::prepare_core_3d_depth_textures(
     Commands cmd,
     ResMut<render::render_resource::TextureCache> texture_cache,
@@ -540,6 +554,7 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
                                                      const ::epix::render::view::ViewDepthTexture& view_depth_texture,
                                                      const ViewPrepassTextures& view_prepass_textures,
                                                      bool has_deferred,
+                                                     std::optional<glm::uvec2> resolution_override,
                                                      const World& world,
                                                      std::string_view label) {
     // A deferred prepass replaces this one entirely, so a deferred view leaves
@@ -595,8 +610,10 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
         view_prepass_textures.normal.has_value() || view_prepass_textures.motion_vectors.has_value();
 
     const auto depth_attachment = view_depth_texture.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport         = camera.viewport;
-    const auto view_entity      = graph.view_entity();
+    // Bevy `Viewport::from_viewport_and_override(camera.viewport.as_ref(),
+    // resolution_override)` (`prepass/node.rs:190-194`).
+    const auto viewport    = ::epix::camera::Viewport::from_viewport_and_override(camera.viewport, resolution_override);
+    const auto view_entity = graph.view_entity();
     const auto* world_ptr       = std::addressof(world);
     const auto* opaque_ptr      = std::addressof(opaque_phase->second);
     const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
@@ -677,10 +694,12 @@ std::expected<void, graph::NodeRunError> EarlyPrepassNode::run(graph::GraphConte
                                                               graph::RenderContext& render_context,
                                                               typename ecs::QueryData<ViewQuery>::Item view,
                                                               const World& world) const {
-    auto&& [camera, extracted_view, depth_texture, prepass_textures, uniform_offset, has_deferred] = view;
+    auto&& [camera, extracted_view, depth_texture, prepass_textures, uniform_offset, has_deferred,
+            resolution_override] = view;
     static_cast<void>(uniform_offset);
     return run_prepass(graph, render_context, camera, extracted_view, depth_texture, prepass_textures, has_deferred,
-                       world, "early prepass");
+                       resolution_override.transform([](const auto& value) { return value.get().size; }), world,
+                       "early prepass");
 }
 
 std::expected<void, graph::NodeRunError> LatePrepassNode::run(graph::GraphContext& graph,
@@ -955,6 +974,7 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
     const ::epix::render::view::ViewDepthTexture& view_depth_texture,
     const ViewPrepassTextures& view_prepass_textures,
     bool is_late,
+    std::optional<glm::uvec2> resolution_override,
     const World& world,
     std::string_view label) {
     // Bevy only reads `is_late` inside its WebGL-only fallback, so on native the
@@ -1004,8 +1024,10 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
                                view_prepass_textures.deferred_lighting_pass_id.has_value();
 
     const auto depth_attachment = view_depth_texture.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport         = camera.viewport;
-    const auto view_entity      = graph.view_entity();
+    // Bevy `Viewport::from_viewport_and_override(camera.viewport.as_ref(),
+    // resolution_override)` (`deferred/node.rs:229-233`).
+    const auto viewport    = ::epix::camera::Viewport::from_viewport_and_override(camera.viewport, resolution_override);
+    const auto view_entity = graph.view_entity();
     const auto* world_ptr       = std::addressof(world);
     const auto* opaque_ptr      = std::addressof(opaque_phase->second);
     const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
@@ -1068,9 +1090,13 @@ std::expected<void, graph::NodeRunError> EarlyDeferredGBufferPrepassNode::run(
     graph::RenderContext& render_context,
     typename ecs::QueryData<ViewQuery>::Item view,
     const World& world) const {
-    auto&& [camera, extracted_view, depth_texture, prepass_textures] = view;
+    auto&& [camera, extracted_view, depth_texture, prepass_textures, resolution_override, occlusion_culling,
+            no_indirect_drawing] = view;
+    static_cast<void>(occlusion_culling);
+    static_cast<void>(no_indirect_drawing);
     return run_deferred_prepass(graph, render_context, camera, extracted_view, depth_texture, prepass_textures, false,
-                                world, "early deferred gbuffer prepass");
+                                resolution_override.transform([](const auto& value) { return value.get().size; }), world,
+                                "early deferred gbuffer prepass");
 }
 
 std::expected<void, graph::NodeRunError> LateDeferredGBufferPrepassNode::run(
@@ -1187,6 +1213,13 @@ void Core3dPlugin::attach(App& app) {
         render_app.add_systems(Render, into(prepare_core_3d_depth_textures)
                                            .in_set(RenderSystems::PrepareResources)
                                            .set_name("prepare core 3d depth textures"));
+        // Bevy orders this after `prepare_view_targets` inside
+        // `RenderSystems::ManageViews` (core_3d/mod.rs:180-182); Epix has no
+        // separate view-target system, and ManageViews already precedes the
+        // `PrepareResources` system that reads `depth_texture_usages`.
+        render_app.add_systems(Render, into(configure_occlusion_culling_view_targets)
+                                           .in_set(RenderSystems::ManageViews)
+                                           .set_name("configure occlusion culling view targets"));
         render_app.add_systems(Render, into(prepare_core_3d_transmission_textures)
                                            .in_set(RenderSystems::PrepareResources)
                                            .set_name("prepare core 3d transmission textures"));
