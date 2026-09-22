@@ -4273,11 +4273,51 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
     // The key-driven defs are independent of the pass and each appears only for its
     // own bit.
     const auto defs = specialize_mesh_key_shader_defs(
-        MeshPipelineKey::NONE | MeshPipelineKey::DEPTH_PREPASS | MeshPipelineKey::HAS_PREVIOUS_MORPH);
-    ASSERT_EQ(defs.size(), 2u);
-    EXPECT_EQ(defs[0], "DEPTH_PREPASS");
-    EXPECT_EQ(defs[1], "HAS_PREVIOUS_MORPH");
-    EXPECT_TRUE(specialize_mesh_key_shader_defs(MeshPipelineKey::NONE).empty());
+        MeshPipelineKey::NONE | MeshPipelineKey::DEPTH_PREPASS | MeshPipelineKey::HAS_PREVIOUS_MORPH |
+            MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE,
+        true);
+    ASSERT_EQ(defs.size(), 3u) << "two of the key's own plus the view projection";
+    EXPECT_EQ(defs[0].name, "DEPTH_PREPASS");
+    EXPECT_EQ(defs[1].name, "HAS_PREVIOUS_MORPH");
+    EXPECT_EQ(defs[2].name, "VIEW_PROJECTION_PERSPECTIVE");
+    // A key with no projection bits is nonstandard - the constant is zero in Bevy too -
+    // so even a bare key yields that one def. A real key always carries a projection,
+    // set from the camera's.
+    const auto bare = specialize_mesh_key_shader_defs(MeshPipelineKey::NONE, true);
+    ASSERT_EQ(bare.size(), 1u);
+    EXPECT_EQ(bare[0].name, "VIEW_PROJECTION_NONSTANDARD");
+    // A valued def carries its index, and the tonemap method is one def of eight.
+    const auto tonemapped = specialize_mesh_key_shader_defs(
+        MeshPipelineKey::TONEMAP_IN_SHADER | MeshPipelineKey::TONEMAP_METHOD_AGX | MeshPipelineKey::DEBAND_DITHER, true);
+    const auto has_name = [](const std::vector<epix::shader::ShaderDefVal>& list, std::string_view name) {
+        return std::any_of(list.begin(), list.end(), [name](const auto& def) { return def.name == name; });
+    };
+    EXPECT_TRUE(has_name(tonemapped, "TONEMAP_IN_SHADER"));
+    EXPECT_TRUE(has_name(tonemapped, "TONEMAP_METHOD_AGX"));
+    EXPECT_TRUE(has_name(tonemapped, "DEBAND_DITHER")) << "debanding rides along with tonemapping";
+    const auto lut_index = std::find_if(tonemapped.begin(), tonemapped.end(), [](const auto& def) {
+        return def.name == "TONEMAPPING_LUT_TEXTURE_BINDING_INDEX";
+    });
+    ASSERT_NE(lut_index, tonemapped.end()) << "the LUT binding index is a valued def, not a bare name";
+    ASSERT_TRUE(std::holds_alternative<std::uint32_t>(lut_index->value));
+    EXPECT_EQ(std::get<std::uint32_t>(lut_index->value), 18u);
+
+    // Debanding without tonemapping is dropped, since the shader cannot do it alone.
+    const auto deband_only =
+        specialize_mesh_key_shader_defs(MeshPipelineKey::DEBAND_DITHER, true);
+    EXPECT_FALSE(has_name(deband_only, "DEBAND_DITHER"));
+
+    // LOAD_PREPASS_NORMALS needs a normal prepass, one sample and an opaque pass.
+    const auto normal_prepass  = MeshPipelineKey::NONE | MeshPipelineKey::NORMAL_PREPASS;
+    const auto multisampled_normal = normal_prepass | MeshPipelineKey::from_msaa_samples(4);
+    EXPECT_TRUE(has_name(specialize_mesh_key_shader_defs(normal_prepass, true), "LOAD_PREPASS_NORMALS"));
+    EXPECT_FALSE(has_name(specialize_mesh_key_shader_defs(normal_prepass, false), "LOAD_PREPASS_NORMALS"))
+        << "a non-opaque pass cannot load the prepass normals";
+    EXPECT_FALSE(has_name(specialize_mesh_key_shader_defs(multisampled_normal, true), "LOAD_PREPASS_NORMALS"))
+        << "nor can a multisampled one";
+
+    // The def is LIGHTMAP while the bit is LIGHTMAPPED, which is Bevy's own naming.
+    EXPECT_TRUE(has_name(specialize_mesh_key_shader_defs(MeshPipelineKey::LIGHTMAPPED, true), "LIGHTMAP"));
 }
 
 }  // namespace

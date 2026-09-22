@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/shader.hpp>
 #include <string>
 #include <vector>
 #include <epix/common.hpp>
@@ -163,10 +164,27 @@ EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key
 }
 
 /** @brief The shader defs a key adds besides the pass and vertex ones (Bevy
- *  `MeshPipeline::specialize`, `render/mesh.rs:2453-2538`): screen-space ambient
- *  occlusion, each prepass, and the two "had previous data" defs motion vectors need. */
-EPIX_EXPORT inline std::vector<std::string> specialize_mesh_key_shader_defs(const MeshPipelineKey& key) {
-    std::vector<std::string> defs;
+ *  `MeshPipeline::specialize`, `render/mesh.rs:2453-2618`).
+ *
+ *  `is_opaque` is the pass's, not the arm's, because one def depends on it:
+ *  `LOAD_PREPASS_NORMALS` is only pushed when the mesh reads prepass normals, which
+ *  needs a normal prepass, no multisampling and an opaque pass - with anything else
+ *  the prepass texture cannot be loaded. The view projection def is one of three, and
+ *  `VIEW_PROJECTION_NONSTANDARD` is tested first so a key carrying it wins over the
+ *  orthographic default - a key with *no* projection bits is nonstandard as well,
+ *  because that constant is zero in Bevy too, though a real key always carries one.
+ *  Tonemapping carries its two LUT binding indices as *valued*
+ *  defs rather than bare names, and debanding is nested inside it because the shader
+ *  cannot deband without tonemapping.
+ *
+ *  Two Bevy conditions have no counterpart here and are noted rather than silently
+ *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated, and the irradiance
+ *  volume def is behind a compile-time capability constant. */
+EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key_shader_defs(
+    const MeshPipelineKey& key, bool is_opaque) {
+    using Def = ::epix::shader::ShaderDefVal;
+
+    std::vector<Def> defs;
     if (key.contains(MeshPipelineKey::SCREEN_SPACE_AMBIENT_OCCLUSION)) {
         defs.emplace_back("SCREEN_SPACE_AMBIENT_OCCLUSION");
     }
@@ -175,6 +193,56 @@ EPIX_EXPORT inline std::vector<std::string> specialize_mesh_key_shader_defs(cons
     if (key.contains(MeshPipelineKey::MOTION_VECTOR_PREPASS)) defs.emplace_back("MOTION_VECTOR_PREPASS");
     if (key.contains(MeshPipelineKey::HAS_PREVIOUS_SKIN)) defs.emplace_back("HAS_PREVIOUS_SKIN");
     if (key.contains(MeshPipelineKey::HAS_PREVIOUS_MORPH)) defs.emplace_back("HAS_PREVIOUS_MORPH");
+    if (key.contains(MeshPipelineKey::DEFERRED_PREPASS)) defs.emplace_back("DEFERRED_PREPASS");
+
+    // Reads prepass normals only when there is a normal prepass, no multisampling and
+    // an opaque pass.
+    if (key.contains(MeshPipelineKey::NORMAL_PREPASS) && key.msaa_samples() == 1 && is_opaque) {
+        defs.emplace_back("LOAD_PREPASS_NORMALS");
+    }
+
+    const MeshPipelineKey view_projection = key.intersection(MeshPipelineKey::VIEW_PROJECTION_RESERVED_BITS);
+    if (view_projection == MeshPipelineKey::VIEW_PROJECTION_NONSTANDARD) {
+        defs.emplace_back("VIEW_PROJECTION_NONSTANDARD");
+    } else if (view_projection == MeshPipelineKey::VIEW_PROJECTION_PERSPECTIVE) {
+        defs.emplace_back("VIEW_PROJECTION_PERSPECTIVE");
+    } else if (view_projection == MeshPipelineKey::VIEW_PROJECTION_ORTHOGRAPHIC) {
+        defs.emplace_back("VIEW_PROJECTION_ORTHOGRAPHIC");
+    }
+
+    if (key.contains(MeshPipelineKey::TONEMAP_IN_SHADER)) {
+        defs.emplace_back("TONEMAP_IN_SHADER");
+        defs.push_back(Def::from_uint("TONEMAPPING_LUT_TEXTURE_BINDING_INDEX", 18u));
+        defs.push_back(Def::from_uint("TONEMAPPING_LUT_SAMPLER_BINDING_INDEX", 19u));
+
+        const MeshPipelineKey method = key.intersection(MeshPipelineKey::TONEMAP_METHOD_RESERVED_BITS);
+        if (method == MeshPipelineKey::TONEMAP_METHOD_NONE) {
+            defs.emplace_back("TONEMAP_METHOD_NONE");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_REINHARD) {
+            defs.emplace_back("TONEMAP_METHOD_REINHARD");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE) {
+            defs.emplace_back("TONEMAP_METHOD_REINHARD_LUMINANCE");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_ACES_FITTED) {
+            defs.emplace_back("TONEMAP_METHOD_ACES_FITTED");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_AGX) {
+            defs.emplace_back("TONEMAP_METHOD_AGX");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM) {
+            defs.emplace_back("TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_BLENDER_FILMIC) {
+            defs.emplace_back("TONEMAP_METHOD_BLENDER_FILMIC");
+        } else if (method == MeshPipelineKey::TONEMAP_METHOD_TONY_MC_MAPFACE) {
+            defs.emplace_back("TONEMAP_METHOD_TONY_MC_MAPFACE");
+        }
+
+        // Debanding is tied to tonemapping and cannot run without it.
+        if (key.contains(MeshPipelineKey::DEBAND_DITHER)) defs.emplace_back("DEBAND_DITHER");
+    }
+
+    if (key.contains(MeshPipelineKey::MAY_DISCARD)) defs.emplace_back("MAY_DISCARD");
+    if (key.contains(MeshPipelineKey::ENVIRONMENT_MAP)) defs.emplace_back("ENVIRONMENT_MAP");
+    // The bit is LIGHTMAPPED but the def is LIGHTMAP: Bevy's own naming, kept as is.
+    if (key.contains(MeshPipelineKey::LIGHTMAPPED)) defs.emplace_back("LIGHTMAP");
+    if (key.contains(MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING)) defs.emplace_back("LIGHTMAP_BICUBIC_SAMPLING");
     return defs;
 }
 
