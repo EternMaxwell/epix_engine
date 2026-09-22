@@ -3063,6 +3063,44 @@ TEST(Cluster, SpotLightBasisAndProjectionMatchBevy) {
  *  clustered spot light and leaves every other light alone (Bevy
  *  `spot_light.rs:204-237`). Until it runs, a spot light culls meshes against
  *  the default `Frustum`, which contains nothing. */
+/** @brief Bevy's `shrink_entities`: reclaim only when the capacity is more than
+ *  twice the length, and then only to half the ratio, so a list that is already
+ *  tight is left alone instead of reallocating every frame
+ *  (`bevy_light/src/lib.rs:286-300`). */
+TEST(Cluster, ShrinkEntitiesOnlyReclaimsLooseCapacity) {
+    using epix::pbr::shrink_entities;
+
+    const auto entity = epix::ecs::Entity::from_index(7);
+
+    // One entity in a 100-slot buffer: 100 / 1 = 100 > 2, so the capacity lands at
+    // 100 / (100 / 2) = 2.
+    std::vector<epix::ecs::Entity> loose;
+    loose.reserve(100);
+    loose.push_back(entity);
+    shrink_entities(loose);
+    EXPECT_EQ(loose.size(), 1u);
+    EXPECT_LT(loose.capacity(), 100u) << "a loose buffer is reclaimed";
+    EXPECT_EQ(loose[0], entity) << "and the entities survive";
+
+    // Two entities in a 4-slot buffer: 4 / 2 = 2, which is not more than 2, so
+    // nothing is touched.
+    std::vector<epix::ecs::Entity> tight;
+    tight.reserve(4);
+    tight.push_back(entity);
+    tight.push_back(entity);
+    const std::size_t tight_capacity = tight.capacity();
+    shrink_entities(tight);
+    EXPECT_EQ(tight.capacity(), tight_capacity) << "an already-tight list is left alone";
+    EXPECT_EQ(tight.size(), 2u);
+
+    // An empty list releases its buffer, as Rust's `checked_div` returning `None`
+    // for a zero length does.
+    std::vector<epix::ecs::Entity> empty;
+    empty.reserve(64);
+    shrink_entities(empty);
+    EXPECT_EQ(empty.capacity(), 0u);
+}
+
 TEST(Cluster, UpdateSpotLightFrustaRebuildsFrusta) {
     using epix::pbr::GlobalVisibleClusterableObjects;
     using epix::pbr::SpotLight;

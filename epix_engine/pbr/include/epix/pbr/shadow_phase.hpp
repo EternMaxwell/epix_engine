@@ -374,4 +374,30 @@ EPIX_EXPORT inline bool should_update_directional_cascade_frusta(bool shadows_en
     return shadows_enabled && light_visible;
 }
 
+/** @brief Bound a visible-entity list's capacity (Bevy `shrink_entities`,
+ *  `bevy_light/src/lib.rs:286-300`).
+ *
+ *  The lists grow to the scene's mesh count and then shrink again as meshes leave
+ *  a light, so Bevy only reclaims when the capacity is more than twice the length,
+ *  and then only down to half the ratio - a list that is already tight is left
+ *  alone, which is what keeps this from reallocating every frame. An empty list
+ *  shrinks to nothing, matching Rust's `checked_div` yielding `None` there.
+ *
+ *  C++ has no `shrink_to(n)`, so the reclaimed case rebuilds the vector at the
+ *  computed capacity - what Rust's own `shrink_to` does internally. */
+EPIX_EXPORT inline void shrink_entities(std::vector<ecs::Entity>& visible_entities) {
+    const std::size_t capacity = visible_entities.capacity();
+    std::size_t reserved       = 0;
+    if (!visible_entities.empty()) {
+        const std::size_t reserve = capacity / visible_entities.size();
+        reserved                  = reserve > 2 ? capacity / (reserve / 2) : capacity;
+    }
+    if (reserved >= capacity) return;
+
+    std::vector<ecs::Entity> shrunk;
+    shrunk.reserve(reserved);
+    shrunk.insert(shrunk.end(), visible_entities.begin(), visible_entities.end());
+    visible_entities.swap(shrunk);
+}
+
 }  // namespace epix::pbr

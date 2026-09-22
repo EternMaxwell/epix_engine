@@ -455,6 +455,9 @@ void check_point_light_mesh_visibility(
                 }
             }
         }
+
+        // Bevy bounds each face list's capacity after the walk (lib.rs:604-606).
+        for (::epix::camera::VisibleMeshEntities& face : cubemap_visible.data) shrink_entities(face.entities);
     }
 
     for (auto&& [light_entity, spot_light, transform, frustum, visible_meshes, maybe_layers] : spot_lights.iter()) {
@@ -497,6 +500,9 @@ void check_point_light_mesh_visibility(
                 visible_meshes.entities.push_back(mesh_entity);
             }
         }
+
+        // Bevy bounds the spot list's capacity after the walk (lib.rs:682).
+        shrink_entities(visible_meshes.entities);
     }
 }
 
@@ -600,7 +606,7 @@ void check_dir_light_mesh_visibility(
         }
 
         for (auto& [view, cascade_lists] : visible.entities) {
-            for (::epix::camera::VisibleMeshEntities& list : cascade_lists) list.entities.shrink_to_fit();
+            for (::epix::camera::VisibleMeshEntities& list : cascade_lists) shrink_entities(list.entities);
         }
     }
 
