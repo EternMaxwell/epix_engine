@@ -4561,4 +4561,84 @@ TEST(Cluster, FogFalloffArithmeticMatchesBevy) {
         << "a partial channel raised to e falls further";
 }
 
+/** @brief The fog component, its GPU form and the per-mode packing of `be` and `bi`
+ *  (Bevy `render/fog.rs:18-113`). */
+TEST(Cluster, GpuFogMatchesBevy) {
+    using epix::pbr::DistanceFog;
+    using epix::pbr::FogFalloff;
+    using epix::pbr::FogFalloffAtmospheric;
+    using epix::pbr::FogFalloffExponential;
+    using epix::pbr::FogFalloffExponentialSquared;
+    using epix::pbr::FogFalloffLinear;
+    using epix::pbr::gpu_fog_from;
+    using epix::pbr::GPU_FOG_MODE_ATMOSPHERIC;
+    using epix::pbr::GPU_FOG_MODE_EXPONENTIAL;
+    using epix::pbr::GPU_FOG_MODE_EXPONENTIAL_SQUARED;
+    using epix::pbr::GPU_FOG_MODE_LINEAR;
+    using epix::pbr::GPU_FOG_MODE_OFF;
+
+    // The layout has to match the shader, so the asserts in the header are the point:
+    // two vec4 colours, then be and the exponent, then bi and the mode.
+    static_assert(sizeof(epix::pbr::GpuFog) == 64);
+    EXPECT_EQ(sizeof(epix::pbr::GpuFog), 64u);
+    EXPECT_EQ(offsetof(epix::pbr::GpuFog, be), 32u);
+    EXPECT_EQ(offsetof(epix::pbr::GpuFog, bi), 48u);
+
+    // The default component matches Bevy's: white, no directional glow, exponent 8,
+    // and linear fog from 0 to 100.
+    const DistanceFog defaults;
+    EXPECT_EQ(defaults.color, glm::vec4(1.0f));
+    EXPECT_EQ(defaults.directional_light_color, glm::vec4(0.0f));
+    EXPECT_FLOAT_EQ(defaults.directional_light_exponent, 8.0f);
+    const auto default_gpu = gpu_fog_from(defaults);
+    EXPECT_EQ(default_gpu.mode, GPU_FOG_MODE_LINEAR);
+    EXPECT_EQ(default_gpu.be, glm::vec3(0.0f, 100.0f, 0.0f)) << "start and end live in be.xy";
+
+    // Each falloff packs be differently, which is the part a reader gets wrong.
+    DistanceFog exponential;
+    exponential.falloff = FogFalloff{FogFalloffExponential{.density = 0.02f}};
+    const auto exp_gpu = gpu_fog_from(exponential);
+    EXPECT_EQ(exp_gpu.mode, GPU_FOG_MODE_EXPONENTIAL);
+    EXPECT_EQ(exp_gpu.be, glm::vec3(0.02f, 0.0f, 0.0f)) << "the density is be.x alone";
+    EXPECT_EQ(exp_gpu.bi, glm::vec3(0.0f)) << "and nothing is in-scattered";
+
+    DistanceFog squared;
+    squared.falloff = FogFalloff{FogFalloffExponentialSquared{.density = 0.03f}};
+    const auto squared_gpu = gpu_fog_from(squared);
+    EXPECT_EQ(squared_gpu.mode, GPU_FOG_MODE_EXPONENTIAL_SQUARED);
+    EXPECT_EQ(squared_gpu.be, glm::vec3(0.03f, 0.0f, 0.0f))
+        << "the same shape as the exponential, distinguished only by the mode";
+
+    DistanceFog atmospheric;
+    atmospheric.falloff = FogFalloff{FogFalloffAtmospheric{.extinction = {0.1f, 0.2f, 0.3f},
+                                                           .inscattering = {0.4f, 0.5f, 0.6f}}};
+    const auto atmospheric_gpu = gpu_fog_from(atmospheric);
+    EXPECT_EQ(atmospheric_gpu.mode, GPU_FOG_MODE_ATMOSPHERIC);
+    EXPECT_EQ(atmospheric_gpu.be, glm::vec3(0.1f, 0.2f, 0.3f));
+    EXPECT_EQ(atmospheric_gpu.bi, glm::vec3(0.4f, 0.5f, 0.6f)) << "atmospheric is the only mode using bi";
+
+    // The visibility constructors produce the density from the earlier arithmetic.
+    const auto exp_from_visibility = FogFalloff::from_visibility(100.0f);
+    ASSERT_TRUE(std::holds_alternative<FogFalloffExponential>(exp_from_visibility.value));
+    EXPECT_FLOAT_EQ(std::get<FogFalloffExponential>(exp_from_visibility.value).density,
+                    epix::pbr::fog_exponential_density(100.0f, epix::pbr::REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD));
+    const auto squared_from_visibility = FogFalloff::from_visibility_squared(100.0f);
+    ASSERT_TRUE(std::holds_alternative<FogFalloffExponentialSquared>(squared_from_visibility.value));
+    EXPECT_FLOAT_EQ(std::get<FogFalloffExponentialSquared>(squared_from_visibility.value).density,
+                    epix::pbr::fog_exponential_squared_density(100.0f, epix::pbr::REVISED_KOSCHMIEDER_CONTRAST_THRESHOLD));
+    // The one-colour atmospheric constructor passes the same colour for both.
+    const auto atmosphere = FogFalloff::from_visibility_color(100.0f, glm::vec4(0.0f, 0.0f, 1.0f, 0.5f));
+    ASSERT_TRUE(std::holds_alternative<FogFalloffAtmospheric>(atmosphere.value));
+    const auto& fields = std::get<FogFalloffAtmospheric>(atmosphere.value);
+    EXPECT_LT(fields.extinction.z, fields.extinction.x) << "a blue extinction leaves blue visible";
+    EXPECT_NEAR(fields.inscattering.z, 1.0f, 1e-6f) << "in-scattering keeps the colour as given";
+
+    // No fog at all is mode off with everything zeroed, not an absent binding.
+    const auto none = epix::pbr::GpuFog{};
+    EXPECT_EQ(none.mode, GPU_FOG_MODE_OFF);
+    EXPECT_EQ(none.base_color, glm::vec4(0.0f));
+    EXPECT_EQ(none.be, glm::vec3(0.0f));
+    EXPECT_EQ(none.bi, glm::vec3(0.0f));
+}
+
 }  // namespace
