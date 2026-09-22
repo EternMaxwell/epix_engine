@@ -3899,4 +3899,47 @@ TEST(Cluster, PointLightFaceVisibilityMatchesBevy) {
     EXPECT_EQ(count_visible(beyond), 0u) << "the light's range bounds it, not the face's axis";
 }
 
+/** @brief The spot-light counterpart: one cone rather than six faces, with the same
+ *  two conservative cases (Bevy `bevy_light/src/lib.rs:656-674`). */
+TEST(Cluster, SpotLightMeshVisibilityMatchesBevy) {
+    using epix::camera::Aabb;
+    using epix::camera::Frustum;
+    using epix::camera::Sphere;
+    using epix::pbr::spot_light_mesh_visible;
+
+    // A 90-degree cone looking down -Z from the origin, so anything on -Z inside the
+    // light's range is visible to it.
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    const Frustum cone = Frustum::from_clip_from_world(projection.get_clip_from_view());
+
+    const glm::vec3 light_position{0.0f, 0.0f, 0.0f};
+    const float range          = 10.0f;
+    const Sphere light_sphere{.center = light_position, .radius = range};
+    const glm::mat4 identity{1.0f};
+    const auto box_at = [](glm::vec3 position) {
+        return Aabb{.center = position, .half_extents = glm::vec3(0.1f)};
+    };
+
+    // Nothing to cull against, and NoFrustumCulling: visible, and the range does not
+    // bound the second case either.
+    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, std::nullopt, identity, false));
+    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -2.0f)), std::nullopt, false));
+    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(500.0f, 0.0f, 0.0f)), identity, true));
+
+    // Inside the cone and the range: visible.
+    EXPECT_TRUE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -2.0f)), identity, false));
+
+    // Behind the light: outside the cone, so not visible - the case a sphere test
+    // alone would get wrong, since it is inside the light's range.
+    EXPECT_FALSE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, 2.0f)), identity, false))
+        << "in range but behind the cone";
+
+    // In front but beyond the range: the range bounds it before the cone is asked.
+    EXPECT_FALSE(spot_light_mesh_visible(light_sphere, cone, box_at(glm::vec3(0.0f, 0.0f, -(range + 5.0f))), identity,
+                                        false));
+}
+
 }  // namespace

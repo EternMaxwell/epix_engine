@@ -53,4 +53,28 @@ EPIX_EXPORT inline std::array<bool, POINT_LIGHT_CUBE_FACE_COUNT> point_light_fac
     return visible;
 }
 
+/** @brief Whether a mesh is visible to a spot light (Bevy
+ *  `check_point_light_mesh_visibility`'s spot-light branch,
+ *  `bevy_light/src/lib.rs:656-674`).
+ *
+ *  The same two conservative cases as the point-light version, for the same reason:
+ *  with no AABB or no transform there is nothing to cull against, and
+ *  `NoFrustumCulling` skips the tests deliberately. Otherwise the light's range
+ *  bounds it first - a spot light's cone test cannot help with an object beyond the
+ *  light's reach - and then the cone's frustum is tested against the mesh's oriented
+ *  box.
+ *
+ *  One frustum rather than six, which is the whole difference from the point-light
+ *  case: a spot light has a single cone. */
+EPIX_EXPORT inline bool spot_light_mesh_visible(const ::epix::camera::Sphere& light_sphere,
+                                               const ::epix::camera::Frustum& frustum,
+                                               const std::optional<::epix::camera::Aabb>& aabb,
+                                               const std::optional<glm::mat4>& world_from_local,
+                                               bool no_frustum_culling) {
+    if (!aabb.has_value() || !world_from_local.has_value()) return true;
+    if (no_frustum_culling) return true;
+    if (!light_sphere.intersects_obb(*aabb, *world_from_local)) return false;
+    return frustum.intersects_obb(*aabb, *world_from_local, true, true);
+}
+
 }  // namespace epix::pbr
