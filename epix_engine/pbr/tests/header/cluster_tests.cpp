@@ -7,6 +7,7 @@
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/pbr/light_meta.hpp>
 #include <epix/pbr/light_markers.hpp>
+#include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/material_bindings.hpp>
@@ -4639,6 +4640,29 @@ TEST(Cluster, GpuFogMatchesBevy) {
     EXPECT_EQ(none.base_color, glm::vec4(0.0f));
     EXPECT_EQ(none.be, glm::vec3(0.0f));
     EXPECT_EQ(none.bi, glm::vec3(0.0f));
+}
+
+/** @brief The environment map uniform family: the sample ray's transform, the
+ *  per-view buffer and the view offset (Bevy `light_probe/mod.rs:266-289`). */
+TEST(Cluster, EnvironmentMapUniformMatchesBevy) {
+    using epix::pbr::EnvironmentMapUniform;
+    using epix::pbr::EnvironmentMapUniformBuffer;
+    using epix::pbr::ViewEnvironmentMapUniformOffset;
+
+    // One mat4, and the identity default is meaningful: an unrotated probe samples the
+    // cubemap unrotated rather than being undefined.
+    EXPECT_EQ(sizeof(EnvironmentMapUniform), 64u) << "a single mat4";
+    EXPECT_EQ(EnvironmentMapUniform{}.transform, glm::mat4(1.0f));
+    const EnvironmentMapUniformBuffer empty;
+    (void)empty;
+
+    // The view offset defaults to zero, which is the first slot.
+    EXPECT_EQ(ViewEnvironmentMapUniformOffset{}.offset, 0u);
+
+    // The uniform is a shader type as-is; if the specialization were missing or ordered
+    // after the buffer, the buffer above would not compile at all.
+    static_assert(std::is_base_of_v<epix::render::render_resource::RawShaderType<EnvironmentMapUniform>,
+                                    epix::render::render_resource::ShaderTypeInfo<EnvironmentMapUniform>>);
 }
 
 }  // namespace
