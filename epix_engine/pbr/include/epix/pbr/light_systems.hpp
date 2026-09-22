@@ -162,4 +162,38 @@ EPIX_EXPORT void check_point_light_mesh_visibility(
         visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
 
+/** @brief Mark the meshes each directional light can see, per cascade (Bevy
+ *  `check_dir_light_mesh_visibility`, `bevy_light/src/lib.rs:302-464`).
+ *
+ *  The per-view cascade lists are reconciled with the cascades the light has before
+ *  anything is culled, then the light is skipped unless it casts shadows *and* is
+ *  itself visible - the same pair of conditions the frusta system uses.
+ *
+ *  Three differences from the point and spot version, all Bevy's:
+ *
+ *  - The visibility-range test is per view rather than "any view", since a cascade
+ *    exists for one view.
+ *  - **Near-plane culling is disabled.** A shadow caster can lie in front of the near
+ *    plane and still cast into the cascade, so `intersects_obb` is asked with
+ *    `intersect_near` false and only the far side bounding it.
+ *  - The meshes a light sees are marked visible through a **command** rather than
+ *    directly, which is what lets this system run in parallel with the point and spot
+ *    one instead of both needing mutable access to `ViewVisibility`.
+ *
+ *  A mesh with no AABB or no transform is visible to every cascade, as in the point
+ *  case and for the same reason. */
+EPIX_EXPORT void check_dir_light_mesh_visibility(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<const DirectionalLight&, const ::epix::camera::CascadesFrusta&,
+                         ::epix::camera::CascadesVisibleEntities&, ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         const ::epix::camera::ViewVisibility&, ecs::Opt<const SpotLight&>>>
+        directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
+        visible_entities,
+    std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
+
 }  // namespace epix::pbr

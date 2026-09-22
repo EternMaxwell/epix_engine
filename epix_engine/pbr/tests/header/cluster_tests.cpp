@@ -4086,4 +4086,65 @@ TEST(Cluster, ReconcileCascadeVisibleEntitiesMatchesBevy) {
     EXPECT_TRUE(emptied.entities.empty());
 }
 
+/** @brief The directional visibility system records a mesh per cascade and marks it
+ *  visible through a command, while leaving an opted-out mesh out (Bevy
+ *  `check_dir_light_mesh_visibility`, `bevy_light/src/lib.rs:302-464`). */
+TEST(Cluster, CheckDirLightMeshVisibilityWiring) {
+    using epix::pbr::check_dir_light_mesh_visibility;
+    using epix::pbr::DirectionalLight;
+    using epix::pbr::NotShadowCaster;
+
+    epix::app::App app = epix::app::App::create();
+
+    // One view with two cascades, both looking down -Z, so a mesh in front of the
+    // light is inside each of them.
+    epix::camera::PerspectiveProjection projection;
+    projection.fov          = glm::radians(90.0f);
+    projection.aspect_ratio = 1.0f;
+    projection.near_plane   = 0.1f;
+    const auto frustum      = epix::camera::Frustum::from_clip_from_world(projection.get_clip_from_view());
+    const auto view         = epix::ecs::Entity::from_index(1);
+
+    epix::camera::CascadesFrusta cascades;
+    cascades.frusta.emplace(view, std::vector<epix::camera::Frustum>{frustum, frustum});
+    epix::camera::ViewVisibility light_visibility;
+    light_visibility.set_visible();
+    const auto light = app.world_mut()
+                           .spawn(DirectionalLight{.shadows_enabled = true}, std::move(cascades),
+                                  epix::camera::CascadesVisibleEntities{}, std::move(light_visibility))
+                           .id();
+
+    const auto mesh = [&app](float x, bool cast) {
+        auto commands = app.world_mut().spawn(
+            epix::mesh::Mesh3d{}, epix::camera::InheritedVisibility{}, epix::camera::ViewVisibility::hidden(),
+            epix::transform::GlobalTransform{},
+            epix::camera::Aabb{.center = glm::vec3(x, 0.0f, -2.0f), .half_extents = glm::vec3(0.1f)});
+        if (!cast) commands.insert(NotShadowCaster{});
+        return commands.id();
+    };
+    const auto ordinary  = mesh(0.0f, true);
+    const auto opted_out = mesh(0.5f, false);
+
+    app.add_systems(epix::app::Update, epix::ecs::into(check_dir_light_mesh_visibility));
+    app.update();
+
+    const auto& recorded = app.world_mut().entity(light).get<epix::camera::CascadesVisibleEntities>()->get().entities;
+    ASSERT_EQ(recorded.count(view), 1u) << "the view the light has cascades for";
+    const auto& cascades_for_view = recorded.at(view);
+    ASSERT_EQ(cascades_for_view.size(), 2u) << "one list per cascade";
+    for (const auto& list : cascades_for_view) {
+        EXPECT_NE(std::find(list.entities.begin(), list.entities.end(), ordinary), list.entities.end())
+            << "the mesh is inside both cascades";
+        EXPECT_EQ(std::find(list.entities.begin(), list.entities.end(), opted_out), list.entities.end())
+            << "and the opted-out mesh is in neither";
+    }
+
+    // The marking was deferred into a command, so it is visible only after the
+    // schedule ran - which is what lets this system share ViewVisibility with the
+    // point and spot one.
+    EXPECT_TRUE(app.world_mut().entity(ordinary).get<epix::camera::ViewVisibility>()->get().get())
+        << "the deferred command marked it visible";
+    EXPECT_FALSE(app.world_mut().entity(opted_out).get<epix::camera::ViewVisibility>()->get().get());
+}
+
 }  // namespace

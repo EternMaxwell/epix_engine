@@ -412,4 +412,118 @@ void check_point_light_mesh_visibility(
     }
 }
 
+namespace {
+/** @brief The candidate-mesh checks the light-visibility systems share.
+ *
+ *  Returns false when the mesh should be skipped: it carries no `Mesh3d`, it opted out
+ *  with `NotShadowCaster`, it is itself a directional light, or the light's layers do
+ *  not intersect its own. Factored out because the point, spot and directional loops
+ *  make exactly these checks, and writing them three times is how they drift apart. */
+bool mesh_candidate_passes(const ::epix::camera::RenderLayers& light_layers,
+                           const std::optional<std::reference_wrapper<const ::epix::camera::RenderLayers>>& mesh_layers,
+                           bool has_mesh3d, bool opted_out_of_casting, bool is_directional_light) {
+    if (!has_mesh3d) return false;
+    if (opted_out_of_casting) return false;
+    if (is_directional_light) return false;
+    return light_layers.intersects(layers_or_default(mesh_layers));
+}
+}  // namespace
+
+void check_dir_light_mesh_visibility(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<const DirectionalLight&, const ::epix::camera::CascadesFrusta&,
+                         ::epix::camera::CascadesVisibleEntities&, ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         const ::epix::camera::ViewVisibility&, ecs::Opt<const SpotLight&>>>
+        directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
+        visible_entities,
+    std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges) {
+    using ::epix::camera::Aabb;
+    using ::epix::camera::CascadesVisibleEntities;
+    using ::epix::camera::Frustum;
+    using ::epix::camera::RenderLayers;
+
+    const ::epix::camera::VisibleEntityRanges* ranges =
+        visible_entity_ranges.has_value() ? &visible_entity_ranges->get() : nullptr;
+
+    // The meshes a light sees are marked visible through a command, so this system can
+    // run beside the point and spot one rather than both wanting ViewVisibility.
+    std::vector<ecs::Entity> deferred_visible;
+
+    for (auto&& [directional_light, frusta, visible, maybe_light_layers, light_visibility, maybe_spot] :
+         directional_lights.iter()) {
+        if (maybe_spot.has_value()) continue;  // Bevy's Without<SpotLight>
+
+        reconcile_cascade_visible_entities(visible, frusta.frusta);
+
+        // Shadows off, or the light itself not visible: the lists stay empty.
+        if (!directional_light.shadows_enabled || !light_visibility.get()) continue;
+
+        const RenderLayers light_layers = layers_or_default(maybe_light_layers);
+
+        for (const auto& [view, view_frusta] : frusta.frusta) {
+            const auto entry = visible.entities.find(view);
+            if (entry == visible.entities.end()) continue;
+            std::vector<::epix::camera::VisibleMeshEntities>& cascade_lists = entry->second;
+
+            for (auto&& [mesh_entity, inherited, maybe_mesh_layers, maybe_aabb, maybe_transform, maybe_range,
+                         maybe_no_culling, maybe_mesh3d, maybe_not_shadow_caster, maybe_directional] :
+                 visible_entities.iter()) {
+                if (!inherited.get()) continue;
+                if (!mesh_candidate_passes(light_layers, maybe_mesh_layers, maybe_mesh3d.has_value(),
+                                           maybe_not_shadow_caster.has_value(), maybe_directional.has_value())) {
+                    continue;
+                }
+                // Per view, not "any view": a cascade belongs to one view.
+                if (maybe_range.has_value() && ranges != nullptr && !ranges->entity_is_in_range_of_view(mesh_entity, view)) {
+                    continue;
+                }
+
+                if (maybe_aabb.has_value() && maybe_transform.has_value()) {
+                    const Aabb& aabb             = maybe_aabb->get();
+                    const glm::mat4 world_from_local = maybe_transform->get().matrix;
+                    bool visible_to_any_cascade  = false;
+                    for (std::size_t cascade = 0; cascade < view_frusta.size() && cascade < cascade_lists.size(); ++cascade) {
+                        // Near-plane culling is off: a shadow caster may lie in front of
+                        // the near plane and still cast into this cascade.
+                        if (!maybe_no_culling.has_value() &&
+                            !view_frusta[cascade].intersects_obb(aabb, world_from_local, false, true)) {
+                            continue;
+                        }
+                        visible_to_any_cascade = true;
+                        cascade_lists[cascade].entities.push_back(mesh_entity);
+                    }
+                    if (visible_to_any_cascade) deferred_visible.push_back(mesh_entity);
+                } else {
+                    // Nothing to cull against: every cascade.
+                    deferred_visible.push_back(mesh_entity);
+                    for (::epix::camera::VisibleMeshEntities& list : cascade_lists) list.entities.push_back(mesh_entity);
+                }
+            }
+        }
+
+        for (auto& [view, cascade_lists] : visible.entities) {
+            for (::epix::camera::VisibleMeshEntities& list : cascade_lists) list.entities.shrink_to_fit();
+        }
+    }
+
+    // The deferred marking, queued as a command exactly as Bevy does.
+    if (!deferred_visible.empty()) {
+        commands.queue([entities = std::move(deferred_visible)](ecs::World& world) {
+            for (ecs::Entity entity : entities) {
+                world.get_entity_mut(entity).and_then([&](ecs::EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                    if (auto visibility = entity_world.template get_mut<::epix::camera::ViewVisibility>()) {
+                        visibility->get_mut().set_visible();
+                    }
+                    return true;
+                });
+            }
+        });
+    }
+}
+
 }  // namespace epix::pbr
