@@ -10,6 +10,7 @@
 #include <epix/pbr/light_visibility.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_instance.hpp>
+#include <epix/pbr/mesh_pipeline.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/probe.hpp>
@@ -4145,6 +4146,61 @@ TEST(Cluster, CheckDirLightMeshVisibilityWiring) {
     EXPECT_TRUE(app.world_mut().entity(ordinary).get<epix::camera::ViewVisibility>()->get().get())
         << "the deferred command marked it visible";
     EXPECT_FALSE(app.world_mut().entity(opted_out).get<epix::camera::ViewVisibility>()->get().get());
+}
+
+/** @brief The vertex-layout half of mesh specialization: two always-on defs, one per
+ *  attribute present with a fixed shader location, the shared UV def, and MULTISAMPLED
+ *  from the key (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2380-2441`). */
+TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
+    using epix::pbr::MeshVertexAttributePresence;
+    using epix::pbr::specialize_mesh_vertex_layout;
+
+    const auto has_def = [](const auto& result, std::string_view def) {
+        return std::find(result.shader_defs.begin(), result.shader_defs.end(), def) != result.shader_defs.end();
+    };
+
+    // A bare position-only mesh: the two always-on defs plus its own, nothing else.
+    MeshVertexAttributePresence position_only;
+    position_only.position = true;
+    const auto bare       = specialize_mesh_vertex_layout(position_only, 1);
+    EXPECT_TRUE(has_def(bare, "MESH_PIPELINE"));
+    EXPECT_TRUE(has_def(bare, "VERTEX_OUTPUT_INSTANCE_INDEX"));
+    EXPECT_TRUE(has_def(bare, "VERTEX_POSITIONS"));
+    EXPECT_FALSE(has_def(bare, "VERTEX_NORMALS"));
+    EXPECT_FALSE(has_def(bare, "MULTISAMPLED")) << "one sample is not multisampled";
+    ASSERT_EQ(bare.vertex_attributes.size(), 1u);
+    EXPECT_EQ(bare.vertex_attributes[0].name, "position");
+    EXPECT_EQ(bare.vertex_attributes[0].shader_location, 0u);
+
+    // All six attributes: locations 0 to 5 in Bevy's order, and both UV defs, with the
+    // shared one appearing once per set rather than being deduplicated.
+    MeshVertexAttributePresence all;
+    all.position = all.normal = all.uv_0 = all.uv_1 = all.tangent = all.color = true;
+    const auto everything = specialize_mesh_vertex_layout(all, 4);
+    ASSERT_EQ(everything.vertex_attributes.size(), 6u);
+    for (std::uint32_t i = 0; i < everything.vertex_attributes.size(); ++i) {
+        EXPECT_EQ(everything.vertex_attributes[i].shader_location, i) << "locations are fixed by attribute";
+    }
+    EXPECT_TRUE(has_def(everything, "VERTEX_UVS"));
+    EXPECT_TRUE(has_def(everything, "VERTEX_UVS_A"));
+    EXPECT_TRUE(has_def(everything, "VERTEX_UVS_B"));
+    EXPECT_EQ(std::count(everything.shader_defs.begin(), everything.shader_defs.end(), std::string("VERTEX_UVS")), 2)
+        << "each UV set pushes the shared def";
+    EXPECT_TRUE(has_def(everything, "MULTISAMPLED")) << "four samples is multisampled";
+
+    // A mesh without normals leaves location 1 unused rather than shifting uv_0 down to
+    // it, which is what fixed locations mean.
+    MeshVertexAttributePresence no_normals;
+    no_normals.position = no_normals.uv_0 = true;
+    const auto skipped = specialize_mesh_vertex_layout(no_normals, 1);
+    ASSERT_EQ(skipped.vertex_attributes.size(), 2u);
+    EXPECT_EQ(skipped.vertex_attributes[1].name, "uv_0");
+    EXPECT_EQ(skipped.vertex_attributes[1].shader_location, 2u) << "location 1 stays unused";
+
+    // Nothing at all still yields the two always-on defs.
+    const auto empty = specialize_mesh_vertex_layout({}, 1);
+    EXPECT_EQ(empty.shader_defs.size(), 2u);
+    EXPECT_TRUE(empty.vertex_attributes.empty());
 }
 
 }  // namespace
