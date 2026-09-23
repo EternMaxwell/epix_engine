@@ -346,6 +346,9 @@ void init_core3d_test_resources(epix::ecs::World& world) {
     world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3d>>();
     world.init_resource<phase::ViewSortedRenderPhases<Transmissive3d>>();
     world.init_resource<phase::ViewSortedRenderPhases<Transparent3d>>();
+    // A real render world always has the extracted frame count (GlobalsPlugin's
+    // `extract_frame_count` inserts it), which the double-buffered prepass reads.
+    world.init_resource<::epix::render::FrameCount>();
 }
 
 /** @brief Spawn a render-world Camera3d-carrying view and optionally give it
@@ -701,6 +704,13 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
     const auto with_deferred = spawn(true, false, false, true);
     const auto none          = spawn(true, false, false, false);
     const auto inactive      = spawn(false, true, true, true);
+    // Bevy's `#[require(DepthPrepass)]` / `#[require(DeferredPrepass)]`: asking
+    // for the double buffer alone supplies the prepass it buffers.
+    const auto double_buffered = app.world_mut()
+                                     .spawn(::epix::camera::Camera3d{}, ::epix::camera::Camera{},
+                                            epix::core_graph::core_3d::DepthPrepassDoubleBuffer{},
+                                            epix::core_graph::core_3d::DeferredPrepassDoubleBuffer{})
+                                     .id();
 
     auto render_sub = app.take_sub_app(Render);
     ASSERT_TRUE(render_sub);
@@ -728,6 +738,8 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
     check(none, false, false);
     // An inactive camera is skipped before either condition is even read.
     check(inactive, false, false);
+    // The double-buffer markers require their prepass, so this camera is in both.
+    check(double_buffered, true, true);
 
     // Bevy copies the prepass markers onto the synced render entity, which is
     // what the render-world preparation and pass nodes query.
@@ -738,7 +750,8 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
             .transform([](const auto& value) { return value.get().id(); });
     };
     using namespace epix::core_graph::core_3d;
-    const auto check_markers = [&](Entity entity, bool depth, bool normal, bool deferred) {
+    const auto check_markers = [&](Entity entity, bool depth, bool normal, bool deferred,
+                                   bool depth_double_buffer = false, bool deferred_double_buffer = false) {
         const auto render_entity = render_entity_of(entity);
         ASSERT_TRUE(render_entity.has_value());
         const auto extracted = render_sub->world().get_entity(*render_entity);
@@ -747,11 +760,15 @@ TEST(Core3dPrepassExtraction, RequiresAnActiveCameraWithAPrepassComponent) {
         EXPECT_EQ(extracted->contains<NormalPrepass>(), normal);
         EXPECT_EQ(extracted->contains<MotionVectorPrepass>(), false);
         EXPECT_EQ(extracted->contains<DeferredPrepass>(), deferred);
+        EXPECT_EQ(extracted->contains<DepthPrepassDoubleBuffer>(), depth_double_buffer);
+        EXPECT_EQ(extracted->contains<DeferredPrepassDoubleBuffer>(), deferred_double_buffer);
     };
     check_markers(with_depth, true, false, false);
     check_markers(with_normal, false, true, false);
     check_markers(with_deferred, false, false, true);
     check_markers(none, false, false, false);
+    // The double-buffered camera carries both markers and the prepasses they imply.
+    check_markers(double_buffered, true, false, true, true, true);
     // The inactive camera's markers are removed too, so a camera that turns
     // inactive stops contributing prepass state.
     check_markers(inactive, false, false, false);
@@ -873,6 +890,107 @@ TEST(Core3dPrepassTextures, AllocatesOnlyRequestedTexturesWithBevyFormats) {
     ASSERT_TRUE(shared_textures);
     ASSERT_TRUE(shared_textures->get().depth);
     EXPECT_EQ(shared_textures->get().depth->texture.texture, depth_only_textures->get().depth->texture.texture);
+}
+
+// C16: Bevy's `package_double_buffered_texture` (`core_3d/mod.rs:1225-1251`) —
+// a view that also asks for `DepthPrepassDoubleBuffer` /
+// `DeferredPrepassDoubleBuffer` gets a second texture per output target, the two
+// swap with the frame count's parity, and the one not rendered into becomes the
+// attachment's `previous_frame_texture`. A view without the marker keeps the
+// single-buffer shape.
+TEST(Core3dPrepassTextures, DoubleBufferSwapsOnFrameParity) {
+    using namespace epix::core_graph::core_3d;
+    epix::app::App app = epix::app::App::create();
+    app.add_events<epix::window::WindowClosed>();
+    app.add_plugins(epix::app::TaskPoolPlugin{})
+        .add_plugins(epix::time::TimePlugin{})
+        .add_plugins(epix::camera::CameraPlugin{})
+        .add_plugins(epix::assets::AssetPlugin{})
+        .add_plugins(epix::image::ImagePlugin{});
+    try {
+        app.add_plugins(RenderPlugin{});
+    } catch (const std::exception& error) {
+        GTEST_SKIP() << "GPU/Vulkan unavailable: " << error.what();
+    }
+    auto& render_app = app.get_sub_app_mut(Render)->get();
+    auto& world      = render_app.world_mut();
+    init_core3d_test_resources(world);
+    world.init_resource<batching::GpuPreprocessingSupport>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+    world.init_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
+    render_app.add_systems(epix::app::Update, into(prepare_prepass_textures));
+
+    /** @brief Spawn a fully deferred view, double-buffered or not, and make it a
+     *  member of all four prepass phases. */
+    const auto spawn = [&](::epix::camera::ManualTextureViewHandle handle, bool double_buffered) {
+        const ::epix::camera::NormalizedRenderTarget target{handle};
+        auto entity         = world.spawn();
+        const auto id       = entity.id();
+        const auto retained = view::RetainedViewEntity::create(sync_world::MainEntity{id}, std::nullopt, 0);
+        entity.insert(camera::ExtractedCamera{.target = target, .physical_target_size = glm::uvec2{48, 32}},
+                      view::ExtractedView{.retained_view_entity = retained}, view::Msaa::Off, DepthPrepass{},
+                      DeferredPrepass{});
+        if (double_buffered) entity.insert(DepthPrepassDoubleBuffer{}, DeferredPrepassDoubleBuffer{});
+        world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        world.resource_mut<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>().prepare_for_new_frame(
+            retained, batching::GpuPreprocessingMode::None);
+        return id;
+    };
+
+    const auto buffered   = spawn(::epix::camera::ManualTextureViewHandle{113}, true);
+    const auto single     = spawn(::epix::camera::ManualTextureViewHandle{114}, false);
+
+    world.resource_mut<::epix::render::FrameCount>().count = 4;  // even
+    render_app.run_schedule(epix::app::Update);
+
+    const auto even = world.entity(buffered).get<ViewPrepassTextures>();
+    ASSERT_TRUE(even);
+    ASSERT_TRUE(even->get().depth);
+    ASSERT_TRUE(even->get().depth->previous_frame_texture)
+        << "the depth prepass is double buffered, so it has a previous frame";
+    ASSERT_TRUE(even->get().deferred);
+    ASSERT_TRUE(even->get().deferred->previous_frame_texture)
+        << "and so is the deferred G-buffer";
+    const auto even_depth        = even->get().depth->texture.texture;
+    const auto even_depth_prev   = even->get().depth->previous_frame_texture->texture;
+    const auto even_deferred     = even->get().deferred->texture.texture;
+    const auto even_deferred_prev = even->get().deferred->previous_frame_texture->texture;
+    EXPECT_NE(even_depth, even_depth_prev) << "the two buffers are distinct textures";
+
+    // The odd frame renders into the other buffer and reads the first one. The
+    // cache's `taken` flags are re-armed once per frame by
+    // `update_texture_cache_system` (RenderSystems::Cleanup), which this test's
+    // single-schedule run has to model, or every `get` would allocate a fresh
+    // texture and the two frames would share no buffer at all.
+    world.resource_mut<::epix::render::render_resource::TextureCache>().update();
+    world.resource_mut<::epix::render::FrameCount>().count = 5;
+    render_app.run_schedule(epix::app::Update);
+
+    const auto odd = world.entity(buffered).get<ViewPrepassTextures>();
+    ASSERT_TRUE(odd);
+    ASSERT_TRUE(odd->get().depth);
+    ASSERT_TRUE(odd->get().depth->previous_frame_texture);
+    EXPECT_EQ(odd->get().depth->texture.texture, even_depth_prev);
+    EXPECT_EQ(odd->get().depth->previous_frame_texture->texture, even_depth);
+    ASSERT_TRUE(odd->get().deferred);
+    ASSERT_TRUE(odd->get().deferred->previous_frame_texture);
+    EXPECT_EQ(odd->get().deferred->texture.texture, even_deferred_prev);
+    EXPECT_EQ(odd->get().deferred->previous_frame_texture->texture, even_deferred);
+
+    // A view without the markers keeps one buffer and no previous frame.
+    const auto plain = world.entity(single).get<ViewPrepassTextures>();
+    ASSERT_TRUE(plain);
+    ASSERT_TRUE(plain->get().depth);
+    EXPECT_FALSE(plain->get().depth->previous_frame_texture);
+    ASSERT_TRUE(plain->get().deferred);
+    EXPECT_FALSE(plain->get().deferred->previous_frame_texture);
 }
 
 // C13-D5, closed by C14: a view with `DepthPrepass` adds COPY_SRC to the shared

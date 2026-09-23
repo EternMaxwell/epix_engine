@@ -60,6 +60,26 @@ EPIX_EXPORT struct MotionVectorPrepass {};
  * with empty bins until that lands. */
 EPIX_EXPORT struct DeferredPrepass {};
 
+/** @brief Allows querying the previous frame's `DepthPrepass` (Bevy
+ *  `DepthPrepassDoubleBuffer`, `prepass/mod.rs:82-84`): the prepass depth
+ *  attachment then carries the other buffer in its `previous_frame_texture` slot
+ *  and the two swap every frame. Adding it supplies the `DepthPrepass` it
+ *  needs. */
+EPIX_EXPORT struct DepthPrepassDoubleBuffer {
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<DepthPrepass>([] { return DepthPrepass{}; });
+    }
+};
+
+/** @brief Allows querying the previous frame's `DeferredPrepass` (Bevy
+ *  `DeferredPrepassDoubleBuffer`, `prepass/mod.rs:88-90`). Adding it supplies
+ *  the `DeferredPrepass` it needs. */
+EPIX_EXPORT struct DeferredPrepassDoubleBuffer {
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<DeferredPrepass>([] { return DeferredPrepass{}; });
+    }
+};
+
 /** @brief The textures the prepass writes (Bevy `ViewPrepassTextures`,
  * `prepass/mod.rs:118`). Present only when at least one of the relevant prepass
  * components is also present on the view. */
@@ -819,7 +839,9 @@ EPIX_EXPORT void extract_camera_prepass_phase(
                                      ecs::Has<DepthPrepass>,
                                      ecs::Has<NormalPrepass>,
                                      ecs::Has<MotionVectorPrepass>,
-                                     ecs::Has<DeferredPrepass>>,
+                                     ecs::Has<DeferredPrepass>,
+                                     ecs::Has<DepthPrepassDoubleBuffer>,
+                                     ecs::Has<DeferredPrepassDoubleBuffer>>,
                                ecs::With<::epix::camera::Camera3d>>> cameras,
     ecs::Local<std::unordered_set<::epix::render::view::RetainedViewEntity>> live_views,
     ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support);
@@ -827,12 +849,18 @@ EPIX_EXPORT void extract_camera_prepass_phase(
 /** @brief Allocate the per-view prepass textures (Bevy
  * `prepare_prepass_textures`, `core_3d/mod.rs:991`).
  *
- * Epix implements the depth, normal, and motion-vector textures this row owns;
- * the two deferred G-buffer textures belong to C15. */
+ * Epix implements the depth, normal, motion-vector and deferred textures this
+ * system owns. The depth and deferred attachments come from
+ * `package_double_buffered_texture`: a view that also carries the matching
+ * `*DoubleBuffer` marker gets a second texture per output target, the two swap
+ * places every frame, and the one not rendered into goes into the attachment's
+ * `previous_frame_texture` slot. That swap reads `FrameCount`, which the render
+ * world receives from `GlobalsPlugin`'s extraction. */
 EPIX_EXPORT void prepare_prepass_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
+    ecs::Res<render::FrameCount> frame_count,
     ecs::Res<render::phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     ecs::Res<render::phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
     ecs::Res<render::phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
@@ -844,7 +872,9 @@ EPIX_EXPORT void prepare_prepass_textures(
                          ecs::Has<DepthPrepass>,
                          ecs::Has<NormalPrepass>,
                          ecs::Has<MotionVectorPrepass>,
-                         ecs::Has<DeferredPrepass>>> views);
+                         ecs::Has<DeferredPrepass>,
+                         ecs::Has<DepthPrepassDoubleBuffer>,
+                         ecs::Has<DeferredPrepassDoubleBuffer>>> views);
 
 }  // namespace epix::core_graph::core_3d
 
