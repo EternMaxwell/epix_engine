@@ -2,9 +2,13 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/transform.hpp>
 #include <glm/glm.hpp>
+#include <limits>
+#include <optional>
 #include <epix/common.hpp>
 #endif
 
@@ -20,8 +24,8 @@ namespace epix::pbr {
 EPIX_EXPORT struct MeshTransforms {
     glm::mat4 world_from_local{1.0f};
     glm::mat4 previous_world_from_local{1.0f};
-    /** @brief A `RenderMeshInstanceFlags` bit set, kept as a plain integer because
-     *  the uniform carries it as one. */
+    /** @brief A `MeshFlags` bit set, kept as a plain integer because the uniform
+     *  carries it as one (Bevy fills it from `MeshFlags::bits()`). */
     std::uint32_t flags = 0;
 };
 
@@ -77,5 +81,69 @@ static_assert(offsetof(MeshUniform, current_skin_index) == 148);
 static_assert(offsetof(MeshUniform, material_and_lightmap_bind_group_slot) == 152);
 static_assert(offsetof(MeshUniform, tag) == 156);
 static_assert(offsetof(MeshUniform, pad) == 160);
+
+/** @brief Various flags and tightly-packed values on a mesh (Bevy `MeshFlags`,
+ *  `bevy_pbr/src/render/mesh.rs:619-643`).
+ *
+ *  Flags grow from the top bit down; other values grow from the bottom bit up.
+ *  The bits must match `bevy_pbr/src/render/mesh_types.wgsl`, which is why each
+ *  one is named here rather than written at its use site. */
+EPIX_EXPORT struct MeshFlags {
+    enum Bits : std::uint32_t {
+        NONE                          = 0,
+        /** @brief Bitmask for the 16-bit index into the LOD array; `u16::MAX`
+         *  when the mesh has no LOD. */
+        LOD_INDEX_MASK                = (1u << 16) - 1u,
+        /** @brief Disables frustum culling for this mesh (the
+         *  `NoFrustumCulling` component). */
+        NO_FRUSTUM_CULLING            = 1u << 28,
+        SHADOW_RECEIVER               = 1u << 29,
+        TRANSMITTED_SHADOW_RECEIVER   = 1u << 30,
+        /** @brief The sign of the 3x3 model matrix's determinant: set when the
+         *  sign is positive, clear otherwise. */
+        SIGN_DETERMINANT_MODEL_3X3    = 1u << 31,
+        UNINITIALIZED                 = 0xFFFFFFFFu,
+    };
+
+    /** @brief The first bit of the LOD index (Bevy `MeshFlags::LOD_INDEX_SHIFT`,
+     *  `:679`). */
+    static constexpr std::uint32_t LOD_INDEX_SHIFT = 0;
+
+    std::uint32_t bits = NONE;
+
+    constexpr bool contains(Bits flag) const noexcept { return (bits & static_cast<std::uint32_t>(flag)) != 0; }
+    constexpr void insert(Bits flag) noexcept { bits |= static_cast<std::uint32_t>(flag); }
+    constexpr void remove(Bits flag) noexcept { bits &= ~static_cast<std::uint32_t>(flag); }
+
+    bool operator==(const MeshFlags&) const = default;
+
+    /** @brief Bevy `MeshFlags::from_components` (`render/mesh.rs:645-676`): the
+     *  shadow-receiver flag is on unless the mesh opted out, the frustum-culling
+     *  and transmitted-receiver flags come straight from their components, the
+     *  determinant flag from the model matrix's orientation, and the low 16 bits
+     *  carry the LOD index or its `u16::MAX` sentinel.
+     *
+     *  Bevy takes an `Option<NonMaxU16>`, whose type guarantees the sentinel
+     *  cannot collide with a real index; Epix has no non-max wrapper, so the
+     *  optional carries its index and the invariant is documented (the same shape
+     *  `mesh_instance.hpp` records for `Option<NonMaxU32>`). */
+    static MeshFlags from_components(const ::epix::transform::GlobalTransform& transform,
+                                     std::optional<std::uint16_t> lod_index,
+                                     bool no_frustum_culling,
+                                     bool not_shadow_receiver,
+                                     bool transmitted_receiver) {
+        MeshFlags flags = not_shadow_receiver ? MeshFlags{} : MeshFlags{SHADOW_RECEIVER};
+        if (no_frustum_culling) flags.insert(NO_FRUSTUM_CULLING);
+        if (transmitted_receiver) flags.insert(TRANSMITTED_SHADOW_RECEIVER);
+        // `is_sign_positive` is the sign bit's state, so a negative zero is
+        // positive and a NaN follows its own sign bit - `signbit` is the
+        // counterpart, not `> 0`.
+        if (!std::signbit(glm::determinant(glm::mat3(transform.matrix)))) flags.insert(SIGN_DETERMINANT_MODEL_3X3);
+
+        const std::uint16_t index = lod_index.value_or(std::numeric_limits<std::uint16_t>::max());
+        flags.bits |= static_cast<std::uint32_t>(index) << LOD_INDEX_SHIFT;
+        return flags;
+    }
+};
 
 }  // namespace epix::pbr

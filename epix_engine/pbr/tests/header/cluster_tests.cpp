@@ -4034,6 +4034,59 @@ TEST(Cluster, MeshInstanceFlagsMatchBevy) {
         << "and so is a different slot";
 }
 
+/** @brief Bevy's 3D `MeshFlags` (`render/mesh.rs:619-680`): the bit values that
+ *  must match `mesh_types.wgsl`, the LOD index in the low 16 bits, and every arm
+ *  of `from_components`. */
+TEST(Cluster, MeshFlagsMatchBevy) {
+    using epix::pbr::MeshFlags;
+    using Bits = MeshFlags::Bits;
+
+    // The values, not just the distinctness: these travel to the shader.
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::NONE), 0u);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::LOD_INDEX_MASK), 0xFFFFu);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::NO_FRUSTUM_CULLING), 1u << 28);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::SHADOW_RECEIVER), 1u << 29);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::TRANSMITTED_SHADOW_RECEIVER), 1u << 30);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::SIGN_DETERMINANT_MODEL_3X3), 1u << 31);
+    EXPECT_EQ(static_cast<std::uint32_t>(Bits::UNINITIALIZED), 0xFFFFFFFFu);
+    EXPECT_EQ(MeshFlags::LOD_INDEX_SHIFT, 0u) << "the LOD index starts at the bottom bit";
+
+    const epix::transform::GlobalTransform positive{glm::mat4{1.0f}};
+    // Bevy reads the index back through the mask, so the test does too.
+    const auto lod_bits = [](const MeshFlags& value) {
+        return value.bits & static_cast<std::uint32_t>(Bits::LOD_INDEX_MASK);
+    };
+
+    MeshFlags flags = MeshFlags::from_components(positive, std::nullopt, false, false, false);
+    EXPECT_TRUE(flags.contains(Bits::SHADOW_RECEIVER)) << "a mesh receives shadows unless it opts out";
+    EXPECT_TRUE(flags.contains(Bits::SIGN_DETERMINANT_MODEL_3X3)) << "the determinant's sign is positive";
+    EXPECT_FALSE(flags.contains(Bits::NO_FRUSTUM_CULLING));
+    EXPECT_FALSE(flags.contains(Bits::TRANSMITTED_SHADOW_RECEIVER));
+    EXPECT_EQ(lod_bits(flags), 0xFFFFu) << "no LOD is u16::MAX in the low 16 bits";
+
+    EXPECT_FALSE(MeshFlags::from_components(positive, std::nullopt, false, true, false).contains(Bits::SHADOW_RECEIVER))
+        << "NotShadowReceiver clears the flag";
+    EXPECT_TRUE(MeshFlags::from_components(positive, std::nullopt, true, false, false).contains(Bits::NO_FRUSTUM_CULLING));
+    EXPECT_TRUE(MeshFlags::from_components(positive, std::nullopt, false, false, true)
+                    .contains(Bits::TRANSMITTED_SHADOW_RECEIVER));
+
+    // A mirroring transform has a negative determinant, so the flag is clear.
+    epix::transform::GlobalTransform mirrored{glm::scale(glm::mat4{1.0f}, glm::vec3{-1.0f, 1.0f, 1.0f})};
+    EXPECT_FALSE(MeshFlags::from_components(mirrored, std::nullopt, false, false, false)
+                     .contains(Bits::SIGN_DETERMINANT_MODEL_3X3));
+
+    // A LOD index lands in the low 16 bits, and only there.
+    const MeshFlags indexed = MeshFlags::from_components(positive, std::uint16_t{7}, false, false, false);
+    EXPECT_EQ(lod_bits(indexed), 7u);
+    EXPECT_TRUE(indexed.contains(Bits::SHADOW_RECEIVER)) << "the index does not disturb the flags above it";
+
+    // The mask is exactly the low 16 bits.
+    MeshFlags saturated;
+    saturated.bits = static_cast<std::uint32_t>(Bits::LOD_INDEX_MASK);
+    EXPECT_EQ(lod_bits(saturated), 0xFFFFu);
+    EXPECT_FALSE(saturated.contains(Bits::NO_FRUSTUM_CULLING));
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,
