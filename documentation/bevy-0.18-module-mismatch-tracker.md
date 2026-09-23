@@ -151,11 +151,11 @@ Counts are computed by parsing the row tables in `tmp/audit/sections/**` (see th
 | `image` | `IMG` | `bevy_image` | 409 | 198 | 0 | 117 | 81 | 13 | 0 | partial — `bevy_image/src/image.rs` plus the loader/conversion/atlas/decoder files are now covered: `image_loader.rs`, `image_texture_conversion.rs`, `lib.rs`, `serialized_image.rs`, `compressed_image_saver.rs`, `texture_atlas.rs`, `texture_atlas_builder.rs`, `dynamic_texture_atlas_builder.rs` and the format files `ktx2.rs`, `basis.rs`, `dds.rs`, `exr_texture_loader.rs`, `hdr_texture_loader.rs`; the `PARENT: render` consumers (`GpuImage`/`RenderAsset<Image>` preparation, `fallback_image.hpp`, `screenshot.cpp`) still to be audited |
 | `sprite` | `SPR` | `bevy_sprite` | 185 | 128 | 0 | 23 | 26 | 8 | 0 | complete — every `bevy_sprite` source file has rows: `lib.rs`, `sprite.rs` and `texture_slice/{border_rect.rs,mod.rs,slicer.rs}` in `sprite-core.md`, plus `text2d.rs` and `picking_backend.rs` in `sprite-text2d-picking.md` |
 | `sprite_render` | `SRD` | `bevy_sprite_render` | 473 | 440 | 1 | 26 | 3 | 1 | 2 | complete — every `bevy_sprite_render` source file has rows: `lib.rs`, `render/mod.rs`, `render/{sprite.wgsl,sprite_view_bindings.wgsl}` and `texture_slice/{mod.rs,computed_slices.rs}` in `sprite_render-render.md`, plus `mesh2d/**` (incl. `wireframe2d`), `text2d/mod.rs` and `tilemap_chunk/**` in `sprite_render-mesh2d.md` |
-| `pbr` | `PBR` | `bevy_pbr` + `bevy_light` | 537 | 355 | 76 | 43 | 58 | 3 | 2 | partial — `bevy_pbr/src/render/mesh.rs` plus the whole `bevy_light` crate and `bevy_pbr/src/render/light.rs`, `cluster.rs` and `components.rs`; materials, bind groups, `mesh_view_bindings.rs`, skinning and morph, GPU preprocessing, the rest of lightmap, meshlet, deferred, SSR and volumetric fog still to be audited |
+| `pbr` | `PBR` | `bevy_pbr` + `bevy_light` | 537 | 360 | 70 | 44 | 58 | 3 | 2 | partial — `bevy_pbr/src/render/mesh.rs` plus the whole `bevy_light` crate and `bevy_pbr/src/render/light.rs`, `cluster.rs` and `components.rs`; materials, bind groups, `mesh_view_bindings.rs`, skinning and morph, GPU preprocessing, the rest of lightmap, meshlet, deferred, SSR and volumetric fog still to be audited |
 | `render/core_graph` | `CGR` | `bevy_core_pipeline` | 511 | 439 | 0 | 30 | 36 | 4 | 2 | partial — all of `bevy_core_pipeline` outside the cross-owned `core_2d/**`/`core_3d/**` boundary; the two core_graph blocks between them cover the module's pass nodes, prepass, deferred, skybox, tonemapping, upscaling, blit, mip generation and fullscreen material |
-| **total** | `MSH`, `IMG`, `SPR`, `SRD`, `PBR`, `CGR`, `PRT` |  | **2267** | 1696 | 80 | 246 | 209 | 30 | 6 | 12 section files merged; 571 non-✅ rows in the open mismatch index |
+| **total** | `MSH`, `IMG`, `SPR`, `SRD`, `PBR`, `CGR`, `PRT` |  | **2267** | 1701 | 74 | 247 | 209 | 30 | 6 | 12 section files merged; 566 non-✅ rows in the open mismatch index |
 
-**Footnote — counts are computed, not copied.** Every number above is parsed from the row tables in `tmp/audit/sections/**`, so a stale prose summary cannot change a verdict; each section's own count line is compared against its parsed rows, and a disagreement is recorded here rather than silently patched. The counts each section's rows compute to are: `mesh-lead-verified.md` 16 (✅ 13 · ❌ 2 · ⛔ 1), `mesh-mesh_rs.md` 135 (✅ 122 · ❌ 1 · ⚠️ 7 · 🚫 5), `image-image_rs.md` 170 (✅ 83 · ⚠️ 53 · 🚫 23 · ⛔ 11), `image-loader-atlas.md` 239 (✅ 115 · ⚠️ 64 · 🚫 58 · ⛔ 2), `sprite-core.md` 149 (✅ 125 · ⚠️ 5 · 🚫 12 · ⛔ 7), `sprite-text2d-picking.md` 36 (✅ 3 · ⚠️ 18 · 🚫 14 · ⛔ 1), `sprite_render-render.md` 197 (✅ 183 · ⚠️ 12 · ⛔ 1 · REVIEW 1), `sprite_render-mesh2d.md` 277 (✅ 258 · ❌ 1 · ⚠️ 14 · 🚫 3 · REVIEW 1), `core_graph-core3d-core2d.md` 211 (✅ 196 · ⚠️ 4 · 🚫 6 · ⛔ 3 · REVIEW 2), `core_graph-rest.md` 300 (✅ 243 · ⚠️ 26 · 🚫 30 · ⛔ 1), `pbr-render-mesh.md` 180 (✅ 94 · ❌ 70 · ⚠️ 14 · ⛔ 1 · REVIEW 2), `pbr-lights.md` 356 (✅ 261 · ❌ 6 · ⚠️ 29 · 🚫 58 · ⛔ 2). **All twelve sections' count lines agree with their rows — no count-line disagreement is open.** This build re-derived two sections: `pbr-lights.md` and `pbr-render-mesh.md` after commit `ab124547` added the two components the GPU mesh extraction query reads (`PBR-509` 🚫 → ✅, and `PBR-280` as a new ✅ row for the `Lightmap` component), so `pbr` now reads ✅ 355 · ❌ 76 · ⚠️ 43 · 🚫 58 over 537 rows and the index holds 571 rows. The previous build's note, kept as history: it re-derived `mesh-lead-verified.md` after commit `f3445288` renamed the topology accessor and removed the two extra setters (index 572 rows); before that `sprite-text2d-picking.md` after commit `835053d7` (index 574 rows), before that `pbr-render-mesh.md` after commit `71520e5c` (index 575 rows), before that after `737e35ea` (index 577 rows), before that after `5664b7cf` (index 585 rows), before that after `654f8202` (index 586 rows), before that after `55766836` (index 589 rows), before that after `8c08d4ab` (index 590 rows), before that after `08077883` (index 592 rows), before that `sprite_render-mesh2d.md` after `90ac9a0f` (index 599 rows), before that `core_graph-core3d-core2d.md` after `c53c018c` (index 600 rows), before that `pbr-lights.md` after `66b43f0d` (index 607 rows), before that `sprite_render-mesh2d.md` after `18c9af19`, and before that the three sections whose rows changed with `df3a4363` and `555a8702`. The build before those re-derived `pbr-lights.md` after commit `c698c1fc` (which moved `PBR-688` to ✅ and ported three of `PBR-796`'s five warning sites, `PBR-796` staying ❌) and commit `2defecfc` (which ported `PBR-637`), taking `pbr` to ✅ 324 · ❌ 99 · ⚠️ 44 · 🚫 63 · ⛔ 3 and the index to 617 rows. **No sentence in the merged sections' prose disagrees with its own rows any more**: those rewrites carried each section's summary figures and numbered entries into line with its rows, so every status label the twelve sections' prose attaches to an ID matches that row, and earlier disagreements of that kind are recorded below as history rather than patched here. The section count lines, not those sentences, are what every number above is derived from. One wording note on the Open mismatch index below: its **Epix file that must change** column is filled with the first repository path in the row's Epix cell, else the first repository path in the row's difference cell, and repeats the section's own `none`/`—` only when neither cell names one — 13 of the 571 rows take their path from the difference cell that way, so the column's own note reads more narrowly than the column is actually filled. Earlier disagreements are all corrected in the source sections: `mesh-lead-verified.md` read ✅ 9 for a set that computes to ✅ 11, and its narrative is what resolves the `MSH-1012`/`MSH-1013` pair — the two private helpers are audited in both mesh sections under two ID blocks, and `mesh-mesh_rs.md` (`MSH-151`, `MSH-155`) carries the verdict, which is why those two rows point there rather than re-deriving it; `pbr-lights.md`'s narrative read "The 20 ❌ rows are the actionable findings" and "which is why 239 rows are ✅" against a computed ✅ 243 · ❌ 16, and its numbered list then carried entries for `PBR-576`, `PBR-611`, `PBR-682`, `PBR-798` and `PBR-840` as open after those rows had moved to ✅ (that list has since been rewritten, except for entries 23 and 24 noted above); `core_graph-core3d-core2d.md`'s per-status table was corrected to ✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2; `image-image_rs.md`'s non-✅ list header read "(92)" where its rows compute 87; and the "Next candidates" list that still held the six `image.rs` ❌ rows as open after batch 9 was replaced by the batch 1-17 list. The rule stands: rows win, and any future disagreement is recorded here rather than silently patched. Three section files are stored with CRLF line endings (`image-loader-atlas.md`, `pbr-render-mesh.md`, `pbr-lights.md`); all are merged here with the repository's LF convention, content unchanged. Every summary in the Open mismatch index is its row's own `Difference / required alignment` text cut to its first clause(s) — all 571 were re-checked against the merged sections and each is a prefix of that text — and every **ID** and **Status** cell is copied from its row unchanged.
+**Footnote — counts are computed, not copied.** Every number above is parsed from the row tables in `tmp/audit/sections/**`, so a stale prose summary cannot change a verdict; each section's own count line is compared against its parsed rows, and a disagreement is recorded here rather than silently patched. The counts each section's rows compute to are: `mesh-lead-verified.md` 16 (✅ 13 · ❌ 2 · ⛔ 1), `mesh-mesh_rs.md` 135 (✅ 122 · ❌ 1 · ⚠️ 7 · 🚫 5), `image-image_rs.md` 170 (✅ 83 · ⚠️ 53 · 🚫 23 · ⛔ 11), `image-loader-atlas.md` 239 (✅ 115 · ⚠️ 64 · 🚫 58 · ⛔ 2), `sprite-core.md` 149 (✅ 125 · ⚠️ 5 · 🚫 12 · ⛔ 7), `sprite-text2d-picking.md` 36 (✅ 3 · ⚠️ 18 · 🚫 14 · ⛔ 1), `sprite_render-render.md` 197 (✅ 183 · ⚠️ 12 · ⛔ 1 · REVIEW 1), `sprite_render-mesh2d.md` 277 (✅ 258 · ❌ 1 · ⚠️ 14 · 🚫 3 · REVIEW 1), `core_graph-core3d-core2d.md` 211 (✅ 196 · ⚠️ 4 · 🚫 6 · ⛔ 3 · REVIEW 2), `core_graph-rest.md` 300 (✅ 243 · ⚠️ 26 · 🚫 30 · ⛔ 1), `pbr-render-mesh.md` 181 (✅ 99 · ❌ 64 · ⚠️ 15 · ⛔ 1 · REVIEW 2), `pbr-lights.md` 356 (✅ 261 · ❌ 6 · ⚠️ 29 · 🚫 58 · ⛔ 2). **All twelve sections' count lines agree with their rows — no count-line disagreement is open.** This build re-derived one section: `pbr-render-mesh.md`, after commit `b0a6760c` added the queue resource and the two GPU extraction functions (`PBR-149` ❌ → ⚠️, `PBR-176`..`PBR-180` ❌ → ✅). Its counts are now 181 (`✅ 99 · ❌ 64 · ⚠️ 15 · ⛔ 1 · REVIEW 2`) and `pbr` reads ✅ 360 · ❌ 70 · ⚠️ 44 · 🚫 58 over 537 rows, with the index holding 566 rows. The same pass compared that section's prose against its rows entry by entry and found 24 numbered entries still carrying pre-fix labels — `PBR-130`/`PBR-134`..`PBR-139`/`PBR-146`..`PBR-154`/`PBR-170`/`PBR-171` (fixed in `55766836`, `08077883`, `737e35ea` and `71520e5c`), plus `PBR-149`, `PBR-176`..`PBR-180` and `PBR-278` — so each now names the commit that fixed it and no entry in that section disagrees with its row. The same pass also corrected two stale aggregate figures in `pbr-lights.md`'s own summary (59 🚫 → 58 and 260 ✅ → 261), left behind when batch 31 moved `PBR-509` from 🚫 to ✅: its count line was already right, but its prose was one off on both. The previous build's note, kept as history: it re-derived `mesh-lead-verified.md` after commit `f3445288` renamed the topology accessor and removed the two extra setters (index 572 rows); before that `sprite-text2d-picking.md` after commit `835053d7` (index 574 rows), before that `pbr-render-mesh.md` after commit `71520e5c` (index 575 rows), before that after `737e35ea` (index 577 rows), before that after `5664b7cf` (index 585 rows), before that after `654f8202` (index 586 rows), before that after `55766836` (index 589 rows), before that after `8c08d4ab` (index 590 rows), before that after `08077883` (index 592 rows), before that `sprite_render-mesh2d.md` after `90ac9a0f` (index 599 rows), before that `core_graph-core3d-core2d.md` after `c53c018c` (index 600 rows), before that `pbr-lights.md` after `66b43f0d` (index 607 rows), before that `sprite_render-mesh2d.md` after `18c9af19`, and before that the three sections whose rows changed with `df3a4363` and `555a8702`. The build before those re-derived `pbr-lights.md` after commit `c698c1fc` (which moved `PBR-688` to ✅ and ported three of `PBR-796`'s five warning sites, `PBR-796` staying ❌) and commit `2defecfc` (which ported `PBR-637`), taking `pbr` to ✅ 324 · ❌ 99 · ⚠️ 44 · 🚫 63 · ⛔ 3 and the index to 617 rows. **No sentence in the merged sections' prose disagrees with its own rows**: those rewrites carried each section's summary figures and numbered entries into line with its rows, so every status label the twelve sections' prose attaches to an ID matches that row. This build checked that claim mechanically for `pbr-render-mesh.md` — every numbered entry compared against its row — which is what found the 24 stale labels recorded in the previous paragraph; earlier disagreements of that kind are recorded below as history rather than patched here. The section count lines, not those sentences, are what every number above is derived from. One wording note on the Open mismatch index below: its **Epix file that must change** column is filled with the first repository path in the row's Epix cell, else the first repository path in the row's difference cell, and repeats the section's own `none`/`—` only when neither cell names one — 13 of the 571 rows take their path from the difference cell that way, so the column's own note reads more narrowly than the column is actually filled. Earlier disagreements are all corrected in the source sections: `mesh-lead-verified.md` read ✅ 9 for a set that computes to ✅ 11, and its narrative is what resolves the `MSH-1012`/`MSH-1013` pair — the two private helpers are audited in both mesh sections under two ID blocks, and `mesh-mesh_rs.md` (`MSH-151`, `MSH-155`) carries the verdict, which is why those two rows point there rather than re-deriving it; `pbr-lights.md`'s narrative read "The 20 ❌ rows are the actionable findings" and "which is why 239 rows are ✅" against a computed ✅ 243 · ❌ 16, and its numbered list then carried entries for `PBR-576`, `PBR-611`, `PBR-682`, `PBR-798` and `PBR-840` as open after those rows had moved to ✅ (that list has since been rewritten, except for entries 23 and 24 noted above); `core_graph-core3d-core2d.md`'s per-status table was corrected to ✅ 187 · ❌ 6 · ⚠️ 4 · 🚫 9 · ⛔ 3 · REVIEW 2; `image-image_rs.md`'s non-✅ list header read "(92)" where its rows compute 87; and the "Next candidates" list that still held the six `image.rs` ❌ rows as open after batch 9 was replaced by the batch 1-17 list. The rule stands: rows win, and any future disagreement is recorded here rather than silently patched. Three section files are stored with CRLF line endings (`image-loader-atlas.md`, `pbr-render-mesh.md`, `pbr-lights.md`); all are merged here with the repository's LF convention, content unchanged. Every summary in the Open mismatch index is its row's own `Difference / required alignment` text cut to its first clause(s) — all 571 were re-checked against the merged sections and each is a prefix of that text — and every **ID** and **Status** cell is copied from its row unchanged.
 
 ## Open mismatch index
 
@@ -502,7 +502,7 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-126 | ⚠️ | Bevy's size is 176 with 16-byte alignment; Epix adds an explicit `tail_padding[3]` because glm types are not forced-aligned, then static-asserts size 176 and every offset through `pad==160`. | `epix_engine/pbr/include/epix/pbr/mesh_uniform.hpp` |
 | `pbr` | PBR-143 | ❌ | Epix has `shared`/`center`/`current_uniform_index`, but `center` is the **local-space** AABB centre whereas Bevy's is the world-space centre computed in `RenderMeshInstanceGpuBuilder::update` (`mesh.rs:1218-1219`; `center: aabb.center.into()` at `mesh.rs:890` … | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp` |
 | `pbr` | PBR-145 | ⚠️ | Bevy's `NonMaxU32` invariant is documented rather than enforced; an Epix `LightmapSlabIndex{u32::MAX}` would collide with the sentinel the shader expects (`mesh.rs:597`). | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp` |
-| `pbr` | PBR-149 | ❌ | Absent. | `none` |
+| `pbr` | PBR-149 | ⚠️ | **Aligned in role, not in shape** (commit `b0a6760c`): the resource exists with Bevy's `Resource`+`Deref`/`DerefMut` role (the operators here), but it holds **one** `RenderMeshInstanceGpuQueue` instead of a `Parallel<RenderMeshInstanceGpuQueue>`. | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp` |
 | `pbr` | PBR-156 | ⚠️ | Epix stores both maps plus a `Kind` tag instead of an enum — representation-only, and `is_cpu_building()` keeps the dispatch honest. | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp` |
 | `pbr` | PBR-165 | ❌ | The single most consequential missing body in the file: vertex/index slice lookup, skin index, material-binding lookup with reextraction bail-out, lightmap slot, `MeshInputUniform` construction, and the occupied/vacant slot handling that copies last frame's … | `none` |
 | `pbr` | PBR-166 | ❌ | Absent; without it an unprepared material silently loses the mesh. | `none` |
@@ -511,11 +511,6 @@ Every non-✅ row from every merged section, grouped by module and, inside a mod
 | `pbr` | PBR-173 | ❌ | Absent; `Plugin::build` uses it to order the visibility-range system before extraction (PBR-107). | `none` |
 | `pbr` | PBR-174 | ❌ | No CPU extraction system. | `none` |
 | `pbr` | PBR-175 | ❌ | Absent, including the LOD lookup via `render_visibility_ranges.lod_index_for_entity` and the `MeshFlags::from_components` call. | `none` |
-| `pbr` | PBR-176 | ❌ | Absent. | `none` |
-| `pbr` | PBR-177 | ❌ | Absent, including `any_gpu_culling` derivation from `Query<(), (With<Camera>, Without<NoIndirectDrawing>)>`. | `none` |
-| `pbr` | PBR-178 | ❌ | Absent; the change filter is what makes the GPU path cheap. | `none` |
-| `pbr` | PBR-179 | ❌ | Absent. | `none` |
-| `pbr` | PBR-180 | ❌ | Absent, including the `queue.remove(entity, …)` on invisible and the `HAS_PREVIOUS_TRANSFORM`-gated `previous_input_index` lookup. | `none` |
 | `pbr` | PBR-181 | ❌ | Absent. This is the only writer of `HAS_PREVIOUS_SKIN`/`HAS_PREVIOUS_MORPH`, so motion vectors currently cannot be flagged at all. | `none` |
 | `pbr` | PBR-182 | ❌ | Absent. | `none` |
 | `pbr` | PBR-183 | ❌ | Absent. `ensure_nonempty` matters: an empty previous-input buffer is invalid to bind. | `none` |
@@ -1104,6 +1099,19 @@ verified; the fixing commit is recorded here.
 | Status | **committed as `654f8202`** — `feat(pbr): add the lightmap slot type and MeshUniform construction (PBR-131, PBR-132, PBR-133, PBR-279)` |
 | Note | The lightmap module now exists but holds only what this constructor needs; the rest of `bevy_pbr/src/lightmap/**` is still unaudited and unported. |
 
+### Batch 26 — Bevy's whole MSAA sample range in the mesh-key test (PBR-278)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `PBR-278` (⚠️ → ✅) |
+| Bevy behaviour | Bevy's own round-trip test walks every value the three-bit MSAA field can hold: `[1, 2, 4, 8, 16, 32, 64, 128]` (`bevy_pbr/src/render/mesh.rs:3422-3430`). |
+| Epix divergence | The field is three bits wide on both sides and the wider values fit identically, so behaviour already matched — but Epix's test covered only `{1, 2, 4, 8}` plus the `0` edge case, which is why the row stayed ⚠️: the evidence was missing, not the behaviour. |
+| Change | The test walks Bevy's full range, and each value is checked to round-trip without disturbing a flag bit. |
+| Files | `epix_engine/pbr/tests/header/mesh_pipeline_key_tests.cpp` |
+| Verification | The affected test target builds and the test passes; full CTest `92/92` (`tmp/audit-ctest-msaarange.log`). No production file changed, so no new rendering evidence is owed — the sweep and captures from batch 25 still stand. |
+| Parent modules touched | none — `pbr` test only. |
+| Status | **committed as `5664b7cf`** — `test(pbr): walk Bevy's whole MSAA sample range (PBR-278)` |
+
 ### Batch 27 — the GPU instance builder and its per-thread queues (PBR-146, PBR-147, PBR-148, PBR-151, PBR-152, PBR-153, PBR-170, PBR-171)
 
 | Field | Value |
@@ -1180,15 +1188,32 @@ verified; the fixing commit is recorded here.
 | Status | **committed as `ab124547`** — `feat(pbr): add the two components the GPU mesh extraction query reads (PBR-509, PBR-280)` |
 | Note | What remains for the extraction: the query alias (`PBR-176`), the per-entity helper (`PBR-180`) and the system with its change filter and removal readers (`PBR-177`..`PBR-179`), which also needs the queue resource (`PBR-149`, Bevy's `Parallel<T>`). |
 
+### Batch 32 — the GPU instance queues and the extraction that fills them (PBR-149, PBR-176..PBR-180)
+
+| Field | Value |
+| --- | --- |
+| Mismatch IDs | `PBR-149` (❌ → ⚠️), `PBR-176` (❌ → ✅), `PBR-177` (❌ → ✅), `PBR-178` (❌ → ✅), `PBR-179` (❌ → ✅), `PBR-180` (❌ → ✅) |
+| Bevy behaviour | `RenderMeshInstanceGpuQueues(Parallel<RenderMeshInstanceGpuQueue>)` as a resource (`bevy_pbr/src/render/mesh.rs:827-828`); `GpuMeshExtractionQuery`, the fifteen query items (`:1460-1477`); `extract_meshes_for_gpu_building` (`:1487-1624`) with its `Or<(Changed<..> × 14)>` filter (`:1494-1509`), its eleven `RemovedComponents` readers chained into `meshes_to_reextract_next_frame` (`:1512-1536,1582-1597`), its `any_gpu_culling` derivation from `Query<(), (With<Camera>, Without<NoIndirectDrawing>)>`, and its `par_iter().for_each_init` drain over the per-thread queues; `extract_mesh_for_gpu_building` (`:1626-1705`), which removes the instance when the row is invisible, else computes `MeshFlags::from_components`, the shared record, the packed lightmap rect, the world-space culling centre and, gated on `HAS_PREVIOUS_TRANSFORM`, the previous input-buffer index. |
+| Epix divergence | The queue resource and the whole GPU extraction stage were absent. `PBR-148` had produced the queue type with its `push`/`remove` methods, `PBR-150` the retry set and `PBR-151`..`PBR-154` the shape logic, but nothing owned a queue and nothing walked the changed meshes, so a mesh that became ready was never queued for GPU building. |
+| Change | `mesh_instance.hpp` gains `RenderMeshInstanceGpuQueues` as a `Resource` with `operator*`/`operator->` in place of Bevy's `Deref`/`DerefMut`; it holds **one** `RenderMeshInstanceGpuQueue` because Epix has no `Parallel<T>` counterpart, which is why `PBR-149` moves to ⚠️ rather than ✅. New `pbr/include/epix/pbr/mesh_extraction.hpp` and `pbr/src/mesh_extraction.cpp` carry the fifteen-item query alias (`GpuMeshExtractionQuery`), the change filter, the system and the per-entity helper. The system is a sequential `iter()` into the single queue where Bevy drains per-thread queues; the wrong-side guard throws where Bevy panics (C++ `assert` is compiled out here); each `Changed<T>` term is the `Or<Added<T>, Modified<T>>` pair it stands for, the idiom `visibility_range.hpp` already uses. The helper takes the fifteen query items instead of Bevy's tuple, because C++ cannot forward a structured binding from the loop — which is also why it is declared in the header rather than file-local, as `mesh2d`'s `extract_mesh2d` already is. |
+| Files | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp`, `epix_engine/pbr/include/epix/pbr/mesh_extraction.hpp` (new), `epix_engine/pbr/src/mesh_extraction.cpp` (new), `epix_engine/pbr/tests/header/cluster_tests.cpp` |
+| Tests | `MeshExtraction.QueuesVisibleMeshesAndRemovals` — a two-world harness (`ExtractedWorld{main_world}`) with the four resources the system needs; it asserts that a visible mesh with a changed transform lands in the GPU-culling queue with its tag, the `(0, 0xFFFFFFFF)` lightmap-rect sentinel, `TRANSMITTED_SHADOW_RECEIVER`/`SHADOW_RECEIVER`/`SIGN_DETERMINANT` set, culling centre `(1,2,3)` and no `previous_input_index` (no transform last frame), and that two invisible meshes are removed. The pbr cluster suite is now 116 tests. |
+| Verification | Whole-tree build `BUILD_EXIT=0` (`tmp/audit-build-extraction.log`); CTest `92/92` (`tmp/audit-ctest-extraction.log`); the pbr cluster suite (116 tests); 63-example sweep (`tmp/audit-sweep-extraction/`) with only the pre-existing fallingsand error and the four known core3d warnings; captures `mesh_rendering` `DBABB1D0…` and `sprite_basic` `E7B7E7ED…` byte-identical to their long-standing baselines. The `mesh_batching` capture came out `C7AAD519…`, which this round established is **not** a stable baseline: eight different hashes were seen across the session on clean, unoccluded images, so that example is judged by eye rather than by hash. |
+| Parent modules touched | none — `pbr` only. The five render headers the new TU needs (`binned_phase.hpp`, `render_phase.hpp`, `sync_world.hpp`, `view.hpp`, `visibility_range.hpp`) are included individually because the `epix/render.hpp` umbrella does not compile inside this translation unit; no render file changed. |
+| Status | **committed as `b0a6760c`** — `feat(pbr): extract meshes into the GPU instance queues (PBR-149, PBR-176, PBR-177, PBR-178, PBR-179, PBR-180)` |
+| Note | What remains of the extraction is `MeshExtractionSystems` (`PBR-173`), the CPU path (`PBR-174`/`PBR-175`), `set_mesh_motion_vector_flags` (`PBR-181`) and `collect_meshes_for_gpu_building` (`PBR-182`/`PBR-183`); `PBR-149`'s `Parallel<T>` is the prerequisite for running the GPU path in parallel. The costliest error here was MSVC's `construct_at` note pointing at the deepest template rather than the fault — a `MainEntity` inserted into a set of `ecs::Entity`, which the note's "see reference to function template instantiation" finally named by file and line. |
+
 ### Next candidates
 
 Ranked by value from the sections merged so far:
 
-1. The extraction side of the 3D mesh pipeline — the queue resource (`PBR-149`), the query alias (`PBR-176`), the per-entity helper (`PBR-180`) and the system with its change filter, removal readers and re-extraction set (`PBR-177`..`PBR-179`). Every other dependency is now in place, including the two components from batch 31.
+1. The rest of the 3D mesh pipeline's instance side — `PBR-181` (`set_mesh_motion_vector_flags`, the only writer of `HAS_PREVIOUS_SKIN`/`HAS_PREVIOUS_MORPH`, so motion vectors cannot be flagged without it) and `PBR-182`/`PBR-183` (`collect_meshes_for_gpu_building`, whose `previous_input_buffer.ensure_nonempty()` is what makes the previous-input binding valid), then the CPU extraction path (`PBR-173`..`PBR-175`) and `MeshPipeline` itself (`PBR-184`..`PBR-195`) — the bulk of the pbr module's remaining ❌ rows.
 2. `CGR-208`, `CGR-218`, `CGR-226`, `CGR-294`, `CGR-301` — the render diagnostics and `trace` spans absent from every pass node: Bevy's spans need a diagnostics facility Epix does not have, and its `info_span!`s have no Epix counterpart either (Tracy is wired only into `app`/`ecs`), so this needs a facility row before the nodes can follow.
 3. `MSH-218` (mesh) — `Triangle3d::normal`'s typed error; Bevy's home for it is `bevy_math`, and Epix has no `Dir3`/`InvalidDirectionError`, so it needs those types first.
-4. The unaudited `bevy_mesh` support files (`vertex.rs`, `index.rs`, `components.rs`, `skinning.rs`, `morph.rs`, `conversions.rs`, `mikktspace.rs`, `primitives/**`) and the `mesh-mesh_rs.md` leftovers.
+4. `PBR-149`'s `Parallel<T>` — one queue per thread is the last shape gap in the queue resource and the prerequisite for a parallel extraction.
 5. `SRD-426`, `SRD-366` — both blocked on facilities or decisions (`Handle::default()`, Bevy's fallible `SRes`).
+
+Fixed since the previous ranking: the GPU extraction stage (batch 32, 6 rows: `PBR-176`..`PBR-180` to ✅ and `PBR-149` to ⚠️).
 
 Fixed since the previous ranking: the topology accessor rename with the extra setters removed (batch 30, 2 rows) and the two extraction-query components (batch 31, 2 rows).
 
@@ -4393,20 +4418,25 @@ Epix files read:
 
 ## Summary
 
-Counts: ✅ 94 · ❌ 70 · ⚠️ 14 · 🚫 0 · ⛔ 1 · REVIEW 2 (181 rows, `PBR-100`..`PBR-280`).
+Counts: ✅ 99 · ❌ 64 · ⚠️ 15 · 🚫 0 · ⛔ 1 · REVIEW 2 (181 rows, `PBR-100`..`PBR-280`).
 
-The 70 ❌ rows are overwhelmingly one fact seen from many angles: **Epix has no 3D mesh pipeline**.
-`MeshPipeline`, `MeshRenderPlugin` and every extraction system, bind group and render command in
-`mesh.rs` are absent. What *is* ported — `MeshPipelineKey` and the view-layout key with every flag,
-shift and mask bit-exact, the five pass arms with their blend and depth-write rules, the shader-def
-derivation, and the morph/skinning layout precedence — is ported correctly, which is why 68 rows are ✅.
+The 64 ❌ rows are overwhelmingly one fact seen from many angles: **Epix has no 3D mesh pipeline**.
+`MeshPipeline`, `MeshRenderPlugin`, the view bind groups and every remaining render command in `mesh.rs`
+are absent, and of the extraction stage only the GPU path's query, system and helper are ported —
+`MeshExtractionSystems`, the CPU path, the motion-vector flag writer and `collect_meshes_for_gpu_building`
+are not. What *is* ported — `MeshPipelineKey` and the view-layout key with every flag, shift and mask
+bit-exact, the five pass arms with their blend and depth-write rules, the shader-def derivation, the
+morph/skinning layout precedence, and the GPU instance queues with the two extraction functions that fill
+them — is ported correctly, which is why 99 rows are ✅.
 
 The 15 ⚠️ rows are: parameter-only capability fields whose owning pipeline is missing (PBR-189..192),
-representation choices (`glm::mat4` for `Affine3`, explicit tail padding for `ShaderType` rounding, two
-maps plus a tag instead of an enum), the seven cargo-feature-gated shader defs, one dropped `constexpr`,
-one aspirational doc comment, one unwired-but-parity-correct primitive state, and one narrow MSAA test range.
+representation or documentation choices (`MainEntity` instead of `RetainedViewEntity`, `glm::mat4` for
+`Affine3`, explicit tail padding for `ShaderType` rounding, an unenforced `NonMaxU32` invariant, two maps
+plus a tag instead of an enum, one queue instead of `Parallel<…>`), the seven cargo-feature-gated shader
+defs, one dropped `constexpr`, one aspirational doc comment, one unwired-but-parity-correct primitive
+state, and one pair of labels with no descriptor to carry them.
 
-Non-✅ rows with reasons:
+Non-✅ rows with reasons (rows this batch or an earlier one fixed are kept in place, struck through).
 
 1. PBR-100 ❌ type — no 3D mesh render plugin; nothing registers phases, shaders, extraction or bind groups
 2. PBR-101 ❌ method — no constructor (`RenderDebugFlags` exists at `render/render_debug.hpp:13`)
@@ -4431,42 +4461,42 @@ Non-✅ rows with reasons:
 21. PBR-126 ⚠️ def — explicit `tail_padding[3]` replaces `ShaderType` rounding; correct today, doubles if glm aligned gentypes are enabled
 22. *(PBR-127 ✅ ported in `8c08d4ab` — `MeshInputUniform` exists with the shader's size and offsets asserted.)*
 23. *(PBR-128 ✅ ported in `8c08d4ab` — all twelve fields, in Bevy's order, zeroed by default as Bevy's `Default` is.)*
-24. PBR-130 ❌ type — no GPU-culling data buffer
+24. *(PBR-130 ✅ ported in `55766836` — the newtype sits beside its element type and the buffer is reached through `operator*`/`operator->`.)*
 25. *(PBR-131 ✅ ported in `654f8202` as `MeshUniform::make`, with Bevy's six parameters.)*
 26. *(PBR-132 ✅ ported in `654f8202` — the whole constructor body, with the two `Affine3` helpers as free functions beside their consumer and `pack_lightmap_uv_rect` in the new `lightmap.hpp`.)*
 27. *(PBR-133 ✅ ported in `654f8202` — both sentinels and the zero UV rect are produced and pinned by value.)*
-28. PBR-134 ❌ type — only the 2D stub exists (two sentinels, no mask or shadow bits)
-29. PBR-135 ❌ const — bits 0..15 LOD index mask absent
-30. PBR-136 ❌ const — bits 28..31 flags absent; the 2D stub uses `UNINITIALIZED = 0xFFFF`
-31. PBR-137 ❌ method — no `MeshFlags::from_components`
-32. PBR-138 ❌ def — flag derivation absent (shadow-receiver default-on, LOD shift, determinant sign)
-33. PBR-139 ❌ const — `LOD_INDEX_SHIFT` absent
+28. *(PBR-134 ✅ ported in `08077883` — the 3D flag struct exists with Bevy's seven named bits.)*
+29. *(PBR-135 ✅ ported in `08077883` — bits 0..15 are the LOD mask, pinned by `Cluster.MeshFlagsMatchBevy`.)*
+30. *(PBR-136 ✅ ported in `08077883` — all six flag bits, each asserted by value because they travel to `mesh_types.wgsl`.)*
+31. *(PBR-137 ✅ ported in `08077883` — `MeshFlags::from_components` takes the optional LOD index.)*
+32. *(PBR-138 ✅ ported in `08077883` — every arm, with `std::signbit` for Bevy's `is_sign_positive`.)*
+33. *(PBR-139 ✅ ported in `08077883` — `LOD_INDEX_SHIFT` is asserted by the same test.)*
 34. PBR-143 ❌ type — `center` is the local-space AABB centre, not Bevy's world-space centre (doc-comment says world)
 35. PBR-145 ⚠️ type — `NonMaxU32` invariant documented, not enforced; `u32::MAX` would collide with the shader sentinel
-36. PBR-146 ❌ type — no parallel-extraction builder
-37. PBR-147 ❌ field — all five builder fields absent
-38. PBR-148 ❌ type — the culling-variant queue absent
-39. PBR-149 ❌ type — no per-thread GPU extraction queues
-40. PBR-150 ❌ type — no reextraction set, so an unprepared material loses the mesh
-41. PBR-151 ❌ method — clear-or-recreate logic absent
-42. PBR-152 ❌ method — absent, including the variant-promotion arms
-43. PBR-153 ❌ method — absent
-44. PBR-154 ❌ impl — no CPU/GPU constructor; only `should_batch()` exists
+36. *(PBR-146 ✅ ported in `737e35ea` — the parallel-extraction builder exists, with the mesh id deliberately absent.)*
+37. *(PBR-147 ✅ ported in `737e35ea` — all five fields, with Bevy's `Affine3` as `glm::mat4`.)*
+38. *(PBR-148 ✅ ported in `737e35ea` — the culling variant replaces the enum, and the CPU shape still omits the per-instance `MeshCullingData`.)*
+39. PBR-149 ⚠️ type — the resource exists with Bevy's `Resource`+`Deref` role, but holds one `RenderMeshInstanceGpuQueue` instead of a `Parallel<…>`; sequential extraction produces the same entries in the same order, so only the shape is missing.
+40. *(PBR-150 ✅ ported in `71520e5c` — the reextraction set is a `MainEntityHashSet` resource, so a mesh whose material is not ready is retried instead of lost.)*
+41. *(PBR-151 ✅ ported in `737e35ea` — the matching shape is cleared in place so its allocations survive, the other is replaced outright: Bevy's four arms.)*
+42. *(PBR-152 ✅ ported in `737e35ea` — append when the shape matches, otherwise replace the queue with a fresh one holding just that entry.)*
+43. *(PBR-153 ✅ ported in `737e35ea` — the variant-promotion arms: a queue that already has a shape keeps it, an empty one takes the shape the flag asks for.)*
+44. *(PBR-154 ✅ ported in `71520e5c` — both factories with Bevy's bodies, `SHADOW_CASTER = !not_shadow_caster` and `AUTOMATIC_BATCHING = !no_automatic_batching`.)*
 45. PBR-156 ⚠️ type — two maps plus a `Kind` tag instead of an enum; documented, representation-only
 46. PBR-165 ❌ method — no `RenderMeshInstanceGpuBuilder::update`: slices, material lookup, lightmap slot, uniform construction and slot reuse all missing
 47. PBR-166 ❌ def — no reextraction bail-out
 48. PBR-167 ❌ def — no previous-uniform copy, so motion-vector inputs cannot be produced
 49. PBR-168 ❌ fn — absent
-50. PBR-170 ❌ method — absent (no buffer to write)
-51. PBR-171 ❌ impl — absent
+50. *(PBR-170 ✅ ported in `737e35ea` — grow the buffer with zeroed entries up to the slot and then write it.)*
+51. *(PBR-171 ✅ covered in `55766836` — the buffer's default member initializer gives the storage-usage `RawBufferVec` Bevy's `Default` provides; the row was corrected.)*
 52. PBR-173 ❌ type — set absent, so extraction cannot be ordered after visibility ranges
 53. PBR-174 ❌ fn — no CPU extraction system
 54. PBR-175 ❌ def — absent, incl. the LOD lookup and the `MeshFlags::from_components` call
-55. PBR-176 ❌ type — no extraction query types
-56. PBR-177 ❌ fn — absent
-57. PBR-178 ❌ def — the `Changed` filter set that makes the GPU path cheap is absent
-58. PBR-179 ❌ def — the 11 `RemovedComponents` readers are absent
-59. PBR-180 ❌ fn — absent, incl. the invisible-entity removal path
+55. *(PBR-176 ✅ ported in `b0a6760c` — all fifteen items in Bevy's order as `GpuMeshExtractionItem`.)*
+56. *(PBR-177 ✅ ported in `b0a6760c` — the whole GPU extraction system, including the `any_gpu_culling` derivation.)*
+57. *(PBR-178 ✅ ported in `b0a6760c` — the same fourteen components, each `Changed<T>` spelled as its `Or<Added, Modified>` pair.)*
+58. *(PBR-179 ✅ ported in `b0a6760c` — all eleven `RemovedComponents` readers, chained into the reextraction set.)*
+59. *(PBR-180 ✅ ported in `b0a6760c` — Bevy's body unchanged, with the fifteen query items in place of the tuple.)*
 60. PBR-181 ❌ system — absent; the only writer of `HAS_PREVIOUS_SKIN`/`HAS_PREVIOUS_MORPH`
 61. PBR-182 ❌ fn — absent
 62. PBR-183 ❌ def — absent, incl. `previous_input_buffer.ensure_nonempty()`
@@ -4518,7 +4548,7 @@ Non-✅ rows with reasons:
 108. PBR-269 ❌ def — absent
 109. PBR-270 ❌ def — absent; nothing builds the `@group(1) @binding(0)` entry
 110. PBR-271 ⛔ type — out of scope: another agent owns `mesh_view_bindings.rs`
-111. PBR-278 ⚠️ def — Epix covers `{1,2,4,8}` and the `0` edge case; Bevy's 16/32/64/128 fit the 3-bit field but are untested
+111. *(PBR-278 ✅ aligned in `5664b7cf` — the test now walks Bevy's whole range that fits the three-bit field.)*
 
 ## Rows
 
@@ -4573,7 +4603,12 @@ Non-✅ rows with reasons:
 | PBR-146 | type | `RenderMeshInstanceGpuBuilder` | bevy_pbr/src/render/mesh.rs:762-783 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:232-245` | ✅ | **Ported** (commit `737e35ea`): the parallel-extraction builder exists with the mesh id deliberately absent, because the builder does not know it until the bindings resolve. Pinned by `Cluster.RenderMeshInstanceGpuQueueMatchesBevy`. |
 | PBR-147 | field | `RenderMeshInstanceGpuBuilder` fields: `shared`, `world_from_local`, `lightmap_uv_rect`, `previous_input_index: Option<NonMaxU32>`, `mesh_flags: MeshFlags` | bevy_pbr/src/render/mesh.rs:764-782 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:233-243` | ✅ | **Ported** (commit `737e35ea`): all five, with Bevy's `Affine3` as the project's `glm::mat4` and its `Option<NonMaxU32>` as a plain optional (the invariant is documented, as elsewhere in this module). `shared` has no default constructor, matching Bevy's required mesh id. |
 | PBR-148 | type | `RenderMeshInstanceGpuQueue` enum (`None`/`CpuCulling{changed,removed}`/`GpuCulling{changed,removed}`) | bevy_pbr/src/render/mesh.rs:790-820 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:255-270` | ✅ | **Ported** (commit `737e35ea`): `std::variant<std::monostate, CpuCulling, GpuCulling>`, so the CPU-culling shape still omits the per-instance `MeshCullingData` and wastes no space when GPU culling is off. |
-| PBR-149 | type | `RenderMeshInstanceGpuQueues(Parallel<RenderMeshInstanceGpuQueue>)` | bevy_pbr/src/render/mesh.rs:827-828 | none | ❌ | Absent. |
+| PBR-149 | type | `RenderMeshInstanceGpuQueues(Parallel<RenderMeshInstanceGpuQueue>)` | bevy_pbr/src/render/mesh.rs:827-828 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:392-405` | ⚠️ | **Aligned in role, not in shape** (commit `b0a6760c`): the resource exists with Bevy's `Resource`+`Deref`/`DerefMut` role (the operators here), but it holds **one** `RenderMeshInstanceGpuQueue` instead of a `Parallel<RenderMeshInstanceGpuQueue>`. Bevy needs one queue per thread so its parallel extraction can push without locking and drain afterwards; Epix's extraction iterates sequentially, so a single queue produces the same entries in the same order. A `Parallel<T>` counterpart would be needed before Epix's extraction could run parallel. |
+| PBR-176 | type | `GpuMeshExtractionQuery` tuple | bevy_pbr/src/render/mesh.rs:1460-1477 | `epix_engine/pbr/include/epix/pbr/mesh_extraction.hpp:31-57,59-93` | ✅ | **Ported** (commit `b0a6760c`): all fifteen items in Bevy's order as `GpuMeshExtractionItem`, with the query alias and the change filter beside it. Bevy's query *data* is the tuple and the filter belongs to the system; the same split is kept here. |
+| PBR-177 | fn | `extract_meshes_for_gpu_building(..)` | bevy_pbr/src/render/mesh.rs:1487-1624 | `epix_engine/pbr/src/mesh_extraction.cpp:56-170`, `epix_engine/pbr/include/epix/pbr/mesh_extraction.hpp:97-161` | ✅ | **Ported** (commit `b0a6760c`): the whole system — the `any_gpu_culling` derivation from `Query<(), (With<Camera>, Without<NoIndirectDrawing>)>`, the per-queue `init`, the wrong-side guard (Bevy panics, this throws), the changed-mesh walk, the re-extraction pass and the invisible-mesh removals. Bevy's `par_iter().for_each_init` is a sequential `iter()` into the single queue (PBR-149). Pinned by `MeshExtraction.QueuesVisibleMeshesAndRemovals`. |
+| PBR-178 | def | its `Or<(Changed<..> × 14)>` filter set | bevy_pbr/src/render/mesh.rs:1494-1509 | `epix_engine/pbr/include/epix/pbr/mesh_extraction.hpp:66-93` | ✅ | **Ported** (commit `b0a6760c`): the same fourteen components. Bevy's `Changed<T>` has no Epix counterpart — only `Added` and `Modified` — so each term is the pair it stands for, the idiom `visibility_range.hpp` already uses for its `Changed<VisibilityRange>` early-out. |
+| PBR-179 | def | its 11 `RemovedComponents` readers chained with `meshes_to_reextract_next_frame` | bevy_pbr/src/render/mesh.rs:1512-1536,1582-1597 | `epix_engine/pbr/src/mesh_extraction.cpp:133-145,161-166` | ✅ | **Ported** (commit `b0a6760c`): all eleven readers, the retry set folded in (the set holds main entities, so Bevy's deref is spelled `.id()` here) and the visible-and-not-requeued check before queuing a `Mesh3d` removal. |
+| PBR-180 | fn | `extract_mesh_for_gpu_building(query_row, render_visibility_ranges, render_mesh_instances, queue, any_gpu_culling)` | bevy_pbr/src/render/mesh.rs:1626-1705 | `epix_engine/pbr/src/mesh_extraction.cpp:8-54`, declared at `epix_engine/pbr/include/epix/pbr/mesh_extraction.hpp:166-190` | ✅ | **Ported** (commit `b0a6760c`): Bevy's body unchanged — the invisible-entity removal, `MeshFlags::from_components`, the shared record, the packed lightmap rect, the culling data when GPU culling is on and the previous input index only for a mesh that had a transform last frame. C++ cannot forward a structured binding, so Bevy's tuple parameter arrives as the fifteen items; that is why the helper is declared rather than file-local, as `mesh2d`'s `extract_mesh2d` already is. |
 | PBR-150 | type | `MeshesToReextractNextFrame(MainEntityHashSet)` | bevy_pbr/src/render/mesh.rs:830-835 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:257-270` | ✅ | **Ported** (commit `71520e5c`): a resource over `sync_world::MainEntityHashSet`, reached through `operator*`/`operator->` as Bevy's `Deref` wrappers are. Pinned by `Cluster.MeshesToReextractNextFrameMatchesBevy`; without it a mesh whose material is not ready yet is dropped instead of retried. |
 | PBR-151 | method | `RenderMeshInstanceGpuQueue::init(any_gpu_culling)` | bevy_pbr/src/render/mesh.rs:1034-1057 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:272-290` | ✅ | **Ported** (commit `737e35ea`): the matching shape is cleared in place so its allocations survive, the other is replaced outright — Bevy's four arms. |
 | PBR-152 | method | `RenderMeshInstanceGpuQueue::push(entity, builder, culling_data)` | bevy_pbr/src/render/mesh.rs:1060-1098 | `epix_engine/pbr/include/epix/pbr/mesh_instance.hpp:292-320` | ✅ | **Ported** (commit `737e35ea`): appends when the shape matches and otherwise replaces the queue with a fresh one holding just that entry, which discards queued removals exactly as Bevy's promote arms do. |
@@ -4600,11 +4635,6 @@ Non-✅ rows with reasons:
 | PBR-173 | type | `MeshExtractionSystems` (`SystemSet`) | bevy_pbr/src/render/mesh.rs:1336-1339 | none | ❌ | Absent; `Plugin::build` uses it to order the visibility-range system before extraction (PBR-107). |
 | PBR-174 | fn | `extract_meshes_for_cpu_building(..)` | bevy_pbr/src/render/mesh.rs:1346-1458 | none | ❌ | No CPU extraction system. |
 | PBR-175 | def | `extract_meshes_for_cpu_building` query (14 elements: `Entity`, `ViewVisibility`, `GlobalTransform`, `Option<PreviousGlobalTransform>`, `Mesh3d`, `Option<MeshTag>`, 4 `Has<>`, `Has<VisibilityRange>`, `Option<RenderLayers>`, `Option<Aabb>`) and its `par_iter().for_each_init` queue drain | bevy_pbr/src/render/mesh.rs:1352-1457 | none | ❌ | Absent, including the LOD lookup via `render_visibility_ranges.lod_index_for_entity` and the `MeshFlags::from_components` call. |
-| PBR-176 | type | `GpuMeshExtractionQuery` tuple | bevy_pbr/src/render/mesh.rs:1460-1477 | none | ❌ | Absent. |
-| PBR-177 | fn | `extract_meshes_for_gpu_building(..)` | bevy_pbr/src/render/mesh.rs:1487-1624 | none | ❌ | Absent, including `any_gpu_culling` derivation from `Query<(), (With<Camera>, Without<NoIndirectDrawing>)>`. |
-| PBR-178 | def | its `Or<(Changed<..> × 14)>` filter set | bevy_pbr/src/render/mesh.rs:1494-1509 | none | ❌ | Absent; the change filter is what makes the GPU path cheap. |
-| PBR-179 | def | its 11 `RemovedComponents` readers chained with `meshes_to_reextract_next_frame` | bevy_pbr/src/render/mesh.rs:1512-1536,1582-1597 | none | ❌ | Absent. |
-| PBR-180 | fn | `extract_mesh_for_gpu_building(query_row, render_visibility_ranges, render_mesh_instances, queue, any_gpu_culling)` | bevy_pbr/src/render/mesh.rs:1626-1705 | none | ❌ | Absent, including the `queue.remove(entity, …)` on invisible and the `HAS_PREVIOUS_TRANSFORM`-gated `previous_input_index` lookup. |
 | PBR-181 | system | `set_mesh_motion_vector_flags(render_mesh_instances, skin_uniforms, morph_indices)` | bevy_pbr/src/render/mesh.rs:1721-1734 | none | ❌ | Absent. This is the only writer of `HAS_PREVIOUS_SKIN`/`HAS_PREVIOUS_MORPH`, so motion vectors currently cannot be flagged at all. |
 | PBR-182 | fn | `collect_meshes_for_gpu_building(..)` | bevy_pbr/src/render/mesh.rs:1738-1845 | none | ❌ | Absent. |
 | PBR-183 | def | its body: rebuild `meshes_to_reextract_next_frame`, `previous_input_buffer.clear()`, per-queue drain with `MeshCullingData::update`, `previous_input_buffer.ensure_nonempty()` | bevy_pbr/src/render/mesh.rs:1759-1844 | none | ❌ | Absent. `ensure_nonempty` matters: an empty previous-input buffer is invalid to bind. |
@@ -4810,7 +4840,7 @@ four are whole-system halves whose pure functions already exist: `prepare_lights
 (PBR-777) and light views (PBR-778), and the `extract_clusters`/`prepare_clusters` system halves
 (PBR-826, PBR-827).
 
-The 59 🚫 rows are dominated by one fact: **Epix has no render-world light half and no light
+The 58 🚫 rows are dominated by one fact: **Epix has no render-world light half and no light
 plugin.** `LightPlugin`, `ShadowFilteringMethod`, `SimulationLightSystems`, `add_clusters`,
 `make_global_cluster_settings`, `init_global_clusterable_object_meta`, `init_shadow_samplers`,
 `extract_lights`/`extract_ambient_light*`, `prepare_lights`, `queue_shadows`, `specialize_shadows`,
@@ -4818,7 +4848,7 @@ both shadow graph nodes and the three `Render*VisibleEntities` types are all abs
 `epix_engine/pbr` registers a component or a resource. What *is* ported is ported well: the whole
 cluster-assignment arithmetic, the cascade split and frustum construction, the GPU uniform layout
 (with explicit tail padding where glm's alignment differs from Rust's `ShaderType`), and the
-flag/bit contracts all match, which is why 260 rows are ✅.
+flag/bit contracts all match, which is why 261 rows are ✅.
 
 The 29 ⚠️ rows partition as: enum-payload flattening (5: PBR-653/657/694/771/811), the PCSS
 feature-gated light fields (3: PBR-567/585/599), explicit shader-type tail padding where glm's
