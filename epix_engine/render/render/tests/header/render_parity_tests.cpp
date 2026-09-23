@@ -1218,6 +1218,38 @@ TEST(CpuBatchingPlugins, PhasePluginsInstallTheirAdapterBatchingPath) {
     EXPECT_TRUE((render_app->get().world().get_resource<phase::ViewSortedRenderPhases<CpuBatchTestItem>>().has_value()));
 }
 
+/** @brief One instance buffer, one writer (SRD-305). The writer is registered by
+ *  the pipeline plugin, once for every phase that shares the buffer (Bevy
+ *  `mesh2d/mesh.rs:103-104`, `render/mesh.rs:249,274`); the phase plugins
+ *  install batch, sweep and sort systems only (Bevy `BinnedRenderPhasePlugin`,
+ *  `render_phase/mod.rs:1148-1191`). Two phases over one adapter therefore end
+ *  up with a single writer node, however many phases share the buffer. */
+TEST(CpuBatchingPlugins, SharedAdapterHasASingleInstanceBufferWriter) {
+    epix::app::App app = epix::app::App::create();
+    app.add_sub_app(Render);
+    wgpu::Limits limits{};
+    app.get_sub_app_mut(Render)->get().world_mut().insert_resource(
+        batching::BatchedInstanceBuffer<std::uint32_t>{limits});
+    app.add_plugins(batching::BatchingPlugin{});
+    // Two phases over the same adapter, and therefore the same instance buffer.
+    app.add_plugins(phase::SortedRenderPhasePlugin<CpuBatchTestItem, CpuBatchSystemAdapter>{});
+    app.add_plugins(phase::BinnedRenderPhasePlugin<CpuBinnedBatchTestItem, CpuBatchSystemAdapter>{});
+    // The pipeline plugin's registration, and the only one: Bevy writes this
+    // buffer from the pipeline plugin and never from a phase.
+    app.get_sub_app_mut(Render)->get().add_systems(
+        Render, into(batching::write_batched_cpu_instance_buffer<CpuBatchSystemAdapter>)
+                    .in_set(RenderSystems::PrepareResourcesFlush));
+
+    const auto writer = epix::ecs::SystemSetLabel(&batching::write_batched_cpu_instance_buffer<CpuBatchSystemAdapter>);
+    app.get_sub_app_mut(Render)->get().resource_scope([&](Schedules& schedules, World&) {
+        auto& schedule = schedules.schedule_mut(Render);
+        EXPECT_TRUE(schedule.contains_system(writer)) << "the pipeline plugin's writer is registered";
+        EXPECT_TRUE(schedule.remove_system(writer));
+        EXPECT_FALSE(schedule.contains_system(writer))
+            << "and it is the only writer over this adapter's instance buffer";
+    });
+}
+
 TEST(PhaseIndirectParametersBuffers, ClearsPhaseLocalBuffers) {
     World world(WorldId(103));
     world.insert_resource(batching::PhaseIndirectParametersBuffers<CpuBatchTestItem>{});

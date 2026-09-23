@@ -58,7 +58,7 @@ void extract_text2d_sprite(
                        const sprite::Anchor&,
                        Opt<const TextColor&>,
                        const transform::GlobalTransform&>,
-                  Filter<With<Text2d>, Without<render::CustomRendered>>>>
+                  Filter<With<Text2d>>>>
         texts) {
     for (auto&& [main_entity, view_visibility, layout_info, text_bounds, anchor, text_color, global_transform] :
          texts.iter()) {

@@ -411,8 +411,8 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::ResMut<ExtractedSprites> extracted_sprites, ecs::ResMut<ExtractedSlices> extracted_slices,
         app::Extract<ecs::Query<ecs::Item<ecs::Entity, render::sync_world::RenderEntity, const camera::ViewVisibility&,
                                           const sprite::Sprite&, const transform::GlobalTransform&,
-                                          const sprite::Anchor&, ecs::Opt<const ComputedTextureSlices&>>,
-                                ecs::Filter<ecs::Without<render::CustomRendered>>>> sprites,
+                                          const sprite::Anchor&, ecs::Opt<const ComputedTextureSlices&>>>>
+            sprites,
         app::Extract<ecs::Res<assets::Assets<image::TextureAtlasLayout>>> atlases);
 
     void queue_sprites(

@@ -35,8 +35,7 @@ EPIX_EXPORT void extract_mesh2d(
     ecs::ResMut<RenderMesh2dInstances> render_mesh_instances,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&, const transform::GlobalTransform&,
                                          const camera::ViewVisibility&, ecs::Opt<const mesh::MeshTag&>,
-                                         ecs::Has<render::phase::NoAutomaticBatching>>,
-                             ecs::Without<render::CustomRendered>>>
+                                         ecs::Has<render::phase::NoAutomaticBatching>>>>
         meshes);
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */

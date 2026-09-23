@@ -35,10 +35,6 @@ void extract_fn(
     }
 }
 
-/** @brief Marker component indicating an entity has a custom rendering
- * process and should be skipped by standard render pipelines. */
-EPIX_EXPORT struct CustomRendered {};
-
 /**
  * @brief Trait specialization pattern for component extraction (Bevy
  * `ExtractComponent`). Specialize `ExtractComponent<C>` for a component and

@@ -1045,9 +1045,14 @@ void clear_batched_cpu_instance_buffers(
     instance_buffer->buffer.clear();
 }
 
-/** @brief Uploads a CPU-batched sorted-phase instance buffer in the same
- * render set as Bevy's `write_batched_instance_buffer`. */
-template <typename P, typename Adapter>
+/** @brief Uploads the CPU-batched instance buffer of one batch-data type in the
+ * same render set as Bevy's `write_batched_instance_buffer`
+ * (`no_gpu_preprocessing.rs:174`). The buffer belongs to the phase's
+ * `GetBatchData::BufferData`, not to the phase, so there is exactly one writer
+ * per pipeline however many phases share it - Bevy's mesh2d plugin and mesh
+ * plugin each register it once (`mesh2d/mesh.rs:103-104`,
+ * `render/mesh.rs:249,274`) and the phase plugins register none. */
+template <typename Adapter>
     requires GetBatchDataImpl<Adapter>
 void write_batched_cpu_instance_buffer(
     ecs::ResMut<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>> instance_buffer,
@@ -1074,15 +1079,6 @@ struct CpuSortedRenderPhasePlugin {
                                 .has_value();
                         })
                         .set_name(std::format("batch sorted render phase '{}'", meta::type_id<P>().short_name())));
-        render_app->get().add_systems(
-            Render,
-            ecs::into(write_batched_cpu_instance_buffer<P, Adapter>)
-                .in_set(RenderSystems::PrepareResourcesFlush)
-                .run_if([](const ecs::World& world) {
-                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
-                        .has_value();
-                })
-                .set_name(std::format("write sorted-phase instance buffer '{}'", meta::type_id<P>().short_name())));
     }
 };
 
@@ -1152,7 +1148,11 @@ void batch_and_prepare_binned_render_phase(
     }
 }
 
-/** @brief Installs the CPU fallback for a binned render phase. */
+/** @brief Installs the CPU fallback for a binned render phase. The phase owns
+ * its batch, sweep and sort systems only: the instance-buffer writer belongs to
+ * the pipeline plugin, which registers it once for however many phases share
+ * the batch data (Bevy `BinnedRenderPhasePlugin`, `render_phase/mod.rs:1148-1191`,
+ * registers no writer either). */
 template <phase::BinnedPhaseItem BPI, typename Adapter>
     requires(GetFullBatchDataImpl<Adapter> && std::totally_ordered<typename BPI::BatchSetKey> &&
              std::totally_ordered<typename BPI::BinKey>)
@@ -1180,15 +1180,6 @@ struct CpuBinnedRenderPhasePlugin {
                                 .has_value();
                         })
                         .set_name(std::format("batch binned render phase '{}'", meta::type_id<BPI>().short_name())));
-        render_app->get().add_systems(
-            Render,
-            ecs::into(write_batched_cpu_instance_buffer<BPI, Adapter>)
-                .in_set(RenderSystems::PrepareResourcesFlush)
-                .run_if([](const ecs::World& world) {
-                    return world.get_resource<BatchedInstanceBuffer<typename GetBatchData<Adapter>::BufferData>>()
-                        .has_value();
-                })
-                .set_name(std::format("write binned-phase instance buffer '{}'", meta::type_id<BPI>().short_name())));
     }
 };
 

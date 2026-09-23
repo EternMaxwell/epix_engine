@@ -21,8 +21,7 @@ void epix::sprite_render::extract_mesh2d(ResMut<RenderMesh2dInstances> render_me
                                       const transform::GlobalTransform&,
                                       const camera::ViewVisibility&,
                                       Opt<const MeshTag&>,
-                                      Has<render::phase::NoAutomaticBatching>>,
-                                 Without<render::CustomRendered>>> meshes) {
+                                      Has<render::phase::NoAutomaticBatching>>>> meshes) {
     // Bevy `extract_mesh2d` (mesh.rs:249-282): one main-entity keyed instance
     // per visible 2D mesh. Epix keeps these in a main-entity keyed resource
     // because a batchable binned phase deliberately has no render entity to

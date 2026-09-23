@@ -294,10 +294,16 @@ TEST(SpriteExtraction, RebuildsResourcesAndPreservesMainRenderIdentity) {
                                  .spawn(render::sync_world::RenderEntity{render_entity}, visible, visible_sprite,
                                         global, sprite::Anchor{{0.25f, -0.5f}})
                                  .id();
-    camera::ViewVisibility custom_visible;
-    custom_visible.set_visible();
-    main_world.spawn(render::sync_world::RenderEntity{render_world.spawn().id()}, custom_visible, sprite::Sprite{},
-                     global, sprite::Anchor{}, render::CustomRendered{});
+    // A second visible sprite, extracted exactly like the first: Epix used to skip
+    // entities carrying an Epix-only `CustomRendered` marker, which Bevy has no
+    // counterpart for (SRD-195).
+    camera::ViewVisibility second_visible;
+    second_visible.set_visible();
+    const auto second_render_entity = render_world.spawn().id();
+    const auto second_entity        = main_world
+                                          .spawn(render::sync_world::RenderEntity{second_render_entity}, second_visible,
+                                                 sprite::Sprite{}, global, sprite::Anchor{})
+                                          .id();
 
     auto all_render_entities              = render_world.query<ecs::Entity>();
     const auto render_entity_count_before = std::ranges::distance(all_render_entities.iter(render_world));
@@ -307,22 +313,30 @@ TEST(SpriteExtraction, RebuildsResourcesAndPreservesMainRenderIdentity) {
     ASSERT_TRUE(system->run({}, render_world).has_value());
 
     const auto& extracted = render_world.resource<sprite_render::ExtractedSprites>().sprites;
-    ASSERT_EQ(extracted.size(), 1u);
-    EXPECT_EQ(extracted.front().main_entity, main_entity);
-    EXPECT_EQ(extracted.front().render_entity, render_entity);
-    EXPECT_EQ(extracted.front().color, visible_sprite.color);
-    EXPECT_TRUE(extracted.front().flip_x);
-    ASSERT_TRUE(std::holds_alternative<sprite_render::ExtractedSpriteSingle>(extracted.front().kind));
-    const auto& single = std::get<sprite_render::ExtractedSpriteSingle>(extracted.front().kind);
+    ASSERT_EQ(extracted.size(), 2u) << "every visible sprite is extracted, marked or not";
+    const auto found = std::ranges::find_if(extracted, [main_entity](const auto& sprite) {
+        return sprite.main_entity == main_entity;
+    });
+    ASSERT_NE(found, extracted.end());
+    EXPECT_EQ(found->render_entity, render_entity);
+    EXPECT_EQ(found->color, visible_sprite.color);
+    EXPECT_TRUE(found->flip_x);
+    ASSERT_TRUE(std::holds_alternative<sprite_render::ExtractedSpriteSingle>(found->kind));
+    const auto& single = std::get<sprite_render::ExtractedSpriteSingle>(found->kind);
     EXPECT_EQ(single.anchor, (glm::vec2{0.25f, -0.5f}));
     EXPECT_EQ(single.custom_size, visible_sprite.custom_size);
+    EXPECT_NE(std::ranges::find_if(extracted,
+                                   [second_entity](const auto& sprite) { return sprite.main_entity == second_entity; }),
+              extracted.end());
     EXPECT_EQ(std::ranges::distance(all_render_entities.iter(render_world)), render_entity_count_before)
         << "extraction must not spawn temporary render entities";
 
     main_world.entity_mut(main_entity).get_mut<camera::ViewVisibility>().value().get_mut() =
         camera::ViewVisibility::hidden();
     ASSERT_TRUE(system->run({}, render_world).has_value());
-    EXPECT_TRUE(render_world.resource<sprite_render::ExtractedSprites>().sprites.empty());
+    const auto& remaining = render_world.resource<sprite_render::ExtractedSprites>().sprites;
+    ASSERT_EQ(remaining.size(), 1u) << "hidden sprites drop out";
+    EXPECT_EQ(remaining.front().main_entity, second_entity);
     EXPECT_TRUE(render_world.resource<sprite_render::ExtractedSlices>().slices.empty());
 }
 

@@ -622,13 +622,13 @@ void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
                                .set_name("batch transparent mesh2d"));
         // Bevy `Mesh2dRenderPlugin::build` (mesh.rs:103-104) registers
         // `no_gpu_preprocessing::write_batched_instance_buffer::<Mesh2dPipeline>`
-        // here. mesh2d uses `GpuPreprocessingMode::None` (see the phase
-        // preparation in `core2d.cpp`), so the *CPU* instance buffer is the one
+        // here, once for every phase that shares `Mesh2dUniform`. mesh2d uses
+        // `GpuPreprocessingMode::None` (see the phase preparation in
+        // `core2d.cpp`), so the *CPU* instance buffer is the one
         // `prepare_mesh2d_bind_group` binds, and Bevy does not register the
         // GPU-preprocessing writer for this pipeline at all.
         render.add_systems(render::Render,
-                           into(render::batching::write_batched_cpu_instance_buffer<
-                                    core_graph::core_2d::Transparent2D, Mesh2dPipeline>)
+                           into(render::batching::write_batched_cpu_instance_buffer<Mesh2dPipeline>)
                                .in_set(render::RenderSystems::PrepareResourcesFlush)
                                .set_name("write batched instance buffer"));
         render.add_systems(render::Render,

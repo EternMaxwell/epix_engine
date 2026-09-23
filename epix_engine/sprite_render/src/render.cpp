@@ -397,8 +397,7 @@ void sprite_render::extract_sprites(ResMut<ExtractedSprites> extracted_sprites,
                                                        const sprite::Sprite&,
                                                        const transform::GlobalTransform&,
                                                        const sprite::Anchor&,
-                                                       Opt<const ComputedTextureSlices&>>,
-                                                  Filter<Without<render::CustomRendered>>>> sprites,
+                                                       Opt<const ComputedTextureSlices&>>>> sprites,
                                     Extract<Res<assets::Assets<image::TextureAtlasLayout>>> atlases) {
     extracted_sprites->sprites.clear();
     extracted_slices->slices.clear();
