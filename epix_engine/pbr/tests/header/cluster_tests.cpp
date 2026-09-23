@@ -4213,6 +4213,87 @@ TEST(Cluster, MeshUniformCreationMatchesBevy) {
     EXPECT_EQ(scaled_uniform.previous_world_from_local[2], glm::vec4(0.0f, 0.0f, 1.0f, 3.0f));
 }
 
+/** @brief Bevy's `RenderMeshInstanceGpuQueue` (`render/mesh.rs:785-1122`): the two
+ *  culling shapes, the in-place clear when the kind matches, the promotion when it
+ *  does not, and the removal list. */
+TEST(Cluster, RenderMeshInstanceGpuQueueMatchesBevy) {
+    using Queue = epix::pbr::RenderMeshInstanceGpuQueue;
+    using Builder = epix::pbr::RenderMeshInstanceGpuBuilder;
+    const auto main_entity = [](std::uint32_t index) {
+        return epix::render::sync_world::MainEntity{epix::ecs::Entity{index}};
+    };
+    const auto culling_data = epix::pbr::MeshCullingData{};
+    // The shared record has no default constructor - the mesh id is what it is
+    // about, as in Bevy - so a builder is spelled out with an invalid id.
+    const auto make_builder = [] {
+        return epix::pbr::RenderMeshInstanceGpuBuilder{
+            .shared = epix::pbr::RenderMeshInstanceShared{
+                .mesh_asset_id = epix::assets::AssetId<epix::mesh::Mesh>::invalid()}};
+    };
+
+    // The default is the unit `None` variant.
+    Queue queue;
+    EXPECT_TRUE(std::holds_alternative<std::monostate>(queue.queue));
+
+    // `init` takes the shape the culling kind asks for.
+    queue.init(false);
+    ASSERT_TRUE(std::holds_alternative<Queue::CpuCulling>(queue.queue));
+    queue.init(true);
+    ASSERT_TRUE(std::holds_alternative<Queue::GpuCulling>(queue.queue));
+
+    // Pushing with culling data into the GPU shape appends; pushing without it
+    // promotes the queue to the CPU shape, discarding queued removals as Bevy does.
+    queue.push(main_entity(1), make_builder(), culling_data);
+    EXPECT_EQ(std::get<Queue::GpuCulling>(queue.queue).changed.size(), 1u);
+    queue.remove(main_entity(2), true);
+    EXPECT_EQ(std::get<Queue::GpuCulling>(queue.queue).removed.size(), 1u);
+    queue.push(main_entity(3), make_builder(), std::nullopt);
+    ASSERT_TRUE(std::holds_alternative<Queue::CpuCulling>(queue.queue));
+    const auto& promoted = std::get<Queue::CpuCulling>(queue.queue);
+    EXPECT_EQ(promoted.changed.size(), 1u);
+    EXPECT_TRUE(promoted.removed.empty()) << "the promotion starts a fresh queue";
+
+    // A removal keeps the shape the queue already has, whatever the flag says.
+    queue.remove(main_entity(4), true);
+    EXPECT_EQ(std::get<Queue::CpuCulling>(queue.queue).removed.size(), 1u);
+
+    // `init` clears in place, so the shape is kept and the entries are dropped.
+    queue.init(false);
+    EXPECT_TRUE(std::get<Queue::CpuCulling>(queue.queue).changed.empty());
+    EXPECT_TRUE(std::get<Queue::CpuCulling>(queue.queue).removed.empty());
+
+    // A removal into the empty queue takes the shape the flag asks for.
+    Queue fresh;
+    fresh.remove(main_entity(5), true);
+    ASSERT_TRUE(std::holds_alternative<Queue::GpuCulling>(fresh.queue));
+    EXPECT_EQ(std::get<Queue::GpuCulling>(fresh.queue).removed.size(), 1u);
+    EXPECT_TRUE(std::get<Queue::GpuCulling>(fresh.queue).changed.empty());
+}
+
+/** @brief Bevy's `MeshCullingData::update` (`render/mesh.rs:1298-1309`): grow the
+ *  buffer with zeroed entries up to the slot, then overwrite it. */
+TEST(Cluster, MeshCullingDataUpdateFlushesIntoTheBuffer) {
+    epix::pbr::MeshCullingDataBuffer culling;
+    const epix::pbr::MeshCullingData infinities = epix::pbr::MeshCullingData::make(std::nullopt);
+
+    infinities.update(culling, 2);
+    EXPECT_EQ(culling->len(), 3u) << "the buffer grows to the slot";
+    EXPECT_EQ(culling->get(0)->aabb_half_extents.x, 0.0f) << "the entries it grows with are zeroed";
+    EXPECT_EQ(culling->get(1)->aabb_half_extents.x, 0.0f);
+    ASSERT_NE(culling->get(2), nullptr);
+    EXPECT_TRUE(std::isinf(culling->get(2)->aabb_half_extents.x)) << "and the slot itself is written";
+
+    // Writing a lower slot replaces it and leaves the ones above alone.
+    const epix::pbr::MeshCullingData finite =
+        epix::pbr::MeshCullingData::make(epix::camera::Aabb{.center = glm::vec3(1.0f), .half_extents = glm::vec3(2.0f)});
+    finite.update(culling, 0);
+    EXPECT_EQ(culling->len(), 3u) << "no growth is needed";
+    ASSERT_NE(culling->get(0), nullptr);
+    EXPECT_EQ(culling->get(0)->aabb_center.x, 1.0f);
+    EXPECT_EQ(culling->get(0)->aabb_half_extents.x, 2.0f);
+    EXPECT_TRUE(std::isinf(culling->get(2)->aabb_half_extents.x)) << "the other slot is untouched";
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,

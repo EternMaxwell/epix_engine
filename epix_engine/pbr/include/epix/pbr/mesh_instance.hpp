@@ -1,8 +1,13 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <cstddef>
 #include <cstdint>
 #include <limits>
+#include <tuple>
+#include <utility>
+#include <variant>
+#include <vector>
 #include <epix/assets.hpp>
 #include <epix/camera/visibility.hpp>
 #include <epix/mesh.hpp>
@@ -136,6 +141,202 @@ EPIX_EXPORT struct RenderMeshQueueData {
     const RenderMeshInstanceShared& record() const noexcept { return *shared; }
 };
 
+/** @brief What the GPU needs in order to cull a mesh instance (Bevy
+ *  `MeshCullingData`, `bevy_pbr/src/render/mesh.rs:562-574,1280-1296`).
+ *
+ *  A model-space AABB: its centre and its half extents, each padded with an unused
+ *  fourth float because the shader reads them as `vec4`s.
+ *
+ *  A mesh with no AABB gets an **infinitely large** one rather than a zero-sized
+ *  one, and the choice matters: culling is a test for being outside, so an infinite
+ *  box means the instance is never culled. A zero box would make it always culled -
+ *  an invisible mesh instead of a visible one. */
+EPIX_EXPORT struct MeshCullingDataBuffer;
+
+EPIX_EXPORT struct MeshCullingData {
+    glm::vec4 aabb_center{0.0f};
+    glm::vec4 aabb_half_extents{0.0f};
+
+    /** @brief The culling data for an AABB, or the conservative infinite box when
+     *  there is none (Bevy `MeshCullingData::new`, `render/mesh.rs:1285-1296`). */
+    static MeshCullingData make(const std::optional<::epix::camera::Aabb>& aabb) {
+        if (!aabb.has_value()) {
+            return MeshCullingData{.aabb_center = glm::vec4(0.0f),
+                                   .aabb_half_extents = glm::vec4(glm::vec3(std::numeric_limits<float>::infinity()),
+                                                                  0.0f)};
+        }
+        return MeshCullingData{.aabb_center = glm::vec4(aabb->center, 0.0f),
+                               .aabb_half_extents = glm::vec4(aabb->half_extents, 0.0f)};
+    }
+
+    /** @brief Flush this instance's culling data into the buffer at a slot, growing
+     *  it with zeroed entries as needed (Bevy `MeshCullingData::update`,
+     *  `render/mesh.rs:1298-1309`, which Bevy calls through
+     *  `RenderMeshInstanceGpuBuilder::update`). */
+    void update(MeshCullingDataBuffer& mesh_culling_data_buffer, std::size_t instance_data_index) const;
+};
+
+static_assert(sizeof(MeshCullingData) == 32, "two vec4s, which is what the shader reads");
+static_assert(offsetof(MeshCullingData, aabb_half_extents) == 16);
+
+}  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+
+/** @brief `MeshCullingData` is uploaded through a `RawBufferVec`, and it is a pair
+ *  of `vec4`s with every byte initialised, so the concept's escape hatch applies -
+ *  the same shape `batching.hpp` uses for its work items. */
+template <>
+struct RawBufferElementInfo<::epix::pbr::MeshCullingData> {
+    static constexpr bool has_no_uninit = true;
+};
+
+}  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief The buffer that holds each mesh's culling data (Bevy
+ *  `MeshCullingDataBuffer`, `bevy_pbr/src/render/mesh.rs:576-583`).
+ *
+ *  Bevy's `#[derive(Resource, Deref, DerefMut)]` newtype over
+ *  `RawBufferVec<MeshCullingData>`; C++ has no derive, so the buffer is reached
+ *  through `operator*`/`operator->`, the same shape the ECS wrappers use for their
+ *  `Deref`. To avoid wasting CPU time in the CPU culling case the buffer stays
+ *  empty when GPU culling is not in use, exactly as Bevy documents. */
+EPIX_EXPORT struct MeshCullingDataBuffer {
+    /** @brief Bevy's `Default`: a `RawBufferVec` with storage usage (Bevy
+     *  `impl Default`, `render/mesh.rs:1312-1317`), which is what the plugin's
+     *  `init_resource` builds. */
+    render::render_resource::RawBufferVec<MeshCullingData> buffer{wgpu::BufferUsage::eStorage};
+
+    render::render_resource::RawBufferVec<MeshCullingData>& operator*() noexcept { return buffer; }
+    const render::render_resource::RawBufferVec<MeshCullingData>& operator*() const noexcept { return buffer; }
+    render::render_resource::RawBufferVec<MeshCullingData>* operator->() noexcept { return std::addressof(buffer); }
+    const render::render_resource::RawBufferVec<MeshCullingData>* operator->() const noexcept {
+        return std::addressof(buffer);
+    }
+};
+
+inline void MeshCullingData::update(MeshCullingDataBuffer& mesh_culling_data_buffer,
+                                    std::size_t instance_data_index) const {
+    while (mesh_culling_data_buffer->len() < instance_data_index + 1) {
+        mesh_culling_data_buffer->push(MeshCullingData{});
+    }
+    mesh_culling_data_buffer->set(static_cast<std::uint32_t>(instance_data_index), *this);
+}
+
+/** @brief Information gathered during the parallel part of mesh extraction when the
+ *  GPU builds the uniforms (Bevy `RenderMeshInstanceGpuBuilder`,
+ *  `bevy_pbr/src/render/mesh.rs:757-783`).
+ *
+ *  The mesh id is deliberately absent: the builder does not know it until the
+ *  material bindings have been resolved, which is what
+ *  `RenderMeshInstanceGpuBuilder::update` does. Bevy stores an `Affine3` and an
+ *  `Option<NonMaxU32>`; Epix's convention is the full `glm::mat4` and a plain
+ *  optional, with the non-max invariant documented as elsewhere. */
+EPIX_EXPORT struct RenderMeshInstanceGpuBuilder {
+    RenderMeshInstanceShared shared;
+    glm::mat4 world_from_local{1.0f};
+    glm::uvec2 lightmap_uv_rect{0u, 0u};
+    std::optional<std::uint32_t> previous_input_index;
+    MeshFlags mesh_flags{};
+};
+
+/** @brief The per-thread queue of GPU-built mesh instances filled during extraction
+ *  (Bevy `RenderMeshInstanceGpuQueue`, `render/mesh.rs:785-820`).
+ *
+ *  Bevy models it as an enum with a `None` default and one variant per culling kind,
+ *  because the CPU-culling shape omits the per-instance `MeshCullingData` and so
+ *  wastes no space when GPU culling is off; `std::variant` is the C++ sum type, and
+ *  `std::monostate` stands in for the unit `None` variant. */
+EPIX_EXPORT struct RenderMeshInstanceGpuQueue {
+    /** @brief The CPU-culling shape: what changed, and what became invisible. */
+    struct CpuCulling {
+        std::vector<std::pair<render::sync_world::MainEntity, RenderMeshInstanceGpuBuilder>> changed;
+        std::vector<render::sync_world::MainEntity> removed;
+    };
+    /** @brief The GPU-culling shape, which also carries each instance's culling
+     *  data. */
+    struct GpuCulling {
+        std::vector<std::tuple<render::sync_world::MainEntity, RenderMeshInstanceGpuBuilder, MeshCullingData>> changed;
+        std::vector<render::sync_world::MainEntity> removed;
+    };
+
+    std::variant<std::monostate, CpuCulling, GpuCulling> queue;
+
+    /** @brief Clear the queue for the coming frame, switching shape if the culling
+     *  kind changed (Bevy `RenderMeshInstanceGpuQueue::init`, `:1029-1057`). The
+     *  matching shape is cleared in place so its allocations survive; the other is
+     *  replaced outright. */
+    void init(bool any_gpu_culling) {
+        if (any_gpu_culling) {
+            if (auto* gpu = std::get_if<GpuCulling>(&queue)) {
+                gpu->changed.clear();
+                gpu->removed.clear();
+                return;
+            }
+            queue = GpuCulling{};
+            return;
+        }
+        if (auto* cpu = std::get_if<CpuCulling>(&queue)) {
+            cpu->changed.clear();
+            cpu->removed.clear();
+            return;
+        }
+        queue = CpuCulling{};
+    }
+
+    /** @brief Queue a mesh instance (Bevy `RenderMeshInstanceGpuQueue::push`,
+     *  `:1059-1098`). The culling data decides which shape the entry needs; if the
+     *  queue is in the other shape - or in neither - it is replaced by a fresh queue
+     *  holding this entry, which is what discards any removals queued before it, as
+     *  in Bevy. */
+    void push(render::sync_world::MainEntity entity,
+              RenderMeshInstanceGpuBuilder builder,
+              std::optional<MeshCullingData> culling_data) {
+        if (!culling_data) {
+            if (auto* cpu = std::get_if<CpuCulling>(&queue)) {
+                cpu->changed.emplace_back(entity, std::move(builder));
+                return;
+            }
+            CpuCulling promoted;
+            promoted.changed.emplace_back(entity, std::move(builder));
+            queue = std::move(promoted);
+            return;
+        }
+        if (auto* gpu = std::get_if<GpuCulling>(&queue)) {
+            gpu->changed.emplace_back(entity, std::move(builder), *culling_data);
+            return;
+        }
+        GpuCulling promoted;
+        promoted.changed.emplace_back(entity, std::move(builder), *culling_data);
+        queue = std::move(promoted);
+    }
+
+    /** @brief Queue an entity for removal (Bevy `RenderMeshInstanceGpuQueue::remove`,
+     *  `:1100-1122`). An empty queue takes the shape the culling flag asks for; a
+     *  queue that already has one keeps it, whatever the flag says. */
+    void remove(render::sync_world::MainEntity entity, bool gpu_culling) {
+        if (auto* cpu = std::get_if<CpuCulling>(&queue)) {
+            cpu->removed.push_back(entity);
+            return;
+        }
+        if (auto* gpu = std::get_if<GpuCulling>(&queue)) {
+            gpu->removed.push_back(entity);
+            return;
+        }
+        if (gpu_culling) {
+            GpuCulling promoted;
+            promoted.removed.push_back(entity);
+            queue = std::move(promoted);
+            return;
+        }
+        CpuCulling promoted;
+        promoted.removed.push_back(entity);
+        queue = std::move(promoted);
+    }
+};
+
 /** @brief The mesh instance records, one side of which is in use (Bevy
  *  `RenderMeshInstances`, `render/mesh.rs:903-924`).
  *
@@ -215,74 +416,6 @@ EPIX_EXPORT struct RenderMeshInstances {
         const auto found = gpu_instances.find(entity);
         if (found == gpu_instances.end()) return;
         found->second.shared.flags.insert(static_cast<RenderMeshInstanceFlags::Bits>(flags.bits));
-    }
-};
-
-/** @brief What the GPU needs in order to cull a mesh instance (Bevy
- *  `MeshCullingData`, `bevy_pbr/src/render/mesh.rs:562-574,1280-1296`).
- *
- *  A model-space AABB: its centre and its half extents, each padded with an unused
- *  fourth float because the shader reads them as `vec4`s.
- *
- *  A mesh with no AABB gets an **infinitely large** one rather than a zero-sized
- *  one, and the choice matters: culling is a test for being outside, so an infinite
- *  box means the instance is never culled. A zero box would make it always culled -
- *  an invisible mesh instead of a visible one. */
-EPIX_EXPORT struct MeshCullingData {
-    glm::vec4 aabb_center{0.0f};
-    glm::vec4 aabb_half_extents{0.0f};
-
-    /** @brief The culling data for an AABB, or the conservative infinite box when
-     *  there is none (Bevy `MeshCullingData::new`, `render/mesh.rs:1285-1296`). */
-    static MeshCullingData make(const std::optional<::epix::camera::Aabb>& aabb) {
-        if (!aabb.has_value()) {
-            return MeshCullingData{.aabb_center = glm::vec4(0.0f),
-                                   .aabb_half_extents = glm::vec4(glm::vec3(std::numeric_limits<float>::infinity()),
-                                                                  0.0f)};
-        }
-        return MeshCullingData{.aabb_center = glm::vec4(aabb->center, 0.0f),
-                               .aabb_half_extents = glm::vec4(aabb->half_extents, 0.0f)};
-    }
-};
-
-static_assert(sizeof(MeshCullingData) == 32, "two vec4s, which is what the shader reads");
-static_assert(offsetof(MeshCullingData, aabb_half_extents) == 16);
-
-}  // namespace epix::pbr
-
-namespace epix::render::render_resource {
-
-/** @brief `MeshCullingData` is uploaded through a `RawBufferVec`, and it is a pair
- *  of `vec4`s with every byte initialised, so the concept's escape hatch applies -
- *  the same shape `batching.hpp` uses for its work items. */
-template <>
-struct RawBufferElementInfo<::epix::pbr::MeshCullingData> {
-    static constexpr bool has_no_uninit = true;
-};
-
-}  // namespace epix::render::render_resource
-
-namespace epix::pbr {
-
-/** @brief The buffer that holds each mesh's culling data (Bevy
- *  `MeshCullingDataBuffer`, `bevy_pbr/src/render/mesh.rs:576-583`).
- *
- *  Bevy's `#[derive(Resource, Deref, DerefMut)]` newtype over
- *  `RawBufferVec<MeshCullingData>`; C++ has no derive, so the buffer is reached
- *  through `operator*`/`operator->`, the same shape the ECS wrappers use for their
- *  `Deref`. To avoid wasting CPU time in the CPU culling case the buffer stays
- *  empty when GPU culling is not in use, exactly as Bevy documents. */
-EPIX_EXPORT struct MeshCullingDataBuffer {
-    /** @brief Bevy's `Default`: a `RawBufferVec` with storage usage (Bevy
-     *  `impl Default`, `render/mesh.rs:1312-1317`), which is what the plugin's
-     *  `init_resource` builds. */
-    render::render_resource::RawBufferVec<MeshCullingData> buffer{wgpu::BufferUsage::eStorage};
-
-    render::render_resource::RawBufferVec<MeshCullingData>& operator*() noexcept { return buffer; }
-    const render::render_resource::RawBufferVec<MeshCullingData>& operator*() const noexcept { return buffer; }
-    render::render_resource::RawBufferVec<MeshCullingData>* operator->() noexcept { return std::addressof(buffer); }
-    const render::render_resource::RawBufferVec<MeshCullingData>* operator->() const noexcept {
-        return std::addressof(buffer);
     }
 };
 
