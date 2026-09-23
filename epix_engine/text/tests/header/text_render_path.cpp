@@ -75,10 +75,13 @@ class FontFaceFixture {
 };
 }  // namespace
 
-// Bevy's `Text2d` requires a `Transform`, `TextColor`, `Visibility`,
-// `VisibilityClass`, `Anchor` and registers the *Sprite* visibility class
-// through an `on_add` hook, so the sprite queue renders its glyphs without a
-// `Sprite` component (`bevy_sprite/src/text2d.rs:82-96`).
+// Bevy's `Text2d` requires a `Transform`, `TextFont`, `TextLayout`, `TextBounds`,
+// `TextColor`, `Visibility`, `VisibilityClass` and `Anchor`, and registers the
+// *Sprite* visibility class through an `on_add` hook, so the sprite queue renders
+// its glyphs without a `Sprite` component (`bevy_sprite/src/text2d.rs:82-96`).
+// The three text components are the load-bearing part: `shape_changed_text`'s
+// `Ref<TextFont>` query cannot match a bare `Text2d` without the first, and the
+// shaping and bounds systems read the other two.
 TEST(Text2d, RegistersTheSpriteVisibilityClassAndItsRequiredComponents) {
     ecs::World world(ecs::WorldId(0));
     const auto entity = world.spawn(text::Text2d{}).id();
@@ -87,11 +90,44 @@ TEST(Text2d, RegistersTheSpriteVisibilityClassAndItsRequiredComponents) {
     ASSERT_TRUE(world.get_entity(entity)->get<text::TextColor>().has_value());
     ASSERT_TRUE(world.get_entity(entity)->get<camera::Visibility>().has_value());
     ASSERT_TRUE(world.get_entity(entity)->get<sprite::Anchor>().has_value());
+    EXPECT_TRUE(world.get_entity(entity)->get<text::TextFont>().has_value())
+        << "a bare Text2d must carry the font component its shaping system queries";
+    EXPECT_TRUE(world.get_entity(entity)->get<text::TextLayout>().has_value());
+    EXPECT_TRUE(world.get_entity(entity)->get<text::TextBounds>().has_value());
 
     auto visibility_class = world.get_entity(entity)->get<camera::VisibilityClass>();
     ASSERT_TRUE(visibility_class.has_value());
     ASSERT_EQ(visibility_class->get().classes.size(), 1u);
     EXPECT_EQ(visibility_class->get().classes.front(), meta::type_index(meta::type_id<sprite::Sprite>()));
+}
+
+// Bevy registers `calculate_bounds_text2d` in `PostUpdate` inside
+// `VisibilitySystems::CalculateBounds`, ordered `.before(CheckVisibility)` and
+// (through that set) `.after(TransformSystems::Propagate)`, exactly as
+// `sprite::calculate_bounds_2d` is (`bevy_sprite/src/text2d.rs:316-328`). Bevy's
+// function is public, so this registers it the same way the plugin does and checks
+// what it writes; the plugin's own registration is exercised by the text examples
+// in the example sweep.
+TEST(Text2dBounds, ComputesTheAabbInPostUpdate) {
+    app::App app = app::App::create();
+    app.add_plugins(camera::CameraPlugin{});
+    app.add_systems(app::PostUpdate, into(text::calculate_bounds_text2d)
+                                         .in_set(camera::VisibilitySystems::CalculateBounds)
+                                         .before(camera::VisibilitySystems::CheckVisibility)
+                                         .set_name("calculate bounds text 2d"));
+
+    // The system reads `ShapedText`, which an unshaped entity does not have; a
+    // default one has a zero size, so the AABB it produces is a zero box.
+    const auto entity = app.world_mut().spawn(text::Text2d{}, text::ShapedText{}).id();
+    EXPECT_FALSE(app.world().get_entity(entity)->contains<camera::Aabb>());
+    app.update();
+    ASSERT_TRUE(app.world().get_entity(entity)->get<camera::Aabb>().has_value());
+    EXPECT_EQ(app.world().get_entity(entity)->get<camera::Aabb>()->get().center, glm::vec3(0.0f));
+
+    // A same-sized second update leaves the AABB alone; the entity stays in the
+    // query only while its `ShapedText` is modified.
+    app.update();
+    EXPECT_TRUE(app.world().get_entity(entity)->get<camera::Aabb>().has_value());
 }
 
 // Bevy's `extract_text2d_sprite` emits one `ExtractedSlice` per glyph, whose

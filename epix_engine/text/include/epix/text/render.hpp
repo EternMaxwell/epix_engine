@@ -44,6 +44,22 @@ EPIX_EXPORT struct Text2d {
     static void on_add(ecs::World& world, ecs::HookContext context);
 };
 
+/** @brief Compute and insert the `Aabb` of a 2D text entity (Bevy
+ *  `calculate_bounds_text2d`, `bevy_sprite/src/text2d.rs:316-347`).
+ *
+ *  Bevy's function is public, and so is this one: `TextRenderPlugin` registers it in
+ *  `PostUpdate` inside `VisibilitySystems::CalculateBounds` and before
+ *  `CheckVisibility`, exactly as `sprite::calculate_bounds_2d` is registered, so a
+ *  caller with its own schedule can do the same. */
+EPIX_EXPORT void calculate_bounds_text2d(
+    ecs::Commands commands,
+    ecs::Query<ecs::Item<ecs::Entity, const ShapedText&, const sprite::Anchor&, const TextBounds&>,
+               ecs::Filter<ecs::Without<camera::Aabb>, ecs::Without<camera::NoFrustumCulling>>>
+        new_text_aabb,
+    ecs::Query<ecs::Item<const ShapedText&, const sprite::Anchor&, const TextBounds&, ecs::Mut<camera::Aabb>>,
+               ecs::Filter<ecs::Modified<ShapedText>, ecs::Without<camera::NoFrustumCulling>>>
+        update_text_aabb);
+
 /** @brief Bundle for spawning a 2D text rendering entity with transform
  * and color. */
 EPIX_EXPORT struct Text2dBundle {

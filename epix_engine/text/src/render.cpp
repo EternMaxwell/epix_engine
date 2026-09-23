@@ -29,6 +29,21 @@ void Text2d::on_add(ecs::World& world, ecs::HookContext context) {
 
 void Text2d::register_required_components(ecs::RequiredComponentsRegistrator& registrator) {
     registrator.register_required<transform::Transform>([] { return transform::Transform{}; });
+    // Bevy's `Text2d` requires the three text components as well
+    // (`bevy_sprite/src/text2d.rs:82-94`): without `TextFont` a bare `Text2d` never
+    // matches `shape_changed_text`'s `Ref<TextFont>` query, and without
+    // `TextLayout`/`TextBounds` the shaping and bounds systems have nothing to read.
+    //
+    // Bevy's `#[require(TextFont)]` supplies `TextFont::default()`, whose font is
+    // `Handle::<Font>::default()` - the default-font asset its `TextPlugin` loads.
+    // Epix has no default-font convention (`DefaultFontHandle` in `font.cpp` is
+    // declared but never filled, and `Handle` has no default constructor), so the
+    // required font is an invalid handle: the component and its query parity are
+    // here, and text renders once a real font is set, exactly as before this change.
+    registrator.register_required<TextFont>(
+        [] { return TextFont{assets::Handle<Font>{assets::AssetId<Font>::invalid()}}; });
+    registrator.register_required<TextLayout>([] { return TextLayout{}; });
+    registrator.register_required<TextBounds>([] { return TextBounds{}; });
     registrator.register_required<TextColor>([] { return TextColor{}; });
     registrator.register_required<camera::Visibility>([] { return camera::Visibility{}; });
     registrator.register_required<sprite::Anchor>([] { return sprite::Anchor{}; });
@@ -77,10 +92,12 @@ void extract_text2d_sprite(
             [&cmd] { return cmd.spawn(render::sync_world::TemporaryRenderEntity{}).id(); });
     }
 }
+}  // namespace
 
 /** @brief Compute and insert the `Aabb` of a 2D text entity (Bevy
- * `calculate_bounds_text2d`, `bevy_sprite/src/text2d.rs:316-347`). */
-void calculate_bounds_text2d(
+ * `calculate_bounds_text2d`, `bevy_sprite/src/text2d.rs:316-347`; declared in the
+ * header because Bevy's own function is public). */
+void text::calculate_bounds_text2d(
     Commands commands,
     Query<Item<Entity, const ShapedText&, const sprite::Anchor&, const TextBounds&>,
           Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>>>
@@ -106,7 +123,6 @@ void calculate_bounds_text2d(
         aabb.get_mut() = text_aabb(layout_info, anchor, text_bounds);
     }
 }
-}  // namespace
 
 void TextRenderPlugin::attach(App& app) {
     spdlog::debug("[text] Attaching TextRenderPlugin.");
@@ -120,7 +136,15 @@ void TextRenderPlugin::attach(App& app) {
     if (!app.get_plugin<sprite::SpritePlugin>()) {
         app.add_plugins(sprite::SpritePlugin{});
     }
-    app.add_systems(app::PostUpdate, into(calculate_bounds_text2d).set_name("calculate_bounds_text2d"));
+    // Bevy registers this in `PostUpdate` within `VisibilitySystems::CalculateBounds`,
+    // which is itself ordered `.before(CheckVisibility)` and
+    // `.after(TransformSystems::Propagate)` (`bevy_sprite/src/text2d.rs:316-328`),
+    // exactly as `sprite::calculate_bounds_2d` is registered here. Without the set the
+    // AABB can be computed after visibility has already been decided.
+    app.add_systems(app::PostUpdate, into(calculate_bounds_text2d)
+                                         .in_set(camera::VisibilitySystems::CalculateBounds)
+                                         .before(camera::VisibilitySystems::CheckVisibility)
+                                         .set_name("calculate bounds text 2d"));
 }
 
 void TextRenderPlugin::ready(App& app) {
