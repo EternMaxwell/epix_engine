@@ -190,10 +190,20 @@ struct SetMaterial2dBindGroup {
             (void)entity_item;
             auto&& [materials, instances] = params;
 
+            // Bevy returns `RenderCommandResult::Skip` from both missing arms
+            // (`material.rs:534-539`), which aborts the remaining command list and
+            // suppresses the draw; success here would draw with no material bind
+            // group set (or a stale one from the previous item).
             const auto instance = instances->instances.find(item.main_entity());
-            if (instance == instances->instances.end()) return {};
+            if (instance == instances->instances.end()) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
             const auto* prepared = materials->try_get(instance->second);
-            if (!prepared) return {};
+            if (!prepared) {
+                return std::unexpected(render::phase::RenderCommandError{
+                    .type = render::phase::RenderCommandError::Type::Skip, .message = {}});
+            }
 
             encoder.setBindGroup(I, prepared->bind_group, std::span<const std::uint32_t>{});
             return {};
@@ -227,10 +237,15 @@ struct RenderCommand<::epix::sprite_render::SetMaterial2dBindGroup<M, I>, P> {
         (void)entity_item;
         auto&& [materials, instances] = params;
 
+        // The same two `Skip` arms as the inner command (SRD-399).
         const auto instance = instances->instances.find(item.main_entity());
-        if (instance == instances->instances.end()) return {};
+        if (instance == instances->instances.end()) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
         const auto* prepared = materials->try_get(instance->second);
-        if (!prepared) return {};
+        if (!prepared) {
+            return std::unexpected(RenderCommandError{.type = RenderCommandError::Type::Skip, .message = {}});
+        }
 
         encoder.setBindGroup(I, prepared->bind_group, std::span<const std::uint32_t>{});
         return {};

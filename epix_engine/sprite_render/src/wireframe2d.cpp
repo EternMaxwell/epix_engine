@@ -447,9 +447,16 @@ void epix::sprite_render::Wireframe2dPlugin::attach(app::App& app) {
 
     app.add_systems(app::Startup,
                     ecs::into(setup_global_wireframe_material).set_name("setup global wireframe material"));
+    // Bevy `wireframe2d.rs:93-102`: `global_color_changed` only runs when the
+    // config changed, `wireframe_color_changed` always runs, and the apply pair is
+    // chained so the global setting lands on a mesh in the same frame its marker
+    // component is removed.
     app.add_systems(app::Update,
-                    ecs::into(global_color_changed, wireframe_color_changed)
-                        .set_names(std::array{"global wireframe color changed", "wireframe color changed"}));
+                    ecs::into(global_color_changed)
+                        .run_if([](ecs::Res<Wireframe2dConfig> config) { return config.is_modified(); })
+                        .set_name("global wireframe color changed"));
+    app.add_systems(app::Update,
+                    ecs::into(wireframe_color_changed).set_name("wireframe color changed"));
     app.add_systems(app::Update,
                     ecs::into(apply_wireframe_material).set_name("apply wireframe material"));
     app.add_systems(app::Update,
@@ -459,6 +466,9 @@ void epix::sprite_render::Wireframe2dPlugin::attach(app::App& app) {
     app.add_systems(app::PostUpdate,
                     ecs::into(check_wireframe_entities_needing_specialization)
                         .after(assets::AssetSystems::WriteEvents)
+                        .run_if([](const ecs::World& world) {
+                            return world.get_resource<Wireframe2dConfig>().has_value();
+                        })
                         .set_name("check wireframe entities needing specialization"));
 }
 

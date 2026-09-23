@@ -370,3 +370,68 @@ TEST(SpriteExtraction, CopiesEveryImageEventAndClearsEachFrame) {
     ASSERT_TRUE(system->run({}, render_world).has_value());
     EXPECT_TRUE(render_world.resource<sprite_render::SpriteAssetEvents>().images.empty());
 }
+
+namespace {
+/** @brief The six accessors `PhaseItem` asks for, and nothing else
+ *  (`render_phase.hpp`). */
+struct SkipTestPhaseItem {
+    ecs::Entity render_entity = ecs::Entity::from_index(1);
+    render::sync_world::MainEntity main{ecs::Entity::from_index(1)};
+    render::phase::DrawFunctionId draw_id{};
+    std::pair<std::uint32_t, std::uint32_t> batch_range_value{0, 1};
+    render::phase::PhaseItemExtraIndex extra_index_value{};
+
+    ecs::Entity entity() const noexcept { return render_entity; }
+    render::sync_world::MainEntity main_entity() const noexcept { return main; }
+    render::phase::DrawFunctionId draw_function() const noexcept { return draw_id; }
+    const std::pair<std::uint32_t, std::uint32_t>& batch_range() const noexcept { return batch_range_value; }
+    std::pair<std::uint32_t, std::uint32_t>& batch_range() noexcept { return batch_range_value; }
+    const render::phase::PhaseItemExtraIndex& extra_index() const noexcept { return extra_index_value; }
+    render::phase::PhaseItemExtraIndex& extra_index() noexcept { return extra_index_value; }
+};
+}  // namespace
+
+/** @brief Bevy returns `RenderCommandResult::Skip` from both of
+ *  `SetMaterial2dBindGroup`'s missing arms (`material.rs:534-539`). Reporting
+ *  success there would continue the draw function with no material bind group set
+ *  (or the previous item's), which is what the skip exists to prevent - and the
+ *  phase treats a skip as a normal outcome, not an error. */
+TEST(Material2dRenderCommand, SkipsWhenTheInstanceOrPreparedMaterialIsMissing) {
+    using Material  = sprite_render::ColorMaterial;
+    using Prepared  = sprite_render::PreparedMaterial2d<Material>;
+    using Instances = sprite_render::RenderMaterial2dInstances<Material>;
+    using Assets    = render::RenderAssets<Prepared>;
+    using Command =
+        render::phase::RenderCommand<sprite_render::SetMaterial2dBindGroup<Material, 2>, SkipTestPhaseItem>;
+
+    ecs::World world(1);
+    world.insert_resource(Assets{});
+    world.insert_resource(Instances{});
+
+    std::optional<render::phase::RenderCommandError> observed;
+    // The framework builds the two `Res<>` parameters; the command's skip arms run
+    // before the encoder is touched, so a null one is never dereferenced.
+    auto probe = ecs::make_system_unique([&observed](ecs::Res<Assets> assets, ecs::Res<Instances> instances) {
+        const SkipTestPhaseItem item{};
+        auto result = Command{}.render(item, std::tuple<>{}, std::optional<ecs::Item<>>{},
+                                       std::make_tuple(assets, instances), wgpu::RenderPassEncoder{});
+        if (!result) observed = result.error();
+    });
+    probe->initialize(world);
+    ASSERT_TRUE(probe->run({}, world).has_value());
+
+    ASSERT_TRUE(observed.has_value()) << "a missing material instance must skip the draw";
+    EXPECT_EQ(observed->type, render::phase::RenderCommandError::Type::Skip);
+
+    // The same for an instance whose prepared material is missing: a real asset id
+    // that no `PreparedMaterial2d` was registered for.
+    assets::Assets<Material> materials;
+    const auto unprepared =
+        materials.emplace(sprite_render::ColorMaterial::from_color(glm::vec4{1.0f})).id();
+    world.resource_mut<Instances>().instances.insert_or_assign(
+        render::sync_world::MainEntity{ecs::Entity::from_index(1)}, unprepared);
+    observed.reset();
+    ASSERT_TRUE(probe->run({}, world).has_value());
+    ASSERT_TRUE(observed.has_value()) << "an unprepared material must skip the draw";
+    EXPECT_EQ(observed->type, render::phase::RenderCommandError::Type::Skip);
+}

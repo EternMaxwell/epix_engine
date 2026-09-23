@@ -236,3 +236,51 @@ TEST(Mesh2dWireframe, ExposesItsMaterialAssetId) {
 
     EXPECT_EQ(AsAssetId<sprite_render::Mesh2dWireframe>::as_asset_id(wireframe), handle.id());
 }
+
+namespace {
+/** @brief The wireframe material events one frame published. */
+struct WireframeMaterialEvents {
+    std::size_t added    = 0;
+    std::size_t modified = 0;
+};
+}  // namespace
+
+/** @brief Bevy registers `global_color_changed` behind
+ *  `run_if(resource_changed::<Wireframe2dConfig>)` (`wireframe2d.rs:93-102`).
+ *  Without it the system rewrites the global material through `get_mut` every
+ *  frame, which re-marks it modified and re-prepares `RenderWireframeMaterial`
+ *  for nothing. */
+TEST(Wireframe2dPlugin, GlobalColourChangedOnlyRunsWhenTheConfigChanged) {
+    auto app = make_shader_asset_app();
+    app.add_plugins(sprite_render::Wireframe2dPlugin{});
+    app.world_mut().insert_resource(WireframeMaterialEvents{});
+    app.add_systems(Last,
+                    epix::ecs::into([](epix::ecs::EventReader<AssetEvent<sprite_render::Wireframe2dMaterial>> events,
+                                       epix::ecs::ResMut<WireframeMaterialEvents> counts) {
+                        for (const auto& event : events.read()) {
+                            if (event.is_added()) ++counts->added;
+                            if (event.is_modified()) ++counts->modified;
+                        }
+                    })
+                        .after(AssetSystems::WriteEvents)
+                        .set_name("count wireframe material events"));
+    flush_load_tasks(app);
+
+    app.update();  // Startup creates the global material from the config.
+    const auto baseline = app.resource<WireframeMaterialEvents>().modified;
+
+    app.update();  // The config did not change, so the writer must stay off.
+    EXPECT_EQ(app.resource<WireframeMaterialEvents>().modified, baseline)
+        << "global_color_changed only runs when Wireframe2dConfig changed";
+
+    app.world_mut().resource_mut<sprite_render::Wireframe2dConfig>().default_color =
+        glm::vec4(0.0f, 1.0f, 0.0f, 1.0f);
+    app.update();
+    EXPECT_GT(app.resource<WireframeMaterialEvents>().modified, baseline)
+        << "a changed config still reaches the global material";
+
+    const auto& handle = app.resource<sprite_render::GlobalWireframeMaterial>().handle;
+    const auto& global = app.resource<Assets<sprite_render::Wireframe2dMaterial>>().get(handle);
+    ASSERT_TRUE(global.has_value());
+    EXPECT_EQ(global->get().color, glm::vec4(0.0f, 1.0f, 0.0f, 1.0f));
+}
