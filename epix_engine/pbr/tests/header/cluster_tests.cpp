@@ -5267,6 +5267,13 @@ TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
     // The def is LIGHTMAP while the bit is LIGHTMAPPED, which is Bevy's own naming.
     EXPECT_TRUE(has_name(specialize_mesh_key_shader_defs(MeshPipelineKey::LIGHTMAPPED, true), "LIGHTMAP"));
 
+    // The irradiance-volume def needs the key bit *and* the platform capability; on
+    // every platform Epix targets that capability is held, so the bit alone decides.
+    static_assert(epix::pbr::IRRADIANCE_VOLUMES_ARE_USABLE);
+    EXPECT_TRUE(has_name(specialize_mesh_key_shader_defs(MeshPipelineKey::IRRADIANCE_VOLUME, true), "IRRADIANCE_VOLUME"));
+    EXPECT_FALSE(has_name(specialize_mesh_key_shader_defs(MeshPipelineKey::NONE, true), "IRRADIANCE_VOLUME"))
+        << "the def is key-gated, not unconditional";
+
     // The shadow filter method: one of three when set, and *no* def when the key
     // carries none - unlike the view projection, whose zero value is a real case.
     const auto gaussian = specialize_mesh_key_shader_defs(MeshPipelineKey::SHADOW_FILTER_METHOD_GAUSSIAN, true);

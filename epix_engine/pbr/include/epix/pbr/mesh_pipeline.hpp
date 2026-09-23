@@ -164,6 +164,17 @@ EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key
     return state;
 }
 
+/** @brief Whether irradiance volumes can be used on this platform (Bevy
+ *  `IRRADIANCE_VOLUMES_ARE_USABLE`, `render/irradiance_volume.rs:161`:
+ *  `cfg!(not(target_arch = "wasm32"))`).
+ *
+ *  Bevy's constant is a compile-time platform test, and every platform Epix builds
+ *  for is not wasm32, so the value Bevy's `cfg!` produces here is `true`. Bevy reads
+ *  the one constant in both places it gates on it, and the key-gated def below does
+ *  the same; the capability helper still takes the value as an argument, because its
+ *  callers model a pipeline's device capabilities as a whole. */
+EPIX_EXPORT inline constexpr bool IRRADIANCE_VOLUMES_ARE_USABLE = true;
+
 /** @brief The shader defs a key adds besides the pass and vertex ones (Bevy
  *  `MeshPipeline::specialize`, `render/mesh.rs:2453-2618`).
  *
@@ -178,9 +189,10 @@ EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key
  *  defs rather than bare names, and debanding is nested inside it because the shader
  *  cannot deband without tonemapping.
  *
- *  Two Bevy conditions have no counterpart here and are noted rather than silently
- *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated, and the irradiance
- *  volume def is behind a compile-time capability constant. */
+ *  One Bevy condition has no counterpart here and is noted rather than silently
+ *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated. The irradiance-volume
+ *  def is *not* in that group - it is gated on the key bit and a platform constant,
+ *  which this port has as `IRRADIANCE_VOLUMES_ARE_USABLE`. */
 EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key_shader_defs(
     const MeshPipelineKey& key, bool is_opaque) {
     using Def = ::epix::shader::ShaderDefVal;
@@ -241,6 +253,11 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key
 
     if (key.contains(MeshPipelineKey::MAY_DISCARD)) defs.emplace_back("MAY_DISCARD");
     if (key.contains(MeshPipelineKey::ENVIRONMENT_MAP)) defs.emplace_back("ENVIRONMENT_MAP");
+    // The def needs the key bit *and* the platform capability, exactly as Bevy gates
+    // it (`render/mesh.rs:2609-2611`).
+    if (key.contains(MeshPipelineKey::IRRADIANCE_VOLUME) && IRRADIANCE_VOLUMES_ARE_USABLE) {
+        defs.emplace_back("IRRADIANCE_VOLUME");
+    }
     // The bit is LIGHTMAPPED but the def is LIGHTMAP: Bevy's own naming, kept as is.
     if (key.contains(MeshPipelineKey::LIGHTMAPPED)) defs.emplace_back("LIGHTMAP");
     if (key.contains(MeshPipelineKey::LIGHTMAP_BICUBIC_SAMPLING)) defs.emplace_back("LIGHTMAP_BICUBIC_SAMPLING");
