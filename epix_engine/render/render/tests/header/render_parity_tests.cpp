@@ -3012,7 +3012,7 @@ TEST(BinnedRenderPhase, RenderInvokesDrawFunctions) {
     // One draw call per batchable BIN (2 bins) + one per unbatchable entity
     // + one per non-mesh entity = 4 (Bevy storage-buffer path).
     wgpu::RenderPassEncoder null_pass{};
-    phase.render(null_pass, world, Entity{100});
+    EXPECT_TRUE(phase.render(null_pass, world, Entity{100}).has_value());
     EXPECT_EQ(CountingBinnedDraw::calls, 4);
     // The last call was the non-mesh item (bin key 13, range 1).
     EXPECT_EQ(CountingBinnedDraw::last_bin_key, 13);
@@ -3072,7 +3072,7 @@ TEST(BinnedRenderPhase, EmptyPreparedSetDoesNotFallbackToRawBins) {
               phase::BinnedRenderPhaseType::BatchableMesh, tick);
 
     CountingBinnedDraw::calls = 0;
-    phase.render(wgpu::RenderPassEncoder{}, world, Entity{100});
+    EXPECT_TRUE(phase.render(wgpu::RenderPassEncoder{}, world, Entity{100}).has_value());
     EXPECT_EQ(CountingBinnedDraw::calls, 0);
 }
 
@@ -3114,9 +3114,123 @@ TEST(SortedRenderPhase, RenderSkipsBatchedItems) {
     phase.add(next);
 
     wgpu::RenderPassEncoder null_pass{};
-    phase.render(null_pass, world, Entity{100});
+    EXPECT_TRUE(phase.render(null_pass, world, Entity{100}).has_value());
     // The first item covers 2 instances -> the second item is skipped.
     EXPECT_EQ(CountingSortedDraw::calls, 1);
+}
+
+namespace {
+/** @brief A binned draw function that fails, or skips, on demand — Bevy's
+ *  `RenderCommandResult::Failure(reason)` and `Skip`. */
+struct FailingBinnedDraw : phase::DrawFunction<RenderableBinnedItem> {
+    static inline int calls   = 0;
+    static inline bool skipping = false;
+    void prepare(const epix::ecs::World&) override {}
+    std::expected<void, phase::DrawError> draw(const epix::ecs::World&,
+                                               const wgpu::RenderPassEncoder&,
+                                               epix::ecs::Entity,
+                                               const RenderableBinnedItem&) override {
+        ++calls;
+        if (skipping) return std::unexpected(phase::DrawError::skip("not ready"));
+        return std::unexpected(phase::DrawError::render_command_failure("deliberate failure"));
+    }
+};
+
+/** @brief The sorted-phase counterpart. */
+struct FailingSortedDraw : phase::DrawFunction<CpuBatchTestItem> {
+    static inline int calls     = 0;
+    static inline bool skipping = false;
+    void prepare(const epix::ecs::World&) override {}
+    std::expected<void, phase::DrawError> draw(const epix::ecs::World&,
+                                               const wgpu::RenderPassEncoder&,
+                                               epix::ecs::Entity,
+                                               const CpuBatchTestItem&) override {
+        ++calls;
+        if (skipping) return std::unexpected(phase::DrawError::skip("not ready"));
+        return std::unexpected(phase::DrawError::render_command_failure("deliberate failure"));
+    }
+};
+}  // namespace
+
+// Bevy's `BinnedRenderPhase::render` propagates the first draw failure with `?`
+// and stops there (`render_phase/mod.rs:691,715`), while a skip is not a failure
+// at all: `RenderCommandResult::Skip` becomes `Ok(())` (draw.rs:346), so the
+// phase keeps going. This is what lets a node report a failed draw (PRT-3).
+TEST(BinnedRenderPhase, PropagatesADrawFailureButNotASkip) {
+    epix::ecs::World world(WorldId(110));
+    phase::DrawFunctions<RenderableBinnedItem> functions;
+    functions.write()->template add<FailingBinnedDraw>();
+    world.insert_resource(std::move(functions));
+    const auto tick = world.change_tick();
+
+    const auto make_phase = [&] {
+        phase::BinnedRenderPhase<RenderableBinnedItem> phase;
+        // Two non-mesh items: each is drawn unconditionally, in order.
+        phase.add(0, 7, {Entity{1}, sync_world::MainEntity{Entity{1}}}, phase::InputUniformIndex{0},
+                  phase::BinnedRenderPhaseType::NonMesh, tick);
+        phase.add(0, 8, {Entity{2}, sync_world::MainEntity{Entity{2}}}, phase::InputUniformIndex{0},
+                  phase::BinnedRenderPhaseType::NonMesh, tick);
+        return phase;
+    };
+
+    // A skip is a normal outcome: both items are drawn and the phase succeeds.
+    FailingBinnedDraw::calls    = 0;
+    FailingBinnedDraw::skipping = true;
+    {
+        auto phase = make_phase();
+        EXPECT_TRUE(phase.render(wgpu::RenderPassEncoder{}, world, Entity{100}).has_value());
+    }
+    EXPECT_EQ(FailingBinnedDraw::calls, 2) << "a skip does not stop the phase";
+
+    // A genuine failure comes back to the caller and stops the phase.
+    FailingBinnedDraw::calls    = 0;
+    FailingBinnedDraw::skipping = false;
+    {
+        auto phase  = make_phase();
+        auto result = phase.render(wgpu::RenderPassEncoder{}, world, Entity{100});
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().type, phase::DrawError::ErrorType::RenderCommandFailure);
+        EXPECT_EQ(result.error().message, "deliberate failure");
+    }
+    EXPECT_EQ(FailingBinnedDraw::calls, 1) << "the failure aborts the remaining items";
+}
+
+// The same contract for the sorted phase (`render_phase/mod.rs:1486`).
+TEST(SortedRenderPhase, PropagatesADrawFailureButNotASkip) {
+    epix::ecs::World world(WorldId(111));
+    phase::DrawFunctions<CpuBatchTestItem> functions;
+    const phase::DrawFunctionId draw_id = functions.write()->template add<FailingSortedDraw>();
+    world.insert_resource(std::move(functions));
+
+    const auto make_phase = [&] {
+        phase::SortedRenderPhase<CpuBatchTestItem> phase;
+        for (std::uint32_t index = 0; index < 2; ++index) {
+            CpuBatchTestItem item{.render_entity = Entity{index + 1},
+                                  .main          = sync_world::MainEntity{Entity{index + 1}},
+                                  .draw_id       = draw_id};
+            item.batch_range() = std::pair<std::uint32_t, std::uint32_t>{index, index + 1};
+            phase.add(item);
+        }
+        return phase;
+    };
+
+    FailingSortedDraw::calls    = 0;
+    FailingSortedDraw::skipping = true;
+    {
+        auto phase = make_phase();
+        EXPECT_TRUE(phase.render(wgpu::RenderPassEncoder{}, world, Entity{100}).has_value());
+    }
+    EXPECT_EQ(FailingSortedDraw::calls, 2) << "a skip does not stop the phase";
+
+    FailingSortedDraw::calls    = 0;
+    FailingSortedDraw::skipping = false;
+    {
+        auto phase  = make_phase();
+        auto result = phase.render(wgpu::RenderPassEncoder{}, world, Entity{100});
+        ASSERT_FALSE(result.has_value());
+        EXPECT_EQ(result.error().type, phase::DrawError::ErrorType::RenderCommandFailure);
+    }
+    EXPECT_EQ(FailingSortedDraw::calls, 1) << "the failure aborts the remaining items";
 }
 
 // ShaderStorageBuffer::take_gpu_data moves the data out of the stored asset

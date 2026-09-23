@@ -475,10 +475,14 @@ class BinnedRenderPhase {
      * item factory `BPI::create(batch_set_key, bin_key, representative_entity,
      * instance_range, extra_index)` is part of `BinnedPhaseItem` (Bevy names
      * it `new`; C++ reserves that keyword).
-     */
-    void render(const wgpu::RenderPassEncoder& render_pass,
-                const epix::ecs::World& world,
-                epix::ecs::Entity view) const {
+     *
+     * The first genuine draw failure is returned to the caller, which is what
+     * lets a render-graph node report it; a skip is a normal outcome and keeps
+     * the phase going, exactly as Bevy's `draw` maps
+     * `Success | Skip => Ok(())` (draw.rs:346). */
+    std::expected<void, DrawError> render(const wgpu::RenderPassEncoder& render_pass,
+                                         const epix::ecs::World& world,
+                                         epix::ecs::Entity view) const {
         auto&& draw_functions = world.resource<DrawFunctions<BPI>>();
         // Bevy holds one write guard for the whole pass, so prepare and every
         // batch's draws happen under it (render_phase/mod.rs:1474-1486).
@@ -489,16 +493,22 @@ class BinnedRenderPhase {
         // prepared set means no batchable mesh was prepared this frame.
         if (std::holds_alternative<std::vector<std::vector<BinnedRenderPhaseBatch>>>(batch_sets)) {
             const auto& dynamic = std::get<0>(batch_sets);
-            render_dynamic_uniform_batches(*functions, render_pass, world, view, dynamic);
+            if (auto result = render_dynamic_uniform_batches(*functions, render_pass, world, view, dynamic); !result) {
+                return result;
+            }
         } else if (std::holds_alternative<std::vector<BinnedRenderPhaseBatch>>(batch_sets)) {
             const auto& direct = std::get<1>(batch_sets);
-            render_direct_batches(*functions, render_pass, world, view, direct);
+            if (auto result = render_direct_batches(*functions, render_pass, world, view, direct); !result) {
+                return result;
+            }
         } else {
             const auto& multidraw = std::get<2>(batch_sets);
-            render_multidraw_batches(*functions, render_pass, world, view, multidraw);
+            if (auto result = render_multidraw_batches(*functions, render_pass, world, view, multidraw); !result) {
+                return result;
+            }
         }
-        render_unbatchable_meshes(*functions, render_pass, world, view);
-        render_non_meshes(*functions, render_pass, world, view);
+        if (auto result = render_unbatchable_meshes(*functions, render_pass, world, view); !result) return result;
+        return render_non_meshes(*functions, render_pass, world, view);
     }
 
     /**
@@ -599,74 +609,81 @@ class BinnedRenderPhase {
         return BPI::create(batch_set_key, bin_key, representative_entity, instance_range, extra_index);
     }
 
-    /** @brief Run one item's draw function, logging failures (Bevy draw
-     * functions return Result<(), DrawError>; Skip is ignored). */
-    void draw_item(const DrawFunctionsInternal<BPI>& functions,
-                   const wgpu::RenderPassEncoder& render_pass,
-                   const epix::ecs::World& world,
-                   epix::ecs::Entity view,
-                   const BPI& item) const {
+    /** @brief Run one item's draw function (Bevy's `draw_function.draw(...)?`).
+     *  A skip is returned as success, because Bevy's `draw` collapses
+     *  `RenderCommandResult::Skip` and `Success` into `Ok(())`
+     *  (render_phase/draw.rs:346); only a genuine failure is propagated. */
+    std::expected<void, DrawError> draw_item(const DrawFunctionsInternal<BPI>& functions,
+                                             const wgpu::RenderPassEncoder& render_pass,
+                                             const epix::ecs::World& world,
+                                             epix::ecs::Entity view,
+                                             const BPI& item) const {
         auto draw_function = functions.get(item.draw_function());
         if (!draw_function) {
             spdlog::error("[render] Draw function {} not found for binned item {:#x}.",
                           static_cast<std::uint32_t>(item.draw_function()), item.entity().index);
-            return;
+            return {};
         }
         auto result = draw_function->get().draw(world, render_pass, view, item);
         if (!result) {
-            // A skip is a normal outcome in Bevy (`RenderCommandResult::Skip`),
-            // so it is traced; only a genuine failure is reported. Bevy's binned
-            // phase instead propagates with `draw_function.draw(...)?`
-            // (render_phase/mod.rs); that divergence is tracked separately.
             if (result.error().type == DrawError::ErrorType::Skip) {
                 spdlog::trace("[render] Draw function {} skipped binned item {:#x}: {}",
                               static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
                               result.error().message);
-            } else {
-                spdlog::error("[render] Draw function {} failed for binned item {:#x}: {}",
-                              static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
-                              result.error().message);
+                return {};
             }
+            return std::unexpected(result.error());
         }
+        return {};
     }
 
-    void render_dynamic_uniform_batches(const DrawFunctionsInternal<BPI>& functions,
-                                        const wgpu::RenderPassEncoder& render_pass,
-                                        const epix::ecs::World& world,
-                                        epix::ecs::Entity view,
-                                        std::span<const std::vector<BinnedRenderPhaseBatch>> batches) const {
+    std::expected<void, DrawError> render_dynamic_uniform_batches(
+        const DrawFunctionsInternal<BPI>& functions,
+        const wgpu::RenderPassEncoder& render_pass,
+        const epix::ecs::World& world,
+        epix::ecs::Entity view,
+        std::span<const std::vector<BinnedRenderPhaseBatch>> batches) const {
         auto key = batchable_meshes.iter().begin();
         for (const auto& bin_batches : batches) {
             if (key == batchable_meshes.iter().end()) break;
             for (const auto& batch : bin_batches) {
-                draw_item(functions, render_pass, world, view,
-                          make_item(key->first.first, key->first.second, batch.representative_entity,
-                                    batch.instance_range, batch.extra_index));
+                if (auto result = draw_item(functions, render_pass, world, view,
+                                            make_item(key->first.first, key->first.second, batch.representative_entity,
+                                                      batch.instance_range, batch.extra_index));
+                    !result) {
+                    return result;
+                }
             }
             ++key;
         }
+        return {};
     }
 
-    void render_direct_batches(const DrawFunctionsInternal<BPI>& functions,
-                                        const wgpu::RenderPassEncoder& render_pass,
-                               const epix::ecs::World& world,
-                               epix::ecs::Entity view,
-                               std::span<const BinnedRenderPhaseBatch> batches) const {
+    std::expected<void, DrawError> render_direct_batches(const DrawFunctionsInternal<BPI>& functions,
+                                                         const wgpu::RenderPassEncoder& render_pass,
+                                                         const epix::ecs::World& world,
+                                                         epix::ecs::Entity view,
+                                                         std::span<const BinnedRenderPhaseBatch> batches) const {
         auto key = batchable_meshes.iter().begin();
         for (const auto& batch : batches) {
             if (key == batchable_meshes.iter().end()) break;
-            draw_item(functions, render_pass, world, view,
-                      make_item(key->first.first, key->first.second, batch.representative_entity, batch.instance_range,
-                                batch.extra_index));
+            if (auto result = draw_item(functions, render_pass, world, view,
+                                        make_item(key->first.first, key->first.second, batch.representative_entity,
+                                                  batch.instance_range, batch.extra_index));
+                !result) {
+                return result;
+            }
             ++key;
         }
+        return {};
     }
 
-    void render_multidraw_batches(const DrawFunctionsInternal<BPI>& functions,
-                                        const wgpu::RenderPassEncoder& render_pass,
-                                  const epix::ecs::World& world,
-                                  epix::ecs::Entity view,
-                                  std::span<const BinnedRenderPhaseBatchSet<BinKey>> batches) const {
+    std::expected<void, DrawError> render_multidraw_batches(
+        const DrawFunctionsInternal<BPI>& functions,
+        const wgpu::RenderPassEncoder& render_pass,
+        const epix::ecs::World& world,
+        epix::ecs::Entity view,
+        std::span<const BinnedRenderPhaseBatchSet<BinKey>> batches) const {
         const bool multi_draw_indirect_count_supported = [&world] {
             const auto device = world.get_resource<wgpu::Device>();
             if (!device || !device->get().hasFeature(wgpu::FeatureName(wgpu::NativeFeature::eMultiDrawIndirectCount))) {
@@ -684,57 +701,66 @@ class BinnedRenderPhase {
         for (const auto& batch_set : batches) {
             const auto extra_index = multidraw_extra_index(batch_set.first_batch.extra_index, batch_set.batch_count,
                                                            multi_draw_indirect_count_supported, batch_set.index);
+            std::expected<void, DrawError> result{};
             if (multidraw_key != multidrawable_meshes.iter().end()) {
-                draw_item(
+                result = draw_item(
                     functions, render_pass, world, view,
                     make_item(multidraw_key->first, batch_set.bin_key, batch_set.first_batch.representative_entity,
                               batch_set.first_batch.instance_range, extra_index));
                 ++multidraw_key;
             } else if (batchable_key != batchable_meshes.iter().end()) {
-                draw_item(functions, render_pass, world, view,
-                          make_item(batchable_key->first.first, batch_set.bin_key,
-                                    batch_set.first_batch.representative_entity, batch_set.first_batch.instance_range,
-                                    extra_index));
+                result = draw_item(functions, render_pass, world, view,
+                                   make_item(batchable_key->first.first, batch_set.bin_key,
+                                             batch_set.first_batch.representative_entity,
+                                             batch_set.first_batch.instance_range, extra_index));
                 ++batchable_key;
             } else {
                 break;
             }
+            if (!result) return result;
         }
+        return {};
     }
 
     /** @brief Render each unbatchable mesh entity with a separate draw call
      * (Bevy render_unbatchable_meshes). */
-    void render_unbatchable_meshes(const DrawFunctionsInternal<BPI>& functions,
-                                        const wgpu::RenderPassEncoder& render_pass,
-                                   const epix::ecs::World& world,
-                                   epix::ecs::Entity view) const {
+    std::expected<void, DrawError> render_unbatchable_meshes(const DrawFunctionsInternal<BPI>& functions,
+                                                             const wgpu::RenderPassEncoder& render_pass,
+                                                             const epix::ecs::World& world,
+                                                             epix::ecs::Entity view) const {
         for (auto&& [key, unbatchable] : unbatchable_meshes.iter()) {
             std::uint32_t entity_index = 0;
             for (auto&& [main_entity, render_entity] : unbatchable.entities) {
                 (void)render_entity;
                 const auto prepared = unbatchable.buffer_indices.indices_for_entity_index(entity_index++);
                 if (!prepared) continue;
-                draw_item(functions, render_pass, world, view,
-                          make_item(key.first, key.second, {render_entity, main_entity},
-                                    {prepared->instance_index, prepared->instance_index + 1}, prepared->extra_index));
+                if (auto result = draw_item(functions, render_pass, world, view,
+                                            make_item(key.first, key.second, {render_entity, main_entity},
+                                                      {prepared->instance_index, prepared->instance_index + 1},
+                                                      prepared->extra_index));
+                    !result) {
+                    return result;
+                }
             }
         }
+        return {};
     }
 
     /** @brief Render each non-mesh entity with a separate draw call (Bevy
      * render_non_meshes). */
-    void render_non_meshes(const DrawFunctionsInternal<BPI>& functions,
-                                        const wgpu::RenderPassEncoder& render_pass,
-                           const epix::ecs::World& world,
-                           epix::ecs::Entity view) const {
+    std::expected<void, DrawError> render_non_meshes(const DrawFunctionsInternal<BPI>& functions,
+                                                     const wgpu::RenderPassEncoder& render_pass,
+                                                     const epix::ecs::World& world,
+                                                     epix::ecs::Entity view) const {
         for (auto&& [key, non_mesh] : non_mesh_items.iter()) {
             for (auto&& [main_entity, render_entity] : non_mesh.entities) {
                 (void)render_entity;
                 BPI item = BPI::create(key.first, key.second, {render_entity, main_entity}, {0u, 1u},
                                         PhaseItemExtraIndex::None);
-                draw_item(functions, render_pass, world, view, item);
+                if (auto result = draw_item(functions, render_pass, world, view, item); !result) return result;
             }
         }
+        return {};
     }
 
     /** @brief main entity -> cached bin keys + change tick. */

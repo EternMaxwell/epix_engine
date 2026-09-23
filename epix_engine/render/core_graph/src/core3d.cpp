@@ -354,8 +354,18 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
                                         static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
                                         static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
             }
-            if (!opaque_phase_ptr->is_empty()) opaque_phase_ptr->render(render_pass, *world_ptr, view_entity);
-            if (!alpha_mask_phase_ptr->is_empty()) alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity);
+            if (!opaque_phase_ptr->is_empty()) {
+                if (auto result = opaque_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the opaque phase {}",
+                                  phase::to_string(result.error()));
+                }
+            }
+            if (!alpha_mask_phase_ptr->is_empty()) {
+                if (auto result = alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the alpha mask phase {}",
+                                  phase::to_string(result.error()));
+                }
+            }
 
             // Skybox draw using a fullscreen triangle.
             if (skybox_pipeline && skybox_group) {
@@ -440,9 +450,16 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
                                         vp.depth.first, vp.depth.second);
             }
             if (range) {
-                phase_ptr->render_range(render_pass, *world_ptr, view_entity, range->first, range->second);
+                if (auto result = phase_ptr->render_range(render_pass, *world_ptr, view_entity, range->first, range->second);
+                    !result) {
+                    spdlog::error("Error encountered while rendering the transmissive phase {}",
+                                  phase::to_string(result.error()));
+                }
             } else {
-                phase_ptr->render(render_pass, *world_ptr, view_entity);
+                if (auto result = phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the transmissive phase {}",
+                                  phase::to_string(result.error()));
+                }
             }
             render_pass.end();
         };
@@ -503,7 +520,10 @@ std::expected<void, graph::NodeRunError> MainTransparentPass3dNode::run(graph::G
                                     static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
                                     static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
         }
-        transparent_phase_ptr->render(render_pass, *world_ptr, view_entity);
+        if (auto result = transparent_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+            spdlog::error("Error encountered while rendering the transparent phase {}",
+                          phase::to_string(result.error()));
+        }
         render_pass.end();
         return encoder.finish();
     });
@@ -643,8 +663,18 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
                                             static_cast<float>(vp.physical_size.x),
                                             static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
                 }
-                if (!opaque_ptr->is_empty()) opaque_ptr->render(render_pass, *world_ptr, view_entity);
-                if (!mask_ptr->is_empty()) mask_ptr->render(render_pass, *world_ptr, view_entity);
+                if (!opaque_ptr->is_empty()) {
+                    if (auto result = opaque_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                        spdlog::error("Error encountered while rendering the opaque prepass phase {}",
+                                      phase::to_string(result.error()));
+                    }
+                }
+                if (!mask_ptr->is_empty()) {
+                    if (auto result = mask_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                        spdlog::error("Error encountered while rendering the alpha mask prepass phase {}",
+                                      phase::to_string(result.error()));
+                    }
+                }
 
                 // Skybox draw using a fullscreen triangle, after the phase items,
                 // with both dynamic offsets (Bevy `prepass/node.rs:215-235`).
@@ -1130,8 +1160,18 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
                                             static_cast<float>(vp.physical_size.x),
                                             static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
                 }
-                if (!opaque_ptr->is_empty()) opaque_ptr->render(render_pass, *world_ptr, view_entity);
-                if (!mask_ptr->is_empty()) mask_ptr->render(render_pass, *world_ptr, view_entity);
+                if (!opaque_ptr->is_empty()) {
+                    if (auto result = opaque_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                        spdlog::error("Error encountered while rendering the opaque deferred phase {}",
+                                      phase::to_string(result.error()));
+                    }
+                }
+                if (!mask_ptr->is_empty()) {
+                    if (auto result = mask_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                        spdlog::error("Error encountered while rendering the alpha mask deferred phase {}",
+                                      phase::to_string(result.error()));
+                    }
+                }
                 render_pass.end();
             }
 

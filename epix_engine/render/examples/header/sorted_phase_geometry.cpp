@@ -364,7 +364,13 @@ struct SortedGeometryNode : render::graph::Node {
         }
         auto pass = render_context.command_encoder().beginRenderPass(wgpu::RenderPassDescriptor().setColorAttachments(
             std::array{target.out_texture_color_attachment(glm::vec4{0.10f, 0.11f, 0.14f, 1.0f})}));
-        phase.render(pass, world, context.view_entity());
+        // Bevy's phase `render` propagates a draw failure with `?`; this node draws
+        // synchronously, so it can report it the same way.
+        if (auto result = phase.render(pass, world, context.view_entity()); !result) {
+            pass.end();
+            render_context.flush_encoder();
+            return std::unexpected(render::graph::NodeRunError::DrawError);
+        }
         pass.end();
         render_context.flush_encoder();
         return {};

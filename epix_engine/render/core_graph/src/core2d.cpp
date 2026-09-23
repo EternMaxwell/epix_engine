@@ -72,8 +72,21 @@ std::expected<void, graph::NodeRunError> MainOpaquePass2DNode::run(
                                         static_cast<float>(vp.physical_size.x),
                                         static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
             }
-            if (!opaque_phase_ptr->is_empty()) opaque_phase_ptr->render(render_pass, *world_ptr, view_entity);
-            if (!alpha_mask_phase_ptr->is_empty()) alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity);
+            if (!opaque_phase_ptr->is_empty()) {
+                // Bevy logs the phase's error inside its own deferred pass node and
+                // lets the pass finish (main_opaque_pass_2d_node.rs:85-87); the
+                // error cannot leave a command-buffer generation task.
+                if (auto result = opaque_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the 2d opaque phase {}",
+                                  phase::to_string(result.error()));
+                }
+            }
+            if (!alpha_mask_phase_ptr->is_empty()) {
+                if (auto result = alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the 2d alpha mask phase {}",
+                                  phase::to_string(result.error()));
+                }
+            }
             render_pass.end();
             return encoder.finish();
         });
@@ -113,7 +126,12 @@ std::expected<void, graph::NodeRunError> MainTransparentPass2DNode::run(
                                         static_cast<float>(vp.physical_size.x),
                                         static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
             }
-            if (!transparent_phase_ptr->items.empty()) transparent_phase_ptr->render(render_pass, *world_ptr, view_entity);
+            if (!transparent_phase_ptr->items.empty()) {
+                if (auto result = transparent_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the transparent 2D phase {}",
+                                  phase::to_string(result.error()));
+                }
+            }
             render_pass.end();
             return encoder.finish();
         });

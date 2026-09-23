@@ -142,7 +142,17 @@ std::expected<void, epix::render::graph::NodeRunError> epix::sprite_render::Wire
                                         static_cast<float>(vp.physical_size.x),
                                         static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
             }
-            if (!phase_ptr->is_empty()) phase_ptr->render(render_pass, *world_ptr, view_entity);
+            if (!phase_ptr->is_empty()) {
+                // Bevy logs the phase's error and returns
+                // `NodeRunError::DrawError` (wireframe2d.rs:400-403); this pass is
+                // deferred into a command-buffer generation task, so the error
+                // cannot travel back to `run` and the log is what is left. Bevy's
+                // message, verbatim.
+                if (auto result = phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the stencil phase {}",
+                                  render::phase::to_string(result.error()));
+                }
+            }
             render_pass.end();
             return encoder.finish();
         });

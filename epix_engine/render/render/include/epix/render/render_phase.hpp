@@ -237,6 +237,25 @@ inline std::string_view to_str(DrawError error) noexcept {
     }
 }
 
+/** @brief The error as a log line, the counterpart of Bevy's `Display` impl for
+ *  `DrawError` (`render_phase/draw.rs:42-50`): the command's own message when it
+ *  has one, otherwise the variant's. */
+inline std::string to_string(const DrawError& error) {
+    switch (error.type) {
+        case DrawError::ErrorType::RenderCommandFailure:
+            return error.message.empty() ? std::string{"Failed to execute render command"} : error.message;
+        case DrawError::ErrorType::InvalidViewQuery:
+            return "Failed to get execute view query";
+        case DrawError::ErrorType::InvalidEntityQuery:
+            return "Failed to get execute entity query";
+        case DrawError::ErrorType::ViewEntityMissing:
+            return "View entity not found";
+        case DrawError::ErrorType::Skip:
+        default:
+            return std::string(to_str(error));
+    }
+}
+
 /** @brief Concept for a draw function that can prepare and draw phase
  * items.
  * @tparam FuncT The draw function type.
@@ -427,16 +446,20 @@ struct SortedRenderPhase {
         }
     }
     auto iter_entities() const { return std::views::transform(items, T::entity); }
-    void render(const wgpu::RenderPassEncoder& cmd, const epix::ecs::World& world, epix::ecs::Entity view) const {
-        render_range(cmd, world, view, 0, items.size());
+    /** @brief Render every item (Bevy `SortedRenderPhase::render`). The first
+     *  genuine draw failure is returned so a node can report it. */
+    std::expected<void, DrawError> render(const wgpu::RenderPassEncoder& cmd,
+                                          const epix::ecs::World& world,
+                                          epix::ecs::Entity view) const {
+        return render_range(cmd, world, view, 0, items.size());
     }
-    void render_range(const wgpu::RenderPassEncoder& cmd,
-                      const epix::ecs::World& world,
-                      epix::ecs::Entity view,
-                      std::size_t start = 0,
-                      std::size_t end   = std::numeric_limits<std::size_t>::max()) const {
+    std::expected<void, DrawError> render_range(const wgpu::RenderPassEncoder& cmd,
+                                                const epix::ecs::World& world,
+                                                epix::ecs::Entity view,
+                                                std::size_t start = 0,
+                                                std::size_t end   = std::numeric_limits<std::size_t>::max()) const {
         end = std::min(end, items.size());
-        if (start >= end) return;
+        if (start >= end) return {};
 
         auto&& draw_functions = world.resource<DrawFunctions<T>>();
         // Bevy holds one write guard for the whole range: prepare and every
@@ -455,26 +478,20 @@ struct SortedRenderPhase {
             }
             if (auto draw_function = functions->get(item.draw_function()); draw_function) {
                 auto result = draw_function->get().draw(world, cmd, view, item);
-                if (result) {
-                    // drawn
-                } else {
+                if (!result) {
                     auto&& error = result.error();
                     if (error.type == DrawError::ErrorType::Skip) {
                         // A skip is a normal outcome in Bevy, not an error: the
                         // command returns `RenderCommandResult::Skip` for data
                         // that is simply not ready (see `DrawMesh2d`), so it is
-                        // traced rather than reported.
+                        // traced rather than reported and the phase continues.
                         spdlog::trace("[render] Draw function {} skipped item {:#x}: {}.",
                                       static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
                                       error.message.empty() ? to_str(error) : error.message);
-                    } else if (!error.message.empty()) {
-                        spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
-                                      static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
-                                      error.message);
                     } else {
-                        spdlog::error("[render] Draw function {} failed for item {:#x}. Error: {}.",
-                                      static_cast<std::uint32_t>(item.draw_function()), item.entity().index,
-                                      to_str(error));
+                        // Bevy propagates this with `?`; the node that owns the
+                        // pass is the one that reports it.
+                        return std::unexpected(error);
                     }
                 }
             } else {
@@ -483,6 +500,7 @@ struct SortedRenderPhase {
             }
             i += len;
         }
+        return {};
     }
 };
 
