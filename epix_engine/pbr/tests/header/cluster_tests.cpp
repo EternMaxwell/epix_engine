@@ -5363,6 +5363,7 @@ TEST(Cluster, MeshPipelineFixedStateMatchesBevy) {
  *  than a cross product (Bevy `setup_morph_and_skinning_defs`,
  *  `render/mesh.rs:2312-2370`). */
 TEST(Cluster, MeshMorphSkinningSetupMatchesBevy) {
+    using epix::pbr::is_skinned;
     using epix::pbr::MeshLayoutKind;
     using epix::pbr::setup_morph_and_skinning_defs;
 
@@ -5375,22 +5376,36 @@ TEST(Cluster, MeshMorphSkinningSetupMatchesBevy) {
         return std::any_of(setup.shader_defs.begin(), setup.shader_defs.end(),
                            [name](const auto& def) { return def.name == name; });
     };
+    // Whether a mesh is skinned is read off the layout, as Bevy's
+    // `is_skinned(layout)` does: the joint index and weight attributes.
+    const auto mesh_layout = [](bool skinned) {
+        std::vector<epix::mesh::MeshVertexAttributeId> attributes;
+        if (skinned) {
+            attributes = {epix::mesh::Mesh::ATTRIBUTE_JOINT_INDEX.id, epix::mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT.id};
+        }
+        return epix::mesh::MeshVertexBufferLayoutRef{std::make_shared<epix::mesh::MeshVertexBufferLayout>(
+            std::move(attributes), epix::mesh::VertexBufferLayout{})};
+    };
+
+    // Both joint attributes are required, and the layout is the only input.
+    EXPECT_TRUE(is_skinned(mesh_layout(true)));
+    EXPECT_FALSE(is_skinned(mesh_layout(false)));
 
     // Nothing special: the model-only layout and no defs.
-    const auto plain = setup_morph_and_skinning_defs(key_with({}), false, 6, false);
+    const auto plain = setup_morph_and_skinning_defs(key_with({}), mesh_layout(false), 6, false);
     EXPECT_EQ(plain.layout, MeshLayoutKind::ModelOnly);
     EXPECT_TRUE(plain.shader_defs.empty());
     EXPECT_TRUE(plain.vertex_attributes.empty());
 
     // Lightmapped but neither skinned nor morphed: the lightmapped layout, still no
     // defs - the shader def for that comes from the key step, not here.
-    const auto lightmapped = setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED}), false, 6, false);
+    const auto lightmapped = setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED}), mesh_layout(false), 6, false);
     EXPECT_EQ(lightmapped.layout, MeshLayoutKind::Lightmapped);
     EXPECT_TRUE(lightmapped.shader_defs.empty());
 
     // Skinned: the SKINNED def and the two joint attributes, immediately after the
     // mesh's own attributes.
-    const auto skinned = setup_morph_and_skinning_defs(key_with({}), true, 6, false);
+    const auto skinned = setup_morph_and_skinning_defs(key_with({}), mesh_layout(true), 6, false);
     EXPECT_EQ(skinned.layout, MeshLayoutKind::Skinned);
     EXPECT_TRUE(has_def(skinned, "SKINNED"));
     ASSERT_EQ(skinned.vertex_attributes.size(), 2u);
@@ -5401,12 +5416,12 @@ TEST(Cluster, MeshMorphSkinningSetupMatchesBevy) {
     // The precedence that matters: a skinned mesh that is also lightmapped does *not*
     // take the lightmapped layout, because there is no such layout.
     const auto skinned_lightmapped =
-        setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED}), true, 6, false);
+        setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED}), mesh_layout(true), 6, false);
     EXPECT_EQ(skinned_lightmapped.layout, MeshLayoutKind::Skinned)
         << "the lightmapped layout is only for unskinned, unmorphed meshes";
 
     // Morphed: the morph def, no joint attributes, and the morphed layout.
-    const auto morphed = setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS}), false, 6, false);
+    const auto morphed = setup_morph_and_skinning_defs(key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS}), mesh_layout(false), 6, false);
     EXPECT_EQ(morphed.layout, MeshLayoutKind::Morphed);
     EXPECT_TRUE(has_def(morphed, "MORPH_TARGETS"));
     EXPECT_TRUE(morphed.vertex_attributes.empty());
@@ -5416,30 +5431,30 @@ TEST(Cluster, MeshMorphSkinningSetupMatchesBevy) {
     // when motion vectors are on - motion only chooses between variants within the
     // skinned and morphed families.
     const auto motion_lightmapped = setup_morph_and_skinning_defs(
-        key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), false, 6,
+        key_with({epix::pbr::MeshPipelineKey::LIGHTMAPPED, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), mesh_layout(false), 6,
         false);
     EXPECT_EQ(motion_lightmapped.layout, MeshLayoutKind::Lightmapped);
     const auto morphed_motion = setup_morph_and_skinning_defs(
-        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), false, 6,
+        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), mesh_layout(false), 6,
         false);
     EXPECT_EQ(morphed_motion.layout, MeshLayoutKind::MorphedMotion);
     const auto skinned_motion = setup_morph_and_skinning_defs(
-        key_with({epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), true, 6, false);
+        key_with({epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), mesh_layout(true), 6, false);
     EXPECT_EQ(skinned_motion.layout, MeshLayoutKind::SkinnedMotion);
 
     // Skinned and morphed together, with and without motion vectors.
     const auto both = setup_morph_and_skinning_defs(
-        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS}), true, 6, false);
+        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS}), mesh_layout(true), 6, false);
     EXPECT_EQ(both.layout, MeshLayoutKind::MorphedSkinned);
     EXPECT_TRUE(has_def(both, "SKINNED"));
     EXPECT_TRUE(has_def(both, "MORPH_TARGETS"));
     const auto both_motion = setup_morph_and_skinning_defs(
-        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), true, 6,
+        key_with({epix::pbr::MeshPipelineKey::MORPH_TARGETS, epix::pbr::MeshPipelineKey::MOTION_VECTOR_PREPASS}), mesh_layout(true), 6,
         false);
     EXPECT_EQ(both_motion.layout, MeshLayoutKind::MorphedSkinnedMotion);
 
     // The uniform-buffer capability follows the pipeline, not the key.
-    const auto uniforms = setup_morph_and_skinning_defs(key_with({}), true, 6, true);
+    const auto uniforms = setup_morph_and_skinning_defs(key_with({}), mesh_layout(true), 6, true);
     EXPECT_TRUE(has_def(uniforms, "SKINS_USE_UNIFORM_BUFFERS"));
     EXPECT_FALSE(has_def(skinned, "SKINS_USE_UNIFORM_BUFFERS"));
 }

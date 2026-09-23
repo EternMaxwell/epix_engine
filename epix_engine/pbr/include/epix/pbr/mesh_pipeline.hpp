@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/mesh.hpp>
 #include <epix/shader.hpp>
 #include <string>
 #include <vector>
@@ -377,8 +378,20 @@ EPIX_EXPORT struct MeshMorphSkinningSetup {
     bool skinned = false;
 };
 
-/** @brief The defs, skinned vertex attributes and layout a mesh needs (Bevy
- *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
+/** @brief Whether a mesh's vertex layout provides both joint attributes (Bevy
+ *  `is_skinned`, `bevy_pbr/src/render/mesh.rs:2308-2311`).
+ *
+ *  This is the only thing that decides whether a mesh is skinned, which is why
+ *  `setup_morph_and_skinning_defs` takes the layout rather than a pre-computed
+ *  flag. Bevy reads `layout.0.contains(..)`; the reference's `value` is where
+ *  Epix's interned layout lives. */
+EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout) {
+    return layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_INDEX) &&
+           layout.value->contains(mesh::Mesh::ATTRIBUTE_JOINT_WEIGHT);
+}
+
+/** @brief The defs and vertex attributes a mesh's morph and skinning state adds
+ *  (Bevy `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
  *
  *  `offset` is the shader location the mesh's own attributes ended at, so the joint
  *  index and weight land immediately after them. Bevy's one call site passes the
@@ -393,7 +406,8 @@ EPIX_EXPORT struct MeshMorphSkinningSetup {
  *  layout. Lightmapping is checked *after* motion only because it is the last family,
  *  not because motion outranks it. A version that treated the four flags as
  *  independent would produce a layout that does not exist. */
-EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key, bool is_skinned,
+EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key,
+                                                                       const mesh::MeshVertexBufferLayoutRef& layout,
                                                                        std::uint32_t offset,
                                                                        bool skins_use_uniform_buffers) {
     using Def = ::epix::shader::ShaderDefVal;
@@ -401,6 +415,7 @@ EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const Me
     const bool is_morphed            = key.intersects(MeshPipelineKey::MORPH_TARGETS);
     const bool is_lightmapped        = key.intersects(MeshPipelineKey::LIGHTMAPPED);
     const bool motion_vector_prepass = key.intersects(MeshPipelineKey::MOTION_VECTOR_PREPASS);
+    const bool skinned               = is_skinned(layout);
 
     MeshMorphSkinningSetup setup;
     if (skins_use_uniform_buffers) setup.shader_defs.emplace_back("SKINS_USE_UNIFORM_BUFFERS");
@@ -413,17 +428,17 @@ EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const Me
     };
     const auto add_morph = [&] { setup.shader_defs.emplace_back("MORPH_TARGETS"); };
 
-    if (is_skinned && !is_morphed && motion_vector_prepass) {
+    if (skinned && !is_morphed && motion_vector_prepass) {
         add_skin_data();
         setup.layout = MeshLayoutKind::SkinnedMotion;
-    } else if (is_skinned && !is_morphed) {
+    } else if (skinned && !is_morphed) {
         add_skin_data();
         setup.layout = MeshLayoutKind::Skinned;
-    } else if (is_skinned && is_morphed && motion_vector_prepass) {
+    } else if (skinned && is_morphed && motion_vector_prepass) {
         add_skin_data();
         add_morph();
         setup.layout = MeshLayoutKind::MorphedSkinnedMotion;
-    } else if (is_skinned && is_morphed) {
+    } else if (skinned && is_morphed) {
         add_skin_data();
         add_morph();
         setup.layout = MeshLayoutKind::MorphedSkinned;
