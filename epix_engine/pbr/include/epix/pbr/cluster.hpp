@@ -6,6 +6,8 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/camera.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
@@ -598,6 +600,28 @@ EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters
         .near_plane = clusters.near_plane, .far_plane = clusters.far_plane, .dimensions = clusters.dimensions};
     return extracted;
 }
+
+/** @brief Extract each view's cluster records into the render world (Bevy
+ *  `extract_clusters`, `bevy_pbr/src/cluster.rs:245-287`).
+ *
+ *  Every view is a main-world entity carrying `RenderEntity`, `Clusters` and
+ *  `Camera`. A view whose camera is not active has both extracted components
+ *  *removed* - that is how a paused camera stops feeding `prepare_clusters` -
+ *  and an active one has them inserted on its render entity, which is the
+ *  `RenderEntity` the query already required.
+ *
+ *  The mapper query is Bevy's: it resolves each clusterable object's main-world
+ *  entity to its render entity inside `extract_view_clusters`, and an object
+ *  that has no `RenderEntity` is skipped rather than failing. Bevy reads the
+ *  render entity through `Commands::get_entity(..).expect(..)`; Epix's
+ *  `Commands::entity` does not validate, so the expectation has no counterpart
+ *  here. */
+EPIX_EXPORT void extract_clusters(
+    ecs::Commands commands,
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&, const Clusters&,
+                                       const ::epix::camera::Camera&>>>
+        views,
+    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper);
 
 }  // namespace epix::pbr
 

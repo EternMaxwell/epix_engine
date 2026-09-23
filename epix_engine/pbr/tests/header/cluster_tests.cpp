@@ -4470,6 +4470,74 @@ TEST(MeshExtraction, QueuesVisibleMeshesAndRemovals) {
     EXPECT_TRUE(was_removed(removed_entity));
 }
 
+/** @brief The cluster extraction inserts each active view's flat records and
+ *  config on its render entity, clears both from an inactive camera's, and skips
+ *  a clusterable object that was never synced (Bevy `extract_clusters`,
+ *  `bevy_pbr/src/cluster.rs:245-287`). */
+TEST(Cluster, ExtractClustersMatchesBevy) {
+    using epix::pbr::Clusters;
+    using epix::pbr::ClusterableObjectCounts;
+    using epix::pbr::ExtractedClusterConfig;
+    using epix::pbr::ExtractedClusterableObjectElement;
+    using epix::pbr::ExtractedClusterableObjects;
+    using epix::pbr::VisibleClusterableObjects;
+    using epix::render::sync_world::RenderEntity;
+
+    epix::ecs::World main_world(13);
+    epix::ecs::World render_world(13);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+
+    const auto active_render   = render_world.spawn().id();
+    const auto inactive_render = render_world.spawn().id();
+    const auto synced_render   = render_world.spawn().id();
+
+    // A view that went inactive already carries both components, which is what
+    // makes the removal branch observable.
+    render_world.entity_mut(inactive_render).insert(ExtractedClusterableObjects{}, ExtractedClusterConfig{});
+
+    // One clusterable object is synced to the render world; the other is not, so
+    // the mapper query has no row for it.
+    const auto synced_object   = main_world.spawn(RenderEntity{synced_render}).id();
+    const auto unsynced_object = main_world.spawn().id();
+
+    Clusters clusters;
+    clusters.near_plane = 0.1f;
+    clusters.far_plane  = 100.0f;
+    clusters.dimensions = glm::uvec3(4u, 4u, 8u);
+    VisibleClusterableObjects cluster;
+    cluster.counts   = ClusterableObjectCounts{.point_lights = 2u};
+    cluster.entities = {synced_object, unsynced_object};
+    clusters.clusterable_objects.push_back(cluster);
+
+    main_world.spawn(RenderEntity{active_render}, clusters, epix::camera::Camera{});
+    auto inactive_camera      = epix::camera::Camera{};
+    inactive_camera.is_active = false;
+    main_world.spawn(RenderEntity{inactive_render}, clusters, inactive_camera);
+
+    auto system = epix::ecs::make_system_unique(epix::pbr::extract_clusters);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    system->apply_deferred(render_world);
+
+    const auto active = render_world.entity(active_render);
+    ASSERT_TRUE(active.contains<ExtractedClusterableObjects>());
+    ASSERT_TRUE(active.contains<ExtractedClusterConfig>());
+    const auto& objects = active.get<ExtractedClusterableObjects>()->get();
+    ASSERT_EQ(objects.data.size(), 2u) << "the cluster header plus the one synced object";
+    EXPECT_TRUE(objects.data[0].kind == ExtractedClusterableObjectElement::Kind::ClusterHeader);
+    EXPECT_EQ(objects.data[0].counts.point_lights, 2u) << "the header carries the cluster's counts";
+    EXPECT_TRUE(objects.data[1].kind == ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity);
+    EXPECT_EQ(objects.data[1].entity, synced_render) << "the object's render entity is recorded";
+    const auto& config = active.get<ExtractedClusterConfig>()->get();
+    EXPECT_FLOAT_EQ(config.near_plane, 0.1f);
+    EXPECT_FLOAT_EQ(config.far_plane, 100.0f);
+    EXPECT_EQ(config.dimensions, glm::uvec3(4u, 4u, 8u));
+
+    const auto inactive = render_world.entity(inactive_render);
+    EXPECT_FALSE(inactive.contains<ExtractedClusterableObjects>());
+    EXPECT_FALSE(inactive.contains<ExtractedClusterConfig>());
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,
