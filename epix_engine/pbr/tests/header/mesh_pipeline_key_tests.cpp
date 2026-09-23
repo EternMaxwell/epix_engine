@@ -97,10 +97,11 @@ TEST(MeshPipelineKey, ReservedBitfieldsMatchBevy) {
 }
 
 // `from_msaa_samples` and `msaa_samples` are inverse, and both use the highest
-// three bits of the flag region (`mesh.rs:2247-2264`).
+// three bits of the flag region (`mesh.rs:2247-2264`). Bevy's own round-trip test
+// walks the whole range the three bits can hold (`mesh.rs:3422-3430`).
 TEST(MeshPipelineKey, MsaaRoundTripsThroughTheReservedField) {
     using K = epix::pbr::MeshPipelineKey;
-    for (const std::uint32_t samples : {1u, 2u, 4u, 8u}) {
+    for (const std::uint32_t samples : {1u, 2u, 4u, 8u, 16u, 32u, 64u, 128u}) {
         const auto key = K::from_msaa_samples(samples);
         EXPECT_EQ(key.msaa_samples(), samples) << "samples=" << samples;
         // The MSAA field lives entirely above the flag region, so the sample
