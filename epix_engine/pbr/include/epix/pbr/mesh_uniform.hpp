@@ -9,8 +9,12 @@
 #include <glm/glm.hpp>
 #include <limits>
 #include <optional>
+#include <utility>
 #include <epix/common.hpp>
 #endif
+
+#include <epix/pbr/lightmap.hpp>
+#include <epix/pbr/material_bindings.hpp>
 
 namespace epix::pbr {
 
@@ -28,6 +32,44 @@ EPIX_EXPORT struct MeshTransforms {
      *  carries it as one (Bevy fills it from `MeshFlags::bits()`). */
     std::uint32_t flags = 0;
 };
+
+/** @brief The affine's 3x3 transposed to three `vec4`s, the translation in each
+ *  one's fourth component (Bevy `Affine3::to_transpose`,
+ *  `bevy_math/src/affine3.rs:20-27`).
+ *
+ *  Bevy can put this on `Affine3`; C++ cannot add a member to `glm::mat4`, and
+ *  Epix's `GlobalTransform` is matrix-only, so the counterpart lives beside its
+ *  only consumer. A column-major `glm::mat4` stores the affine's columns in `[0]`,
+ *  `[1]` and `[2]` and the translation in `[3]`, so row `i` of the 3x3 is
+ *  `(m[0][i], m[1][i], m[2][i])`. */
+EPIX_EXPORT inline std::array<glm::vec4, 3> to_transpose(const glm::mat4& world_from_local) {
+    return {
+        glm::vec4(world_from_local[0][0], world_from_local[1][0], world_from_local[2][0], world_from_local[3][0]),
+        glm::vec4(world_from_local[0][1], world_from_local[1][1], world_from_local[2][1], world_from_local[3][1]),
+        glm::vec4(world_from_local[0][2], world_from_local[1][2], world_from_local[2][2], world_from_local[3][2]),
+    };
+}
+
+/** @brief The inverse transpose of the affine's 3x3, packed for the GPU (Bevy
+ *  `Affine3::inverse_transpose_3x3`, `bevy_math/src/affine3.rs:29-44`).
+ *
+ *  A 3x3 needs nine floats and cannot straddle a `vec4`, so Bevy packs them as
+ *  `[0].xyz, [1].x` then `[1].yz, [2].xy` then `[2].z` - the layout the uniform's
+ *  two `vec4`s and trailing float take. Normalising normals by the inverse
+ *  transpose is what keeps them correct under non-uniform scale. */
+EPIX_EXPORT inline std::pair<std::array<glm::vec4, 2>, float> inverse_transpose_3x3(const glm::mat4& world_from_local) {
+    // The affine's inverse; its 3x3 part is the inverse of the 3x3 because the
+    // fourth column does not affect it. Transposed, because that is what
+    // transforms normals.
+    const glm::mat3 inverse_transpose = glm::transpose(glm::mat3(glm::inverse(world_from_local)));
+    return {
+        std::array<glm::vec4, 2>{
+            glm::vec4(inverse_transpose[0][0], inverse_transpose[0][1], inverse_transpose[0][2], inverse_transpose[1][0]),
+            glm::vec4(inverse_transpose[1][1], inverse_transpose[1][2], inverse_transpose[2][0], inverse_transpose[2][1]),
+        },
+        inverse_transpose[2][2],
+    };
+}
 
 /** @brief The per-instance uniform a mesh's vertex shader reads (Bevy
  *  `MeshUniform`, `bevy_pbr/src/render/mesh.rs:455-494`).
@@ -65,6 +107,44 @@ EPIX_EXPORT struct MeshUniform {
      *  are not 16-byte aligned unless `GLM_FORCE_ALIGNED_GENTYPES` is set, so the
      *  remainder is spelled out here to reach the size the shader reads. */
     std::array<std::uint32_t, 3> tail_padding{};
+
+    /** @brief Build the uniform from a mesh's transforms and its per-instance
+     *  identifications (Bevy `MeshUniform::new`, `render/mesh.rs:585-615`; C++
+     *  reserves `new`, and the module's value factories are named `make`).
+     *
+     *  Both transforms are transposed into three `vec4`s each, the normal matrix
+     *  is packed, and the two lookups that may be absent become their shader
+     *  sentinels: `UINT16_MAX` in the lightmap half of the combined slot word (so
+     *  "no lightmap" cannot be confused with slot 0) and `UINT32_MAX` for the skin
+     *  index. A mesh with no lightmap packs a zero UV rect, and its tag defaults to
+     *  zero, as in Bevy. */
+    static MeshUniform make(const MeshTransforms& mesh_transforms,
+                            std::uint32_t first_vertex_index,
+                            MaterialBindGroupSlot material_bind_group_slot,
+                            std::optional<std::pair<LightmapSlotIndex, ::epix::image::Rect>> maybe_lightmap,
+                            std::optional<std::uint32_t> current_skin_index,
+                            std::optional<std::uint32_t> tag) {
+        const auto [local_from_world_transpose_a, local_from_world_transpose_b] =
+            inverse_transpose_3x3(mesh_transforms.world_from_local);
+        const std::uint32_t lightmap_bind_group_slot =
+            maybe_lightmap ? static_cast<std::uint32_t>(maybe_lightmap->first.index) : 0xFFFFu;
+
+        MeshUniform uniform{};
+        uniform.world_from_local          = to_transpose(mesh_transforms.world_from_local);
+        uniform.previous_world_from_local = to_transpose(mesh_transforms.previous_world_from_local);
+        uniform.lightmap_uv_rect =
+            pack_lightmap_uv_rect(maybe_lightmap ? std::optional<::epix::image::Rect>{maybe_lightmap->second}
+                                                 : std::nullopt);
+        uniform.local_from_world_transpose_a = local_from_world_transpose_a;
+        uniform.local_from_world_transpose_b = local_from_world_transpose_b;
+        uniform.flags                        = mesh_transforms.flags;
+        uniform.first_vertex_index           = first_vertex_index;
+        uniform.current_skin_index           = current_skin_index.value_or(0xFFFFFFFFu);
+        uniform.material_and_lightmap_bind_group_slot = material_bind_group_slot.slot | (lightmap_bind_group_slot << 16);
+        uniform.tag                                   = tag.value_or(0u);
+        uniform.pad                                   = 0;
+        return uniform;
+    }
 };
 
 // The shader's uniform requires 16-byte alignment, which glm's vec4 members give

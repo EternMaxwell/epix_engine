@@ -4146,6 +4146,73 @@ TEST(Cluster, MeshCullingDataBufferMatchesBevy) {
     EXPECT_TRUE(culling->is_empty());
 }
 
+/** @brief Bevy's `MeshUniform::new` (`render/mesh.rs:585-615`): the two transposes,
+ *  the packed normal matrix, the lightmap slot and UV rect, and the sentinels an
+ *  absent lookup falls back to. */
+TEST(Cluster, MeshUniformCreationMatchesBevy) {
+    using epix::pbr::LightmapSlotIndex;
+    using epix::pbr::MaterialBindGroupSlot;
+    using epix::pbr::MeshTransforms;
+    using epix::pbr::MeshUniform;
+
+    // An identity transform transposes to the identity's rows, and its inverse
+    // transpose packs to the identity as well.
+    MeshTransforms identity{};
+    identity.flags = 0x1234u;
+    const MeshUniform identity_uniform =
+        MeshUniform::make(identity, 7u, MaterialBindGroupSlot{3u}, std::nullopt, std::nullopt, std::nullopt);
+    EXPECT_EQ(identity_uniform.world_from_local[0], glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(identity_uniform.world_from_local[1], glm::vec4(0.0f, 1.0f, 0.0f, 0.0f));
+    EXPECT_EQ(identity_uniform.world_from_local[2], glm::vec4(0.0f, 0.0f, 1.0f, 0.0f));
+    EXPECT_EQ(identity_uniform.local_from_world_transpose_a[0], glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    // Bevy packs the second word as `[1].yz, [2].xy`, so on the identity it is the
+    // middle column's y (1) and z (0) followed by the last column's x and y.
+    EXPECT_EQ(identity_uniform.local_from_world_transpose_a[1], glm::vec4(1.0f, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(identity_uniform.local_from_world_transpose_b, 1.0f);
+    EXPECT_EQ(identity_uniform.flags, 0x1234u) << "the transform's flags pass through";
+    EXPECT_EQ(identity_uniform.first_vertex_index, 7u);
+    EXPECT_EQ(identity_uniform.tag, 0u) << "an absent tag is zero";
+    EXPECT_EQ(identity_uniform.pad, 0u);
+
+    // Absent lookups become the shader's sentinels: UINT16_MAX in the lightmap
+    // half of the combined word, UINT32_MAX for the skin index.
+    EXPECT_EQ(identity_uniform.material_and_lightmap_bind_group_slot, 3u | (0xFFFFu << 16));
+    EXPECT_EQ(identity_uniform.current_skin_index, 0xFFFFFFFFu);
+    EXPECT_EQ(identity_uniform.lightmap_uv_rect, glm::uvec2(0u, 0u)) << "no lightmap packs a zero rect";
+
+    // A present lightmap fills the high half and the UV rect.
+    const ::epix::image::Rect rect = ::epix::image::Rect::from_corners(glm::vec2(0.0f), glm::vec2(1.0f));
+    const MeshUniform lightmapped = MeshUniform::make(
+        identity, 0u, MaterialBindGroupSlot{2u}, std::pair{LightmapSlotIndex{9u}, rect}, std::uint32_t{4u}, 5u);
+    EXPECT_EQ(lightmapped.material_and_lightmap_bind_group_slot, 2u | (9u << 16));
+    // The first word holds min.u | min.v << 16, the second max.u | max.v << 16, so
+    // the unit rect is (0,0) in the first word and 65535 in both halves of the
+    // second.
+    EXPECT_EQ(lightmapped.lightmap_uv_rect, glm::uvec2(0u, 0xFFFFFFFFu))
+        << "the unit rect scales to 65535 in every component";
+    EXPECT_EQ(lightmapped.current_skin_index, 4u);
+    EXPECT_EQ(lightmapped.tag, 5u);
+
+    // A non-uniform scale is what the inverse transpose exists for: the normal
+    // matrix takes the reciprocal of the scale, not the scale.
+    MeshTransforms scaled{};
+    scaled.world_from_local          = glm::scale(glm::mat4{1.0f}, glm::vec3(2.0f, 4.0f, 8.0f));
+    scaled.previous_world_from_local = glm::translate(glm::mat4{1.0f}, glm::vec3(1.0f, 2.0f, 3.0f));
+    const MeshUniform scaled_uniform =
+        MeshUniform::make(scaled, 0u, MaterialBindGroupSlot{0u}, std::nullopt, std::nullopt, std::nullopt);
+    EXPECT_EQ(scaled_uniform.local_from_world_transpose_a[0], glm::vec4(0.5f, 0.0f, 0.0f, 0.0f));
+    // The second packed word takes the middle column's y and z and the last
+    // column's x and y (Bevy's `[1].yz, [2].xy`).
+    EXPECT_EQ(scaled_uniform.local_from_world_transpose_a[1], glm::vec4(0.25f, 0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(scaled_uniform.local_from_world_transpose_b, 0.125f);
+    EXPECT_EQ(scaled_uniform.world_from_local[0], glm::vec4(2.0f, 0.0f, 0.0f, 0.0f))
+        << "and the transform itself is transposed, not inverted";
+    EXPECT_EQ(scaled_uniform.previous_world_from_local[0], glm::vec4(1.0f, 0.0f, 0.0f, 1.0f))
+        << "the translation lands in the fourth component of the first vec4";
+    EXPECT_EQ(scaled_uniform.previous_world_from_local[1], glm::vec4(0.0f, 1.0f, 0.0f, 2.0f));
+    EXPECT_EQ(scaled_uniform.previous_world_from_local[2], glm::vec4(0.0f, 0.0f, 1.0f, 3.0f));
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,
