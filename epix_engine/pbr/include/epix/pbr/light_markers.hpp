@@ -26,4 +26,18 @@ EPIX_EXPORT struct NotShadowCaster {};
  *  key rather than by a query filter. */
 EPIX_EXPORT struct NotShadowReceiver {};
 
+/** @brief Add to a mesh using a PBR material with `diffuse_transmission > 0.0` to
+ *  make it receive shadows on its diffuse-transmission lobe, i.e. its backside
+ *  (Bevy `TransmittedShadowReceiver`, `bevy_light/src/lib.rs:223-232`).
+ *
+ *  Not enabled by default, because it needs `StandardMaterial::thickness` to be set
+ *  up (and possibly a baked thickness texture) so the mesh does not shadow itself.
+ *  `NotShadowReceiver` overrides this one: a mesh carrying both receives neither
+ *  regular nor diffusely transmitted shadows.
+ *
+ *  The mesh extraction reads it as a `Has<..>` and turns it into
+ *  `MeshFlags::TRANSMITTED_SHADOW_RECEIVER`, so the shader gets it through the
+ *  uniform's flags word rather than through a query filter. */
+EPIX_EXPORT struct TransmittedShadowReceiver {};
+
 }  // namespace epix::pbr

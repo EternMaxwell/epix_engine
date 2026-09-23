@@ -4347,6 +4347,37 @@ TEST(Cluster, MeshesToReextractNextFrameMatchesBevy) {
     EXPECT_TRUE((*pending).empty());
 }
 
+/** @brief Bevy's `TransmittedShadowReceiver` marker and its `Lightmap` component
+ *  (`bevy_light/src/lib.rs:223-232`, `bevy_pbr/src/lightmap/mod.rs:88-108`): the two
+ *  entities the GPU mesh extraction query reads. */
+TEST(Cluster, ShadowTransmissionAndLightmapComponentsMatchBevy) {
+    using epix::pbr::Lightmap;
+    using epix::pbr::TransmittedShadowReceiver;
+
+    // The marker is a component, and `Has<..>` sees it.
+    epix::ecs::World world(epix::ecs::WorldId(0));
+    const auto marked = world.spawn(TransmittedShadowReceiver{}).id();
+    EXPECT_TRUE(world.get_entity(marked)->contains<TransmittedShadowReceiver>());
+    const auto plain = world.spawn().id();
+    EXPECT_FALSE(world.get_entity(plain)->contains<TransmittedShadowReceiver>())
+        << "the marker is opt-in, as in Bevy";
+
+    // `Lightmap` carries the texture, the atlas rect and the bicubic flag; Bevy
+    // does not derive `Default` on it, so the handle has to be given.
+    const Lightmap lightmap{.image = epix::assets::Handle<epix::image::Image>{
+                                 epix::assets::AssetId<epix::image::Image>::invalid()},
+                             .uv_rect = epix::image::Rect::from_corners(glm::vec2(0.0f), glm::vec2(1.0f))};
+    EXPECT_EQ(lightmap.uv_rect.min, glm::vec2(0.0f));
+    EXPECT_EQ(lightmap.uv_rect.max, glm::vec2(1.0f));
+    EXPECT_FALSE(lightmap.bicubic_sampling) << "Bevy's default is linear sampling";
+
+    // And it is an ordinary component on a mesh entity, which is how the extraction
+    // query reads it as an `Opt<const Lightmap&>`.
+    const auto lit = world.spawn(lightmap).id();
+    ASSERT_TRUE(world.get_entity(lit)->get<Lightmap>().has_value());
+    EXPECT_EQ(world.get_entity(lit)->get<Lightmap>()->get().uv_rect.max, glm::vec2(1.0f));
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,

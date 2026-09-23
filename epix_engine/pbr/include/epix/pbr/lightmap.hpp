@@ -2,6 +2,7 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/assets.hpp>
 #include <epix/image/image.hpp>
 #include <glm/glm.hpp>
 #include <optional>
@@ -9,6 +10,26 @@
 #endif
 
 namespace epix::pbr {
+
+/** @brief Applies baked indirect diffuse global illumination from a lightmap
+ *  (Bevy `Lightmap`, `bevy_pbr/src/lightmap/mod.rs:88-108`).
+ *
+ *  When it is on an entity that also carries a `Mesh3d` and a `StandardMaterial`,
+ *  and the mesh has a second UV layer, the lightmap is sampled with those UVs.
+ *  Bevy derives `Component, Clone, Reflect` but *not* `Default` - the image handle
+ *  is what the component is about - so there is no default construction here
+ *  either, the same shape `RenderMeshInstanceShared` records for its mesh id. */
+EPIX_EXPORT struct Lightmap {
+    /** @brief The lightmap texture. */
+    assets::Handle<::epix::image::Image> image{assets::AssetId<::epix::image::Image>::invalid()};
+    /** @brief The rectangle within the texture the UVs are relative to, from
+     *  `(0, 0)` to `(1, 1)`; a lightmap atlas packs several meshes into one
+     *  texture this way. */
+    ::epix::image::Rect uv_rect{};
+    /** @brief Whether to sample this lightmap bicubically: higher quality but
+     *  slower, and it can leak, and the texture's sampler must then be linear. */
+    bool bicubic_sampling = false;
+};
 
 /** @brief The index of the slot (element within the binding array) in the slab in
  *  which a lightmap is located (Bevy `LightmapSlotIndex`,
