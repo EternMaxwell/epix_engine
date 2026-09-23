@@ -1121,27 +1121,27 @@ void Core3dGraph::add_to(graph::RenderGraph& g, World& world) {
     // Every label in Bevy's default chain is now a real node: C14 installed the
     // two prepass nodes, C15 the two deferred G-buffer nodes, and C15-D4 the
     // lighting-id copy.
-    g3d.add_node(Core3dNodes::EarlyPrepass, graph::ViewNodeRunner{EarlyPrepassNode{}, world});
-    g3d.add_node(Core3dNodes::LatePrepass, graph::ViewNodeRunner{LatePrepassNode{}, world});
-    g3d.add_node(Core3dNodes::EarlyDeferredPrepass, graph::ViewNodeRunner{EarlyDeferredGBufferPrepassNode{}, world});
-    g3d.add_node(Core3dNodes::LateDeferredPrepass, graph::ViewNodeRunner{LateDeferredGBufferPrepassNode{}, world});
-    g3d.add_node(Core3dNodes::CopyDeferredLightingId, graph::ViewNodeRunner{CopyDeferredLightingIdNode{}, world});
-    g3d.add_node(Core3dNodes::EndPrepasses, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::StartMainPass, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::MainOpaquePass, graph::ViewNodeRunner{MainOpaquePass3dNode{}, world});
-    g3d.add_node(Core3dNodes::MainTransmissivePass, graph::ViewNodeRunner{MainTransmissivePass3dNode{}, world});
-    g3d.add_node(Core3dNodes::MainTransparentPass, graph::ViewNodeRunner{MainTransparentPass3dNode{}, world});
-    g3d.add_node(Core3dNodes::EndMainPass, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::StartMainPassPostProcessing, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
-    g3d.add_node(Core3dNodes::EndMainPassPostProcessing, graph::EmptyNode{});
-    g3d.add_node(Core3dNodes::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
-    g3d.add_node_edges(Core3dNodes::EarlyPrepass, Core3dNodes::EarlyDeferredPrepass, Core3dNodes::LatePrepass,
-                       Core3dNodes::LateDeferredPrepass, Core3dNodes::CopyDeferredLightingId, Core3dNodes::EndPrepasses,
-                       Core3dNodes::StartMainPass, Core3dNodes::MainOpaquePass, Core3dNodes::MainTransmissivePass,
-                       Core3dNodes::MainTransparentPass, Core3dNodes::EndMainPass,
-                       Core3dNodes::StartMainPassPostProcessing, Core3dNodes::Tonemapping,
-                       Core3dNodes::EndMainPassPostProcessing, Core3dNodes::Upscaling);
+    g3d.add_node(Node3d::EarlyPrepass, graph::ViewNodeRunner{EarlyPrepassNode{}, world});
+    g3d.add_node(Node3d::LatePrepass, graph::ViewNodeRunner{LatePrepassNode{}, world});
+    g3d.add_node(Node3d::EarlyDeferredPrepass, graph::ViewNodeRunner{EarlyDeferredGBufferPrepassNode{}, world});
+    g3d.add_node(Node3d::LateDeferredPrepass, graph::ViewNodeRunner{LateDeferredGBufferPrepassNode{}, world});
+    g3d.add_node(Node3d::CopyDeferredLightingId, graph::ViewNodeRunner{CopyDeferredLightingIdNode{}, world});
+    g3d.add_node(Node3d::EndPrepasses, graph::EmptyNode{});
+    g3d.add_node(Node3d::StartMainPass, graph::EmptyNode{});
+    g3d.add_node(Node3d::MainOpaquePass, graph::ViewNodeRunner{MainOpaquePass3dNode{}, world});
+    g3d.add_node(Node3d::MainTransmissivePass, graph::ViewNodeRunner{MainTransmissivePass3dNode{}, world});
+    g3d.add_node(Node3d::MainTransparentPass, graph::ViewNodeRunner{MainTransparentPass3dNode{}, world});
+    g3d.add_node(Node3d::EndMainPass, graph::EmptyNode{});
+    g3d.add_node(Node3d::StartMainPassPostProcessing, graph::EmptyNode{});
+    g3d.add_node(Node3d::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
+    g3d.add_node(Node3d::EndMainPassPostProcessing, graph::EmptyNode{});
+    g3d.add_node(Node3d::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
+    g3d.add_node_edges(Node3d::EarlyPrepass, Node3d::EarlyDeferredPrepass, Node3d::LatePrepass,
+                       Node3d::LateDeferredPrepass, Node3d::CopyDeferredLightingId, Node3d::EndPrepasses,
+                       Node3d::StartMainPass, Node3d::MainOpaquePass, Node3d::MainTransmissivePass,
+                       Node3d::MainTransparentPass, Node3d::EndMainPass,
+                       Node3d::StartMainPassPostProcessing, Node3d::Tonemapping,
+                       Node3d::EndMainPassPostProcessing, Node3d::Upscaling);
     g.add_sub_graph(Core3d, std::move(g3d));
 }
 

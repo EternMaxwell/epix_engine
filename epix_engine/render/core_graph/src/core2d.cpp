@@ -123,21 +123,21 @@ std::expected<void, graph::NodeRunError> MainTransparentPass2DNode::run(
 void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
     spdlog::debug("[render.core_graph] Adding Core2D sub-graph to render graph.");
     graph::RenderGraph g2d;
-    g2d.add_node(Core2dNodes::StartMainPass, graph::EmptyNode{});
-    g2d.add_node(Core2dNodes::MainTransparentPass, graph::ViewNodeRunner{MainTransparentPass2DNode{}, world});
-    g2d.add_node(Core2dNodes::MainOpaquePass, graph::ViewNodeRunner{MainOpaquePass2DNode{}, world});
-    g2d.add_node(Core2dNodes::EndMainPass, graph::EmptyNode{});
+    g2d.add_node(Node2d::StartMainPass, graph::EmptyNode{});
+    g2d.add_node(Node2d::MainTransparentPass, graph::ViewNodeRunner{MainTransparentPass2DNode{}, world});
+    g2d.add_node(Node2d::MainOpaquePass, graph::ViewNodeRunner{MainOpaquePass2DNode{}, world});
+    g2d.add_node(Node2d::EndMainPass, graph::EmptyNode{});
     // These endpoints are intentionally installed by Core2dPlugin: Bevy does
     // the same so optional post-processing plugins can insert work between
     // them. Tonemapping is the C16 GPU node (Bevy TonemappingNode): it skips
     // non-HDR views and the None method, so the default 2D camera is unchanged.
-    g2d.add_node(Core2dNodes::StartMainPassPostProcessing, graph::EmptyNode{});
-    g2d.add_node(Core2dNodes::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
-    g2d.add_node(Core2dNodes::EndMainPassPostProcessing, graph::EmptyNode{});
-    g2d.add_node(Core2dNodes::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
-    g2d.add_node_edges(Core2dNodes::StartMainPass, Core2dNodes::MainOpaquePass, Core2dNodes::MainTransparentPass,
-                       Core2dNodes::EndMainPass, Core2dNodes::StartMainPassPostProcessing,
-                       Core2dNodes::Tonemapping, Core2dNodes::EndMainPassPostProcessing, Core2dNodes::Upscaling);
+    g2d.add_node(Node2d::StartMainPassPostProcessing, graph::EmptyNode{});
+    g2d.add_node(Node2d::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
+    g2d.add_node(Node2d::EndMainPassPostProcessing, graph::EmptyNode{});
+    g2d.add_node(Node2d::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
+    g2d.add_node_edges(Node2d::StartMainPass, Node2d::MainOpaquePass, Node2d::MainTransparentPass,
+                       Node2d::EndMainPass, Node2d::StartMainPassPostProcessing,
+                       Node2d::Tonemapping, Node2d::EndMainPassPostProcessing, Node2d::Upscaling);
     g.add_sub_graph(Core2d, std::move(g2d));
 }
 

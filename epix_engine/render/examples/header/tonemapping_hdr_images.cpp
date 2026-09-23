@@ -245,9 +245,9 @@ struct TonemappingComparisonPlugin {
                 if (auto core2d = render_graph->get().get_sub_graph(core_graph::core_2d::Core2d)) {
                     core2d->get().add_node(kTonemappingComparisonNode,
                                            render::graph::ViewNodeRunner{TonemappingComparisonNode{}, render_world});
-                    core2d->get().add_node_edges(core_graph::core_2d::Core2dNodes::StartMainPassPostProcessing,
+                    core2d->get().add_node_edges(core_graph::core_2d::Node2d::StartMainPassPostProcessing,
                                                  kTonemappingComparisonNode,
-                                                 core_graph::core_2d::Core2dNodes::Tonemapping);
+                                                 core_graph::core_2d::Node2d::Tonemapping);
                 }
             }
 

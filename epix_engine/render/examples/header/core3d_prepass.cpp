@@ -492,8 +492,8 @@ struct PrepassDisplayPlugin {
             if (auto core3d = render_graph->get().get_sub_graph(core_graph::core_3d::Core3d)) {
                 core3d->get().add_node(kPrepassDisplayLabel,
                                        render::graph::ViewNodeRunner{PrepassDisplayNode{}, render_world});
-                core3d->get().add_node_edges(core_graph::core_3d::Core3dNodes::StartMainPassPostProcessing,
-                                             kPrepassDisplayLabel, core_graph::core_3d::Core3dNodes::Tonemapping);
+                core3d->get().add_node_edges(core_graph::core_3d::Node3d::StartMainPassPostProcessing,
+                                             kPrepassDisplayLabel, core_graph::core_3d::Node3d::Tonemapping);
             }
         }
         render_world.init_resource<PrepassProbe>();

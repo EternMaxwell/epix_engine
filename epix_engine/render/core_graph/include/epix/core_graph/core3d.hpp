@@ -100,7 +100,7 @@ inline constexpr std::string_view ViewEntity = "view_entity";
  * `core_3d/mod.rs:16-47`). Labels whose owning subsystem does not exist yet
  * are still declared and installed so optional plugins can extend the graph
  * at the same points Bevy exposes. */
-EPIX_EXPORT enum class Core3dNodes {
+EPIX_EXPORT enum class Node3d {
     /** @brief Optional MSAA resolve pass supplied by the MSAA plugin. */
     MsaaWriteback,
     /** @brief Early prepass node (Bevy `Node3d::EarlyPrepass`). */

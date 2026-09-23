@@ -28,7 +28,7 @@ normal setup.
 
 `StartMainPass -> MainOpaquePass -> MainTransparentPass -> EndMainPass -> ScreenUIPass`
 
-The labels are `Core2dNodes`. `Node2D<P>` obtains the current view's target, depth texture, and
+The labels are `Node2d`. `Node2D<P>` obtains the current view's target, depth texture, and
 `RenderPhase<P>`, opens a load/store render pass, renders the phase, and flushes the encoder.
 
 ## Built-in phases

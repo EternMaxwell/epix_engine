@@ -490,12 +490,12 @@ void epix::sprite_render::Wireframe2dPlugin::ready(app::App& app) {
     if (auto render_graph = render.world_mut().get_resource_mut<render::graph::RenderGraph>()) {
         if (auto graph = render_graph->get().get_sub_graph(core_graph::core_2d::Core2d)) {
             auto& render_world = render.world_mut();
-            graph->get().add_node(core_graph::core_2d::Core2dNodes::Wireframe,
+            graph->get().add_node(core_graph::core_2d::Node2d::Wireframe,
                                   render::graph::ViewNodeRunner{Wireframe2dNode{}, render_world});
-            (void)graph->get().try_add_node_edge(core_graph::core_2d::Core2dNodes::EndMainPass,
-                                                 core_graph::core_2d::Core2dNodes::Wireframe);
-            (void)graph->get().try_add_node_edge(core_graph::core_2d::Core2dNodes::Wireframe,
-                                                 core_graph::core_2d::Core2dNodes::PostProcessing);
+            (void)graph->get().try_add_node_edge(core_graph::core_2d::Node2d::EndMainPass,
+                                                 core_graph::core_2d::Node2d::Wireframe);
+            (void)graph->get().try_add_node_edge(core_graph::core_2d::Node2d::Wireframe,
+                                                 core_graph::core_2d::Node2d::PostProcessing);
         }
     }
 

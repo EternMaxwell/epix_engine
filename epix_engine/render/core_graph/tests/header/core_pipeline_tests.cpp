@@ -44,9 +44,9 @@ struct ShaderTypeInfo<C3FullscreenMaterialProbe> : RawShaderType<C3FullscreenMat
 }
 
 std::vector<::epix::render::graph::NodeLabel> C3FullscreenMaterialProbe::node_edges() {
-    return {::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Core2dNodes::Tonemapping},
+    return {::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Node2d::Tonemapping},
             ::epix::core_graph::fullscreen_material_node_label<C3FullscreenMaterialProbe>(),
-            ::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Core2dNodes::EndMainPassPostProcessing}};
+            ::epix::render::graph::NodeLabel{::epix::core_graph::core_2d::Node2d::EndMainPassPostProcessing}};
 }
 
 std::optional<::epix::render::graph::GraphLabel> C3FullscreenMaterialProbe::sub_graph() {
@@ -264,7 +264,7 @@ TEST(UpscalingPlugin, RegistersPerViewPipelineAndTypedCore2dNode) {
     ASSERT_TRUE(graph.has_value());
     const auto core2d = graph->get().get_sub_graph(epix::core_graph::core_2d::Core2d);
     ASSERT_TRUE(core2d.has_value());
-    EXPECT_TRUE(core2d->get().get_node_state(epix::core_graph::core_2d::Core2dNodes::Upscaling).has_value());
+    EXPECT_TRUE(core2d->get().get_node_state(epix::core_graph::core_2d::Node2d::Upscaling).has_value());
 }
 
 // Bevy Core2dPlugin supplies these three Camera2d requirements and extracts
@@ -303,7 +303,7 @@ TEST(Core2dPlugin, AddsCameraRequirementsAndExtractsCamera2d) {
     // can reuse these phases, and a missing graph must not suppress extraction.
     const Entity custom_graph = app.world_mut().spawn(
         ::epix::camera::Camera2d{},
-        epix::render::camera::CameraRenderGraph{epix::core_graph::core_2d::Core2dNodes::Bloom}).id();
+        epix::render::camera::CameraRenderGraph{epix::core_graph::core_2d::Node2d::Bloom}).id();
     const Entity no_graph = app.world_mut().spawn(::epix::camera::Camera2d{}).id();
     app.world_mut().entity_mut(no_graph).remove<epix::render::camera::CameraRenderGraph>();
     ::epix::camera::Camera inactive_camera;
@@ -431,7 +431,7 @@ TEST(Core2dGraph, MatchesBevyDefaultNodesAndChain) {
     const auto core2d = root_graph.get_sub_graph(epix::core_graph::core_2d::Core2d);
     ASSERT_TRUE(core2d.has_value());
 
-    using Node = epix::core_graph::core_2d::Core2dNodes;
+    using Node = epix::core_graph::core_2d::Node2d;
     for (const auto node : {Node::StartMainPass, Node::MainOpaquePass, Node::MainTransparentPass,
                             Node::EndMainPass, Node::StartMainPassPostProcessing, Node::Tonemapping,
                             Node::EndMainPassPostProcessing, Node::Upscaling}) {

@@ -31,8 +31,8 @@ struct Core3dTestView {
 // Bevy core_3d::graph exposes all thirty labels in this exact order. Enum
 // values are part of the public contract because plugins extend the graph by
 // label, so the ordinal positions are asserted directly.
-TEST(Core3dNodes, ExposesEveryBevyLabelInOrder) {
-    using Node = epix::core_graph::core_3d::Core3dNodes;
+TEST(Node3d, ExposesEveryBevyLabelInOrder) {
+    using Node = epix::core_graph::core_3d::Node3d;
     EXPECT_EQ(std::to_underlying(Node::MsaaWriteback), 0u);
     EXPECT_EQ(std::to_underlying(Node::EarlyPrepass), 1u);
     EXPECT_EQ(std::to_underlying(Node::EarlyDownsampleDepth), 2u);
@@ -76,7 +76,7 @@ TEST(Core3dGraph, MatchesBevyDefaultNodesAndChain) {
     const auto core3d = root_graph.get_sub_graph(epix::core_graph::core_3d::Core3d);
     ASSERT_TRUE(core3d.has_value());
 
-    using Node = epix::core_graph::core_3d::Core3dNodes;
+    using Node = epix::core_graph::core_3d::Node3d;
     for (const auto node :
          {Node::EarlyPrepass, Node::LatePrepass, Node::EarlyDeferredPrepass, Node::LateDeferredPrepass,
           Node::CopyDeferredLightingId, Node::EndPrepasses, Node::StartMainPass, Node::MainOpaquePass,
@@ -290,7 +290,7 @@ TEST(Core3dPlugin, AddsCameraRequirementsAndExtractsCamera3d) {
     const Entity custom_graph =
         app.world_mut()
             .spawn(::epix::camera::Camera3d{},
-                   epix::render::camera::CameraRenderGraph{epix::core_graph::core_3d::Core3dNodes::Wireframe})
+                   epix::render::camera::CameraRenderGraph{epix::core_graph::core_3d::Node3d::Wireframe})
             .id();
     const Entity no_graph = app.world_mut().spawn(::epix::camera::Camera3d{}).id();
     app.world_mut().entity_mut(no_graph).remove<epix::render::camera::CameraRenderGraph>();

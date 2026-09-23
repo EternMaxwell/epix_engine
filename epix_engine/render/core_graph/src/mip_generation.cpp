@@ -684,20 +684,20 @@ void MipGenerationPlugin::attach(app::App& app) const {
     // main phase, the dummy texture in RenderStartup, and the two prepare
     // systems after the 3D depth textures are prepared.
     render::graph::add_render_graph_node<render::graph::ViewNodeRunner<DownsampleDepthNode>>(
-        render_world, core_3d::Core3d, core_3d::Core3dNodes::EarlyDownsampleDepth,
+        render_world, core_3d::Core3d, core_3d::Node3d::EarlyDownsampleDepth,
         render::graph::ViewNodeRunner{DownsampleDepthNode{}, render_world});
     render::graph::add_render_graph_node<render::graph::ViewNodeRunner<DownsampleDepthNode>>(
-        render_world, core_3d::Core3d, core_3d::Core3dNodes::LateDownsampleDepth,
+        render_world, core_3d::Core3d, core_3d::Node3d::LateDownsampleDepth,
         render::graph::ViewNodeRunner{DownsampleDepthNode{}, render_world});
-    render::graph::add_render_graph_edges(render_world, core_3d::Core3d, core_3d::Core3dNodes::EarlyPrepass,
-                                          core_3d::Core3dNodes::EarlyDeferredPrepass,
-                                          core_3d::Core3dNodes::EarlyDownsampleDepth,
-                                          core_3d::Core3dNodes::LatePrepass,
-                                          core_3d::Core3dNodes::LateDeferredPrepass);
+    render::graph::add_render_graph_edges(render_world, core_3d::Core3d, core_3d::Node3d::EarlyPrepass,
+                                          core_3d::Node3d::EarlyDeferredPrepass,
+                                          core_3d::Node3d::EarlyDownsampleDepth,
+                                          core_3d::Node3d::LatePrepass,
+                                          core_3d::Node3d::LateDeferredPrepass);
     render::graph::add_render_graph_edges(render_world, core_3d::Core3d,
-                                          core_3d::Core3dNodes::StartMainPassPostProcessing,
-                                          core_3d::Core3dNodes::LateDownsampleDepth,
-                                          core_3d::Core3dNodes::EndMainPassPostProcessing);
+                                          core_3d::Node3d::StartMainPassPostProcessing,
+                                          core_3d::Node3d::LateDownsampleDepth,
+                                          core_3d::Node3d::EndMainPassPostProcessing);
 
     sub_app->get().add_systems(render::RenderStartup,
                                ecs::into(init_depth_pyramid_dummy_texture)

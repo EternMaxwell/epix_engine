@@ -71,9 +71,9 @@ shader::ShaderRef ScreenTintMaterial::fragment_shader() {
 }
 
 std::vector<render::graph::NodeLabel> ScreenTintMaterial::node_edges() {
-    return {render::graph::NodeLabel{core_graph::core_2d::Core2dNodes::Tonemapping},
+    return {render::graph::NodeLabel{core_graph::core_2d::Node2d::Tonemapping},
             core_graph::fullscreen_material_node_label<ScreenTintMaterial>(),
-            render::graph::NodeLabel{core_graph::core_2d::Core2dNodes::EndMainPassPostProcessing}};
+            render::graph::NodeLabel{core_graph::core_2d::Node2d::EndMainPassPostProcessing}};
 }
 
 std::optional<render::graph::GraphLabel> ScreenTintMaterial::sub_graph() {

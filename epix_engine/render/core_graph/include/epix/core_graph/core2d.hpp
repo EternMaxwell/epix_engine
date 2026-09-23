@@ -27,8 +27,9 @@ namespace input {
 inline constexpr std::string_view ViewEntity = "view_entity";
 }
 
-/** @brief Node labels for the 2D render graph passes. */
-EPIX_EXPORT enum class Core2dNodes {
+/** @brief Node labels for the 2D render graph passes (Bevy `Node2d`,
+ *  `core_2d/mod.rs:14-31`). */
+EPIX_EXPORT enum class Node2d {
     /** @brief Optional MSAA resolve pass supplied by the MSAA plugin. */
     MsaaWriteback,
     /** @brief Node that begins the main render pass. */
