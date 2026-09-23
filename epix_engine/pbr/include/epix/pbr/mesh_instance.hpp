@@ -14,10 +14,12 @@
 #include <glm/glm.hpp>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <epix/common.hpp>
 #endif
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/prepass.hpp>
 
 namespace epix::pbr {
 
@@ -96,6 +98,58 @@ EPIX_EXPORT struct RenderMeshInstanceShared {
     /** @brief Whether this instance may be batched automatically (Bevy
      *  `RenderMeshInstanceShared::should_batch`, `render/mesh.rs:894-900`). */
     bool should_batch() const noexcept { return flags.should_batch(); }
+
+    /** @brief The shared record for the GPU-building path, which learns the mesh id
+     *  later, from `RenderMeshInstanceGpuBuilder::update` (Bevy
+     *  `RenderMeshInstanceShared::for_gpu_building`, `render/mesh.rs:837-859`). */
+    static RenderMeshInstanceShared for_gpu_building(const PreviousGlobalTransform* previous_transform,
+                                                     const mesh::Mesh3d& mesh,
+                                                     const mesh::MeshTag* tag,
+                                                     bool not_shadow_caster,
+                                                     bool no_automatic_batching,
+                                                     const ::epix::camera::RenderLayers* render_layers,
+                                                     const ::epix::camera::Aabb* aabb) {
+        return for_cpu_building(previous_transform, mesh, tag, MaterialBindingId{}, not_shadow_caster,
+                                no_automatic_batching, render_layers, aabb);
+    }
+
+    /** @brief The shared record for either path (Bevy
+     *  `RenderMeshInstanceShared::for_cpu_building`, `render/mesh.rs:861-892`).
+     *
+     *  The flag body is load-bearing: the shadow-caster and automatic-batching bits
+     *  are the *negations* of components that opt out, and
+     *  `HAS_PREVIOUS_TRANSFORM` is set from the presence of the previous transform
+     *  alone - which is what makes the motion-vector prepass cheap. A missing tag is
+     *  0, a missing AABB leaves the centre at the origin, and the lightmap slab is
+     *  absent (the GPU path fills it in later). */
+    static RenderMeshInstanceShared for_cpu_building(const PreviousGlobalTransform* previous_transform,
+                                                     const mesh::Mesh3d& mesh,
+                                                     const mesh::MeshTag* tag,
+                                                     MaterialBindingId material_bindings_index,
+                                                     bool not_shadow_caster,
+                                                     bool no_automatic_batching,
+                                                     const ::epix::camera::RenderLayers* render_layers,
+                                                     const ::epix::camera::Aabb* aabb) {
+        RenderMeshInstanceFlags instance_flags{};
+        if (!not_shadow_caster) instance_flags.insert(RenderMeshInstanceFlags::SHADOW_CASTER);
+        if (!no_automatic_batching) instance_flags.insert(RenderMeshInstanceFlags::AUTOMATIC_BATCHING);
+        if (previous_transform) instance_flags.insert(RenderMeshInstanceFlags::HAS_PREVIOUS_TRANSFORM);
+
+        // The record has no default constructor (the mesh id is what it is about),
+        // so every field is spelled out; the layer component is added after, since
+        // its absence and an empty layer set are different things.
+        RenderMeshInstanceShared shared{
+            .mesh_asset_id           = mesh.handle.id(),
+            .material_bindings_index = material_bindings_index,
+            .flags                   = instance_flags,
+            .lightmap_slab_index     = std::nullopt,
+            .tag                     = tag ? tag->value : 0u,
+            .render_layers           = std::nullopt,
+            .center                  = aabb ? aabb->center : glm::vec3(0.0f),
+        };
+        if (render_layers) shared.render_layers = *render_layers;
+        return shared;
+    }
 };
 
 /** @brief The CPU data the render world keeps for an instance when *not* using GPU
@@ -335,6 +389,23 @@ EPIX_EXPORT struct RenderMeshInstanceGpuQueue {
         promoted.removed.push_back(entity);
         queue = std::move(promoted);
     }
+};
+
+/** @brief Meshes that could not be extracted this frame because their materials
+ *  were not prepared yet, to be retried next frame (Bevy
+ *  `MeshesToReextractNextFrame`, `bevy_pbr/src/render/mesh.rs:830-835`).
+ *
+ *  Bevy derives `Resource`, `Default`, `Deref` and `DerefMut` over the set; here the
+ *  set is reached through `operator*`/`operator->`, the shape the other resource
+ *  wrappers in this module use. Without it a mesh whose material is not ready yet
+ *  is dropped instead of retried. */
+EPIX_EXPORT struct MeshesToReextractNextFrame {
+    render::sync_world::MainEntityHashSet entities;
+
+    render::sync_world::MainEntityHashSet& operator*() noexcept { return entities; }
+    const render::sync_world::MainEntityHashSet& operator*() const noexcept { return entities; }
+    render::sync_world::MainEntityHashSet* operator->() noexcept { return std::addressof(entities); }
+    const render::sync_world::MainEntityHashSet* operator->() const noexcept { return std::addressof(entities); }
 };
 
 /** @brief The mesh instance records, one side of which is in use (Bevy

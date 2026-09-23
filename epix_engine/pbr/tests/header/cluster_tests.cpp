@@ -4294,6 +4294,59 @@ TEST(Cluster, MeshCullingDataUpdateFlushesIntoTheBuffer) {
     EXPECT_TRUE(std::isinf(culling->get(2)->aabb_half_extents.x)) << "the other slot is untouched";
 }
 
+/** @brief Bevy's `RenderMeshInstanceShared::for_gpu_building`/`for_cpu_building`
+ *  (`render/mesh.rs:837-892`): the three flag bits, the tag default, the absent
+ *  lightmap slab, the optional render layers and the AABB-derived centre. */
+TEST(Cluster, RenderMeshInstanceSharedFactoriesMatchBevy) {
+    using Flags = epix::pbr::RenderMeshInstanceFlags;
+    using Shared = epix::pbr::RenderMeshInstanceShared;
+
+    epix::mesh::Mesh3d mesh{};
+    epix::pbr::PreviousGlobalTransform previous{};
+
+    // The GPU factory delegates with a default material binding id.
+    const Shared gpu = Shared::for_gpu_building(&previous, mesh, nullptr, false, false, nullptr, nullptr);
+    EXPECT_TRUE(gpu.flags.contains(Flags::SHADOW_CASTER)) << "not_shadow_caster is false, so the bit is set";
+    EXPECT_TRUE(gpu.flags.contains(Flags::AUTOMATIC_BATCHING));
+    EXPECT_TRUE(gpu.flags.contains(Flags::HAS_PREVIOUS_TRANSFORM)) << "a previous transform is present";
+    EXPECT_EQ(gpu.tag, 0u) << "an absent tag is zero";
+    EXPECT_FALSE(gpu.lightmap_slab_index.has_value()) << "the GPU path fills the slab in later";
+    EXPECT_FALSE(gpu.render_layers.has_value()) << "an absent layer component is not an empty layer set";
+    EXPECT_EQ(gpu.center, glm::vec3(0.0f)) << "no AABB leaves the centre at the origin";
+    EXPECT_EQ(gpu.material_bindings_index, epix::pbr::MaterialBindingId{});
+
+    // The opting-out components clear their bits, and no previous transform clears
+    // that one.
+    const Shared cpu = Shared::for_cpu_building(nullptr, mesh, nullptr, epix::pbr::MaterialBindingId{}, true, true,
+                                                nullptr, nullptr);
+    EXPECT_FALSE(cpu.flags.contains(Flags::SHADOW_CASTER)) << "not_shadow_caster clears it";
+    EXPECT_FALSE(cpu.flags.contains(Flags::AUTOMATIC_BATCHING)) << "no_automatic_batching clears it";
+    EXPECT_FALSE(cpu.flags.contains(Flags::HAS_PREVIOUS_TRANSFORM)) << "and no previous transform clears that";
+
+    // The optional components are carried through when present.
+    const epix::mesh::MeshTag tag{.value = 42u};
+    const epix::camera::RenderLayers layers{};
+    const epix::camera::Aabb aabb{.center = glm::vec3(1.0f, 2.0f, 3.0f), .half_extents = glm::vec3(0.5f)};
+    const Shared full = Shared::for_cpu_building(&previous, mesh, &tag, epix::pbr::MaterialBindingId{}, false, false,
+                                                 &layers, &aabb);
+    EXPECT_EQ(full.tag, 42u) << "the tag is the component's value";
+    ASSERT_TRUE(full.render_layers.has_value());
+    EXPECT_EQ(full.center, glm::vec3(1.0f, 2.0f, 3.0f)) << "the centre comes from the AABB";
+}
+
+/** @brief Bevy's `MeshesToReextractNextFrame` (`render/mesh.rs:830-835`): a
+ *  resource over a set of main entities, empty by default. */
+TEST(Cluster, MeshesToReextractNextFrameMatchesBevy) {
+    epix::pbr::MeshesToReextractNextFrame pending;
+    EXPECT_TRUE(pending->empty());
+    const auto entity = epix::render::sync_world::MainEntity{epix::ecs::Entity{7}};
+    pending->insert(entity);
+    EXPECT_EQ(pending->size(), 1u);
+    EXPECT_TRUE(pending->contains(entity)) << "the mesh is retried next frame";
+    pending->clear();
+    EXPECT_TRUE((*pending).empty());
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,
