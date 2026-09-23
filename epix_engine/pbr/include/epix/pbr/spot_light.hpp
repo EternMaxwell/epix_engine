@@ -2,8 +2,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cmath>
+#include <epix/assets.hpp>
 #include <epix/camera.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
@@ -98,5 +100,24 @@ EPIX_EXPORT inline glm::mat4 spot_light_world_from_view(const ::epix::transform:
 EPIX_EXPORT inline glm::mat4 spot_light_clip_from_view(float angle, float near_z) {
     return camera::perspective_infinite_reverse_rh(angle * 2.0f, 1.0f, near_z);
 }
+
+/** @brief Add to a `SpotLight` to apply a texture mask to it (Bevy
+ *  `SpotLightTexture`, `bevy_light/src/spot_light.rs:192-202`), which is what
+ *  produces window-shadow, gobo/cookie and soft-falloff effects. Only the R
+ *  channel of the image is read.
+ *
+ *  As with the probe maps, Epix's default is the engine's default image rather
+ *  than a null handle, because `assets::Handle` has no default constructor
+ *  (PBR-613). */
+EPIX_EXPORT struct SpotLightTexture {
+    /** @brief The texture image; only the R channel is read. Keep its border
+     *  entirely black, or the light leaks past the mask. */
+    assets::Handle<image::Image> image = image::DEFAULT_IMAGE_HANDLE;
+
+    /** @brief Bevy's `#[require(SpotLight)]`. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<SpotLight>([] { return SpotLight{}; });
+    }
+};
 
 }  // namespace epix::pbr

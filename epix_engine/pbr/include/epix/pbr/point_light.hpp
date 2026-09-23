@@ -2,7 +2,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/assets.hpp>
+#include <epix/camera.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
 #endif
@@ -52,6 +55,28 @@ EPIX_EXPORT struct PointLight {
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_NORMAL_BIAS = 0.6f;
     /** @brief Bevy's `PointLight::DEFAULT_SHADOW_MAP_NEAR_Z` (`:149`). */
     EPIX_EXPORT static constexpr float DEFAULT_SHADOW_MAP_NEAR_Z = 0.1f;
+};
+
+/** @brief Add to a `PointLight` to apply a texture mask to it (Bevy
+ *  `PointLightTexture`, `bevy_light/src/point_light.rs:155-171`), which is what
+ *  produces window-shadow, gobo/cookie and soft-falloff effects. Only the R
+ *  channel of the image is read, and the image must be a packed cubemap in one of
+ *  `CubemapLayout`'s formats.
+ *
+ *  As with the probe maps, Epix's default is the engine's default image rather
+ *  than a null handle, because `assets::Handle` has no default constructor
+ *  (PBR-613). */
+EPIX_EXPORT struct PointLightTexture {
+    /** @brief The texture image; only the R channel is read. Keep its border
+     *  entirely black, or the light leaks past the mask. */
+    assets::Handle<image::Image> image = image::DEFAULT_IMAGE_HANDLE;
+    /** @brief The cubemap layout the image is packed in. */
+    camera::CubemapLayout cubemap_layout = camera::CubemapLayout::CrossVertical;
+
+    /** @brief Bevy's `#[require(PointLight)]`. */
+    static void register_required_components(epix::ecs::RequiredComponentsRegistrator& registrator) {
+        registrator.template register_required<PointLight>([] { return PointLight{}; });
+    }
 };
 
 /** @brief Controls the resolution of point-light shadow maps (Bevy

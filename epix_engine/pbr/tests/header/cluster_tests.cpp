@@ -199,6 +199,38 @@ TEST(Cluster, SpotLightMatchesBevyDefaults) {
     EXPECT_LT(light.outer_angle, 1.5707963267948966f) << "outer_angle must stay below pi/2";
 }
 
+/** @brief The two light-texture components (Bevy `SpotLightTexture`,
+ *  `spot_light.rs:192-202`, and `PointLightTexture`, `point_light.rs:155-171`):
+ *  one image handle each (plus the point light's cubemap layout), and Bevy's
+ *  `#[require(SpotLight)]` / `#[require(PointLight)]` — spawning the texture
+ *  component alone must produce the light it modulates. */
+TEST(Cluster, LightTextureComponentsMatchBevy) {
+    using epix::pbr::PointLight;
+    using epix::pbr::PointLightTexture;
+    using epix::pbr::SpotLight;
+    using epix::pbr::SpotLightTexture;
+
+    const SpotLightTexture spot_texture{};
+    EXPECT_EQ(spot_texture.image.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+
+    const PointLightTexture point_texture{};
+    EXPECT_EQ(point_texture.image.id(), epix::image::DEFAULT_IMAGE_HANDLE.id());
+    EXPECT_EQ(point_texture.cubemap_layout, epix::camera::CubemapLayout::CrossVertical)
+        << "Bevy's CubemapLayout default";
+
+    epix::ecs::World world(3);
+    const auto spot_entity  = world.spawn(SpotLightTexture{}).id();
+    const auto point_entity = world.spawn(PointLightTexture{}).id();
+    EXPECT_TRUE(world.entity(spot_entity).contains<SpotLight>())
+        << "SpotLightTexture requires SpotLight";
+    EXPECT_TRUE(world.entity(point_entity).contains<PointLight>())
+        << "PointLightTexture requires PointLight";
+
+    // The requirement is one-way: a plain light does not gain the texture.
+    const auto plain_light = world.spawn(SpotLight{}).id();
+    EXPECT_FALSE(world.entity(plain_light).contains<SpotLightTexture>());
+}
+
 /** @brief Cascade bounds are geometric between the first far bound and the
  *  maximum distance, with a single cascade simply reaching the maximum (Bevy
  *  `calculate_cascade_bounds`, `cascade.rs:39-54`), and the builder validates
