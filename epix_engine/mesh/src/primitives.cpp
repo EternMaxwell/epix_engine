@@ -587,8 +587,8 @@ std::expected<Mesh, MeshAccessError> RingMeshBuilder<P>::try_build() const {
     Mesh outer = outer_shape_builder.build();
     Mesh inner = inner_shape_builder.build();
 
-    if (outer.get_primitive_type() != wgpu::PrimitiveTopology::eTriangleList ||
-        inner.get_primitive_type() != wgpu::PrimitiveTopology::eTriangleList) {
+    if (outer.primitive_topology() != wgpu::PrimitiveTopology::eTriangleList ||
+        inner.primitive_topology() != wgpu::PrimitiveTopology::eTriangleList) {
         return std::unexpected{MeshAccessError::NotFound};
     }
 

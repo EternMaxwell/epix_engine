@@ -2085,7 +2085,7 @@ struct ExtrusionBuilder {
             }
         }
 
-        const wgpu::PrimitiveTopology topology = front_face.get_primitive_type();
+        const wgpu::PrimitiveTopology topology = front_face.primitive_topology();
 
         // Flip the normals, etc. and move the mesh to the back.
         Mesh back_face = Mesh{front_face}.scaled_by(glm::vec3{1.0f, 1.0f, -1.0f});

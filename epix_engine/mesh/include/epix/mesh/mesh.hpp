@@ -685,15 +685,10 @@ EPIX_EXPORT struct Mesh {
      * Set if and when the mesh is extracted to the GPU (Bevy `Mesh::final_aabb`). */
     std::optional<Aabb3d> final_aabb;
 
-    /** @brief Get the primitive topology. */
-    wgpu::PrimitiveTopology get_primitive_type() const noexcept { return primitive_type; }
-    /** @brief Set the primitive topology. */
-    void set_primitive_type(wgpu::PrimitiveTopology type) noexcept { primitive_type = type; }
-    /** @brief Builder-style setter for primitive topology. */
-    auto&& with_primitive_type(this auto&& self, wgpu::PrimitiveTopology type) {
-        self.set_primitive_type(type);
-        return std::forward<decltype(self)>(self);
-    }
+    /** @brief Get the primitive topology (Bevy `Mesh::primitive_topology`,
+     *  `bevy_mesh/src/mesh.rs:356`). Bevy's field is private and only `Mesh::new`
+     *  writes it, so there is no setter here either. */
+    wgpu::PrimitiveTopology primitive_topology() const noexcept { return primitive_type; }
     /** @brief Fallible attribute iteration (Bevy `Mesh::try_attributes`). */
     auto try_attributes() const {
         using View        = decltype(std::views::values(std::declval<const AttributeMap&>()) |

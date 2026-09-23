@@ -1179,7 +1179,7 @@ TEST(MeshModule, Box2dBuildsIndexedQuad) {
 
 TEST(MeshModule, CircleBuildsTriangleList) {
     auto value = mesh::make_circle(12.0f, std::nullopt, 16);
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_EQ(value.count_vertices(), 17);
     ASSERT_TRUE(value.indices().has_value());
     EXPECT_EQ(value.indices()->get().len(), 48);
@@ -1346,7 +1346,7 @@ TEST(MeshPrimitives, SegmentAndPolylineMatchBevyLineListData) {
     EXPECT_FLOAT_EQ(segment.length(), 10.0f);
 
     const mesh::Mesh segment_mesh = segment;
-    EXPECT_EQ(segment_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(segment_mesh.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
     const auto* segment_positions =
         segment_mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     ASSERT_NE(segment_positions, nullptr);
@@ -1359,7 +1359,7 @@ TEST(MeshPrimitives, SegmentAndPolylineMatchBevyLineListData) {
     EXPECT_EQ(polyline.vertices, (std::vector{glm::vec2(0.0f, 0.0f), glm::vec2(1.0f, 0.0f), glm::vec2(2.0f, 0.0f),
                                               glm::vec2(3.0f, 0.0f)}));
     const auto polyline_mesh = polyline.mesh().build();
-    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(polyline_mesh.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
     EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
     EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 1, 2, 2, 3}));
@@ -1393,7 +1393,7 @@ TEST(MeshPrimitives, ConvexPolygonMatchesBevyValidationAndFanData) {
     ASSERT_TRUE(collinear.has_value());
 
     const auto value = polygon->mesh().build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
     EXPECT_FALSE(value.contains_attribute(mesh::Mesh::ATTRIBUTE_COLOR));
@@ -1426,7 +1426,7 @@ TEST(MeshPrimitives, ConvexPolygonRejectsDegenerateVertexCountsWithoutPanicking)
     EXPECT_EQ(mesh::ConvexPolygon::create({{0.0f, 0.0f}, {1.0f, 1.0f}}).error(), mesh::ConvexPolygonError::Concave);
 
     const auto single = mesh::ConvexPolygon::new_unchecked({{1.0f, 2.0f}}).mesh().build();
-    EXPECT_EQ(single.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(single.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_FALSE(single.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     EXPECT_FALSE(single.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
     const auto* positions =
@@ -1445,13 +1445,13 @@ TEST(MeshPrimitives, LineListPrimitivesEmitOnlyBevyPositionAttribute) {
     EXPECT_TRUE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
     EXPECT_FALSE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     EXPECT_FALSE(segment.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
-    EXPECT_EQ(segment.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(segment.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
 
     const auto polyline_mesh = mesh::Polyline2d{}.mesh().build();
     EXPECT_TRUE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_POSITION));
     EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_UV_0));
-    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(polyline_mesh.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
     ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
     EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1}));
 
@@ -1497,7 +1497,7 @@ TEST(MeshPrimitives, Triangle2dMatchesBevyShapeMeasurementAndWinding) {
 TEST(MeshPrimitives, Triangle2dMeshBuilderMatchesBevyUvAndIndexWinding) {
     // Bevy keeps the authored vertex order and only flips the index winding.
     const auto clockwise = mesh::Triangle2d{{-1.0f, 0.0f}, {0.0f, 2.0f}, {1.0f, 0.0f}}.mesh().build();
-    EXPECT_EQ(clockwise.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(clockwise.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         clockwise.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -1555,7 +1555,7 @@ TEST(MeshPrimitives, RhombusMatchesBevyMeasurementClosestPointAndMesh) {
     EXPECT_EQ(mesh::Rhombus::from_inradius(4.0f).half_diagonals.x, mesh::Rhombus::from_inradius(4.0f).half_diagonals.y);
 
     const auto value = rhombus.mesh().build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* uvs =
@@ -1587,7 +1587,7 @@ TEST(MeshPrimitives, AnnulusMatchesBevySeamDuplicationAndUvs) {
     EXPECT_EQ(mesh::Annulus{}.closest_point({4.0f, 0.0f}), glm::vec2(1.0f, 0.0f));
 
     const auto value = annulus.mesh().with_resolution(4).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* uvs =
@@ -1631,7 +1631,7 @@ TEST(MeshPrimitives, Capsule2dMatchesBevySemicircleFanAndRadiusFractionUvs) {
     EXPECT_FLOAT_EQ(capsule.to_inner_rectangle().half_size.y, 1.0f);
 
     const auto value = capsule.mesh().with_resolution(4).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* uvs =
@@ -1739,7 +1739,7 @@ TEST(MeshPrimitives, RingBuildsBevyInsetShapePairAndMesh) {
     EXPECT_FLOAT_EQ(ring.inner_shape.radius, 1.5f);
 
     const auto value = ring.mesh().build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -1802,7 +1802,7 @@ TEST(MeshPrimitives, CuboidMatchesBevyFaceVertexTableAndIndices) {
     EXPECT_EQ(default_cuboid.size(), glm::vec3(1.0f));
 
     const auto value = mesh::Cuboid{2.0f, 2.0f, 2.0f}.mesh().build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -1912,7 +1912,7 @@ TEST(MeshPrimitives, SegmentAndPolyline3dMatchBevyLineListData) {
 
     const mesh::Segment3d segment_shape{{0.0f, 0.0f, 0.0f}, {1.0f, 2.0f, 3.0f}};
     const auto segment_mesh = segment_shape.mesh().build();
-    EXPECT_EQ(segment_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(segment_mesh.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
     const auto* segment_positions =
         segment_mesh.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     ASSERT_NE(segment_positions, nullptr);
@@ -1926,7 +1926,7 @@ TEST(MeshPrimitives, SegmentAndPolyline3dMatchBevyLineListData) {
     EXPECT_EQ(polyline.vertices, (std::vector{glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f),
                                               glm::vec3(0.0f, 0.0f, 2.0f), glm::vec3(0.0f, 0.0f, 3.0f)}));
     const auto polyline_mesh = polyline.mesh().build();
-    EXPECT_EQ(polyline_mesh.get_primitive_type(), wgpu::PrimitiveTopology::eLineList);
+    EXPECT_EQ(polyline_mesh.primitive_topology(), wgpu::PrimitiveTopology::eLineList);
     EXPECT_FALSE(polyline_mesh.contains_attribute(mesh::Mesh::ATTRIBUTE_NORMAL));
     ASSERT_NE(polyline_mesh.indices()->get().as_u32(), nullptr);
     EXPECT_EQ(*polyline_mesh.indices()->get().as_u32(), (std::vector<std::uint32_t>{0, 1, 1, 2, 2, 3}));
@@ -1953,7 +1953,7 @@ TEST(MeshPrimitives, Triangle3dMatchesBevyFaceNormalUvAndClassification) {
     EXPECT_TRUE(collinear.is_degenerate());
 
     const auto value = flat.mesh().build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -2046,7 +2046,7 @@ TEST(MeshPrimitives, CylinderMatchesBevyRingsBarrelSkinAndCaps) {
 
     // Default builder: resolution 32, one segment, caps enabled, midpoint anchor.
     const auto value = mesh::Cylinder{1.0f, 2.0f}.mesh().with_resolution(4).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -2135,7 +2135,7 @@ TEST(MeshPrimitives, TorusMatchesBevyTubeGridAndAngleRange) {
 
     const auto value =
         std::move(mesh::Torus{0.25f, 0.75f}.mesh()).with_minor_resolution(4).with_major_resolution(6).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
     const auto* normals =
@@ -2198,7 +2198,7 @@ TEST(MeshPrimitives, ConeMatchesBevyTipLateralSurfaceAndBase) {
     EXPECT_FLOAT_EQ(default_cone.lateral_area(), std::numbers::pi_v<float> * 0.5f * std::sqrt(0.5f * 0.5f + 1.0f));
 
     const auto value = std::move(mesh::Cone{0.5f, 1.0f}.mesh()).with_resolution(4).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
 
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
@@ -2289,7 +2289,7 @@ TEST(MeshPrimitives, ConicalFrustumMatchesBevyRingsLateralSurfaceAndCaps) {
 
     const auto value =
         std::move(mesh::ConicalFrustum{0.25f, 0.5f, 0.5f}.mesh()).with_resolution(4).with_segments(1).build();
-    EXPECT_EQ(value.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
 
     const auto* positions =
         value.attribute(mesh::Mesh::ATTRIBUTE_POSITION)->get().get_if<mesh::VertexAttributeValues::Float32x3>();
@@ -3269,7 +3269,7 @@ TEST(MeshSphere, ShapeAndBuilderMatchBevyContracts) {
 TEST(MeshSphere, UvSphereMatchesBevyRingsAndIndexLayout) {
     const mesh::Mesh uv = mesh::Sphere{1.0f}.mesh().with_kind(mesh::SphereKind{mesh::SphereKind::Uv{4, 3}}).build();
 
-    EXPECT_EQ(uv.get_primitive_type(), wgpu::PrimitiveTopology::eTriangleList);
+    EXPECT_EQ(uv.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);
     EXPECT_EQ(uv.count_vertices(), 20u);
     ASSERT_NE(uv.indices(), std::nullopt);
     EXPECT_EQ(uv.indices()->get().len(), 48u);

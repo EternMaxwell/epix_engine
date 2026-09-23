@@ -79,7 +79,7 @@ struct epix::render::RenderAsset<epix::render::mesh::RenderMesh> {
         } else {
             buffer_info = epix::render::mesh::RenderMeshBufferInfo::non_indexed();
         }
-        auto key_bits = epix::mesh::BaseMeshPipelineKey::from_primitive_topology(mesh.get_primitive_type());
+        auto key_bits = epix::mesh::BaseMeshPipelineKey::from_primitive_topology(mesh.primitive_topology());
         if (morph_targets) key_bits |= epix::mesh::BaseMeshPipelineKey::MORPH_TARGETS;
 
         return epix::render::mesh::RenderMesh{
