@@ -18,6 +18,7 @@
 #include <epix/pbr/shadow_phase.hpp>
 #include <epix/pbr/spot_light.hpp>
 #include <epix/pbr/volumetric.hpp>
+#include <epix/pbr/mesh_extraction.hpp>
 #include <gtest/gtest.h>
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>
@@ -4376,6 +4377,97 @@ TEST(Cluster, ShadowTransmissionAndLightmapComponentsMatchBevy) {
     const auto lit = world.spawn(lightmap).id();
     ASSERT_TRUE(world.get_entity(lit)->get<Lightmap>().has_value());
     EXPECT_EQ(world.get_entity(lit)->get<Lightmap>()->get().uv_rect.max, glm::vec2(1.0f));
+}
+
+/** @brief Bevy's `extract_meshes_for_gpu_building` (`render/mesh.rs:1487-1624`): a
+ *  visible mesh is queued as an instance builder, an invisible one and one that lost
+ *  its `Mesh3d` are queued for removal, and the culling data is collected because a
+ *  camera without `NoIndirectDrawing` is present. The system reads the main world
+ *  through `ExtractedWorld`, so a pair of bare worlds drives it exactly as the
+ *  extraction schedule does. */
+TEST(MeshExtraction, QueuesVisibleMeshesAndRemovals) {
+    using epix::camera::Aabb;
+    using epix::camera::ViewVisibility;
+    using epix::mesh::Mesh3d;
+    using epix::mesh::MeshTag;
+    using epix::pbr::Lightmap;
+    using epix::pbr::MeshFlags;
+    using epix::pbr::MeshesToReextractNextFrame;
+    using epix::pbr::RenderMeshInstanceGpuQueue;
+    using epix::pbr::RenderMeshInstanceGpuQueues;
+    using epix::pbr::RenderMeshInstances;
+    using epix::pbr::TransmittedShadowReceiver;
+    using epix::render::sync_world::MainEntity;
+    using epix::render::view::RenderVisibilityRanges;
+
+    epix::ecs::World main_world(11);
+    epix::ecs::World render_world(11);
+    render_world.insert_resource(epix::app::ExtractedWorld{main_world});
+    render_world.insert_resource(RenderMeshInstances::make(true));
+    render_world.insert_resource(RenderMeshInstanceGpuQueues{});
+    render_world.insert_resource(RenderVisibilityRanges{});
+    render_world.insert_resource(MeshesToReextractNextFrame{});
+
+    // A camera that is not drawing indirectly is what turns GPU culling on, and so
+    // what makes the extraction collect per-instance culling data.
+    main_world.spawn(epix::camera::Camera{});
+
+    ViewVisibility visible;
+    visible.set_visible();
+    const ViewVisibility hidden;
+
+    const auto make_image_handle = [] {
+        return epix::assets::Handle<epix::image::Image>{epix::assets::AssetId<epix::image::Image>::invalid()};
+    };
+
+    const auto visible_entity = main_world
+                                    .spawn(Mesh3d{}, epix::transform::GlobalTransform{}, visible,
+                                           Aabb{.center = glm::vec3(1.0f, 2.0f, 3.0f), .half_extents = glm::vec3(1.0f)},
+                                           MeshTag{.value = 9u}, TransmittedShadowReceiver{},
+                                           Lightmap{.image = make_image_handle(),
+                                                    .uv_rect = epix::image::Rect::from_corners(glm::vec2(0.0f),
+                                                                                               glm::vec2(1.0f))})
+                                    .id();
+    const auto hidden_entity = main_world.spawn(Mesh3d{}, epix::transform::GlobalTransform{}, hidden).id();
+    // An entity that loses its `Mesh3d` is queued for removal even though it is
+    // still visible.
+    const auto removed_entity = main_world.spawn(Mesh3d{}, epix::transform::GlobalTransform{}, visible).id();
+    main_world.entity_mut(removed_entity).remove<Mesh3d>();
+
+    auto system = epix::ecs::make_system_unique(epix::pbr::extract_meshes_for_gpu_building);
+    system->initialize(render_world);
+    ASSERT_TRUE(system->run({}, render_world).has_value());
+    system->apply_deferred(render_world);
+
+    const auto& queues  = render_world.get_resource<RenderMeshInstanceGpuQueues>()->get();
+    // Bevy's `Deref` reaches the queue; its `.queue` is the variant holding the shape.
+    const auto& payload = (*queues).queue;
+    ASSERT_TRUE(std::holds_alternative<RenderMeshInstanceGpuQueue::GpuCulling>(payload))
+        << "the camera without NoIndirectDrawing turns GPU culling on";
+    const auto& gpu = std::get<RenderMeshInstanceGpuQueue::GpuCulling>(payload);
+
+    ASSERT_EQ(gpu.changed.size(), 1u) << "only the visible mesh produces an instance";
+    const auto& [entity, builder, culling_data] = gpu.changed.front();
+    EXPECT_EQ(entity, MainEntity{visible_entity});
+    EXPECT_EQ(builder.shared.mesh_asset_id, epix::assets::AssetId<epix::mesh::Mesh>::invalid());
+    EXPECT_TRUE(builder.shared.flags.contains(epix::pbr::RenderMeshInstanceFlags::SHADOW_CASTER));
+    EXPECT_TRUE(builder.shared.flags.contains(epix::pbr::RenderMeshInstanceFlags::AUTOMATIC_BATCHING));
+    EXPECT_FALSE(builder.shared.flags.contains(epix::pbr::RenderMeshInstanceFlags::HAS_PREVIOUS_TRANSFORM))
+        << "there is no PreviousGlobalTransform on the entity";
+    EXPECT_EQ(builder.shared.tag, 9u) << "the MeshTag reaches the shared record";
+    EXPECT_EQ(builder.lightmap_uv_rect, glm::uvec2(0u, 0xFFFFFFFFu)) << "the lightmap's atlas rect is packed";
+    EXPECT_TRUE(builder.mesh_flags.contains(MeshFlags::TRANSMITTED_SHADOW_RECEIVER));
+    EXPECT_TRUE(builder.mesh_flags.contains(MeshFlags::SHADOW_RECEIVER));
+    EXPECT_TRUE(builder.mesh_flags.contains(MeshFlags::SIGN_DETERMINANT_MODEL_3X3));
+    EXPECT_FALSE(builder.previous_input_index.has_value()) << "the instance was not extracted before";
+    EXPECT_EQ(culling_data.aabb_center, glm::vec4(1.0f, 2.0f, 3.0f, 0.0f));
+
+    ASSERT_EQ(gpu.removed.size(), 2u) << "the invisible mesh and the one that lost its Mesh3d";
+    const auto was_removed = [&gpu](epix::ecs::Entity entity) {
+        return std::ranges::find(gpu.removed, MainEntity{entity}) != gpu.removed.end();
+    };
+    EXPECT_TRUE(was_removed(hidden_entity));
+    EXPECT_TRUE(was_removed(removed_entity));
 }
 
 /** @brief The shared instance record keeps the mesh id it is about, carries the

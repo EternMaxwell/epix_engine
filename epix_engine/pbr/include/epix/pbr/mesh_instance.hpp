@@ -391,6 +391,24 @@ EPIX_EXPORT struct RenderMeshInstanceGpuQueue {
     }
 };
 
+/** @brief The queues mesh instances are collected into during extraction (Bevy
+ *  `RenderMeshInstanceGpuQueues`, `bevy_pbr/src/render/mesh.rs:822-828`).
+ *
+ *  Bevy wraps a `Parallel<RenderMeshInstanceGpuQueue>` - one queue per thread, so
+ *  its parallel extraction pushes without locking and drains them afterwards. Epix's
+ *  extraction system iterates sequentially, so the resource holds a single queue:
+ *  one slot instead of one per thread, with the entries in iteration order, which is
+ *  what Bevy's per-thread concatenation gives it anyway. Bevy's `Deref`/`DerefMut`
+ *  are the two operators here. */
+EPIX_EXPORT struct RenderMeshInstanceGpuQueues {
+    RenderMeshInstanceGpuQueue queue;
+
+    RenderMeshInstanceGpuQueue& operator*() noexcept { return queue; }
+    const RenderMeshInstanceGpuQueue& operator*() const noexcept { return queue; }
+    RenderMeshInstanceGpuQueue* operator->() noexcept { return std::addressof(queue); }
+    const RenderMeshInstanceGpuQueue* operator->() const noexcept { return std::addressof(queue); }
+};
+
 /** @brief Meshes that could not be extracted this frame because their materials
  *  were not prepared yet, to be retried next frame (Bevy
  *  `MeshesToReextractNextFrame`, `bevy_pbr/src/render/mesh.rs:830-835`).
