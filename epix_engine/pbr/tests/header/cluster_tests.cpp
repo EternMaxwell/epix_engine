@@ -4122,6 +4122,30 @@ TEST(Cluster, MeshInputUniformLayoutMatchesBevy) {
     EXPECT_EQ(input.current_skin_index, 0u);
 }
 
+/** @brief Bevy's `MeshCullingDataBuffer` (`render/mesh.rs:576-583,1312-1317`): a
+ *  `RawBufferVec<MeshCullingData>` behind a `Deref` newtype, empty by default so
+ *  the CPU-culling case pays nothing, and reached through `*`/`->`. */
+TEST(Cluster, MeshCullingDataBufferMatchesBevy) {
+    epix::pbr::MeshCullingDataBuffer culling;
+    EXPECT_TRUE(culling->is_empty()) << "GPU culling data is absent until it is pushed";
+    EXPECT_EQ(culling->len(), 0u);
+    EXPECT_EQ(culling->buffer(), nullptr) << "and no GPU buffer exists before a write";
+
+    // `update` grows the buffer with zeroed entries and then replaces one
+    // (Bevy `MeshCullingDataBuffer::update`, `render/mesh.rs:1300-1309`).
+    while ((*culling).len() < 3) (*culling).push(epix::pbr::MeshCullingData{});
+    EXPECT_EQ(culling->len(), 3u);
+    const epix::pbr::MeshCullingData conservative = epix::pbr::MeshCullingData::make(std::nullopt);
+    (*culling).set(1, conservative);
+    ASSERT_NE(culling->get(1), nullptr);
+    EXPECT_EQ(culling->get(1)->aabb_half_extents.x, std::numeric_limits<float>::infinity())
+        << "a mesh with no AABB gets the infinite box, which is never culled";
+    EXPECT_EQ(culling->get(1)->aabb_center, glm::vec4(0.0f));
+
+    (*culling).clear();
+    EXPECT_TRUE(culling->is_empty());
+}
+
 /** @brief The shared instance record keeps the mesh id it is about, carries the
  *  absence of a lightmap and of render layers distinctly, and delegates the
  *  batching question to its flags (Bevy `RenderMeshInstanceShared`,

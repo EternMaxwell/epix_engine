@@ -249,3 +249,41 @@ static_assert(sizeof(MeshCullingData) == 32, "two vec4s, which is what the shade
 static_assert(offsetof(MeshCullingData, aabb_half_extents) == 16);
 
 }  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+
+/** @brief `MeshCullingData` is uploaded through a `RawBufferVec`, and it is a pair
+ *  of `vec4`s with every byte initialised, so the concept's escape hatch applies -
+ *  the same shape `batching.hpp` uses for its work items. */
+template <>
+struct RawBufferElementInfo<::epix::pbr::MeshCullingData> {
+    static constexpr bool has_no_uninit = true;
+};
+
+}  // namespace epix::render::render_resource
+
+namespace epix::pbr {
+
+/** @brief The buffer that holds each mesh's culling data (Bevy
+ *  `MeshCullingDataBuffer`, `bevy_pbr/src/render/mesh.rs:576-583`).
+ *
+ *  Bevy's `#[derive(Resource, Deref, DerefMut)]` newtype over
+ *  `RawBufferVec<MeshCullingData>`; C++ has no derive, so the buffer is reached
+ *  through `operator*`/`operator->`, the same shape the ECS wrappers use for their
+ *  `Deref`. To avoid wasting CPU time in the CPU culling case the buffer stays
+ *  empty when GPU culling is not in use, exactly as Bevy documents. */
+EPIX_EXPORT struct MeshCullingDataBuffer {
+    /** @brief Bevy's `Default`: a `RawBufferVec` with storage usage (Bevy
+     *  `impl Default`, `render/mesh.rs:1312-1317`), which is what the plugin's
+     *  `init_resource` builds. */
+    render::render_resource::RawBufferVec<MeshCullingData> buffer{wgpu::BufferUsage::eStorage};
+
+    render::render_resource::RawBufferVec<MeshCullingData>& operator*() noexcept { return buffer; }
+    const render::render_resource::RawBufferVec<MeshCullingData>& operator*() const noexcept { return buffer; }
+    render::render_resource::RawBufferVec<MeshCullingData>* operator->() noexcept { return std::addressof(buffer); }
+    const render::render_resource::RawBufferVec<MeshCullingData>* operator->() const noexcept {
+        return std::addressof(buffer);
+    }
+};
+
+}  // namespace epix::pbr
