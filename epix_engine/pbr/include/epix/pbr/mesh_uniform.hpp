@@ -82,6 +82,65 @@ static_assert(offsetof(MeshUniform, material_and_lightmap_bind_group_slot) == 15
 static_assert(offsetof(MeshUniform, tag) == 156);
 static_assert(offsetof(MeshUniform, pad) == 160);
 
+/** @brief Information that has to be transferred from CPU to GPU in order to
+ *  produce the full `MeshUniform` (Bevy `MeshInputUniform`,
+ *  `bevy_pbr/src/render/mesh.rs:500-560`).
+ *
+ *  A subset of the uniform above: the GPU's injection pass reads this and builds
+ *  the full `MeshUniform`, which is what lets the CPU skip rebuilding one per mesh
+ *  per frame. Field order is the shader's.
+ *
+ *  Bevy derives `Default`, so a freshly built input uniform is all zeros; the
+ *  `u32::MAX` sentinels the comments below mention are written by the producer
+ *  (`MeshInputUniform` in the extraction system), not by the default. */
+EPIX_EXPORT struct MeshInputUniform {
+    /** @brief Affine 4x3 matrix transposed to 3x4. */
+    std::array<glm::vec4, 3> world_from_local{};
+    /** @brief Four 16-bit unsigned normalized UV values packed into two words;
+     *  layout as in `MeshUniform::lightmap_uv_rect`. */
+    glm::uvec2 lightmap_uv_rect{0u, 0u};
+    /** @brief Various `MeshFlags`. */
+    std::uint32_t flags = 0;
+    /** @brief The index of this mesh's input uniform in the previous frame's
+     *  buffer, `UINT32_MAX` when it has none (used for TAA). */
+    std::uint32_t previous_input_index = 0;
+    /** @brief The offset of this mesh's first vertex in the vertex buffer. */
+    std::uint32_t first_vertex_index = 0;
+    /** @brief The offset of this mesh's first index in the index buffer; ignored
+     *  for a non-indexed mesh. */
+    std::uint32_t first_index_index = 0;
+    /** @brief For an indexed mesh the number of indices, for a non-indexed one
+     *  the number of vertices. */
+    std::uint32_t index_count = 0;
+    /** @brief The current skin index, or `UINT32_MAX` when there is no skin. */
+    std::uint32_t current_skin_index = 0;
+    /** @brief Material index in the low 16 bits, lightmap index in the high 16. */
+    std::uint32_t material_and_lightmap_bind_group_slot = 0;
+    /** @brief The frame this input uniform was built on, which is how the
+     *  injection pass validates the previous transform and skin. */
+    std::uint32_t timestamp = 0;
+    /** @brief User supplied tag to identify this mesh instance. */
+    std::uint32_t tag = 0;
+    /** @brief Bevy's trailing word. */
+    std::uint32_t pad = 0;
+};
+
+// The shader's contract, as for `MeshUniform` above: three `vec4`s, one `uvec2`
+// and ten words. Unlike `MeshUniform` this needs no tail padding - 96 is already
+// a multiple of the 16-byte alignment Bevy's `ShaderType` derive gives it.
+static_assert(sizeof(MeshInputUniform) == 96, "MeshInputUniform must match the shader's size");
+static_assert(offsetof(MeshInputUniform, lightmap_uv_rect) == 48);
+static_assert(offsetof(MeshInputUniform, flags) == 56);
+static_assert(offsetof(MeshInputUniform, previous_input_index) == 60);
+static_assert(offsetof(MeshInputUniform, first_vertex_index) == 64);
+static_assert(offsetof(MeshInputUniform, first_index_index) == 68);
+static_assert(offsetof(MeshInputUniform, index_count) == 72);
+static_assert(offsetof(MeshInputUniform, current_skin_index) == 76);
+static_assert(offsetof(MeshInputUniform, material_and_lightmap_bind_group_slot) == 80);
+static_assert(offsetof(MeshInputUniform, timestamp) == 84);
+static_assert(offsetof(MeshInputUniform, tag) == 88);
+static_assert(offsetof(MeshInputUniform, pad) == 92);
+
 /** @brief Various flags and tightly-packed values on a mesh (Bevy `MeshFlags`,
  *  `bevy_pbr/src/render/mesh.rs:619-643`).
  *

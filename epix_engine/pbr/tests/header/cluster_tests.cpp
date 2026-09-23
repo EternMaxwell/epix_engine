@@ -22,7 +22,9 @@
 #include <spdlog/sinks/base_sink.h>
 #include <spdlog/spdlog.h>
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -4085,6 +4087,39 @@ TEST(Cluster, MeshFlagsMatchBevy) {
     saturated.bits = static_cast<std::uint32_t>(Bits::LOD_INDEX_MASK);
     EXPECT_EQ(lod_bits(saturated), 0xFFFFu);
     EXPECT_FALSE(saturated.contains(Bits::NO_FRUSTUM_CULLING));
+}
+
+/** @brief Bevy's `MeshInputUniform` (`render/mesh.rs:500-560`): the fields the GPU
+ *  builds a `MeshUniform` from, at the offsets the shader reads, and zeroed by
+ *  default - Bevy derives `Default` on it. */
+TEST(Cluster, MeshInputUniformLayoutMatchesBevy) {
+    using epix::pbr::MeshInputUniform;
+
+    // The size and offsets are the shader's contract; the header asserts them
+    // too, and this checks the same numbers from the consumer's side.
+    EXPECT_EQ(sizeof(MeshInputUniform), 96u);
+    EXPECT_EQ(offsetof(MeshInputUniform, lightmap_uv_rect), 48u);
+    EXPECT_EQ(offsetof(MeshInputUniform, flags), 56u);
+    EXPECT_EQ(offsetof(MeshInputUniform, previous_input_index), 60u);
+    EXPECT_EQ(offsetof(MeshInputUniform, first_vertex_index), 64u);
+    EXPECT_EQ(offsetof(MeshInputUniform, first_index_index), 68u);
+    EXPECT_EQ(offsetof(MeshInputUniform, index_count), 72u);
+    EXPECT_EQ(offsetof(MeshInputUniform, current_skin_index), 76u);
+    EXPECT_EQ(offsetof(MeshInputUniform, material_and_lightmap_bind_group_slot), 80u);
+    EXPECT_EQ(offsetof(MeshInputUniform, timestamp), 84u);
+    EXPECT_EQ(offsetof(MeshInputUniform, tag), 88u);
+    EXPECT_EQ(offsetof(MeshInputUniform, pad), 92u);
+
+    // Bevy derives `Default`, so every byte of a fresh input uniform is zero -
+    // including the fields whose docs mention a `u32::MAX` sentinel, which the
+    // producer writes rather than the default.
+    const MeshInputUniform input{};
+    const std::array<std::byte, sizeof(MeshInputUniform)> zeros{};
+    EXPECT_EQ(std::memcmp(&input, zeros.data(), sizeof(input)), 0) << "a default input uniform is all zeros";
+    EXPECT_EQ(input.world_from_local[0], glm::vec4(0.0f));
+    EXPECT_EQ(input.lightmap_uv_rect, glm::uvec2(0u, 0u));
+    EXPECT_EQ(input.previous_input_index, 0u);
+    EXPECT_EQ(input.current_skin_index, 0u);
 }
 
 /** @brief The shared instance record keeps the mesh id it is about, carries the
