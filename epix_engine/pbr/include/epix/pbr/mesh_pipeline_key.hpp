@@ -163,7 +163,12 @@ EPIX_EXPORT class MeshPipelineKey {
 
     /** @brief Bits per MSAA field. */
     static constexpr std::uint64_t MSAA_MASK_BITS = 0b111;
-    /** @brief First bit of the MSAA field, directly above `LAST_FLAG`. */
+    /** @brief First bit of the MSAA field, directly above `LAST_FLAG`.
+     *
+     * Bevy derives this as `LAST_FLAG.bits().trailing_zeros() + 1`
+     * (`render/mesh.rs:2231`). The class body cannot compute it that way, because
+     * `LAST_FLAG` is only defined out of class, so the value is written out and
+     * the `static_assert`s below prove it is exactly that derivation. */
     static constexpr std::uint64_t MSAA_SHIFT_BITS = 24;
     /** @brief Bits per blend field. */
     static constexpr std::uint64_t BLEND_MASK_BITS = 0b111;
@@ -205,7 +210,7 @@ EPIX_EXPORT class MeshPipelineKey {
     }
 
     /** @brief The HDR flag (Bevy `from_hdr`). */
-    static MeshPipelineKey from_hdr(bool hdr) noexcept { return hdr ? HDR : NONE; }
+    static constexpr MeshPipelineKey from_hdr(bool hdr) noexcept { return hdr ? HDR : NONE; }
 
     /** @brief The primitive topology bits (Bevy `from_primitive_topology`). */
     static constexpr MeshPipelineKey from_primitive_topology(wgpu::PrimitiveTopology primitive_topology) noexcept {
@@ -364,40 +369,117 @@ EPIX_PBR_KEY_VALUE(MeshPipelineKey, ATMOSPHERE, std::uint64_t{1} << 22);
 EPIX_PBR_KEY_VALUE(MeshPipelineKey, INVERT_CULLING, std::uint64_t{1} << 23);
 EPIX_PBR_KEY_VALUE(MeshPipelineKey, LAST_FLAG, std::uint64_t{1} << 23);
 
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, MSAA_RESERVED_BITS, std::uint64_t{0b111} << 24);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_RESERVED_BITS, std::uint64_t{0b111} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_OPAQUE, std::uint64_t{0} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_PREMULTIPLIED_ALPHA, std::uint64_t{1} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_MULTIPLY, std::uint64_t{2} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_ALPHA, std::uint64_t{3} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_ALPHA_TO_COVERAGE, std::uint64_t{4} << 27);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_RESERVED_BITS, std::uint64_t{0b111} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_NONE, std::uint64_t{0} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_REINHARD, std::uint64_t{1} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_REINHARD_LUMINANCE, std::uint64_t{2} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_ACES_FITTED, std::uint64_t{3} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_AGX, std::uint64_t{4} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM, std::uint64_t{5} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_TONY_MC_MAPFACE, std::uint64_t{6} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_BLENDER_FILMIC, std::uint64_t{7} << 30);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_RESERVED_BITS, std::uint64_t{0b11} << 33);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_HARDWARE_2X2, std::uint64_t{0} << 33);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_GAUSSIAN, std::uint64_t{1} << 33);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_TEMPORAL, std::uint64_t{2} << 33);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_RESERVED_BITS, std::uint64_t{0b11} << 35);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_NONSTANDARD, std::uint64_t{0} << 35);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_PERSPECTIVE, std::uint64_t{1} << 35);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_ORTHOGRAPHIC, std::uint64_t{2} << 35);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_RESERVED, std::uint64_t{3} << 35);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS, std::uint64_t{0b11} << 37);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_LOW, std::uint64_t{0} << 37);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_MEDIUM, std::uint64_t{1} << 37);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_HIGH, std::uint64_t{2} << 37);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA, std::uint64_t{3} << 37);
-EPIX_PBR_KEY_VALUE(MeshPipelineKey,
-                   ALL_RESERVED_BITS,
-                   (std::uint64_t{0b111} << 24) | (std::uint64_t{0b111} << 27) | (std::uint64_t{0b111} << 30) |
-                       (std::uint64_t{0b11} << 33) | (std::uint64_t{0b11} << 35) | (std::uint64_t{0b11} << 37));
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, MSAA_RESERVED_BITS,
+                   MeshPipelineKey::MSAA_MASK_BITS << MeshPipelineKey::MSAA_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_RESERVED_BITS,
+                   MeshPipelineKey::BLEND_MASK_BITS << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_OPAQUE, std::uint64_t{0} << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_PREMULTIPLIED_ALPHA,
+                   std::uint64_t{1} << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_MULTIPLY, std::uint64_t{2} << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_ALPHA, std::uint64_t{3} << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, BLEND_ALPHA_TO_COVERAGE,
+                   std::uint64_t{4} << MeshPipelineKey::BLEND_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_RESERVED_BITS,
+                   MeshPipelineKey::TONEMAP_METHOD_MASK_BITS << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_NONE,
+                   std::uint64_t{0} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_REINHARD,
+                   std::uint64_t{1} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_REINHARD_LUMINANCE,
+                   std::uint64_t{2} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_ACES_FITTED,
+                   std::uint64_t{3} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_AGX,
+                   std::uint64_t{4} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM,
+                   std::uint64_t{5} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_TONY_MC_MAPFACE,
+                   std::uint64_t{6} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, TONEMAP_METHOD_BLENDER_FILMIC,
+                   std::uint64_t{7} << MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_RESERVED_BITS,
+                   MeshPipelineKey::SHADOW_FILTER_METHOD_MASK_BITS << MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_HARDWARE_2X2,
+                   std::uint64_t{0} << MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_GAUSSIAN,
+                   std::uint64_t{1} << MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SHADOW_FILTER_METHOD_TEMPORAL,
+                   std::uint64_t{2} << MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_RESERVED_BITS,
+                   MeshPipelineKey::VIEW_PROJECTION_MASK_BITS << MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_NONSTANDARD,
+                   std::uint64_t{0} << MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_PERSPECTIVE,
+                   std::uint64_t{1} << MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_ORTHOGRAPHIC,
+                   std::uint64_t{2} << MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, VIEW_PROJECTION_RESERVED,
+                   std::uint64_t{3} << MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(
+    MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS,
+    MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_MASK_BITS
+        << MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_LOW,
+                   std::uint64_t{0} << MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_MEDIUM,
+                   std::uint64_t{1} << MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_HIGH,
+                   std::uint64_t{2} << MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, SCREEN_SPACE_SPECULAR_TRANSMISSION_ULTRA,
+                   std::uint64_t{3} << MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS);
+EPIX_PBR_KEY_VALUE(MeshPipelineKey, ALL_RESERVED_BITS,
+                   MeshPipelineKey::BLEND_RESERVED_BITS.bits() | MeshPipelineKey::MSAA_RESERVED_BITS.bits() |
+                       MeshPipelineKey::TONEMAP_METHOD_RESERVED_BITS.bits() |
+                       MeshPipelineKey::SHADOW_FILTER_METHOD_RESERVED_BITS.bits() |
+                       MeshPipelineKey::VIEW_PROJECTION_RESERVED_BITS.bits() |
+                       MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS.bits());
+
+// Every reserved field starts immediately above the previous one, and Bevy
+// derives each shift from the one below it (`render/mesh.rs:2229-2251`). The
+// class body cannot spell that for `MSAA_SHIFT_BITS`, because `LAST_FLAG` is
+// defined out of class, so the chain is proved here instead: a field narrowed or
+// widened without moving the next shift would otherwise overlap its neighbour
+// silently.
+static_assert(MeshPipelineKey::MSAA_SHIFT_BITS ==
+                  static_cast<std::uint64_t>(std::countr_zero(MeshPipelineKey::LAST_FLAG.bits())) + 1,
+              "the MSAA field must start directly above LAST_FLAG (bevy_pbr/src/render/mesh.rs:2231)");
+static_assert(MeshPipelineKey::BLEND_SHIFT_BITS ==
+                  static_cast<std::uint64_t>(std::popcount(MeshPipelineKey::MSAA_MASK_BITS)) +
+                      MeshPipelineKey::MSAA_SHIFT_BITS,
+              "the blend field must start above the seven MSAA bits (bevy_pbr/src/render/mesh.rs:2234)");
+static_assert(MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS ==
+                  static_cast<std::uint64_t>(std::popcount(MeshPipelineKey::BLEND_MASK_BITS)) +
+                      MeshPipelineKey::BLEND_SHIFT_BITS,
+              "the tonemapping field must start above the seven blend bits (bevy_pbr/src/render/mesh.rs:2237)");
+static_assert(MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS ==
+                  static_cast<std::uint64_t>(std::popcount(MeshPipelineKey::TONEMAP_METHOD_MASK_BITS)) +
+                      MeshPipelineKey::TONEMAP_METHOD_SHIFT_BITS,
+              "the shadow-filter field must start above the seven tonemapping bits (bevy_pbr/src/render/mesh.rs:2241)");
+static_assert(MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS ==
+                  static_cast<std::uint64_t>(std::popcount(MeshPipelineKey::SHADOW_FILTER_METHOD_MASK_BITS)) +
+                      MeshPipelineKey::SHADOW_FILTER_METHOD_SHIFT_BITS,
+              "the view-projection field must start above the two shadow-filter bits (mesh.rs:2245)");
+static_assert(
+    MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_SHIFT_BITS ==
+        static_cast<std::uint64_t>(std::popcount(MeshPipelineKey::VIEW_PROJECTION_MASK_BITS)) +
+            MeshPipelineKey::VIEW_PROJECTION_SHIFT_BITS,
+    "the transmission-quality field must start above the two view-projection bits (mesh.rs:2250)");
+
+// Bevy's first `const_assert_eq!` (`render/mesh.rs:2293-2298`): every flag bit and
+// every reserved bitfield together must not reach the base key's bits. Bevy writes
+// `BaseMeshPipelineKey::all()`, which for that bitflags type is exactly
+// `MORPH_TARGETS`, the only flag it declares.
+static_assert(((((MeshPipelineKey::LAST_FLAG.bits() << 1) - 1) | MeshPipelineKey::ALL_RESERVED_BITS.bits()) &
+               ::epix::mesh::BaseMeshPipelineKey::MORPH_TARGETS.bits()) == 0,
+              "MeshPipelineKey overflowed the bits below the base key's MORPH_TARGETS");
+
+// Bevy's second `const_assert_eq!` (`render/mesh.rs:2300-2306`): the reserved bits
+// must not overlap the primitive-topology bits.
+static_assert(((::epix::mesh::BaseMeshPipelineKey::PRIMITIVE_TOPOLOGY_MASK_BITS
+                << ::epix::mesh::BaseMeshPipelineKey::PRIMITIVE_TOPOLOGY_SHIFT_BITS) &
+               MeshPipelineKey::ALL_RESERVED_BITS.bits()) == 0,
+              "the reserved bits must not overlap the primitive-topology bits");
 
 EPIX_PBR_KEY_VALUE(MeshPipelineViewLayoutKey, MULTISAMPLED, std::uint32_t{1} << 0);
 EPIX_PBR_KEY_VALUE(MeshPipelineViewLayoutKey, DEPTH_PREPASS, std::uint32_t{1} << 1);

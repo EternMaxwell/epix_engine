@@ -48,7 +48,10 @@ TEST(MeshPipelineKey, FlagBitsMatchBevy) {
 
 // Bevy's reserved bitfields sit above `LAST_FLAG` and must not overlap each
 // other or the primitive-topology bits, which its two `const_assert_eq!`s prove
-// (`mesh.rs:2293-2306`) and this reproduces as static assertions.
+// (`mesh.rs:2293-2306`). The header now carries that proof as `static_assert`s
+// (`pbr/mesh_pipeline_key.hpp`), including Bevy's per-field shift derivations;
+// this test keeps the same relationships as runtime evidence, so a regression in
+// the constants fails a test as well as the build.
 TEST(MeshPipelineKey, ReservedBitfieldsMatchBevy) {
     using K = epix::pbr::MeshPipelineKey;
     EXPECT_EQ(K::MSAA_RESERVED_BITS.bits(), std::uint64_t{0b111} << 24);
@@ -115,6 +118,10 @@ TEST(MeshPipelineKey, MsaaRoundTripsThroughTheReservedField) {
     EXPECT_EQ(K::from_msaa_samples(0).msaa_samples(), 1u);
     EXPECT_EQ(K::from_hdr(true).bits(), K::HDR.bits());
     EXPECT_EQ(K::from_hdr(false).bits(), K::NONE.bits());
+    // `from_hdr` is a constant expression like every other key factory, which is
+    // what pinning it here proves: without `constexpr` this would not compile.
+    static_assert(K::from_hdr(true).bits() == K::HDR.bits());
+    static_assert(K::from_hdr(false).bits() == K::NONE.bits());
 }
 
 // The primitive topology lives in the inherited base-key bits

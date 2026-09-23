@@ -381,8 +381,9 @@ EPIX_EXPORT struct MeshMorphSkinningSetup {
  *  `setup_morph_and_skinning_defs`, `render/mesh.rs:2312-2370`).
  *
  *  `offset` is the shader location the mesh's own attributes ended at, so the joint
- *  index and weight land immediately after them - which is why the caller passes the
- *  count of attributes it already placed rather than a constant.
+ *  index and weight land immediately after them. Bevy's one call site passes the
+ *  literal `6` (`render/mesh.rs:2443-2451`) and so do Epix's callers; the parameter
+ *  exists because the offset has to follow whatever attributes the caller placed.
  *
  *  The eight cases are a precedence, not a cross product. Two rules matter: the
  *  **lightmapped layout is only used when the mesh is neither skinned nor morphed**,
