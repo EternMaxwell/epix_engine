@@ -23,6 +23,25 @@ EPIX_EXPORT struct MeshVertexAttributePresence {
     bool color    = false;
 };
 
+/** @brief Read a mesh's attribute presence off its vertex buffer layout (Bevy
+ *  `MeshPipeline::specialize`, `render/mesh.rs:2388-2418`).
+ *
+ *  Bevy asks the layout `contains(..)` once per attribute as it builds the defs;
+ *  Epix asks the same six questions here, so the presence the specialization step
+ *  reads is derived from the mesh rather than assembled by the caller. Epix's
+ *  `contains` takes the attribute id that `MeshVertexAttribute` converts to. */
+EPIX_EXPORT inline MeshVertexAttributePresence mesh_vertex_attribute_presence(
+    const mesh::MeshVertexBufferLayoutRef& layout) {
+    return MeshVertexAttributePresence{
+        .position = layout.value->contains(mesh::Mesh::ATTRIBUTE_POSITION),
+        .normal   = layout.value->contains(mesh::Mesh::ATTRIBUTE_NORMAL),
+        .uv_0     = layout.value->contains(mesh::Mesh::ATTRIBUTE_UV_0),
+        .uv_1     = layout.value->contains(mesh::Mesh::ATTRIBUTE_UV_1),
+        .tangent  = layout.value->contains(mesh::Mesh::ATTRIBUTE_TANGENT),
+        .color    = layout.value->contains(mesh::Mesh::ATTRIBUTE_COLOR),
+    };
+}
+
 /** @brief One vertex attribute at its shader location (Bevy's
  *  `Mesh::ATTRIBUTE_*.at_shader_location(n)`). */
 EPIX_EXPORT struct MeshVertexAttributeLocation {
@@ -55,7 +74,8 @@ EPIX_EXPORT struct MeshPipelineVertexSpecialization {
 /** @brief The shader defs and vertex attribute locations a mesh's attributes produce
  *  (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2380-2441`). */
 EPIX_EXPORT inline MeshPipelineVertexSpecialization specialize_mesh_vertex_layout(
-    const MeshVertexAttributePresence& attributes, std::uint32_t msaa_samples) {
+    const mesh::MeshVertexBufferLayoutRef& layout, std::uint32_t msaa_samples) {
+    const MeshVertexAttributePresence attributes = mesh_vertex_attribute_presence(layout);
     MeshPipelineVertexSpecialization result;
     result.shader_defs.emplace_back("MESH_PIPELINE");
     result.shader_defs.emplace_back("VERTEX_OUTPUT_INSTANCE_INDEX");

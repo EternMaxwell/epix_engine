@@ -5092,17 +5092,36 @@ TEST(Cluster, CheckDirLightMeshVisibilityWiring) {
  *  attribute present with a fixed shader location, the shared UV def, and MULTISAMPLED
  *  from the key (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2380-2441`). */
 TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
-    using epix::pbr::MeshVertexAttributePresence;
+    using epix::pbr::mesh_vertex_attribute_presence;
     using epix::pbr::specialize_mesh_vertex_layout;
 
     const auto has_def = [](const auto& result, std::string_view def) {
         return std::find(result.shader_defs.begin(), result.shader_defs.end(), def) != result.shader_defs.end();
     };
+    // The specialization reads a mesh's attributes off its vertex buffer layout, so a
+    // case is a layout carrying the attributes it is about.
+    const auto mesh_layout = [](std::vector<epix::mesh::MeshVertexAttributeId> attributes) {
+        return epix::mesh::MeshVertexBufferLayoutRef{std::make_shared<epix::mesh::MeshVertexBufferLayout>(
+            std::move(attributes), epix::mesh::VertexBufferLayout{})};
+    };
+    const auto position = epix::mesh::Mesh::ATTRIBUTE_POSITION.id;
+    const auto normal   = epix::mesh::Mesh::ATTRIBUTE_NORMAL.id;
+    const auto uv_0     = epix::mesh::Mesh::ATTRIBUTE_UV_0.id;
+    const auto uv_1     = epix::mesh::Mesh::ATTRIBUTE_UV_1.id;
+    const auto tangent  = epix::mesh::Mesh::ATTRIBUTE_TANGENT.id;
+    const auto color    = epix::mesh::Mesh::ATTRIBUTE_COLOR.id;
+
+    // The presence is read off the layout, one `contains` per attribute.
+    const auto presence = mesh_vertex_attribute_presence(mesh_layout({position, normal, uv_1}));
+    EXPECT_TRUE(presence.position);
+    EXPECT_TRUE(presence.normal);
+    EXPECT_TRUE(presence.uv_1);
+    EXPECT_FALSE(presence.uv_0);
+    EXPECT_FALSE(presence.tangent);
+    EXPECT_FALSE(presence.color);
 
     // A bare position-only mesh: the two always-on defs plus its own, nothing else.
-    MeshVertexAttributePresence position_only;
-    position_only.position = true;
-    const auto bare       = specialize_mesh_vertex_layout(position_only, 1);
+    const auto bare = specialize_mesh_vertex_layout(mesh_layout({position}), 1);
     EXPECT_TRUE(has_def(bare, "MESH_PIPELINE"));
     EXPECT_TRUE(has_def(bare, "VERTEX_OUTPUT_INSTANCE_INDEX"));
     EXPECT_TRUE(has_def(bare, "VERTEX_POSITIONS"));
@@ -5114,9 +5133,7 @@ TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
 
     // All six attributes: locations 0 to 5 in Bevy's order, and both UV defs, with the
     // shared one appearing once per set rather than being deduplicated.
-    MeshVertexAttributePresence all;
-    all.position = all.normal = all.uv_0 = all.uv_1 = all.tangent = all.color = true;
-    const auto everything = specialize_mesh_vertex_layout(all, 4);
+    const auto everything = specialize_mesh_vertex_layout(mesh_layout({position, normal, uv_0, uv_1, tangent, color}), 4);
     ASSERT_EQ(everything.vertex_attributes.size(), 6u);
     for (std::uint32_t i = 0; i < everything.vertex_attributes.size(); ++i) {
         EXPECT_EQ(everything.vertex_attributes[i].shader_location, i) << "locations are fixed by attribute";
@@ -5130,15 +5147,13 @@ TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
 
     // A mesh without normals leaves location 1 unused rather than shifting uv_0 down to
     // it, which is what fixed locations mean.
-    MeshVertexAttributePresence no_normals;
-    no_normals.position = no_normals.uv_0 = true;
-    const auto skipped = specialize_mesh_vertex_layout(no_normals, 1);
+    const auto skipped = specialize_mesh_vertex_layout(mesh_layout({position, uv_0}), 1);
     ASSERT_EQ(skipped.vertex_attributes.size(), 2u);
     EXPECT_EQ(skipped.vertex_attributes[1].name, "uv_0");
     EXPECT_EQ(skipped.vertex_attributes[1].shader_location, 2u) << "location 1 stays unused";
 
     // Nothing at all still yields the two always-on defs.
-    const auto empty = specialize_mesh_vertex_layout({}, 1);
+    const auto empty = specialize_mesh_vertex_layout(mesh_layout({}), 1);
     EXPECT_EQ(empty.shader_defs.size(), 2u);
     EXPECT_TRUE(empty.vertex_attributes.empty());
 }
