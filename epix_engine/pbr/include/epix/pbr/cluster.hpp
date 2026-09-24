@@ -126,11 +126,12 @@ struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectsUniform>
     : RawShaderType<::epix::pbr::GpuClusterableObjectsUniform> {};
 
 /** @brief A runtime-sized storage buffer (Bevy `#[shader(size(runtime))]`): the
- *  minimum binding size is zero because the struct is nothing but the runtime
- *  array, and the written size follows the element count. */
+ *  minimum binding size assumes the array holds one element, which is what
+ *  encase computes for a struct whose only member is a runtime-sized array, and
+ *  the written size follows the element count. */
 template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectsStorage> {
-    static constexpr std::size_t shader_size = 0;
+    static constexpr std::size_t shader_size = sizeof(::epix::pbr::GpuClusterableObject);
     static std::size_t size_for(const ::epix::pbr::GpuClusterableObjectsStorage& value) noexcept {
         return value.data.size() * sizeof(::epix::pbr::GpuClusterableObject);
     }
@@ -142,10 +143,11 @@ struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectsStorage> {
     }
 };
 
-/** @brief A runtime-sized `u32` list (Bevy `GpuClusterableObjectIndexListsStorage`). */
+/** @brief A runtime-sized `u32` list (Bevy `GpuClusterableObjectIndexListsStorage`):
+ *  one `u32` is its minimum binding size. */
 template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectIndexListsStorage> {
-    static constexpr std::size_t shader_size = 0;
+    static constexpr std::size_t shader_size = sizeof(std::uint32_t);
     static std::size_t size_for(const ::epix::pbr::GpuClusterableObjectIndexListsStorage& value) noexcept {
         return value.data.size() * sizeof(std::uint32_t);
     }
@@ -158,10 +160,11 @@ struct ShaderTypeInfo<::epix::pbr::GpuClusterableObjectIndexListsStorage> {
 };
 
 /** @brief A runtime-sized `array<vec4<u32>, 2>` list (Bevy
- *  `GpuClusterOffsetsAndCountsStorage`). */
+ *  `GpuClusterOffsetsAndCountsStorage`): one element, two `uvec4`s, is its
+ *  minimum binding size. */
 template <>
 struct ShaderTypeInfo<::epix::pbr::GpuClusterOffsetsAndCountsStorage> {
-    static constexpr std::size_t shader_size = 0;
+    static constexpr std::size_t shader_size = sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
     static std::size_t size_for(const ::epix::pbr::GpuClusterOffsetsAndCountsStorage& value) noexcept {
         return value.data.size() * sizeof(::epix::pbr::GpuClusterOffsetsAndCounts);
     }
@@ -231,6 +234,20 @@ EPIX_EXPORT struct GpuClusterableObjects {
     std::optional<std::reference_wrapper<const wgpu::Buffer>> binding() const {
         if (const auto* uniform = std::get_if<Uniform>(&buffer)) return uniform->binding();
         return std::get<Storage>(buffer).binding();
+    }
+
+    /** @brief The minimum binding size of this buffer in the given form (Bevy
+     *  `GpuClusterableObjects::min_size`, `cluster.rs:226-231`).
+     *
+     *  A runtime-sized struct's minimum is computed as though its array had one
+     *  element, so the storage form's minimum is one `GpuClusterableObject`
+     *  rather than zero, and the uniform form's is the whole fixed array. Both
+     *  are the `min_binding_size` the mesh view layout declares for binding 8
+     *  (`mesh_view_bindings.rs:284-293`). */
+    static std::uint64_t min_size(wgpu::BufferBindingType binding_type) {
+        if (binding_type == wgpu::BufferBindingType::eUniform)
+            return sizeof(GpuClusterableObjectsUniform);
+        return sizeof(GpuClusterableObject);
     }
 };
 
@@ -472,6 +489,33 @@ EPIX_EXPORT struct ViewClusterBindings {
         if (const auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers))
             return uniform->cluster_offsets_and_counts.binding();
         return std::get<ViewClusterBuffersStorage>(buffers.buffers).cluster_offsets_and_counts.binding();
+    }
+
+    /** @brief The minimum binding size of the index-list buffer in the given form
+     *  (Bevy `ViewClusterBindings::min_size_clusterable_object_index_lists`,
+     *  `cluster.rs:485-492`).
+     *
+     *  The uniform form is the whole fixed `uvec4` array; the storage form is
+     *  `GpuClusterableObjectIndexListsStorage`'s minimum, which is one `u32`
+     *  because its only member is the runtime-sized array. Declared for binding
+     *  9 of the mesh view layout (`mesh_view_bindings.rs:294-306`). */
+    static std::uint64_t min_size_clusterable_object_index_lists(wgpu::BufferBindingType binding_type) {
+        if (binding_type == wgpu::BufferBindingType::eUniform)
+            return sizeof(GpuClusterableObjectIndexListsUniform);
+        return sizeof(std::uint32_t);
+    }
+
+    /** @brief The minimum binding size of the offsets-and-counts buffer in the
+     *  given form (Bevy `ViewClusterBindings::min_size_cluster_offsets_and_counts`,
+     *  `cluster.rs:494-501`).
+     *
+     *  The storage form's element is two `uvec4`s, so its minimum is 32 bytes,
+     *  and the uniform form is the whole fixed array. Declared for binding 10 of
+     *  the mesh view layout (`mesh_view_bindings.rs:307-317`). */
+    static std::uint64_t min_size_cluster_offsets_and_counts(wgpu::BufferBindingType binding_type) {
+        if (binding_type == wgpu::BufferBindingType::eUniform)
+            return sizeof(GpuClusterOffsetsAndCountsUniform);
+        return sizeof(GpuClusterOffsetsAndCounts);
     }
 };
 

@@ -60,8 +60,13 @@ TEST(Cluster, GpuClusterableObjectMatchesBevyLayout) {
 }
 
 /** @brief The uniform form is a full array; the three storage forms are
- *  runtime-sized, so they report a zero minimum and a written size that follows
- *  the data (Bevy `#[shader(size(runtime))]`). */
+ *  runtime-sized, so they report a one-element minimum and a written size that
+ *  follows the data (Bevy `#[shader(size(runtime))]`).
+ *
+ *  encase computes a runtime-sized struct's `min_size()` by assuming the array
+ *  holds one element (`encase-0.12.1/src/types/runtime_sized_array.rs:140`,
+ *  `:129-144`), so a struct that is nothing but the runtime array still has that
+ *  element's size as its minimum - not zero. */
 TEST(Cluster, RuntimeSizedClusterBuffersFollowTheData) {
     using epix::pbr::GpuClusterOffsetsAndCounts;
     using epix::pbr::GpuClusterOffsetsAndCountsStorage;
@@ -79,10 +84,12 @@ TEST(Cluster, RuntimeSizedClusterBuffersFollowTheData) {
     EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsUniform>::shader_size,
               204u * sizeof(GpuClusterableObject));
 
-    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsStorage>::shader_size, 0u)
-        << "a struct whose only member is the runtime array has a zero minimum";
-    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectIndexListsStorage>::shader_size, 0u);
-    EXPECT_EQ(ShaderTypeInfo<GpuClusterOffsetsAndCountsStorage>::shader_size, 0u);
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsStorage>::shader_size, 80u)
+        << "one GpuClusterableObject is the runtime struct's minimum";
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectIndexListsStorage>::shader_size, 4u)
+        << "one u32 is the runtime u32 list's minimum";
+    EXPECT_EQ(ShaderTypeInfo<GpuClusterOffsetsAndCountsStorage>::shader_size, 32u)
+        << "one array<uvec4, 2> is the runtime list's minimum";
 
     const GpuClusterableObjectsStorage objects{.data = std::vector<GpuClusterableObject>(3)};
     EXPECT_EQ(ShaderTypeInfo<GpuClusterableObjectsStorage>::size_for(objects), 3u * 80u);
@@ -598,6 +605,54 @@ TEST(Cluster, GpuClusterableObjectsClampsUniformAndReplacesStorage) {
     const GlobalClusterableObjectMeta meta{wgpu::BufferBindingType::eStorage};
     EXPECT_TRUE(std::holds_alternative<GpuClusterableObjects::Storage>(meta.gpu_clusterable_objects.buffer));
     EXPECT_TRUE(meta.entity_to_index.empty());
+}
+
+/** @brief The three minimum binding sizes the mesh view layout declares for the
+ *  cluster bindings, in both buffer forms (Bevy `GpuClusterableObjects::min_size`,
+ *  `bevy_pbr/src/cluster.rs:226-231`, and
+ *  `ViewClusterBindings::min_size_clusterable_object_index_lists` /
+ *  `min_size_cluster_offsets_and_counts`, `cluster.rs:485-501`).
+ *
+ *  The uniform forms are the whole fixed arrays, because a uniform buffer cannot
+ *  grow; the storage forms are one element each, which is what encase's
+ *  `min_size()` answers for a runtime-sized struct. Those are the values
+ *  `layout_entries` passes to `buffer_layout` for bindings 8, 9 and 10
+ *  (`mesh_view_bindings.rs:284-317`). */
+TEST(Cluster, ClusterBufferMinimumSizesMatchBevy) {
+    using epix::pbr::GpuClusterableObject;
+    using epix::pbr::GpuClusterableObjectIndexListsUniform;
+    using epix::pbr::GpuClusterableObjects;
+    using epix::pbr::GpuClusterableObjectsUniform;
+    using epix::pbr::GpuClusterOffsetsAndCounts;
+    using epix::pbr::GpuClusterOffsetsAndCountsUniform;
+    using epix::pbr::MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS;
+    using epix::pbr::ViewClusterBindings;
+
+    const auto uniform = wgpu::BufferBindingType::eUniform;
+    const auto storage = wgpu::BufferBindingType::eStorage;
+    const auto read_only_storage = wgpu::BufferBindingType::eReadOnlyStorage;
+
+    // Binding 8: the scene-wide clusterable objects.
+    EXPECT_EQ(GpuClusterableObjects::min_size(uniform), sizeof(GpuClusterableObjectsUniform));
+    EXPECT_EQ(GpuClusterableObjects::min_size(uniform),
+              MAX_UNIFORM_BUFFER_CLUSTERABLE_OBJECTS * sizeof(GpuClusterableObject));
+    EXPECT_EQ(GpuClusterableObjects::min_size(storage), sizeof(GpuClusterableObject));
+    EXPECT_EQ(GpuClusterableObjects::min_size(read_only_storage), sizeof(GpuClusterableObject));
+
+    // Binding 9: the cluster index lists. The uniform form is its full uvec4
+    // array; the storage form is one u32 of the runtime-sized list.
+    EXPECT_EQ(ViewClusterBindings::min_size_clusterable_object_index_lists(uniform),
+              sizeof(GpuClusterableObjectIndexListsUniform));
+    EXPECT_EQ(ViewClusterBindings::min_size_clusterable_object_index_lists(storage), sizeof(std::uint32_t));
+    EXPECT_EQ(ViewClusterBindings::min_size_clusterable_object_index_lists(read_only_storage),
+              sizeof(std::uint32_t));
+
+    // Binding 10: the offsets and counts. The storage element is two uvec4s.
+    EXPECT_EQ(ViewClusterBindings::min_size_cluster_offsets_and_counts(uniform),
+              sizeof(GpuClusterOffsetsAndCountsUniform));
+    EXPECT_EQ(ViewClusterBindings::min_size_cluster_offsets_and_counts(storage),
+              sizeof(GpuClusterOffsetsAndCounts));
+    EXPECT_EQ(ViewClusterBindings::min_size_cluster_offsets_and_counts(storage), 32u);
 }
 
 /** @brief A view's cluster limits follow from the 16 KiB uniform binding limit,
