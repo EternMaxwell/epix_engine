@@ -258,6 +258,24 @@ TEST(MeshPipeline, SpecializeAssemblesDescriptorFollowBevy) {
     EXPECT_EQ(descriptor->depth_stencil->depthWriteEnabled, wgpu::OptionalBool::eTrue);
     EXPECT_EQ(descriptor->multisample.count, 1u);
 
+    // The four texture-feature definitions Bevy gates on cargo features are not
+    // in its default feature set, so a default build emits none of them
+    // (`PBR-244`); pushing one would send the shader down a path Bevy's default
+    // build never compiles.
+    const auto has_def = [&descriptor](std::string_view name) {
+        return std::ranges::any_of(descriptor->vertex.shader_defs, [name](const ShaderDefVal& def) {
+            return def.name == name;
+        });
+    };
+    for (const auto* name : {"PBR_TRANSMISSION_TEXTURES_SUPPORTED", "PBR_MULTI_LAYER_MATERIAL_TEXTURES_SUPPORTED",
+                             "PBR_ANISOTROPY_TEXTURE_SUPPORTED", "PBR_SPECULAR_TEXTURES_SUPPORTED"}) {
+        EXPECT_FALSE(has_def(name)) << name;
+    }
+    EXPECT_TRUE(has_def("MESH_PIPELINE"));
+    EXPECT_TRUE(has_def("VERTEX_OUTPUT_INSTANCE_INDEX"));
+    // The per-object buffer batch size is a valued definition the shader needs.
+    EXPECT_TRUE(has_def("PER_OBJECT_BUFFER_BATCH_SIZE"));
+
     // HDR views render to the HDR target format.
     auto hdr = pipeline.specialize(opaque | pbr::MeshPipelineKey::HDR, layout);
     ASSERT_TRUE(hdr.has_value());

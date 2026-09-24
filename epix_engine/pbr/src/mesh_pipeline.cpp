@@ -51,12 +51,11 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     };
     append_names(vertex.shader_defs);
 
-    // The texture features Bevy compiles in by default, so they are always on
-    // here (Bevy's `cfg!(feature = ..)`, `render/mesh.rs:2420-2431`).
-    shader_defs.push_back(Def::from_bool("PBR_TRANSMISSION_TEXTURES_SUPPORTED"));
-    shader_defs.push_back(Def::from_bool("PBR_MULTI_LAYER_MATERIAL_TEXTURES_SUPPORTED"));
-    shader_defs.push_back(Def::from_bool("PBR_ANISOTROPY_TEXTURE_SUPPORTED"));
-    shader_defs.push_back(Def::from_bool("PBR_SPECULAR_TEXTURES_SUPPORTED"));
+    // Bevy pushes four texture-feature definitions here, each behind a `bevy_pbr`
+    // cargo feature that its default feature set does not enable
+    // (`bevy_pbr/Cargo.toml:14-24`, reached from `default = ["2d", "3d", "ui"]`),
+    // so a default build emits none of them and neither does this port
+    // (`PBR-244`).
 
     const MeshMorphSkinningSetup morph_and_skinning =
         setup_morph_and_skinning_defs(key, layout, 6, skins_use_uniform_buffers);
