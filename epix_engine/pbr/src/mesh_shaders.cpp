@@ -400,6 +400,150 @@ public struct AtmosphereData {
 }
 )slang";
 
+/**
+ * @brief Slang representation of pinned Bevy 0.18 `mesh_view_bindings.wgsl`.
+ *
+ * Every binding is the entry the view layout declares, at the same group and
+ * binding number, with Bevy's definitions gating exactly what they gate.
+ *
+ * Two representation notes. Bevy's `var<uniform> visibility_ranges:
+ * array<vec4<f32>, 64u>` becomes a one-member block, because Slang has no bare
+ * uniform array; the block's layout is the same and consumers read `values[i]`.
+ * The binding arrays (`binding_array<texture_cube<f32>, 8u>` and the two others)
+ * are descriptor arrays, which is how Slang and SPIR-V spell a binding array.
+ */
+constexpr std::string_view kMeshViewBindingsShader = R"slang(
+module epix.mesh_view_bindings;
+
+import epix.mesh_view_types;
+import epix.atmosphere_types;
+import epix.view;
+import epix.globals;
+
+[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view;
+[[vk::binding(1, 0)]] ConstantBuffer<epix::mesh_view_types::Lights> lights;
+#ifdef NO_CUBE_ARRAY_TEXTURES_SUPPORT
+[[vk::binding(2, 0)]] DepthTextureCube point_shadow_textures;
+#else
+[[vk::binding(2, 0)]] DepthTextureCubeArray point_shadow_textures;
+#endif
+[[vk::binding(3, 0)]] SamplerComparisonState point_shadow_textures_comparison_sampler;
+#ifdef PCSS_SAMPLERS_AVAILABLE
+[[vk::binding(4, 0)]] SamplerState point_shadow_textures_linear_sampler;
+#endif
+#ifdef NO_ARRAY_TEXTURES_SUPPORT
+[[vk::binding(5, 0)]] DepthTexture2D directional_shadow_textures;
+#else
+[[vk::binding(5, 0)]] DepthTexture2DArray directional_shadow_textures;
+#endif
+[[vk::binding(6, 0)]] SamplerComparisonState directional_shadow_textures_comparison_sampler;
+#ifdef PCSS_SAMPLERS_AVAILABLE
+[[vk::binding(7, 0)]] SamplerState directional_shadow_textures_linear_sampler;
+#endif
+
+#if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 3
+// A WGSL storage buffer whose whole block is a runtime-sized array is a Slang
+// `StructuredBuffer` over the *element*; the runtime array is the buffer's own.
+// The offsets element is a pair of `uvec4`s, so the buffer is declared as the
+// flat `uint4` array the pair packs into: same bytes, and a reader scales the
+// index by two.
+[[vk::binding(8, 0)]] StructuredBuffer<epix::mesh_view_types::ClusterableObject> clusterable_objects;
+[[vk::binding(9, 0)]] StructuredBuffer<uint> clusterable_object_index_lists;
+[[vk::binding(10, 0)]] StructuredBuffer<uint4> cluster_offsets_and_counts;
+#else
+[[vk::binding(8, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterableObjects> clusterable_objects;
+[[vk::binding(9, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterLightIndexLists> clusterable_object_index_lists;
+[[vk::binding(10, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterOffsetsAndCounts> cluster_offsets_and_counts;
+#endif
+
+[[vk::binding(11, 0)]] ConstantBuffer<epix::globals::Globals> globals;
+[[vk::binding(12, 0)]] ConstantBuffer<epix::mesh_view_types::Fog> fog;
+[[vk::binding(13, 0)]] ConstantBuffer<epix::mesh_view_types::LightProbes> light_probes;
+
+public static const uint VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE = 64u;
+#if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+[[vk::binding(14, 0)]] StructuredBuffer<float4> visibility_ranges;
+#else
+public struct VisibilityRanges {
+    public float4 values[VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE];
+};
+[[vk::binding(14, 0)]] ConstantBuffer<VisibilityRanges> visibility_ranges;
+#endif
+
+[[vk::binding(15, 0)]] ConstantBuffer<epix::mesh_view_types::ScreenSpaceReflectionsSettings> ssr_settings;
+[[vk::binding(16, 0)]] Texture2D<float4> screen_space_ambient_occlusion_texture;
+[[vk::binding(17, 0)]] ConstantBuffer<epix::mesh_view_types::EnvironmentMapUniform> environment_map_uniform;
+
+// Tonemapping LUTs; keep in sync with the tonemapping module.
+[[vk::binding(18, 0)]] Texture3D<float4> dt_lut_texture;
+[[vk::binding(19, 0)]] SamplerState dt_lut_sampler;
+
+#ifdef MULTISAMPLED
+#ifdef DEPTH_PREPASS
+[[vk::binding(20, 0)]] DepthTexture2DMS<0> depth_prepass_texture;
+#endif
+#ifdef NORMAL_PREPASS
+[[vk::binding(21, 0)]] Texture2DMS<float4> normal_prepass_texture;
+#endif
+#ifdef MOTION_VECTOR_PREPASS
+[[vk::binding(22, 0)]] Texture2DMS<float4> motion_vector_prepass_texture;
+#endif
+#else
+#ifdef DEPTH_PREPASS
+[[vk::binding(20, 0)]] DepthTexture2D depth_prepass_texture;
+#endif
+#ifdef NORMAL_PREPASS
+[[vk::binding(21, 0)]] Texture2D<float4> normal_prepass_texture;
+#endif
+#ifdef MOTION_VECTOR_PREPASS
+[[vk::binding(22, 0)]] Texture2D<float4> motion_vector_prepass_texture;
+#endif
+#endif
+
+#ifdef DEFERRED_PREPASS
+[[vk::binding(23, 0)]] Texture2D<uint> deferred_prepass_texture;
+#endif
+
+[[vk::binding(24, 0)]] Texture2D<float4> view_transmission_texture;
+[[vk::binding(25, 0)]] SamplerState view_transmission_sampler;
+
+#ifdef OIT_ENABLED
+[[vk::binding(26, 0)]] RWStructuredBuffer<uint2> oit_layers;
+[[vk::binding(27, 0)]] RWStructuredBuffer<int> oit_layer_ids;
+[[vk::binding(28, 0)]] ConstantBuffer<epix::mesh_view_types::OrderIndependentTransparencySettings> oit_settings;
+#endif
+
+#ifdef ATMOSPHERE
+[[vk::binding(29, 0)]] Texture2D<float4> atmosphere_transmittance_texture;
+[[vk::binding(30, 0)]] SamplerState atmosphere_transmittance_sampler;
+[[vk::binding(31, 0)]] StructuredBuffer<epix::atmosphere_types::AtmosphereData> atmosphere_data;
+#endif
+
+#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY
+[[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_maps[8];
+[[vk::binding(1, 1)]] TextureCube<float4> specular_environment_maps[8];
+#else
+[[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_map;
+[[vk::binding(1, 1)]] TextureCube<float4> specular_environment_map;
+#endif
+[[vk::binding(2, 1)]] SamplerState environment_map_sampler;
+
+#ifdef IRRADIANCE_VOLUMES_ARE_USABLE
+#ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY
+[[vk::binding(3, 1)]] Texture3D<float4> irradiance_volumes[8];
+#else
+[[vk::binding(3, 1)]] Texture3D<float4> irradiance_volume;
+#endif
+[[vk::binding(4, 1)]] SamplerState irradiance_volume_sampler;
+#endif
+
+#ifdef CLUSTERED_DECALS_ARE_USABLE
+[[vk::binding(5, 1)]] StructuredBuffer<epix::mesh_view_types::ClusteredDecal> clustered_decals;
+[[vk::binding(6, 1)]] Texture2D<float4> clustered_decal_textures[8];
+[[vk::binding(7, 1)]] SamplerState clustered_decal_sampler;
+#endif
+)slang";
+
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
@@ -418,6 +562,7 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(FORWARD_IO_SHADER_PATH, shader_bytes(kForwardIoShader));
     registry->get().insert_asset_static(MESH_VIEW_TYPES_SHADER_PATH, shader_bytes(kMeshViewTypesShader));
     registry->get().insert_asset_static(ATMOSPHERE_TYPES_SHADER_PATH, shader_bytes(kAtmosphereTypesShader));
+    registry->get().insert_asset_static(MESH_VIEW_BINDINGS_SHADER_PATH, shader_bytes(kMeshViewBindingsShader));
     world.insert_resource(MeshShaderHandles{
         .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
@@ -428,6 +573,8 @@ void register_mesh_shaders(ecs::World& world) {
                                                               std::string(MESH_VIEW_TYPES_SHADER_PATH)),
         .atmosphere_types = server->get().load<shader::Shader>(std::string("embedded://") +
                                                                std::string(ATMOSPHERE_TYPES_SHADER_PATH)),
+        .mesh_view_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
+                                                                 std::string(MESH_VIEW_BINDINGS_SHADER_PATH)),
     });
 }
 

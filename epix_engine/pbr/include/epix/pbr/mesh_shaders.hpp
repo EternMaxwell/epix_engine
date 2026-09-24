@@ -24,6 +24,9 @@ EPIX_EXPORT inline constexpr std::string_view MESH_VIEW_TYPES_SHADER_PATH = "pbr
 /** @brief The embedded path of the atmosphere shader types (Bevy
  *  `atmosphere/types.wgsl`), which the view bindings import. */
 EPIX_EXPORT inline constexpr std::string_view ATMOSPHERE_TYPES_SHADER_PATH = "pbr/atmosphere_types.slang";
+/** @brief The embedded path of the group-0 and group-1 view bindings (Bevy
+ *  `render/mesh_view_bindings.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view MESH_VIEW_BINDINGS_SHADER_PATH = "pbr/mesh_view_bindings.slang";
 
 /** @brief Handles keeping the mesh shader modules loaded.
  *
@@ -37,6 +40,7 @@ EPIX_EXPORT struct MeshShaderHandles {
     assets::Handle<shader::Shader> forward_io;
     assets::Handle<shader::Shader> mesh_view_types;
     assets::Handle<shader::Shader> atmosphere_types;
+    assets::Handle<shader::Shader> mesh_view_bindings;
 };
 
 /** @brief Publish the mesh shader modules as embedded assets and load them

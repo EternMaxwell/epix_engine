@@ -83,7 +83,7 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://pbr/forward_io.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_view_types.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/atmosphere_types.slang");
-
+    expect_embedded_shader_loaded(app, "embedded://pbr/mesh_view_bindings.slang");
     // The handles resource holds every loaded module.
     const auto& handles = app.resource<pbr::MeshShaderHandles>();
     auto& shaders       = app.resource<Assets<Shader>>();
@@ -92,11 +92,13 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     const auto io       = shaders.get(handles.forward_io.id());
     const auto view_types       = shaders.get(handles.mesh_view_types.id());
     const auto atmosphere_types = shaders.get(handles.atmosphere_types.id());
+    const auto view_bindings    = shaders.get(handles.mesh_view_bindings.id());
     ASSERT_TRUE(types.has_value());
     ASSERT_TRUE(bindings.has_value());
     ASSERT_TRUE(io.has_value());
     ASSERT_TRUE(view_types.has_value());
     ASSERT_TRUE(atmosphere_types.has_value());
+    ASSERT_TRUE(view_bindings.has_value());
 
     // `mesh_types`, `forward_io`, `mesh_view_types` and `atmosphere_types` are
     // leaves; `mesh_bindings` declares exactly one import, and it is a custom
@@ -108,6 +110,13 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     EXPECT_TRUE(atmosphere_types->get().imports.empty());
     ASSERT_EQ(bindings->get().imports.size(), 1u);
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(bindings->get().imports[0].data));
+    // The view bindings are the module that ties the others together: the two
+    // pbr type modules and the engine's own view and globals modules, which is
+    // what `is_loaded_with_dependencies` above proves resolved.
+    ASSERT_EQ(view_bindings->get().imports.size(), 4u);
+    for (const auto& import : view_bindings->get().imports) {
+        EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(import.data));
+    }
 
     // Every module names itself, so a material shader can import it by name.
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(types->get().import_path.data));
