@@ -114,7 +114,11 @@ module epix.forward_io;
 namespace epix::forward_io {
 
 public struct Vertex {
-    public uint instance_index : SV_InstanceID;
+    // Raw Vulkan `InstanceIndex` (base instance included), matching what the WGSL
+    // path gets from `@builtin(instance_index)`. HLSL's `SV_InstanceID` would
+    // instead read `BaseInstance` and declare the `DrawParameters` capability,
+    // which the SPIR-V frontend rejects.
+    public uint instance_index : SV_VulkanInstanceID;
 #ifdef VERTEX_POSITIONS
     public [[vk::location(0)]] float3 position;
 #endif
@@ -1084,6 +1088,128 @@ public uint get_tag(uint instance_index) {
 }
 )slang";
 
+/**
+ * @brief Slang representation of pinned Bevy 0.18 `render/mesh.wgsl`, the
+ * forward mesh shader's vertex and fragment entry points.
+ *
+ * Unlike the libraries around it this is a root shader: it declares no module
+ * and its two `[shader(...)]` entry points are what a pipeline compiles, which
+ * is Bevy's `load_embedded_asset!(app, "mesh.wgsl")` counterpart. Its imports
+ * are the mesh bindings, the mesh and skinning function libraries, the morph
+ * accessors, the forward IO structs and `position_world_to_clip`; the fragment
+ * path needs nothing else, because a material's own shader composes it. The
+ * morph accessors are module-scope declarations, so Slang's `import` brings them
+ * in by their bare names where Bevy qualifies them with `morph::`; the same goes
+ * for the skinning functions.
+ *
+ * `vertex_no_morph.instance_index` is used wherever Bevy uses it, for the wgpu
+ * dx12 bug its comments name (gfx-rs/naga#2416).
+ */
+constexpr std::string_view kMesh3dShader = R"slang(
+import epix.mesh_bindings;
+import epix.mesh_functions;
+import epix.skinning;
+import epix.morph;
+import epix.forward_io;
+import epix.view_transformations;
+
+#ifdef MORPH_TARGETS
+epix::forward_io::Vertex morph_vertex(epix::forward_io::Vertex vertex_in) {
+    epix::forward_io::Vertex vertex = vertex_in;
+    uint first_vertex = mesh_instance(vertex.instance_index).first_vertex_index;
+    uint vertex_index = vertex.index - first_vertex;
+
+    uint weight_count = layer_count();
+    for (uint i = 0u; i < weight_count; i++) {
+        float weight = weight_at(i);
+        if (weight == 0.0) {
+            continue;
+        }
+        vertex.position += weight * morph(vertex_index, position_offset, i);
+#ifdef VERTEX_NORMALS
+        vertex.normal += weight * morph(vertex_index, normal_offset, i);
+#endif
+#ifdef VERTEX_TANGENTS
+        vertex.tangent += float4(weight * morph(vertex_index, tangent_offset, i), 0.0);
+#endif
+    }
+    return vertex;
+}
+#endif
+
+[shader("vertex")]
+epix::forward_io::VertexOutput vertex(epix::forward_io::Vertex vertex_no_morph) {
+    epix::forward_io::VertexOutput out;
+
+#ifdef MORPH_TARGETS
+    epix::forward_io::Vertex vertex = morph_vertex(vertex_no_morph);
+#else
+    epix::forward_io::Vertex vertex = vertex_no_morph;
+#endif
+
+    float4x4 mesh_world_from_local = epix::mesh_functions::get_world_from_local(vertex_no_morph.instance_index);
+
+#ifdef SKINNED
+    float4x4 world_from_local =
+        skin_model(vertex.joint_indices, vertex.joint_weights, vertex_no_morph.instance_index);
+#else
+    // `vertex_no_morph.instance_index` avoids the wgpu dx12 bug above.
+    float4x4 world_from_local = mesh_world_from_local;
+#endif
+
+#ifdef VERTEX_NORMALS
+#ifdef SKINNED
+    out.world_normal = skin_normals(world_from_local, vertex.normal);
+#else
+    out.world_normal = epix::mesh_functions::mesh_normal_local_to_world(vertex.normal, vertex_no_morph.instance_index);
+#endif
+#endif
+
+#ifdef VERTEX_POSITIONS
+    out.world_position =
+        epix::mesh_functions::mesh_position_local_to_world(world_from_local, float4(vertex.position, 1.0));
+    out.position = epix::view_transformations::position_world_to_clip(out.world_position.xyz);
+#endif
+
+#ifdef VERTEX_UVS_A
+    out.uv = vertex.uv;
+#endif
+#ifdef VERTEX_UVS_B
+    out.uv_b = vertex.uv_b;
+#endif
+
+#ifdef VERTEX_TANGENTS
+    out.world_tangent =
+        epix::mesh_functions::mesh_tangent_local_to_world(world_from_local, vertex.tangent,
+                                                          vertex_no_morph.instance_index);
+#endif
+
+#ifdef VERTEX_COLORS
+    out.color = vertex.color;
+#endif
+
+#ifdef VERTEX_OUTPUT_INSTANCE_INDEX
+    out.instance_index = vertex_no_morph.instance_index;
+#endif
+
+#ifdef VISIBILITY_RANGE_DITHER
+    out.visibility_range_dither = epix::mesh_functions::get_visibility_range_dither_level(
+        vertex_no_morph.instance_index, mesh_world_from_local[3]);
+#endif
+
+    return out;
+}
+
+[shader("fragment")]
+float4 fragment(epix::forward_io::VertexOutput mesh) : SV_Target {
+#ifdef VERTEX_COLORS
+    return mesh.color;
+#else
+    return float4(1.0, 0.0, 1.0, 1.0);
+#endif
+}
+)slang";
+
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
@@ -1110,6 +1236,7 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH,
                                         shader_bytes(kViewTransformationsShader));
     registry->get().insert_asset_static(MESH_FUNCTIONS_SHADER_PATH, shader_bytes(kMeshFunctionsShader));
+    registry->get().insert_asset_static(MESH_SHADER_PATH, shader_bytes(kMesh3dShader));
     world.insert_resource(MeshShaderHandles{
         .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
@@ -1134,6 +1261,7 @@ void register_mesh_shaders(ecs::World& world) {
                                                                    std::string(VIEW_TRANSFORMATIONS_SHADER_PATH)),
         .mesh_functions = server->get().load<shader::Shader>(std::string("embedded://") +
                                                              std::string(MESH_FUNCTIONS_SHADER_PATH)),
+        .mesh = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_SHADER_PATH)),
     });
 }
 
