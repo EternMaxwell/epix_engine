@@ -1,6 +1,7 @@
 #include <epix/pbr/ambient_light.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
+#include <epix/pbr/clustered_decal.hpp>
 #include <epix/pbr/directional_light.hpp>
 #include <epix/pbr/fog.hpp>
 #include <epix/pbr/gpu_lights.hpp>
@@ -653,6 +654,78 @@ TEST(Cluster, ClusterBufferMinimumSizesMatchBevy) {
     EXPECT_EQ(ViewClusterBindings::min_size_cluster_offsets_and_counts(storage),
               sizeof(GpuClusterOffsetsAndCounts));
     EXPECT_EQ(ViewClusterBindings::min_size_cluster_offsets_and_counts(storage), 32u);
+}
+
+/** @brief The clustered-decal entries: the decals buffer, the decal texture
+ *  array and their sampler, in the one shape Bevy has for them (Bevy
+ *  `decal::clustered::{max_view_decals, clustered_decals_are_usable,
+ *  get_bind_group_layout_entries}`, `decal/clustered.rs:399-420,520-555`).
+ *
+ *  Binding arrays are a precondition rather than a choice, so nothing comes back
+ *  when they are missing or the cargo feature is off, and the texture entry
+ *  always carries the platform's decal cap. The three entries land at the
+ *  binding-array group's bindings 5, 6 and 7. */
+TEST(Cluster, ClusteredDecalLayoutEntriesMatchBevy) {
+    using epix::pbr::clustered_decal_bind_group_layout_entries;
+    using epix::pbr::clustered_decals_are_usable;
+    using epix::pbr::max_view_decals;
+    using epix::pbr::MAX_VIEW_DECALS;
+    using epix::pbr::MAX_VIEW_DECALS_WITH_PARTIALLY_BOUND_BINDING_ARRAY;
+    using epix::pbr::RenderClusteredDecal;
+
+    // The object is the shader's 96 bytes: a mat4, four indices, a tag and three
+    // pads, and Bevy's `Default` is the zero matrix with zero indices.
+    EXPECT_EQ(sizeof(RenderClusteredDecal), 96u);
+    EXPECT_EQ(offsetof(RenderClusteredDecal, local_from_world), 0u);
+    EXPECT_EQ(offsetof(RenderClusteredDecal, image_indices), 64u);
+    EXPECT_EQ(offsetof(RenderClusteredDecal, tag), 80u);
+    EXPECT_EQ(offsetof(RenderClusteredDecal, pad_c), 92u);
+    const RenderClusteredDecal defaulted{};
+    EXPECT_EQ(defaulted.local_from_world, glm::mat4(0.0f));
+    EXPECT_EQ(defaulted.image_indices, (std::array<std::int32_t, 4>{0, 0, 0, 0}));
+
+    // Binding arrays and the cargo feature are both required, exactly Bevy's `&&`.
+    EXPECT_FALSE(clustered_decals_are_usable(false, false));
+    EXPECT_FALSE(clustered_decals_are_usable(false, true));
+    EXPECT_FALSE(clustered_decals_are_usable(true, false));
+    EXPECT_TRUE(clustered_decals_are_usable(true, true));
+
+    // The cap follows partially-bound binding array support.
+    EXPECT_EQ(max_view_decals(true), MAX_VIEW_DECALS_WITH_PARTIALLY_BOUND_BINDING_ARRAY);
+    EXPECT_EQ(max_view_decals(true), 1024u);
+    EXPECT_EQ(max_view_decals(false), MAX_VIEW_DECALS);
+    EXPECT_EQ(max_view_decals(false), 8u);
+
+    // No binding arrays, or no feature, means no entries at all - not a
+    // single-texture shape.
+    EXPECT_FALSE(clustered_decal_bind_group_layout_entries(false, true, true).has_value());
+    EXPECT_FALSE(clustered_decal_bind_group_layout_entries(true, false, true).has_value());
+
+    const auto entries = clustered_decal_bind_group_layout_entries(true, true, true);
+    ASSERT_TRUE(entries.has_value());
+    const auto at = [&](std::size_t index, std::uint32_t binding) {
+        return (*entries)[index].build(binding, wgpu::ShaderStage::eVertex);
+    };
+
+    // The decals buffer: read-only storage with the element's minimum size.
+    const auto buffer = at(0u, 5u);
+    EXPECT_EQ(buffer.buffer.type, wgpu::BufferBindingType::eReadOnlyStorage);
+    EXPECT_EQ(buffer.buffer.hasDynamicOffset, 0u);
+    EXPECT_EQ(buffer.buffer.minBindingSize, sizeof(RenderClusteredDecal));
+    EXPECT_EQ(buffer.binding, 5u);
+
+    // The texture array: sized by the same cap, sampled as a filterable float.
+    const auto textures = at(1u, 6u);
+    EXPECT_EQ(textures.texture.viewDimension, wgpu::TextureViewDimension::e2D);
+    EXPECT_EQ(textures.texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(textures.bindingArraySize, MAX_VIEW_DECALS_WITH_PARTIALLY_BOUND_BINDING_ARRAY);
+    EXPECT_EQ(at(2u, 7u).sampler.type, wgpu::SamplerBindingType::eFiltering);
+
+    // Without partially bound arrays the array is capped at 8; the buffer entry
+    // is otherwise identical.
+    const auto small = clustered_decal_bind_group_layout_entries(true, true, false);
+    ASSERT_TRUE(small.has_value());
+    EXPECT_EQ((*small)[1].build(6u, wgpu::ShaderStage::eVertex).bindingArraySize, MAX_VIEW_DECALS);
 }
 
 /** @brief A view's cluster limits follow from the 16 KiB uniform binding limit,
