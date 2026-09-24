@@ -90,29 +90,19 @@ inline render::render_resource::BindGroupLayoutEntryBuilder lightmaps_sampler() 
  *  `layout_entry::lightmaps_texture_view_array`).
  *
  *  Bevy writes `texture_2d(..).visibility(..).count(N)`: the array-ness is the
- *  entry's binding-array size, not a `2d-array` view dimension, and the size is
- *  what `BindGroupLayoutEntryBuilder` cannot carry, so this entry is a native
- *  descriptor with its visibility set. */
-inline wgpu::BindGroupLayoutEntry lightmaps_texture_view_array() {
-    wgpu::TextureBindingLayout texture;
-    texture.setSampleType(wgpu::TextureSampleType::eFloat)
-        .setViewDimension(wgpu::TextureViewDimension::e2D)
-        .setMultisampled(wgpu::Bool(false));
-    return wgpu::BindGroupLayoutEntry()
-        .setVisibility(wgpu::ShaderStage::eFragment)
-        .setBindingArraySize(static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB))
-        .setTexture(texture);
+ *  entry's binding-array size, not a `2d-array` view dimension. */
+inline render::render_resource::BindGroupLayoutEntryBuilder lightmaps_texture_view_array() {
+    return render::render_resource::binding_types::texture_2d(wgpu::TextureSampleType::eFloat)
+        .visibility(wgpu::ShaderStage::eFragment)
+        .count(static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB));
 }
 
 /** @brief The slab's lightmap samplers as a binding array (Bevy
  *  `layout_entry::lightmaps_sampler_array`). */
-inline wgpu::BindGroupLayoutEntry lightmaps_sampler_array() {
-    wgpu::SamplerBindingLayout sampler;
-    sampler.setType(wgpu::SamplerBindingType::eFiltering);
-    return wgpu::BindGroupLayoutEntry()
-        .setVisibility(wgpu::ShaderStage::eFragment)
-        .setBindingArraySize(static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB))
-        .setSampler(sampler);
+inline render::render_resource::BindGroupLayoutEntryBuilder lightmaps_sampler_array() {
+    return render::render_resource::binding_types::sampler(wgpu::SamplerBindingType::eFiltering)
+        .visibility(wgpu::ShaderStage::eFragment)
+        .count(static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB));
 }
 
 }  // namespace mesh_layout_entry

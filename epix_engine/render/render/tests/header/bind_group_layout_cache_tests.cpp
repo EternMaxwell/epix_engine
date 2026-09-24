@@ -31,6 +31,37 @@ std::optional<wgpu::Device> make_vulkan_device() {
 
 }  // namespace
 
+// Bevy's builder carries a binding-array count (`count(NonZeroU32)`), and `build`
+// puts it on the entry's binding-array size
+// (render_resource/bind_group_layout_entries.rs:130-155). No count means the binding
+// is not an array.
+TEST(BindGroupLayoutEntryBuilder, CarriesTheBindingArrayCount) {
+    using render_resource::BindGroupLayoutEntries;
+    using render_resource::binding_types::sampler;
+    using render_resource::binding_types::texture_2d;
+
+    const auto plain = texture_2d(wgpu::TextureSampleType::eFloat).build(4u, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(plain.binding, 4u);
+    EXPECT_EQ(plain.bindingArraySize, 0u);
+
+    const auto array = texture_2d(wgpu::TextureSampleType::eFloat).count(4).build(5u, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(array.binding, 5u);
+    EXPECT_EQ(array.bindingArraySize, 4u);
+    EXPECT_EQ(array.texture.sampleType, wgpu::TextureSampleType::eFloat);
+
+    // Visibility and count chain in either order, and a collection with its own default
+    // visibility only fills the gap the entry leaves.
+    const auto chained = BindGroupLayoutEntries<>::single(
+        wgpu::ShaderStage::eVertex,
+        texture_2d(wgpu::TextureSampleType::eFloat).visibility(wgpu::ShaderStage::eFragment).count(8u));
+    EXPECT_EQ(chained[0].visibility, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(chained[0].bindingArraySize, 8u);
+    const auto inherited = BindGroupLayoutEntries<>::single(wgpu::ShaderStage::eVertex,
+                                                            sampler(wgpu::SamplerBindingType::eFiltering).count(3u));
+    EXPECT_EQ(inherited[0].visibility, wgpu::ShaderStage::eVertex) << "the count does not disturb visibility";
+    EXPECT_EQ(inherited[0].bindingArraySize, 3u);
+}
+
 // Bevy derives PartialEq/Eq/Hash over the label and the entries
 // (render_resource/pipeline.rs:90-104), which is what lets its cache intern
 // layouts by content instead of by identity.

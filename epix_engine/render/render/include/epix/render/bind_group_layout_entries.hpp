@@ -17,8 +17,12 @@
 namespace epix::render::render_resource {
 
 /** @brief Deferred binding number, visibility, and resource layout (Bevy
- * `BindGroupLayoutEntryBuilder`). Binding-array counts are unavailable until
- * R1 bindless support can be implemented over wgpu-native. */
+ * `BindGroupLayoutEntryBuilder`).
+ *
+ *  A builder may also carry a *count*, the number of elements a binding array
+ *  holds: Bevy's `count(NonZeroU32)` sets it and the native entry takes it as its
+ *  binding-array size, which is what a bindless layout is made of. A count of zero
+ *  (the default) means the binding is not an array. */
 EPIX_EXPORT class BindGroupLayoutEntryBuilder {
    public:
     explicit BindGroupLayoutEntryBuilder(wgpu::BindGroupLayoutEntry entry,
@@ -35,16 +39,27 @@ EPIX_EXPORT class BindGroupLayoutEntryBuilder {
         return std::move(*this);
     }
 
+    BindGroupLayoutEntryBuilder& count(std::uint32_t count) & {
+        m_count = count;
+        return *this;
+    }
+    BindGroupLayoutEntryBuilder&& count(std::uint32_t count) && {
+        m_count = count;
+        return std::move(*this);
+    }
+
     [[nodiscard]] wgpu::BindGroupLayoutEntry build(std::uint32_t binding,
                                                     wgpu::ShaderStage default_visibility) const {
         auto entry = m_entry;
         entry.setBinding(binding).setVisibility(m_visibility.value_or(default_visibility));
+        entry.setBindingArraySize(m_count.value_or(0));
         return entry;
     }
 
    private:
     wgpu::BindGroupLayoutEntry m_entry;
     std::optional<wgpu::ShaderStage> m_visibility;
+    std::optional<std::uint32_t> m_count;
 };
 
 namespace detail {
