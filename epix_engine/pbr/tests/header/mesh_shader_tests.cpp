@@ -81,22 +81,31 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_types.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_bindings.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/forward_io.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/mesh_view_types.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/atmosphere_types.slang");
 
-    // The handles resource holds the three loaded modules.
+    // The handles resource holds every loaded module.
     const auto& handles = app.resource<pbr::MeshShaderHandles>();
     auto& shaders       = app.resource<Assets<Shader>>();
     const auto types    = shaders.get(handles.mesh_types.id());
     const auto bindings = shaders.get(handles.mesh_bindings.id());
     const auto io       = shaders.get(handles.forward_io.id());
+    const auto view_types       = shaders.get(handles.mesh_view_types.id());
+    const auto atmosphere_types = shaders.get(handles.atmosphere_types.id());
     ASSERT_TRUE(types.has_value());
     ASSERT_TRUE(bindings.has_value());
     ASSERT_TRUE(io.has_value());
+    ASSERT_TRUE(view_types.has_value());
+    ASSERT_TRUE(atmosphere_types.has_value());
 
-    // `mesh_types` and `forward_io` are leaves; `mesh_bindings` declares exactly
-    // one import, and it is a custom module name rather than a file path, which
-    // is what `import epix.mesh_types;` has to resolve to.
+    // `mesh_types`, `forward_io`, `mesh_view_types` and `atmosphere_types` are
+    // leaves; `mesh_bindings` declares exactly one import, and it is a custom
+    // module name rather than a file path, which is what
+    // `import epix.mesh_types;` has to resolve to.
     EXPECT_TRUE(types->get().imports.empty());
     EXPECT_TRUE(io->get().imports.empty());
+    EXPECT_TRUE(view_types->get().imports.empty());
+    EXPECT_TRUE(atmosphere_types->get().imports.empty());
     ASSERT_EQ(bindings->get().imports.size(), 1u);
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(bindings->get().imports[0].data));
 
@@ -104,6 +113,8 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(types->get().import_path.data));
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(bindings->get().import_path.data));
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(io->get().import_path.data));
+    EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(view_types->get().import_path.data));
+    EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(atmosphere_types->get().import_path.data));
 }
 
 /** @brief The mesh pipeline resource holds Bevy's eight fields and derives four
