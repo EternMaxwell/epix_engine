@@ -627,6 +627,10 @@ void RenderPlugin::attach(App& app) {
                                    .set_names(std::array{"sync main pipeline shaders", "process main pipeline"}));
 
     app.add_plugins(shader::ShaderPlugin{});
+    // Bevy's `RenderPlugin::build` loads the shared maths shader library here
+    // (`lib.rs:402`), and the mesh shaders import it for the affine and
+    // packed-normal helpers.
+    register_maths_shader(app.world_mut());
     // WindowRenderPlugin owns ScreenshotPlugin, whose embedded blit shaders
     // require ShaderPlugin's loader to be registered first.
     app.add_plugins(render::window::WindowRenderPlugin{});

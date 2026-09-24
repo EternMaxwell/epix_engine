@@ -33,6 +33,7 @@
 #include <epix/render/image.hpp>
 #include <epix/render/label.hpp>
 #include <epix/render/manual_texture_view.hpp>
+#include <epix/render/maths.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
 #include <epix/render/mesh/render_mesh.hpp>
 #include <epix/render/mesh/render_asset.hpp>
