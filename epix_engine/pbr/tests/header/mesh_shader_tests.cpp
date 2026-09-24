@@ -1,22 +1,30 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/mesh.hpp>
 #include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
+#include <epix/render/view.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
 #include <gtest/gtest.h>
 
+#include <cstdio>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <thread>
 #include <variant>
+#include <vector>
 
 using namespace epix::app;
 using namespace epix::assets;
 using namespace epix::shader;
 
-namespace pbr = epix::pbr;
+namespace pbr      = epix::pbr;
+namespace mesh     = epix::mesh;
+namespace render   = epix::render;
+namespace core_graph = epix::core_graph;
 
 namespace {
 
@@ -198,4 +206,69 @@ TEST(MeshPipeline, FieldsAndViewLayoutFollowBevy) {
     EXPECT_FALSE(storage_pipeline.binding_arrays_are_usable);
     EXPECT_FALSE(storage_pipeline.clustered_decals_are_usable);
     EXPECT_EQ(storage_pipeline.clustered_forward_buffer_binding_type, wgpu::BufferBindingType::eStorage);
+}
+
+TEST(MeshPipeline, SpecializeAssemblesDescriptorFollowBevy) {
+    // Bevy's `SpecializedMeshPipeline for MeshPipeline` (`render/mesh.rs:2372-2740`):
+    // the descriptor takes the key's view layouts, the mesh layout the morph and
+    // skinning step selects, one vertex buffer built from the mesh's attributes,
+    // the HDR or default target format, and core3d's reverse-Z depth state.
+    auto app = make_shader_asset_app();
+    pbr::register_mesh_shaders(app.world_mut());
+    flush_load_tasks(app);
+
+    const auto& handles = app.resource<pbr::MeshShaderHandles>();
+    const auto layouts  = pbr::generate_view_layouts(wgpu::BufferBindingType::eReadOnlyStorage,
+                                                    wgpu::BufferBindingType::eReadOnlyStorage, true, true, true, false);
+
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 0;
+    const auto pipeline                    = pbr::MeshPipeline::make(
+        limits, wgpu::BufferBindingType::eReadOnlyStorage, handles.mesh, pbr::MeshPipelineViewLayouts{layouts}, true, true);
+
+    // A real mesh's layout: the specialization asks the layout which attributes
+    // the mesh has, and the vertex buffer layout it returns carries the strides.
+    mesh::MeshVertexBufferLayouts mesh_layouts;
+    const auto source = mesh::make_box2d(1.0f, 1.0f);
+    const auto layout = source.get_mesh_vertex_buffer_layout(mesh_layouts);
+    ASSERT_TRUE(layout.value);
+
+    const pbr::MeshPipelineKey opaque = pbr::MeshPipelineKey::NONE;
+    auto descriptor                   = pipeline.specialize(opaque, layout);
+    ASSERT_TRUE(descriptor.has_value());
+    EXPECT_EQ(descriptor->label, "opaque_mesh_pipeline");
+
+    // The view's main layout, its binding-array layout, then the mesh layout the
+    // key selects - the model-only one for a mesh that is neither skinned nor
+    // morphed nor lightmapped.
+    ASSERT_EQ(descriptor->layouts.size(), 3u);
+    EXPECT_EQ(descriptor->layouts[0].label,
+              pipeline.get_view_layout(pbr::MeshPipelineViewLayoutKey::from_pipeline_key(opaque)).main_layout.label);
+    EXPECT_EQ(descriptor->layouts[2].label, pipeline.mesh_layouts.model_only.label);
+
+    EXPECT_EQ(descriptor->vertex.shader.id(), handles.mesh.id());
+    ASSERT_EQ(descriptor->vertex.buffers.size(), 1u);
+    EXPECT_EQ(descriptor->vertex.buffers[0].attributes.size(), layout.value->attribute_ids().size());
+    ASSERT_TRUE(descriptor->vertex.entry_point.has_value());
+    EXPECT_EQ(*descriptor->vertex.entry_point, "vertex");
+
+    ASSERT_TRUE(descriptor->depth_stencil.has_value());
+    EXPECT_EQ(descriptor->depth_stencil->format, core_graph::core_3d::CORE_3D_DEPTH_FORMAT);
+    EXPECT_EQ(descriptor->depth_stencil->depthCompare, wgpu::CompareFunction::eGreaterEqual);
+    EXPECT_EQ(descriptor->depth_stencil->depthWriteEnabled, wgpu::OptionalBool::eTrue);
+    EXPECT_EQ(descriptor->multisample.count, 1u);
+
+    // HDR views render to the HDR target format.
+    auto hdr = pipeline.specialize(opaque | pbr::MeshPipelineKey::HDR, layout);
+    ASSERT_TRUE(hdr.has_value());
+    ASSERT_TRUE(hdr->fragment.has_value());
+    ASSERT_EQ(hdr->fragment->targets.size(), 1u);
+    EXPECT_EQ(hdr->fragment->targets[0].format, render::view::ViewTarget::TEXTURE_FORMAT_HDR);
+
+    // A transparent key blends and must not write depth.
+    auto alpha = pipeline.specialize(pbr::MeshPipelineKey::BLEND_ALPHA, layout);
+    ASSERT_TRUE(alpha.has_value());
+    EXPECT_EQ(alpha->label, "alpha_blend_mesh_pipeline");
+    ASSERT_TRUE(alpha->depth_stencil.has_value());
+    EXPECT_EQ(alpha->depth_stencil->depthWriteEnabled, wgpu::OptionalBool::eFalse);
 }

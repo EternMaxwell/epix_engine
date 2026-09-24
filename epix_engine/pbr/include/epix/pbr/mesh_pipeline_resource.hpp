@@ -82,6 +82,17 @@ EPIX_EXPORT struct MeshPipeline {
     const MeshPipelineViewLayout& get_view_layout(const MeshPipelineViewLayoutKey& layout_key) const {
         return view_layouts.get_view_layout(layout_key);
     }
+
+    /** @brief Build the render pipeline descriptor for a key and a mesh vertex
+     *  buffer layout (Bevy's `SpecializedMeshPipeline for MeshPipeline`,
+     *  `render/mesh.rs:2372-2740`).
+     *
+     *  The shader definitions and vertex attributes come from the helpers this
+     *  module already declares; what this adds is the descriptor assembly: the
+     *  view layouts, the morph and skinning layout the key selects, the HDR
+     *  target format, and the depth, stencil and multisample state. */
+    std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineError> specialize(
+        const MeshPipelineKey& key, const mesh::MeshVertexBufferLayoutRef& layout) const;
 };
 
 }  // namespace epix::pbr
