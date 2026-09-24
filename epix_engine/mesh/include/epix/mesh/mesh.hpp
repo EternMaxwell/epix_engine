@@ -34,6 +34,7 @@
 #include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
 #endif
+#include <epix/mesh/direction.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 
@@ -201,8 +202,11 @@ EPIX_EXPORT struct Triangle3d {
 
     constexpr Triangle3d() = default;
     constexpr Triangle3d(glm::vec3 a, glm::vec3 b, glm::vec3 c) : vertices{a, b, c} {}
-    /** @brief Face normal, or `std::nullopt` for a degenerate triangle (Bevy `Triangle3d::normal`). */
-    std::optional<glm::vec3> normal() const noexcept;
+    /** @brief Face normal, or the reason there is none (Bevy `Triangle3d::normal`).
+     *
+     *  A degenerate triangle - zero, infinite or `NaN` cross product - is reported
+     *  as the error Bevy's `Dir3::new` produces for it, not as a zero vector. */
+    std::expected<Dir3, InvalidDirectionError> normal() const noexcept;
     /** @brief Degenerate when the `ab x ac` cross product is shorter than `10e-7`. */
     bool is_degenerate() const noexcept;
     bool is_acute() const noexcept;

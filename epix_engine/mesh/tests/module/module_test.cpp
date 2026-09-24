@@ -1941,18 +1941,32 @@ TEST(MeshPrimitives, Triangle3dMatchesBevyFaceNormalUvAndClassification) {
     EXPECT_EQ(mesh::Triangle3d{}.vertices,
               (std::array{glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(-0.5f, -0.5f, 0.0f), glm::vec3(0.5f, -0.5f, 0.0f)}));
 
-    // `ab x ac` gives the right-hand-rule face normal.
+    // `ab x ac` gives the right-hand-rule face normal, as a normalized `Dir3`.
     const mesh::Triangle3d flat{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}};
     ASSERT_TRUE(flat.normal().has_value());
-    EXPECT_EQ(*flat.normal(), glm::vec3(0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(flat.normal()->value(), glm::vec3(0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(*flat.normal(), mesh::Dir3::Z) << "the face normal is the +Z axis";
     EXPECT_FALSE(flat.is_degenerate());
     EXPECT_EQ(flat.reversed().vertices,
               (std::array{glm::vec3(0.0f, 1.0f, 0.0f), glm::vec3(1.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 0.0f)}));
 
-    // Collinear vertices have no direction and are reported as degenerate.
+    // Collinear vertices have no direction: Bevy reports the zero length rather than
+    // returning a zero vector, and the triangle is degenerate.
     const mesh::Triangle3d collinear{{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {2.0f, 0.0f, 0.0f}};
-    EXPECT_FALSE(collinear.normal().has_value());
+    ASSERT_FALSE(collinear.normal().has_value());
+    EXPECT_EQ(collinear.normal().error(), mesh::InvalidDirectionError::Zero);
     EXPECT_TRUE(collinear.is_degenerate());
+
+    // `Dir3` is the same fallible normalization, with Bevy's error for each bad length.
+    EXPECT_EQ(mesh::Dir3::make(glm::vec3(0.0f, 0.0f, 5.0f))->value(), glm::vec3(0.0f, 0.0f, 1.0f));
+    EXPECT_EQ(mesh::Dir3::make(glm::vec3(0.0f)).error(), mesh::InvalidDirectionError::Zero);
+    EXPECT_EQ(mesh::Dir3::make(glm::vec3(std::numeric_limits<float>::infinity(), 0.0f, 0.0f)).error(),
+              mesh::InvalidDirectionError::Infinite);
+    EXPECT_EQ(mesh::Dir3::make(glm::vec3(std::numeric_limits<float>::quiet_NaN(), 0.0f, 0.0f)).error(),
+              mesh::InvalidDirectionError::NaN);
+    EXPECT_EQ(mesh::Dir3::from_xyz(0.0f, -3.0f, 0.0f)->value(), mesh::Dir3::NEG_Y.value());
+    EXPECT_EQ(mesh::to_string(mesh::InvalidDirectionError::Zero),
+              "The length of the direction vector is zero or very close to zero");
 
     const auto value = flat.mesh().build();
     EXPECT_EQ(value.primitive_topology(), wgpu::PrimitiveTopology::eTriangleList);

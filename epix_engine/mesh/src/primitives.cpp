@@ -1481,12 +1481,10 @@ Polyline3d Polyline3d::with_subdivisions(glm::vec3 start, glm::vec3 end, std::si
 
 Polyline3dMeshBuilder Polyline3d::mesh() const { return Polyline3dMeshBuilder{*this}; }
 
-std::optional<glm::vec3> Triangle3d::normal() const noexcept {
+std::expected<Dir3, InvalidDirectionError> Triangle3d::normal() const noexcept {
     const auto ab    = vertices[1] - vertices[0];
     const auto ac    = vertices[2] - vertices[0];
-    const auto cross = glm::cross(ab, ac);
-    if (glm::dot(cross, cross) == 0.0f) return std::nullopt;
-    return glm::normalize(cross);
+    return Dir3::make(glm::cross(ab, ac));
 }
 
 bool Triangle3d::is_degenerate() const noexcept {
@@ -2579,13 +2577,22 @@ Mesh Polyline3dMeshBuilder::build() const {
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, std::move(positions));
 }
 
+namespace {
+/** @brief The normal of a triangle with zeroing, so a `glm::vec3` is always produced
+ *  for meshing (Bevy `normal_vec`, `bevy_mesh/src/primitives/dim3/triangle3d.rs:43-47`). */
+glm::vec3 normal_vec(const Triangle3d& triangle) {
+    const auto normal = triangle.normal();
+    return normal.has_value() ? normal->value() : glm::vec3(0.0f);
+}
+}  // namespace
+
 Mesh Triangle3dMeshBuilder::build() const {
     std::vector<VertexAttributeValues::Float32x3Value> positions;
     positions.reserve(3);
     for (const auto& vertex : triangle.vertices) positions.push_back({vertex.x, vertex.y, vertex.z});
 
     // A degenerate triangle takes Bevy's zero normal instead of an undefined direction.
-    const auto normal       = triangle.normal().value_or(glm::vec3(0.0f));
+    const auto normal       = normal_vec(triangle);
     const auto triangle_uvs = triangle_uv_coords(triangle.vertices);
     std::vector<VertexAttributeValues::Float32x3Value> normals(3, {normal.x, normal.y, normal.z});
     std::vector<VertexAttributeValues::Float32x2Value> uvs{
@@ -2618,7 +2625,7 @@ Mesh TetrahedronMeshBuilder::build() const {
 
     // Each face is meshed as its own triangle and the data is appended in order.
     for (const auto& face : faces) {
-        const auto face_normal = face.normal().value_or(glm::vec3(0.0f));
+        const auto face_normal = normal_vec(face);
         const auto face_uvs    = triangle_uv_coords(face.vertices);
         for (std::size_t index = 0; index < 3; ++index) {
             positions.push_back({face.vertices[index].x, face.vertices[index].y, face.vertices[index].z});
