@@ -12,6 +12,18 @@
 
 namespace epix::pbr {
 
+#ifndef NDEBUG
+/** @brief The texture count a mesh view layout may reach before the pipeline
+ *  warns (Bevy `MESH_PIPELINE_VIEW_LAYOUT_SAFE_MAX_TEXTURES`,
+ *  `render/mesh.rs:118-127`).
+ *
+ *  `MAX_TEXTURE_IMAGE_UNITS` in WebGL and `maxSampledTexturesPerShaderStage` in
+ *  WebGPU are both 16; Bevy uses 10 because that still leaves six textures for
+ *  the other bind groups in the worst case. Debug-only, like Bevy's
+ *  `#[cfg(debug_assertions)]`. */
+EPIX_EXPORT inline constexpr std::size_t MESH_PIPELINE_VIEW_LAYOUT_SAFE_MAX_TEXTURES = 10;
+#endif
+
 /** @brief Which attributes a mesh's vertex buffer layout provides (Bevy reads these
  *  off the layout it is handed, `render/mesh.rs:2388-2418`). */
 EPIX_EXPORT struct MeshVertexAttributePresence {

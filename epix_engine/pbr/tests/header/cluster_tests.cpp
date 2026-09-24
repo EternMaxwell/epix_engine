@@ -16,6 +16,7 @@
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/mesh_pipeline.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
+#include <epix/pbr/mesh_view_bindings.hpp>
 #include <epix/pbr/point_light.hpp>
 #include <epix/pbr/prepass.hpp>
 #include <epix/pbr/prepass_bindings.hpp>
@@ -844,6 +845,182 @@ TEST(Cluster, ScreenSpaceReflectionsMatchesBevy) {
     const auto off_uniform = ScreenSpaceReflectionsUniform::from(off);
     EXPECT_EQ(off_uniform.use_secant, 0u);
     EXPECT_EQ(off_uniform.linear_steps, 7u);
+}
+
+/** @brief The mesh view layouts: the entry list of every possible key, and the
+ *  three descriptors each key produces (Bevy `layout_entries`,
+ *  `generate_view_layouts` and `MeshPipelineViewLayouts`,
+ *  `bevy_pbr/src/render/mesh_view_bindings.rs:204-554`).
+ *
+ *  Everything here is a descriptor, so the whole thing is CPU-side: the device
+ *  facts are parameters, which is why this can be asserted without a device. */
+TEST(Cluster, MeshViewLayoutEntriesMatchBevy) {
+    using epix::pbr::AtmosphereData;
+    using epix::pbr::generate_view_layouts;
+    using epix::pbr::GpuClusterableObjects;
+    using epix::pbr::GpuFog;
+    using epix::pbr::GpuLights;
+    using epix::pbr::LightProbesUniform;
+    using epix::pbr::MeshPipelineViewLayoutKey;
+    using epix::pbr::MeshPipelineViewLayouts;
+    using epix::pbr::ScreenSpaceReflectionsUniform;
+    using epix::pbr::ViewClusterBindings;
+    using epix::core_graph::OrderIndependentTransparencySettings;
+#ifndef NDEBUG
+    EXPECT_EQ(epix::pbr::MESH_PIPELINE_VIEW_LAYOUT_SAFE_MAX_TEXTURES, 10u);
+#endif
+    EXPECT_EQ(MeshPipelineViewLayoutKey::COUNT, 128u) << "all().bits() + 1 over seven flags";
+
+    const auto storage = wgpu::BufferBindingType::eReadOnlyStorage;
+    const auto uniform = wgpu::BufferBindingType::eUniform;
+    const auto find    = [](const std::vector<wgpu::BindGroupLayoutEntry>& list,
+                            std::uint32_t binding) -> const wgpu::BindGroupLayoutEntry* {
+        for (const auto& entry : list) {
+            if (entry.binding == binding) return &entry;
+        }
+        return nullptr;
+    };
+    const auto bindings_of = [](const std::vector<wgpu::BindGroupLayoutEntry>& list) {
+        std::vector<std::uint32_t> result;
+        for (const auto& entry : list) result.push_back(entry.binding);
+        return result;
+    };
+
+    // A bare key with nothing usable: the always-present main entries and the
+    // three environment-map entries of the binding-array group.
+    const auto plain_entries = epix::pbr::mesh_view_layout_entries(
+        storage, storage, MeshPipelineViewLayoutKey::from_bits_retain(0), false, false, false, false);
+    ASSERT_EQ(plain_entries.size(), 2u);
+    EXPECT_EQ(bindings_of(plain_entries[0]),
+              (std::vector<std::uint32_t>{0u, 1u, 2u, 3u, 5u, 6u, 8u, 9u, 10u, 11u, 12u, 13u, 14u, 15u, 16u, 17u, 18u,
+                                          19u, 24u, 25u}));
+    // The binding-array group always has the environment maps and the irradiance
+    // volumes: their usability is a platform fact, and without binding arrays the
+    // textures are simply not arrays. The decals at 5 to 7 need arrays.
+    EXPECT_EQ(bindings_of(plain_entries[1]), (std::vector<std::uint32_t>{0u, 1u, 2u, 3u, 4u}));
+
+    // The view, lights, globals, fog, probes and the SSR settings are dynamic
+    // uniforms with the element's minimum size; the view and globals are visible
+    // to both stages and the cluster buffers are read-only storage.
+    const auto* view = find(plain_entries[0], 0u);
+    ASSERT_NE(view, nullptr);
+    EXPECT_EQ(view->buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_EQ(view->buffer.hasDynamicOffset, 1u);
+    EXPECT_EQ(view->buffer.minBindingSize, sizeof(epix::render::view::ViewUniform));
+    EXPECT_EQ(view->visibility, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(find(plain_entries[0], 1u)->buffer.minBindingSize, sizeof(GpuLights));
+    EXPECT_EQ(find(plain_entries[0], 11u)->visibility,
+              wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(find(plain_entries[0], 12u)->buffer.minBindingSize, sizeof(GpuFog));
+    EXPECT_EQ(find(plain_entries[0], 13u)->buffer.minBindingSize, sizeof(LightProbesUniform));
+    EXPECT_EQ(find(plain_entries[0], 15u)->buffer.minBindingSize, sizeof(ScreenSpaceReflectionsUniform));
+    EXPECT_EQ(find(plain_entries[0], 15u)->buffer.hasDynamicOffset, 1u);
+
+    const auto* objects = find(plain_entries[0], 8u);
+    ASSERT_NE(objects, nullptr);
+    EXPECT_EQ(objects->buffer.type, wgpu::BufferBindingType::eReadOnlyStorage);
+    EXPECT_EQ(objects->buffer.minBindingSize, GpuClusterableObjects::min_size(storage));
+    EXPECT_EQ(find(plain_entries[0], 9u)->buffer.minBindingSize,
+              ViewClusterBindings::min_size_clusterable_object_index_lists(storage));
+    EXPECT_EQ(find(plain_entries[0], 10u)->buffer.minBindingSize,
+              ViewClusterBindings::min_size_cluster_offsets_and_counts(storage));
+
+    // The visibility-ranges buffer is a storage buffer of one vec4, visible to
+    // the vertex stage only.
+    const auto* visibility_ranges = find(plain_entries[0], 14u);
+    ASSERT_NE(visibility_ranges, nullptr);
+    EXPECT_EQ(visibility_ranges->buffer.minBindingSize, sizeof(glm::vec4));
+    EXPECT_EQ(visibility_ranges->visibility, wgpu::ShaderStage::eVertex);
+
+    // The shadow textures and the ambient-occlusion texture, and the transmission
+    // texture and sampler.
+    EXPECT_EQ(find(plain_entries[0], 2u)->texture.viewDimension, wgpu::TextureViewDimension::eCubeArray);
+    EXPECT_EQ(find(plain_entries[0], 2u)->texture.sampleType, wgpu::TextureSampleType::eDepth);
+    EXPECT_EQ(find(plain_entries[0], 3u)->sampler.type, wgpu::SamplerBindingType::eComparison);
+    EXPECT_EQ(find(plain_entries[0], 5u)->texture.viewDimension, wgpu::TextureViewDimension::e2DArray);
+    EXPECT_EQ(find(plain_entries[0], 6u)->sampler.type, wgpu::SamplerBindingType::eComparison);
+    EXPECT_EQ(find(plain_entries[0], 16u)->texture.sampleType, wgpu::TextureSampleType::eUnfilterableFloat);
+    EXPECT_EQ(find(plain_entries[0], 24u)->texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(find(plain_entries[0], 25u)->sampler.type, wgpu::SamplerBindingType::eFiltering);
+
+    // The environment map's uniform is the last always-present main entry, and
+    // the binding-array group's first three are the two cubemaps and a sampler.
+    EXPECT_EQ(find(plain_entries[0], 17u)->buffer.minBindingSize, sizeof(epix::pbr::EnvironmentMapUniform));
+    EXPECT_EQ(find(plain_entries[1], 0u)->texture.viewDimension, wgpu::TextureViewDimension::eCube);
+    EXPECT_EQ(find(plain_entries[1], 2u)->sampler.type, wgpu::SamplerBindingType::eFiltering);
+
+    // The prepass entries appear only for the flags the key carries, at 20 to 23.
+    const auto prepass_key = MeshPipelineViewLayoutKey::DEPTH_PREPASS | MeshPipelineViewLayoutKey::MOTION_VECTOR_PREPASS;
+    const auto prepass_entries =
+        epix::pbr::mesh_view_layout_entries(storage, storage, prepass_key, false, false, false, false);
+    const auto* depth_prepass = find(prepass_entries[0], 20u);
+    const auto* motion_prepass = find(prepass_entries[0], 22u);
+    ASSERT_NE(depth_prepass, nullptr);
+    ASSERT_NE(motion_prepass, nullptr);
+    EXPECT_EQ(depth_prepass->texture.sampleType, wgpu::TextureSampleType::eDepth);
+    EXPECT_EQ(motion_prepass->texture.sampleType, wgpu::TextureSampleType::eUnfilterableFloat);
+    EXPECT_EQ(find(prepass_entries[0], 21u), nullptr) << "no normal prepass, no entry";
+    EXPECT_EQ(find(prepass_entries[0], 23u), nullptr) << "no deferred prepass, no entry";
+
+    // OIT needs the key bit and the platform; without the platform the three
+    // entries are absent rather than different.
+    const auto oit_key = MeshPipelineViewLayoutKey::OIT_ENABLED;
+    const auto oit_entries = epix::pbr::mesh_view_layout_entries(storage, storage, oit_key, false, false, false, true);
+    const auto* oit_layers = find(oit_entries[0], 26u);
+    ASSERT_NE(oit_layers, nullptr);
+    EXPECT_EQ(oit_layers->buffer.type, wgpu::BufferBindingType::eStorage);
+    EXPECT_EQ(oit_layers->buffer.minBindingSize, 0u);
+    EXPECT_EQ(find(oit_entries[0], 27u)->buffer.type, wgpu::BufferBindingType::eStorage);
+    EXPECT_EQ(find(oit_entries[0], 28u)->buffer.minBindingSize, sizeof(OrderIndependentTransparencySettings));
+    const auto unsupported = epix::pbr::mesh_view_layout_entries(storage, storage, oit_key, false, false, false, false);
+    EXPECT_EQ(find(unsupported[0], 26u), nullptr);
+    EXPECT_EQ(find(unsupported[0], 28u), nullptr);
+
+    // Atmosphere: the two LUT bindings and the data buffer, when the key asks.
+    const auto atmosphere_key     = MeshPipelineViewLayoutKey::ATMOSPHERE;
+    const auto atmosphere_entries =
+        epix::pbr::mesh_view_layout_entries(storage, storage, atmosphere_key, false, false, false, false);
+    EXPECT_EQ(find(atmosphere_entries[0], 29u)->texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(find(atmosphere_entries[0], 30u)->sampler.type, wgpu::SamplerBindingType::eFiltering);
+    EXPECT_EQ(find(atmosphere_entries[0], 31u)->buffer.minBindingSize, sizeof(AtmosphereData));
+    EXPECT_EQ(find(plain_entries[0], 31u), nullptr) << "no atmosphere key, no data buffer";
+
+    // The binding-array group grows with irradiance volumes and clustered decals.
+    const auto array_entries = epix::pbr::mesh_view_layout_entries(storage, storage,
+                                                                   MeshPipelineViewLayoutKey::from_bits_retain(0),
+                                                                   true, true, true, false);
+    EXPECT_EQ(bindings_of(array_entries[1]), (std::vector<std::uint32_t>{0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u}));
+    EXPECT_EQ(find(array_entries[1], 0u)->bindingArraySize, static_cast<std::uint32_t>(epix::pbr::MAX_VIEW_LIGHT_PROBES));
+    EXPECT_EQ(find(array_entries[1], 3u)->texture.viewDimension, wgpu::TextureViewDimension::e3D);
+    EXPECT_EQ(find(array_entries[1], 5u)->buffer.minBindingSize, sizeof(epix::pbr::RenderClusteredDecal));
+    EXPECT_EQ(find(array_entries[1], 6u)->bindingArraySize,
+              epix::pbr::MAX_VIEW_DECALS_WITH_PARTIALLY_BOUND_BINDING_ARRAY);
+    EXPECT_EQ(find(array_entries[1], 7u)->sampler.type, wgpu::SamplerBindingType::eFiltering);
+
+    // The uniform form of the cluster bindings changes the three buffer entries
+    // and nothing else.
+    const auto uniform_entries = epix::pbr::mesh_view_layout_entries(
+        uniform, uniform, MeshPipelineViewLayoutKey::from_bits_retain(0), false, false, false, false);
+    EXPECT_EQ(find(uniform_entries[0], 8u)->buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_EQ(find(uniform_entries[0], 8u)->buffer.minBindingSize, GpuClusterableObjects::min_size(uniform));
+    EXPECT_EQ(find(uniform_entries[0], 14u)->buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_EQ(bindings_of(uniform_entries[0]), bindings_of(plain_entries[0]));
+
+    // Every key generates a layout whose three descriptors carry the key's label,
+    // and the array is indexed by the key's bits.
+    const auto layouts = generate_view_layouts(storage, storage, false, false, false, false);
+    EXPECT_EQ(layouts.size(), static_cast<std::size_t>(MeshPipelineViewLayoutKey::COUNT));
+    const auto bare_key = MeshPipelineViewLayoutKey::from_bits_retain(0);
+    EXPECT_EQ(layouts[0].main_layout.label, bare_key.label());
+    EXPECT_EQ(layouts[0].binding_array_layout.label, bare_key.label() + "_binding_array");
+    EXPECT_EQ(layouts[0].empty_layout.label, bare_key.label() + "_empty");
+    EXPECT_TRUE(layouts[0].empty_layout.entries.empty());
+    EXPECT_EQ(layouts[oit_key.bits()].main_layout.label, oit_key.label());
+
+    const auto view_layouts = MeshPipelineViewLayouts::make(storage, storage, false, false, false, false);
+    EXPECT_EQ(view_layouts.get_view_layout(atmosphere_key).main_layout.label, atmosphere_key.label());
+    EXPECT_NE(view_layouts.get_view_layout(atmosphere_key).main_layout.label,
+              view_layouts.get_view_layout(bare_key).main_layout.label);
 }
 
 /** @brief A view's cluster limits follow from the 16 KiB uniform binding limit,
