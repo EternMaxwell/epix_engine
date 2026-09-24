@@ -11,6 +11,13 @@
 
 namespace epix::pbr {
 
+/** @brief How many lightmaps one slab holds when binding arrays are in use
+ *  (Bevy `LIGHTMAPS_PER_SLAB`, `bevy_pbr/src/lightmap/mod.rs:74`).
+ *
+ *  Without binding arrays only a single lightmap can be bound at a time, which is
+ *  why the lightmapped mesh layout has two shapes (see `mesh_bindings.hpp`). */
+EPIX_EXPORT inline constexpr std::size_t LIGHTMAPS_PER_SLAB = 4;
+
 /** @brief Applies baked indirect diffuse global illumination from a lightmap
  *  (Bevy `Lightmap`, `bevy_pbr/src/lightmap/mod.rs:88-108`).
  *

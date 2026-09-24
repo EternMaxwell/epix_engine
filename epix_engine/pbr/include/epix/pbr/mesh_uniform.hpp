@@ -286,3 +286,14 @@ EPIX_EXPORT struct MeshFlags {
 };
 
 }  // namespace epix::pbr
+
+namespace epix::render::render_resource {
+/** @brief `MeshUniform` is the 176-byte GPU struct the mesh shader's `Mesh` array
+ *  holds, so the raw `sizeof`-derived shader size is exactly the WGSL element size.
+ *
+ *  Bevy derives `ShaderType` for the same struct; without this registration the
+ *  uniform cannot be the element of a `GpuArrayBuffer`, which is what builds the
+ *  model binding's layout. */
+template <>
+struct ShaderTypeInfo<epix::pbr::MeshUniform> : RawShaderType<epix::pbr::MeshUniform> {};
+}  // namespace epix::render::render_resource

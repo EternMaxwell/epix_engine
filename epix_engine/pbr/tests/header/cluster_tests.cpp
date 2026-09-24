@@ -10,6 +10,7 @@
 #include <epix/pbr/light_probe.hpp>
 #include <epix/pbr/light_systems.hpp>
 #include <epix/pbr/material_bindings.hpp>
+#include <epix/pbr/mesh_bindings.hpp>
 #include <epix/pbr/mesh_instance.hpp>
 #include <epix/pbr/mesh_pipeline.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
@@ -5156,6 +5157,86 @@ TEST(Cluster, MeshPipelineVertexSpecializationMatchesBevy) {
     const auto empty = specialize_mesh_vertex_layout(mesh_layout({}), 1);
     EXPECT_EQ(empty.shader_defs.size(), 2u);
     EXPECT_TRUE(empty.vertex_attributes.empty());
+}
+
+/** @brief The eight mesh bind group layouts: labels, binding numbers, stages, and
+ *  the entries that change with the device (Bevy `MeshLayouts`,
+ *  `render/mesh_bindings.rs:165-368`). */
+TEST(Cluster, MeshLayoutsMatchBevy) {
+    using epix::pbr::JOINT_BUFFER_SIZE;
+    using epix::pbr::LIGHTMAPS_PER_SLAB;
+    using epix::pbr::MeshLayouts;
+    using epix::pbr::MORPH_BUFFER_SIZE;
+    using epix::pbr::skins_use_uniform_buffers;
+
+    wgpu::Limits limits{};
+    limits.maxStorageBuffersPerShaderStage = 8;
+    const auto with_arrays = MeshLayouts::make(limits, true);
+    const auto without     = MeshLayouts::make(limits, false);
+
+    const auto bindings = [](const epix::render::BindGroupLayoutDescriptor& layout) {
+        std::vector<std::uint32_t> result;
+        result.reserve(layout.entries.size());
+        for (const auto& entry : layout.entries) result.push_back(entry.binding);
+        return result;
+    };
+
+    // The model uniform is group 1 binding 0 in every layout, at both stages; the
+    // optional parts sit at fixed binding numbers so a shader can name them without
+    // knowing which mesh it draws. The motion variants add 6 and 7.
+    EXPECT_EQ(with_arrays.model_only.label, "mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.model_only), (std::vector<std::uint32_t>{0u}));
+    EXPECT_EQ(with_arrays.model_only.entries[0].visibility, wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(with_arrays.skinned.label, "skinned_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.skinned), (std::vector<std::uint32_t>{0u, 1u}));
+    EXPECT_EQ(with_arrays.skinned_motion.label, "skinned_motion_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.skinned_motion), (std::vector<std::uint32_t>{0u, 1u, 6u}));
+    EXPECT_EQ(with_arrays.morphed.label, "morphed_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.morphed), (std::vector<std::uint32_t>{0u, 2u, 3u}));
+    // Bevy gives the motion variant the same label as the plain morphed layout.
+    EXPECT_EQ(with_arrays.morphed_motion.label, "morphed_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.morphed_motion), (std::vector<std::uint32_t>{0u, 2u, 3u, 7u}));
+    EXPECT_EQ(with_arrays.morphed_skinned.label, "morphed_skinned_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.morphed_skinned), (std::vector<std::uint32_t>{0u, 1u, 2u, 3u}));
+    EXPECT_EQ(with_arrays.morphed_skinned_motion.label, "morphed_skinned_motion_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.morphed_skinned_motion), (std::vector<std::uint32_t>{0u, 1u, 2u, 3u, 6u, 7u}));
+
+    // The joint entry follows the device: uniforms with a dynamic offset where
+    // there are no storage buffers, read-only storage where there are.
+    const auto& joint = with_arrays.skinned.entries[1];
+    EXPECT_EQ(joint.buffer.minBindingSize, static_cast<std::uint64_t>(JOINT_BUFFER_SIZE));
+    if (skins_use_uniform_buffers(limits)) {
+        EXPECT_EQ(joint.buffer.type, wgpu::BufferBindingType::eUniform);
+        EXPECT_EQ(joint.buffer.hasDynamicOffset, 1u);
+    } else {
+        EXPECT_EQ(joint.buffer.type, wgpu::BufferBindingType::eReadOnlyStorage);
+        EXPECT_EQ(joint.buffer.hasDynamicOffset, 0u);
+    }
+
+    // The morph weights are a dynamic uniform buffer of the declared size, and the
+    // morph targets an unfilterable 3D texture.
+    const auto& weights = with_arrays.morphed.entries[1];
+    EXPECT_EQ(weights.buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_EQ(weights.buffer.hasDynamicOffset, 1u);
+    EXPECT_EQ(weights.buffer.minBindingSize, static_cast<std::uint64_t>(MORPH_BUFFER_SIZE));
+    const auto& targets = with_arrays.morphed.entries[2];
+    EXPECT_EQ(targets.texture.sampleType, wgpu::TextureSampleType::eUnfilterableFloat);
+    EXPECT_EQ(targets.texture.viewDimension, wgpu::TextureViewDimension::e3D);
+
+    // Lightmaps: bindings 4 and 5 at fragment visibility, as a slab's binding array
+    // where the device supports arrays and as a single texture otherwise.
+    EXPECT_EQ(with_arrays.lightmapped.label, "lightmapped_mesh_layout");
+    EXPECT_EQ(bindings(with_arrays.lightmapped), (std::vector<std::uint32_t>{0u, 4u, 5u}));
+    EXPECT_EQ(with_arrays.lightmapped.entries[1].bindingArraySize,
+              static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB));
+    EXPECT_EQ(with_arrays.lightmapped.entries[1].visibility, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(with_arrays.lightmapped.entries[1].texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(with_arrays.lightmapped.entries[1].texture.viewDimension, wgpu::TextureViewDimension::e2D);
+    EXPECT_EQ(with_arrays.lightmapped.entries[2].bindingArraySize, static_cast<std::uint32_t>(LIGHTMAPS_PER_SLAB));
+    EXPECT_EQ(with_arrays.lightmapped.entries[2].sampler.type, wgpu::SamplerBindingType::eFiltering);
+    EXPECT_EQ(without.lightmapped.entries[1].bindingArraySize, 0u) << "no binding array without array support";
+    EXPECT_EQ(without.lightmapped.entries[2].bindingArraySize, 0u);
+    EXPECT_EQ(without.lightmapped.entries[1].texture.sampleType, wgpu::TextureSampleType::eFloat);
 }
 
 /** @brief The pass a mesh key selects, and the defs a key adds beside the vertex and
