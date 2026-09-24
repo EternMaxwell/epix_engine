@@ -544,6 +544,182 @@ public struct VisibilityRanges {
 #endif
 )slang";
 
+/** @brief Slang representation of pinned Bevy 0.18 `occlusion_culling.wgsl`.
+ *
+ * The two functions take the depth pyramid as a parameter, so in Slang they take
+ * a `Texture2D`; `textureDimensions` and `textureLoad` become `GetDimensions`
+ * and `Load`. */
+constexpr std::string_view kOcclusionCullingShader = R"slang(
+module epix.occlusion_culling;
+
+namespace epix::occlusion_culling {
+
+public float2 get_aabb_size_in_pixels(float4 aabb, Texture2D<float4> depth_pyramid) {
+    uint width, height;
+    depth_pyramid.GetDimensions(width, height);
+    float2 depth_pyramid_size_mip_0 = float2(width, height);
+    float aabb_width_pixels = (aabb.z - aabb.x) * depth_pyramid_size_mip_0.x;
+    float aabb_height_pixels = (aabb.w - aabb.y) * depth_pyramid_size_mip_0.y;
+    return float2(aabb_width_pixels, aabb_height_pixels);
+}
+
+public float get_occluder_depth(float4 aabb, float2 aabb_pixel_size, Texture2D<float4> depth_pyramid) {
+    float aabb_width_pixels = aabb_pixel_size.x;
+    float aabb_height_pixels = aabb_pixel_size.y;
+
+    uint width, height;
+    depth_pyramid.GetDimensions(width, height);
+    float2 depth_pyramid_size_mip_0 = float2(width, height);
+    // The mip level the AABB fits in; Bevy notes that naga wants this signed.
+    int depth_level = max(0, int(ceil(log2(max(aabb_width_pixels, aabb_height_pixels)))));
+    uint level_width, level_height, level_count;
+    // The mip-level overload also reports the level count, and takes the level
+    // unsigned where `Load` takes it signed.
+    depth_pyramid.GetDimensions(uint(depth_level), level_width, level_height, level_count);
+    float2 depth_pyramid_size = float2(level_width, level_height);
+    uint2 aabb_top_left = uint2(aabb.xy * depth_pyramid_size);
+
+    float depth_quad_a = depth_pyramid.Load(int3(aabb_top_left, depth_level)).x;
+    float depth_quad_b = depth_pyramid.Load(int3(aabb_top_left + uint2(1u, 0u), depth_level)).x;
+    float depth_quad_c = depth_pyramid.Load(int3(aabb_top_left + uint2(0u, 1u), depth_level)).x;
+    float depth_quad_d = depth_pyramid.Load(int3(aabb_top_left + uint2(1u, 1u), depth_level)).x;
+    return min(min(depth_quad_a, depth_quad_b), min(depth_quad_c, depth_quad_d));
+}
+
+}
+)slang";
+
+/** @brief Slang representation of pinned Bevy 0.18 `morph.wgsl`.
+ *
+ * The morph weights and the target texture are the mesh layout's group-2
+ * bindings 2, 3 and 7, which the module declares itself. The component offsets
+ * are the hardcoded ones Bevy's `MorphAttributes` produces. */
+constexpr std::string_view kMorphShader = R"slang(
+module epix.morph;
+
+import epix.mesh_types;
+
+#ifdef MORPH_TARGETS
+
+[[vk::binding(2, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> morph_weights;
+[[vk::binding(3, 2)]] Texture3D<float4> morph_targets;
+[[vk::binding(7, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> prev_morph_weights;
+
+public static const uint position_offset = 0u;
+public static const uint normal_offset = 3u;
+public static const uint tangent_offset = 6u;
+public static const uint total_component_count = 9u;
+
+public uint layer_count() {
+    uint width, height, depth;
+    morph_targets.GetDimensions(width, height, depth);
+    return depth;
+}
+
+public uint2 component_texture_coord(uint vertex_index, uint component_offset) {
+    uint width, height, depth;
+    morph_targets.GetDimensions(width, height, depth);
+    uint component_index = total_component_count * vertex_index + component_offset;
+    return uint2(component_index % width, component_index / width);
+}
+
+public float weight_at(uint weight_index) {
+    return morph_weights.weights[weight_index / 4u][weight_index % 4u];
+}
+
+public float prev_weight_at(uint weight_index) {
+    return prev_morph_weights.weights[weight_index / 4u][weight_index % 4u];
+}
+
+public float morph_pixel(uint vertex, uint component, uint weight) {
+    uint2 coord = component_texture_coord(vertex, component);
+    // The texture stores an f32, but a load returns the vector with only its
+    // first component set.
+    return morph_targets.Load(int4(coord, weight, 0)).r;
+}
+
+public float3 morph(uint vertex_index, uint component_offset, uint weight_index) {
+    return float3(morph_pixel(vertex_index, component_offset, weight_index),
+                  morph_pixel(vertex_index, component_offset + 1u, weight_index),
+                  morph_pixel(vertex_index, component_offset + 2u, weight_index));
+}
+
+#endif
+)slang";
+
+/** @brief Slang representation of pinned Bevy 0.18 `skinning.wgsl`.
+ *
+ * Slang matrices are row-major where WGSL's are column-major, so the port keeps
+ * Bevy's matrices *transposed*: WGSL's `M[i]` (a column) is Slang's `M[i]` (a
+ * row), a WGSL `mat3x3(c0, c1, c2)` is Slang's `float3x3` whose rows are those
+ * columns, and every product flips sides - WGSL's `M * v` is Slang's
+ * `mul(v, M)`. With that rule the two functions below are Bevy's bodies
+ * unchanged, and the scalar-times-matrix accumulation is orientation-free. */
+constexpr std::string_view kSkinningShader = R"slang(
+module epix.skinning;
+
+import epix.mesh_types;
+import epix.mesh_bindings;
+
+#ifdef SKINNED
+
+#ifdef SKINS_USE_UNIFORM_BUFFERS
+[[vk::binding(1, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> joint_matrices;
+#else
+[[vk::binding(1, 2)]] StructuredBuffer<float4x4> joint_matrices;
+#endif
+
+// The previous frame's joint matrices, for motion vectors; on the first frame
+// they are the current ones.
+#ifdef SKINS_USE_UNIFORM_BUFFERS
+[[vk::binding(6, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> prev_joint_matrices;
+#else
+[[vk::binding(6, 2)]] StructuredBuffer<float4x4> prev_joint_matrices;
+#endif
+
+public float4x4 skin_model(uint4 indexes, float4 weights, uint instance_index) {
+#ifdef SKINS_USE_UNIFORM_BUFFERS
+    return weights.x * joint_matrices.data[indexes.x] + weights.y * joint_matrices.data[indexes.y] +
+           weights.z * joint_matrices.data[indexes.z] + weights.w * joint_matrices.data[indexes.w];
+#else
+    uint skin_index = mesh[instance_index].current_skin_index;
+    return weights.x * joint_matrices[skin_index + indexes.x] +
+           weights.y * joint_matrices[skin_index + indexes.y] +
+           weights.z * joint_matrices[skin_index + indexes.z] +
+           weights.w * joint_matrices[skin_index + indexes.w];
+#endif
+}
+
+public float4x4 skin_prev_model(uint4 indexes, float4 weights, uint instance_index) {
+#ifdef SKINS_USE_UNIFORM_BUFFERS
+    return weights.x * prev_joint_matrices.data[indexes.x] + weights.y * prev_joint_matrices.data[indexes.y] +
+           weights.z * prev_joint_matrices.data[indexes.z] + weights.w * prev_joint_matrices.data[indexes.w];
+#else
+    uint skin_index = mesh[instance_index].current_skin_index;
+    return weights.x * prev_joint_matrices[skin_index + indexes.x] +
+           weights.y * prev_joint_matrices[skin_index + indexes.y] +
+           weights.z * prev_joint_matrices[skin_index + indexes.z] +
+           weights.w * prev_joint_matrices[skin_index + indexes.w];
+#endif
+}
+
+public float3x3 inverse_transpose_3x3m(float3x3 input_matrix) {
+    float3 x = cross(input_matrix[1], input_matrix[2]);
+    float3 y = cross(input_matrix[2], input_matrix[0]);
+    float3 z = cross(input_matrix[0], input_matrix[1]);
+    float det = dot(input_matrix[2], z);
+    return float3x3(x / det, y / det, z / det);
+}
+
+public float3 skin_normals(float4x4 world_from_local, float3 normal) {
+    return normalize(mul(normal, inverse_transpose_3x3m(
+                                       float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
+                                                world_from_local[2].xyz))));
+}
+
+#endif
+)slang";
+
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
@@ -563,6 +739,9 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(MESH_VIEW_TYPES_SHADER_PATH, shader_bytes(kMeshViewTypesShader));
     registry->get().insert_asset_static(ATMOSPHERE_TYPES_SHADER_PATH, shader_bytes(kAtmosphereTypesShader));
     registry->get().insert_asset_static(MESH_VIEW_BINDINGS_SHADER_PATH, shader_bytes(kMeshViewBindingsShader));
+    registry->get().insert_asset_static(OCCLUSION_CULLING_SHADER_PATH, shader_bytes(kOcclusionCullingShader));
+    registry->get().insert_asset_static(MORPH_SHADER_PATH, shader_bytes(kMorphShader));
+    registry->get().insert_asset_static(SKINNING_SHADER_PATH, shader_bytes(kSkinningShader));
     world.insert_resource(MeshShaderHandles{
         .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
@@ -575,6 +754,12 @@ void register_mesh_shaders(ecs::World& world) {
                                                                std::string(ATMOSPHERE_TYPES_SHADER_PATH)),
         .mesh_view_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
                                                                  std::string(MESH_VIEW_BINDINGS_SHADER_PATH)),
+        .occlusion_culling = server->get().load<shader::Shader>(std::string("embedded://") +
+                                                                std::string(OCCLUSION_CULLING_SHADER_PATH)),
+        .morph =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MORPH_SHADER_PATH)),
+        .skinning =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(SKINNING_SHADER_PATH)),
     });
 }
 

@@ -27,6 +27,15 @@ EPIX_EXPORT inline constexpr std::string_view ATMOSPHERE_TYPES_SHADER_PATH = "pb
 /** @brief The embedded path of the group-0 and group-1 view bindings (Bevy
  *  `render/mesh_view_bindings.wgsl`). */
 EPIX_EXPORT inline constexpr std::string_view MESH_VIEW_BINDINGS_SHADER_PATH = "pbr/mesh_view_bindings.slang";
+/** @brief The embedded path of the occlusion-culling helpers (Bevy
+ *  `render/occlusion_culling.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view OCCLUSION_CULLING_SHADER_PATH = "pbr/occlusion_culling.slang";
+/** @brief The embedded path of the morph-target helpers (Bevy
+ *  `render/morph.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view MORPH_SHADER_PATH = "pbr/morph.slang";
+/** @brief The embedded path of the skinning helpers (Bevy
+ *  `render/skinning.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view SKINNING_SHADER_PATH = "pbr/skinning.slang";
 
 /** @brief Handles keeping the mesh shader modules loaded.
  *
@@ -41,6 +50,9 @@ EPIX_EXPORT struct MeshShaderHandles {
     assets::Handle<shader::Shader> mesh_view_types;
     assets::Handle<shader::Shader> atmosphere_types;
     assets::Handle<shader::Shader> mesh_view_bindings;
+    assets::Handle<shader::Shader> occlusion_culling;
+    assets::Handle<shader::Shader> morph;
+    assets::Handle<shader::Shader> skinning;
 };
 
 /** @brief Publish the mesh shader modules as embedded assets and load them

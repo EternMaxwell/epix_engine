@@ -84,6 +84,9 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_view_types.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/atmosphere_types.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/mesh_view_bindings.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/occlusion_culling.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/morph.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/skinning.slang");
     // The handles resource holds every loaded module.
     const auto& handles = app.resource<pbr::MeshShaderHandles>();
     auto& shaders       = app.resource<Assets<Shader>>();
@@ -93,12 +96,18 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     const auto view_types       = shaders.get(handles.mesh_view_types.id());
     const auto atmosphere_types = shaders.get(handles.atmosphere_types.id());
     const auto view_bindings    = shaders.get(handles.mesh_view_bindings.id());
+    const auto culling          = shaders.get(handles.occlusion_culling.id());
+    const auto morph            = shaders.get(handles.morph.id());
+    const auto skinning         = shaders.get(handles.skinning.id());
     ASSERT_TRUE(types.has_value());
     ASSERT_TRUE(bindings.has_value());
     ASSERT_TRUE(io.has_value());
     ASSERT_TRUE(view_types.has_value());
     ASSERT_TRUE(atmosphere_types.has_value());
     ASSERT_TRUE(view_bindings.has_value());
+    ASSERT_TRUE(culling.has_value());
+    ASSERT_TRUE(morph.has_value());
+    ASSERT_TRUE(skinning.has_value());
 
     // `mesh_types`, `forward_io`, `mesh_view_types` and `atmosphere_types` are
     // leaves; `mesh_bindings` declares exactly one import, and it is a custom
