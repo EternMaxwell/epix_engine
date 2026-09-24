@@ -47,9 +47,10 @@ struct RawShaderType {
     /** @brief The encoded size for one value. A fixed-size type answers
      *  `shader_size` for every value; a runtime-sized type specialises
      *  `ShaderTypeInfo` itself and derives the size from the value, as Bevy's
-     *  `#[shader(size(runtime))]` types do — there `shader_size` is the fixed
-     *  header (also the binding's `min_binding_size`) and the written size
-     *  follows the data. */
+     *  `#[shader(size(runtime))]` types do. `shader_size` is then the binding's
+     *  `min_binding_size`, which for a runtime-sized array is the element's
+     *  size: encase's `min_size()` assumes the array holds one element, so it is
+     *  never zero for a struct of nothing but that array. */
     static std::size_t size_for(const T&) noexcept { return shader_size; }
 
     static void write_into(const T& value, std::span<std::uint8_t> destination) {
@@ -69,11 +70,17 @@ template <typename T>
 concept ShaderType = requires {
     { ShaderTypeInfo<T>::shader_size } -> std::convertible_to<std::size_t>;
 };
-/** A runtime-sized type may report a zero minimum: Bevy's
- *  `#[shader(size(runtime))]` struct whose only member is the runtime array has
- *  `min_size() == 0`, which wgpu reads as "no minimum binding size". The
- *  previous `> 0` guard added nothing, since the primary `ShaderTypeInfo`
- *  template is undefined and therefore already rejects unspecialised types. */
+/** @brief The encoded size a binding declares as its `min_binding_size`.
+ *
+ *  A runtime-sized type reports one element, not zero: encase's
+ *  `ShaderType::min_size()` assumes the array holds one element
+ *  (`encase/src/types/runtime_sized_array.rs:130-144`), so a struct of nothing
+ *  but the runtime array answers that element's size, and one with a fixed
+ *  prefix answers the prefix plus one element, rounded up to the struct's
+ *  alignment. Zero would tell wgpu there is no minimum binding size, which is
+ *  not what Bevy's runtime-sized types declare. No `> 0` guard is needed either
+ *  way: the primary `ShaderTypeInfo` template is undefined, so an unspecialised
+ *  type is already rejected. */
 
 template <typename T>
 concept ShaderWritable = ShaderType<T> && requires(const T& value, std::span<std::uint8_t> destination) {

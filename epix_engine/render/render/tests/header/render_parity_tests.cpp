@@ -4672,8 +4672,8 @@ TEST(Specializer, VariantsMemoizeByKeyAndCanonicalDedup) {
 
 /** @brief A runtime-sized shader type: a fixed header plus a trailing array,
  *  which is Bevy's `#[shader(size(runtime))]` shape. `shader_size` is the
- *  header - what a binding declares as its minimum - and `size_for` follows the
- *  data. */
+ *  binding's minimum - the header plus one element, because encase's `min_size()`
+ *  assumes the array holds one element - and `size_for` follows the data. */
 struct RuntimeSizedShaderProbe {
     std::uint32_t count = 0;
     std::vector<std::uint32_t> values;
@@ -4682,7 +4682,7 @@ struct RuntimeSizedShaderProbe {
 namespace epix::render::render_resource {
 template <>
 struct ShaderTypeInfo<::RuntimeSizedShaderProbe> {
-    static constexpr std::size_t shader_size = sizeof(std::uint32_t);
+    static constexpr std::size_t shader_size = 2 * sizeof(std::uint32_t);
 
     static std::size_t size_for(const ::RuntimeSizedShaderProbe& value) noexcept {
         return sizeof(std::uint32_t) + value.values.size() * sizeof(std::uint32_t);
@@ -4699,17 +4699,18 @@ struct ShaderTypeInfo<::RuntimeSizedShaderProbe> {
 };
 }  // namespace epix::render::render_resource
 
-/** @brief A runtime-sized type reports its fixed header as `shader_size` (the
- *  binding minimum) and a value-dependent `size_for`, which is what the storage
- *  buffer's upload uses. A fixed-size type answers one size for every value. */
+/** @brief A runtime-sized type reports the header plus one element as
+ *  `shader_size` (the binding minimum) and a value-dependent `size_for`, which is
+ *  what the storage buffer's upload uses. A fixed-size type answers one size for
+ *  every value. */
 TEST(RenderResource, RuntimeSizedShaderTypeSeparatesHeaderFromWrittenSize) {
     using epix::render::render_resource::ShaderTypeInfo;
     using epix::render::render_resource::ShaderWritable;
     static_assert(ShaderWritable<RuntimeSizedShaderProbe>);
 
     RuntimeSizedShaderProbe probe{.count = 2, .values = {7u, 9u}};
-    EXPECT_EQ(ShaderTypeInfo<RuntimeSizedShaderProbe>::shader_size, sizeof(std::uint32_t))
-        << "the header is the binding's minimum size";
+    EXPECT_EQ(ShaderTypeInfo<RuntimeSizedShaderProbe>::shader_size, 2 * sizeof(std::uint32_t))
+        << "the header plus one element is the binding's minimum size";
     EXPECT_EQ(ShaderTypeInfo<RuntimeSizedShaderProbe>::size_for(probe), 3 * sizeof(std::uint32_t))
         << "the written size follows the data";
 
