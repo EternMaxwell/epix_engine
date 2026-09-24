@@ -2,6 +2,7 @@
 
 #include <array>
 #include <bit>
+#include <cstddef>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
@@ -1199,4 +1200,39 @@ TEST(Core3dDeferredTextures, CopyLightingIdAllocatesADepthTargetPerDeferredView)
 
     EXPECT_FALSE(world.entity(plain).contains<DeferredLightingIdDepthTexture>());
     EXPECT_FALSE(world.entity(no_size).contains<DeferredLightingIdDepthTexture>());
+}
+
+/** @brief `OrderIndependentTransparencySettings` is Bevy's two-field component
+ *  and the shader's uniform, and `is_oit_supported` asks the device Bevy's two
+ *  questions in Bevy's order (`bevy_core_pipeline/src/oit/mod.rs:38-58`,
+ *  `oit/resolve/mod.rs:31,65-91`).
+ *
+ *  The mesh view layout declares the settings as a dynamic fragment uniform at
+ *  binding 28, so the std140 size is the binding's minimum. */
+TEST(Oit, SettingsAndSupportCheckMatchBevy) {
+    using epix::core_graph::is_oit_supported;
+    using epix::core_graph::OIT_REQUIRED_STORAGE_BUFFERS;
+    using epix::core_graph::OrderIndependentTransparencySettings;
+
+    // The uniform is exactly the two fields: eight bytes in std140.
+    EXPECT_EQ(sizeof(OrderIndependentTransparencySettings), 8u);
+    EXPECT_EQ(offsetof(OrderIndependentTransparencySettings, layer_count), 0u);
+    EXPECT_EQ(offsetof(OrderIndependentTransparencySettings, alpha_threshold), 4u);
+    const OrderIndependentTransparencySettings defaults{};
+    EXPECT_EQ(defaults.layer_count, 8);
+    EXPECT_EQ(defaults.alpha_threshold, 0.0f);
+
+    // The buffer count the support check needs: the layer buffer and the
+    // layer-id buffer.
+    EXPECT_EQ(OIT_REQUIRED_STORAGE_BUFFERS, 2u);
+
+    // Fragment-writable storage is asked first, then the storage-buffer count;
+    // the warning flag reports the reason but never changes the answer.
+    EXPECT_FALSE(is_oit_supported(false, 8u, false));
+    EXPECT_FALSE(is_oit_supported(false, 8u, true));
+    EXPECT_FALSE(is_oit_supported(true, OIT_REQUIRED_STORAGE_BUFFERS - 1u, false));
+    EXPECT_FALSE(is_oit_supported(true, 0u, false));
+    EXPECT_TRUE(is_oit_supported(true, OIT_REQUIRED_STORAGE_BUFFERS, false));
+    EXPECT_TRUE(is_oit_supported(true, 8u, false));
+    EXPECT_TRUE(is_oit_supported(true, 8u, true));
 }
