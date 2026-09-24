@@ -21,6 +21,7 @@
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
 #include <epix/pbr/spot_light.hpp>
+#include <epix/pbr/ssr.hpp>
 #include <epix/pbr/volumetric.hpp>
 #include <epix/pbr/mesh_extraction.hpp>
 #include <gtest/gtest.h>
@@ -726,6 +727,49 @@ TEST(Cluster, ClusteredDecalLayoutEntriesMatchBevy) {
     const auto small = clustered_decal_bind_group_layout_entries(true, true, false);
     ASSERT_TRUE(small.has_value());
     EXPECT_EQ((*small)[1].build(6u, wgpu::ShaderStage::eVertex).bindingArraySize, MAX_VIEW_DECALS);
+}
+
+/** @brief Bevy's screen-space reflection settings and the uniform they convert
+ *  to (Bevy `bevy_pbr/src/ssr/mod.rs:85-143,236-251,581-591`).
+ *
+ *  Binding 15 of the mesh view layout is this uniform, so its 24 bytes are the
+ *  minimum binding size declared there. */
+TEST(Cluster, ScreenSpaceReflectionsMatchesBevy) {
+    using epix::pbr::ScreenSpaceReflections;
+    using epix::pbr::ScreenSpaceReflectionsUniform;
+
+    // Bevy's Default is the gist-derived set, and its field order is the
+    // uniform's order.
+    const ScreenSpaceReflections defaults{};
+    EXPECT_FLOAT_EQ(defaults.perceptual_roughness_threshold, 0.1f);
+    EXPECT_FLOAT_EQ(defaults.thickness, 0.25f);
+    EXPECT_EQ(defaults.linear_steps, 16u);
+    EXPECT_FLOAT_EQ(defaults.linear_march_exponent, 1.0f);
+    EXPECT_EQ(defaults.bisection_steps, 4u);
+    EXPECT_TRUE(defaults.use_secant);
+
+    // Six four-byte scalars, which is both the object representation and the
+    // shader's std140 layout.
+    EXPECT_EQ(sizeof(ScreenSpaceReflectionsUniform), 24u);
+    EXPECT_EQ(offsetof(ScreenSpaceReflectionsUniform, perceptual_roughness_threshold), 0u);
+    EXPECT_EQ(offsetof(ScreenSpaceReflectionsUniform, use_secant), 20u);
+
+    const auto uniform = ScreenSpaceReflectionsUniform::from(defaults);
+    EXPECT_FLOAT_EQ(uniform.perceptual_roughness_threshold, 0.1f);
+    EXPECT_FLOAT_EQ(uniform.thickness, 0.25f);
+    EXPECT_EQ(uniform.linear_steps, 16u);
+    EXPECT_FLOAT_EQ(uniform.linear_march_exponent, 1.0f);
+    EXPECT_EQ(uniform.bisection_steps, 4u);
+    EXPECT_EQ(uniform.use_secant, 1u) << "the boolean is widened to a u32";
+
+    // Turning the secant method off converts to zero rather than carrying a
+    // false through.
+    ScreenSpaceReflections off{};
+    off.use_secant = false;
+    off.linear_steps = 7;
+    const auto off_uniform = ScreenSpaceReflectionsUniform::from(off);
+    EXPECT_EQ(off_uniform.use_secant, 0u);
+    EXPECT_EQ(off_uniform.linear_steps, 7u);
 }
 
 /** @brief A view's cluster limits follow from the 16 KiB uniform binding limit,
