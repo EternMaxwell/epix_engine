@@ -15,6 +15,8 @@
 #include <epix/pbr/mesh_pipeline.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/point_light.hpp>
+#include <epix/pbr/prepass.hpp>
+#include <epix/pbr/prepass_bindings.hpp>
 #include <epix/pbr/probe.hpp>
 #include <epix/pbr/shadow_phase.hpp>
 #include <epix/pbr/spot_light.hpp>
@@ -5237,6 +5239,53 @@ TEST(Cluster, MeshLayoutsMatchBevy) {
     EXPECT_EQ(without.lightmapped.entries[1].bindingArraySize, 0u) << "no binding array without array support";
     EXPECT_EQ(without.lightmapped.entries[2].bindingArraySize, 0u);
     EXPECT_EQ(without.lightmapped.entries[1].texture.sampleType, wgpu::TextureSampleType::eFloat);
+}
+
+/** @brief The prepass texture entries the mesh view layout adds: one per prepass the
+ *  key asks for, with the multisampled forms and the deferred G-buffer's `Uint`
+ *  sample type (Bevy `prepass::get_bind_group_layout_entries`,
+ *  `prepass/prepass_bindings.rs:13-57`). */
+TEST(Cluster, PrepassBindingsMatchBevy) {
+    using epix::pbr::MeshPipelineViewLayoutKey;
+    using epix::pbr::prepass_bind_group_layout_entries;
+
+    // Nothing asked for: every entry is absent, which is what tells the caller to skip
+    // bindings 20 to 23 altogether.
+    const auto none = prepass_bind_group_layout_entries(MeshPipelineViewLayoutKey::from_bits_retain(0));
+    for (const auto& entry : none) EXPECT_FALSE(entry.has_value());
+
+    // Every prepass at once, multisampled: depth is a multisampled depth texture,
+    // normals and motion vectors are multisampled unfilterable floats, and the deferred
+    // G-buffer is a single-sampled `Uint` texture - it has no multisampled form.
+    const auto all = prepass_bind_group_layout_entries(
+        MeshPipelineViewLayoutKey::MULTISAMPLED | MeshPipelineViewLayoutKey::DEPTH_PREPASS |
+        MeshPipelineViewLayoutKey::NORMAL_PREPASS | MeshPipelineViewLayoutKey::MOTION_VECTOR_PREPASS |
+        MeshPipelineViewLayoutKey::DEFERRED_PREPASS);
+    for (const auto& entry : all) ASSERT_TRUE(entry.has_value());
+    const auto entry_at = [&all](std::size_t index, std::uint32_t binding) {
+        return all[index]->build(binding, wgpu::ShaderStage::eFragment);
+    };
+    const auto depth = entry_at(0, 20u);
+    EXPECT_EQ(depth.binding, 20u) << "the caller's binding number is what it builds with";
+    EXPECT_EQ(depth.texture.sampleType, wgpu::TextureSampleType::eDepth);
+    EXPECT_EQ(depth.texture.multisampled, 1u);
+    EXPECT_EQ(entry_at(1, 21u).texture.sampleType, wgpu::TextureSampleType::eUnfilterableFloat);
+    EXPECT_EQ(entry_at(1, 21u).texture.multisampled, 1u);
+    EXPECT_EQ(entry_at(2, 22u).texture.sampleType, wgpu::TextureSampleType::eUnfilterableFloat);
+    EXPECT_EQ(entry_at(2, 22u).texture.multisampled, 1u);
+    EXPECT_EQ(entry_at(3, 23u).texture.sampleType, wgpu::TextureSampleType::eUint);
+    EXPECT_EQ(entry_at(3, 23u).texture.multisampled, 0u);
+
+    // One prepass without multisampling: the entry is the single-sampled form and the
+    // others stay absent.
+    const auto depth_only = prepass_bind_group_layout_entries(MeshPipelineViewLayoutKey::DEPTH_PREPASS);
+    ASSERT_TRUE(depth_only[0].has_value());
+    EXPECT_FALSE(depth_only[1].has_value());
+    EXPECT_FALSE(depth_only[2].has_value());
+    EXPECT_FALSE(depth_only[3].has_value());
+    const auto single = depth_only[0]->build(20u, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(single.texture.sampleType, wgpu::TextureSampleType::eDepth);
+    EXPECT_EQ(single.texture.multisampled, 0u);
 }
 
 /** @brief The pass a mesh key selects, and the defs a key adds beside the vertex and
