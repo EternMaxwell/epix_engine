@@ -1,9 +1,11 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
 #include <cstdint>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
+#include <epix/render/bind_group_layout_entries.hpp>
 #include <glm/glm.hpp>
 #include <epix/common.hpp>
 #endif
@@ -298,6 +300,50 @@ EPIX_EXPORT inline void light_probes_gather_list(
             .affects_lightmapped_mesh_diffuse = probe.affects_lightmapped_mesh_diffuse ? 1u : 0u,
         });
     }
+}
+
+/** @brief The environment map layout entries: the diffuse and specular cubemap
+ *  bindings, their sampler, and the uniform (Bevy
+ *  `environment_map::get_bind_group_layout_entries`,
+ *  `light_probe/environment_map.rs:150-169`).
+ *
+ *  The two cubemaps are binding arrays of `MAX_VIEW_LIGHT_PROBES` when the device
+ *  supports arrays, and single textures otherwise - which is the only difference
+ *  between the two shapes. They land at the view layout's binding-array group
+ *  bindings 0 and 1, and the uniform at binding 17 of the main group. */
+EPIX_EXPORT inline std::array<render::render_resource::BindGroupLayoutEntryBuilder, 4>
+environment_map_bind_group_layout_entries(bool binding_arrays_are_usable) {
+    using render::render_resource::binding_types::sampler;
+    using render::render_resource::binding_types::texture_cube;
+    using render::render_resource::binding_types::uniform_buffer;
+
+    auto texture_cube_binding = texture_cube(wgpu::TextureSampleType::eFloat);
+    if (binding_arrays_are_usable) texture_cube_binding.count(static_cast<std::uint32_t>(MAX_VIEW_LIGHT_PROBES));
+
+    return {
+        texture_cube_binding,
+        texture_cube_binding,
+        sampler(wgpu::SamplerBindingType::eFiltering),
+        uniform_buffer(true, sizeof(EnvironmentMapUniform)).visibility(wgpu::ShaderStage::eFragment),
+    };
+}
+
+/** @brief The irradiance volume layout entries: the voxel texture and its sampler
+ *  (Bevy `irradiance_volume::get_bind_group_layout_entries`,
+ *  `light_probe/irradiance_volume.rs:277-294`).
+ *
+ *  Like the environment maps, the texture is an array of `MAX_VIEW_LIGHT_PROBES`
+ *  when the device supports arrays. The two entries land at the binding-array
+ *  group's bindings 3 and 4. */
+EPIX_EXPORT inline std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2>
+irradiance_volume_bind_group_layout_entries(bool binding_arrays_are_usable) {
+    using render::render_resource::binding_types::sampler;
+    using render::render_resource::binding_types::texture_3d;
+
+    auto texture_3d_binding = texture_3d(wgpu::TextureSampleType::eFloat);
+    if (binding_arrays_are_usable) texture_3d_binding.count(static_cast<std::uint32_t>(MAX_VIEW_LIGHT_PROBES));
+
+    return {texture_3d_binding, sampler(wgpu::SamplerBindingType::eFiltering)};
 }
 
 }  // namespace epix::pbr

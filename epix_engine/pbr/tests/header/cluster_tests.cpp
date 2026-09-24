@@ -5288,6 +5288,49 @@ TEST(Cluster, PrepassBindingsMatchBevy) {
     EXPECT_EQ(single.texture.multisampled, 0u);
 }
 
+/** @brief The light-probe layout entries: environment map cubemaps plus their sampler
+ *  and uniform, and the irradiance volume's voxel texture plus its sampler — each in
+ *  the single-texture and binding-array shapes (Bevy
+ *  `environment_map::get_bind_group_layout_entries`, `light_probe/environment_map.rs:150-169`,
+ *  and `irradiance_volume::get_bind_group_layout_entries`, `light_probe/irradiance_volume.rs:277-294`). */
+TEST(Cluster, LightProbeLayoutEntriesMatchBevy) {
+    using epix::pbr::environment_map_bind_group_layout_entries;
+    using epix::pbr::EnvironmentMapUniform;
+    using epix::pbr::irradiance_volume_bind_group_layout_entries;
+    using epix::pbr::MAX_VIEW_LIGHT_PROBES;
+
+    const auto single = environment_map_bind_group_layout_entries(false);
+    const auto arrays = environment_map_bind_group_layout_entries(true);
+    const auto at = [](const auto& entries, std::size_t index, std::uint32_t binding) {
+        return entries[index].build(binding, wgpu::ShaderStage::eVertex);
+    };
+
+    // Both cubemaps are cube textures, and the two shapes differ only in their
+    // binding-array size.
+    for (std::size_t index : {0u, 1u}) {
+        EXPECT_EQ(at(single, index, 0u).texture.viewDimension, wgpu::TextureViewDimension::eCube);
+        EXPECT_EQ(at(single, index, 0u).texture.sampleType, wgpu::TextureSampleType::eFloat);
+        EXPECT_EQ(at(single, index, 0u).bindingArraySize, 0u);
+        EXPECT_EQ(at(arrays, index, 0u).bindingArraySize, static_cast<std::uint32_t>(MAX_VIEW_LIGHT_PROBES));
+    }
+    EXPECT_EQ(at(single, 2u, 0u).sampler.type, wgpu::SamplerBindingType::eFiltering);
+    // The uniform is a dynamic uniform buffer the fragment shader reads.
+    const auto uniform = at(single, 3u, 17u);
+    EXPECT_EQ(uniform.buffer.type, wgpu::BufferBindingType::eUniform);
+    EXPECT_EQ(uniform.buffer.hasDynamicOffset, 1u);
+    EXPECT_EQ(uniform.buffer.minBindingSize, static_cast<std::uint64_t>(sizeof(EnvironmentMapUniform)));
+    EXPECT_EQ(uniform.visibility, wgpu::ShaderStage::eFragment);
+    EXPECT_EQ(uniform.binding, 17u) << "the view layout puts it at binding 17";
+
+    const auto voxels_single = irradiance_volume_bind_group_layout_entries(false);
+    const auto voxels_arrays = irradiance_volume_bind_group_layout_entries(true);
+    EXPECT_EQ(at(voxels_single, 0u, 3u).texture.viewDimension, wgpu::TextureViewDimension::e3D);
+    EXPECT_EQ(at(voxels_single, 0u, 3u).texture.sampleType, wgpu::TextureSampleType::eFloat);
+    EXPECT_EQ(at(voxels_single, 0u, 3u).bindingArraySize, 0u);
+    EXPECT_EQ(at(voxels_arrays, 0u, 3u).bindingArraySize, static_cast<std::uint32_t>(MAX_VIEW_LIGHT_PROBES));
+    EXPECT_EQ(at(voxels_single, 1u, 4u).sampler.type, wgpu::SamplerBindingType::eFiltering);
+}
+
 /** @brief The pass a mesh key selects, and the defs a key adds beside the vertex and
  *  pass ones (Bevy `MeshPipeline::specialize`, `render/mesh.rs:2453-2538`). */
 TEST(Cluster, MeshPipelinePassSelectionMatchesBevy) {
