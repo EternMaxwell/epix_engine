@@ -1,4 +1,5 @@
 #include <epix/pbr/ambient_light.hpp>
+#include <epix/pbr/atmosphere.hpp>
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/cluster.hpp>
 #include <epix/pbr/clustered_decal.hpp>
@@ -727,6 +728,79 @@ TEST(Cluster, ClusteredDecalLayoutEntriesMatchBevy) {
     const auto small = clustered_decal_bind_group_layout_entries(true, true, false);
     ASSERT_TRUE(small.has_value());
     EXPECT_EQ((*small)[1].build(6u, wgpu::ShaderStage::eVertex).bindingArraySize, MAX_VIEW_DECALS);
+}
+
+/** @brief The atmosphere settings and the storage buffer the mesh view layout
+ *  binds at binding 31 (Bevy `bevy_pbr/src/atmosphere/mod.rs:292-449` and
+ *  `atmosphere/resources.rs:475-482,769-774`, laid out by
+ *  `atmosphere/types.wgsl:3-36`).
+ *
+ *  The explicit padding is what the shader's alignment forces: `vec3<u32>` and
+ *  `vec3<f32>` are sixteen-byte aligned, so the two GPU structs are 80 and 32
+ *  bytes where glm's unaligned gentypes would give 72 and 20. */
+TEST(Cluster, AtmosphereShaderLayoutMatchesBevy) {
+    using epix::pbr::AtmosphereData;
+    using epix::pbr::AtmosphereMode;
+    using epix::pbr::AtmosphereSettings;
+    using epix::pbr::GpuAtmosphere;
+    using epix::pbr::GpuAtmosphereSettings;
+    using epix::render::render_resource::ShaderTypeInfo;
+    using epix::render::render_resource::ShaderWritable;
+
+    static_assert(ShaderWritable<GpuAtmosphere>);
+    static_assert(ShaderWritable<GpuAtmosphereSettings>);
+    static_assert(ShaderWritable<AtmosphereData>);
+    static_assert(ShaderTypeInfo<AtmosphereData>::shader_size == 112u);
+
+    // Bevy's settings defaults, field by field.
+    const AtmosphereSettings settings{};
+    EXPECT_EQ(settings.transmittance_lut_size, glm::uvec2(256, 128));
+    EXPECT_EQ(settings.multiscattering_lut_size, glm::uvec2(32, 32));
+    EXPECT_EQ(settings.sky_view_lut_size, glm::uvec2(400, 200));
+    EXPECT_EQ(settings.aerial_view_lut_size, glm::uvec3(32, 32, 32));
+    EXPECT_EQ(settings.transmittance_lut_samples, 40u);
+    EXPECT_EQ(settings.multiscattering_lut_dirs, 64u);
+    EXPECT_EQ(settings.multiscattering_lut_samples, 20u);
+    EXPECT_EQ(settings.sky_view_lut_samples, 16u);
+    EXPECT_EQ(settings.aerial_view_lut_samples, 10u);
+    EXPECT_FLOAT_EQ(settings.aerial_view_lut_max_distance, 3.2e4f);
+    EXPECT_FLOAT_EQ(settings.scene_units_to_m, 1.0f);
+    EXPECT_EQ(settings.sky_max_samples, 16u);
+    EXPECT_EQ(settings.rendering_method, AtmosphereMode::LookupTexture);
+    EXPECT_EQ(static_cast<std::uint32_t>(AtmosphereMode::LookupTexture), 0u);
+    EXPECT_EQ(static_cast<std::uint32_t>(AtmosphereMode::Raymarched), 1u);
+
+    // The shader's `Atmosphere`: a sixteen-byte-aligned vec3 then two scalars.
+    EXPECT_EQ(sizeof(GpuAtmosphere), 32u);
+    EXPECT_EQ(offsetof(GpuAtmosphere, ground_albedo), 0u);
+    EXPECT_EQ(offsetof(GpuAtmosphere, bottom_radius), 12u);
+    EXPECT_EQ(offsetof(GpuAtmosphere, top_radius), 16u);
+
+    // The shader's `AtmosphereSettings`: three vec2<u32>, a sixteen-byte-aligned
+    // vec3<u32>, then nine scalars.
+    EXPECT_EQ(sizeof(GpuAtmosphereSettings), 80u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, transmittance_lut_size), 0u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, multiscattering_lut_size), 8u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, sky_view_lut_size), 16u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, aerial_view_lut_size), 32u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, transmittance_lut_samples), 44u);
+    EXPECT_EQ(offsetof(GpuAtmosphereSettings, rendering_method), 76u);
+
+    // The buffer's two members, and the layout entry's minimum size.
+    EXPECT_EQ(sizeof(AtmosphereData), 112u);
+    EXPECT_EQ(offsetof(AtmosphereData, atmosphere), 0u);
+    EXPECT_EQ(offsetof(AtmosphereData, settings), 32u);
+
+    // The conversion widens the method, and Bevy's `Default` is the defaulted
+    // settings converted.
+    const auto gpu = GpuAtmosphereSettings::from(settings);
+    EXPECT_EQ(gpu.rendering_method, 0u);
+    EXPECT_EQ(gpu.transmittance_lut_size, settings.transmittance_lut_size);
+    EXPECT_EQ(gpu.sky_max_samples, settings.sky_max_samples);
+    EXPECT_EQ(GpuAtmosphereSettings::defaulted().rendering_method, 0u);
+    AtmosphereSettings raymarched{};
+    raymarched.rendering_method = AtmosphereMode::Raymarched;
+    EXPECT_EQ(GpuAtmosphereSettings::from(raymarched).rendering_method, 1u);
 }
 
 /** @brief Bevy's screen-space reflection settings and the uniform they convert
