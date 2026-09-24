@@ -1,5 +1,6 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/pbr/mesh_shaders.hpp>
 #include <epix/shader.hpp>
 #include <epix/task.hpp>
@@ -103,4 +104,63 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(types->get().import_path.data));
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(bindings->get().import_path.data));
     EXPECT_TRUE(std::holds_alternative<std::filesystem::path>(io->get().import_path.data));
+}
+
+/** @brief The mesh pipeline resource holds Bevy's eight fields and derives four
+ *  of them from the device (Bevy `MeshPipeline` and its `FromWorld`,
+ *  `bevy_pbr/src/render/mesh.rs:1847-1920`).
+ *
+ *  `make` is the `FromWorld` counterpart: `limits` stands in for
+ *  `RenderDevice::limits()`, the two binding facts for `RenderAdapter`'s
+ *  capabilities, and the shader handle for the `mesh.wgsl` the plugin loads —
+ *  any loaded handle stands in for that until `mesh.wgsl` itself is ported. */
+TEST(MeshPipeline, FieldsAndViewLayoutFollowBevy) {
+    auto app = make_shader_asset_app();
+    pbr::register_mesh_shaders(app.world_mut());
+    flush_load_tasks(app);
+
+    const auto& handles = app.resource<pbr::MeshShaderHandles>();
+    auto& shaders       = app.resource<Assets<Shader>>();
+    ASSERT_TRUE(shaders.get(handles.forward_io.id()).has_value());
+
+    const auto layouts = pbr::generate_view_layouts(wgpu::BufferBindingType::eReadOnlyStorage,
+                                                    wgpu::BufferBindingType::eReadOnlyStorage, true, true, true, false);
+
+    // Default limits have no storage buffers, so both derivations take the
+    // fallback a WebGL2-class device takes: a batched uniform buffer and
+    // uniform-buffer skins.
+    wgpu::Limits uniform_limits{};
+    uniform_limits.maxStorageBuffersPerShaderStage = 0;
+    const auto uniform_pipeline = pbr::MeshPipeline::make(
+        uniform_limits, wgpu::BufferBindingType::eReadOnlyStorage, handles.forward_io, pbr::MeshPipelineViewLayouts{layouts}, true, true);
+    EXPECT_EQ(uniform_pipeline.clustered_forward_buffer_binding_type, wgpu::BufferBindingType::eReadOnlyStorage);
+    EXPECT_TRUE(uniform_pipeline.binding_arrays_are_usable);
+    EXPECT_TRUE(uniform_pipeline.clustered_decals_are_usable);
+    EXPECT_TRUE(uniform_pipeline.skins_use_uniform_buffers)
+        << "no storage buffers means the uniform path; Bevy memoises this in a OnceLock, so this call fixes it for the process";
+    EXPECT_TRUE(uniform_pipeline.per_object_buffer_batch_size.has_value());
+    EXPECT_EQ(uniform_pipeline.mesh_layouts.model_only.label, "mesh_layout");
+
+    // The view layouts are indexed by the key, exactly as the resource Bevy's
+    // `FromWorld` clones.
+    const auto bare_key = pbr::MeshPipelineViewLayoutKey::from_bits_retain(0);
+    EXPECT_EQ(uniform_pipeline.get_view_layout(bare_key).main_layout.label, bare_key.label());
+    EXPECT_EQ(uniform_pipeline.get_view_layout(bare_key).binding_array_layout.label,
+              bare_key.label() + "_binding_array");
+    EXPECT_EQ(uniform_pipeline.get_view_layout(pbr::MeshPipelineViewLayoutKey::ATMOSPHERE).main_layout.label,
+              pbr::MeshPipelineViewLayoutKey::ATMOSPHERE.label());
+
+    // A storage-capable device takes the other branch of both derivations, and
+    // the two capability facts are the ones passed in.
+    wgpu::Limits storage_limits{};
+    storage_limits.maxStorageBuffersPerShaderStage = 8;
+    const auto storage_pipeline = pbr::MeshPipeline::make(
+        storage_limits, wgpu::BufferBindingType::eStorage, handles.forward_io, pbr::MeshPipelineViewLayouts{layouts}, false, false);
+    EXPECT_FALSE(storage_pipeline.per_object_buffer_batch_size.has_value());
+    // `skins_use_uniform_buffers` is memoised on its first call, exactly as Bevy
+    // memoises it, so it still answers for the uniform-limits device.
+    EXPECT_EQ(storage_pipeline.skins_use_uniform_buffers, uniform_pipeline.skins_use_uniform_buffers);
+    EXPECT_FALSE(storage_pipeline.binding_arrays_are_usable);
+    EXPECT_FALSE(storage_pipeline.clustered_decals_are_usable);
+    EXPECT_EQ(storage_pipeline.clustered_forward_buffer_binding_type, wgpu::BufferBindingType::eStorage);
 }
