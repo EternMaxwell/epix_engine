@@ -36,6 +36,12 @@ EPIX_EXPORT inline constexpr std::string_view MORPH_SHADER_PATH = "pbr/morph.sla
 /** @brief The embedded path of the skinning helpers (Bevy
  *  `render/skinning.wgsl`). */
 EPIX_EXPORT inline constexpr std::string_view SKINNING_SHADER_PATH = "pbr/skinning.slang";
+/** @brief The embedded path of the previous frame's view matrices (Bevy
+ *  `prepass/prepass_bindings.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view PREPASS_BINDINGS_SHADER_PATH = "pbr/prepass_bindings.slang";
+/** @brief The embedded path of the view-space conversion helpers (Bevy
+ *  `render/view_transformations.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view VIEW_TRANSFORMATIONS_SHADER_PATH = "pbr/view_transformations.slang";
 
 /** @brief Handles keeping the mesh shader modules loaded.
  *
@@ -53,6 +59,8 @@ EPIX_EXPORT struct MeshShaderHandles {
     assets::Handle<shader::Shader> occlusion_culling;
     assets::Handle<shader::Shader> morph;
     assets::Handle<shader::Shader> skinning;
+    assets::Handle<shader::Shader> prepass_bindings;
+    assets::Handle<shader::Shader> view_transformations;
 };
 
 /** @brief Publish the mesh shader modules as embedded assets and load them

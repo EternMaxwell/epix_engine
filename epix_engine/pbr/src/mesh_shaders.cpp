@@ -420,25 +420,25 @@ import epix.atmosphere_types;
 import epix.view;
 import epix.globals;
 
-[[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view;
-[[vk::binding(1, 0)]] ConstantBuffer<epix::mesh_view_types::Lights> lights;
+public [[vk::binding(0, 0)]] ConstantBuffer<epix::view::View> view;
+public [[vk::binding(1, 0)]] ConstantBuffer<epix::mesh_view_types::Lights> lights;
 #ifdef NO_CUBE_ARRAY_TEXTURES_SUPPORT
-[[vk::binding(2, 0)]] DepthTextureCube point_shadow_textures;
+public [[vk::binding(2, 0)]] DepthTextureCube point_shadow_textures;
 #else
-[[vk::binding(2, 0)]] DepthTextureCubeArray point_shadow_textures;
+public [[vk::binding(2, 0)]] DepthTextureCubeArray point_shadow_textures;
 #endif
-[[vk::binding(3, 0)]] SamplerComparisonState point_shadow_textures_comparison_sampler;
+public [[vk::binding(3, 0)]] SamplerComparisonState point_shadow_textures_comparison_sampler;
 #ifdef PCSS_SAMPLERS_AVAILABLE
-[[vk::binding(4, 0)]] SamplerState point_shadow_textures_linear_sampler;
+public [[vk::binding(4, 0)]] SamplerState point_shadow_textures_linear_sampler;
 #endif
 #ifdef NO_ARRAY_TEXTURES_SUPPORT
-[[vk::binding(5, 0)]] DepthTexture2D directional_shadow_textures;
+public [[vk::binding(5, 0)]] DepthTexture2D directional_shadow_textures;
 #else
-[[vk::binding(5, 0)]] DepthTexture2DArray directional_shadow_textures;
+public [[vk::binding(5, 0)]] DepthTexture2DArray directional_shadow_textures;
 #endif
-[[vk::binding(6, 0)]] SamplerComparisonState directional_shadow_textures_comparison_sampler;
+public [[vk::binding(6, 0)]] SamplerComparisonState directional_shadow_textures_comparison_sampler;
 #ifdef PCSS_SAMPLERS_AVAILABLE
-[[vk::binding(7, 0)]] SamplerState directional_shadow_textures_linear_sampler;
+public [[vk::binding(7, 0)]] SamplerState directional_shadow_textures_linear_sampler;
 #endif
 
 #if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 3
@@ -447,100 +447,100 @@ import epix.globals;
 // The offsets element is a pair of `uvec4`s, so the buffer is declared as the
 // flat `uint4` array the pair packs into: same bytes, and a reader scales the
 // index by two.
-[[vk::binding(8, 0)]] StructuredBuffer<epix::mesh_view_types::ClusterableObject> clusterable_objects;
-[[vk::binding(9, 0)]] StructuredBuffer<uint> clusterable_object_index_lists;
-[[vk::binding(10, 0)]] StructuredBuffer<uint4> cluster_offsets_and_counts;
+public [[vk::binding(8, 0)]] StructuredBuffer<epix::mesh_view_types::ClusterableObject> clusterable_objects;
+public [[vk::binding(9, 0)]] StructuredBuffer<uint> clusterable_object_index_lists;
+public [[vk::binding(10, 0)]] StructuredBuffer<uint4> cluster_offsets_and_counts;
 #else
-[[vk::binding(8, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterableObjects> clusterable_objects;
-[[vk::binding(9, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterLightIndexLists> clusterable_object_index_lists;
-[[vk::binding(10, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterOffsetsAndCounts> cluster_offsets_and_counts;
+public [[vk::binding(8, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterableObjects> clusterable_objects;
+public [[vk::binding(9, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterLightIndexLists> clusterable_object_index_lists;
+public [[vk::binding(10, 0)]] ConstantBuffer<epix::mesh_view_types::ClusterOffsetsAndCounts> cluster_offsets_and_counts;
 #endif
 
-[[vk::binding(11, 0)]] ConstantBuffer<epix::globals::Globals> globals;
-[[vk::binding(12, 0)]] ConstantBuffer<epix::mesh_view_types::Fog> fog;
-[[vk::binding(13, 0)]] ConstantBuffer<epix::mesh_view_types::LightProbes> light_probes;
+public [[vk::binding(11, 0)]] ConstantBuffer<epix::globals::Globals> globals;
+public [[vk::binding(12, 0)]] ConstantBuffer<epix::mesh_view_types::Fog> fog;
+public [[vk::binding(13, 0)]] ConstantBuffer<epix::mesh_view_types::LightProbes> light_probes;
 
 public static const uint VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE = 64u;
 #if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
-[[vk::binding(14, 0)]] StructuredBuffer<float4> visibility_ranges;
+public [[vk::binding(14, 0)]] StructuredBuffer<float4> visibility_ranges;
 #else
 public struct VisibilityRanges {
     public float4 values[VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE];
 };
-[[vk::binding(14, 0)]] ConstantBuffer<VisibilityRanges> visibility_ranges;
+public [[vk::binding(14, 0)]] ConstantBuffer<VisibilityRanges> visibility_ranges;
 #endif
 
-[[vk::binding(15, 0)]] ConstantBuffer<epix::mesh_view_types::ScreenSpaceReflectionsSettings> ssr_settings;
-[[vk::binding(16, 0)]] Texture2D<float4> screen_space_ambient_occlusion_texture;
-[[vk::binding(17, 0)]] ConstantBuffer<epix::mesh_view_types::EnvironmentMapUniform> environment_map_uniform;
+public [[vk::binding(15, 0)]] ConstantBuffer<epix::mesh_view_types::ScreenSpaceReflectionsSettings> ssr_settings;
+public [[vk::binding(16, 0)]] Texture2D<float4> screen_space_ambient_occlusion_texture;
+public [[vk::binding(17, 0)]] ConstantBuffer<epix::mesh_view_types::EnvironmentMapUniform> environment_map_uniform;
 
 // Tonemapping LUTs; keep in sync with the tonemapping module.
-[[vk::binding(18, 0)]] Texture3D<float4> dt_lut_texture;
-[[vk::binding(19, 0)]] SamplerState dt_lut_sampler;
+public [[vk::binding(18, 0)]] Texture3D<float4> dt_lut_texture;
+public [[vk::binding(19, 0)]] SamplerState dt_lut_sampler;
 
 #ifdef MULTISAMPLED
 #ifdef DEPTH_PREPASS
-[[vk::binding(20, 0)]] DepthTexture2DMS<0> depth_prepass_texture;
+public [[vk::binding(20, 0)]] DepthTexture2DMS<0> depth_prepass_texture;
 #endif
 #ifdef NORMAL_PREPASS
-[[vk::binding(21, 0)]] Texture2DMS<float4> normal_prepass_texture;
+public [[vk::binding(21, 0)]] Texture2DMS<float4> normal_prepass_texture;
 #endif
 #ifdef MOTION_VECTOR_PREPASS
-[[vk::binding(22, 0)]] Texture2DMS<float4> motion_vector_prepass_texture;
+public [[vk::binding(22, 0)]] Texture2DMS<float4> motion_vector_prepass_texture;
 #endif
 #else
 #ifdef DEPTH_PREPASS
-[[vk::binding(20, 0)]] DepthTexture2D depth_prepass_texture;
+public [[vk::binding(20, 0)]] DepthTexture2D depth_prepass_texture;
 #endif
 #ifdef NORMAL_PREPASS
-[[vk::binding(21, 0)]] Texture2D<float4> normal_prepass_texture;
+public [[vk::binding(21, 0)]] Texture2D<float4> normal_prepass_texture;
 #endif
 #ifdef MOTION_VECTOR_PREPASS
-[[vk::binding(22, 0)]] Texture2D<float4> motion_vector_prepass_texture;
+public [[vk::binding(22, 0)]] Texture2D<float4> motion_vector_prepass_texture;
 #endif
 #endif
 
 #ifdef DEFERRED_PREPASS
-[[vk::binding(23, 0)]] Texture2D<uint> deferred_prepass_texture;
+public [[vk::binding(23, 0)]] Texture2D<uint> deferred_prepass_texture;
 #endif
 
-[[vk::binding(24, 0)]] Texture2D<float4> view_transmission_texture;
-[[vk::binding(25, 0)]] SamplerState view_transmission_sampler;
+public [[vk::binding(24, 0)]] Texture2D<float4> view_transmission_texture;
+public [[vk::binding(25, 0)]] SamplerState view_transmission_sampler;
 
 #ifdef OIT_ENABLED
-[[vk::binding(26, 0)]] RWStructuredBuffer<uint2> oit_layers;
-[[vk::binding(27, 0)]] RWStructuredBuffer<int> oit_layer_ids;
-[[vk::binding(28, 0)]] ConstantBuffer<epix::mesh_view_types::OrderIndependentTransparencySettings> oit_settings;
+public [[vk::binding(26, 0)]] RWStructuredBuffer<uint2> oit_layers;
+public [[vk::binding(27, 0)]] RWStructuredBuffer<int> oit_layer_ids;
+public [[vk::binding(28, 0)]] ConstantBuffer<epix::mesh_view_types::OrderIndependentTransparencySettings> oit_settings;
 #endif
 
 #ifdef ATMOSPHERE
-[[vk::binding(29, 0)]] Texture2D<float4> atmosphere_transmittance_texture;
-[[vk::binding(30, 0)]] SamplerState atmosphere_transmittance_sampler;
-[[vk::binding(31, 0)]] StructuredBuffer<epix::atmosphere_types::AtmosphereData> atmosphere_data;
+public [[vk::binding(29, 0)]] Texture2D<float4> atmosphere_transmittance_texture;
+public [[vk::binding(30, 0)]] SamplerState atmosphere_transmittance_sampler;
+public [[vk::binding(31, 0)]] StructuredBuffer<epix::atmosphere_types::AtmosphereData> atmosphere_data;
 #endif
 
 #ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY
-[[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_maps[8];
-[[vk::binding(1, 1)]] TextureCube<float4> specular_environment_maps[8];
+public [[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_maps[8];
+public [[vk::binding(1, 1)]] TextureCube<float4> specular_environment_maps[8];
 #else
-[[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_map;
-[[vk::binding(1, 1)]] TextureCube<float4> specular_environment_map;
+public [[vk::binding(0, 1)]] TextureCube<float4> diffuse_environment_map;
+public [[vk::binding(1, 1)]] TextureCube<float4> specular_environment_map;
 #endif
-[[vk::binding(2, 1)]] SamplerState environment_map_sampler;
+public [[vk::binding(2, 1)]] SamplerState environment_map_sampler;
 
 #ifdef IRRADIANCE_VOLUMES_ARE_USABLE
 #ifdef MULTIPLE_LIGHT_PROBES_IN_ARRAY
-[[vk::binding(3, 1)]] Texture3D<float4> irradiance_volumes[8];
+public [[vk::binding(3, 1)]] Texture3D<float4> irradiance_volumes[8];
 #else
-[[vk::binding(3, 1)]] Texture3D<float4> irradiance_volume;
+public [[vk::binding(3, 1)]] Texture3D<float4> irradiance_volume;
 #endif
-[[vk::binding(4, 1)]] SamplerState irradiance_volume_sampler;
+public [[vk::binding(4, 1)]] SamplerState irradiance_volume_sampler;
 #endif
 
 #ifdef CLUSTERED_DECALS_ARE_USABLE
-[[vk::binding(5, 1)]] StructuredBuffer<epix::mesh_view_types::ClusteredDecal> clustered_decals;
-[[vk::binding(6, 1)]] Texture2D<float4> clustered_decal_textures[8];
-[[vk::binding(7, 1)]] SamplerState clustered_decal_sampler;
+public [[vk::binding(5, 1)]] StructuredBuffer<epix::mesh_view_types::ClusteredDecal> clustered_decals;
+public [[vk::binding(6, 1)]] Texture2D<float4> clustered_decal_textures[8];
+public [[vk::binding(7, 1)]] SamplerState clustered_decal_sampler;
 #endif
 )slang";
 
@@ -601,9 +601,9 @@ import epix.mesh_types;
 
 #ifdef MORPH_TARGETS
 
-[[vk::binding(2, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> morph_weights;
-[[vk::binding(3, 2)]] Texture3D<float4> morph_targets;
-[[vk::binding(7, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> prev_morph_weights;
+public [[vk::binding(2, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> morph_weights;
+public [[vk::binding(3, 2)]] Texture3D<float4> morph_targets;
+public [[vk::binding(7, 2)]] ConstantBuffer<epix::mesh_types::MorphWeights> prev_morph_weights;
 
 public static const uint position_offset = 0u;
 public static const uint normal_offset = 3u;
@@ -664,17 +664,17 @@ import epix.mesh_bindings;
 #ifdef SKINNED
 
 #ifdef SKINS_USE_UNIFORM_BUFFERS
-[[vk::binding(1, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> joint_matrices;
+public [[vk::binding(1, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> joint_matrices;
 #else
-[[vk::binding(1, 2)]] StructuredBuffer<float4x4> joint_matrices;
+public [[vk::binding(1, 2)]] StructuredBuffer<float4x4> joint_matrices;
 #endif
 
 // The previous frame's joint matrices, for motion vectors; on the first frame
 // they are the current ones.
 #ifdef SKINS_USE_UNIFORM_BUFFERS
-[[vk::binding(6, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> prev_joint_matrices;
+public [[vk::binding(6, 2)]] ConstantBuffer<epix::mesh_types::SkinnedMesh> prev_joint_matrices;
 #else
-[[vk::binding(6, 2)]] StructuredBuffer<float4x4> prev_joint_matrices;
+public [[vk::binding(6, 2)]] StructuredBuffer<float4x4> prev_joint_matrices;
 #endif
 
 public float4x4 skin_model(uint4 indexes, float4 weights, uint instance_index) {
@@ -720,6 +720,205 @@ public float3 skin_normals(float4x4 world_from_local, float3 normal) {
 #endif
 )slang";
 
+/** @brief Slang representation of pinned Bevy 0.18
+ *  `prepass/prepass_bindings.wgsl`: the previous frame's view matrices.
+ *
+ * Unlike the other view bindings this one lives in the prepass pipeline's own
+ * layout, where binding 2 is the previous view uniforms. */
+constexpr std::string_view kPrepassBindingsShader = R"slang(
+module epix.prepass_bindings;
+
+namespace epix::prepass_bindings {
+
+public struct PreviousViewUniforms {
+    public float4x4 view_from_world;
+    public float4x4 clip_from_world;
+    public float4x4 clip_from_view;
+    public float4x4 world_from_clip;
+    public float4x4 view_from_clip;
+};
+
+}
+
+// Material bindings are in group 2.
+public [[vk::binding(2, 0)]] ConstantBuffer<epix::prepass_bindings::PreviousViewUniforms> previous_view_uniforms;
+)slang";
+
+/**
+ * @brief Slang representation of pinned Bevy 0.18 `view_transformations.wgsl`.
+ *
+ * The view uniform and the previous-view uniforms come from the two modules
+ * imported at the top; Slang's `import` brings their module-scope bindings into
+ * scope, so they are spelled bare where Bevy qualifies them with
+ * `view_bindings::`/`prepass_bindings::`.
+ *
+ * Every matrix product flips sides for the reason the skinning module states:
+ * the port keeps Bevy's matrices transposed, so `M * v` is `mul(v, M)`.
+ * Two-dimensional indexing is unchanged (`M[3][2]` is the same element either
+ * way), and `#else ifdef X` becomes Slang's `#elif defined(X)`.
+ */
+constexpr std::string_view kViewTransformationsShader = R"slang(
+module epix.view_transformations;
+
+import epix.mesh_view_bindings;
+import epix.prepass_bindings;
+
+namespace epix::view_transformations {
+
+// World space: +y is up. View space: -z is forward. NDC: (-1,-1) is bottom-left,
+// z is 1 at the near plane and 0 at the far plane. UV: (0,0) is top-left.
+
+public float3 position_view_to_world(float3 view_pos) {
+    float4 world_pos = mul(float4(view_pos, 1.0), view.world_from_view);
+    return world_pos.xyz;
+}
+
+public float3 position_clip_to_world(float4 clip_pos) {
+    float4 world_pos = mul(clip_pos, view.world_from_clip);
+    return world_pos.xyz;
+}
+
+public float3 position_ndc_to_world(float3 ndc_pos) {
+    float4 world_pos = mul(float4(ndc_pos, 1.0), view.world_from_clip);
+    return world_pos.xyz / world_pos.w;
+}
+
+public float3 direction_view_to_world(float3 view_dir) {
+    float4 world_dir = mul(float4(view_dir, 0.0), view.world_from_view);
+    return world_dir.xyz;
+}
+
+public float3 direction_clip_to_world(float4 clip_dir) {
+    float4 world_dir = mul(clip_dir, view.world_from_clip);
+    return world_dir.xyz;
+}
+
+public float3 position_world_to_view(float3 world_pos) {
+    float4 view_pos = mul(float4(world_pos, 1.0), view.view_from_world);
+    return view_pos.xyz;
+}
+
+public float3 position_clip_to_view(float4 clip_pos) {
+    float4 view_pos = mul(clip_pos, view.view_from_clip);
+    return view_pos.xyz;
+}
+
+public float3 position_ndc_to_view(float3 ndc_pos) {
+    float4 view_pos = mul(float4(ndc_pos, 1.0), view.view_from_clip);
+    return view_pos.xyz / view_pos.w;
+}
+
+public float3 direction_world_to_view(float3 world_dir) {
+    float4 view_dir = mul(float4(world_dir, 0.0), view.view_from_world);
+    return view_dir.xyz;
+}
+
+public float3 direction_clip_to_view(float4 clip_dir) {
+    float4 view_dir = mul(clip_dir, view.view_from_clip);
+    return view_dir.xyz;
+}
+
+public float3 position_world_to_prev_view(float3 world_pos) {
+    float4 view_pos = mul(float4(world_pos, 1.0), previous_view_uniforms.view_from_world);
+    return view_pos.xyz;
+}
+
+public float3 position_world_to_prev_ndc(float3 world_pos) {
+    float4 ndc_pos = mul(float4(world_pos, 1.0), previous_view_uniforms.clip_from_world);
+    return ndc_pos.xyz / ndc_pos.w;
+}
+
+public float4 position_world_to_clip(float3 world_pos) {
+    return mul(float4(world_pos, 1.0), view.clip_from_world);
+}
+
+public float4 position_view_to_clip(float3 view_pos) {
+    return mul(float4(view_pos, 1.0), view.clip_from_view);
+}
+
+public float4 direction_world_to_clip(float3 world_dir) {
+    return mul(float4(world_dir, 0.0), view.clip_from_world);
+}
+
+public float4 direction_view_to_clip(float3 view_dir) {
+    return mul(float4(view_dir, 0.0), view.clip_from_view);
+}
+
+public float3 position_world_to_ndc(float3 world_pos) {
+    float4 ndc_pos = mul(float4(world_pos, 1.0), view.clip_from_world);
+    return ndc_pos.xyz / ndc_pos.w;
+}
+
+public float3 position_view_to_ndc(float3 view_pos) {
+    float4 ndc_pos = mul(float4(view_pos, 1.0), view.clip_from_view);
+    return ndc_pos.xyz / ndc_pos.w;
+}
+
+// The perspective camera's near clipping plane.
+public float perspective_camera_near() {
+    return view.clip_from_view[3][2];
+}
+
+// Depth values in front of the camera are negative, because -z is forward.
+public float depth_ndc_to_view_z(float ndc_depth) {
+#if defined(VIEW_PROJECTION_PERSPECTIVE)
+    return -perspective_camera_near() / ndc_depth;
+#elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
+    return -(view.clip_from_view[3][2] - ndc_depth) / view.clip_from_view[2][2];
+#else
+    float4 view_pos = mul(float4(0.0, 0.0, ndc_depth, 1.0), view.view_from_clip);
+    return view_pos.z / view_pos.w;
+#endif
+}
+
+public float view_z_to_depth_ndc(float view_z) {
+#if defined(VIEW_PROJECTION_PERSPECTIVE)
+    return -perspective_camera_near() / view_z;
+#elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
+    return view.clip_from_view[3][2] + view_z * view.clip_from_view[2][2];
+#else
+    float4 ndc_pos = mul(float4(0.0, 0.0, view_z, 1.0), view.clip_from_view);
+    return ndc_pos.z / ndc_pos.w;
+#endif
+}
+
+public float prev_view_z_to_depth_ndc(float view_z) {
+#if defined(VIEW_PROJECTION_PERSPECTIVE)
+    return -perspective_camera_near() / view_z;
+#elif defined(VIEW_PROJECTION_ORTHOGRAPHIC)
+    return previous_view_uniforms.clip_from_view[3][2] +
+           view_z * previous_view_uniforms.clip_from_view[2][2];
+#else
+    float4 ndc_pos = mul(float4(0.0, 0.0, view_z, 1.0), previous_view_uniforms.clip_from_view);
+    return ndc_pos.z / ndc_pos.w;
+#endif
+}
+
+// NDC xy [-1, 1] to UV [0, 1] and back.
+public float2 ndc_to_uv(float2 ndc) {
+    return ndc * float2(0.5, -0.5) + float2(0.5, 0.5);
+}
+
+public float2 uv_to_ndc(float2 uv) {
+    return uv * float2(2.0, -2.0) + float2(-1.0, 1.0);
+}
+
+// The [0, 1] position within the viewport and back.
+public float2 frag_coord_to_uv(float2 frag_coord) {
+    return (frag_coord - view.viewport.xy) / view.viewport.zw;
+}
+
+public float3 frag_coord_to_ndc(float4 frag_coord) {
+    return float3(uv_to_ndc(frag_coord_to_uv(frag_coord.xy)), frag_coord.z);
+}
+
+public float2 ndc_to_frag_coord(float2 ndc) {
+    return ndc_to_uv(ndc) * view.viewport.zw;
+}
+
+}
+)slang";
+
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
@@ -742,6 +941,9 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(OCCLUSION_CULLING_SHADER_PATH, shader_bytes(kOcclusionCullingShader));
     registry->get().insert_asset_static(MORPH_SHADER_PATH, shader_bytes(kMorphShader));
     registry->get().insert_asset_static(SKINNING_SHADER_PATH, shader_bytes(kSkinningShader));
+    registry->get().insert_asset_static(PREPASS_BINDINGS_SHADER_PATH, shader_bytes(kPrepassBindingsShader));
+    registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH,
+                                        shader_bytes(kViewTransformationsShader));
     world.insert_resource(MeshShaderHandles{
         .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
@@ -760,6 +962,10 @@ void register_mesh_shaders(ecs::World& world) {
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MORPH_SHADER_PATH)),
         .skinning =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(SKINNING_SHADER_PATH)),
+        .prepass_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
+                                                               std::string(PREPASS_BINDINGS_SHADER_PATH)),
+        .view_transformations = server->get().load<shader::Shader>(std::string("embedded://") +
+                                                                   std::string(VIEW_TRANSFORMATIONS_SHADER_PATH)),
     });
 }
 

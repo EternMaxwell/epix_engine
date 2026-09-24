@@ -87,6 +87,8 @@ TEST(MeshShaders, RegistersAndLoadsEmbeddedModulesThroughAssetServer) {
     expect_embedded_shader_loaded(app, "embedded://pbr/occlusion_culling.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/morph.slang");
     expect_embedded_shader_loaded(app, "embedded://pbr/skinning.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/prepass_bindings.slang");
+    expect_embedded_shader_loaded(app, "embedded://pbr/view_transformations.slang");
     // The handles resource holds every loaded module.
     const auto& handles = app.resource<pbr::MeshShaderHandles>();
     auto& shaders       = app.resource<Assets<Shader>>();
