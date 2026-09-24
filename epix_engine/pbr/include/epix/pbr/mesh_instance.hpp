@@ -17,6 +17,7 @@
 #include <unordered_set>
 #include <epix/common.hpp>
 #endif
+#include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material_bindings.hpp>
 #include <epix/pbr/mesh_uniform.hpp>
 #include <epix/pbr/prepass.hpp>
@@ -61,17 +62,6 @@ EPIX_EXPORT struct RenderMeshInstanceFlags {
     constexpr bool should_batch() const noexcept { return contains(AUTOMATIC_BATCHING); }
 
     bool operator==(const RenderMeshInstanceFlags&) const = default;
-};
-
-/** @brief The index of a lightmap slab (Bevy `LightmapSlabIndex`,
- *  `bevy_pbr/src/lightmap/mod.rs:177`).
- *
- *  Bevy wraps a `NonMaxU32` - a `u32` that is never `u32::MAX` - so a slab index
- *  can never collide with a sentinel. The invariant is documented rather than
- *  enforced here, since the port has no non-max integer type. */
-EPIX_EXPORT struct LightmapSlabIndex {
-    std::uint32_t index = 0;
-    auto operator<=>(const LightmapSlabIndex&) const = default;
 };
 
 /** @brief CPU data the render world keeps for each entity holding a mesh, shared

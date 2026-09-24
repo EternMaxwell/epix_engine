@@ -1,11 +1,18 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <bit>
+#include <cassert>
 #include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/image/image.hpp>
+#include <epix/render/fallback_image.hpp>
+#include <epix/render/sync_world.hpp>
 #include <glm/glm.hpp>
 #include <optional>
+#include <set>
+#include <utility>
+#include <vector>
 #include <epix/common.hpp>
 #endif
 
@@ -38,6 +45,19 @@ EPIX_EXPORT struct Lightmap {
     bool bicubic_sampling = false;
 };
 
+/** @brief The index of the slab (binding array) in which a lightmap is located
+ *  (Bevy `LightmapSlabIndex`, `bevy_pbr/src/lightmap/mod.rs:174-177`).
+ *
+ *  Bevy wraps a `NonMaxU32` - a `u32` that is never `u32::MAX` - so a slab index
+ *  can never collide with a sentinel. The invariant is documented rather than
+ *  enforced here, since the port has no non-max integer type. It sits beside the
+ *  slot index because that is where Bevy declares it; `mesh_instance.hpp`'s
+ *  instance data uses it. */
+EPIX_EXPORT struct LightmapSlabIndex {
+    std::uint32_t index = 0;
+    auto operator<=>(const LightmapSlabIndex&) const = default;
+};
+
 /** @brief The index of the slot (element within the binding array) in the slab in
  *  which a lightmap is located (Bevy `LightmapSlotIndex`,
  *  `bevy_pbr/src/lightmap/mod.rs:177-183`).
@@ -66,5 +86,120 @@ EPIX_EXPORT inline glm::uvec2 pack_lightmap_uv_rect(const std::optional<::epix::
         glm::vec4(maybe_rect->min.x, maybe_rect->min.y, maybe_rect->max.x, maybe_rect->max.y) * 65535.0f));
     return glm::uvec2(rect.x | (rect.y << 16), rect.z | (rect.w << 16));
 }
+
+/** @brief One visible lightmapped mesh instance's lightmap data in the render
+ *  world (Bevy `RenderLightmap`, `bevy_pbr/src/lightmap/mod.rs:110-134`).
+ *
+ *  Bevy declares this `pub(crate)`; a struct's members are public here, as
+ *  elsewhere in the port. */
+EPIX_EXPORT struct RenderLightmap {
+    ::epix::image::Rect uv_rect{};
+    LightmapSlabIndex slab_index{};
+    LightmapSlotIndex slot_index{};
+    bool bicubic_sampling = false;
+};
+
+/** @brief A slot of a lightmap slab (Bevy's `AllocatedLightmap`,
+ *  `bevy_pbr/src/lightmap/mod.rs:168-172`): the GPU image, and the asset it was
+ *  allocated for when it has been allocated but not yet loaded. */
+EPIX_EXPORT struct AllocatedLightmap {
+    render::texture::GpuImage gpu_image;
+    std::optional<assets::AssetId<::epix::image::Image>> asset_id;
+};
+
+/** @brief A binding array containing lightmaps (Bevy `LightmapSlab`,
+ *  `bevy_pbr/src/lightmap/mod.rs:159-166,396-455`). It holds a single binding
+ *  when bindless lightmaps are unavailable. */
+EPIX_EXPORT struct LightmapSlab {
+    std::vector<AllocatedLightmap> lightmaps;
+    std::uint32_t free_slots_bitmask = 0;
+
+    /** @brief A slab of fallback images, one slot per lightmap it can hold
+     *  (Bevy `LightmapSlab::new`, `lightmap/mod.rs:397-413`). */
+    static LightmapSlab make(const render::texture::FallbackImage& fallback_images, bool bindless_supported) {
+        const std::size_t count = bindless_supported ? LIGHTMAPS_PER_SLAB : 1;
+        LightmapSlab slab;
+        slab.lightmaps.reserve(count);
+        for (std::size_t i = 0; i < count; ++i) {
+            slab.lightmaps.push_back(AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt});
+        }
+        slab.free_slots_bitmask = (1u << count) - 1u;
+        return slab;
+    }
+
+    bool is_full() const noexcept { return free_slots_bitmask == 0u; }
+
+    /** @brief Allocate the first free slot for an image (Bevy
+     *  `LightmapSlab::allocate`, `lightmap/mod.rs:419-428`). */
+    LightmapSlotIndex allocate(assets::AssetId<::epix::image::Image> image_id) {
+        assert(!is_full() && "Attempting to allocate on a full lightmap slab");
+        const std::uint32_t slot = std::countr_zero(free_slots_bitmask);
+        free_slots_bitmask &= ~(1u << slot);
+        lightmaps[slot].asset_id = image_id;
+        return LightmapSlotIndex{.index = static_cast<std::uint16_t>(slot)};
+    }
+
+    /** @brief Fill a slot once its image has been uploaded (Bevy
+     *  `LightmapSlab::insert`, `lightmap/mod.rs:430-435`). */
+    void insert(LightmapSlotIndex index, render::texture::GpuImage gpu_image) {
+        lightmaps[index.index] = AllocatedLightmap{.gpu_image = std::move(gpu_image), .asset_id = std::nullopt};
+    }
+
+    /** @brief Free a slot back to the fallback image (Bevy
+     *  `LightmapSlab::remove`, `lightmap/mod.rs:437-446`). */
+    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlotIndex index) {
+        lightmaps[index.index] = AllocatedLightmap{.gpu_image = fallback_images.d2, .asset_id = std::nullopt};
+        free_slots_bitmask |= 1u << index.index;
+    }
+};
+
+/** @brief All lightmaps in the render world (Bevy `RenderLightmaps`,
+ *  `bevy_pbr/src/lightmap/mod.rs:136-157,351-394`).
+ *
+ *  Cleared and repopulated each frame by the extraction system, which is not
+ *  ported yet; the bookkeeping an adapter needs is. Bevy's `FixedBitSet` has no
+ *  counterpart in the port, so the free slabs are an ordered set - its first
+ *  element is Bevy's `FixedBitSet::minimum`. */
+EPIX_EXPORT struct RenderLightmaps {
+    render::sync_world::MainEntityHashMap<RenderLightmap> render_lightmaps;
+    std::vector<LightmapSlab> slabs;
+    /** Bevy's `free_slabs`, private there. */
+    std::set<std::size_t> free_slabs;
+    /** Bevy's `pending_lightmaps`, private there: slots allocated for an image
+     *  whose upload has not been seen yet. */
+    std::set<std::pair<LightmapSlabIndex, LightmapSlotIndex>> pending_lightmaps;
+    bool bindless_supported = false;
+
+    /** @brief Create a slab with the given fallback images and return its index
+     *  (Bevy `RenderLightmaps::create_slab`, `lightmap/mod.rs:353-361`). */
+    LightmapSlabIndex create_slab(const render::texture::FallbackImage& fallback_images) {
+        const auto slab_index = LightmapSlabIndex{.index = static_cast<std::uint32_t>(slabs.size())};
+        free_slabs.insert(slab_index.index);
+        slabs.push_back(LightmapSlab::make(fallback_images, bindless_supported));
+        return slab_index;
+    }
+
+    /** @brief Allocate a slot for an image, creating a slab when none has room
+     *  (Bevy `RenderLightmaps::allocate`, `lightmap/mod.rs:363-380`). */
+    std::pair<LightmapSlabIndex, LightmapSlotIndex> allocate(
+        const render::texture::FallbackImage& fallback_images, assets::AssetId<::epix::image::Image> image_id) {
+        const LightmapSlabIndex slab_index = free_slabs.empty()
+                                                 ? create_slab(fallback_images)
+                                                 : LightmapSlabIndex{.index = static_cast<std::uint32_t>(*free_slabs.begin())};
+        LightmapSlab& slab = slabs[slab_index.index];
+        const LightmapSlotIndex slot_index = slab.allocate(image_id);
+        if (slab.is_full()) free_slabs.erase(slab_index.index);
+        return {slab_index, slot_index};
+    }
+
+    /** @brief Free a slot, and the slab with it when it becomes free (Bevy
+     *  `RenderLightmaps::remove`, `lightmap/mod.rs:382-393`). */
+    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlabIndex slab_index,
+                LightmapSlotIndex slot_index) {
+        LightmapSlab& slab = slabs[slab_index.index];
+        slab.remove(fallback_images, slot_index);
+        if (!slab.is_full()) free_slabs.insert(slab_index.index);
+    }
+};
 
 }  // namespace epix::pbr
