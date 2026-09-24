@@ -23,13 +23,13 @@ module epix.mesh_types;
 namespace epix::mesh_types {
 
 public struct Mesh {
-    // Affine 4x3 matrix transposed to 3x4: three columns of `vec4`, the
-    // translation in each one's fourth component.
-    public float4 world_from_local[3];
-    public float4 previous_world_from_local[3];
-    // The 3x3 inverse transpose packed as two `vec4`s and a trailing float:
+    // Affine 4x3 matrix transposed to 3x4, and its previous frame's value: three
+    // WGSL columns of `vec4`, which is Slang's `float3x4` read by row.
+    public float3x4 world_from_local;
+    public float3x4 previous_world_from_local;
+    // The 3x3 inverse transpose packed as a `float2x4` and a trailing float:
     // [0].xyz, [1].x then [1].yz, [2].xy then [2].z.
-    public float4 local_from_world_transpose_a[2];
+    public float2x4 local_from_world_transpose_a;
     public float local_from_world_transpose_b;
     // A bit field indicating various options; 32 bits.
     public uint flags;
@@ -93,6 +93,18 @@ public [[vk::binding(0, 2)]] ConstantBuffer<MeshBatch> mesh;
 public [[vk::binding(0, 2)]] StructuredBuffer<epix::mesh_types::Mesh> mesh;
 #endif
 #endif
+
+/** The per-instance mesh, whichever form the device's buffers take: the uniform
+ *  form is a one-member block, so it is read through `values` where the storage
+ *  form is subscripted directly. Bevy's files write `mesh[instance_index]`
+ *  because naga_oil lets a uniform array be subscripted. */
+public epix::mesh_types::Mesh mesh_instance(uint instance_index) {
+#ifdef PER_OBJECT_BUFFER_BATCH_SIZE
+    return mesh.values[instance_index];
+#else
+    return mesh[instance_index];
+#endif
+}
 )slang";
 
 /** @brief Slang representation of pinned Bevy 0.18 `forward_io.wgsl`. */
@@ -682,7 +694,7 @@ public float4x4 skin_model(uint4 indexes, float4 weights, uint instance_index) {
     return weights.x * joint_matrices.data[indexes.x] + weights.y * joint_matrices.data[indexes.y] +
            weights.z * joint_matrices.data[indexes.z] + weights.w * joint_matrices.data[indexes.w];
 #else
-    uint skin_index = mesh[instance_index].current_skin_index;
+    uint skin_index = mesh_instance(instance_index).current_skin_index;
     return weights.x * joint_matrices[skin_index + indexes.x] +
            weights.y * joint_matrices[skin_index + indexes.y] +
            weights.z * joint_matrices[skin_index + indexes.z] +
@@ -695,7 +707,7 @@ public float4x4 skin_prev_model(uint4 indexes, float4 weights, uint instance_ind
     return weights.x * prev_joint_matrices.data[indexes.x] + weights.y * prev_joint_matrices.data[indexes.y] +
            weights.z * prev_joint_matrices.data[indexes.z] + weights.w * prev_joint_matrices.data[indexes.w];
 #else
-    uint skin_index = mesh[instance_index].current_skin_index;
+    uint skin_index = mesh_instance(instance_index).current_skin_index;
     return weights.x * prev_joint_matrices[skin_index + indexes.x] +
            weights.y * prev_joint_matrices[skin_index + indexes.y] +
            weights.z * prev_joint_matrices[skin_index + indexes.z] +
@@ -919,6 +931,159 @@ public float2 ndc_to_frag_coord(float2 ndc) {
 }
 )slang";
 
+/**
+ * @brief Slang representation of pinned Bevy 0.18 `mesh_functions.wgsl`.
+ *
+ * It builds on the modules imported at the top: the per-instance `mesh` array,
+ * the `view` uniform and the visibility-range table, the mesh flag bit, the
+ * maths helpers and `position_world_to_clip`. Slang's `import` brings the
+ * module-scope bindings into scope, so `mesh`, `view` and `visibility_ranges`
+ * are spelled bare where Bevy qualifies them.
+ *
+ * The matrix rule the skinning module states applies throughout: `M * v` is
+ * `mul(v, M)`, a matrix product `A * B` is `mul(B, A)`, and `float3x4`/`float2x4`
+ * are the transposed spellings of WGSL's `mat3x4`/`mat2x4`. The visibility-range
+ * table is the one place the two binding forms read differently, because Slang
+ * has no bare uniform array: the uniform form is a one-member block, so its
+ * elements are `values[i]` rather than `[i]`.
+ */
+constexpr std::string_view kMeshFunctionsShader = R"slang(
+module epix.mesh_functions;
+
+import epix.mesh_view_bindings;
+import epix.mesh_bindings;
+import epix.mesh_types;
+import epix.view_transformations;
+import epix.maths;
+
+namespace epix::mesh_functions {
+
+#ifndef MESHLET_MESH_MATERIAL_PASS
+
+public float4x4 get_world_from_local(uint instance_index) {
+    return epix::maths::affine3_to_square(mesh_instance(instance_index).world_from_local);
+}
+
+public float4x4 get_previous_world_from_local(uint instance_index) {
+    return epix::maths::affine3_to_square(mesh_instance(instance_index).previous_world_from_local);
+}
+
+public float4x4 get_local_from_world(uint instance_index) {
+    // The model matrix is translation * rotation * scale, so its inverse is
+    // scale^-1 * rotation^-1 * translation^-1. The 3x3 holds the rotation and
+    // scale only.
+    float3x3 inverse_model_3x3 = transpose(epix::maths::mat2x4_f32_to_mat3x3_unpack(
+        mesh_instance(instance_index).local_from_world_transpose_a, mesh_instance(instance_index).local_from_world_transpose_b));
+    // scale^-1 * rotation^-1, without the translation.
+    float4x4 inverse_model_4x4_no_trans = float4x4(float4(inverse_model_3x3[0], 0.0), float4(inverse_model_3x3[1], 0.0),
+                                                   float4(inverse_model_3x3[2], 0.0), float4(0.0, 0.0, 0.0, 1.0));
+    // translation^-1 is the model's translation negated.
+    float4x4 model = get_world_from_local(instance_index);
+    float4x4 inverse_model_4x4_only_trans = float4x4(float4(1.0, 0.0, 0.0, 0.0), float4(0.0, 1.0, 0.0, 0.0),
+                                                     float4(0.0, 0.0, 1.0, 0.0), float4(-model[3].xyz, 1.0));
+
+    return mul(inverse_model_4x4_only_trans, inverse_model_4x4_no_trans);
+}
+
+#endif
+
+public float4 mesh_position_local_to_world(float4x4 world_from_local, float4 vertex_position) {
+    return mul(vertex_position, world_from_local);
+}
+
+// The intermediate world position matters for precision when using the equals
+// depth comparison function.
+public float4 mesh_position_local_to_clip(float4x4 world_from_local, float4 vertex_position) {
+    float4 world_position = mesh_position_local_to_world(world_from_local, vertex_position);
+    return epix::view_transformations::position_world_to_clip(world_position.xyz);
+}
+
+#ifndef MESHLET_MESH_MATERIAL_PASS
+
+public float3 mesh_normal_local_to_world(float3 vertex_normal, uint instance_index) {
+    // The mikktspace method of normal mapping requires the world normal to be
+    // re-normalized here, so the exact inverse of the bake is applied. Only
+    // invalid normals skip normalization, so they do not become NaN.
+    if (any(vertex_normal != float3(0.0, 0.0, 0.0))) {
+        return normalize(mul(epix::maths::mat2x4_f32_to_mat3x3_unpack(
+                                 mesh_instance(instance_index).local_from_world_transpose_a,
+                                 mesh_instance(instance_index).local_from_world_transpose_b),
+                             vertex_normal));
+    } else {
+        return vertex_normal;
+    }
+}
+
+#endif
+
+// The sign of the determinant of the 3x3 model matrix, from a mesh flag.
+public float sign_determinant_model_3x3m(uint mesh_flags) {
+    // A set flag is positive, a clear one negative: 0 or 1 remapped to -1 or 1.
+    return float((mesh_flags & epix::mesh_types::MESH_FLAGS_SIGN_DETERMINANT_MODEL_3X3_BIT) != 0u) * 2.0 - 1.0;
+}
+
+#ifndef MESHLET_MESH_MATERIAL_PASS
+
+public float4 mesh_tangent_local_to_world(float4x4 world_from_local, float4 vertex_tangent, uint instance_index) {
+    // As with normals, mikktspace requires the world tangent to be
+    // re-normalized here.
+    if (any(vertex_tangent != float4(0.0, 0.0, 0.0, 0.0))) {
+        return float4(
+            normalize(mul(vertex_tangent.xyz, float3x3(world_from_local[0].xyz, world_from_local[1].xyz,
+                                                       world_from_local[2].xyz))),
+            // The sign accounts for situations such as negative scaling.
+            vertex_tangent.w * sign_determinant_model_3x3m(mesh_instance(instance_index).flags));
+    } else {
+        return vertex_tangent;
+    }
+}
+
+#endif
+
+// The dither level for the current mesh instance, from its LOD range in the
+// visibility-range table and the camera distance.
+#ifdef VISIBILITY_RANGE_DITHER
+public int get_visibility_range_dither_level(uint instance_index, float4 world_position) {
+#if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+    // A storage buffer's length is variable.
+    uint element_count, element_stride;
+    visibility_ranges.GetDimensions(element_count, element_stride);
+    uint visibility_buffer_array_len = element_count;
+#else
+    // A uniform buffer's length is constant.
+    uint visibility_buffer_array_len = VISIBILITY_RANGE_UNIFORM_BUFFER_SIZE;
+#endif
+
+    uint visibility_buffer_index = mesh_instance(instance_index).flags & 0xffffu;
+    if (visibility_buffer_index > visibility_buffer_array_len) {
+        return -16;
+    }
+
+#if AVAILABLE_STORAGE_BUFFER_BINDINGS >= 6
+    float4 lod_range = visibility_ranges[visibility_buffer_index];
+#else
+    float4 lod_range = visibility_ranges.values[visibility_buffer_index];
+#endif
+    float camera_distance = length(view.world_position.xyz - world_position.xyz);
+
+    // The mapping: dither levels -16, -16, 0, 0, 16, 16 across the camera-distance
+    // range, split at lod_range.z.
+    float offset = select(-16.0, 0.0, camera_distance >= lod_range.z);
+    float2 bounds = select(lod_range.xy, lod_range.zw, camera_distance >= lod_range.z);
+    int level = int(round((camera_distance - bounds.x) / (bounds.y - bounds.x) * 16.0));
+    return int(offset) + clamp(level, 0, 16);
+}
+#endif
+
+#ifndef MESHLET_MESH_MATERIAL_PASS
+public uint get_tag(uint instance_index) {
+    return mesh_instance(instance_index).tag;
+}
+#endif
+
+}
+)slang";
+
 std::span<const std::byte> shader_bytes(std::string_view source) {
     return std::span<const std::byte>(reinterpret_cast<const std::byte*>(source.data()), source.size());
 }
@@ -944,6 +1109,7 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(PREPASS_BINDINGS_SHADER_PATH, shader_bytes(kPrepassBindingsShader));
     registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH,
                                         shader_bytes(kViewTransformationsShader));
+    registry->get().insert_asset_static(MESH_FUNCTIONS_SHADER_PATH, shader_bytes(kMeshFunctionsShader));
     world.insert_resource(MeshShaderHandles{
         .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
@@ -966,6 +1132,8 @@ void register_mesh_shaders(ecs::World& world) {
                                                                std::string(PREPASS_BINDINGS_SHADER_PATH)),
         .view_transformations = server->get().load<shader::Shader>(std::string("embedded://") +
                                                                    std::string(VIEW_TRANSFORMATIONS_SHADER_PATH)),
+        .mesh_functions = server->get().load<shader::Shader>(std::string("embedded://") +
+                                                             std::string(MESH_FUNCTIONS_SHADER_PATH)),
     });
 }
 

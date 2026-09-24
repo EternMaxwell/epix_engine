@@ -42,6 +42,9 @@ EPIX_EXPORT inline constexpr std::string_view PREPASS_BINDINGS_SHADER_PATH = "pb
 /** @brief The embedded path of the view-space conversion helpers (Bevy
  *  `render/view_transformations.wgsl`). */
 EPIX_EXPORT inline constexpr std::string_view VIEW_TRANSFORMATIONS_SHADER_PATH = "pbr/view_transformations.slang";
+/** @brief The embedded path of the mesh transform and attribute helpers (Bevy
+ *  `render/mesh_functions.wgsl`). */
+EPIX_EXPORT inline constexpr std::string_view MESH_FUNCTIONS_SHADER_PATH = "pbr/mesh_functions.slang";
 
 /** @brief Handles keeping the mesh shader modules loaded.
  *
@@ -61,6 +64,7 @@ EPIX_EXPORT struct MeshShaderHandles {
     assets::Handle<shader::Shader> skinning;
     assets::Handle<shader::Shader> prepass_bindings;
     assets::Handle<shader::Shader> view_transformations;
+    assets::Handle<shader::Shader> mesh_functions;
 };
 
 /** @brief Publish the mesh shader modules as embedded assets and load them
