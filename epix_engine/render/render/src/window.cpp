@@ -14,8 +14,8 @@ namespace {
 constexpr std::uint32_t kDefaultDesiredMaximumFrameLatency = 2;
 
 /** @brief sRGB-suffixed variant of a surface format, or nullopt when the
- * format is already sRGB (Bevy TextureFormat::add_srgb_suffix). Defined below
- * in this namespace alongside resolve_present_mode. */
+ * format is already sRGB (Bevy
+ * TextureFormat::add_srgb_suffix). Defined below in this namespace alongside resolve_present_mode. */
 std::optional<wgpu::TextureFormat> srgb_suffix(wgpu::TextureFormat format);
 }  // namespace
 
@@ -72,15 +72,16 @@ void epix::render::window::extract_windows(
             }
         } else {
             // Not extracted, extract.
-            extracted_windows->windows.emplace(entity, ExtractedWindow{
-                                                           .entity          = entity,
-                                                           .create_surface  = surface_fn,
-                                                           .physical_width  = std::max(1, window.physical_size.first),
-                                                           .physical_height = std::max(1, window.physical_size.second),
-                                                           .present_mode    = window.present_mode,
-                                                           .desired_maximum_frame_latency = window.desired_maximum_frame_latency,
-                                                           .alpha_mode      = window.composite_alpha_mode,
-                                                       });
+            extracted_windows->windows.emplace(
+                entity, ExtractedWindow{
+                            .entity                        = entity,
+                            .create_surface                = surface_fn,
+                            .physical_width                = std::max(1, window.physical_size.first),
+                            .physical_height               = std::max(1, window.physical_size.second),
+                            .present_mode                  = window.present_mode,
+                            .desired_maximum_frame_latency = window.desired_maximum_frame_latency,
+                            .alpha_mode                    = window.composite_alpha_mode,
+                        });
         }
         if (primary) {
             extracted_windows->primary = entity;

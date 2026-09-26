@@ -1,9 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <concepts>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/task.hpp>
@@ -21,7 +22,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

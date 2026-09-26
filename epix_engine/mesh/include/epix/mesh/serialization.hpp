@@ -1,10 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <optional>
 #include <span>
@@ -15,7 +16,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/mesh/mesh.hpp>
 
@@ -74,8 +74,10 @@ EPIX_EXPORT class EPIX_API SerializedMesh {
    private:
     friend class MeshDeserializer;
     friend zpp::bits::access;
-    friend EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
-    friend EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
+    friend EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(
+        const SerializedMesh& mesh);
+    friend EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(
+        std::span<const std::byte> bytes);
     using serialize = zpp::bits::members<3>;
 
     SerializedMesh() = default;
@@ -106,10 +108,12 @@ EPIX_EXPORT class EPIX_API MeshDeserializer {
 };
 
 /** @brief Encode a `SerializedMesh` with Epix's project serialization backend. */
-EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
+EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(
+    const SerializedMesh& mesh);
 
 /** @brief Decode a `SerializedMesh` encoded by `serialize_serialized_mesh`. */
-EPIX_EXPORT EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
+EPIX_EXPORT EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(
+    std::span<const std::byte> bytes);
 
 /** @brief Vector overload for `deserialize_serialized_mesh`. */
 EPIX_EXPORT inline std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(

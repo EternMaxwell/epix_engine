@@ -2,9 +2,9 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <glm/glm.hpp>
-#include <epix/render/render_resource.hpp>
 #include <epix/common.hpp>
+#include <epix/render/render_resource.hpp>
+#include <glm/glm.hpp>
 #endif
 
 namespace epix::pbr {
@@ -49,10 +49,10 @@ EPIX_EXPORT struct ScreenSpaceReflections {
  *  mesh view layout declares for binding 15. */
 EPIX_EXPORT struct ScreenSpaceReflectionsUniform {
     float perceptual_roughness_threshold = 0.0f;
-    float thickness = 0.0f;
-    std::uint32_t linear_steps = 0;
-    float linear_march_exponent = 0.0f;
-    std::uint32_t bisection_steps = 0;
+    float thickness                      = 0.0f;
+    std::uint32_t linear_steps           = 0;
+    float linear_march_exponent          = 0.0f;
+    std::uint32_t bisection_steps        = 0;
     /** @brief A boolean converted to a `u32`. */
     std::uint32_t use_secant = 0;
 
@@ -61,11 +61,11 @@ EPIX_EXPORT struct ScreenSpaceReflectionsUniform {
     static ScreenSpaceReflectionsUniform from(const ScreenSpaceReflections& settings) {
         return ScreenSpaceReflectionsUniform{
             .perceptual_roughness_threshold = settings.perceptual_roughness_threshold,
-            .thickness = settings.thickness,
-            .linear_steps = settings.linear_steps,
-            .linear_march_exponent = settings.linear_march_exponent,
-            .bisection_steps = settings.bisection_steps,
-            .use_secant = settings.use_secant ? 1u : 0u,
+            .thickness                      = settings.thickness,
+            .linear_steps                   = settings.linear_steps,
+            .linear_march_exponent          = settings.linear_march_exponent,
+            .bisection_steps                = settings.bisection_steps,
+            .use_secant                     = settings.use_secant ? 1u : 0u,
         };
     }
 };

@@ -1,11 +1,10 @@
-#include <epix/sprite_render/tilemap_chunk.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <epix/ecs/world/entity_ref.hpp>
+#include <epix/sprite_render/tilemap_chunk.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <span>
@@ -18,8 +17,7 @@ std::size_t epix::sprite_render::TilemapChunkMeshCacheHash::operator()(const glm
     return seed;
 }
 
-epix::sprite_render::TileData epix::sprite_render::TileData::from_tileset_index(
-    std::uint16_t tileset_index) noexcept {
+epix::sprite_render::TileData epix::sprite_render::TileData::from_tileset_index(std::uint16_t tileset_index) noexcept {
     TileData data;
     data.tileset_index = tileset_index;
     return data;
@@ -39,7 +37,7 @@ epix::transform::Transform epix::sprite_render::TilemapChunk::calculate_tile_tra
 
 std::optional<std::reference_wrapper<const epix::sprite_render::TileData>>
 epix::sprite_render::TilemapChunkTileData::tile_data_from_tile_pos(glm::uvec2 tilemap_size,
-                                                                  glm::uvec2 position) const noexcept {
+                                                                   glm::uvec2 position) const noexcept {
     const auto index = static_cast<std::size_t>(tilemap_size.x) * position.y + position.x;
     if (index >= tiles.size()) return std::nullopt;
     const auto& tile = tiles[index];
@@ -74,10 +72,11 @@ void epix::sprite_render::TilemapChunk::on_insert(epix::ecs::World& world, epix:
         const auto expected_tile_data_length =
             static_cast<std::size_t>(chunk.chunk_size.x) * static_cast<std::size_t>(chunk.chunk_size.y);
         if (tile_data.tiles.size() != expected_tile_data_length) {
-            spdlog::warn("[tilemap] Invalid tile data length for tilemap chunk {:#x} of size ({}, {}). Expected {}, "
-                         "got {}",
-                         entity.index, chunk.chunk_size.x, chunk.chunk_size.y, expected_tile_data_length,
-                         tile_data.tiles.size());
+            spdlog::warn(
+                "[tilemap] Invalid tile data length for tilemap chunk {:#x} of size ({}, {}). Expected {}, "
+                "got {}",
+                entity.index, chunk.chunk_size.x, chunk.chunk_size.y, expected_tile_data_length,
+                tile_data.tiles.size());
             return;
         }
 
@@ -131,10 +130,11 @@ void epix::sprite_render::TilemapChunk::on_insert(epix::ecs::World& world, epix:
 }
 
 void epix::sprite_render::update_tilemap_chunk_indices(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const TilemapChunk&, const TilemapChunkTileData&,
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                     const TilemapChunk&,
+                                     const TilemapChunkTileData&,
                                      const MeshMaterial2d<TilemapChunkMaterial>&>,
-                     epix::ecs::Modified<TilemapChunkTileData>>
-        query,
+                     epix::ecs::Modified<TilemapChunkTileData>> query,
     epix::ecs::ResMut<assets::Assets<TilemapChunkMaterial>> materials,
     epix::ecs::ResMut<assets::Assets<image::Image>> images) {
     // Bevy `update_tilemap_chunk_indices` (`tilemap_chunk/mod.rs:185-239`).
@@ -142,10 +142,11 @@ void epix::sprite_render::update_tilemap_chunk_indices(
         const auto expected_tile_data_length =
             static_cast<std::size_t>(chunk.chunk_size.x) * static_cast<std::size_t>(chunk.chunk_size.y);
         if (tile_data.tiles.size() != expected_tile_data_length) {
-            spdlog::warn("[tilemap] Invalid TilemapChunkTileData length for tilemap chunk {:#x} of size ({}, {}). "
-                         "Expected {}, got {}",
-                         chunk_entity.index, chunk.chunk_size.x, chunk.chunk_size.y, expected_tile_data_length,
-                         tile_data.tiles.size());
+            spdlog::warn(
+                "[tilemap] Invalid TilemapChunkTileData length for tilemap chunk {:#x} of size ({}, {}). "
+                "Expected {}, got {}",
+                chunk_entity.index, chunk.chunk_size.x, chunk.chunk_size.y, expected_tile_data_length,
+                tile_data.tiles.size());
             continue;
         }
 
@@ -171,9 +172,10 @@ void epix::sprite_render::update_tilemap_chunk_indices(
         auto data        = tile_data_image->get().raw_view_mut();
         const auto bytes = std::as_bytes(std::span{packed_tile_data});
         if (data.size() != bytes.size()) {
-            spdlog::warn("[tilemap] TilemapChunkMaterial tile data image is {} bytes but the chunk needs {} for "
-                         "tilemap chunk {:#x}",
-                         data.size(), bytes.size(), chunk_entity.index);
+            spdlog::warn(
+                "[tilemap] TilemapChunkMaterial tile data image is {} bytes but the chunk needs {} for "
+                "tilemap chunk {:#x}",
+                data.size(), bytes.size(), chunk_entity.index);
             continue;
         }
         std::memcpy(data.data(), bytes.data(), bytes.size());
@@ -183,6 +185,6 @@ void epix::sprite_render::update_tilemap_chunk_indices(
 void epix::sprite_render::TilemapChunkPlugin::attach(epix::app::App& app) {
     // Bevy `Plugin for TilemapChunkPlugin::build` (`tilemap_chunk/mod.rs:33-38`).
     app.world_mut().init_resource<TilemapChunkMeshCache>();
-    app.add_systems(epix::app::Update, epix::ecs::into(update_tilemap_chunk_indices)
-                                           .set_name("update tilemap chunk indices"));
+    app.add_systems(epix::app::Update,
+                    epix::ecs::into(update_tilemap_chunk_indices).set_name("update tilemap chunk indices"));
 }

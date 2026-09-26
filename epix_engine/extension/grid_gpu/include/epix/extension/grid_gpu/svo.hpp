@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <format>
 #include <print>
@@ -20,7 +19,6 @@
 #include <vector>
 #endif
 #include <epix/extension/grid.hpp>
-
 
 // Bring fixed-width integer types into scope (MSVC only exports them under std::)
 using std::int32_t;

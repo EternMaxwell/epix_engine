@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/utils.hpp>
 #include <functional>
@@ -16,7 +16,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::graph {

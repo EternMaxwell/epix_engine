@@ -5,11 +5,10 @@
 // attachment as `id / 255`, one depth write per pixel. This is the last node in
 // the Core3D chain that C13 had left as an `EmptyNode`.
 
-#include <epix/core_graph.hpp>
-
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/core_graph.hpp>
 #include <span>
 #include <string>
 #include <string_view>
@@ -43,26 +42,23 @@ std::span<const std::byte> shader_bytes(std::string_view source) {
 }
 }  // namespace
 
-void epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline(
-    Commands cmd,
-    Res<wgpu::Device> device,
-    Res<assets::AssetServer> asset_server,
-    Res<FullscreenShader> fullscreen_shader,
-    Res<render::PipelineServer> pipeline_server) {
+void epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline(Commands cmd,
+                                                                        Res<wgpu::Device> device,
+                                                                        Res<assets::AssetServer> asset_server,
+                                                                        Res<FullscreenShader> fullscreen_shader,
+                                                                        Res<render::PipelineServer> pipeline_server) {
     using render::render_resource::BindGroupLayoutEntries;
     using render::render_resource::binding_types::texture_2d;
 
     // Bevy's layout is a single fragment-visible `texture_2d<u32>`
     // (`copy_lighting_id.rs:99-107`).
-    const auto entries = BindGroupLayoutEntries<1>::sequential(
-        wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eUint));
-    const auto layout = 
-        render::BindGroupLayoutDescriptor()
-            .set_label("copy_deferred_lighting_id_bind_group_layout")
-            .set_entries(entries.entries());
+    const auto entries =
+        BindGroupLayoutEntries<1>::sequential(wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eUint));
+    const auto layout = render::BindGroupLayoutDescriptor()
+                            .set_label("copy_deferred_lighting_id_bind_group_layout")
+                            .set_entries(entries.entries());
 
-    const auto shader =
-        asset_server->load<shader::Shader>("embedded://core_pipeline/copy_deferred_lighting_id.slang");
+    const auto shader = asset_server->load<shader::Shader>("embedded://core_pipeline/copy_deferred_lighting_id.slang");
     // Bevy has no colour target here; the pass writes depth only, with
     // `depth_write_enabled: true` and `depth_compare: Always`, and tests depth
     // against `DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT` (copy_lighting_id.rs:122-133).
@@ -77,17 +73,17 @@ void epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline(
                                     .setFailOp(wgpu::StencilOperation::eKeep)
                                     .setDepthFailOp(wgpu::StencilOperation::eKeep)
                                     .setPassOp(wgpu::StencilOperation::eKeep);
-    auto depth_stencil = wgpu::DepthStencilState()
-                             .setFormat(DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT)
-                             .setDepthWriteEnabled(wgpu::OptionalBool::eTrue)
-                             .setDepthCompare(wgpu::CompareFunction::eAlways)
-                             .setStencilFront(stencil_ignore)
-                             .setStencilBack(stencil_ignore)
-                             .setStencilReadMask(0)
-                             .setStencilWriteMask(0)
-                             .setDepthBias(0)
-                             .setDepthBiasSlopeScale(0.0f)
-                             .setDepthBiasClamp(0.0f);
+    auto depth_stencil        = wgpu::DepthStencilState()
+                                    .setFormat(DEFERRED_LIGHTING_PASS_ID_DEPTH_FORMAT)
+                                    .setDepthWriteEnabled(wgpu::OptionalBool::eTrue)
+                                    .setDepthCompare(wgpu::CompareFunction::eAlways)
+                                    .setStencilFront(stencil_ignore)
+                                    .setStencilBack(stencil_ignore)
+                                    .setStencilReadMask(0)
+                                    .setStencilWriteMask(0)
+                                    .setDepthBias(0)
+                                    .setDepthBiasSlopeScale(0.0f)
+                                    .setDepthBiasClamp(0.0f);
 
     render::RenderPipelineDescriptor descriptor{
         .label         = "copy_deferred_lighting_id_pipeline",
@@ -169,35 +165,34 @@ std::expected<void, render::graph::NodeRunError> epix::core_graph::core_3d::Copy
                                    .setLabel("copy_deferred_lighting_id_bind_group")
                                    .setLayout(pipeline_server->get().get_bind_group_layout(pipeline_res->get().layout))
                                    .setEntries(render::render_resource::BindGroupEntries<>::sequential(
-                                       render::render_resource::BindGroupEntries<>::texture_binding(
-                                           deferred_lighting_pass_id_texture->texture.default_view))
-                                                  .entries()));
+                                                   render::render_resource::BindGroupEntries<>::texture_binding(
+                                                       deferred_lighting_pass_id_texture->texture.default_view))
+                                                   .entries()));
 
     const auto render_pipeline = pipeline->get().pipeline();
     // Bevy clears the depth attachment to 0.0 and stores it; the id texture is a
     // per-pixel material id, so the clear value is the "background" id.
-    const auto depth_attachment =
-        wgpu::RenderPassDepthStencilAttachment()
-            .setView(deferred_lighting_id_depth_texture.texture.default_view)
-            .setDepthLoadOp(wgpu::LoadOp::eClear)
-            .setDepthClearValue(0.0f)
-            .setDepthStoreOp(wgpu::StoreOp::eStore);
+    const auto depth_attachment = wgpu::RenderPassDepthStencilAttachment()
+                                      .setView(deferred_lighting_id_depth_texture.texture.default_view)
+                                      .setDepthLoadOp(wgpu::LoadOp::eClear)
+                                      .setDepthClearValue(0.0f)
+                                      .setDepthStoreOp(wgpu::StoreOp::eStore);
 
-    render_context.add_command_buffer_generation_task(
-        [render_pipeline, bind_group, depth_attachment](wgpu::Device device) {
-            auto encoder = device.createCommandEncoder(
-                wgpu::CommandEncoderDescriptor().setLabel("copy_deferred_lighting_id_encoder"));
-            {
-                auto pass = encoder.beginRenderPass(
-                    wgpu::RenderPassDescriptor().setLabel("copy_deferred_lighting_id").setDepthStencilAttachment(
-                        depth_attachment));
-                pass.setPipeline(render_pipeline);
-                pass.setBindGroup(0, bind_group, std::span<const std::uint32_t>{});
-                pass.draw(3, 1, 0, 0);
-                pass.end();
-            }
-            return encoder.finish();
-        });
+    render_context.add_command_buffer_generation_task([render_pipeline, bind_group,
+                                                       depth_attachment](wgpu::Device device) {
+        auto encoder =
+            device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("copy_deferred_lighting_id_encoder"));
+        {
+            auto pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                    .setLabel("copy_deferred_lighting_id")
+                                                    .setDepthStencilAttachment(depth_attachment));
+            pass.setPipeline(render_pipeline);
+            pass.setBindGroup(0, bind_group, std::span<const std::uint32_t>{});
+            pass.draw(3, 1, 0, 0);
+            pass.end();
+        }
+        return encoder.finish();
+    });
     return {};
 }
 
@@ -208,10 +203,9 @@ void epix::core_graph::core_3d::CopyDeferredLightingIdPlugin::attach(App& app) {
 
     registry->get().insert_asset_static(kCopyLightingIdFragmentPath, shader_bytes(kCopyLightingIdFragmentSlang));
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        render_app->get().add_systems(
-            render::RenderStartup,
-            into(epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline)
-                .set_name("init copy deferred lighting id pipeline"));
+        render_app->get().add_systems(render::RenderStartup,
+                                      into(epix::core_graph::core_3d::init_copy_deferred_lighting_id_pipeline)
+                                          .set_name("init copy deferred lighting id pipeline"));
         render_app->get().add_systems(render::Render,
                                       into(epix::core_graph::core_3d::prepare_deferred_lighting_id_textures)
                                           .in_set(render::RenderSystems::PrepareResources)

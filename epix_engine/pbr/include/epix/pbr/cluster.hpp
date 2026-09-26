@@ -2,12 +2,14 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/pbr/light_cluster.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
@@ -15,7 +17,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -43,14 +44,14 @@ EPIX_EXPORT struct GpuClusterableObject {
     glm::vec4 light_custom_data{0.0f};
     glm::vec4 color_inverse_square_range{0.0f};
     glm::vec4 position_radius{0.0f};
-    std::uint32_t flags = 0;
-    float shadow_depth_bias = 0.0f;
-    float shadow_normal_bias = 0.0f;
+    std::uint32_t flags        = 0;
+    float shadow_depth_bias    = 0.0f;
+    float shadow_normal_bias   = 0.0f;
     float spot_light_tan_angle = 0.0f;
-    float soft_shadow_size = 0.0f;
-    float shadow_map_near_z = 0.0f;
-    std::uint32_t decal_index = 0;
-    float pad = 0.0f;
+    float soft_shadow_size     = 0.0f;
+    float shadow_map_near_z    = 0.0f;
+    std::uint32_t decal_index  = 0;
+    float pad                  = 0.0f;
 };
 
 // Bevy's compile-time guard (`cluster.rs:24-25`): the full uniform array has to
@@ -105,7 +106,8 @@ EPIX_EXPORT inline constexpr std::uint32_t CLUSTER_COUNT_MASK = (1u << CLUSTER_C
  *  bindings clustered forward wants, so the cluster data goes into uniform
  *  buffers instead. Each field is masked to its width, which is what Bevy's
  *  `& MASK` does: an out-of-range value silently keeps only the low bits. */
-EPIX_EXPORT inline std::uint32_t pack_offset_and_counts(std::size_t offset, std::uint32_t point_count,
+EPIX_EXPORT inline std::uint32_t pack_offset_and_counts(std::size_t offset,
+                                                        std::uint32_t point_count,
                                                         std::uint32_t spot_count) {
     return ((static_cast<std::uint32_t>(offset) & CLUSTER_OFFSET_MASK) << (CLUSTER_COUNT_SIZE * 2)) |
            ((point_count & CLUSTER_COUNT_MASK) << CLUSTER_COUNT_SIZE) | (spot_count & CLUSTER_COUNT_MASK);
@@ -117,8 +119,7 @@ namespace epix::render::render_resource {
 /** @brief Three `vec4`s then eight scalars: Bevy's uniform layout is the object
  *  representation, so the raw encoder applies. */
 template <>
-struct ShaderTypeInfo<::epix::pbr::GpuClusterableObject>
-    : RawShaderType<::epix::pbr::GpuClusterableObject> {};
+struct ShaderTypeInfo<::epix::pbr::GpuClusterableObject> : RawShaderType<::epix::pbr::GpuClusterableObject> {};
 
 /** @brief The fixed uniform array is a plain array of those objects. */
 template <>
@@ -245,8 +246,7 @@ EPIX_EXPORT struct GpuClusterableObjects {
      *  are the `min_binding_size` the mesh view layout declares for binding 8
      *  (`mesh_view_bindings.rs:284-293`). */
     static std::uint64_t min_size(wgpu::BufferBindingType binding_type) {
-        if (binding_type == wgpu::BufferBindingType::eUniform)
-            return sizeof(GpuClusterableObjectsUniform);
+        if (binding_type == wgpu::BufferBindingType::eUniform) return sizeof(GpuClusterableObjectsUniform);
         return sizeof(GpuClusterableObject);
     }
 };
@@ -270,9 +270,9 @@ EPIX_EXPORT struct GlobalClusterableObjectMeta {
  *  limit: 16384 bytes of `uvec4`s is 4096 offsets, and 16384 `u32` indices fit
  *  the index list. `MAX_UNIFORM_ITEMS` is the number of `uvec4`s those offsets
  *  occupy, four offsets to a `uvec4`. */
-EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_OFFSETS = 16384 / 4;
+EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_OFFSETS       = 16384 / 4;
 EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_UNIFORM_ITEMS = VIEW_CLUSTER_MAX_OFFSETS / 4;
-EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_INDICES = 16384;
+EPIX_EXPORT inline constexpr std::size_t VIEW_CLUSTER_MAX_INDICES       = 16384;
 
 /** @brief Where a cluster's packed offset and counts go in the uniform form of
  *  the offset list (Bevy `ViewClusterBindings::push_offset_and_counts`,
@@ -322,7 +322,8 @@ EPIX_EXPORT inline constexpr std::size_t uniform_index_lists_sub_index(std::size
 /** @brief Or one index into the word it belongs to, which is Bevy's
  *  `|= index << (8 * sub_index)` (`cluster.rs:423-424`); the caller has already
  *  cleared the word if the slot must be empty. */
-EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word, std::size_t n_indices,
+EPIX_EXPORT inline std::uint32_t pack_index_into_uniform_word(std::uint32_t word,
+                                                              std::size_t n_indices,
                                                               std::uint32_t index) {
     return word | (index << (8 * uniform_index_lists_sub_index(n_indices)));
 }
@@ -411,7 +412,7 @@ EPIX_EXPORT struct ViewClusterBindings {
     void clear() {
         if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
             uniform->clusterable_object_index_lists.get_mut().data = {};
-            uniform->cluster_offsets_and_counts.get_mut().data    = {};
+            uniform->cluster_offsets_and_counts.get_mut().data     = {};
             return;
         }
         auto& storage = std::get<ViewClusterBuffersStorage>(buffers.buffers);
@@ -447,8 +448,8 @@ EPIX_EXPORT struct ViewClusterBindings {
         if (auto* uniform = std::get_if<ViewClusterBuffersUniform>(&buffers.buffers)) {
             const std::size_t array_index = uniform_index_lists_array_index(n_indices);
             const std::size_t component   = uniform_index_lists_component(n_indices);
-            auto& word                    = uniform->clusterable_object_index_lists.get_mut().data[array_index][component];
-            word = pack_index_into_uniform_word(word, n_indices, static_cast<std::uint32_t>(index));
+            auto& word = uniform->clusterable_object_index_lists.get_mut().data[array_index][component];
+            word       = pack_index_into_uniform_word(word, n_indices, static_cast<std::uint32_t>(index));
         } else {
             std::get<ViewClusterBuffersStorage>(buffers.buffers)
                 .clusterable_object_index_lists.get_mut()
@@ -500,8 +501,7 @@ EPIX_EXPORT struct ViewClusterBindings {
      *  because its only member is the runtime-sized array. Declared for binding
      *  9 of the mesh view layout (`mesh_view_bindings.rs:294-306`). */
     static std::uint64_t min_size_clusterable_object_index_lists(wgpu::BufferBindingType binding_type) {
-        if (binding_type == wgpu::BufferBindingType::eUniform)
-            return sizeof(GpuClusterableObjectIndexListsUniform);
+        if (binding_type == wgpu::BufferBindingType::eUniform) return sizeof(GpuClusterableObjectIndexListsUniform);
         return sizeof(std::uint32_t);
     }
 
@@ -513,8 +513,7 @@ EPIX_EXPORT struct ViewClusterBindings {
      *  and the uniform form is the whole fixed array. Declared for binding 10 of
      *  the mesh view layout (`mesh_view_bindings.rs:307-317`). */
     static std::uint64_t min_size_cluster_offsets_and_counts(wgpu::BufferBindingType binding_type) {
-        if (binding_type == wgpu::BufferBindingType::eUniform)
-            return sizeof(GpuClusterOffsetsAndCountsUniform);
+        if (binding_type == wgpu::BufferBindingType::eUniform) return sizeof(GpuClusterOffsetsAndCountsUniform);
         return sizeof(GpuClusterOffsetsAndCounts);
     }
 };
@@ -576,7 +575,8 @@ EPIX_EXPORT struct ExtractedClusterableObjects {
  *  storage form has no such limit. */
 EPIX_EXPORT inline ViewClusterBindings prepare_view_cluster_bindings(
     const std::vector<ExtractedClusterableObjectElement>& data,
-    const std::unordered_map<ecs::Entity, std::size_t>& entity_to_index, wgpu::BufferBindingType binding_type,
+    const std::unordered_map<ecs::Entity, std::size_t>& entity_to_index,
+    wgpu::BufferBindingType binding_type,
     bool supports_storage_buffers) {
     ViewClusterBindings bindings{binding_type};
     bindings.clear();
@@ -635,8 +635,7 @@ EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters
             ecs::Entity render_entity{};
             if (!mapper(clusterable, render_entity)) continue;  // not synced: Bevy skips it
             extracted.objects.data.push_back(ExtractedClusterableObjectElement{
-                .kind = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity,
-                .entity = render_entity});
+                .kind = ExtractedClusterableObjectElement::Kind::ClusterableObjectEntity, .entity = render_entity});
         }
     }
 
@@ -662,10 +661,9 @@ EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters
  *  here. */
 EPIX_EXPORT EPIX_API void extract_clusters(
     ecs::Commands commands,
-    app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&, const Clusters&,
-                                       const ::epix::camera::Camera&>>>
+    app::Extract<ecs::Query<
+        ecs::Item<const ::epix::render::sync_world::RenderEntity&, const Clusters&, const ::epix::camera::Camera&>>>
         views,
     app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&>>> mapper);
 
 }  // namespace epix::pbr
-

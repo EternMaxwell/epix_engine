@@ -64,7 +64,7 @@ constexpr std::array<std::string_view, 1> kMimeJpeg{"image/jpeg"};
 constexpr std::array<std::string_view, 1> kMimeKtx2{"image/ktx2"};
 constexpr std::array<std::string_view, 1> kMimePng{"image/png"};
 constexpr std::array<std::string_view, 4> kMimePnm{"image/x-portable-bitmap", "image/x-portable-graymap",
-                                                  "image/x-portable-pixmap", "image/x-portable-anymap"};
+                                                   "image/x-portable-pixmap", "image/x-portable-anymap"};
 constexpr std::array<std::string_view, 2> kMimeQoi{"image/qoi", "image/x-qoi"};
 constexpr std::array<std::string_view, 2> kMimeTga{"image/x-targa", "image/x-tga"};
 constexpr std::array<std::string_view, 1> kMimeTiff{"image/tiff"};
@@ -134,8 +134,6 @@ bool is_compressed_texture_format(wgpu::TextureFormat format) noexcept {
             return false;
     }
 }
-
-
 
 /** @brief The WebGPU texture dimension for an image type. */
 wgpu::TextureDimension dimension_cast(ImageType type) noexcept {
@@ -462,8 +460,8 @@ std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::T
     }
 }
 
-
-Image Image::create(ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, wgpu::TextureFormat format) {
+Image Image::create(
+    ImageType type, std::uint32_t w, std::uint32_t h, std::uint32_t depth_or_layers, wgpu::TextureFormat format) {
     switch (type) {
         case ImageType::e1D:
             return create1d(w, format);
@@ -723,7 +721,6 @@ ImageType Image::type() const noexcept {
     }
 }
 
-
 float Image::aspect_ratio() const {
     if (width() == 0 || height() == 0) {
         throw std::invalid_argument(
@@ -742,8 +739,7 @@ std::optional<std::size_t> Image::pixel_data_offset(const glm::uvec3& coords) co
         return static_cast<std::size_t>(coords.x) * *pixel_size;
     }
     if (coords.x >= width() || coords.y >= height() || coords.z >= depth_or_layers()) return std::nullopt;
-    const std::size_t pixel_offset =
-        (static_cast<std::size_t>(coords.z) * height() + coords.y) * width() + coords.x;
+    const std::size_t pixel_offset = (static_cast<std::size_t>(coords.z) * height() + coords.y) * width() + coords.x;
     return pixel_offset * *pixel_size;
 }
 
@@ -913,10 +909,9 @@ float linear_to_srgb(float value) noexcept {
 }
 
 /** @brief Read exactly the texture formats supported by Bevy's color accessor. */
-std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
-                                          std::span<const std::byte> bytes) noexcept {
-    constexpr double u16_max = static_cast<double>(std::numeric_limits<std::uint16_t>::max());
-    constexpr double u32_max = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
+std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format, std::span<const std::byte> bytes) noexcept {
+    constexpr double u16_max  = static_cast<double>(std::numeric_limits<std::uint16_t>::max());
+    constexpr double u32_max  = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
     const auto normalized_u16 = [bytes](std::size_t offset) {
         return static_cast<float>(static_cast<double>(load_scalar<std::uint16_t>(bytes, offset)) / u16_max);
     };
@@ -927,7 +922,7 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
         return glm::unpackHalf1x16(load_scalar<std::uint16_t>(bytes, offset));
     };
     const auto floating = [bytes](std::size_t offset) { return load_scalar<float>(bytes, offset); };
-    const auto raw = reinterpret_cast<const std::uint8_t*>(bytes.data());
+    const auto raw      = reinterpret_cast<const std::uint8_t*>(bytes.data());
     switch (format) {
         case wgpu::TextureFormat::eR8Unorm:
         case wgpu::TextureFormat::eR8Uint: {
@@ -953,8 +948,7 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
         }
         case wgpu::TextureFormat::eRG8Unorm:
         case wgpu::TextureFormat::eRG8Uint:
-            return glm::vec4{static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[1]) / 255.0f, 0.0f,
-                             1.0f};
+            return glm::vec4{static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[1]) / 255.0f, 0.0f, 1.0f};
         case wgpu::TextureFormat::eRG16Unorm:
         case wgpu::TextureFormat::eRG16Uint:
             return glm::vec4{normalized_u16(0), normalized_u16(2), 0.0f, 1.0f};
@@ -971,16 +965,14 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
         case wgpu::TextureFormat::eRGBA8UnormSrgb:
             return glm::vec4{srgb_to_linear(static_cast<float>(raw[0]) / 255.0f),
                              srgb_to_linear(static_cast<float>(raw[1]) / 255.0f),
-                             srgb_to_linear(static_cast<float>(raw[2]) / 255.0f),
-                             static_cast<float>(raw[3]) / 255.0f};
+                             srgb_to_linear(static_cast<float>(raw[2]) / 255.0f), static_cast<float>(raw[3]) / 255.0f};
         case wgpu::TextureFormat::eBGRA8Unorm:
             return glm::vec4{static_cast<float>(raw[2]) / 255.0f, static_cast<float>(raw[1]) / 255.0f,
                              static_cast<float>(raw[0]) / 255.0f, static_cast<float>(raw[3]) / 255.0f};
         case wgpu::TextureFormat::eBGRA8UnormSrgb:
             return glm::vec4{srgb_to_linear(static_cast<float>(raw[2]) / 255.0f),
                              srgb_to_linear(static_cast<float>(raw[1]) / 255.0f),
-                             srgb_to_linear(static_cast<float>(raw[0]) / 255.0f),
-                             static_cast<float>(raw[3]) / 255.0f};
+                             srgb_to_linear(static_cast<float>(raw[0]) / 255.0f), static_cast<float>(raw[3]) / 255.0f};
         case wgpu::TextureFormat::eRGBA16Unorm:
         case wgpu::TextureFormat::eRGBA16Uint:
             return glm::vec4{normalized_u16(0), normalized_u16(2), normalized_u16(4), normalized_u16(6)};
@@ -996,9 +988,7 @@ std::optional<glm::vec4> read_pixel_color(wgpu::TextureFormat format,
 }
 
 /** @brief Encode linear RGBA into one pixel's raw bytes. */
-bool write_pixel_color(wgpu::TextureFormat format,
-                       std::span<std::byte> bytes,
-                       const glm::vec4& color) noexcept {
+bool write_pixel_color(wgpu::TextureFormat format, std::span<std::byte> bytes, const glm::vec4& color) noexcept {
     auto* raw = reinterpret_cast<std::uint8_t*>(bytes.data());
     switch (format) {
         case wgpu::TextureFormat::eR8Unorm:
@@ -1078,8 +1068,7 @@ bool write_pixel_color(wgpu::TextureFormat format,
             return true;
         case wgpu::TextureFormat::eRGBA16Float:
             for (std::size_t channel = 0; channel < 4; ++channel) {
-                store_scalar(bytes, channel * 2,
-                             glm::packHalf1x16(color[static_cast<glm::length_t>(channel)]));
+                store_scalar(bytes, channel * 2, glm::packHalf1x16(color[static_cast<glm::length_t>(channel)]));
             }
             return true;
         case wgpu::TextureFormat::eRGBA32Float:
@@ -1213,15 +1202,15 @@ Image Image::create2d_array(std::uint32_t w, std::uint32_t h, std::uint32_t laye
     // image requires (`bevy_image/src/ktx2.rs:287-297` sets it exactly this way
     // for layered textures), and render preparation honours it over the derived
     // fallback (`bevy_render/src/texture/gpu_image.rs`).
-    img.texture_view_descriptor =
-        wgpu::TextureViewDescriptor()
-            .setLabel("image_create2d_array_view")
-            .setDimension(wgpu::TextureViewDimension::e2DArray)
-            .setMipLevelCount(1)
-            .setBaseMipLevel(0)
-            .setBaseArrayLayer(0)
-            .setArrayLayerCount(layer_count);
-    img.data.assign(static_cast<std::size_t>(w) * h * layer_count * texture_format_pixel_size(format).value_or(0), std::byte(0));
+    img.texture_view_descriptor = wgpu::TextureViewDescriptor()
+                                      .setLabel("image_create2d_array_view")
+                                      .setDimension(wgpu::TextureViewDimension::e2DArray)
+                                      .setMipLevelCount(1)
+                                      .setBaseMipLevel(0)
+                                      .setBaseArrayLayer(0)
+                                      .setArrayLayerCount(layer_count);
+    img.data.assign(static_cast<std::size_t>(w) * h * layer_count * texture_format_pixel_size(format).value_or(0),
+                    std::byte(0));
     return img;
 }
 
@@ -1229,7 +1218,8 @@ Image Image::create3d(std::uint32_t w, std::uint32_t h, std::uint32_t depth, wgp
     Image img;
     const std::uint32_t slice_count = std::max(depth, 1u);
     set_descriptor(img, ImageType::e3D, w, h, slice_count, format);
-    img.data.assign(static_cast<std::size_t>(w) * h * slice_count * texture_format_pixel_size(format).value_or(0), std::byte(0));
+    img.data.assign(static_cast<std::size_t>(w) * h * slice_count * texture_format_pixel_size(format).value_or(0),
+                    std::byte(0));
     return img;
 }
 
@@ -1242,11 +1232,11 @@ std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_
 std::expected<std::array<float, 4>, ImageSampleError> Image::sample(std::uint32_t x,
                                                                     std::uint32_t y,
                                                                     std::uint32_t z) const {
-    const std::uint8_t components        = texture_format_components(texture_descriptor.format);
-    const std::size_t pixel_size         = texture_format_pixel_size(texture_descriptor.format).value_or(0);
-    const std::size_t bytes_per_channel  = components == 0 ? 0 : pixel_size / components;
-    const bool is_float                  = bytes_per_channel == 4 && is_float_texture_format(texture_descriptor.format);
-    const bool is_16_bit                 = bytes_per_channel == 2;
+    const std::uint8_t components       = texture_format_components(texture_descriptor.format);
+    const std::size_t pixel_size        = texture_format_pixel_size(texture_descriptor.format).value_or(0);
+    const std::size_t bytes_per_channel = components == 0 ? 0 : pixel_size / components;
+    const bool is_float                 = bytes_per_channel == 4 && is_float_texture_format(texture_descriptor.format);
+    const bool is_16_bit                = bytes_per_channel == 2;
     std::array<float, 4> result{0};
     if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageSampleError::OutOfBounds);
 
@@ -1292,9 +1282,8 @@ std::expected<void, ImageWriteError> Image::write(std::uint32_t x,
     if (x >= width() || y >= height() || z >= depth_or_layers()) return std::unexpected(ImageWriteError::OutOfBounds);
     if (values.size() < components) return std::unexpected(ImageWriteError::DataSizeMismatch);
 
-    auto slice_stride = static_cast<std::size_t>(width()) * height() * pixel_size;
-    std::byte* pixelPtr =
-        data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * pixel_size;
+    auto slice_stride   = static_cast<std::size_t>(width()) * height() * pixel_size;
+    std::byte* pixelPtr = data.data() + z * slice_stride + (static_cast<std::size_t>(y) * width() + x) * pixel_size;
 
     for (std::uint32_t c = 0; c < components; c++) {
         const std::size_t offset = static_cast<std::size_t>(c) * bytes_per_channel;
@@ -1330,13 +1319,13 @@ std::optional<Image> Image::convert(wgpu::TextureFormat new_format) const {
 }
 
 Image Image::resampled(std::uint32_t newW, std::uint32_t newH) const {
-    const wgpu::TextureFormat format     = texture_descriptor.format;
-    const std::uint8_t components        = texture_format_components(format);
-    const std::size_t pixel_size         = texture_format_pixel_size(format).value_or(0);
-    const std::size_t bytes_per_channel  = components == 0 ? 0 : pixel_size / components;
-    const bool is_float                  = bytes_per_channel == 4 && is_float_texture_format(format);
-    const bool is_16_bit                 = bytes_per_channel == 2;
-    auto target_height                   = type() == ImageType::e1D ? 1u : newH;
+    const wgpu::TextureFormat format    = texture_descriptor.format;
+    const std::uint8_t components       = texture_format_components(format);
+    const std::size_t pixel_size        = texture_format_pixel_size(format).value_or(0);
+    const std::size_t bytes_per_channel = components == 0 ? 0 : pixel_size / components;
+    const bool is_float                 = bytes_per_channel == 4 && is_float_texture_format(format);
+    const bool is_16_bit                = bytes_per_channel == 2;
+    auto target_height                  = type() == ImageType::e1D ? 1u : newH;
 
     Image result = create_resized_like(*this, newW, target_height, format);
 

@@ -1,6 +1,6 @@
-#include <epix/pbr/mesh_extraction.hpp>
-
 #include <spdlog/spdlog.h>
+
+#include <epix/pbr/mesh_extraction.hpp>
 #include <stdexcept>
 
 using namespace epix;
@@ -36,20 +36,20 @@ void epix::pbr::extract_mesh_for_gpu_building(ecs::Entity entity,
     std::optional<std::uint16_t> lod_index;
     if (visibility_range) lod_index = render_visibility_ranges.lod_index_for_entity(main_entity);
 
-    const MeshFlags mesh_flags = MeshFlags::from_components(transform, lod_index, no_frustum_culling,
-                                                            not_shadow_receiver, transmitted_receiver);
+    const MeshFlags mesh_flags =
+        MeshFlags::from_components(transform, lod_index, no_frustum_culling, not_shadow_receiver, transmitted_receiver);
 
     RenderMeshInstanceShared shared = RenderMeshInstanceShared::for_gpu_building(
         previous_transform ? std::addressof(previous_transform->get()) : nullptr, mesh,
         tag ? std::addressof(tag->get()) : nullptr, not_shadow_caster, no_automatic_batching,
-        render_layers ? std::addressof(render_layers->get()) : nullptr,
-        aabb ? std::addressof(aabb->get()) : nullptr);
+        render_layers ? std::addressof(render_layers->get()) : nullptr, aabb ? std::addressof(aabb->get()) : nullptr);
 
     const glm::uvec2 lightmap_uv_rect =
         pack_lightmap_uv_rect(lightmap ? std::optional{lightmap->get().uv_rect} : std::nullopt);
 
     const std::optional<MeshCullingData> gpu_mesh_culling_data =
-        any_gpu_culling ? std::optional{MeshCullingData::make(aabb ? std::optional{aabb->get()} : std::nullopt)} : std::nullopt;
+        any_gpu_culling ? std::optional{MeshCullingData::make(aabb ? std::optional{aabb->get()} : std::nullopt)}
+                        : std::nullopt;
 
     // Only a mesh that had a transform last frame can point at last frame's input
     // uniform, and only if it was extracted then.
@@ -57,15 +57,16 @@ void epix::pbr::extract_mesh_for_gpu_building(ecs::Entity entity,
     if (shared.flags.contains(RenderMeshInstanceFlags::HAS_PREVIOUS_TRANSFORM) &&
         !render_mesh_instances.is_cpu_building()) {
         const auto found = render_mesh_instances.gpu_instances.find(main_entity);
-        if (found != render_mesh_instances.gpu_instances.end()) previous_input_index = found->second.current_uniform_index;
+        if (found != render_mesh_instances.gpu_instances.end())
+            previous_input_index = found->second.current_uniform_index;
     }
 
     RenderMeshInstanceGpuBuilder builder{
-        .shared             = shared,
-        .world_from_local   = transform.matrix,
-        .lightmap_uv_rect   = lightmap_uv_rect,
+        .shared               = shared,
+        .world_from_local     = transform.matrix,
+        .lightmap_uv_rect     = lightmap_uv_rect,
         .previous_input_index = previous_input_index,
-        .mesh_flags         = mesh_flags,
+        .mesh_flags           = mesh_flags,
     };
 
     queue.push(main_entity, std::move(builder), gpu_mesh_culling_data);
@@ -150,10 +151,10 @@ void epix::pbr::extract_meshes_for_gpu_building(
     for (const auto entity : *reextract_entities) {
         if (auto row = all_meshes_query.get(entity); row.has_value()) {
             auto&& [row_entity, view_visibility, transform, previous_transform, lightmap, aabb, mesh, tag,
-                     no_frustum_culling, not_shadow_receiver, transmitted_receiver, not_shadow_caster,
-                     no_automatic_batching, visibility_range, render_layers] = *row;
-            extract_mesh_for_gpu_building(row_entity, view_visibility, transform, previous_transform, lightmap, aabb, mesh,
-                                          tag, no_frustum_culling, not_shadow_receiver, transmitted_receiver,
+                    no_frustum_culling, not_shadow_receiver, transmitted_receiver, not_shadow_caster,
+                    no_automatic_batching, visibility_range, render_layers] = *row;
+            extract_mesh_for_gpu_building(row_entity, view_visibility, transform, previous_transform, lightmap, aabb,
+                                          mesh, tag, no_frustum_culling, not_shadow_receiver, transmitted_receiver,
                                           not_shadow_caster, no_automatic_batching, visibility_range, render_layers,
                                           render_visibility_ranges.get(), render_mesh_instances.get(),
                                           (*render_mesh_instance_queues).queue, any_gpu_culling);

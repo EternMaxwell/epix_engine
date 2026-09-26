@@ -3,8 +3,8 @@
 namespace epix::core_graph {
 
 std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(bool normal_prepass,
-                                                                               bool motion_vector_prepass,
-                                                                               bool deferred_prepass) {
+                                                                                bool motion_vector_prepass,
+                                                                                bool deferred_prepass) {
     // Bevy `prepass_target_descriptors` (`prepass/mod.rs:383-405`): the four
     // slots are the normal target, the motion-vector target, the deferred
     // G-buffer and the deferred lighting id, and a slot is `nullopt` when that
@@ -22,7 +22,8 @@ std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(
     };
 }
 
-std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass, bool motion_vector_prepass,
+std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass,
+                                                             bool motion_vector_prepass,
                                                              bool deferred_prepass) {
     // Epix's fragment target list holds values, so a location the shader does not
     // write becomes a target with an `Undefined` format rather than a hole.
@@ -39,8 +40,7 @@ std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass
 void update_previous_view_data(
     ecs::Commands commands,
     ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
-               ecs::With<camera::Camera3d>>
-        cameras) {
+               ecs::With<camera::Camera3d>> cameras) {
     // Bevy `update_previous_view_data` (`bevy_pbr/src/prepass/mod.rs:189-206`):
     // the camera's global transform is the world-from-view matrix, and every other
     // matrix is derived from it and the projection.

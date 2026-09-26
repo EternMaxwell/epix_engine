@@ -1,9 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <optional>
 #include <epix/common.hpp>
+#include <optional>
 #endif
 
 #include <epix/render/gpu_preprocessing_mode.hpp>

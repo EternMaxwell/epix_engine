@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/transform.hpp>
@@ -19,7 +19,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/camera/projection.hpp>
@@ -398,15 +397,14 @@ EPIX_EXPORT struct EPIX_API Aabb {
         return glm::dot(glm::abs(glm::transpose(world_from_local) * normal), glm::abs(half_extents));
     }
     bool is_in_half_space(const HalfSpace& half_space, const glm::mat4& world_from_local) const noexcept {
-        const glm::vec3 normal = half_space.normal();
+        const glm::vec3 normal              = half_space.normal();
         glm::mat3 absolute_world_from_local = glm::mat3(world_from_local);
         for (glm::length_t column = 0; column < 3; ++column) {
             for (glm::length_t row = 0; row < 3; ++row) {
                 absolute_world_from_local[column][row] = glm::abs(absolute_world_from_local[column][row]);
             }
         }
-        const float radius =
-            glm::dot(absolute_world_from_local * glm::abs(half_extents), glm::abs(normal));
+        const float radius = glm::dot(absolute_world_from_local * glm::abs(half_extents), glm::abs(normal));
         const glm::vec3 transformed_center = glm::vec3(world_from_local * glm::vec4(center, 1.0f));
         return glm::dot(normal, transformed_center) + half_space.d() > radius;
     }
@@ -667,13 +665,13 @@ EPIX_EXPORT enum class VisibilitySystems {
  * established name for Bevy's `ChildOf` relationship). Uses only ECS queries
  * so the scheduler can run it alongside non-conflicting systems. */
 EPIX_EXPORT EPIX_API void visibility_propagate_system(
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                     const Visibility&,
-                                     epix::ecs::Opt<const epix::ecs::Parent&>,
-                                     epix::ecs::Opt<const epix::ecs::Children&>>,
-                     epix::ecs::Filter<epix::ecs::With<InheritedVisibility>,
-                                       epix::ecs::Or<epix::ecs::Modified<Visibility>,
-                                                     epix::ecs::Modified<epix::ecs::Parent>>>>
+    epix::ecs::Query<
+        epix::ecs::Item<epix::ecs::Entity,
+                        const Visibility&,
+                        epix::ecs::Opt<const epix::ecs::Parent&>,
+                        epix::ecs::Opt<const epix::ecs::Children&>>,
+        epix::ecs::Filter<epix::ecs::With<InheritedVisibility>,
+                          epix::ecs::Or<epix::ecs::Modified<Visibility>, epix::ecs::Modified<epix::ecs::Parent>>>>
         changed,
     epix::ecs::Query<epix::ecs::Item<const Visibility&, epix::ecs::Mut<InheritedVisibility>>> visibility_query,
     epix::ecs::Query<epix::ecs::Item<const epix::ecs::Children&>> children_query);
@@ -724,8 +722,8 @@ EPIX_EXPORT EPIX_API void check_visibility_system(
 /** @brief Recomputes each camera's Frustum from its projection and transform
  * (Bevy update_frusta). */
 EPIX_EXPORT EPIX_API void update_frusta(epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
-                                                                const ::epix::camera::Projection&,
-                                                                epix::ecs::Mut<Frustum>>> cameras);
+                                                                         const ::epix::camera::Projection&,
+                                                                         epix::ecs::Mut<Frustum>>> cameras);
 
 }  // namespace epix::camera
 

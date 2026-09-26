@@ -1,11 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/render.hpp>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::core_graph {

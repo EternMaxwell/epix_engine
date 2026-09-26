@@ -4,10 +4,10 @@
 #include <cstddef>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/light_consts.hpp>
 

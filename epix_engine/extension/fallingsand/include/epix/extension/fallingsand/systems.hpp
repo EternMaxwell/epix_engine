@@ -1,24 +1,22 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <array>
 #include <cstddef>
 #include <epix/app.hpp>
-#include <epix/ecs.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
+#include <epix/core_graph.hpp>
+#include <epix/ecs.hpp>
 #include <epix/mesh.hpp>
-#include <epix/transform.hpp>
 #include <epix/render.hpp>
 #include <epix/time.hpp>
-#include <epix/core_graph.hpp>
+#include <epix/transform.hpp>
 #endif
-#include <epix/extension/grid.hpp>
-
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/helpers.hpp>
 #include <epix/extension/fallingsand/structs.hpp>
+#include <epix/extension/grid.hpp>
 
 namespace epix::ext::fallingsand {
 

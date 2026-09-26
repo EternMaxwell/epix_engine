@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
@@ -8,6 +7,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <functional>
 #include <map>
@@ -17,7 +17,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::image::detail {
@@ -138,8 +137,8 @@ using ComparePotentialContainersFn = std::function<std::strong_ordering(
 /** @brief `rectangle_pack::contains_smallest_box`: prefer the container with the smallest box,
  * tie-broken on the second smallest box. */
 EPIX_API std::strong_ordering contains_smallest_box(std::array<WidthHeightDepth, 3> container1,
-                                           std::array<WidthHeightDepth, 3> container2,
-                                           const BoxSizeHeuristicFn& heuristic);
+                                                    std::array<WidthHeightDepth, 3> container2,
+                                                    const BoxSizeHeuristicFn& heuristic);
 
 /** @brief An error while attempting to place a rectangle within a bin section
  * (`rectangle_pack::BinSectionError`). */
@@ -327,7 +326,8 @@ struct Overlaps {
 
 /** @brief An error while attempting to push a `BinSection` into the remaining bin sections of a
  * `TargetBin` (`rectangle_pack::PushBinSectionError`). */
-struct EPIX_API PushBinSectionError : std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps> {
+struct EPIX_API PushBinSectionError
+    : std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps> {
     using Base = std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps>;
     using Base::Base;
 
@@ -408,7 +408,8 @@ void sort_bins_smallest_to_largest(std::vector<std::pair<const BinId*, TargetBin
 }
 
 /** @brief `sort_by_size_largest_to_smallest`. */
-EPIX_API void sort_by_size_largest_to_smallest(std::array<BinSection, 3>& items, const BoxSizeHeuristicFn& box_size_heuristic);
+EPIX_API void sort_by_size_largest_to_smallest(std::array<BinSection, 3>& items,
+                                               const BoxSizeHeuristicFn& box_size_heuristic);
 
 /** @brief `sort_groups_largest_to_smallest`: groups arrive in ascending group-key order from the
  * crate's `BTreeMap`, and are stably sorted by descending summed rectangle heuristic. */

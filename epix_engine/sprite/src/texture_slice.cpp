@@ -1,10 +1,9 @@
-#include <epix/sprite/texture_slice.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <epix/sprite/texture_slice.hpp>
 
 namespace epix::sprite {
 const BorderRect BorderRect::ZERO{glm::vec2(0.0f), glm::vec2(0.0f)};
@@ -21,8 +20,7 @@ Corners corner_slices(const TextureSlicer& slicer, image::Rect base_rect, glm::v
     const auto scale       = std::min({coefficient.x, coefficient.y, slicer.max_corner_scale});
 
     return {
-        TextureSlice{image::Rect{base_rect.min, base_rect.min + glm::vec2(left, top)},
-                     glm::vec2(left, top) * scale,
+        TextureSlice{image::Rect{base_rect.min, base_rect.min + glm::vec2(left, top)}, glm::vec2(left, top) * scale,
                      glm::vec2(-render_size.x + left * scale, render_size.y - top * scale) * 0.5f},
         TextureSlice{image::Rect{glm::vec2(base_rect.max.x - right, base_rect.min.y),
                                  glm::vec2(base_rect.max.x, base_rect.min.y + top)},
@@ -44,22 +42,18 @@ std::array<TextureSlice, 2> horizontal_side_slices(const TextureSlicer& slicer,
                                                    glm::vec2 render_size) {
     const auto& [top_left, top_right, bottom_left, bottom_right] = corners;
     return {
-        TextureSlice{image::Rect{base_rect.min + glm::vec2(0.0f, slicer.border.min_inset.y),
-                                 glm::vec2(base_rect.min.x + slicer.border.min_inset.x,
-                                           base_rect.max.y - slicer.border.max_inset.y)},
-                     glm::vec2(top_left.draw_size.x,
-                               render_size.y - (top_left.draw_size.y + bottom_left.draw_size.y)),
-                     glm::vec2(top_left.draw_size.x - render_size.x,
-                               bottom_left.draw_size.y - top_left.draw_size.y) *
-                         0.5f},
-        TextureSlice{image::Rect{glm::vec2(base_rect.max.x - slicer.border.max_inset.x,
-                                           base_rect.min.y + slicer.border.min_inset.y),
-                                 base_rect.max - glm::vec2(0.0f, slicer.border.max_inset.y)},
-                     glm::vec2(top_right.draw_size.x,
-                               render_size.y - (top_right.draw_size.y + bottom_right.draw_size.y)),
-                     glm::vec2(render_size.x - top_right.draw_size.x,
-                               bottom_right.draw_size.y - top_right.draw_size.y) *
-                         0.5f},
+        TextureSlice{
+            image::Rect{
+                base_rect.min + glm::vec2(0.0f, slicer.border.min_inset.y),
+                glm::vec2(base_rect.min.x + slicer.border.min_inset.x, base_rect.max.y - slicer.border.max_inset.y)},
+            glm::vec2(top_left.draw_size.x, render_size.y - (top_left.draw_size.y + bottom_left.draw_size.y)),
+            glm::vec2(top_left.draw_size.x - render_size.x, bottom_left.draw_size.y - top_left.draw_size.y) * 0.5f},
+        TextureSlice{
+            image::Rect{
+                glm::vec2(base_rect.max.x - slicer.border.max_inset.x, base_rect.min.y + slicer.border.min_inset.y),
+                base_rect.max - glm::vec2(0.0f, slicer.border.max_inset.y)},
+            glm::vec2(top_right.draw_size.x, render_size.y - (top_right.draw_size.y + bottom_right.draw_size.y)),
+            glm::vec2(render_size.x - top_right.draw_size.x, bottom_right.draw_size.y - top_right.draw_size.y) * 0.5f},
     };
 }
 
@@ -69,22 +63,19 @@ std::array<TextureSlice, 2> vertical_side_slices(const TextureSlicer& slicer,
                                                  glm::vec2 render_size) {
     const auto& [top_left, top_right, bottom_left, bottom_right] = corners;
     return {
-        TextureSlice{image::Rect{base_rect.min + glm::vec2(slicer.border.min_inset.x, 0.0f),
-                                 glm::vec2(base_rect.max.x - slicer.border.max_inset.x,
-                                           base_rect.min.y + slicer.border.min_inset.y)},
-                     glm::vec2(render_size.x - (top_left.draw_size.x + top_right.draw_size.x),
-                               top_left.draw_size.y),
-                     glm::vec2(top_left.draw_size.x - top_right.draw_size.x,
-                               render_size.y - top_left.draw_size.y) *
-                         0.5f},
-        TextureSlice{image::Rect{glm::vec2(base_rect.min.x + slicer.border.min_inset.x,
-                                           base_rect.max.y - slicer.border.max_inset.y),
-                                 base_rect.max - glm::vec2(slicer.border.max_inset.x, 0.0f)},
-                     glm::vec2(render_size.x - (bottom_left.draw_size.x + bottom_right.draw_size.x),
-                               bottom_left.draw_size.y),
-                     glm::vec2(bottom_left.draw_size.x - bottom_right.draw_size.x,
-                               bottom_left.draw_size.y - render_size.y) *
-                         0.5f},
+        TextureSlice{
+            image::Rect{
+                base_rect.min + glm::vec2(slicer.border.min_inset.x, 0.0f),
+                glm::vec2(base_rect.max.x - slicer.border.max_inset.x, base_rect.min.y + slicer.border.min_inset.y)},
+            glm::vec2(render_size.x - (top_left.draw_size.x + top_right.draw_size.x), top_left.draw_size.y),
+            glm::vec2(top_left.draw_size.x - top_right.draw_size.x, render_size.y - top_left.draw_size.y) * 0.5f},
+        TextureSlice{
+            image::Rect{
+                glm::vec2(base_rect.min.x + slicer.border.min_inset.x, base_rect.max.y - slicer.border.max_inset.y),
+                base_rect.max - glm::vec2(slicer.border.max_inset.x, 0.0f)},
+            glm::vec2(render_size.x - (bottom_left.draw_size.x + bottom_right.draw_size.x), bottom_left.draw_size.y),
+            glm::vec2(bottom_left.draw_size.x - bottom_right.draw_size.x, bottom_left.draw_size.y - render_size.y) *
+                0.5f},
     };
 }
 }  // namespace
@@ -139,10 +130,10 @@ std::vector<TextureSlice> TextureSlicer::compute_slices(image::Rect rect,
         return {TextureSlice{rect, render_size, glm::vec2(0.0f)}};
     }
 
-    const auto corners         = corner_slices(*this, rect, render_size);
-    const auto vertical_sides  = vertical_side_slices(*this, corners, rect, render_size);
+    const auto corners          = corner_slices(*this, rect, render_size);
+    const auto vertical_sides   = vertical_side_slices(*this, corners, rect, render_size);
     const auto horizontal_sides = horizontal_side_slices(*this, corners, rect, render_size);
-    const auto center = TextureSlice{
+    const auto center           = TextureSlice{
         image::Rect{rect.min + border.min_inset, rect.max - border.max_inset},
         glm::vec2(render_size.x - (corners[0].draw_size.x + corners[1].draw_size.x),
                   render_size.y - (corners[0].draw_size.y + corners[2].draw_size.y)),

@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <memory>
@@ -16,7 +16,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/binned_phase.hpp>
 #include <epix/render/gpu_preprocessing_mode.hpp>
@@ -263,8 +262,7 @@ struct InstanceInputUniformBuffer {
     }
     void remove(std::uint32_t index) { free_uniform_indices.push_back(index); }
     std::optional<InputData> get(std::uint32_t index) const {
-        if (index >= buffer.len() ||
-            std::ranges::find(free_uniform_indices, index) != free_uniform_indices.end())
+        if (index >= buffer.len() || std::ranges::find(free_uniform_indices, index) != free_uniform_indices.end())
             return std::nullopt;
         return *buffer.get(index);
     }
@@ -432,7 +430,7 @@ EPIX_EXPORT struct UntypedPhaseIndirectParametersBuffers {
     }
     /** @brief Store metadata generated while a phase is batched. */
     void set_cpu_metadata(bool indexed, std::uint32_t index, IndirectParametersCpuMetadata value) {
-        auto& metadata            = indexed ? indexed_cpu_metadata : non_indexed_cpu_metadata;
+        auto& metadata = indexed ? indexed_cpu_metadata : non_indexed_cpu_metadata;
         metadata.set(index, value);
     }
     std::optional<std::reference_wrapper<const wgpu::Buffer>> data_buffer(bool indexed) const noexcept {
@@ -613,7 +611,7 @@ void batch_and_prepare_gpu_binned_phase(
     bool no_indirect_drawing,
     bool enable_gpu_occlusion_culling,
     typename GetBatchData<Adapter>::Param& batch_param) {
-    using BufferData  = typename GetBatchData<Adapter>::BufferData;
+    using BufferData = typename GetBatchData<Adapter>::BufferData;
     // A phase built with `GpuPreprocessingMode::None` keeps the `DynamicUniform`
     // batch-set variant and is prepared exclusively by the CPU path
     // (`no_gpu_preprocessing::batch_and_prepare_binned_render_phase`). Bevy's GPU
@@ -657,7 +655,8 @@ void batch_and_prepare_gpu_binned_phase(
 
                 for (const auto& [bin_key, bin] : bins.iter()) {
                     (void)bin_key;
-                    const std::uint32_t first_output = reserve_output(static_cast<std::uint32_t>(bin.entities().size()));
+                    const std::uint32_t first_output =
+                        reserve_output(static_cast<std::uint32_t>(bin.entities().size()));
                     GetFullBatchData<Adapter>{}.write_batch_indirect_parameters_metadata(
                         indexed, first_output, batch_set_index, indirect_parameters, command_index);
                     for (const auto& [main_entity, input_index] : bin.entities().iter()) {
@@ -728,8 +727,7 @@ void batch_and_prepare_gpu_binned_phase(
     for (auto& [key, unbatchable] : render_phase.unbatchable_meshes.iter()) {
         const bool indexed = key.first.indexed();
         for (const auto& [main_entity, render_entity] : unbatchable.entities) {
-            const auto input_index =
-                GetFullBatchData<Adapter>{}.get_binned_index(batch_param, main_entity);
+            const auto input_index = GetFullBatchData<Adapter>{}.get_binned_index(batch_param, main_entity);
             if (!input_index) continue;
             const std::uint32_t output = reserve_output(1);
             const std::optional<std::uint32_t> indirect_index =
@@ -743,9 +741,9 @@ void batch_and_prepare_gpu_binned_phase(
                                       .output_or_indirect_parameters_index = indirect_index.value_or(output)});
             unbatchable.buffer_indices.add({
                 .instance_index = output,
-                .extra_index = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
-                                                   *indirect_index, *indirect_index + 1)
-                                             : phase::PhaseItemExtraIndex::None,
+                .extra_index    = indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
+                                                       *indirect_index, *indirect_index + 1)
+                                                 : phase::PhaseItemExtraIndex::None,
             });
         }
     }
@@ -868,8 +866,8 @@ void batch_and_prepare_gpu_sorted_phase(
         auto& extra_index = item.extra_index();
         batch_range = {active->instance_start, instance_end.value_or(static_cast<std::uint32_t>(output_data.len()))};
         extra_index = active->indirect_index ? phase::PhaseItemExtraIndex::indirect_parameters_range(
-                                                  *active->indirect_index, *active->indirect_index + 1)
-                                            : phase::PhaseItemExtraIndex::None;
+                                                   *active->indirect_index, *active->indirect_index + 1)
+                                             : phase::PhaseItemExtraIndex::None;
         if (active->indirect_index) indirect_parameters.add_batch_set(active->indexed, *active->indirect_index);
         active.reset();
     };
@@ -925,9 +923,9 @@ void batch_and_prepare_gpu_sorted_render_phase(
     for (auto&& [extracted_view, no_indirect_drawing, occlusion_culling] : views.iter()) {
         auto it = sorted_render_phases->find(extracted_view.retained_view_entity);
         if (it == sorted_render_phases->end()) continue;
-        batch_and_prepare_gpu_sorted_phase<P, Adapter>(
-            it->second, phase_buffers->buffers, indirect_parameters->buffers, extracted_view.retained_view_entity,
-            no_indirect_drawing, occlusion_culling, batch_param);
+        batch_and_prepare_gpu_sorted_phase<P, Adapter>(it->second, phase_buffers->buffers, indirect_parameters->buffers,
+                                                       extracted_view.retained_view_entity, no_indirect_drawing,
+                                                       occlusion_culling, batch_param);
     }
 }
 
@@ -987,8 +985,8 @@ void batch_and_prepare_sorted_phase(
         if (!batch_data) {
             auto& batch_range = item.batch_range();
             auto& extra_index = item.extra_index();
-            batch_range = {0, 0};
-            extra_index = phase::PhaseItemExtraIndex::None;
+            batch_range       = {0, 0};
+            extra_index       = phase::PhaseItemExtraIndex::None;
             previous_meta.reset();
             batch_head = nullptr;
             continue;
@@ -996,11 +994,12 @@ void batch_and_prepare_sorted_phase(
 
         auto&& [buffer_data, optional_compare_data] = *batch_data;
         const auto buffer_index                     = instance_buffer.push(buffer_data);
-        auto& batch_range = item.batch_range();
-        auto& extra_index = item.extra_index();
-        batch_range = {buffer_index.index, buffer_index.index + 1};
-        extra_index = buffer_index.dynamic_offset ? phase::PhaseItemExtraIndex::dynamic_offset(*buffer_index.dynamic_offset)
-                                                  : phase::PhaseItemExtraIndex::None;
+        auto& batch_range                           = item.batch_range();
+        auto& extra_index                           = item.extra_index();
+        batch_range                                 = {buffer_index.index, buffer_index.index + 1};
+        extra_index = buffer_index.dynamic_offset
+                          ? phase::PhaseItemExtraIndex::dynamic_offset(*buffer_index.dynamic_offset)
+                          : phase::PhaseItemExtraIndex::None;
 
         const std::optional<CpuBatchMeta<typename GetBatchData<Adapter>::CompareData>> current_meta =
             automatic_batching_enabled<P> && optional_compare_data
@@ -1101,8 +1100,7 @@ void batch_and_prepare_binned_phase(
         bin.clear_batches();
         for (const auto& [main_entity, input_uniform_index] : bin.entities().iter()) {
             (void)input_uniform_index;
-            auto buffer_data =
-                GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
+            auto buffer_data = GetFullBatchData<Adapter>{}.get_binned_batch_data(batch_param, main_entity);
             if (!buffer_data) continue;
             const auto index = instance_buffer.push(*buffer_data);
             const auto extra = index.dynamic_offset ? phase::PhaseItemExtraIndex::dynamic_offset(*index.dynamic_offset)

@@ -2,8 +2,8 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <epix/render.hpp>
 #include <epix/common.hpp>
+#include <epix/render.hpp>
 #endif
 
 namespace epix::core_graph {
@@ -42,19 +42,22 @@ EPIX_EXPORT struct OrderIndependentTransparencySettings {
  *  the OIT plugin is not loaded, so the reason is worth naming — and never
  *  changes the answer. */
 EPIX_EXPORT inline bool is_oit_supported(bool fragment_writable_storage,
-                                         std::uint32_t max_storage_buffers_per_shader_stage, bool warn) {
+                                         std::uint32_t max_storage_buffers_per_shader_stage,
+                                         bool warn) {
     if (!fragment_writable_storage) {
         if (warn) {
-            spdlog::warn("[core_graph] OrderIndependentTransparencyPlugin not loaded. GPU lacks support: "
-                         "DownlevelFlags::FRAGMENT_WRITABLE_STORAGE.");
+            spdlog::warn(
+                "[core_graph] OrderIndependentTransparencyPlugin not loaded. GPU lacks support: "
+                "DownlevelFlags::FRAGMENT_WRITABLE_STORAGE.");
         }
         return false;
     }
     if (max_storage_buffers_per_shader_stage < OIT_REQUIRED_STORAGE_BUFFERS) {
         if (warn) {
-            spdlog::warn("[core_graph] OrderIndependentTransparencyPlugin not loaded. RenderDevice lacks support: "
-                         "max_storage_buffers_per_shader_stage ({}) < OIT_REQUIRED_STORAGE_BUFFERS ({}).",
-                         max_storage_buffers_per_shader_stage, OIT_REQUIRED_STORAGE_BUFFERS);
+            spdlog::warn(
+                "[core_graph] OrderIndependentTransparencyPlugin not loaded. RenderDevice lacks support: "
+                "max_storage_buffers_per_shader_stage ({}) < OIT_REQUIRED_STORAGE_BUFFERS ({}).",
+                max_storage_buffers_per_shader_stage, OIT_REQUIRED_STORAGE_BUFFERS);
         }
         return false;
     }

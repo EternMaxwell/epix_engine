@@ -1,15 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/mesh/base_mesh_pipeline.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <optional>
 #include <utility>
 #include <variant>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::mesh {
@@ -17,7 +16,7 @@ namespace epix::render::mesh {
 /** @brief Indexed-buffer metadata of a render mesh (Bevy
  * `RenderMeshBufferInfo::Indexed`): the index count and format. */
 EPIX_EXPORT struct RenderMeshBufferInfoIndexed {
-    std::uint32_t count = 0;
+    std::uint32_t count            = 0;
     wgpu::IndexFormat index_format = wgpu::IndexFormat::eUint16;
 
     bool operator==(const RenderMeshBufferInfoIndexed&) const noexcept = default;
@@ -37,7 +36,9 @@ EPIX_EXPORT struct RenderMeshBufferInfo {
     static RenderMeshBufferInfo non_indexed() { return RenderMeshBufferInfo{std::monostate{}}; }
 
     bool is_indexed() const noexcept { return std::holds_alternative<RenderMeshBufferInfoIndexed>(value); }
-    const RenderMeshBufferInfoIndexed* indexed_info() const noexcept { return std::get_if<RenderMeshBufferInfoIndexed>(&value); }
+    const RenderMeshBufferInfoIndexed* indexed_info() const noexcept {
+        return std::get_if<RenderMeshBufferInfoIndexed>(&value);
+    }
 };
 
 /** @brief The render world representation of a `Mesh` (Bevy 0.18 `RenderMesh`):

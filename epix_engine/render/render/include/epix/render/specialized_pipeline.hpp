@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <expected>
@@ -12,7 +12,6 @@
 #include <unordered_map>
 #include <utility>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/pipeline_server.hpp>
@@ -40,9 +39,7 @@ struct SpecializedRenderPipelines {
     std::unordered_map<typename S::Key, CachedPipelineId> cache;
 
     /** @brief Get the cached pipeline for `key`, queueing a new pipeline if absent. */
-    CachedPipelineId specialize(const PipelineServer& server,
-                                const S& specialized_pipeline,
-                                typename S::Key key) {
+    CachedPipelineId specialize(const PipelineServer& server, const S& specialized_pipeline, typename S::Key key) {
         if (auto it = cache.find(key); it != cache.end()) {
             return it->second;
         }
@@ -72,9 +69,7 @@ struct SpecializedComputePipelines {
     /** @brief Cached pipeline ids keyed by specialization key. */
     std::unordered_map<typename S::Key, CachedPipelineId> cache;
 
-    CachedPipelineId specialize(const PipelineServer& server,
-                                const S& specialized_pipeline,
-                                typename S::Key key) {
+    CachedPipelineId specialize(const PipelineServer& server, const S& specialized_pipeline, typename S::Key key) {
         if (auto it = cache.find(key); it != cache.end()) {
             return it->second;
         }
@@ -101,8 +96,9 @@ EPIX_EXPORT using SpecializedMeshPipelineError = std::variant<::epix::mesh::Miss
 template <typename S>
 concept SpecializedMeshPipeline =
     requires(const S& pipeline, typename S::Key key, const ::epix::mesh::MeshVertexBufferLayoutRef& layout) {
-        { pipeline.specialize(key, layout) } ->
-            std::same_as<std::expected<RenderPipelineDescriptor, SpecializedMeshPipelineError>>;
+        {
+            pipeline.specialize(key, layout)
+        } -> std::same_as<std::expected<RenderPipelineDescriptor, SpecializedMeshPipelineError>>;
     };
 
 /**
@@ -174,7 +170,7 @@ struct SpecializedMeshPipelines {
         if (descriptor->vertex.buffers.empty()) {
             throw std::logic_error("A specialized mesh pipeline must produce one vertex buffer.");
         }
-        auto [layout_map, _] = vertex_layout_cache.try_emplace(descriptor->vertex.buffers.front());
+        auto [layout_map, _]   = vertex_layout_cache.try_emplace(descriptor->vertex.buffers.front());
         auto [entry, inserted] = layout_map->second.try_emplace(cache_key.key, CachedPipelineId{});
         if (!inserted) {
             mesh_layout_cache.emplace(std::move(cache_key), entry->second);

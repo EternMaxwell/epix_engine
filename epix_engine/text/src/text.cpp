@@ -26,12 +26,12 @@ void Text::register_required_components(ecs::RequiredComponentsRegistrator& regi
 }
 
 namespace {
-void shape_changed_text(Commands cmd,
-                        Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>, Has<ShapedText>>>
-                            texts,
-                        ResMut<font::FontAtlasSets> atlas_sets,
-                        ResMut<assets::Assets<image::Image>> textures,
-                        ResMut<assets::Assets<image::TextureAtlasLayout>> atlas_layouts) {
+void shape_changed_text(
+    Commands cmd,
+    Query<Item<Entity, Ref<Text>, Ref<TextFont>, Ref<TextLayout>, Ref<TextBounds>, Has<ShapedText>>> texts,
+    ResMut<font::FontAtlasSets> atlas_sets,
+    ResMut<assets::Assets<image::Image>> textures,
+    ResMut<assets::Assets<image::TextureAtlasLayout>> atlas_layouts) {
     for (auto&& [entity, text_item, font_item, layout_item, bounds_item, has_shaped] : texts.iter()) {
         if (has_shaped && !text_item.is_modified() && !text_item.is_added() && !font_item.is_modified() &&
             !font_item.is_added() && !layout_item.is_modified() && !layout_item.is_added() &&
@@ -47,9 +47,8 @@ void shape_changed_text(Commands cmd,
         // Bevy lays text out and places the glyphs in the atlas in the same
         // step (`TextPipeline::update_text_layout_info`), so both asset stores
         // are threaded through here.
-        auto shaped =
-            shape_text(text_item.get(), font_item.get(), layout_item.get(), bounds_item.get(), atlas_set->get(),
-                       *textures, *atlas_layouts);
+        auto shaped  = shape_text(text_item.get(), font_item.get(), layout_item.get(), bounds_item.get(),
+                                  atlas_set->get(), *textures, *atlas_layouts);
         auto measure = TextMeasure{.width = shaped.width(), .height = shaped.height()};
         cmd.entity(entity).insert(std::move(shaped), measure);
     }
@@ -74,8 +73,8 @@ ShapedText epix::text::shape_text(const Text& text,
 
     /** @brief Rasterize and place a glyph, returning its atlas placement and
      * bitmap size (Bevy `pipeline.rs:427-446`). */
-    auto place_glyph = [&](std::uint32_t glyph_index)
-        -> std::optional<std::tuple<font::GlyphAtlasInfo, glm::vec2, glm::vec2>> {
+    auto place_glyph =
+        [&](std::uint32_t glyph_index) -> std::optional<std::tuple<font::GlyphAtlasInfo, glm::vec2, glm::vec2>> {
         auto atlas_info = atlas_set.add_glyph_to_atlas(textures, atlas_layouts, atlas_key, glyph_index);
         if (!atlas_info) {
             spdlog::error("[text] Failed to place glyph {}: {}.", glyph_index, atlas_info.error().to_string());
@@ -155,17 +154,16 @@ ShapedText epix::text::shape_text(const Text& text,
             const auto cluster     = static_cast<std::uint32_t>(infos[index].cluster);
             const float x_offset   = static_cast<float>(static_cast<double>(positions[index].x_offset) / 64.0);
             // HarfBuzz offsets/advances are +Y-up; the layout space is +Y-down.
-            const float y_offset_down = -static_cast<float>(static_cast<double>(positions[index].y_offset) / 64.0);
-            const float x_advance     = static_cast<float>(static_cast<double>(positions[index].x_advance) / 64.0);
+            const float y_offset_down  = -static_cast<float>(static_cast<double>(positions[index].y_offset) / 64.0);
+            const float x_advance      = static_cast<float>(static_cast<double>(positions[index].x_advance) / 64.0);
             const float y_advance_down = -static_cast<float>(static_cast<double>(positions[index].y_advance) / 64.0);
             pen_positions.push_back(pen_x);
 
             if (auto placed = place_glyph(glyph_index)) {
                 auto&& [atlas_info, glyph_size, placement] = *placed;
-                out.glyphs_.push_back(make_glyph_info(glyph_index, cluster, pen_x + x_offset,
-                                                      baseline_down + y_offset_down, pen_x, baseline_down,
-                                                      y_offset_down, x_advance, y_advance_down, atlas_info, glyph_size,
-                                                      placement));
+                out.glyphs_.push_back(make_glyph_info(
+                    glyph_index, cluster, pen_x + x_offset, baseline_down + y_offset_down, pen_x, baseline_down,
+                    y_offset_down, x_advance, y_advance_down, atlas_info, glyph_size, placement));
             }
             pen_x += x_advance;
             advance_width += x_advance;
@@ -464,11 +462,11 @@ ShapedText epix::text::shape_text(const Text& text,
             for (const auto& entry : shaped_tokens[index].entries) {
                 if (auto placed = place_glyph(entry.glyph_index)) {
                     auto&& [atlas_info, glyph_size, placement] = *placed;
-                    out.glyphs_.push_back(make_glyph_info(
-                        entry.glyph_index, entry.cluster, pen_x + static_cast<float>(entry.x_offset),
-                        baseline_y + static_cast<float>(entry.y_offset), pen_x, baseline_down,
-                        static_cast<float>(entry.y_offset), static_cast<float>(entry.x_advance), 0.0f, atlas_info,
-                        glyph_size, placement));
+                    out.glyphs_.push_back(
+                        make_glyph_info(entry.glyph_index, entry.cluster, pen_x + static_cast<float>(entry.x_offset),
+                                        baseline_y + static_cast<float>(entry.y_offset), pen_x, baseline_down,
+                                        static_cast<float>(entry.y_offset), static_cast<float>(entry.x_advance), 0.0f,
+                                        atlas_info, glyph_size, placement));
                 }
                 pen_x += static_cast<float>(entry.x_advance);
             }
@@ -493,7 +491,6 @@ ShapedText epix::text::shape_text(const Text& text,
 
 void TextPlugin::attach(App& app) {
     app.add_plugins(font::FontPlugin{});
-    app.add_systems(PostUpdate, into(shape_changed_text)
-                                    .set_name("shape_changed_text")
-                                    .after(font::FontSystems::AddFontAtlasSet));
+    app.add_systems(PostUpdate,
+                    into(shape_changed_text).set_name("shape_changed_text").after(font::FontSystems::AddFontAtlasSet));
 }

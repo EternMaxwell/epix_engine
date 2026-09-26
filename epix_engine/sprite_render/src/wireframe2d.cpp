@@ -1,5 +1,3 @@
-#include <epix/sprite_render/wireframe2d.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -8,6 +6,7 @@
 #include <cstdint>
 #include <epix/core_graph.hpp>
 #include <epix/render.hpp>
+#include <epix/sprite_render/wireframe2d.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <ranges>
@@ -60,7 +59,7 @@ epix::assets::Handle<epix::sprite_render::Wireframe2dMaterial> get_wireframe_mat
 
 std::size_t std::hash<epix::sprite_render::Wireframe2dBatchSetKey>::operator()(
     const epix::sprite_render::Wireframe2dBatchSetKey& key) const noexcept {
-    std::size_t hash = std::hash<epix::render::CachedPipelineId>{}(key.pipeline);
+    std::size_t hash   = std::hash<epix::render::CachedPipelineId>{}(key.pipeline);
     const auto combine = [&hash](std::size_t value) { hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
     combine(std::hash<epix::assets::UntypedAssetId>{}(key.asset_id));
     combine(std::hash<epix::render::phase::DrawFunctionId>{}(key.draw_function));
@@ -128,34 +127,33 @@ std::expected<void, epix::render::graph::NodeRunError> epix::sprite_render::Wire
     const auto view_entity       = graph.view_entity();
     const auto* world_ptr        = std::addressof(world);
     const auto* phase_ptr        = std::addressof(phase->second);
-    render_context.add_command_buffer_generation_task(
-        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, phase_ptr](wgpu::Device device) {
-            auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("wireframe_2d"));
-            auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
-                                                           .setLabel("wireframe_2d")
-                                                           .setColorAttachments(color_attachments)
-                                                           .setDepthStencilAttachment(depth_attachment));
-            if (viewport) {
-                const auto& vp = *viewport;
-                render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                        static_cast<float>(vp.physical_position.y),
-                                        static_cast<float>(vp.physical_size.x),
-                                        static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, viewport, view_entity,
+                                                       world_ptr, phase_ptr](wgpu::Device device) {
+        auto encoder     = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("wireframe_2d"));
+        auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                       .setLabel("wireframe_2d")
+                                                       .setColorAttachments(color_attachments)
+                                                       .setDepthStencilAttachment(depth_attachment));
+        if (viewport) {
+            const auto& vp = *viewport;
+            render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                    static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
+                                    static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+        }
+        if (!phase_ptr->is_empty()) {
+            // Bevy logs the phase's error and returns
+            // `NodeRunError::DrawError` (wireframe2d.rs:400-403); this pass is
+            // deferred into a command-buffer generation task, so the error
+            // cannot travel back to `run` and the log is what is left. Bevy's
+            // message, verbatim.
+            if (auto result = phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                spdlog::error("Error encountered while rendering the stencil phase {}",
+                              render::phase::to_string(result.error()));
             }
-            if (!phase_ptr->is_empty()) {
-                // Bevy logs the phase's error and returns
-                // `NodeRunError::DrawError` (wireframe2d.rs:400-403); this pass is
-                // deferred into a command-buffer generation task, so the error
-                // cannot travel back to `run` and the log is what is left. Bevy's
-                // message, verbatim.
-                if (auto result = phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                    spdlog::error("Error encountered while rendering the stencil phase {}",
-                                  render::phase::to_string(result.error()));
-                }
-            }
-            render_pass.end();
-            return encoder.finish();
-        });
+        }
+        render_pass.end();
+        return encoder.finish();
+    });
     return {};
 }
 
@@ -180,8 +178,7 @@ void epix::sprite_render::global_color_changed(ecs::Res<Wireframe2dConfig> confi
 void epix::sprite_render::wireframe_color_changed(
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
     ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>, const Wireframe2dColor&>,
-               ecs::Filter<ecs::With<Wireframe2d>, ecs::Modified<Wireframe2dColor>>>
-        colors_changed) {
+               ecs::Filter<ecs::With<Wireframe2d>, ecs::Modified<Wireframe2dColor>>> colors_changed) {
     // Bevy `wireframe_color_changed` (`:579-592`): a changed colour allocates a
     // new material, which also marks `Mesh2dWireframe` asset-changed so the
     // pipeline is re-specialized.
@@ -194,10 +191,8 @@ void epix::sprite_render::apply_wireframe_material(
     ecs::Commands commands,
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
-               ecs::Filter<ecs::With<Wireframe2d>, ecs::Without<Mesh2dWireframe>>>
-        wireframes,
-    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>>
-        no_wireframes,
+               ecs::Filter<ecs::With<Wireframe2d>, ecs::Without<Mesh2dWireframe>>> wireframes,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>> no_wireframes,
     ecs::RemovedComponents<Wireframe2d> removed_wireframes,
     ecs::Res<GlobalWireframeMaterial> global_material) {
     // Bevy `apply_wireframe_material` (`:594-619`). `EntityCommands::remove`
@@ -223,13 +218,15 @@ void epix::sprite_render::apply_global_wireframe_material(
     ecs::Commands commands,
     ecs::Res<Wireframe2dConfig> config,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
-               ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
-                           ecs::Without<Mesh2dWireframe>>>
-        meshes_without_material,
+               ecs::Filter<ecs::With<mesh::Mesh2d>,
+                           ecs::Without<Wireframe2d>,
+                           ecs::Without<NoWireframe2d>,
+                           ecs::Without<Mesh2dWireframe>>> meshes_without_material,
     ecs::Query<ecs::Entity,
-               ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
-                           ecs::With<Mesh2dWireframe>>>
-        meshes_with_global_material,
+               ecs::Filter<ecs::With<mesh::Mesh2d>,
+                           ecs::Without<Wireframe2d>,
+                           ecs::Without<NoWireframe2d>,
+                           ecs::With<Mesh2dWireframe>>> meshes_with_global_material,
     ecs::Res<GlobalWireframeMaterial> global_material,
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials) {
     // Bevy `apply_global_wireframe_material` (`:623-649`). Only the material
@@ -291,7 +288,9 @@ void epix::sprite_render::extract_wireframe_2d_camera(
         wireframe_2d_phases->prepare_for_new_frame(retained_view, render::batching::GpuPreprocessingMode::None);
         live_entities->insert(retained_view);
     }
-    const auto remove_dead_views = [&live_entities](const auto& entry) { return !live_entities->contains(entry.first); };
+    const auto remove_dead_views = [&live_entities](const auto& entry) {
+        return !live_entities->contains(entry.first);
+    };
     std::erase_if(wireframe_2d_phases->phases, remove_dead_views);
 }
 
@@ -320,9 +319,10 @@ void epix::sprite_render::extract_wireframe_entities_needing_specialization(
 
 void epix::sprite_render::check_wireframe_entities_needing_specialization(
     ecs::Query<ecs::Entity,
-               ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
-                       ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>
-        needs_specialization,
+               ecs::Or<ecs::Modified<mesh::Mesh2d>,
+                       assets::AssetChanged<mesh::Mesh2d>,
+                       ecs::Modified<Mesh2dWireframe>,
+                       assets::AssetChanged<Mesh2dWireframe>>> needs_specialization,
     ecs::ResMut<WireframeEntitiesNeedingSpecialization> entities_needing_specialization) {
     // Bevy `check_wireframe_entities_needing_specialization` (`:710-726`).
     entities_needing_specialization->entities.clear();
@@ -365,11 +365,10 @@ void epix::sprite_render::specialize_wireframes(
             const auto entity_tick_it = entity_specialization_ticks->entities.find(visible_entity);
             if (entity_tick_it == entity_specialization_ticks->entities.end()) continue;
 
-            const auto cached_it         = view_cache.map.find(visible_entity);
-            const bool needs_specialization = cached_it == view_cache.map.end() ||
-                                              view_tick.newer_than(cached_it->second.first, ticks.this_run()) ||
-                                              entity_tick_it->second.newer_than(cached_it->second.first,
-                                                                                ticks.this_run());
+            const auto cached_it = view_cache.map.find(visible_entity);
+            const bool needs_specialization =
+                cached_it == view_cache.map.end() || view_tick.newer_than(cached_it->second.first, ticks.this_run()) ||
+                entity_tick_it->second.newer_than(cached_it->second.first, ticks.this_run());
             if (!needs_specialization) continue;
 
             const auto* mesh = render_meshes->try_get(mesh_instance_it->second.mesh_asset_id);
@@ -461,25 +460,20 @@ void epix::sprite_render::Wireframe2dPlugin::attach(app::App& app) {
     // config changed, `wireframe_color_changed` always runs, and the apply pair is
     // chained so the global setting lands on a mesh in the same frame its marker
     // component is removed.
-    app.add_systems(app::Update,
-                    ecs::into(global_color_changed)
-                        .run_if([](ecs::Res<Wireframe2dConfig> config) { return config.is_modified(); })
-                        .set_name("global wireframe color changed"));
-    app.add_systems(app::Update,
-                    ecs::into(wireframe_color_changed).set_name("wireframe color changed"));
-    app.add_systems(app::Update,
-                    ecs::into(apply_wireframe_material).set_name("apply wireframe material"));
-    app.add_systems(app::Update,
-                    ecs::into(apply_global_wireframe_material)
-                        .after(apply_wireframe_material)
-                        .set_name("apply global wireframe material"));
-    app.add_systems(app::PostUpdate,
-                    ecs::into(check_wireframe_entities_needing_specialization)
-                        .after(assets::AssetSystems::WriteEvents)
-                        .run_if([](const ecs::World& world) {
-                            return world.get_resource<Wireframe2dConfig>().has_value();
-                        })
-                        .set_name("check wireframe entities needing specialization"));
+    app.add_systems(app::Update, ecs::into(global_color_changed)
+                                     .run_if([](ecs::Res<Wireframe2dConfig> config) { return config.is_modified(); })
+                                     .set_name("global wireframe color changed"));
+    app.add_systems(app::Update, ecs::into(wireframe_color_changed).set_name("wireframe color changed"));
+    app.add_systems(app::Update, ecs::into(apply_wireframe_material).set_name("apply wireframe material"));
+    app.add_systems(app::Update, ecs::into(apply_global_wireframe_material)
+                                     .after(apply_wireframe_material)
+                                     .set_name("apply global wireframe material"));
+    app.add_systems(app::PostUpdate, ecs::into(check_wireframe_entities_needing_specialization)
+                                         .after(assets::AssetSystems::WriteEvents)
+                                         .run_if([](const ecs::World& world) {
+                                             return world.get_resource<Wireframe2dConfig>().has_value();
+                                         })
+                                         .set_name("check wireframe entities needing specialization"));
 }
 
 void epix::sprite_render::Wireframe2dPlugin::ready(app::App& app) {
@@ -519,22 +513,19 @@ void epix::sprite_render::Wireframe2dPlugin::ready(app::App& app) {
         }
     }
 
-    render.add_systems(render::RenderStartup,
-                       ecs::into(init_wireframe_2d_pipeline)
-                           .after(init_mesh_2d_pipeline)
-                           .set_name("init wireframe 2d pipeline"));
-    render.add_systems(render::ExtractSchedule,
-                       ecs::into(extract_wireframe_2d_camera, extract_wireframe_entities_needing_specialization,
-                                 extract_wireframe_materials)
-                           .set_names(std::array{"extract wireframe 2d camera",
-                                                 "extract wireframe entities needing specialization",
-                                                 "extract wireframe materials"}));
-    render.add_systems(render::Render,
-                       ecs::into(specialize_wireframes)
-                           .in_set(render::RenderSystems::PrepareMeshes)
-                           .set_name("specialize wireframes"));
-    render.add_systems(render::Render,
-                       ecs::into(queue_wireframes)
-                           .in_set(render::RenderSystems::QueueMeshes)
-                           .set_name("queue wireframes"));
+    render.add_systems(
+        render::RenderStartup,
+        ecs::into(init_wireframe_2d_pipeline).after(init_mesh_2d_pipeline).set_name("init wireframe 2d pipeline"));
+    render.add_systems(
+        render::ExtractSchedule,
+        ecs::into(extract_wireframe_2d_camera, extract_wireframe_entities_needing_specialization,
+                  extract_wireframe_materials)
+            .set_names(std::array{"extract wireframe 2d camera", "extract wireframe entities needing specialization",
+                                  "extract wireframe materials"}));
+    render.add_systems(render::Render, ecs::into(specialize_wireframes)
+                                           .in_set(render::RenderSystems::PrepareMeshes)
+                                           .set_name("specialize wireframes"));
+    render.add_systems(
+        render::Render,
+        ecs::into(queue_wireframes).in_set(render::RenderSystems::QueueMeshes).set_name("queue wireframes"));
 }

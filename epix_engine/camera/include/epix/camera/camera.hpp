@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cmath>
@@ -8,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
@@ -23,7 +23,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/camera/clear_color.hpp>
@@ -536,9 +535,8 @@ EPIX_EXPORT EPIX_API std::expected<void, CameraUpdateError> camera_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ::epix::window::Window&>,
                      epix::ecs::With<::epix::window::PrimaryWindow>> primary_window_query,
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ::epix::window::Window&>> window_query,
-    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>,
-                                     epix::ecs::Ref<RenderTarget>,
-                                     epix::ecs::Mut<Projection>>> cameras);
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<Camera>, epix::ecs::Ref<RenderTarget>, epix::ecs::Mut<Projection>>>
+        cameras);
 
 /** @brief Plugin that registers camera_system (projection updates), the
  * visibility systems, the projection plugins, and the ClearColor resource

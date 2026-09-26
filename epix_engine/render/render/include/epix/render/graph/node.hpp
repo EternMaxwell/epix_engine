@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <expected>
 #include <memory>
@@ -12,7 +12,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/graph/decl.hpp>

@@ -1,11 +1,9 @@
-#include <epix/pbr/mesh_pipeline.hpp>
-#include <epix/pbr/mesh_pipeline_resource.hpp>
-
+#include <array>
 #include <epix/core_graph/core3d.hpp>
 #include <epix/image.hpp>
+#include <epix/pbr/mesh_pipeline.hpp>
+#include <epix/pbr/mesh_pipeline_resource.hpp>
 #include <epix/render/view.hpp>
-
-#include <array>
 #include <string>
 #include <vector>
 
@@ -18,14 +16,22 @@ namespace {
  *  `setup_morph_and_skinning_defs` returns, `render/mesh.rs:2443-2451`). */
 const render::BindGroupLayoutDescriptor& mesh_layout_for(const MeshLayouts& layouts, MeshLayoutKind kind) {
     switch (kind) {
-        case MeshLayoutKind::Lightmapped: return layouts.lightmapped;
-        case MeshLayoutKind::Morphed: return layouts.morphed;
-        case MeshLayoutKind::MorphedMotion: return layouts.morphed_motion;
-        case MeshLayoutKind::Skinned: return layouts.skinned;
-        case MeshLayoutKind::SkinnedMotion: return layouts.skinned_motion;
-        case MeshLayoutKind::MorphedSkinned: return layouts.morphed_skinned;
-        case MeshLayoutKind::MorphedSkinnedMotion: return layouts.morphed_skinned_motion;
-        case MeshLayoutKind::ModelOnly: break;
+        case MeshLayoutKind::Lightmapped:
+            return layouts.lightmapped;
+        case MeshLayoutKind::Morphed:
+            return layouts.morphed;
+        case MeshLayoutKind::MorphedMotion:
+            return layouts.morphed_motion;
+        case MeshLayoutKind::Skinned:
+            return layouts.skinned;
+        case MeshLayoutKind::SkinnedMotion:
+            return layouts.skinned_motion;
+        case MeshLayoutKind::MorphedSkinned:
+            return layouts.morphed_skinned;
+        case MeshLayoutKind::MorphedSkinnedMotion:
+            return layouts.morphed_skinned_motion;
+        case MeshLayoutKind::ModelOnly:
+            break;
     }
     return layouts.model_only;
 }
@@ -59,17 +65,16 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
 
     const MeshMorphSkinningSetup morph_and_skinning =
         setup_morph_and_skinning_defs(key, layout, 6, skins_use_uniform_buffers);
-    shader_defs.insert(shader_defs.end(), morph_and_skinning.shader_defs.begin(),
-                       morph_and_skinning.shader_defs.end());
+    shader_defs.insert(shader_defs.end(), morph_and_skinning.shader_defs.begin(), morph_and_skinning.shader_defs.end());
 
     {
         auto key_defs = specialize_mesh_key_shader_defs(key, pass.is_opaque);
         shader_defs.insert(shader_defs.end(), key_defs.begin(), key_defs.end());
     }
     {
-        auto capability_defs = specialize_mesh_capability_shader_defs(
-            binding_arrays_are_usable, IRRADIANCE_VOLUMES_ARE_USABLE, clustered_decals_are_usable,
-            per_object_buffer_batch_size);
+        auto capability_defs =
+            specialize_mesh_capability_shader_defs(binding_arrays_are_usable, IRRADIANCE_VOLUMES_ARE_USABLE,
+                                                   clustered_decals_are_usable, per_object_buffer_batch_size);
         shader_defs.insert(shader_defs.end(), capability_defs.begin(), capability_defs.end());
     }
     append_names(pass.shader_defs);
@@ -78,8 +83,7 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     // their fixed locations (Bevy's `layout.0.get_layout(&vertex_attributes)`).
     const MeshVertexAttributePresence attributes = mesh_vertex_attribute_presence(layout);
     std::vector<mesh::VertexAttributeDescriptor> vertex_attributes;
-    if (attributes.position)
-        vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
+    if (attributes.position) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_POSITION.at_shader_location(0));
     if (attributes.normal) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_NORMAL.at_shader_location(1));
     if (attributes.uv_0) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_0.at_shader_location(2));
     if (attributes.uv_1) vertex_attributes.push_back(mesh::Mesh::ATTRIBUTE_UV_1.at_shader_location(3));
@@ -98,9 +102,8 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
 
     // HDR views render to the HDR format, the rest to the buffer's default
     // (Bevy `render/mesh.rs:2676-2680`).
-    const wgpu::TextureFormat format = key.contains(MeshPipelineKey::HDR)
-                                           ? render::view::ViewTarget::TEXTURE_FORMAT_HDR
-                                           : image::bevy_default<wgpu::TextureFormat>();
+    const wgpu::TextureFormat format = key.contains(MeshPipelineKey::HDR) ? render::view::ViewTarget::TEXTURE_FORMAT_HDR
+                                                                          : image::bevy_default<wgpu::TextureFormat>();
 
     render::VertexState vertex_state{.shader = shader};
     vertex_state.set_buffers(vertex_buffers);
@@ -127,42 +130,40 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     fragment_state.set_shader_defs(shader_defs);
     fragment_state.set_entry_point("fragment");
 
-    const MeshPipelineViewLayout& view_layout =
-        get_view_layout(MeshPipelineViewLayoutKey::from_pipeline_key(key));
+    const MeshPipelineViewLayout& view_layout = get_view_layout(MeshPipelineViewLayoutKey::from_pipeline_key(key));
     return render::RenderPipelineDescriptor{
-        .label  = pass.label,
-        .layouts = std::vector<render::BindGroupLayoutDescriptor>{view_layout.main_layout,
-                                                                 view_layout.binding_array_layout,
-                                                                 mesh_layout_for(mesh_layouts,
-                                                                                 morph_and_skinning.layout)},
-        .vertex  = std::move(vertex_state),
+        .label = pass.label,
+        .layouts =
+            std::vector<render::BindGroupLayoutDescriptor>{view_layout.main_layout, view_layout.binding_array_layout,
+                                                           mesh_layout_for(mesh_layouts, morph_and_skinning.layout)},
+        .vertex    = std::move(vertex_state),
         .primitive = wgpu::PrimitiveState()
                          .setTopology(key.primitive_topology())
                          .setFrontFace(wgpu::FrontFace::eCCW)
                          .setCullMode(wgpu::CullMode::eBack),
         // Core3d clears the reverse-Z depth buffer to 0, so greater-equal.
-        .depth_stencil = wgpu::DepthStencilState()
-                             .setFormat(core_graph::core_3d::CORE_3D_DEPTH_FORMAT)
-                             .setDepthWriteEnabled(pass.depth_write_enabled ? wgpu::OptionalBool::eTrue
-                                                                            : wgpu::OptionalBool::eFalse)
-                             .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
-                             .setStencilFront(wgpu::StencilFaceState()
-                                                  .setCompare(wgpu::CompareFunction::eAlways)
-                                                  .setFailOp(wgpu::StencilOperation::eKeep)
-                                                  .setDepthFailOp(wgpu::StencilOperation::eKeep)
-                                                  .setPassOp(wgpu::StencilOperation::eKeep))
-                             .setStencilBack(wgpu::StencilFaceState()
-                                                 .setCompare(wgpu::CompareFunction::eAlways)
-                                                 .setFailOp(wgpu::StencilOperation::eKeep)
-                                                 .setDepthFailOp(wgpu::StencilOperation::eKeep)
-                                                 .setPassOp(wgpu::StencilOperation::eKeep))
-                             .setStencilReadMask(0)
-                             .setStencilWriteMask(0),
+        .depth_stencil =
+            wgpu::DepthStencilState()
+                .setFormat(core_graph::core_3d::CORE_3D_DEPTH_FORMAT)
+                .setDepthWriteEnabled(pass.depth_write_enabled ? wgpu::OptionalBool::eTrue : wgpu::OptionalBool::eFalse)
+                .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
+                .setStencilFront(wgpu::StencilFaceState()
+                                     .setCompare(wgpu::CompareFunction::eAlways)
+                                     .setFailOp(wgpu::StencilOperation::eKeep)
+                                     .setDepthFailOp(wgpu::StencilOperation::eKeep)
+                                     .setPassOp(wgpu::StencilOperation::eKeep))
+                .setStencilBack(wgpu::StencilFaceState()
+                                    .setCompare(wgpu::CompareFunction::eAlways)
+                                    .setFailOp(wgpu::StencilOperation::eKeep)
+                                    .setDepthFailOp(wgpu::StencilOperation::eKeep)
+                                    .setPassOp(wgpu::StencilOperation::eKeep))
+                .setStencilReadMask(0)
+                .setStencilWriteMask(0),
         .multisample = wgpu::MultisampleState()
                            .setCount(key.msaa_samples())
                            .setMask(~0u)
                            .setAlphaToCoverageEnabled(pass.alpha_to_coverage),
-        .fragment = std::move(fragment_state),
+        .fragment    = std::move(fragment_state),
     };
 }
 

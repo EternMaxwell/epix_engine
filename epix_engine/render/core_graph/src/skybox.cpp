@@ -1,10 +1,11 @@
 #include <epix/core_graph/skybox.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <epix/core_graph/core3d.hpp>
 #include <epix/core_graph/prepass.hpp>
 #include <epix/render/view.hpp>
-#include <spdlog/spdlog.h>
 #endif
 
 using namespace epix::ecs;
@@ -110,10 +111,9 @@ SkyboxPipeline SkyboxPipeline::create(assets::Handle<shader::Shader> shader) {
     };
 
     return SkyboxPipeline{
-        .bind_group_layout = render::BindGroupLayoutDescriptor()
-                                 .set_label("skybox_bind_group_layout")
-                                 .set_entries(entries),
-        .shader            = std::move(shader),
+        .bind_group_layout =
+            render::BindGroupLayoutDescriptor().set_label("skybox_bind_group_layout").set_entries(entries),
+        .shader = std::move(shader),
     };
 }
 
@@ -123,8 +123,8 @@ render::RenderPipelineDescriptor SkyboxPipeline::specialize(Key key) const {
     wgpu::ColorTargetState target;
     // Bevy leaves the blend state unset here: `None` is not `REPLACE`, and is
     // potentially faster.
-    target.setFormat(key.hdr ? render::view::ViewTarget::TEXTURE_FORMAT_HDR
-                             : image::bevy_default<wgpu::TextureFormat>())
+    target
+        .setFormat(key.hdr ? render::view::ViewTarget::TEXTURE_FORMAT_HDR : image::bevy_default<wgpu::TextureFormat>())
         .setWriteMask(wgpu::ColorWriteMask::eAll);
     fragment.add_target(std::move(target));
 
@@ -133,32 +133,29 @@ render::RenderPipelineDescriptor SkyboxPipeline::specialize(Key key) const {
                                     .setFailOp(wgpu::StencilOperation::eKeep)
                                     .setDepthFailOp(wgpu::StencilOperation::eKeep)
                                     .setPassOp(wgpu::StencilOperation::eKeep);
-    auto depth_stencil = wgpu::DepthStencilState()
-                             .setFormat(key.depth_format)
-                             .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
-                             .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
-                             .setStencilFront(stencil_ignore)
-                             .setStencilBack(stencil_ignore)
-                             .setStencilReadMask(0)
-                             .setStencilWriteMask(0)
-                             .setDepthBias(0)
-                             .setDepthBiasSlopeScale(0.0f)
-                             .setDepthBiasClamp(0.0f);
+    auto depth_stencil        = wgpu::DepthStencilState()
+                                    .setFormat(key.depth_format)
+                                    .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
+                                    .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
+                                    .setStencilFront(stencil_ignore)
+                                    .setStencilBack(stencil_ignore)
+                                    .setStencilReadMask(0)
+                                    .setStencilWriteMask(0)
+                                    .setDepthBias(0)
+                                    .setDepthBiasSlopeScale(0.0f)
+                                    .setDepthBiasClamp(0.0f);
 
     return render::RenderPipelineDescriptor{
-        .label = "skybox_pipeline",
-        .layouts = {bind_group_layout},
-        .vertex = render::VertexState{.shader = shader, .entry_point = std::string("skybox_vertex")},
-        .primitive = wgpu::PrimitiveState()
-                         .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                         .setFrontFace(wgpu::FrontFace::eCCW)
-                         .setCullMode(wgpu::CullMode::eNone)
-                         .setUnclippedDepth(false),
+        .label         = "skybox_pipeline",
+        .layouts       = {bind_group_layout},
+        .vertex        = render::VertexState{.shader = shader, .entry_point = std::string("skybox_vertex")},
+        .primitive     = wgpu::PrimitiveState()
+                             .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                             .setFrontFace(wgpu::FrontFace::eCCW)
+                             .setCullMode(wgpu::CullMode::eNone)
+                             .setUnclippedDepth(false),
         .depth_stencil = std::move(depth_stencil),
-        .multisample   = wgpu::MultisampleState()
-                             .setCount(key.samples)
-                             .setMask(~0u)
-                             .setAlphaToCoverageEnabled(false),
+        .multisample   = wgpu::MultisampleState().setCount(key.samples).setMask(~0u).setAlphaToCoverageEnabled(false),
         .fragment      = std::move(fragment),
     };
 }
@@ -181,8 +178,7 @@ void prepare_skybox_uniforms(
             .transform  = glm::mat4_cast(glm::inverse(skybox.rotation)),
         };
         const std::size_t offset = uniforms.push(value);
-        commands.entity(entity).insert(render::DynamicUniformIndex<SkyboxUniforms>{
-            static_cast<std::uint32_t>(offset)});
+        commands.entity(entity).insert(render::DynamicUniformIndex<SkyboxUniforms>{static_cast<std::uint32_t>(offset)});
     }
     uniforms.write_buffer(device.get(), queue.get());
 }
@@ -192,16 +188,15 @@ void prepare_skybox_pipelines(
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPipeline>> pipelines,
     ecs::Res<SkyboxPipeline> pipeline,
-    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>,
-               ecs::With<Skybox>>
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>, ecs::With<Skybox>>
         views) {
     // Bevy `prepare_skybox_pipelines` (`skybox/mod.rs:243-265`).
     for (auto&& [entity, view, msaa] : views.iter()) {
-        const auto pipeline_id = pipelines->specialize(
-            *pipeline_server, *pipeline,
-            SkyboxPipelineKey{.hdr          = view.hdr,
-                              .samples      = render::view::samples(msaa),
-                              .depth_format = core_3d::CORE_3D_DEPTH_FORMAT});
+        const auto pipeline_id =
+            pipelines->specialize(*pipeline_server, *pipeline,
+                                  SkyboxPipelineKey{.hdr          = view.hdr,
+                                                    .samples      = render::view::samples(msaa),
+                                                    .depth_format = core_3d::CORE_3D_DEPTH_FORMAT});
         commands.entity(entity).insert(SkyboxPipelineId{pipeline_id});
     }
 }
@@ -231,15 +226,14 @@ void prepare_skybox_bind_groups(
             render::render_resource::BindGroupEntries<>::texture_binding(image->texture_view),
             render::render_resource::BindGroupEntries<>::sampler_binding(image->sampler),
             render::render_resource::BindGroupEntries<>::buffer_binding(view_binding->get(), 0,
-                                                                       sizeof(render::view::ViewUniform)),
+                                                                        sizeof(render::view::ViewUniform)),
             render::render_resource::BindGroupEntries<>::buffer_binding(skybox_binding->get(), 0,
-                                                                       sizeof(SkyboxUniforms)));
+                                                                        sizeof(SkyboxUniforms)));
         commands.entity(entity).insert(SkyboxBindGroup{
-            .bind_group =
-                device->createBindGroup(wgpu::BindGroupDescriptor()
-                                            .setLabel("skybox_bind_group")
-                                            .setLayout(layout)
-                                            .setEntries(entries.entries())),
+            .bind_group     = device->createBindGroup(wgpu::BindGroupDescriptor()
+                                                          .setLabel("skybox_bind_group")
+                                                          .setLayout(layout)
+                                                          .setEntries(entries.entries())),
             .uniform_offset = uniform_index.index(),
         });
     }
@@ -306,9 +300,8 @@ SkyboxPrepassPipeline SkyboxPrepassPipeline::create(FullscreenShader fullscreen_
     };
 
     return SkyboxPrepassPipeline{
-        .bind_group_layout = render::BindGroupLayoutDescriptor()
-                                 .set_label("skybox_prepass_bind_group_layout")
-                                 .set_entries(entries),
+        .bind_group_layout =
+            render::BindGroupLayoutDescriptor().set_label("skybox_prepass_bind_group_layout").set_entries(entries),
         .fullscreen_shader = std::move(fullscreen_shader),
         .fragment_shader   = std::move(fragment_shader),
     };
@@ -318,7 +311,7 @@ render::RenderPipelineDescriptor SkyboxPrepassPipeline::specialize(Key key) cons
     // Bevy `SpecializedRenderPipeline for SkyboxPrepassPipeline` (`:83-111`).
     auto fragment = render::FragmentState{.shader      = fragment_shader,
                                           .entry_point = std::string("skybox_prepass_fragment"),
-                                          .targets = prepass_pipeline_targets(key.normal_prepass, true, false)};
+                                          .targets     = prepass_pipeline_targets(key.normal_prepass, true, false)};
 
     const auto stencil_ignore = wgpu::StencilFaceState()
                                     .setCompare(wgpu::CompareFunction::eAlways)
@@ -327,14 +320,14 @@ render::RenderPipelineDescriptor SkyboxPrepassPipeline::specialize(Key key) cons
                                     .setPassOp(wgpu::StencilOperation::eKeep);
 
     return render::RenderPipelineDescriptor{
-        .label     = "skybox_prepass_pipeline",
-        .layouts   = {bind_group_layout},
-        .vertex    = fullscreen_shader.to_vertex_state(),
-        .primitive = wgpu::PrimitiveState()
-                         .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                         .setFrontFace(wgpu::FrontFace::eCCW)
-                         .setCullMode(wgpu::CullMode::eNone)
-                         .setUnclippedDepth(false),
+        .label         = "skybox_prepass_pipeline",
+        .layouts       = {bind_group_layout},
+        .vertex        = fullscreen_shader.to_vertex_state(),
+        .primitive     = wgpu::PrimitiveState()
+                             .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                             .setFrontFace(wgpu::FrontFace::eCCW)
+                             .setCullMode(wgpu::CullMode::eNone)
+                             .setUnclippedDepth(false),
         .depth_stencil = wgpu::DepthStencilState()
                              .setFormat(core_3d::CORE_3D_DEPTH_FORMAT)
                              .setDepthWriteEnabled(wgpu::OptionalBool::eFalse)
@@ -346,21 +339,20 @@ render::RenderPipelineDescriptor SkyboxPrepassPipeline::specialize(Key key) cons
                              .setDepthBias(0)
                              .setDepthBiasSlopeScale(0.0f)
                              .setDepthBiasClamp(0.0f),
-        .multisample =
-            wgpu::MultisampleState().setCount(key.samples).setMask(~0u).setAlphaToCoverageEnabled(false),
-        .fragment = std::move(fragment),
+        .multisample   = wgpu::MultisampleState().setCount(key.samples).setMask(~0u).setAlphaToCoverageEnabled(false),
+        .fragment      = std::move(fragment),
     };
 }
 
-void prepare_skybox_prepass_pipelines(
-    ecs::Commands commands,
-    ecs::Res<render::PipelineServer> pipeline_server,
-    ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPrepassPipeline>> pipelines,
-    ecs::Res<SkyboxPrepassPipeline> pipeline,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Has<core_3d::NormalPrepass>, ecs::Has<core_3d::MotionVectorPrepass>,
-                         const render::view::Msaa&>,
-               ecs::With<Skybox>>
-        views) {
+void prepare_skybox_prepass_pipelines(ecs::Commands commands,
+                                      ecs::Res<render::PipelineServer> pipeline_server,
+                                      ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPrepassPipeline>> pipelines,
+                                      ecs::Res<SkyboxPrepassPipeline> pipeline,
+                                      ecs::Query<ecs::Item<ecs::Entity,
+                                                           ecs::Has<core_3d::NormalPrepass>,
+                                                           ecs::Has<core_3d::MotionVectorPrepass>,
+                                                           const render::view::Msaa&>,
+                                                 ecs::With<Skybox>> views) {
     // Bevy `prepare_skybox_prepass_pipelines` (`skybox/prepass.rs:114-133`).
     for (auto&& [entity, normal_prepass, motion_vector_prepass, msaa] : views.iter()) {
         if (!motion_vector_prepass) continue;
@@ -414,7 +406,7 @@ void SkyboxPlugin::attach(app::App& app) const {
         registry->get().insert_asset_static(kSkyboxShaderPath, std::as_bytes(std::span(kSkyboxShaderSlang)));
         shader = server->get().load<shader::Shader>("embedded://core_pipeline/skybox.slang");
         registry->get().insert_asset_static(kSkyboxPrepassShaderPath,
-                                           std::as_bytes(std::span(kSkyboxPrepassShaderSlang)));
+                                            std::as_bytes(std::span(kSkyboxPrepassShaderSlang)));
         prepass_shader = server->get().load<shader::Shader>("embedded://core_pipeline/skybox_prepass.slang");
     } else {
         spdlog::warn("[core_graph.skybox] EmbeddedAssetRegistry or AssetServer not available; skybox disabled.");
@@ -427,24 +419,19 @@ void SkyboxPlugin::attach(app::App& app) const {
 
     sub_app->get().world_mut().insert_resource(render::ComponentUniforms<SkyboxUniforms>{});
     sub_app->get().world_mut().init_resource<render::SpecializedRenderPipelines<SkyboxPipeline>>();
+    sub_app->get().add_systems(render::RenderStartup, into([shader = std::move(*shader)](Commands commands) {
+                                                          // Bevy `init_skybox_pipeline` (`:177-180`).
+                                                          commands.insert_resource(SkyboxPipeline::create(shader));
+                                                      }).set_name("init skybox pipeline"));
     sub_app->get().add_systems(
-        render::RenderStartup,
-        into([shader = std::move(*shader)](Commands commands) {
-            // Bevy `init_skybox_pipeline` (`:177-180`).
-            commands.insert_resource(SkyboxPipeline::create(shader));
-        }).set_name("init skybox pipeline"));
-    sub_app->get().add_systems(render::Render,
-                               into(prepare_skybox_pipelines)
-                                   .in_set(render::RenderSystems::Prepare)
-                                   .set_name("prepare skybox pipelines"));
-    sub_app->get().add_systems(render::Render,
-                               into(prepare_skybox_uniforms)
-                                   .in_set(render::RenderSystems::PrepareResources)
-                                   .set_name("prepare skybox uniforms"));
-    sub_app->get().add_systems(render::Render,
-                               into(prepare_skybox_bind_groups)
-                                   .in_set(render::RenderSystems::PrepareBindGroups)
-                                   .set_name("prepare skybox bind groups"));
+        render::Render,
+        into(prepare_skybox_pipelines).in_set(render::RenderSystems::Prepare).set_name("prepare skybox pipelines"));
+    sub_app->get().add_systems(render::Render, into(prepare_skybox_uniforms)
+                                                   .in_set(render::RenderSystems::PrepareResources)
+                                                   .set_name("prepare skybox uniforms"));
+    sub_app->get().add_systems(render::Render, into(prepare_skybox_bind_groups)
+                                                   .in_set(render::RenderSystems::PrepareBindGroups)
+                                                   .set_name("prepare skybox bind groups"));
 
     // The motion-vector variant (Bevy `skybox/prepass.rs`): its own shader and
     // pipeline, and the two prepare systems that fill it for views carrying both
@@ -454,7 +441,7 @@ void SkyboxPlugin::attach(app::App& app) const {
         sub_app->get().add_systems(
             render::RenderStartup,
             into([shader = std::move(*prepass_shader)](Commands commands, Res<FullscreenShader> fullscreen_shader,
-                                                      Res<wgpu::Device> device) {
+                                                       Res<wgpu::Device> device) {
                 // `PreviousViewUniforms` is a resource in Bevy; Epix's dynamic
                 // uniform buffer needs the device's alignment, which a
                 // default-constructed one does not have.
@@ -465,14 +452,12 @@ void SkyboxPlugin::attach(app::App& app) const {
                         limits.minUniformBufferOffsetAlignment)});
                 commands.insert_resource(SkyboxPrepassPipeline::create(fullscreen_shader.get(), std::move(shader)));
             }).set_name("init skybox prepass pipeline"));
-        sub_app->get().add_systems(render::Render,
-                                   into(prepare_skybox_prepass_pipelines)
-                                       .in_set(render::RenderSystems::Prepare)
-                                       .set_name("prepare skybox prepass pipelines"));
-        sub_app->get().add_systems(render::Render,
-                                   into(prepare_skybox_prepass_bind_groups)
-                                       .in_set(render::RenderSystems::PrepareBindGroups)
-                                       .set_name("prepare skybox prepass bind groups"));
+        sub_app->get().add_systems(render::Render, into(prepare_skybox_prepass_pipelines)
+                                                       .in_set(render::RenderSystems::Prepare)
+                                                       .set_name("prepare skybox prepass pipelines"));
+        sub_app->get().add_systems(render::Render, into(prepare_skybox_prepass_bind_groups)
+                                                       .in_set(render::RenderSystems::PrepareBindGroups)
+                                                       .set_name("prepare skybox prepass bind groups"));
     }
 }
 

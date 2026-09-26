@@ -1,10 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <webgpu/webgpu.hpp>
 #include <epix/common.hpp>
+#include <webgpu/webgpu.hpp>
 #endif
 
 namespace epix::mesh {
@@ -17,7 +16,7 @@ namespace epix::mesh {
  */
 EPIX_EXPORT struct BaseMeshPipelineKey {
     static const BaseMeshPipelineKey MORPH_TARGETS;
-    static constexpr std::uint64_t PRIMITIVE_TOPOLOGY_MASK_BITS = 0b111;
+    static constexpr std::uint64_t PRIMITIVE_TOPOLOGY_MASK_BITS  = 0b111;
     static constexpr std::uint64_t PRIMITIVE_TOPOLOGY_SHIFT_BITS = 60;
 
     constexpr BaseMeshPipelineKey() noexcept = default;
@@ -26,17 +25,14 @@ EPIX_EXPORT struct BaseMeshPipelineKey {
         return BaseMeshPipelineKey{bits};
     }
 
-    static constexpr BaseMeshPipelineKey from_primitive_topology(
-        wgpu::PrimitiveTopology primitive_topology) noexcept {
-        const auto topology_bits =
-            (static_cast<std::uint64_t>(primitive_topology) & PRIMITIVE_TOPOLOGY_MASK_BITS)
-            << PRIMITIVE_TOPOLOGY_SHIFT_BITS;
+    static constexpr BaseMeshPipelineKey from_primitive_topology(wgpu::PrimitiveTopology primitive_topology) noexcept {
+        const auto topology_bits = (static_cast<std::uint64_t>(primitive_topology) & PRIMITIVE_TOPOLOGY_MASK_BITS)
+                                   << PRIMITIVE_TOPOLOGY_SHIFT_BITS;
         return from_bits_retain(topology_bits);
     }
 
     constexpr wgpu::PrimitiveTopology primitive_topology() const noexcept {
-        const auto topology_bits =
-            (bits_ >> PRIMITIVE_TOPOLOGY_SHIFT_BITS) & PRIMITIVE_TOPOLOGY_MASK_BITS;
+        const auto topology_bits = (bits_ >> PRIMITIVE_TOPOLOGY_SHIFT_BITS) & PRIMITIVE_TOPOLOGY_MASK_BITS;
         switch (topology_bits) {
             case static_cast<std::uint64_t>(wgpu::PrimitiveTopology::ePointList):
                 return wgpu::PrimitiveTopology::ePointList;
@@ -54,9 +50,7 @@ EPIX_EXPORT struct BaseMeshPipelineKey {
     }
 
     constexpr std::uint64_t bits() const noexcept { return bits_; }
-    constexpr bool contains(BaseMeshPipelineKey other) const noexcept {
-        return (bits_ & other.bits_) == other.bits_;
-    }
+    constexpr bool contains(BaseMeshPipelineKey other) const noexcept { return (bits_ & other.bits_) == other.bits_; }
 
     constexpr BaseMeshPipelineKey operator|(BaseMeshPipelineKey other) const noexcept {
         return from_bits_retain(bits_ | other.bits_);

@@ -1,12 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
 #include <zpp_bits.h>
+
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <functional>
@@ -20,7 +21,6 @@
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/assets/io/reader.hpp>
 #include <epix/assets/path.hpp>
@@ -329,10 +329,12 @@ EPIX_EXPORT struct AssetMetaMinimal {
 // ---------------------------------------------------------------------------
 
 /** @brief Serialize an AssetMetaMinimal to a byte vector using zpp::bits. */
-EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_meta_minimal(const AssetMetaMinimal& minimal);
+EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_meta_minimal(
+    const AssetMetaMinimal& minimal);
 
 /** @brief Deserialize an AssetMetaMinimal from a byte span using zpp::bits. */
-EPIX_EXPORT EPIX_API std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(std::span<const std::byte> bytes);
+EPIX_EXPORT EPIX_API std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(
+    std::span<const std::byte> bytes);
 
 /** @brief Overload accepting a std::vector<std::byte>. */
 EPIX_EXPORT inline std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(

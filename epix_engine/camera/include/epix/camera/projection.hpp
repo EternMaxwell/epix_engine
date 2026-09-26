@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cmath>
 #include <concepts>
 #include <cstddef>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
@@ -16,7 +16,6 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::camera {
@@ -141,9 +140,9 @@ EPIX_EXPORT struct EPIX_API OrthographicProjection {
     /** @brief Compute frustum corners at the caller-provided view-space depths. */
     std::array<glm::vec3, 8> get_frustum_corners(float z_near, float z_far) const {
         return {glm::vec3(rect.right, rect.bottom, z_near), glm::vec3(rect.right, rect.top, z_near),
-                glm::vec3(rect.left, rect.top, z_near),    glm::vec3(rect.left, rect.bottom, z_near),
-                glm::vec3(rect.right, rect.bottom, z_far), glm::vec3(rect.right, rect.top, z_far),
-                glm::vec3(rect.left, rect.top, z_far),     glm::vec3(rect.left, rect.bottom, z_far)};
+                glm::vec3(rect.left, rect.top, z_near),     glm::vec3(rect.left, rect.bottom, z_near),
+                glm::vec3(rect.right, rect.bottom, z_far),  glm::vec3(rect.right, rect.top, z_far),
+                glm::vec3(rect.left, rect.top, z_far),      glm::vec3(rect.left, rect.bottom, z_far)};
     }
     /** @brief Compute this projection's world-space frustum (Bevy
      * `CameraProjection::compute_frustum`). */
@@ -267,7 +266,9 @@ template <typename T>
 concept CameraProjection = requires(T t) {
     { t.get_clip_from_view() } -> std::convertible_to<glm::mat4>;
     { t.get_clip_from_view_for_sub(std::declval<const SubCameraView&>()) } -> std::convertible_to<glm::mat4>;
-    { t.get_frustum_corners(std::declval<float>(), std::declval<float>()) } -> std::convertible_to<std::array<glm::vec3, 8>>;
+    {
+        t.get_frustum_corners(std::declval<float>(), std::declval<float>())
+    } -> std::convertible_to<std::array<glm::vec3, 8>>;
     { t.get_far() } -> std::convertible_to<float>;
     { t.update(std::declval<float>(), std::declval<float>()) };
 };
@@ -276,13 +277,13 @@ concept CameraProjection = requires(T t) {
  * The stored projection is cloned on copy, so copying a `Projection` retains
  * ordinary component value semantics. */
 struct DynCameraProjection {
-    virtual ~DynCameraProjection()                                          = default;
-    virtual std::shared_ptr<DynCameraProjection> clone() const              = 0;
-    virtual glm::mat4 clip_from_view() const                                = 0;
-    virtual glm::mat4 clip_from_view_for_sub(const SubCameraView&) const    = 0;
-    virtual std::array<glm::vec3, 8> frustum_corners(float, float) const    = 0;
-    virtual float far_value() const                                         = 0;
-    virtual void update_projection(float, float)                            = 0;
+    virtual ~DynCameraProjection()                                       = default;
+    virtual std::shared_ptr<DynCameraProjection> clone() const           = 0;
+    virtual glm::mat4 clip_from_view() const                             = 0;
+    virtual glm::mat4 clip_from_view_for_sub(const SubCameraView&) const = 0;
+    virtual std::array<glm::vec3, 8> frustum_corners(float, float) const = 0;
+    virtual float far_value() const                                      = 0;
+    virtual void update_projection(float, float)                         = 0;
 };
 
 template <CameraProjection P>
@@ -381,7 +382,9 @@ EPIX_EXPORT struct EPIX_API Projection {
                           projection);
     }
     /** @brief Get the far clipping plane distance. */
-    float get_far() const { return std::visit([](const auto& proj) { return proj.get_far(); }, projection); }
+    float get_far() const {
+        return std::visit([](const auto& proj) { return proj.get_far(); }, projection);
+    }
     /** @brief Update the active projection for new viewport dimensions. */
     void update(float width, float height) {
         std::visit([width, height](auto& proj) { proj.update(width, height); }, projection);

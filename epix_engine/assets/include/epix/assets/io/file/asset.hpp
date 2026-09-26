@@ -1,7 +1,7 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -11,7 +11,6 @@
 #include <stdexec/execution.hpp>
 #include <system_error>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/reader.hpp>

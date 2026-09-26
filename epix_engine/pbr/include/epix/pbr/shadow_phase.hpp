@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -11,7 +12,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <optional>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/light_meta.hpp>
 
@@ -78,7 +78,8 @@ EPIX_EXPORT struct Shadow {
     using BinKey      = ShadowBinKey;
     using BatchSetKey = ShadowBatchSetKey;
 
-    static Shadow create(BatchSetKey batch_set_key, BinKey bin_key,
+    static Shadow create(BatchSetKey batch_set_key,
+                         BinKey bin_key,
                          std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity,
                          std::pair<std::uint32_t, std::uint32_t> batch_range,
                          render::phase::PhaseItemExtraIndex extra_index) {
@@ -116,7 +117,8 @@ EPIX_EXPORT inline std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT> cube_face_
  *  light's radius and range are not scaled by the view transform, rotation so the
  *  shadow projections stay aligned with the world axes. */
 EPIX_EXPORT inline glm::mat4 point_light_face_world_from_view(
-    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations, glm::vec3 light_translation,
+    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations,
+    glm::vec3 light_translation,
     std::size_t face_index) {
     glm::mat4 world_from_view = rotations[face_index % POINT_LIGHT_CUBE_FACE_COUNT];
     world_from_view[3]        = glm::vec4(light_translation, 1.0f);
@@ -127,8 +129,10 @@ EPIX_EXPORT inline glm::mat4 point_light_face_world_from_view(
  *  with (Bevy `render/light.rs:1280-1290`): the cube-face projection against the
  *  face's inverse view. */
 EPIX_EXPORT inline glm::mat4 point_light_face_clip_from_world(
-    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations, glm::vec3 light_translation,
-    std::size_t face_index, float shadow_map_near_z) {
+    const std::array<glm::mat4, POINT_LIGHT_CUBE_FACE_COUNT>& rotations,
+    glm::vec3 light_translation,
+    std::size_t face_index,
+    float shadow_map_near_z) {
     return cube_face_projection(shadow_map_near_z) *
            glm::inverse(point_light_face_world_from_view(rotations, light_translation, face_index));
 }
@@ -174,7 +178,8 @@ EPIX_EXPORT struct ShadowViewRequest {
  *  one single-layer depth view per face and caches it by layer, so a light's six
  *  faces never share an attachment. */
 EPIX_EXPORT inline std::vector<ShadowViewRequest> point_light_shadow_view_requests(
-    const std::vector<std::pair<ecs::Entity, glm::vec3>>& shadow_casting_lights, float shadow_map_near_z,
+    const std::vector<std::pair<ecs::Entity, glm::vec3>>& shadow_casting_lights,
+    float shadow_map_near_z,
     std::uint32_t shadow_map_size) {
     std::vector<ShadowViewRequest> requests;
     requests.reserve(shadow_casting_lights.size() * POINT_LIGHT_CUBE_FACE_COUNT);
@@ -184,15 +189,15 @@ EPIX_EXPORT inline std::vector<ShadowViewRequest> point_light_shadow_view_reques
         const auto& [entity, translation] = shadow_casting_lights[light_index];
         for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
             requests.push_back(ShadowViewRequest{
-                .light_entity  = entity,
-                .owner         = LightEntity{.kind = LightEntity::Kind::Point,
-                                             .light_entity = entity,
-                                             .cascade_index = 0,
-                                             .face_index = face},
-                .array_layer   = point_light_shadow_array_layer(light_index, face),
-                .pass_name     = point_light_shadow_pass_name(light_index, face),
+                .light_entity    = entity,
+                .owner           = LightEntity{.kind          = LightEntity::Kind::Point,
+                                               .light_entity  = entity,
+                                               .cascade_index = 0,
+                                               .face_index    = face},
+                .array_layer     = point_light_shadow_array_layer(light_index, face),
+                .pass_name       = point_light_shadow_pass_name(light_index, face),
                 .clip_from_world = point_light_face_clip_from_world(rotations, translation, face, shadow_map_near_z),
-                .viewport_size = shadow_map_size});
+                .viewport_size   = shadow_map_size});
         }
     }
     return requests;
@@ -213,8 +218,8 @@ EPIX_EXPORT inline std::string directional_shadow_pass_name(std::size_t light_in
  *  configured far distance, so taking it from the wrong array would shift every
  *  cascade's fade. At most `MAX_CASCADES_PER_LIGHT` are written. */
 EPIX_EXPORT inline void fill_gpu_directional_cascades(GpuDirectionalLight& light,
-                                                     const std::vector<Cascade>& cascades,
-                                                     const std::vector<float>& bounds) {
+                                                      const std::vector<Cascade>& cascades,
+                                                      const std::vector<float>& bounds) {
     const std::size_t count = std::min({cascades.size(), bounds.size(), MAX_CASCADES_PER_LIGHT});
     for (std::size_t cascade_index = 0; cascade_index < count; ++cascade_index) {
         light.cascades[cascade_index].clip_from_world = cascades[cascade_index].clip_from_world;
@@ -236,8 +241,10 @@ EPIX_EXPORT inline void fill_gpu_directional_cascades(GpuDirectionalLight& light
  *  the layers being distinct is what forces that. The viewport is the configured
  *  shadow map size, and the owner records the cascade index. */
 EPIX_EXPORT inline std::vector<ShadowViewRequest> directional_shadow_view_requests(
-    const std::vector<ecs::Entity>& light_entities, const std::vector<std::vector<Cascade>>& cascades,
-    const std::vector<DirectionalShadowSlice>& slices, std::uint32_t shadow_map_size) {
+    const std::vector<ecs::Entity>& light_entities,
+    const std::vector<std::vector<Cascade>>& cascades,
+    const std::vector<DirectionalShadowSlice>& slices,
+    std::uint32_t shadow_map_size) {
     std::vector<ShadowViewRequest> requests;
 
     for (const DirectionalShadowSlice& slice : slices) {
@@ -247,16 +254,16 @@ EPIX_EXPORT inline std::vector<ShadowViewRequest> directional_shadow_view_reques
         const ecs::Entity entity = light_entities[slice.light_index];
         for (std::uint32_t cascade_index = 0; cascade_index < slice.num_cascades; ++cascade_index) {
             if (cascade_index >= cascades[slice.light_index].size()) break;
-            requests.push_back(ShadowViewRequest{
-                .light_entity  = entity,
-                .owner         = LightEntity{.kind = LightEntity::Kind::Directional,
-                                             .light_entity = entity,
-                                             .cascade_index = cascade_index,
-                                             .face_index = 0},
-                .array_layer   = slice.base_index + cascade_index,
-                .pass_name     = directional_shadow_pass_name(slice.light_index, cascade_index),
-                .clip_from_world = cascades[slice.light_index][cascade_index].clip_from_world,
-                .viewport_size = shadow_map_size});
+            requests.push_back(
+                ShadowViewRequest{.light_entity    = entity,
+                                  .owner           = LightEntity{.kind          = LightEntity::Kind::Directional,
+                                                                 .light_entity  = entity,
+                                                                 .cascade_index = cascade_index,
+                                                                 .face_index    = 0},
+                                  .array_layer     = slice.base_index + cascade_index,
+                                  .pass_name       = directional_shadow_pass_name(slice.light_index, cascade_index),
+                                  .clip_from_world = cascades[slice.light_index][cascade_index].clip_from_world,
+                                  .viewport_size   = shadow_map_size});
         }
     }
     return requests;
@@ -288,8 +295,8 @@ EPIX_EXPORT inline std::array<camera::Frustum, POINT_LIGHT_CUBE_FACE_COUNT> poin
     for (std::size_t face = 0; face < POINT_LIGHT_CUBE_FACE_COUNT; ++face) {
         const glm::mat4 world_from_view = point_light_face_world_from_view(rotations, light_translation, face);
         const glm::mat4 clip_from_world = cube_face_projection(shadow_map_near_z) * glm::inverse(world_from_view);
-        frusta[face] = camera::Frustum::from_clip_from_world_custom_far(clip_from_world, light_translation, light_back,
-                                                                      range);
+        frusta[face] =
+            camera::Frustum::from_clip_from_world_custom_far(clip_from_world, light_translation, light_back, range);
     }
     return frusta;
 }
@@ -315,7 +322,7 @@ EPIX_EXPORT inline std::vector<camera::Frustum> directional_cascade_frusta(const
  *  the cascade's near plane would be culled out of shadows it should cast - and the
  *  cascade's own near plane is the light's, not the camera's. */
 EPIX_EXPORT inline camera::Frustum directional_view_frustum(const camera::Frustum& frustum) {
-    camera::Frustum pushed = frustum;
+    camera::Frustum pushed     = frustum;
     const glm::vec4 near_plane = pushed.planes[camera::Frustum::NEAR_PLANE_IDX];
     pushed.planes[camera::Frustum::NEAR_PLANE_IDX] =
         glm::vec4(glm::vec3(near_plane), std::numeric_limits<float>::infinity());
@@ -350,8 +357,10 @@ EPIX_EXPORT inline camera::CascadesFrusta to_cascades_frusta(const Cascades& cas
  *  The change flag is per light: a light whose transform or parameters changed is
  *  rebuilt even when the cluster set did not, and every light is rebuilt when the
  *  cluster set changed, since a light's range may then bound different geometry. */
-EPIX_EXPORT inline bool should_update_point_light_frusta(bool light_changed, bool global_lights_changed,
-                                                        bool shadows_enabled, bool in_global_lights) {
+EPIX_EXPORT inline bool should_update_point_light_frusta(bool light_changed,
+                                                         bool global_lights_changed,
+                                                         bool shadows_enabled,
+                                                         bool in_global_lights) {
     if (!global_lights_changed && !light_changed) return false;
     if (!shadows_enabled) return false;
     return in_global_lights;

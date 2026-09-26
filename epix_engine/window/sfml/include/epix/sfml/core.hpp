@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <SFML/Window/Clipboard.hpp>
 #include <SFML/Window/Cursor.hpp>
@@ -10,6 +9,7 @@
 #include <SFML/Window/WindowEnums.hpp>
 #include <SFML/Window/WindowHandle.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
@@ -22,7 +22,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::sfml {
@@ -40,7 +39,8 @@ EPIX_EXPORT struct PendingWindowPosition {
     bool operator==(const PendingWindowPosition&) const = default;
 };
 /** @brief Pending target positions that should be enforced until the native window settles. */
-EPIX_EXPORT struct EPIX_API PendingWindowPositions : public std::unordered_map<epix::ecs::Entity, PendingWindowPosition> {};
+EPIX_EXPORT struct EPIX_API PendingWindowPositions
+    : public std::unordered_map<epix::ecs::Entity, PendingWindowPosition> {};
 
 /** @brief Event requesting the clipboard text to be set. */
 EPIX_EXPORT struct SetClipboardString {

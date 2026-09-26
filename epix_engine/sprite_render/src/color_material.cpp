@@ -1,6 +1,5 @@
-#include <epix/sprite_render/color_material.hpp>
-
 #include <cstddef>
+#include <epix/sprite_render/color_material.hpp>
 #include <span>
 #include <string_view>
 

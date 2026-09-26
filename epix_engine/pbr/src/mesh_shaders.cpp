@@ -1,7 +1,6 @@
-#include <epix/pbr/mesh_shaders.hpp>
-
 #include <spdlog/spdlog.h>
 
+#include <epix/pbr/mesh_shaders.hpp>
 #include <string>
 
 namespace epix::pbr {
@@ -1233,34 +1232,32 @@ void register_mesh_shaders(ecs::World& world) {
     registry->get().insert_asset_static(MORPH_SHADER_PATH, shader_bytes(kMorphShader));
     registry->get().insert_asset_static(SKINNING_SHADER_PATH, shader_bytes(kSkinningShader));
     registry->get().insert_asset_static(PREPASS_BINDINGS_SHADER_PATH, shader_bytes(kPrepassBindingsShader));
-    registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH,
-                                        shader_bytes(kViewTransformationsShader));
+    registry->get().insert_asset_static(VIEW_TRANSFORMATIONS_SHADER_PATH, shader_bytes(kViewTransformationsShader));
     registry->get().insert_asset_static(MESH_FUNCTIONS_SHADER_PATH, shader_bytes(kMeshFunctionsShader));
     registry->get().insert_asset_static(MESH_SHADER_PATH, shader_bytes(kMesh3dShader));
     world.insert_resource(MeshShaderHandles{
-        .mesh_types = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
+        .mesh_types =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_TYPES_SHADER_PATH)),
         .mesh_bindings =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_BINDINGS_SHADER_PATH)),
         .forward_io =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(FORWARD_IO_SHADER_PATH)),
-        .mesh_view_types = server->get().load<shader::Shader>(std::string("embedded://") +
-                                                              std::string(MESH_VIEW_TYPES_SHADER_PATH)),
-        .atmosphere_types = server->get().load<shader::Shader>(std::string("embedded://") +
-                                                               std::string(ATMOSPHERE_TYPES_SHADER_PATH)),
+        .mesh_view_types =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_VIEW_TYPES_SHADER_PATH)),
+        .atmosphere_types =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(ATMOSPHERE_TYPES_SHADER_PATH)),
         .mesh_view_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
                                                                  std::string(MESH_VIEW_BINDINGS_SHADER_PATH)),
-        .occlusion_culling = server->get().load<shader::Shader>(std::string("embedded://") +
-                                                                std::string(OCCLUSION_CULLING_SHADER_PATH)),
-        .morph =
-            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MORPH_SHADER_PATH)),
-        .skinning =
-            server->get().load<shader::Shader>(std::string("embedded://") + std::string(SKINNING_SHADER_PATH)),
-        .prepass_bindings = server->get().load<shader::Shader>(std::string("embedded://") +
-                                                               std::string(PREPASS_BINDINGS_SHADER_PATH)),
+        .occlusion_culling =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(OCCLUSION_CULLING_SHADER_PATH)),
+        .morph    = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MORPH_SHADER_PATH)),
+        .skinning = server->get().load<shader::Shader>(std::string("embedded://") + std::string(SKINNING_SHADER_PATH)),
+        .prepass_bindings =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(PREPASS_BINDINGS_SHADER_PATH)),
         .view_transformations = server->get().load<shader::Shader>(std::string("embedded://") +
                                                                    std::string(VIEW_TRANSFORMATIONS_SHADER_PATH)),
-        .mesh_functions = server->get().load<shader::Shader>(std::string("embedded://") +
-                                                             std::string(MESH_FUNCTIONS_SHADER_PATH)),
+        .mesh_functions =
+            server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_FUNCTIONS_SHADER_PATH)),
         .mesh = server->get().load<shader::Shader>(std::string("embedded://") + std::string(MESH_SHADER_PATH)),
     });
 }

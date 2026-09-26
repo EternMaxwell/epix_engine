@@ -1,13 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
 #include <glm/glm.hpp>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::view {

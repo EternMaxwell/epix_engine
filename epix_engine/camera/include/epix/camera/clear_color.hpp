@@ -1,10 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <glm/glm.hpp>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::camera {

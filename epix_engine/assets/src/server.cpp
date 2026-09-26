@@ -159,7 +159,7 @@ void AssetServer::handle_internal_events(ecs::World& world) {
     // it, so holding a reference into the resource map would alias. A copy
     // shares the same `AssetServerData`; Bevy expresses the same intent by
     // taking the resource out of the world with `World::resource_scope`.
-    auto server = world.resource<AssetServer>();
+    auto server   = world.resource<AssetServer>();
     auto receiver = server.data->asset_event_receiver;
 
     std::vector<UntypedAssetLoadFailedEvent> untyped_failures;

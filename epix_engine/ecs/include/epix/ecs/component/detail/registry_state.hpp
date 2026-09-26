@@ -2,9 +2,9 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/ecs/component/hooks.hpp>

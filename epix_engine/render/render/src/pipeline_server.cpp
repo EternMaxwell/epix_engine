@@ -317,9 +317,9 @@ void PipelineServer::process_pipeline(CachedPipeline& cached_pipeline, CachedPip
                                                                 .value_or(std::string_view("main"))));
             auto pipeline = device.createRenderPipeline(pipelineDesc);
             if (!pipeline) {
-                spdlog::error("[render] Failed to create render pipeline '{}'",
-                              descriptor.label.empty() ? std::string_view("<unnamed>")
-                                                       : std::string_view(descriptor.label));
+                spdlog::error(
+                    "[render] Failed to create render pipeline '{}'",
+                    descriptor.label.empty() ? std::string_view("<unnamed>") : std::string_view(descriptor.label));
                 return std::unexpected(PipelineError::CreationFailure);
             }
             return Pipeline{RenderPipeline(std::move(pipeline))};

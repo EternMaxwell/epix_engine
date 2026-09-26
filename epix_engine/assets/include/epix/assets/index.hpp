@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <epix/async_channel.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
-#include <epix/common.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 

@@ -1,9 +1,8 @@
-#include <epix/image/image.hpp>
-
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/image/image.hpp>
 #include <format>
 #include <string>
 #include <type_traits>
@@ -62,14 +61,14 @@ Rgba8Image DynamicImage::into_rgba8() const {
         [](const auto& buffer) -> Rgba8Image {
             using Buffer = std::remove_cvref_t<decltype(buffer)>;
             Rgba8Image rgba;
-            rgba.width  = buffer.width;
-            rgba.height = buffer.height;
+            rgba.width               = buffer.width;
+            rgba.height              = buffer.height;
             const std::size_t pixels = buffer.pixel_count();
             rgba.data.resize(pixels * 4);
 
             if constexpr (std::is_same_v<Buffer, Luma8Image>) {
                 for (std::size_t index = 0; index < pixels; ++index) {
-                    const std::uint8_t luma = buffer.data[index];
+                    const std::uint8_t luma  = buffer.data[index];
                     rgba.data[index * 4 + 0] = luma;
                     rgba.data[index * 4 + 1] = luma;
                     rgba.data[index * 4 + 2] = luma;
@@ -109,8 +108,8 @@ Rgba16Image DynamicImage::into_rgba16() const {
         [](const auto& buffer) -> Rgba16Image {
             using Buffer = std::remove_cvref_t<decltype(buffer)>;
             Rgba16Image rgba;
-            rgba.width  = buffer.width;
-            rgba.height = buffer.height;
+            rgba.width               = buffer.width;
+            rgba.height              = buffer.height;
             const std::size_t pixels = buffer.pixel_count();
             rgba.data.resize(pixels * 4);
 
@@ -139,8 +138,8 @@ Luma8Image DynamicImage::into_luma8() const {
         [](const auto& buffer) -> Luma8Image {
             using Buffer = std::remove_cvref_t<decltype(buffer)>;
             Luma8Image luma;
-            luma.width  = buffer.width;
-            luma.height = buffer.height;
+            luma.width               = buffer.width;
+            luma.height              = buffer.height;
             const std::size_t pixels = buffer.pixel_count();
             luma.data.resize(pixels);
 
@@ -152,13 +151,13 @@ Luma8Image DynamicImage::into_luma8() const {
                 }
             } else if constexpr (std::is_same_v<Buffer, Rgb8Image>) {
                 for (std::size_t index = 0; index < pixels; ++index) {
-                    luma.data[index] = rgb_to_luma(
-                        buffer.data[index * 3 + 0], buffer.data[index * 3 + 1], buffer.data[index * 3 + 2]);
+                    luma.data[index] =
+                        rgb_to_luma(buffer.data[index * 3 + 0], buffer.data[index * 3 + 1], buffer.data[index * 3 + 2]);
                 }
             } else if constexpr (std::is_same_v<Buffer, Rgba8Image>) {
                 for (std::size_t index = 0; index < pixels; ++index) {
-                    luma.data[index] = rgb_to_luma(
-                        buffer.data[index * 4 + 0], buffer.data[index * 4 + 1], buffer.data[index * 4 + 2]);
+                    luma.data[index] =
+                        rgb_to_luma(buffer.data[index * 4 + 0], buffer.data[index * 4 + 1], buffer.data[index * 4 + 2]);
                 }
             } else {
                 assert(false && "into_luma8 is only implemented for the 8-bit variants");
@@ -174,8 +173,8 @@ LumaA8Image DynamicImage::into_luma_alpha8() const {
         [](const auto& buffer) -> LumaA8Image {
             using Buffer = std::remove_cvref_t<decltype(buffer)>;
             LumaA8Image luma_alpha;
-            luma_alpha.width  = buffer.width;
-            luma_alpha.height = buffer.height;
+            luma_alpha.width         = buffer.width;
+            luma_alpha.height        = buffer.height;
             const std::size_t pixels = buffer.pixel_count();
             luma_alpha.data.resize(pixels * 2);
 
@@ -188,14 +187,14 @@ LumaA8Image DynamicImage::into_luma_alpha8() const {
                 luma_alpha.data = buffer.data;
             } else if constexpr (std::is_same_v<Buffer, Rgb8Image>) {
                 for (std::size_t index = 0; index < pixels; ++index) {
-                    luma_alpha.data[index * 2 + 0] = rgb_to_luma(
-                        buffer.data[index * 3 + 0], buffer.data[index * 3 + 1], buffer.data[index * 3 + 2]);
+                    luma_alpha.data[index * 2 + 0] =
+                        rgb_to_luma(buffer.data[index * 3 + 0], buffer.data[index * 3 + 1], buffer.data[index * 3 + 2]);
                     luma_alpha.data[index * 2 + 1] = kDefaultMaxValue<std::uint8_t>;
                 }
             } else if constexpr (std::is_same_v<Buffer, Rgba8Image>) {
                 for (std::size_t index = 0; index < pixels; ++index) {
-                    luma_alpha.data[index * 2 + 0] = rgb_to_luma(
-                        buffer.data[index * 4 + 0], buffer.data[index * 4 + 1], buffer.data[index * 4 + 2]);
+                    luma_alpha.data[index * 2 + 0] =
+                        rgb_to_luma(buffer.data[index * 4 + 0], buffer.data[index * 4 + 1], buffer.data[index * 4 + 2]);
                     luma_alpha.data[index * 2 + 1] = buffer.data[index * 4 + 3];
                 }
             } else {
@@ -213,7 +212,8 @@ std::string IntoDynamicImageError::to_string() const {
             using Alternative = std::remove_cvref_t<decltype(value)>;
             if constexpr (std::same_as<Alternative, into_dynamic_image_error::UnsupportedFormat>) {
                 // Bevy renders `{0:?}`; the name space is the WebGPU wrapper's, as in G26.
-                return std::format("Conversion into dynamic image not supported for {}.", wgpu::to_string(value.format));
+                return std::format("Conversion into dynamic image not supported for {}.",
+                                   wgpu::to_string(value.format));
             } else if constexpr (std::same_as<Alternative, into_dynamic_image_error::UnknownConversionError>) {
                 return std::format("Failed to convert into {}.", wgpu::to_string(value.format));
             } else {
@@ -251,8 +251,8 @@ Image Image::from_dynamic(DynamicImage dyn_img, bool is_srgb, assets::RenderAsse
         data   = to_bytes(image->data);
         format = wgpu::TextureFormat::eRGBA16Unorm;
     } else if (const auto* image = std::get_if<Rgb32FImage>(&dyn_img)) {
-        format = wgpu::TextureFormat::eRGBA32Float;
-        data   = std::vector<std::byte>(image->pixel_count() * 4 * sizeof(float));
+        format       = wgpu::TextureFormat::eRGBA32Float;
+        data         = std::vector<std::byte>(image->pixel_count() * 4 * sizeof(float));
         auto* target = reinterpret_cast<float*>(data.data());
         for (std::size_t index = 0; index < image->pixel_count(); ++index) {
             target[index * 4 + 0] = image->data[index * 3 + 0];
@@ -265,11 +265,7 @@ Image Image::from_dynamic(DynamicImage dyn_img, bool is_srgb, assets::RenderAsse
         format = wgpu::TextureFormat::eRGBA32Float;
     }
 
-    return Image{wgpu::Extent3D{width, height, 1},
-                 wgpu::TextureDimension::e2D,
-                 std::move(data),
-                 format,
-                 asset_usage};
+    return Image{wgpu::Extent3D{width, height, 1}, wgpu::TextureDimension::e2D, std::move(data), format, asset_usage};
 }
 
 std::expected<DynamicImage, IntoDynamicImageError> Image::try_into_dynamic() const {
@@ -284,8 +280,8 @@ std::expected<DynamicImage, IntoDynamicImageError> Image::try_into_dynamic() con
 
     // `ImageBuffer::from_raw` answers `None` when the payload does not match the dimensions.
     const auto mismatched = [this]() -> std::expected<DynamicImage, IntoDynamicImageError> {
-        return std::unexpected(IntoDynamicImageError{
-            into_dynamic_image_error::UnknownConversionError{texture_descriptor.format}});
+        return std::unexpected(
+            IntoDynamicImageError{into_dynamic_image_error::UnknownConversionError{texture_descriptor.format}});
     };
 
     switch (texture_descriptor.format) {

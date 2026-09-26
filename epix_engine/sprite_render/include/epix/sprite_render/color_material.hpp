@@ -1,12 +1,12 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
+#include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
 #include <epix/image.hpp>
 #include <epix/sprite_render/material2d.hpp>
-#include <array>
-#include <cstdint>
 #include <glm/glm.hpp>
 #include <optional>
 #include <string_view>
@@ -18,14 +18,14 @@ namespace epix::sprite_render {
  *  the shader's own bit flags. */
 EPIX_EXPORT struct ColorMaterialFlags {
     enum Bit : std::uint32_t {
-        TEXTURE                    = 1u << 0u,
+        TEXTURE = 1u << 0u,
         /** Bits reserved for the `AlphaMode2d` discriminator. */
-        ALPHA_MODE_RESERVED_BITS   = 0b11u << (32u - 2u),
-        ALPHA_MODE_OPAQUE          = 0u << (32u - 2u),
-        ALPHA_MODE_MASK            = 1u << (32u - 2u),
-        ALPHA_MODE_BLEND           = 2u << (32u - 2u),
-        NONE                       = 0,
-        UNINITIALIZED              = 0xFFFF,
+        ALPHA_MODE_RESERVED_BITS = 0b11u << (32u - 2u),
+        ALPHA_MODE_OPAQUE        = 0u << (32u - 2u),
+        ALPHA_MODE_MASK          = 1u << (32u - 2u),
+        ALPHA_MODE_BLEND         = 2u << (32u - 2u),
+        NONE                     = 0,
+        UNINITIALIZED            = 0xFFFF,
     };
 };
 
@@ -146,11 +146,10 @@ struct AsBindGroupShaderType<epix::sprite_render::ColorMaterial, epix::sprite_re
  *  sampler at 2, as Bevy's derive declares (`color_material.rs:38-45`). */
 template <>
 struct AsBindGroup<epix::sprite_render::ColorMaterial> {
-    using Data  = epix::sprite_render::ColorMaterialUniform;
+    using Data = epix::sprite_render::ColorMaterialUniform;
     /** @brief The images plus the fallback Bevy's derive passes to a textured
      *  material. */
-    using Param =
-        std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>, epix::ecs::Res<texture::FallbackImage>>;
+    using Param = std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>, epix::ecs::Res<texture::FallbackImage>>;
 
     static constexpr std::string_view label() { return "color_material"; }
 
@@ -158,8 +157,8 @@ struct AsBindGroup<epix::sprite_render::ColorMaterial> {
         const auto entries = BindGroupLayoutEntries<>::sequential(
             wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment,
             binding_types::uniform_buffer(
-                false, epix::render::render_resource::ShaderTypeInfo<
-                           epix::sprite_render::ColorMaterialUniform>::shader_size),
+                false,
+                epix::render::render_resource::ShaderTypeInfo<epix::sprite_render::ColorMaterialUniform>::shader_size),
             binding_types::texture_2d(wgpu::TextureSampleType::eFloat),
             binding_types::sampler(wgpu::SamplerBindingType::eFiltering));
         return {entries.begin(), entries.end()};
@@ -197,8 +196,8 @@ struct AsBindGroup<epix::sprite_render::ColorMaterial> {
             // at all uses the fallback image.
             return std::unexpected(AsBindGroupError{RetryBindGroupNextUpdate{}});
         }
-        const auto& texture_view     = image ? image->texture_view : fallback_image->d2.texture_view;
-        const auto& sampler          = image ? image->sampler : fallback_image->d2.sampler;
+        const auto& texture_view = image ? image->texture_view : fallback_image->d2.texture_view;
+        const auto& sampler      = image ? image->sampler : fallback_image->d2.sampler;
 
         return UnpreparedBindGroup{BindingResources{std::vector<BindingResources::value_type>{
             {0u, BindingResources::buffer(std::move(uniform))},

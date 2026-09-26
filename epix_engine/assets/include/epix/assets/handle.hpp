@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cassert>
 #include <concepts>
 #include <epix/async_channel.hpp>
+#include <epix/common.hpp>
 #include <epix/utils.hpp>
 #include <expected>
 #include <format>
@@ -15,7 +15,6 @@
 #include <string_view>
 #include <utility>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/id.hpp>

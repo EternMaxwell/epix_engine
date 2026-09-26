@@ -1,22 +1,21 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/image.hpp>
+#include <epix/mesh/mesh.hpp>
+#include <epix/mesh/morph.hpp>
+#include <epix/mesh/vertex_buffer_layout.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/mesh/mesh.hpp>
-#include <epix/mesh/morph.hpp>
-#include <epix/mesh/vertex_buffer_layout.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/assets.hpp>
 #include <epix/render/fallback_image.hpp>
@@ -52,11 +51,13 @@ template <>
 struct epix::render::RenderAsset<epix::render::mesh::RenderMesh> {
     using SourceAsset    = epix::mesh::Mesh;
     using ExtractedAsset = epix::mesh::Mesh;
-    using Param = std::tuple<epix::ecs::Res<epix::render::RenderAssets<epix::render::texture::GpuImage>>,
-                             epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
+    using Param          = std::tuple<epix::ecs::Res<epix::render::RenderAssets<epix::render::texture::GpuImage>>,
+                                      epix::ecs::ResMut<epix::mesh::MeshVertexBufferLayouts>>;
 
     std::expected<epix::render::mesh::RenderMesh, epix::render::PrepareAssetError<epix::mesh::Mesh>> prepare_asset(
-        epix::mesh::Mesh&& mesh, epix::assets::AssetId<epix::mesh::Mesh>, Param params,
+        epix::mesh::Mesh&& mesh,
+        epix::assets::AssetId<epix::mesh::Mesh>,
+        Param params,
         const epix::render::mesh::RenderMesh*) {
         // Bevy passes `SystemParamItem<Self::Param>` already resolved.
         auto&& [images, layouts] = params;

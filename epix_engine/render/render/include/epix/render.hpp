@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/shader.hpp>
 #include <functional>
@@ -15,14 +15,13 @@
 #include <string_view>
 #include <variant>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/alpha.hpp>
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/assets.hpp>
-#include <epix/render/binned_phase.hpp>
 #include <epix/render/bind_group_entries.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
+#include <epix/render/binned_phase.hpp>
 #include <epix/render/color_grading.hpp>
 #include <epix/render/erased_render_asset.hpp>
 #include <epix/render/extract.hpp>
@@ -35,8 +34,8 @@
 #include <epix/render/manual_texture_view.hpp>
 #include <epix/render/maths.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
-#include <epix/render/mesh/render_mesh.hpp>
 #include <epix/render/mesh/render_asset.hpp>
+#include <epix/render/mesh/render_mesh.hpp>
 #include <epix/render/mesh_allocator.hpp>
 #include <epix/render/occlusion_culling.hpp>
 #include <epix/render/pipeline.hpp>
@@ -454,7 +453,8 @@ EPIX_EXPORT struct EPIX_API RenderAdapterInfo {
 EPIX_EXPORT EPIX_API std::optional<std::uint32_t> get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept;
 /** @brief Returns the Mali `v1.rNNp` driver revision when available (Bevy
  * `get_mali_driver_version`). Non-Android builds intentionally return nullopt. */
-EPIX_EXPORT EPIX_API std::optional<std::uint32_t> get_mali_driver_version(const RenderAdapterInfo& adapter_info) noexcept;
+EPIX_EXPORT EPIX_API std::optional<std::uint32_t> get_mali_driver_version(
+    const RenderAdapterInfo& adapter_info) noexcept;
 
 /** @brief Renderer resources supplied by an embedding application (Bevy
  * `RenderResources`). Epix deliberately exposes the native wgpu handles;

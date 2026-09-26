@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <exception>
 #include <expected>
@@ -15,7 +15,6 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 #include <epix/assets/concepts.hpp>
 #include <epix/assets/server/loader.hpp>

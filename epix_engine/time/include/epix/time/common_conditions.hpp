@@ -1,10 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <chrono>
-#include <epix/ecs.hpp>
 #include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 #include <epix/time/real.hpp>

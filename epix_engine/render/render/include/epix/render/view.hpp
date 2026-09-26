@@ -1,12 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <atomic>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <epix/utils.hpp>
@@ -24,8 +25,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
-#include <epix/camera.hpp>
 #endif
 
 #include <epix/render/color_grading.hpp>
@@ -413,23 +412,24 @@ EPIX_EXPORT struct EPIX_API ViewPlugin {
 };
 
 EPIX_API void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
-                                                          const camera::ExtractedCamera&,
-                                                          const ExtractedView&,
-                                                          const ::epix::camera::CameraMainTextureUsages&,
-                                                          const Msaa&>> views,
-                         epix::ecs::Commands cmd,
-                         epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
-                         epix::ecs::Res<wgpu::Device> device,
-                         epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
-                         epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
+                                                                   const camera::ExtractedCamera&,
+                                                                   const ExtractedView&,
+                                                                   const ::epix::camera::CameraMainTextureUsages&,
+                                                                   const Msaa&>> views,
+                                  epix::ecs::Commands cmd,
+                                  epix::ecs::Res<::epix::camera::ClearColor> global_clear_color,
+                                  epix::ecs::Res<wgpu::Device> device,
+                                  epix::ecs::ResMut<render_resource::TextureCache> texture_cache,
+                                  epix::ecs::Res<ViewTargetAttachments> view_target_attachments);
 
 /** Resolve manual texture-view targets after the general camera pass.  The
  * renderer owns `ManualTextureViews`, so this is the one accepted split from
  * Bevy's single camera system. */
-EPIX_API void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
-                                                                          epix::ecs::Mut<::epix::camera::Projection>,
-                                                                          const ::epix::camera::RenderTarget&>> cameras,
-                                         epix::ecs::Res<texture::ManualTextureViews> manual_texture_views);
+EPIX_API void update_manual_texture_view_cameras(
+    epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
+                                     epix::ecs::Mut<::epix::camera::Projection>,
+                                     const ::epix::camera::RenderTarget&>> cameras,
+    epix::ecs::Res<texture::ManualTextureViews> manual_texture_views);
 
 /** @brief Uniform buffer data for a view (Bevy 0.18 ViewUniform).
  *
@@ -575,13 +575,16 @@ EPIX_EXPORT struct RenderVisibleEntities {
     template <typename QF>
     auto get() const {
         static const std::vector<std::pair<epix::ecs::Entity, sync_world::MainEntity>> kEmpty;
-        if (auto it = entities.find(meta::type_index(meta::type_id<QF>())); it != entities.end()) return std::views::all(it->second);
+        if (auto it = entities.find(meta::type_index(meta::type_id<QF>())); it != entities.end())
+            return std::views::all(it->second);
         return std::views::all(kEmpty);
     }
     /** @brief Span over the visible entities for the given type (Bevy
      * RenderVisibleEntities::iter<QF>, DoubleEndedIterator). */
     template <typename QF>
-    auto iter() const { return get<QF>(); }
+    auto iter() const {
+        return get<QF>();
+    }
     /** @brief Number of visible entities for the given type (Bevy
      * RenderVisibleEntities::len<QF>). */
     template <typename QF>
@@ -616,9 +619,9 @@ EPIX_API void clear_view_attachments(epix::ecs::ResMut<ViewTargetAttachments> vi
  * Screenshot and other extensions may
  * replace an entry before `prepare_view_target` consumes it. */
 EPIX_API void prepare_view_attachments(epix::ecs::Res<window::ExtractedWindows> extracted_windows,
-                              epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
-                              epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
-                              epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+                                       epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
+                                       epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
+                                       epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
 /** @brief Removes the ViewTarget of cameras targeting a window that was
  * resized or changed present mode, so
  * prepare_view_target recreates them at the new size (Bevy cleanup_view_targets_for_resize, view/mod.rs:1046-1059).
@@ -712,9 +715,8 @@ EPIX_EXPORT struct NormalizedRenderTargetExt {
                 },
                 [&](const ::epix::camera::ManualTextureViewHandle& handle) -> std::optional<wgpu::TextureFormat> {
                     auto it = manual_texture_views.find(handle);
-                    return it != manual_texture_views.end()
-                               ? std::optional<wgpu::TextureFormat>{it->second.view_format}
-                               : std::nullopt;
+                    return it != manual_texture_views.end() ? std::optional<wgpu::TextureFormat>{it->second.view_format}
+                                                            : std::nullopt;
                 },
                 [](const ::epix::camera::NoColorTarget&) -> std::optional<wgpu::TextureFormat> { return std::nullopt; },
             },

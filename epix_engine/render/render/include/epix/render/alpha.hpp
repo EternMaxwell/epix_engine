@@ -1,10 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <variant>
 #include <epix/common.hpp>
+#include <variant>
 #endif
 
 namespace epix::render {

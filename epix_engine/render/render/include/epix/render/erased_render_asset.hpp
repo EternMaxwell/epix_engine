@@ -1,11 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <concepts>
 #include <cstddef>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <expected>
@@ -19,7 +20,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/assets.hpp>
@@ -85,17 +85,17 @@ concept HasErasedUnload = requires(ErasedRenderAsset<A> asset,
 /** @brief True when a compact extracted representation is explicitly defined.
  * This is Epix's counterpart to the RenderAsset compact extraction extension. */
 template <typename A>
-concept HasErasedExtractAsset =
-    requires(ErasedRenderAsset<A> asset,
-             const typename ErasedRenderAsset<A>::SourceAsset& source,
-             assets::AssetId<typename ErasedRenderAsset<A>::SourceAsset> id,
-             RenderAssetExtractionReason reason,
-             const typename ErasedRenderAsset<A>::ErasedAsset* previous_asset) {
-        typename ErasedRenderAsset<A>::ExtractError;
-        { asset.extract(source, id, reason, previous_asset) }
-            -> std::same_as<std::expected<typename ErasedRenderAsset<A>::ExtractedAsset,
-                                           typename ErasedRenderAsset<A>::ExtractError>>;
-    };
+concept HasErasedExtractAsset = requires(ErasedRenderAsset<A> asset,
+                                         const typename ErasedRenderAsset<A>::SourceAsset& source,
+                                         assets::AssetId<typename ErasedRenderAsset<A>::SourceAsset> id,
+                                         RenderAssetExtractionReason reason,
+                                         const typename ErasedRenderAsset<A>::ErasedAsset* previous_asset) {
+    typename ErasedRenderAsset<A>::ExtractError;
+    {
+        asset.extract(source, id, reason, previous_asset)
+    } -> std::same_as<
+        std::expected<typename ErasedRenderAsset<A>::ExtractedAsset, typename ErasedRenderAsset<A>::ExtractError>>;
+};
 
 /** @brief Concept satisfied by valid ErasedRenderAsset specializations. */
 template <typename A>
@@ -114,8 +114,8 @@ concept ErasedRenderAssetImpl = requires(ErasedRenderAsset<A> asset) {
                             std::declval<const typename ErasedRenderAsset<A>::ErasedAsset*>())
     } -> std::same_as<std::expected<typename ErasedRenderAsset<A>::ErasedAsset,
                                     PrepareAssetError<typename ErasedRenderAsset<A>::ExtractedAsset>>>;
-    requires std::same_as<typename ErasedRenderAsset<A>::ExtractedAsset,
-                          typename ErasedRenderAsset<A>::SourceAsset> || HasErasedExtractAsset<A>;
+    requires std::same_as<typename ErasedRenderAsset<A>::ExtractedAsset, typename ErasedRenderAsset<A>::SourceAsset> ||
+                 HasErasedExtractAsset<A>;
 };
 
 namespace detail {
@@ -133,8 +133,8 @@ assets::RenderAssetUsages erased_asset_usage(const ErasedRenderAsset<A>& asset,
 }
 
 template <typename A>
-std::optional<std::size_t> erased_asset_byte_len(const ErasedRenderAsset<A>& asset,
-                                                 const typename ErasedRenderAsset<A>::ExtractedAsset& extracted) noexcept {
+std::optional<std::size_t> erased_asset_byte_len(
+    const ErasedRenderAsset<A>& asset, const typename ErasedRenderAsset<A>::ExtractedAsset& extracted) noexcept {
     if constexpr (HasErasedByteLen<A>) {
         return asset.byte_len(extracted);
     } else {
@@ -195,7 +195,7 @@ struct ErasedRenderAssets {
  * frame (Bevy `ExtractedAssets<A>`, erased_render_asset.rs:159-187). */
 template <ErasedRenderAssetImpl A>
 struct ExtractedAssets {
-    using SourceAsset = typename ErasedRenderAsset<A>::SourceAsset;
+    using SourceAsset    = typename ErasedRenderAsset<A>::SourceAsset;
     using ExtractedAsset = typename ErasedRenderAsset<A>::ExtractedAsset;
 
     /** @brief Assets extracted this frame (added or modified). */
@@ -212,7 +212,7 @@ struct ExtractedAssets {
  * `PrepareNextFrameAssets<A>`, erased_render_asset.rs:317-327). */
 template <ErasedRenderAssetImpl A>
 struct PrepareNextFrameAssets {
-    using SourceAsset = typename ErasedRenderAsset<A>::SourceAsset;
+    using SourceAsset    = typename ErasedRenderAsset<A>::SourceAsset;
     using ExtractedAsset = typename ErasedRenderAsset<A>::ExtractedAsset;
 
     std::vector<std::pair<assets::AssetId<SourceAsset>, ExtractedAsset>> assets;
@@ -229,9 +229,9 @@ void extract_erased_render_asset(
     app::Extract<ecs::ResMut<assets::Assets<typename ErasedRenderAsset<A>::SourceAsset>>> assets,
     app::Extract<ecs::EventReader<assets::AssetEvent<typename ErasedRenderAsset<A>::SourceAsset>>> events,
     ecs::Res<ErasedRenderAssets<typename ErasedRenderAsset<A>::ErasedAsset>> render_assets) {
-    using SourceAsset = typename ErasedRenderAsset<A>::SourceAsset;
+    using SourceAsset    = typename ErasedRenderAsset<A>::SourceAsset;
     using ExtractedAsset = typename ErasedRenderAsset<A>::ExtractedAsset;
-    using ErasedAsset = typename ErasedRenderAsset<A>::ErasedAsset;
+    using ErasedAsset    = typename ErasedRenderAsset<A>::ErasedAsset;
 
     std::unordered_map<assets::AssetId<SourceAsset>, RenderAssetExtractionReason> changed_assets;
     std::unordered_set<assets::AssetId<SourceAsset>> removed;
@@ -259,7 +259,7 @@ void extract_erased_render_asset(
     for (const auto& [id, reason] : changed_assets) {
         if (auto asset = assets->get(id)) {
             const assets::RenderAssetUsages asset_usage = detail::erased_asset_usage(impl, *asset);
-            const ErasedAsset* previous_asset = render_assets->get(assets::UntypedAssetId(id));
+            const ErasedAsset* previous_asset           = render_assets->get(assets::UntypedAssetId(id));
             if (asset_usage & assets::RenderAssetUsages::RENDER_WORLD) {
                 if (asset_usage == assets::RenderAssetUsages::RENDER_WORLD) {
                     // Bevy's RENDER_WORLD-only erased asset semantics move
@@ -283,10 +283,12 @@ void extract_erased_render_asset(
                 } else {
                     // A source retained by the main world needs either a
                     // copy of itself or a compact extraction payload.
-                    if constexpr (std::same_as<ExtractedAsset, SourceAsset> && !std::is_copy_constructible_v<SourceAsset>) {
-                        spdlog::error("Erased render asset [{}] is not copyable; a dual-world asset with "
-                                      "ExtractedAsset == SourceAsset must be copyable or define a compact ExtractedAsset",
-                                      id.to_string());
+                    if constexpr (std::same_as<ExtractedAsset, SourceAsset> &&
+                                  !std::is_copy_constructible_v<SourceAsset>) {
+                        spdlog::error(
+                            "Erased render asset [{}] is not copyable; a dual-world asset with "
+                            "ExtractedAsset == SourceAsset must be copyable or define a compact ExtractedAsset",
+                            id.to_string());
                     } else if constexpr (std::same_as<ExtractedAsset, SourceAsset>) {
                         extracted.emplace_back(id, *asset);
                         added.insert(id);
@@ -322,7 +324,7 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
                            ecs::ResMut<ErasedRenderAssets<typename ErasedRenderAsset<A>::ErasedAsset>> render_assets,
                            ecs::ResMut<PrepareNextFrameAssets<A>> prepare_next_frame,
                            ecs::ResMut<RenderAssetBytesPerFrameLimiter> bytes_per_frame_limiter) {
-    using SourceAsset = typename ErasedRenderAsset<A>::SourceAsset;
+    using SourceAsset    = typename ErasedRenderAsset<A>::SourceAsset;
     using ExtractedAsset = typename ErasedRenderAsset<A>::ExtractedAsset;
     ErasedRenderAsset<A> impl;
     std::size_t wrote_asset_count = 0;
@@ -352,8 +354,7 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
             prepare_next_frame->assets.emplace_back(id, std::move(asset));
             continue;
         }
-        auto result = impl.prepare_asset(std::move(asset), id, param,
-                                         render_assets->get(assets::UntypedAssetId(id)));
+        auto result = impl.prepare_asset(std::move(asset), id, param, render_assets->get(assets::UntypedAssetId(id)));
         if (result.has_value()) {
             render_assets->insert(assets::UntypedAssetId(id), std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
@@ -382,7 +383,7 @@ void prepare_erased_assets(typename ErasedRenderAsset<A>::Param param,
         // after a new one is extracted, even if it is not ready or the budget
         // is exhausted (Bevy erased_render_asset.rs:385-389).
         auto previous_asset = render_assets->remove(assets::UntypedAssetId(id));
-        const auto write = write_bytes(asset);
+        const auto write    = write_bytes(asset);
         if (!write.has_value()) {
             prepare_next_frame->assets.emplace_back(id, std::move(asset));
             continue;
@@ -438,8 +439,7 @@ struct ErasedRenderAssetPlugin {
             // prepare_erased_assets runs first (erased_render_asset.rs:142-156).
             if constexpr (!std::is_void_v<AFTER>) {
                 static_assert(ErasedRenderAssetImpl<AFTER>, "AFTER must be an erased render asset type");
-                    render_app->get().add_systems(
-                        Render, std::move(prepare).after(prepare_erased_assets<AFTER>));
+                render_app->get().add_systems(Render, std::move(prepare).after(prepare_erased_assets<AFTER>));
             } else {
                 render_app->get().add_systems(Render, std::move(prepare));
             }

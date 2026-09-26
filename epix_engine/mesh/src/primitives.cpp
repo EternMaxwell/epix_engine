@@ -1482,8 +1482,8 @@ Polyline3d Polyline3d::with_subdivisions(glm::vec3 start, glm::vec3 end, std::si
 Polyline3dMeshBuilder Polyline3d::mesh() const { return Polyline3dMeshBuilder{*this}; }
 
 std::expected<Dir3, InvalidDirectionError> Triangle3d::normal() const noexcept {
-    const auto ab    = vertices[1] - vertices[0];
-    const auto ac    = vertices[2] - vertices[0];
+    const auto ab = vertices[1] - vertices[0];
+    const auto ac = vertices[2] - vertices[0];
     return Dir3::make(glm::cross(ab, ac));
 }
 

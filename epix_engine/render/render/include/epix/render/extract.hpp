@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <format>
 #include <optional>
 #include <ranges>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/render_resource.hpp>
 #include <epix/render/schedule.hpp>
@@ -23,10 +22,9 @@ namespace epix::render {
 EPIX_EXPORT inline struct ExtractScheduleT {
 } ExtractSchedule;
 template <std::copyable T>
-void extract_fn(
-    epix::ecs::Commands cmd,
-    epix::app::Extract<std::optional<epix::ecs::Res<T>>> main_resource,
-    std::optional<epix::ecs::ResMut<T>> target_resource) {
+void extract_fn(epix::ecs::Commands cmd,
+                epix::app::Extract<std::optional<epix::ecs::Res<T>>> main_resource,
+                std::optional<epix::ecs::ResMut<T>> target_resource) {
     if (!main_resource) return;
     if (!target_resource) {
         cmd.insert_resource(main_resource->get());
@@ -87,7 +85,8 @@ void extract_component_system(
 /** @brief System that extracts component C only for entities visible to at
  * least one view (Bevy extract_visible_components, extract_component.rs:219-236). */
 template <ExtractComponentImpl C>
-void extract_visible_components_system(ecs::Commands cmd, ecs::Local<std::size_t> previous_len,
+void extract_visible_components_system(ecs::Commands cmd,
+                                       ecs::Local<std::size_t> previous_len,
                                        app::Extract<ecs::Query<ecs::Item<const sync_world::RenderEntity&,
                                                                          const ::epix::camera::ViewVisibility&,
                                                                          typename ExtractComponent<C>::QueryData>,
@@ -133,7 +132,6 @@ struct ExtractComponentPlugin {
     bool only_extract_visible = false;
 
    public:
-
     /** @brief Returns a plugin configured to extract only visible entities
      * (Bevy ExtractComponentPlugin::extract_visible()). */
     static ExtractComponentPlugin extract_visible() {
@@ -226,7 +224,6 @@ struct ExtractInstancesPlugin {
     bool only_extract_visible = false;
 
    public:
-
     /** @brief Construct the visible-only extractor (Bevy
      * `ExtractInstancesPlugin::extract_visible`). */
     static ExtractInstancesPlugin extract_visible() {
@@ -298,10 +295,9 @@ concept ExtractResourceImpl = requires {
 };
 
 template <ExtractResourceImpl R>
-void extract_resource_system(
-    ecs::Commands cmd,
-    app::Extract<std::optional<ecs::Res<typename ExtractResource<R>::Source>>> source,
-    std::optional<ecs::ResMut<R>> target) {
+void extract_resource_system(ecs::Commands cmd,
+                             app::Extract<std::optional<ecs::Res<typename ExtractResource<R>::Source>>> source,
+                             std::optional<ecs::ResMut<R>> target) {
     if (!source) return;
     if (target) {
         // Bevy only overwrites the render-world copy when the source changed
@@ -429,7 +425,7 @@ void prepare_uniform_components(ecs::Commands cmd,
                                 ecs::Res<wgpu::Queue> queue,
                                 ecs::ResMut<ComponentUniforms<C>> component_uniforms,
                                 ecs::Query<ecs::Item<ecs::Entity, const C&>> components) {
-    auto& uniforms = component_uniforms->uniforms_mut();
+    auto& uniforms          = component_uniforms->uniforms_mut();
     const std::size_t count = components.iter().max_remaining();
     if (count == 0) {
         // Bevy get_writer returns None when there is no GPU buffer and

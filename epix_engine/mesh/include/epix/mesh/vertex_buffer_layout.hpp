@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <compare>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <functional>
 #include <iterator>
@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::mesh {
@@ -169,7 +168,7 @@ struct MeshVertexBufferLayouts {
         if (const auto existing = _layouts.find(layout); existing != _layouts.end()) {
             return MeshVertexBufferLayoutRef{*existing};
         }
-        auto value = std::make_shared<const MeshVertexBufferLayout>(std::move(layout));
+        auto value               = std::make_shared<const MeshVertexBufferLayout>(std::move(layout));
         const auto [inserted, _] = _layouts.insert(std::move(value));
         return MeshVertexBufferLayoutRef{*inserted};
     }
@@ -188,13 +187,14 @@ struct MeshVertexBufferLayouts {
                 result = combine(result, std::hash<std::uint64_t>{}(id.value));
             }
             const auto& layout = value.layout();
-            result = combine(result, std::hash<std::uint64_t>{}(layout.array_stride));
+            result             = combine(result, std::hash<std::uint64_t>{}(layout.array_stride));
             result = combine(result, std::hash<std::underlying_type_t<wgpu::VertexStepMode>>{}(
                                          static_cast<std::underlying_type_t<wgpu::VertexStepMode>>(layout.step_mode)));
             for (const auto& attribute : layout.attributes) {
                 result = combine(result, std::hash<std::uint64_t>{}(attribute.offset));
-                result = combine(result, std::hash<std::underlying_type_t<wgpu::VertexFormat>>{}(
-                                             static_cast<std::underlying_type_t<wgpu::VertexFormat>>(attribute.format)));
+                result =
+                    combine(result, std::hash<std::underlying_type_t<wgpu::VertexFormat>>{}(
+                                        static_cast<std::underlying_type_t<wgpu::VertexFormat>>(attribute.format)));
                 result = combine(result, std::hash<std::uint32_t>{}(attribute.shader_location));
             }
             return result;
@@ -243,10 +243,8 @@ struct std::hash<epix::mesh::MeshVertexBufferLayoutRef> {
 template <>
 struct std::hash<epix::mesh::VertexAttribute> {
     std::size_t operator()(const epix::mesh::VertexAttribute& value) const noexcept {
-        std::size_t hash = std::hash<std::uint64_t>{}(value.offset);
-        const auto combine = [&hash](std::size_t part) {
-            hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        };
+        std::size_t hash   = std::hash<std::uint64_t>{}(value.offset);
+        const auto combine = [&hash](std::size_t part) { hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
         combine(std::hash<std::underlying_type_t<wgpu::VertexFormat>>{}(
             static_cast<std::underlying_type_t<wgpu::VertexFormat>>(value.format)));
         combine(std::hash<std::uint32_t>{}(value.shader_location));
@@ -261,10 +259,8 @@ struct std::hash<epix::mesh::VertexAttribute> {
 template <>
 struct std::hash<epix::mesh::VertexBufferLayout> {
     std::size_t operator()(const epix::mesh::VertexBufferLayout& value) const noexcept {
-        std::size_t hash = std::hash<std::uint64_t>{}(value.array_stride);
-        const auto combine = [&hash](std::size_t part) {
-            hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-        };
+        std::size_t hash   = std::hash<std::uint64_t>{}(value.array_stride);
+        const auto combine = [&hash](std::size_t part) { hash ^= part + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
         combine(std::hash<std::underlying_type_t<wgpu::VertexStepMode>>{}(
             static_cast<std::underlying_type_t<wgpu::VertexStepMode>>(value.step_mode)));
         for (const auto& attribute : value.attributes) {

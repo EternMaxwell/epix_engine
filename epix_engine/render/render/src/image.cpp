@@ -91,14 +91,14 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<te
     // Bevy builds the view from the image's optional `texture_view_descriptor`,
     // falling back to a descriptor derived from the texture itself. An explicit
     // override therefore wins, which is how a distinct view format is requested.
-    wgpu::TextureViewDescriptor view_desc = asset.texture_view_descriptor.value_or(
-        wgpu::TextureViewDescriptor()
-            .setDimension(view_dimension_cast(asset.type()))
-            .setMipLevelCount(1)
-            .setBaseMipLevel(0)
-            .setFormat(desc.format)
-            .setBaseArrayLayer(0)
-            .setArrayLayerCount(asset.layers()));
+    wgpu::TextureViewDescriptor view_desc =
+        asset.texture_view_descriptor.value_or(wgpu::TextureViewDescriptor()
+                                                   .setDimension(view_dimension_cast(asset.type()))
+                                                   .setMipLevelCount(1)
+                                                   .setBaseMipLevel(0)
+                                                   .setFormat(desc.format)
+                                                   .setBaseArrayLayer(0)
+                                                   .setArrayLayerCount(asset.layers()));
     gpu_image.texture_view = gpu_image.texture.createView(view_desc);
     if (!gpu_image.texture_view) {
         return std::unexpected(GpuAssetCreationError::CreateTextureView);
@@ -156,7 +156,8 @@ std::expected<texture::GpuImage, PrepareAssetError<image::Image>> RenderAsset<te
     if (asset.has_data()) {
         assert(asset.texture_descriptor.mipLevelCount == 1 &&
                "layered upload assumes a single mip level; data_order must be honoured once mips exist");
-        const std::uint32_t pixel_size  = static_cast<std::uint32_t>(image::texture_format_pixel_size(asset.texture_format()).value_or(0));
+        const std::uint32_t pixel_size =
+            static_cast<std::uint32_t>(image::texture_format_pixel_size(asset.texture_format()).value_or(0));
         const std::uint32_t width       = asset.width();
         const std::uint32_t height      = asset.height();
         const std::uint32_t raw_row     = width * pixel_size;

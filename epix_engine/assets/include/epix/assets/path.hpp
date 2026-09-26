@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -12,7 +12,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::assets {

@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <exception>
@@ -22,7 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::assets {

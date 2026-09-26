@@ -193,9 +193,9 @@ static void extract_captures_and_deliver(ResMut<ScreenshotState> state,
 }
 
 struct CaptureFormatInfo {
-    uint32_t bytes_per_pixel   = 0;
+    uint32_t bytes_per_pixel         = 0;
     wgpu::TextureFormat image_format = wgpu::TextureFormat::eUndefined;
-    bool bgra_swap             = false;
+    bool bgra_swap                   = false;
 };
 
 static void collect_completed_readbacks(ResMut<ScreenshotState> state,
@@ -285,7 +285,7 @@ static ScreenshotBlitPipeline& prepare_blit_pipeline(wgpu::TextureFormat format,
         return *it;
     ScreenshotBlitPipeline pipeline;
     pipeline.format = format;
-    pipeline.layout = 
+    pipeline.layout =
         render::BindGroupLayoutDescriptor()
             .set_label("ScreenshotBlitLayout")
             .set_entries(std::array{

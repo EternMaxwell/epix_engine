@@ -3,12 +3,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/core3d.hpp>
 
@@ -31,8 +31,7 @@ EPIX_EXPORT struct PreviousViewData {
 namespace epix::render::render_resource {
 /** @brief Five matrices laid out to match the shader's constant buffer. */
 template <>
-struct ShaderTypeInfo<::epix::core_graph::PreviousViewData>
-    : RawShaderType<::epix::core_graph::PreviousViewData> {};
+struct ShaderTypeInfo<::epix::core_graph::PreviousViewData> : RawShaderType<::epix::core_graph::PreviousViewData> {};
 }  // namespace epix::render::render_resource
 
 namespace epix::core_graph {
@@ -68,8 +67,8 @@ EPIX_EXPORT EPIX_API std::array<std::optional<wgpu::ColorTargetState>, 4> prepas
  *  `SkyboxPrepass.UndefinedFormatTargetIsAcceptedAsAnUnwrittenSlot` in
  *  `core_graph/tests/header/skybox_tests.cpp`). */
 EPIX_EXPORT EPIX_API std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass,
-                                                                        bool motion_vector_prepass,
-                                                                        bool deferred_prepass);
+                                                                                  bool motion_vector_prepass,
+                                                                                  bool deferred_prepass);
 
 /** @brief Stores each camera's *current* matrices as `PreviousViewData`, which
  *  the render world reads one frame late and therefore as the previous frame's
@@ -81,8 +80,7 @@ EPIX_EXPORT EPIX_API std::vector<wgpu::ColorTargetState> prepass_pipeline_target
 EPIX_EXPORT EPIX_API void update_previous_view_data(
     ecs::Commands commands,
     ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
-               ecs::With<camera::Camera3d>>
-        cameras);
+               ecs::With<camera::Camera3d>> cameras);
 
 /** @brief Uploads every view's `PreviousViewData` into `PreviousViewUniforms`
  *  and stamps the view with its offset (Bevy `prepare_previous_view_uniforms`,

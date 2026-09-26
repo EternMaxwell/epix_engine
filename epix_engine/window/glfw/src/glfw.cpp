@@ -466,57 +466,59 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
         }
         // cursor icon
         if (cached.cursor_icon != desc.cursor_icon) {
-            std::visit(utils::visitor{[&](const StandardCursor& icon) {
-                                          auto cursor = glfwCreateStandardCursor([icon] {
-                                              switch (icon) {
-                                                  case StandardCursor::Arrow:
-                                                      return GLFW_ARROW_CURSOR;
-                                                  case StandardCursor::IBeam:
-                                                      return GLFW_IBEAM_CURSOR;
-                                                  case StandardCursor::Crosshair:
-                                                      return GLFW_CROSSHAIR_CURSOR;
-                                                  case StandardCursor::Hand:
-                                                      return GLFW_HAND_CURSOR;
-                                                  case StandardCursor::ResizeAll:
-                                                      return GLFW_RESIZE_ALL_CURSOR;
-                                                  case StandardCursor::ResizeNS:
-                                                      return GLFW_RESIZE_NS_CURSOR;
-                                                  case StandardCursor::ResizeEW:
-                                                      return GLFW_RESIZE_EW_CURSOR;
-                                                  case StandardCursor::ResizeNWSE:
-                                                      return GLFW_RESIZE_NWSE_CURSOR;
-                                                  case StandardCursor::ResizeNESW:
-                                                      return GLFW_RESIZE_NESW_CURSOR;
-                                                  case StandardCursor::NotAllowed:
-                                                      return GLFW_NOT_ALLOWED_CURSOR;
-                                                  default:
-                                                      return GLFW_ARROW_CURSOR;  // default case
-                                              }
-                                          }());
-                                          glfwSetCursor(window, cursor);
-                                          cached.cursor_icon = desc.cursor_icon;
-                                      },
-                                      [&](const CustomCursor& handle) {
-                                          images->get(handle.image).transform([&](const image::Image& img) {
-                                              auto pixels = extract_rgba_pixels(img);
-                                              if (!pixels) {
-                                                  spdlog::warn("Image format '{}' is not supported for a cursor or icon; ignoring.",
-                                                               wgpu::to_string(img.texture_format()));
-                                                  return std::cref(img);
-                                              }
-                                              const auto& image = img;
-                                              auto view         = std::span<const std::byte>(*pixels);
-                                              GLFWimage glfw_img;
-                                              glfw_img.width  = image.width();
-                                              glfw_img.height = image.height();
-                                              glfw_img.pixels = const_cast<unsigned char*>(
-                                                  reinterpret_cast<const unsigned char*>(view.data()));
-                                              auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
-                                              glfwSetCursor(window, cursor);
-                                              cached.cursor_icon = desc.cursor_icon;
-                                              return std::cref(img);
-                                          });
-                                      }},
+            std::visit(utils::visitor{
+                           [&](const StandardCursor& icon) {
+                               auto cursor = glfwCreateStandardCursor([icon] {
+                                   switch (icon) {
+                                       case StandardCursor::Arrow:
+                                           return GLFW_ARROW_CURSOR;
+                                       case StandardCursor::IBeam:
+                                           return GLFW_IBEAM_CURSOR;
+                                       case StandardCursor::Crosshair:
+                                           return GLFW_CROSSHAIR_CURSOR;
+                                       case StandardCursor::Hand:
+                                           return GLFW_HAND_CURSOR;
+                                       case StandardCursor::ResizeAll:
+                                           return GLFW_RESIZE_ALL_CURSOR;
+                                       case StandardCursor::ResizeNS:
+                                           return GLFW_RESIZE_NS_CURSOR;
+                                       case StandardCursor::ResizeEW:
+                                           return GLFW_RESIZE_EW_CURSOR;
+                                       case StandardCursor::ResizeNWSE:
+                                           return GLFW_RESIZE_NWSE_CURSOR;
+                                       case StandardCursor::ResizeNESW:
+                                           return GLFW_RESIZE_NESW_CURSOR;
+                                       case StandardCursor::NotAllowed:
+                                           return GLFW_NOT_ALLOWED_CURSOR;
+                                       default:
+                                           return GLFW_ARROW_CURSOR;  // default case
+                                   }
+                               }());
+                               glfwSetCursor(window, cursor);
+                               cached.cursor_icon = desc.cursor_icon;
+                           },
+                           [&](const CustomCursor& handle) {
+                               images->get(handle.image).transform([&](const image::Image& img) {
+                                   auto pixels = extract_rgba_pixels(img);
+                                   if (!pixels) {
+                                       spdlog::warn(
+                                           "Image format '{}' is not supported for a cursor or icon; ignoring.",
+                                           wgpu::to_string(img.texture_format()));
+                                       return std::cref(img);
+                                   }
+                                   const auto& image = img;
+                                   auto view         = std::span<const std::byte>(*pixels);
+                                   GLFWimage glfw_img;
+                                   glfw_img.width  = image.width();
+                                   glfw_img.height = image.height();
+                                   glfw_img.pixels =
+                                       const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(view.data()));
+                                   auto cursor = glfwCreateCursor(&glfw_img, handle.hot_x, handle.hot_y);
+                                   glfwSetCursor(window, cursor);
+                                   cached.cursor_icon = desc.cursor_icon;
+                                   return std::cref(img);
+                               });
+                           }},
                        desc.cursor_icon);
         }
         if (cached.icon != desc.icon) {
@@ -528,7 +530,7 @@ void GLFWPlugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
                     GLFWimage glfw_img;
                     glfw_img.width  = image.width();
                     glfw_img.height = image.height();
-                    auto view         = std::span<const std::byte>(*pixels);
+                    auto view       = std::span<const std::byte>(*pixels);
                     glfw_img.pixels = const_cast<unsigned char*>(reinterpret_cast<const unsigned char*>(view.data()));
                     glfwSetWindowIcon(window, 1, &glfw_img);
                     cached.icon = desc.icon;

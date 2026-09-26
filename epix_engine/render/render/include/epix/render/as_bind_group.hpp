@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <expected>
 #include <format>
@@ -15,7 +15,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::render_resource {
@@ -92,9 +91,10 @@ EPIX_EXPORT class OwnedData {
 /** @brief An owned resource for one bind-group binding (Bevy's
  * `OwnedBindingResource`). Direct wgpu handles are used where C++ WebGPU has
  * no borrowed `BindingResource` counterpart. */
-EPIX_EXPORT using OwnedBindingResource =
-    std::variant<wgpu::Buffer, std::pair<wgpu::TextureViewDimension, wgpu::TextureView>,
-                 std::pair<wgpu::SamplerBindingType, wgpu::Sampler>, OwnedData>;
+EPIX_EXPORT using OwnedBindingResource = std::variant<wgpu::Buffer,
+                                                      std::pair<wgpu::TextureViewDimension, wgpu::TextureView>,
+                                                      std::pair<wgpu::SamplerBindingType, wgpu::Sampler>,
+                                                      OwnedData>;
 
 /** @brief Ordered binding-index/resource ownership shared by prepared and
  * unprepared bind groups (Bevy's `BindingResources`). */
@@ -130,11 +130,8 @@ EPIX_EXPORT class BindingResources {
         result.reserve(m_resources.size());
         for (const auto& [binding, resource] : m_resources) {
             if (const auto* buffer = std::get_if<wgpu::Buffer>(&resource)) {
-                result.emplace_back(wgpu::BindGroupEntry()
-                                        .setBinding(binding)
-                                        .setBuffer(*buffer)
-                                        .setOffset(0)
-                                        .setSize(std::numeric_limits<std::uint64_t>::max()));
+                result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setBuffer(*buffer).setOffset(0).setSize(
+                    std::numeric_limits<std::uint64_t>::max()));
             } else if (const auto* texture =
                            std::get_if<std::pair<wgpu::TextureViewDimension, wgpu::TextureView>>(&resource)) {
                 result.emplace_back(wgpu::BindGroupEntry().setBinding(binding).setTextureView(texture->second));
@@ -188,8 +185,7 @@ concept AsBindGroupImpl = requires {
 EPIX_EXPORT inline wgpu::BindGroupLayout create_bind_group_layout(const wgpu::Device& device,
                                                                   std::span<const wgpu::BindGroupLayoutEntry> entries,
                                                                   std::string_view label = "AsBindGroup Layout") {
-    return device.createBindGroupLayout(
-        wgpu::BindGroupLayoutDescriptor().setLabel(label.data()).setEntries(entries));
+    return device.createBindGroupLayout(wgpu::BindGroupLayoutDescriptor().setLabel(label.data()).setEntries(entries));
 }
 
 /** @brief Create a bind group from per-binding entries. */
@@ -216,9 +212,9 @@ wgpu::BindGroupLayout bind_group_layout(const wgpu::Device& device) {
  * duplicate it. */
 EPIX_EXPORT template <AsBindGroupImpl C>
 std::expected<PreparedBindGroup, AsBindGroupError> as_bind_group(const wgpu::Device& device,
-                                                                  const wgpu::BindGroupLayout& layout,
-                                                                  const C& component,
-                                                                  typename AsBindGroup<C>::Param& param) {
+                                                                 const wgpu::BindGroupLayout& layout,
+                                                                 const C& component,
+                                                                 typename AsBindGroup<C>::Param& param) {
     auto unprepared = AsBindGroup<C>::unprepared_bind_group(device, layout, component, param);
     if (!unprepared) {
         return std::unexpected(std::move(unprepared.error()));

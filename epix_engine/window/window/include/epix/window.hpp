@@ -1,9 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <optional>
 #include <epix/common.hpp>
+#include <optional>
 #endif
 
 #include <epix/window/events.hpp>

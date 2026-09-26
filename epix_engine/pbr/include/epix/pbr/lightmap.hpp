@@ -5,6 +5,7 @@
 #include <cassert>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/image/image.hpp>
 #include <epix/render/fallback_image.hpp>
 #include <epix/render/sync_world.hpp>
@@ -13,7 +14,6 @@
 #include <set>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -54,7 +54,7 @@ EPIX_EXPORT struct Lightmap {
  *  slot index because that is where Bevy declares it; `mesh_instance.hpp`'s
  *  instance data uses it. */
 EPIX_EXPORT struct LightmapSlabIndex {
-    std::uint32_t index = 0;
+    std::uint32_t index                              = 0;
     auto operator<=>(const LightmapSlabIndex&) const = default;
 };
 
@@ -68,7 +68,7 @@ EPIX_EXPORT struct LightmapSlabIndex {
  *  no non-max integer type, exactly as `LightmapSlabIndex` records it for the
  *  slab index. */
 EPIX_EXPORT struct LightmapSlotIndex {
-    std::uint16_t index = 0;
+    std::uint16_t index                              = 0;
     auto operator<=>(const LightmapSlotIndex&) const = default;
 };
 
@@ -82,8 +82,8 @@ EPIX_EXPORT struct LightmapSlotIndex {
  *  float `Rect` the image module already owns for atlas coordinates. */
 EPIX_EXPORT inline glm::uvec2 pack_lightmap_uv_rect(const std::optional<::epix::image::Rect>& maybe_rect) {
     if (!maybe_rect) return glm::uvec2{0u, 0u};
-    const glm::uvec4 rect = glm::uvec4(glm::round(
-        glm::vec4(maybe_rect->min.x, maybe_rect->min.y, maybe_rect->max.x, maybe_rect->max.y) * 65535.0f));
+    const glm::uvec4 rect = glm::uvec4(
+        glm::round(glm::vec4(maybe_rect->min.x, maybe_rect->min.y, maybe_rect->max.x, maybe_rect->max.y) * 65535.0f));
     return glm::uvec2(rect.x | (rect.y << 16), rect.z | (rect.w << 16));
 }
 
@@ -181,12 +181,12 @@ EPIX_EXPORT struct RenderLightmaps {
 
     /** @brief Allocate a slot for an image, creating a slab when none has room
      *  (Bevy `RenderLightmaps::allocate`, `lightmap/mod.rs:363-380`). */
-    std::pair<LightmapSlabIndex, LightmapSlotIndex> allocate(
-        const render::texture::FallbackImage& fallback_images, assets::AssetId<::epix::image::Image> image_id) {
-        const LightmapSlabIndex slab_index = free_slabs.empty()
-                                                 ? create_slab(fallback_images)
-                                                 : LightmapSlabIndex{.index = static_cast<std::uint32_t>(*free_slabs.begin())};
-        LightmapSlab& slab = slabs[slab_index.index];
+    std::pair<LightmapSlabIndex, LightmapSlotIndex> allocate(const render::texture::FallbackImage& fallback_images,
+                                                             assets::AssetId<::epix::image::Image> image_id) {
+        const LightmapSlabIndex slab_index =
+            free_slabs.empty() ? create_slab(fallback_images)
+                               : LightmapSlabIndex{.index = static_cast<std::uint32_t>(*free_slabs.begin())};
+        LightmapSlab& slab                 = slabs[slab_index.index];
         const LightmapSlotIndex slot_index = slab.allocate(image_id);
         if (slab.is_full()) free_slabs.erase(slab_index.index);
         return {slab_index, slot_index};
@@ -194,7 +194,8 @@ EPIX_EXPORT struct RenderLightmaps {
 
     /** @brief Free a slot, and the slab with it when it becomes free (Bevy
      *  `RenderLightmaps::remove`, `lightmap/mod.rs:382-393`). */
-    void remove(const render::texture::FallbackImage& fallback_images, LightmapSlabIndex slab_index,
+    void remove(const render::texture::FallbackImage& fallback_images,
+                LightmapSlabIndex slab_index,
                 LightmapSlotIndex slot_index) {
         LightmapSlab& slab = slabs[slab_index.index];
         slab.remove(fallback_images, slot_index);

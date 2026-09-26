@@ -1,5 +1,4 @@
 #include <epix/pbr/dummy_white_image.hpp>
-
 #include <variant>
 
 namespace epix::pbr {
@@ -30,11 +29,9 @@ render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::Device& render
         const auto view = image.raw_view();
         wgpu::TexelCopyBufferLayout layout;
         layout.setBytesPerRow(image.width() * static_cast<std::uint32_t>(*format_size)).setRowsPerImage(1);
-        render_queue.writeTexture(wgpu::TexelCopyTextureInfo()
-                                      .setTexture(texture)
-                                      .setOrigin({0, 0, 0})
-                                      .setAspect(wgpu::TextureAspect::eAll),
-                                  view.data(), view.size_bytes(), layout, texture_descriptor.size);
+        render_queue.writeTexture(
+            wgpu::TexelCopyTextureInfo().setTexture(texture).setOrigin({0, 0, 0}).setAspect(wgpu::TextureAspect::eAll),
+            view.data(), view.size_bytes(), layout, texture_descriptor.size);
     }
 
     const wgpu::TextureViewDescriptor view_descriptor{};
@@ -43,7 +40,7 @@ render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::Device& render
         .texture_view        = texture.createView(view_descriptor),
         .texture_format      = texture_descriptor.format,
         .texture_view_format = image.texture_view_descriptor ? image.texture_view_descriptor->format
-                                                            : std::optional<wgpu::TextureFormat>{},
+                                                             : std::optional<wgpu::TextureFormat>{},
         .sampler             = sampler,
         .size                = texture_descriptor.size,
         .mip_level_count     = texture_descriptor.mipLevelCount,

@@ -316,7 +316,8 @@ EPIX_EXPORT struct EPIX_API World {
         requires std::movable<T>
     const T& resource() const {
         const auto value = get_resource<T>();
-        if (!value) [[unlikely]] internal::missing_resource<T>();
+        if (!value) [[unlikely]]
+            internal::missing_resource<T>();
         return value->get();
     }
     /** @brief Get a mutable reference to a resource. Throws if not present.
@@ -325,7 +326,8 @@ EPIX_EXPORT struct EPIX_API World {
         requires std::movable<T>
     T& resource_mut() {
         const auto value = get_resource_mut<T>();
-        if (!value) [[unlikely]] internal::missing_resource<T>();
+        if (!value) [[unlikely]]
+            internal::missing_resource<T>();
         return value->get();
     }
 

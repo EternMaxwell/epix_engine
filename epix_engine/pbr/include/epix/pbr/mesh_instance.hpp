@@ -3,19 +3,19 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/assets.hpp>
+#include <epix/camera/visibility.hpp>
+#include <epix/common.hpp>
+#include <epix/mesh.hpp>
+#include <glm/glm.hpp>
 #include <limits>
+#include <optional>
 #include <tuple>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/assets.hpp>
-#include <epix/camera/visibility.hpp>
-#include <epix/mesh.hpp>
-#include <glm/glm.hpp>
-#include <optional>
-#include <unordered_map>
-#include <unordered_set>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/lightmap.hpp>
 #include <epix/pbr/material_bindings.hpp>
@@ -37,17 +37,17 @@ namespace epix::pbr {
  *  difference is a wrong velocity rather than a zero one. */
 EPIX_EXPORT struct RenderMeshInstanceFlags {
     enum Bits : std::uint8_t {
-        NONE                   = 0,
+        NONE = 0,
         /** @brief The mesh casts shadows. */
-        SHADOW_CASTER          = 1u << 0,
+        SHADOW_CASTER = 1u << 0,
         /** @brief The mesh may participate in automatic batching. */
-        AUTOMATIC_BATCHING     = 1u << 1,
+        AUTOMATIC_BATCHING = 1u << 1,
         /** @brief The mesh had a transform last frame. */
         HAS_PREVIOUS_TRANSFORM = 1u << 2,
         /** @brief The mesh had a skin last frame. */
-        HAS_PREVIOUS_SKIN      = 1u << 3,
+        HAS_PREVIOUS_SKIN = 1u << 3,
         /** @brief The mesh had morph targets last frame. */
-        HAS_PREVIOUS_MORPH     = 1u << 4,
+        HAS_PREVIOUS_MORPH = 1u << 4,
     };
 
     std::uint8_t bits = NONE;
@@ -205,11 +205,11 @@ EPIX_EXPORT struct MeshCullingData {
      *  there is none (Bevy `MeshCullingData::new`, `render/mesh.rs:1285-1296`). */
     static MeshCullingData make(const std::optional<::epix::camera::Aabb>& aabb) {
         if (!aabb.has_value()) {
-            return MeshCullingData{.aabb_center = glm::vec4(0.0f),
-                                   .aabb_half_extents = glm::vec4(glm::vec3(std::numeric_limits<float>::infinity()),
-                                                                  0.0f)};
+            return MeshCullingData{
+                .aabb_center       = glm::vec4(0.0f),
+                .aabb_half_extents = glm::vec4(glm::vec3(std::numeric_limits<float>::infinity()), 0.0f)};
         }
-        return MeshCullingData{.aabb_center = glm::vec4(aabb->center, 0.0f),
+        return MeshCullingData{.aabb_center       = glm::vec4(aabb->center, 0.0f),
                                .aabb_half_extents = glm::vec4(aabb->half_extents, 0.0f)};
     }
 
@@ -465,20 +465,19 @@ EPIX_EXPORT struct RenderMeshInstances {
             const RenderMeshInstanceCpu& instance = found->second;
             // The local-space centre through the instance's transform; the third
             // column carries the translation, as for any affine matrix.
-            const glm::vec3 center =
-                glm::mat3(instance.transforms.world_from_local) * instance.shared.center +
-                glm::vec3(instance.transforms.world_from_local[3]);
-            return RenderMeshQueueData{.shared = &instance.shared,
-                                       .center = center,
+            const glm::vec3 center = glm::mat3(instance.transforms.world_from_local) * instance.shared.center +
+                                     glm::vec3(instance.transforms.world_from_local[3]);
+            return RenderMeshQueueData{.shared                = &instance.shared,
+                                       .center                = center,
                                        .current_uniform_index = render::phase::InputUniformIndex{}};
         }
         const auto found = gpu_instances.find(entity);
         if (found == gpu_instances.end()) return std::nullopt;
         const RenderMeshInstanceGpu& instance = found->second;
-        return RenderMeshQueueData{.shared = &instance.shared,
-                                   .center = instance.center,
-                                   .current_uniform_index = render::phase::InputUniformIndex{
-                                       instance.current_uniform_index}};
+        return RenderMeshQueueData{
+            .shared                = &instance.shared,
+            .center                = instance.center,
+            .current_uniform_index = render::phase::InputUniformIndex{instance.current_uniform_index}};
     }
 
     /** @brief Insert flags into the instance on whichever side is in use (Bevy

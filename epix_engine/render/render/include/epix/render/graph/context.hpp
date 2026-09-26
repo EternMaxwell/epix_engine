@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <epix/common.hpp>
+#include <epix/task/usages.hpp>
 #include <functional>
 #include <optional>
 #include <ranges>
@@ -12,7 +13,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/task/usages.hpp>
 #endif
 
 #include <epix/render/graph/decl.hpp>
@@ -245,19 +245,19 @@ EPIX_EXPORT struct RenderContext {
  * execution.
  */
 EPIX_EXPORT template <typename T>
-concept ViewNode = requires {
-    typename T::ViewQuery;
-} && epix::ecs::readonly_query_data<typename T::ViewQuery> && requires(
-    T& node,
-    const T& readonly_node,
-    GraphContext& graph,
-    RenderContext& render_ctx,
-    epix::ecs::World& mutable_world,
-    const epix::ecs::World& world,
-    typename epix::ecs::QueryData<typename T::ViewQuery>::Item view) {
-    { node.update(mutable_world) } -> std::same_as<void>;
-    { readonly_node.run(graph, render_ctx, view, world) } -> std::same_as<std::expected<void, NodeRunError>>;
-};
+concept ViewNode = requires { typename T::ViewQuery; } && epix::ecs::readonly_query_data<typename T::ViewQuery> &&
+                   requires(T& node,
+                            const T& readonly_node,
+                            GraphContext& graph,
+                            RenderContext& render_ctx,
+                            epix::ecs::World& mutable_world,
+                            const epix::ecs::World& world,
+                            typename epix::ecs::QueryData<typename T::ViewQuery>::Item view) {
+                       { node.update(mutable_world) } -> std::same_as<void>;
+                       {
+                           readonly_node.run(graph, render_ctx, view, world)
+                       } -> std::same_as<std::expected<void, NodeRunError>>;
+                   };
 
 /**
  * @brief Wraps a `ViewNode` into a regular `Node`, fetching the view entity

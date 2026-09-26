@@ -365,7 +365,8 @@ struct SystemParam<Res<T>> : ParamBase {
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         const auto value = internal::get_entity_resource_ref<T>(world, state, meta.last_run, tick);
-        if (!value) [[unlikely]] internal::missing_resource<T>();
+        if (!value) [[unlikely]]
+            internal::missing_resource<T>();
         return Res<T>(*value);
     }
 };
@@ -396,7 +397,8 @@ struct SystemParam<ResMut<T>> : ParamBase {
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
         const auto value = internal::get_entity_resource_mut<T>(world, state, meta.last_run, tick);
-        if (!value) [[unlikely]] internal::missing_resource<T>();
+        if (!value) [[unlikely]]
+            internal::missing_resource<T>();
         return ResMut<T>(*value);
     }
 };

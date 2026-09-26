@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <atomic>
@@ -8,6 +7,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
 #include <epix/shader.hpp>
 #include <optional>
@@ -16,7 +16,6 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/bind_group_layout.hpp>
 
@@ -25,7 +24,7 @@
 // handed out inside the engine and one handed out by a caller cannot collide.
 #define make_atomic_id(name)                                                                            \
     struct EPIX_API name {                                                                              \
-        static std::atomic<std::uint64_t> counter;                                                       \
+        static std::atomic<std::uint64_t> counter;                                                      \
         static name create() noexcept { return name{counter.fetch_add(1, std::memory_order_relaxed)}; } \
         operator std::uint64_t() const noexcept { return id; }                                          \
         std::uint64_t id{0};                                                                            \
@@ -102,7 +101,8 @@ EPIX_EXPORT struct VertexState {
     auto&& set_buffers(this auto&& self, std::ranges::range auto&& buffers)
         requires std::convertible_to<std::ranges::range_value_t<decltype(buffers)>, ::epix::mesh::VertexBufferLayout>
     {
-        self.buffers = std::ranges::to<std::vector<::epix::mesh::VertexBufferLayout>>(std::forward<decltype(buffers)>(buffers));
+        self.buffers =
+            std::ranges::to<std::vector<::epix::mesh::VertexBufferLayout>>(std::forward<decltype(buffers)>(buffers));
         return std::forward<decltype(self)>(self);
     }
 };

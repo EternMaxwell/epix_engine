@@ -1,12 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <string>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 EPIX_EXPORT namespace epix::window {

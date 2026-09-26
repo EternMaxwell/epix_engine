@@ -15,8 +15,8 @@
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
 #include <epix/mesh.hpp>
-#include <epix/sprite_render.hpp>
 #include <epix/render.hpp>
+#include <epix/sprite_render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>

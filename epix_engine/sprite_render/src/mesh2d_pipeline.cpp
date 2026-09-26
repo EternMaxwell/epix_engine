@@ -1,8 +1,8 @@
+#include <spdlog/spdlog.h>
+
 #include <epix/core_graph.hpp>
 #include <epix/sprite_render/mesh2d.hpp>
 #include <epix/sprite_render/mesh2d_pipeline.hpp>
-
-#include <spdlog/spdlog.h>
 
 // `Mesh2dPipeline` must satisfy both batching concepts — this is the C4b
 // re-alignment, where the full-batch bound became `PodElement` rather than
@@ -246,14 +246,15 @@ void register_mesh2d_shader(ecs::World& world) {
     auto registry = world.get_resource_mut<assets::EmbeddedAssetRegistry>();
     auto server   = world.get_resource<assets::AssetServer>();
     if (!registry || !server) {
-        spdlog::warn("[sprite.mesh2d] EmbeddedAssetRegistry or AssetServer not available. Mesh2d shaders not registered.");
+        spdlog::warn(
+            "[sprite.mesh2d] EmbeddedAssetRegistry or AssetServer not available. Mesh2d shaders not registered.");
         return;
     }
     registry->get().insert_asset_static(kMesh2dShaderPath, shader_bytes(kMesh2dShader));
     registry->get().insert_asset_static(kMesh2dVertexOutputShaderPath, shader_bytes(kMesh2dVertexOutputShader));
     registry->get().insert_asset_static(kMesh2dViewBindingsShaderPath, shader_bytes(kMesh2dViewBindingsShader));
     world.insert_resource(Mesh2dShaderHandles{
-        .shader        = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dShaderPath)),
+        .shader = server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dShaderPath)),
         .vertex_output =
             server->get().load<shader::Shader>(std::string("embedded://") + std::string(kMesh2dVertexOutputShaderPath)),
         .view_bindings =
@@ -273,8 +274,7 @@ render::BindGroupLayoutDescriptor mesh2d_view_layout_descriptor() {
     auto lut           = core_graph::get_lut_bind_group_layout_entries();
     const auto entries = BindGroupLayoutEntries<>::sequential(
         wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment,
-        uniform_buffer(true, sizeof(render::view::ViewUniform)),
-        uniform_buffer(false, sizeof(render::GlobalsUniform)),
+        uniform_buffer(true, sizeof(render::view::ViewUniform)), uniform_buffer(false, sizeof(render::GlobalsUniform)),
         lut[0].visibility(wgpu::ShaderStage::eFragment), lut[1].visibility(wgpu::ShaderStage::eFragment));
     return render::BindGroupLayoutDescriptor().set_label("mesh2d_view_layout").set_entries(entries.entries());
 }
@@ -312,26 +312,24 @@ void init_mesh_2d_pipeline(ecs::Commands commands,
     wgpu::Limits limits{};
     device.get().getLimits(&limits);
     commands.insert_resource(Mesh2dPipeline{
-        .view_layout = mesh2d_view_layout_descriptor(),
-        .mesh_layout = mesh2d_mesh_layout_descriptor(limits),
-        .shader      = asset_server.get().load<shader::Shader>("embedded://sprite/mesh2d.slang"),
+        .view_layout                  = mesh2d_view_layout_descriptor(),
+        .mesh_layout                  = mesh2d_mesh_layout_descriptor(limits),
+        .shader                       = asset_server.get().load<shader::Shader>("embedded://sprite/mesh2d.slang"),
         .per_object_buffer_batch_size = mesh2d_per_object_buffer_batch_size(limits),
     });
 }
 
-void prepare_mesh2d_view_bind_groups(
-    ecs::Commands commands,
-    ecs::Res<render::PipelineServer> pipeline_server,
-    ecs::Res<wgpu::Device> device,
-    ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
-    ecs::Res<render::view::ViewUniforms> view_uniforms,
-    ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>,
-               ecs::With<render::view::ExtractedView, epix::camera::Camera2d>>
-        views,
-    ecs::Res<render::GlobalsBuffer> globals_buffer,
-    ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
-    ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
-    ecs::Res<render::texture::FallbackImage> fallback_image) {
+void prepare_mesh2d_view_bind_groups(ecs::Commands commands,
+                                     ecs::Res<render::PipelineServer> pipeline_server,
+                                     ecs::Res<wgpu::Device> device,
+                                     ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
+                                     ecs::Res<render::view::ViewUniforms> view_uniforms,
+                                     ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>,
+                                                ecs::With<render::view::ExtractedView, epix::camera::Camera2d>> views,
+                                     ecs::Res<render::GlobalsBuffer> globals_buffer,
+                                     ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
+                                     ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+                                     ecs::Res<render::texture::FallbackImage> fallback_image) {
     // Bevy `prepare_mesh2d_view_bind_groups` (mesh.rs:680-717): one bind group
     // per Camera2d view, from the mesh2d view layout's interned native layout.
     const auto view_binding    = view_uniforms->uniforms.binding();
@@ -358,12 +356,11 @@ void prepare_mesh2d_view_bind_groups(
     }
 }
 
-void prepare_mesh2d_bind_group(
-    ecs::Commands commands,
-    ecs::Res<render::PipelineServer> pipeline_server,
-    ecs::Res<wgpu::Device> device,
-    ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
-    ecs::Res<render::batching::BatchedInstanceBuffer<Mesh2dUniform>> mesh2d_uniforms) {
+void prepare_mesh2d_bind_group(ecs::Commands commands,
+                               ecs::Res<render::PipelineServer> pipeline_server,
+                               ecs::Res<wgpu::Device> device,
+                               ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
+                               ecs::Res<render::batching::BatchedInstanceBuffer<Mesh2dUniform>> mesh2d_uniforms) {
     // Bevy `prepare_mesh2d_bind_group` (mesh.rs:657-673): one bind group over
     // the shared instance buffer, inserted only while that buffer exists.
     const auto binding = mesh2d_uniforms->buffer.binding();
@@ -380,11 +377,8 @@ void prepare_mesh2d_bind_group(
                 // (`BindGroupEntry::size` is `uint64_t size{}`, and `setBuffer`
                 // only assigns the handle), so leaving it unset binds a
                 // zero-length buffer that wgpu rejects as `invalid size`.
-                .setEntries(std::array{wgpu::BindGroupEntry()
-                                           .setBinding(0)
-                                           .setBuffer(*binding)
-                                           .setOffset(0)
-                                           .setSize(binding->getSize())})),
+                .setEntries(std::array{wgpu::BindGroupEntry().setBinding(0).setBuffer(*binding).setOffset(0).setSize(
+                    binding->getSize())})),
     });
 }
 
@@ -433,7 +427,8 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
                 shader_defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_AGX"));
                 break;
             case Mesh2dPipelineKey::TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM:
-                shader_defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM"));
+                shader_defs.push_back(
+                    shader::ShaderDefVal::from_bool("TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM"));
                 break;
             case Mesh2dPipelineKey::TONEMAP_METHOD_BLENDER_FILMIC:
                 shader_defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_BLENDER_FILMIC"));
@@ -496,9 +491,9 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
     fragment_state.set_entry_point("fragment");
 
     return render::RenderPipelineDescriptor{
-        .label  = blend_alpha ? "transparent_mesh2d_pipeline" : "opaque_mesh2d_pipeline",
-        .layouts = std::vector<render::BindGroupLayoutDescriptor>{view_layout, mesh_layout},
-        .vertex  = std::move(vertex_state),
+        .label     = blend_alpha ? "transparent_mesh2d_pipeline" : "opaque_mesh2d_pipeline",
+        .layouts   = std::vector<render::BindGroupLayoutDescriptor>{view_layout, mesh_layout},
+        .vertex    = std::move(vertex_state),
         .primitive = wgpu::PrimitiveState()
                          .setTopology(key.primitive_topology())
                          .setFrontFace(wgpu::FrontFace::eCCW)
@@ -506,8 +501,7 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
         // Core2D clears the reverse-Z depth buffer to 0, so greater-equal.
         .depth_stencil = wgpu::DepthStencilState()
                              .setFormat(core_graph::core_2d::CORE_2D_DEPTH_FORMAT)
-                             .setDepthWriteEnabled(blend_alpha ? wgpu::OptionalBool::eFalse
-                                                               : wgpu::OptionalBool::eTrue)
+                             .setDepthWriteEnabled(blend_alpha ? wgpu::OptionalBool::eFalse : wgpu::OptionalBool::eTrue)
                              .setDepthCompare(wgpu::CompareFunction::eGreaterEqual)
                              // Bevy's `StencilState::IGNORE`. Written explicitly
                              // because this wrapper zero-initializes these fields
@@ -531,18 +525,18 @@ std::expected<render::RenderPipelineDescriptor, render::SpecializedMeshPipelineE
         .fragment = std::move(fragment_state),
     };
 }
-void check_views_need_specialization(
-    ecs::ResMut<ViewKeyCache> view_key_cache,
-    ecs::ResMut<ViewSpecializationTicks> view_specialization_ticks,
-    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
-                         const render::view::Msaa&, ecs::Opt<const core_graph::Tonemapping&>,
-                         ecs::Opt<const core_graph::DebandDither&>>>
-        views,
-    ecs::SystemChangeTick ticks) {
+void check_views_need_specialization(ecs::ResMut<ViewKeyCache> view_key_cache,
+                                     ecs::ResMut<ViewSpecializationTicks> view_specialization_ticks,
+                                     ecs::Query<ecs::Item<const render::sync_world::MainEntity&,
+                                                          const render::view::ExtractedView&,
+                                                          const render::view::Msaa&,
+                                                          ecs::Opt<const core_graph::Tonemapping&>,
+                                                          ecs::Opt<const core_graph::DebandDither&>>> views,
+                                     ecs::SystemChangeTick ticks) {
     // Bevy `check_views_need_specialization` (mesh.rs:122-156).
     for (auto&& [view_entity, view, msaa, tonemapping, dither] : views.iter()) {
-        std::uint32_t bits = Mesh2dPipelineKey::from_msaa_samples(samples(msaa)).bits() |
-                             Mesh2dPipelineKey::from_hdr(view.hdr).bits();
+        std::uint32_t bits =
+            Mesh2dPipelineKey::from_msaa_samples(samples(msaa)).bits() | Mesh2dPipelineKey::from_hdr(view.hdr).bits();
 
         if (!view.hdr) {
             if (tonemapping) {
@@ -595,31 +589,26 @@ void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
                            into(init_mesh_2d_pipeline, init_batched_instance_buffer)
                                .set_names(std::array{"init mesh 2d pipeline", "init batched instance buffer"}));
         render.add_systems(render::ExtractSchedule, into(extract_mesh2d).set_name("extract mesh2d"));
+        render.add_systems(render::Render, into(check_views_need_specialization)
+                                               .in_set(render::RenderSystems::PrepareAssets)
+                                               .set_name("check views need specialization"));
+        render.add_systems(render::Render, into(render::phase::sweep_old_entities<core_graph::core_2d::Opaque2D>,
+                                                render::phase::sweep_old_entities<core_graph::core_2d::AlphaMask2D>)
+                                               .in_set(render::RenderSystems::QueueSweep)
+                                               .set_name("sweep old mesh2d entities"));
         render.add_systems(
             render::Render,
-            into(check_views_need_specialization)
-                .in_set(render::RenderSystems::PrepareAssets)
-                .set_name("check views need specialization"));
-        render.add_systems(render::Render,
-                           into(render::phase::sweep_old_entities<core_graph::core_2d::Opaque2D>,
-                                render::phase::sweep_old_entities<core_graph::core_2d::AlphaMask2D>)
-                               .in_set(render::RenderSystems::QueueSweep)
-                               .set_name("sweep old mesh2d entities"));
-        render.add_systems(render::Render,
-                           into(render::batching::batch_and_prepare_binned_render_phase<core_graph::core_2d::Opaque2D,
-                                                                                       Mesh2dPipeline>)
-                               .in_set(render::RenderSystems::PrepareResources)
-                               .set_name("batch opaque mesh2d"));
-        render.add_systems(render::Render,
-                           into(render::batching::batch_and_prepare_binned_render_phase<core_graph::core_2d::AlphaMask2D,
-                                                                                       Mesh2dPipeline>)
-                               .in_set(render::RenderSystems::PrepareResources)
-                               .set_name("batch alpha-mask mesh2d"));
-        render.add_systems(render::Render,
-                           into(render::batching::batch_and_prepare_sorted_render_phase<core_graph::core_2d::Transparent2D,
-                                                                                       Mesh2dPipeline>)
-                               .in_set(render::RenderSystems::PrepareResources)
-                               .set_name("batch transparent mesh2d"));
+            into(render::batching::batch_and_prepare_binned_render_phase<core_graph::core_2d::Opaque2D, Mesh2dPipeline>)
+                .in_set(render::RenderSystems::PrepareResources)
+                .set_name("batch opaque mesh2d"));
+        render.add_systems(render::Render, into(render::batching::batch_and_prepare_binned_render_phase<
+                                                    core_graph::core_2d::AlphaMask2D, Mesh2dPipeline>)
+                                               .in_set(render::RenderSystems::PrepareResources)
+                                               .set_name("batch alpha-mask mesh2d"));
+        render.add_systems(render::Render, into(render::batching::batch_and_prepare_sorted_render_phase<
+                                                    core_graph::core_2d::Transparent2D, Mesh2dPipeline>)
+                                               .in_set(render::RenderSystems::PrepareResources)
+                                               .set_name("batch transparent mesh2d"));
         // Bevy `Mesh2dRenderPlugin::build` (mesh.rs:103-104) registers
         // `no_gpu_preprocessing::write_batched_instance_buffer::<Mesh2dPipeline>`
         // here, once for every phase that shares `Mesh2dUniform`. mesh2d uses
@@ -627,21 +616,18 @@ void Mesh2dRenderPlugin::attach_mesh2d_pipeline(app::App& app) {
         // `core2d.cpp`), so the *CPU* instance buffer is the one
         // `prepare_mesh2d_bind_group` binds, and Bevy does not register the
         // GPU-preprocessing writer for this pipeline at all.
-        render.add_systems(render::Render,
-                           into(render::batching::write_batched_cpu_instance_buffer<Mesh2dPipeline>)
-                               .in_set(render::RenderSystems::PrepareResourcesFlush)
-                               .set_name("write batched instance buffer"));
-        render.add_systems(render::Render,
-                           into(prepare_mesh2d_bind_group, prepare_mesh2d_view_bind_groups)
-                               .in_set(render::RenderSystems::PrepareBindGroups)
-                               .set_name("prepare mesh2d bind groups"));
+        render.add_systems(render::Render, into(render::batching::write_batched_cpu_instance_buffer<Mesh2dPipeline>)
+                                               .in_set(render::RenderSystems::PrepareResourcesFlush)
+                                               .set_name("write batched instance buffer"));
+        render.add_systems(render::Render, into(prepare_mesh2d_bind_group, prepare_mesh2d_view_bind_groups)
+                                               .in_set(render::RenderSystems::PrepareBindGroups)
+                                               .set_name("prepare mesh2d bind groups"));
         // Bevy mesh.rs:107-109: the shared CPU instance buffer is cleared once
         // per frame, after the render graph has consumed it.
-        render.add_systems(render::Render,
-                           into(render::batching::clear_batched_cpu_instance_buffers<Mesh2dPipeline>)
-                               .in_set(render::RenderSystems::Cleanup)
-                               .after(render::RenderSystems::Render)
-                               .set_name("clear batched cpu instance buffers"));
+        render.add_systems(render::Render, into(render::batching::clear_batched_cpu_instance_buffers<Mesh2dPipeline>)
+                                               .in_set(render::RenderSystems::Cleanup)
+                                               .after(render::RenderSystems::Render)
+                                               .set_name("clear batched cpu instance buffers"));
     }
 }
 

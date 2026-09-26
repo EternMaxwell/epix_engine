@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <memory>
@@ -14,7 +14,6 @@
 #include <tuple>
 #include <type_traits>
 #include <utility>
-#include <epix/utils.hpp>
 #endif
 
 #include <epix/extension/grid/concepts.hpp>

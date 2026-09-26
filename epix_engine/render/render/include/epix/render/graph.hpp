@@ -1,10 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <array>
 #include <concepts>
+#include <epix/common.hpp>
 #include <expected>
 #include <functional>
 #include <optional>
@@ -14,7 +15,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/graph/context.hpp>
@@ -98,10 +98,8 @@ EPIX_EXPORT struct EPIX_API RenderGraph {
                 continue;
             }
             // Bevy ignores duplicates but panics for every other setup error.
-            throw std::runtime_error(std::format("Failed to add node edge {} -> {}: {}",
-                                                 node.type_index().short_name(),
-                                                 next_node.type_index().short_name(),
-                                                 res.error().to_string()));
+            throw std::runtime_error(std::format("Failed to add node edge {} -> {}: {}", node.type_index().short_name(),
+                                                 next_node.type_index().short_name(), res.error().to_string()));
         }
     }
 

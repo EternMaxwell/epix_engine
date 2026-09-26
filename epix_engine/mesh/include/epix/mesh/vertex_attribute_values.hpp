@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <expected>
 #include <glm/glm.hpp>
@@ -18,7 +18,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::mesh {

@@ -1,7 +1,7 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <memory>
@@ -9,7 +9,6 @@
 #include <optional>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/blit.hpp>
 

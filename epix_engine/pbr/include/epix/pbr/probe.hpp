@@ -2,10 +2,10 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {

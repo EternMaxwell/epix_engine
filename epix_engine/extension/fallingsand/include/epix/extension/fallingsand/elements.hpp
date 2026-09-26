@@ -1,19 +1,18 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <glm/glm.hpp>
 #endif
 
 #include <epix/extension/fallingsand/temperature.hpp>

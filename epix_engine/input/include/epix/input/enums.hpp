@@ -1,11 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <functional>
 #include <string_view>
-#include <epix/common.hpp>
 #endif
 
 EPIX_EXPORT namespace epix::input {

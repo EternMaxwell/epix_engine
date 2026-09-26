@@ -1,5 +1,3 @@
-#include <epix/sprite_render/tilemap_chunk.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -7,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/sprite_render/tilemap_chunk.hpp>
 #include <expected>
 #include <limits>
 #include <optional>
@@ -126,7 +125,7 @@ epix::sprite_render::PackedTileData::PackedTileData(const std::optional<TileData
 }
 
 epix::image::Image epix::sprite_render::make_chunk_tile_data_image(glm::uvec2 size,
-                                                                  std::span<const PackedTileData> data) {
+                                                                   std::span<const PackedTileData> data) {
     // Bevy casts the packed slice straight into the image's byte payload.
     std::vector<std::byte> bytes(data.size() * sizeof(PackedTileData));
     std::memcpy(bytes.data(), data.data(), bytes.size());
@@ -146,8 +145,7 @@ epix::image::Image epix::sprite_render::make_chunk_tile_data_image(glm::uvec2 si
 void epix::sprite_render::TilemapChunkMaterialPlugin::attach(epix::app::App& app) {
     // Bevy's `embedded_asset!(app, "tilemap_chunk_material.wgsl")`.
     if (auto registry = app.world_mut().get_resource_mut<epix::assets::EmbeddedAssetRegistry>()) {
-        registry->get().insert_asset_static(kTilemapChunkMaterialShaderPath,
-                                            shader_bytes(kTilemapChunkMaterialShader));
+        registry->get().insert_asset_static(kTilemapChunkMaterialShaderPath, shader_bytes(kTilemapChunkMaterialShader));
     } else {
         spdlog::warn("[tilemap] EmbeddedAssetRegistry not available. Shader not registered.");
     }

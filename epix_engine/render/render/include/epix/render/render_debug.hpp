@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/common.hpp>

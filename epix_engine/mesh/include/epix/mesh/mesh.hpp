@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <cassert>
@@ -11,6 +11,7 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets/render_asset_usages.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/transform.hpp>
@@ -32,7 +33,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/mesh/direction.hpp>
 #include <epix/mesh/vertex_attribute_values.hpp>
@@ -1127,9 +1127,9 @@ EPIX_EXPORT EPIX_API Mesh make_circle(float radius,
 EPIX_EXPORT EPIX_API Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
 /** @brief Create a box mesh on the XY plane with UV coordinates. */
 EPIX_EXPORT EPIX_API Mesh make_box2d_uv(float width,
-                                       float height,
-                                       glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
-                                       std::optional<glm::vec4> vertex_color = std::nullopt);
+                                        float height,
+                                        glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                                        std::optional<glm::vec4> vertex_color = std::nullopt);
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
 EPIX_EXPORT struct EPIX_API MeshPlugin {

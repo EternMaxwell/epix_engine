@@ -173,8 +173,8 @@ void Mesh::write_packed_vertex_buffer_data(std::span<std::uint8_t> slice) const 
     for (const auto& [attribute, values] : attributes()) {
         const auto attribute_size = vertex_format_size(attribute.format);
         const auto bytes          = values.get_bytes();
-        const auto written        = attribute_size == 0 ? std::size_t{0}
-                                                        : std::min(vertex_count, bytes.size() / attribute_size);
+        const auto written =
+            attribute_size == 0 ? std::size_t{0} : std::min(vertex_count, bytes.size() / attribute_size);
         for (std::size_t vertex_index = 0; vertex_index < written; ++vertex_index) {
             const auto offset = vertex_index * vertex_size + attribute_offset;
             std::memcpy(slice.data() + offset, bytes.data() + vertex_index * attribute_size, attribute_size);
@@ -822,7 +822,7 @@ void Mesh::compute_normals() {
 
 std::expected<void, MeshAccessError> Mesh::try_compute_normals() {
     detail::assert_precondition(primitive_type == wgpu::PrimitiveTopology::eTriangleList,
-                        "`compute_normals` can only work on `TriangleList`s");
+                                "`compute_normals` can only work on `TriangleList`s");
     auto stored_indices = try_indices_option();
     if (!stored_indices) return std::unexpected(stored_indices.error());
     if (!stored_indices->has_value()) return try_compute_flat_normals();
@@ -838,17 +838,17 @@ std::expected<void, MeshAccessError> Mesh::try_compute_flat_normals() {
     auto stored_indices = try_indices_option();
     if (!stored_indices) return std::unexpected(stored_indices.error());
     detail::assert_precondition(!stored_indices->has_value(),
-                        "`compute_flat_normals` can't work on indexed geometry. Consider calling either "
-                        "`Mesh::compute_smooth_normals` or `Mesh::duplicate_vertices` followed by "
-                        "`Mesh::compute_flat_normals`.");
+                                "`compute_flat_normals` can't work on indexed geometry. Consider calling either "
+                                "`Mesh::compute_smooth_normals` or `Mesh::duplicate_vertices` followed by "
+                                "`Mesh::compute_flat_normals`.");
     detail::assert_precondition(primitive_type == wgpu::PrimitiveTopology::eTriangleList,
-                        "`compute_flat_normals` can only work on `TriangleList`s");
+                                "`compute_flat_normals` can only work on `TriangleList`s");
 
     auto position_data = try_attribute(Mesh::ATTRIBUTE_POSITION);
     if (!position_data) return std::unexpected(position_data.error());
     const auto* positions = position_data->get().as_float3();
     detail::assert_precondition(positions != nullptr,
-                        "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
+                                "`Mesh::ATTRIBUTE_POSITION` vertex attributes should be of type `float3`");
 
     // One normal per face, repeated for that face's three vertices.
     std::vector<glm::vec3> normals;

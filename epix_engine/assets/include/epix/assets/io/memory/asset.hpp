@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -11,7 +11,6 @@
 #include <memory>
 #include <stdexec/execution.hpp>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/memory.hpp>

@@ -1,5 +1,3 @@
-#include <epix/image/texture_atlas.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -7,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <epix/image/detail/rectangle_pack.hpp>
+#include <epix/image/texture_atlas.hpp>
 #include <map>
 #include <optional>
 #include <stdexcept>
@@ -106,9 +105,9 @@ std::expected<void, DynamicTextureAtlasBuilderError> DynamicTextureAtlasBuilder:
     detail::AtlasRectangle rect = allocation.rectangle;
     rect.max.x -= static_cast<std::int32_t>(padding);
     rect.max.y -= static_cast<std::int32_t>(padding);
-    const auto atlas_width     = static_cast<std::size_t>(atlas_texture.width());
-    const auto rect_width      = static_cast<std::size_t>(rect.width());
-    const auto format_size     = texture_format_pixel_size(atlas_texture.texture_format());
+    const auto atlas_width = static_cast<std::size_t>(atlas_texture.width());
+    const auto rect_width  = static_cast<std::size_t>(rect.width());
+    const auto format_size = texture_format_pixel_size(atlas_texture.texture_format());
     if (!format_size) {
         return std::unexpected(DynamicTextureAtlasBuilderError{format_size.error()});
     }

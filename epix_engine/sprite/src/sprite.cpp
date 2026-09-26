@@ -1,7 +1,6 @@
-#include <epix/sprite.hpp>
-
 #include <spdlog/spdlog.h>
 
+#include <epix/sprite.hpp>
 #include <utility>
 
 using namespace epix;
@@ -71,8 +70,8 @@ std::expected<glm::vec2, glm::vec2> sprite::Sprite::compute_pixel_space_point(
         image_size = glm::uvec2(source->get().width(), source->get().height());
     }
 
-    auto atlas_rect = texture_atlas.and_then(
-        [&](const image::TextureAtlas& atlas) { return atlas.texture_rect(texture_atlases); });
+    auto atlas_rect =
+        texture_atlas.and_then([&](const image::TextureAtlas& atlas) { return atlas.texture_rect(texture_atlases); });
     image::Rect texture_rect;
     if (atlas_rect) {
         texture_rect = atlas_rect->as_rect();
@@ -130,14 +129,12 @@ void sprite::calculate_bounds_2d(
     Res<assets::Assets<image::Image>> images,
     Res<assets::Assets<image::TextureAtlasLayout>> atlases,
     Query<Item<Entity, const mesh::Mesh2d&>,
-          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>, Without<camera::NoAutoAabb>>>
-        new_mesh_aabb,
+          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>, Without<camera::NoAutoAabb>>> new_mesh_aabb,
     Query<Item<Ref<mesh::Mesh2d>, Mut<camera::Aabb>>,
           Filter<Or<assets::AssetChanged<mesh::Mesh2d>, Modified<mesh::Mesh2d>>,
                  Without<camera::NoFrustumCulling>,
                  Without<camera::NoAutoAabb>,
-                 Without<Sprite>>>
-        update_mesh_aabb,
+                 Without<Sprite>>> update_mesh_aabb,
     Query<Item<Entity, const Sprite&, const Anchor&>,
           Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>, Without<camera::NoAutoAabb>>>
         new_sprite_aabb,
@@ -145,8 +142,7 @@ void sprite::calculate_bounds_2d(
           Filter<Or<Modified<Sprite>, Modified<Anchor>>,
                  Without<camera::NoFrustumCulling>,
                  Without<camera::NoAutoAabb>,
-                 Without<mesh::Mesh2d>>>
-        update_sprite_aabb) {
+                 Without<mesh::Mesh2d>>> update_sprite_aabb) {
     for (auto&& [entity, mesh2d] : new_mesh_aabb.iter()) {
         if (const auto mesh_asset = meshes->get(mesh2d.handle.id())) {
             if (const auto aabb = camera::MeshAabb<mesh::Mesh>::compute_aabb(mesh_asset->get())) {

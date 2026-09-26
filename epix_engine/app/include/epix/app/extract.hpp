@@ -57,10 +57,11 @@ struct epix::ecs::SystemParam<epix::app::Extract<T>> : epix::ecs::SystemParam<T>
         return State{
             .source          = Base::init_state(source_world),
             .extracted_world = extracted_world,
-            .source_meta     = SystemMeta{
-                .name     = std::string(meta::type_id<T>().short_name()),
-                .last_run = source_world.change_tick().relative_to(Tick::max()),
-            },
+            .source_meta =
+                SystemMeta{
+                    .name     = std::string(meta::type_id<T>().short_name()),
+                    .last_run = source_world.change_tick().relative_to(Tick::max()),
+                },
         };
     }
     static void init_access(const State& state, SystemMeta& meta, FilteredAccessSet& access, const World& world) {
@@ -79,9 +80,9 @@ struct epix::ecs::SystemParam<epix::app::Extract<T>> : epix::ecs::SystemParam<T>
         return Base::validate_param(state.source, state.source_meta, world.resource_mut<ExtractedWorld>().world);
     }
     static Item get_param(State& state, const SystemMeta& meta, World& world, Tick tick) {
-        auto& extracted_world = world.resource_mut<ExtractedWorld>().world.get();
-        const Tick source_tick = extracted_world.increment_change_tick();
-        auto item = Base::get_param(state.source, state.source_meta, extracted_world, source_tick);
+        auto& extracted_world      = world.resource_mut<ExtractedWorld>().world.get();
+        const Tick source_tick     = extracted_world.increment_change_tick();
+        auto item                  = Base::get_param(state.source, state.source_meta, extracted_world, source_tick);
         state.source_meta.last_run = source_tick;
         return Item(std::move(item));
     }

@@ -326,7 +326,7 @@ struct ParamSet {
     /** @brief Fetch member `I` and invoke `func` with it. The item is only
      *  valid inside the callback, mirroring one `p0()`/`p1()` borrow in Bevy. */
     template <std::size_t I, typename F>
-        requires (I < sizeof...(Ts))
+        requires(I < sizeof...(Ts))
     decltype(auto) get(F&& func) {
         using member = internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>;
         auto item    = member::fetch(std::get<I>(*states_), *meta_, *world_, change_tick_);
@@ -335,8 +335,7 @@ struct ParamSet {
     /** @brief Fetch member `I` of a const `ParamSet` and invoke `func` with it.
      *  Only read-only parameters can be fetched through a const handle. */
     template <std::size_t I, typename F>
-        requires (I < sizeof...(Ts)) &&
-                 internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>::readonly
+        requires(I < sizeof...(Ts)) && internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>::readonly
     decltype(auto) get(F&& func) const {
         using member = internal::ParamSetMember<std::tuple_element_t<I, std::tuple<Ts...>>>;
         auto item    = member::fetch(std::get<I>(*states_), *meta_, const_cast<World&>(*world_), change_tick_);

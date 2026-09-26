@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/camera.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::texture {
@@ -26,7 +25,7 @@ struct ManualTextureView {
 
     /** @brief Construct a view using Bevy's default sRGB texture format. */
     [[nodiscard]] static ManualTextureView with_default_format(wgpu::TextureView texture_view,
-                                                                glm::uvec2 size) noexcept {
+                                                               glm::uvec2 size) noexcept {
         return ManualTextureView{
             .texture_view = std::move(texture_view),
             .size         = size,

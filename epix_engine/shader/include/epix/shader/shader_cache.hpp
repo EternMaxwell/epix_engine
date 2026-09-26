@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/utils.hpp>
 #include <expected>
@@ -18,7 +18,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/shader/shader.hpp>
 #include <epix/shader/shader_composer.hpp>

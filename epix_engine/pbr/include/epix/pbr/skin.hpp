@@ -3,13 +3,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
 #include <epix/render/sync_world.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -21,7 +21,6 @@ namespace epix::pbr {
  *  `extract_skins` - lands with the skinning port; this is what the mesh bind
  *  group layouts need from it. */
 EPIX_EXPORT inline constexpr std::size_t MAX_JOINTS = 256;
-
 
 /** @brief The total number of joints supported across the scene (Bevy
  *  `MAX_TOTAL_JOINTS`, `render/skin.rs:38`): the capacity the joint buffer is
@@ -120,26 +119,22 @@ EPIX_EXPORT struct SkinUniforms {
      *  SkinUniforms`, `render/skin.rs:119-154`), which Bevy also uses to decide
      *  the buffers' usage from `skins_use_uniform_buffers`. */
     static SkinUniforms make(const wgpu::Device& render_device, const wgpu::Limits& limits) {
-        const wgpu::BufferUsage usage =
-            (::epix::pbr::skins_use_uniform_buffers(limits) ? wgpu::BufferUsage::eUniform : wgpu::BufferUsage::eStorage) |
-            wgpu::BufferUsage::eCopyDst;
-        const std::uint64_t size = static_cast<std::uint64_t>(MAX_JOINTS) * sizeof(glm::mat4);
+        const wgpu::BufferUsage usage = (::epix::pbr::skins_use_uniform_buffers(limits) ? wgpu::BufferUsage::eUniform
+                                                                                        : wgpu::BufferUsage::eStorage) |
+                                        wgpu::BufferUsage::eCopyDst;
+        const std::uint64_t size      = static_cast<std::uint64_t>(MAX_JOINTS) * sizeof(glm::mat4);
         // Aggregate initialization: the allocator has no default constructor, so
         // every member is named.
         return SkinUniforms{
             .current_staging_buffer = {},
-            .current_buffer         = render_device.createBuffer(wgpu::BufferDescriptor()
-                                                             .setLabel("skin uniform buffer")
-                                                             .setSize(size)
-                                                             .setUsage(usage)),
-            .prev_buffer            = render_device.createBuffer(wgpu::BufferDescriptor()
-                                                          .setLabel("skin uniform buffer")
-                                                          .setSize(size)
-                                                          .setUsage(usage)),
-            .allocator              = render::mesh::offset_allocator::Allocator(MAX_TOTAL_JOINTS),
-            .skin_uniform_info      = {},
-            .joint_to_skins         = {},
-            .total_joints           = 0,
+            .current_buffer         = render_device.createBuffer(
+                wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(size).setUsage(usage)),
+            .prev_buffer = render_device.createBuffer(
+                wgpu::BufferDescriptor().setLabel("skin uniform buffer").setSize(size).setUsage(usage)),
+            .allocator         = render::mesh::offset_allocator::Allocator(MAX_TOTAL_JOINTS),
+            .skin_uniform_info = {},
+            .joint_to_skins    = {},
+            .total_joints      = 0,
         };
     }
 

@@ -1,8 +1,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include <epix/core_graph.hpp>
 #include <array>
+#include <epix/core_graph.hpp>
 #include <optional>
 #include <unordered_set>
 using namespace epix::render;
@@ -23,8 +23,7 @@ void epix::core_graph::core_2d::extract_core_2d_camera_phases(
             ::epix::render::sync_world::MainEntity{entity}, std::nullopt, 0);
         transparent_phases->insert_or_clear(retained_view);
         opaque_phases->prepare_for_new_frame(retained_view, ::epix::render::batching::GpuPreprocessingMode::None);
-        alpha_mask_phases->prepare_for_new_frame(retained_view,
-                                                 ::epix::render::batching::GpuPreprocessingMode::None);
+        alpha_mask_phases->prepare_for_new_frame(retained_view, ::epix::render::batching::GpuPreprocessingMode::None);
         live_views->insert(retained_view);
     }
     const auto remove_dead_views = [&live_views](const auto& entry) { return !live_views->contains(entry.first); };
@@ -33,108 +32,103 @@ void epix::core_graph::core_2d::extract_core_2d_camera_phases(
     std::erase_if(alpha_mask_phases->phases, remove_dead_views);
 }
 
-std::expected<void, graph::NodeRunError> MainOpaquePass2DNode::run(
-    graph::GraphContext& graph,
-    graph::RenderContext& render_context,
-    typename ecs::QueryData<ViewQuery>::Item view,
-    const World& world) const {
+std::expected<void, graph::NodeRunError> MainOpaquePass2DNode::run(graph::GraphContext& graph,
+                                                                   graph::RenderContext& render_context,
+                                                                   typename ecs::QueryData<ViewQuery>::Item view,
+                                                                   const World& world) const {
     auto&& [camera, extracted_view, target, depth] = view;
-    const auto opaque_phases = world.get_resource<phase::ViewBinnedRenderPhases<Opaque2D>>();
-    const auto alpha_mask_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask2D>>();
+    const auto opaque_phases                       = world.get_resource<phase::ViewBinnedRenderPhases<Opaque2D>>();
+    const auto alpha_mask_phases                   = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask2D>>();
     if (!opaque_phases || !alpha_mask_phases) return {};
 
-    const auto opaque_phase = opaque_phases->get().phases.find(extracted_view.retained_view_entity);
+    const auto opaque_phase     = opaque_phases->get().phases.find(extracted_view.retained_view_entity);
     const auto alpha_mask_phase = alpha_mask_phases->get().phases.find(extracted_view.retained_view_entity);
-    if (opaque_phase == opaque_phases->get().phases.end() || alpha_mask_phase == alpha_mask_phases->get().phases.end()) {
+    if (opaque_phase == opaque_phases->get().phases.end() ||
+        alpha_mask_phase == alpha_mask_phases->get().phases.end()) {
         return {};
     }
 
-    const auto color_attachments = std::array{target.get_color_attachment()};
-    const auto depth_attachment = depth.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport = camera.viewport;
-    const auto view_entity = graph.view_entity();
-    const auto* world_ptr = std::addressof(world);
-    const auto* opaque_phase_ptr = std::addressof(opaque_phase->second);
+    const auto color_attachments     = std::array{target.get_color_attachment()};
+    const auto depth_attachment      = depth.get_attachment(wgpu::StoreOp::eStore);
+    const auto viewport              = camera.viewport;
+    const auto view_entity           = graph.view_entity();
+    const auto* world_ptr            = std::addressof(world);
+    const auto* opaque_phase_ptr     = std::addressof(opaque_phase->second);
     const auto* alpha_mask_phase_ptr = std::addressof(alpha_mask_phase->second);
-    render_context.add_command_buffer_generation_task(
-        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_phase_ptr,
-         alpha_mask_phase_ptr](wgpu::Device device) {
-            auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("main_opaque_pass_2d"));
-            auto render_pass = encoder.beginRenderPass(
-                wgpu::RenderPassDescriptor()
-                    .setLabel("main_opaque_pass_2d")
-                    .setColorAttachments(color_attachments)
-                    .setDepthStencilAttachment(depth_attachment));
-            if (viewport) {
-                const auto& vp = *viewport;
-                render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                        static_cast<float>(vp.physical_position.y),
-                                        static_cast<float>(vp.physical_size.x),
-                                        static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, viewport, view_entity,
+                                                       world_ptr, opaque_phase_ptr,
+                                                       alpha_mask_phase_ptr](wgpu::Device device) {
+        auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("main_opaque_pass_2d"));
+        auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                       .setLabel("main_opaque_pass_2d")
+                                                       .setColorAttachments(color_attachments)
+                                                       .setDepthStencilAttachment(depth_attachment));
+        if (viewport) {
+            const auto& vp = *viewport;
+            render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                    static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
+                                    static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+        }
+        if (!opaque_phase_ptr->is_empty()) {
+            // Bevy logs the phase's error inside its own deferred pass node and
+            // lets the pass finish (main_opaque_pass_2d_node.rs:85-87); the
+            // error cannot leave a command-buffer generation task.
+            if (auto result = opaque_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                spdlog::error("Error encountered while rendering the 2d opaque phase {}",
+                              phase::to_string(result.error()));
             }
-            if (!opaque_phase_ptr->is_empty()) {
-                // Bevy logs the phase's error inside its own deferred pass node and
-                // lets the pass finish (main_opaque_pass_2d_node.rs:85-87); the
-                // error cannot leave a command-buffer generation task.
-                if (auto result = opaque_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                    spdlog::error("Error encountered while rendering the 2d opaque phase {}",
-                                  phase::to_string(result.error()));
-                }
+        }
+        if (!alpha_mask_phase_ptr->is_empty()) {
+            if (auto result = alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                spdlog::error("Error encountered while rendering the 2d alpha mask phase {}",
+                              phase::to_string(result.error()));
             }
-            if (!alpha_mask_phase_ptr->is_empty()) {
-                if (auto result = alpha_mask_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                    spdlog::error("Error encountered while rendering the 2d alpha mask phase {}",
-                                  phase::to_string(result.error()));
-                }
-            }
-            render_pass.end();
-            return encoder.finish();
-        });
+        }
+        render_pass.end();
+        return encoder.finish();
+    });
     return {};
 }
 
-std::expected<void, graph::NodeRunError> MainTransparentPass2DNode::run(
-    graph::GraphContext& graph,
-    graph::RenderContext& render_context,
-    typename ecs::QueryData<ViewQuery>::Item view,
-    const World& world) const {
+std::expected<void, graph::NodeRunError> MainTransparentPass2DNode::run(graph::GraphContext& graph,
+                                                                        graph::RenderContext& render_context,
+                                                                        typename ecs::QueryData<ViewQuery>::Item view,
+                                                                        const World& world) const {
     auto&& [camera, extracted_view, target, depth] = view;
-    const auto transparent_phases = world.get_resource<phase::ViewSortedRenderPhases<Transparent2D>>();
+    const auto transparent_phases                  = world.get_resource<phase::ViewSortedRenderPhases<Transparent2D>>();
     if (!transparent_phases) return {};
     const auto transparent_phase = transparent_phases->get().find(extracted_view.retained_view_entity);
     if (transparent_phase == transparent_phases->get().end()) return {};
 
-    const auto color_attachments = std::array{target.get_color_attachment()};
-    const auto depth_attachment = depth.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport = camera.viewport;
-    const auto view_entity = graph.view_entity();
-    const auto* world_ptr = std::addressof(world);
+    const auto color_attachments      = std::array{target.get_color_attachment()};
+    const auto depth_attachment       = depth.get_attachment(wgpu::StoreOp::eStore);
+    const auto viewport               = camera.viewport;
+    const auto view_entity            = graph.view_entity();
+    const auto* world_ptr             = std::addressof(world);
     const auto* transparent_phase_ptr = std::addressof(transparent_phase->second);
-    render_context.add_command_buffer_generation_task(
-        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, transparent_phase_ptr](wgpu::Device device) {
-            auto encoder =
-                device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("main_transparent_pass_2d"));
-            auto render_pass = encoder.beginRenderPass(
-                wgpu::RenderPassDescriptor()
-                    .setLabel("main_transparent_pass_2d")
-                    .setColorAttachments(color_attachments)
-                    .setDepthStencilAttachment(depth_attachment));
-            if (viewport) {
-                const auto& vp = *viewport;
-                render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                        static_cast<float>(vp.physical_position.y),
-                                        static_cast<float>(vp.physical_size.x),
-                                        static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+    render_context.add_command_buffer_generation_task([color_attachments, depth_attachment, viewport, view_entity,
+                                                       world_ptr, transparent_phase_ptr](wgpu::Device device) {
+        auto encoder =
+            device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("main_transparent_pass_2d"));
+        auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                       .setLabel("main_transparent_pass_2d")
+                                                       .setColorAttachments(color_attachments)
+                                                       .setDepthStencilAttachment(depth_attachment));
+        if (viewport) {
+            const auto& vp = *viewport;
+            render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                    static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
+                                    static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+        }
+        if (!transparent_phase_ptr->items.empty()) {
+            if (auto result = transparent_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                spdlog::error("Error encountered while rendering the transparent 2D phase {}",
+                              phase::to_string(result.error()));
             }
-            if (!transparent_phase_ptr->items.empty()) {
-                if (auto result = transparent_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                    spdlog::error("Error encountered while rendering the transparent 2D phase {}",
-                                  phase::to_string(result.error()));
-                }
-            }
-            render_pass.end();
-            return encoder.finish();
-        });
+        }
+        render_pass.end();
+        return encoder.finish();
+    });
     return {};
 }
 
@@ -153,9 +147,9 @@ void Core2dGraph::add_to(graph::RenderGraph& g, World& world) {
     g2d.add_node(Node2d::Tonemapping, graph::ViewNodeRunner{TonemappingNode{}, world});
     g2d.add_node(Node2d::EndMainPassPostProcessing, graph::EmptyNode{});
     g2d.add_node(Node2d::Upscaling, graph::ViewNodeRunner{UpscalingNode{}, world});
-    g2d.add_node_edges(Node2d::StartMainPass, Node2d::MainOpaquePass, Node2d::MainTransparentPass,
-                       Node2d::EndMainPass, Node2d::StartMainPassPostProcessing,
-                       Node2d::Tonemapping, Node2d::EndMainPassPostProcessing, Node2d::Upscaling);
+    g2d.add_node_edges(Node2d::StartMainPass, Node2d::MainOpaquePass, Node2d::MainTransparentPass, Node2d::EndMainPass,
+                       Node2d::StartMainPassPostProcessing, Node2d::Tonemapping, Node2d::EndMainPassPostProcessing,
+                       Node2d::Upscaling);
     g.add_sub_graph(Core2d, std::move(g2d));
 }
 
@@ -168,7 +162,8 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
     Query<Item<Entity,
                const render::camera::ExtractedCamera&,
                const render::view::ExtractedView&,
-               const render::view::Msaa&>, With<::epix::camera::Camera2d>> views) {
+               const render::view::Msaa&>,
+          With<::epix::camera::Camera2d>> views) {
     // Bevy caches one depth texture per output target per frame, so cameras
     // compositing onto the same target share it (prepare_core_2d_depth_textures).
     const auto target_hash = [](const std::optional<::epix::camera::RenderTargetId>& target) {
@@ -185,10 +180,10 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
         if (!camera.physical_target_size) {
             continue;
         }
-        const auto size = *camera.physical_target_size;
-        const auto target = camera.target.transform([](const auto& value) { return value.identity(); });
+        const auto size         = *camera.physical_target_size;
+        const auto target       = camera.target.transform([](const auto& value) { return value.identity(); });
         const auto sample_count = render::view::samples(msaa);
-        auto it = textures.find(target);
+        auto it                 = textures.find(target);
         if (it == textures.end()) {
             wgpu::TextureDescriptor descriptor;
             descriptor.setLabel("view_depth_texture")
@@ -199,15 +194,15 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
                 .setFormat(CORE_2D_DEPTH_FORMAT)
                 .setUsage(wgpu::TextureUsage::eRenderAttachment);
             const render::render_resource::TextureCacheKey key{
-                .format = CORE_2D_DEPTH_FORMAT,
-                .dimension = wgpu::TextureDimension::e2D,
-                .width = size.x,
-                .height = size.y,
+                .format                = CORE_2D_DEPTH_FORMAT,
+                .dimension             = wgpu::TextureDimension::e2D,
+                .width                 = size.x,
+                .height                = size.y,
                 .depth_or_array_layers = 1,
-                .mip_level_count = 1,
-                .sample_count = sample_count,
-                .usage = wgpu::TextureUsage::eRenderAttachment,
-                .label = "view_depth_texture",
+                .mip_level_count       = 1,
+                .sample_count          = sample_count,
+                .usage                 = wgpu::TextureUsage::eRenderAttachment,
+                .label                 = "view_depth_texture",
             };
             it = textures.emplace(target, texture_cache->get(*device, key, descriptor)).first;
         }
@@ -218,12 +213,10 @@ void epix::core_graph::core_2d::prepare_core_2d_depth_textures(
 void Core2dPlugin::attach(App& app) {
     // Mirror Core2dPlugin::build: Camera2d gets the Core2D graph plus the
     // component defaults that define a plain 2D camera output path.
-    app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
-        [] { return DebandDither::Disabled; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera2d>([] { return DebandDither::Disabled; });
     app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
         [] { return render::camera::CameraRenderGraph{Core2d}; });
-    app.world_mut().register_required_components_with<::epix::camera::Camera2d>(
-        [] { return Tonemapping::None; });
+    app.world_mut().register_required_components_with<::epix::camera::Camera2d>([] { return Tonemapping::None; });
     app.add_plugins(render::ExtractComponentPlugin<::epix::camera::Camera2d>{});
     app.get_sub_app_mut(render::Render).and_then([&](App& render_app) {
         render_app.world_mut().init_resource<phase::DrawFunctions<Transparent2D>>();

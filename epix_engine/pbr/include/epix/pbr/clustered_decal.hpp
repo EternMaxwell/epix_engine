@@ -3,12 +3,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
-#include <glm/glm.hpp>
+#include <epix/common.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/render_resource.hpp>
+#include <glm/glm.hpp>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -89,7 +89,8 @@ EPIX_EXPORT inline bool clustered_decals_are_usable(bool binding_arrays_are_usab
  *  instead of a single-texture shape. The three entries land at the
  *  binding-array group's bindings 5, 6 and 7. */
 EPIX_EXPORT inline std::optional<std::array<render::render_resource::BindGroupLayoutEntryBuilder, 3>>
-clustered_decal_bind_group_layout_entries(bool binding_arrays_are_usable, bool decals_feature_enabled,
+clustered_decal_bind_group_layout_entries(bool binding_arrays_are_usable,
+                                          bool decals_feature_enabled,
                                           bool partially_bound_binding_array_supported) {
     using render::render_resource::binding_types::sampler;
     using render::render_resource::binding_types::storage_buffer_read_only;
@@ -118,6 +119,5 @@ namespace epix::render::render_resource {
 /** @brief The decals buffer's element is the object representation, so the raw
  *  encoder applies (Bevy derives `ShaderType` and `Pod` on the same struct). */
 template <>
-struct ShaderTypeInfo<::epix::pbr::RenderClusteredDecal>
-    : RawShaderType<::epix::pbr::RenderClusteredDecal> {};
+struct ShaderTypeInfo<::epix::pbr::RenderClusteredDecal> : RawShaderType<::epix::pbr::RenderClusteredDecal> {};
 }  // namespace epix::render::render_resource

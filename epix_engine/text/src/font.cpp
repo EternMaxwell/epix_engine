@@ -138,13 +138,10 @@ FontAtlas FontAtlas::create(assets::Assets<image::Image>& textures,
     // (font_atlas.rs:40-47). The main-world usage flag is required because the
     // atlas is updated in place as more glyphs arrive.
     const std::size_t byte_size = static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) * 4u;
-    image::Image image{
-        wgpu::Extent3D{size.x, size.y, 1u},
-        wgpu::TextureDimension::e2D,
-        std::vector<std::byte>(byte_size, std::byte{0}),
-        wgpu::TextureFormat::eRGBA8UnormSrgb,
-        static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
-                                              assets::RenderAssetUsages::RENDER_WORLD)};
+    image::Image image{wgpu::Extent3D{size.x, size.y, 1u}, wgpu::TextureDimension::e2D,
+                       std::vector<std::byte>(byte_size, std::byte{0}), wgpu::TextureFormat::eRGBA8UnormSrgb,
+                       static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD |
+                                                              assets::RenderAssetUsages::RENDER_WORLD)};
     if (!font_smoothing) {
         image.set_sampler(image::ImageSampler::nearest());
     }
@@ -167,7 +164,8 @@ std::expected<void, TextError> FontAtlas::add_glyph(assets::Assets<image::Image>
         return std::unexpected(TextError{TextErrorCode::MissingAtlasTexture, key});
     }
 
-    auto glyph_index = dynamic_texture_atlas_builder.add_texture(atlas_layout->get(), glyph_texture, atlas_texture->get());
+    auto glyph_index =
+        dynamic_texture_atlas_builder.add_texture(atlas_layout->get(), glyph_texture, atlas_texture->get());
     if (!glyph_index) {
         return std::unexpected(TextError{TextErrorCode::FailedToAddGlyph, key});
     }
@@ -196,8 +194,8 @@ std::optional<std::tuple<Glyph, image::Image, glm::ivec2>> FontAtlasSet::generat
         return std::nullopt;
     }
 
-    auto* bitmap_glyph = reinterpret_cast<FT_BitmapGlyph>(ft_glyph);
-    FT_Bitmap& bitmap  = bitmap_glyph->bitmap;
+    auto* bitmap_glyph         = reinterpret_cast<FT_BitmapGlyph>(ft_glyph);
+    FT_Bitmap& bitmap          = bitmap_glyph->bitmap;
     const std::uint32_t width  = static_cast<std::uint32_t>(bitmap.width);
     const std::uint32_t height = static_cast<std::uint32_t>(bitmap.rows);
     const std::ptrdiff_t pitch = bitmap.pitch;
@@ -211,21 +209,18 @@ std::optional<std::tuple<Glyph, image::Image, glm::ivec2>> FontAtlasSet::generat
         const auto* src_row = pitch >= 0 ? buffer + static_cast<std::ptrdiff_t>(row) * pitch
                                          : buffer + static_cast<std::ptrdiff_t>(height - 1u - row) * -pitch;
         for (std::uint32_t col = 0; col < width; ++col) {
-            auto alpha              = src_row[col];
-            auto offset             = (static_cast<std::size_t>(row) * width + col) * 4;
-            data[offset + 0]        = static_cast<std::byte>(255);
-            data[offset + 1]        = static_cast<std::byte>(255);
-            data[offset + 2]        = static_cast<std::byte>(255);
-            data[offset + 3]        = static_cast<std::byte>(alpha);
+            auto alpha       = src_row[col];
+            auto offset      = (static_cast<std::size_t>(row) * width + col) * 4;
+            data[offset + 0] = static_cast<std::byte>(255);
+            data[offset + 1] = static_cast<std::byte>(255);
+            data[offset + 2] = static_cast<std::byte>(255);
+            data[offset + 3] = static_cast<std::byte>(alpha);
         }
     }
 
-    image::Image glyph_texture{
-        wgpu::Extent3D{width, height, 1u},
-        wgpu::TextureDimension::e2D,
-        std::move(data),
-        wgpu::TextureFormat::eRGBA8UnormSrgb,
-        static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD)};
+    image::Image glyph_texture{wgpu::Extent3D{width, height, 1u}, wgpu::TextureDimension::e2D, std::move(data),
+                               wgpu::TextureFormat::eRGBA8UnormSrgb,
+                               static_cast<assets::RenderAssetUsages>(assets::RenderAssetUsages::MAIN_WORLD)};
 
     // Swash (and therefore Bevy) reports the bitmap placement relative to the
     // glyph origin in a +Y-down space; FreeType's `FT_BitmapGlyph` carries the
@@ -286,11 +281,11 @@ std::expected<GlyphAtlasInfo, TextError> FontAtlasSet::add_glyph_to_atlas(
     auto& atlases = storage[key];
     for (auto& atlas : atlases) {
         if (atlas.add_glyph(textures, atlas_layouts, glyph_index, glyph_texture, offset)) {
-            auto& entry      = entries[glyph_index];
-            entry.metrics    = metrics;
-            entry.atlas_info = GlyphAtlasInfo{atlas.texture.id(), atlas.texture_atlas.id(),
-                                              *atlas.get_glyph_index(glyph_index)};
-            entry.placed     = true;
+            auto& entry   = entries[glyph_index];
+            entry.metrics = metrics;
+            entry.atlas_info =
+                GlyphAtlasInfo{atlas.texture.id(), atlas.texture_atlas.id(), *atlas.get_glyph_index(glyph_index)};
+            entry.placed = true;
             return entry.atlas_info;
         }
     }
@@ -304,11 +299,11 @@ std::expected<GlyphAtlasInfo, TextError> FontAtlasSet::add_glyph_to_atlas(
         return std::unexpected(added.error());
     }
 
-    auto& entry      = entries[glyph_index];
-    entry.metrics    = metrics;
-    entry.atlas_info = GlyphAtlasInfo{new_atlas.texture.id(), new_atlas.texture_atlas.id(),
-                                      *new_atlas.get_glyph_index(glyph_index)};
-    entry.placed     = true;
+    auto& entry   = entries[glyph_index];
+    entry.metrics = metrics;
+    entry.atlas_info =
+        GlyphAtlasInfo{new_atlas.texture.id(), new_atlas.texture_atlas.id(), *new_atlas.get_glyph_index(glyph_index)};
+    entry.placed          = true;
     const auto atlas_info = entry.atlas_info;
     atlases.push_back(std::move(new_atlas));
     return atlas_info;
@@ -321,8 +316,7 @@ std::optional<std::reference_wrapper<std::vector<FontAtlas>>> FontAtlasSet::get_
     return std::nullopt;
 }
 
-std::optional<std::reference_wrapper<const std::vector<FontAtlas>>> FontAtlasSet::get(
-    const FontAtlasKey& key) const {
+std::optional<std::reference_wrapper<const std::vector<FontAtlas>>> FontAtlasSet::get(const FontAtlasKey& key) const {
     if (auto it = storage.find(key); it != storage.end()) {
         return std::cref(it->second);
     }

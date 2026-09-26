@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <expected>
 #include <optional>
 #include <span>
@@ -11,7 +11,6 @@
 #include <string_view>
 #include <system_error>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/image/image.hpp>

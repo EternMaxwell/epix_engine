@@ -2,9 +2,9 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
-#include <glm/glm.hpp>
-#include <epix/render/render_resource.hpp>
 #include <epix/common.hpp>
+#include <epix/render/render_resource.hpp>
+#include <glm/glm.hpp>
 #endif
 
 namespace epix::pbr {
@@ -80,33 +80,33 @@ EPIX_EXPORT struct GpuAtmosphereSettings {
     /** @brief Padding: `aerial_view_lut_size` is sixteen-byte aligned. */
     std::uint32_t pad[2]{};
     glm::uvec3 aerial_view_lut_size{32, 32, 32};
-    std::uint32_t transmittance_lut_samples = 40;
-    std::uint32_t multiscattering_lut_dirs = 64;
+    std::uint32_t transmittance_lut_samples   = 40;
+    std::uint32_t multiscattering_lut_dirs    = 64;
     std::uint32_t multiscattering_lut_samples = 20;
-    std::uint32_t sky_view_lut_samples = 16;
-    std::uint32_t aerial_view_lut_samples = 10;
-    float aerial_view_lut_max_distance = 3.2e4f;
-    float scene_units_to_m = 1.0f;
-    std::uint32_t sky_max_samples = 16;
-    std::uint32_t rendering_method = 0;
+    std::uint32_t sky_view_lut_samples        = 16;
+    std::uint32_t aerial_view_lut_samples     = 10;
+    float aerial_view_lut_max_distance        = 3.2e4f;
+    float scene_units_to_m                    = 1.0f;
+    std::uint32_t sky_max_samples             = 16;
+    std::uint32_t rendering_method            = 0;
 
     /** @brief The conversion Bevy spells `impl From<AtmosphereSettings>`, with
      *  the rendering method widened to a `u32`. */
     static GpuAtmosphereSettings from(const AtmosphereSettings& settings) {
         return GpuAtmosphereSettings{
-            .transmittance_lut_size = settings.transmittance_lut_size,
-            .multiscattering_lut_size = settings.multiscattering_lut_size,
-            .sky_view_lut_size = settings.sky_view_lut_size,
-            .aerial_view_lut_size = settings.aerial_view_lut_size,
-            .transmittance_lut_samples = settings.transmittance_lut_samples,
-            .multiscattering_lut_dirs = settings.multiscattering_lut_dirs,
-            .multiscattering_lut_samples = settings.multiscattering_lut_samples,
-            .sky_view_lut_samples = settings.sky_view_lut_samples,
-            .aerial_view_lut_samples = settings.aerial_view_lut_samples,
+            .transmittance_lut_size       = settings.transmittance_lut_size,
+            .multiscattering_lut_size     = settings.multiscattering_lut_size,
+            .sky_view_lut_size            = settings.sky_view_lut_size,
+            .aerial_view_lut_size         = settings.aerial_view_lut_size,
+            .transmittance_lut_samples    = settings.transmittance_lut_samples,
+            .multiscattering_lut_dirs     = settings.multiscattering_lut_dirs,
+            .multiscattering_lut_samples  = settings.multiscattering_lut_samples,
+            .sky_view_lut_samples         = settings.sky_view_lut_samples,
+            .aerial_view_lut_samples      = settings.aerial_view_lut_samples,
             .aerial_view_lut_max_distance = settings.aerial_view_lut_max_distance,
-            .scene_units_to_m = settings.scene_units_to_m,
-            .sky_max_samples = settings.sky_max_samples,
-            .rendering_method = static_cast<std::uint32_t>(settings.rendering_method),
+            .scene_units_to_m             = settings.scene_units_to_m,
+            .sky_max_samples              = settings.sky_max_samples,
+            .rendering_method             = static_cast<std::uint32_t>(settings.rendering_method),
         };
     }
 
@@ -159,8 +159,7 @@ namespace epix::render::render_resource {
 template <>
 struct ShaderTypeInfo<::epix::pbr::GpuAtmosphere> : RawShaderType<::epix::pbr::GpuAtmosphere> {};
 template <>
-struct ShaderTypeInfo<::epix::pbr::GpuAtmosphereSettings>
-    : RawShaderType<::epix::pbr::GpuAtmosphereSettings> {};
+struct ShaderTypeInfo<::epix::pbr::GpuAtmosphereSettings> : RawShaderType<::epix::pbr::GpuAtmosphereSettings> {};
 template <>
 struct ShaderTypeInfo<::epix::pbr::AtmosphereData> : RawShaderType<::epix::pbr::AtmosphereData> {};
 }  // namespace epix::render::render_resource

@@ -1,16 +1,17 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <bit>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
+#include <epix/sprite/sprite.hpp>
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
@@ -25,10 +26,7 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
-#include <epix/sprite/sprite.hpp>
 #endif
-
 
 EPIX_EXPORT namespace epix::sprite_render {
     struct ExtractedSlice {
@@ -44,9 +42,8 @@ EPIX_EXPORT namespace epix::sprite_render {
         explicit ComputedTextureSlices(std::vector<sprite::TextureSlice> values) : values_(std::move(values)) {}
 
         auto extract_slices(const sprite::Sprite& value, glm::vec2 anchor) const {
-            const auto flip = glm::vec2(value.flip_x ? -1.0f : 1.0f, value.flip_y ? -1.0f : 1.0f);
-            const auto anchor_offset =
-                anchor * value.custom_size.value_or(value.rect.value_or(image::Rect{}).size());
+            const auto flip          = glm::vec2(value.flip_x ? -1.0f : 1.0f, value.flip_y ? -1.0f : 1.0f);
+            const auto anchor_offset = anchor * value.custom_size.value_or(value.rect.value_or(image::Rect{}).size());
             return values_ | std::views::transform([flip, anchor_offset](const sprite::TextureSlice& slice) {
                        return ExtractedSlice{
                            .offset = slice.offset * flip - anchor_offset,
@@ -181,10 +178,10 @@ EPIX_EXPORT namespace epix::sprite_render {
     namespace detail {
     /** @brief Direct Bevy scaling arithmetic, exposed for parity-oracle tests. */
     EPIX_API void apply_scaling(sprite::SpriteScalingMode mode,
-                       glm::vec2 texture_size,
-                       glm::vec2& quad_size,
-                       glm::vec2& quad_translation,
-                       glm::vec4& uv_offset_scale);
+                                glm::vec2 texture_size,
+                                glm::vec2& quad_size,
+                                glm::vec2& quad_translation,
+                                glm::vec4& uv_offset_scale);
 
     /** @brief Pack an affine transform into Bevy's transposed 3x4 sprite ABI. */
     EPIX_API SpriteInstance make_instance(const glm::mat4& transform, glm::vec4 color, glm::vec4 uv);
@@ -238,16 +235,17 @@ EPIX_EXPORT namespace epix::sprite_render {
     using PrepareSpriteImage = std::function<std::optional<glm::vec2>(assets::AssetId<image::Image>)>;
 
     EPIX_API SpritePipelineKey view_pipeline_key(bool hdr,
-                                        std::uint32_t msaa_samples,
-                                        std::optional<core_graph::Tonemapping> tonemapping,
-                                        std::optional<core_graph::DebandDither> dither);
+                                                 std::uint32_t msaa_samples,
+                                                 std::optional<core_graph::Tonemapping> tonemapping,
+                                                 std::optional<core_graph::DebandDither> dither);
 
-    EPIX_API void prepare_sprite_batches(SpriteMeta& sprite_meta,
-                                const ExtractedSprites& extracted_sprites,
-                                const ExtractedSlices& extracted_slices,
-                                render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>& phases,
-                                SpriteBatches& batches,
-                                const PrepareSpriteImage& prepare_image);
+    EPIX_API void prepare_sprite_batches(
+        SpriteMeta& sprite_meta,
+        const ExtractedSprites& extracted_sprites,
+        const ExtractedSlices& extracted_slices,
+        render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>& phases,
+        SpriteBatches& batches,
+        const PrepareSpriteImage& prepare_image);
 
     EPIX_API bool prepare_sprite_indices(SpriteMeta& sprite_meta);
     }  // namespace detail
@@ -283,11 +281,8 @@ struct RenderCommand<::epix::sprite_render::SetSpriteViewBindGroup<Slot>, P> {
 
     void prepare(const epix::ecs::World&) noexcept {}
 
-    std::expected<void, RenderCommandError> render(const P&,
-                                                   ViewQuery view,
-                                                   std::optional<epix::ecs::Item<>>,
-                                                   Param,
-                                                   const wgpu::RenderPassEncoder& encoder) {
+    std::expected<void, RenderCommandError> render(
+        const P&, ViewQuery view, std::optional<epix::ecs::Item<>>, Param, const wgpu::RenderPassEncoder& encoder) {
         const auto& offset     = std::get<0>(view);
         const auto& bind_group = std::get<1>(view);
         encoder.setBindGroup(Slot, bind_group.value, offset.offset);
@@ -365,8 +360,7 @@ struct RenderCommand<::epix::sprite_render::DrawSpriteBatch, P> {
         }
         encoder.setIndexBuffer(*indices, wgpu::IndexFormat::eUint32, 0, indices->getSize());
         encoder.setVertexBuffer(0, *instances, 0, instances->getSize());
-        encoder.drawIndexed(6, batch->second.range.second - batch->second.range.first, 0, 0,
-                            batch->second.range.first);
+        encoder.drawIndexed(6, batch->second.range.second - batch->second.range.first, 0, 0, batch->second.range.first);
         return {};
     }
 };
@@ -390,29 +384,26 @@ EPIX_EXPORT namespace epix::sprite_render {
         ComputeSlices,
     };
 
-    EPIX_API void compute_slices_on_asset_event(
-        ecs::Commands commands,
-        ecs::EventReader<assets::AssetEvent<image::Image>> events,
-        ecs::Res<assets::Assets<image::Image>> images,
-        ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
-        ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>> sprites);
+    EPIX_API void compute_slices_on_asset_event(ecs::Commands commands,
+                                                ecs::EventReader<assets::AssetEvent<image::Image>> events,
+                                                ecs::Res<assets::Assets<image::Image>> images,
+                                                ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+                                                ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>> sprites);
 
     EPIX_API void compute_slices_on_sprite_change(
-        ecs::Commands commands,
-        ecs::Res<assets::Assets<image::Image>> images,
+        ecs::Commands commands, ecs::Res<assets::Assets<image::Image>> images,
         ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
         ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>, ecs::Filter<ecs::Modified<sprite::Sprite>>>
             changed_sprites);
 
     EPIX_API void extract_sprite_events(ecs::ResMut<SpriteAssetEvents> events,
-                               app::Extract<ecs::EventReader<assets::AssetEvent<image::Image>>> image_events);
+                                        app::Extract<ecs::EventReader<assets::AssetEvent<image::Image>>> image_events);
 
     EPIX_API void extract_sprites(
         ecs::ResMut<ExtractedSprites> extracted_sprites, ecs::ResMut<ExtractedSlices> extracted_slices,
         app::Extract<ecs::Query<ecs::Item<ecs::Entity, render::sync_world::RenderEntity, const camera::ViewVisibility&,
                                           const sprite::Sprite&, const transform::GlobalTransform&,
-                                          const sprite::Anchor&, ecs::Opt<const ComputedTextureSlices&>>>>
-            sprites,
+                                          const sprite::Anchor&, ecs::Opt<const ComputedTextureSlices&>>>> sprites,
         app::Extract<ecs::Res<assets::Assets<image::TextureAtlasLayout>>> atlases);
 
     EPIX_API void queue_sprites(
@@ -429,18 +420,18 @@ EPIX_EXPORT namespace epix::sprite_render {
 
     EPIX_API void prepare_sprite_view_bind_groups(
         ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<SpritePipeline> sprite_pipeline,
-        ecs::Res<render::PipelineServer> pipeline_server,
-        ecs::Res<render::view::ViewUniforms> view_uniforms,
+        ecs::Res<render::PipelineServer> pipeline_server, ecs::Res<render::view::ViewUniforms> view_uniforms,
         ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>, ecs::With<render::view::ExtractedView>>
             views,
-        ecs::Res<core_graph::TonemappingLuts> tonemapping_luts, ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
+        ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
+        ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
         ecs::Res<render::texture::FallbackImage> fallback_image);
 
     EPIX_API void prepare_sprite_image_bind_groups(
         ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue, ecs::ResMut<SpriteMeta> sprite_meta,
         ecs::Res<SpritePipeline> sprite_pipeline, ecs::ResMut<ImageBindGroups> image_bind_groups,
-        ecs::Res<render::RenderAssets<render::texture::GpuImage>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,
-        ecs::Res<ExtractedSlices> extracted_slices,
+        ecs::Res<render::RenderAssets<render::texture::GpuImage>> gpu_images,
+        ecs::Res<ExtractedSprites> extracted_sprites, ecs::Res<ExtractedSlices> extracted_slices,
         ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases,
         ecs::Res<SpriteAssetEvents> events, ecs::ResMut<SpriteBatches> batches,
         ecs::Res<render::PipelineServer> pipeline_server);

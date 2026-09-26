@@ -1,13 +1,14 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <concepts>
 #include <cstddef>
 #include <epix/common.hpp>
 #include <epix/meta.hpp>
 #include <optional>
 #include <ranges>
-#include <spdlog/spdlog.h>
 #include <tuple>
 #include <type_traits>
 #include <utility>

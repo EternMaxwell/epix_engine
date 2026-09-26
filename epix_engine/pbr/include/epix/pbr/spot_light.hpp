@@ -4,11 +4,11 @@
 #include <cmath>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {

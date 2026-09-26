@@ -2,11 +2,11 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/mesh.hpp>
 #include <epix/shader.hpp>
 #include <string>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/mesh_pipeline_key.hpp>
 
@@ -143,12 +143,12 @@ EPIX_EXPORT struct MeshPassState {
     bool blend = false;
     /** @brief Whether the key's blend adds the premultiply, premultiplied or multiply
      *  shader defs. */
-    bool premultiply_alpha = false;
+    bool premultiply_alpha   = false;
     bool blend_premultiplied = false;
-    bool blend_multiply = false;
-    bool alpha_to_coverage = false;
+    bool blend_multiply      = false;
+    bool alpha_to_coverage   = false;
     bool depth_write_enabled = true;
-    bool is_opaque = false;
+    bool is_opaque           = false;
     std::vector<std::string> shader_defs;
 };
 
@@ -159,8 +159,8 @@ EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key
     const MeshPipelineKey pass = key.intersection(MeshPipelineKey::BLEND_RESERVED_BITS);
 
     if (key.contains(MeshPipelineKey::OIT_ENABLED) && pass == MeshPipelineKey::BLEND_ALPHA) {
-        state.label       = "oit_mesh_pipeline";
-        state.blend       = false;
+        state.label = "oit_mesh_pipeline";
+        state.blend = false;
         state.shader_defs.emplace_back("OIT_ENABLED");
         state.depth_write_enabled = false;
     } else if (pass == MeshPipelineKey::BLEND_ALPHA) {
@@ -169,9 +169,9 @@ EPIX_EXPORT inline MeshPassState specialize_mesh_pass(const MeshPipelineKey& key
         // A transparent fragment blends but must not write depth.
         state.depth_write_enabled = false;
     } else if (pass == MeshPipelineKey::BLEND_PREMULTIPLIED_ALPHA) {
-        state.label              = "premultiplied_alpha_mesh_pipeline";
-        state.blend              = true;
-        state.premultiply_alpha  = true;
+        state.label               = "premultiplied_alpha_mesh_pipeline";
+        state.blend               = true;
+        state.premultiply_alpha   = true;
         state.blend_premultiplied = true;
         state.depth_write_enabled = false;
     } else if (pass == MeshPipelineKey::BLEND_MULTIPLY) {
@@ -225,8 +225,8 @@ EPIX_EXPORT inline constexpr bool IRRADIANCE_VOLUMES_ARE_USABLE = true;
  *  dropped: the WebGL2 and PCSS defs are cargo/feature-gated. The irradiance-volume
  *  def is *not* in that group - it is gated on the key bit and a platform constant,
  *  which this port has as `IRRADIANCE_VOLUMES_ARE_USABLE`. */
-EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key_shader_defs(
-    const MeshPipelineKey& key, bool is_opaque) {
+EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key_shader_defs(const MeshPipelineKey& key,
+                                                                                             bool is_opaque) {
     using Def = ::epix::shader::ShaderDefVal;
 
     std::vector<Def> defs;
@@ -312,9 +312,8 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key
     // Screen-space specular transmission carries its blur tap count as a valued def,
     // and the mask is two bits so the four cases are exhaustive - Bevy marks the
     // default unreachable rather than choosing one.
-    const MeshPipelineKey blur =
-        key.intersection(MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS);
-    std::uint32_t blur_taps = 4;
+    const MeshPipelineKey blur = key.intersection(MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_RESERVED_BITS);
+    std::uint32_t blur_taps    = 4;
     if (blur == MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_MEDIUM) {
         blur_taps = 8;
     } else if (blur == MeshPipelineKey::SCREEN_SPACE_SPECULAR_TRANSMISSION_HIGH) {
@@ -339,7 +338,9 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_key
  *  Bevy's `pbr_light_textures` feature defs inside the clustered-decal branch are
  *  feature-gated and so have no counterpart here. */
 EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_capability_shader_defs(
-    bool binding_arrays_are_usable, bool irradiance_volumes_are_usable, bool clustered_decals_are_usable,
+    bool binding_arrays_are_usable,
+    bool irradiance_volumes_are_usable,
+    bool clustered_decals_are_usable,
     std::optional<std::uint32_t> per_object_buffer_batch_size) {
     using Def = ::epix::shader::ShaderDefVal;
 
@@ -359,8 +360,7 @@ EPIX_EXPORT inline std::vector<::epix::shader::ShaderDefVal> specialize_mesh_cap
 /** @brief The mesh pipeline's primitive state (Bevy `MeshPipeline::specialize`,
  *  `render/mesh.rs:2710-2715`): back-face culling and no depth clipping, with the
  *  topology from the key so a mesh's primitive topology reaches the pipeline. */
-EPIX_EXPORT inline wgpu::PrimitiveState mesh_pipeline_primitive_state(
-    wgpu::PrimitiveTopology topology) {
+EPIX_EXPORT inline wgpu::PrimitiveState mesh_pipeline_primitive_state(wgpu::PrimitiveTopology topology) {
     wgpu::PrimitiveState state;
     state.setTopology(topology).setCullMode(wgpu::CullMode::eBack).setUnclippedDepth(false);
     return state;
@@ -375,7 +375,7 @@ EPIX_EXPORT inline wgpu::PrimitiveState mesh_pipeline_primitive_state(
  *  `Less`-compare pipeline. Stencil is ignored with zero masks, and the depth bias is
  *  zero - per-light bias is applied in the vertex transform, not here. */
 EPIX_EXPORT inline wgpu::DepthStencilState mesh_pipeline_depth_state(wgpu::TextureFormat format,
-                                                                    bool depth_write_enabled) {
+                                                                     bool depth_write_enabled) {
     wgpu::DepthStencilState state;
     state.setFormat(format)
         .setDepthWriteEnabled(depth_write_enabled ? wgpu::OptionalBool::eTrue : wgpu::OptionalBool::eFalse)
@@ -394,7 +394,7 @@ EPIX_EXPORT inline wgpu::DepthStencilState mesh_pipeline_depth_state(wgpu::Textu
  *  `render/mesh.rs:2732-2736`): the sample count from the key, the full sample mask,
  *  and alpha-to-coverage only for the pass that asked for it. */
 EPIX_EXPORT inline wgpu::MultisampleState mesh_pipeline_multisample_state(std::uint32_t msaa_samples,
-                                                                         bool alpha_to_coverage_enabled) {
+                                                                          bool alpha_to_coverage_enabled) {
     wgpu::MultisampleState state;
     state.setCount(msaa_samples).setMask(0xFFFFFFFFu).setAlphaToCoverageEnabled(alpha_to_coverage_enabled);
     return state;
@@ -456,9 +456,9 @@ EPIX_EXPORT inline bool is_skinned(const mesh::MeshVertexBufferLayoutRef& layout
  *  not because motion outranks it. A version that treated the four flags as
  *  independent would produce a layout that does not exist. */
 EPIX_EXPORT inline MeshMorphSkinningSetup setup_morph_and_skinning_defs(const MeshPipelineKey& key,
-                                                                       const mesh::MeshVertexBufferLayoutRef& layout,
-                                                                       std::uint32_t offset,
-                                                                       bool skins_use_uniform_buffers) {
+                                                                        const mesh::MeshVertexBufferLayoutRef& layout,
+                                                                        std::uint32_t offset,
+                                                                        bool skins_use_uniform_buffers) {
     using Def = ::epix::shader::ShaderDefVal;
 
     const bool is_morphed            = key.intersects(MeshPipelineKey::MORPH_TARGETS);

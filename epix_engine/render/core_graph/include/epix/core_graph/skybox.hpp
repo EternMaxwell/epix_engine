@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
@@ -12,7 +13,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/fullscreen.hpp>
 
@@ -56,8 +56,7 @@ namespace epix::render::render_resource {
  *  (brightness at offset 0, matrix at 16, 80 bytes), so it uses the raw
  *  encoder. */
 template <>
-struct ShaderTypeInfo<::epix::core_graph::SkyboxUniforms>
-    : RawShaderType<::epix::core_graph::SkyboxUniforms> {};
+struct ShaderTypeInfo<::epix::core_graph::SkyboxUniforms> : RawShaderType<::epix::core_graph::SkyboxUniforms> {};
 }  // namespace epix::render::render_resource
 
 namespace epix::core_graph {
@@ -187,10 +186,11 @@ EPIX_EXPORT EPIX_API void prepare_skybox_prepass_pipelines(
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPrepassPipeline>> pipelines,
     ecs::Res<SkyboxPrepassPipeline> pipeline,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Has<core_3d::NormalPrepass>, ecs::Has<core_3d::MotionVectorPrepass>,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         ecs::Has<core_3d::NormalPrepass>,
+                         ecs::Has<core_3d::MotionVectorPrepass>,
                          const render::view::Msaa&>,
-               ecs::With<Skybox>>
-        views);
+               ecs::With<Skybox>> views);
 
 /** @brief Creates each view's prepass bind group from the view uniforms and the
  *  previous view uniforms, so the prepass can compute the camera's motion
@@ -225,8 +225,7 @@ EPIX_EXPORT EPIX_API void prepare_skybox_pipelines(
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPipeline>> pipelines,
     ecs::Res<SkyboxPipeline> pipeline,
-    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>,
-               ecs::With<Skybox>>
+    ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&, const render::view::Msaa&>, ecs::With<Skybox>>
         views);
 
 /** @brief Creates each view's skybox bind group from its cubemap's cube view,

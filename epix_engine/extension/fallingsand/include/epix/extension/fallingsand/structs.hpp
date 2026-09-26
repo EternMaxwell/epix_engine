@@ -1,14 +1,17 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
+#include <epix/meta.hpp>
 #include <expected>
 #include <functional>
+#include <glm/glm.hpp>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -16,15 +19,10 @@
 #include <tuple>
 #include <type_traits>
 #include <variant>
-#include <glm/glm.hpp>
-#include <epix/app.hpp>
-#include <epix/ecs.hpp>
-#include <epix/meta.hpp>
 #endif
-#include <epix/extension/grid.hpp>
-
 #include <epix/extension/fallingsand/elements.hpp>
 #include <epix/extension/fallingsand/temperature.hpp>
+#include <epix/extension/grid.hpp>
 
 namespace epix::ext::fallingsand {
 

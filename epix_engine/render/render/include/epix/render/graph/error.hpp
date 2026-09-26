@@ -1,13 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <optional>
 #include <string>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/graph/decl.hpp>

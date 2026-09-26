@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <optional>
 #include <string>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/assets.hpp>
@@ -30,8 +29,8 @@ EPIX_EXPORT struct ShaderStorageBuffer {
     /** @brief Debug label. */
     std::string label = "ShaderStorageBuffer";
     /** @brief Asset usage flags (Bevy RenderAssetUsages::default() = MAIN_WORLD | RENDER_WORLD). */
-    assets::RenderAssetUsages asset_usage = static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD |
-                                                                                   assets::RENDER_WORLD);
+    assets::RenderAssetUsages asset_usage =
+        static_cast<assets::RenderAssetUsages>(assets::MAIN_WORLD | assets::RENDER_WORLD);
 
     ShaderStorageBuffer() = default;
 
@@ -88,7 +87,9 @@ struct RenderAsset<GpuShaderStorageBuffer> {
     using ExtractedAsset = ShaderStorageBuffer;
 
     std::expected<GpuShaderStorageBuffer, PrepareAssetError<ShaderStorageBuffer>> prepare_asset(
-        ShaderStorageBuffer&& asset, assets::AssetId<ShaderStorageBuffer> id, Param param,
+        ShaderStorageBuffer&& asset,
+        assets::AssetId<ShaderStorageBuffer> id,
+        Param param,
         const GpuShaderStorageBuffer* previous);
     assets::RenderAssetUsages asset_usage(const ShaderStorageBuffer& asset) noexcept;
 

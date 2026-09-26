@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <algorithm>
 #include <array>
 #include <bit>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <expected>
 #include <format>
 #include <string>
@@ -18,7 +17,6 @@
 #include <vector>
 #endif
 #include <epix/extension/grid.hpp>
-
 
 using std::int32_t;
 using std::int64_t;

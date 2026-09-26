@@ -1,13 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <zpp_bits.h>
+
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <exception>
 #include <expected>
 #include <filesystem>
@@ -26,7 +27,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::shader {

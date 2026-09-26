@@ -1,9 +1,9 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -20,7 +20,7 @@ EPIX_EXPORT struct AmbientLight {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     /** @brief A direct scale factor multiplied with the colour before it reaches
      *  the shader; the result is in cd/m². Bevy's default is 80. */
-    float brightness      = 80.0f;
+    float brightness = 80.0f;
     /** @brief Whether this light affects meshes with lightmaps. Set false when
      *  the baking tool already baked the ambient light in, to avoid lighting
      *  twice. */
@@ -32,7 +32,7 @@ EPIX_EXPORT struct AmbientLight {
  *  `ambient_light.rs:59-96`). */
 EPIX_EXPORT struct GlobalAmbientLight {
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
-    float brightness      = 80.0f;
+    float brightness                = 80.0f;
     bool affects_lightmapped_meshes = true;
 
     /** @brief No ambient light at all (Bevy `GlobalAmbientLight::NONE`). */

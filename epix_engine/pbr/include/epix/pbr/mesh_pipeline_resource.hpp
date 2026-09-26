@@ -3,13 +3,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/render/bind_group_layout.hpp>
 #include <epix/render/render_resource.hpp>
 #include <epix/shader.hpp>
 #include <optional>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/mesh_bindings.hpp>
@@ -60,18 +60,20 @@ EPIX_EXPORT struct EPIX_API MeshPipeline {
      *  facts for `RenderAdapter`'s capabilities, and the shader handle for the
      *  embedded asset load. `MeshLayouts::new(&render_device, &render_adapter)`
      *  becomes `MeshLayouts::make`, which needs the same two facts. */
-    static MeshPipeline make(const wgpu::Limits& limits, wgpu::BufferBindingType clustered_forward_buffer_binding_type,
-                             assets::Handle<shader::Shader> shader, MeshPipelineViewLayouts view_layouts,
-                             bool binding_arrays_are_usable, bool clustered_decals_are_usable) {
+    static MeshPipeline make(const wgpu::Limits& limits,
+                             wgpu::BufferBindingType clustered_forward_buffer_binding_type,
+                             assets::Handle<shader::Shader> shader,
+                             MeshPipelineViewLayouts view_layouts,
+                             bool binding_arrays_are_usable,
+                             bool clustered_decals_are_usable) {
         return MeshPipeline{
-            .view_layouts                         = std::move(view_layouts),
+            .view_layouts                          = std::move(view_layouts),
             .clustered_forward_buffer_binding_type = clustered_forward_buffer_binding_type,
             .mesh_layouts                          = MeshLayouts::make(limits, binding_arrays_are_usable),
             .shader                                = std::move(shader),
-            .per_object_buffer_batch_size =
-                render::render_resource::GpuArrayBuffer<MeshUniform>::batch_size(limits),
-            .binding_arrays_are_usable  = binding_arrays_are_usable,
-            .clustered_decals_are_usable = clustered_decals_are_usable,
+            .per_object_buffer_batch_size = render::render_resource::GpuArrayBuffer<MeshUniform>::batch_size(limits),
+            .binding_arrays_are_usable    = binding_arrays_are_usable,
+            .clustered_decals_are_usable  = clustered_decals_are_usable,
             // Qualified: the member of the same name shadows the free function.
             .skins_use_uniform_buffers = ::epix::pbr::skins_use_uniform_buffers(limits),
         };

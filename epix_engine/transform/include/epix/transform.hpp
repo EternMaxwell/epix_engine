@@ -1,12 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <glm/ext.hpp>
 #include <glm/glm.hpp>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 EPIX_EXPORT namespace epix::transform {

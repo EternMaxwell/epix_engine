@@ -65,8 +65,8 @@ std::expected<void, CameraUpdateError> camera_system(
         scale_factor_changed_windows.insert(event.window);
     }
 
-    const auto primary_window = primary_window_query.single().transform(
-        [](const auto& primary) { return std::get<0>(primary); });
+    const auto primary_window =
+        primary_window_query.single().transform([](const auto& primary) { return std::get<0>(primary); });
 
     for (auto&& [camera, target, projection] : cameras.iter()) {
         const auto normalized_target = target.get().normalize(primary_window);
@@ -82,7 +82,7 @@ std::expected<void, CameraUpdateError> camera_system(
                 [&](const NoColorTarget&) { return target.is_added() || target.is_modified(); },
             },
             *normalized_target);
-        const auto& camera_ref = camera.get();
+        const auto& camera_ref  = camera.get();
         const bool needs_update = target_changed || camera.is_added() || projection.is_modified() ||
                                   camera_ref.computed.old_viewport_size != viewport_size ||
                                   camera_ref.computed.old_sub_camera_view != camera_ref.sub_camera_view;
@@ -90,8 +90,7 @@ std::expected<void, CameraUpdateError> camera_system(
 
         const auto target_info = std::visit(
             utils::visitor{
-                [&](const window::NormalizedWindowRef& window)
-                    -> std::expected<RenderTargetInfo, CameraUpdateError> {
+                [&](const window::NormalizedWindowRef& window) -> std::expected<RenderTargetInfo, CameraUpdateError> {
                     if (const auto value = window_query.get(window.entity())) {
                         const auto& resolved = std::get<1>(*value);
                         return RenderTargetInfo{{resolved.physical_size.first, resolved.physical_size.second},
@@ -101,7 +100,8 @@ std::expected<void, CameraUpdateError> camera_system(
                 },
                 [](const ImageRenderTarget& image) -> std::expected<RenderTargetInfo, CameraUpdateError> {
                     if (image.texture)
-                        return RenderTargetInfo{{image.texture.getWidth(), image.texture.getHeight()}, image.scale_factor};
+                        return RenderTargetInfo{{image.texture.getWidth(), image.texture.getHeight()},
+                                                image.scale_factor};
                     return std::unexpected(CameraUpdateError{CameraUpdateError::Image{}});
                 },
                 [](const ManualTextureViewHandle&) -> std::expected<RenderTargetInfo, CameraUpdateError> {
@@ -134,8 +134,8 @@ std::expected<void, CameraUpdateError> camera_system(
         }
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_info->physical_size);
         camera_mut.computed.target_info = *target_info;
-        if (const auto logical_size = camera_mut.logical_viewport_size(); logical_size && logical_size->x != 0.0f &&
-                                                               logical_size->y != 0.0f) {
+        if (const auto logical_size = camera_mut.logical_viewport_size();
+            logical_size && logical_size->x != 0.0f && logical_size->y != 0.0f) {
             projection.get_mut().update(logical_size->x, logical_size->y);
             camera_mut.computed.clip_from_view =
                 camera_mut.sub_camera_view ? projection.get().get_clip_from_view_for_sub(*camera_mut.sub_camera_view)
@@ -259,9 +259,9 @@ void visibility_propagate_system(
         if (!item) return;
 
         auto&& [visibility, inherited] = *item;
-        const bool is_visible = visibility.type == Visibility::Type::Visible
-                                    ? true
-                                    : visibility.type == Visibility::Type::Hidden ? false : parent_is_visible;
+        const bool is_visible          = visibility.type == Visibility::Type::Visible  ? true
+                                         : visibility.type == Visibility::Type::Hidden ? false
+                                                                                       : parent_is_visible;
         if (inherited.get().get() != is_visible) VisibilityPropagationAccess::set(inherited.get_mut(), is_visible);
         if (auto children = children_query.get(entity)) {
             for (const Entity child : std::get<0>(*children).entities()) {
@@ -271,16 +271,17 @@ void visibility_propagate_system(
     };
 
     for (auto&& [entity, visibility, parent, children] : changed.iter()) {
-        const bool is_visible = visibility.type == Visibility::Type::Visible
-                                    ? true
-                                    : visibility.type == Visibility::Type::Hidden
-                                          ? false
-                                          : parent.and_then([&](const auto& child_of) {
-                                                       return visibility_query.get(child_of.get().entity()).transform(
-                                                            [](const auto& parent_visibility) {
-                                                                return std::get<1>(parent_visibility).get().get();
-                                                            });
-                                                   }).value_or(true);
+        const bool is_visible = visibility.type == Visibility::Type::Visible ? true
+                                : visibility.type == Visibility::Type::Hidden
+                                    ? false
+                                    : parent
+                                          .and_then([&](const auto& child_of) {
+                                              return visibility_query.get(child_of.get().entity())
+                                                  .transform([](const auto& parent_visibility) {
+                                                      return std::get<1>(parent_visibility).get().get();
+                                                  });
+                                          })
+                                          .value_or(true);
         if (auto own_visibility = visibility_query.get(entity);
             own_visibility && std::get<1>(*own_visibility).get().get() != is_visible) {
             VisibilityPropagationAccess::set(std::get<1>(*own_visibility).get_mut(), is_visible);
@@ -420,53 +421,44 @@ void update_frusta(
 }
 
 void CameraProjectionPlugin::attach(App& app) {
-    app.configure_sets(app::PostUpdate,
-                       sets(VisibilitySystems::UpdateFrusta)
-                           .after(::epix::transform::TransformSystems::Propagate)
-                           .after(CameraUpdateSystems::CameraUpdateSystem));
-    app.add_systems(app::PostUpdate, into(update_frusta)
-                                         .in_set(VisibilitySystems::UpdateFrusta)
-                                         .set_name("update frusta"));
+    app.configure_sets(app::PostUpdate, sets(VisibilitySystems::UpdateFrusta)
+                                            .after(::epix::transform::TransformSystems::Propagate)
+                                            .after(CameraUpdateSystems::CameraUpdateSystem));
+    app.add_systems(app::PostUpdate,
+                    into(update_frusta).in_set(VisibilitySystems::UpdateFrusta).set_name("update frusta"));
 }
 
 void VisibilityPlugin::attach(App& app) {
     // Epix requires every set label to be registered explicitly before it can
     // participate in another set's ordering edge.
-    app.configure_sets(app::PostUpdate,
-                       sets(VisibilitySystems::CalculateBounds,
-                            VisibilitySystems::UpdateFrusta,
-                            VisibilitySystems::VisibilityPropagate,
-                            VisibilitySystems::CheckVisibility,
-                            VisibilitySystems::MarkNewlyHiddenEntitiesInvisible));
-    app.configure_sets(app::PostUpdate,
-                       sets(VisibilitySystems::UpdateFrusta, VisibilitySystems::VisibilityPropagate)
-                           .before(VisibilitySystems::CheckVisibility)
-                           .after(::epix::transform::TransformSystems::Propagate));
-    app.configure_sets(app::PostUpdate,
-                       sets(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible)
-                           .after(VisibilitySystems::CheckVisibility));
-    app.configure_sets(app::PostUpdate,
-                       sets(VisibilitySystems::CalculateBounds)
-                           .before(VisibilitySystems::CheckVisibility)
-                           .after(::epix::transform::TransformSystems::Propagate));
+    app.configure_sets(app::PostUpdate, sets(VisibilitySystems::CalculateBounds, VisibilitySystems::UpdateFrusta,
+                                             VisibilitySystems::VisibilityPropagate, VisibilitySystems::CheckVisibility,
+                                             VisibilitySystems::MarkNewlyHiddenEntitiesInvisible));
+    app.configure_sets(app::PostUpdate, sets(VisibilitySystems::UpdateFrusta, VisibilitySystems::VisibilityPropagate)
+                                            .before(VisibilitySystems::CheckVisibility)
+                                            .after(::epix::transform::TransformSystems::Propagate));
+    app.configure_sets(
+        app::PostUpdate,
+        sets(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible).after(VisibilitySystems::CheckVisibility));
+    app.configure_sets(app::PostUpdate, sets(VisibilitySystems::CalculateBounds)
+                                            .before(VisibilitySystems::CheckVisibility)
+                                            .after(::epix::transform::TransformSystems::Propagate));
     // Bevy: Visibility requires InheritedVisibility + ViewVisibility
     // (visibility/mod.rs:151-166); required components are auto-added on spawn.
     app.world_mut().register_required_components<Visibility, InheritedVisibility>();
     app.world_mut().register_required_components<Visibility, ViewVisibility>();
     app.world_mut().register_required_components<::epix::mesh::Mesh2d, Visibility>();
-    app.world_mut().register_required_components_with<::epix::mesh::Mesh2d>([] {
-        return VisibilityClass{meta::type_index(meta::type_id<::epix::mesh::Mesh2d>())};
-    });
+    app.world_mut().register_required_components_with<::epix::mesh::Mesh2d>(
+        [] { return VisibilityClass{meta::type_index(meta::type_id<::epix::mesh::Mesh2d>())}; });
     app.add_systems(app::PostUpdate, into(visibility_propagate_system)
                                          .in_set(VisibilitySystems::VisibilityPropagate)
                                          .set_name("visibility propagate"));
-    app.add_systems(app::PostUpdate,
-                    into(reset_view_visibility)
-                        .in_set(VisibilitySystems::VisibilityPropagate)
-                        .set_name("reset view visibility"));
-    app.add_systems(app::PostUpdate, into(check_visibility_system)
-                                         .in_set(VisibilitySystems::CheckVisibility)
-                                         .set_name("check visibility"));
+    app.add_systems(
+        app::PostUpdate,
+        into(reset_view_visibility).in_set(VisibilitySystems::VisibilityPropagate).set_name("reset view visibility"));
+    app.add_systems(
+        app::PostUpdate,
+        into(check_visibility_system).in_set(VisibilitySystems::CheckVisibility).set_name("check visibility"));
     app.add_systems(app::PostUpdate, into(mark_newly_hidden_entities_invisible)
                                          .in_set(VisibilitySystems::MarkNewlyHiddenEntitiesInvisible)
                                          .set_name("mark newly hidden entities invisible"));

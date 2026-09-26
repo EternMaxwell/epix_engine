@@ -1,6 +1,7 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <cstddef>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
@@ -8,7 +9,6 @@
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
-#include <cstddef>
 #include <optional>
 #include <variant>
 #endif
@@ -184,8 +184,7 @@ struct SetMaterial2dBindGroup {
             std::tuple<>,
             std::optional<epix::ecs::Item<>> entity_item,
             std::tuple<epix::ecs::Res<render::RenderAssets<PreparedMaterial2d<M>>>,
-                       epix::ecs::Res<RenderMaterial2dInstances<M>>>
-                params,
+                       epix::ecs::Res<RenderMaterial2dInstances<M>>> params,
             const wgpu::RenderPassEncoder& encoder) {
             (void)entity_item;
             auto&& [materials, instances] = params;
@@ -220,20 +219,18 @@ namespace epix::render::phase {
 EPIX_EXPORT template <typename M, std::size_t I, PhaseItem P>
     requires std::derived_from<M, ::epix::sprite_render::Material2d<M>>
 struct RenderCommand<::epix::sprite_render::SetMaterial2dBindGroup<M, I>, P> {
-    using Param     = std::tuple<epix::ecs::Res<::epix::render::RenderAssets<
-                                     ::epix::sprite_render::PreparedMaterial2d<M>>>,
-                                 epix::ecs::Res<::epix::sprite_render::RenderMaterial2dInstances<M>>>;
+    using Param = std::tuple<epix::ecs::Res<::epix::render::RenderAssets<::epix::sprite_render::PreparedMaterial2d<M>>>,
+                             epix::ecs::Res<::epix::sprite_render::RenderMaterial2dInstances<M>>>;
     using ViewQuery = std::tuple<>;
     using ItemQuery = epix::ecs::Item<>;
 
     void prepare(const epix::ecs::World&) {}
 
-    std::expected<void, RenderCommandError> render(
-        const P& item,
-        std::tuple<>,
-        std::optional<epix::ecs::Item<>> entity_item,
-        Param params,
-        const wgpu::RenderPassEncoder& encoder) {
+    std::expected<void, RenderCommandError> render(const P& item,
+                                                   std::tuple<>,
+                                                   std::optional<epix::ecs::Item<>> entity_item,
+                                                   Param params,
+                                                   const wgpu::RenderPassEncoder& encoder) {
         (void)entity_item;
         auto&& [materials, instances] = params;
 
@@ -263,10 +260,12 @@ namespace epix::sprite_render {
  *  argument here. The name is what both the registration and the draw-function
  *  lookup in `prepare_asset` use, so the command list is written once. */
 template <typename M, typename P>
-using DrawMaterial2d =
-    render::phase::RenderCommandSequence<P, render::phase::SetItemPipeline, SetMesh2dViewBindGroup<0>,
-                                         SetMesh2dBindGroup<1>,
-                                         SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>, DrawMesh2d>;
+using DrawMaterial2d = render::phase::RenderCommandSequence<P,
+                                                            render::phase::SetItemPipeline,
+                                                            SetMesh2dViewBindGroup<0>,
+                                                            SetMesh2dBindGroup<1>,
+                                                            SetMaterial2dBindGroup<M, MATERIAL_2D_BIND_GROUP_INDEX>,
+                                                            DrawMesh2d>;
 
 /** @brief The pipeline data of one 2D material type (Bevy
  *  `Material2dPipeline<M>`, `material.rs:380-388`). */
@@ -308,10 +307,11 @@ void init_material_2d_pipeline(ecs::Commands commands,
 EPIX_EXPORT template <typename M>
 void check_entities_needing_specialization(
     ecs::Query<ecs::Item<ecs::Entity>,
-               ecs::Filter<ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
-                                   ecs::Modified<MeshMaterial2d<M>>, assets::AssetChanged<MeshMaterial2d<M>>>,
-                           ecs::With<MeshMaterial2d<M>>>>
-        needs_specialization,
+               ecs::Filter<ecs::Or<ecs::Modified<mesh::Mesh2d>,
+                                   assets::AssetChanged<mesh::Mesh2d>,
+                                   ecs::Modified<MeshMaterial2d<M>>,
+                                   assets::AssetChanged<MeshMaterial2d<M>>>,
+                           ecs::With<MeshMaterial2d<M>>>> needs_specialization,
     ecs::ResMut<EntitiesNeedingSpecialization<M>> entities_needing_specialization);
 
 /** @brief Track which material each visible mesh renders with (Bevy
@@ -321,9 +321,9 @@ void check_entities_needing_specialization(
 EPIX_EXPORT template <typename M>
 void extract_mesh_materials_2d(
     ecs::ResMut<RenderMaterial2dInstances<M>> material_instances,
-    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, const MeshMaterial2d<M>&>,
-                            ecs::Filter<ecs::Or<ecs::Modified<camera::ViewVisibility>,
-                                                ecs::Modified<MeshMaterial2d<M>>>>>>
+    app::Extract<
+        ecs::Query<ecs::Item<ecs::Entity, const camera::ViewVisibility&, const MeshMaterial2d<M>&>,
+                   ecs::Filter<ecs::Or<ecs::Modified<camera::ViewVisibility>, ecs::Modified<MeshMaterial2d<M>>>>>>
         changed_meshes,
     app::Extract<ecs::RemovedComponents<MeshMaterial2d<M>>> removed_materials);
 
@@ -341,9 +341,9 @@ void specialize_material2d_meshes(
     ecs::Res<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> transparent_render_phases,
     ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_render_phases,
     ecs::Res<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::AlphaMask2D>> alpha_mask_render_phases,
-    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
-                         const render::view::RenderVisibleEntities&>>
-        views,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&,
+                         const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>> views,
     ecs::Res<ViewKeyCache> view_key_cache,
     ecs::Res<EntitySpecializationTickPair<M>> entity_specialization_ticks,
     ecs::Res<ViewSpecializationTicks> view_specialization_ticks,
@@ -361,9 +361,9 @@ void queue_material2d_meshes(
     ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> transparent_render_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::Opaque2D>> opaque_render_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<core_graph::core_2d::AlphaMask2D>> alpha_mask_render_phases,
-    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
-                         const render::view::RenderVisibleEntities&>>
-        views,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&,
+                         const render::view::ExtractedView&,
+                         const render::view::RenderVisibleEntities&>> views,
     ecs::Res<SpecializedMaterial2dPipelineCache<M>> specialized_material_pipeline_cache);
 
 /** @brief Adds the resources and systems one 2D material type needs (Bevy
@@ -413,24 +413,24 @@ template <typename M>
 struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
     using SourceAsset    = M;
     using ExtractedAsset = M;
-    using Param          = std::tuple<
-        epix::ecs::Res<wgpu::Device>, epix::ecs::Res<epix::render::PipelineServer>,
-        epix::ecs::Res<epix::sprite_render::Material2dPipeline<M>>,
-        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Opaque2D>>,
-        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::AlphaMask2D>>,
-        epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Transparent2D>>,
-        typename epix::render::render_resource::AsBindGroup<M>::Param>;
+    using Param =
+        std::tuple<epix::ecs::Res<wgpu::Device>,
+                   epix::ecs::Res<epix::render::PipelineServer>,
+                   epix::ecs::Res<epix::sprite_render::Material2dPipeline<M>>,
+                   epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Opaque2D>>,
+                   epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::AlphaMask2D>>,
+                   epix::ecs::Res<epix::render::phase::DrawFunctions<epix::core_graph::core_2d::Transparent2D>>,
+                   typename epix::render::render_resource::AsBindGroup<M>::Param>;
 
     std::expected<epix::sprite_render::PreparedMaterial2d<M>, epix::render::PrepareAssetError<M>> prepare_asset(
-        M&& material, epix::assets::AssetId<M>, Param params,
-        const epix::sprite_render::PreparedMaterial2d<M>*) {
+        M&& material, epix::assets::AssetId<M>, Param params, const epix::sprite_render::PreparedMaterial2d<M>*) {
         auto&& [device, pipeline_server, pipeline, opaque_draw_functions, alpha_mask_draw_functions,
                 transparent_draw_functions, material_param] = params;
 
-        const auto bind_group_data =
-            epix::render::render_resource::AsBindGroup<M>::bind_group_data(material);
-        auto prepared = epix::render::render_resource::as_bind_group<M>(
-            device.get(), pipeline_server->get_bind_group_layout(pipeline->material2d_layout), material, material_param);
+        const auto bind_group_data = epix::render::render_resource::AsBindGroup<M>::bind_group_data(material);
+        auto prepared              = epix::render::render_resource::as_bind_group<M>(
+            device.get(), pipeline_server->get_bind_group_layout(pipeline->material2d_layout), material,
+            material_param);
         if (!prepared) {
             auto error = prepared.error();
             if (std::holds_alternative<epix::render::render_resource::RetryBindGroupNextUpdate>(error)) {
@@ -450,18 +450,15 @@ struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
         if (std::holds_alternative<epix::sprite_render::AlphaMode2dOpaque>(alpha_mode)) {
             draw_function_id =
                 opaque_draw_functions->read()
-                    ->template id<
-                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Opaque2D>>();
+                    ->template id<epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Opaque2D>>();
         } else if (std::holds_alternative<epix::sprite_render::AlphaMode2dMask>(alpha_mode)) {
             draw_function_id =
                 alpha_mask_draw_functions->read()
-                    ->template id<
-                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::AlphaMask2D>>();
+                    ->template id<epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::AlphaMask2D>>();
         } else {
             draw_function_id =
                 transparent_draw_functions->read()
-                    ->template id<
-                        epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Transparent2D>>();
+                    ->template id<epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Transparent2D>>();
         }
 
         // `as_bind_group` already returns a `PreparedBindGroup`, which owns both
@@ -473,10 +470,10 @@ struct epix::render::RenderAsset<epix::sprite_render::PreparedMaterial2d<M>> {
             .bindings   = std::move(*prepared),
             .bind_group = bind_group,
             .key        = bind_group_data,
-            .properties = {.depth_bias              = material.depth_bias(),
-                           .alpha_mode              = alpha_mode,
-                           .mesh_pipeline_key_bits  = epix::sprite_render::alpha_mode_pipeline_key(alpha_mode),
-                           .draw_function_id        = draw_function_id},
+            .properties = {.depth_bias             = material.depth_bias(),
+                           .alpha_mode             = alpha_mode,
+                           .mesh_pipeline_key_bits = epix::sprite_render::alpha_mode_pipeline_key(alpha_mode),
+                           .draw_function_id       = draw_function_id},
         };
     }
 

@@ -1,21 +1,20 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
+#include <epix/render.hpp>
+#include <epix/transform.hpp>
 #include <functional>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
-#include <vector>
-#include <epix/ecs.hpp>
-#include <epix/render.hpp>
-#include <epix/transform.hpp>
 #include <utility>
+#include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::core_graph::core_2d {
@@ -167,8 +166,8 @@ EPIX_EXPORT struct Opaque2D {
                            std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity,
                            std::pair<std::uint32_t, std::uint32_t> batch_range,
                            render::phase::PhaseItemExtraIndex extra_index) {
-        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key),
-                batch_range, extra_index};
+        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key), batch_range,
+                extra_index};
     }
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<Opaque2D>);
@@ -197,8 +196,8 @@ EPIX_EXPORT struct AlphaMask2D {
                               std::pair<ecs::Entity, render::sync_world::MainEntity> representative_entity,
                               std::pair<std::uint32_t, std::uint32_t> batch_range,
                               render::phase::PhaseItemExtraIndex extra_index) {
-        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key),
-                batch_range, extra_index};
+        return {std::move(representative_entity), std::move(batch_set_key), std::move(bin_key), batch_range,
+                extra_index};
     }
 };
 static_assert(render::phase::CachedRenderPipelinePhaseItem<AlphaMask2D>);
@@ -212,11 +211,10 @@ EPIX_EXPORT struct EPIX_API MainOpaquePass2DNode {
                                 const render::view::ViewTarget&,
                                 const render::view::ViewDepthTexture&>;
     void update(ecs::World&) {}
-    std::expected<void, render::graph::NodeRunError> run(
-        render::graph::GraphContext&,
-        render::graph::RenderContext& render_context,
-        typename ecs::QueryData<ViewQuery>::Item view,
-        const ecs::World& world) const;
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
 };
 
 /** @brief Bevy `MainTransparentPass2dNode`: renders the retained sorted
@@ -224,11 +222,10 @@ EPIX_EXPORT struct EPIX_API MainOpaquePass2DNode {
 EPIX_EXPORT struct EPIX_API MainTransparentPass2DNode {
     using ViewQuery = MainOpaquePass2DNode::ViewQuery;
     void update(ecs::World&) {}
-    std::expected<void, render::graph::NodeRunError> run(
-        render::graph::GraphContext&,
-        render::graph::RenderContext& render_context,
-        typename ecs::QueryData<ViewQuery>::Item view,
-        const ecs::World& world) const;
+    std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
 };
 
 /** @brief Singleton struct for initializing the core 2D render graph. */
@@ -248,8 +245,8 @@ EPIX_EXPORT EPIX_API void extract_core_2d_camera_phases(
     ecs::ResMut<render::phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask2D>> alpha_mask_phases,
-    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::Camera&>,
-                            ecs::With<::epix::camera::Camera2d>>> cameras,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::Camera&>, ecs::With<::epix::camera::Camera2d>>>
+        cameras,
     ecs::Local<std::unordered_set<render::view::RetainedViewEntity>> live_views);
 
 /** @brief Prepare depth attachments for live Core2D views (Bevy
@@ -264,7 +261,8 @@ EPIX_EXPORT EPIX_API void prepare_core_2d_depth_textures(
     ecs::Query<ecs::Item<ecs::Entity,
                          const render::camera::ExtractedCamera&,
                          const render::view::ExtractedView&,
-                         const render::view::Msaa&>, ecs::With<::epix::camera::Camera2d>> views);
+                         const render::view::Msaa&>,
+               ecs::With<::epix::camera::Camera2d>> views);
 
 }  // namespace epix::core_graph::core_2d
 
@@ -277,7 +275,7 @@ struct std::hash<epix::core_graph::core_2d::BatchSetKey2D> {
 
 template <typename Key>
 inline std::size_t epix_core2d_bin_key_hash(const Key& key) noexcept {
-    std::size_t hash = std::hash<epix::render::CachedPipelineId>{}(key.pipeline_id);
+    std::size_t hash   = std::hash<epix::render::CachedPipelineId>{}(key.pipeline_id);
     const auto combine = [&hash](std::size_t value) { hash ^= value + 0x9e3779b9 + (hash << 6) + (hash >> 2); };
     combine(std::hash<epix::render::phase::DrawFunctionId>{}(key.draw_func));
     combine(std::hash<epix::assets::UntypedAssetId>{}(key.asset_id));

@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <expected>
 #include <glm/glm.hpp>
 #include <optional>
@@ -13,7 +13,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/image/detail/atlas_allocator.hpp>
@@ -38,7 +37,7 @@ EPIX_EXPORT struct EPIX_API TextureAtlasLayout {
                                         std::uint32_t columns,
                                         std::uint32_t rows,
                                         std::optional<glm::uvec2> padding = std::nullopt,
-                                        std::optional<glm::uvec2> offset = std::nullopt);
+                                        std::optional<glm::uvec2> offset  = std::nullopt);
     std::size_t add_texture(URect rect) {
         textures.push_back(rect);
         return textures.size() - 1;
@@ -194,11 +193,12 @@ EPIX_EXPORT namespace texture_atlas_builder_error {
 }  // namespace texture_atlas_builder_error
 
 /** @brief Error produced by `TextureAtlasBuilder` (Bevy `TextureAtlasBuilderError`). */
-EPIX_EXPORT struct EPIX_API TextureAtlasBuilderError : std::variant<texture_atlas_builder_error::NotEnoughSpace,
-                                                           texture_atlas_builder_error::WrongFormat,
-                                                           texture_atlas_builder_error::UninitializedAtlas,
-                                                           texture_atlas_builder_error::UninitializedSourceTexture,
-                                                           TextureAccessError> {
+EPIX_EXPORT struct EPIX_API TextureAtlasBuilderError
+    : std::variant<texture_atlas_builder_error::NotEnoughSpace,
+                   texture_atlas_builder_error::WrongFormat,
+                   texture_atlas_builder_error::UninitializedAtlas,
+                   texture_atlas_builder_error::UninitializedSourceTexture,
+                   TextureAccessError> {
     using Base = std::variant<texture_atlas_builder_error::NotEnoughSpace,
                               texture_atlas_builder_error::WrongFormat,
                               texture_atlas_builder_error::UninitializedAtlas,

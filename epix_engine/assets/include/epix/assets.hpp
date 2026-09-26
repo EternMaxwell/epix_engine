@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <filesystem>
 #include <format>
@@ -15,7 +15,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/asset_changed.hpp>

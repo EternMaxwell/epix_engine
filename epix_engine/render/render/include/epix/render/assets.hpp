@@ -1,14 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <concepts>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
-#include <expected>
 #include <exception>
+#include <expected>
 #include <format>
 #include <limits>
 #include <memory>
@@ -23,7 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/as_bind_group.hpp>
 #include <epix/render/extract.hpp>
@@ -100,12 +100,12 @@ using PrepareAssetError =
  * asset while retaining its metadata in Assets<T>. Bevy supplies the previous
  * GPU asset so extraction can reject an invalid repeated upload. */
 template <typename T>
-concept HasTakeGpuData = requires(RenderAsset<T> asset,
-                                  typename RenderAsset<T>::SourceAsset& source,
-                                  const T* previous) {
-    { asset.take_gpu_data(source, previous) } ->
-        std::same_as<std::expected<typename RenderAsset<T>::SourceAsset, AssetExtractionError>>;
-};
+concept HasTakeGpuData =
+    requires(RenderAsset<T> asset, typename RenderAsset<T>::SourceAsset& source, const T* previous) {
+        {
+            asset.take_gpu_data(source, previous)
+        } -> std::same_as<std::expected<typename RenderAsset<T>::SourceAsset, AssetExtractionError>>;
+    };
 
 /** @brief True when a compact extracted representation is explicitly defined. */
 template <typename T>
@@ -115,8 +115,9 @@ concept HasExtractAsset = requires(RenderAsset<T> asset,
                                    RenderAssetExtractionReason reason,
                                    const T* previous_asset) {
     typename RenderAsset<T>::ExtractError;
-    { asset.extract(source, id, reason, previous_asset) }
-        -> std::same_as<std::expected<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::ExtractError>>;
+    {
+        asset.extract(source, id, reason, previous_asset)
+    } -> std::same_as<std::expected<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::ExtractError>>;
 };
 template <typename T>
 concept RenderAssetImpl = requires(RenderAsset<T> asset) {
@@ -129,11 +130,11 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
     {
         asset.prepare_asset(std::declval<typename RenderAsset<T>::ExtractedAsset&&>(),
                             std::declval<assets::AssetId<typename RenderAsset<T>::SourceAsset>>(),
-                            std::declval<typename RenderAsset<T>::Param&>(),
-                            std::declval<const T*>())
+                            std::declval<typename RenderAsset<T>::Param&>(), std::declval<const T*>())
     } -> std::same_as<std::expected<T, PrepareAssetError<typename RenderAsset<T>::ExtractedAsset>>>;
-    { asset.asset_usage(std::declval<const typename RenderAsset<T>::SourceAsset&>()) } ->
-        std::same_as<assets::RenderAssetUsages>;
+    {
+        asset.asset_usage(std::declval<const typename RenderAsset<T>::SourceAsset&>())
+    } -> std::same_as<assets::RenderAssetUsages>;
     requires std::same_as<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::SourceAsset> ||
                  HasExtractAsset<T>;
 };
@@ -142,7 +143,9 @@ concept RenderAssetImpl = requires(RenderAsset<T> asset) {
  * hook called when an asset is removed from RenderAssets (Bevy
  * RenderAsset::unload_asset). */
 template <typename T>
-concept HasUnloadAsset = requires(RenderAsset<T> asset, assets::AssetId<typename RenderAsset<T>::SourceAsset> id, typename RenderAsset<T>::Param& param) {
+concept HasUnloadAsset = requires(RenderAsset<T> asset,
+                                  assets::AssetId<typename RenderAsset<T>::SourceAsset> id,
+                                  typename RenderAsset<T>::Param& param) {
     { asset.unload_asset(id, param) };
 };
 
@@ -231,7 +234,9 @@ struct RenderAssets {
 template <RenderAssetImpl T>
 struct ExtractedAssets {
     /** @brief Assets extracted this frame (added or modified). */
-    std::vector<std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>> extracted;
+    std::vector<
+        std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>>
+        extracted;
     /** @brief IDs removed this frame (Bevy ExtractedAssets::removed). */
     std::unordered_set<assets::AssetId<typename RenderAsset<T>::SourceAsset>> removed;
     /** @brief IDs added this frame (Bevy ExtractedAssets::added). */
@@ -247,12 +252,13 @@ struct ExtractedAssets {
 };
 
 template <RenderAssetImpl T>
-void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
-                          app::Extract<ecs::ResMut<assets::Assets<typename RenderAsset<T>::SourceAsset>>> assets,
-                          app::Extract<ecs::EventReader<assets::AssetEvent<typename RenderAsset<T>::SourceAsset>>>
-                              events,
-                          ecs::Res<RenderAssets<T>> render_assets) {
-    std::unordered_map<assets::AssetId<typename RenderAsset<T>::SourceAsset>, RenderAssetExtractionReason> changed_assets;
+void extract_render_asset(
+    ecs::ResMut<ExtractedAssets<T>> cache,
+    app::Extract<ecs::ResMut<assets::Assets<typename RenderAsset<T>::SourceAsset>>> assets,
+    app::Extract<ecs::EventReader<assets::AssetEvent<typename RenderAsset<T>::SourceAsset>>> events,
+    ecs::Res<RenderAssets<T>> render_assets) {
+    std::unordered_map<assets::AssetId<typename RenderAsset<T>::SourceAsset>, RenderAssetExtractionReason>
+        changed_assets;
     std::unordered_set<assets::AssetId<typename RenderAsset<T>::SourceAsset>> removed;
     std::unordered_set<assets::AssetId<typename RenderAsset<T>::SourceAsset>> added;
     std::unordered_set<assets::AssetId<typename RenderAsset<T>::SourceAsset>> modified;
@@ -273,24 +279,29 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
             removed.insert(event.id);
         }
     }
-    std::vector<std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>> extracted_assets;
+    std::vector<
+        std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>>
+        extracted_assets;
     RenderAsset<T> render_asset_impl;
     for (const auto& [id, reason] : changed_assets) {
         if (auto asset = assets->get(id)) {
             const typename RenderAsset<T>::SourceAsset& source = asset->get();
-            const auto usage = render_asset_impl.asset_usage(source);
-            const auto previous_asset = render_assets->get(id);
+            const auto usage                                   = render_asset_impl.asset_usage(source);
+            const auto previous_asset                          = render_assets->get(id);
             if (!(usage & assets::RENDER_WORLD)) continue;
             if (usage & assets::MAIN_WORLD) {
                 // This asset remains in the main world. A compact
                 // ExtractedAsset avoids copying the complete source asset.
-                if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::SourceAsset> &&
+                if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset,
+                                           typename RenderAsset<T>::SourceAsset> &&
                               !std::is_copy_constructible_v<typename RenderAsset<T>::SourceAsset>) {
-                    spdlog::error("Asset [{}] is not copyable; a dual-world RenderAsset with ExtractedAsset == T must be "
-                                  "copyable or define a compact ExtractedAsset",
-                                  id.to_string());
+                    spdlog::error(
+                        "Asset [{}] is not copyable; a dual-world RenderAsset with ExtractedAsset == T must be "
+                        "copyable or define a compact ExtractedAsset",
+                        id.to_string());
                 } else {
-                    if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::SourceAsset>) {
+                    if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset,
+                                               typename RenderAsset<T>::SourceAsset>) {
                         extracted_assets.emplace_back(id, source);
                         added.insert(id);
                     } else {
@@ -313,7 +324,8 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                     if (stored) {
                         auto data = render_asset_impl.take_gpu_data(stored->get(), previous_asset);
                         if (data) {
-                            if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset, typename RenderAsset<T>::SourceAsset>) {
+                            if constexpr (std::same_as<typename RenderAsset<T>::ExtractedAsset,
+                                                       typename RenderAsset<T>::SourceAsset>) {
                                 extracted_assets.emplace_back(id, std::move(*data));
                                 added.insert(id);
                             } else {
@@ -334,7 +346,8 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
                         }
                     }
                 } else {
-                    spdlog::error("Asset [{}] with RENDER_WORLD usage has no take_gpu_data implementation", id.to_string());
+                    spdlog::error("Asset [{}] with RENDER_WORLD usage has no take_gpu_data implementation",
+                                  id.to_string());
                 }
             }
         }
@@ -344,7 +357,6 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
     cache->removed   = std::move(removed);
     cache->added     = std::move(added);
     cache->modified  = std::move(modified);
-
 }
 
 /**
@@ -355,7 +367,9 @@ void extract_render_asset(ecs::ResMut<ExtractedAssets<T>> cache,
 template <RenderAssetImpl T>
 struct PrepareNextFrameAssets {
     /** @brief (id, asset) pairs deferred to the next frame. */
-    std::vector<std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>> pending;
+    std::vector<
+        std::pair<assets::AssetId<typename RenderAsset<T>::SourceAsset>, typename RenderAsset<T>::ExtractedAsset>>
+        pending;
 
     PrepareNextFrameAssets()                                         = default;
     PrepareNextFrameAssets(const PrepareNextFrameAssets&)            = delete;
@@ -437,10 +451,9 @@ namespace detail {
 /** @brief True when the RenderAsset specialization reports a byte size
  * (Bevy RenderAsset::byte_len -> Option<usize>). */
 template <typename T>
-concept HasRenderAssetByteLen =
-    requires(RenderAsset<T> asset, const typename RenderAsset<T>::ExtractedAsset& t) {
-        { asset.byte_len(t) } -> std::same_as<std::optional<std::size_t>>;
-    };
+concept HasRenderAssetByteLen = requires(RenderAsset<T> asset, const typename RenderAsset<T>::ExtractedAsset& t) {
+    { asset.byte_len(t) } -> std::same_as<std::optional<std::size_t>>;
+};
 
 template <typename T>
 std::optional<std::size_t> render_asset_byte_len(const RenderAsset<T>& asset,
@@ -498,7 +511,8 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             render_assets->insert(id, std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
+        } else if (auto* retry =
+                       std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
             prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
         } else if (const auto* creation_error = std::get_if<GpuAssetCreationError>(&result.error())) {
             spdlog::error("Render asset {} GPU creation failed: {}", id.to_string(),
@@ -533,13 +547,14 @@ void prepare_assets(typename RenderAsset<T>::Param param,
             prepare_next_frame_assets->pending.emplace_back(id, std::move(asset));
             continue;
         }
-        auto result = render_asset_impl.prepare_asset(std::move(asset), id, param,
-                                                      previous_asset ? &*previous_asset : nullptr);
+        auto result =
+            render_asset_impl.prepare_asset(std::move(asset), id, param, previous_asset ? &*previous_asset : nullptr);
         if (result) {
             render_assets->insert(id, std::move(*result));
             bytes_per_frame_limiter.get_mut().write_bytes(*write);
             ++wrote_asset_count;
-        } else if (auto* retry = std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
+        } else if (auto* retry =
+                       std::get_if<RetryNextAssetUpdate<typename RenderAsset<T>::ExtractedAsset>>(&result.error())) {
             prepare_next_frame_assets->pending.emplace_back(id, std::move(retry->asset));
         } else if (const auto* creation_error = std::get_if<GpuAssetCreationError>(&result.error())) {
             spdlog::error("Render asset {} GPU creation failed: {}", id.to_string(),

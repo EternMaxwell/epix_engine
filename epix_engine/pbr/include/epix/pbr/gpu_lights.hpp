@@ -4,9 +4,9 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -52,16 +52,16 @@ EPIX_EXPORT struct GpuDirectionalLight {
     std::array<GpuDirectionalCascade, MAX_CASCADES_PER_LIGHT> cascades{};
     glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};
     glm::vec3 dir_to_light{0.0f, 0.0f, -1.0f};
-    std::uint32_t flags = DirectionalLightFlags::NONE;
-    float soft_shadow_size = 0.0f;
-    float shadow_depth_bias = 0.0f;
-    float shadow_normal_bias = 0.0f;
-    std::uint32_t num_cascades = 0;
-    float cascades_overlap_proportion = 0.0f;
+    std::uint32_t flags                    = DirectionalLightFlags::NONE;
+    float soft_shadow_size                 = 0.0f;
+    float shadow_depth_bias                = 0.0f;
+    float shadow_normal_bias               = 0.0f;
+    std::uint32_t num_cascades             = 0;
+    float cascades_overlap_proportion      = 0.0f;
     std::uint32_t depth_texture_base_index = 0;
-    std::uint32_t decal_index = 0;
-    float sun_disk_angular_size = 0.0f;
-    float sun_disk_intensity = 0.0f;
+    std::uint32_t decal_index              = 0;
+    float sun_disk_angular_size            = 0.0f;
+    float sun_disk_intensity               = 0.0f;
     /** @brief Padding to the shader type's 16-byte-aligned size. Epix's glm
      *  types are unaligned, so C++ lays this struct out as 388 bytes and does
      *  not round the tail up; the shader type is 400, and without these twelve
@@ -87,7 +87,7 @@ EPIX_EXPORT struct GpuLights {
     glm::vec4 cluster_factors{0.0f};
     std::uint32_t n_directional_lights = 0;
     /** @brief Offset from a spot light's light index to its shadow map index. */
-    std::int32_t spot_light_shadowmap_offset = 0;
+    std::int32_t spot_light_shadowmap_offset               = 0;
     std::uint32_t ambient_light_affects_lightmapped_meshes = 0;
     /** @brief Padding to the shader type's 16-byte-aligned size. */
     std::uint32_t padding = 0;
@@ -104,11 +104,9 @@ namespace epix::render::render_resource {
 /** @brief Bevy's `ShaderType` derive writes the struct's own layout for these,
  *  and the padding above is what makes that layout the shader's. */
 template <>
-struct ShaderTypeInfo<::epix::pbr::GpuDirectionalCascade>
-    : RawShaderType<::epix::pbr::GpuDirectionalCascade> {};
+struct ShaderTypeInfo<::epix::pbr::GpuDirectionalCascade> : RawShaderType<::epix::pbr::GpuDirectionalCascade> {};
 template <>
-struct ShaderTypeInfo<::epix::pbr::GpuDirectionalLight>
-    : RawShaderType<::epix::pbr::GpuDirectionalLight> {};
+struct ShaderTypeInfo<::epix::pbr::GpuDirectionalLight> : RawShaderType<::epix::pbr::GpuDirectionalLight> {};
 template <>
 struct ShaderTypeInfo<::epix::pbr::GpuLights> : RawShaderType<::epix::pbr::GpuLights> {};
 }  // namespace epix::render::render_resource

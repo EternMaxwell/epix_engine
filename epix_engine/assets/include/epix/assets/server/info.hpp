@@ -1,10 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <epix/utils.hpp>
@@ -21,7 +22,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/meta.hpp>
@@ -92,8 +92,8 @@ struct EPIX_API AssetInfos {
     // Move-only: the pending-task map holds move-only alternatives. Declaring the
     // moves suppresses the copy operations, so the default constructor has to be
     // declared as well for RwLock's in-place construction.
-    AssetInfos() = default;
-    AssetInfos(AssetInfos&&) = default;
+    AssetInfos()                        = default;
+    AssetInfos(AssetInfos&&)            = default;
     AssetInfos& operator=(AssetInfos&&) = default;
 
     std::unordered_map<AssetPath, std::unordered_map<epix::meta::type_index, UntypedAssetId>> path_to_ids;

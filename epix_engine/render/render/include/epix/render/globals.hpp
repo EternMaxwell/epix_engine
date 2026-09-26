@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/time.hpp>
 #include <string>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>

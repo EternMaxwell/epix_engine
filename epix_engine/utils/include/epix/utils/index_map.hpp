@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <optional>
 #include <ranges>
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::utils {
@@ -59,11 +58,11 @@ class IndexMap {
      * The moved entry's lookup index is updated before this returns. */
     std::optional<value_type> swap_remove_index(std::size_t index) {
         if (index >= m_entries.size()) return std::nullopt;
-        value_type removed = std::move(m_entries[index]);
+        value_type removed     = std::move(m_entries[index]);
         const std::size_t last = m_entries.size() - 1;
         m_indices.erase(removed.first);
         if (index != last) {
-            m_entries[index] = std::move(m_entries[last]);
+            m_entries[index]                     = std::move(m_entries[last]);
             m_indices.at(m_entries[index].first) = index;
         }
         m_entries.pop_back();

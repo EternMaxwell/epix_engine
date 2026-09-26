@@ -151,12 +151,8 @@ std::expected<std::vector<std::byte>, TextureError> read_file_bytes(const std::f
  * Radiance HDR path, and `image` has no float luma variant, so a single-channel float buffer is
  * replicated into RGB exactly as a luma buffer would be.
  */
-DynamicImage decoded_dynamic_image(const void* pixels,
-                                   int width,
-                                   int height,
-                                   int channels,
-                                   bool is_float,
-                                   bool is_16_bit) {
+DynamicImage decoded_dynamic_image(
+    const void* pixels, int width, int height, int channels, bool is_float, bool is_16_bit) {
     const std::uint32_t w         = static_cast<std::uint32_t>(width);
     const std::uint32_t h         = static_cast<std::uint32_t>(height);
     const std::size_t pixel_count = static_cast<std::size_t>(w) * h;
@@ -276,7 +272,7 @@ std::expected<Image, TextureError> decode_image(const unsigned char* buffer,
  * `reinterpret_stacked_2d_as_array` applies to a zero layer count.
  */
 std::expected<std::uint32_t, TextureReinterpretationError> array_layer_count(const Image& image,
-                                                                            const ImageArrayLayout& layout) {
+                                                                             const ImageArrayLayout& layout) {
     return std::visit(
         [&image](const auto& alternative) -> std::expected<std::uint32_t, TextureReinterpretationError> {
             using Alternative = std::remove_cvref_t<decltype(alternative)>;
@@ -455,10 +451,8 @@ std::expected<Image, TextureError> Image::from_buffer(std::span<const std::byte>
         return std::unexpected(TextureError{TextureError::ImageError{decode_failure_message()}});
     }
 
-    auto decoded = decode_image(reinterpret_cast<const unsigned char*>(bytes.data()),
-                                static_cast<int>(bytes.size()),
-                                settings.is_srgb,
-                                settings.asset_usage);
+    auto decoded = decode_image(reinterpret_cast<const unsigned char*>(bytes.data()), static_cast<int>(bytes.size()),
+                                settings.is_srgb, settings.asset_usage);
     if (!decoded) return std::unexpected(decoded.error());
 
     Image image = std::move(*decoded);
@@ -494,13 +488,11 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
     // rather than written as invalid data, which is the case the previous `Format::Unknown` guard
     // covered.
     const std::size_t sample_size = components == 0 ? 0 : pixel_size / components;
-    const bool is_float =
-        sample_size == 4 &&
-        (image.texture_format() == wgpu::TextureFormat::eR32Float ||
-         image.texture_format() == wgpu::TextureFormat::eRGBA32Float);
-    const bool is_16_bit = sample_size == 2;
-    auto extension       = path.extension().string();
-    const auto path_string = path.string();
+    const bool is_float           = sample_size == 4 && (image.texture_format() == wgpu::TextureFormat::eR32Float ||
+                                                         image.texture_format() == wgpu::TextureFormat::eRGBA32Float);
+    const bool is_16_bit          = sample_size == 2;
+    auto extension                = path.extension().string();
+    const auto path_string        = path.string();
     std::ranges::transform(extension, extension.begin(), [](unsigned char value) { return std::tolower(value); });
 
     if (components == 0 || pixel_size == 0 || (sample_size == 4 && !is_float)) {
@@ -519,11 +511,10 @@ std::expected<void, ImageSaveError> Image::save(const std::filesystem::path& pat
             success = stbi_write_png(path_string.c_str(), image.width(), image.height(), components, image.data.data(),
                                      image.width() * pixel_size);
         } else if (extension == ".jpg" || extension == ".jpeg") {
-            success = stbi_write_jpg(path_string.c_str(), image.width(), image.height(), components, image.data.data(),
-                                     90);
-        } else if (extension == ".bmp") {
             success =
-                stbi_write_bmp(path_string.c_str(), image.width(), image.height(), components, image.data.data());
+                stbi_write_jpg(path_string.c_str(), image.width(), image.height(), components, image.data.data(), 90);
+        } else if (extension == ".bmp") {
+            success = stbi_write_bmp(path_string.c_str(), image.width(), image.height(), components, image.data.data());
         }
     }
     if (!success) return std::unexpected(ImageSaveError::SaveFailed);
@@ -537,8 +528,8 @@ std::span<const ImageFormat> ImageLoader::SUPPORTED_FORMATS() noexcept {
     // list is exactly the formats that decoder reads, plus the two Epix-only
     // containers it also reads (`Pic`, `Psd`).
     static constexpr auto formats = std::array{
-        ImageFormat::Bmp,  ImageFormat::Gif, ImageFormat::Hdr, ImageFormat::Jpeg, ImageFormat::Png,
-        ImageFormat::Pnm,  ImageFormat::Tga, ImageFormat::Pic, ImageFormat::Psd,
+        ImageFormat::Bmp, ImageFormat::Gif, ImageFormat::Hdr, ImageFormat::Jpeg, ImageFormat::Png,
+        ImageFormat::Pnm, ImageFormat::Tga, ImageFormat::Pic, ImageFormat::Psd,
     };
     return formats;
 }
@@ -603,9 +594,8 @@ STDEXEC::task<std::expected<Image, ImageLoaderError>> ImageLoader::load(assets::
             ImageLoaderError{ImageLoaderError::FileTexture{FileTextureError{*classification, path_string}}});
     }
 
-    auto image = Image::from_buffer(std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()),
-                                                               bytes.size()),
-                                    settings);
+    auto image = Image::from_buffer(
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(bytes.data()), bytes.size()), settings);
     if (!image) {
         co_return std::unexpected(
             ImageLoaderError{ImageLoaderError::FileTexture{FileTextureError{image.error(), path_string}}});

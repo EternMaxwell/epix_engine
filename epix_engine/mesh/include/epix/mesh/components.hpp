@@ -1,13 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/mesh/mesh.hpp>

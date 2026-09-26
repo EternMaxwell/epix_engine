@@ -1,14 +1,13 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
 #include <memory>
 #include <mutex>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::label {

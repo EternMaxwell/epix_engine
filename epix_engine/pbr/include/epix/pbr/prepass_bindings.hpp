@@ -3,11 +3,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/core_graph/core3d.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/mesh_pipeline_key.hpp>

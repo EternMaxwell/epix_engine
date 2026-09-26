@@ -1,13 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <cstring>
 #include <deque>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
+#include <epix/image.hpp>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -18,8 +19,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
-#include <epix/image.hpp>
 #endif
 
 #include <epix/render/extract.hpp>
@@ -217,9 +216,9 @@ EPIX_EXPORT EPIX_API wgpu::TexelCopyBufferLayout layout_data(const wgpu::Extent3
  * world as events and maintain the staging-buffer pool (Bevy `sync_readbacks`).
  */
 EPIX_EXPORT EPIX_API void sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackComplete>>> events,
-                                ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
-                                ecs::ResMut<readback::GpuReadbacks> readbacks,
-                                ecs::Res<readback::GpuReadbackMaxUnusedFrames> max_unused_frames);
+                                         ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
+                                         ecs::ResMut<readback::GpuReadbacks> readbacks,
+                                         ecs::Res<readback::GpuReadbackMaxUnusedFrames> max_unused_frames);
 
 /** @brief PrepareResources system: create readback requests from Readback
  * components (Bevy `prepare_buffers`). */

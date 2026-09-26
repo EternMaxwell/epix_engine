@@ -1,8 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/window.hpp>
 #include <functional>
@@ -11,7 +11,6 @@
 #include <unordered_set>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::camera {
@@ -119,25 +118,26 @@ struct EPIX_API WindowSurfaces {
 /**
  * @brief System for extracting windows.
  */
-EPIX_EXPORT EPIX_API void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows,
-                                 app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                                                   const epix::window::Window&,
-                                                                   const SurfaceCreation&,
-                                                                   ecs::Has<epix::window::PrimaryWindow>>>> windows,
-                                 ecs::ResMut<WindowSurfaces> window_surfaces,
-                                 app::Extract<ecs::EventReader<epix::window::WindowClosed>> closed);
+EPIX_EXPORT EPIX_API void extract_windows(
+    ecs::ResMut<ExtractedWindows> extracted_windows,
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity,
+                                      const epix::window::Window&,
+                                      const SurfaceCreation&,
+                                      ecs::Has<epix::window::PrimaryWindow>>>> windows,
+    ecs::ResMut<WindowSurfaces> window_surfaces,
+    app::Extract<ecs::EventReader<epix::window::WindowClosed>> closed);
 /**
  * @brief System for making swapchain texture and texture view available.
  */
 EPIX_EXPORT EPIX_API void prepare_windows(ecs::ResMut<ExtractedWindows> windows,
-                                 ecs::ResMut<WindowSurfaces> window_surfaces,
-                                 ecs::Res<wgpu::Device> device,
-                                 ecs::Res<wgpu::Instance> instance);
+                                          ecs::ResMut<WindowSurfaces> window_surfaces,
+                                          ecs::Res<wgpu::Device> device,
+                                          ecs::Res<wgpu::Instance> instance);
 EPIX_API void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
-                     ecs::ResMut<WindowSurfaces> window_surfaces,
-                     ecs::Res<wgpu::Instance> instance,
-                     ecs::Res<wgpu::Adapter> adapter,
-                     ecs::Res<wgpu::Device> device);
+                              ecs::ResMut<WindowSurfaces> window_surfaces,
+                              ecs::Res<wgpu::Instance> instance,
+                              ecs::Res<wgpu::Adapter> adapter,
+                              ecs::Res<wgpu::Device> device);
 
 /** @brief Present completed surface frames. Called by render_system immediately
  * after graph submission, matching

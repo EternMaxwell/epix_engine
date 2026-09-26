@@ -1,6 +1,5 @@
-#include <epix/core_graph.hpp>
-
 #include <array>
+#include <epix/core_graph.hpp>
 #include <optional>
 #include <unordered_set>
 #include <utility>
@@ -23,8 +22,8 @@ wgpu::BlendState alpha_blend_state() noexcept {
 }
 
 std::optional<wgpu::BlendState> output_blend_for(const render::camera::ExtractedCamera* camera,
-                                                  const wgpu::TextureView& output_texture,
-                                                  std::unordered_set<wgpu::TextureView>& output_textures) {
+                                                 const wgpu::TextureView& output_texture,
+                                                 std::unordered_set<wgpu::TextureView>& output_textures) {
     // Mirror Bevy's prepare_view_upscaling_pipelines exactly: this tracks the
     // output views encountered by this query run, rather than using camera
     // sort indices. A skipped view must not count as an output write.
@@ -41,8 +40,7 @@ std::optional<wgpu::BlendState> output_blend_for(const render::camera::Extracted
     return already_seen ? std::optional{alpha_blend_state()} : std::nullopt;
 }
 
-std::optional<glm::vec4> output_clear_color(const render::camera::ExtractedCamera* camera,
-                                            const ecs::World& world) {
+std::optional<glm::vec4> output_clear_color(const render::camera::ExtractedCamera* camera, const ecs::World& world) {
     if (!camera) {
         if (auto clear = world.get_resource<camera::ClearColor>()) return clear->get().to_vec4();
         return std::nullopt;
@@ -72,21 +70,20 @@ void prepare_view_upscaling_pipelines(
         const auto pipeline_id = pipelines->specialize(
             *pipeline_server, *blit_pipeline,
             BlitPipelineKey{.texture_format = target.out_texture_view_format(),
-                            .blend_state     = output_blend_for(camera, target.out_texture(), output_textures),
-                            .samples         = 1});
+                            .blend_state    = output_blend_for(camera, target.out_texture(), output_textures),
+                            .samples        = 1});
         pipeline_server->block_on_render_pipeline(pipeline_id);
         commands.entity(entity).insert(ViewUpscalingPipeline{pipeline_id});
     }
 }
 }  // namespace
 
-std::expected<void, render::graph::NodeRunError> UpscalingNode::run(
-    render::graph::GraphContext&,
-    render::graph::RenderContext& render_context,
-    typename ecs::QueryData<ViewQuery>::Item view,
-    const ecs::World& world) const {
+std::expected<void, render::graph::NodeRunError> UpscalingNode::run(render::graph::GraphContext&,
+                                                                    render::graph::RenderContext& render_context,
+                                                                    typename ecs::QueryData<ViewQuery>::Item view,
+                                                                    const ecs::World& world) const {
     auto&& [target, upscaling_pipeline, opt_camera] = view;
-    const auto* camera = opt_camera ? &opt_camera->get() : nullptr;
+    const auto* camera                              = opt_camera ? &opt_camera->get() : nullptr;
     if (camera && std::holds_alternative<camera::CameraOutputMode::Skip>(camera->output_mode)) return {};
     if (!target.out_texture()) return {};
 
@@ -102,7 +99,8 @@ std::expected<void, render::graph::NodeRunError> UpscalingNode::run(
         const std::lock_guard lock(cached_bind_group->mutex);
         if (!cached_bind_group->value || !(cached_bind_group->value->first == source_texture)) {
             cached_bind_group->value =
-                std::pair{source_texture, blit_pipeline->get().create_bind_group(render_context.device(), source_texture, pipeline_server->get())};
+                std::pair{source_texture, blit_pipeline->get().create_bind_group(
+                                              render_context.device(), source_texture, pipeline_server->get())};
         }
         bind_group = cached_bind_group->value->second;
     }
@@ -113,7 +111,7 @@ std::expected<void, render::graph::NodeRunError> UpscalingNode::run(
     render_context.add_command_buffer_generation_task(
         [color_attachment, render_pipeline, bind_group, viewport](wgpu::Device device) {
             auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("upscaling"));
-            auto pass = encoder.beginRenderPass(
+            auto pass    = encoder.beginRenderPass(
                 wgpu::RenderPassDescriptor().setLabel("upscaling").setColorAttachments(std::array{color_attachment}));
             if (viewport) {
                 pass.setScissorRect(viewport->physical_position.x, viewport->physical_position.y,
@@ -130,10 +128,9 @@ std::expected<void, render::graph::NodeRunError> UpscalingNode::run(
 
 void UpscalingPlugin::attach(App& app) {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
-        render_app->get().add_systems(
-            render::Render,
-            into(prepare_view_upscaling_pipelines).in_set(render::RenderSystems::Prepare).set_name(
-                "prepare view upscaling pipelines"));
+        render_app->get().add_systems(render::Render, into(prepare_view_upscaling_pipelines)
+                                                          .in_set(render::RenderSystems::Prepare)
+                                                          .set_name("prepare view upscaling pipelines"));
     }
 }
 

@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
 #include <glm/glm.hpp>
@@ -11,7 +11,6 @@
 #include <unordered_map>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/image.hpp>
@@ -227,11 +226,11 @@ struct epix::render::RenderAsset<epix::render::texture::GpuImage> {
     using SourceAsset    = epix::image::Image;
     using ExtractedAsset = epix::image::Image;
 
-    std::expected<epix::render::texture::GpuImage, epix::render::PrepareAssetError<epix::image::Image>>
-    prepare_asset(epix::image::Image&& asset,
-                  epix::assets::AssetId<epix::image::Image> id,
-                  Param param,
-                  const epix::render::texture::GpuImage* previous);
+    std::expected<epix::render::texture::GpuImage, epix::render::PrepareAssetError<epix::image::Image>> prepare_asset(
+        epix::image::Image&& asset,
+        epix::assets::AssetId<epix::image::Image> id,
+        Param param,
+        const epix::render::texture::GpuImage* previous);
     epix::assets::RenderAssetUsages asset_usage(const epix::image::Image& asset) noexcept;
     std::optional<std::size_t> byte_len(const epix::image::Image& asset) const noexcept {
         return asset.has_data() ? std::optional{asset.raw_view().size_bytes()} : std::nullopt;
@@ -240,8 +239,7 @@ struct epix::render::RenderAsset<epix::render::texture::GpuImage> {
      * retaining its metadata in the main-world asset (Bevy
      * `GpuImage::take_gpu_data`). */
     std::expected<epix::image::Image, epix::render::AssetExtractionError> take_gpu_data(
-        epix::image::Image& source,
-        const epix::render::texture::GpuImage* previous_gpu_asset) const {
+        epix::image::Image& source, const epix::render::texture::GpuImage* previous_gpu_asset) const {
         const bool valid_upload = source.has_data() || !previous_gpu_asset || !previous_gpu_asset->had_data;
         if (!valid_upload) {
             return std::unexpected(epix::render::AssetExtractionError::AlreadyExtracted);

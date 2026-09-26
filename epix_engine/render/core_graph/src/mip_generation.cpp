@@ -1,10 +1,11 @@
 #include <epix/core_graph/mip_generation.hpp>
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <bit>
 #include <format>
-#include <spdlog/spdlog.h>
 #endif
 
 using namespace epix::ecs;
@@ -372,31 +373,30 @@ render::ComputePipelineDescriptor DownsampleDepthPipeline::specialize(Key key) c
     }
 
     return render::ComputePipelineDescriptor{
-        .label = std::format("downsample depth{}{} pipeline", multisampled ? " multisample" : "",
-                             second_phase ? " second phase" : " first phase"),
-        .layouts = std::vector<render::BindGroupLayoutDescriptor>{bind_group_layout},
-        .push_constant_ranges =
-            std::vector<render::PushConstantRange>{render::PushConstantRange{
-                .stages = wgpu::ShaderStage::eCompute, .start = 0, .end = 4}},
-        .shader      = shader,
-        .shader_defs = std::move(shader_defs),
-        .entry_point = std::string(second_phase ? "downsample_depth_second" : "downsample_depth_first"),
+        .label                = std::format("downsample depth{}{} pipeline", multisampled ? " multisample" : "",
+                                            second_phase ? " second phase" : " first phase"),
+        .layouts              = std::vector<render::BindGroupLayoutDescriptor>{bind_group_layout},
+        .push_constant_ranges = std::vector<render::PushConstantRange>{render::PushConstantRange{
+            .stages = wgpu::ShaderStage::eCompute, .start = 0, .end = 4}},
+        .shader               = shader,
+        .shader_defs          = std::move(shader_defs),
+        .entry_point          = std::string(second_phase ? "downsample_depth_second" : "downsample_depth_first"),
     };
 }
 
 wgpu::TextureView create_depth_pyramid_dummy_texture(const wgpu::Device& device,
-                                                    const char* texture_label,
-                                                    const char* texture_view_label) {
+                                                     const char* texture_label,
+                                                     const char* texture_view_label) {
     // Bevy `create_depth_pyramid_dummy_texture` (`:533-560`): a one-texel
     // R32Float storage texture that fills the pyramid bindings no mip uses.
     const wgpu::Texture texture = device.createTexture(wgpu::TextureDescriptor()
-                                                          .setLabel(texture_label)
-                                                          .setSize({1, 1, 1})
-                                                          .setMipLevelCount(1)
-                                                          .setSampleCount(1)
-                                                          .setDimension(wgpu::TextureDimension::e2D)
-                                                          .setFormat(wgpu::TextureFormat::eR32Float)
-                                                          .setUsage(wgpu::TextureUsage::eStorageBinding));
+                                                           .setLabel(texture_label)
+                                                           .setSize({1, 1, 1})
+                                                           .setMipLevelCount(1)
+                                                           .setSampleCount(1)
+                                                           .setDimension(wgpu::TextureDimension::e2D)
+                                                           .setFormat(wgpu::TextureFormat::eR32Float)
+                                                           .setUsage(wgpu::TextureUsage::eStorageBinding));
     return texture.createView(wgpu::TextureViewDescriptor()
                                   .setLabel(texture_view_label)
                                   .setFormat(wgpu::TextureFormat::eR32Float)
@@ -449,18 +449,16 @@ void create_downsample_depth_pipelines(
         .sampler            = sampler,
     };
 
-    pipelines.first.pipeline_id = specialized_compute_pipelines->specialize(
-        *pipeline_server, pipelines.first, DownsampleDepthPipelineKey{});
+    pipelines.first.pipeline_id =
+        specialized_compute_pipelines->specialize(*pipeline_server, pipelines.first, DownsampleDepthPipelineKey{});
     pipelines.second.pipeline_id = specialized_compute_pipelines->specialize(
-        *pipeline_server, pipelines.second,
-        DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE});
-    pipelines.first_multisample.pipeline_id = specialized_compute_pipelines->specialize(
-        *pipeline_server, pipelines.first_multisample,
-        DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::MULTISAMPLE});
+        *pipeline_server, pipelines.second, DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE});
+    pipelines.first_multisample.pipeline_id =
+        specialized_compute_pipelines->specialize(*pipeline_server, pipelines.first_multisample,
+                                                  DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::MULTISAMPLE});
     pipelines.second_multisample.pipeline_id = specialized_compute_pipelines->specialize(
         *pipeline_server, pipelines.second_multisample,
-        DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE |
-                                   DownsampleDepthPipelineKey::MULTISAMPLE});
+        DownsampleDepthPipelineKey{DownsampleDepthPipelineKey::SECOND_PHASE | DownsampleDepthPipelineKey::MULTISAMPLE});
 
     commands.insert_resource(std::move(pipelines));
 }
@@ -480,7 +478,7 @@ ViewDepthPyramid ViewDepthPyramid::create(const wgpu::Device& device,
     // Bevy `ViewDepthPyramid::new` (`:581-641`).
     const glm::uvec2 pyramid_size = depth_pyramid_size(size);
     const std::uint32_t mip_count = max_mips_for_size(pyramid_size);
-    const auto usage = wgpu::TextureUsage::eStorageBinding | wgpu::TextureUsage::eTextureBinding;
+    const auto usage              = wgpu::TextureUsage::eStorageBinding | wgpu::TextureUsage::eTextureBinding;
 
     // Bevy keys its texture cache on the descriptor; Epix's key mirrors the
     // fields the descriptor sets, so both are built from the same values.
@@ -495,16 +493,15 @@ ViewDepthPyramid ViewDepthPyramid::create(const wgpu::Device& device,
         .usage                 = usage,
         .label                 = std::string(texture_label),
     };
-    const auto cached = texture_cache.get(
-        device, key,
-        wgpu::TextureDescriptor()
-            .setLabel(texture_label)
-            .setSize({pyramid_size.x, pyramid_size.y, 1})
-            .setMipLevelCount(mip_count)
-            .setSampleCount(1)
-            .setDimension(wgpu::TextureDimension::e2D)
-            .setFormat(wgpu::TextureFormat::eR32Float)
-            .setUsage(usage));
+    const auto cached = texture_cache.get(device, key,
+                                          wgpu::TextureDescriptor()
+                                              .setLabel(texture_label)
+                                              .setSize({pyramid_size.x, pyramid_size.y, 1})
+                                              .setMipLevelCount(mip_count)
+                                              .setSampleCount(1)
+                                              .setDimension(wgpu::TextureDimension::e2D)
+                                              .setFormat(wgpu::TextureFormat::eR32Float)
+                                              .setUsage(usage));
 
     ViewDepthPyramid pyramid;
     pyramid.all_mips  = cached.default_view;
@@ -512,17 +509,16 @@ ViewDepthPyramid ViewDepthPyramid::create(const wgpu::Device& device,
     for (std::size_t level = 0; level < DEPTH_PYRAMID_MIP_COUNT; ++level) {
         // Bevy binds the dummy texture for the mips this depth buffer does not
         // need, so every binding in the layout is always populated.
-        pyramid.mips[level] =
-            level < mip_count
-                ? cached.texture.createView(wgpu::TextureViewDescriptor()
-                                                .setLabel(texture_view_label)
-                                                .setFormat(wgpu::TextureFormat::eR32Float)
-                                                .setDimension(wgpu::TextureViewDimension::e2D)
-                                                .setBaseMipLevel(static_cast<std::uint32_t>(level))
-                                                .setMipLevelCount(1)
-                                                .setBaseArrayLayer(0)
-                                                .setArrayLayerCount(1))
-                : dummy_texture;
+        pyramid.mips[level] = level < mip_count
+                                  ? cached.texture.createView(wgpu::TextureViewDescriptor()
+                                                                  .setLabel(texture_view_label)
+                                                                  .setFormat(wgpu::TextureFormat::eR32Float)
+                                                                  .setDimension(wgpu::TextureViewDimension::e2D)
+                                                                  .setBaseMipLevel(static_cast<std::uint32_t>(level))
+                                                                  .setMipLevelCount(1)
+                                                                  .setBaseArrayLayer(0)
+                                                                  .setArrayLayerCount(1))
+                                  : dummy_texture;
     }
     return pyramid;
 }
@@ -542,12 +538,10 @@ wgpu::BindGroup ViewDepthPyramid::create_bind_group(const wgpu::Device& device,
         entries.push_back(
             wgpu::BindGroupEntry().setBinding(static_cast<std::uint32_t>(level + 1)).setTextureView(mips[level]));
     }
-    entries.push_back(wgpu::BindGroupEntry()
-                          .setBinding(static_cast<std::uint32_t>(DEPTH_PYRAMID_MIP_COUNT + 1))
-                          .setSampler(sampler));
+    entries.push_back(
+        wgpu::BindGroupEntry().setBinding(static_cast<std::uint32_t>(DEPTH_PYRAMID_MIP_COUNT + 1)).setSampler(sampler));
 
-    return device.createBindGroup(
-        wgpu::BindGroupDescriptor().setLabel(label).setLayout(layout).setEntries(entries));
+    return device.createBindGroup(wgpu::BindGroupDescriptor().setLabel(label).setLayout(layout).setEntries(entries));
 }
 
 void ViewDepthPyramid::downsample_depth(const char* label,
@@ -577,8 +571,7 @@ void prepare_view_depth_pyramids(ecs::Commands commands,
                                  std::optional<ecs::Res<DepthPyramidDummyTexture>> depth_pyramid_dummy_texture,
                                  ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&>,
                                             ecs::Filter<ecs::With<render::experimental::OcclusionCulling>,
-                                                        ecs::Without<render::view::NoIndirectDrawing>>>
-                                     views) {
+                                                        ecs::Without<render::view::NoIndirectDrawing>>> views) {
     // Bevy `prepare_view_depth_pyramids` (`:709-726`).
     if (!depth_pyramid_dummy_texture.has_value()) return;
     for (auto&& [entity, view] : views.iter()) {
@@ -599,8 +592,7 @@ void prepare_downsample_depth_view_bind_groups(
                          ecs::Opt<const render::view::ViewDepthTexture&>,
                          ecs::Opt<const render::experimental::OcclusionCullingSubview&>>,
                ecs::Filter<ecs::Or<ecs::With<render::view::ViewDepthTexture>,
-                                   ecs::With<render::experimental::OcclusionCullingSubview>>>>
-        view_depth_textures) {
+                                   ecs::With<render::experimental::OcclusionCullingSubview>>>> view_depth_textures) {
     // Bevy `prepare_downsample_depth_view_bind_groups` (`:737-785`).
     if (!downsample_depth_pipelines.has_value()) return;
     const auto& pipelines = downsample_depth_pipelines->get();
@@ -608,8 +600,8 @@ void prepare_downsample_depth_view_bind_groups(
          view_depth_textures.iter()) {
         const bool is_multisampled =
             view_depth_texture.has_value() && view_depth_texture->get().texture.getSampleCount() > 1;
-        const auto& layout = is_multisampled ? pipelines.first_multisample.bind_group_layout
-                                             : pipelines.first.bind_group_layout;
+        const auto& layout =
+            is_multisampled ? pipelines.first_multisample.bind_group_layout : pipelines.first.bind_group_layout;
 
         const wgpu::TextureView* source = nullptr;
         if (view_depth_texture.has_value()) {
@@ -620,17 +612,15 @@ void prepare_downsample_depth_view_bind_groups(
         if (source == nullptr) continue;
 
         commands.entity(entity).insert(ViewDownsampleDepthBindGroup{view_depth_pyramid.create_bind_group(
-            *render_device,
-            is_multisampled ? "downsample multisample depth bind group" : "downsample depth bind group",
+            *render_device, is_multisampled ? "downsample multisample depth bind group" : "downsample depth bind group",
             pipeline_server->get_bind_group_layout(layout), *source, pipelines.sampler)});
     }
 }
 
-std::expected<void, render::graph::NodeRunError> DownsampleDepthNode::run(
-    render::graph::GraphContext& graph,
-    render::graph::RenderContext& render_context,
-    typename ecs::QueryData<ViewQuery>::Item view,
-    const ecs::World& world) const {
+std::expected<void, render::graph::NodeRunError> DownsampleDepthNode::run(render::graph::GraphContext& graph,
+                                                                          render::graph::RenderContext& render_context,
+                                                                          typename ecs::QueryData<ViewQuery>::Item view,
+                                                                          const ecs::World& world) const {
     // Bevy `DownsampleDepthNode` (`:167-227`) runs two instances of itself, one
     // per graph label, and does nothing unless a pyramid was prepared - which
     // only happens for views that enable occlusion culling.
@@ -642,19 +632,19 @@ std::expected<void, render::graph::NodeRunError> DownsampleDepthNode::run(
     if (!pipelines.has_value() || !pipeline_server.has_value()) return {};
 
     const bool is_multisampled = view_depth_texture.texture.getSampleCount() > 1;
-    const auto& first  = is_multisampled ? pipelines->get().first_multisample : pipelines->get().first;
-    const auto& second = is_multisampled ? pipelines->get().second_multisample : pipelines->get().second;
+    const auto& first          = is_multisampled ? pipelines->get().first_multisample : pipelines->get().first;
+    const auto& second         = is_multisampled ? pipelines->get().second_multisample : pipelines->get().second;
     if (!first.pipeline_id.has_value() || !second.pipeline_id.has_value()) return {};
 
     const auto first_pipeline  = pipeline_server->get().get_compute_pipeline(*first.pipeline_id);
     const auto second_pipeline = pipeline_server->get().get_compute_pipeline(*second.pipeline_id);
     if (!first_pipeline.has_value() || !second_pipeline.has_value()) return {};
 
-    view_depth_pyramid.downsample_depth(
-        "downsample depth", render_context,
-        glm::uvec2(static_cast<std::uint32_t>(view_depth_texture.texture.getWidth()),
-                   static_cast<std::uint32_t>(view_depth_texture.texture.getHeight())),
-        view_downsample_depth_bind_group.bind_group, first_pipeline->get(), second_pipeline->get());
+    view_depth_pyramid.downsample_depth("downsample depth", render_context,
+                                        glm::uvec2(static_cast<std::uint32_t>(view_depth_texture.texture.getWidth()),
+                                                   static_cast<std::uint32_t>(view_depth_texture.texture.getHeight())),
+                                        view_downsample_depth_bind_group.bind_group, first_pipeline->get(),
+                                        second_pipeline->get());
     return {};
 }
 
@@ -664,12 +654,12 @@ void MipGenerationPlugin::attach(app::App& app) const {
     std::optional<assets::Handle<shader::Shader>> shader;
     if (auto registry = app.world_mut().get_resource_mut<assets::EmbeddedAssetRegistry>();
         auto server   = app.world_mut().get_resource<assets::AssetServer>()) {
-        registry->get().insert_asset_static(kDownsampleDepthPath,
-                                            std::as_bytes(std::span(kDownsampleDepthSlang)));
+        registry->get().insert_asset_static(kDownsampleDepthPath, std::as_bytes(std::span(kDownsampleDepthSlang)));
         shader = server->get().load<shader::Shader>("embedded://core_pipeline/downsample_depth.slang");
     } else {
-        spdlog::warn("[core_graph.mip_generation] EmbeddedAssetRegistry or AssetServer not available; depth "
-                     "pyramid disabled.");
+        spdlog::warn(
+            "[core_graph.mip_generation] EmbeddedAssetRegistry or AssetServer not available; depth "
+            "pyramid disabled.");
     }
 
     auto sub_app = app.get_sub_app_mut(render::Render);
@@ -690,29 +680,25 @@ void MipGenerationPlugin::attach(app::App& app) const {
         render_world, core_3d::Core3d, core_3d::Node3d::LateDownsampleDepth,
         render::graph::ViewNodeRunner{DownsampleDepthNode{}, render_world});
     render::graph::add_render_graph_edges(render_world, core_3d::Core3d, core_3d::Node3d::EarlyPrepass,
-                                          core_3d::Node3d::EarlyDeferredPrepass,
-                                          core_3d::Node3d::EarlyDownsampleDepth,
-                                          core_3d::Node3d::LatePrepass,
-                                          core_3d::Node3d::LateDeferredPrepass);
-    render::graph::add_render_graph_edges(render_world, core_3d::Core3d,
-                                          core_3d::Node3d::StartMainPassPostProcessing,
+                                          core_3d::Node3d::EarlyDeferredPrepass, core_3d::Node3d::EarlyDownsampleDepth,
+                                          core_3d::Node3d::LatePrepass, core_3d::Node3d::LateDeferredPrepass);
+    render::graph::add_render_graph_edges(render_world, core_3d::Core3d, core_3d::Node3d::StartMainPassPostProcessing,
                                           core_3d::Node3d::LateDownsampleDepth,
                                           core_3d::Node3d::EndMainPassPostProcessing);
 
-    sub_app->get().add_systems(render::RenderStartup,
-                               ecs::into(init_depth_pyramid_dummy_texture)
-                                   .set_name("init depth pyramid dummy texture"));
-    sub_app->get().add_systems(render::Render,
-                               ecs::into(create_downsample_depth_pipelines)
-                                   .in_set(render::RenderSystems::Prepare)
-                                   .set_name("create downsample depth pipelines"));
-    sub_app->get().add_systems(render::Render,
-                               ecs::into(prepare_view_depth_pyramids, prepare_downsample_depth_view_bind_groups)
-                                   .chain()
-                                   .in_set(render::RenderSystems::PrepareResources)
-                                   .after(core_3d::prepare_core_3d_depth_textures)
-                                   .set_names(std::array{"prepare view depth pyramids",
-                                                         "prepare downsample depth view bind groups"}));
+    sub_app->get().add_systems(
+        render::RenderStartup,
+        ecs::into(init_depth_pyramid_dummy_texture).set_name("init depth pyramid dummy texture"));
+    sub_app->get().add_systems(render::Render, ecs::into(create_downsample_depth_pipelines)
+                                                   .in_set(render::RenderSystems::Prepare)
+                                                   .set_name("create downsample depth pipelines"));
+    sub_app->get().add_systems(
+        render::Render,
+        ecs::into(prepare_view_depth_pyramids, prepare_downsample_depth_view_bind_groups)
+            .chain()
+            .in_set(render::RenderSystems::PrepareResources)
+            .after(core_3d::prepare_core_3d_depth_textures)
+            .set_names(std::array{"prepare view depth pyramids", "prepare downsample depth view bind groups"}));
 }
 
 }  // namespace epix::core_graph::mip_generation

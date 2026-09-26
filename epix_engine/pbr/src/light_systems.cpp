@@ -1,9 +1,8 @@
-#include <epix/pbr/light_systems.hpp>
-
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <cstddef>
+#include <epix/pbr/light_systems.hpp>
 #include <glm/glm.hpp>
 // `compMax` is a gtx extension, and glm guards those behind this define.
 #define GLM_ENABLE_EXPERIMENTAL
@@ -21,23 +20,23 @@ void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map)
 
     std::size_t power_of_two = 1;
     while (power_of_two < size) power_of_two <<= 1;
-    spdlog::warn("[pbr] Non-power-of-two DirectionalLightShadowMap sizes are not supported, correcting {} to {}",
-                 size, power_of_two);
+    spdlog::warn("[pbr] Non-power-of-two DirectionalLightShadowMap sizes are not supported, correcting {} to {}", size,
+                 power_of_two);
     size = power_of_two;
 }
 
-void update_point_light_frusta(
-    ecs::Res<GlobalVisibleClusterableObjects> global_lights,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<PointLight>,
-                         ecs::Mut<::epix::camera::CubemapFrusta>>>
-        lights) {
+void update_point_light_frusta(ecs::Res<GlobalVisibleClusterableObjects> global_lights,
+                               ecs::Query<ecs::Item<ecs::Entity,
+                                                    ecs::Ref<::epix::transform::GlobalTransform>,
+                                                    ecs::Ref<PointLight>,
+                                                    ecs::Mut<::epix::camera::CubemapFrusta>>> lights) {
     const bool global_lights_changed = global_lights.is_modified();
-    const auto& clustered          = global_lights.get().entities;
+    const auto& clustered            = global_lights.get().entities;
 
     for (auto&& [entity, transform, point_light, cubemap_frusta] : lights.iter()) {
         const bool light_changed = transform.is_modified() || point_light.is_modified();
-        if (!should_update_point_light_frusta(light_changed, global_lights_changed,
-                                              point_light.get().shadows_enabled, clustered.contains(entity))) {
+        if (!should_update_point_light_frusta(light_changed, global_lights_changed, point_light.get().shadows_enabled,
+                                              clustered.contains(entity))) {
             continue;
         }
 
@@ -52,7 +51,7 @@ void update_point_light_frusta(
         const glm::vec3 backward         = glm::normalize(glm::vec3(world_from_light[2]));
 
         const auto frusta = point_light_cubemap_frusta(translation, backward, point_light.get().range,
-                                                      point_light.get().shadow_map_near_z);
+                                                       point_light.get().shadow_map_near_z);
         auto& destination = (*cubemap_frusta).frusta;
         for (std::size_t face = 0; face < frusta.size(); ++face) {
             destination[face] = frusta[face];
@@ -62,7 +61,9 @@ void update_point_light_frusta(
 
 void update_spot_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const SpotLight&,
                          ecs::Mut<::epix::camera::Frustum>>,
                ecs::Filter<ecs::Or<ecs::Modified<::epix::transform::GlobalTransform>, ecs::Modified<SpotLight>>>>
         lights) {
@@ -91,11 +92,11 @@ void update_spot_light_frusta(
     }
 }
 
-void update_directional_light_frusta(
-    ecs::Query<ecs::Item<const Cascades&, const DirectionalLight&, const ::epix::camera::ViewVisibility&,
-                         ecs::Mut<::epix::camera::CascadesFrusta>>,
-                ecs::Without<::epix::camera::Camera>>
-        lights) {
+void update_directional_light_frusta(ecs::Query<ecs::Item<const Cascades&,
+                                                          const DirectionalLight&,
+                                                          const ::epix::camera::ViewVisibility&,
+                                                          ecs::Mut<::epix::camera::CascadesFrusta>>,
+                                                ecs::Without<::epix::camera::Camera>> lights) {
     for (auto&& [cascades, directional_light, visibility, frusta] : lights.iter()) {
         if (!should_update_directional_cascade_frusta(directional_light.shadows_enabled, visibility.get())) {
             continue;
@@ -123,14 +124,15 @@ void clear_directional_light_cascades(ecs::Query<ecs::Item<const DirectionalLigh
     }
 }
 
-void build_directional_light_cascades(
-    ecs::Res<DirectionalLightShadowMap> shadow_map,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&,
-                         const ::epix::camera::Camera&>>
-        views,
-    ecs::Query<ecs::Item<const ::epix::transform::GlobalTransform&, const DirectionalLight&,
-                         const CascadeShadowConfig&, ecs::Mut<Cascades>>>
-        lights) {
+void build_directional_light_cascades(ecs::Res<DirectionalLightShadowMap> shadow_map,
+                                      ecs::Query<ecs::Item<ecs::Entity,
+                                                           const ::epix::transform::GlobalTransform&,
+                                                           const ::epix::camera::Projection&,
+                                                           const ::epix::camera::Camera&>> views,
+                                      ecs::Query<ecs::Item<const ::epix::transform::GlobalTransform&,
+                                                           const DirectionalLight&,
+                                                           const CascadeShadowConfig&,
+                                                           ecs::Mut<Cascades>>> lights) {
     // The active views, with their projection and world matrix, collected first as
     // Bevy does - the light loop below needs each of them.
     struct ActiveView {
@@ -141,9 +143,8 @@ void build_directional_light_cascades(
     std::vector<ActiveView> active_views;
     for (auto&& [entity, transform, projection, camera] : views.iter()) {
         if (!camera.is_active) continue;
-        active_views.push_back(ActiveView{.entity       = entity,
-                                          .projection   = &projection,
-                                          .view_to_world = transform.matrix});
+        active_views.push_back(
+            ActiveView{.entity = entity, .projection = &projection, .view_to_world = transform.matrix});
     }
 
     for (auto&& [transform, directional_light, config, cascades] : lights.iter()) {
@@ -154,11 +155,11 @@ void build_directional_light_cascades(
         const glm::mat3 basis = glm::mat3(transform.matrix);
         glm::mat3 rotation_basis;
         for (int column = 0; column < 3; ++column) {
-            const glm::vec3 axis = basis[column];
-            const float length   = glm::length(axis);
+            const glm::vec3 axis   = basis[column];
+            const float length     = glm::length(axis);
             rotation_basis[column] = length > 0.0f ? axis / length : axis;
         }
-        const glm::quat light_rotation = glm::quat_cast(rotation_basis);
+        const glm::quat light_rotation   = glm::quat_cast(rotation_basis);
         const glm::mat4 world_from_light = glm::mat4_cast(light_rotation);
 
         const auto bounds = cascade_bounds(config);
@@ -173,8 +174,8 @@ void build_directional_light_cascades(
                 slices.push_back(view.projection->get_frustum_corners(-near_bound, -far_bound));
             }
 
-            (*cascades).cascades[view.entity] = build_view_cascades(
-                slices, static_cast<float>(shadow_map.get().size), light_rotation, view.view_to_world);
+            (*cascades).cascades[view.entity] = build_view_cascades(slices, static_cast<float>(shadow_map.get().size),
+                                                                    light_rotation, view.view_to_world);
         }
     }
 }
@@ -182,21 +183,28 @@ void build_directional_light_cascades(
 void assign_objects_to_clusters(
     ecs::Commands commands,
     ecs::ResMut<GlobalVisibleClusterableObjects> global_clusterable_objects,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Camera&,
-                         const ::epix::camera::Frustum&, const ClusterConfig&, Clusters&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<VisibleClusterableObjects&>>>
-        views,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const PointLight&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
-                         const ::epix::camera::ViewVisibility&>>
-        point_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
-                         const ::epix::camera::ViewVisibility&>>
-        spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Camera&,
+                         const ::epix::camera::Frustum&,
+                         const ClusterConfig&,
+                         Clusters&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<VisibleClusterableObjects&>>> views,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const PointLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>> point_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const SpotLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>> spot_lights,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, ecs::Has<EnvironmentMapLight>>,
-               ecs::With<LightProbe>>
-        light_probes,
+               ecs::With<LightProbe>> light_probes,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&>, ecs::With<ClusteredDecal>> decals,
     ecs::Local<std::vector<ClusterableObjectAssignmentData>> clusterable_objects,
     ecs::Local<std::vector<std::optional<::epix::camera::Sphere>>> cluster_spheres,
@@ -224,9 +232,9 @@ void assign_objects_to_clusters(
     }
     for (auto&& [entity, transform, spot_light, layers, volumetric, visibility] : spot_lights.iter()) {
         if (!visibility.get()) continue;
-        objects.push_back(spot_light_assignment_data(entity, transform.matrix, spot_light.range,
-                                                     spot_light.outer_angle, spot_light.shadows_enabled,
-                                                     volumetric.has_value(), layers_of(layers)));
+        objects.push_back(spot_light_assignment_data(entity, transform.matrix, spot_light.range, spot_light.outer_angle,
+                                                     spot_light.shadows_enabled, volumetric.has_value(),
+                                                     layers_of(layers)));
     }
     if (settings.supports_storage_buffers) {
         for (auto&& [entity, transform, is_reflection_probe] : light_probes.iter()) {
@@ -282,7 +290,7 @@ void assign_objects_to_clusters(
         const glm::vec3 scale{1.0f / glm::length(glm::vec3(camera_transform.matrix[0])),
                               1.0f / glm::length(glm::vec3(camera_transform.matrix[1])),
                               1.0f / glm::length(glm::vec3(camera_transform.matrix[2]))};
-        const float scale_max = glm::compMax(glm::abs(scale));
+        const float scale_max          = glm::compMax(glm::abs(scale));
         const bool is_orthographic     = camera.clip_from_view()[3].w == 1.0f;
         const glm::mat4 clip_from_view = camera.clip_from_view();
 
@@ -292,9 +300,8 @@ void assign_objects_to_clusters(
             first_slice_depth(config, is_orthographic, dimensions.z, clip_from_view, scale, far_z);
         const float far_z_at_least_first = far_z_at_least_first_slice_depth(far_z, first_slice);
 
-        const glm::vec2 cluster_factors =
-            calculate_cluster_factors(first_slice, far_z_at_least_first, static_cast<float>(dimensions.z),
-                                      is_orthographic);
+        const glm::vec2 cluster_factors = calculate_cluster_factors(first_slice, far_z_at_least_first,
+                                                                    static_cast<float>(dimensions.z), is_orthographic);
 
         // Bevy shrinks the grid when the objects would need more indices than the
         // device's bindings hold.
@@ -303,14 +310,14 @@ void assign_objects_to_clusters(
                 objects, view_from_world, scale, clip_from_view, cluster_factors, dimensions, is_orthographic,
                 [&frustum](const ::epix::camera::Sphere& sphere) { return frustum.intersects_sphere(sphere, true); });
             dimensions = reduce_cluster_dimensions_for_index_limit(dimensions, estimate,
-                                                                  settings.view_cluster_bindings_max_indices);
+                                                                   settings.view_cluster_bindings_max_indices);
         }
 
         ViewClusterAssignment assignment;
-        assignment.dimensions                = dimensions;
-        assignment.cluster_factors           = calculate_cluster_factors(
-            first_slice, far_z_at_least_first, static_cast<float>(dimensions.z), is_orthographic);
-        assignment.view_from_world           = view_from_world;
+        assignment.dimensions      = dimensions;
+        assignment.cluster_factors = calculate_cluster_factors(first_slice, far_z_at_least_first,
+                                                               static_cast<float>(dimensions.z), is_orthographic);
+        assignment.view_from_world = view_from_world;
         assignment.view_from_world_scale_max = scale_max;
         assignment.is_orthographic           = is_orthographic;
         assignment.first_slice_depth         = first_slice;
@@ -334,8 +341,8 @@ void assign_objects_to_clusters(
             cluster.entities.clear();
             cluster.counts = ClusterableObjectCounts{};
         }
-        clusters.clusterable_objects.resize(static_cast<std::size_t>(clusters.dimensions.x) *
-                                            clusters.dimensions.y * clusters.dimensions.z);
+        clusters.clusterable_objects.resize(static_cast<std::size_t>(clusters.dimensions.x) * clusters.dimensions.y *
+                                            clusters.dimensions.z);
 
         assignment.layers = layers_of(layers);
 
@@ -348,11 +355,12 @@ void assign_objects_to_clusters(
             assignment.x_planes = planes.first;
             assignment.y_planes = planes.second;
         }
-        assignment.z_planes = cluster_z_planes(assignment.first_slice_depth, assignment.far_z,
-                                              assignment.dimensions.z, is_orthographic);
-        (*cluster_spheres).assign(static_cast<std::size_t>(assignment.dimensions.x) * assignment.dimensions.y *
-                                      assignment.dimensions.z,
-                                  std::nullopt);
+        assignment.z_planes =
+            cluster_z_planes(assignment.first_slice_depth, assignment.far_z, assignment.dimensions.z, is_orthographic);
+        (*cluster_spheres)
+            .assign(
+                static_cast<std::size_t>(assignment.dimensions.x) * assignment.dimensions.y * assignment.dimensions.z,
+                std::nullopt);
 
         for (const ClusterableObjectAssignmentData& object : objects) {
             if (assign_object_to_view_clusters(clusters.clusterable_objects, assignment, frustum, *cluster_spheres,
@@ -367,8 +375,8 @@ void assign_objects_to_clusters(
 namespace {
 /** @brief Whether any view's visible set names this light (the union Bevy's
  *  `checked_lights` walks). */
-bool light_is_visible_to_any_view(
-    const ecs::Query<ecs::Item<const VisibleClusterableObjects&>>& visible_lights, ecs::Entity light) {
+bool light_is_visible_to_any_view(const ecs::Query<ecs::Item<const VisibleClusterableObjects&>>& visible_lights,
+                                  ecs::Entity light) {
     for (auto&& [visible] : visible_lights.iter()) {
         // The per-view list is a vector in Bevy and here.
         if (std::find(visible.entities.begin(), visible.entities.end(), light) != visible.entities.end()) return true;
@@ -384,20 +392,29 @@ bool light_is_visible_to_any_view(
 
 void check_point_light_mesh_visibility(
     ecs::Query<ecs::Item<const VisibleClusterableObjects&>> visible_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const PointLight&, const ::epix::transform::GlobalTransform&,
-                         const ::epix::camera::CubemapFrusta&, ::epix::camera::CubemapVisibleEntities&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
-        point_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const SpotLight&, const ::epix::transform::GlobalTransform&,
-                         const ::epix::camera::Frustum&, ::epix::camera::VisibleMeshEntities&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
-        spot_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&, ::epix::camera::ViewVisibility&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
-                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
-                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
-                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
-        visible_entities,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const PointLight&,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::CubemapFrusta&,
+                         ::epix::camera::CubemapVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>> point_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const SpotLight&,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Frustum&,
+                         ::epix::camera::VisibleMeshEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>> spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::camera::InheritedVisibility&,
+                         ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>,
+                         ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>,
+                         ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>,
+                         ecs::Opt<const DirectionalLight&>>> visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges) {
     using ::epix::camera::Aabb;
     using ::epix::camera::RenderLayers;
@@ -511,16 +528,22 @@ void check_point_light_mesh_visibility(
 
 void check_dir_light_mesh_visibility(
     ecs::Commands commands,
-    ecs::Query<ecs::Item<const DirectionalLight&, const ::epix::camera::CascadesFrusta&,
-                         ::epix::camera::CascadesVisibleEntities&, ecs::Opt<const ::epix::camera::RenderLayers&>,
-                         const ::epix::camera::ViewVisibility&, ecs::Opt<const SpotLight&>>>
-        directional_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
-                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
-                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
-                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
-        visible_entities,
+    ecs::Query<ecs::Item<const DirectionalLight&,
+                         const ::epix::camera::CascadesFrusta&,
+                         ::epix::camera::CascadesVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         const ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const SpotLight&>>> directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::camera::InheritedVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>,
+                         ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>,
+                         ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>,
+                         ecs::Opt<const DirectionalLight&>>> visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges) {
     using ::epix::camera::Aabb;
     using ::epix::camera::CascadesVisibleEntities;
@@ -581,15 +604,17 @@ void check_dir_light_mesh_visibility(
                 if (maybe_directional.has_value()) continue;
                 if (!light_layers.intersects(layers_or_default(maybe_mesh_layers))) continue;
                 // Per view, not "any view": a cascade belongs to one view.
-                if (maybe_range.has_value() && ranges != nullptr && !ranges->entity_is_in_range_of_view(mesh_entity, view)) {
+                if (maybe_range.has_value() && ranges != nullptr &&
+                    !ranges->entity_is_in_range_of_view(mesh_entity, view)) {
                     continue;
                 }
 
                 if (maybe_aabb.has_value() && maybe_transform.has_value()) {
-                    const Aabb& aabb             = maybe_aabb->get();
+                    const Aabb& aabb                 = maybe_aabb->get();
                     const glm::mat4 world_from_local = maybe_transform->get().matrix;
-                    bool visible_to_any_cascade  = false;
-                    for (std::size_t cascade = 0; cascade < view_frusta.size() && cascade < cascade_lists.size(); ++cascade) {
+                    bool visible_to_any_cascade      = false;
+                    for (std::size_t cascade = 0; cascade < view_frusta.size() && cascade < cascade_lists.size();
+                         ++cascade) {
                         // Near-plane culling is off: a shadow caster may lie in front of
                         // the near plane and still cast into this cascade.
                         if (!maybe_no_culling.has_value() &&
@@ -603,7 +628,8 @@ void check_dir_light_mesh_visibility(
                 } else {
                     // Nothing to cull against: every cascade.
                     deferred_visible.push_back(mesh_entity);
-                    for (::epix::camera::VisibleMeshEntities& list : cascade_lists) list.entities.push_back(mesh_entity);
+                    for (::epix::camera::VisibleMeshEntities& list : cascade_lists)
+                        list.entities.push_back(mesh_entity);
                 }
             }
         }
@@ -617,12 +643,13 @@ void check_dir_light_mesh_visibility(
     if (!deferred_visible.empty()) {
         commands.queue([entities = std::move(deferred_visible)](ecs::World& world) {
             for (ecs::Entity entity : entities) {
-                world.get_entity_mut(entity).and_then([&](ecs::EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
-                    if (auto visibility = entity_world.template get_mut<::epix::camera::ViewVisibility>()) {
-                        visibility->get_mut().set_visible();
-                    }
-                    return true;
-                });
+                world.get_entity_mut(entity).and_then(
+                    [&](ecs::EntityWorldMut&& entity_world) mutable -> std::optional<bool> {
+                        if (auto visibility = entity_world.template get_mut<::epix::camera::ViewVisibility>()) {
+                            visibility->get_mut().set_visible();
+                        }
+                        return true;
+                    });
             }
         });
     }

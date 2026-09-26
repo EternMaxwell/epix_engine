@@ -1,7 +1,6 @@
 #include <epix/sprite_render/color_material.hpp>
 #include <epix/sprite_render/material2d.hpp>
 #include <epix/sprite_render/tilemap_chunk.hpp>
-
 #include <string>
 #include <utility>
 
@@ -59,8 +58,7 @@ void epix::sprite_render::specialize_material2d_meshes(
         alpha_mask_render_phases,
     epix::ecs::Query<epix::ecs::Item<const epix::render::sync_world::MainEntity&,
                                      const epix::render::view::ExtractedView&,
-                                     const epix::render::view::RenderVisibleEntities&>>
-        views,
+                                     const epix::render::view::RenderVisibleEntities&>> views,
     epix::ecs::Res<ViewKeyCache> view_key_cache,
     epix::ecs::Res<EntitySpecializationTickPair<M>> entity_specialization_ticks,
     epix::ecs::Res<ViewSpecializationTicks> view_specialization_ticks,
@@ -102,18 +100,18 @@ void epix::sprite_render::specialize_material2d_meshes(
             const auto* mesh = render_meshes->try_get(mesh_instance_it->second.mesh_asset_id);
             if (!mesh) continue;
 
-            const auto mesh_key = Mesh2dPipelineKey{
-                view_key_it->second.bits() |
-                Mesh2dPipelineKey::from_primitive_topology(mesh->primitive_topology()).bits() |
-                material->properties.mesh_pipeline_key_bits.bits()};
+            const auto mesh_key =
+                Mesh2dPipelineKey{view_key_it->second.bits() |
+                                  Mesh2dPipelineKey::from_primitive_topology(mesh->primitive_topology()).bits() |
+                                  material->properties.mesh_pipeline_key_bits.bits()};
 
             auto pipeline_id = pipelines->specialize(
                 *pipeline_server, *material2d_pipeline,
                 Material2dKey<M>{.mesh_key = mesh_key, .bind_group_data = material->key}, mesh->layout);
             if (!pipeline_id) {
                 // The error variant has no `std::formatter`, so report without it rather
-        // than formatting an unformattable type.
-        spdlog::error("[mesh2d] Failed to specialize material pipeline.");
+                // than formatting an unformattable type.
+                spdlog::error("[mesh2d] Failed to specialize material pipeline.");
                 continue;
             }
             view_cache.map.insert_or_assign(visible_main_entity, std::pair{ticks.this_run(), *pipeline_id});
@@ -135,8 +133,7 @@ void epix::sprite_render::queue_material2d_meshes(
         alpha_mask_render_phases,
     epix::ecs::Query<epix::ecs::Item<const epix::render::sync_world::MainEntity&,
                                      const epix::render::view::ExtractedView&,
-                                     const epix::render::view::RenderVisibleEntities&>>
-        views,
+                                     const epix::render::view::RenderVisibleEntities&>> views,
     epix::ecs::Res<SpecializedMaterial2dPipelineCache<M>> specialized_material_pipeline_cache) {
     // Bevy `queue_material2d_meshes` (material.rs:804-926).
     if (render_material_instances->instances.empty()) return;
@@ -176,51 +173,49 @@ void epix::sprite_render::queue_material2d_meshes(
             const auto* mesh = render_meshes->try_get(mesh_instance_it->second.mesh_asset_id);
             if (!mesh) continue;
 
-            const auto bind_group_id = Material2dBindGroupId{mesh_instance_it->second.material_bind_group_id.value =
-                                                                 material_it->second};
-            const float mesh_z =
-                mesh_instance_it->second.transforms.world_from_local[3][2];
+            const auto bind_group_id =
+                Material2dBindGroupId{mesh_instance_it->second.material_bind_group_id.value = material_it->second};
+            const float mesh_z = mesh_instance_it->second.transforms.world_from_local[3][2];
             // 2D meshes do not support multidraw, so the phase type follows
             // automatic_batching directly (Bevy's comment at material.rs:858-867).
-            const auto phase_type = mesh_instance_it->second.automatic_batching
-                                        ? epix::render::phase::BinnedRenderPhaseType::BatchableMesh
-                                        : epix::render::phase::BinnedRenderPhaseType::UnbatchableMesh;
-            const auto batch_set_key =
-                epix::core_graph::core_2d::BatchSetKey2D{.indexed_value = mesh->indexed()};
+            const auto phase_type    = mesh_instance_it->second.automatic_batching
+                                           ? epix::render::phase::BinnedRenderPhaseType::BatchableMesh
+                                           : epix::render::phase::BinnedRenderPhaseType::UnbatchableMesh;
+            const auto batch_set_key = epix::core_graph::core_2d::BatchSetKey2D{.indexed_value = mesh->indexed()};
 
             const auto& alpha_mode = material->properties.alpha_mode;
             if (std::holds_alternative<AlphaMode2dOpaque>(alpha_mode)) {
                 opaque_phase->second.add(
                     batch_set_key,
                     epix::core_graph::core_2d::Opaque2DBinKey{.pipeline_id = pipeline_id,
-                                                              .draw_func = material->properties.draw_function_id,
+                                                              .draw_func   = material->properties.draw_function_id,
                                                               // Bevy bins by the mesh asset id
                                                               // (`mesh2d/material.rs:874`), not by the material.
                                                               .asset_id = mesh_instance_it->second.mesh_asset_id,
                                                               .material_bind_group_id = bind_group_id.value},
-                    std::pair{visible_render_entity, visible_main_entity},
-                    epix::render::phase::InputUniformIndex{}, phase_type, current_change_tick);
+                    std::pair{visible_render_entity, visible_main_entity}, epix::render::phase::InputUniformIndex{},
+                    phase_type, current_change_tick);
             } else if (std::holds_alternative<AlphaMode2dMask>(alpha_mode)) {
                 alpha_mask_phase->second.add(
                     batch_set_key,
                     epix::core_graph::core_2d::AlphaMask2DBinKey{.pipeline_id = pipeline_id,
-                                                                 .draw_func = material->properties.draw_function_id,
+                                                                 .draw_func   = material->properties.draw_function_id,
                                                                  // Bevy bins by the mesh asset id
                                                                  // (`mesh2d/material.rs:892`).
                                                                  .asset_id = mesh_instance_it->second.mesh_asset_id,
                                                                  .material_bind_group_id = bind_group_id.value},
-                    std::pair{visible_render_entity, visible_main_entity},
-                    epix::render::phase::InputUniformIndex{}, phase_type, current_change_tick);
+                    std::pair{visible_render_entity, visible_main_entity}, epix::render::phase::InputUniformIndex{},
+                    phase_type, current_change_tick);
             } else {
                 transparent_phase->second.add(epix::core_graph::core_2d::Transparent2D{
                     .representative_entity = {visible_render_entity, visible_main_entity},
-                    .depth          = mesh_z + material->properties.depth_bias,
-                    .pipeline_id    = pipeline_id,
-                    .draw_func      = material->properties.draw_function_id,
-                    .batch_range_value = {0u, 1u},
-                    .extra_index_value = epix::render::phase::PhaseItemExtraIndex::None,
-                    .extracted_index   = std::numeric_limits<std::size_t>::max(),
-                    .indexed_value     = mesh->indexed(),
+                    .depth                 = mesh_z + material->properties.depth_bias,
+                    .pipeline_id           = pipeline_id,
+                    .draw_func             = material->properties.draw_function_id,
+                    .batch_range_value     = {0u, 1u},
+                    .extra_index_value     = epix::render::phase::PhaseItemExtraIndex::None,
+                    .extracted_index       = std::numeric_limits<std::size_t>::max(),
+                    .indexed_value         = mesh->indexed(),
                 });
             }
         }
@@ -240,10 +235,9 @@ void epix::sprite_render::Material2dPlugin<M>::attach(epix::app::App& app) {
     app.add_plugins(epix::render::RenderAssetPlugin<PreparedMaterial2d<M>>{});
     auto& world = app.world_mut();
     world.init_resource<EntitiesNeedingSpecialization<M>>();
-    app.add_systems(epix::app::PostUpdate,
-                    epix::ecs::into(check_entities_needing_specialization<M>)
-                        .after(epix::assets::AssetSystems::WriteEvents)
-                        .set_name("check entities needing material2d specialization"));
+    app.add_systems(epix::app::PostUpdate, epix::ecs::into(check_entities_needing_specialization<M>)
+                                               .after(epix::assets::AssetSystems::WriteEvents)
+                                               .set_name("check entities needing material2d specialization"));
 }
 
 template <typename M>
@@ -269,21 +263,17 @@ void epix::sprite_render::Material2dPlugin<M>::ready(epix::app::App& app) {
     epix::render::phase::app_add_render_command<
         epix::sprite_render::DrawMaterial2d<M, epix::core_graph::core_2d::Transparent2D>>(render);
 
-    render.add_systems(epix::render::RenderStartup,
-                       epix::ecs::into(init_material_2d_pipeline<M>)
-                           .after(init_mesh_2d_pipeline)
-                           .set_name("init material 2d pipeline"));
+    render.add_systems(epix::render::RenderStartup, epix::ecs::into(init_material_2d_pipeline<M>)
+                                                        .after(init_mesh_2d_pipeline)
+                                                        .set_name("init material 2d pipeline"));
     render.add_systems(epix::render::ExtractSchedule,
-                       epix::ecs::into(extract_entities_needs_specialization<M>,
-                                       extract_mesh_materials_2d<M>));
-    render.add_systems(epix::render::Render,
-                       epix::ecs::into(specialize_material2d_meshes<M>)
-                           .in_set(epix::render::RenderSystems::PrepareMeshes)
-                           .set_name("specialize material2d meshes"));
-    render.add_systems(epix::render::Render,
-                       epix::ecs::into(queue_material2d_meshes<M>)
-                           .in_set(epix::render::RenderSystems::QueueMeshes)
-                           .set_name("queue material2d meshes"));
+                       epix::ecs::into(extract_entities_needs_specialization<M>, extract_mesh_materials_2d<M>));
+    render.add_systems(epix::render::Render, epix::ecs::into(specialize_material2d_meshes<M>)
+                                                 .in_set(epix::render::RenderSystems::PrepareMeshes)
+                                                 .set_name("specialize material2d meshes"));
+    render.add_systems(epix::render::Render, epix::ecs::into(queue_material2d_meshes<M>)
+                                                 .in_set(epix::render::RenderSystems::QueueMeshes)
+                                                 .set_name("queue material2d meshes"));
 }
 
 // `TilemapChunkMaterialPlugin` lives in its own translation unit
@@ -296,19 +286,17 @@ void epix::sprite_render::ColorMaterialPlugin::attach(epix::app::App& app) {
     // shader, install the material plugin, and insert the default material.
     register_color_material_shader(app.world_mut());
     app.add_plugins(Material2dPlugin<ColorMaterial>{});
-    app.world_mut()
-        .resource_mut<epix::assets::Assets<ColorMaterial>>()
-        .emplace(ColorMaterial{.color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f)});
+    app.world_mut().resource_mut<epix::assets::Assets<ColorMaterial>>().emplace(
+        ColorMaterial{.color = glm::vec4(1.0f, 0.0f, 1.0f, 1.0f)});
 }
 
 template <typename M>
 void epix::sprite_render::extract_mesh_materials_2d(
     epix::ecs::ResMut<RenderMaterial2dInstances<M>> material_instances,
-    epix::app::Extract<epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const epix::camera::ViewVisibility&,
-                                                         const MeshMaterial2d<M>&>,
-                                         epix::ecs::Filter<epix::ecs::Or<epix::ecs::Modified<epix::camera::ViewVisibility>,
-                                                                         epix::ecs::Modified<MeshMaterial2d<M>>>>>>
-        changed_meshes,
+    epix::app::Extract<epix::ecs::Query<
+        epix::ecs::Item<epix::ecs::Entity, const epix::camera::ViewVisibility&, const MeshMaterial2d<M>&>,
+        epix::ecs::Filter<epix::ecs::Or<epix::ecs::Modified<epix::camera::ViewVisibility>,
+                                        epix::ecs::Modified<MeshMaterial2d<M>>>>>> changed_meshes,
     epix::app::Extract<epix::ecs::RemovedComponents<MeshMaterial2d<M>>> removed_materials) {
     // Bevy `extract_mesh_materials_2d` (material.rs:330-378).
     for (auto&& [entity, view_visibility, material] : changed_meshes.iter()) {
@@ -335,8 +323,7 @@ void epix::sprite_render::check_entities_needing_specialization(
                                                      epix::assets::AssetChanged<epix::mesh::Mesh2d>,
                                                      epix::ecs::Modified<MeshMaterial2d<M>>,
                                                      epix::assets::AssetChanged<MeshMaterial2d<M>>>,
-                                     epix::ecs::With<MeshMaterial2d<M>>>>
-        needs_specialization,
+                                       epix::ecs::With<MeshMaterial2d<M>>>> needs_specialization,
     epix::ecs::ResMut<EntitiesNeedingSpecialization<M>> entities_needing_specialization) {
     // Bevy `check_entities_needing_specialization` (material.rs:664-689).
     entities_needing_specialization->entities.clear();
@@ -352,8 +339,7 @@ void epix::sprite_render::extract_entities_needs_specialization(
     epix::app::Extract<epix::ecs::RemovedComponents<MeshMaterial2d<M>>> removed_mesh_material_components,
     epix::ecs::ResMut<SpecializedMaterial2dPipelineCache<M>> specialized_material2d_pipeline_cache,
     epix::ecs::Query<epix::ecs::Item<const epix::render::sync_world::MainEntity&>,
-                     epix::ecs::With<epix::render::view::ExtractedView>>
-        views,
+                     epix::ecs::With<epix::render::view::ExtractedView>> views,
     epix::ecs::SystemChangeTick ticks) {
     // Bevy `extract_entities_needs_specialization` (material.rs:568-593).
     for (auto entity : removed_mesh_material_components.read()) {
@@ -380,11 +366,11 @@ void epix::sprite_render::init_material_2d_pipeline(epix::ecs::Commands commands
     // Bevy `init_material_2d_pipeline` (material.rs:480-500).
     (void)device;
     commands.insert_resource(Material2dPipeline<M>{
-        .mesh2d_pipeline = mesh2d_pipeline.get(),
+        .mesh2d_pipeline   = mesh2d_pipeline.get(),
         .material2d_layout = epix::render::BindGroupLayoutDescriptor()
                                  .set_label(std::string(epix::render::render_resource::AsBindGroup<M>::label()))
                                  .set_entries(epix::render::render_resource::AsBindGroup<M>::layout_entries()),
-        .vertex_shader   = load_material_shader(M::vertex_shader(), asset_server.get()),
-        .fragment_shader = load_material_shader(M::fragment_shader(), asset_server.get()),
+        .vertex_shader     = load_material_shader(M::vertex_shader(), asset_server.get()),
+        .fragment_shader   = load_material_shader(M::fragment_shader(), asset_server.get()),
     });
 }

@@ -1,14 +1,14 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
+#include <bit>
+#include <cstdint>
 #include <epix/assets.hpp>
 #include <epix/common.hpp>
 #include <epix/core_graph.hpp>
 #include <epix/mesh/mesh.hpp>
 #include <epix/render.hpp>
-#include <array>
-#include <bit>
-#include <cstdint>
 #include <expected>
 #include <glm/glm.hpp>
 #include <optional>
@@ -79,20 +79,19 @@ EPIX_EXPORT struct Mesh2dUniform {
         // transposes that back, so packing columns here would silently render
         // the transpose of the intended transform.
         for (std::size_t axis = 0; axis < 3; ++axis) {
-            out.world_from_local[axis] =
-                glm::vec4(matrix[0][axis], matrix[1][axis], matrix[2][axis], matrix[3][axis]);
+            out.world_from_local[axis] = glm::vec4(matrix[0][axis], matrix[1][axis], matrix[2][axis], matrix[3][axis]);
         }
         // Bevy's `Affine3::inverse_transpose_3x3`, packed as the shader's
         // `mat2x4_f32_to_mat3x3_unpack` expects: columns (a0.xyz),
         // (a0.w, a1.x, a1.y) and (a1.z, a1.w, b).
-        const glm::mat3 inverse_transpose = glm::transpose(glm::inverse(glm::mat3(matrix)));
+        const glm::mat3 inverse_transpose   = glm::transpose(glm::inverse(glm::mat3(matrix)));
         out.local_from_world_transpose_a[0] = glm::vec4(inverse_transpose[0][0], inverse_transpose[0][1],
                                                         inverse_transpose[0][2], inverse_transpose[1][0]);
         out.local_from_world_transpose_a[1] = glm::vec4(inverse_transpose[1][1], inverse_transpose[1][2],
                                                         inverse_transpose[2][0], inverse_transpose[2][1]);
-        out.local_from_world_transpose_b = inverse_transpose[2][2];
-        out.flags                        = transforms.flags;
-        out.tag                          = tag;
+        out.local_from_world_transpose_b    = inverse_transpose[2][2];
+        out.flags                           = transforms.flags;
+        out.tag                             = tag;
         return out;
     }
 
@@ -118,12 +117,10 @@ namespace epix::render::render_resource {
 /** @brief `Mesh2dUniform` is a plain 96-byte GPU struct, so the raw
  *  `sizeof`-derived shader size is exactly the WGSL `Mesh2d` array stride. */
 template <>
-struct ShaderTypeInfo<epix::sprite_render::Mesh2dUniform>
-    : RawShaderType<epix::sprite_render::Mesh2dUniform> {};
+struct ShaderTypeInfo<epix::sprite_render::Mesh2dUniform> : RawShaderType<epix::sprite_render::Mesh2dUniform> {};
 }  // namespace epix::render::render_resource
 
 namespace epix::sprite_render {
-
 
 /** @brief Bit-packed Mesh2d specialization key (Bevy `Mesh2dPipelineKey`).
  *
@@ -136,32 +133,32 @@ namespace epix::sprite_render {
  * instead of the previous per-variant shader set. */
 EPIX_EXPORT struct EPIX_API Mesh2dPipelineKey {
     enum Bit : std::uint32_t {
-        NONE                                      = 0,
-        HDR                                       = 1u << 0u,
-        TONEMAP_IN_SHADER                         = 1u << 1u,
-        DEBAND_DITHER                             = 1u << 2u,
-        BLEND_ALPHA                               = 1u << 3u,
-        MAY_DISCARD                               = 1u << 4u,
-        TONEMAP_METHOD_NONE                       = 0u << 23u,
-        TONEMAP_METHOD_REINHARD                   = 1u << 23u,
-        TONEMAP_METHOD_REINHARD_LUMINANCE         = 2u << 23u,
-        TONEMAP_METHOD_ACES_FITTED                = 3u << 23u,
-        TONEMAP_METHOD_AGX                        = 4u << 23u,
+        NONE                                             = 0,
+        HDR                                              = 1u << 0u,
+        TONEMAP_IN_SHADER                                = 1u << 1u,
+        DEBAND_DITHER                                    = 1u << 2u,
+        BLEND_ALPHA                                      = 1u << 3u,
+        MAY_DISCARD                                      = 1u << 4u,
+        TONEMAP_METHOD_NONE                              = 0u << 23u,
+        TONEMAP_METHOD_REINHARD                          = 1u << 23u,
+        TONEMAP_METHOD_REINHARD_LUMINANCE                = 2u << 23u,
+        TONEMAP_METHOD_ACES_FITTED                       = 3u << 23u,
+        TONEMAP_METHOD_AGX                               = 4u << 23u,
         TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM = 5u << 23u,
-        TONEMAP_METHOD_TONY_MC_MAPFACE            = 6u << 23u,
-        TONEMAP_METHOD_BLENDER_FILMIC             = 7u << 23u,
-        TONEMAP_METHOD_RESERVED_BITS              = 0b111u << 23u,
-        PRIMITIVE_TOPOLOGY_RESERVED_BITS          = 0b111u << 26u,
-        MSAA_RESERVED_BITS                        = 0b111u << 29u,
+        TONEMAP_METHOD_TONY_MC_MAPFACE                   = 6u << 23u,
+        TONEMAP_METHOD_BLENDER_FILMIC                    = 7u << 23u,
+        TONEMAP_METHOD_RESERVED_BITS                     = 0b111u << 23u,
+        PRIMITIVE_TOPOLOGY_RESERVED_BITS                 = 0b111u << 26u,
+        MSAA_RESERVED_BITS                               = 0b111u << 29u,
     };
 
     /** @brief MSAA log2(sample count) occupies the highest three bits. */
-    static constexpr std::uint32_t MSAA_MASK_BITS = 0b111u;
-    static constexpr std::uint32_t MSAA_SHIFT_BITS = 32u - 3u;
-    static constexpr std::uint32_t PRIMITIVE_TOPOLOGY_MASK_BITS = 0b111u;
+    static constexpr std::uint32_t MSAA_MASK_BITS                = 0b111u;
+    static constexpr std::uint32_t MSAA_SHIFT_BITS               = 32u - 3u;
+    static constexpr std::uint32_t PRIMITIVE_TOPOLOGY_MASK_BITS  = 0b111u;
     static constexpr std::uint32_t PRIMITIVE_TOPOLOGY_SHIFT_BITS = MSAA_SHIFT_BITS - 3u;
-    static constexpr std::uint32_t TONEMAP_METHOD_MASK_BITS = 0b111u;
-    static constexpr std::uint32_t TONEMAP_METHOD_SHIFT_BITS = PRIMITIVE_TOPOLOGY_SHIFT_BITS - 3u;
+    static constexpr std::uint32_t TONEMAP_METHOD_MASK_BITS      = 0b111u;
+    static constexpr std::uint32_t TONEMAP_METHOD_SHIFT_BITS     = PRIMITIVE_TOPOLOGY_SHIFT_BITS - 3u;
 
     std::uint32_t value = NONE;
 
@@ -192,14 +189,18 @@ EPIX_EXPORT struct EPIX_API Mesh2dPipelineKey {
      *  three-bit patterns fall back to the WebGPU default. */
     constexpr wgpu::PrimitiveTopology primitive_topology() const noexcept {
         switch ((value >> PRIMITIVE_TOPOLOGY_SHIFT_BITS) & PRIMITIVE_TOPOLOGY_MASK_BITS) {
-            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::ePointList): return wgpu::PrimitiveTopology::ePointList;
-            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eLineList): return wgpu::PrimitiveTopology::eLineList;
-            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eLineStrip): return wgpu::PrimitiveTopology::eLineStrip;
+            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::ePointList):
+                return wgpu::PrimitiveTopology::ePointList;
+            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eLineList):
+                return wgpu::PrimitiveTopology::eLineList;
+            case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eLineStrip):
+                return wgpu::PrimitiveTopology::eLineStrip;
             case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eTriangleList):
                 return wgpu::PrimitiveTopology::eTriangleList;
             case static_cast<std::uint32_t>(wgpu::PrimitiveTopology::eTriangleStrip):
                 return wgpu::PrimitiveTopology::eTriangleStrip;
-            default: return wgpu::PrimitiveTopology::eTriangleList;
+            default:
+                return wgpu::PrimitiveTopology::eTriangleList;
         }
     }
 
@@ -240,7 +241,6 @@ struct std::hash<epix::sprite_render::Mesh2dPipelineKey> {
 
 namespace epix::sprite_render {
 
-
 /** @brief The pipeline key bits an alpha mode contributes (Bevy
  *  `alpha_mode_pipeline_key`, `material.rs:545-552`). */
 inline constexpr Mesh2dPipelineKey alpha_mode_pipeline_key(const AlphaMode2d& alpha_mode) noexcept {
@@ -263,12 +263,16 @@ inline constexpr Mesh2dPipelineKey alpha_mode_pipeline_key(const AlphaMode2d& al
 inline constexpr Mesh2dPipelineKey tonemapping_pipeline_key(const core_graph::Tonemapping& tonemapping) noexcept {
     using core_graph::Tonemapping;
     switch (tonemapping) {
-        case Tonemapping::None: return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_NONE};
-        case Tonemapping::Reinhard: return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_REINHARD};
+        case Tonemapping::None:
+            return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_NONE};
+        case Tonemapping::Reinhard:
+            return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_REINHARD};
         case Tonemapping::ReinhardLuminance:
             return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_REINHARD_LUMINANCE};
-        case Tonemapping::AcesFitted: return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_ACES_FITTED};
-        case Tonemapping::AgX: return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_AGX};
+        case Tonemapping::AcesFitted:
+            return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_ACES_FITTED};
+        case Tonemapping::AgX:
+            return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_AGX};
         case Tonemapping::SomewhatBoringDisplayTransform:
             return Mesh2dPipelineKey{Mesh2dPipelineKey::TONEMAP_METHOD_SOMEWHAT_BORING_DISPLAY_TRANSFORM};
         case Tonemapping::TonyMcMapface:
@@ -319,9 +323,8 @@ EPIX_EXPORT struct EPIX_API Mesh2dPipeline {
 /** @brief Insert the `Mesh2dPipeline` resource (Bevy `init_mesh_2d_pipeline`,
  *  `mesh.rs:292-327`). */
 EPIX_EXPORT EPIX_API void init_mesh_2d_pipeline(ecs::Commands commands,
-                                       ecs::Res<wgpu::Device> device,
-                                       ecs::Res<assets::AssetServer> asset_server);
-
+                                                ecs::Res<wgpu::Device> device,
+                                                ecs::Res<assets::AssetServer> asset_server);
 
 /** @brief The material identity a prepared 2D material resolved to (Bevy
  *  `Material2dBindGroupId`, `material.rs:929`), and the comparand 2D batching
@@ -347,7 +350,7 @@ EPIX_EXPORT struct RenderMesh2dInstance {
     assets::AssetId<mesh::Mesh> mesh_asset_id = assets::AssetId<mesh::Mesh>::invalid();
     Material2dBindGroupId material_bind_group_id{};
     bool automatic_batching = true;
-    std::uint32_t tag = 0;
+    std::uint32_t tag       = 0;
 };
 
 /** @brief Marks an entity as a 2D mesh (Bevy `Mesh2dMarker`, `mesh.rs:246-247`). */
@@ -382,8 +385,7 @@ EPIX_EXPORT EPIX_API void prepare_mesh2d_view_bind_groups(
     ecs::Res<Mesh2dPipeline> mesh2d_pipeline,
     ecs::Res<render::view::ViewUniforms> view_uniforms,
     ecs::Query<ecs::Item<ecs::Entity, const core_graph::Tonemapping&>,
-               ecs::With<render::view::ExtractedView, epix::camera::Camera2d>>
-        views,
+               ecs::With<render::view::ExtractedView, epix::camera::Camera2d>> views,
     ecs::Res<render::GlobalsBuffer> globals_buffer,
     ecs::Res<core_graph::TonemappingLuts> tonemapping_luts,
     ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
@@ -581,17 +583,16 @@ EPIX_EXPORT struct ViewSpecializationTicks {
 EPIX_EXPORT EPIX_API void check_views_need_specialization(
     ecs::ResMut<ViewKeyCache> view_key_cache,
     ecs::ResMut<ViewSpecializationTicks> view_specialization_ticks,
-    ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
-                         const render::view::Msaa&, ecs::Opt<const core_graph::Tonemapping&>,
-                         ecs::Opt<const core_graph::DebandDither&>>>
-        views,
+    ecs::Query<ecs::Item<const render::sync_world::MainEntity&,
+                         const render::view::ExtractedView&,
+                         const render::view::Msaa&,
+                         ecs::Opt<const core_graph::Tonemapping&>,
+                         ecs::Opt<const core_graph::DebandDither&>>> views,
     ecs::SystemChangeTick ticks);
 
 /** @brief Insert the shared mesh2d instance buffer (Bevy
  *  `init_batched_instance_buffer`, `mesh.rs:158-161`). */
 EPIX_EXPORT EPIX_API void init_batched_instance_buffer(ecs::Commands commands, ecs::Res<wgpu::Device> device);
-
-
 
 }  // namespace epix::sprite_render
 
@@ -622,8 +623,8 @@ struct epix::render::batching::GetBatchData<epix::sprite_render::Mesh2dPipeline>
         if (instance.automatic_batching) {
             compare_data = CompareData{instance.material_bind_group_id, instance.mesh_asset_id};
         }
-        return std::pair{
-            epix::sprite_render::Mesh2dUniform::from_components(instance.transforms, instance.tag), compare_data};
+        return std::pair{epix::sprite_render::Mesh2dUniform::from_components(instance.transforms, instance.tag),
+                         compare_data};
     }
 };
 
@@ -633,8 +634,7 @@ struct epix::render::batching::GetBatchData<epix::sprite_render::Mesh2dPipeline>
 template <>
 struct epix::render::batching::GetFullBatchData<epix::sprite_render::Mesh2dPipeline> {
     using BufferInputData = std::monostate;
-    using CompareData =
-        std::pair<epix::sprite_render::Material2dBindGroupId, assets::AssetId<epix::mesh::Mesh>>;
+    using CompareData     = std::pair<epix::sprite_render::Material2dBindGroupId, assets::AssetId<epix::mesh::Mesh>>;
 
     std::optional<epix::sprite_render::Mesh2dUniform> get_binned_batch_data(
         GetBatchData<epix::sprite_render::Mesh2dPipeline>::Param& instances,
@@ -652,7 +652,8 @@ struct epix::render::batching::GetFullBatchData<epix::sprite_render::Mesh2dPipel
         return std::nullopt;
     }
 
-    std::optional<std::uint32_t> get_binned_index(GetBatchData<epix::sprite_render::Mesh2dPipeline>::Param&, epix::render::sync_world::MainEntity) const {
+    std::optional<std::uint32_t> get_binned_index(GetBatchData<epix::sprite_render::Mesh2dPipeline>::Param&,
+                                                  epix::render::sync_world::MainEntity) const {
         spdlog::error(
             "[mesh2d] get_binned_index is only intended for GPU mesh uniform building, which is not implemented "
             "for 2d meshes.");
@@ -667,8 +668,8 @@ struct epix::render::batching::GetFullBatchData<epix::sprite_render::Mesh2dPipel
         std::uint32_t offset) const {
         // Bevy writes only the CPU metadata here; the draw itself supplies the
         // vertex and instance counts (mesh.rs:389-416).
-        buffers.set_cpu_metadata(indexed, offset,
-                                 {.base_output_index = base_output_index,
-                                  .batch_set_index   = batch_set_index.value_or(!0u)});
+        buffers.set_cpu_metadata(
+            indexed, offset,
+            {.base_output_index = base_output_index, .batch_set_index = batch_set_index.value_or(!0u)});
     }
 };

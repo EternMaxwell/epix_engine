@@ -1,12 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <optional>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::image::detail {

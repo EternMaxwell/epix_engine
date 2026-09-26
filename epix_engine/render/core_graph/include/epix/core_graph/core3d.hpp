@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
@@ -16,7 +16,6 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/fullscreen.hpp>
 #include <epix/core_graph/skybox.hpp>
@@ -646,9 +645,8 @@ EPIX_EXPORT struct CopyDeferredLightingIdPipeline {
  * `depth_compare: Always` and `depth_write_enabled: true`, and the fragment
  * shader converts the stored `u8` material id into a normalised `frag_depth`. */
 EPIX_EXPORT struct EPIX_API CopyDeferredLightingIdNode {
-    using ViewQuery = ecs::Item<const render::view::ViewTarget&,
-                                const ViewPrepassTextures&,
-                                const DeferredLightingIdDepthTexture&>;
+    using ViewQuery =
+        ecs::Item<const render::view::ViewTarget&, const ViewPrepassTextures&, const DeferredLightingIdDepthTexture&>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
                                                          render::graph::RenderContext& render_context,
@@ -658,12 +656,11 @@ EPIX_EXPORT struct EPIX_API CopyDeferredLightingIdNode {
 
 /** @brief Queue the copy pipeline during render startup (Bevy
  * `init_copy_deferred_lighting_id_pipeline`, `deferred/copy_lighting_id.rs:98`). */
-EPIX_EXPORT EPIX_API void init_copy_deferred_lighting_id_pipeline(
-    ecs::Commands cmd,
-    ecs::Res<wgpu::Device> device,
-    ecs::Res<assets::AssetServer> asset_server,
-    ecs::Res<FullscreenShader> fullscreen_shader,
-    ecs::Res<render::PipelineServer> pipeline_server);
+EPIX_EXPORT EPIX_API void init_copy_deferred_lighting_id_pipeline(ecs::Commands cmd,
+                                                                  ecs::Res<wgpu::Device> device,
+                                                                  ecs::Res<assets::AssetServer> asset_server,
+                                                                  ecs::Res<FullscreenShader> fullscreen_shader,
+                                                                  ecs::Res<render::PipelineServer> pipeline_server);
 
 /** @brief Allocate the lighting-id depth texture for every view with a
  * `DeferredPrepass` (Bevy `prepare_deferred_lighting_id_textures`,
@@ -672,9 +669,7 @@ EPIX_EXPORT EPIX_API void prepare_deferred_lighting_id_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
-    ecs::Query<ecs::Item<ecs::Entity,
-                         const render::camera::ExtractedCamera&>,
-               ecs::With<DeferredPrepass>> views);
+    ecs::Query<ecs::Item<ecs::Entity, const render::camera::ExtractedCamera&>, ecs::With<DeferredPrepass>> views);
 
 /** @brief Bevy `CopyDeferredLightingIdPlugin`, installed by `CoreGraphPlugin`
  * beside the Core2d and Core3d plugins (`bevy_core_pipeline/src/lib.rs:44`). */
@@ -738,9 +733,8 @@ EPIX_EXPORT struct EPIX_API MainTransparentPass3dNode {
 /** @brief Splits `[start, end)` into at most `max_num_splits` non-overlapping
  * sub-ranges, giving the remainder to the initial sub-ranges (Bevy
  * `main_transmissive_pass_3d_node.rs::split_range`). */
-EPIX_EXPORT EPIX_API std::vector<std::pair<std::size_t, std::size_t>> split_transmissive_range(std::size_t start,
-                                                                                      std::size_t end,
-                                                                                      std::size_t max_num_splits);
+EPIX_EXPORT EPIX_API std::vector<std::pair<std::size_t, std::size_t>> split_transmissive_range(
+    std::size_t start, std::size_t end, std::size_t max_num_splits);
 
 /** @brief Singleton struct for initializing the core 3D render graph. */
 EPIX_EXPORT inline struct Core3dGraph {
@@ -771,7 +765,7 @@ EPIX_EXPORT EPIX_API void extract_core_3d_camera_phases(
  * requested sample count was not already off (Bevy `check_msaa`,
  * `core_3d/mod.rs:978`). Registered in `PostUpdate` by `Core3dPlugin`. */
 EPIX_EXPORT EPIX_API void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
-                                       ecs::With<::epix::camera::Camera, DeferredPrepass>> deferred_views);
+                                                ecs::With<::epix::camera::Camera, DeferredPrepass>> deferred_views);
 
 /** @brief Add `TEXTURE_BINDING` to the depth-texture usage of every view that
  * runs occlusion culling, because the culling pass samples that texture (Bevy
@@ -833,16 +827,16 @@ EPIX_EXPORT EPIX_API void extract_camera_prepass_phase(
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque3dDeferred>> opaque_deferred_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>> alpha_mask_deferred_phases,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity,
-                                     render::sync_world::RenderEntity,
-                                     const ::epix::camera::Camera&,
-                                     ecs::Has<::epix::render::view::NoIndirectDrawing>,
-                                     ecs::Has<DepthPrepass>,
-                                     ecs::Has<NormalPrepass>,
-                                     ecs::Has<MotionVectorPrepass>,
-                                     ecs::Has<DeferredPrepass>,
-                                     ecs::Has<DepthPrepassDoubleBuffer>,
-                                     ecs::Has<DeferredPrepassDoubleBuffer>>,
-                               ecs::With<::epix::camera::Camera3d>>> cameras,
+                                      render::sync_world::RenderEntity,
+                                      const ::epix::camera::Camera&,
+                                      ecs::Has<::epix::render::view::NoIndirectDrawing>,
+                                      ecs::Has<DepthPrepass>,
+                                      ecs::Has<NormalPrepass>,
+                                      ecs::Has<MotionVectorPrepass>,
+                                      ecs::Has<DeferredPrepass>,
+                                      ecs::Has<DepthPrepassDoubleBuffer>,
+                                      ecs::Has<DeferredPrepassDoubleBuffer>>,
+                            ecs::With<::epix::camera::Camera3d>>> cameras,
     ecs::Local<std::unordered_set<::epix::render::view::RetainedViewEntity>> live_views,
     ecs::Res<render::batching::GpuPreprocessingSupport> gpu_preprocessing_support);
 

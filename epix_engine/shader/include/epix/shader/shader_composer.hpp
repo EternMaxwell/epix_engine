@@ -1,7 +1,7 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <expected>
 #include <span>
 #include <string>
@@ -9,7 +9,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/shader/shader.hpp>

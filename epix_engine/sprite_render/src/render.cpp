@@ -253,25 +253,25 @@ void sprite_render::detail::apply_scaling(sprite::SpriteScalingMode mode,
             }
             break;
         case sprite::SpriteScalingMode::FitCenter:
-            if (texture_ratio > quad_ratio) quad_size.y *= quad_tex_scale;
-            else quad_size.x *= tex_quad_scale;
+            if (texture_ratio > quad_ratio)
+                quad_size.y *= quad_tex_scale;
+            else
+                quad_size.x *= tex_quad_scale;
             break;
         case sprite::SpriteScalingMode::FitStart: {
-            const auto next = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
-                                                         : quad_size * glm::vec2(tex_quad_scale, 1.0f);
+            const auto next   = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
+                                                           : quad_size * glm::vec2(tex_quad_scale, 1.0f);
             const auto offset = quad_size - next;
-            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, -offset.y)
-                                                           : glm::vec2(offset.x, 0.0f);
-            quad_size = next;
+            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, -offset.y) : glm::vec2(offset.x, 0.0f);
+            quad_size         = next;
             break;
         }
         case sprite::SpriteScalingMode::FitEnd: {
-            const auto next = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
-                                                         : quad_size * glm::vec2(tex_quad_scale, 1.0f);
+            const auto next   = texture_ratio > quad_ratio ? quad_size * glm::vec2(1.0f, quad_tex_scale)
+                                                           : quad_size * glm::vec2(tex_quad_scale, 1.0f);
             const auto offset = quad_size - next;
-            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, offset.y)
-                                                           : glm::vec2(-offset.x, 0.0f);
-            quad_size = next;
+            quad_translation  = texture_ratio > quad_ratio ? glm::vec2(0.0f, offset.y) : glm::vec2(-offset.x, 0.0f);
+            quad_size         = next;
             break;
         }
     }
@@ -544,14 +544,15 @@ void sprite_render::prepare_sprite_image_bind_groups(
             if (!gpu_image) return std::nullopt;
             if (!image_bind_groups->values.contains(image_id)) {
                 image_bind_groups->values.emplace(
-                    image_id, device->createBindGroup(
-                                  wgpu::BindGroupDescriptor()
-                                      .setLabel("sprite_material_bind_group")
-                                      .setLayout(pipeline_server->get_bind_group_layout(sprite_pipeline->material_layout))
-                                      .setEntries(std::array{
-                                          wgpu::BindGroupEntry().setBinding(0).setTextureView(gpu_image->texture_view),
-                                          wgpu::BindGroupEntry().setBinding(1).setSampler(gpu_image->sampler),
-                                      })));
+                    image_id,
+                    device->createBindGroup(
+                        wgpu::BindGroupDescriptor()
+                            .setLabel("sprite_material_bind_group")
+                            .setLayout(pipeline_server->get_bind_group_layout(sprite_pipeline->material_layout))
+                            .setEntries(std::array{
+                                wgpu::BindGroupEntry().setBinding(0).setTextureView(gpu_image->texture_view),
+                                wgpu::BindGroupEntry().setBinding(1).setSampler(gpu_image->sampler),
+                            })));
             }
             return glm::vec2(gpu_image->size_2d());
         });
@@ -629,12 +630,11 @@ bool sprite_render::detail::prepare_sprite_indices(SpriteMeta& sprite_meta) {
     return true;
 }
 
-void sprite_render::compute_slices_on_asset_event(
-    Commands commands,
-    EventReader<assets::AssetEvent<image::Image>> events,
-    Res<assets::Assets<image::Image>> images,
-    Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
-    Query<Item<Entity, const sprite::Sprite&>> sprites) {
+void sprite_render::compute_slices_on_asset_event(Commands commands,
+                                                  EventReader<assets::AssetEvent<image::Image>> events,
+                                                  Res<assets::Assets<image::Image>> images,
+                                                  Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
+                                                  Query<Item<Entity, const sprite::Sprite&>> sprites) {
     std::unordered_set<assets::AssetId<image::Image>> changed;
     for (const auto& event : events.read()) {
         if (event.type == assets::AssetEvent<image::Image>::Type::Added ||
@@ -677,10 +677,9 @@ void SpriteRenderPlugin::attach(App& app) {
                                          .in_set(SpriteSystems::ComputeSlices)
                                          .before(assets::AssetSystems::WriteEvents)
                                          .set_name("compute slices on image event"));
-    app.add_systems(app::PostUpdate,
-                    into(sprite_render::compute_slices_on_sprite_change)
-                        .in_set(SpriteSystems::ComputeSlices)
-                        .set_name("compute slices on sprite change"));
+    app.add_systems(app::PostUpdate, into(sprite_render::compute_slices_on_sprite_change)
+                                         .in_set(SpriteSystems::ComputeSlices)
+                                         .set_name("compute slices on sprite change"));
     if (!app.world().get_resource<SpriteShaderHandle>()) {
         if (auto handle = load_sprite_shader(app.world_mut())) app.world_mut().insert_resource(std::move(*handle));
     }
@@ -731,7 +730,7 @@ void SpriteRenderPlugin::ready(App& app) {
                 .material_layout = BindGroupLayoutDescriptor()
                                        .set_label("sprite_material_layout")
                                        .set_entries(material_entries.entries()),
-                .shader = asset_server->load<shader::Shader>("embedded://sprite/sprite.slang"),
+                .shader          = asset_server->load<shader::Shader>("embedded://sprite/sprite.slang"),
             });
         }).set_name("init sprite pipeline"));
 
@@ -741,9 +740,8 @@ void SpriteRenderPlugin::ready(App& app) {
             into(sprite_render::extract_sprites).in_set(SpriteSystems::ExtractSprites).set_name("extract sprites"))
         .add_systems(render::ExtractSchedule,
                      into(sprite_render::extract_sprite_events).set_name("extract sprite image events"))
-        .add_systems(
-            render::Render,
-            into(sprite_render::queue_sprites).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
+        .add_systems(render::Render,
+                     into(sprite_render::queue_sprites).in_set(render::RenderSystems::Queue).set_name("queue sprites"))
         .add_systems(
             render::Render,
             into(sprite_render::prepare_sprite_image_bind_groups, sprite_render::prepare_sprite_view_bind_groups)

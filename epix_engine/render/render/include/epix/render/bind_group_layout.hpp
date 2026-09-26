@@ -1,15 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <span>
 #include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render {
@@ -52,7 +51,8 @@ EPIX_EXPORT struct EPIX_API BindGroupLayoutDescriptor {
         return std::forward<decltype(self)>(self);
     }
 
-    friend EPIX_API bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescriptor& rhs) noexcept;
+    friend EPIX_API bool operator==(const BindGroupLayoutDescriptor& lhs,
+                                    const BindGroupLayoutDescriptor& rhs) noexcept;
     [[nodiscard]] std::size_t hash() const noexcept;
 };
 

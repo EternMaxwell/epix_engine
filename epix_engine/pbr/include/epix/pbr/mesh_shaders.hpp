@@ -2,9 +2,9 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/shader.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {

@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <array>
@@ -11,6 +10,7 @@
 #include <cstring>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh/mesh.hpp>
 #include <epix/mesh/vertex_buffer_layout.hpp>
@@ -25,11 +25,9 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render/assets.hpp>
 #include <epix/render/mesh/offset_allocator.hpp>
-
 #include <epix/render/mesh/render_asset.hpp>
 
 namespace epix::render::mesh {
@@ -64,9 +62,9 @@ EPIX_EXPORT struct SlabId {
  * Defaults match Bevy: 1 MiB minimum slab, 512 MiB maximum slab, 256 MiB large
  * threshold, and 1.5× growth factor. */
 EPIX_EXPORT struct MeshAllocatorSettings {
-    std::uint64_t min_slab_size   = 1024 * 1024;       // 1 MiB
-    std::uint64_t max_slab_size   = 1024 * 1024 * 512; // 512 MiB
-    std::uint64_t large_threshold = 1024 * 1024 * 256; // 256 MiB
+    std::uint64_t min_slab_size   = 1024 * 1024;        // 1 MiB
+    std::uint64_t max_slab_size   = 1024 * 1024 * 512;  // 512 MiB
+    std::uint64_t large_threshold = 1024 * 1024 * 256;  // 256 MiB
     double growth_factor          = 1.5;
 
     bool operator==(const MeshAllocatorSettings&) const noexcept = default;
@@ -84,8 +82,8 @@ enum class ElementClass : std::uint8_t { Vertex, Index };
  * the element size and the 4-byte copy-buffer alignment, so a slot may hold
  * more than one element when the element size isn't a multiple of 4. */
 struct ElementLayout {
-    ElementClass element_class = ElementClass::Vertex;
-    std::uint64_t size  = 0;
+    ElementClass element_class      = ElementClass::Vertex;
+    std::uint64_t size              = 0;
     std::uint32_t elements_per_slot = 1;
 
     static ElementLayout make(ElementClass element_class, std::uint64_t size) {
@@ -102,22 +100,22 @@ struct ElementLayout {
 }  // namespace epix::render::mesh
 
 namespace std {
-    template <>
-    struct hash<epix::render::mesh::detail::ElementLayout> {
-        std::size_t operator()(const epix::render::mesh::detail::ElementLayout& layout) const noexcept {
-            std::size_t result = static_cast<std::size_t>(layout.element_class);
-            result ^= static_cast<std::size_t>(layout.size) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
-            result ^= static_cast<std::size_t>(layout.elements_per_slot) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
-            return result;
-        }
-    };
+template <>
+struct hash<epix::render::mesh::detail::ElementLayout> {
+    std::size_t operator()(const epix::render::mesh::detail::ElementLayout& layout) const noexcept {
+        std::size_t result = static_cast<std::size_t>(layout.element_class);
+        result ^= static_cast<std::size_t>(layout.size) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
+        result ^= static_cast<std::size_t>(layout.elements_per_slot) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
+        return result;
+    }
+};
 
-    template <>
-    struct hash<epix::render::mesh::SlabId> {
-        std::size_t operator()(epix::render::mesh::SlabId id) const noexcept {
-            return std::hash<std::uint32_t>{}(id.get());
-        }
-    };
+template <>
+struct hash<epix::render::mesh::SlabId> {
+    std::size_t operator()(epix::render::mesh::SlabId id) const noexcept {
+        return std::hash<std::uint32_t>{}(id.get());
+    }
+};
 }  // namespace std
 
 namespace epix::render::mesh {
@@ -156,15 +154,16 @@ struct SlabsToReallocate {
  * `GeneralSlab::grow_if_necessary`). Returns the new capacity and the typed
  * growth result; `max_slot_capacity` is derived from
  * `settings.max_slab_size / layout.slot_size()`. */
-inline std::pair<std::uint32_t, SlabGrowthResult> compute_grow_capacity(
-    std::uint32_t current_capacity, std::uint32_t new_size_in_slots, const MeshAllocatorSettings& settings,
-    std::uint64_t slot_size) {
+inline std::pair<std::uint32_t, SlabGrowthResult> compute_grow_capacity(std::uint32_t current_capacity,
+                                                                        std::uint32_t new_size_in_slots,
+                                                                        const MeshAllocatorSettings& settings,
+                                                                        std::uint64_t slot_size) {
     const std::uint32_t max_slot_capacity = static_cast<std::uint32_t>(settings.max_slab_size / slot_size);
     if (current_capacity >= new_size_in_slots) {
         return {current_capacity, SlabGrowthNoGrowthNeeded{}};
     }
     const std::uint32_t initial_capacity = current_capacity;
-    std::uint32_t capacity = current_capacity;
+    std::uint32_t capacity               = current_capacity;
     while (capacity < new_size_in_slots) {
         const std::uint32_t grown1 =
             static_cast<std::uint32_t>(std::ceil(static_cast<double>(capacity) * settings.growth_factor));
@@ -187,8 +186,8 @@ inline std::pair<std::uint32_t, bool> compute_allocation(std::uint64_t data_byte
         static_cast<std::uint32_t>((data_byte_len + layout.size - 1) / layout.size);
     const std::uint32_t data_slot_count =
         static_cast<std::uint32_t>((data_element_count + layout.elements_per_slot - 1) / layout.elements_per_slot);
-    const std::uint64_t threshold = settings.large_threshold < settings.max_slab_size ? settings.large_threshold
-                                                                                      : settings.max_slab_size;
+    const std::uint64_t threshold =
+        settings.large_threshold < settings.max_slab_size ? settings.large_threshold : settings.max_slab_size;
     const bool is_large = static_cast<std::uint64_t>(data_slot_count) * layout.slot_size() >= threshold;
     return {data_slot_count, is_large};
 }
@@ -196,10 +195,10 @@ inline std::pair<std::uint32_t, bool> compute_allocation(std::uint64_t data_byte
 /** @brief Element range of a general-slab allocation (Bevy
  * `mesh_slice_in_slab` for a `Slab::General`): the allocation's slot offset/len
  * scaled by `elements_per_slot`. Measured in elements. */
-inline std::pair<std::uint32_t, std::uint32_t> general_slab_element_range(
-    std::uint32_t allocation_offset, std::uint32_t slot_count, const ElementLayout& layout) {
-    return {allocation_offset * layout.elements_per_slot,
-            (allocation_offset + slot_count) * layout.elements_per_slot};
+inline std::pair<std::uint32_t, std::uint32_t> general_slab_element_range(std::uint32_t allocation_offset,
+                                                                          std::uint32_t slot_count,
+                                                                          const ElementLayout& layout) {
+    return {allocation_offset * layout.elements_per_slot, (allocation_offset + slot_count) * layout.elements_per_slot};
 }
 
 /** @brief A mesh's data allocation within a slab (Bevy `SlabAllocation`: an
@@ -233,27 +232,26 @@ struct GeneralSlab {
     ElementLayout element_layout;
     std::uint32_t current_slot_capacity = 0;
 
-    static GeneralSlab make(ElementLayout layout, std::uint32_t data_slot_count,
+    static GeneralSlab make(ElementLayout layout,
+                            std::uint32_t data_slot_count,
                             const MeshAllocatorSettings& settings) {
-        const std::uint32_t min_capacity = static_cast<std::uint32_t>(
-            (settings.min_slab_size + layout.slot_size() - 1) / layout.slot_size());
+        const std::uint32_t min_capacity =
+            static_cast<std::uint32_t>((settings.min_slab_size + layout.slot_size() - 1) / layout.slot_size());
         // Bevy GeneralSlab::new: initial capacity is at least the minimum slab
         // size and at least what offset-allocator needs to hold the payload.
-        const std::uint32_t initial_capacity =
-            min_capacity > offset_allocator::min_allocator_size(data_slot_count)
-                ? min_capacity
-                : offset_allocator::min_allocator_size(data_slot_count);
-        const std::uint32_t max_capacity = std::max(
-            static_cast<std::uint32_t>((settings.max_slab_size + layout.slot_size() - 1) / layout.slot_size()),
-            offset_allocator::min_allocator_size(data_slot_count));
+        const std::uint32_t initial_capacity = min_capacity > offset_allocator::min_allocator_size(data_slot_count)
+                                                   ? min_capacity
+                                                   : offset_allocator::min_allocator_size(data_slot_count);
+        const std::uint32_t max_capacity =
+            std::max(static_cast<std::uint32_t>((settings.max_slab_size + layout.slot_size() - 1) / layout.slot_size()),
+                     offset_allocator::min_allocator_size(data_slot_count));
         return GeneralSlab{offset_allocator::Allocator{max_capacity}, nullptr, {}, {}, layout, initial_capacity};
     }
     /** @brief Check whether the slab is large enough for `new_size_in_slots`,
      * growing it (Bevy `grow_if_necessary`). Returns the growth result kind. */
-    SlabGrowthResult grow_if_necessary(std::uint32_t new_size_in_slots,
-                                       const MeshAllocatorSettings& settings) {
-        auto grow = compute_grow_capacity(current_slot_capacity, new_size_in_slots, settings,
-                                          element_layout.slot_size());
+    SlabGrowthResult grow_if_necessary(std::uint32_t new_size_in_slots, const MeshAllocatorSettings& settings) {
+        auto grow =
+            compute_grow_capacity(current_slot_capacity, new_size_in_slots, settings, element_layout.slot_size());
         current_slot_capacity = grow.first;
         return grow.second;
     }
@@ -300,9 +298,9 @@ struct Slab {
  * meshes in `PrepareAssets`. */
 EPIX_EXPORT struct MeshAllocator {
    public:
-    MeshAllocator(const MeshAllocator&) = delete;
-    MeshAllocator(MeshAllocator&&) noexcept = default;
-    MeshAllocator& operator=(const MeshAllocator&) = delete;
+    MeshAllocator(const MeshAllocator&)                = delete;
+    MeshAllocator(MeshAllocator&&) noexcept            = default;
+    MeshAllocator& operator=(const MeshAllocator&)     = delete;
     MeshAllocator& operator=(MeshAllocator&&) noexcept = default;
 
     /** @brief Construct after render-device initialization (Bevy `FromWorld`
@@ -338,10 +336,10 @@ EPIX_EXPORT struct MeshAllocator {
     wgpu::BufferUsage extra_buffer_usages = wgpu::BufferUsage::eNone;
 
    private:
-
     /** @brief Record which slab holds a mesh's vertex/index data (Bevy
      * `MeshAllocator::record_allocation`). */
-    void record_allocation(const epix::assets::AssetId<::epix::mesh::Mesh>& id, SlabId slab,
+    void record_allocation(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                           SlabId slab,
                            detail::ElementClass element_class) {
         switch (element_class) {
             case detail::ElementClass::Vertex:
@@ -356,14 +354,12 @@ EPIX_EXPORT struct MeshAllocator {
    public:
     /** @brief Buffer + element range of the mesh's vertex data (Bevy
      * `mesh_vertex_slice`). */
-    std::optional<MeshBufferSlice> mesh_vertex_slice(
-        const epix::assets::AssetId<::epix::mesh::Mesh>& id) const {
+    std::optional<MeshBufferSlice> mesh_vertex_slice(const epix::assets::AssetId<::epix::mesh::Mesh>& id) const {
         return mesh_slice(id, true);
     }
     /** @brief Buffer + element range of the mesh's index data (Bevy
      * `mesh_index_slice`). */
-    std::optional<MeshBufferSlice> mesh_index_slice(
-        const epix::assets::AssetId<::epix::mesh::Mesh>& id) const {
+    std::optional<MeshBufferSlice> mesh_index_slice(const epix::assets::AssetId<::epix::mesh::Mesh>& id) const {
         return mesh_slice(id, false);
     }
     /** @brief (slab for vertex data, slab for index data) (Bevy `mesh_slabs`). */
@@ -375,11 +371,12 @@ EPIX_EXPORT struct MeshAllocator {
         if (auto it = mesh_id_to_index_slab.find(id); it != mesh_id_to_index_slab.end()) index = it->second;
         return {vertex, index};
     }
+
    private:
     /** @brief Internal slice computation for a mesh's vertex/index data (Bevy
      * `mesh_slice_in_slab`). */
-    std::optional<MeshBufferSlice> mesh_slice(
-        const epix::assets::AssetId<::epix::mesh::Mesh>& id, bool is_vertex) const {
+    std::optional<MeshBufferSlice> mesh_slice(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                                              bool is_vertex) const {
         const auto& map = is_vertex ? mesh_id_to_vertex_slab : mesh_id_to_index_slab;
         auto it         = map.find(id);
         if (it == map.end()) return std::nullopt;
@@ -405,8 +402,10 @@ EPIX_EXPORT struct MeshAllocator {
      * necessary (Bevy `MeshAllocator::allocate`). The allocation is recorded as
      * pending; `copy_element_data` later writes it into the GPU buffer and
      * moves it to resident. */
-    void allocate(const epix::assets::AssetId<::epix::mesh::Mesh>& id, std::uint64_t data_byte_len,
-                  const detail::ElementLayout& layout, detail::SlabsToReallocate& slabs_to_reallocate,
+    void allocate(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                  std::uint64_t data_byte_len,
+                  const detail::ElementLayout& layout,
+                  detail::SlabsToReallocate& slabs_to_reallocate,
                   const MeshAllocatorSettings& settings) {
         const auto [data_slot_count, is_large] = detail::compute_allocation(data_byte_len, layout, settings);
         // Too large for a general slab: give it a slab of its own.
@@ -421,7 +420,9 @@ EPIX_EXPORT struct MeshAllocator {
      * and return it. General slabs create buffers lazily; when a slab has grown
      * since its buffer was created, the buffer is reallocated and the old
      * contents copied across (Bevy `reallocate_slab`). */
-    void reallocate_slab(const wgpu::Device& device, const wgpu::Queue& queue, SlabId slab_id,
+    void reallocate_slab(const wgpu::Device& device,
+                         const wgpu::Queue& queue,
+                         SlabId slab_id,
                          detail::SlabToReallocate slab_to_reallocate) {
         auto it = slabs.find(slab_id);
         if (it == slabs.end()) return;
@@ -430,18 +431,16 @@ EPIX_EXPORT struct MeshAllocator {
         const std::uint64_t needed_size =
             static_cast<std::uint64_t>(general->current_slot_capacity) * general->element_layout.slot_size();
         auto usage = wgpu::BufferUsage::eCopySrc | wgpu::BufferUsage::eCopyDst | extra_buffer_usages;
-        usage = usage | (general->element_layout.element_class == detail::ElementClass::Vertex
-                             ? wgpu::BufferUsage::eVertex
-                             : wgpu::BufferUsage::eIndex);
-        auto new_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                  .setSize(needed_size)
-                                                  .setLabel("general mesh slab")
-                                                  .setUsage(usage));
+        usage =
+            usage | (general->element_layout.element_class == detail::ElementClass::Vertex ? wgpu::BufferUsage::eVertex
+                                                                                           : wgpu::BufferUsage::eIndex);
+        auto new_buffer = device.createBuffer(
+            wgpu::BufferDescriptor().setSize(needed_size).setLabel("general mesh slab").setUsage(usage));
         const auto old_buffer = std::exchange(general->buffer, new_buffer);
         if (!old_buffer) return;
 
-        const std::uint64_t bytes_to_copy = static_cast<std::uint64_t>(slab_to_reallocate.old_slot_capacity) *
-                                            general->element_layout.slot_size();
+        const std::uint64_t bytes_to_copy =
+            static_cast<std::uint64_t>(slab_to_reallocate.old_slot_capacity) * general->element_layout.slot_size();
         if (bytes_to_copy == 0) return;
         auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("slab resize encoder"));
         encoder.copyBufferToBuffer(old_buffer, 0, new_buffer, 0, bytes_to_copy);
@@ -452,8 +451,12 @@ EPIX_EXPORT struct MeshAllocator {
      * to resident (Bevy `copy_element_data`). General slabs write into the
      * existing buffer at the allocation's byte offset; large-object slabs create
      * their dedicated buffer with mapped-at-creation and fill it in one go. */
-    void copy_element_data(const wgpu::Device& device, const wgpu::Queue& queue, SlabId slab_id,
-                           const epix::assets::AssetId<::epix::mesh::Mesh>& id, const void* data, std::size_t bytes,
+    void copy_element_data(const wgpu::Device& device,
+                           const wgpu::Queue& queue,
+                           SlabId slab_id,
+                           const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                           const void* data,
+                           std::size_t bytes,
                            wgpu::BufferUsage usage) {
         auto it = slabs.find(slab_id);
         if (it == slabs.end()) return;
@@ -461,12 +464,12 @@ EPIX_EXPORT struct MeshAllocator {
             // Bevy copy_element_data for Slab::LargeObject: create the buffer
             // and its data in one go.
             if (!large->buffer) {
-                large->buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                        .setSize(bytes)
-                                                        .setLabel("large mesh slab")
-                                                        .setUsage(usage | wgpu::BufferUsage::eCopyDst |
-                                                                  extra_buffer_usages)
-                                                        .setMappedAtCreation(true));
+                large->buffer =
+                    device.createBuffer(wgpu::BufferDescriptor()
+                                            .setSize(bytes)
+                                            .setLabel("large mesh slab")
+                                            .setUsage(usage | wgpu::BufferUsage::eCopyDst | extra_buffer_usages)
+                                            .setMappedAtCreation(true));
                 if (auto* range = static_cast<std::uint8_t*>(large->buffer.getMappedRange(0, bytes))) {
                     std::memcpy(range, data, bytes);
                 }
@@ -481,9 +484,9 @@ EPIX_EXPORT struct MeshAllocator {
         // the copy; only the payload bytes are meaningful.
         const auto pending = general->pending_allocations.find(id);
         if (pending == general->pending_allocations.end()) return;
-        const auto allocation = pending->second;
+        const auto allocation         = pending->second;
         const std::uint64_t slot_size = general->element_layout.slot_size();
-        const std::uint64_t aligned = (bytes + slot_size - 1) / slot_size * slot_size;
+        const std::uint64_t aligned   = (bytes + slot_size - 1) / slot_size * slot_size;
         if (aligned == bytes) {
             queue.writeBuffer(general->buffer, static_cast<std::uint64_t>(allocation.offset()) * slot_size, data,
                               bytes);
@@ -500,8 +503,10 @@ EPIX_EXPORT struct MeshAllocator {
     /** @brief Allocate within general slabs, growing an existing one or creating
      * a new one (Bevy `MeshAllocator::allocate_general`). The payload is
      * recorded as pending and the mesh->slab mapping is recorded. */
-    void allocate_general(const epix::assets::AssetId<::epix::mesh::Mesh>& id, std::uint32_t data_slot_count,
-                          const detail::ElementLayout& layout, detail::SlabsToReallocate& slabs_to_reallocate,
+    void allocate_general(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                          std::uint32_t data_slot_count,
+                          const detail::ElementLayout& layout,
+                          detail::SlabsToReallocate& slabs_to_reallocate,
                           const MeshAllocatorSettings& settings) {
         // Loop through the slabs that accept the layout, trying the first one
         // that can fit the payload (Bevy slab_layouts candidate search).
@@ -529,9 +534,8 @@ EPIX_EXPORT struct MeshAllocator {
         // No existing slab fit: create a new one big enough for the payload.
         if (!mesh_allocation) {
             const SlabId new_id = next_slab_id;
-            next_slab_id = SlabId{next_slab_id.get() == std::numeric_limits<std::uint32_t>::max() - 1
-                                      ? 0
-                                      : next_slab_id.get() + 1};
+            next_slab_id        = SlabId{
+                next_slab_id.get() == std::numeric_limits<std::uint32_t>::max() - 1 ? 0 : next_slab_id.get() + 1};
             auto new_slab   = detail::GeneralSlab::make(layout, data_slot_count, settings);
             auto allocation = new_slab.allocator.allocate(data_slot_count);
             if (!allocation) return;
@@ -551,12 +555,10 @@ EPIX_EXPORT struct MeshAllocator {
 
     /** @brief Allocate a payload into its own dedicated large-object slab
      * (Bevy `MeshAllocator::allocate_large`). */
-    void allocate_large(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
-                        const detail::ElementLayout& layout) {
+    void allocate_large(const epix::assets::AssetId<::epix::mesh::Mesh>& id, const detail::ElementLayout& layout) {
         const SlabId new_id = next_slab_id;
-        next_slab_id = SlabId{next_slab_id.get() == std::numeric_limits<std::uint32_t>::max() - 1
-                                  ? 0
-                                  : next_slab_id.get() + 1};
+        next_slab_id =
+            SlabId{next_slab_id.get() == std::numeric_limits<std::uint32_t>::max() - 1 ? 0 : next_slab_id.get() + 1};
         record_allocation(id, new_id, layout.element_class);
         slabs.emplace(new_id, detail::Slab::large(detail::LargeObjectSlab{nullptr, layout}));
     }
@@ -593,7 +595,8 @@ EPIX_EXPORT struct MeshAllocator {
 
     /** @brief Free one resident or pending allocation and remember when its
      * slab becomes empty (Bevy `free_allocation_in_slab`). */
-    void free_allocation_in_slab(const epix::assets::AssetId<::epix::mesh::Mesh>& id, SlabId slab_id,
+    void free_allocation_in_slab(const epix::assets::AssetId<::epix::mesh::Mesh>& id,
+                                 SlabId slab_id,
                                  std::unordered_set<SlabId>& empty_slabs) {
         const auto slab = slabs.find(slab_id);
         if (slab == slabs.end()) return;
@@ -622,13 +625,16 @@ EPIX_EXPORT struct MeshAllocator {
     void allocate_meshes(const MeshAllocatorSettings& settings,
                          const ExtractedAssets<::epix::render::mesh::RenderMesh>& extracted_meshes,
                          ::epix::mesh::MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
-                         const wgpu::Device& device, const wgpu::Queue& queue);
+                         const wgpu::Device& device,
+                         const wgpu::Queue& queue);
 
     friend EPIX_API void allocate_and_free_meshes(
-        ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
+        ecs::ResMut<MeshAllocator> mesh_allocator,
+        ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
         ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
         ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
-        ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue);
+        ecs::Res<wgpu::Device> device,
+        ecs::Res<wgpu::Queue> queue);
 
    public:
     /** @brief Number of index allocations (Bevy `allocations()`:
@@ -658,8 +664,10 @@ EPIX_EXPORT struct EPIX_API MeshAllocatorPlugin {
 /** @brief Process extracted mesh additions, modifications, and removals and
  * update their shared GPU slabs (Bevy `allocate_and_free_meshes`). */
 EPIX_EXPORT EPIX_API void allocate_and_free_meshes(
-    ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
+    ecs::ResMut<MeshAllocator> mesh_allocator,
+    ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
     ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
-    ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts, ecs::Res<wgpu::Device> device,
+    ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
+    ecs::Res<wgpu::Device> device,
     ecs::Res<wgpu::Queue> queue);
 }  // namespace epix::render::mesh

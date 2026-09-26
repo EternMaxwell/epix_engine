@@ -2,24 +2,25 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <epix/assets.hpp>
 #include <epix/camera/visibility.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
+#include <limits>
 #include <optional>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 /** @brief The light-side clustered-forward definitions (Bevy
@@ -124,14 +125,19 @@ EPIX_EXPORT struct ClusterConfig {
      *  total below the slice count is clamped to it first, with Bevy warning. */
     glm::uvec3 dimensions_for_screen_size(glm::uvec2 screen_size) const {
         switch (kind) {
-            case Kind::None: return glm::uvec3(0u);
-            case Kind::Single: return glm::uvec3(1u);
-            case Kind::XYZ: return dimensions;
-            case Kind::FixedZ: break;
+            case Kind::None:
+                return glm::uvec3(0u);
+            case Kind::Single:
+                return glm::uvec3(1u);
+            case Kind::XYZ:
+                return dimensions;
+            case Kind::FixedZ:
+                break;
         }
         if (screen_size.x == 0 || screen_size.y == 0) {
-            throw std::invalid_argument("Failed to calculate aspect ratio for Cluster: screen dimensions must be " \
-                                        "positive, non-zero values");
+            throw std::invalid_argument(
+                "Failed to calculate aspect ratio for Cluster: screen dimensions must be "
+                "positive, non-zero values");
         }
         const float aspect_ratio = static_cast<float>(screen_size.x) / static_cast<float>(screen_size.y);
         std::uint32_t slices     = z_slices;
@@ -164,9 +170,11 @@ EPIX_EXPORT struct ClusterConfig {
     float first_slice_depth() const noexcept {
         switch (kind) {
             case Kind::None:
-            case Kind::Single: return 0.0f;
+            case Kind::Single:
+                return 0.0f;
             case Kind::XYZ:
-            case Kind::FixedZ: return z_config.first_slice_depth;
+            case Kind::FixedZ:
+                return z_config.first_slice_depth;
         }
         return 0.0f;
     }
@@ -177,10 +185,13 @@ EPIX_EXPORT struct ClusterConfig {
      *  the view's own configuration. */
     ClusterFarZMode far_z_mode() const noexcept {
         switch (kind) {
-            case Kind::None: return ClusterFarZMode::constant_far(0.0f);
-            case Kind::Single: return ClusterFarZMode{};
+            case Kind::None:
+                return ClusterFarZMode::constant_far(0.0f);
+            case Kind::Single:
+                return ClusterFarZMode{};
             case Kind::XYZ:
-            case Kind::FixedZ: return z_config.far_z_mode;
+            case Kind::FixedZ:
+                return z_config.far_z_mode;
         }
         return ClusterFarZMode{};
     }
@@ -191,9 +202,11 @@ EPIX_EXPORT struct ClusterConfig {
     bool may_resize_dynamically() const noexcept {
         switch (kind) {
             case Kind::None:
-            case Kind::Single: return false;
+            case Kind::Single:
+                return false;
             case Kind::XYZ:
-            case Kind::FixedZ: return dynamic_resizing;
+            case Kind::FixedZ:
+                return dynamic_resizing;
         }
         return false;
     }
@@ -204,11 +217,11 @@ EPIX_EXPORT struct ClusterConfig {
  *  irradiance volumes are not clustered when fewer than three storage buffers are
  *  available. */
 EPIX_EXPORT struct ClusterableObjectCounts {
-    std::uint32_t point_lights = 0;
-    std::uint32_t spot_lights = 0;
-    std::uint32_t reflection_probes = 0;
+    std::uint32_t point_lights       = 0;
+    std::uint32_t spot_lights        = 0;
+    std::uint32_t reflection_probes  = 0;
     std::uint32_t irradiance_volumes = 0;
-    std::uint32_t decals = 0;
+    std::uint32_t decals             = 0;
 };
 
 /** @brief The clusterable objects visible to one view, with their counts (Bevy
@@ -230,7 +243,7 @@ EPIX_EXPORT struct Clusters {
      *  two are macros in the Windows SDK and a macro expands a whole token -
      *  the same reason the camera spells its accessors `get_far()`. */
     float near_plane = 0.0f;
-    float far_plane = 0.0f;
+    float far_plane  = 0.0f;
     /** @brief One entry per cluster: the objects that fall in it. */
     std::vector<VisibleClusterableObjects> clusterable_objects;
 
@@ -304,8 +317,10 @@ EPIX_EXPORT struct ClusteredDecal {
  *  z-slice index; for an orthographic one the slices are linear, so they are
  *  `-near` and `z_slices / (near - far)`. These are the values that end up in
  *  `GpuLights::cluster_factors` (Bevy `mesh_types.wgsl`). */
-EPIX_EXPORT inline glm::vec2 calculate_cluster_factors(float near_plane, float far_plane, float z_slices,
-                                                      bool is_orthographic) {
+EPIX_EXPORT inline glm::vec2 calculate_cluster_factors(float near_plane,
+                                                       float far_plane,
+                                                       float z_slices,
+                                                       bool is_orthographic) {
     if (is_orthographic) return glm::vec2(-near_plane, z_slices / (-far_plane - -near_plane));
     const float z_slices_of_ln_zfar_over_znear = (z_slices - 1.0f) / std::log(far_plane / near_plane);
     return glm::vec2(z_slices_of_ln_zfar_over_znear, std::log(near_plane) * z_slices_of_ln_zfar_over_znear);
@@ -319,14 +334,14 @@ EPIX_EXPORT inline glm::vec2 calculate_cluster_factors(float near_plane, float f
  *  perspective slices are geometric - each one multiplies by
  *  `(far / near)^(1 / (z_slices - 1))` - while the orthographic ones are evenly
  *  spaced. */
-EPIX_EXPORT inline float z_slice_to_view_z(float near_plane, float far_plane, std::uint32_t z_slices,
-                                           std::uint32_t z_slice, bool is_orthographic) {
+EPIX_EXPORT inline float z_slice_to_view_z(
+    float near_plane, float far_plane, std::uint32_t z_slices, std::uint32_t z_slice, bool is_orthographic) {
     if (is_orthographic) {
         return -near_plane - (far_plane - near_plane) * static_cast<float>(z_slice) / static_cast<float>(z_slices);
     }
     if (z_slice == 0) return 0.0f;
-    return -near_plane * std::pow(far_plane / near_plane, static_cast<float>(z_slice - 1) /
-                                                          static_cast<float>(z_slices - 1));
+    return -near_plane *
+           std::pow(far_plane / near_plane, static_cast<float>(z_slice - 1) / static_cast<float>(z_slices - 1));
 }
 
 /** @brief Where a view-space Z falls in the z-slices (Bevy `view_z_to_z_slice`,
@@ -337,8 +352,10 @@ EPIX_EXPORT inline float z_slice_to_view_z(float near_plane, float far_plane, st
  *  maps to its slice index rather than being an exact inverse of
  *  `z_slice_to_view_z`. The result is then clamped to `z_slices - 1`, because
  *  the far plane used for clustering may be closer than the furthest object. */
-EPIX_EXPORT inline std::uint32_t view_z_to_z_slice(glm::vec2 cluster_factors, std::uint32_t z_slices, float view_z,
-                                                  bool is_orthographic) {
+EPIX_EXPORT inline std::uint32_t view_z_to_z_slice(glm::vec2 cluster_factors,
+                                                   std::uint32_t z_slices,
+                                                   float view_z,
+                                                   bool is_orthographic) {
     std::uint32_t z_slice = 0;
     if (is_orthographic) {
         z_slice = static_cast<std::uint32_t>(std::floor((view_z - cluster_factors.x) * cluster_factors.y));
@@ -355,15 +372,17 @@ EPIX_EXPORT inline std::uint32_t view_z_to_z_slice(glm::vec2 cluster_factors, st
  *  cluster grid and floored, and the z component comes from
  *  `view_z_to_z_slice`; the result is clamped to the grid, so a fragment exactly
  *  on the far edge lands in the last cluster rather than one past it. */
-EPIX_EXPORT inline glm::uvec3 ndc_position_to_cluster(glm::uvec3 cluster_dimensions, glm::vec2 cluster_factors,
-                                                      bool is_orthographic, glm::vec3 ndc_position, float view_z) {
+EPIX_EXPORT inline glm::uvec3 ndc_position_to_cluster(glm::uvec3 cluster_dimensions,
+                                                      glm::vec2 cluster_factors,
+                                                      bool is_orthographic,
+                                                      glm::vec3 ndc_position,
+                                                      float view_z) {
     const glm::vec2 dimensions = glm::vec2(cluster_dimensions);
     const glm::vec2 frag_coord = glm::clamp(glm::vec2(ndc_position) * glm::vec2(0.5f, -0.5f) + glm::vec2(0.5f),
                                             glm::vec2(0.0f), glm::vec2(1.0f));
-    const glm::vec2 xy = glm::floor(frag_coord * dimensions);
+    const glm::vec2 xy         = glm::floor(frag_coord * dimensions);
 
-    const std::uint32_t z_slice =
-        view_z_to_z_slice(cluster_factors, cluster_dimensions.z, view_z, is_orthographic);
+    const std::uint32_t z_slice = view_z_to_z_slice(cluster_factors, cluster_dimensions.z, view_z, is_orthographic);
     const glm::uvec3 cluster{static_cast<std::uint32_t>(xy.x), static_cast<std::uint32_t>(xy.y), z_slice};
     return glm::min(cluster, cluster_dimensions - glm::uvec3(1u));
 }
@@ -390,7 +409,9 @@ EPIX_EXPORT inline glm::vec4 clip_to_view(const glm::mat4& view_from_clip, glm::
  *  The screen position is divided by the screen size, mapped to `[-1, 1]` with Y
  *  flipped - screen Y grows downward, NDC Y upward - and then unprojected with
  *  `view_from_clip`, which is the inverse of the view's projection. */
-EPIX_EXPORT inline glm::vec4 screen_to_view(glm::vec2 screen_size, const glm::mat4& view_from_clip, glm::vec2 screen,
+EPIX_EXPORT inline glm::vec4 screen_to_view(glm::vec2 screen_size,
+                                            const glm::mat4& view_from_clip,
+                                            glm::vec2 screen,
                                             float ndc_z) {
     const glm::vec2 tex_coord = screen / screen_size;
     const glm::vec4 clip{tex_coord.x * 2.0f - 1.0f, (1.0f - tex_coord.y) * 2.0f - 1.0f, ndc_z, 1.0f};
@@ -408,10 +429,14 @@ EPIX_EXPORT inline glm::vec4 screen_to_view(glm::vec2 screen_size, const glm::ma
  *  intersections with the near and far planes are then bounded, which is why the
  *  corners are computed by intersecting lines from the origin rather than by
  *  scaling the near-plane corners. */
-EPIX_EXPORT inline camera::Aabb compute_aabb_for_cluster(float z_near, float z_far, glm::vec2 tile_size,
-                                                        glm::vec2 screen_size, const glm::mat4& view_from_clip,
-                                                        bool is_orthographic, glm::uvec3 cluster_dimensions,
-                                                        glm::uvec3 ijk) {
+EPIX_EXPORT inline camera::Aabb compute_aabb_for_cluster(float z_near,
+                                                         float z_far,
+                                                         glm::vec2 tile_size,
+                                                         glm::vec2 screen_size,
+                                                         const glm::mat4& view_from_clip,
+                                                         bool is_orthographic,
+                                                         glm::uvec3 cluster_dimensions,
+                                                         glm::uvec3 ijk) {
     const glm::vec3 index = glm::vec3(ijk);
     const glm::vec2 p_min = glm::vec2(index) * tile_size;
     const glm::vec2 p_max = p_min + tile_size;
@@ -470,13 +495,13 @@ EPIX_EXPORT inline float get_distance_x(const camera::HalfSpace& plane, glm::vec
  *  radius shrinks by Pythagoras: `sqrt(r² - distance²)`. The `std::nullopt` case
  *  is what tells the caller the object does not intersect that plane. */
 EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_z(const camera::Sphere& z_object,
-                                                                   const camera::HalfSpace& z_plane) {
-    const float z                  = z_plane.d() / z_plane.normal_d.z;
-    const float distance_to_plane  = z - z_object.center.z;
+                                                                    const camera::HalfSpace& z_plane) {
+    const float z                 = z_plane.d() / z_plane.normal_d.z;
+    const float distance_to_plane = z - z_object.center.z;
     if (std::abs(distance_to_plane) > z_object.radius) return std::nullopt;
-    return camera::Sphere{.center = glm::vec3(z_object.center.x, z_object.center.y, z),
-                          .radius = std::sqrt(z_object.radius * z_object.radius -
-                                              distance_to_plane * distance_to_plane)};
+    return camera::Sphere{
+        .center = glm::vec3(z_object.center.x, z_object.center.y, z),
+        .radius = std::sqrt(z_object.radius * z_object.radius - distance_to_plane * distance_to_plane)};
 }
 
 /** @brief Project a sphere onto a y-plane, or nothing when it does not reach it
@@ -485,12 +510,11 @@ EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_z(const camera
  *  Unlike the z case the centre moves: it is displaced along the plane's normal
  *  by the signed distance, and the radius shrinks the same way. */
 EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_y(const camera::Sphere& y_object,
-                                                                   const camera::HalfSpace& y_plane,
-                                                                   bool is_orthographic) {
-    const float distance_to_plane =
-        is_orthographic ? y_plane.d() - y_object.center.y
-                        : -glm::dot(glm::vec2(y_object.center.y, y_object.center.z),
-                                    glm::vec2(y_plane.normal_d.y, y_plane.normal_d.z));
+                                                                    const camera::HalfSpace& y_plane,
+                                                                    bool is_orthographic) {
+    const float distance_to_plane = is_orthographic ? y_plane.d() - y_object.center.y
+                                                    : -glm::dot(glm::vec2(y_object.center.y, y_object.center.z),
+                                                                glm::vec2(y_plane.normal_d.y, y_plane.normal_d.z));
     if (std::abs(distance_to_plane) > y_object.radius) return std::nullopt;
     return camera::Sphere{
         .center = y_object.center + distance_to_plane * y_plane.normal(),
@@ -512,7 +536,9 @@ EPIX_EXPORT inline std::optional<camera::Sphere> project_to_plane_y(const camera
  *  under perspective the point with the greatest z can have the *smaller* screen
  *  position, so projecting only the two corners would miss the true bounds. */
 EPIX_EXPORT inline std::pair<glm::vec3, glm::vec3> cluster_space_clusterable_object_aabb(
-    const glm::mat4& view_from_world, glm::vec3 view_from_world_scale, const glm::mat4& clip_from_view,
+    const glm::mat4& view_from_world,
+    glm::vec3 view_from_world_scale,
+    const glm::mat4& clip_from_view,
     const camera::Sphere& clusterable_object_sphere) {
     const camera::Aabb view_aabb{
         .center       = glm::vec3(view_from_world * glm::vec4(clusterable_object_sphere.center, 1.0f)),
@@ -527,10 +553,9 @@ EPIX_EXPORT inline std::pair<glm::vec3, glm::vec3> cluster_space_clusterable_obj
 
     // The four combinations of the x/y bounds with the near and far z, since
     // perspective can invert which one projects smaller.
-    const std::array<glm::vec4, 4> corners{glm::vec4(view_min.x, view_min.y, view_min.z, 1.0f),
-                                           glm::vec4(view_min.x, view_min.y, view_max.z, 1.0f),
-                                           glm::vec4(view_max.x, view_max.y, view_min.z, 1.0f),
-                                           glm::vec4(view_max.x, view_max.y, view_max.z, 1.0f)};
+    const std::array<glm::vec4, 4> corners{
+        glm::vec4(view_min.x, view_min.y, view_min.z, 1.0f), glm::vec4(view_min.x, view_min.y, view_max.z, 1.0f),
+        glm::vec4(view_max.x, view_max.y, view_min.z, 1.0f), glm::vec4(view_max.x, view_max.y, view_max.z, 1.0f)};
 
     glm::vec3 ndc_min{std::numeric_limits<float>::infinity()};
     glm::vec3 ndc_max{-std::numeric_limits<float>::infinity()};
@@ -581,11 +606,16 @@ EPIX_EXPORT struct ClusterableObjectType {
      *  the light list. */
     std::tuple<std::uint8_t, bool, bool> ordering() const noexcept {
         switch (kind) {
-            case Kind::PointLight: return {0u, !shadows_enabled, !volumetric};
-            case Kind::SpotLight: return {1u, !shadows_enabled, !volumetric};
-            case Kind::ReflectionProbe: return {2u, false, false};
-            case Kind::IrradianceVolume: return {3u, false, false};
-            case Kind::Decal: return {4u, false, false};
+            case Kind::PointLight:
+                return {0u, !shadows_enabled, !volumetric};
+            case Kind::SpotLight:
+                return {1u, !shadows_enabled, !volumetric};
+            case Kind::ReflectionProbe:
+                return {2u, false, false};
+            case Kind::IrradianceVolume:
+                return {3u, false, false};
+            case Kind::Decal:
+                return {4u, false, false};
         }
         return {0u, false, false};
     }
@@ -613,9 +643,7 @@ EPIX_EXPORT struct ClusterableObjectAssignmentData {
     /** @brief The sphere the object occupies (Bevy
      *  `ClusterableObjectAssignmentData::sphere`, `assign.rs:45-52`): centred on
      *  the transform's translation, with the range as its radius. */
-    camera::Sphere sphere() const {
-        return camera::Sphere{.center = glm::vec3(transform[3]), .radius = range};
-    }
+    camera::Sphere sphere() const { return camera::Sphere{.center = glm::vec3(transform[3]), .radius = range}; }
 };
 
 /** @brief An orthographic view's view-space near plane, derived from its
@@ -647,17 +675,20 @@ EPIX_EXPORT inline float orthographic_first_slice_depth(const glm::mat4& clip_fr
 template <typename InView>
     requires std::invocable<InView&, const camera::Sphere&>
 EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
-                                               const glm::mat4& view_from_world, glm::vec3 view_from_world_scale,
-                                               const glm::mat4& clip_from_view, glm::vec2 cluster_factors,
-                                               glm::uvec3 cluster_dimensions, bool is_orthographic,
+                                               const glm::mat4& view_from_world,
+                                               glm::vec3 view_from_world_scale,
+                                               const glm::mat4& clip_from_view,
+                                               glm::vec2 cluster_factors,
+                                               glm::uvec3 cluster_dimensions,
+                                               bool is_orthographic,
                                                InView&& in_view) {
     float estimate = 0.0f;
     for (const ClusterableObjectAssignmentData& object : clusterable_objects) {
         const camera::Sphere object_sphere = object.sphere();
         if (!in_view(object_sphere)) continue;
 
-        const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(
-            view_from_world, view_from_world_scale, clip_from_view, object_sphere);
+        const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(view_from_world, view_from_world_scale,
+                                                                                clip_from_view, object_sphere);
 
         // The slice count in z is exact, since the slices are not adjusted here.
         const std::uint32_t z_min =
@@ -668,8 +699,8 @@ EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObje
 
         // In x and y the extent is scaled from [-1, 1] to the cluster grid, in
         // floats so that a large initial tile size does not overestimate.
-        const glm::vec2 xy_count = (glm::vec2(aabb_max) - glm::vec2(aabb_min)) * 0.5f *
-                                   glm::vec2(cluster_dimensions.x, cluster_dimensions.y);
+        const glm::vec2 xy_count =
+            (glm::vec2(aabb_max) - glm::vec2(aabb_min)) * 0.5f * glm::vec2(cluster_dimensions.x, cluster_dimensions.y);
 
         // One extra cluster per side, except where the object already reaches
         // the edge of the view.
@@ -688,15 +719,15 @@ EPIX_EXPORT float estimate_cluster_index_count(const std::vector<ClusterableObje
  *  the ratio between the limit and the estimate rather than trying to solve
  *  exactly, floors the result and clamps it at one. The z count is untouched: z
  *  slices are not adjusted. */
-EPIX_EXPORT inline glm::uvec3 reduce_cluster_dimensions_for_index_limit(glm::uvec3 dimensions, float index_estimate,
-                                                                       std::size_t max_indices) {
+EPIX_EXPORT inline glm::uvec3 reduce_cluster_dimensions_for_index_limit(glm::uvec3 dimensions,
+                                                                        float index_estimate,
+                                                                        std::size_t max_indices) {
     if (index_estimate <= static_cast<float>(max_indices)) return dimensions;
     const float index_ratio = static_cast<float>(max_indices) / index_estimate;
     const float xy_ratio    = std::sqrt(index_ratio);
-    return glm::uvec3(
-        std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.x) * xy_ratio)), 1u),
-        std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.y) * xy_ratio)), 1u),
-        dimensions.z);
+    return glm::uvec3(std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.x) * xy_ratio)), 1u),
+                      std::max(static_cast<std::uint32_t>(std::floor(static_cast<float>(dimensions.y) * xy_ratio)), 1u),
+                      dimensions.z);
 }
 
 /** @brief An orthographic view's x and y cluster planes in view space (Bevy
@@ -745,7 +776,7 @@ perspective_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimens
     x_planes.reserve(dimensions.x + 1);
     const float x_slices = static_cast<float>(dimensions.x);
     for (std::uint32_t x = 0; x <= dimensions.x; ++x) {
-        const float x_pos = (static_cast<float>(x) / x_slices) * 2.0f - 1.0f;
+        const float x_pos      = (static_cast<float>(x) / x_slices) * 2.0f - 1.0f;
         const glm::vec3 bottom = glm::vec3(clip_to_view(view_from_clip, glm::vec4(x_pos, -1.0f, 1.0f, 1.0f)));
         const glm::vec3 top    = glm::vec3(clip_to_view(view_from_clip, glm::vec4(x_pos, 1.0f, 1.0f, 1.0f)));
         const glm::vec3 normal = glm::cross(bottom, top);
@@ -756,9 +787,9 @@ perspective_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimens
     y_planes.reserve(dimensions.y + 1);
     const float y_slices = static_cast<float>(dimensions.y);
     for (std::uint32_t y = 0; y <= dimensions.y; ++y) {
-        const float y_pos = (1.0f - static_cast<float>(y) / y_slices) * 2.0f - 1.0f;
-        const glm::vec3 left  = glm::vec3(clip_to_view(view_from_clip, glm::vec4(-1.0f, y_pos, 1.0f, 1.0f)));
-        const glm::vec3 right = glm::vec3(clip_to_view(view_from_clip, glm::vec4(1.0f, y_pos, 1.0f, 1.0f)));
+        const float y_pos      = (1.0f - static_cast<float>(y) / y_slices) * 2.0f - 1.0f;
+        const glm::vec3 left   = glm::vec3(clip_to_view(view_from_clip, glm::vec4(-1.0f, y_pos, 1.0f, 1.0f)));
+        const glm::vec3 right  = glm::vec3(clip_to_view(view_from_clip, glm::vec4(1.0f, y_pos, 1.0f, 1.0f)));
         const glm::vec3 normal = glm::cross(right, left);
         y_planes.push_back(camera::HalfSpace::from_normal_d(glm::vec4(normal, glm::dot(right, normal))));
     }
@@ -772,8 +803,10 @@ perspective_cluster_xy_planes(const glm::mat4& view_from_clip, glm::uvec3 dimens
  *  normal `-Z` with `d = -view_z`, so under Bevy's `n . x = d` convention a point
  *  at that view z lies on it. There are `z_slices + 1` planes, the first at 0 (or
  *  `-near` for an orthographic view) and the last at `-far`. */
-EPIX_EXPORT inline std::vector<camera::HalfSpace> cluster_z_planes(float first_slice_depth, float far_z,
-                                                                  std::uint32_t z_slices, bool is_orthographic) {
+EPIX_EXPORT inline std::vector<camera::HalfSpace> cluster_z_planes(float first_slice_depth,
+                                                                   float far_z,
+                                                                   std::uint32_t z_slices,
+                                                                   bool is_orthographic) {
     std::vector<camera::HalfSpace> z_planes;
     z_planes.reserve(z_slices + 1);
     for (std::uint32_t z = 0; z <= z_slices; ++z) {
@@ -811,27 +844,31 @@ EPIX_EXPORT struct ClusterAssignmentBounds {
  *  The range comes from `ndc_position_to_cluster` applied to both corners of the
  *  object's bounds, then ordered so the minimum is the smaller of the two - the
  *  projection can invert them. */
-EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(
-    const camera::Sphere& object_sphere, const glm::mat4& view_from_world, float view_from_world_scale_max,
-    const glm::mat4& clip_from_view, glm::vec2 cluster_factors, glm::uvec3 cluster_dimensions, bool is_orthographic,
-    glm::vec3 bounds_ndc_min, glm::vec3 bounds_ndc_max) {
+EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(const camera::Sphere& object_sphere,
+                                                                     const glm::mat4& view_from_world,
+                                                                     float view_from_world_scale_max,
+                                                                     const glm::mat4& clip_from_view,
+                                                                     glm::vec2 cluster_factors,
+                                                                     glm::uvec3 cluster_dimensions,
+                                                                     bool is_orthographic,
+                                                                     glm::vec3 bounds_ndc_min,
+                                                                     glm::vec3 bounds_ndc_max) {
     ClusterAssignmentBounds bounds;
 
-    const glm::uvec3 corner_min = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
-                                                          bounds_ndc_min, bounds_ndc_min.z);
-    const glm::uvec3 corner_max = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
-                                                          bounds_ndc_max, bounds_ndc_max.z);
-    bounds.min_cluster          = glm::min(corner_min, corner_max);
-    bounds.max_cluster          = glm::max(corner_min, corner_max);
+    const glm::uvec3 corner_min =
+        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_min, bounds_ndc_min.z);
+    const glm::uvec3 corner_max =
+        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, bounds_ndc_max, bounds_ndc_max.z);
+    bounds.min_cluster = glm::min(corner_min, corner_max);
+    bounds.max_cluster = glm::max(corner_min, corner_max);
 
-    bounds.view_sphere = camera::Sphere{
-        .center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
-        .radius = object_sphere.radius * view_from_world_scale_max};
+    bounds.view_sphere = camera::Sphere{.center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
+                                        .radius = object_sphere.radius * view_from_world_scale_max};
 
-    const glm::vec4 center_clip = clip_from_view * glm::vec4(bounds.view_sphere.center, 1.0f);
-    const glm::vec3 center_ndc  = glm::vec3(center_clip) / center_clip.w;
-    const glm::uvec3 center_cluster =
-        ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic, center_ndc, bounds.view_sphere.center.z);
+    const glm::vec4 center_clip     = clip_from_view * glm::vec4(bounds.view_sphere.center, 1.0f);
+    const glm::vec3 center_ndc      = glm::vec3(center_clip) / center_clip.w;
+    const glm::uvec3 center_cluster = ndc_position_to_cluster(cluster_dimensions, cluster_factors, is_orthographic,
+                                                              center_ndc, bounds.view_sphere.center.z);
 
     if (center_ndc.z <= 1.0f) bounds.z_center = center_cluster.z;
     if (center_ndc.y > 1.0f) {
@@ -847,7 +884,9 @@ EPIX_EXPORT inline ClusterAssignmentBounds cluster_assignment_bounds(
 /** @brief The cluster index a (x, y, z) coordinate maps to (Bevy's
  *  `(y * dimensions.x + min_x) * dimensions.z + z`, `assign.rs:712-714`): y
  *  outermost, then x, then z innermost. */
-EPIX_EXPORT inline std::size_t cluster_index(glm::uvec3 dimensions, std::uint32_t x, std::uint32_t y,
+EPIX_EXPORT inline std::size_t cluster_index(glm::uvec3 dimensions,
+                                             std::uint32_t x,
+                                             std::uint32_t y,
                                              std::uint32_t z) noexcept {
     return (static_cast<std::size_t>(y) * dimensions.x + x) * dimensions.z + z;
 }
@@ -881,12 +920,17 @@ EPIX_EXPORT struct ClusterXRange {
  *  The x scan then walks inwards from both ends of the object's cluster range,
  *  stopping at the first plane the refined sphere actually reaches on each side
  *  (`distance + radius > 0`). */
-EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(
-    glm::uvec3 min_cluster, glm::uvec3 max_cluster, std::uint32_t z, std::uint32_t y,
-    const std::optional<std::uint32_t>& z_center, const std::optional<std::uint32_t>& y_center,
-    const camera::Sphere& view_sphere, const std::vector<camera::HalfSpace>& x_planes,
-    const std::vector<camera::HalfSpace>& y_planes, const std::vector<camera::HalfSpace>& z_planes,
-    bool is_orthographic) {
+EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(glm::uvec3 min_cluster,
+                                                          glm::uvec3 max_cluster,
+                                                          std::uint32_t z,
+                                                          std::uint32_t y,
+                                                          const std::optional<std::uint32_t>& z_center,
+                                                          const std::optional<std::uint32_t>& y_center,
+                                                          const camera::Sphere& view_sphere,
+                                                          const std::vector<camera::HalfSpace>& x_planes,
+                                                          const std::vector<camera::HalfSpace>& y_planes,
+                                                          const std::vector<camera::HalfSpace>& z_planes,
+                                                          bool is_orthographic) {
     ClusterXRange range;
 
     camera::Sphere z_object = view_sphere;
@@ -901,7 +945,7 @@ EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(
     camera::Sphere y_object = z_object;
     if (!y_center.has_value() || y != *y_center) {
         const std::size_t plane_index = (y_center.has_value() && y < *y_center) ? y + 1 : y;
-        const auto projected = project_to_plane_y(y_object, y_planes[plane_index], is_orthographic);
+        const auto projected          = project_to_plane_y(y_object, y_planes[plane_index], is_orthographic);
         if (!projected.has_value()) return range;
         y_object = *projected;
     }
@@ -919,9 +963,9 @@ EPIX_EXPORT inline ClusterXRange refine_sphere_and_scan_x(
         --max_x;
     }
 
-    range.reached = true;
-    range.min_x   = min_x;
-    range.max_x   = max_x;
+    range.reached  = true;
+    range.min_x    = min_x;
+    range.max_x    = max_x;
     range.y_object = y_object;
     return range;
 }
@@ -957,20 +1001,22 @@ EPIX_EXPORT struct SpotLightClusterCull {
  *  direction: past the range is a front cull, and behind the light is a back
  *  cull. The range passed in is already scaled by the view's largest axis scale,
  *  as Bevy scales it. */
-EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center, float light_range_scaled,
-                                                               glm::vec3 light_direction, float angle_sin,
-                                                               float angle_cos, glm::vec3 cluster_center,
-                                                               float cluster_radius) {
-    const glm::vec3 offset   = light_center - cluster_center;
-    const float distance_sq  = glm::dot(offset, offset);
-    const float v1_len       = glm::dot(offset, light_direction);
+EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_center,
+                                                                float light_range_scaled,
+                                                                glm::vec3 light_direction,
+                                                                float angle_sin,
+                                                                float angle_cos,
+                                                                glm::vec3 cluster_center,
+                                                                float cluster_radius) {
+    const glm::vec3 offset  = light_center - cluster_center;
+    const float distance_sq = glm::dot(offset, offset);
+    const float v1_len      = glm::dot(offset, light_direction);
 
     SpotLightClusterCull cull;
-    const float distance_closest_point =
-        angle_cos * std::sqrt(distance_sq - v1_len * v1_len) - v1_len * angle_sin;
-    cull.angle_cull = distance_closest_point > cluster_radius;
-    cull.front_cull = v1_len > cluster_radius + light_range_scaled;
-    cull.back_cull  = v1_len < -cluster_radius;
+    const float distance_closest_point = angle_cos * std::sqrt(distance_sq - v1_len * v1_len) - v1_len * angle_sin;
+    cull.angle_cull                    = distance_closest_point > cluster_radius;
+    cull.front_cull                    = v1_len > cluster_radius + light_range_scaled;
+    cull.back_cull                     = v1_len < -cluster_radius;
     return cull;
 }
 
@@ -982,15 +1028,26 @@ EPIX_EXPORT inline SpotLightClusterCull spot_light_cluster_cull(glm::vec3 light_
  *  `spot_lights`, and the probes, volumes and decals their own. The counts are
  *  what `prepare_lights` writes into the offsets and counts buffer, so a missing
  *  or doubled increment here shifts every later cluster's indices. */
-EPIX_EXPORT inline void insert_object_into_cluster(VisibleClusterableObjects& cluster, ecs::Entity entity,
-                                                  const ClusterableObjectType& object_type) {
+EPIX_EXPORT inline void insert_object_into_cluster(VisibleClusterableObjects& cluster,
+                                                   ecs::Entity entity,
+                                                   const ClusterableObjectType& object_type) {
     cluster.entities.push_back(entity);
     switch (object_type.kind) {
-        case ClusterableObjectType::Kind::PointLight: cluster.counts.point_lights += 1; break;
-        case ClusterableObjectType::Kind::SpotLight: cluster.counts.spot_lights += 1; break;
-        case ClusterableObjectType::Kind::ReflectionProbe: cluster.counts.reflection_probes += 1; break;
-        case ClusterableObjectType::Kind::IrradianceVolume: cluster.counts.irradiance_volumes += 1; break;
-        case ClusterableObjectType::Kind::Decal: cluster.counts.decals += 1; break;
+        case ClusterableObjectType::Kind::PointLight:
+            cluster.counts.point_lights += 1;
+            break;
+        case ClusterableObjectType::Kind::SpotLight:
+            cluster.counts.spot_lights += 1;
+            break;
+        case ClusterableObjectType::Kind::ReflectionProbe:
+            cluster.counts.reflection_probes += 1;
+            break;
+        case ClusterableObjectType::Kind::IrradianceVolume:
+            cluster.counts.irradiance_volumes += 1;
+            break;
+        case ClusterableObjectType::Kind::Decal:
+            cluster.counts.decals += 1;
+            break;
     }
 }
 
@@ -1004,9 +1061,13 @@ EPIX_EXPORT inline void insert_object_into_cluster(VisibleClusterableObjects& cl
  *  `cluster_index` defines. The probes' and decals' loops carry a TODO about
  *  culling them more aggressively with their oriented boxes. */
 EPIX_EXPORT inline void insert_object_into_cluster_row(std::vector<VisibleClusterableObjects>& clusters,
-                                                      glm::uvec3 dimensions, std::uint32_t y, std::uint32_t z,
-                                                      std::uint32_t min_x, std::uint32_t max_x, ecs::Entity entity,
-                                                      const ClusterableObjectType& object_type) {
+                                                       glm::uvec3 dimensions,
+                                                       std::uint32_t y,
+                                                       std::uint32_t z,
+                                                       std::uint32_t min_x,
+                                                       std::uint32_t max_x,
+                                                       ecs::Entity entity,
+                                                       const ClusterableObjectType& object_type) {
     std::size_t index = cluster_index(dimensions, min_x, y, z);
     for (std::uint32_t x = min_x; x <= max_x; ++x) {
         insert_object_into_cluster(clusters[index], entity, object_type);
@@ -1083,7 +1144,8 @@ EPIX_EXPORT UniformClusterableObjectLimit limit_clusterable_objects_for_uniform_
  *  here. Reading `view_from_world[2]` would silently use a column instead. */
 EPIX_EXPORT inline float view_far_z(const ClusterFarZMode& mode,
                                     const std::vector<ClusterableObjectAssignmentData>& clusterable_objects,
-                                    const glm::mat4& view_from_world, glm::vec3 view_from_world_scale) {
+                                    const glm::mat4& view_from_world,
+                                    glm::vec3 view_from_world_scale) {
     if (mode.kind == ClusterFarZMode::Kind::Constant) return mode.constant;
 
     const glm::vec4 row{view_from_world[0][2], view_from_world[1][2], view_from_world[2][2], view_from_world[3][2]};
@@ -1105,9 +1167,12 @@ EPIX_EXPORT inline float view_far_z(const ClusterFarZMode& mode,
  *  depth and the far plane; with more slices the configured depth stands. The
  *  result is then scaled by the view's z scale - and the far plane is raised to
  *  meet it, so the first slice can never be beyond the far plane. */
-EPIX_EXPORT inline float first_slice_depth(const ClusterConfig& config, bool is_orthographic,
-                                           std::uint32_t cluster_dimensions_z, const glm::mat4& clip_from_view,
-                                           glm::vec3 view_from_world_scale, float far_z) {
+EPIX_EXPORT inline float first_slice_depth(const ClusterConfig& config,
+                                           bool is_orthographic,
+                                           std::uint32_t cluster_dimensions_z,
+                                           const glm::mat4& clip_from_view,
+                                           glm::vec3 view_from_world_scale,
+                                           float far_z) {
     float depth = 0.0f;
     if (is_orthographic) {
         depth = orthographic_first_slice_depth(clip_from_view);
@@ -1142,13 +1207,17 @@ EPIX_EXPORT struct GlobalVisibleClusterableObjects {
  *  which is the asymmetry between the two: its cone direction lives in the
  *  transform, so flattening it would leave every spot light pointing the same way. */
 EPIX_EXPORT inline ClusterableObjectAssignmentData point_light_assignment_data(
-    ecs::Entity entity, glm::vec3 translation, float range, bool shadows_enabled, bool volumetric,
+    ecs::Entity entity,
+    glm::vec3 translation,
+    float range,
+    bool shadows_enabled,
+    bool volumetric,
     const camera::RenderLayers& render_layers) {
     ClusterableObjectAssignmentData data;
-    data.entity        = entity;
-    data.transform     = glm::translate(glm::mat4(1.0f), translation);
-    data.range         = range;
-    data.object_type   = ClusterableObjectType{
+    data.entity      = entity;
+    data.transform   = glm::translate(glm::mat4(1.0f), translation);
+    data.range       = range;
+    data.object_type = ClusterableObjectType{
         .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = shadows_enabled, .volumetric = volumetric};
     data.render_layers = render_layers;
     return data;
@@ -1158,16 +1227,21 @@ EPIX_EXPORT inline ClusterableObjectAssignmentData point_light_assignment_data(
  *  `assign.rs:189-215`), which keeps the entity's full transform so the cone's
  *  direction survives, and carries the outer angle the cone test needs. */
 EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
-    ecs::Entity entity, const glm::mat4& world_from_light, float range, float outer_angle, bool shadows_enabled,
-    bool volumetric, const camera::RenderLayers& render_layers) {
+    ecs::Entity entity,
+    const glm::mat4& world_from_light,
+    float range,
+    float outer_angle,
+    bool shadows_enabled,
+    bool volumetric,
+    const camera::RenderLayers& render_layers) {
     ClusterableObjectAssignmentData data;
-    data.entity      = entity;
-    data.transform   = world_from_light;
-    data.range       = range;
-    data.object_type = ClusterableObjectType{.kind = ClusterableObjectType::Kind::SpotLight,
-                                             .shadows_enabled = shadows_enabled,
-                                             .volumetric      = volumetric,
-                                             .outer_angle     = outer_angle};
+    data.entity        = entity;
+    data.transform     = world_from_light;
+    data.range         = range;
+    data.object_type   = ClusterableObjectType{.kind            = ClusterableObjectType::Kind::SpotLight,
+                                               .shadows_enabled = shadows_enabled,
+                                               .volumetric      = volumetric,
+                                               .outer_angle     = outer_angle};
     data.render_layers = render_layers;
     return data;
 }
@@ -1186,9 +1260,10 @@ EPIX_EXPORT inline ClusterableObjectAssignmentData spot_light_assignment_data(
  *  shared between indices would reuse a neighbouring cluster's bounds, which would
  *  cull a light that should light that cluster. */
 template <typename Compute>
-requires std::invocable<Compute&>
+    requires std::invocable<Compute&>
 EPIX_EXPORT inline const camera::Sphere& cached_cluster_sphere(std::vector<std::optional<camera::Sphere>>& cache,
-                                                              std::size_t cluster_index, Compute&& compute) {
+                                                               std::size_t cluster_index,
+                                                               Compute&& compute) {
     std::optional<camera::Sphere>& slot = cache[cluster_index];
     if (!slot.has_value()) {
         slot = compute();
@@ -1233,8 +1308,8 @@ EPIX_EXPORT inline std::pair<std::optional<std::uint32_t>, std::optional<std::ui
  *  really covers. Using a smaller factor would thin the range and drop clusters the
  *  object reaches. */
 EPIX_EXPORT inline camera::Sphere view_space_object_sphere(const glm::mat4& view_from_world,
-                                                          float view_from_world_scale_max,
-                                                          const camera::Sphere& object_sphere) {
+                                                           float view_from_world_scale_max,
+                                                           const camera::Sphere& object_sphere) {
     return camera::Sphere{.center = glm::vec3(view_from_world * glm::vec4(object_sphere.center, 1.0f)),
                           .radius = object_sphere.radius * view_from_world_scale_max};
 }
@@ -1247,10 +1322,8 @@ EPIX_EXPORT inline camera::Sphere view_space_object_sphere(const glm::mat4& view
  *  flipped on the way into cluster space, so an AABB's maximum y corner usually
  *  converts to a *lower* cluster row than its minimum. Bevy orders the pair here,
  *  and the loops that follow treat it as a range. */
-EPIX_EXPORT inline std::pair<glm::uvec3, glm::uvec3> object_cluster_range(glm::uvec3 dimensions,
-                                                                         glm::vec2 cluster_factors,
-                                                                         bool is_orthographic, glm::vec3 aabb_min,
-                                                                         glm::vec3 aabb_max) {
+EPIX_EXPORT inline std::pair<glm::uvec3, glm::uvec3> object_cluster_range(
+    glm::uvec3 dimensions, glm::vec2 cluster_factors, bool is_orthographic, glm::vec3 aabb_min, glm::vec3 aabb_max) {
     const glm::uvec3 min_cluster =
         ndc_position_to_cluster(dimensions, cluster_factors, is_orthographic, aabb_min, aabb_min.z);
     const glm::uvec3 max_cluster =
@@ -1272,9 +1345,9 @@ EPIX_EXPORT struct ViewClusterAssignment {
     /** @brief The largest component of the view's scale, which bounds an object's
      *  extent under a non-uniform view. */
     float view_from_world_scale_max = 1.0f;
-    bool is_orthographic = false;
-    float first_slice_depth = 0.0f;
-    float far_z = 0.0f;
+    bool is_orthographic            = false;
+    float first_slice_depth         = 0.0f;
+    float far_z                     = 0.0f;
     /** @brief The view's render layers; a clusterable object only reaches a view
      *  whose layers it overlaps (Bevy tests `view_layers.intersects(...)` inside
      *  the assignment loop, `assign.rs:541`). */
@@ -1301,10 +1374,10 @@ EPIX_EXPORT struct ViewClusterAssignment {
  *  exception - each cluster they reach is tested against the light's cone first,
  *  using that cluster's bounding sphere, which is why the cache exists. */
 EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleClusterableObjects>& clusters,
-                                                      const ViewClusterAssignment& view,
-                                                      const camera::Frustum& view_frustum,
-                                                      std::vector<std::optional<camera::Sphere>>& cluster_spheres,
-                                                      const ClusterableObjectAssignmentData& object) {
+                                                       const ViewClusterAssignment& view,
+                                                       const camera::Frustum& view_frustum,
+                                                       std::vector<std::optional<camera::Sphere>>& cluster_spheres,
+                                                       const ClusterableObjectAssignmentData& object) {
     const camera::Sphere object_sphere = object.sphere();
     // Bevy tests the render layers before anything else in the loop
     // (`assign.rs:539-543`), so an object on another layer never reaches this
@@ -1314,8 +1387,8 @@ EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleCluste
 
     const auto [aabb_min, aabb_max] = cluster_space_clusterable_object_aabb(
         view.view_from_world, glm::vec3(view.view_from_world_scale_max), view.clip_from_view, object_sphere);
-    const auto [min_cluster, max_cluster] = object_cluster_range(
-        view.dimensions, view.cluster_factors, view.is_orthographic, aabb_min, aabb_max);
+    const auto [min_cluster, max_cluster] =
+        object_cluster_range(view.dimensions, view.cluster_factors, view.is_orthographic, aabb_min, aabb_max);
 
     const camera::Sphere view_sphere =
         view_space_object_sphere(view.view_from_world, view.view_from_world_scale_max, object_sphere);
@@ -1327,46 +1400,43 @@ EPIX_EXPORT inline bool assign_object_to_view_clusters(std::vector<VisibleCluste
     if (is_spot_light) {
         // The cone's direction is the light's backward axis - the local +Z column of
         // its transform - taken into view space.
-        light_direction = glm::normalize(
-            glm::vec3(view.view_from_world * glm::vec4(glm::vec3(object.transform[2]), 0.0f)));
+        light_direction =
+            glm::normalize(glm::vec3(view.view_from_world * glm::vec4(glm::vec3(object.transform[2]), 0.0f)));
         angle_sin = std::sin(object.object_type.outer_angle);
         angle_cos = std::cos(object.object_type.outer_angle);
     }
 
-    const glm::vec4 center_clip = view.clip_from_view * glm::vec4(view_sphere.center, 1.0f);
-    const glm::vec3 center_ndc  = glm::vec3(center_clip) / center_clip.w;
+    const glm::vec4 center_clip     = view.clip_from_view * glm::vec4(view_sphere.center, 1.0f);
+    const glm::vec3 center_ndc      = glm::vec3(center_clip) / center_clip.w;
     const glm::uvec3 center_cluster = ndc_position_to_cluster(view.dimensions, view.cluster_factors,
-                                                             view.is_orthographic, center_ndc, view_sphere.center.z);
+                                                              view.is_orthographic, center_ndc, view_sphere.center.z);
     const auto [z_center, y_center] = ndc_position_to_cluster(center_cluster, center_ndc, view.dimensions);
 
     for (std::uint32_t z = min_cluster.z; z <= max_cluster.z; ++z) {
         for (std::uint32_t y = min_cluster.y; y <= max_cluster.y; ++y) {
-            const ClusterXRange range = refine_sphere_and_scan_x(min_cluster, max_cluster, z, y, z_center, y_center,
-                                                                view_sphere, view.x_planes, view.y_planes,
-                                                                view.z_planes, view.is_orthographic);
+            const ClusterXRange range =
+                refine_sphere_and_scan_x(min_cluster, max_cluster, z, y, z_center, y_center, view_sphere, view.x_planes,
+                                         view.y_planes, view.z_planes, view.is_orthographic);
             if (!range.reached) continue;
 
             if (!is_spot_light) {
                 // Every cluster the refined sphere reaches is affected.
-                insert_object_into_cluster_row(clusters, view.dimensions, y, z, range.min_x, range.max_x,
-                                               object.entity, object.object_type);
+                insert_object_into_cluster_row(clusters, view.dimensions, y, z, range.min_x, range.max_x, object.entity,
+                                               object.object_type);
                 continue;
             }
 
             for (std::uint32_t x = range.min_x; x <= range.max_x; ++x) {
-                const std::size_t index = cluster_index(view.dimensions, x, y, z);
-                const camera::Sphere& cluster_sphere = cached_cluster_sphere(
-                    cluster_spheres, index,
-                    [&] {
-                        return cluster_bounding_sphere(compute_aabb_for_cluster(
-                            view.first_slice_depth, view.far_z, view.tile_size, view.screen_size, view.view_from_clip,
-                            view.is_orthographic, view.dimensions, glm::uvec3(x, y, z)));
-                    });
+                const std::size_t index              = cluster_index(view.dimensions, x, y, z);
+                const camera::Sphere& cluster_sphere = cached_cluster_sphere(cluster_spheres, index, [&] {
+                    return cluster_bounding_sphere(compute_aabb_for_cluster(
+                        view.first_slice_depth, view.far_z, view.tile_size, view.screen_size, view.view_from_clip,
+                        view.is_orthographic, view.dimensions, glm::uvec3(x, y, z)));
+                });
 
-                const SpotLightClusterCull cull =
-                    spot_light_cluster_cull(view_sphere.center, object.range * view.view_from_world_scale_max,
-                                            light_direction, angle_sin, angle_cos, cluster_sphere.center,
-                                            cluster_sphere.radius);
+                const SpotLightClusterCull cull = spot_light_cluster_cull(
+                    view_sphere.center, object.range * view.view_from_world_scale_max, light_direction, angle_sin,
+                    angle_cos, cluster_sphere.center, cluster_sphere.radius);
                 if (!cull.culled()) {
                     insert_object_into_cluster(clusters[index], object.entity, object.object_type);
                 }
@@ -1400,15 +1470,15 @@ EPIX_EXPORT inline float transform_scale_length(const glm::mat4& world_from_loca
  *  reflection probe; otherwise it is an irradiance volume. Its range is its scale
  *  length, and its layers are the default. */
 EPIX_EXPORT inline ClusterableObjectAssignmentData light_probe_assignment_data(ecs::Entity entity,
-                                                                              const glm::mat4& world_from_probe,
-                                                                              bool is_reflection_probe) {
+                                                                               const glm::mat4& world_from_probe,
+                                                                               bool is_reflection_probe) {
     ClusterableObjectAssignmentData data;
-    data.entity      = entity;
-    data.transform   = world_from_probe;
-    data.range       = transform_scale_length(world_from_probe);
-    data.object_type = ClusterableObjectType{.kind = is_reflection_probe
-                                                        ? ClusterableObjectType::Kind::ReflectionProbe
-                                                        : ClusterableObjectType::Kind::IrradianceVolume};
+    data.entity    = entity;
+    data.transform = world_from_probe;
+    data.range     = transform_scale_length(world_from_probe);
+    data.object_type =
+        ClusterableObjectType{.kind = is_reflection_probe ? ClusterableObjectType::Kind::ReflectionProbe
+                                                          : ClusterableObjectType::Kind::IrradianceVolume};
     return data;
 }
 
@@ -1416,7 +1486,7 @@ EPIX_EXPORT inline ClusterableObjectAssignmentData light_probe_assignment_data(e
  *  `assign.rs:232-243`). Only gathered when the platform supports clustered decals,
  *  and its range is its scale length like a probe's. */
 EPIX_EXPORT inline ClusterableObjectAssignmentData decal_assignment_data(ecs::Entity entity,
-                                                                        const glm::mat4& world_from_decal) {
+                                                                         const glm::mat4& world_from_decal) {
     ClusterableObjectAssignmentData data;
     data.entity      = entity;
     data.transform   = world_from_decal;

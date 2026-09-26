@@ -1,15 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/pipeline_server.hpp>

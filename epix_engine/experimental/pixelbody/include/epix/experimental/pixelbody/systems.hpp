@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/extension/fallingsand.hpp>
 #include <epix/extension/grid.hpp>
@@ -14,7 +14,6 @@
 #include <epix/sprite_render.hpp>
 #include <epix/time.hpp>
 #include <epix/transform.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/experimental/pixelbody/structs.hpp>
@@ -41,8 +40,8 @@ EPIX_API void init_pixel_bodies(
 
 /** @brief Rebuild b2 polygon shapes for any existing PixelBody with shapes_dirty. */
 EPIX_API void rebuild_pixel_body_shapes(ecs::Query<ecs::Item<ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
-                               ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds,
-                               ecs::Res<fs::ElementRegistry> registry);
+                                        ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds,
+                                        ecs::Res<fs::ElementRegistry> registry);
 
 /** @brief Push ECS Transform/Velocity into the b2 body each frame. */
 EPIX_API void sync_transforms_to_b2(
@@ -62,7 +61,8 @@ EPIX_API void update_sand_static_bodies(
                          ecs::Opt<ecs::Mut<SandStaticBody>>>> chunks);
 
 /** @brief Step the Box2D world via fixed-timestep accumulator. */
-EPIX_API void step_pixel_body_worlds(ecs::Res<time::Time<>> time, ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds);
+EPIX_API void step_pixel_body_worlds(ecs::Res<time::Time<>> time,
+                                     ecs::Query<ecs::Item<ecs::Mut<PixelBodyWorld>>> worlds);
 
 /** @brief Pull the new b2 transform back into the ECS Transform/Velocity. */
 EPIX_API void sync_b2_to_transforms(
@@ -80,24 +80,25 @@ EPIX_API void sync_b2_to_transforms(
  *
  *  Runs in FixedPreUpdate, immediately before the fallingsand simulate step. */
 EPIX_API void sync_pixel_body_to_sand(ecs::Commands cmd,
-                             ecs::ResMut<fs::ElementRegistry> registry,
-                             ecs::Query<ecs::Item<ecs::Entity,
-                                                  const PixelBodyWorld&,
-                                                  ecs::Mut<fs::SandWorld>,
-                                                  ecs::Opt<const ecs::Children&>,
-                                                  ecs::Opt<ecs::Mut<PixelBodySandBlockers>>>> worlds,
-                             ecs::Query<ecs::Item<const PixelBody&, const transform::Transform&>> bodies,
-                             ecs::Query<ecs::Item<ecs::Mut<fs::ChunkElementGrid>,
-                                                  ecs::Mut<fs::ChunkAirGrid>,
-                                                  ecs::Mut<fs::ChunkThermalGrid>,
-                                                  const fs::SandChunkPos&,
-                                                  ecs::Mut<fs::SandChunkDirtyRect>>> chunks);
+                                      ecs::ResMut<fs::ElementRegistry> registry,
+                                      ecs::Query<ecs::Item<ecs::Entity,
+                                                           const PixelBodyWorld&,
+                                                           ecs::Mut<fs::SandWorld>,
+                                                           ecs::Opt<const ecs::Children&>,
+                                                           ecs::Opt<ecs::Mut<PixelBodySandBlockers>>>> worlds,
+                                      ecs::Query<ecs::Item<const PixelBody&, const transform::Transform&>> bodies,
+                                      ecs::Query<ecs::Item<ecs::Mut<fs::ChunkElementGrid>,
+                                                           ecs::Mut<fs::ChunkAirGrid>,
+                                                           ecs::Mut<fs::ChunkThermalGrid>,
+                                                           const fs::SandChunkPos&,
+                                                           ecs::Mut<fs::SandChunkDirtyRect>>> chunks);
 
 /** @brief Rebuild the render mesh for any PixelBody with mesh_dirty. */
-EPIX_API void build_pixel_body_meshes(ecs::Commands cmd,
-                             ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
-                             ecs::ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
-                             ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
-                             ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds);
+EPIX_API void build_pixel_body_meshes(
+    ecs::Commands cmd,
+    ecs::ResMut<assets::Assets<mesh::Mesh>> meshes,
+    ecs::ResMut<assets::Assets<sprite_render::ColorMaterial>> materials,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Mut<PixelBody>, const ecs::Parent&>> bodies,
+    ecs::Query<ecs::Item<const PixelBodyWorld&>> worlds);
 
 }  // namespace epix::experimental::pixelbody

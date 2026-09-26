@@ -1,11 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #include <expected>
 #include <functional>
 #include <glm/glm.hpp>
@@ -23,8 +24,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render::render_resource {
@@ -148,9 +147,9 @@ constexpr std::size_t element_offset(std::size_t index, std::size_t element_size
  *  Epix uses `wgpu::Device` directly, which has no equivalent, so this is the
  *  same mapped-at-creation write wgpu's own `create_buffer_init` performs. */
 EPIX_EXPORT EPIX_API wgpu::Buffer create_buffer_with_data(const wgpu::Device& device,
-                                                 std::span<const std::byte> contents,
-                                                 wgpu::BufferUsage usage,
-                                                 std::string_view label = {});
+                                                          std::span<const std::byte> contents,
+                                                          wgpu::BufferUsage usage,
+                                                          std::string_view label = {});
 
 /**
  * @brief Stores a single value to be transferred to the GPU and made
@@ -158,7 +157,7 @@ EPIX_EXPORT EPIX_API wgpu::Buffer create_buffer_with_data(const wgpu::Device& de
  */
 template <ShaderWritable T>
 struct UniformBuffer {
-private:
+   private:
     /** @brief CPU-side value. */
     T value{};
     /** @brief GPU buffer; created lazily by `write_buffer`. */
@@ -173,7 +172,7 @@ private:
      * (Bevy UniformBuffer::changed). */
     bool changed = false;
 
-public:
+   public:
     UniformBuffer() = default;
     explicit UniformBuffer(T v) : value(std::move(v)) {}
 
@@ -222,10 +221,9 @@ public:
         // (uniform_buffer.rs:129-142).
         if (!gpu_buffer || capacity < size || changed) {
             capacity   = size;
-            gpu_buffer = create_buffer_with_data(
-                device, std::as_bytes(std::span{encoded}), usage,
-                label ? std::string_view(*label) : std::string_view{});
-            changed = false;
+            gpu_buffer = create_buffer_with_data(device, std::as_bytes(std::span{encoded}), usage,
+                                                 label ? std::string_view(*label) : std::string_view{});
+            changed    = false;
         } else {
             queue.writeBuffer(gpu_buffer, 0, encoded.data(), encoded.size());
         }
@@ -242,7 +240,7 @@ class DynamicUniformBufferWriter;
 
 template <ShaderWritable T>
 struct DynamicUniformBuffer {
-private:
+   private:
     /** @brief Raw byte storage, one aligned element per `T`. */
     std::vector<std::uint8_t> values;
     /** @brief GPU buffer; created lazily by `write_buffer`. */
@@ -258,7 +256,7 @@ private:
     wgpu::BufferUsage usage = wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst;
     bool changed            = false;
 
-public:
+   public:
     DynamicUniformBuffer() = default;
     explicit DynamicUniformBuffer(std::size_t alignment) : dynamic_offset_alignment(alignment) {}
 
@@ -277,22 +275,19 @@ public:
     bool is_empty() const noexcept { return values.empty(); }
     void clear() noexcept { values.clear(); }
 
-private:
+   private:
     /** @brief Per-element byte stride in the CPU buffer. */
-    std::size_t stride() const noexcept {
-        return align_up(ShaderTypeInfo<T>::shader_size, dynamic_offset_alignment);
-    }
+    std::size_t stride() const noexcept { return align_up(ShaderTypeInfo<T>::shader_size, dynamic_offset_alignment); }
 
-public:
+   public:
     /** @brief Append one element; returns its byte offset (Bevy
      * DynamicUniformBuffer::push returns a u32 byte offset, uniform_buffer.rs:201-205). */
     std::size_t push(const T& item) {
         const std::size_t stride = this->stride();
-        const std::size_t index = values.size() / stride;
+        const std::size_t index  = values.size() / stride;
         values.resize((index + 1) * stride);
-        ShaderTypeInfo<T>::write_into(item,
-                                      std::span<std::uint8_t>{values.data() + index * stride,
-                                                              ShaderTypeInfo<T>::shader_size});
+        ShaderTypeInfo<T>::write_into(
+            item, std::span<std::uint8_t>{values.data() + index * stride, ShaderTypeInfo<T>::shader_size});
         return index * stride;
     }
 
@@ -307,7 +302,7 @@ public:
     }
     /** @brief Add usages and recreate the backing buffer on the next upload. */
     void add_usages(wgpu::BufferUsage extra) {
-        usage = usage | extra;
+        usage   = usage | extra;
         changed = true;
     }
 
@@ -316,11 +311,9 @@ public:
         if (values.empty()) return;
         const std::size_t size = values.size();
         if (!gpu_buffer || capacity < size || changed) {
-            capacity = size;
-            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setLabel(label ? label->c_str() : "")
-                                                 .setUsage(usage)
-                                                 .setSize(capacity));
+            capacity   = size;
+            gpu_buffer = device.createBuffer(
+                wgpu::BufferDescriptor().setLabel(label ? label->c_str() : "").setUsage(usage).setSize(capacity));
             changed = false;
         }
         if (gpu_buffer) {
@@ -336,8 +329,8 @@ public:
      * the writer stages exactly the encoded bytes on the CPU and submits one
      * `Queue::writeBuffer` operation when it is destroyed. */
     std::optional<DynamicUniformBufferWriter<T>> get_writer(std::size_t max_count,
-                                                             const wgpu::Device& device,
-                                                             const wgpu::Queue& queue);
+                                                            const wgpu::Device& device,
+                                                            const wgpu::Queue& queue);
 };
 
 /** @brief RAII writer returned by `DynamicUniformBuffer::get_writer` (Bevy
@@ -347,7 +340,7 @@ class DynamicUniformBufferWriter {
     wgpu::Buffer buffer;
     wgpu::Queue queue;
     std::vector<std::uint8_t> staging;
-    std::size_t capacity = 0;
+    std::size_t capacity  = 0;
     std::size_t alignment = 1;
     bool submitted        = false;
 
@@ -363,14 +356,11 @@ class DynamicUniformBufferWriter {
                                wgpu::Queue queue,
                                std::size_t capacity,
                                std::size_t alignment) noexcept
-        : buffer(buffer),
-          queue(queue),
-          capacity(capacity),
-          alignment(alignment) {}
+        : buffer(buffer), queue(queue), capacity(capacity), alignment(alignment) {}
 
     friend struct DynamicUniformBuffer<T>;
 
-public:
+   public:
     DynamicUniformBufferWriter(const DynamicUniformBufferWriter&)            = delete;
     DynamicUniformBufferWriter& operator=(const DynamicUniformBufferWriter&) = delete;
 
@@ -410,17 +400,15 @@ public:
         const auto offset = static_cast<std::uint32_t>(staging.size());
         staging.resize(staging.size() + stride);
         ShaderTypeInfo<T>::write_into(value,
-                                      std::span<std::uint8_t>{staging.data() + offset,
-                                                              ShaderTypeInfo<T>::shader_size});
+                                      std::span<std::uint8_t>{staging.data() + offset, ShaderTypeInfo<T>::shader_size});
         return offset;
     }
 };
 
 template <ShaderWritable T>
-std::optional<DynamicUniformBufferWriter<T>> DynamicUniformBuffer<T>::get_writer(
-    std::size_t max_count,
-    const wgpu::Device& device,
-    const wgpu::Queue& queue) {
+std::optional<DynamicUniformBufferWriter<T>> DynamicUniformBuffer<T>::get_writer(std::size_t max_count,
+                                                                                 const wgpu::Device& device,
+                                                                                 const wgpu::Queue& queue) {
     wgpu::Limits limits{};
     if (device.getLimits(&limits) != wgpu::Status::eSuccess) return std::nullopt;
     const std::size_t alignment = std::max<std::size_t>(1, limits.minUniformBufferOffsetAlignment);
@@ -430,11 +418,9 @@ std::optional<DynamicUniformBufferWriter<T>> DynamicUniformBuffer<T>::get_writer
     }
     const std::size_t size = stride * max_count;
     if (capacity < size || (changed && size > 0)) {
-        capacity = size;
-        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                             .setLabel(label ? label->c_str() : "")
-                                             .setUsage(usage)
-                                             .setSize(capacity));
+        capacity   = size;
+        gpu_buffer = device.createBuffer(
+            wgpu::BufferDescriptor().setLabel(label ? label->c_str() : "").setUsage(usage).setSize(capacity));
         changed = false;
     }
     if (!gpu_buffer) return std::nullopt;
@@ -447,17 +433,17 @@ std::optional<DynamicUniformBufferWriter<T>> DynamicUniformBuffer<T>::get_writer
  */
 template <ShaderWritable T>
 struct StorageBuffer {
-private:
+   private:
     T value{};
     wgpu::Buffer gpu_buffer;
     std::size_t capacity = 0;
     std::optional<std::string> label;
-    bool changed = false;
+    bool changed            = false;
     wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst;
     /** @brief Byte count of the most recent upload (Bevy last_written_size). */
     std::optional<std::size_t> last_written_size;
 
-public:
+   public:
     StorageBuffer() = default;
     explicit StorageBuffer(T v) : value(std::move(v)) {}
 
@@ -481,7 +467,7 @@ public:
         return *label;
     }
     void add_usages(wgpu::BufferUsage extra) {
-        usage = usage | extra;
+        usage   = usage | extra;
         changed = true;
     }
 
@@ -499,11 +485,9 @@ public:
             }
         }();
         if (!gpu_buffer || capacity < size || changed) {
-            capacity = size;
-            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setLabel(label ? label->c_str() : "")
-                                                 .setUsage(usage)
-                                                 .setSize(capacity));
+            capacity   = size;
+            gpu_buffer = device.createBuffer(
+                wgpu::BufferDescriptor().setLabel(label ? label->c_str() : "").setUsage(usage).setSize(capacity));
             changed = false;
         }
         if (gpu_buffer) {
@@ -521,7 +505,7 @@ public:
  */
 template <ShaderWritable T>
 struct DynamicStorageBuffer {
-private:
+   private:
     /** @brief Raw byte storage, one aligned element per T (Bevy
      * DynamicStorageBuffer uses an encase std430 scratch). */
     std::vector<std::uint8_t> bytes;
@@ -530,12 +514,12 @@ private:
     /** @brief Default dynamic-offset alignment used by Bevy's scratch. */
     std::size_t dynamic_offset_alignment = 256;
     std::optional<std::string> label;
-    bool changed = false;
+    bool changed            = false;
     wgpu::BufferUsage usage = wgpu::BufferUsage::eStorage | wgpu::BufferUsage::eCopyDst;
     /** @brief Byte count of the most recent upload (Bevy last_written_size). */
     std::optional<std::size_t> last_written_size;
 
-public:
+   public:
     DynamicStorageBuffer() = default;
 
     const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
@@ -547,24 +531,21 @@ public:
     bool is_empty() const noexcept { return bytes.empty(); }
     void clear() noexcept { bytes.clear(); }
 
-private:
+   private:
     /** @brief Per-element byte stride (Bevy encase std430 alignment for the
      * element type; storage-buffer offset alignment fallback 256). */
-    std::size_t stride() const noexcept {
-        return align_up(ShaderTypeInfo<T>::shader_size, dynamic_offset_alignment);
-    }
+    std::size_t stride() const noexcept { return align_up(ShaderTypeInfo<T>::shader_size, dynamic_offset_alignment); }
 
-public:
+   public:
     /** @brief Append one element; returns its byte offset (Bevy
      * DynamicStorageBuffer::push returns a u32 byte offset,
      * storage_buffer.rs:226-228). */
     std::size_t push(T item) {
         const std::size_t stride = this->stride();
-        const std::size_t index = bytes.size() / stride;
+        const std::size_t index  = bytes.size() / stride;
         bytes.resize((index + 1) * stride);
-        ShaderTypeInfo<T>::write_into(item,
-                                      std::span<std::uint8_t>{bytes.data() + index * stride,
-                                                              ShaderTypeInfo<T>::shader_size});
+        ShaderTypeInfo<T>::write_into(
+            item, std::span<std::uint8_t>{bytes.data() + index * stride, ShaderTypeInfo<T>::shader_size});
         return index * stride;
     }
 
@@ -578,7 +559,7 @@ public:
         return *label;
     }
     void add_usages(wgpu::BufferUsage extra) {
-        usage = usage | extra;
+        usage   = usage | extra;
         changed = true;
     }
 
@@ -586,11 +567,9 @@ public:
         if (bytes.empty()) return;
         const std::size_t size = bytes.size();
         if (!gpu_buffer || capacity < size || changed) {
-            capacity = size;
-            gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                                 .setLabel(label ? label->c_str() : "")
-                                                 .setUsage(usage)
-                                                 .setSize(capacity));
+            capacity   = size;
+            gpu_buffer = device.createBuffer(
+                wgpu::BufferDescriptor().setLabel(label ? label->c_str() : "").setUsage(usage).setSize(capacity));
             changed = false;
         }
         if (gpu_buffer) {
@@ -705,7 +684,7 @@ concept PodElement = detail::PodElementVerified<T> || detail::PodElementDeclared
  */
 template <ShaderWritable T>
 struct BufferVec {
-private:
+   private:
     std::vector<std::uint8_t> data;
     wgpu::Buffer gpu_buffer;
     std::size_t gpu_capacity = 0;
@@ -713,7 +692,7 @@ private:
     std::optional<std::string> label;
     bool label_changed = false;
 
-public:
+   public:
     explicit BufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
 
     const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
@@ -731,7 +710,7 @@ public:
     void clear() noexcept { data.clear(); }
     /** @brief Append one element; returns its index. */
     std::size_t push(const T& item) {
-        const auto index = len();
+        const auto index  = len();
         const auto offset = data.size();
         data.resize(offset + ShaderTypeInfo<T>::shader_size, 0);
         ShaderTypeInfo<T>::write_into(item,
@@ -751,11 +730,11 @@ public:
 
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
         if (requested_capacity <= gpu_capacity && !label_changed) return;
-        gpu_capacity = requested_capacity;
-        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                             .setLabel(label ? label->c_str() : "")
-                                             .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
-                                             .setSize(gpu_capacity * ShaderTypeInfo<T>::shader_size));
+        gpu_capacity  = requested_capacity;
+        gpu_buffer    = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setLabel(label ? label->c_str() : "")
+                                                .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                                .setSize(gpu_capacity * ShaderTypeInfo<T>::shader_size));
         label_changed = false;
     }
 
@@ -789,7 +768,7 @@ public:
  * uninitialized bytes. Use `BufferVec` for shader-encoded values instead. */
 template <RawBufferElement T>
 struct RawBufferVec {
-private:
+   private:
     std::vector<T> data;
     wgpu::Buffer gpu_buffer;
     std::size_t gpu_capacity = 0;
@@ -797,7 +776,7 @@ private:
     std::optional<std::string> label;
     bool label_changed = false;
 
-public:
+   public:
     explicit RawBufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
     const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
     wgpu::Buffer* buffer() noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
@@ -809,9 +788,17 @@ public:
     std::size_t len() const noexcept { return data.size(); }
     bool is_empty() const noexcept { return data.empty(); }
     void clear() noexcept { data.clear(); }
-    std::size_t push(const T& item) { data.push_back(item); return data.size() - 1; }
-    void append(RawBufferVec& other) { data.insert(data.end(), std::make_move_iterator(other.data.begin()), std::make_move_iterator(other.data.end())); other.data.clear(); }
-    const T* get(std::uint32_t index) const noexcept { return index < data.size() ? std::addressof(data[index]) : nullptr; }
+    std::size_t push(const T& item) {
+        data.push_back(item);
+        return data.size() - 1;
+    }
+    void append(RawBufferVec& other) {
+        data.insert(data.end(), std::make_move_iterator(other.data.begin()), std::make_move_iterator(other.data.end()));
+        other.data.clear();
+    }
+    const T* get(std::uint32_t index) const noexcept {
+        return index < data.size() ? std::addressof(data[index]) : nullptr;
+    }
     void set(std::uint32_t index, const T& value) { data.at(index) = value; }
     void reserve_internal(std::size_t count) { data.reserve(data.size() + count); }
     void set_label(std::optional<std::string_view> new_label) {
@@ -830,11 +817,11 @@ public:
 
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
         if (requested_capacity <= gpu_capacity && (!label_changed || requested_capacity == 0)) return;
-        gpu_capacity = requested_capacity;
-        gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                             .setLabel(label ? label->c_str() : "")
-                                             .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
-                                             .setSize(gpu_capacity * sizeof(T)));
+        gpu_capacity  = requested_capacity;
+        gpu_buffer    = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setLabel(label ? label->c_str() : "")
+                                                .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                                .setSize(gpu_capacity * sizeof(T)));
         label_changed = false;
     }
     void write_buffer(const wgpu::Device& device, const wgpu::Queue& queue) {
@@ -843,7 +830,7 @@ public:
         if (gpu_buffer) queue.writeBuffer(gpu_buffer, 0, data.data(), data.size() * sizeof(T));
     }
     std::expected<void, WriteBufferRangeError> write_buffer_range(const wgpu::Queue& queue,
-                                                                   std::pair<std::size_t, std::size_t> range) {
+                                                                  std::pair<std::size_t, std::size_t> range) {
         if (data.empty()) return std::unexpected(WriteBufferRangeError::NoValuesToUpload);
         if (range.first > range.second || range.second > sizeof(T) * gpu_capacity)
             return std::unexpected(WriteBufferRangeError::RangeBiggerThanBuffer);
@@ -853,14 +840,20 @@ public:
         return {};
     }
     void truncate(std::size_t length) { data.resize(length); }
-    void resize(std::size_t length) requires std::default_initializable<T> { data.resize(length); }
+    void resize(std::size_t length)
+        requires std::default_initializable<T>
+    {
+        data.resize(length);
+    }
     std::optional<T> pop() {
         if (data.empty()) return std::nullopt;
         auto value = std::move(data.back());
         data.pop_back();
         return value;
     }
-    void grow_set(std::uint32_t index, const T& value) requires std::default_initializable<T> {
+    void grow_set(std::uint32_t index, const T& value)
+        requires std::default_initializable<T>
+    {
         while (index >= data.size()) data.emplace_back();
         data[index] = value;
     }
@@ -880,15 +873,15 @@ concept GpuArrayBufferable = ShaderWritable<T> && std::is_copy_constructible_v<T
  */
 template <GpuArrayBufferable T>
 struct UninitBufferVec {
-private:
+   private:
     wgpu::Buffer gpu_buffer;
-    std::size_t length = 0;
+    std::size_t length       = 0;
     std::size_t gpu_capacity = 0;
     wgpu::BufferUsage buffer_usage;
     std::optional<std::string> label;
     bool label_changed = false;
 
-public:
+   public:
     explicit UninitBufferVec(wgpu::BufferUsage usage) : buffer_usage(usage) {}
     const wgpu::Buffer* buffer() const noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
     wgpu::Buffer* buffer() noexcept { return gpu_buffer ? std::addressof(gpu_buffer) : nullptr; }
@@ -913,11 +906,11 @@ public:
     /** @brief Ensure GPU storage for at least `requested_capacity` elements. */
     void reserve(std::size_t requested_capacity, const wgpu::Device& device) {
         if (requested_capacity <= gpu_capacity && !label_changed) return;
-        gpu_capacity = requested_capacity;
-        gpu_buffer   = device.createBuffer(wgpu::BufferDescriptor()
-                                           .setLabel(label ? label->c_str() : "")
-                                           .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
-                                           .setSize(gpu_capacity * sizeof(T)));
+        gpu_capacity  = requested_capacity;
+        gpu_buffer    = device.createBuffer(wgpu::BufferDescriptor()
+                                                .setLabel(label ? label->c_str() : "")
+                                                .setUsage(buffer_usage | wgpu::BufferUsage::eCopyDst)
+                                                .setSize(gpu_capacity * sizeof(T)));
         label_changed = false;
     }
 
@@ -948,7 +941,7 @@ struct GpuArrayBufferIndex {
  */
 template <GpuArrayBufferable T>
 struct BatchedUniformBuffer {
-private:
+   private:
     /** @brief Cap on uniform buffer binding size to avoid oversized arrays on
      * macOS (Bevy MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE). */
     static constexpr std::size_t MAX_REASONABLE_UNIFORM_BUFFER_BINDING_SIZE = 1 << 20;
@@ -966,7 +959,8 @@ private:
     std::size_t alignment = 0;
     /** @brief Byte offset of the next batch in the buffer. */
     std::size_t current_offset = 0;
-public:
+
+   public:
     explicit BatchedUniformBuffer(const wgpu::Limits& limits) {
         alignment = static_cast<std::size_t>(limits.minUniformBufferOffsetAlignment);
         if (alignment == 0) alignment = 256;
@@ -1020,14 +1014,14 @@ public:
         // even when the final batch is only partially populated; otherwise a
         // dynamic bind group with the required batch size would run past the
         // end of the native wgpu buffer.
-        const std::size_t batch_bytes     = capacity * ShaderTypeInfo<T>::shader_size;
-        auto encoded_values               = encode_shader_values<T>(temporary_values);
+        const std::size_t batch_bytes = capacity * ShaderTypeInfo<T>::shader_size;
+        auto encoded_values           = encode_shader_values<T>(temporary_values);
         buffer_bytes.insert(buffer_bytes.end(), encoded_values.begin(), encoded_values.end());
         // The insertion above copied only the populated prefix; make the
         // remaining fixed-capacity elements zero-initialized.
         if (temporary_values.size() < capacity) {
-            buffer_bytes.resize(buffer_bytes.size() + (capacity - temporary_values.size()) * ShaderTypeInfo<T>::shader_size,
-                                0);
+            buffer_bytes.resize(
+                buffer_bytes.size() + (capacity - temporary_values.size()) * ShaderTypeInfo<T>::shader_size, 0);
         }
         temporary_values.clear();
         current_offset += align_up(batch_bytes, alignment);
@@ -1039,9 +1033,9 @@ public:
         if (buffer_bytes.empty()) return;
         if (!gpu_buffer || gpu_buffer.getSize() < buffer_bytes.size()) {
             gpu_buffer = device.createBuffer(wgpu::BufferDescriptor()
-                                             .setLabel("BatchedUniformBuffer")
-                                             .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst)
-                                             .setSize(buffer_bytes.size()));
+                                                 .setLabel("BatchedUniformBuffer")
+                                                 .setUsage(wgpu::BufferUsage::eUniform | wgpu::BufferUsage::eCopyDst)
+                                                 .setSize(buffer_bytes.size()));
         }
         if (gpu_buffer) {
             queue.writeBuffer(gpu_buffer, 0, buffer_bytes.data(), buffer_bytes.size());
@@ -1066,7 +1060,7 @@ struct GpuArrayBuffer {
     /** @brief Backing storage: uniform fallback or storage buffer. */
     using Storage = std::variant<BatchedUniformBuffer<T>, BufferVec<T>>;
 
-private:
+   private:
     static Storage make_storage(const wgpu::Limits& limits) {
         if (limits.maxStorageBuffersPerShaderStage == 0) {
             return Storage{std::in_place_index<0>, limits};
@@ -1074,7 +1068,7 @@ private:
         return Storage{std::in_place_index<1>, wgpu::BufferUsage::eStorage};
     }
 
-public:
+   public:
     Storage storage;
 
     explicit GpuArrayBuffer(const wgpu::Limits& limits) : storage(make_storage(limits)) {}

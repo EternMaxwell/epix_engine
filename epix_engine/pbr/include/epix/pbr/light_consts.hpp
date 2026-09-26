@@ -14,9 +14,9 @@ namespace epix::pbr::light_consts {
 
 /** @brief Approximations for converting the wattage of lamps to lumens. */
 namespace lumens {
-EPIX_EXPORT inline constexpr float LUMENS_PER_LED_WATTS = 90.0f;
+EPIX_EXPORT inline constexpr float LUMENS_PER_LED_WATTS          = 90.0f;
 EPIX_EXPORT inline constexpr float LUMENS_PER_INCANDESCENT_WATTS = 13.8f;
-EPIX_EXPORT inline constexpr float LUMENS_PER_HALOGEN_WATTS = 19.8f;
+EPIX_EXPORT inline constexpr float LUMENS_PER_HALOGEN_WATTS      = 19.8f;
 /** @brief A very large cinema light, bright at Bevy's default very-overcast-day
  *  exposure and far too bright for indoor lighting at a lower exposure. */
 EPIX_EXPORT inline constexpr float VERY_LARGE_CINEMA_LIGHT = 1'000'000.0f;

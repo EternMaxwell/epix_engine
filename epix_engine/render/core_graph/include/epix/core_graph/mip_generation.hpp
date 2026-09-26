@@ -6,12 +6,12 @@
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <optional>
 #include <string_view>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/core3d.hpp>
 
@@ -98,8 +98,8 @@ EPIX_EXPORT struct DepthPyramidDummyTexture {
 /** @brief Creates a one-texel `R32Float` storage texture used for unused
  *  pyramid mip bindings (Bevy `create_depth_pyramid_dummy_texture`). */
 EPIX_EXPORT EPIX_API wgpu::TextureView create_depth_pyramid_dummy_texture(const wgpu::Device& device,
-                                                                const char* texture_label,
-                                                                const char* texture_view_label);
+                                                                          const char* texture_label,
+                                                                          const char* texture_view_label);
 
 /** @brief Identifies the `downsample_depth` shader (Bevy `DownsampleDepthShader`). */
 EPIX_EXPORT struct DownsampleDepthShader {
@@ -137,7 +137,8 @@ EPIX_EXPORT EPIX_API void create_downsample_depth_pipelines(
 
 /** @brief `RenderStartup` system that creates the placeholder pyramid texture
  *  (Bevy `init_depth_pyramid_dummy_texture`). */
-EPIX_EXPORT EPIX_API void init_depth_pyramid_dummy_texture(ecs::Commands commands, ecs::Res<wgpu::Device> render_device);
+EPIX_EXPORT EPIX_API void init_depth_pyramid_dummy_texture(ecs::Commands commands,
+                                                           ecs::Res<wgpu::Device> render_device);
 
 /** @brief A hierarchical Z-buffer for one view: a series of mipmaps of the depth
  *  buffer, bound to the downsample shader as storage images (Bevy
@@ -194,8 +195,7 @@ EPIX_EXPORT EPIX_API void prepare_view_depth_pyramids(
     std::optional<ecs::Res<DepthPyramidDummyTexture>> depth_pyramid_dummy_texture,
     ecs::Query<ecs::Item<ecs::Entity, const render::view::ExtractedView&>,
                ecs::Filter<ecs::With<render::experimental::OcclusionCulling>,
-                           ecs::Without<render::view::NoIndirectDrawing>>>
-        views);
+                           ecs::Without<render::view::NoIndirectDrawing>>> views);
 
 /** @brief Creates the downsample bind groups for the views with a depth
  *  pyramid (Bevy `prepare_downsample_depth_view_bind_groups`). The pipelines are
@@ -210,21 +210,19 @@ EPIX_EXPORT EPIX_API void prepare_downsample_depth_view_bind_groups(
                          ecs::Opt<const render::view::ViewDepthTexture&>,
                          ecs::Opt<const render::experimental::OcclusionCullingSubview&>>,
                ecs::Filter<ecs::Or<ecs::With<render::view::ViewDepthTexture>,
-                                   ecs::With<render::experimental::OcclusionCullingSubview>>>>
-        view_depth_textures);
+                                   ecs::With<render::experimental::OcclusionCullingSubview>>>> view_depth_textures);
 
 /** @brief Produces the hierarchical Z-buffer for a view (Bevy
  *  `DownsampleDepthNode`), installed twice: before the late prepass and at the
  *  end of the main phase. */
 EPIX_EXPORT struct EPIX_API DownsampleDepthNode {
-    using ViewQuery = ecs::Item<const ViewDepthPyramid&,
-                                const ViewDownsampleDepthBindGroup&,
-                                const render::view::ViewDepthTexture&>;
+    using ViewQuery =
+        ecs::Item<const ViewDepthPyramid&, const ViewDownsampleDepthBindGroup&, const render::view::ViewDepthTexture&>;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
-                                                        render::graph::RenderContext& render_context,
-                                                        typename ecs::QueryData<ViewQuery>::Item view,
-                                                        const ecs::World& world) const;
+                                                         render::graph::RenderContext& render_context,
+                                                         typename ecs::QueryData<ViewQuery>::Item view,
+                                                         const ecs::World& world) const;
 };
 
 /** @brief Installs the depth-pyramid machinery (Bevy `MipGenerationPlugin`):
@@ -239,8 +237,7 @@ EPIX_EXPORT struct EPIX_API MipGenerationPlugin {
 
 template <>
 struct std::hash<epix::core_graph::mip_generation::DownsampleDepthPipelineKey> {
-    std::size_t operator()(
-        const epix::core_graph::mip_generation::DownsampleDepthPipelineKey& key) const noexcept {
+    std::size_t operator()(const epix::core_graph::mip_generation::DownsampleDepthPipelineKey& key) const noexcept {
         return std::hash<std::uint8_t>{}(key.bits);
     }
 };

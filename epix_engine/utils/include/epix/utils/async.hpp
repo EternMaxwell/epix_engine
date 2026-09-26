@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <concepts>
 #include <condition_variable>
 #include <cstddef>
 #include <deque>
+#include <epix/common.hpp>
 #include <expected>
 #include <memory>
 #include <mutex>
@@ -16,7 +16,6 @@
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::utils {

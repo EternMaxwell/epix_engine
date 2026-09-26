@@ -5,13 +5,13 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <glm/glm.hpp>
 #include <numbers>
 #include <type_traits>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -61,8 +61,10 @@ EPIX_EXPORT inline float fog_exponential_squared_density(float visibility, float
  *
  *  Channels are linear RGBA, as Bevy takes them from `LinearRgba`; the conversion from
  *  whatever colour type the caller holds is the caller's. */
-EPIX_EXPORT inline glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb, float extinction_alpha,
-                                                        float visibility, float contrast_threshold) {
+EPIX_EXPORT inline glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb,
+                                                        float extinction_alpha,
+                                                        float visibility,
+                                                        float contrast_threshold) {
     const float e = static_cast<float>(std::numbers::e);
     return glm::vec3(std::pow(1.0f - extinction_rgb.x, e), std::pow(1.0f - extinction_rgb.y, e),
                      std::pow(1.0f - extinction_rgb.z, e)) *
@@ -76,8 +78,7 @@ EPIX_EXPORT inline glm::vec3 fog_atmospheric_extinction(glm::vec3 extinction_rgb
  *  so a blue in-scattering colour adds blue. */
 EPIX_EXPORT inline glm::vec3 fog_atmospheric_inscattering(glm::vec3 inscattering_rgb) {
     const float e = static_cast<float>(std::numbers::e);
-    return glm::vec3(std::pow(inscattering_rgb.x, e), std::pow(inscattering_rgb.y, e),
-                     std::pow(inscattering_rgb.z, e));
+    return glm::vec3(std::pow(inscattering_rgb.x, e), std::pow(inscattering_rgb.y, e), std::pow(inscattering_rgb.z, e));
 }
 
 /** @brief The linear fog falloff (Bevy `FogFalloff::Linear`). */
@@ -151,8 +152,10 @@ EPIX_EXPORT struct FogFalloff {
     /** @brief An atmospheric falloff for a visibility distance, contrast threshold and
      *  separate extinction and in-scattering colours (Bevy
      *  `FogFalloff::from_visibility_contrast_colors`). */
-    static FogFalloff from_visibility_contrast_colors(float visibility, float contrast_threshold,
-                                                      glm::vec4 extinction_color, glm::vec4 inscattering_color) {
+    static FogFalloff from_visibility_contrast_colors(float visibility,
+                                                      float contrast_threshold,
+                                                      glm::vec4 extinction_color,
+                                                      glm::vec4 inscattering_color) {
         return FogFalloff{FogFalloffAtmospheric{
             .extinction   = fog_atmospheric_extinction(glm::vec3(extinction_color), extinction_color.a, visibility,
                                                        contrast_threshold),
@@ -229,8 +232,8 @@ namespace epix::pbr {
  *  expressed on the GPU rather than by leaving the binding absent. */
 EPIX_EXPORT inline GpuFog gpu_fog_from(const DistanceFog& fog) {
     GpuFog gpu;
-    gpu.base_color              = fog.color;
-    gpu.directional_light_color = fog.directional_light_color;
+    gpu.base_color                 = fog.color;
+    gpu.directional_light_color    = fog.directional_light_color;
     gpu.directional_light_exponent = fog.directional_light_exponent;
 
     std::visit(
@@ -273,11 +276,11 @@ EPIX_EXPORT struct FogMeta {
  *  field zero: "no fog" is expressed on the GPU rather than by leaving the binding
  *  absent, which is what lets one bind group serve both kinds of view. The writer's
  *  capacity is the view count, so all the offsets are valid by construction. */
-EPIX_EXPORT EPIX_API void prepare_fog(
-    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
-    ecs::ResMut<FogMeta> fog_meta,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const DistanceFog&>>,
-               ecs::With<::epix::render::view::ExtractedView>>
-        views);
+EPIX_EXPORT EPIX_API void prepare_fog(ecs::Commands commands,
+                                      ecs::Res<wgpu::Device> render_device,
+                                      ecs::Res<wgpu::Queue> render_queue,
+                                      ecs::ResMut<FogMeta> fog_meta,
+                                      ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const DistanceFog&>>,
+                                                 ecs::With<::epix::render::view::ExtractedView>> views);
 
 }  // namespace epix::pbr

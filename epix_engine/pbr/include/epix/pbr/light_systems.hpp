@@ -3,10 +3,10 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/cascade.hpp>
 #include <epix/pbr/directional_light.hpp>
@@ -39,9 +39,10 @@ EPIX_EXPORT EPIX_API void validate_shadow_map_size(ecs::ResMut<DirectionalLightS
  *  `should_update_point_light_frusta`). */
 EPIX_EXPORT EPIX_API void update_point_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,
-    ecs::Query<ecs::Item<ecs::Entity, ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<PointLight>,
-                         ecs::Mut<::epix::camera::CubemapFrusta>>>
-        lights);
+    ecs::Query<ecs::Item<ecs::Entity,
+                         ecs::Ref<::epix::transform::GlobalTransform>,
+                         ecs::Ref<PointLight>,
+                         ecs::Mut<::epix::camera::CubemapFrusta>>> lights);
 
 /** @brief Rebuild the frustum of every spot light that needs it (Bevy
  *  `update_spot_light_frusta`, `bevy_light/src/spot_light.rs:204-237`).
@@ -56,7 +57,9 @@ EPIX_EXPORT EPIX_API void update_point_light_frusta(
  *  `check_point_light_mesh_visibility` culls against. */
 EPIX_EXPORT EPIX_API void update_spot_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const SpotLight&,
                          ecs::Mut<::epix::camera::Frustum>>,
                ecs::Filter<ecs::Or<ecs::Modified<::epix::transform::GlobalTransform>, ecs::Modified<SpotLight>>>>
         lights);
@@ -70,10 +73,11 @@ EPIX_EXPORT EPIX_API void update_spot_light_frusta(
  *  light. Unlike the point-light system this has no change detection: every
  *  shadow-casting, visible light is rebuilt each time it runs. */
 EPIX_EXPORT EPIX_API void update_directional_light_frusta(
-    ecs::Query<ecs::Item<const Cascades&, const DirectionalLight&, const ::epix::camera::ViewVisibility&,
+    ecs::Query<ecs::Item<const Cascades&,
+                         const DirectionalLight&,
+                         const ::epix::camera::ViewVisibility&,
                          ecs::Mut<::epix::camera::CascadesFrusta>>,
-                ecs::Without<::epix::camera::Camera>>
-        lights);
+               ecs::Without<::epix::camera::Camera>> lights);
 
 /** @brief Clear each shadow-casting directional light's cascades (Bevy
  *  `clear_directional_light_cascades`, `bevy_light/src/cascade.rs:186-193`).
@@ -96,12 +100,14 @@ EPIX_EXPORT EPIX_API void clear_directional_light_cascades(
  *  transform is free to carry scale. */
 EPIX_EXPORT EPIX_API void build_directional_light_cascades(
     ecs::Res<DirectionalLightShadowMap> shadow_map,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&,
-                         const ::epix::camera::Camera&>>
-        views,
-    ecs::Query<ecs::Item<const ::epix::transform::GlobalTransform&, const DirectionalLight&,
-                         const CascadeShadowConfig&, ecs::Mut<Cascades>>>
-        lights);
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Projection&,
+                         const ::epix::camera::Camera&>> views,
+    ecs::Query<ecs::Item<const ::epix::transform::GlobalTransform&,
+                         const DirectionalLight&,
+                         const CascadeShadowConfig&,
+                         ecs::Mut<Cascades>>> lights);
 
 /** @brief Assign every clusterable object to the clusters of every view (Bevy
  *  `assign_objects_to_clusters`, `bevy_light/src/cluster/assign.rs:124-841`).
@@ -125,21 +131,28 @@ EPIX_EXPORT EPIX_API void build_directional_light_cascades(
 EPIX_EXPORT EPIX_API void assign_objects_to_clusters(
     ecs::Commands commands,
     ecs::ResMut<GlobalVisibleClusterableObjects> global_clusterable_objects,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Camera&,
-                         const ::epix::camera::Frustum&, const ClusterConfig&, Clusters&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<VisibleClusterableObjects&>>>
-        views,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const PointLight&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
-                         const ::epix::camera::ViewVisibility&>>
-        point_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const VolumetricLight&>,
-                         const ::epix::camera::ViewVisibility&>>
-        spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Camera&,
+                         const ::epix::camera::Frustum&,
+                         const ClusterConfig&,
+                         Clusters&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<VisibleClusterableObjects&>>> views,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const PointLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>> point_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::transform::GlobalTransform&,
+                         const SpotLight&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const VolumetricLight&>,
+                         const ::epix::camera::ViewVisibility&>> spot_lights,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, ecs::Has<EnvironmentMapLight>>,
-               ecs::With<LightProbe>>
-        light_probes,
+               ecs::With<LightProbe>> light_probes,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&>, ecs::With<ClusteredDecal>> decals,
     ecs::Local<std::vector<ClusterableObjectAssignmentData>> clusterable_objects,
     ecs::Local<std::vector<std::optional<::epix::camera::Sphere>>> cluster_spheres,
@@ -171,20 +184,29 @@ EPIX_EXPORT EPIX_API void assign_objects_to_clusters(
  *  again the same result, without the parallel-for machinery. */
 EPIX_EXPORT EPIX_API void check_point_light_mesh_visibility(
     ecs::Query<ecs::Item<const VisibleClusterableObjects&>> visible_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const PointLight&, const ::epix::transform::GlobalTransform&,
-                         const ::epix::camera::CubemapFrusta&, ::epix::camera::CubemapVisibleEntities&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
-        point_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const SpotLight&, const ::epix::transform::GlobalTransform&,
-                         const ::epix::camera::Frustum&, ::epix::camera::VisibleMeshEntities&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>>>
-        spot_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&, ::epix::camera::ViewVisibility&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
-                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
-                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
-                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
-        visible_entities,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const PointLight&,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::CubemapFrusta&,
+                         ::epix::camera::CubemapVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>> point_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const SpotLight&,
+                         const ::epix::transform::GlobalTransform&,
+                         const ::epix::camera::Frustum&,
+                         ::epix::camera::VisibleMeshEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>>> spot_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::camera::InheritedVisibility&,
+                         ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>,
+                         ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>,
+                         ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>,
+                         ecs::Opt<const DirectionalLight&>>> visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
 
 /** @brief Mark the meshes each directional light can see, per cascade (Bevy
@@ -209,16 +231,22 @@ EPIX_EXPORT EPIX_API void check_point_light_mesh_visibility(
  *  case and for the same reason. */
 EPIX_EXPORT EPIX_API void check_dir_light_mesh_visibility(
     ecs::Commands commands,
-    ecs::Query<ecs::Item<const DirectionalLight&, const ::epix::camera::CascadesFrusta&,
-                         ::epix::camera::CascadesVisibleEntities&, ecs::Opt<const ::epix::camera::RenderLayers&>,
-                         const ::epix::camera::ViewVisibility&, ecs::Opt<const SpotLight&>>>
-        directional_lights,
-    ecs::Query<ecs::Item<ecs::Entity, const ::epix::camera::InheritedVisibility&,
-                         ecs::Opt<const ::epix::camera::RenderLayers&>, ecs::Opt<const ::epix::camera::Aabb&>,
-                         ecs::Opt<const ::epix::transform::GlobalTransform&>, ecs::Opt<const ::epix::camera::VisibilityRange&>,
-                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>, ecs::Opt<const ::epix::mesh::Mesh3d&>,
-                         ecs::Opt<const NotShadowCaster&>, ecs::Opt<const DirectionalLight&>>>
-        visible_entities,
+    ecs::Query<ecs::Item<const DirectionalLight&,
+                         const ::epix::camera::CascadesFrusta&,
+                         ::epix::camera::CascadesVisibleEntities&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         const ::epix::camera::ViewVisibility&,
+                         ecs::Opt<const SpotLight&>>> directional_lights,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const ::epix::camera::InheritedVisibility&,
+                         ecs::Opt<const ::epix::camera::RenderLayers&>,
+                         ecs::Opt<const ::epix::camera::Aabb&>,
+                         ecs::Opt<const ::epix::transform::GlobalTransform&>,
+                         ecs::Opt<const ::epix::camera::VisibilityRange&>,
+                         ecs::Opt<const ::epix::camera::NoFrustumCulling&>,
+                         ecs::Opt<const ::epix::mesh::Mesh3d&>,
+                         ecs::Opt<const NotShadowCaster&>,
+                         ecs::Opt<const DirectionalLight&>>> visible_entities,
     std::optional<ecs::Res<::epix::camera::VisibleEntityRanges>> visible_entity_ranges);
 
 }  // namespace epix::pbr

@@ -1,19 +1,18 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/meta.hpp>
+#include <epix/utils/index_map.hpp>
 #include <optional>
 #include <span>
 #include <unordered_map>
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
-#include <epix/utils/index_map.hpp>
 #endif
 
 #include <epix/render/gpu_preprocessing_mode.hpp>
@@ -158,12 +157,13 @@ EPIX_EXPORT class UnbatchableBinnedEntityIndexSet {
                                                      ? *sparse->first_indirect_parameters_index +
                                                            sparse->instance_range.second - sparse->instance_range.first
                                                      : 0;
-            const bool consecutive = sparse->instance_range.second == indices.instance_index;
-            const bool matches_none = !sparse->first_indirect_parameters_index &&
-                                      indices.extra_index.type == PhaseItemExtraIndex::Type::None;
-            const bool matches_indirect = sparse->first_indirect_parameters_index &&
-                                          indices.extra_index.type == PhaseItemExtraIndex::Type::IndirectParametersIndex &&
-                                          indices.extra_index.indirect_range.first == expected_indirect_index;
+            const bool consecutive             = sparse->instance_range.second == indices.instance_index;
+            const bool matches_none =
+                !sparse->first_indirect_parameters_index && indices.extra_index.type == PhaseItemExtraIndex::Type::None;
+            const bool matches_indirect =
+                sparse->first_indirect_parameters_index &&
+                indices.extra_index.type == PhaseItemExtraIndex::Type::IndirectParametersIndex &&
+                indices.extra_index.indirect_range.first == expected_indirect_index;
             if (consecutive && (matches_none || matches_indirect)) {
                 ++sparse->instance_range.second;
                 return;
@@ -193,7 +193,7 @@ EPIX_EXPORT class UnbatchableBinnedEntityIndexSet {
                                                *sparse->first_indirect_parameters_index + entity_index)
                                          : PhaseItemExtraIndex::None;
             return UnbatchableBinnedEntityIndices{.instance_index = sparse->instance_range.first + entity_index,
-                                                   .extra_index = extra_index};
+                                                  .extra_index    = extra_index};
         }
         const auto& dense = std::get<Dense>(m_storage);
         if (entity_index >= dense.size()) return std::nullopt;
@@ -388,12 +388,12 @@ class BinnedRenderPhase {
                 break;
             }
             case BinnedRenderPhaseType::UnbatchableMesh: {
-                auto& unbatchable                        = unbatchable_meshes[{batch_set_key, bin_key}];
+                auto& unbatchable                 = unbatchable_meshes[{batch_set_key, bin_key}];
                 unbatchable.entities[main_entity] = render_entity;
                 break;
             }
             case BinnedRenderPhaseType::NonMesh: {
-                auto& non_mesh                        = non_mesh_items[{batch_set_key, bin_key}];
+                auto& non_mesh                 = non_mesh_items[{batch_set_key, bin_key}];
                 non_mesh.entities[main_entity] = render_entity;
                 break;
             }
@@ -481,8 +481,8 @@ class BinnedRenderPhase {
      * the phase going, exactly as Bevy's `draw` maps
      * `Success | Skip => Ok(())` (draw.rs:346). */
     std::expected<void, DrawError> render(const wgpu::RenderPassEncoder& render_pass,
-                                         const epix::ecs::World& world,
-                                         epix::ecs::Entity view) const {
+                                          const epix::ecs::World& world,
+                                          epix::ecs::Entity view) const {
         auto&& draw_functions = world.resource<DrawFunctions<BPI>>();
         // Bevy holds one write guard for the whole pass, so prepare and every
         // batch's draws happen under it (render_phase/mod.rs:1474-1486).
@@ -734,10 +734,10 @@ class BinnedRenderPhase {
                 (void)render_entity;
                 const auto prepared = unbatchable.buffer_indices.indices_for_entity_index(entity_index++);
                 if (!prepared) continue;
-                if (auto result = draw_item(functions, render_pass, world, view,
-                                            make_item(key.first, key.second, {render_entity, main_entity},
-                                                      {prepared->instance_index, prepared->instance_index + 1},
-                                                      prepared->extra_index));
+                if (auto result = draw_item(
+                        functions, render_pass, world, view,
+                        make_item(key.first, key.second, {render_entity, main_entity},
+                                  {prepared->instance_index, prepared->instance_index + 1}, prepared->extra_index));
                     !result) {
                     return result;
                 }
@@ -756,7 +756,7 @@ class BinnedRenderPhase {
             for (auto&& [main_entity, render_entity] : non_mesh.entities) {
                 (void)render_entity;
                 BPI item = BPI::create(key.first, key.second, {render_entity, main_entity}, {0u, 1u},
-                                        PhaseItemExtraIndex::None);
+                                       PhaseItemExtraIndex::None);
                 if (auto result = draw_item(functions, render_pass, world, view, item); !result) return result;
             }
         }

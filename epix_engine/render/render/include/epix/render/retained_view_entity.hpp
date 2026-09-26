@@ -1,11 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <functional>
 #include <optional>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/render/sync_world.hpp>

@@ -1,23 +1,24 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <spdlog/spdlog.h>
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
-#include <optional>
-#include <string>
-#include <utility>
-#include <vector>
-#include <glm/glm.hpp>
-#include <spdlog/spdlog.h>
+#include <epix/common.hpp>
 #include <epix/core_graph/oit.hpp>
 #include <epix/core_graph/tonemapping.hpp>
 #include <epix/render/bind_group_layout.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/globals.hpp>
 #include <epix/render/view.hpp>
+#include <glm/glm.hpp>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/atmosphere.hpp>
@@ -67,8 +68,11 @@ EPIX_EXPORT inline render::render_resource::BindGroupLayoutEntryBuilder buffer_l
  *  builds for, and `IRRADIANCE_VOLUMES_ARE_USABLE` is a compile-time constant. */
 EPIX_EXPORT inline std::array<std::vector<wgpu::BindGroupLayoutEntry>, 2> mesh_view_layout_entries(
     wgpu::BufferBindingType clustered_forward_buffer_binding_type,
-    wgpu::BufferBindingType visibility_ranges_buffer_binding_type, const MeshPipelineViewLayoutKey& layout_key,
-    bool binding_arrays_are_usable, bool decals_feature_enabled, bool partially_bound_binding_array_supported,
+    wgpu::BufferBindingType visibility_ranges_buffer_binding_type,
+    const MeshPipelineViewLayoutKey& layout_key,
+    bool binding_arrays_are_usable,
+    bool decals_feature_enabled,
+    bool partially_bound_binding_array_supported,
     bool oit_supported) {
     using render::render_resource::DynamicBindGroupLayoutEntries;
     using namespace render::render_resource::binding_types;
@@ -95,15 +99,13 @@ EPIX_EXPORT inline std::array<std::vector<wgpu::BindGroupLayoutEntry>, 2> mesh_v
         std::pair{8u, buffer_layout(clustered_forward_buffer_binding_type, false,
                                     GpuClusterableObjects::min_size(clustered_forward_buffer_binding_type))},
         // ClusteredLightIndexLists
-        std::pair{9u,
-                  buffer_layout(clustered_forward_buffer_binding_type, false,
-                                ViewClusterBindings::min_size_clusterable_object_index_lists(
-                                    clustered_forward_buffer_binding_type))},
+        std::pair{9u, buffer_layout(clustered_forward_buffer_binding_type, false,
+                                    ViewClusterBindings::min_size_clusterable_object_index_lists(
+                                        clustered_forward_buffer_binding_type))},
         // ClusterOffsetsAndCounts
-        std::pair{10u,
-                  buffer_layout(clustered_forward_buffer_binding_type, false,
-                                ViewClusterBindings::min_size_cluster_offsets_and_counts(
-                                    clustered_forward_buffer_binding_type))},
+        std::pair{10u, buffer_layout(clustered_forward_buffer_binding_type, false,
+                                     ViewClusterBindings::min_size_cluster_offsets_and_counts(
+                                         clustered_forward_buffer_binding_type))},
         // Globals
         std::pair{11u, uniform_buffer(false, sizeof(render::GlobalsUniform))
                            .visibility(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment)},
@@ -122,8 +124,7 @@ EPIX_EXPORT inline std::array<std::vector<wgpu::BindGroupLayoutEntry>, 2> mesh_v
 
     // Tonemapping
     const auto tonemapping_lut_entries = core_graph::get_lut_bind_group_layout_entries();
-    entries.extend_with_indices(std::pair{18u, tonemapping_lut_entries[0]},
-                                std::pair{19u, tonemapping_lut_entries[1]});
+    entries.extend_with_indices(std::pair{18u, tonemapping_lut_entries[0]}, std::pair{19u, tonemapping_lut_entries[1]});
 
     // Prepass: the four entries the key asks for, at bindings 20 to 23.
     const auto prepass_entries = prepass_bind_group_layout_entries(layout_key);
@@ -206,15 +207,17 @@ EPIX_EXPORT struct MeshPipelineViewLayout {
  *  facts Bevy reads off the device and adapter are parameters. */
 EPIX_EXPORT inline std::array<MeshPipelineViewLayout, MeshPipelineViewLayoutKey::COUNT> generate_view_layouts(
     wgpu::BufferBindingType clustered_forward_buffer_binding_type,
-    wgpu::BufferBindingType visibility_ranges_buffer_binding_type, bool binding_arrays_are_usable,
-    bool decals_feature_enabled, bool partially_bound_binding_array_supported, bool oit_supported) {
+    wgpu::BufferBindingType visibility_ranges_buffer_binding_type,
+    bool binding_arrays_are_usable,
+    bool decals_feature_enabled,
+    bool partially_bound_binding_array_supported,
+    bool oit_supported) {
     std::array<MeshPipelineViewLayout, MeshPipelineViewLayoutKey::COUNT> layouts{};
     for (std::uint32_t bits = 0; bits < MeshPipelineViewLayoutKey::COUNT; ++bits) {
-        const auto key   = MeshPipelineViewLayoutKey::from_bits_retain(bits);
-        const auto entries = mesh_view_layout_entries(clustered_forward_buffer_binding_type,
-                                                      visibility_ranges_buffer_binding_type, key,
-                                                      binding_arrays_are_usable, decals_feature_enabled,
-                                                      partially_bound_binding_array_supported, oit_supported);
+        const auto key     = MeshPipelineViewLayoutKey::from_bits_retain(bits);
+        const auto entries = mesh_view_layout_entries(
+            clustered_forward_buffer_binding_type, visibility_ranges_buffer_binding_type, key,
+            binding_arrays_are_usable, decals_feature_enabled, partially_bound_binding_array_supported, oit_supported);
 #ifndef NDEBUG
         std::size_t texture_count = 0;
         for (const auto& list : entries) {
@@ -251,8 +254,10 @@ EPIX_EXPORT struct MeshPipelineViewLayouts {
      *  `impl FromWorld for MeshPipelineViewLayouts`). */
     static MeshPipelineViewLayouts make(wgpu::BufferBindingType clustered_forward_buffer_binding_type,
                                         wgpu::BufferBindingType visibility_ranges_buffer_binding_type,
-                                        bool binding_arrays_are_usable, bool decals_feature_enabled,
-                                        bool partially_bound_binding_array_supported, bool oit_supported) {
+                                        bool binding_arrays_are_usable,
+                                        bool decals_feature_enabled,
+                                        bool partially_bound_binding_array_supported,
+                                        bool oit_supported) {
         return MeshPipelineViewLayouts{generate_view_layouts(
             clustered_forward_buffer_binding_type, visibility_ranges_buffer_binding_type, binding_arrays_are_usable,
             decals_feature_enabled, partially_bound_binding_array_supported, oit_supported)};
@@ -265,8 +270,9 @@ EPIX_EXPORT struct MeshPipelineViewLayouts {
 #ifndef NDEBUG
         if (layout.texture_count > MESH_PIPELINE_VIEW_LAYOUT_SAFE_MAX_TEXTURES) {
             static const bool warned = [] {
-                spdlog::warn("[pbr] Too many textures in mesh pipeline view layout, this might cause us to hit "
-                             "`wgpu::Limits::max_sampled_textures_per_shader_stage` in some environments.");
+                spdlog::warn(
+                    "[pbr] Too many textures in mesh pipeline view layout, this might cause us to hit "
+                    "`wgpu::Limits::max_sampled_textures_per_shader_stage` in some environments.");
                 return true;
             }();
             (void)warned;

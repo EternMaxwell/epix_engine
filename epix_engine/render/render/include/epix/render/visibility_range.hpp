@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/app.hpp>
+#include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
-#include <epix/camera.hpp>
 #endif
 
 #include <epix/render/render_resource.hpp>

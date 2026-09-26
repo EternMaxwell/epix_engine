@@ -1,15 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/render.hpp>
 #include <functional>
 #include <optional>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/fullscreen.hpp>
 
@@ -34,7 +33,8 @@ EPIX_EXPORT struct EPIX_API BlitPipeline {
     assets::Handle<shader::Shader> fragment_shader;
 
     /** @brief Creates the texture/sampler bind group for one source view. */
-    wgpu::BindGroup create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture,
+    wgpu::BindGroup create_bind_group(const wgpu::Device& device,
+                                      const wgpu::TextureView& src_texture,
                                       const render::PipelineServer& pipeline_server) const;
 
     /** @brief Builds a format/blend/sample-specialized render descriptor. */

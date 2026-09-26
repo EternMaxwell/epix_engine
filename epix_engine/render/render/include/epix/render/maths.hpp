@@ -1,8 +1,8 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
-#include <epix/ecs.hpp>
 #include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #endif
 
 namespace epix::render {

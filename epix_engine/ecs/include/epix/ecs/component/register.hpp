@@ -75,11 +75,12 @@ EPIX_EXPORT struct EPIX_API ComponentsRegistrator {
     template <typename T>
     void register_on_remove_hook(ComponentHooks::HookFunc hook) {
         const TypeId id = register_component<T>();
-        auto info        = m_components->get_info_mut(id);
+        auto info       = m_components->get_info_mut(id);
         if (!info) throw std::logic_error("registered component metadata is missing");
         auto& hooks = info->get().hooks_mut();
         if (hooks.on_remove && hooks.on_remove != hook) {
-            throw std::logic_error(std::format("component '{}' already has an on_remove hook", meta::type_id<T>().name()));
+            throw std::logic_error(
+                std::format("component '{}' already has an on_remove hook", meta::type_id<T>().name()));
         }
         hooks.on_remove = hook;
     }

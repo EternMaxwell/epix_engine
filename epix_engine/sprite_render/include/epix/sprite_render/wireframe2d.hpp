@@ -1,14 +1,15 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/render.hpp>
 #include <epix/sprite.hpp>
 #include <epix/transform.hpp>
-#include <cstdint>
 #include <expected>
 #include <glm/glm.hpp>
 #include <optional>
@@ -16,7 +17,6 @@
 #include <tuple>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/sprite_render/mesh2d_pipeline.hpp>
@@ -235,9 +235,9 @@ namespace epix::render::phase {
  *  it specialises does. */
 EPIX_EXPORT template <PhaseItem P>
 struct RenderCommand<::epix::sprite_render::SetWireframe2dPushConstants, P> {
-    using Param     = std::tuple<epix::ecs::Res<::epix::sprite_render::RenderWireframeInstances>,
-                                 epix::ecs::Res<::epix::render::RenderAssets<
-                                     ::epix::sprite_render::RenderWireframeMaterial>>>;
+    using Param =
+        std::tuple<epix::ecs::Res<::epix::sprite_render::RenderWireframeInstances>,
+                   epix::ecs::Res<::epix::render::RenderAssets<::epix::sprite_render::RenderWireframeMaterial>>>;
     using ViewQuery = epix::ecs::Item<>;
     using ItemQuery = epix::ecs::Item<>;
 
@@ -249,7 +249,7 @@ struct RenderCommand<::epix::sprite_render::SetWireframe2dPushConstants, P> {
                                                    Param params,
                                                    const wgpu::RenderPassEncoder& encoder) {
         auto&& [wireframe_instances, wireframe_assets] = params;
-        const auto material_it = wireframe_instances->instances.find(item.main_entity());
+        const auto material_it                         = wireframe_instances->instances.find(item.main_entity());
         if (material_it == wireframe_instances->instances.end()) {
             return std::unexpected(RenderCommandError{
                 .type    = RenderCommandError::Type::Failure,
@@ -316,17 +316,19 @@ EPIX_EXPORT struct EPIX_API Wireframe2dPipeline {
 
 /** @brief Bevy `init_wireframe_2d_pipeline` (`:325-334`). */
 EPIX_EXPORT EPIX_API void init_wireframe_2d_pipeline(ecs::Commands commands,
-                                            ecs::Res<Mesh2dPipeline> mesh_2d_pipeline,
-                                            ecs::Res<assets::AssetServer> asset_server);
+                                                     ecs::Res<Mesh2dPipeline> mesh_2d_pipeline,
+                                                     ecs::Res<assets::AssetServer> asset_server);
 
 /** @brief Bevy's `DrawWireframe2d` command list (`:311-317`), named once here
  *  and reused for both the registration and the
  *  `DrawFunctions<Wireframe2dPhaseItem>::read()->id<DrawWireframe2d>()` lookup
  *  `queue_wireframes` performs. */
-EPIX_EXPORT using DrawWireframe2d =
-    render::phase::RenderCommandSequence<Wireframe2dPhaseItem, render::phase::SetItemPipeline,
-                                         SetMesh2dViewBindGroup<0>, SetMesh2dBindGroup<1>,
-                                         SetWireframe2dPushConstants, DrawMesh2d>;
+EPIX_EXPORT using DrawWireframe2d = render::phase::RenderCommandSequence<Wireframe2dPhaseItem,
+                                                                         render::phase::SetItemPipeline,
+                                                                         SetMesh2dViewBindGroup<0>,
+                                                                         SetMesh2dBindGroup<1>,
+                                                                         SetWireframe2dPushConstants,
+                                                                         DrawMesh2d>;
 
 /** @brief The graph node that draws the wireframe phase (Bevy
  *  `Wireframe2dNode`, `:358-409`). */
@@ -359,40 +361,40 @@ EPIX_EXPORT struct EPIX_API Wireframe2dPlugin {
 
 /** @brief Bevy `setup_global_wireframe_material` (`:555-566`). */
 EPIX_EXPORT EPIX_API void setup_global_wireframe_material(ecs::Commands commands,
-                                                 ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
-                                                 ecs::Res<Wireframe2dConfig> config);
+                                                          ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
+                                                          ecs::Res<Wireframe2dConfig> config);
 /** @brief Bevy `global_color_changed` (`:568-577`). */
 EPIX_EXPORT EPIX_API void global_color_changed(ecs::Res<Wireframe2dConfig> config,
-                                      ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
-                                      ecs::Res<GlobalWireframeMaterial> global_material);
+                                               ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
+                                               ecs::Res<GlobalWireframeMaterial> global_material);
 /** @brief Bevy `wireframe_color_changed` (`:579-592`). */
 EPIX_EXPORT EPIX_API void wireframe_color_changed(
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
     ecs::Query<ecs::Item<ecs::Mut<Mesh2dWireframe>, const Wireframe2dColor&>,
                ecs::Filter<ecs::With<Wireframe2d>, ecs::Modified<Wireframe2dColor>>> colors_changed);
 /** @brief Bevy `apply_wireframe_material` (`:594-619`). */
-EPIX_EXPORT EPIX_API void apply_wireframe_material(ecs::Commands commands,
-                                          ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
-                                          ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
-                                                     ecs::Filter<ecs::With<Wireframe2d>,
-                                                                 ecs::Without<Mesh2dWireframe>>>
-                                              wireframes,
-                                          ecs::Query<ecs::Entity,
-                                                     ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>>
-                                              no_wireframes,
-                                          ecs::RemovedComponents<Wireframe2d> removed_wireframes,
-                                          ecs::Res<GlobalWireframeMaterial> global_material);
+EPIX_EXPORT EPIX_API void apply_wireframe_material(
+    ecs::Commands commands,
+    ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials,
+    ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
+               ecs::Filter<ecs::With<Wireframe2d>, ecs::Without<Mesh2dWireframe>>> wireframes,
+    ecs::Query<ecs::Entity, ecs::Filter<ecs::With<NoWireframe2d>, ecs::With<Mesh2dWireframe>>> no_wireframes,
+    ecs::RemovedComponents<Wireframe2d> removed_wireframes,
+    ecs::Res<GlobalWireframeMaterial> global_material);
 /** @brief Bevy `apply_global_wireframe_material` (`:623-649`). */
 EPIX_EXPORT EPIX_API void apply_global_wireframe_material(
-    ecs::Commands commands, ecs::Res<Wireframe2dConfig> config,
+    ecs::Commands commands,
+    ecs::Res<Wireframe2dConfig> config,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const Wireframe2dColor&>>,
-               ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
-                           ecs::Without<Mesh2dWireframe>>>
-        meshes_without_material,
+               ecs::Filter<ecs::With<mesh::Mesh2d>,
+                           ecs::Without<Wireframe2d>,
+                           ecs::Without<NoWireframe2d>,
+                           ecs::Without<Mesh2dWireframe>>> meshes_without_material,
     ecs::Query<ecs::Entity,
-               ecs::Filter<ecs::With<mesh::Mesh2d>, ecs::Without<Wireframe2d>, ecs::Without<NoWireframe2d>,
-                           ecs::With<Mesh2dWireframe>>>
-        meshes_with_global_material,
+               ecs::Filter<ecs::With<mesh::Mesh2d>,
+                           ecs::Without<Wireframe2d>,
+                           ecs::Without<NoWireframe2d>,
+                           ecs::With<Mesh2dWireframe>>> meshes_with_global_material,
     ecs::Res<GlobalWireframeMaterial> global_material,
     ecs::ResMut<assets::Assets<Wireframe2dMaterial>> materials);
 /** @brief Bevy `extract_wireframe_materials` (`:523-553`). */
@@ -419,9 +421,10 @@ EPIX_EXPORT EPIX_API void extract_wireframe_entities_needing_specialization(
 /** @brief Bevy `check_wireframe_entities_needing_specialization` (`:710-726`). */
 EPIX_EXPORT EPIX_API void check_wireframe_entities_needing_specialization(
     ecs::Query<ecs::Entity,
-               ecs::Or<ecs::Modified<mesh::Mesh2d>, assets::AssetChanged<mesh::Mesh2d>,
-                       ecs::Modified<Mesh2dWireframe>, assets::AssetChanged<Mesh2dWireframe>>>
-        needs_specialization,
+               ecs::Or<ecs::Modified<mesh::Mesh2d>,
+                       assets::AssetChanged<mesh::Mesh2d>,
+                       ecs::Modified<Mesh2dWireframe>,
+                       assets::AssetChanged<Mesh2dWireframe>>> needs_specialization,
     ecs::ResMut<WireframeEntitiesNeedingSpecialization> entities_needing_specialization);
 /** @brief Bevy `specialize_wireframes` (`:728-808`). */
 EPIX_EXPORT EPIX_API void specialize_wireframes(

@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <span>
 #include <type_traits>
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::render_resource {
@@ -24,8 +23,8 @@ class BindGroupEntries {
     /** @brief Build a raw WebGPU buffer entry. The entries collection assigns
      * the binding number, leaving buffer range ownership explicit. */
     [[nodiscard]] static wgpu::BindGroupEntry buffer_binding(const wgpu::Buffer& buffer,
-                                                              std::uint64_t offset,
-                                                              std::uint64_t size) {
+                                                             std::uint64_t offset,
+                                                             std::uint64_t size) {
         return wgpu::BindGroupEntry().setBuffer(buffer).setOffset(offset).setSize(size);
     }
 
@@ -50,8 +49,8 @@ class BindGroupEntries {
     template <typename... Entries>
         requires((std::same_as<std::remove_cvref_t<Entries>, std::pair<std::uint32_t, wgpu::BindGroupEntry>>) && ...)
     static auto with_indices(Entries&&... entries) -> BindGroupEntries<sizeof...(Entries)> {
-        return BindGroupEntries<sizeof...(Entries)>{std::array<wgpu::BindGroupEntry, sizeof...(Entries)>{
-            ([](auto&& indexed_entry) {
+        return BindGroupEntries<sizeof...(Entries)>{
+            std::array<wgpu::BindGroupEntry, sizeof...(Entries)>{([](auto&& indexed_entry) {
                 auto entry = std::move(indexed_entry.second);
                 entry.setBinding(indexed_entry.first);
                 return entry;
@@ -98,12 +97,13 @@ EPIX_EXPORT class DynamicBindGroupEntries {
         requires((std::same_as<std::remove_cvref_t<Entries>, wgpu::BindGroupEntry>) && ...)
     DynamicBindGroupEntries& extend_sequential(Entries&&... entries) & {
         const std::uint32_t start = m_entries.empty() ? 0 : m_entries.back().binding + 1;
-        std::uint32_t binding = start;
+        std::uint32_t binding     = start;
         (m_entries.push_back([&] {
             auto entry = std::forward<Entries>(entries);
             entry.setBinding(binding++);
             return entry;
-        }()), ...);
+        }()),
+         ...);
         return *this;
     }
 
@@ -121,7 +121,8 @@ EPIX_EXPORT class DynamicBindGroupEntries {
             auto entry = std::move(entries.second);
             entry.setBinding(entries.first);
             return entry;
-        }()), ...);
+        }()),
+         ...);
         return *this;
     }
 

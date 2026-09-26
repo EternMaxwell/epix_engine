@@ -1,13 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
+#include <epix/common.hpp>
 #include <epix/utils.hpp>
 #include <filesystem>
 #include <span>
 #include <string_view>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/assets/io/memory.hpp>

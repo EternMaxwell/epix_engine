@@ -1,9 +1,9 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/utils.hpp>
@@ -11,7 +11,6 @@
 #include <string>
 #include <utility>
 #include <variant>
-#include <epix/common.hpp>
 #endif
 EPIX_EXPORT namespace epix::window {
     /** @brief Controls how the window position is interpreted. */

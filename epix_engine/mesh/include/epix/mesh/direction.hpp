@@ -3,12 +3,12 @@
 #ifndef EPIX_CXX_MODULE
 #include <cassert>
 #include <cmath>
+#include <epix/common.hpp>
 #include <expected>
 #include <glm/glm.hpp>
 #include <limits>
 #include <string_view>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::mesh {

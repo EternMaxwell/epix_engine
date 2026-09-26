@@ -61,20 +61,18 @@ namespace {
  * texture becomes one `ExtractedSprite` with `ExtractedSpriteKind::Slices`.
  * The sprite queue, batching and draw commands are Bevy's own, so text is
  * rendered by `SpritePipeline` exactly as `Sprite` is. */
-void extract_text2d_sprite(
-    Commands cmd,
-    ResMut<sprite_render::ExtractedSprites> extracted_sprites,
-    ResMut<sprite_render::ExtractedSlices> extracted_slices,
-    Extract<Res<assets::Assets<image::TextureAtlasLayout>>> texture_atlases,
-    Extract<Query<Item<Entity,
-                       const camera::ViewVisibility&,
-                       const ShapedText&,
-                       const TextBounds&,
-                       const sprite::Anchor&,
-                       Opt<const TextColor&>,
-                       const transform::GlobalTransform&>,
-                  Filter<With<Text2d>>>>
-        texts) {
+void extract_text2d_sprite(Commands cmd,
+                           ResMut<sprite_render::ExtractedSprites> extracted_sprites,
+                           ResMut<sprite_render::ExtractedSlices> extracted_slices,
+                           Extract<Res<assets::Assets<image::TextureAtlasLayout>>> texture_atlases,
+                           Extract<Query<Item<Entity,
+                                              const camera::ViewVisibility&,
+                                              const ShapedText&,
+                                              const TextBounds&,
+                                              const sprite::Anchor&,
+                                              Opt<const TextColor&>,
+                                              const transform::GlobalTransform&>,
+                                         Filter<With<Text2d>>>> texts) {
     for (auto&& [main_entity, view_visibility, layout_info, text_bounds, anchor, text_color, global_transform] :
          texts.iter()) {
         // Bevy gates 2D text extraction on `ViewVisibility` (`text2d/mod.rs:71-73`).
@@ -86,10 +84,9 @@ void extract_text2d_sprite(
             color        = glm::vec4(value.r, value.g, value.b, value.a);
         }
 
-        detail::extract_text2d_layout(
-            layout_info, main_entity, text_bounds, anchor, color, global_transform, *texture_atlases,
-            extracted_sprites->sprites, extracted_slices->slices,
-            [&cmd] { return cmd.spawn(render::sync_world::TemporaryRenderEntity{}).id(); });
+        detail::extract_text2d_layout(layout_info, main_entity, text_bounds, anchor, color, global_transform,
+                                      *texture_atlases, extracted_sprites->sprites, extracted_slices->slices,
+                                      [&cmd] { return cmd.spawn(render::sync_world::TemporaryRenderEntity{}).id(); });
     }
 }
 }  // namespace
@@ -100,11 +97,9 @@ void extract_text2d_sprite(
 void text::calculate_bounds_text2d(
     Commands commands,
     Query<Item<Entity, const ShapedText&, const sprite::Anchor&, const TextBounds&>,
-          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>>>
-        new_text_aabb,
+          Filter<Without<camera::Aabb>, Without<camera::NoFrustumCulling>>> new_text_aabb,
     Query<Item<const ShapedText&, const sprite::Anchor&, const TextBounds&, Mut<camera::Aabb>>,
-          Filter<Modified<ShapedText>, Without<camera::NoFrustumCulling>>>
-        update_text_aabb) {
+          Filter<Modified<ShapedText>, Without<camera::NoFrustumCulling>>> update_text_aabb) {
     auto text_aabb = [](const ShapedText& layout_info, const sprite::Anchor& anchor, const TextBounds& text_bounds) {
         const glm::vec2 size{text_bounds.width.value_or(layout_info.size().x),
                              text_bounds.height.value_or(layout_info.size().y)};
@@ -159,8 +154,7 @@ void TextRenderPlugin::ready(App& app) {
     // Bevy registers the text extractor `.after(SpriteSystems::ExtractSprites)`
     // (`bevy_sprite_render/src/lib.rs:104-105`) because sprite extraction
     // clears the extracted sprite and slice stores each frame.
-    render_subapp.add_systems(render::ExtractSchedule,
-                              into(extract_text2d_sprite)
-                                  .after(sprite_render::SpriteSystems::ExtractSprites)
-                                  .set_name("extract text2d sprite"));
+    render_subapp.add_systems(render::ExtractSchedule, into(extract_text2d_sprite)
+                                                           .after(sprite_render::SpriteSystems::ExtractSprites)
+                                                           .set_name("extract text2d sprite"));
 }

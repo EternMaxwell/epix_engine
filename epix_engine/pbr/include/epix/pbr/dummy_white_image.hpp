@@ -2,13 +2,13 @@
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/image.hpp>
 #include <epix/render/fallback_image.hpp>
 #include <epix/render/render_resource.hpp>
 #include <optional>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -20,8 +20,8 @@ namespace epix::pbr {
  *  The device facts Bevy reads off `RenderDevice`/`RenderQueue` and the
  *  `DefaultImageSampler` resource are parameters, as elsewhere in this port. */
 EPIX_EXPORT EPIX_API render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::Device& render_device,
-                                                                  const wgpu::Sampler& default_sampler,
-                                                                  const wgpu::Queue& render_queue);
+                                                                           const wgpu::Sampler& default_sampler,
+                                                                           const wgpu::Queue& render_queue);
 
 /** @brief The texture view and sampler a material's optional texture should be
  *  bound with: the image's own when its handle is present and uploaded, and the

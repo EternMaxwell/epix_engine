@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/async_channel.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <filesystem>
@@ -12,7 +12,6 @@
 #include <optional>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render.hpp>
 

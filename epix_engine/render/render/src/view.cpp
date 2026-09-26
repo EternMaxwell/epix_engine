@@ -86,7 +86,8 @@ public struct View {
 }  // namespace
 
 void epix::render::view::update_manual_texture_view_cameras(
-    Query<Item<Mut<::epix::camera::Camera>, Mut<::epix::camera::Projection>, const ::epix::camera::RenderTarget&>> cameras,
+    Query<Item<Mut<::epix::camera::Camera>, Mut<::epix::camera::Projection>, const ::epix::camera::RenderTarget&>>
+        cameras,
     Res<texture::ManualTextureViews> manual_texture_views) {
     for (auto&& [camera, projection, target] : cameras.iter()) {
         const auto* handle = std::get_if<::epix::camera::ManualTextureViewHandle>(&target);
@@ -102,7 +103,7 @@ void epix::render::view::update_manual_texture_view_cameras(
         if (camera_mut.viewport) camera_mut.viewport->clamp_to_size(target_size);
         const auto viewport_size = camera_mut.viewport.transform(
             [](const ::epix::camera::Viewport& viewport) { return viewport.physical_size; });
-        camera_mut.computed.target_info = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
+        camera_mut.computed.target_info  = ::epix::camera::RenderTargetInfo{target_size, 1.0f};
         const glm::uvec2 projection_size = viewport_size.value_or(target_size);
         if (projection_size.x != 0 && projection_size.y != 0) {
             projection.get_mut().update(static_cast<float>(projection_size.x), static_cast<float>(projection_size.y));
@@ -499,14 +500,13 @@ void camera::extract_cameras(
 
     for (auto&& [entity, render_entity, camera, target, graph, gtransform, visible_entities, frustum, opt_render_layer,
                  opt_mip_bias, opt_temporal_jitter, opt_hdr, opt_color_grading, opt_exposure, opt_resolution_override,
-                 msaa, main_texture_usages, opt_projection, opt_no_indirect_drawing] :
-         cameras.iter()) {
+                 msaa, main_texture_usages, opt_projection, opt_no_indirect_drawing] : cameras.iter()) {
         const auto remove_camera_view = [&] {
-            cmd.entity(render_entity.id()).remove<ExtractedCamera, view::ExtractedView, view::RenderVisibleEntities,
-                                             view::Msaa, ::epix::camera::CameraMainTextureUsages,
-                                             ::epix::camera::Frustum, camera::MipBias, camera::TemporalJitter,
-                                             ::epix::camera::RenderLayers, ::epix::camera::Projection,
-                                             ::epix::camera::MainPassResolutionOverride, view::NoIndirectDrawing>();
+            cmd.entity(render_entity.id())
+                .remove<ExtractedCamera, view::ExtractedView, view::RenderVisibleEntities, view::Msaa,
+                        ::epix::camera::CameraMainTextureUsages, ::epix::camera::Frustum, camera::MipBias,
+                        camera::TemporalJitter, ::epix::camera::RenderLayers, ::epix::camera::Projection,
+                        ::epix::camera::MainPassResolutionOverride, view::NoIndirectDrawing>();
         };
         if (!camera.is_active) {
             remove_camera_view();
@@ -533,10 +533,9 @@ void camera::extract_cameras(
             auto& render_entities = render_visible_entities.entities[visibility_class];
             render_entities.reserve(main_entities.size());
             for (const Entity main_entity : main_entities) {
-                const Entity mapped =
-                    mapper.get(main_entity)
-                        .transform([](const sync_world::RenderEntity& re) { return re.id(); })
-                        .value_or(Entity::PLACEHOLDER);
+                const Entity mapped = mapper.get(main_entity)
+                                          .transform([](const sync_world::RenderEntity& re) { return re.id(); })
+                                          .value_or(Entity::PLACEHOLDER);
                 render_entities.emplace_back(mapped, sync_world::MainEntity{main_entity});
             }
         }
@@ -611,7 +610,7 @@ std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode:
                                                                                      const World& world) {
     // Bevy CameraDriverNode owns this persistent query state instead of
     // recreating an ad-hoc query for every graph run.
-    auto sorted = world.get_resource<SortedCameras>();
+    auto sorted  = world.get_resource<SortedCameras>();
     auto windows = world.get_resource<window::ExtractedWindows>();
     if (!sorted || !windows || !cameras) return {};
 
@@ -637,8 +636,7 @@ std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode:
         }
         if (run_graph && !graph.run_sub_graph(camera.render_graph, {}, sorted_camera.entity)) {
             spdlog::warn("Failed to run camera render graph for entity {:#x}, with render graph label {}",
-                         sorted_camera.entity.index,
-                         camera.render_graph.type_index().short_name());
+                         sorted_camera.entity.index, camera.render_graph.type_index().short_name());
             return std::unexpected(graph::NodeRunError::RunSubGraphError);
         }
     }
@@ -656,8 +654,8 @@ std::expected<void, graph::NodeRunError> epix::render::camera::CameraDriverNode:
                               .setLoadOp(wgpu::LoadOp::eClear)
                               .setStoreOp(wgpu::StoreOp::eStore)
                               .setClearValue(wgpu::Color(global_clear_color->get().r, global_clear_color->get().g,
-                                                          global_clear_color->get().b, global_clear_color->get().a));
-        auto pass = render_ctx.command_encoder().beginRenderPass(
+                                                         global_clear_color->get().b, global_clear_color->get().a));
+        auto pass       = render_ctx.command_encoder().beginRenderPass(
             wgpu::RenderPassDescriptor().setColorAttachments(std::array{attachment}));
         pass.end();
     }

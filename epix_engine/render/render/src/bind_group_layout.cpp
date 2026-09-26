@@ -22,8 +22,7 @@ bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescr
             bool(a.texture.multisampled) != bool(b.texture.multisampled)) {
             return false;
         }
-        if (a.storageTexture.access != b.storageTexture.access ||
-            a.storageTexture.format != b.storageTexture.format ||
+        if (a.storageTexture.access != b.storageTexture.access || a.storageTexture.format != b.storageTexture.format ||
             a.storageTexture.viewDimension != b.storageTexture.viewDimension) {
             return false;
         }

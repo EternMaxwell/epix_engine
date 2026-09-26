@@ -1,16 +1,17 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/mesh.hpp>
 #include <epix/render.hpp>
 #include <epix/transform.hpp>
-#include <array>
-#include <cstddef>
-#include <cstdint>
 #include <functional>
 #include <glm/glm.hpp>
 #include <optional>
@@ -20,7 +21,6 @@
 #include <unordered_map>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/sprite_render/material2d.hpp>
@@ -113,8 +113,8 @@ EPIX_EXPORT struct EPIX_API TilemapChunkTileData {
     /** @brief The tile at `position` inside a chunk of `tilemap_size` tiles, or
      *  nothing when the position is out of range or the tile is empty (Bevy
      *  `TilemapChunkTileData::tile_data_from_tile_pos`, `mod.rs:241-251`). */
-    std::optional<std::reference_wrapper<const TileData>> tile_data_from_tile_pos(
-        glm::uvec2 tilemap_size, glm::uvec2 position) const noexcept;
+    std::optional<std::reference_wrapper<const TileData>> tile_data_from_tile_pos(glm::uvec2 tilemap_size,
+                                                                                  glm::uvec2 position) const noexcept;
 };
 
 /** @brief Packed per-tile data for the `Rgba16Uint` tile-data texture (Bevy
@@ -189,10 +189,11 @@ EPIX_EXPORT struct EPIX_API TilemapChunkMaterialPlugin {
  *  is the same write, because a chunk's tile data always has exactly the length
  *  its image was created with. */
 EPIX_EXPORT EPIX_API void update_tilemap_chunk_indices(
-    ecs::Query<ecs::Item<ecs::Entity, const TilemapChunk&, const TilemapChunkTileData&,
+    ecs::Query<ecs::Item<ecs::Entity,
+                         const TilemapChunk&,
+                         const TilemapChunkTileData&,
                          const MeshMaterial2d<TilemapChunkMaterial>&>,
-               ecs::Modified<TilemapChunkTileData>>
-        query,
+               ecs::Modified<TilemapChunkTileData>> query,
     ecs::ResMut<assets::Assets<TilemapChunkMaterial>> materials,
     ecs::ResMut<assets::Assets<image::Image>> images);
 
@@ -205,18 +206,18 @@ namespace epix::render::render_resource {
  *  its `Data` is the unit type Bevy's derive defaults to. */
 template <>
 struct EPIX_API AsBindGroup<epix::sprite_render::TilemapChunkMaterial> {
-    using Data  = std::monostate;
+    using Data = std::monostate;
     /** @brief The prepared images both textures are resolved from. */
     using Param = std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>>;
 
     static constexpr std::string_view label() { return "tilemap_chunk_material"; }
 
     static std::vector<wgpu::BindGroupLayoutEntry> layout_entries() {
-        const auto entries = BindGroupLayoutEntries<>::sequential(
-            wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment,
-            binding_types::texture_2d_array(wgpu::TextureSampleType::eFloat),
-            binding_types::sampler(wgpu::SamplerBindingType::eFiltering),
-            binding_types::texture_2d(wgpu::TextureSampleType::eUint));
+        const auto entries =
+            BindGroupLayoutEntries<>::sequential(wgpu::ShaderStage::eVertex | wgpu::ShaderStage::eFragment,
+                                                 binding_types::texture_2d_array(wgpu::TextureSampleType::eFloat),
+                                                 binding_types::sampler(wgpu::SamplerBindingType::eFiltering),
+                                                 binding_types::texture_2d(wgpu::TextureSampleType::eUint));
         return {entries.begin(), entries.end()};
     }
 

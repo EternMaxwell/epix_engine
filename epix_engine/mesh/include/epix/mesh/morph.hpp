@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
@@ -8,6 +7,7 @@
 #include <cstdint>
 #include <cstring>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <expected>
@@ -23,7 +23,6 @@
 #include <variant>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/mesh/mesh.hpp>
@@ -51,7 +50,8 @@ struct TooManyTargets {
 }  // namespace morph_build_error
 
 /** @brief Error returned while creating morph weights or a morph-target image. */
-struct EPIX_API MorphBuildError : std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets> {
+struct EPIX_API MorphBuildError
+    : std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets> {
     using Base = std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets>;
     using Base::Base;
 

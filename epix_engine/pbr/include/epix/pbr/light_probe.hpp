@@ -3,11 +3,11 @@
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <glm/glm.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/pbr/probe.hpp>
 
@@ -116,8 +116,7 @@ namespace epix::render::render_resource {
 /** @brief `LightProbesUniform` is uploaded as raw bytes; the struct is already padded
  *  to the shader's std140 layout with its offsets asserted. */
 template <>
-struct ShaderTypeInfo<::epix::pbr::LightProbesUniform>
-    : RawShaderType<::epix::pbr::LightProbesUniform> {};
+struct ShaderTypeInfo<::epix::pbr::LightProbesUniform> : RawShaderType<::epix::pbr::LightProbesUniform> {};
 }  // namespace epix::render::render_resource
 
 namespace epix::pbr {
@@ -152,8 +151,7 @@ namespace epix::render::render_resource {
  *  `DynamicUniformBuffer<EnvironmentMapUniform>` and checks the `ShaderWritable`
  *  concept there - the same ordering fog's uniform needs. */
 template <>
-struct ShaderTypeInfo<::epix::pbr::EnvironmentMapUniform>
-    : RawShaderType<::epix::pbr::EnvironmentMapUniform> {};
+struct ShaderTypeInfo<::epix::pbr::EnvironmentMapUniform> : RawShaderType<::epix::pbr::EnvironmentMapUniform> {};
 }  // namespace epix::render::render_resource
 
 namespace epix::pbr {
@@ -180,10 +178,8 @@ EPIX_EXPORT struct ViewEnvironmentMapUniformOffset {
  *  `prepare_environment_uniform_buffer`'s offset-0 arm cover only views that
  *  extraction never saw. */
 EPIX_EXPORT EPIX_API void gather_environment_map_uniform(
-    app::Extract<ecs::Query<ecs::Item<::epix::render::sync_world::RenderEntity,
-                                     ecs::Opt<const EnvironmentMapLight&>>,
-                            ecs::With<::epix::camera::Camera3d>>>
-        views,
+    app::Extract<ecs::Query<ecs::Item<::epix::render::sync_world::RenderEntity, ecs::Opt<const EnvironmentMapLight&>>,
+                            ecs::With<::epix::camera::Camera3d>>> views,
     ecs::Commands commands);
 
 /** @brief Writes one environment map uniform per view (Bevy
@@ -196,11 +192,12 @@ EPIX_EXPORT EPIX_API void gather_environment_map_uniform(
  *  Writing the default would work too, but it would spend a uniform slot per view that
  *  has no environment map at all. */
 EPIX_EXPORT EPIX_API void prepare_environment_uniform_buffer(
-    ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
+    ecs::Commands commands,
+    ecs::Res<wgpu::Device> render_device,
+    ecs::Res<wgpu::Queue> render_queue,
     ecs::ResMut<EnvironmentMapUniformBuffer> environment_uniform_buffer,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const EnvironmentMapUniform&>>,
-               ecs::With<::epix::render::view::ExtractedView>>
-        views);
+               ecs::With<::epix::render::view::ExtractedView>> views);
 
 /** @brief The uniform a view's `EnvironmentMapLight` produces (Bevy
  *  `gather_environment_map_uniform`, `light_probe/mod.rs:320-343`).
@@ -259,8 +256,8 @@ EPIX_EXPORT inline float light_probe_camera_distance_sort_key(const glm::mat4& w
  *  render-world texture bookkeeping does. */
 EPIX_EXPORT struct LightProbeRecord {
     std::array<glm::vec4, 3> light_from_world_transposed{};
-    std::uint64_t texture_id = 0;
-    float intensity = 0.0f;
+    std::uint64_t texture_id              = 0;
+    float intensity                       = 0.0f;
     bool affects_lightmapped_mesh_diffuse = false;
 };
 
@@ -282,9 +279,9 @@ EPIX_EXPORT struct LightProbeRecord {
  *
  *  `indices` maps a texture id to its slot in the view's binding arrays and is updated
  *  in place, exactly as Bevy's `get_or_insert_cubemap` does. */
-EPIX_EXPORT inline void light_probes_gather_list(
-    std::vector<RenderLightProbe>& out, std::unordered_map<std::uint64_t, std::uint32_t>& indices,
-    const std::vector<LightProbeRecord>& probes) {
+EPIX_EXPORT inline void light_probes_gather_list(std::vector<RenderLightProbe>& out,
+                                                 std::unordered_map<std::uint64_t, std::uint32_t>& indices,
+                                                 const std::vector<LightProbeRecord>& probes) {
     const std::size_t count = std::min(probes.size(), MAX_VIEW_LIGHT_PROBES);
     for (std::size_t i = 0; i < count; ++i) {
         const LightProbeRecord& probe = probes[i];
@@ -294,9 +291,9 @@ EPIX_EXPORT inline void light_probes_gather_list(
         (void)inserted;
 
         out.push_back(RenderLightProbe{
-            .light_from_world_transposed = probe.light_from_world_transposed,
-            .texture_index = static_cast<std::int32_t>(entry->second),
-            .intensity = probe.intensity,
+            .light_from_world_transposed      = probe.light_from_world_transposed,
+            .texture_index                    = static_cast<std::int32_t>(entry->second),
+            .intensity                        = probe.intensity,
             .affects_lightmapped_mesh_diffuse = probe.affects_lightmapped_mesh_diffuse ? 1u : 0u,
         });
     }

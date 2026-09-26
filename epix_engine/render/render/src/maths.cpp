@@ -1,9 +1,8 @@
-#include <epix/render/maths.hpp>
-
-#include <epix/assets.hpp>
-#include <epix/shader.hpp>
 #include <spdlog/spdlog.h>
 
+#include <epix/assets.hpp>
+#include <epix/render/maths.hpp>
+#include <epix/shader.hpp>
 #include <span>
 #include <string>
 
@@ -173,8 +172,9 @@ void register_maths_shader(ecs::World& world) {
     auto registry = world.get_resource_mut<epix::assets::EmbeddedAssetRegistry>();
     auto server   = world.get_resource<epix::assets::AssetServer>();
     if (!registry || !server) {
-        spdlog::warn("[render.maths] EmbeddedAssetRegistry or AssetServer not available. Maths shader library not "
-                     "registered.");
+        spdlog::warn(
+            "[render.maths] EmbeddedAssetRegistry or AssetServer not available. Maths shader library not "
+            "registered.");
         return;
     }
     registry->get().insert_asset_static(

@@ -1,11 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <optional>
 #include <unordered_set>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/window/events.hpp>

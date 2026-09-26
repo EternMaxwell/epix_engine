@@ -5,6 +5,7 @@
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/mesh.hpp>
 #include <epix/render/binned_phase.hpp>
@@ -17,7 +18,6 @@
 #include <optional>
 #include <unordered_set>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/light_markers.hpp>
@@ -34,22 +34,21 @@ namespace epix::pbr {
  *  reads, the five optional reads (previous transform, lightmap, AABB, mesh tag and
  *  render layers) and the six `Has` markers. Bevy's query *data* type is this tuple;
  *  the change filter that selects which entities to visit is the system's. */
-using GpuMeshExtractionItem =
-    ecs::Item<ecs::Entity,
-              const camera::ViewVisibility&,
-              const transform::GlobalTransform&,
-              ecs::Opt<const PreviousGlobalTransform&>,
-              ecs::Opt<const Lightmap&>,
-              ecs::Opt<const ::epix::camera::Aabb&>,
-              const mesh::Mesh3d&,
-              ecs::Opt<const mesh::MeshTag&>,
-              ecs::Has<camera::NoFrustumCulling>,
-              ecs::Has<NotShadowReceiver>,
-              ecs::Has<TransmittedShadowReceiver>,
-              ecs::Has<NotShadowCaster>,
-              ecs::Has<render::phase::NoAutomaticBatching>,
-              ecs::Has<camera::VisibilityRange>,
-              ecs::Opt<const camera::RenderLayers&>>;
+using GpuMeshExtractionItem = ecs::Item<ecs::Entity,
+                                        const camera::ViewVisibility&,
+                                        const transform::GlobalTransform&,
+                                        ecs::Opt<const PreviousGlobalTransform&>,
+                                        ecs::Opt<const Lightmap&>,
+                                        ecs::Opt<const ::epix::camera::Aabb&>,
+                                        const mesh::Mesh3d&,
+                                        ecs::Opt<const mesh::MeshTag&>,
+                                        ecs::Has<camera::NoFrustumCulling>,
+                                        ecs::Has<NotShadowReceiver>,
+                                        ecs::Has<TransmittedShadowReceiver>,
+                                        ecs::Has<NotShadowCaster>,
+                                        ecs::Has<render::phase::NoAutomaticBatching>,
+                                        ecs::Has<camera::VisibilityRange>,
+                                        ecs::Opt<const camera::RenderLayers&>>;
 
 /** @brief The query over every mesh entity, used to re-extract the ones whose
  *  material was not ready (Bevy's `all_meshes_query`). */
@@ -63,35 +62,34 @@ using GpuMeshExtractionQuery = ecs::Query<GpuMeshExtractionItem>;
  *  so each term is spelled as the pair Bevy's `Changed` stands for; that is the same
  *  idiom `visibility_range.hpp` uses for its `Changed<VisibilityRange>` early-out.
  *  The required `Mesh3d` read in the item list is what keeps non-mesh entities out. */
-using GpuMeshExtractionChangedFilter =
-    ecs::Or<ecs::Added<camera::ViewVisibility>,
-            ecs::Modified<camera::ViewVisibility>,
-            ecs::Added<transform::GlobalTransform>,
-            ecs::Modified<transform::GlobalTransform>,
-            ecs::Added<PreviousGlobalTransform>,
-            ecs::Modified<PreviousGlobalTransform>,
-            ecs::Added<Lightmap>,
-            ecs::Modified<Lightmap>,
-            ecs::Added<::epix::camera::Aabb>,
-            ecs::Modified<::epix::camera::Aabb>,
-            ecs::Added<mesh::Mesh3d>,
-            ecs::Modified<mesh::Mesh3d>,
-            ecs::Added<mesh::MeshTag>,
-            ecs::Modified<mesh::MeshTag>,
-            ecs::Added<camera::NoFrustumCulling>,
-            ecs::Modified<camera::NoFrustumCulling>,
-            ecs::Added<NotShadowReceiver>,
-            ecs::Modified<NotShadowReceiver>,
-            ecs::Added<TransmittedShadowReceiver>,
-            ecs::Modified<TransmittedShadowReceiver>,
-            ecs::Added<NotShadowCaster>,
-            ecs::Modified<NotShadowCaster>,
-            ecs::Added<render::phase::NoAutomaticBatching>,
-            ecs::Modified<render::phase::NoAutomaticBatching>,
-            ecs::Added<camera::VisibilityRange>,
-            ecs::Modified<camera::VisibilityRange>,
-            ecs::Added<mesh::SkinnedMesh>,
-            ecs::Modified<mesh::SkinnedMesh>>;
+using GpuMeshExtractionChangedFilter = ecs::Or<ecs::Added<camera::ViewVisibility>,
+                                               ecs::Modified<camera::ViewVisibility>,
+                                               ecs::Added<transform::GlobalTransform>,
+                                               ecs::Modified<transform::GlobalTransform>,
+                                               ecs::Added<PreviousGlobalTransform>,
+                                               ecs::Modified<PreviousGlobalTransform>,
+                                               ecs::Added<Lightmap>,
+                                               ecs::Modified<Lightmap>,
+                                               ecs::Added<::epix::camera::Aabb>,
+                                               ecs::Modified<::epix::camera::Aabb>,
+                                               ecs::Added<mesh::Mesh3d>,
+                                               ecs::Modified<mesh::Mesh3d>,
+                                               ecs::Added<mesh::MeshTag>,
+                                               ecs::Modified<mesh::MeshTag>,
+                                               ecs::Added<camera::NoFrustumCulling>,
+                                               ecs::Modified<camera::NoFrustumCulling>,
+                                               ecs::Added<NotShadowReceiver>,
+                                               ecs::Modified<NotShadowReceiver>,
+                                               ecs::Added<TransmittedShadowReceiver>,
+                                               ecs::Modified<TransmittedShadowReceiver>,
+                                               ecs::Added<NotShadowCaster>,
+                                               ecs::Modified<NotShadowCaster>,
+                                               ecs::Added<render::phase::NoAutomaticBatching>,
+                                               ecs::Modified<render::phase::NoAutomaticBatching>,
+                                               ecs::Added<camera::VisibilityRange>,
+                                               ecs::Modified<camera::VisibilityRange>,
+                                               ecs::Added<mesh::SkinnedMesh>,
+                                               ecs::Modified<mesh::SkinnedMesh>>;
 
 /** @brief The entity set the system rebuilds each frame from the re-extraction
  *  requests and the component removals (Bevy's `Local<EntityHashSet>`). */
@@ -112,25 +110,26 @@ using OptRef = std::optional<std::reference_wrapper<const T>>;
  *  component flags, the shared record from the GPU factory, and the culling data
  *  only when GPU culling is on. Epix's `Resource` wrappers are reached through
  *  `operator*`, which is where Bevy derefs them. */
-EPIX_EXPORT EPIX_API void extract_mesh_for_gpu_building(ecs::Entity entity,
-                                               const camera::ViewVisibility& view_visibility,
-                                               const transform::GlobalTransform& transform,
-                                               OptRef<PreviousGlobalTransform> previous_transform,
-                                               OptRef<Lightmap> lightmap,
-                                               OptRef<::epix::camera::Aabb> aabb,
-                                               const mesh::Mesh3d& mesh,
-                                               OptRef<mesh::MeshTag> tag,
-                                               bool no_frustum_culling,
-                                               bool not_shadow_receiver,
-                                               bool transmitted_receiver,
-                                               bool not_shadow_caster,
-                                               bool no_automatic_batching,
-                                               bool visibility_range,
-                                               OptRef<camera::RenderLayers> render_layers,
-                                               const render::view::RenderVisibilityRanges& render_visibility_ranges,
-                                               const RenderMeshInstances& render_mesh_instances,
-                                               RenderMeshInstanceGpuQueue& queue,
-                                               bool any_gpu_culling);
+EPIX_EXPORT EPIX_API void extract_mesh_for_gpu_building(
+    ecs::Entity entity,
+    const camera::ViewVisibility& view_visibility,
+    const transform::GlobalTransform& transform,
+    OptRef<PreviousGlobalTransform> previous_transform,
+    OptRef<Lightmap> lightmap,
+    OptRef<::epix::camera::Aabb> aabb,
+    const mesh::Mesh3d& mesh,
+    OptRef<mesh::MeshTag> tag,
+    bool no_frustum_culling,
+    bool not_shadow_receiver,
+    bool transmitted_receiver,
+    bool not_shadow_caster,
+    bool no_automatic_batching,
+    bool visibility_range,
+    OptRef<camera::RenderLayers> render_layers,
+    const render::view::RenderVisibilityRanges& render_visibility_ranges,
+    const RenderMeshInstances& render_mesh_instances,
+    RenderMeshInstanceGpuQueue& queue,
+    bool any_gpu_culling);
 
 /** @brief Extract every changed mesh into the GPU instance queues (Bevy
  *  `extract_meshes_for_gpu_building`, `bevy_pbr/src/render/mesh.rs:1487-1624`).

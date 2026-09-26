@@ -1,18 +1,17 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
 #include <functional>
+#include <glm/glm.hpp>
 #include <limits>
 #include <variant>
-#include <glm/glm.hpp>
-#include <epix/app.hpp>
-#include <epix/ecs.hpp>
 #endif
 
 #include <epix/extension/fallingsand/elements.hpp>

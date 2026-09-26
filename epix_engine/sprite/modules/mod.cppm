@@ -8,8 +8,8 @@ module;
 #include <format>
 #include <optional>
 #include <span>
-#include <vector>
 #include <variant>
+#include <vector>
 #endif
 
 export module epix.sprite;

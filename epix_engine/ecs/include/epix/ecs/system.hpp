@@ -113,14 +113,14 @@ using SystemUnique = std::unique_ptr<System<In, Out>>;
 namespace internal {
 template <typename T>
 struct system_output {
-    using type                                  = T;
+    using type                                 = T;
     static constexpr bool is_fallible_expected = false;
 };
 
 template <typename T, typename E>
 struct system_output<std::expected<T, E>> {
-    using type                                  = T;
-    using error_type                            = E;
+    using type                                 = T;
+    using error_type                           = E;
     static constexpr bool is_fallible_expected = true;
 };
 
@@ -165,18 +165,17 @@ concept valid_function_system = requires {
 };
 
 template <valid_function_system F>
-struct FunctionSystem
-    : public System<typename function_system_traits<F>::Input,
-                    system_output_t<typename function_system_traits<F>::Output>> {
+struct FunctionSystem : public System<typename function_system_traits<F>::Input,
+                                      system_output_t<typename function_system_traits<F>::Output>> {
    public:
     // Storage type to store the orginal function. This is to handle function pointers and lambdas uniformly.
     using RawOutput = typename function_system_traits<F>::Output;
     using Output    = system_output_t<RawOutput>;
     using Base      = System<typename function_system_traits<F>::Input, Output>;
-    using Storage = typename function_system_traits<F>::Storage;
-    using State   = typename SystemParam<typename function_system_traits<F>::ParamTuple>::State;
-    using SInput  = internal::SystemInput<typename function_system_traits<F>::Input>;
-    using SParam  = SystemParam<typename function_system_traits<F>::ParamTuple>;
+    using Storage   = typename function_system_traits<F>::Storage;
+    using State     = typename SystemParam<typename function_system_traits<F>::ParamTuple>::State;
+    using SInput    = internal::SystemInput<typename function_system_traits<F>::Input>;
+    using SParam    = SystemParam<typename function_system_traits<F>::ParamTuple>;
 
     std::string_view name() const noexcept override { return meta_.name; }
     void set_name(std::string_view new_name) noexcept override { meta_.name = new_name; }
@@ -218,8 +217,7 @@ struct FunctionSystem
     }
 
     std::expected<Output, RunSystemError> run_internal(typename SInput::Input input, World& world) override {
-        auto call = [](auto&& f,
-                       auto&& t) -> std::expected<Output, RunSystemError> {
+        auto call = [](auto&& f, auto&& t) -> std::expected<Output, RunSystemError> {
             try {
                 if constexpr (system_output<RawOutput>::is_fallible_expected) {
                     auto result = std::apply(f, std::move(t));
@@ -250,12 +248,12 @@ struct FunctionSystem
         // Modified<T> filters on the next execution.
         const Tick change_tick = world.increment_change_tick();
         if constexpr (function_system_traits<F>::has_input) {
-            auto params = SParam::get_param(*state_, meta_, world, change_tick);
+            auto params    = SParam::get_param(*state_, meta_, world, change_tick);
             meta_.last_run = change_tick;
-            return call(func_, std::tuple_cat(std::forward_as_tuple(SInput::wrap_input(std::move(input))),
-                                              std::move(params)));
+            return call(func_,
+                        std::tuple_cat(std::forward_as_tuple(SInput::wrap_input(std::move(input))), std::move(params)));
         } else {
-            auto params = SParam::get_param(*state_, meta_, world, change_tick);
+            auto params    = SParam::get_param(*state_, meta_, world, change_tick);
             meta_.last_run = change_tick;
             return call(func_, std::move(params));
         }
@@ -286,9 +284,8 @@ EPIX_EXPORT using internal::valid_function_system;
 EPIX_EXPORT using internal::function_system_traits;
 /** @brief Create a system from a function and return it as a unique_ptr. */
 EPIX_EXPORT template <internal::valid_function_system F>
-std::unique_ptr<
-    System<typename internal::function_system_traits<F>::Input,
-           internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
+std::unique_ptr<System<typename internal::function_system_traits<F>::Input,
+                       internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
 make_system_unique(F&& func) {
     return std::unique_ptr<System<typename internal::function_system_traits<F>::Input,
                                   internal::system_output_t<typename internal::function_system_traits<F>::Output>>>(
@@ -296,9 +293,8 @@ make_system_unique(F&& func) {
 }
 /** @brief Create a system from a function and return it as a shared_ptr. */
 EPIX_EXPORT template <internal::valid_function_system F>
-std::shared_ptr<
-    System<typename internal::function_system_traits<F>::Input,
-           internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
+std::shared_ptr<System<typename internal::function_system_traits<F>::Input,
+                       internal::system_output_t<typename internal::function_system_traits<F>::Output>>>
 make_system_shared(F&& func) {
     return std::shared_ptr<System<typename internal::function_system_traits<F>::Input,
                                   internal::system_output_t<typename internal::function_system_traits<F>::Output>>>(

@@ -13,14 +13,14 @@ namespace epix::pbr {
  *  In bindless mode a bind group holds many materials and slots index into it; in
  *  non-bindless mode each bind group holds one. */
 EPIX_EXPORT struct MaterialBindGroupIndex {
-    std::uint32_t index = 0;
+    std::uint32_t index                                   = 0;
     auto operator<=>(const MaterialBindGroupIndex&) const = default;
 };
 
 /** @brief A slot within a material bind group (Bevy `MaterialBindGroupSlot`,
  *  `material_bind_groups.rs:291`). Non-bindless materials always use slot 0. */
 EPIX_EXPORT struct MaterialBindGroupSlot {
-    std::uint32_t slot = 0;
+    std::uint32_t slot                                   = 0;
     auto operator<=>(const MaterialBindGroupSlot&) const = default;
 };
 

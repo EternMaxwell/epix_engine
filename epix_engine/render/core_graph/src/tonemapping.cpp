@@ -1,10 +1,11 @@
-#include <epix/core_graph.hpp>
+#include <zstd.h>
 
 #include <array>
 #include <bit>
 #include <cmath>
 #include <cstddef>
 #include <cstring>
+#include <epix/core_graph.hpp>
 #include <limits>
 #include <map>
 #include <optional>
@@ -15,7 +16,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <zstd.h>
 
 using namespace epix::app;
 using namespace epix::ecs;
@@ -50,8 +50,8 @@ struct epix::render::ExtractComponent<epix::core_graph::DebandDither> {
 
 namespace epix::core_graph {
 namespace {
-constexpr std::string_view kTonemappingFragmentPath  = "core_pipeline/tonemapping.slang";
-constexpr std::string_view kTonemappingSharedPath    = "core_pipeline/tonemapping_shared.slang";
+constexpr std::string_view kTonemappingFragmentPath = "core_pipeline/tonemapping.slang";
+constexpr std::string_view kTonemappingSharedPath   = "core_pipeline/tonemapping_shared.slang";
 
 struct TonemappingSharedShaderHandle {
     assets::Handle<shader::Shader> value;
@@ -325,9 +325,9 @@ constexpr std::array<std::byte, 12> kKtx2Identifier{
     std::byte{0xAB}, std::byte{0x4B}, std::byte{0x54}, std::byte{0x58}, std::byte{0x20}, std::byte{0x32},
     std::byte{0x30}, std::byte{0xBB}, std::byte{0x0D}, std::byte{0x0A}, std::byte{0x1A}, std::byte{0x0A},
 };
-constexpr std::uint32_t kVkFormatR16G16B16A16Sfloat = 97;
+constexpr std::uint32_t kVkFormatR16G16B16A16Sfloat   = 97;
 constexpr std::uint32_t kVkFormatE5B9G9R9UfloatPack32 = 123;
-constexpr std::uint32_t kKtxSupercompressionZstd = 2;
+constexpr std::uint32_t kKtxSupercompressionZstd      = 2;
 
 template <typename T>
 T read_ktx_integer(std::span<const std::byte> bytes, std::size_t offset) {
@@ -341,8 +341,8 @@ T read_ktx_integer(std::span<const std::byte> bytes, std::size_t offset) {
 
 float half_to_float(std::uint16_t half) noexcept {
     const std::uint32_t sign = static_cast<std::uint32_t>(half & 0x8000u) << 16u;
-    int exponent = static_cast<int>((half >> 10u) & 0x1fu);
-    std::uint32_t mantissa = half & 0x03ffu;
+    int exponent             = static_cast<int>((half >> 10u) & 0x1fu);
+    std::uint32_t mantissa   = half & 0x03ffu;
     std::uint32_t bits{};
     if (exponent == 0) {
         if (mantissa == 0) {
@@ -369,21 +369,21 @@ image::Image setup_tonemapping_lut_image(std::span<const std::byte> ktx2) {
         throw std::runtime_error("invalid tonemapping KTX2 payload");
     }
 
-    const auto vk_format = read_ktx_integer<std::uint32_t>(ktx2, 12);
-    const auto width = read_ktx_integer<std::uint32_t>(ktx2, 20);
-    const auto height = read_ktx_integer<std::uint32_t>(ktx2, 24);
-    const auto depth = read_ktx_integer<std::uint32_t>(ktx2, 28);
-    const auto layer_count = read_ktx_integer<std::uint32_t>(ktx2, 32);
-    const auto face_count = read_ktx_integer<std::uint32_t>(ktx2, 36);
-    const auto level_count = read_ktx_integer<std::uint32_t>(ktx2, 40);
+    const auto vk_format        = read_ktx_integer<std::uint32_t>(ktx2, 12);
+    const auto width            = read_ktx_integer<std::uint32_t>(ktx2, 20);
+    const auto height           = read_ktx_integer<std::uint32_t>(ktx2, 24);
+    const auto depth            = read_ktx_integer<std::uint32_t>(ktx2, 28);
+    const auto layer_count      = read_ktx_integer<std::uint32_t>(ktx2, 32);
+    const auto face_count       = read_ktx_integer<std::uint32_t>(ktx2, 36);
+    const auto level_count      = read_ktx_integer<std::uint32_t>(ktx2, 40);
     const auto supercompression = read_ktx_integer<std::uint32_t>(ktx2, 44);
     if (width == 0 || height == 0 || depth == 0 || layer_count != 0 || face_count != 1 || level_count != 1 ||
         supercompression != kKtxSupercompressionZstd) {
         throw std::runtime_error("unsupported tonemapping KTX2 layout");
     }
 
-    const auto level_offset = read_ktx_integer<std::uint64_t>(ktx2, 80);
-    const auto level_length = read_ktx_integer<std::uint64_t>(ktx2, 88);
+    const auto level_offset   = read_ktx_integer<std::uint64_t>(ktx2, 80);
+    const auto level_length   = read_ktx_integer<std::uint64_t>(ktx2, 88);
     const auto decoded_length = read_ktx_integer<std::uint64_t>(ktx2, 96);
     if (level_offset > ktx2.size() || level_length > ktx2.size() - level_offset ||
         decoded_length > std::numeric_limits<std::size_t>::max()) {
@@ -416,18 +416,18 @@ image::Image setup_tonemapping_lut_image(std::span<const std::byte> ktx2) {
             std::uint32_t packed{};
             std::memcpy(&packed, decoded.data() + i * sizeof(packed), sizeof(packed));
             const auto scale = std::ldexp(1.0f, static_cast<int>((packed >> 27u) & 0x1fu) - 24);
-            rgba[i * 4 + 0] = static_cast<float>(packed & 0x1ffu) * scale;
-            rgba[i * 4 + 1] = static_cast<float>((packed >> 9u) & 0x1ffu) * scale;
-            rgba[i * 4 + 2] = static_cast<float>((packed >> 18u) & 0x1ffu) * scale;
-            rgba[i * 4 + 3] = 1.0f;
+            rgba[i * 4 + 0]  = static_cast<float>(packed & 0x1ffu) * scale;
+            rgba[i * 4 + 1]  = static_cast<float>((packed >> 9u) & 0x1ffu) * scale;
+            rgba[i * 4 + 2]  = static_cast<float>((packed >> 18u) & 0x1ffu) * scale;
+            rgba[i * 4 + 3]  = 1.0f;
         }
     } else {
         throw std::runtime_error("unsupported tonemapping KTX2 Vulkan format");
     }
 
     auto lut_image = image::Image::create3d(width, height, depth, wgpu::TextureFormat::eRGBA32Float, rgba).value();
-    auto sampler = image::ImageSamplerDescriptor::linear();
-    sampler.label = "Tonemapping LUT sampler";
+    auto sampler   = image::ImageSamplerDescriptor::linear();
+    sampler.label  = "Tonemapping LUT sampler";
     sampler.set_address_mode(image::ImageAddressMode::ClampToEdge);
     lut_image.set_sampler_descriptor(std::move(sampler));
     lut_image.set_usage(assets::RenderAssetUsages::RENDER_WORLD);
@@ -442,17 +442,21 @@ std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
     const render::texture::FallbackImage& fallback_image) {
     const assets::Handle<image::Image>* handle = &tonemapping_luts.agx;
     switch (tonemapping) {
-        case Tonemapping::TonyMcMapface: handle = &tonemapping_luts.tony_mc_mapface; break;
-        case Tonemapping::BlenderFilmic: handle = &tonemapping_luts.blender_filmic; break;
-        default: break;
+        case Tonemapping::TonyMcMapface:
+            handle = &tonemapping_luts.tony_mc_mapface;
+            break;
+        case Tonemapping::BlenderFilmic:
+            handle = &tonemapping_luts.blender_filmic;
+            break;
+        default:
+            break;
     }
     const auto* image = images.get(*handle);
     const auto& lut   = image ? *image : fallback_image.d3;
     return {lut.texture_view, lut.sampler};
 }
 
-std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2>
-get_lut_bind_group_layout_entries() {
+std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2> get_lut_bind_group_layout_entries() {
     using render::render_resource::binding_types::sampler;
     using render::render_resource::binding_types::texture_3d;
     return {texture_3d(wgpu::TextureSampleType::eFloat), sampler(wgpu::SamplerBindingType::eFiltering)};
@@ -469,8 +473,10 @@ bool TonemappingPipelineKey::operator==(const TonemappingPipelineKey& other) con
     return tonemapping_key_equal(*this, other);
 }
 
-wgpu::BindGroup TonemappingPipeline::create_bind_group(const wgpu::Device& device, const wgpu::Buffer& view_uniforms,
-                                                       const wgpu::TextureView& source, const wgpu::TextureView& lut_view,
+wgpu::BindGroup TonemappingPipeline::create_bind_group(const wgpu::Device& device,
+                                                       const wgpu::Buffer& view_uniforms,
+                                                       const wgpu::TextureView& source,
+                                                       const wgpu::TextureView& lut_view,
                                                        const wgpu::Sampler& lut_sampler,
                                                        const render::PipelineServer& pipeline_server) const {
     using render::render_resource::BindGroupEntries;
@@ -479,11 +485,12 @@ wgpu::BindGroup TonemappingPipeline::create_bind_group(const wgpu::Device& devic
             .setLabel("tonemapping_bind_group")
             .setLayout(pipeline_server.get_bind_group_layout(layout))
             .setEntries(BindGroupEntries<>::with_indices(
-                std::pair{0u, BindGroupEntries<>::buffer_binding(view_uniforms, 0, sizeof(render::view::ViewUniform))},
-                std::pair{1u, BindGroupEntries<>::texture_binding(source)},
-                std::pair{2u, BindGroupEntries<>::sampler_binding(sampler)},
-                std::pair{3u, BindGroupEntries<>::texture_binding(lut_view)},
-                std::pair{4u, BindGroupEntries<>::sampler_binding(lut_sampler)})
+                            std::pair{0u, BindGroupEntries<>::buffer_binding(view_uniforms, 0,
+                                                                             sizeof(render::view::ViewUniform))},
+                            std::pair{1u, BindGroupEntries<>::texture_binding(source)},
+                            std::pair{2u, BindGroupEntries<>::sampler_binding(sampler)},
+                            std::pair{3u, BindGroupEntries<>::texture_binding(lut_view)},
+                            std::pair{4u, BindGroupEntries<>::sampler_binding(lut_sampler)})
                             .entries()));
 }
 
@@ -491,8 +498,12 @@ render::RenderPipelineDescriptor TonemappingPipeline::specialize(Key key) const 
     render::FragmentState fragment{.shader = fragment_shader, .entry_point = std::string("fs_main")};
     std::vector<shader::ShaderDefVal> defs;
     switch (key.tonemapping) {
-        case Tonemapping::None: defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_NONE")); break;
-        case Tonemapping::Reinhard: defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_REINHARD")); break;
+        case Tonemapping::None:
+            defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_NONE"));
+            break;
+        case Tonemapping::Reinhard:
+            defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_REINHARD"));
+            break;
         case Tonemapping::ReinhardLuminance:
             defs.push_back(shader::ShaderDefVal::from_bool("TONEMAP_METHOD_REINHARD_LUMINANCE"));
             break;
@@ -554,35 +565,28 @@ void prepare_view_tonemapping_pipelines(
     ResMut<render::PipelineServer> pipeline_server,
     ResMut<render::SpecializedRenderPipelines<TonemappingPipeline>> pipelines,
     Res<TonemappingPipeline> tonemapping_pipeline,
-    Query<Item<Entity,
-               const render::view::ExtractedView&,
-               Opt<const Tonemapping&>,
-               Opt<const DebandDither&>>,
+    Query<Item<Entity, const render::view::ExtractedView&, Opt<const Tonemapping&>, Opt<const DebandDither&>>,
           With<render::view::ViewTarget>> view_targets) {
     for (auto&& [entity, view, opt_tonemapping, opt_deband] : view_targets.iter()) {
         // Bevy defaults: None/Disabled when the camera lacks the components.
-        const Tonemapping tonemapping  = opt_tonemapping ? opt_tonemapping->get() : Tonemapping::None;
+        const Tonemapping tonemapping    = opt_tonemapping ? opt_tonemapping->get() : Tonemapping::None;
         const DebandDither deband_dither = opt_deband ? opt_deband->get() : DebandDither::Disabled;
 
         // Color-grading step flags from the view (Bevy).
         TonemappingPipelineKeyFlags flags = TonemappingPipelineKeyFlags::None;
-        const auto& grading = view.color_grading;
+        const auto& grading               = view.color_grading;
         if (grading.global.hue != 0.0f) flags |= TonemappingPipelineKeyFlags::HueRotate;
         if (grading.global.temperature != 0.0f || grading.global.tint != 0.0f)
             flags |= TonemappingPipelineKeyFlags::WhiteBalance;
-        const bool sectional_non_default = std::ranges::any_of(
-            grading.all_sections(), [](const auto& section) {
-                const auto& s = section.get();
-                const render::view::ColorGradingSection default_section;
-                return s.saturation != default_section.saturation || s.contrast != default_section.contrast ||
-                       s.gamma != default_section.gamma || s.gain != default_section.gain ||
-                       s.lift != default_section.lift;
-            });
-        if (sectional_non_default)
-            flags |= TonemappingPipelineKeyFlags::SectionalColorGrading;
+        const bool sectional_non_default = std::ranges::any_of(grading.all_sections(), [](const auto& section) {
+            const auto& s = section.get();
+            const render::view::ColorGradingSection default_section;
+            return s.saturation != default_section.saturation || s.contrast != default_section.contrast ||
+                   s.gamma != default_section.gamma || s.gain != default_section.gain || s.lift != default_section.lift;
+        });
+        if (sectional_non_default) flags |= TonemappingPipelineKeyFlags::SectionalColorGrading;
 
-        const TonemappingPipelineKey key{
-            .deband_dither = deband_dither, .tonemapping = tonemapping, .flags = flags};
+        const TonemappingPipelineKey key{.deband_dither = deband_dither, .tonemapping = tonemapping, .flags = flags};
         const auto pipeline_id = pipelines->specialize(*pipeline_server, *tonemapping_pipeline, key);
         commands.entity(entity).insert(ViewTonemappingPipeline{pipeline_id});
     }
@@ -609,21 +613,20 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
     const auto* uniform_buffer = view_uniforms.uniforms.buffer();
     if (!uniform_buffer) throw std::logic_error("TonemappingNode requires prepared ViewUniforms");
 
-    const auto post_process = target.post_process_write();
+    const auto post_process  = target.post_process_write();
     bool tonemapping_changed = false;
     {
-        auto last = last_tonemapping.lock();
+        auto last           = last_tonemapping.lock();
         tonemapping_changed = !*last || **last != tonemapping;
         if (tonemapping_changed) *last = tonemapping;
     }
 
     wgpu::BindGroup bind_group;
     {
-        auto cached = cached_bind_group.lock();
-        const bool reusable =
-            *cached && std::get<0>(**cached) == *uniform_buffer &&
-            std::get<1>(**cached) == post_process.source &&
-            !(std::get<2>(**cached) == fallback_image.d3.texture_view) && !tonemapping_changed;
+        auto cached         = cached_bind_group.lock();
+        const bool reusable = *cached && std::get<0>(**cached) == *uniform_buffer &&
+                              std::get<1>(**cached) == post_process.source &&
+                              !(std::get<2>(**cached) == fallback_image.d3.texture_view) && !tonemapping_changed;
         if (!reusable) {
             const auto [lut_view, lut_sampler] =
                 get_lut_bindings(gpu_images, tonemapping_luts, tonemapping, fallback_image);
@@ -631,8 +634,8 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
                 *uniform_buffer,
                 post_process.source,
                 lut_view,
-                tonemapping_pipeline.create_bind_group(
-                    render_context.device(), *uniform_buffer, post_process.source, lut_view, lut_sampler, pipeline_server),
+                tonemapping_pipeline.create_bind_group(render_context.device(), *uniform_buffer, post_process.source,
+                                                       lut_view, lut_sampler, pipeline_server),
             };
         }
         bind_group = std::get<3>(**cached);
@@ -646,12 +649,12 @@ std::expected<void, render::graph::NodeRunError> TonemappingNode::run(render::gr
         [render_pipeline, bind_group, destination, offset](wgpu::Device device) {
             auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("tonemapping"));
             auto color   = wgpu::RenderPassColorAttachment()
-                              .setView(destination)
-                              .setDepthSlice(~0u)
-                              .setLoadOp(wgpu::LoadOp::eClear)
-                              .setStoreOp(wgpu::StoreOp::eStore)
-                              .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 0.0));
-            auto pass = encoder.beginRenderPass(
+                               .setView(destination)
+                               .setDepthSlice(~0u)
+                               .setLoadOp(wgpu::LoadOp::eClear)
+                               .setStoreOp(wgpu::StoreOp::eStore)
+                               .setClearValue(wgpu::Color(0.0, 0.0, 0.0, 0.0));
+            auto pass    = encoder.beginRenderPass(
                 wgpu::RenderPassDescriptor().setLabel("tonemapping").setColorAttachments(std::array{color}));
             pass.setPipeline(render_pipeline);
             pass.setBindGroup(0, bind_group, offset);
@@ -685,11 +688,9 @@ void TonemappingPlugin::attach(App& app) {
     if (!app.world().get_resource<TonemappingLuts>()) {
         if (auto images = app.world_mut().get_resource_mut<assets::Assets<image::Image>>()) {
             auto& image_assets = images->get();
-            const auto blender = image_assets.add(setup_tonemapping_lut_image(
-                detail::embedded_blender_filmic_ktx2()));
-            const auto agx = image_assets.add(setup_tonemapping_lut_image(detail::embedded_agx_ktx2()));
-            const auto tony = image_assets.add(setup_tonemapping_lut_image(
-                detail::embedded_tony_mc_mapface_ktx2()));
+            const auto blender = image_assets.add(setup_tonemapping_lut_image(detail::embedded_blender_filmic_ktx2()));
+            const auto agx     = image_assets.add(setup_tonemapping_lut_image(detail::embedded_agx_ktx2()));
+            const auto tony    = image_assets.add(setup_tonemapping_lut_image(detail::embedded_tony_mc_mapface_ktx2()));
             app.world_mut().insert_resource(TonemappingLuts{blender, agx, tony});
         }
     }
@@ -707,29 +708,26 @@ void TonemappingPlugin::attach(App& app) {
                 using render::render_resource::binding_types::texture_2d;
                 using render::render_resource::binding_types::uniform_buffer;
                 const auto lut_entries = get_lut_bind_group_layout_entries();
-                const auto entries = BindGroupLayoutEntries<>::with_indices(
+                const auto entries     = BindGroupLayoutEntries<>::with_indices(
                     wgpu::ShaderStage::eFragment,
                     std::pair{0u, uniform_buffer(true, sizeof(render::view::ViewUniform))},
                     std::pair{1u, texture_2d(wgpu::TextureSampleType::eUnfilterableFloat)},
-                    std::pair{2u, sampler(wgpu::SamplerBindingType::eNonFiltering)},
-                    std::pair{3u, lut_entries[0]}, std::pair{4u, lut_entries[1]});
+                    std::pair{2u, sampler(wgpu::SamplerBindingType::eNonFiltering)}, std::pair{3u, lut_entries[0]},
+                    std::pair{4u, lut_entries[1]});
 
                 commands.insert_resource(TonemappingPipeline{
-                    .layout           = 
-                        render::BindGroupLayoutDescriptor()
-                            .set_label("tonemapping_bind_group_layout")
-                            .set_entries(entries.entries()),
-                    .sampler          = device->createSampler(
+                    .layout  = render::BindGroupLayoutDescriptor()
+                                   .set_label("tonemapping_bind_group_layout")
+                                   .set_entries(entries.entries()),
+                    .sampler = device->createSampler(
                         wgpu::SamplerDescriptor().setLabel("tonemapping_sampler").setMaxAnisotropy(1)),
                     .fullscreen_shader = *fullscreen_shader,
-                    .fragment_shader   = asset_server->load<shader::Shader>(
-                        "embedded://core_pipeline/tonemapping.slang"),
+                    .fragment_shader = asset_server->load<shader::Shader>("embedded://core_pipeline/tonemapping.slang"),
                 });
             }).set_name("init tonemapping pipeline"));
-        render_app->get().add_systems(
-            render::Render,
-            into(prepare_view_tonemapping_pipelines).in_set(render::RenderSystems::Prepare).set_name(
-                "prepare view tonemapping pipelines"));
+        render_app->get().add_systems(render::Render, into(prepare_view_tonemapping_pipelines)
+                                                          .in_set(render::RenderSystems::Prepare)
+                                                          .set_name("prepare view tonemapping pipelines"));
     }
 }
 
@@ -742,4 +740,3 @@ std::size_t std::hash<epix::core_graph::TonemappingPipelineKey>::operator()(
     result ^= static_cast<std::size_t>(key.flags) + 0x9e3779b9u + (result << 6u) + (result >> 2u);
     return result;
 }
-

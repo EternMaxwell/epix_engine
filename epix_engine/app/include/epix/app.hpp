@@ -337,20 +337,21 @@ EPIX_EXPORT namespace epix::app {
             std::unordered_set<meta::type_index> registered_states;
             void attach(App& app) { app.world_mut().init_resource<Updates>(); }
             void ready(App& app) {
-                app.add_systems(StateTransition, ecs::into([](ecs::World& world) {
-                                                     // Bevy takes the `Updates` resource out of
-                                                     // the world for the duration of its own
-                                                     // systems (`World::resource_scope`), so no
-                                                     // borrow of it stays alive while they
-                                                     // mutate the world.
-                                                     (void)world.resource_scope([](Updates& updates, ecs::World& world) {
-                                                         for (auto&& sys : updates.update_system) {
-                                                             auto res = sys->run({}, world);
-                                                         }
-                                                     });
-                                                 })
-                                                     .set_name("update states")
-                                                     .in_set(StateTransitionSet::Transit));
+                app.add_systems(StateTransition,
+                                ecs::into([](ecs::World& world) {
+                                    // Bevy takes the `Updates` resource out of
+                                    // the world for the duration of its own
+                                    // systems (`World::resource_scope`), so no
+                                    // borrow of it stays alive while they
+                                    // mutate the world.
+                                    (void)world.resource_scope([](Updates& updates, ecs::World& world) {
+                                        for (auto&& sys : updates.update_system) {
+                                            auto res = sys->run({}, world);
+                                        }
+                                    });
+                                })
+                                    .set_name("update states")
+                                    .in_set(StateTransitionSet::Transit));
             }
         };
 

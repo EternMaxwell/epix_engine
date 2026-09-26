@@ -1,10 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/utils/async.hpp>
@@ -12,7 +12,6 @@
 #include <tuple>
 #include <utility>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/fullscreen.hpp>
 
@@ -65,12 +64,11 @@ enum class TonemappingPipelineKeyFlags : std::uint8_t {
 };
 
 constexpr TonemappingPipelineKeyFlags operator|(TonemappingPipelineKeyFlags lhs,
-                                                 TonemappingPipelineKeyFlags rhs) noexcept {
-    return static_cast<TonemappingPipelineKeyFlags>(static_cast<std::uint8_t>(lhs) |
-                                                     static_cast<std::uint8_t>(rhs));
+                                                TonemappingPipelineKeyFlags rhs) noexcept {
+    return static_cast<TonemappingPipelineKeyFlags>(static_cast<std::uint8_t>(lhs) | static_cast<std::uint8_t>(rhs));
 }
 constexpr TonemappingPipelineKeyFlags& operator|=(TonemappingPipelineKeyFlags& lhs,
-                                                   TonemappingPipelineKeyFlags rhs) noexcept {
+                                                  TonemappingPipelineKeyFlags rhs) noexcept {
     lhs = lhs | rhs;
     return lhs;
 }
@@ -94,14 +92,16 @@ EPIX_EXPORT struct EPIX_API TonemappingPipeline {
     using Key = TonemappingPipelineKey;
 
     render::BindGroupLayoutDescriptor layout;
-    wgpu::Sampler sampler;              // non-filtering source sampler
+    wgpu::Sampler sampler;  // non-filtering source sampler
     FullscreenShader fullscreen_shader;
     assets::Handle<shader::Shader> fragment_shader;
 
     /** @brief Creates the 5-entry tonemapping bind group (view uniform buffer,
      * source texture, source sampler, LUT texture, LUT sampler). */
-    wgpu::BindGroup create_bind_group(const wgpu::Device& device, const wgpu::Buffer& view_uniforms,
-                                      const wgpu::TextureView& source, const wgpu::TextureView& lut_view,
+    wgpu::BindGroup create_bind_group(const wgpu::Device& device,
+                                      const wgpu::Buffer& view_uniforms,
+                                      const wgpu::TextureView& source,
+                                      const wgpu::TextureView& lut_view,
                                       const wgpu::Sampler& lut_sampler,
                                       const render::PipelineServer& pipeline_server) const;
 
@@ -147,8 +147,7 @@ EPIX_EXPORT struct EPIX_API TonemappingNode {
                                                          const ecs::World& world) const;
 
    private:
-    using CachedBindGroup =
-        std::tuple<wgpu::Buffer, wgpu::TextureView, wgpu::TextureView, wgpu::BindGroup>;
+    using CachedBindGroup = std::tuple<wgpu::Buffer, wgpu::TextureView, wgpu::TextureView, wgpu::BindGroup>;
     mutable utils::Mutex<std::optional<CachedBindGroup>> cached_bind_group{};
     mutable utils::Mutex<std::optional<Tonemapping>> last_tonemapping{};
 };

@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <exception>
@@ -24,7 +24,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::text::font {
@@ -121,8 +120,7 @@ EPIX_EXPORT struct GlyphAtlasInfo {
     /** @brief The `Image` asset holding the atlas this glyph was placed in. */
     assets::AssetId<image::Image> texture{assets::AssetId<image::Image>::invalid()};
     /** @brief The `TextureAtlasLayout` asset describing that atlas. */
-    assets::AssetId<image::TextureAtlasLayout> texture_atlas{
-        assets::AssetId<image::TextureAtlasLayout>::invalid()};
+    assets::AssetId<image::TextureAtlasLayout> texture_atlas{assets::AssetId<image::TextureAtlasLayout>::invalid()};
     /** @brief Location and offset of the glyph within the atlas. */
     GlyphAtlasLocation location{};
 

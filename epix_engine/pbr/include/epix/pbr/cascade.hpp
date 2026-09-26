@@ -4,6 +4,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -13,7 +14,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::pbr {
@@ -22,8 +22,9 @@ namespace epix::pbr {
  *  `calculate_cascade_bounds`, `bevy_light/src/cascade.rs:39-54`): the bounds are
  *  laid out geometrically between the first cascade's far bound and the shadow
  *  maximum distance, with a single cascade simply reaching the maximum. */
-EPIX_EXPORT inline std::vector<float> calculate_cascade_bounds(std::size_t num_cascades, float nearest_bound,
-                                                              float shadow_maximum_distance) {
+EPIX_EXPORT inline std::vector<float> calculate_cascade_bounds(std::size_t num_cascades,
+                                                               float nearest_bound,
+                                                               float shadow_maximum_distance) {
     if (num_cascades == 1) return {shadow_maximum_distance};
 
     const float base = std::pow(shadow_maximum_distance / nearest_bound, 1.0f / static_cast<float>(num_cascades - 1));
@@ -42,10 +43,10 @@ EPIX_EXPORT inline std::vector<float> calculate_cascade_bounds(std::size_t num_c
  *
  *  Bevy uses one cascade on WebGL2 without WebGPU and four everywhere else; Epix
  *  targets the four-cascade case. */
-EPIX_EXPORT inline constexpr std::size_t DEFAULT_CASCADE_COUNT = 4;
-EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MINIMUM_DISTANCE = 0.1f;
-EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MAXIMUM_DISTANCE = 150.0f;
-EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_FIRST_FAR_BOUND = 10.0f;
+EPIX_EXPORT inline constexpr std::size_t DEFAULT_CASCADE_COUNT        = 4;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MINIMUM_DISTANCE   = 0.1f;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_MAXIMUM_DISTANCE   = 150.0f;
+EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_FIRST_FAR_BOUND    = 10.0f;
 EPIX_EXPORT inline constexpr float DEFAULT_CASCADE_OVERLAP_PROPORTION = 0.2f;
 
 /** @brief Builds a `CascadeShadowConfig`, validating first (Bevy
@@ -76,8 +77,8 @@ EPIX_EXPORT struct CascadeShadowConfigBuilder {
  *  drift apart. */
 EPIX_EXPORT struct CascadeShadowConfig {
     /** @brief The positive distance to the far boundary of each cascade. */
-    std::vector<float> bounds = calculate_cascade_bounds(DEFAULT_CASCADE_COUNT, DEFAULT_CASCADE_FIRST_FAR_BOUND,
-                                                         DEFAULT_CASCADE_MAXIMUM_DISTANCE);
+    std::vector<float> bounds = calculate_cascade_bounds(
+        DEFAULT_CASCADE_COUNT, DEFAULT_CASCADE_FIRST_FAR_BOUND, DEFAULT_CASCADE_MAXIMUM_DISTANCE);
     /** @brief The proportion of overlap each cascade has with the previous one. */
     float overlap_proportion = DEFAULT_CASCADE_OVERLAP_PROPORTION;
     /** @brief The positive distance to the near boundary of the first cascade. */
@@ -106,8 +107,8 @@ EPIX_EXPORT inline CascadeShadowConfig build_cascade_shadow_config(const Cascade
     }
 
     return CascadeShadowConfig{
-        .bounds = calculate_cascade_bounds(builder.num_cascades, builder.first_cascade_far_bound,
-                                           builder.maximum_distance),
+        .bounds =
+            calculate_cascade_bounds(builder.num_cascades, builder.first_cascade_far_bound, builder.maximum_distance),
         .overlap_proportion = builder.overlap_proportion,
         .minimum_distance   = builder.minimum_distance,
     };
@@ -175,8 +176,9 @@ EPIX_EXPORT inline std::vector<std::pair<float, float>> cascade_bounds(const Cas
  *  orthographic one, reverse-Z, which is where it differs from the reference
  *  material Bevy cites. */
 EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& frustum_corners,
-                                            float cascade_texture_size, const glm::mat4& world_from_light,
-                                            const glm::mat4& light_from_camera) {
+                                             float cascade_texture_size,
+                                             const glm::mat4& world_from_light,
+                                             const glm::mat4& light_from_camera) {
     glm::vec3 minimum(std::numeric_limits<float>::max());
     glm::vec3 maximum(std::numeric_limits<float>::lowest());
     for (const glm::vec3& corner : frustum_corners) {
@@ -188,11 +190,11 @@ EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& fru
     // The diagonals are measured on the original camera-space corners, because the
     // light-space ones can differ slightly in floating point. lengths are squared
     // (glm has no length_squared, so they are the dot product with themselves).
-    const glm::vec3 body_a = frustum_corners[0] - frustum_corners[6];
-    const glm::vec3 far_a  = frustum_corners[4] - frustum_corners[6];
-    const float body_diagonal     = glm::dot(body_a, body_a);
-    const float far_diagonal      = glm::dot(far_a, far_a);
-    const float cascade_diameter  = std::ceil(std::sqrt(std::max(body_diagonal, far_diagonal)));
+    const glm::vec3 body_a         = frustum_corners[0] - frustum_corners[6];
+    const glm::vec3 far_a          = frustum_corners[4] - frustum_corners[6];
+    const float body_diagonal      = glm::dot(body_a, body_a);
+    const float far_diagonal       = glm::dot(far_a, far_a);
+    const float cascade_diameter   = std::ceil(std::sqrt(std::max(body_diagonal, far_diagonal)));
     const float cascade_texel_size = cascade_diameter / cascade_texture_size;
 
     // max.z is the near plane for a right-handed y-up view.
@@ -204,7 +206,7 @@ EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& fru
     cascade_from_world[3]        = glm::vec4(-near_plane_center, 1.0f);
 
     glm::mat4 world_from_cascade = world_from_light;
-    world_from_cascade[3] = glm::vec4(glm::vec3(world_from_light * glm::vec4(near_plane_center, 1.0f)), 1.0f);
+    world_from_cascade[3]        = glm::vec4(glm::vec3(world_from_light * glm::vec4(near_plane_center, 1.0f)), 1.0f);
 
     glm::mat4 clip_from_cascade{0.0f};
     clip_from_cascade[0][0] = 2.0f / cascade_diameter;
@@ -214,9 +216,9 @@ EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& fru
     clip_from_cascade[3][3] = 1.0f;
 
     return Cascade{.world_from_cascade = world_from_cascade,
-                   .clip_from_cascade   = clip_from_cascade,
-                   .clip_from_world     = clip_from_cascade * cascade_from_world,
-                   .texel_size          = cascade_texel_size};
+                   .clip_from_cascade  = clip_from_cascade,
+                   .clip_from_world    = clip_from_cascade * cascade_from_world,
+                   .texel_size         = cascade_texel_size};
 }
 
 /** @brief The cascades a directional light builds for one view (Bevy
@@ -232,11 +234,12 @@ EPIX_EXPORT inline Cascade calculate_cascade(const std::array<glm::vec3, 8>& fru
  *  zero translation for the shadows to be numerically stable, and nothing stops a
  *  user putting scale or translation on a light's transform, so the transform's
  *  matrix is deliberately not used. */
-EPIX_EXPORT inline std::vector<Cascade> build_view_cascades(
-    const std::vector<std::array<glm::vec3, 8>>& slice_corners, float cascade_texture_size,
-    const glm::quat& light_rotation, const glm::mat4& view_to_world) {
-    const glm::mat4 world_from_light   = glm::mat4_cast(light_rotation);
-    const glm::mat4 light_from_camera  = glm::transpose(world_from_light) * view_to_world;
+EPIX_EXPORT inline std::vector<Cascade> build_view_cascades(const std::vector<std::array<glm::vec3, 8>>& slice_corners,
+                                                            float cascade_texture_size,
+                                                            const glm::quat& light_rotation,
+                                                            const glm::mat4& view_to_world) {
+    const glm::mat4 world_from_light  = glm::mat4_cast(light_rotation);
+    const glm::mat4 light_from_camera = glm::transpose(world_from_light) * view_to_world;
 
     std::vector<Cascade> cascades;
     cascades.reserve(slice_corners.size());

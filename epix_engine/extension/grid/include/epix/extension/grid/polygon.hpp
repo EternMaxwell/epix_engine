@@ -1,17 +1,16 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
+#include <glm/glm.hpp>
 #include <span>
 #include <stack>
 #include <utility>
 #include <vector>
-#include <glm/glm.hpp>
 #endif
 
 #include <epix/extension/grid/bit_grid.hpp>

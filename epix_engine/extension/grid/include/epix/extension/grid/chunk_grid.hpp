@@ -1,13 +1,16 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <epix/common.hpp>
 #include <algorithm>
 #include <array>
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <epix/app.hpp>
+#include <epix/common.hpp>
+#include <epix/ecs.hpp>
+#include <epix/meta.hpp>
+#include <epix/utils.hpp>
 #include <expected>
 #include <functional>
 #include <limits>
@@ -19,12 +22,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
-#include <epix/meta.hpp>
-#include <epix/utils.hpp>
-#include <epix/app.hpp>
-#include <epix/ecs.hpp>
 #endif
-
 
 #include <epix/extension/grid/basic_grid.hpp>
 #include <epix/extension/grid/bit_grid.hpp>

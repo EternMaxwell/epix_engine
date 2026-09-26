@@ -118,8 +118,8 @@ void epix::core_graph::core_3d::extract_core_3d_camera_phases(
     std::erase_if(*transparent_phases, remove_dead_views);
 }
 
-void epix::core_graph::core_3d::check_msaa(Query<Item<Mut<render::view::Msaa>>,
-                                                   With<::epix::camera::Camera, DeferredPrepass>> deferred_views) {
+void epix::core_graph::core_3d::check_msaa(
+    Query<Item<Mut<render::view::Msaa>>, With<::epix::camera::Camera, DeferredPrepass>> deferred_views) {
     // Bevy `check_msaa` (core_3d/mod.rs:978-988): MSAA is incompatible with
     // deferred rendering, so every deferred view is forced to `Msaa::Off` with a
     // warning unless it was already off.
@@ -132,9 +132,9 @@ void epix::core_graph::core_3d::check_msaa(Query<Item<Mut<render::view::Msaa>>,
 
 void epix::core_graph::core_3d::configure_occlusion_culling_view_targets(
     Query<Item<Mut<::epix::camera::Camera3d>>,
-          Filter<With<render::experimental::OcclusionCulling>, Without<render::view::NoIndirectDrawing>,
-                 With<DepthPrepass>>>
-        view_targets) {
+          Filter<With<render::experimental::OcclusionCulling>,
+                 Without<render::view::NoIndirectDrawing>,
+                 With<DepthPrepass>>> view_targets) {
     // Bevy `configure_occlusion_culling_view_targets` (core_3d/mod.rs:960-975):
     // the occlusion-culling pass samples the depth texture, so a view that runs
     // it needs `TEXTURE_BINDING` on top of whatever it already asked for.
@@ -309,8 +309,8 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
                                                                    const World& world) const {
     auto&& [camera, extracted_view, target, depth, view_uniform_offset, skybox_pipeline_id, skybox_bind_group,
             resolution_override] = view;
-    const auto opaque_phases                       = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3d>>();
-    const auto alpha_mask_phases                   = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3d>>();
+    const auto opaque_phases     = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3d>>();
+    const auto alpha_mask_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3d>>();
     if (!opaque_phases || !alpha_mask_phases) return {};
 
     const auto opaque_phase     = opaque_phases->get().phases.find(extracted_view.retained_view_entity);
@@ -320,8 +320,8 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
         return {};
     }
 
-    const auto color_attachments     = std::array{target.get_color_attachment()};
-    const auto depth_attachment      = depth.get_attachment(wgpu::StoreOp::eStore);
+    const auto color_attachments = std::array{target.get_color_attachment()};
+    const auto depth_attachment  = depth.get_attachment(wgpu::StoreOp::eStore);
     // Bevy `Viewport::from_viewport_and_override(camera.viewport.as_ref(),
     // resolution_override)` (`main_opaque_pass_3d_node.rs:95-99`).
     const auto viewport = ::epix::camera::Viewport::from_viewport_and_override(
@@ -333,15 +333,15 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
     // Bevy draws the skybox after the two binned phases, from the view's
     // specialized pipeline and its bind group with both dynamic offsets
     // (`main_opaque_pass_3d_node.rs:119-133`).
-    const auto skybox_pipeline = skybox_pipeline_id ? std::optional{skybox_pipeline_id->get().pipeline_id}
-                                                   : std::nullopt;
-    const auto skybox_group    = skybox_bind_group
-                                     ? std::optional{std::pair{skybox_bind_group->get().bind_group,
-                                                               skybox_bind_group->get().uniform_offset}}
-                                     : std::nullopt;
+    const auto skybox_pipeline =
+        skybox_pipeline_id ? std::optional{skybox_pipeline_id->get().pipeline_id} : std::nullopt;
+    const auto skybox_group =
+        skybox_bind_group
+            ? std::optional{std::pair{skybox_bind_group->get().bind_group, skybox_bind_group->get().uniform_offset}}
+            : std::nullopt;
     render_context.add_command_buffer_generation_task(
-        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_phase_ptr,
-         alpha_mask_phase_ptr, view_uniform_offset, skybox_pipeline, skybox_group](wgpu::Device device) {
+        [color_attachments, depth_attachment, viewport, view_entity, world_ptr, opaque_phase_ptr, alpha_mask_phase_ptr,
+         view_uniform_offset, skybox_pipeline, skybox_group](wgpu::Device device) {
             auto encoder = device.createCommandEncoder(
                 wgpu::CommandEncoderDescriptor().setLabel("main_opaque_pass_3d_command_encoder"));
             auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
@@ -351,8 +351,9 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
             if (viewport) {
                 const auto& vp = *viewport;
                 render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                        static_cast<float>(vp.physical_position.y), static_cast<float>(vp.physical_size.x),
-                                        static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+                                        static_cast<float>(vp.physical_position.y),
+                                        static_cast<float>(vp.physical_size.x), static_cast<float>(vp.physical_size.y),
+                                        vp.depth.first, vp.depth.second);
             }
             if (!opaque_phase_ptr->is_empty()) {
                 if (auto result = opaque_phase_ptr->render(render_pass, *world_ptr, view_entity); !result) {
@@ -373,8 +374,7 @@ std::expected<void, graph::NodeRunError> MainOpaquePass3dNode::run(graph::GraphC
                 const auto pipeline =
                     pipeline_server
                         ? pipeline_server->get().get_render_pipeline(*skybox_pipeline)
-                        : std::expected<std::reference_wrapper<const render::RenderPipeline>,
-                                        render::GetPipelineError>{
+                        : std::expected<std::reference_wrapper<const render::RenderPipeline>, render::GetPipelineError>{
                               std::unexpect, render::GetPipelineError{}};
                 if (pipeline) {
                     render_pass.setPipeline(pipeline->get().pipeline());
@@ -437,10 +437,10 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
         // A null range draws every retained item in one pass, matching the
         // zero-step path of Bevy's transmissive node.
         const auto render_range = [&](std::optional<std::pair<std::size_t, std::size_t>> range) {
-            auto render_pass = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
-                                                           .setLabel("main_transmissive_pass_3d")
-                                                           .setColorAttachments(color_attachments)
-                                                           .setDepthStencilAttachment(depth_attachment));
+            auto render_pass     = encoder.beginRenderPass(wgpu::RenderPassDescriptor()
+                                                               .setLabel("main_transmissive_pass_3d")
+                                                               .setColorAttachments(color_attachments)
+                                                               .setDepthStencilAttachment(depth_attachment));
             const auto& viewport = range ? stepped_viewport : plain_viewport;
             if (viewport) {
                 const auto& vp = *viewport;
@@ -450,7 +450,8 @@ std::expected<void, graph::NodeRunError> MainTransmissivePass3dNode::run(graph::
                                         vp.depth.first, vp.depth.second);
             }
             if (range) {
-                if (auto result = phase_ptr->render_range(render_pass, *world_ptr, view_entity, range->first, range->second);
+                if (auto result =
+                        phase_ptr->render_range(render_pass, *world_ptr, view_entity, range->first, range->second);
                     !result) {
                     spdlog::error("Error encountered while rendering the transmissive phase {}",
                                   phase::to_string(result.error()));
@@ -490,14 +491,14 @@ std::expected<void, graph::NodeRunError> MainTransparentPass3dNode::run(graph::G
                                                                         typename ecs::QueryData<ViewQuery>::Item view,
                                                                         const World& world) const {
     auto&& [camera, extracted_view, target, depth, resolution_override] = view;
-    const auto transparent_phases                  = world.get_resource<phase::ViewSortedRenderPhases<Transparent3d>>();
+    const auto transparent_phases = world.get_resource<phase::ViewSortedRenderPhases<Transparent3d>>();
     if (!transparent_phases) return {};
     const auto transparent_phase = transparent_phases->get().find(extracted_view.retained_view_entity);
     if (transparent_phase == transparent_phases->get().end()) return {};
 
-    const auto color_attachments      = std::array{target.get_color_attachment()};
-    const auto depth_attachment       = depth.get_attachment(wgpu::StoreOp::eStore);
-    const auto viewport               = ::epix::camera::Viewport::from_viewport_and_override(
+    const auto color_attachments = std::array{target.get_color_attachment()};
+    const auto depth_attachment  = depth.get_attachment(wgpu::StoreOp::eStore);
+    const auto viewport          = ::epix::camera::Viewport::from_viewport_and_override(
         camera.viewport, resolution_override.transform([](const auto& value) { return value.get().size; }));
     const auto view_entity            = graph.view_entity();
     const auto* world_ptr             = std::addressof(world);
@@ -598,11 +599,11 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
                                  .previous_view_uniform_offset = previous_offset->get().offset};
     }();
 
-    const auto opaque_prepass_phases = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
+    const auto opaque_prepass_phases     = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dPrepass>>();
     const auto alpha_mask_prepass_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>>();
     if (!opaque_prepass_phases || !alpha_mask_prepass_phases) return {};
 
-    const auto opaque_phase = opaque_prepass_phases->get().phases.find(extracted_view.retained_view_entity);
+    const auto opaque_phase     = opaque_prepass_phases->get().phases.find(extracted_view.retained_view_entity);
     const auto alpha_mask_phase = alpha_mask_prepass_phases->get().phases.find(extracted_view.retained_view_entity);
     if (opaque_phase == opaque_prepass_phases->get().phases.end() ||
         alpha_mask_phase == alpha_mask_prepass_phases->get().phases.end()) {
@@ -615,9 +616,8 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
     // so the two absent slots are filled with default-constructed attachments;
     // they are only ever reached when at least one real attachment is present.
     std::vector<wgpu::RenderPassColorAttachment> color_attachments;
-    color_attachments.push_back(view_prepass_textures.normal
-                                    ? view_prepass_textures.normal->get_attachment()
-                                    : wgpu::RenderPassColorAttachment{});
+    color_attachments.push_back(view_prepass_textures.normal ? view_prepass_textures.normal->get_attachment()
+                                                             : wgpu::RenderPassColorAttachment{});
     color_attachments.push_back(view_prepass_textures.motion_vectors
                                     ? view_prepass_textures.motion_vectors->get_attachment()
                                     : wgpu::RenderPassColorAttachment{});
@@ -634,96 +634,95 @@ std::expected<void, graph::NodeRunError> run_prepass(graph::GraphContext& graph,
     // resolution_override)` (`prepass/node.rs:190-194`).
     const auto viewport    = ::epix::camera::Viewport::from_viewport_and_override(camera.viewport, resolution_override);
     const auto view_entity = graph.view_entity();
-    const auto* world_ptr       = std::addressof(world);
-    const auto* opaque_ptr      = std::addressof(opaque_phase->second);
-    const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
+    const auto* world_ptr  = std::addressof(world);
+    const auto* opaque_ptr = std::addressof(opaque_phase->second);
+    const auto* mask_ptr   = std::addressof(alpha_mask_phase->second);
     const auto has_prepass_depth = view_prepass_textures.depth.has_value();
     const auto prepass_depth_texture =
         has_prepass_depth ? std::optional<wgpu::Texture>{view_prepass_textures.depth->texture.texture} : std::nullopt;
     const auto prepass_copy_size  = view_prepass_textures.size;
     const auto depth_texture_copy = view_depth_texture.texture;
 
-    render_context.add_command_buffer_generation_task(
-        [color_attachments, has_any_color, depth_attachment, viewport, view_entity, world_ptr, opaque_ptr, mask_ptr,
-         has_prepass_depth, prepass_depth_texture, prepass_copy_size, depth_texture_copy, skybox_prepass_draw,
-         label](wgpu::Device device) {
-            auto encoder = device.createCommandEncoder(
-                wgpu::CommandEncoderDescriptor().setLabel("prepass_command_encoder"));
+    render_context.add_command_buffer_generation_task([color_attachments, has_any_color, depth_attachment, viewport,
+                                                       view_entity, world_ptr, opaque_ptr, mask_ptr, has_prepass_depth,
+                                                       prepass_depth_texture, prepass_copy_size, depth_texture_copy,
+                                                       skybox_prepass_draw, label](wgpu::Device device) {
+        auto encoder =
+            device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("prepass_command_encoder"));
 
-            {
-                wgpu::RenderPassDescriptor descriptor;
-                descriptor.setLabel(label.data());
-                if (has_any_color) descriptor.setColorAttachments(color_attachments);
-                descriptor.setDepthStencilAttachment(depth_attachment);
-                auto render_pass = encoder.beginRenderPass(descriptor);
-                if (viewport) {
-                    const auto& vp = *viewport;
-                    render_pass.setViewport(static_cast<float>(vp.physical_position.x),
-                                            static_cast<float>(vp.physical_position.y),
-                                            static_cast<float>(vp.physical_size.x),
-                                            static_cast<float>(vp.physical_size.y), vp.depth.first, vp.depth.second);
+        {
+            wgpu::RenderPassDescriptor descriptor;
+            descriptor.setLabel(label.data());
+            if (has_any_color) descriptor.setColorAttachments(color_attachments);
+            descriptor.setDepthStencilAttachment(depth_attachment);
+            auto render_pass = encoder.beginRenderPass(descriptor);
+            if (viewport) {
+                const auto& vp = *viewport;
+                render_pass.setViewport(static_cast<float>(vp.physical_position.x),
+                                        static_cast<float>(vp.physical_position.y),
+                                        static_cast<float>(vp.physical_size.x), static_cast<float>(vp.physical_size.y),
+                                        vp.depth.first, vp.depth.second);
+            }
+            if (!opaque_ptr->is_empty()) {
+                if (auto result = opaque_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the opaque prepass phase {}",
+                                  phase::to_string(result.error()));
                 }
-                if (!opaque_ptr->is_empty()) {
-                    if (auto result = opaque_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                        spdlog::error("Error encountered while rendering the opaque prepass phase {}",
-                                      phase::to_string(result.error()));
-                    }
+            }
+            if (!mask_ptr->is_empty()) {
+                if (auto result = mask_ptr->render(render_pass, *world_ptr, view_entity); !result) {
+                    spdlog::error("Error encountered while rendering the alpha mask prepass phase {}",
+                                  phase::to_string(result.error()));
                 }
-                if (!mask_ptr->is_empty()) {
-                    if (auto result = mask_ptr->render(render_pass, *world_ptr, view_entity); !result) {
-                        spdlog::error("Error encountered while rendering the alpha mask prepass phase {}",
-                                      phase::to_string(result.error()));
-                    }
-                }
-
-                // Skybox draw using a fullscreen triangle, after the phase items,
-                // with both dynamic offsets (Bevy `prepass/node.rs:215-235`).
-                if (skybox_prepass_draw) {
-                    const auto pipeline_server = world_ptr->get_resource<::epix::render::PipelineServer>();
-                    const auto pipeline =
-                        pipeline_server
-                            ? pipeline_server->get().get_render_pipeline(skybox_prepass_draw->pipeline_id)
-                            : std::expected<std::reference_wrapper<const ::epix::render::RenderPipeline>,
-                                            ::epix::render::GetPipelineError>{std::unexpect,
-                                                                              ::epix::render::GetPipelineError{}};
-                    if (pipeline) {
-                        render_pass.setPipeline(pipeline->get().pipeline());
-                        const std::array offsets{skybox_prepass_draw->view_uniform_offset,
-                                                 skybox_prepass_draw->previous_view_uniform_offset};
-                        render_pass.setBindGroup(0, skybox_prepass_draw->bind_group, offsets);
-                        render_pass.draw(3, 1, 0, 0);
-                    }
-                }
-
-                render_pass.end();
             }
 
-            // Bevy copies the view depth texture into the prepass depth texture
-            // after the pass when no deferred prepass will do it.
-            if (has_prepass_depth && prepass_depth_texture) {
-                auto source          = wgpu::TexelCopyTextureInfo();
-                source.texture       = depth_texture_copy;
-                source.mipLevel      = 0;
-                source.origin        = wgpu::Origin3D{0, 0, 0};
-                source.aspect        = wgpu::TextureAspect::eAll;
-                auto destination     = wgpu::TexelCopyTextureInfo();
-                destination.texture  = *prepass_depth_texture;
-                destination.mipLevel = 0;
-                destination.origin   = wgpu::Origin3D{0, 0, 0};
-                destination.aspect   = wgpu::TextureAspect::eAll;
-                encoder.copyTextureToTexture(source, destination, prepass_copy_size);
+            // Skybox draw using a fullscreen triangle, after the phase items,
+            // with both dynamic offsets (Bevy `prepass/node.rs:215-235`).
+            if (skybox_prepass_draw) {
+                const auto pipeline_server = world_ptr->get_resource<::epix::render::PipelineServer>();
+                const auto pipeline = pipeline_server
+                                          ? pipeline_server->get().get_render_pipeline(skybox_prepass_draw->pipeline_id)
+                                          : std::expected<std::reference_wrapper<const ::epix::render::RenderPipeline>,
+                                                          ::epix::render::GetPipelineError>{
+                                                std::unexpect, ::epix::render::GetPipelineError{}};
+                if (pipeline) {
+                    render_pass.setPipeline(pipeline->get().pipeline());
+                    const std::array offsets{skybox_prepass_draw->view_uniform_offset,
+                                             skybox_prepass_draw->previous_view_uniform_offset};
+                    render_pass.setBindGroup(0, skybox_prepass_draw->bind_group, offsets);
+                    render_pass.draw(3, 1, 0, 0);
+                }
             }
 
-            return encoder.finish();
-        });
+            render_pass.end();
+        }
+
+        // Bevy copies the view depth texture into the prepass depth texture
+        // after the pass when no deferred prepass will do it.
+        if (has_prepass_depth && prepass_depth_texture) {
+            auto source          = wgpu::TexelCopyTextureInfo();
+            source.texture       = depth_texture_copy;
+            source.mipLevel      = 0;
+            source.origin        = wgpu::Origin3D{0, 0, 0};
+            source.aspect        = wgpu::TextureAspect::eAll;
+            auto destination     = wgpu::TexelCopyTextureInfo();
+            destination.texture  = *prepass_depth_texture;
+            destination.mipLevel = 0;
+            destination.origin   = wgpu::Origin3D{0, 0, 0};
+            destination.aspect   = wgpu::TextureAspect::eAll;
+            encoder.copyTextureToTexture(source, destination, prepass_copy_size);
+        }
+
+        return encoder.finish();
+    });
     return {};
 }
 }  // namespace
 
 std::expected<void, graph::NodeRunError> EarlyPrepassNode::run(graph::GraphContext& graph,
-                                                              graph::RenderContext& render_context,
-                                                              typename ecs::QueryData<ViewQuery>::Item view,
-                                                              const World& world) const {
+                                                               graph::RenderContext& render_context,
+                                                               typename ecs::QueryData<ViewQuery>::Item view,
+                                                               const World& world) const {
     auto&& [camera, extracted_view, depth_texture, prepass_textures, uniform_offset, has_deferred,
             resolution_override] = view;
     static_cast<void>(uniform_offset);
@@ -767,7 +766,7 @@ void epix::core_graph::core_3d::extract_camera_prepass_phase(
                        Has<DeferredPrepass>,
                        Has<DepthPrepassDoubleBuffer>,
                        Has<DeferredPrepassDoubleBuffer>>,
-                 With<::epix::camera::Camera3d>>> cameras,
+                  With<::epix::camera::Camera3d>>> cameras,
     Local<std::unordered_set<::epix::render::view::RetainedViewEntity>> live_views,
     Res<::epix::render::batching::GpuPreprocessingSupport> gpu_preprocessing_support) {
     // Bevy `extract_camera_prepass_phase` (core_3d/mod.rs:665-788): one system
@@ -780,15 +779,15 @@ void epix::core_graph::core_3d::extract_camera_prepass_phase(
     // same `GpuPreprocessingSupport` decision the main 3D phases use, so the
     // extractions agree by construction.
     live_views->clear();
-    for (auto&& [entity, render_entity, camera, no_indirect_drawing, depth_prepass, normal_prepass, motion_vector_prepass,
-                 deferred_prepass, depth_prepass_double_buffer, deferred_prepass_double_buffer] : cameras.iter()) {
+    for (auto&& [entity, render_entity, camera, no_indirect_drawing, depth_prepass, normal_prepass,
+                 motion_vector_prepass, deferred_prepass, depth_prepass_double_buffer, deferred_prepass_double_buffer] :
+         cameras.iter()) {
         if (!camera.is_active) continue;
         const auto gpu_preprocessing_mode =
             preprocessing_mode_for_view(gpu_preprocessing_support.get(), no_indirect_drawing);
         // This is the main 3D camera, so use the first subview index (0).
-        const auto retained_view =
-            ::epix::render::view::RetainedViewEntity::create(::epix::render::sync_world::MainEntity{entity},
-                                                             std::nullopt, 0);
+        const auto retained_view = ::epix::render::view::RetainedViewEntity::create(
+            ::epix::render::sync_world::MainEntity{entity}, std::nullopt, 0);
         if (depth_prepass || normal_prepass || motion_vector_prepass) {
             opaque_prepass_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
             alpha_mask_prepass_phases->prepare_for_new_frame(retained_view, gpu_preprocessing_mode);
@@ -866,9 +865,10 @@ std::optional<::epix::render::render_resource::ColorAttachment> package_double_b
     }
     if (texture1 && texture2) {
         return frame_count % 2 == 0
-                   ? std::optional<::epix::render::render_resource::ColorAttachment>{
-                         ::epix::render::render_resource::ColorAttachment{*texture1, std::nullopt, *texture2,
-                                                                          clear_color}}
+                   ? std::optional<::epix::render::render_resource::ColorAttachment>{::epix::render::render_resource::
+                                                                                         ColorAttachment{
+                                                                                             *texture1, std::nullopt,
+                                                                                             *texture2, clear_color}}
                    : std::optional<::epix::render::render_resource::ColorAttachment>{
                          ::epix::render::render_resource::ColorAttachment{*texture2, std::nullopt, *texture1,
                                                                           clear_color}};
@@ -895,8 +895,7 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
                Has<MotionVectorPrepass>,
                Has<DeferredPrepass>,
                Has<DepthPrepassDoubleBuffer>,
-               Has<DeferredPrepassDoubleBuffer>>>
-        views) {
+               Has<DeferredPrepassDoubleBuffer>>> views) {
     // Bevy `prepare_prepass_textures` (core_3d/mod.rs:991-1223) caches one
     // texture per output target, so cameras compositing onto the same target
     // share it: `.entry(camera.target.clone())` at line 1049 and the sibling
@@ -906,34 +905,27 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
     // what Bevy passes as `ColorAttachment::new(t, None, None, Some(BLACK))`.
     constexpr glm::vec4 kPrepassClear{0.0f, 0.0f, 0.0f, 1.0f};
 
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         depth_textures_1{0, &render_target_hash};
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         depth_textures_2{0, &render_target_hash};
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         normal_textures{0, &render_target_hash};
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         motion_vector_textures{0, &render_target_hash};
     // C15: the deferred G-buffer and lighting-pass id textures, also one per
     // output target, with the G-buffer doubled when the view asks for it.
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         deferred_textures_1{0, &render_target_hash};
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         deferred_textures_2{0, &render_target_hash};
-    std::unordered_map<std::optional<::epix::camera::RenderTargetId>,
-                       ::epix::render::render_resource::CachedTexture,
+    std::unordered_map<std::optional<::epix::camera::RenderTargetId>, ::epix::render::render_resource::CachedTexture,
                        decltype(&render_target_hash)>
         deferred_lighting_id_textures{0, &render_target_hash};
 
@@ -957,11 +949,8 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
         const auto sample_count = ::epix::render::view::samples(msaa);
         const auto target       = render_target_of(camera);
 
-        const auto cached_for = [&](auto& textures,
-                                    std::string_view label,
-                                    wgpu::TextureFormat format,
-                                    wgpu::TextureUsage usage,
-                                    std::uint32_t texture_samples) {
+        const auto cached_for = [&](auto& textures, std::string_view label, wgpu::TextureFormat format,
+                                    wgpu::TextureUsage usage, std::uint32_t texture_samples) {
             const auto existing = textures.find(target);
             if (existing != textures.end()) return existing->second;
             wgpu::TextureDescriptor descriptor;
@@ -993,9 +982,8 @@ void epix::core_graph::core_3d::prepare_prepass_textures(
                                                                  wgpu::TextureUsage::eTextureBinding);
         // Bevy's prepass depth texture is a copy destination (the prepass node
         // copies the view depth into it), a render attachment, and sampleable.
-        const auto depth_usage = static_cast<wgpu::TextureUsage>(wgpu::TextureUsage::eCopyDst |
-                                                                 wgpu::TextureUsage::eRenderAttachment |
-                                                                 wgpu::TextureUsage::eTextureBinding);
+        const auto depth_usage = static_cast<wgpu::TextureUsage>(
+            wgpu::TextureUsage::eCopyDst | wgpu::TextureUsage::eRenderAttachment | wgpu::TextureUsage::eTextureBinding);
 
         std::optional<::epix::render::render_resource::CachedTexture> cached_depth_texture_1;
         if (depth_prepass) {
@@ -1080,13 +1068,12 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
     // Bevy only reads `is_late` inside its WebGL-only fallback, so on native the
     // parameter survives but changes nothing (deferred/node.rs:155-193).
     static_cast<void>(is_late);
-    const auto opaque_deferred_phases = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
+    const auto opaque_deferred_phases     = world.get_resource<phase::ViewBinnedRenderPhases<Opaque3dDeferred>>();
     const auto alpha_mask_deferred_phases = world.get_resource<phase::ViewBinnedRenderPhases<AlphaMask3dDeferred>>();
     if (!opaque_deferred_phases || !alpha_mask_deferred_phases) return {};
 
-    const auto opaque_phase = opaque_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
-    const auto alpha_mask_phase =
-        alpha_mask_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
+    const auto opaque_phase     = opaque_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
+    const auto alpha_mask_phase = alpha_mask_deferred_phases->get().phases.find(extracted_view.retained_view_entity);
     if (opaque_phase == opaque_deferred_phases->get().phases.end() ||
         alpha_mask_phase == alpha_mask_deferred_phases->get().phases.end()) {
         return {};
@@ -1095,9 +1082,8 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
     // Bevy's attachment order: normals, motion vectors, the deferred G-buffer,
     // then the deferred lighting-pass id.
     std::vector<wgpu::RenderPassColorAttachment> color_attachments;
-    color_attachments.push_back(view_prepass_textures.normal
-                                    ? view_prepass_textures.normal->get_attachment()
-                                    : wgpu::RenderPassColorAttachment{});
+    color_attachments.push_back(view_prepass_textures.normal ? view_prepass_textures.normal->get_attachment()
+                                                             : wgpu::RenderPassColorAttachment{});
     color_attachments.push_back(view_prepass_textures.motion_vectors
                                     ? view_prepass_textures.motion_vectors->get_attachment()
                                     : wgpu::RenderPassColorAttachment{});
@@ -1118,19 +1104,18 @@ std::expected<void, graph::NodeRunError> run_deferred_prepass(
     // Bevy empties the color-attachment list when every slot is absent, so the
     // pass needs no fragment shader at all (deferred/node.rs:202-205). The same
     // rule `run_prepass` applies for the non-deferred pass.
-    const bool has_any_color = view_prepass_textures.normal.has_value() ||
-                               view_prepass_textures.motion_vectors.has_value() ||
-                               view_prepass_textures.deferred.has_value() ||
-                               view_prepass_textures.deferred_lighting_pass_id.has_value();
+    const bool has_any_color =
+        view_prepass_textures.normal.has_value() || view_prepass_textures.motion_vectors.has_value() ||
+        view_prepass_textures.deferred.has_value() || view_prepass_textures.deferred_lighting_pass_id.has_value();
 
     const auto depth_attachment = view_depth_texture.get_attachment(wgpu::StoreOp::eStore);
     // Bevy `Viewport::from_viewport_and_override(camera.viewport.as_ref(),
     // resolution_override)` (`deferred/node.rs:229-233`).
     const auto viewport    = ::epix::camera::Viewport::from_viewport_and_override(camera.viewport, resolution_override);
     const auto view_entity = graph.view_entity();
-    const auto* world_ptr       = std::addressof(world);
-    const auto* opaque_ptr      = std::addressof(opaque_phase->second);
-    const auto* mask_ptr        = std::addressof(alpha_mask_phase->second);
+    const auto* world_ptr  = std::addressof(world);
+    const auto* opaque_ptr = std::addressof(opaque_phase->second);
+    const auto* mask_ptr   = std::addressof(alpha_mask_phase->second);
     // Bevy copies the view depth texture into the prepass depth texture after the
     // deferred pass, exactly as the non-deferred prepass node does
     // (deferred/node.rs:260-267). Without it a deferred view's
@@ -1205,8 +1190,8 @@ std::expected<void, graph::NodeRunError> EarlyDeferredGBufferPrepassNode::run(
     static_cast<void>(occlusion_culling);
     static_cast<void>(no_indirect_drawing);
     return run_deferred_prepass(graph, render_context, camera, extracted_view, depth_texture, prepass_textures, false,
-                                resolution_override.transform([](const auto& value) { return value.get().size; }), world,
-                                "early deferred gbuffer prepass");
+                                resolution_override.transform([](const auto& value) { return value.get().size; }),
+                                world, "early deferred gbuffer prepass");
 }
 
 std::expected<void, graph::NodeRunError> LateDeferredGBufferPrepassNode::run(
@@ -1249,9 +1234,8 @@ void Core3dGraph::add_to(graph::RenderGraph& g, World& world) {
     g3d.add_node_edges(Node3d::EarlyPrepass, Node3d::EarlyDeferredPrepass, Node3d::LatePrepass,
                        Node3d::LateDeferredPrepass, Node3d::CopyDeferredLightingId, Node3d::EndPrepasses,
                        Node3d::StartMainPass, Node3d::MainOpaquePass, Node3d::MainTransmissivePass,
-                       Node3d::MainTransparentPass, Node3d::EndMainPass,
-                       Node3d::StartMainPassPostProcessing, Node3d::Tonemapping,
-                       Node3d::EndMainPassPostProcessing, Node3d::Upscaling);
+                       Node3d::MainTransparentPass, Node3d::EndMainPass, Node3d::StartMainPassPostProcessing,
+                       Node3d::Tonemapping, Node3d::EndMainPassPostProcessing, Node3d::Upscaling);
     g.add_sub_graph(Core3d, std::move(g3d));
 }
 
@@ -1273,22 +1257,21 @@ void Core3dPlugin::attach(App& app) {
     app.add_plugins(render::ExtractComponentPlugin<PreviousViewData>{});
     app.add_systems(epix::app::Update, into(update_previous_view_data).set_name("update previous view data"));
     if (auto render_sub_app = app.get_sub_app_mut(render::Render)) {
-        render_sub_app->get().add_systems(render::RenderStartup,
-                                          into([](Commands commands, Res<wgpu::Device> device) {
-                                              // A dynamic uniform buffer needs the device's
-                                              // alignment, which a default-constructed one
-                                              // does not have.
-                                              wgpu::Limits limits{};
-                                              device->getLimits(&limits);
-                                              commands.insert_resource(PreviousViewUniforms{
-                                                  .uniforms = render::render_resource::
-                                                      DynamicUniformBuffer<PreviousViewData>::new_with_alignment(
-                                                          limits.minUniformBufferOffsetAlignment)});
-                                          }).set_name("init previous view uniforms"));
-        render_sub_app->get().add_systems(render::Render,
-                                          into(prepare_previous_view_uniforms)
-                                              .in_set(render::RenderSystems::Prepare)
-                                              .set_name("prepare previous view uniforms"));
+        render_sub_app->get().add_systems(
+            render::RenderStartup,
+            into([](Commands commands, Res<wgpu::Device> device) {
+                // A dynamic uniform buffer needs the device's
+                // alignment, which a default-constructed one
+                // does not have.
+                wgpu::Limits limits{};
+                device->getLimits(&limits);
+                commands.insert_resource(PreviousViewUniforms{
+                    .uniforms = render::render_resource::DynamicUniformBuffer<PreviousViewData>::new_with_alignment(
+                        limits.minUniformBufferOffsetAlignment)});
+            }).set_name("init previous view uniforms"));
+        render_sub_app->get().add_systems(render::Render, into(prepare_previous_view_uniforms)
+                                                              .in_set(render::RenderSystems::Prepare)
+                                                              .set_name("prepare previous view uniforms"));
     }
     // Bevy registers this in the main world's PostUpdate (core_3d/mod.rs:151).
     app.add_systems(::epix::app::PostUpdate, into(check_msaa).set_name("check msaa"));

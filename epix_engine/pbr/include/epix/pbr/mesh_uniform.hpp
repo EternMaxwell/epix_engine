@@ -5,12 +5,12 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/transform.hpp>
 #include <glm/glm.hpp>
 #include <limits>
 #include <optional>
 #include <utility>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/lightmap.hpp>
@@ -64,8 +64,10 @@ EPIX_EXPORT inline std::pair<std::array<glm::vec4, 2>, float> inverse_transpose_
     const glm::mat3 inverse_transpose = glm::transpose(glm::mat3(glm::inverse(world_from_local)));
     return {
         std::array<glm::vec4, 2>{
-            glm::vec4(inverse_transpose[0][0], inverse_transpose[0][1], inverse_transpose[0][2], inverse_transpose[1][0]),
-            glm::vec4(inverse_transpose[1][1], inverse_transpose[1][2], inverse_transpose[2][0], inverse_transpose[2][1]),
+            glm::vec4(inverse_transpose[0][0], inverse_transpose[0][1], inverse_transpose[0][2],
+                      inverse_transpose[1][0]),
+            glm::vec4(inverse_transpose[1][1], inverse_transpose[1][2], inverse_transpose[2][0],
+                      inverse_transpose[2][1]),
         },
         inverse_transpose[2][2],
     };
@@ -132,17 +134,17 @@ EPIX_EXPORT struct MeshUniform {
         MeshUniform uniform{};
         uniform.world_from_local          = to_transpose(mesh_transforms.world_from_local);
         uniform.previous_world_from_local = to_transpose(mesh_transforms.previous_world_from_local);
-        uniform.lightmap_uv_rect =
-            pack_lightmap_uv_rect(maybe_lightmap ? std::optional<::epix::image::Rect>{maybe_lightmap->second}
-                                                 : std::nullopt);
+        uniform.lightmap_uv_rect          = pack_lightmap_uv_rect(
+            maybe_lightmap ? std::optional<::epix::image::Rect>{maybe_lightmap->second} : std::nullopt);
         uniform.local_from_world_transpose_a = local_from_world_transpose_a;
         uniform.local_from_world_transpose_b = local_from_world_transpose_b;
         uniform.flags                        = mesh_transforms.flags;
         uniform.first_vertex_index           = first_vertex_index;
         uniform.current_skin_index           = current_skin_index.value_or(0xFFFFFFFFu);
-        uniform.material_and_lightmap_bind_group_slot = material_bind_group_slot.slot | (lightmap_bind_group_slot << 16);
-        uniform.tag                                   = tag.value_or(0u);
-        uniform.pad                                   = 0;
+        uniform.material_and_lightmap_bind_group_slot =
+            material_bind_group_slot.slot | (lightmap_bind_group_slot << 16);
+        uniform.tag = tag.value_or(0u);
+        uniform.pad = 0;
         return uniform;
     }
 };
@@ -229,19 +231,19 @@ static_assert(offsetof(MeshInputUniform, pad) == 92);
  *  one is named here rather than written at its use site. */
 EPIX_EXPORT struct MeshFlags {
     enum Bits : std::uint32_t {
-        NONE                          = 0,
+        NONE = 0,
         /** @brief Bitmask for the 16-bit index into the LOD array; `u16::MAX`
          *  when the mesh has no LOD. */
-        LOD_INDEX_MASK                = (1u << 16) - 1u,
+        LOD_INDEX_MASK = (1u << 16) - 1u,
         /** @brief Disables frustum culling for this mesh (the
          *  `NoFrustumCulling` component). */
-        NO_FRUSTUM_CULLING            = 1u << 28,
-        SHADOW_RECEIVER               = 1u << 29,
-        TRANSMITTED_SHADOW_RECEIVER   = 1u << 30,
+        NO_FRUSTUM_CULLING          = 1u << 28,
+        SHADOW_RECEIVER             = 1u << 29,
+        TRANSMITTED_SHADOW_RECEIVER = 1u << 30,
         /** @brief The sign of the 3x3 model matrix's determinant: set when the
          *  sign is positive, clear otherwise. */
-        SIGN_DETERMINANT_MODEL_3X3    = 1u << 31,
-        UNINITIALIZED                 = 0xFFFFFFFFu,
+        SIGN_DETERMINANT_MODEL_3X3 = 1u << 31,
+        UNINITIALIZED              = 0xFFFFFFFFu,
     };
 
     /** @brief The first bit of the LOD index (Bevy `MeshFlags::LOD_INDEX_SHIFT`,

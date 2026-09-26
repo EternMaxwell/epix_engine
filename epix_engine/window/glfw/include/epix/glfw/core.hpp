@@ -1,9 +1,10 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <GLFW/glfw3.h>
+
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <epix/input.hpp>
@@ -18,7 +19,6 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::glfw {

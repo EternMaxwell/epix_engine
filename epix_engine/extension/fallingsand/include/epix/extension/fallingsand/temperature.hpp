@@ -1,9 +1,8 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
-#include <glm/glm.hpp>
 #include <epix/common.hpp>
+#include <glm/glm.hpp>
 #endif
 
 namespace epix::ext::fallingsand {

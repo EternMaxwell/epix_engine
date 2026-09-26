@@ -1,17 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/glfw/core.hpp>
 #include <epix/input.hpp>
 #include <epix/window.hpp>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/render.hpp>
-
 #include <epix/render/imgui/state.hpp>
 
 namespace epix::imgui {
@@ -57,17 +55,17 @@ EPIX_API void imgui_end_frame(ecs::ResMut<ImGuiState> state);
 // Checks ImGui::GetIO().WantCapture* flags and advances the event head
 // so later schedules do not see consumed events.
 EPIX_API void imgui_consume_input(ecs::Res<ImGuiState> state,
-                         ecs::ResMut<ecs::Events<input::KeyInput>> key_events,
-                         ecs::ResMut<ecs::Events<input::MouseButtonInput>> mouse_events,
-                         ecs::ResMut<ecs::Events<input::MouseScroll>> scroll_events,
-                         ecs::ResMut<input::ButtonInput<input::KeyCode>> key_input,
-                         ecs::ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
+                                  ecs::ResMut<ecs::Events<input::KeyInput>> key_events,
+                                  ecs::ResMut<ecs::Events<input::MouseButtonInput>> mouse_events,
+                                  ecs::ResMut<ecs::Events<input::MouseScroll>> scroll_events,
+                                  ecs::ResMut<input::ButtonInput<input::KeyCode>> key_input,
+                                  ecs::ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
 
 // Render system (render sub-app)
 EPIX_API void imgui_render(ecs::Res<ImGuiState> state,
-                  ecs::Res<render::window::ExtractedWindows> windows,
-                  ecs::Res<wgpu::Instance> instance,
-                  ecs::Res<wgpu::Adapter> adapter,
-                  ecs::Res<wgpu::Device> device,
-                  ecs::Res<wgpu::Queue> queue);
+                           ecs::Res<render::window::ExtractedWindows> windows,
+                           ecs::Res<wgpu::Instance> instance,
+                           ecs::Res<wgpu::Adapter> adapter,
+                           ecs::Res<wgpu::Device> device,
+                           ecs::Res<wgpu::Queue> queue);
 }  // namespace epix::imgui

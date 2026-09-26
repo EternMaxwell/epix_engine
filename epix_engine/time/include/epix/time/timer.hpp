@@ -1,12 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <limits>
 #include <epix/common.hpp>
+#include <limits>
 #endif
 
 #include <epix/time/stopwatch.hpp>

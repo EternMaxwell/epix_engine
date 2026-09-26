@@ -1,6 +1,9 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
 #include <epix/camera.hpp>
@@ -11,9 +14,6 @@
 #include <epix/render.hpp>
 #include <epix/render/mesh/render_asset.hpp>
 #include <epix/transform.hpp>
-#include <array>
-#include <cstddef>
-#include <cstdint>
 #include <expected>
 #include <format>
 #include <glm/glm.hpp>
@@ -33,10 +33,12 @@ using mesh::Mesh2d;
  *  plugin registers it from `mesh2d_pipeline.cpp`. */
 EPIX_EXPORT EPIX_API void extract_mesh2d(
     ecs::ResMut<RenderMesh2dInstances> render_mesh_instances,
-    app::Extract<ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&, const transform::GlobalTransform&,
-                                         const camera::ViewVisibility&, ecs::Opt<const mesh::MeshTag&>,
-                                         ecs::Has<render::phase::NoAutomaticBatching>>>>
-        meshes);
+    app::Extract<ecs::Query<ecs::Item<ecs::Entity,
+                                      const mesh::Mesh2d&,
+                                      const transform::GlobalTransform&,
+                                      const camera::ViewVisibility&,
+                                      ecs::Opt<const mesh::MeshTag&>,
+                                      ecs::Has<render::phase::NoAutomaticBatching>>>> meshes);
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
 EPIX_EXPORT struct EPIX_API Mesh2dRenderPlugin {

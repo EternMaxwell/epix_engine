@@ -1,16 +1,15 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <cstdint>
 #include <epix/app.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <functional>
 #include <unordered_map>
 #include <unordered_set>
 #include <variant>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 namespace epix::render::sync_world {
@@ -149,7 +148,8 @@ struct QueryData<::epix::render::sync_world::RenderEntity> {
     using ReadOnly                        = ::epix::render::sync_world::RenderEntity;
     static inline constexpr bool readonly = true;
     static Item fetch(typename WorldQuery<const ::epix::render::sync_world::RenderEntity&>::Fetch& fetch,
-                      ::epix::ecs::Entity entity, TableRow row) noexcept {
+                      ::epix::ecs::Entity entity,
+                      TableRow row) noexcept {
         return QueryData<const ::epix::render::sync_world::RenderEntity&>::fetch(fetch, entity, row);
     }
 };

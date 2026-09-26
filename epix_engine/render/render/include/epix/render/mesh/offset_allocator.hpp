@@ -1,15 +1,14 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <bit>
 #include <cassert>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <limits>
 #include <optional>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 // Faithful C++ port of the `offset-allocator` crate v0.2.0 (MIT), which is the
@@ -25,28 +24,28 @@
 namespace epix::render::mesh::offset_allocator {
 
 /** @brief Bin-class constants (offset-allocator small_float.rs). */
-inline constexpr std::uint32_t kMantissaBits         = 3;
-inline constexpr std::uint32_t kMantissaValue        = 1u << kMantissaBits;  // 8
-inline constexpr std::uint32_t kMantissaMask         = kMantissaValue - 1;   // 7
-inline constexpr std::uint32_t kNumTopBins           = 32;
-inline constexpr std::uint32_t kBinsPerLeaf          = 8;
-inline constexpr std::uint32_t kNumLeafBins          = kNumTopBins * kBinsPerLeaf;  // 256
-inline constexpr std::uint32_t kNoNodeIndex          = std::numeric_limits<std::uint32_t>::max();
-inline constexpr std::uint32_t kDefaultMaxAllocs     = 128 * 1024;
+inline constexpr std::uint32_t kMantissaBits     = 3;
+inline constexpr std::uint32_t kMantissaValue    = 1u << kMantissaBits;  // 8
+inline constexpr std::uint32_t kMantissaMask     = kMantissaValue - 1;   // 7
+inline constexpr std::uint32_t kNumTopBins       = 32;
+inline constexpr std::uint32_t kBinsPerLeaf      = 8;
+inline constexpr std::uint32_t kNumLeafBins      = kNumTopBins * kBinsPerLeaf;  // 256
+inline constexpr std::uint32_t kNoNodeIndex      = std::numeric_limits<std::uint32_t>::max();
+inline constexpr std::uint32_t kDefaultMaxAllocs = 128 * 1024;
 
 /** @brief Round `size` up to the smallest bin index that fits it
  * (uint_to_float_round_up). */
 inline std::uint32_t uint_to_float_round_up(std::uint32_t size) {
-    std::uint32_t exp       = 0;
-    std::uint32_t mantissa  = 0;
+    std::uint32_t exp      = 0;
+    std::uint32_t mantissa = 0;
     if (size < kMantissaValue) {
         // Denormal: 0..(kMantissaValue-1)
         mantissa = size;
     } else {
-        const std::uint32_t highest_set_bit   = 31u - std::countl_zero(size);
+        const std::uint32_t highest_set_bit    = 31u - std::countl_zero(size);
         const std::uint32_t mantissa_start_bit = highest_set_bit - kMantissaBits;
-        exp                                     = mantissa_start_bit + 1;
-        mantissa                                = (size >> mantissa_start_bit) & kMantissaMask;
+        exp                                    = mantissa_start_bit + 1;
+        mantissa                               = (size >> mantissa_start_bit) & kMantissaMask;
         const std::uint32_t low_bits_mask      = (1u << mantissa_start_bit) - 1;
         // Round up!
         if ((size & low_bits_mask) != 0) {
@@ -65,10 +64,10 @@ inline std::uint32_t uint_to_float_round_down(std::uint32_t size) {
     if (size < kMantissaValue) {
         mantissa = size;
     } else {
-        const std::uint32_t highest_set_bit   = 31u - std::countl_zero(size);
+        const std::uint32_t highest_set_bit    = 31u - std::countl_zero(size);
         const std::uint32_t mantissa_start_bit = highest_set_bit - kMantissaBits;
-        exp                                     = mantissa_start_bit + 1;
-        mantissa                                = (size >> mantissa_start_bit) & kMantissaMask;
+        exp                                    = mantissa_start_bit + 1;
+        mantissa                               = (size >> mantissa_start_bit) & kMantissaMask;
     }
     return (exp << kMantissaBits) | mantissa;
 }
@@ -139,8 +138,8 @@ class Allocator {
             return std::nullopt;
         }
         // Round up to bin index so alloc >= bin: the min bin index that fits.
-        const std::uint32_t min_bin_index     = uint_to_float_round_up(size);
-        const std::uint32_t min_top_bin_index = min_bin_index >> kTopBinsShift;
+        const std::uint32_t min_bin_index      = uint_to_float_round_up(size);
+        const std::uint32_t min_top_bin_index  = min_bin_index >> kTopBinsShift;
         const std::uint32_t min_leaf_bin_index = min_bin_index & kLeafBinsMask;
 
         std::uint32_t top_bin_index = min_top_bin_index;
@@ -160,12 +159,12 @@ class Allocator {
 
         const std::uint32_t bin_index = (top_bin_index << kTopBinsShift) | *leaf_bin_index;
         // Pop the top node of the bin: bin top = node.next.
-        const std::uint32_t node_index = bin_indices_[bin_index];
-        auto& node                     = nodes_[node_index];
+        const std::uint32_t node_index      = bin_indices_[bin_index];
+        auto& node                          = nodes_[node_index];
         const std::uint32_t node_total_size = node.data_size;
-        node.data_size                       = size;
-        node.used                            = true;
-        bin_indices_[bin_index]              = node.bin_list_next;
+        node.data_size                      = size;
+        node.used                           = true;
+        bin_indices_[bin_index]             = node.bin_list_next;
         if (node.bin_list_next != kNoNodeIndex) {
             nodes_[node.bin_list_next].bin_list_prev = kNoNodeIndex;
         }
@@ -182,9 +181,9 @@ class Allocator {
         // Push the remainder back into a lower bin and link it next to us.
         const std::uint32_t remainder_size = node_total_size - size;
         if (remainder_size > 0) {
-            const std::uint32_t data_offset     = nodes_[node_index].data_offset;
-            const std::uint32_t neighbor_next   = nodes_[node_index].neighbor_next;
-            const std::uint32_t new_node_index  = insert_node_into_bin(remainder_size, data_offset + size);
+            const std::uint32_t data_offset    = nodes_[node_index].data_offset;
+            const std::uint32_t neighbor_next  = nodes_[node_index].neighbor_next;
+            const std::uint32_t new_node_index = insert_node_into_bin(remainder_size, data_offset + size);
             if (neighbor_next != kNoNodeIndex) {
                 nodes_[neighbor_next].neighbor_prev = new_node_index;
             }
@@ -272,9 +271,9 @@ class Allocator {
     /** @brief Clear all allocations, restoring the whole space as one free
      * node. */
     void reset() {
-        free_storage_   = 0;
-        used_bins_top_  = 0;
-        free_offset_    = max_allocs_ - 1;
+        free_storage_  = 0;
+        used_bins_top_ = 0;
+        free_offset_   = max_allocs_ - 1;
         used_bins_.fill(0);
         bin_indices_.fill(kNoNodeIndex);
         nodes_.assign(max_allocs_, Node{});
@@ -295,8 +294,8 @@ class Allocator {
     static constexpr std::uint32_t kLeafBinsMask = 7;
 
     struct Node {
-        std::uint32_t data_offset  = 0;
-        std::uint32_t data_size    = 0;
+        std::uint32_t data_offset   = 0;
+        std::uint32_t data_size     = 0;
         std::uint32_t bin_list_prev = kNoNodeIndex;
         std::uint32_t bin_list_next = kNoNodeIndex;
         std::uint32_t neighbor_prev = kNoNodeIndex;
@@ -306,7 +305,7 @@ class Allocator {
 
     /** @brief Lowest set bit at or after `start_bit_index`, or nullopt. */
     static std::optional<std::uint32_t> find_lowest_bit_set_after(std::uint32_t bit_mask,
-                                                                   std::uint32_t start_bit_index) {
+                                                                  std::uint32_t start_bit_index) {
         if (start_bit_index >= 32) return std::nullopt;
         const std::uint32_t mask_after = ~((1u << start_bit_index) - 1);
         const std::uint32_t bits_after = bit_mask & mask_after;
@@ -315,7 +314,7 @@ class Allocator {
     }
 
     void initialize(std::uint32_t size, std::uint32_t max_allocs) {
-        size_      = size;
+        size_       = size;
         max_allocs_ = max_allocs;
         reset();
     }
@@ -384,9 +383,9 @@ class Allocator {
         free_storage_ -= node.data_size;
     }
 
-    std::uint32_t size_         = 0;
-    std::uint32_t max_allocs_   = 0;
-    std::uint32_t free_storage_ = 0;
+    std::uint32_t size_          = 0;
+    std::uint32_t max_allocs_    = 0;
+    std::uint32_t free_storage_  = 0;
     std::uint32_t used_bins_top_ = 0;
     std::array<std::uint8_t, kNumTopBins> used_bins_{};
     std::array<std::uint32_t, kNumLeafBins> bin_indices_{};

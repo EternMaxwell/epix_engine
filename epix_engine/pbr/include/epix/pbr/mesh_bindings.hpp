@@ -3,13 +3,13 @@
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/mesh/morph.hpp>
 #include <epix/render/bind_group_layout.hpp>
 #include <epix/render/bind_group_layout_entries.hpp>
 #include <epix/render/render_resource.hpp>
 #include <glm/glm.hpp>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/pbr/lightmap.hpp>
@@ -177,37 +177,34 @@ inline render::BindGroupLayoutDescriptor MeshLayouts::model_only_layout(const wg
 inline render::BindGroupLayoutDescriptor MeshLayouts::skinned_layout(const wgpu::Limits& limits) {
     using render::render_resource::BindGroupLayoutEntries;
     return render::BindGroupLayoutDescriptor::create(
-        "skinned_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's joint matrix buffer.
-                                               std::pair{1u, mesh_layout_entry::skinning(limits)})
-            .entries());
+        "skinned_mesh_layout", BindGroupLayoutEntries<>::with_indices(
+                                   wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+                                   // The current frame's joint matrix buffer.
+                                   std::pair{1u, mesh_layout_entry::skinning(limits)})
+                                   .entries());
 }
 
 inline render::BindGroupLayoutDescriptor MeshLayouts::skinned_motion_layout(const wgpu::Limits& limits) {
     using render::render_resource::BindGroupLayoutEntries;
     return render::BindGroupLayoutDescriptor::create(
-        "skinned_motion_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's joint matrix buffer.
-                                               std::pair{1u, mesh_layout_entry::skinning(limits)},
-                                               // The previous frame's joint matrix buffer.
-                                               std::pair{6u, mesh_layout_entry::skinning(limits)})
-            .entries());
+        "skinned_motion_mesh_layout", BindGroupLayoutEntries<>::with_indices(
+                                          wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+                                          // The current frame's joint matrix buffer.
+                                          std::pair{1u, mesh_layout_entry::skinning(limits)},
+                                          // The previous frame's joint matrix buffer.
+                                          std::pair{6u, mesh_layout_entry::skinning(limits)})
+                                          .entries());
 }
 
 inline render::BindGroupLayoutDescriptor MeshLayouts::morphed_layout(const wgpu::Limits& limits) {
     using render::render_resource::BindGroupLayoutEntries;
     return render::BindGroupLayoutDescriptor::create(
-        "morphed_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's morph weight buffer.
-                                               std::pair{2u, mesh_layout_entry::weights()},
-                                               std::pair{3u, mesh_layout_entry::targets()})
-            .entries());
+        "morphed_mesh_layout", BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
+                                                                      std::pair{0u, mesh_layout_entry::model(limits)},
+                                                                      // The current frame's morph weight buffer.
+                                                                      std::pair{2u, mesh_layout_entry::weights()},
+                                                                      std::pair{3u, mesh_layout_entry::targets()})
+                                   .entries());
 }
 
 inline render::BindGroupLayoutDescriptor MeshLayouts::morphed_motion_layout(const wgpu::Limits& limits) {
@@ -215,28 +212,26 @@ inline render::BindGroupLayoutDescriptor MeshLayouts::morphed_motion_layout(cons
     // Bevy labels this one `morphed_mesh_layout` as well, the same string as
     // `morphed_layout`; kept as is.
     return render::BindGroupLayoutDescriptor::create(
-        "morphed_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's morph weight buffer.
-                                               std::pair{2u, mesh_layout_entry::weights()},
-                                               std::pair{3u, mesh_layout_entry::targets()},
-                                               // The previous frame's morph weight buffer.
-                                               std::pair{7u, mesh_layout_entry::weights()})
-            .entries());
+        "morphed_mesh_layout", BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
+                                                                      std::pair{0u, mesh_layout_entry::model(limits)},
+                                                                      // The current frame's morph weight buffer.
+                                                                      std::pair{2u, mesh_layout_entry::weights()},
+                                                                      std::pair{3u, mesh_layout_entry::targets()},
+                                                                      // The previous frame's morph weight buffer.
+                                                                      std::pair{7u, mesh_layout_entry::weights()})
+                                   .entries());
 }
 
 inline render::BindGroupLayoutDescriptor MeshLayouts::morphed_skinned_layout(const wgpu::Limits& limits) {
     using render::render_resource::BindGroupLayoutEntries;
     return render::BindGroupLayoutDescriptor::create(
         "morphed_skinned_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's joint matrix buffer.
-                                               std::pair{1u, mesh_layout_entry::skinning(limits)},
-                                               // The current frame's morph weight buffer.
-                                               std::pair{2u, mesh_layout_entry::weights()},
-                                               std::pair{3u, mesh_layout_entry::targets()})
+        BindGroupLayoutEntries<>::with_indices(
+            wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+            // The current frame's joint matrix buffer.
+            std::pair{1u, mesh_layout_entry::skinning(limits)},
+            // The current frame's morph weight buffer.
+            std::pair{2u, mesh_layout_entry::weights()}, std::pair{3u, mesh_layout_entry::targets()})
             .entries());
 }
 
@@ -244,39 +239,36 @@ inline render::BindGroupLayoutDescriptor MeshLayouts::morphed_skinned_motion_lay
     using render::render_resource::BindGroupLayoutEntries;
     return render::BindGroupLayoutDescriptor::create(
         "morphed_skinned_motion_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               // The current frame's joint matrix buffer.
-                                               std::pair{1u, mesh_layout_entry::skinning(limits)},
-                                               // The current frame's morph weight buffer.
-                                               std::pair{2u, mesh_layout_entry::weights()},
-                                               std::pair{3u, mesh_layout_entry::targets()},
-                                               // The previous frame's joint matrix buffer.
-                                               std::pair{6u, mesh_layout_entry::skinning(limits)},
-                                               // The previous frame's morph weight buffer.
-                                               std::pair{7u, mesh_layout_entry::weights()})
+        BindGroupLayoutEntries<>::with_indices(
+            wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+            // The current frame's joint matrix buffer.
+            std::pair{1u, mesh_layout_entry::skinning(limits)},
+            // The current frame's morph weight buffer.
+            std::pair{2u, mesh_layout_entry::weights()}, std::pair{3u, mesh_layout_entry::targets()},
+            // The previous frame's joint matrix buffer.
+            std::pair{6u, mesh_layout_entry::skinning(limits)},
+            // The previous frame's morph weight buffer.
+            std::pair{7u, mesh_layout_entry::weights()})
             .entries());
 }
 
 inline render::BindGroupLayoutDescriptor MeshLayouts::lightmapped_layout(const wgpu::Limits& limits,
-                                                                        bool binding_arrays_are_usable) {
+                                                                         bool binding_arrays_are_usable) {
     using render::render_resource::BindGroupLayoutEntries;
     if (binding_arrays_are_usable) {
         return render::BindGroupLayoutDescriptor::create(
-            "lightmapped_mesh_layout",
-            BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                                   std::pair{0u, mesh_layout_entry::model(limits)},
-                                                   std::pair{4u, mesh_layout_entry::lightmaps_texture_view_array()},
-                                                   std::pair{5u, mesh_layout_entry::lightmaps_sampler_array()})
-                .entries());
+            "lightmapped_mesh_layout", BindGroupLayoutEntries<>::with_indices(
+                                           wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+                                           std::pair{4u, mesh_layout_entry::lightmaps_texture_view_array()},
+                                           std::pair{5u, mesh_layout_entry::lightmaps_sampler_array()})
+                                           .entries());
     }
     return render::BindGroupLayoutDescriptor::create(
-        "lightmapped_mesh_layout",
-        BindGroupLayoutEntries<>::with_indices(wgpu::ShaderStage::eVertex,
-                                               std::pair{0u, mesh_layout_entry::model(limits)},
-                                               std::pair{4u, mesh_layout_entry::lightmaps_texture_view()},
-                                               std::pair{5u, mesh_layout_entry::lightmaps_sampler()})
-            .entries());
+        "lightmapped_mesh_layout", BindGroupLayoutEntries<>::with_indices(
+                                       wgpu::ShaderStage::eVertex, std::pair{0u, mesh_layout_entry::model(limits)},
+                                       std::pair{4u, mesh_layout_entry::lightmaps_texture_view()},
+                                       std::pair{5u, mesh_layout_entry::lightmaps_sampler()})
+                                       .entries());
 }
 
 }  // namespace epix::pbr

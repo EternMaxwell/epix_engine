@@ -1,11 +1,11 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <cstddef>
 #include <cstdint>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/image.hpp>
 #include <optional>
@@ -14,7 +14,6 @@
 #include <string_view>
 #include <utility>
 #include <vector>
-#include <epix/common.hpp>
 #endif
 
 #include <epix/text/font.hpp>
@@ -134,12 +133,12 @@ EPIX_EXPORT struct ShapedText {
     float descent_ = 0.0f;
 
     friend EPIX_API ShapedText shape_text(const Text& text,
-                                 const TextFont& font,
-                                 const TextLayout& layout,
-                                 const TextBounds& bounds,
-                                 font::FontAtlasSet& atlas_set,
-                                 assets::Assets<image::Image>& textures,
-                                 assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
+                                          const TextFont& font,
+                                          const TextLayout& layout,
+                                          const TextBounds& bounds,
+                                          font::FontAtlasSet& atlas_set,
+                                          assets::Assets<image::Image>& textures,
+                                          assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
 };
 
 /** @brief Shape text into positioned glyphs using the given font, layout,
@@ -158,12 +157,12 @@ EPIX_EXPORT struct ShapedText {
  * @return A ShapedText containing the final glyph positions and metrics.
  */
 EPIX_EXPORT EPIX_API ShapedText shape_text(const Text& text,
-                                  const TextFont& font,
-                                  const TextLayout& layout,
-                                  const TextBounds& bounds,
-                                  font::FontAtlasSet& atlas_set,
-                                  assets::Assets<image::Image>& textures,
-                                  assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
+                                           const TextFont& font,
+                                           const TextLayout& layout,
+                                           const TextBounds& bounds,
+                                           font::FontAtlasSet& atlas_set,
+                                           assets::Assets<image::Image>& textures,
+                                           assets::Assets<image::TextureAtlasLayout>& atlas_layouts);
 
 /** @brief Text horizontal justification mode. */
 EPIX_EXPORT enum class Justify {

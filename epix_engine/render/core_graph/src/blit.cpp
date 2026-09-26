@@ -1,7 +1,6 @@
-#include <epix/core_graph.hpp>
-
 #include <array>
 #include <cstddef>
+#include <epix/core_graph.hpp>
 #include <optional>
 #include <span>
 #include <string>
@@ -44,7 +43,8 @@ bool BlitPipelineKey::operator==(const BlitPipelineKey& other) const noexcept {
            same_blend_state(blend_state, other.blend_state);
 }
 
-wgpu::BindGroup BlitPipeline::create_bind_group(const wgpu::Device& device, const wgpu::TextureView& src_texture,
+wgpu::BindGroup BlitPipeline::create_bind_group(const wgpu::Device& device,
+                                                const wgpu::TextureView& src_texture,
                                                 const render::PipelineServer& pipeline_server) const {
     using render::render_resource::BindGroupEntries;
     return device.createBindGroup(
@@ -52,7 +52,8 @@ wgpu::BindGroup BlitPipeline::create_bind_group(const wgpu::Device& device, cons
             .setLabel("blit_bind_group")
             .setLayout(pipeline_server.get_bind_group_layout(layout))
             .setEntries(BindGroupEntries<>::sequential(BindGroupEntries<>::texture_binding(src_texture),
-                                                        BindGroupEntries<>::sampler_binding(sampler)).entries()));
+                                                       BindGroupEntries<>::sampler_binding(sampler))
+                            .entries()));
 }
 
 render::RenderPipelineDescriptor BlitPipeline::specialize(Key key) const {
@@ -62,20 +63,17 @@ render::RenderPipelineDescriptor BlitPipeline::specialize(Key key) const {
     if (key.blend_state) target.setBlend(*key.blend_state);
     fragment.add_target(std::move(target));
     return render::RenderPipelineDescriptor{
-        .label       = "blit pipeline",
-        .layouts     = {layout},
-        .vertex      = fullscreen_shader.to_vertex_state(),
+        .label   = "blit pipeline",
+        .layouts = {layout},
+        .vertex  = fullscreen_shader.to_vertex_state(),
         // Rust wgpu's Default fills these fields with WebGPU defaults, while
         // the generated C++ wrappers value-initialize them to zero.
-        .primitive = wgpu::PrimitiveState()
-                         .setTopology(wgpu::PrimitiveTopology::eTriangleList)
-                         .setFrontFace(wgpu::FrontFace::eCCW)
-                         .setCullMode(wgpu::CullMode::eNone)
-                         .setUnclippedDepth(false),
-        .multisample = wgpu::MultisampleState()
-                           .setCount(key.samples)
-                           .setMask(~0u)
-                           .setAlphaToCoverageEnabled(false),
+        .primitive   = wgpu::PrimitiveState()
+                           .setTopology(wgpu::PrimitiveTopology::eTriangleList)
+                           .setFrontFace(wgpu::FrontFace::eCCW)
+                           .setCullMode(wgpu::CullMode::eNone)
+                           .setUnclippedDepth(false),
+        .multisample = wgpu::MultisampleState().setCount(key.samples).setMask(~0u).setAlphaToCoverageEnabled(false),
         .fragment    = std::move(fragment),
     };
 }
@@ -90,28 +88,27 @@ void BlitPlugin::attach(App& app) {
     if (auto render_app = app.get_sub_app_mut(render::Render)) {
         render_app->get().world_mut().init_resource<render::SpecializedRenderPipelines<BlitPipeline>>();
         render_app->get().add_systems(
-            render::RenderStartup,
-            into([fragment_shader](Commands commands, Res<wgpu::Device> device,
-                                   Res<render::PipelineServer> pipeline_server, Res<FullscreenShader> fullscreen_shader) {
-                using render::render_resource::BindGroupLayoutEntries;
-                using render::render_resource::binding_types::sampler;
-                using render::render_resource::binding_types::texture_2d;
-                const auto entries = BindGroupLayoutEntries<>::sequential(
-                    wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
-                    sampler(wgpu::SamplerBindingType::eNonFiltering));
-                commands.insert_resource(BlitPipeline{
-                    .layout = 
-                        render::BindGroupLayoutDescriptor()
-                            .set_label("blit_bind_group_layout")
-                            .set_entries(entries.entries()),
-                    // wgpu-native's C++ descriptor does not initialize this
-                    // required field like Rust wgpu's Default does.
-                    .sampler = device->createSampler(
-                        wgpu::SamplerDescriptor().setLabel("blit_sampler").setMaxAnisotropy(1)),
-                    .fullscreen_shader = *fullscreen_shader,
-                    .fragment_shader   = fragment_shader,
-                });
-            }).set_name("init blit pipeline"));
+            render::RenderStartup, into([fragment_shader](Commands commands, Res<wgpu::Device> device,
+                                                          Res<render::PipelineServer> pipeline_server,
+                                                          Res<FullscreenShader> fullscreen_shader) {
+                                       using render::render_resource::BindGroupLayoutEntries;
+                                       using render::render_resource::binding_types::sampler;
+                                       using render::render_resource::binding_types::texture_2d;
+                                       const auto entries = BindGroupLayoutEntries<>::sequential(
+                                           wgpu::ShaderStage::eFragment, texture_2d(wgpu::TextureSampleType::eFloat),
+                                           sampler(wgpu::SamplerBindingType::eNonFiltering));
+                                       commands.insert_resource(BlitPipeline{
+                                           .layout = render::BindGroupLayoutDescriptor()
+                                                         .set_label("blit_bind_group_layout")
+                                                         .set_entries(entries.entries()),
+                                           // wgpu-native's C++ descriptor does not initialize this
+                                           // required field like Rust wgpu's Default does.
+                                           .sampler = device->createSampler(
+                                               wgpu::SamplerDescriptor().setLabel("blit_sampler").setMaxAnisotropy(1)),
+                                           .fullscreen_shader = *fullscreen_shader,
+                                           .fragment_shader   = fragment_shader,
+                                       });
+                                   }).set_name("init blit pipeline"));
     }
 }
 

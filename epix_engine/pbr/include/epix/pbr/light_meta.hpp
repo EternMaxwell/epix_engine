@@ -1,11 +1,12 @@
 #pragma once
 
 #ifndef EPIX_CXX_MODULE
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
-#include <algorithm>
 #include <numbers>
 #include <optional>
 #include <stdexcept>
@@ -15,7 +16,6 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/camera/projection.hpp>
 #include <epix/camera/visibility.hpp>
@@ -89,10 +89,10 @@ EPIX_EXPORT struct ShadowView {
  *  and brightness become the light uniform's `ambient_color`, and
  *  `affects_lightmapped_meshes` becomes its own flag. */
 EPIX_EXPORT inline AmbientLight resolve_ambient_light(const AmbientLight* camera_override,
-                                                     const GlobalAmbientLight& global) {
+                                                      const GlobalAmbientLight& global) {
     if (camera_override != nullptr) return *camera_override;
-    return AmbientLight{.color = global.color,
-                        .brightness = global.brightness,
+    return AmbientLight{.color                      = global.color,
+                        .brightness                 = global.brightness,
                         .affects_lightmapped_meshes = global.affects_lightmapped_meshes};
 }
 
@@ -116,7 +116,7 @@ EPIX_EXPORT inline std::uint32_t point_light_shadow_texture_layers(std::size_t p
  *  is offset by the cascade count rather than starting at zero - and the spot
  *  count is already capped by the layers left over after the cascades. */
 EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_layers(std::size_t num_directional_cascades_enabled,
-                                                                        std::size_t spot_light_shadow_maps_count) {
+                                                                         std::size_t spot_light_shadow_maps_count) {
     return static_cast<std::uint32_t>(
         std::max<std::size_t>(num_directional_cascades_enabled + spot_light_shadow_maps_count, 1));
 }
@@ -127,7 +127,7 @@ EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_layers(std::si
  *  A point light's is not clamped separately, since its cubemap faces are the
  *  same size. */
 EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_size(std::size_t shadow_map_size,
-                                                                      std::size_t max_texture_dimension_2d) {
+                                                                       std::size_t max_texture_dimension_2d) {
     return static_cast<std::uint32_t>(std::min(shadow_map_size, max_texture_dimension_2d));
 }
 
@@ -136,7 +136,7 @@ EPIX_EXPORT inline std::uint32_t directional_light_shadow_texture_size(std::size
  *  cubemap count. The lights are sorted shadow-casting first, so the cap keeps the
  *  ones that matter, and each of these gets `POINT_LIGHT_CUBE_FACE_COUNT` views. */
 EPIX_EXPORT inline std::size_t point_light_shadow_view_count(std::size_t point_light_count,
-                                                            std::size_t max_texture_cubes) {
+                                                             std::size_t max_texture_cubes) {
     return std::min(point_light_count, max_texture_cubes);
 }
 
@@ -196,8 +196,8 @@ EPIX_EXPORT struct ExtractedPointLight {
     /** @brief The spot-light cone's inner and outer angles, when this point light
      *  is really a spot light. */
     std::optional<std::pair<float, float>> spot_light_angles;
-    bool volumetric                = false;
-    bool soft_shadows_enabled      = false;
+    bool volumetric           = false;
+    bool soft_shadows_enabled = false;
     /** @brief Whether this light contributes diffuse light to lightmapped
      *  meshes. */
     bool affects_lightmapped_mesh_diffuse = true;
@@ -213,11 +213,11 @@ EPIX_EXPORT struct ExtractedDirectionalLight {
     /** @brief Illuminance in lux. */
     float illuminance = 0.0f;
     glm::mat4 transform{1.0f};
-    bool shadows_enabled = false;
-    bool volumetric      = false;
+    bool shadows_enabled                  = false;
+    bool volumetric                       = false;
     bool affects_lightmapped_mesh_diffuse = true;
-    float shadow_depth_bias  = 0.0f;
-    float shadow_normal_bias = 0.0f;
+    float shadow_depth_bias               = 0.0f;
+    float shadow_normal_bias              = 0.0f;
     /** @brief The light's cascade configuration, which the shadow pass reads. */
     CascadeShadowConfig cascade_shadow_config{};
     /** @brief The cascades built for each view. */
@@ -230,7 +230,7 @@ EPIX_EXPORT struct ExtractedDirectionalLight {
     /** @brief The soft shadow size, when PCSS is in use. */
     std::optional<float> soft_shadow_size;
     /** @brief Whether this light uses two-phase occlusion culling. */
-    bool occlusion_culling = false;
+    bool occlusion_culling      = false;
     float sun_disk_angular_size = 0.0f;
     float sun_disk_intensity    = 0.0f;
 };
@@ -244,16 +244,16 @@ EPIX_EXPORT struct ExtractedDirectionalLight {
  *  taken, since they share one texture array. */
 EPIX_EXPORT struct LightCounts {
     /** @brief Point lights, i.e. those without spot angles. */
-    std::size_t point_lights = 0;
+    std::size_t point_lights                   = 0;
     std::size_t point_light_volumetric_enabled = 0;
-    std::size_t point_light_shadow_maps = 0;
+    std::size_t point_light_shadow_maps        = 0;
     /** @brief Spot lights, i.e. point lights carrying spot angles. */
-    std::size_t spot_lights = 0;
+    std::size_t spot_lights                   = 0;
     std::size_t spot_light_volumetric_enabled = 0;
-    std::size_t spot_light_shadow_maps = 0;
+    std::size_t spot_light_shadow_maps        = 0;
     /** @brief Directional lights, counted only up to `MAX_DIRECTIONAL_LIGHTS`. */
     std::size_t directional_volumetric_enabled = 0;
-    std::size_t directional_shadow_enabled = 0;
+    std::size_t directional_shadow_enabled     = 0;
 };
 
 /** @brief Count a frame's lights against the device's texture limits (Bevy
@@ -265,18 +265,19 @@ EPIX_EXPORT struct LightCounts {
  *  subtract the layers the directional shadow maps occupy. */
 EPIX_EXPORT inline LightCounts count_lights(const std::vector<ExtractedPointLight>& point_lights,
                                             const std::vector<ExtractedDirectionalLight>& directional_lights,
-                                            std::size_t max_texture_array_layers, std::size_t max_texture_cubes) {
+                                            std::size_t max_texture_array_layers,
+                                            std::size_t max_texture_cubes) {
     LightCounts counts;
 
     const auto is_spot = [](const ExtractedPointLight& light) { return light.spot_light_angles.has_value(); };
     const auto capped  = [](std::size_t value, std::size_t cap) { return std::min(value, cap); };
 
-    std::size_t points = 0;
+    std::size_t points           = 0;
     std::size_t point_volumetric = 0;
-    std::size_t point_shadows = 0;
-    std::size_t spots = 0;
-    std::size_t spot_volumetric = 0;
-    std::size_t spot_shadows = 0;
+    std::size_t point_shadows    = 0;
+    std::size_t spots            = 0;
+    std::size_t spot_volumetric  = 0;
+    std::size_t spot_shadows     = 0;
     for (const ExtractedPointLight& light : point_lights) {
         if (is_spot(light)) {
             ++spots;
@@ -290,23 +291,24 @@ EPIX_EXPORT inline LightCounts count_lights(const std::vector<ExtractedPointLigh
     }
 
     const std::size_t directional_limit = max_texture_array_layers / MAX_CASCADES_PER_LIGHT;
-    std::size_t directional_volumetric = 0;
-    std::size_t directional_shadows    = 0;
+    std::size_t directional_volumetric  = 0;
+    std::size_t directional_shadows     = 0;
     for (std::size_t i = 0; i < std::min(directional_lights.size(), MAX_DIRECTIONAL_LIGHTS); ++i) {
         if (directional_lights[i].volumetric) ++directional_volumetric;
         if (directional_lights[i].shadows_enabled) ++directional_shadows;
     }
 
-    counts.point_lights                      = points;
-    counts.point_light_volumetric_enabled    = capped(point_volumetric, max_texture_cubes);
-    counts.point_light_shadow_maps           = capped(point_shadows, max_texture_cubes);
-    counts.directional_volumetric_enabled    = capped(directional_volumetric, directional_limit);
-    counts.directional_shadow_enabled        = capped(directional_shadows, directional_limit);
+    counts.point_lights                   = points;
+    counts.point_light_volumetric_enabled = capped(point_volumetric, max_texture_cubes);
+    counts.point_light_shadow_maps        = capped(point_shadows, max_texture_cubes);
+    counts.directional_volumetric_enabled = capped(directional_volumetric, directional_limit);
+    counts.directional_shadow_enabled     = capped(directional_shadows, directional_limit);
     // Spot lights share the texture array with the directional shadow maps.
-    const std::size_t spot_limit = max_texture_array_layers - counts.directional_shadow_enabled * MAX_CASCADES_PER_LIGHT;
-    counts.spot_lights                    = capped(spots, spot_limit);
-    counts.spot_light_volumetric_enabled  = capped(spot_volumetric, spot_limit);
-    counts.spot_light_shadow_maps         = capped(spot_shadows, spot_limit);
+    const std::size_t spot_limit =
+        max_texture_array_layers - counts.directional_shadow_enabled * MAX_CASCADES_PER_LIGHT;
+    counts.spot_lights                   = capped(spots, spot_limit);
+    counts.spot_light_volumetric_enabled = capped(spot_volumetric, spot_limit);
+    counts.spot_light_shadow_maps        = capped(spot_shadows, spot_limit);
     return counts;
 }
 
@@ -316,13 +318,14 @@ EPIX_EXPORT inline LightCounts count_lights(const std::vector<ExtractedPointLigh
  *  its outer angle. */
 EPIX_EXPORT inline ClusterableObjectType point_or_spot_light_to_clusterable(const ExtractedPointLight& light) {
     if (light.spot_light_angles.has_value()) {
-        return ClusterableObjectType{.kind = ClusterableObjectType::Kind::SpotLight,
+        return ClusterableObjectType{.kind            = ClusterableObjectType::Kind::SpotLight,
                                      .shadows_enabled = light.shadows_enabled,
-                                     .volumetric = light.volumetric,
-                                     .outer_angle = light.spot_light_angles->second};
+                                     .volumetric      = light.volumetric,
+                                     .outer_angle     = light.spot_light_angles->second};
     }
-    return ClusterableObjectType{
-        .kind = ClusterableObjectType::Kind::PointLight, .shadows_enabled = light.shadows_enabled, .volumetric = light.volumetric};
+    return ClusterableObjectType{.kind            = ClusterableObjectType::Kind::PointLight,
+                                 .shadows_enabled = light.shadows_enabled,
+                                 .volumetric      = light.volumetric};
 }
 
 /** @brief The key point lights are sorted by (Bevy `light.rs:860-865`):
@@ -362,10 +365,11 @@ EPIX_EXPORT inline std::tuple<bool, bool, ecs::Entity> directional_light_sort_ke
  *  finite when the two angles coincide or the inner one is the wider - the cone
  *  the shader computes would otherwise divide by zero. The returned second value
  *  is `tan(outer)`, the tangent the shader needs for the cone test. */
-EPIX_EXPORT inline std::pair<glm::vec4, float> spot_light_custom_data(float inner_angle, float outer_angle,
-                                                                     glm::vec3 light_direction) {
-    const float cos_outer = std::cos(outer_angle);
-    const float spot_scale = 1.0f / std::max(std::cos(inner_angle) - cos_outer, 1e-4f);
+EPIX_EXPORT inline std::pair<glm::vec4, float> spot_light_custom_data(float inner_angle,
+                                                                      float outer_angle,
+                                                                      glm::vec3 light_direction) {
+    const float cos_outer   = std::cos(outer_angle);
+    const float spot_scale  = 1.0f / std::max(std::cos(inner_angle) - cos_outer, 1e-4f);
     const float spot_offset = -cos_outer * spot_scale;
     return {glm::vec4(light_direction.x, light_direction.z, spot_scale, spot_offset), std::tan(outer_angle)};
 }
@@ -384,9 +388,7 @@ EPIX_EXPORT inline glm::vec4 point_light_custom_data(const glm::mat4& cube_face_
  *  Bevy tests `is_sign_negative`, not `< 0.0`, so a direction of exactly `-0.0`
  *  counts as negative - which is what the shader expects, since it flips the cone
  *  around Y for these lights. */
-EPIX_EXPORT inline bool spot_light_y_negative(glm::vec3 light_direction) {
-    return std::signbit(light_direction.y);
-}
+EPIX_EXPORT inline bool spot_light_y_negative(glm::vec3 light_direction) { return std::signbit(light_direction.y); }
 
 /** @brief A light's colour premultiplied by its intensity, with the inverse
  *  square of the range in w (Bevy `render/light.rs:952-957`).
@@ -410,10 +412,11 @@ EPIX_EXPORT inline glm::vec4 pack_light_color_intensity_range(glm::vec4 color, f
  *
  *  Two further details: the volumetric flag requires shadows as well as
  *  volumetrics, and the lightmapped flag stands alone. */
-EPIX_EXPORT inline std::uint32_t point_light_gpu_flags(std::size_t index, const ExtractedPointLight& light,
-                                                      const LightCounts& counts) {
-    std::uint32_t flags     = PointLightFlags::NONE;
-    const bool is_spot      = light.spot_light_angles.has_value();
+EPIX_EXPORT inline std::uint32_t point_light_gpu_flags(std::size_t index,
+                                                       const ExtractedPointLight& light,
+                                                       const LightCounts& counts) {
+    std::uint32_t flags        = PointLightFlags::NONE;
+    const bool is_spot         = light.spot_light_angles.has_value();
     const std::size_t in_block = is_spot ? index - counts.point_lights : index;
 
     if (light.shadows_enabled &&
@@ -441,7 +444,8 @@ EPIX_EXPORT inline std::uint32_t point_light_gpu_flags(std::size_t index, const 
  *  rendered one at a time. */
 EPIX_EXPORT inline std::size_t num_directional_cascades_enabled(
     const std::vector<camera::RenderLayers>& view_render_layers,
-    const std::vector<ExtractedDirectionalLight>& directional_lights, std::size_t max_texture_array_layers) {
+    const std::vector<ExtractedDirectionalLight>& directional_lights,
+    std::size_t max_texture_array_layers) {
     std::size_t enabled = 0;
     for (const camera::RenderLayers& view_layers : view_render_layers) {
         std::size_t for_this_view = 0;
@@ -469,8 +473,9 @@ EPIX_EXPORT inline glm::vec4 pack_ambient_color(glm::vec4 linear_color, float br
  *  width and height - how much of the screen one cluster covers - while z and w
  *  are `calculate_cluster_factors`' log-based pair, which the shader uses to
  *  recover a view Z from a slice index. */
-EPIX_EXPORT inline glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions, glm::vec2 viewport_size,
-                                                 glm::vec2 log_factors) {
+EPIX_EXPORT inline glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions,
+                                                  glm::vec2 viewport_size,
+                                                  glm::vec2 log_factors) {
     return glm::vec4(static_cast<float>(cluster_dimensions.x) / viewport_size.x,
                      static_cast<float>(cluster_dimensions.y) / viewport_size.y, log_factors.x, log_factors.y);
 }
@@ -479,8 +484,7 @@ EPIX_EXPORT inline glm::vec4 pack_cluster_factors(glm::uvec3 cluster_dimensions,
  *  x, y and z are the cluster counts, and w is how many clusters there are in
  *  total. */
 EPIX_EXPORT inline glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensions) {
-    return glm::uvec4(cluster_dimensions,
-                      cluster_dimensions.x * cluster_dimensions.y * cluster_dimensions.z);
+    return glm::uvec4(cluster_dimensions, cluster_dimensions.x * cluster_dimensions.y * cluster_dimensions.z);
 }
 
 /** @brief The offset that turns a spot light's index into its shadow map's
@@ -493,7 +497,7 @@ EPIX_EXPORT inline glm::uvec4 pack_cluster_dimensions(glm::uvec3 cluster_dimensi
  *  two in the wrong order, or the wrong way round, silently reads the wrong
  *  shadow map. */
 EPIX_EXPORT inline std::int32_t spot_light_shadowmap_offset(std::size_t num_directional_cascades_enabled,
-                                                           std::size_t point_light_count) {
+                                                            std::size_t point_light_count) {
     return static_cast<std::int32_t>(num_directional_cascades_enabled) - static_cast<std::int32_t>(point_light_count);
 }
 
@@ -518,8 +522,11 @@ EPIX_EXPORT struct DirectionalLightFlagsAndCascades {
 /** @brief Compute a directional light's flags and granted cascades (Bevy
  *  `render/light.rs:1171-1196`). */
 EPIX_EXPORT inline DirectionalLightFlagsAndCascades directional_light_gpu_flags(
-    const ExtractedDirectionalLight& light, std::size_t index, std::size_t directional_volumetric_enabled_count,
-    std::size_t cascades_used_so_far, std::size_t max_texture_array_layers) {
+    const ExtractedDirectionalLight& light,
+    std::size_t index,
+    std::size_t directional_volumetric_enabled_count,
+    std::size_t cascades_used_so_far,
+    std::size_t max_texture_array_layers) {
     DirectionalLightFlagsAndCascades result;
 
     if (light.volumetric && light.shadows_enabled && index < directional_volumetric_enabled_count) {
@@ -543,9 +550,7 @@ EPIX_EXPORT inline DirectionalLightFlagsAndCascades directional_light_gpu_flags(
 
 /** @brief A directional light's colour premultiplied by its illuminance (Bevy
  *  `render/light.rs:1205-1207`), the whole `vec4` as for point lights. */
-EPIX_EXPORT inline glm::vec4 pack_directional_color(glm::vec4 color, float illuminance) {
-    return color * illuminance;
-}
+EPIX_EXPORT inline glm::vec4 pack_directional_color(glm::vec4 color, float illuminance) { return color * illuminance; }
 
 /** @brief The sentinel a light's `decal_index` carries when it has no clustered
  *  decal (Bevy `render/light.rs:1219-1223`: `unwrap_or(u32::MAX)`).
@@ -592,8 +597,10 @@ EPIX_EXPORT struct DirectionalShadowSlice {
  *  and leaves the running index where it was, which is why the index and the
  *  light's position in the list are tracked separately. */
 EPIX_EXPORT inline std::vector<DirectionalShadowSlice> directional_shadow_slices(
-    const std::vector<ExtractedDirectionalLight>& directional_lights, const camera::RenderLayers& view_layers,
-    std::size_t directional_volumetric_enabled_count, std::size_t max_texture_array_layers,
+    const std::vector<ExtractedDirectionalLight>& directional_lights,
+    const camera::RenderLayers& view_layers,
+    std::size_t directional_volumetric_enabled_count,
+    std::size_t max_texture_array_layers,
     std::size_t* out_total_cascades = nullptr) {
     std::vector<DirectionalShadowSlice> slices;
     slices.reserve(std::min(directional_lights.size(), MAX_DIRECTIONAL_LIGHTS));
@@ -604,8 +611,8 @@ EPIX_EXPORT inline std::vector<DirectionalShadowSlice> directional_shadow_slices
         if (slices.size() >= MAX_DIRECTIONAL_LIGHTS) break;
         if (!light.render_layers.intersects(view_layers)) continue;
 
-        const auto flags = directional_light_gpu_flags(light, index, directional_volumetric_enabled_count, base,
-                                                      max_texture_array_layers);
+        const auto flags    = directional_light_gpu_flags(light, index, directional_volumetric_enabled_count, base,
+                                                          max_texture_array_layers);
         const bool shadowed = (flags.flags & DirectionalLightFlags::SHADOWS_ENABLED) != 0u;
         slices.push_back(DirectionalShadowSlice{
             .light_index = index, .base_index = shadowed ? base : 0u, .num_cascades = flags.num_cascades});

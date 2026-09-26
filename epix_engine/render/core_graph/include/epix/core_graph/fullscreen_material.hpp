@@ -1,12 +1,12 @@
 #pragma once
 
-
 #ifndef EPIX_CXX_MODULE
 #include <array>
 #include <concepts>
 #include <cstdint>
 #include <epix/app.hpp>
 #include <epix/assets.hpp>
+#include <epix/common.hpp>
 #include <epix/ecs.hpp>
 #include <epix/render.hpp>
 #include <epix/shader.hpp>
@@ -20,7 +20,6 @@
 #include <utility>
 #include <vector>
 #include <webgpu/webgpu.hpp>
-#include <epix/common.hpp>
 #endif
 #include <epix/core_graph/core2d.hpp>
 #include <epix/core_graph/fullscreen.hpp>
@@ -38,12 +37,12 @@ namespace epix::core_graph {
  * asset, the graph-registration parameters, and the uniform buffer layout.
  */
 template <typename T>
-concept FullscreenMaterial = render::render_resource::ShaderWritable<T> && std::is_copy_constructible_v<T> &&
-                             std::is_copy_assignable_v<T> && std::default_initializable<T> &&
-                             render::ExtractComponentImpl<T> && requires {
-    { T::fragment_shader() } -> std::same_as<shader::ShaderRef>;
-    { T::node_edges() } -> std::convertible_to<std::vector<render::graph::NodeLabel>>;
-};
+concept FullscreenMaterial =
+    render::render_resource::ShaderWritable<T> && std::is_copy_constructible_v<T> && std::is_copy_assignable_v<T> &&
+    std::default_initializable<T> && render::ExtractComponentImpl<T> && requires {
+        { T::fragment_shader() } -> std::same_as<shader::ShaderRef>;
+        { T::node_edges() } -> std::convertible_to<std::vector<render::graph::NodeLabel>>;
+    };
 
 /**
  * @brief Dedicated label identifying a full-screen material's graph node (Bevy
@@ -120,26 +119,25 @@ struct FullscreenMaterialPlugin {
  * a `Camera3d`, otherwise `Core2d` when it is a `Camera2d`, otherwise it warns
  * and skips. */
 template <FullscreenMaterial T>
-void extract_on_add(
-    epix::ecs::World& render_world,
-    epix::app::Extract<epix::ecs::Query<
-        epix::ecs::Item<epix::ecs::Entity, epix::ecs::Has<::epix::camera::Camera3d>,
-                        epix::ecs::Has<::epix::camera::Camera2d>>,
-        ::epix::ecs::Added<T>>> cameras) {
+void extract_on_add(epix::ecs::World& render_world,
+                    epix::app::Extract<epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+                                                                        epix::ecs::Has<::epix::camera::Camera3d>,
+                                                                        epix::ecs::Has<::epix::camera::Camera2d>>,
+                                                        ::epix::ecs::Added<T>>> cameras) {
     for (auto&& [entity, is_3d, is_2d] : cameras.iter()) {
         (void)entity;
         (void)render_world.resource_scope([&](render::graph::RenderGraph& render_graph, epix::ecs::World& world) {
             // Bevy tries `Core3d` first, then `Core2d`, and warns otherwise.
             render::graph::RenderGraph* graph = nullptr;
             if (is_3d) {
-                if (auto sub_graph = render_graph.get_sub_graph(
-                        render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d))) {
+                if (auto sub_graph =
+                        render_graph.get_sub_graph(render::graph::GraphLabel(::epix::core_graph::core_3d::Core3d))) {
                     graph = std::addressof(sub_graph->get());
                 }
             }
             if (graph == nullptr && is_2d) {
-                if (auto sub_graph = render_graph.get_sub_graph(
-                        render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))) {
+                if (auto sub_graph =
+                        render_graph.get_sub_graph(render::graph::GraphLabel(::epix::core_graph::core_2d::Core2d))) {
                     graph = std::addressof(sub_graph->get());
                 }
             }
@@ -177,51 +175,51 @@ std::expected<void, render::graph::NodeRunError> FullscreenMaterialNode<T>::run(
     const auto [target, settings_index] = view;
 
     const auto pipeline_resource = world.get_resource<FullscreenMaterialPipeline>();
-    const auto pipeline_server    = world.get_resource<render::PipelineServer>();
-    const auto data_uniforms      = world.get_resource<render::ComponentUniforms<T>>();
+    const auto pipeline_server   = world.get_resource<render::PipelineServer>();
+    const auto data_uniforms     = world.get_resource<render::ComponentUniforms<T>>();
     if (!pipeline_resource || !pipeline_server || !data_uniforms) return {};
 
-    const auto pipeline_id = target.is_hdr() ? pipeline_resource->get().pipeline_id_hdr : pipeline_resource->get().pipeline_id;
-    const auto pipeline    = pipeline_server->get().get_render_pipeline(pipeline_id);
+    const auto pipeline_id =
+        target.is_hdr() ? pipeline_resource->get().pipeline_id_hdr : pipeline_resource->get().pipeline_id;
+    const auto pipeline = pipeline_server->get().get_render_pipeline(pipeline_id);
     if (!pipeline) return {};
 
     const auto settings_binding = data_uniforms->get().uniforms().binding();
     if (!settings_binding) return {};
 
-    const auto post_process = target.post_process_write();
+    const auto post_process          = target.post_process_write();
     const wgpu::BindGroup bind_group = render_context.device().createBindGroup(
         wgpu::BindGroupDescriptor()
             .setLabel("fullscreen_material_bind_group")
             .setLayout(pipeline_server->get().get_bind_group_layout(pipeline_resource->get().layout))
-            .setEntries(render::render_resource::BindGroupEntries<>::sequential(
-                            render::render_resource::BindGroupEntries<>::texture_binding(post_process.source),
-                            render::render_resource::BindGroupEntries<>::sampler_binding(pipeline_resource->get().sampler),
-                            render::render_resource::BindGroupEntries<>::buffer_binding(
-                                settings_binding->get(), 0, render::render_resource::ShaderTypeInfo<T>::shader_size))
-                            .entries()));
+            .setEntries(
+                render::render_resource::BindGroupEntries<>::sequential(
+                    render::render_resource::BindGroupEntries<>::texture_binding(post_process.source),
+                    render::render_resource::BindGroupEntries<>::sampler_binding(pipeline_resource->get().sampler),
+                    render::render_resource::BindGroupEntries<>::buffer_binding(
+                        settings_binding->get(), 0, render::render_resource::ShaderTypeInfo<T>::shader_size))
+                    .entries()));
 
     const wgpu::RenderPipeline render_pipeline = pipeline->get().pipeline();
-    const wgpu::TextureView destination       = post_process.destination;
-    const std::uint32_t offset                = settings_index.index();
+    const wgpu::TextureView destination        = post_process.destination;
+    const std::uint32_t offset                 = settings_index.index();
 
-    render_context.add_command_buffer_generation_task(
-        [render_pipeline, bind_group, destination, offset](wgpu::Device device) {
-            auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("fullscreen_material"));
-            auto color   = wgpu::RenderPassColorAttachment()
-                              .setView(destination)
-                              .setDepthSlice(~0u)
-                              .setLoadOp(wgpu::LoadOp::eLoad)
-                              .setStoreOp(wgpu::StoreOp::eStore);
-            auto pass = encoder.beginRenderPass(
-                wgpu::RenderPassDescriptor()
-                    .setLabel("fullscreen_material")
-                    .setColorAttachments(std::array{color}));
-            pass.setPipeline(render_pipeline);
-            pass.setBindGroup(0, bind_group, offset);
-            pass.draw(3, 1, 0, 0);
-            pass.end();
-            return encoder.finish();
-        });
+    render_context.add_command_buffer_generation_task([render_pipeline, bind_group, destination,
+                                                       offset](wgpu::Device device) {
+        auto encoder = device.createCommandEncoder(wgpu::CommandEncoderDescriptor().setLabel("fullscreen_material"));
+        auto color   = wgpu::RenderPassColorAttachment()
+                           .setView(destination)
+                           .setDepthSlice(~0u)
+                           .setLoadOp(wgpu::LoadOp::eLoad)
+                           .setStoreOp(wgpu::StoreOp::eStore);
+        auto pass    = encoder.beginRenderPass(
+            wgpu::RenderPassDescriptor().setLabel("fullscreen_material").setColorAttachments(std::array{color}));
+        pass.setPipeline(render_pipeline);
+        pass.setBindGroup(0, bind_group, offset);
+        pass.draw(3, 1, 0, 0);
+        pass.end();
+        return encoder.finish();
+    });
     return {};
 }
 
@@ -237,39 +235,35 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
     auto& render_app_ref = render_app->get();
     render_app_ref.add_systems(
         render::RenderStartup,
-        ecs::into([](ecs::Commands commands, ecs::Res<wgpu::Device> device,
-                     ecs::Res<assets::AssetServer> asset_server,
-                     ecs::Res<render::PipelineServer> pipeline_server,
-                     ecs::Res<FullscreenShader> fullscreen_shader) {
+        ecs::into([](ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<assets::AssetServer> asset_server,
+                     ecs::Res<render::PipelineServer> pipeline_server, ecs::Res<FullscreenShader> fullscreen_shader) {
             const auto shader_ref = T::fragment_shader();
-            const auto fragment_shader = std::visit(
-                utils::visitor{
-                    [](const shader::ShaderRef::Default&) -> assets::Handle<shader::Shader> {
-                        throw std::logic_error(
-                            "FullscreenMaterial::fragment_shader() must not return ShaderRef::Default");
-                    },
-                    [](const shader::ShaderRef::ByHandle& reference) { return reference.handle; },
-                    [&asset_server](const shader::ShaderRef::ByPath& reference) {
-                        return asset_server->template load<shader::Shader>(
-                            assets::AssetPath(reference.path.generic_string()));
-                    },
-                },
-                shader_ref.value);
+            const auto fragment_shader =
+                std::visit(utils::visitor{
+                               [](const shader::ShaderRef::Default&) -> assets::Handle<shader::Shader> {
+                                   throw std::logic_error(
+                                       "FullscreenMaterial::fragment_shader() must not return ShaderRef::Default");
+                               },
+                               [](const shader::ShaderRef::ByHandle& reference) { return reference.handle; },
+                               [&asset_server](const shader::ShaderRef::ByPath& reference) {
+                                   return asset_server->template load<shader::Shader>(
+                                       assets::AssetPath(reference.path.generic_string()));
+                               },
+                           },
+                           shader_ref.value);
             using render::render_resource::BindGroupLayoutEntries;
             using namespace render::render_resource::binding_types;
             const auto entries = BindGroupLayoutEntries<>::with_indices(
-                wgpu::ShaderStage::eFragment,
-                std::pair{0u, texture_2d(wgpu::TextureSampleType::eFloat)},
+                wgpu::ShaderStage::eFragment, std::pair{0u, texture_2d(wgpu::TextureSampleType::eFloat)},
                 std::pair{1u, sampler(wgpu::SamplerBindingType::eFiltering)},
                 std::pair{2u, uniform_buffer(true, render::render_resource::ShaderTypeInfo<T>::shader_size)});
-            const auto layout = 
-                render::BindGroupLayoutDescriptor()
-                    .set_label("fullscreen_material_bind_group_layout")
-                    .set_entries(entries.entries());
+            const auto layout  = render::BindGroupLayoutDescriptor()
+                                     .set_label("fullscreen_material_bind_group_layout")
+                                     .set_entries(entries.entries());
             const auto sampler = device->createSampler(
                 wgpu::SamplerDescriptor().setLabel("fullscreen_material_sampler").setMaxAnisotropy(1));
             const auto vertex_state = fullscreen_shader->to_vertex_state();
-            const auto build         = [&](wgpu::TextureFormat format) {
+            const auto build        = [&](wgpu::TextureFormat format) {
                 render::FragmentState fragment{.shader = fragment_shader, .entry_point = std::string("fs_main")};
                 wgpu::ColorTargetState target;
                 target.setFormat(format).setWriteMask(wgpu::ColorWriteMask::eAll);
@@ -292,8 +286,7 @@ void FullscreenMaterialPlugin<T>::attach(app::App& app) {
             // uses ViewTarget::TEXTURE_FORMAT_HDR.
             const auto pipeline_id     = build(wgpu::TextureFormat::eRGBA8UnormSrgb);
             const auto pipeline_id_hdr = build(render::view::ViewTarget::TEXTURE_FORMAT_HDR);
-            commands.insert_resource(
-                FullscreenMaterialPipeline{layout, sampler, pipeline_id, pipeline_id_hdr});
+            commands.insert_resource(FullscreenMaterialPipeline{layout, sampler, pipeline_id, pipeline_id_hdr});
         }).set_name(std::format("init fullscreen material pipeline '{}'", meta::type_id<T>().short_name())));
 
     const auto sub_graph = fullscreen_material_sub_graph<T>();

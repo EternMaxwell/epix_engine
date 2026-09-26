@@ -44,10 +44,10 @@ namespace internal {
  */
 template <typename T>
 [[noreturn]] void missing_resource() {
-    throw std::runtime_error(std::format(
-        "Requested resource {} does not exist in the `World`. Did you forget to add it using "
-        "`app.insert_resource` / `app.init_resource`? Resources are also implicitly added by plugins.",
-        meta::type_id<T>().name()));
+    throw std::runtime_error(
+        std::format("Requested resource {} does not exist in the `World`. Did you forget to add it using "
+                    "`app.insert_resource` / `app.init_resource`? Resources are also implicitly added by plugins.",
+                    meta::type_id<T>().name()));
 }
 
 struct Bundles;
