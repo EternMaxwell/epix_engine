@@ -23,3 +23,8 @@ See also: [project-wide todo](../todo.md)
   stops at `SDLK_F24` and has no key code for the two "world" keys, so those
   three engine key codes cannot be produced or consumed by this backend.
   `map_key_to_sdl3` maps them to `SDLK_UNKNOWN`.
+
+- [ ] **`MouseButton6`–`MouseButton8` have no SDL counterpart** — the engine
+  follows GLFW's eight-button numbering, while SDL reports at most five physical
+  buttons (`SDL_BUTTON_LEFT`, `MIDDLE`, `RIGHT`, `X1`, `X2`).
+  `map_mouse_button_to_sdl3` returns 0 for the three buttons SDL cannot express.

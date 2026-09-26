@@ -46,17 +46,6 @@ struct SDL3Events {
     std::vector<std::byte> events;
 };
 
-/** @brief Event carrying file paths dropped onto an SDL window. */
-EPIX_EXPORT struct PathDrop {
-    /** @brief File system paths of the dropped files. */
-    std::vector<std::string> paths;
-};
-/** @brief Event carrying a Unicode character received by an SDL window. */
-EPIX_EXPORT struct ReceivedCharacter {
-    /** @brief The Unicode code point of the received character. */
-    char32_t character;
-};
-
 /** @brief Map an engine key code to the SDL key code for the same physical key.
  * SDL key codes are `Uint32`. */
 EPIX_API std::uint32_t map_key_to_sdl3(input::KeyCode key);
@@ -70,25 +59,6 @@ EPIX_API input::MouseButton map_sdl3_mouse_button_to_input(std::uint8_t button);
 
 /** @brief Resource mapping entity IDs to their native SDL window pointers. */
 EPIX_EXPORT struct SDL3windows : public std::unordered_map<epix::ecs::Entity, SDL_Window*> {};
-
-/** @brief Event requesting the clipboard text to be set. */
-EPIX_EXPORT struct SetClipboardString {
-    /** @brief The text to write to the clipboard. */
-    std::string text;
-};
-/** @brief Resource providing read access to the system clipboard. */
-EPIX_EXPORT struct EPIX_API Clipboard {
-   private:
-    std::string text;
-
-   public:
-    /** @brief Get the current clipboard text. */
-    const std::string& get_text() const noexcept;
-    /** @brief System that reads clipboard text from the OS. */
-    static void update(epix::ecs::ResMut<Clipboard> clipboard);
-    /** @brief System that writes pending clipboard text to the OS. */
-    static void set_text(epix::ecs::EventReader<SetClipboardString> events);
-};
 
 /** @brief Snapshot of a window's position and size, used to restore it when a
  * window leaves fullscreen. */
@@ -148,7 +118,7 @@ EPIX_EXPORT struct EPIX_API SDL3Runner : public epix::app::AppRunner {
     epix::ecs::FilteredAccessSet remove_access;
     std::unique_ptr<epix::ecs::System<std::tuple<>, void>> create_windows_system, update_size_system, update_pos_system,
         toggle_window_mode_system, update_window_states_system, destroy_windows_system, destroy_all_windows_system,
-        send_cached_events_system, clipboard_set_text_system, clipboard_update_system;
+        send_cached_events_system, clipboard_update_system;
     std::vector<std::unique_ptr<epix::ecs::System<std::tuple<>, void>>> extra_systems;
     std::optional<std::future<std::unique_ptr<epix::app::App>>> render_app_future;
     std::optional<epix::app::AppLabel> render_app_label;
@@ -162,6 +132,11 @@ EPIX_EXPORT struct EPIX_API SDL3Runner : public epix::app::AppRunner {
 EPIX_EXPORT struct EPIX_API SDL3Plugin {
     void attach(epix::app::App& app);
     void detach(epix::app::App& app);
+
+    /** @brief System that keeps the `Clipboard` resource and the OS clipboard
+     * in sync. */
+    static void update_clipboard(epix::ecs::ResMut<window::Clipboard> clipboard,
+                                 epix::ecs::Local<std::string> last_written);
 
     /** @brief System that syncs window size from SDL to the Window component. */
     static void update_size(
@@ -215,7 +190,9 @@ EPIX_EXPORT struct EPIX_API SDL3Plugin {
                                    std::optional<epix::ecs::EventWriter<input::KeyInput>> key_input,
                                    std::optional<epix::ecs::EventWriter<input::MouseButtonInput>> mouse_button_input,
                                    std::optional<epix::ecs::EventWriter<input::MouseMove>> mouse_move_input,
-                                   std::optional<epix::ecs::EventWriter<input::MouseScroll>> scroll_input);
+                                   std::optional<epix::ecs::EventWriter<input::MouseScroll>> scroll_input,
+                                   epix::ecs::Local<std::pair<epix::ecs::Entity, std::vector<std::string>>>
+                                       pending_drop);
     /** @brief System that destroys SDL windows for removed Window entities. */
     static void destroy_windows(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const window::Window&>> windows,
                                 epix::ecs::ResMut<SDL3windows> sdl_windows,

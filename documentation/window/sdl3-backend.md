@@ -39,6 +39,7 @@ These are not normally called directly but can be referenced for ordering:
 | `SDL3Plugin::update_window_states` | Applies title, cursor, icon, opacity changes |
 | `SDL3Plugin::toggle_window_mode` | Applies fullscreen / borderless / windowed transitions |
 | `SDL3Plugin::send_cached_events` | Translates the frame's staged SDL events into ECS events |
+| `SDL3Plugin::update_clipboard` | Mirrors the `Clipboard` resource and the OS clipboard |
 | `SDL3Plugin::destroy_windows` | Destroys the native window when the entity is despawned |
 | `SDL3Plugin::destroy_all_windows` | Destroys every remaining native window at shutdown |
 
@@ -124,31 +125,32 @@ translates them; the runner clears them once the frame's systems have run.
 
 ---
 
-## `Clipboard`
+## Clipboard
 
-Resource providing read access to the system clipboard. Updated each frame by `Clipboard::update`.
+`Clipboard` lives in the common window module, not in a backend; this backend
+keeps it in sync with the OS. There is no event for writing it — **writing the
+resource is the request**:
 
 ```cpp
-void read_clip(Res<epix::sdl3::Clipboard> clipboard) {
-    const std::string& text = clipboard->get_text();
+void write_clip(ResMut<epix::window::Clipboard> clipboard) {
+    clipboard->text = "hello";   // the backend pushes this to the OS next frame
+}
+
+void read_clip(Res<epix::window::Clipboard> clipboard) {
+    const std::string& text = clipboard->text;   // refreshed from the OS each frame
 }
 ```
 
-### `SetClipboardString`
+`SDL3Plugin::update_clipboard` runs once per frame. It keeps a copy of the last
+value it pushed, and:
 
-Event that writes text to the clipboard. Send it from any system:
+- if the resource was modified (`ResMut::is_modified()`) and its `text` differs
+  from that copy, it writes `text` to the OS clipboard;
+- otherwise it reads the OS clipboard and publishes it into the resource, so a
+  change made by another application shows up.
 
-```cpp
-void write_clip(EventWriter<epix::sdl3::SetClipboardString> writer) {
-    writer.write(epix::sdl3::SetClipboardString{.text = "hello"});
-}
-```
-
----
-
-## `PathDrop`
-
-Backend-internal event carrying raw file paths from SDL's drop events, before they are forwarded to the engine's `FileDrop` event. In normal usage, read [`FileDrop`](./events.md#filedrop) instead.
+The read-back goes through `Mut::bypass_change_detection()`, so the backend's
+own mirroring is not reported as a change; only other systems' writes are.
 
 ---
 
@@ -161,5 +163,5 @@ Backend-internal event carrying raw file paths from SDL's drop events, before th
   because the runner executes them from SDL's iteration callback.
 - The render sub-app thread shares no ECS data directly; use the `Extract<T>` mechanism.
 - `update_pos` uses a local pending-positions map to handle async window-manager position settling.
-- `Window::cursor_pos` is read back from SDL while the window has mouse focus; do not set it manually unless you mean to warp the pointer.
+- `Window::cursor_pos` is read back from SDL as-is and is not clamped to the window, so it may lie outside the client area once the cursor leaves; do not set it manually unless you mean to warp the pointer.
 - `CursorMode::Captured` and `CursorMode::Disabled` are both implemented with a pointer clip rectangle (the client area, and a centre lock respectively), which is what SDL offers on Windows.

@@ -24,10 +24,10 @@ void SDL3Plugin::attach(App& app) {
     spdlog::info("[sdl3] SDL3 initialized successfully with video driver '{}' (SDL {}.{}.{}).",
                  driver != nullptr ? driver : "unknown", SDL_VERSIONNUM_MAJOR(version), SDL_VERSIONNUM_MINOR(version),
                  SDL_VERSIONNUM_MICRO(version));
-    app.world_mut().insert_resource(Clipboard{});
+    app.world_mut().insert_resource(window::Clipboard{});
     app.world_mut().init_resource<SDL3windows>();
     app.world_mut().init_resource<SDL3Events>();
-    app.add_events<SetClipboardString>().set_runner(std::make_unique<SDL3Runner>(app));
+    app.set_runner(std::make_unique<SDL3Runner>(app));
 }
 
 void SDL3Plugin::detach(App& app) {

@@ -91,8 +91,7 @@ std::string rect_str(int a, int b, int c, int d) {
 std::string size_str(const Window& w) { return num(w.size.first) + "x" + num(w.size.second); }
 std::string pos_str(const Window& w) { return pair_str(w.final_pos.first, w.final_pos.second); }
 
-std::string component_report(const Window& w) {
-    return "comp{title=\"" + w.title + "\" size=" + size_str(w) + " physical=" + num(w.physical_size.first) + "x" +
+std::string component_report(const Window& w) {    return "comp{title=\"" + w.title + "\" size=" + size_str(w) + " physical=" + num(w.physical_size.first) + "x" +
            num(w.physical_size.second) + " scale=" + std::to_string(w.scale_factor) + " final_pos=" + pos_str(w) +
            " cursor_pos=(" + num(static_cast<int>(w.cursor_pos.first)) + "," +
            num(static_cast<int>(w.cursor_pos.second)) + ") cursor_in_window=" + yn(w.cursor_in_window) + " frame=" +
@@ -252,6 +251,83 @@ void os_force_foreground(HWND w) {
     if (foreground_tid != this_tid) AttachThreadInput(this_tid, foreground_tid, FALSE);
 }
 
+/** @brief Drive a real mouse button or wheel event through SendInput. */
+void os_send_mouse(DWORD flag, DWORD data = 0) {
+    INPUT input{};
+    input.type       = INPUT_MOUSE;
+    input.mi.dwFlags = flag;
+    input.mi.mouseData = data;
+    SendInput(1, &input, sizeof(INPUT));
+}
+
+/** @brief Post a real WM_DROPFILES carrying every path, as Explorer would.
+ *
+ * The payload is the documented HDROP layout - a DWORD byte offset to the file
+ * list, a POINT, and two BOOLs (20 bytes), then a double-NUL terminated list of
+ * ANSI paths - laid out by hand so no shell header is needed. GHND zero-fills
+ * everything except the offset. */
+bool os_post_file_drop(HWND w, const std::vector<std::string>& paths) {
+    constexpr std::size_t kHeaderBytes = 20;
+    std::size_t bytes = 0;
+    for (const auto& path : paths) bytes += path.size() + 1;
+    HGLOBAL memory = GlobalAlloc(GHND, kHeaderBytes + bytes + 1);
+    if (memory == nullptr) return false;
+    auto* base = static_cast<std::byte*>(GlobalLock(memory));
+    if (base == nullptr) {
+        GlobalFree(memory);
+        return false;
+    }
+    const auto offset = static_cast<std::uint32_t>(kHeaderBytes);
+    std::memcpy(base, &offset, sizeof(offset));
+    std::size_t cursor = kHeaderBytes;
+    for (const auto& path : paths) {
+        std::memcpy(base + cursor, path.c_str(), path.size());
+        cursor += path.size();
+        base[cursor++] = std::byte{0};
+    }
+    base[cursor] = std::byte{0};
+    GlobalUnlock(memory);
+    return PostMessageW(w, WM_DROPFILES, reinterpret_cast<WPARAM>(memory), 0) != FALSE;
+}
+
+/** @brief The OS clipboard text, read straight from Win32. */
+std::string os_get_clipboard_text() {
+    if (OpenClipboard(nullptr) == FALSE) return {};
+    std::string utf8;
+    if (HANDLE handle = GetClipboardData(CF_UNICODETEXT); handle != nullptr) {
+        if (auto* wide = static_cast<const wchar_t*>(GlobalLock(handle)); wide != nullptr) {
+            const int needed =
+                WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+            if (needed > 1) {
+                utf8.resize(static_cast<std::size_t>(needed - 1));
+                WideCharToMultiByte(CP_UTF8, 0, wide, -1, utf8.data(), needed, nullptr, nullptr);
+            }
+            GlobalUnlock(handle);
+        }
+    }
+    CloseClipboard();
+    return utf8;
+}
+
+/** @brief Replace the OS clipboard text through Win32, as another app would. */
+bool os_set_clipboard_text(const std::string& utf8) {
+    if (OpenClipboard(nullptr) == FALSE) return false;
+    EmptyClipboard();
+    const int wide_len = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
+    HGLOBAL memory     = GlobalAlloc(GMEM_MOVEABLE, static_cast<std::size_t>(wide_len) * sizeof(wchar_t));
+    if (memory == nullptr) {
+        CloseClipboard();
+        return false;
+    }
+    if (auto* wide = static_cast<wchar_t*>(GlobalLock(memory)); wide != nullptr) {
+        MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, wide, wide_len);
+        GlobalUnlock(memory);
+    }
+    SetClipboardData(CF_UNICODETEXT, memory);
+    CloseClipboard();
+    return true;
+}
+
 std::string os_report(HWND w) {
     if (w == nullptr) return "os{no-hwnd}";
     RECT rect{};
@@ -283,6 +359,10 @@ std::string os_report(HWND w) {
 
 HWND find_own_window() { return nullptr; }
 std::string os_report(HWND) { return "os{unavailable}"; }
+void os_send_mouse(unsigned long, unsigned long = 0) {}
+bool os_post_file_drop(HWND, const std::vector<std::string>&) { return false; }
+std::string os_get_clipboard_text() { return {}; }
+bool os_set_clipboard_text(const std::string&) { return false; }
 
 #endif
 
@@ -301,6 +381,11 @@ struct Probe {
     bool interactive            = false;
     int titles                  = 0;
     std::uint32_t main_thread   = 0;
+    /** Bit i set once the engine reported `MouseButton(i)` pressed. */
+    unsigned buttons_pressed    = 0;
+    int scroll_events           = 0;
+    int drop_events             = 0;
+    int last_drop_paths         = 0;
     void* cursor_before         = nullptr;
     void* icon_before           = nullptr;
     std::optional<Handle<Image>> pattern;
@@ -313,8 +398,7 @@ struct Context {
     Window& win;
     HWND hwnd = nullptr;
     Assets<Image>& images;
-    epix::ecs::EventWriter<epix::sdl3::SetClipboardString>& clipboard_out;
-    const epix::sdl3::Clipboard& clipboard_in;
+    epix::window::Clipboard& clipboard;
 };
 
 struct Step {
@@ -589,33 +673,32 @@ std::vector<Step>& steps() {
                      }});
 
         // 15. Cursor icon: standard shapes. -----------------------------------
-        s.push_back({"cursor_icon_ibeam", OS_SETTLE,
+        // Each shape is sampled only once the pointer has settled inside the
+        // window, so the comparison is between two settled observations rather
+        // than against a baseline taken while the pointer was still moving.
+        s.push_back({"cursor_icon_ibeam", OS_SETTLE * 2,
                      [](Context& ctx) {
 #if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
                          os_force_foreground(ctx.hwnd);
-                         os_move_cursor_into(ctx.hwnd, 100, 100);
+                         os_move_cursor_into(ctx.hwnd, 120, 120);
 #endif
-                         ctx.probe.cursor_before = [&] {
-#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
-                             return os_cursor_handle();
-#else
-                             return static_cast<void*>(nullptr);
-#endif
-                         }();
                          ctx.win.cursor_icon = epix::window::StandardCursor::IBeam;
                      },
                      [](Context& ctx) {
 #if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
-                         check_bool(ctx, "cursor_icon_ibeam", "os_cursor_changed", true,
-                                    os_cursor_handle() != ctx.probe.cursor_before);
+                         ctx.probe.cursor_before = os_cursor_handle();
+                         check_bool(ctx, "cursor_icon_ibeam", "os_cursor_present", true,
+                                    ctx.probe.cursor_before != nullptr);
 #endif
                      }});
-        s.push_back({"cursor_icon_arrow", OS_SETTLE,
+        s.push_back({"cursor_icon_arrow", OS_SETTLE * 2,
                      [](Context& ctx) { ctx.win.cursor_icon = epix::window::StandardCursor::Arrow; },
                      [](Context& ctx) {
 #if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
                          check_bool(ctx, "cursor_icon_arrow", "os_cursor_present", true,
                                     os_cursor_handle() != nullptr);
+                         check_bool(ctx, "cursor_icon_arrow", "differs_from_ibeam", true,
+                                    os_cursor_handle() != ctx.probe.cursor_before);
 #endif
                      }});
 
@@ -715,14 +798,25 @@ std::vector<Step>& steps() {
 #endif
                      }});
 
-        // 20. Clipboard round trip through the OS clipboard. ------------------
-        s.push_back({"clipboard_write", OS_SETTLE,
+        // 20. Clipboard: writing the resource must reach the OS clipboard, and
+        // an external change must come back into the resource. Both directions
+        // are checked against Win32, not against the engine's own view.
+        s.push_back({"clipboard_write", OS_SETTLE * 2,
+                     [](Context& ctx) { ctx.clipboard.text = "epix-sdl3-clipboard-probe"; },
                      [](Context& ctx) {
-                         ctx.clipboard_out.write(epix::sdl3::SetClipboardString{"epix-sdl3-clipboard-probe"});
+                         check_str(ctx, "clipboard_write", "os_clipboard", "epix-sdl3-clipboard-probe",
+                                   os_get_clipboard_text());
+                         check_str(ctx, "clipboard_write", "resource_unchanged", "epix-sdl3-clipboard-probe",
+                                   ctx.clipboard.text);
+                     }});
+        s.push_back({"clipboard_external_change", OS_SETTLE * 2,
+                     [](Context& ctx) {
+                         os_set_clipboard_text("epix-external-clipboard-value");
+                         ctx.probe.cursor_before = nullptr;
                      },
                      [](Context& ctx) {
-                         check_str(ctx, "clipboard_write", "engine_readback", "epix-sdl3-clipboard-probe",
-                                   ctx.clipboard_in.get_text());
+                         check_str(ctx, "clipboard_external_change", "resource_followed_os",
+                                   "epix-external-clipboard-value", ctx.clipboard.text);
                      }});
 
         // 21. Cursor reported inside the window once the pointer is over it. --
@@ -734,6 +828,126 @@ std::vector<Step>& steps() {
                      },
                      [](Context& ctx) {
                          check_bool(ctx, "cursor_in_window", "component", true, ctx.win.cursor_in_window);
+                     }});
+
+        // 22. `Window::cursor_pos` must follow the real pointer. --------------
+        // `documentation/window/window.md` documents a client-area position that
+        // may fall outside [0, size) once the cursor leaves the window, so the
+        // readback is checked inside the window and then, with a button held,
+        // outside it - the engine passes the position through unclamped.
+        s.push_back({"cursor_readback_inside", OS_SETTLE,
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_move_cursor_into(ctx.hwnd, 350, 250);
+#endif
+                     },
+                     [](Context& ctx) {
+                         const int x = static_cast<int>(ctx.win.cursor_pos.first);
+                         const int y = static_cast<int>(ctx.win.cursor_pos.second);
+                         check_bool(ctx, "cursor_readback_inside", "follows_pointer", true,
+                                    std::abs(x - 350) <= 2 && std::abs(y - 250) <= 2);
+                     }});
+        s.push_back({"cursor_readback_outside", OS_SETTLE,
+                     [](Context& ctx) {
+                         ctx.probe.cursor_before = nullptr;
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         // Hold the right button so SDL keeps delivering motion
+                         // once the pointer leaves the window, then move well
+                         // outside the client area.
+                         os_send_mouse(MOUSEEVENTF_RIGHTDOWN);
+                         int width  = 0;
+                         int height = 0;
+                         os_client_size(ctx.hwnd, width, height);
+                         os_move_cursor_into(ctx.hwnd, width + 150, 200);
+#endif
+                     },
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         int width  = 0;
+                         int height = 0;
+                         os_client_size(ctx.hwnd, width, height);
+                         const int x = static_cast<int>(ctx.win.cursor_pos.first);
+                         check_bool(ctx, "cursor_readback_outside", "reported_unclamped", true, x > width);
+#endif
+                     }});
+        s.push_back({"cursor_release", 2,
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_send_mouse(MOUSEEVENTF_RIGHTUP);
+                         os_move_cursor_into(ctx.hwnd, 200, 200);
+#endif
+                     },
+                     [](Context&) {}});
+
+        // 23. Every mouse button must arrive as the matching engine button. --
+        // `MouseButtonRight` is `MouseButton2` and `MouseButtonMiddle` is
+        // `MouseButton3`, while SDL numbers LEFT=1, MIDDLE=2, RIGHT=3, so the
+        // three buttons have to be checked individually.
+        s.push_back({"mouse_button_left", OS_SETTLE,
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_move_cursor_into(ctx.hwnd, 400, 300);
+                         os_send_mouse(MOUSEEVENTF_LEFTDOWN);
+                         os_send_mouse(MOUSEEVENTF_LEFTUP);
+#endif
+                     },
+                     [](Context& ctx) {
+                         check_bool(ctx, "mouse_button_left", "engine_saw_MouseButtonLeft", true,
+                                    (ctx.probe.buttons_pressed & (1u << 0)) != 0);
+                     }});
+        s.push_back({"mouse_button_right", OS_SETTLE,
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_move_cursor_into(ctx.hwnd, 400, 300);
+                         os_send_mouse(MOUSEEVENTF_RIGHTDOWN);
+                         os_send_mouse(MOUSEEVENTF_RIGHTUP);
+#endif
+                     },
+                     [](Context& ctx) {
+                         check_bool(ctx, "mouse_button_right", "engine_saw_MouseButtonRight", true,
+                                    (ctx.probe.buttons_pressed & (1u << 1)) != 0);
+                         check_bool(ctx, "mouse_button_right", "not_reported_as_middle", false,
+                                    (ctx.probe.buttons_pressed & (1u << 2)) != 0);
+                     }});
+        s.push_back({"mouse_button_middle", OS_SETTLE,
+                     [](Context& ctx) {
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_move_cursor_into(ctx.hwnd, 400, 300);
+                         os_send_mouse(MOUSEEVENTF_MIDDLEDOWN);
+                         os_send_mouse(MOUSEEVENTF_MIDDLEUP);
+#endif
+                     },
+                     [](Context& ctx) {
+                         check_bool(ctx, "mouse_button_middle", "engine_saw_MouseButtonMiddle", true,
+                                    (ctx.probe.buttons_pressed & (1u << 2)) != 0);
+                     }});
+        s.push_back({"mouse_wheel", OS_SETTLE,
+                     [](Context& ctx) {
+                         ctx.probe.scroll_events = 0;
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         // The wheel is attributed to the window under the
+                         // pointer, so it has to be over this window.
+                         os_move_cursor_into(ctx.hwnd, 400, 300);
+                         os_send_mouse(MOUSEEVENTF_WHEEL, 120);
+#endif
+                     },
+                     [](Context& ctx) {
+                         check_bool(ctx, "mouse_wheel", "engine_saw_MouseScroll", true,
+                                    ctx.probe.scroll_events > 0);
+                     }});
+
+        // 24. A drop of several files is ONE event carrying every path. -------
+        s.push_back({"file_drop_multiple", OS_SETTLE,
+                     [](Context& ctx) {
+                         ctx.probe.drop_events   = 0;
+                         ctx.probe.last_drop_paths = 0;
+#if defined(_WIN32) && !defined(EPIX_PROBE_SKIP_OS)
+                         os_post_file_drop(ctx.hwnd, {"C:/probe/first.png", "C:/probe/second.png"});
+#endif
+                     },
+                     [](Context& ctx) {
+                         check_int(ctx, "file_drop_multiple", "events", 1, ctx.probe.drop_events);
+                         check_int(ctx, "file_drop_multiple", "paths_in_the_event", 2, ctx.probe.last_drop_paths);
                      }});
 
         return s;
@@ -878,14 +1092,30 @@ int main() {
         .add_systems(Update,
                      into([](Commands commands,
                              Query<Item<Entity, Mut<Window>>, With<window::PrimaryWindow>> windows,
-                             Res<sdl3::Clipboard> clipboard,
+                             ResMut<window::Clipboard> clipboard,
                              ResMut<Assets<Image>> images,
-                             EventWriter<sdl3::SetClipboardString> clipboard_out,
                              EventReader<input::KeyInput> keys,
+                             EventReader<input::MouseButtonInput> mouse_buttons,
+                             EventReader<input::MouseScroll> scrolls,
+                             EventReader<window::FileDrop> drops,
                              Local<Probe> state) {
                          const std::uint64_t now = now_ms();
                          if (state->start == 0) state->start = now;
                          ++state->frame;
+
+                         // Latch what the engine reported, so a step can assert on
+                         // events that already went past.
+                         for (auto&& [button, pressed, window] : mouse_buttons.read()) {
+                             const int index = static_cast<int>(button);
+                             if (pressed && index >= 0 && index < 32) state->buttons_pressed |= 1u << index;
+                         }
+                         for (auto&& [xoffset, yoffset, window] : scrolls.read()) {
+                             ++state->scroll_events;
+                         }
+                         for (auto&& [window, paths] : drops.read()) {
+                             ++state->drop_events;
+                             state->last_drop_paths = static_cast<int>(paths.size());
+                         }
                          if (state->last_frame_ms != 0) {
                              state->max_gap_ms = std::max(state->max_gap_ms, now - state->last_frame_ms);
                          }
@@ -944,7 +1174,7 @@ int main() {
                              if (created) state->pattern = images->add(std::move(*created));
                          }
 
-                         Context ctx{commands, *state, entity, *window, hwnd, *images, clipboard_out, *clipboard};
+                         Context ctx{commands, *state, entity, *window, hwnd, *images, *clipboard};
                          if (!state->interactive) {
                              run_automatic(ctx);
                          } else {

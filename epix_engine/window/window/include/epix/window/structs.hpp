@@ -299,4 +299,16 @@ struct CachedWindowMut : Window {};  // component for caching window state.
  * between frames.
  */
 EPIX_EXPORT using CachedWindow = const CachedWindowMut;  // user can only access cached window as const.
+
+/** @brief Resource holding the system clipboard text.
+ *
+ * Backend-independent. A windowing backend refreshes `text` from the OS each
+ * frame and, when another system has written to this resource, pushes the new
+ * value to the OS clipboard — so writing `text` is the request to set the
+ * clipboard, and there is no event for it.
+ */
+EPIX_EXPORT struct Clipboard {
+    /** @brief The clipboard text. */
+    std::string text;
+};
 }  // namespace epix::window

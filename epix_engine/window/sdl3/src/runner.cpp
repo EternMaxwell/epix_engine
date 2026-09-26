@@ -85,16 +85,13 @@ SDL3Runner::SDL3Runner(App& app) {
     destroy_all_windows_system->set_name("sdl3_destroy_all_windows");
     send_cached_events_system = make_system_unique(SDL3Plugin::send_cached_events);
     send_cached_events_system->set_name("sdl3_send_cached_events");
-    clipboard_set_text_system = make_system_unique(Clipboard::set_text);
-    clipboard_set_text_system->set_name("sdl3_clipboard_set_text");
-    clipboard_update_system = make_system_unique(Clipboard::update);
+    clipboard_update_system = make_system_unique(SDL3Plugin::update_clipboard);
     clipboard_update_system->set_name("sdl3_clipboard_update");
 
     auto sdl3_systems = std::array{
         toggle_window_mode_system.get(),  update_size_system.get(),         update_pos_system.get(),
         create_windows_system.get(),      send_cached_events_system.get(),  update_window_states_system.get(),
-        destroy_windows_system.get(),     destroy_all_windows_system.get(), clipboard_set_text_system.get(),
-        clipboard_update_system.get(),
+        destroy_windows_system.get(),     destroy_all_windows_system.get(), clipboard_update_system.get(),
     };
     app.world_scope(
         [&](World& world) { std::ranges::for_each(sdl3_systems, [&](auto& sys) { sys->initialize(world); }); });
@@ -104,7 +101,7 @@ void SDL3Runner::run_frame_systems(World& world) {
     auto sdl3_systems = std::array{
         toggle_window_mode_system.get(),  update_size_system.get(),         update_pos_system.get(),
         create_windows_system.get(),      send_cached_events_system.get(),  update_window_states_system.get(),
-        destroy_windows_system.get(),     clipboard_set_text_system.get(),  clipboard_update_system.get(),
+        destroy_windows_system.get(),     clipboard_update_system.get(),
     };
     for (auto&& sys : sdl3_systems) {
         auto res = sys->run({}, world).transform_error([&](const RunSystemError& error) {

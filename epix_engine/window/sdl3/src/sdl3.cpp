@@ -235,20 +235,24 @@ void release_cursor(SDL_Window* window) {
 
 }  // namespace
 
-const std::string& Clipboard::get_text() const noexcept { return text; }
-void Clipboard::update(ResMut<Clipboard> clipboard) {
-    char* str = SDL_GetClipboardText();
-    if (str == nullptr) {
-        clipboard->text.clear();
+void SDL3Plugin::update_clipboard(ResMut<window::Clipboard> clipboard, Local<std::string> last_written) {
+    // Every access goes through bypass_change_detection: the backend is not a
+    // writer of this resource, it only mirrors it, and marking it here would
+    // make every reader see a change on every frame.
+    window::Clipboard& value = clipboard.bypass_change_detection();
+    // A write by another system is the request to set the OS clipboard. The
+    // last value this backend pushed is kept so an unchanged one is not written
+    // again.
+    if (clipboard.is_modified() && value.text != *last_written) {
+        SDL_SetClipboardText(value.text.c_str());
+        *last_written = value.text;
         return;
     }
-    clipboard->text = std::string(str);
-    SDL_free(str);
-}
-void Clipboard::set_text(EventReader<SetClipboardString> events) {
-    for (auto&& event : events.read()) {
-        SDL_SetClipboardText(event.text.c_str());
-    }
+    // Otherwise the OS clipboard is the source of truth.
+    char* str           = SDL_GetClipboardText();
+    std::string os_text = str != nullptr ? std::string(str) : std::string{};
+    if (str != nullptr) SDL_free(str);
+    if (os_text != value.text) value.text = std::move(os_text);
 }
 
 SDL_Window* SDL3Plugin::create_window(Entity id, Window& desc) {
@@ -665,8 +669,10 @@ void SDL3Plugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
                                  &desc.frame_size.right);
         cached.frame_size = desc.frame_size;
 
-        // cursor position: a written value is applied, otherwise the current
-        // position is read back from SDL.
+        // cursor position: a written value is applied, otherwise SDL reports the
+        // position. It is passed through as-is, so it may lie outside the client
+        // area once the cursor leaves the window; clamping is the caller's
+        // business.
         if (cached.cursor_pos != desc.cursor_pos) {
             SDL_WarpMouseInWindow(window, static_cast<float>(desc.cursor_pos.first),
                                   static_cast<float>(desc.cursor_pos.second));
@@ -675,9 +681,7 @@ void SDL3Plugin::update_window_states(Query<Item<Entity, Mut<Window>, const Cach
             float x = 0.0f;
             float y = 0.0f;
             SDL_GetMouseState(&x, &y);
-            if ((SDL_GetWindowFlags(window) & SDL_WINDOW_MOUSE_FOCUS) != 0) {
-                desc.cursor_pos = {x, y};
-            }
+            desc.cursor_pos   = {x, y};
             cached.cursor_pos = desc.cursor_pos;
         }
         // cursor in window
@@ -842,7 +846,16 @@ void SDL3Plugin::send_cached_events(Res<SDL3Events> events,
                                     std::optional<EventWriter<input::KeyInput>> key_input_event,
                                     std::optional<EventWriter<input::MouseButtonInput>> mouse_button_input,
                                     std::optional<EventWriter<input::MouseMove>> mouse_move_input,
-                                    std::optional<EventWriter<input::MouseScroll>> scroll_input) {
+                                    std::optional<EventWriter<input::MouseScroll>> scroll_input,
+                                    Local<std::pair<Entity, std::vector<std::string>>> pending_drop) {
+    // SDL reports a drop as DROP_BEGIN, one DROP_FILE per file, then
+    // DROP_COMPLETE, while `window::FileDrop` carries every path of one drop in
+    // a single event - so the paths are collected and flushed together.
+    auto flush_drop = [&] {
+        if (pending_drop->second.empty()) return;
+        file_drop.write(FileDrop{pending_drop->first, std::move(pending_drop->second)});
+        pending_drop->second.clear();
+    };
     for (std::size_t offset = 0; offset + sizeof(SDL_Event) <= events->events.size(); offset += sizeof(SDL_Event)) {
         SDL_Event event;
         std::memcpy(&event, events->events.data() + offset, sizeof(SDL_Event));
@@ -936,14 +949,21 @@ void SDL3Plugin::send_cached_events(Res<SDL3Events> events,
                 });
                 break;
             }
+            case SDL_EVENT_DROP_BEGIN:
+                // A new drop supersedes anything still pending.
+                flush_drop();
+                pending_drop->first = entity_of_window_id(*sdl_windows, event.drop.windowID).value_or(Entity{});
+                break;
             case SDL_EVENT_DROP_FILE: {
                 auto id = entity_of_window_id(*sdl_windows, event.drop.windowID);
                 if (!id) break;
-                std::vector<std::string> paths;
-                if (event.drop.data != nullptr) paths.emplace_back(event.drop.data);
-                file_drop.write(FileDrop{*id, std::move(paths)});
+                if (pending_drop->second.empty()) pending_drop->first = *id;
+                if (event.drop.data != nullptr) pending_drop->second.emplace_back(event.drop.data);
                 break;
             }
+            case SDL_EVENT_DROP_COMPLETE:
+                flush_drop();
+                break;
             default:
                 break;
         }

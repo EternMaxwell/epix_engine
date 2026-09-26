@@ -242,3 +242,27 @@ enum class WindowLevel { AlwaysOnBottom, Normal, AlwaysOnTop };
 ### `CompositeAlphaMode`
 
 Hint read by the **rendering system** for surface compositing — not applied by the windowing backend itself. `Auto` selects the best available mode.
+
+---
+
+## `Clipboard`
+
+Belongs to this module rather than to a backend, so any windowing backend can
+serve it. It holds the clipboard text and is kept in sync with the OS by the
+active backend each frame.
+
+**Writing the resource is the request to set the clipboard** — there is no event:
+
+```cpp
+void write_clip(ResMut<Clipboard> clipboard) {
+    clipboard->text = "hello";
+}
+
+void read_clip(Res<Clipboard> clipboard) {
+    const std::string& text = clipboard->text;
+}
+```
+
+The backend preserves a write instead of overwriting it with the OS value: it
+compares a modified `text` against the last value it pushed (see
+[the SDL3 backend](./sdl3-backend.md#clipboard) for the exact rule).

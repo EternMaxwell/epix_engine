@@ -254,13 +254,16 @@ SDL_Keycode map_key_to_sdl3(input::KeyCode key) {    switch (key) {
 }
 
 std::uint8_t map_mouse_button_to_sdl3(input::MouseButton button) {
+    // SDL numbers the buttons LEFT=1, MIDDLE=2, RIGHT=3, X1=4, X2=5, while the
+    // engine follows Bevy's order LEFT, RIGHT, MIDDLE, Back, Forward - so the
+    // two orders disagree on the middle and right buttons.
     switch (button) {
         case input::MouseButton::MouseButton1:
             return SDL_BUTTON_LEFT;
         case input::MouseButton::MouseButton2:
-            return SDL_BUTTON_MIDDLE;
-        case input::MouseButton::MouseButton3:
             return SDL_BUTTON_RIGHT;
+        case input::MouseButton::MouseButton3:
+            return SDL_BUTTON_MIDDLE;
         case input::MouseButton::MouseButton4:
             return SDL_BUTTON_X1;
         case input::MouseButton::MouseButton5:
@@ -513,12 +516,16 @@ input::KeyCode map_sdl3_key_to_input(SDL_Keycode key) {
 }
 
 input::MouseButton map_sdl3_mouse_button_to_input(std::uint8_t button) {
+    // SDL numbers the buttons LEFT=1, MIDDLE=2, RIGHT=3, while the engine
+    // follows Bevy's order LEFT, RIGHT, MIDDLE: a middle click must not arrive
+    // as a right click, or camera-style controls that hold the right button
+    // never see it.
     switch (button) {
         case SDL_BUTTON_LEFT:
             return input::MouseButton::MouseButton1;
-        case SDL_BUTTON_MIDDLE:
-            return input::MouseButton::MouseButton2;
         case SDL_BUTTON_RIGHT:
+            return input::MouseButton::MouseButton2;
+        case SDL_BUTTON_MIDDLE:
             return input::MouseButton::MouseButton3;
         case SDL_BUTTON_X1:
             return input::MouseButton::MouseButton4;

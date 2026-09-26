@@ -11,7 +11,7 @@ Manages OS windows as ECS entities — create, configure, and react to window ev
 - **[`ExitCondition`](./window.md#windowplugin)**: Enum controlling when the app auto-exits (all closed / primary closed / never).
 - **[Window Events](./events.md)**: Structs broadcast when windows are created, resized, moved, focused, closed, or destroyed; also covers cursor and file-drop events.
 - **[`SDL3Plugin` / `SDL3Runner`](./sdl3-backend.md)**: SDL3 windowing backend. Drives the event loop and native window lifecycle.
-- **[`Clipboard`](./sdl3-backend.md#clipboard)**: Resource exposing the system clipboard for read and write.
+- **[`Clipboard`](./window.md#clipboard)**: Resource holding the system clipboard text. Writing its `text` sets the clipboard; the backend refreshes it from the OS each frame. Backend-independent, like `Window` itself.
 - **[`log_events`](./events.md#log_events)**: Debug system that logs all window events to the logger.
 
 ## Quick Guide
