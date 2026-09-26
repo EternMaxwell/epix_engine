@@ -17,7 +17,7 @@
 #include <variant>
 #include <vector>
 
-#include "../src/font_array.hpp"
+#include "font_array.hpp"
 
 using namespace epix;
 

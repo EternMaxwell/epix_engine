@@ -22,14 +22,14 @@
 
 namespace uuids {
 /** @brief Three-way comparison for uuids::uuid, providing strong ordering. */
-EPIX_EXPORT std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
+EPIX_EXPORT EPIX_API std::strong_ordering operator<=>(const uuids::uuid& lhs, const uuids::uuid& rhs) noexcept;
 EPIX_EXPORT using uuids::uuid;
 EPIX_EXPORT using uuids::to_string;
 }  // namespace uuids
 static_assert(std::three_way_comparable<uuids::uuid>);
 
 namespace epix::assets {
-EPIX_EXPORT struct UntypedAssetId;
+EPIX_EXPORT struct EPIX_API UntypedAssetId;
 
 constexpr uuids::uuid INVALID_UUID = uuids::uuid::from_string("1038587c-0b8d-4f2e-8a3f-1a2b3c4d5e6f").value();
 
@@ -86,7 +86,7 @@ struct AssetId : public std::variant<AssetIndex, uuids::uuid> {
 
 /** @brief Type-erased asset identifier that stores a type_index alongside the id.
  *  Useful when the asset type is not known at compile time. */
-EPIX_EXPORT struct UntypedAssetId {
+EPIX_EXPORT struct EPIX_API UntypedAssetId {
     /** @brief Runtime type identifier for the asset. */
     meta::type_index type;
     /** @brief The underlying id, either an index or a UUID. */

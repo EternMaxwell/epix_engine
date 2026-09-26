@@ -1,6 +1,0 @@
-epix_add_module(epix_ext_grid_gpu)
-target_link_libraries(epix_ext_grid_gpu PUBLIC epix_ext_grid)
-
-epix_add_tests(grid_gpu LINK_LIBS epix_ext_grid_gpu epix_shader)
-
-epix_add_examples(grid_gpu LINK_LIBS epix_ext_grid_gpu)

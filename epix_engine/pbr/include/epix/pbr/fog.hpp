@@ -273,7 +273,7 @@ EPIX_EXPORT struct FogMeta {
  *  field zero: "no fog" is expressed on the GPU rather than by leaving the binding
  *  absent, which is what lets one bind group serve both kinds of view. The writer's
  *  capacity is the view count, so all the offsets are valid by construction. */
-EPIX_EXPORT void prepare_fog(
+EPIX_EXPORT EPIX_API void prepare_fog(
     ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
     ecs::ResMut<FogMeta> fog_meta,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const DistanceFog&>>,

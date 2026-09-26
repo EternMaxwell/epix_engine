@@ -80,7 +80,7 @@ constexpr bool contains(TonemappingPipelineKeyFlags flags, TonemappingPipelineKe
 
 /** @brief Specialization key for `TonemappingPipeline` (Bevy
  * `TonemappingPipelineKey`). */
-EPIX_EXPORT struct TonemappingPipelineKey {
+EPIX_EXPORT struct EPIX_API TonemappingPipelineKey {
     DebandDither deband_dither        = DebandDither::Disabled;
     Tonemapping tonemapping           = Tonemapping::None;
     TonemappingPipelineKeyFlags flags = TonemappingPipelineKeyFlags::None;
@@ -90,7 +90,7 @@ EPIX_EXPORT struct TonemappingPipelineKey {
 
 /** @brief Reusable HDR->display tonemapping pipeline (Bevy
  * `TonemappingPipeline`). */
-EPIX_EXPORT struct TonemappingPipeline {
+EPIX_EXPORT struct EPIX_API TonemappingPipeline {
     using Key = TonemappingPipelineKey;
 
     render::BindGroupLayoutDescriptor layout;
@@ -118,7 +118,7 @@ EPIX_EXPORT struct ViewTonemappingPipeline {
 /** @brief Resolve the method's LUT texture and sampler, falling back to the
  * render module's 3D fallback image while the selected LUT is unavailable
  * (Bevy `get_lut_bindings`). */
-EPIX_EXPORT std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
+EPIX_EXPORT EPIX_API std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_bindings(
     const render::RenderAssets<render::texture::GpuImage>& images,
     const TonemappingLuts& tonemapping_luts,
     Tonemapping tonemapping,
@@ -126,15 +126,15 @@ EPIX_EXPORT std::tuple<const wgpu::TextureView&, const wgpu::Sampler&> get_lut_b
 
 /** @brief Return the filterable 3D texture and sampler layout builders used
  * for LUT bindings 3 and 4 (Bevy `get_lut_bind_group_layout_entries`). */
-EPIX_EXPORT std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2>
+EPIX_EXPORT EPIX_API std::array<render::render_resource::BindGroupLayoutEntryBuilder, 2>
 get_lut_bind_group_layout_entries();
 
 /** @brief Create Bevy's magenta 1x1x1 render-world-only fallback LUT. */
-EPIX_EXPORT image::Image lut_placeholder();
+EPIX_EXPORT EPIX_API image::Image lut_placeholder();
 
 /** @brief Typed HDR->display tone-mapping render-graph node (Bevy
  * `TonemappingNode`). */
-EPIX_EXPORT struct TonemappingNode {
+EPIX_EXPORT struct EPIX_API TonemappingNode {
     using ViewQuery = ecs::Item<const render::view::ViewUniformOffset&,
                                 const render::view::ViewTarget&,
                                 const ViewTonemappingPipeline&,
@@ -155,13 +155,13 @@ EPIX_EXPORT struct TonemappingNode {
 
 /** @brief Installs tonemapping resources, per-view pipeline preparation, and
  * the `Tonemapping` graph node (Bevy `TonemappingPlugin`). */
-EPIX_EXPORT struct TonemappingPlugin {
+EPIX_EXPORT struct EPIX_API TonemappingPlugin {
     void attach(app::App& app);
 };
 
 }  // namespace epix::core_graph
 
 template <>
-struct std::hash<epix::core_graph::TonemappingPipelineKey> {
+struct EPIX_API std::hash<epix::core_graph::TonemappingPipelineKey> {
     std::size_t operator()(const epix::core_graph::TonemappingPipelineKey& key) const noexcept;
 };

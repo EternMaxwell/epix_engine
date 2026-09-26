@@ -16,7 +16,7 @@
 namespace epix::core_graph {
 /** @brief Plugin that registers the core render graph and 2D rendering
  * pipeline. */
-EPIX_EXPORT struct CoreGraphPlugin {
+EPIX_EXPORT struct EPIX_API CoreGraphPlugin {
     void attach(app::App& app);
 };
 }  // namespace epix::core_graph

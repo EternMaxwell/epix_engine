@@ -47,7 +47,7 @@ EPIX_EXPORT struct TextFont {
 };
 
 /** @brief Component holding the text content string to render. */
-EPIX_EXPORT struct Text {
+EPIX_EXPORT struct EPIX_API Text {
     /** @brief The UTF-8 text string. */
     std::string content;
     /** @brief Create a Text with the given string view.
@@ -133,7 +133,7 @@ EPIX_EXPORT struct ShapedText {
     float ascent_  = 0.0f;
     float descent_ = 0.0f;
 
-    friend ShapedText shape_text(const Text& text,
+    friend EPIX_API ShapedText shape_text(const Text& text,
                                  const TextFont& font,
                                  const TextLayout& layout,
                                  const TextBounds& bounds,
@@ -157,7 +157,7 @@ EPIX_EXPORT struct ShapedText {
  * `TextPipeline::update_text_layout_info` does (`pipeline.rs:419-453`).
  * @return A ShapedText containing the final glyph positions and metrics.
  */
-EPIX_EXPORT ShapedText shape_text(const Text& text,
+EPIX_EXPORT EPIX_API ShapedText shape_text(const Text& text,
                                   const TextFont& font,
                                   const TextLayout& layout,
                                   const TextBounds& bounds,
@@ -255,7 +255,7 @@ EPIX_EXPORT struct TextBundle {
 
 /** @brief Plugin that registers text shaping, layout, and measurement
  * systems. */
-EPIX_EXPORT struct TextPlugin {
+EPIX_EXPORT struct EPIX_API TextPlugin {
     void attach(app::App& app);
 };
 }  // namespace epix::text

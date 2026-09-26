@@ -51,4 +51,22 @@ TaskPool::TaskPool() : TaskPool(make_static_thread_pool(available_parallelism())
 
 TaskPool::TaskPool(TaskPoolBuilder builder) : TaskPool(from_builder(builder)) {}
 
+// Thread-local scratch state has to live in the engine's own translation unit:
+// thread-local data cannot have a DLL interface (MSVC C2492), so a copy in the
+// header would give the engine and its caller separate executors and contexts.
+ThreadExecutor& TaskPool::get_thread_executor() {
+    static thread_local ThreadExecutor s_exec;
+    return s_exec;
+}
+
+std::unique_ptr<asio::io_context>& TaskPool::t_local_ctx() {
+    static thread_local std::unique_ptr<asio::io_context> ctx;
+    return ctx;
+}
+
+std::optional<asio::executor_work_guard<asio::io_context::executor_type>>& TaskPool::t_local_work() {
+    static thread_local std::optional<asio::executor_work_guard<asio::io_context::executor_type>> work;
+    return work;
+}
+
 }  // namespace epix::task

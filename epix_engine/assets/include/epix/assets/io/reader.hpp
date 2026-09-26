@@ -55,7 +55,7 @@ EPIX_EXPORT struct Writer {
     virtual ~Writer()                                                   = default;
 };
 
-EPIX_EXPORT struct AssetReader {
+EPIX_EXPORT struct EPIX_API AssetReader {
     /** @brief Get an async reader for an asset. Matches bevy's AssetReader::read. */
     virtual STDEXEC::task<std::expected<std::unique_ptr<Reader>, AssetReaderError>> read(
         const std::filesystem::path& path) const = 0;
@@ -83,7 +83,7 @@ EPIX_EXPORT namespace writer_errors {
     };
 }  // namespace writer_errors
 EPIX_EXPORT using AssetWriterError = std::variant<writer_errors::IoError, std::exception_ptr>;
-EPIX_EXPORT struct AssetWriter {
+EPIX_EXPORT struct EPIX_API AssetWriter {
     /** @brief Get an async writer for an asset. Matches bevy's AssetWriter::write. */
     virtual STDEXEC::task<std::expected<std::unique_ptr<Writer>, AssetWriterError>> write(
         const std::filesystem::path& path) const = 0;
@@ -181,7 +181,7 @@ EPIX_EXPORT struct AssetWatcher {
 /** @brief An in-memory async reader backed by a byte vector.
  *  Matches bevy_asset's VecReader, which wraps a Vec<u8> into an AsyncRead stream.
  *  Implements the Reader interface for use with AssetLoader. */
-EPIX_EXPORT struct VecReader : Reader {
+EPIX_EXPORT struct EPIX_API VecReader : Reader {
    private:
     std::vector<uint8_t> m_bytes;
     size_t m_bytes_read = 0;
@@ -208,7 +208,7 @@ EPIX_EXPORT struct VecReader : Reader {
 /** @brief An in-memory async writer backed by a byte vector.
  *  Matches bevy's pattern of writing to a buffer.
  *  Implements the Writer interface for use with AssetSaver. */
-EPIX_EXPORT struct VecWriter : Writer {
+EPIX_EXPORT struct EPIX_API VecWriter : Writer {
    private:
     std::vector<uint8_t> m_data;
 

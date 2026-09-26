@@ -17,6 +17,6 @@ EPIX_EXPORT inline constexpr std::string_view MATHS_SHADER_PATH = "epix/shaders/
  *
  * The mesh shaders import it for the affine and packed-normal helpers, the same
  * way Bevy's do. */
-EPIX_EXPORT void register_maths_shader(ecs::World& world);
+EPIX_EXPORT EPIX_API void register_maths_shader(ecs::World& world);
 
 }  // namespace epix::render

@@ -24,7 +24,7 @@ namespace epix::ecs::internal {
 
 // Bundle spawner for insert entities newly spawned (that is, not actually added to any archetype yet, otherwise will
 // adding a 'move from empty archetype to target archetype' operation)
-struct BundleSpawner {
+struct EPIX_API BundleSpawner {
    public:
     static BundleSpawner create_with_id(World& world, BundleId bundle_id, Tick tick);
     template <is_bundle T>

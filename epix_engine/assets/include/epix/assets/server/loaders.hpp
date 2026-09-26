@@ -31,14 +31,14 @@ struct PendingAssetLoader {
     epix::async_broadcast::Sender<std::shared_ptr<ErasedAssetLoader>> sender;
     epix::async_broadcast::Receiver<std::shared_ptr<ErasedAssetLoader>> receiver;
 };
-struct MaybeAssetLoader : std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader> {
+struct EPIX_API MaybeAssetLoader : std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader> {
     using variant::variant;
     using base = std::variant<std::shared_ptr<ErasedAssetLoader>, PendingAssetLoader>;
     std::shared_ptr<ErasedAssetLoader> get() const;
     base& as_base() noexcept { return static_cast<base&>(*this); }
     const base& as_base() const noexcept { return static_cast<const base&>(*this); }
 };
-struct AssetLoaders {
+struct EPIX_API AssetLoaders {
     std::vector<MaybeAssetLoader> loaders;
     std::unordered_map<meta::type_index, std::vector<std::size_t>> type_to_loaders;
     std::unordered_map<std::string_view, std::vector<std::size_t>> extension_to_loaders;

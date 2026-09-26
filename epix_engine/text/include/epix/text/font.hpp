@@ -45,7 +45,7 @@ struct std::hash<epix::assets::AssetId<epix::text::font::Font>> {
 };
 
 namespace epix::text::font {
-struct FontLoader {
+struct EPIX_API FontLoader {
     using Asset = Font;
     struct Settings {};
     using Error = std::exception_ptr;
@@ -64,7 +64,7 @@ struct FontLoader {
  * owners and the moved-from destructor would free the library out from
  * under the copy, leaving a dangling FT_Library.
  */
-struct FontLibrary {
+struct EPIX_API FontLibrary {
     void* library;
 
     FontLibrary();
@@ -147,7 +147,7 @@ EPIX_EXPORT enum class TextErrorCode {
 
 /** @brief Error produced while rasterizing or placing a glyph (Bevy
  * `TextError`). */
-EPIX_EXPORT struct TextError {
+EPIX_EXPORT struct EPIX_API TextError {
     /** @brief Which failure occurred. */
     TextErrorCode code = TextErrorCode::FailedToAddGlyph;
     /** @brief The font glyph id the failure refers to, when applicable. */
@@ -166,7 +166,7 @@ EPIX_EXPORT struct TextError {
  * atlas cause an additional `FontAtlas` to be created for the same
  * `FontAtlasKey` (`font_atlas.rs:149-178`).
  */
-EPIX_EXPORT struct FontAtlas {
+EPIX_EXPORT struct EPIX_API FontAtlas {
     /** @brief Updates the atlas' `TextureAtlasLayout` when glyphs are added. */
     image::DynamicTextureAtlasBuilder dynamic_texture_atlas_builder;
     /** @brief Glyph key to its location in this atlas. */
@@ -241,7 +241,7 @@ EPIX_EXPORT struct FontAtlasKeyHash {
  * atlas with room for them and a new one is appended when none fits
  * (`font_atlas.rs:149-178`).
  */
-EPIX_EXPORT struct FontAtlasSet {
+EPIX_EXPORT struct EPIX_API FontAtlasSet {
     friend struct FontAtlasSets;
 
    public:
@@ -318,7 +318,7 @@ EPIX_EXPORT struct FontAtlasSet {
  * Indexed by font asset ID. Automatically creates atlas sets when new
  * fonts are loaded and removes them when fonts are unloaded.
  */
-EPIX_EXPORT struct FontAtlasSets {
+EPIX_EXPORT struct EPIX_API FontAtlasSets {
     FontAtlasSets(ecs::World& world);
     FontAtlasSets(const FontAtlasSets&)            = delete;
     FontAtlasSets(FontAtlasSets&&)                 = default;
@@ -355,7 +355,7 @@ EPIX_EXPORT enum class FontSystems {
 };
 
 /** @brief Plugin that registers font loading and atlas management systems. */
-EPIX_EXPORT struct FontPlugin {
+EPIX_EXPORT struct EPIX_API FontPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
 };

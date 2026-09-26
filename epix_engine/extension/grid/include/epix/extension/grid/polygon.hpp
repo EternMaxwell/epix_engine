@@ -58,7 +58,7 @@ EPIX_EXPORT struct Ring {
 /**
  * @brief A simple polygon (one outer ring + zero or more holes).
  */
-EPIX_EXPORT struct Polygon {
+EPIX_EXPORT struct EPIX_API Polygon {
     Ring outer;
     std::vector<Ring> holes;
 

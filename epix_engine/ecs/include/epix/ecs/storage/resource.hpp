@@ -14,10 +14,10 @@
 #include <epix/ecs/storage/sparse_set.hpp>
 
 namespace epix::ecs {
-EPIX_EXPORT struct World;
+EPIX_EXPORT struct EPIX_API World;
 
 /** Marks the canonical entity that owns a resource component. */
-EPIX_EXPORT struct IsResource {
+EPIX_EXPORT struct EPIX_API IsResource {
    public:
     explicit IsResource(TypeId resource_component_id) noexcept : resource_component_id_(resource_component_id) {}
 

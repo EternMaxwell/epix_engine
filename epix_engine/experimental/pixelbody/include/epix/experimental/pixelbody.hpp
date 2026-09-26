@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #include <epix/common.hpp>
 #include <epix/experimental/pixelbody/structs.hpp>
@@ -20,7 +20,7 @@ namespace epix::experimental::pixelbody {
  * Does NOT insert any registry resource — it consumes the shared
  * `fs::ElementRegistry` provided by `FallingSandPlugin`.
  */
-EPIX_EXPORT struct PixelBodyPlugin {
+EPIX_EXPORT struct EPIX_API PixelBodyPlugin {
     void attach(app::App& app);
 };
 

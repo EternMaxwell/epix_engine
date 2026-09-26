@@ -31,7 +31,7 @@ namespace epix::pbr {
  *  reads off `RenderDevice`/`RenderAdapter` as parameters and the shader handle
  *  Bevy loads with `load_embedded_asset!(world, "mesh.wgsl")` from the caller,
  *  because `mesh.wgsl` is not ported yet (`PBR-262`/`PBR-265`). */
-EPIX_EXPORT struct MeshPipeline {
+EPIX_EXPORT struct EPIX_API MeshPipeline {
     /** @brief A reference to all the mesh pipeline view layouts. */
     MeshPipelineViewLayouts view_layouts;
     wgpu::BufferBindingType clustered_forward_buffer_binding_type = wgpu::BufferBindingType::eReadOnlyStorage;

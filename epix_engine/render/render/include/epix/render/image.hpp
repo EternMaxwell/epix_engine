@@ -20,7 +20,7 @@ EPIX_EXPORT struct DefaultImageSampler {
 };
 
 /** @brief Render texture integration (Bevy `bevy_render::texture::TexturePlugin`). */
-EPIX_EXPORT struct TexturePlugin {
+EPIX_EXPORT struct EPIX_API TexturePlugin {
     void attach(app::App& app);
 };
 }  // namespace epix::render

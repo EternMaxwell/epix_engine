@@ -32,7 +32,7 @@ struct RunSubGraph {
  * @brief GraphContext provides the context for a node to run in the render graph.
  * It is used to set outputs and get inputs, and to run sub-graphs.
  */
-EPIX_EXPORT struct GraphContext {
+EPIX_EXPORT struct EPIX_API GraphContext {
    private:
     const RenderGraph& m_graph;
     const NodeState& m_node_state;

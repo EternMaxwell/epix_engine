@@ -27,7 +27,7 @@ static AssetReaderError dir_error_to_reader_error(const memory::DirectoryError& 
 static AssetWriterError dir_error_to_writer_error(const memory::DirectoryError& derr);
 
 // Implement polymorphic adapters that satisfy the engine AssetReader/AssetWriter/AssetWatcher
-EPIX_EXPORT struct MemoryAssetReader : public assets::AssetReader {
+EPIX_EXPORT struct EPIX_API MemoryAssetReader : public assets::AssetReader {
    public:
     explicit MemoryAssetReader(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
@@ -47,7 +47,7 @@ EPIX_EXPORT struct MemoryAssetReader : public assets::AssetReader {
     assets::memory::Directory dir_;
 };
 
-EPIX_EXPORT struct MemoryAssetWriter : public assets::AssetWriter {
+EPIX_EXPORT struct EPIX_API MemoryAssetWriter : public assets::AssetWriter {
    public:
     explicit MemoryAssetWriter(assets::memory::Directory dir) noexcept : dir_(std::move(dir)) {}
 
@@ -82,7 +82,7 @@ EPIX_EXPORT struct MemoryAssetWriter : public assets::AssetWriter {
     assets::memory::Directory dir_;
 };
 
-EPIX_EXPORT struct MemoryAssetWatcher : public assets::AssetWatcher {
+EPIX_EXPORT struct EPIX_API MemoryAssetWatcher : public assets::AssetWatcher {
    public:
     // callback receives AssetSourceEvent
     MemoryAssetWatcher(assets::memory::Directory dir, std::function<void(assets::AssetSourceEvent)> cb);

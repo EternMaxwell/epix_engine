@@ -83,7 +83,7 @@ EPIX_EXPORT struct DeferredPrepassDoubleBuffer {
 /** @brief The textures the prepass writes (Bevy `ViewPrepassTextures`,
  * `prepass/mod.rs:118`). Present only when at least one of the relevant prepass
  * components is also present on the view. */
-EPIX_EXPORT struct ViewPrepassTextures {
+EPIX_EXPORT struct EPIX_API ViewPrepassTextures {
     /** @brief Depth texture written by the prepass; `DepthPrepass` only. */
     std::optional<render::render_resource::ColorAttachment> depth;
     /** @brief Normals texture; `NormalPrepass` only. */
@@ -553,7 +553,7 @@ EPIX_EXPORT struct ViewTransmissionTexture {
 
 /** @brief Bevy `EarlyPrepassNode` (`prepass/node.rs:31`): draws the meshes that
  * were visible last frame, and without occlusion culling draws everything. */
-EPIX_EXPORT struct EarlyPrepassNode {
+EPIX_EXPORT struct EPIX_API EarlyPrepassNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewDepthTexture&,
@@ -573,7 +573,7 @@ EPIX_EXPORT struct EarlyPrepassNode {
  *
  * Without occlusion culling and indirect drawing this returns without drawing,
  * exactly as Bevy does, so the early node owns the whole prepass. */
-EPIX_EXPORT struct LatePrepassNode {
+EPIX_EXPORT struct EPIX_API LatePrepassNode {
     using ViewQuery = typename EarlyPrepassNode::ViewQuery;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
@@ -590,7 +590,7 @@ EPIX_EXPORT struct LatePrepassNode {
  * plugin in the `pbr` module (C15-D1), so an Epix view reaches here with empty
  * bins until that lands; the node, its label, and its graph edge are installed
  * now so the subsystem can fill them without touching Core3D. */
-EPIX_EXPORT struct EarlyDeferredGBufferPrepassNode {
+EPIX_EXPORT struct EPIX_API EarlyDeferredGBufferPrepassNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewDepthTexture&,
@@ -610,7 +610,7 @@ EPIX_EXPORT struct EarlyDeferredGBufferPrepassNode {
  *
  * Without occlusion culling and indirect drawing this returns without drawing,
  * exactly as Bevy does, so the early deferred node owns the whole pass. */
-EPIX_EXPORT struct LateDeferredGBufferPrepassNode {
+EPIX_EXPORT struct EPIX_API LateDeferredGBufferPrepassNode {
     using ViewQuery = typename EarlyDeferredGBufferPrepassNode::ViewQuery;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(render::graph::GraphContext&,
@@ -645,7 +645,7 @@ EPIX_EXPORT struct CopyDeferredLightingIdPipeline {
  * The pass has no colour target: it draws the fullscreen triangle with
  * `depth_compare: Always` and `depth_write_enabled: true`, and the fragment
  * shader converts the stored `u8` material id into a normalised `frag_depth`. */
-EPIX_EXPORT struct CopyDeferredLightingIdNode {
+EPIX_EXPORT struct EPIX_API CopyDeferredLightingIdNode {
     using ViewQuery = ecs::Item<const render::view::ViewTarget&,
                                 const ViewPrepassTextures&,
                                 const DeferredLightingIdDepthTexture&>;
@@ -658,7 +658,7 @@ EPIX_EXPORT struct CopyDeferredLightingIdNode {
 
 /** @brief Queue the copy pipeline during render startup (Bevy
  * `init_copy_deferred_lighting_id_pipeline`, `deferred/copy_lighting_id.rs:98`). */
-EPIX_EXPORT void init_copy_deferred_lighting_id_pipeline(
+EPIX_EXPORT EPIX_API void init_copy_deferred_lighting_id_pipeline(
     ecs::Commands cmd,
     ecs::Res<wgpu::Device> device,
     ecs::Res<assets::AssetServer> asset_server,
@@ -668,7 +668,7 @@ EPIX_EXPORT void init_copy_deferred_lighting_id_pipeline(
 /** @brief Allocate the lighting-id depth texture for every view with a
  * `DeferredPrepass` (Bevy `prepare_deferred_lighting_id_textures`,
  * `deferred/copy_lighting_id.rs:160`). */
-EPIX_EXPORT void prepare_deferred_lighting_id_textures(
+EPIX_EXPORT EPIX_API void prepare_deferred_lighting_id_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
@@ -678,7 +678,7 @@ EPIX_EXPORT void prepare_deferred_lighting_id_textures(
 
 /** @brief Bevy `CopyDeferredLightingIdPlugin`, installed by `CoreGraphPlugin`
  * beside the Core2d and Core3d plugins (`bevy_core_pipeline/src/lib.rs:44`). */
-EPIX_EXPORT struct CopyDeferredLightingIdPlugin {
+EPIX_EXPORT struct EPIX_API CopyDeferredLightingIdPlugin {
     void attach(app::App& app);
 };
 
@@ -686,7 +686,7 @@ EPIX_EXPORT struct CopyDeferredLightingIdPlugin {
  *  binned phases into one deferred command buffer against the shared depth
  *  target, then draws the view's skybox with a fullscreen triangle when it has
  *  one (Bevy `main_opaque_pass_3d_node.rs:119-133`). */
-EPIX_EXPORT struct MainOpaquePass3dNode {
+EPIX_EXPORT struct EPIX_API MainOpaquePass3dNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewTarget&,
@@ -705,7 +705,7 @@ EPIX_EXPORT struct MainOpaquePass3dNode {
 /** @brief Bevy `MainTransmissivePass3dNode`: renders the retained sorted
  * transmissive phase, split into the camera's configured number of
  * back-to-front ranges with a source copy before each range. */
-EPIX_EXPORT struct MainTransmissivePass3dNode {
+EPIX_EXPORT struct EPIX_API MainTransmissivePass3dNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const ::epix::camera::Camera3d&,
@@ -722,7 +722,7 @@ EPIX_EXPORT struct MainTransmissivePass3dNode {
 
 /** @brief Bevy `MainTransparentPass3dNode`: renders the retained sorted
  * transparent phase in an independent deferred command buffer. */
-EPIX_EXPORT struct MainTransparentPass3dNode {
+EPIX_EXPORT struct EPIX_API MainTransparentPass3dNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewTarget&,
@@ -738,25 +738,25 @@ EPIX_EXPORT struct MainTransparentPass3dNode {
 /** @brief Splits `[start, end)` into at most `max_num_splits` non-overlapping
  * sub-ranges, giving the remainder to the initial sub-ranges (Bevy
  * `main_transmissive_pass_3d_node.rs::split_range`). */
-EPIX_EXPORT std::vector<std::pair<std::size_t, std::size_t>> split_transmissive_range(std::size_t start,
+EPIX_EXPORT EPIX_API std::vector<std::pair<std::size_t, std::size_t>> split_transmissive_range(std::size_t start,
                                                                                       std::size_t end,
                                                                                       std::size_t max_num_splits);
 
 /** @brief Singleton struct for initializing the core 3D render graph. */
 EPIX_EXPORT inline struct Core3dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
-    void add_to(render::graph::RenderGraph& g, ecs::World& world);
+    EPIX_API void add_to(render::graph::RenderGraph& g, ecs::World& world);
 } Core3d;
 
 /** @brief Plugin that sets up the core 3D render graph and camera
  * projection. */
-EPIX_EXPORT struct Core3dPlugin {
+EPIX_EXPORT struct EPIX_API Core3dPlugin {
     void attach(app::App& app);
 };
 
 /** @brief Maintain the four phase collections for active Camera3d entities
  * (Bevy `extract_core_3d_camera_phases`). */
-EPIX_EXPORT void extract_core_3d_camera_phases(
+EPIX_EXPORT EPIX_API void extract_core_3d_camera_phases(
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque3d>> opaque_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask3d>> alpha_mask_phases,
     ecs::ResMut<render::phase::ViewSortedRenderPhases<Transmissive3d>> transmissive_phases,
@@ -770,7 +770,7 @@ EPIX_EXPORT void extract_core_3d_camera_phases(
 /** @brief Disable MSAA on views that use deferred rendering, warning when the
  * requested sample count was not already off (Bevy `check_msaa`,
  * `core_3d/mod.rs:978`). Registered in `PostUpdate` by `Core3dPlugin`. */
-EPIX_EXPORT void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
+EPIX_EXPORT EPIX_API void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
                                        ecs::With<::epix::camera::Camera, DeferredPrepass>> deferred_views);
 
 /** @brief Add `TEXTURE_BINDING` to the depth-texture usage of every view that
@@ -778,7 +778,7 @@ EPIX_EXPORT void check_msaa(ecs::Query<ecs::Item<ecs::Mut<render::view::Msaa>>,
  * `configure_occlusion_culling_view_targets`, `core_3d/mod.rs:960-975`).
  * Registered in `RenderSystems::ManageViews` by `Core3dPlugin`, ahead of the
  * `PrepareResources` system that reads the usage. */
-EPIX_EXPORT void configure_occlusion_culling_view_targets(
+EPIX_EXPORT EPIX_API void configure_occlusion_culling_view_targets(
     ecs::Query<ecs::Item<ecs::Mut<::epix::camera::Camera3d>>,
                ecs::Filter<ecs::With<render::experimental::OcclusionCulling>,
                            ecs::Without<render::view::NoIndirectDrawing>,
@@ -787,7 +787,7 @@ EPIX_EXPORT void configure_occlusion_culling_view_targets(
 /** @brief Prepare depth attachments for live Core3D views (Bevy
  * `prepare_core_3d_depth_textures`). The general view plugin deliberately
  * does not allocate depth for arbitrary cameras. */
-EPIX_EXPORT void prepare_core_3d_depth_textures(
+EPIX_EXPORT EPIX_API void prepare_core_3d_depth_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
@@ -806,7 +806,7 @@ EPIX_EXPORT void prepare_core_3d_depth_textures(
  * work (Bevy `prepare_core_3d_transmission_textures`). A view is skipped when
  * the step count is zero, the transmissive phase is empty, or the camera has
  * no physical target size. */
-EPIX_EXPORT void prepare_core_3d_transmission_textures(
+EPIX_EXPORT EPIX_API void prepare_core_3d_transmission_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,
@@ -826,7 +826,7 @@ EPIX_EXPORT void prepare_core_3d_transmission_textures(
  * re-inserts the prepass marker components onto the synced render entity, which
  * is how the render-world preparation and pass nodes observe them
  * (`core_3d/mod.rs:744-782`). */
-EPIX_EXPORT void extract_camera_prepass_phase(
+EPIX_EXPORT EPIX_API void extract_camera_prepass_phase(
     ecs::Commands cmd,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque3dPrepass>> opaque_prepass_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask3dPrepass>> alpha_mask_prepass_phases,
@@ -856,7 +856,7 @@ EPIX_EXPORT void extract_camera_prepass_phase(
  * places every frame, and the one not rendered into goes into the attachment's
  * `previous_frame_texture` slot. That swap reads `FrameCount`, which the render
  * world receives from `GlobalsPlugin`'s extraction. */
-EPIX_EXPORT void prepare_prepass_textures(
+EPIX_EXPORT EPIX_API void prepare_prepass_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,

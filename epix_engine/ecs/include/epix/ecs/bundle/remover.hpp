@@ -21,7 +21,7 @@
 #include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs::internal {
-struct BundleRemover {
+struct EPIX_API BundleRemover {
    public:
     static BundleRemover create_with_id(World& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick);
 

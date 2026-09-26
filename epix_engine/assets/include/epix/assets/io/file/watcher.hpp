@@ -13,7 +13,7 @@
 #include <epix/assets/io/reader.hpp>
 
 namespace epix::assets {
-EPIX_EXPORT struct FileAssetWatcher : public AssetWatcher {
+EPIX_EXPORT struct EPIX_API FileAssetWatcher : public AssetWatcher {
    private:
     std::unique_ptr<efsw::FileWatchListener> m_listener;
     std::unique_ptr<efsw::FileWatcher> m_watcher;

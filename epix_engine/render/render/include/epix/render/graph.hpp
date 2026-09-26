@@ -41,7 +41,7 @@ struct RenderGraphFinalizers {
  * (data flow). Sub-graphs can be added and invoked by nodes during
  * execution.
  */
-EPIX_EXPORT struct RenderGraph {
+EPIX_EXPORT struct EPIX_API RenderGraph {
     std::unordered_map<NodeLabel, NodeState> nodes;
     std::unordered_map<GraphLabel, RenderGraph> sub_graphs;
 
@@ -221,7 +221,7 @@ EPIX_EXPORT struct RenderGraph {
     }
 };
 
-struct RenderGraphRunner {
+struct EPIX_API RenderGraphRunner {
     static std::expected<void, RenderGraphRunnerError> run(const RenderGraph& graph,
                                                            const wgpu::Device& device,
                                                            const wgpu::Queue& queue,

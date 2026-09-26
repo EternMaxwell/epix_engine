@@ -46,7 +46,7 @@ concept is_bundle = requires(std::decay_t<B>& b) {
 EPIX_EXPORT enum class InsertMode { Replace, Keep };
 
 namespace internal {
-struct BundleInfo {
+struct EPIX_API BundleInfo {
    private:
     BundleId _id;
     std::vector<TypeId> _component_ids;  // explicit components followed by required components, explicit order matches
@@ -135,7 +135,7 @@ struct BundleInfo {
                                                             ArchetypeId archetype_id,
                                                             bool ignore_missing) const noexcept;
 };
-struct Bundles {
+struct EPIX_API Bundles {
    public:
     std::size_t size() const noexcept { return _bundle_infos.size(); }
     bool empty() const noexcept { return _bundle_infos.empty(); }

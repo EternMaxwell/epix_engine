@@ -660,7 +660,7 @@ EPIX_EXPORT ExtractedViewClusters extract_view_clusters(const Clusters& clusters
  *  render entity through `Commands::get_entity(..).expect(..)`; Epix's
  *  `Commands::entity` does not validate, so the expectation has no counterpart
  *  here. */
-EPIX_EXPORT void extract_clusters(
+EPIX_EXPORT EPIX_API void extract_clusters(
     ecs::Commands commands,
     app::Extract<ecs::Query<ecs::Item<const ::epix::render::sync_world::RenderEntity&, const Clusters&,
                                        const ::epix::camera::Camera&>>>

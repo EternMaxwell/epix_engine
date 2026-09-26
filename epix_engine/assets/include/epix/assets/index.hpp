@@ -53,7 +53,7 @@ EPIX_EXPORT struct AssetIndex {
     friend struct Assets;
 };
 
-struct AssetIndexAllocator {
+struct EPIX_API AssetIndexAllocator {
    private:
     mutable std::atomic<std::uint32_t> m_next = 0;
     epix::async_channel::Sender<AssetIndex> m_free_indices_sender;

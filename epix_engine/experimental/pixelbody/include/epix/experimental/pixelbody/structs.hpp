@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 
 #ifndef EPIX_CXX_MODULE
@@ -73,7 +73,7 @@ EPIX_EXPORT struct PixelBodyWorld {
  *   - `mesh_dirty`     → render mesh asset
  *   - `physics_dirty`  → mass/density properties (recomputed in shape rebuild)
  */
-EPIX_EXPORT struct PixelBody {
+EPIX_EXPORT struct EPIX_API PixelBody {
     b2BodyId b2_body = b2_nullBodyId;
     std::vector<b2ShapeId> shapes;
     grid::dense_grid<2, fs::Element> cells{{1u, 1u}};

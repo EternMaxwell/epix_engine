@@ -16,16 +16,16 @@
 
 namespace epix::ecs {
 
-struct Components;
-struct ComponentsRegistrator;
-struct Table;
-struct SparseSets;
+struct EPIX_API Components;
+struct EPIX_API ComponentsRegistrator;
+struct EPIX_API Table;
+struct EPIX_API SparseSets;
 struct Tick;
 struct TableRow;
 struct Entity;
 
 /** A type-erased constructor used to initialize a required component. */
-EPIX_EXPORT struct RequiredComponentConstructor {
+EPIX_EXPORT struct EPIX_API RequiredComponentConstructor {
     using Function = std::function<void(Table&, SparseSets&, Tick, TableRow, Entity)>;
 
     RequiredComponentConstructor() = default;
@@ -55,7 +55,7 @@ EPIX_EXPORT struct RequiredComponent {
  * `all` contains the full transitive closure in depth-first order. Requirements
  * always appear before the component that requires them.
  */
-EPIX_EXPORT struct RequiredComponents {
+EPIX_EXPORT struct EPIX_API RequiredComponents {
     using Entry     = std::pair<TypeId, RequiredComponent>;
     using Container = std::vector<Entry>;
 
@@ -87,7 +87,7 @@ EPIX_EXPORT enum class RequiredComponentsErrorKind {
 };
 
 /** Error returned when a runtime required-component registration is rejected. */
-EPIX_EXPORT struct RequiredComponentsError {
+EPIX_EXPORT struct EPIX_API RequiredComponentsError {
     RequiredComponentsErrorKind kind;
     TypeId requiree;
     TypeId required;
@@ -96,7 +96,7 @@ EPIX_EXPORT struct RequiredComponentsError {
 };
 
 /** Safe registration handle used by a component's static default registration hook. */
-EPIX_EXPORT struct RequiredComponentsRegistrator {
+EPIX_EXPORT struct EPIX_API RequiredComponentsRegistrator {
     RequiredComponentsRegistrator(ComponentsRegistrator& components, RequiredComponents& required_components)
         : components_(&components), required_components_(&required_components) {}
 

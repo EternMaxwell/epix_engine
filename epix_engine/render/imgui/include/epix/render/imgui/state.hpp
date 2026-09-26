@@ -45,7 +45,7 @@ EPIX_EXPORT struct ViewportDrawDataSnapshot : DrawDataSnapshot {
 
 /** @brief Resource holding the ImGui context and frame state.
  *  Stored as a resource in the main world and extracted to the render world. */
-EPIX_EXPORT struct ImGuiState {
+EPIX_EXPORT struct EPIX_API ImGuiState {
     void* ctx                   = nullptr;
     bool initialized            = false;
     bool frame_active           = false;

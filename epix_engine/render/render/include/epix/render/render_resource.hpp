@@ -147,7 +147,7 @@ constexpr std::size_t element_offset(std::size_t index, std::size_t element_size
  *
  *  Epix uses `wgpu::Device` directly, which has no equivalent, so this is the
  *  same mapped-at-creation write wgpu's own `create_buffer_init` performs. */
-EPIX_EXPORT wgpu::Buffer create_buffer_with_data(const wgpu::Device& device,
+EPIX_EXPORT EPIX_API wgpu::Buffer create_buffer_with_data(const wgpu::Device& device,
                                                  std::span<const std::byte> contents,
                                                  wgpu::BufferUsage usage,
                                                  std::string_view label = {});

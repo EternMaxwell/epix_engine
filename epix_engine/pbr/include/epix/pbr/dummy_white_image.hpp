@@ -19,7 +19,7 @@ namespace epix::pbr {
  *
  *  The device facts Bevy reads off `RenderDevice`/`RenderQueue` and the
  *  `DefaultImageSampler` resource are parameters, as elsewhere in this port. */
-EPIX_EXPORT render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::Device& render_device,
+EPIX_EXPORT EPIX_API render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::Device& render_device,
                                                                   const wgpu::Sampler& default_sampler,
                                                                   const wgpu::Queue& render_queue);
 
@@ -30,7 +30,7 @@ EPIX_EXPORT render::texture::GpuImage build_dummy_white_gpu_image(const wgpu::De
  *
  *  Returns null pointers only when a handle is present but its image has not
  *  been uploaded, which is Bevy's `gpu_images.get(handle)?`. */
-EPIX_EXPORT std::optional<std::pair<const wgpu::TextureView*, const wgpu::Sampler*>> get_image_texture(
+EPIX_EXPORT EPIX_API std::optional<std::pair<const wgpu::TextureView*, const wgpu::Sampler*>> get_image_texture(
     const render::texture::GpuImage& dummy_white_gpu_image,
     const render::RenderAssets<render::texture::GpuImage>& gpu_images,
     const std::optional<assets::Handle<image::Image>>& handle_option);

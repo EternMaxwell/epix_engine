@@ -27,8 +27,8 @@
 
 namespace epix::sfml {
 
-input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key);
-input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button);
+EPIX_API input::KeyCode map_sfml_key_to_input(sf::Keyboard::Key key);
+EPIX_API input::MouseButton map_sfml_mouse_button_to_input(sf::Mouse::Button button);
 
 /** @brief Resource mapping entity IDs to their SFML window pointers. */
 EPIX_EXPORT struct SFMLwindows : public std::unordered_map<epix::ecs::Entity, std::shared_ptr<sf::WindowBase>> {};
@@ -46,7 +46,7 @@ EPIX_EXPORT struct SetClipboardString {
     std::string text;
 };
 /** @brief Resource providing read access to the system clipboard. */
-EPIX_EXPORT struct Clipboard {
+EPIX_EXPORT struct EPIX_API Clipboard {
    private:
     std::string text;
 
@@ -70,7 +70,7 @@ struct CachedWindowPosSize {
  * Supports delegating rendering to a sub-app on a separate thread via
  * `set_render_app()`.
  */
-EPIX_EXPORT struct SFMLRunner : public epix::app::AppRunner {
+EPIX_EXPORT struct EPIX_API SFMLRunner : public epix::app::AppRunner {
    public:
     SFMLRunner(epix::app::App& app);
     bool step(epix::app::App& app) override;
@@ -100,7 +100,7 @@ EPIX_EXPORT struct SFMLRunner : public epix::app::AppRunner {
 };
 /** @brief Plugin that registers the SFML windowing backend, including
  * window creation, event dispatch, and lifecycle systems. */
-EPIX_EXPORT struct SFMLPlugin {
+EPIX_EXPORT struct EPIX_API SFMLPlugin {
     void attach(epix::app::App& app);
 
     /** @brief System that syncs window size from SFML to the Window component. */

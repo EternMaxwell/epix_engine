@@ -11,12 +11,10 @@
 #include <epix/text.hpp>
 #include <limits>
 #include <memory>
-#include <optional>
 #include <stdexcept>
 #include <string_view>
-#include <vector>
 
-#include "../src/font_array.hpp"
+#include "font_array.hpp"
 
 using namespace epix;
 
@@ -123,7 +121,7 @@ TEST(ShapeText, BlockSizeIsTheRoundedAdvanceBox) {
     ASSERT_FALSE(shaped.glyphs().empty());
     EXPECT_FLOAT_EQ(shaped.size().y, 2.0f * line_height);
     EXPECT_GT(shaped.size().x, 0.0f);
-    // The advance box is at least as wide as the first line's ink extent.
+    // The advance box is at least as wide as the first line's advance sum.
     EXPECT_GE(shaped.size().x + 0.001f, shaped.width());
 }
 
@@ -141,10 +139,12 @@ TEST(ShapeText, GlyphPositionsAreQuadCentersInTopLeftOriginSpace) {
         EXPECT_GT(glyph.size.x, 0.0f);
         EXPECT_GT(glyph.size.y, 0.0f);
         // The bitmap's top edge in +Y-down block space stays inside the block.
-        const float top_edge    = glyph.position.y - glyph.size.y * 0.5f;
+        const float top_edge = glyph.position.y - glyph.size.y * 0.5f;
         const float bottom_edge = glyph.position.y + glyph.size.y * 0.5f;
         EXPECT_GE(top_edge, -0.001f);
         EXPECT_LE(bottom_edge, shaped.size().y + 0.001f);
+        // The first baseline is one ascent below the block's top edge, so the
+        // glyph center cannot sit above it minus the bitmap height.
         EXPECT_GT(glyph.position.y, 0.0f);
     }
 
@@ -194,7 +194,7 @@ TEST(FontAtlas, UsesASingleD2ImageWithAtlasLayoutRects) {
     }
 
     // The glyph bitmaps were blitted into the atlas image.
-    const auto bytes           = image->get().raw_view();
+    const auto bytes = image->get().raw_view();
     std::size_t non_zero_alpha = 0;
     for (std::size_t index = 3; index < bytes.size(); index += 4) {
         if (bytes[index] != std::byte{0}) ++non_zero_alpha;

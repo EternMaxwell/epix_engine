@@ -103,7 +103,7 @@ struct SurfaceData {
     wgpu::Surface surface;
     wgpu::SurfaceConfiguration config;
 };
-struct WindowSurfaces {
+struct EPIX_API WindowSurfaces {
     WindowSurfaces()                                 = default;
     WindowSurfaces(const WindowSurfaces&)            = delete;
     WindowSurfaces& operator=(const WindowSurfaces&) = delete;
@@ -119,7 +119,7 @@ struct WindowSurfaces {
 /**
  * @brief System for extracting windows.
  */
-EPIX_EXPORT void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows,
+EPIX_EXPORT EPIX_API void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows,
                                  app::Extract<ecs::Query<ecs::Item<ecs::Entity,
                                                                    const epix::window::Window&,
                                                                    const SurfaceCreation&,
@@ -129,11 +129,11 @@ EPIX_EXPORT void extract_windows(ecs::ResMut<ExtractedWindows> extracted_windows
 /**
  * @brief System for making swapchain texture and texture view available.
  */
-EPIX_EXPORT void prepare_windows(ecs::ResMut<ExtractedWindows> windows,
+EPIX_EXPORT EPIX_API void prepare_windows(ecs::ResMut<ExtractedWindows> windows,
                                  ecs::ResMut<WindowSurfaces> window_surfaces,
                                  ecs::Res<wgpu::Device> device,
                                  ecs::Res<wgpu::Instance> instance);
-void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
+EPIX_API void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
                      ecs::ResMut<WindowSurfaces> window_surfaces,
                      ecs::Res<wgpu::Instance> instance,
                      ecs::Res<wgpu::Adapter> adapter,
@@ -142,11 +142,11 @@ void create_surfaces(ecs::ResMut<ExtractedWindows> windows,
 /** @brief Present completed surface frames. Called by render_system immediately
  * after graph submission, matching
  * Bevy renderer::render_system. */
-void present_windows(ecs::World& world);
+EPIX_API void present_windows(ecs::World& world);
 
 /** @brief Plugin that registers window surface creation, extraction,
  * preparation, and presentation systems. */
-EPIX_EXPORT struct WindowRenderPlugin {
+EPIX_EXPORT struct EPIX_API WindowRenderPlugin {
     void attach(app::App&);
 };
 }  // namespace epix::render::window

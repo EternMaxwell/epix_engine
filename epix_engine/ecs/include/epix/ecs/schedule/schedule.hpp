@@ -29,7 +29,7 @@
 
 namespace epix::ecs {
 namespace internal {
-struct Edges {
+struct EPIX_API Edges {
     std::unordered_set<SystemSetLabel> depends;
     std::unordered_set<SystemSetLabel> successors;
     std::unordered_set<SystemSetLabel> parents;
@@ -267,7 +267,7 @@ EPIX_EXPORT struct ScheduleExecutor {
 };
 /** @brief A named collection of systems with dependency ordering and parallel execution support.
  *  Systems are organized into sets with before/after/in_set relationships. */
-EPIX_EXPORT struct Schedule {
+EPIX_EXPORT struct EPIX_API Schedule {
    private:
     ScheduleLabel _label;
     ScheduleConfig _default_schedule_config;

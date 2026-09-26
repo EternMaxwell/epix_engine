@@ -24,7 +24,7 @@ EPIX_EXPORT inline constexpr std::string_view EMBEDDED = "embedded";
 /** @brief A registry for assets embedded directly in the application binary.
  *  Backed by an in-memory directory that serves as the reader for the "embedded" asset source.
  *  Matches bevy_asset's EmbeddedAssetRegistry. */
-EPIX_EXPORT struct EmbeddedAssetRegistry {
+EPIX_EXPORT struct EPIX_API EmbeddedAssetRegistry {
    private:
     memory::Directory m_dir;
 

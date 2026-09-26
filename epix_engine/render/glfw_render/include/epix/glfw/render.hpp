@@ -14,7 +14,7 @@ EPIX_EXPORT wgpu::Surface get_wgpu_surface(const wgpu::Instance& instance, GLFWw
 
 /** @brief Plugin that registers GLFW-specific render target (surface)
  * creation for the render pipeline. */
-EPIX_EXPORT struct GLFWRenderPlugin {
+EPIX_EXPORT struct EPIX_API GLFWRenderPlugin {
     void attach(app::App& app);
 };
 }  // namespace epix::glfw::render

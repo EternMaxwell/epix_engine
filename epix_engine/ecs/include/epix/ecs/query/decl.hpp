@@ -29,7 +29,7 @@ EPIX_EXPORT template <typename T>
 struct QueryFilter {};
 
 /** @brief Forward declaration of the filtered access descriptor. */
-EPIX_EXPORT struct FilteredAccess;
+EPIX_EXPORT struct EPIX_API FilteredAccess;
 
 namespace internal {
 template <typename Q>

@@ -27,7 +27,7 @@ namespace epix::ext::fallingsand {
  * Conflicting chunk positions (two chunks at the same SandChunkPos) are logged as errors
  * and the affected world is skipped for that tick.
  */
-EPIX_EXPORT struct FallingSandPlugin {
+EPIX_EXPORT struct EPIX_API FallingSandPlugin {
     void attach(epix::app::App& app);
 };
 
@@ -35,7 +35,7 @@ EPIX_EXPORT struct FallingSandPlugin {
  *  cells placed by the pixel-body plugin.  Add it to your App in addition to
  *  FallingSandPlugin; toggle the overlay at runtime via
  *  SandWorld::set_show_body_debug(). */
-EPIX_EXPORT struct BodyDebugPlugin {
+EPIX_EXPORT struct EPIX_API BodyDebugPlugin {
     void attach(epix::app::App& app);
 };
 

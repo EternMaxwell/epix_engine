@@ -12,7 +12,7 @@
 
 namespace epix::ecs {
 
-EPIX_EXPORT struct World;
+EPIX_EXPORT struct EPIX_API World;
 
 EPIX_EXPORT struct HookContext {
     Entity entity;

@@ -52,7 +52,7 @@ using SerializedIndices = std::variant<std::vector<std::uint16_t>, std::vector<s
 
 }  // namespace detail
 
-class MeshDeserializer;
+class EPIX_API MeshDeserializer;
 
 /** @brief A lossy, version-local representation of a `Mesh` suitable for
  * short-term transfer between processes (Bevy `SerializedMesh`).
@@ -61,7 +61,7 @@ class MeshDeserializer;
  * usage and the final AABB are deliberately reconstructed from `Mesh` defaults.
  * Custom attributes are ignored unless registered with `MeshDeserializer`.
  */
-EPIX_EXPORT class SerializedMesh {
+EPIX_EXPORT class EPIX_API SerializedMesh {
    public:
     /** @brief Consume a mesh and retain its serializable fields. Throws if its
      * CPU payload has already been extracted to the render world. */
@@ -74,8 +74,8 @@ EPIX_EXPORT class SerializedMesh {
    private:
     friend class MeshDeserializer;
     friend zpp::bits::access;
-    friend std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
-    friend std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
+    friend EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
+    friend EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
     using serialize = zpp::bits::members<3>;
 
     SerializedMesh() = default;
@@ -87,7 +87,7 @@ EPIX_EXPORT class SerializedMesh {
 
 /** @brief Options used when reconstructing a mesh from `SerializedMesh`
  * (Bevy `MeshDeserializer`). */
-EPIX_EXPORT class MeshDeserializer {
+EPIX_EXPORT class EPIX_API MeshDeserializer {
    public:
     /** @brief Construct a deserializer containing all eight built-in mesh
      * attributes. */
@@ -106,10 +106,10 @@ EPIX_EXPORT class MeshDeserializer {
 };
 
 /** @brief Encode a `SerializedMesh` with Epix's project serialization backend. */
-EPIX_EXPORT std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
+EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_serialized_mesh(const SerializedMesh& mesh);
 
 /** @brief Decode a `SerializedMesh` encoded by `serialize_serialized_mesh`. */
-EPIX_EXPORT std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
+EPIX_EXPORT EPIX_API std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(std::span<const std::byte> bytes);
 
 /** @brief Vector overload for `deserialize_serialized_mesh`. */
 EPIX_EXPORT inline std::expected<SerializedMesh, std::errc> deserialize_serialized_mesh(

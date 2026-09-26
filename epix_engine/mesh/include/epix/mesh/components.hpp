@@ -65,7 +65,7 @@ EPIX_EXPORT struct MeshTag {
 };
 
 /** @brief Mark `Mesh3d` components changed when their referenced mesh asset is modified. */
-EPIX_EXPORT void mark_3d_meshes_as_changed_if_their_assets_changed(
+EPIX_EXPORT EPIX_API void mark_3d_meshes_as_changed_if_their_assets_changed(
     ecs::Query<ecs::Item<ecs::Mut<Mesh3d>>> meshes_3d, ecs::EventReader<assets::AssetEvent<Mesh>> mesh_asset_events);
 
 }  // namespace epix::mesh

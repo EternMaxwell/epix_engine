@@ -20,7 +20,7 @@
 #endif
 
 namespace epix::app {
-EPIX_EXPORT struct App;
+EPIX_EXPORT struct EPIX_API App;
 namespace internal {
 template <typename T>
 concept is_plugin = requires(T t, App& app) {

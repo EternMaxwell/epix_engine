@@ -21,7 +21,7 @@ EPIX_EXPORT struct ViewUpscalingPipeline {
 };
 
 /** @brief Typed output-copy render-graph node (Bevy `UpscalingNode`). */
-EPIX_EXPORT struct UpscalingNode {
+EPIX_EXPORT struct EPIX_API UpscalingNode {
     using ViewQuery = ecs::Item<const render::view::ViewTarget&,
                                 const ViewUpscalingPipeline&,
                                 ecs::Opt<const render::camera::ExtractedCamera&>>;
@@ -44,7 +44,7 @@ EPIX_EXPORT struct UpscalingNode {
 
 /** @brief Installs per-view output-pipeline preparation and the Bevy-style
  * `Upscaling` graph node. */
-EPIX_EXPORT struct UpscalingPlugin {
+EPIX_EXPORT struct EPIX_API UpscalingPlugin {
     void attach(app::App& app);
 };
 

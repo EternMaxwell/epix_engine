@@ -11,9 +11,9 @@
 
 namespace epix::ecs {
 
-EPIX_EXPORT struct Components;
-EPIX_EXPORT struct ComponentsRegistrator;
-EPIX_EXPORT struct ComponentsQueuedRegistrator;
+EPIX_EXPORT struct EPIX_API Components;
+EPIX_EXPORT struct EPIX_API ComponentsRegistrator;
+EPIX_EXPORT struct EPIX_API ComponentsQueuedRegistrator;
 
 struct QueuedRegistration {
     void (*registrator)(ComponentsRegistrator&, TypeId, meta::type_index, StorageType);

@@ -1,4 +1,0 @@
-﻿epix_add_module(epix_input)
-target_link_libraries(epix_input PUBLIC epix_common)
-target_link_libraries(epix_input PUBLIC epix_ecs)
-target_link_libraries(epix_input PUBLIC epix_app)

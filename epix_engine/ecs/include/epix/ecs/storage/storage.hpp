@@ -10,7 +10,7 @@ namespace internal {
 struct ComponentInfo;
 }  // namespace internal
 
-EPIX_EXPORT struct Storage {
+EPIX_EXPORT struct EPIX_API Storage {
     SparseSets sparse_sets;
     Tables tables;
 

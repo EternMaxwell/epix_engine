@@ -26,8 +26,8 @@
 
 namespace epix::camera {
 
-struct Camera;  // defined in camera.hpp; used by the visibility systems
-struct VisibilityPropagationAccess;
+struct EPIX_API Camera;  // defined in camera.hpp; used by the visibility systems
+struct EPIX_API VisibilityPropagationAccess;
 
 /** @brief Marker disabling CPU frustum culling for a camera (Bevy
  * bevy_camera::visibility::NoCpuCulling). */
@@ -54,17 +54,17 @@ EPIX_EXPORT struct ViewVisibility {
     /** True after `update` when visibility was lost this frame (Bevy
      * `was_visible_now_hidden`). */
     bool was_visible_now_hidden() const noexcept { return flags == 0b10u; }
-    friend void reset_view_visibility(
+    friend EPIX_API void reset_view_visibility(
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
-    friend void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
-    friend void mark_newly_hidden_entities_invisible(
+    friend EPIX_API void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
+    friend EPIX_API void mark_newly_hidden_entities_invisible(
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 };
 
 /** @brief Bevy `SetViewVisibility` implementation for an ECS mutable
  * `ViewVisibility` reference. It only marks the component changed when its
  * aggregate visibility actually changes. */
-EPIX_EXPORT void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
+EPIX_EXPORT EPIX_API void set_view_visible(epix::ecs::Mut<ViewVisibility>& visibility) noexcept;
 
 /** @brief C++ equivalent of Bevy's `SetViewVisibility` trait. */
 EPIX_EXPORT template <typename T>
@@ -128,7 +128,7 @@ EPIX_EXPORT struct InheritedVisibility {
 
 /** @brief Internal access bridge keeping `InheritedVisibility` state private
  * while allowing the propagation system to update it. */
-struct VisibilityPropagationAccess {
+struct EPIX_API VisibilityPropagationAccess {
     static void set(InheritedVisibility& visibility, bool is_visible) noexcept { visibility.is_visible_ = is_visible; }
 };
 
@@ -138,7 +138,7 @@ using Layer = std::size_t;
 /** @brief Dynamically extensible render-layer mask. Its finite positive-mask
  * operations match Bevy; Epix additionally supports an inverted mask for
  * convenient `all()` / `all_except()` helpers. */
-EPIX_EXPORT struct RenderLayers {
+EPIX_EXPORT struct EPIX_API RenderLayers {
    private:
     std::vector<std::uint64_t> blocks_{0};
     bool inverted_ = false;
@@ -348,14 +348,14 @@ EPIX_EXPORT struct VisibleEntityRanges {
 
 /** @brief Enables camera-side distance-range visibility checks (Bevy
  * `VisibilityRangePlugin`). */
-EPIX_EXPORT struct VisibilityRangePlugin {
+EPIX_EXPORT struct EPIX_API VisibilityRangePlugin {
     void attach(epix::app::App& app);
 };
 
 /** @brief Installs the base visibility propagation, frustum-culling, and
  * visibility-state systems (Bevy `VisibilityPlugin`).  `CameraPlugin`
  * composes this plugin with projection and range support. */
-EPIX_EXPORT struct VisibilityPlugin {
+EPIX_EXPORT struct EPIX_API VisibilityPlugin {
     void attach(epix::app::App& app);
 };
 
@@ -371,7 +371,7 @@ EPIX_EXPORT struct HalfSpace {
 };
 
 /** @brief Axis-aligned local-space bounds (Bevy `Aabb`). */
-EPIX_EXPORT struct Aabb {
+EPIX_EXPORT struct EPIX_API Aabb {
     glm::vec3 center{0.0f};
     glm::vec3 half_extents{0.0f};
     static Aabb from_min_max(glm::vec3 minimum, glm::vec3 maximum) noexcept {
@@ -427,7 +427,7 @@ concept MeshAabbImpl = requires(const T& mesh) {
 };
 
 /** @brief Bounding sphere primitive (Bevy `Sphere`). */
-EPIX_EXPORT struct Sphere {
+EPIX_EXPORT struct EPIX_API Sphere {
     glm::vec3 center{0.0f};
     float radius = 0.0f;
     bool intersects_obb(const Aabb& aabb, const glm::mat4& world_from_local) const noexcept {
@@ -442,7 +442,7 @@ EPIX_EXPORT struct Sphere {
 /** @brief View frustum as 6 plane half-spaces (Bevy bevy_camera
  * primitives::Frustum). Each plane is (normal.xyz, d) with a point in front
  * when dot(normal, p) + d >= 0. */
-EPIX_EXPORT struct Frustum {
+EPIX_EXPORT struct EPIX_API Frustum {
     /** @brief The six planes: left, right, top, bottom, near, far. */
     /** @brief The index of the near plane among `planes` (Bevy
      *  `Frustum::NEAR_PLANE_IDX`, `primitives.rs:293`). The far plane is index 5,
@@ -666,7 +666,7 @@ EPIX_EXPORT enum class VisibilitySystems {
  * hierarchy (Bevy `visibility_propagate_system`, where `Parent` is Epix's
  * established name for Bevy's `ChildOf` relationship). Uses only ECS queries
  * so the scheduler can run it alongside non-conflicting systems. */
-EPIX_EXPORT void visibility_propagate_system(
+EPIX_EXPORT EPIX_API void visibility_propagate_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                      const Visibility&,
                                      epix::ecs::Opt<const epix::ecs::Parent&>,
@@ -680,17 +680,17 @@ EPIX_EXPORT void visibility_propagate_system(
 
 /** @brief Resets every ViewVisibility to the default (visible-by-default)
  * state before check_visibility runs (Bevy reset_view_visibility). */
-EPIX_EXPORT void reset_view_visibility(
+EPIX_EXPORT EPIX_API void reset_view_visibility(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 
 /** @brief Finalizes a visible-to-hidden transition without leaving stale
  * previous-frame state (Bevy `mark_newly_hidden_entities_invisible`). */
-EPIX_EXPORT void mark_newly_hidden_entities_invisible(
+EPIX_EXPORT EPIX_API void mark_newly_hidden_entities_invisible(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<ViewVisibility>>> view_visibilities);
 
 /** @brief Computes per-camera distance-range membership before frustum
  * visibility (Bevy `check_visibility_ranges`). */
-EPIX_EXPORT void check_visibility_ranges(
+EPIX_EXPORT EPIX_API void check_visibility_ranges(
     epix::ecs::ResMut<VisibleEntityRanges> visible_entity_ranges,
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const ::epix::transform::GlobalTransform&>,
                      epix::ecs::With<Camera>> cameras,
@@ -703,7 +703,7 @@ EPIX_EXPORT void check_visibility_ranges(
  * collects them into the camera's VisibleEntities (Bevy `check_visibility`).
  * When bounds and a global transform are present, it performs Bevy's sphere
  * broad phase followed by transformed-AABB frustum culling. */
-EPIX_EXPORT void check_visibility_system(
+EPIX_EXPORT EPIX_API void check_visibility_system(
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                      const Camera&,
                                      epix::ecs::Mut<VisibleEntities>,
@@ -723,7 +723,7 @@ EPIX_EXPORT void check_visibility_system(
 
 /** @brief Recomputes each camera's Frustum from its projection and transform
  * (Bevy update_frusta). */
-EPIX_EXPORT void update_frusta(epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
+EPIX_EXPORT EPIX_API void update_frusta(epix::ecs::Query<epix::ecs::Item<const ::epix::transform::GlobalTransform&,
                                                                 const ::epix::camera::Projection&,
                                                                 epix::ecs::Mut<Frustum>>> cameras);
 

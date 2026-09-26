@@ -206,7 +206,7 @@ static_assert(render::phase::BinnedPhaseItem<AlphaMask2D>);
 
 /** @brief Bevy `MainOpaquePass2dNode`: renders opaque and alpha-mask binned
  * phases together in one deferred command buffer. */
-EPIX_EXPORT struct MainOpaquePass2DNode {
+EPIX_EXPORT struct EPIX_API MainOpaquePass2DNode {
     using ViewQuery = ecs::Item<const render::camera::ExtractedCamera&,
                                 const render::view::ExtractedView&,
                                 const render::view::ViewTarget&,
@@ -221,7 +221,7 @@ EPIX_EXPORT struct MainOpaquePass2DNode {
 
 /** @brief Bevy `MainTransparentPass2dNode`: renders the retained sorted
  * transparent phase in an independent deferred command buffer. */
-EPIX_EXPORT struct MainTransparentPass2DNode {
+EPIX_EXPORT struct EPIX_API MainTransparentPass2DNode {
     using ViewQuery = MainOpaquePass2DNode::ViewQuery;
     void update(ecs::World&) {}
     std::expected<void, render::graph::NodeRunError> run(
@@ -234,17 +234,17 @@ EPIX_EXPORT struct MainTransparentPass2DNode {
 /** @brief Singleton struct for initializing the core 2D render graph. */
 EPIX_EXPORT inline struct Core2dGraph {
     /** @brief Add this graph as a sub-graph to the given render graph. */
-    void add_to(render::graph::RenderGraph& g, ecs::World& world);
+    EPIX_API void add_to(render::graph::RenderGraph& g, ecs::World& world);
 } Core2d;
 
 /** @brief Plugin that sets up the core 2D render graph and camera
  * projection. */
-EPIX_EXPORT struct Core2dPlugin {
+EPIX_EXPORT struct EPIX_API Core2dPlugin {
     void attach(app::App& app);
 };
 
 /** @brief Maintain the three phase collections for active Camera2d entities. */
-EPIX_EXPORT void extract_core_2d_camera_phases(
+EPIX_EXPORT EPIX_API void extract_core_2d_camera_phases(
     ecs::ResMut<render::phase::ViewSortedRenderPhases<Transparent2D>> transparent_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<Opaque2D>> opaque_phases,
     ecs::ResMut<render::phase::ViewBinnedRenderPhases<AlphaMask2D>> alpha_mask_phases,
@@ -255,7 +255,7 @@ EPIX_EXPORT void extract_core_2d_camera_phases(
 /** @brief Prepare depth attachments for live Core2D views (Bevy
  * `prepare_core_2d_depth_textures`). The general view plugin deliberately
  * does not allocate depth for arbitrary cameras. */
-EPIX_EXPORT void prepare_core_2d_depth_textures(
+EPIX_EXPORT EPIX_API void prepare_core_2d_depth_textures(
     ecs::Commands cmd,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
     ecs::Res<wgpu::Device> device,

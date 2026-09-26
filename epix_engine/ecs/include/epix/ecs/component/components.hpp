@@ -21,9 +21,9 @@
 #include <epix/ecs/core/type_id.hpp>
 
 namespace epix::ecs {
-EPIX_EXPORT struct ComponentsRegistrator;
+EPIX_EXPORT struct EPIX_API ComponentsRegistrator;
 
-EPIX_EXPORT struct Components {
+EPIX_EXPORT struct EPIX_API Components {
     std::size_t num_queued() const;
     std::size_t num_registered() const;
     std::size_t length() const;

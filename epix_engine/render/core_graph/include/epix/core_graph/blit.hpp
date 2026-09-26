@@ -16,7 +16,7 @@
 namespace epix::core_graph {
 
 /** @brief Specialization key for `BlitPipeline` (Bevy `BlitPipelineKey`). */
-EPIX_EXPORT struct BlitPipelineKey {
+EPIX_EXPORT struct EPIX_API BlitPipelineKey {
     wgpu::TextureFormat texture_format = wgpu::TextureFormat::eUndefined;
     std::optional<wgpu::BlendState> blend_state;
     std::uint32_t samples = 1;
@@ -25,7 +25,7 @@ EPIX_EXPORT struct BlitPipelineKey {
 };
 
 /** @brief Reusable fullscreen texture-copy pipeline (Bevy `BlitPipeline`). */
-EPIX_EXPORT struct BlitPipeline {
+EPIX_EXPORT struct EPIX_API BlitPipeline {
     using Key = BlitPipelineKey;
 
     render::BindGroupLayoutDescriptor layout;
@@ -42,13 +42,13 @@ EPIX_EXPORT struct BlitPipeline {
 };
 
 /** @brief Installs the reusable blit pipeline (Bevy `BlitPlugin`). */
-EPIX_EXPORT struct BlitPlugin {
+EPIX_EXPORT struct EPIX_API BlitPlugin {
     void attach(app::App& app);
 };
 
 }  // namespace epix::core_graph
 
 template <>
-struct std::hash<epix::core_graph::BlitPipelineKey> {
+struct EPIX_API std::hash<epix::core_graph::BlitPipelineKey> {
     std::size_t operator()(const epix::core_graph::BlitPipelineKey& key) const noexcept;
 };

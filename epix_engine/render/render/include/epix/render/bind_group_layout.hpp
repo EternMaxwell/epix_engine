@@ -18,7 +18,7 @@ namespace epix::render {
  *
  * Bevy derives `Hash`/`Eq` over the label and the entries, which is what lets
  * the pipeline cache intern native layouts by content instead of by identity. */
-EPIX_EXPORT struct BindGroupLayoutDescriptor {
+EPIX_EXPORT struct EPIX_API BindGroupLayoutDescriptor {
     /** @brief Debug label of the bind group layout. */
     std::string label;
     /** @brief The layout's entries, in binding order. */
@@ -52,12 +52,12 @@ EPIX_EXPORT struct BindGroupLayoutDescriptor {
         return std::forward<decltype(self)>(self);
     }
 
-    friend bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescriptor& rhs) noexcept;
+    friend EPIX_API bool operator==(const BindGroupLayoutDescriptor& lhs, const BindGroupLayoutDescriptor& rhs) noexcept;
     [[nodiscard]] std::size_t hash() const noexcept;
 };
 
 /** @brief Hasher for `BindGroupLayoutDescriptor` keys. */
-EPIX_EXPORT struct BindGroupLayoutDescriptorHash {
+EPIX_EXPORT struct EPIX_API BindGroupLayoutDescriptorHash {
     std::size_t operator()(const BindGroupLayoutDescriptor& descriptor) const noexcept;
 };
 
@@ -67,7 +67,7 @@ EPIX_EXPORT struct BindGroupLayoutDescriptorHash {
  * Bevy keeps this private to `PipelineCache` and exposes it through
  * `PipelineCache::get_bind_group_layout`, which is the entry point its passes
  * use to build bind groups. */
-EPIX_EXPORT struct BindGroupLayoutCache {
+EPIX_EXPORT struct EPIX_API BindGroupLayoutCache {
     /** @brief Return the interned layout for `descriptor`, creating it on first
      *  use. Equal descriptors yield the same native layout. */
     wgpu::BindGroupLayout get(const wgpu::Device& device, const BindGroupLayoutDescriptor& descriptor);

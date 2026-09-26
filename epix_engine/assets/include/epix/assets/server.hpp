@@ -62,7 +62,7 @@ EPIX_EXPORT struct MissingAssetSourceError {
 
 /** @brief Central server that manages asset loading, tracking, and lifecycle.
  *  Thread-safe: all accesses go through internal RwLock guards. */
-EPIX_EXPORT struct AssetServer {
+EPIX_EXPORT struct EPIX_API AssetServer {
    private:
     std::shared_ptr<AssetServerData> data;
 

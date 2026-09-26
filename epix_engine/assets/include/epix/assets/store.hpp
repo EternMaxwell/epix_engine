@@ -30,9 +30,9 @@
 
 namespace epix::assets {
 /** @brief Forward declaration of AssetServer. */
-EPIX_EXPORT struct AssetServer;
+EPIX_EXPORT struct EPIX_API AssetServer;
 
-bool asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id);
+EPIX_API bool asset_server_process_handle_destruction(const AssetServer& server, const UntypedAssetId& id);
 
 template <typename T>
 struct Entry {
@@ -330,7 +330,7 @@ struct AssetEvent {
     }
 };
 
-void log_asset_error(const AssetError& err, const std::string_view& header, const std::string_view& operation);
+EPIX_API void log_asset_error(const AssetError& err, const std::string_view& header, const std::string_view& operation);
 
 /** @brief A collection of asset handles loaded from a directory/folder.
  *  Matches bevy_asset's LoadedFolder. */

@@ -113,7 +113,8 @@ EPIX_EXPORT using ValidateLogError = std::variant<validate_log_errors::Unrecover
 
 /** @brief Validate the previous state of the transaction log and determine any assets that need reprocessing.
  *  Matches bevy_asset's validate_transaction_log. */
-std::expected<void, ValidateLogError> validate_transaction_log(const ProcessorTransactionLogFactory& log_factory);
+EPIX_API std::expected<void, ValidateLogError> validate_transaction_log(
+    const ProcessorTransactionLogFactory& log_factory);
 
 // ---- FileTransactionLogFactory ----
 
@@ -123,7 +124,7 @@ inline constexpr std::string_view ENTRY_END         = "End ";
 inline constexpr std::string_view UNRECOVERABLE_ERR = "UnrecoverableError";
 
 /** @brief File-backed ProcessorTransactionLog implementation. */
-struct FileProcessorTransactionLog : ProcessorTransactionLog {
+struct EPIX_API FileProcessorTransactionLog : ProcessorTransactionLog {
     std::filesystem::path file_path;
     std::optional<std::ofstream> log_file;
 
@@ -139,7 +140,7 @@ struct FileProcessorTransactionLog : ProcessorTransactionLog {
 
 /** @brief A transaction log factory that uses a file as its storage.
  *  Matches bevy_asset's FileTransactionLogFactory. */
-EPIX_EXPORT struct FileTransactionLogFactory : ProcessorTransactionLogFactory {
+EPIX_EXPORT struct EPIX_API FileTransactionLogFactory : ProcessorTransactionLogFactory {
     std::filesystem::path file_path;
 
     FileTransactionLogFactory() : file_path(LOG_PATH) {}

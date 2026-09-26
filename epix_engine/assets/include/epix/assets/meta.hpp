@@ -329,10 +329,10 @@ EPIX_EXPORT struct AssetMetaMinimal {
 // ---------------------------------------------------------------------------
 
 /** @brief Serialize an AssetMetaMinimal to a byte vector using zpp::bits. */
-EPIX_EXPORT std::expected<std::vector<std::byte>, std::errc> serialize_meta_minimal(const AssetMetaMinimal& minimal);
+EPIX_EXPORT EPIX_API std::expected<std::vector<std::byte>, std::errc> serialize_meta_minimal(const AssetMetaMinimal& minimal);
 
 /** @brief Deserialize an AssetMetaMinimal from a byte span using zpp::bits. */
-EPIX_EXPORT std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(std::span<const std::byte> bytes);
+EPIX_EXPORT EPIX_API std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(std::span<const std::byte> bytes);
 
 /** @brief Overload accepting a std::vector<std::byte>. */
 EPIX_EXPORT inline std::expected<AssetMetaMinimal, std::errc> deserialize_meta_minimal(
@@ -371,7 +371,7 @@ std::expected<AssetMeta<LS, PS>, std::errc> deserialize_asset_meta(std::span<con
  *  valid with zpp::bits sequential deserialization.  Used during processor
  *  start-up to restore the stored hash without needing to know the settings types.
  *  Matches bevy_asset's ProcessedInfoMinimal concept. */
-EPIX_EXPORT std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(
+EPIX_EXPORT EPIX_API std::expected<std::optional<ProcessedInfo>, std::errc> deserialize_processed_info(
     std::span<const std::byte> bytes);
 
 /** @brief Overload accepting std::vector<std::byte>. */
@@ -391,10 +391,10 @@ EPIX_EXPORT inline std::expected<std::optional<ProcessedInfo>, std::errc> deseri
 /** @brief Compute a 32-byte asset hash from meta bytes + asset reader contents.
  *  NOTE: changing the hashing algorithm requires a META_FORMAT_VERSION bump.
  *  Matches bevy_asset's get_asset_hash. */
-STDEXEC::task<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader);
+EPIX_API STDEXEC::task<AssetHash> get_asset_hash(std::span<const std::byte> meta_bytes, Reader& reader);
 
 /** @brief Compute the full_hash by chaining an asset hash with all dependency full_hashes.
  *  Matches bevy_asset's get_full_asset_hash. */
-AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes);
+EPIX_API AssetHash get_full_asset_hash(AssetHash asset_hash, const std::vector<AssetHash>& dependency_hashes);
 
 }  // namespace epix::assets

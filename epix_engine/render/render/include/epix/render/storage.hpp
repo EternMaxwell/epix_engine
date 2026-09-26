@@ -117,7 +117,7 @@ struct RenderAsset<GpuShaderStorageBuffer> {
  * @brief Plugin that registers `ShaderStorageBuffer` as an asset and sets up
  * its extraction/upload (Bevy `StoragePlugin`).
  */
-EPIX_EXPORT struct StoragePlugin {
+EPIX_EXPORT struct EPIX_API StoragePlugin {
     void attach(app::App& app);
 };
 

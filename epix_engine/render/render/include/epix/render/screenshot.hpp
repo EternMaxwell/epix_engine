@@ -82,14 +82,14 @@ EPIX_EXPORT class CapturedScreenshots {
 };
 
 /** @brief Returns a handler which writes a component-based screenshot to disk. */
-EPIX_EXPORT std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path);
+EPIX_EXPORT EPIX_API std::function<void(const ScreenshotCaptured&)> save_to_disk(std::filesystem::path path);
 
 /** @brief Plugin that adds Bevy-style component screenshot capture support.
  *
  * This is installed by WindowRenderPlugin. Spawn Screenshot on a request
  * entity and observe ScreenshotCaptured to receive its asynchronously read
  * back image. */
-EPIX_EXPORT struct ScreenshotPlugin {
+EPIX_EXPORT struct EPIX_API ScreenshotPlugin {
     void attach(app::App& app);
 };
 

@@ -53,7 +53,7 @@ EPIX_EXPORT struct PreviousViewUniformOffset {
  *  `prepass_target_descriptors`, `prepass/mod.rs:383-405`): normals, motion
  *  vectors, the deferred G-buffer and the deferred lighting id, each present
  *  only when its prepass is. */
-EPIX_EXPORT std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(
+EPIX_EXPORT EPIX_API std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_descriptors(
     bool normal_prepass, bool motion_vector_prepass, bool deferred_prepass);
 
 /** @brief Converts a `prepass_target_descriptors` set into the target list a
@@ -67,7 +67,7 @@ EPIX_EXPORT std::array<std::optional<wgpu::ColorTargetState>, 4> prepass_target_
  *  location, which is what the prepass skybox does (verified by
  *  `SkyboxPrepass.UndefinedFormatTargetIsAcceptedAsAnUnwrittenSlot` in
  *  `core_graph/tests/header/skybox_tests.cpp`). */
-EPIX_EXPORT std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass,
+EPIX_EXPORT EPIX_API std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool normal_prepass,
                                                                         bool motion_vector_prepass,
                                                                         bool deferred_prepass);
 
@@ -78,7 +78,7 @@ EPIX_EXPORT std::vector<wgpu::ColorTargetState> prepass_pipeline_targets(bool no
  *  Bevy schedules it in the PBR prepass; Epix's prepass nodes live in
  *  `core_graph`, so it belongs here, and it only needs the camera's global matrix
  *  and its projection. */
-EPIX_EXPORT void update_previous_view_data(
+EPIX_EXPORT EPIX_API void update_previous_view_data(
     ecs::Commands commands,
     ecs::Query<ecs::Item<ecs::Entity, const camera::Camera&, const transform::GlobalTransform&>,
                ecs::With<camera::Camera3d>>
@@ -93,7 +93,7 @@ EPIX_EXPORT void update_previous_view_data(
  *  late, so the render world always reads the previous frame's; this system is
  *  the render-world half that turns those components into a buffer the prepass
  *  bind groups can point at. */
-EPIX_EXPORT void prepare_previous_view_uniforms(
+EPIX_EXPORT EPIX_API void prepare_previous_view_uniforms(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> device,
     ecs::Res<wgpu::Queue> queue,

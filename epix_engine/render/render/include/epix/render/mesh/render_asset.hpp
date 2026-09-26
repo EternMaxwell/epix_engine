@@ -25,12 +25,12 @@
 namespace epix::render::mesh {
 /** @brief Installs `RenderAsset<Mesh>`, the mesh allocator, and the render-world
  * vertex-layout interner (Bevy `MeshRenderAssetPlugin`). */
-EPIX_EXPORT struct MeshRenderAssetPlugin {
+EPIX_EXPORT struct EPIX_API MeshRenderAssetPlugin {
     void attach(epix::app::App& app);
 };
 
 /** @brief Inherit canonical glTF node weights onto direct mesh-primitive children. */
-EPIX_EXPORT void inherit_weights(
+EPIX_EXPORT EPIX_API void inherit_weights(
     epix::ecs::Query<epix::ecs::Item<const epix::ecs::Children&, const epix::mesh::MorphWeights&>,
                      epix::ecs::Filter<epix::ecs::Without<epix::mesh::Mesh3d>,
                                        epix::ecs::Modified<epix::mesh::MorphWeights>>> morph_nodes,
@@ -38,7 +38,7 @@ EPIX_EXPORT void inherit_weights(
         morph_primitives);
 
 /** @brief Installs Bevy's PostUpdate direct-child morph-weight inheritance. */
-EPIX_EXPORT struct MorphPlugin {
+EPIX_EXPORT struct EPIX_API MorphPlugin {
     void attach(epix::app::App& app);
 };
 }  // namespace epix::render::mesh

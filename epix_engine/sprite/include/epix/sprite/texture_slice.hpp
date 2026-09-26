@@ -14,7 +14,7 @@
 EPIX_EXPORT namespace epix::sprite {
 
 /** @brief Insets defining the four slicing lines of a nine-sliced sprite. */
-struct BorderRect {
+struct EPIX_API BorderRect {
     glm::vec2 min_inset{0.0f};
     glm::vec2 max_inset{0.0f};
 
@@ -47,7 +47,7 @@ struct BorderRect {
 };
 
 /** @brief One texture rectangle drawn into a sized, offset region. */
-struct TextureSlice {
+struct EPIX_API TextureSlice {
     image::Rect texture_rect;
     glm::vec2 draw_size{0.0f};
     glm::vec2 offset{0.0f};
@@ -76,7 +76,7 @@ struct SliceScaleMode : std::variant<SliceScaleModeStretch, SliceScaleModeTile> 
 
 /** @brief Bevy-compatible nine-slice configuration and CPU slicing
  * algorithm. */
-struct TextureSlicer {
+struct EPIX_API TextureSlicer {
     BorderRect border{};
     SliceScaleMode center_scale_mode{};
     SliceScaleMode sides_scale_mode{};

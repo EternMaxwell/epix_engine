@@ -116,7 +116,7 @@ EPIX_EXPORT namespace epix::render::graph {
     };
 
     /** @brief Top-level render graph error, wrapping node, edge, or sub-graph errors. */
-    struct GraphError : std::variant<NodeNotPresent, EdgeError, SubGraphExists> {
+    struct EPIX_API GraphError : std::variant<NodeNotPresent, EdgeError, SubGraphExists> {
         using std::variant<NodeNotPresent, EdgeError, SubGraphExists>::variant;
         std::string to_string() const;
     };
@@ -159,7 +159,7 @@ EPIX_EXPORT namespace epix::render::graph {
     /** @brief Typed failure from `RenderGraphRunner`, mirroring Bevy's
      * `RenderGraphRunnerError` rather than
      * collapsing errors to `bool`. */
-    struct RenderGraphRunnerError
+    struct EPIX_API RenderGraphRunnerError
         : std::variant<RunnerNodeRunError, RunnerMissingInput, RunnerMismatchedInputSlotType,
                        RunnerMismatchedInputCount, RunnerEmptyNodeOutputSlot, RunnerSubGraphNotFound> {
         using std::variant<RunnerNodeRunError,

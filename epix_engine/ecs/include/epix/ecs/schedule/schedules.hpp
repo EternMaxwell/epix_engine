@@ -16,7 +16,7 @@ namespace epix::ecs {
  * @brief A collection of schedules, keyed by ScheduleLabel.
  *  Stored as a resource in World; provides lookup, insertion and removal.
  */
-EPIX_EXPORT struct Schedules {
+EPIX_EXPORT struct EPIX_API Schedules {
    public:
     Schedules()                            = default;
     Schedules(const Schedules&)            = delete;

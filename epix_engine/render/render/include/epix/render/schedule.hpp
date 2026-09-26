@@ -7,7 +7,7 @@
 #endif
 
 namespace epix::render {
-struct RenderT {
+struct EPIX_API RenderT {
     static ecs::Schedule render_schedule();
 };
 /** @brief Schedule sentinel for the render sub-app. Use `Render` to refer

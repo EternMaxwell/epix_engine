@@ -79,6 +79,6 @@ EPIX_EXPORT struct MeshShaderHandles {
  *
  * Registered by tests until a plugin can register Bevy's actual set, the same
  * arrangement the light systems have. */
-EPIX_EXPORT void register_mesh_shaders(ecs::World& world);
+EPIX_EXPORT EPIX_API void register_mesh_shaders(ecs::World& world);
 
 }  // namespace epix::pbr

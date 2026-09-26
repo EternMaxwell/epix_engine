@@ -73,7 +73,7 @@ struct Processors {
 
 /** @brief Per-asset processing state tracked by the processor.
  *  Matches bevy_asset's ProcessorAssetInfo. */
-struct ProcessorAssetInfo {
+struct EPIX_API ProcessorAssetInfo {
     std::optional<ProcessedInfo> processed_info;
     std::unordered_set<AssetPath> dependents;
     std::optional<ProcessStatus> status;
@@ -92,7 +92,7 @@ struct ProcessorAssetInfo {
 
 /** @brief The "current" in-memory view of the asset space.
  *  Matches bevy_asset's ProcessorAssetInfos. */
-struct ProcessorAssetInfos {
+struct EPIX_API ProcessorAssetInfos {
     std::unordered_map<AssetPath, ProcessorAssetInfo> infos;
     std::unordered_map<AssetPath, std::unordered_set<AssetPath>> non_existent_dependents;
 
@@ -127,7 +127,7 @@ struct ProcessorAssetInfos {
 
 /** @brief The current state of processing, including the overall state and the state of all assets.
  *  Matches bevy_asset's ProcessingState. */
-struct ProcessingState {
+struct EPIX_API ProcessingState {
    private:
     mutable utils::RwLock<ProcessorState> m_state{ProcessorState::Initializing};
 
@@ -175,7 +175,7 @@ EPIX_EXPORT using SetTransactionLogFactoryError = std::variant<set_transaction_l
 
 /** @brief Shared data for the AssetProcessor, accessible across threads.
  *  Matches bevy_asset's AssetProcessorData. */
-EPIX_EXPORT struct AssetProcessorData {
+EPIX_EXPORT struct EPIX_API AssetProcessorData {
    private:
     std::shared_ptr<ProcessingState> processing_state;
     utils::Mutex<std::optional<std::unique_ptr<ProcessorTransactionLogFactory>>> log_factory;
@@ -211,7 +211,7 @@ EPIX_EXPORT struct AssetProcessorData {
 
 /** @brief The main asset processor. Processes assets from source readers into processed writers.
  *  Matches bevy_asset's AssetProcessor. */
-EPIX_EXPORT struct AssetProcessor {
+EPIX_EXPORT struct EPIX_API AssetProcessor {
    private:
     AssetServer server;
     std::shared_ptr<AssetProcessorData> data;

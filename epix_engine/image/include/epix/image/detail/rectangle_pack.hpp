@@ -49,7 +49,7 @@ namespace epix::image::detail {
  */
 
 /** @brief A volume, or an area when `depth` is 1 (`rectangle_pack::WidthHeightDepth`). */
-struct WidthHeightDepth {
+struct EPIX_API WidthHeightDepth {
     std::uint32_t width  = 0;
     std::uint32_t height = 0;
     std::uint32_t depth  = 0;
@@ -125,7 +125,7 @@ struct PackedLocation {
 using BoxSizeHeuristicFn = std::function<std::uint64_t(const WidthHeightDepth&)>;
 
 /** @brief `rectangle_pack::volume_heuristic`: the volume of the box. */
-std::uint64_t volume_heuristic(const WidthHeightDepth& whd);
+EPIX_API std::uint64_t volume_heuristic(const WidthHeightDepth& whd);
 
 /** @brief Decides which of two ways of splitting the remaining space is better
  * (`rectangle_pack::ComparePotentialContainersFn`).
@@ -137,7 +137,7 @@ using ComparePotentialContainersFn = std::function<std::strong_ordering(
 
 /** @brief `rectangle_pack::contains_smallest_box`: prefer the container with the smallest box,
  * tie-broken on the second smallest box. */
-std::strong_ordering contains_smallest_box(std::array<WidthHeightDepth, 3> container1,
+EPIX_API std::strong_ordering contains_smallest_box(std::array<WidthHeightDepth, 3> container1,
                                            std::array<WidthHeightDepth, 3> container2,
                                            const BoxSizeHeuristicFn& heuristic);
 
@@ -150,14 +150,14 @@ enum class BinSectionError {
 };
 
 /** @brief `BinSectionError`'s `Display` text. */
-std::string to_string(BinSectionError error);
+EPIX_API std::string to_string(BinSectionError error);
 
 /** @brief A rectangular section within a target bin that takes up one or more layers
  * (`rectangle_pack::BinSection`).
  *
  * The crate's `BinSection::new` is plain aggregate initialisation here, because it does not check
  * its arguments. */
-struct BinSection {
+struct EPIX_API BinSection {
     std::uint32_t x = 0;
     std::uint32_t y = 0;
     std::uint32_t z = 0;
@@ -299,11 +299,11 @@ struct GroupedRectsToPlace {
 
 /** @brief `BinSection`'s derived `Debug` output (`WidthHeightDepth { width: 1, height: 1,
  * depth: 1 }`), which `PushBinSectionError`'s `Display` embeds. */
-std::string to_debug_string(const WidthHeightDepth& whd);
+EPIX_API std::string to_debug_string(const WidthHeightDepth& whd);
 
 /** @brief `BinSection`'s derived `Debug` output
  * (`BinSection { x: 0, y: 0, z: 0, whd: WidthHeightDepth { .. } }`). */
-std::string to_debug_string(const BinSection& section);
+EPIX_API std::string to_debug_string(const BinSection& section);
 
 /** @brief C++ counterparts to `PushBinSectionError`'s alternatives
  * (`target_bin/push_available_bin_section.rs:67-77`). */
@@ -327,7 +327,7 @@ struct Overlaps {
 
 /** @brief An error while attempting to push a `BinSection` into the remaining bin sections of a
  * `TargetBin` (`rectangle_pack::PushBinSectionError`). */
-struct PushBinSectionError : std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps> {
+struct EPIX_API PushBinSectionError : std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps> {
     using Base = std::variant<push_bin_section_error::OutOfBounds, push_bin_section_error::Overlaps>;
     using Base::Base;
 
@@ -337,7 +337,7 @@ struct PushBinSectionError : std::variant<push_bin_section_error::OutOfBounds, p
 
 /** @brief A bin that we'd like to pack our incoming rectangles into
  * (`rectangle_pack::TargetBin`). */
-class TargetBin {
+class EPIX_API TargetBin {
    public:
     /** @brief `TargetBin::new`: a bin whose whole volume is one available section. */
     TargetBin(std::uint32_t max_width, std::uint32_t max_height, std::uint32_t max_depth);
@@ -380,7 +380,7 @@ enum class RectanglePackError {
 };
 
 /** @brief `RectanglePackError`'s `Display` text. */
-std::string to_string(RectanglePackError error);
+EPIX_API std::string to_string(RectanglePackError error);
 
 /** @brief Information about successfully packed rectangles
  * (`rectangle_pack::RectanglePackOk`). */
@@ -408,7 +408,7 @@ void sort_bins_smallest_to_largest(std::vector<std::pair<const BinId*, TargetBin
 }
 
 /** @brief `sort_by_size_largest_to_smallest`. */
-void sort_by_size_largest_to_smallest(std::array<BinSection, 3>& items, const BoxSizeHeuristicFn& box_size_heuristic);
+EPIX_API void sort_by_size_largest_to_smallest(std::array<BinSection, 3>& items, const BoxSizeHeuristicFn& box_size_heuristic);
 
 /** @brief `sort_groups_largest_to_smallest`: groups arrive in ascending group-key order from the
  * crate's `BTreeMap`, and are stably sorted by descending summed rectangle heuristic. */

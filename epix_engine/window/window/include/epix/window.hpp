@@ -26,7 +26,7 @@ EPIX_EXPORT namespace epix::window {
      *
      * Set `primary_window` to std::nullopt to skip creating a default window.
      */
-    struct WindowPlugin {
+    struct EPIX_API WindowPlugin {
         /** @brief Configuration for the primary window. Nullopt skips
          * creation. */
         std::optional<Window> primary_window = Window{};
@@ -39,7 +39,7 @@ EPIX_EXPORT namespace epix::window {
     };
 
     /** @brief Debug system that logs all window events to the logger. */
-    void log_events(
+    EPIX_API void log_events(
         epix::ecs::EventReader<WindowResized> resized, epix::ecs::EventReader<WindowMoved> moved,
         epix::ecs::EventReader<WindowCreated> created, epix::ecs::EventReader<WindowClosed> closed,
         epix::ecs::EventReader<WindowCloseRequested> close_requested, epix::ecs::EventReader<WindowDestroyed> destroyed,

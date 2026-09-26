@@ -46,7 +46,7 @@ EPIX_EXPORT struct ComposeError {
  *
  * This is only for WGSL. Slang uses its own import system.
  */
-EPIX_EXPORT struct ShaderComposer {
+EPIX_EXPORT struct EPIX_API ShaderComposer {
     /** @brief Register one WGSL module.
      *
      * `module_name` must match what appears in source, for example

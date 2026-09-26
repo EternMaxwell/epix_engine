@@ -51,7 +51,7 @@ std::exception_ptr asset_loader_error_to_exception(const E& err) {
     }
 }
 
-EPIX_EXPORT struct AssetServer;
+EPIX_EXPORT struct EPIX_API AssetServer;
 struct AssetInfos;
 EPIX_EXPORT struct ProcessContext;
 EPIX_EXPORT struct LoadContext;
@@ -77,7 +77,7 @@ EPIX_EXPORT struct AssetContainer {
 struct LabeledAsset;
 
 /** @brief Type-erased loaded asset with dependency tracking. */
-EPIX_EXPORT struct ErasedLoadedAsset {
+EPIX_EXPORT struct EPIX_API ErasedLoadedAsset {
    private:
     std::unique_ptr<AssetContainer> value;
     std::unordered_set<UntypedAssetId> dependencies;
@@ -394,12 +394,12 @@ EPIX_EXPORT using WaitForAssetError =
 
 /** @brief Format an AssetLoadError into either a human-readable string or an exception_ptr.
  *  Used to populate UntypedAssetLoadFailedEvent and AssetLoadFailedEvent. */
-EPIX_EXPORT std::variant<std::string, std::exception_ptr> format_asset_load_error(const AssetLoadError& error);
+EPIX_EXPORT EPIX_API std::variant<std::string, std::exception_ptr> format_asset_load_error(const AssetLoadError& error);
 
 /** @brief Log an AssetLoadError via spdlog::error with a consistent "[asset_server]" prefix.
  *  @param error    The load error.
  *  @param path     The asset path being loaded (used for context in multi-part errors). */
-EPIX_EXPORT void log_asset_load_error(const AssetLoadError& error, const AssetPath& path);
+EPIX_EXPORT EPIX_API void log_asset_load_error(const AssetLoadError& error, const AssetPath& path);
 
 namespace internal_asset_event {
 struct Loaded {
@@ -420,7 +420,7 @@ using InternalAssetEvent =
 
 /** @brief A builder for performing nested asset loads within a LoadContext.
  *  Matches bevy_asset's NestedLoader. */
-EPIX_EXPORT struct NestedLoader;
+EPIX_EXPORT struct EPIX_API NestedLoader;
 
 EPIX_EXPORT struct LoadContext {
    private:
@@ -530,7 +530,7 @@ EPIX_EXPORT struct LoadContext {
 
 /** @brief A builder for performing nested asset loads within a LoadContext.
  *  Matches bevy_asset's NestedLoader. */
-EPIX_EXPORT struct NestedLoader {
+EPIX_EXPORT struct EPIX_API NestedLoader {
    private:
     LoadContext& m_context;
     std::optional<MetaTransform> m_meta_transform = std::nullopt;

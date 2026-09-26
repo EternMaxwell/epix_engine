@@ -259,7 +259,7 @@ struct SparseSet {
     auto iter_mut(this SparseSet& self) { return std::views::zip(self._indices, self._dense); }
 };
 
-EPIX_EXPORT struct SparseSets {
+EPIX_EXPORT struct EPIX_API SparseSets {
     std::size_t size() const noexcept { return sets.size(); }
     bool empty() const noexcept { return sets.empty(); }
     auto iter() const { return sets.iter(); }

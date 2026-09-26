@@ -20,7 +20,7 @@
 #include <epix/ecs/storage/sparse_set.hpp>
 
 namespace epix::ecs {
-EPIX_EXPORT struct Table {
+EPIX_EXPORT struct EPIX_API Table {
    private:
     SparseSet<TypeId, Dense> _denses;
     std::vector<Entity> _entities;
@@ -51,12 +51,12 @@ EPIX_EXPORT struct Table {
      * @param dense_index The dense index of the component to remove.
      * @return std::optional<Entity> The entity that is swapped into the removed component's place.
      */
-    std::optional<Entity> swap_remove(this Table& self, std::size_t dense_index);
+    std::optional<Entity> swap_remove(std::size_t dense_index);
     struct MoveReturn {
         std::size_t new_index;                 // index in the target table
         std::optional<Entity> swapped_entity;  // entity that was swapped in the source table, if any
     };
-    MoveReturn move_to(this Table& self, std::size_t dense_index, Table& target);
+    MoveReturn move_to(std::size_t dense_index, Table& target);
     std::optional<std::pair<const void*, const void*>> get_data_for(this const Table& self,
                                                                     std::size_t type_id) noexcept {
         return self._denses.get(type_id).transform([](const Dense& dense) { return dense.get_data(); });
@@ -127,7 +127,7 @@ struct VecHash {
 };
 }  // namespace internal
 
-EPIX_EXPORT struct Tables {
+EPIX_EXPORT struct EPIX_API Tables {
    private:
     std::unordered_map<std::vector<TypeId>, TableId, internal::VecHash> _table_id_registry;
     std::vector<Table> _tables;
@@ -179,6 +179,6 @@ EPIX_EXPORT struct Tables {
         return self._table_id_registry.contains(type_ids) ? std::optional(self._table_id_registry.at(type_ids))
                                                           : std::nullopt;
     }
-    TableId get_id_or_insert(this Tables& self, const std::vector<TypeId>& type_ids, const Components& components);
+    TableId get_id_or_insert(const std::vector<TypeId>& type_ids, const Components& components);
 };
 }  // namespace epix::ecs

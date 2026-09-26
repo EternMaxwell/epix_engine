@@ -140,7 +140,7 @@ struct AssetInfos {
         std::optional<epix::meta::type_index> type,
         HandleLoadingMode loading_mode,
         std::optional<MetaTransform> meta_transform = std::nullopt);
-    auto get_or_create_handle_internal(const AssetPath& path,
+    EPIX_API auto get_or_create_handle_internal(const AssetPath& path,
                                        std::optional<epix::meta::type_index> type,
                                        HandleLoadingMode loading_mode,
                                        std::optional<MetaTransform> meta_transform = std::nullopt)
@@ -156,7 +156,7 @@ struct AssetInfos {
                std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
                std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
     }
-    auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
+    EPIX_API auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
         -> std::optional<UntypedHandle>;
     bool is_path_alive(const AssetPath& path) const noexcept;
     bool should_reload(const AssetPath& path) const noexcept;

@@ -137,7 +137,7 @@ EPIX_EXPORT namespace epix::input {
     };
 
     /** @brief Get the human-readable name of a KeyCode. */
-    std::string_view key_name(KeyCode key);
+    EPIX_API std::string_view key_name(KeyCode key);
 
     /** @brief Mouse button codes. */
     enum class MouseButton : int {

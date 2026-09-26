@@ -31,7 +31,7 @@ using mesh::Mesh2d;
 /** @brief One main-entity keyed instance per visible 2D mesh (Bevy
  *  `extract_mesh2d`, `mesh.rs:249-282`). Defined by `mesh2d.cpp`; the render
  *  plugin registers it from `mesh2d_pipeline.cpp`. */
-EPIX_EXPORT void extract_mesh2d(
+EPIX_EXPORT EPIX_API void extract_mesh2d(
     ecs::ResMut<RenderMesh2dInstances> render_mesh_instances,
     app::Extract<ecs::Query<ecs::Item<ecs::Entity, const mesh::Mesh2d&, const transform::GlobalTransform&,
                                          const camera::ViewVisibility&, ecs::Opt<const mesh::MeshTag&>,
@@ -39,7 +39,7 @@ EPIX_EXPORT void extract_mesh2d(
         meshes);
 
 /** @brief Plugin that sets up 2D mesh extraction, batching, and rendering. */
-EPIX_EXPORT struct Mesh2dRenderPlugin {
+EPIX_EXPORT struct EPIX_API Mesh2dRenderPlugin {
     void attach(app::App& app);
 
    private:

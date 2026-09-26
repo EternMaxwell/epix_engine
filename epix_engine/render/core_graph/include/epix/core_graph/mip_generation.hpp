@@ -29,22 +29,22 @@ inline constexpr std::size_t DOWNSAMPLE_DEPTH_BIND_GROUP_ENTRIES = DEPTH_PYRAMID
 /** @brief The size of a depth pyramid built from a depth buffer of `size`
  *  (Bevy `ViewDepthPyramid::new`'s `depth_pyramid_size`): half the depth
  *  buffer, rounded up. */
-EPIX_EXPORT glm::uvec2 depth_pyramid_size(glm::uvec2 size) noexcept;
+EPIX_EXPORT EPIX_API glm::uvec2 depth_pyramid_size(glm::uvec2 size) noexcept;
 
 /** @brief The number of mip levels a `D2` texture of `size` can hold (Bevy
  *  `Extent3d::max_mips(TextureDimension::D2)`): the base-2 logarithm of the
  *  greatest dimension, rounded up, and never less than one. */
-EPIX_EXPORT std::uint32_t max_mips_for_size(glm::uvec2 size) noexcept;
+EPIX_EXPORT EPIX_API std::uint32_t max_mips_for_size(glm::uvec2 size) noexcept;
 
 /** @brief The number of mip levels the pyramid of a depth buffer of `size`
  *  needs (Bevy `ViewDepthPyramid::new`'s `depth_pyramid_mip_count`). */
-EPIX_EXPORT std::uint32_t depth_pyramid_mip_count(glm::uvec2 size) noexcept;
+EPIX_EXPORT EPIX_API std::uint32_t depth_pyramid_mip_count(glm::uvec2 size) noexcept;
 
 /** @brief Identifies the configuration of the downsample depth shader (Bevy
  *  `DownsampleDepthPipelineKey`). Meshlets keep their own downsample shaders,
  *  so there is no flag for them here even though the shader has defines for
  *  that path. */
-EPIX_EXPORT struct DownsampleDepthPipelineKey {
+EPIX_EXPORT struct EPIX_API DownsampleDepthPipelineKey {
     /** @brief True when the source depth buffer is multisampled. */
     static constexpr std::uint8_t MULTISAMPLE = 1u;
     /** @brief True for the second phase of the downsample process. */
@@ -60,7 +60,7 @@ EPIX_EXPORT struct DownsampleDepthPipelineKey {
 
 /** @brief One depth downsample compute pipeline (Bevy
  *  `DownsampleDepthPipeline`). */
-EPIX_EXPORT struct DownsampleDepthPipeline {
+EPIX_EXPORT struct EPIX_API DownsampleDepthPipeline {
     using Key = DownsampleDepthPipelineKey;
 
     /** @brief The bind group layout shared by both phases. */
@@ -87,7 +87,7 @@ EPIX_EXPORT struct DownsampleDepthPipeline {
  *  uses read-write access because Slang and HLSL have no write-only
  *  storage-texture declaration, unlike Bevy's WGSL
  *  (`mip_generation/mod.rs:420-455`). */
-EPIX_EXPORT render::BindGroupLayoutDescriptor create_downsample_depth_bind_group_layout(bool multisampled);
+EPIX_EXPORT EPIX_API render::BindGroupLayoutDescriptor create_downsample_depth_bind_group_layout(bool multisampled);
 
 /** @brief A placeholder storage texture bound to depth-pyramid slots that no
  *  mip level uses (Bevy `DepthPyramidDummyTexture`). */
@@ -97,7 +97,7 @@ EPIX_EXPORT struct DepthPyramidDummyTexture {
 
 /** @brief Creates a one-texel `R32Float` storage texture used for unused
  *  pyramid mip bindings (Bevy `create_depth_pyramid_dummy_texture`). */
-EPIX_EXPORT wgpu::TextureView create_depth_pyramid_dummy_texture(const wgpu::Device& device,
+EPIX_EXPORT EPIX_API wgpu::TextureView create_depth_pyramid_dummy_texture(const wgpu::Device& device,
                                                                 const char* texture_label,
                                                                 const char* texture_view_label);
 
@@ -126,7 +126,7 @@ EPIX_EXPORT struct DownsampleDepthPipelines {
  *  (Bevy `create_downsample_depth_pipelines`). It runs once and only when the
  *  device supports GPU preprocessing culling, which is the subsystem the
  *  pyramid feeds. */
-EPIX_EXPORT void create_downsample_depth_pipelines(
+EPIX_EXPORT EPIX_API void create_downsample_depth_pipelines(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> render_device,
     ecs::Res<render::PipelineServer> pipeline_server,
@@ -137,12 +137,12 @@ EPIX_EXPORT void create_downsample_depth_pipelines(
 
 /** @brief `RenderStartup` system that creates the placeholder pyramid texture
  *  (Bevy `init_depth_pyramid_dummy_texture`). */
-EPIX_EXPORT void init_depth_pyramid_dummy_texture(ecs::Commands commands, ecs::Res<wgpu::Device> render_device);
+EPIX_EXPORT EPIX_API void init_depth_pyramid_dummy_texture(ecs::Commands commands, ecs::Res<wgpu::Device> render_device);
 
 /** @brief A hierarchical Z-buffer for one view: a series of mipmaps of the depth
  *  buffer, bound to the downsample shader as storage images (Bevy
  *  `ViewDepthPyramid`). */
-EPIX_EXPORT struct ViewDepthPyramid {
+EPIX_EXPORT struct EPIX_API ViewDepthPyramid {
     /** @brief A texture view containing the entire depth pyramid. */
     wgpu::TextureView all_mips;
     /** @brief One view per pyramid mip, or the dummy texture for unused mips. */
@@ -187,7 +187,7 @@ EPIX_EXPORT struct ViewDownsampleDepthBindGroup {
  *  enabled (Bevy `prepare_view_depth_pyramids`). The dummy texture is optional
  *  so the system runs and does nothing when the platform has no pyramid
  *  support, which is Bevy's `resource_exists` gate. */
-EPIX_EXPORT void prepare_view_depth_pyramids(
+EPIX_EXPORT EPIX_API void prepare_view_depth_pyramids(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> render_device,
     ecs::ResMut<render::render_resource::TextureCache> texture_cache,
@@ -200,7 +200,7 @@ EPIX_EXPORT void prepare_view_depth_pyramids(
 /** @brief Creates the downsample bind groups for the views with a depth
  *  pyramid (Bevy `prepare_downsample_depth_view_bind_groups`). The pipelines are
  *  optional for the same reason as above. */
-EPIX_EXPORT void prepare_downsample_depth_view_bind_groups(
+EPIX_EXPORT EPIX_API void prepare_downsample_depth_view_bind_groups(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> render_device,
     std::optional<ecs::Res<DownsampleDepthPipelines>> downsample_depth_pipelines,
@@ -216,7 +216,7 @@ EPIX_EXPORT void prepare_downsample_depth_view_bind_groups(
 /** @brief Produces the hierarchical Z-buffer for a view (Bevy
  *  `DownsampleDepthNode`), installed twice: before the late prepass and at the
  *  end of the main phase. */
-EPIX_EXPORT struct DownsampleDepthNode {
+EPIX_EXPORT struct EPIX_API DownsampleDepthNode {
     using ViewQuery = ecs::Item<const ViewDepthPyramid&,
                                 const ViewDownsampleDepthBindGroup&,
                                 const render::view::ViewDepthTexture&>;
@@ -231,7 +231,7 @@ EPIX_EXPORT struct DownsampleDepthNode {
  *  the shader and its four pipelines, the two prepare systems that give every
  *  occlusion-culling view a pyramid and a bind group, and the node that runs
  *  the downsample passes at Bevy's two graph labels. */
-EPIX_EXPORT struct MipGenerationPlugin {
+EPIX_EXPORT struct EPIX_API MipGenerationPlugin {
     void attach(app::App& app) const;
 };
 

@@ -7,7 +7,7 @@
 #include <epix/ecs/core/type_id.hpp>
 
 namespace epix::ecs {
-EPIX_EXPORT struct RequiredComponentsRegistrator;
+EPIX_EXPORT struct EPIX_API RequiredComponentsRegistrator;
 EPIX_EXPORT template <typename T>
 struct Component {
     static void register_required_components(TypeId self, RequiredComponentsRegistrator& registrator) {

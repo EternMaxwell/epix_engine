@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <cassert>
@@ -22,12 +22,12 @@
 
 namespace epix::ecs {
 
-EPIX_EXPORT struct Components;
+EPIX_EXPORT struct EPIX_API Components;
 EPIX_EXPORT struct ComponentIds;
-EPIX_EXPORT struct ComponentsRegistrator;
+EPIX_EXPORT struct EPIX_API ComponentsRegistrator;
 
 namespace internal {
-bool is_resource_component(const Components& components, TypeId component_id);
+EPIX_API bool is_resource_component(const Components& components, TypeId component_id);
 
 template <typename T>
 struct ResourceComponentRegistration {
@@ -35,7 +35,7 @@ struct ResourceComponentRegistration {
 };
 }  // namespace internal
 
-EPIX_EXPORT struct ComponentsQueuedRegistrator {
+EPIX_EXPORT struct EPIX_API ComponentsQueuedRegistrator {
    public:
     ComponentsQueuedRegistrator(const Components& components, const ComponentIds& ids)
         : m_components(&components), m_ids(&ids) {}
@@ -56,7 +56,7 @@ EPIX_EXPORT struct ComponentsQueuedRegistrator {
     const ComponentIds* m_ids;
 };
 
-EPIX_EXPORT struct ComponentsRegistrator {
+EPIX_EXPORT struct EPIX_API ComponentsRegistrator {
     ComponentsRegistrator(Components& components, ComponentIds& ids) : m_components(&components), m_ids(&ids) {}
     ComponentsQueuedRegistrator as_queued() const { return ComponentsQueuedRegistrator(*m_components, *m_ids); }
 

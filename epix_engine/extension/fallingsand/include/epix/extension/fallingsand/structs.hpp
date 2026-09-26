@@ -277,7 +277,7 @@ EPIX_EXPORT using SandSimCreateError =
  * into `create`, and SandSimulation holds them for the duration of the tick via
  * its `grid::ExtendibleChunkGrid<kDim>` base.
  */
-EPIX_EXPORT struct SandSimulation : grid::ExtendibleChunkGrid<kDim> {
+EPIX_EXPORT struct EPIX_API SandSimulation : grid::ExtendibleChunkGrid<kDim> {
    private:
     SandWorld* m_world;
     const ElementRegistry* m_registry;

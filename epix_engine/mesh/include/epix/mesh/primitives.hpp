@@ -34,34 +34,34 @@ inline constexpr bool is_primitive_2d_v = false;
 template <typename T>
 concept Primitive2d = is_primitive_2d_v<std::remove_cvref_t<T>>;
 
-class Polyline2dMeshBuilder;
-class Polyline3dMeshBuilder;
-struct AnnulusMeshBuilder;
-struct Capsule2dMeshBuilder;
-struct Capsule3dMeshBuilder;
-struct CircleMeshBuilder;
-struct CircularSectorMeshBuilder;
-struct CircularSegmentMeshBuilder;
-struct ConeMeshBuilder;
-struct ConicalFrustumMeshBuilder;
-struct ConvexPolygonMeshBuilder;
-struct CuboidMeshBuilder;
-struct CylinderMeshBuilder;
-struct EllipseMeshBuilder;
-struct PlaneMeshBuilder;
-struct RectangleMeshBuilder;
-struct RegularPolygonMeshBuilder;
-struct RhombusMeshBuilder;
-struct Segment2dMeshBuilder;
-struct Segment3dMeshBuilder;
-struct SphereMeshBuilder;
-struct TetrahedronMeshBuilder;
-struct TorusMeshBuilder;
-struct Triangle2dMeshBuilder;
-struct Triangle3dMeshBuilder;
+class EPIX_API Polyline2dMeshBuilder;
+class EPIX_API Polyline3dMeshBuilder;
+struct EPIX_API AnnulusMeshBuilder;
+struct EPIX_API Capsule2dMeshBuilder;
+struct EPIX_API Capsule3dMeshBuilder;
+struct EPIX_API CircleMeshBuilder;
+struct EPIX_API CircularSectorMeshBuilder;
+struct EPIX_API CircularSegmentMeshBuilder;
+struct EPIX_API ConeMeshBuilder;
+struct EPIX_API ConicalFrustumMeshBuilder;
+struct EPIX_API ConvexPolygonMeshBuilder;
+struct EPIX_API CuboidMeshBuilder;
+struct EPIX_API CylinderMeshBuilder;
+struct EPIX_API EllipseMeshBuilder;
+struct EPIX_API PlaneMeshBuilder;
+struct EPIX_API RectangleMeshBuilder;
+struct EPIX_API RegularPolygonMeshBuilder;
+struct EPIX_API RhombusMeshBuilder;
+struct EPIX_API Segment2dMeshBuilder;
+struct EPIX_API Segment3dMeshBuilder;
+struct EPIX_API SphereMeshBuilder;
+struct EPIX_API TetrahedronMeshBuilder;
+struct EPIX_API TorusMeshBuilder;
+struct EPIX_API Triangle2dMeshBuilder;
+struct EPIX_API Triangle3dMeshBuilder;
 
 /** @brief Circle primitive accepted by `CircleMeshBuilder`. */
-EPIX_EXPORT struct Circle {
+EPIX_EXPORT struct EPIX_API Circle {
     float radius = 0.5f;
 
     constexpr Circle() = default;
@@ -74,7 +74,7 @@ EPIX_EXPORT struct Circle {
 };
 
 /** @brief Circular arc used by the sector and segment mesh inputs. */
-EPIX_EXPORT struct Arc2d {
+EPIX_EXPORT struct EPIX_API Arc2d {
     float radius     = 0.5f;
     float half_angle = 2.0f * std::numbers::pi_v<float> / 3.0f;
 
@@ -105,7 +105,7 @@ EPIX_EXPORT struct Arc2d {
 };
 
 /** @brief Pie-slice primitive centered on the origin and symmetric about +Y. */
-EPIX_EXPORT struct CircularSector {
+EPIX_EXPORT struct EPIX_API CircularSector {
     Arc2d arc{};
 
     constexpr CircularSector() = default;
@@ -138,7 +138,7 @@ EPIX_EXPORT struct CircularSector {
 };
 
 /** @brief Region enclosed by a circular arc and its chord. */
-EPIX_EXPORT struct CircularSegment {
+EPIX_EXPORT struct EPIX_API CircularSegment {
     Arc2d arc{};
 
     constexpr CircularSegment() = default;
@@ -191,7 +191,7 @@ EPIX_EXPORT struct CircularMeshUvMode {
 EPIX_EXPORT enum class WindingOrder : std::uint8_t { Clockwise, CounterClockwise, Invalid };
 
 /** @brief An unbounded plane through the origin in 2D space. */
-EPIX_EXPORT struct Plane2d {
+EPIX_EXPORT struct EPIX_API Plane2d {
     /** @brief Checked unit normal; Epix uses a normalized GLM vector in place of Bevy's `Dir2`. */
     glm::vec2 normal{0.0f, 1.0f};
 
@@ -203,7 +203,7 @@ EPIX_EXPORT struct Plane2d {
 };
 
 /** @brief Two-endpoint line segment. */
-EPIX_EXPORT struct Segment2d {
+EPIX_EXPORT struct EPIX_API Segment2d {
     std::array<glm::vec2, 2> vertices{glm::vec2(-0.5f, 0.0f), glm::vec2(0.5f, 0.0f)};
 
     constexpr Segment2d() = default;
@@ -256,7 +256,7 @@ EPIX_EXPORT struct Segment2d {
 };
 
 /** @brief Series of connected line segments. */
-EPIX_EXPORT struct Polyline2d {
+EPIX_EXPORT struct EPIX_API Polyline2d {
     std::vector<glm::vec2> vertices{glm::vec2(-0.5f, 0.0f), glm::vec2(0.5f, 0.0f)};
 
     Polyline2d() = default;
@@ -267,10 +267,10 @@ EPIX_EXPORT struct Polyline2d {
     bool operator==(const Polyline2d&) const = default;
 };
 
-class ConvexPolygon;
+class EPIX_API ConvexPolygon;
 
 /** @brief Polygon with an arbitrary number of vertices (Bevy `Polygon`). */
-EPIX_EXPORT struct Polygon {
+EPIX_EXPORT struct EPIX_API Polygon {
     std::vector<glm::vec2> vertices;
 
     Polygon() = default;
@@ -289,10 +289,10 @@ EPIX_EXPORT struct Polygon {
 
 /** @brief Error returned when checked polygon construction finds concavity. */
 EPIX_EXPORT enum class ConvexPolygonError : std::uint8_t { Concave };
-EPIX_EXPORT std::string_view to_string(ConvexPolygonError error) noexcept;
+EPIX_EXPORT EPIX_API std::string_view to_string(ConvexPolygonError error) noexcept;
 
 /** @brief Convex polygon input with checked and unchecked construction. */
-EPIX_EXPORT class ConvexPolygon {
+EPIX_EXPORT class EPIX_API ConvexPolygon {
    public:
     static std::expected<ConvexPolygon, ConvexPolygonError> create(std::vector<glm::vec2> vertices);
     /** @brief Consuming counterpart of Bevy's `TryFrom<Polygon> for ConvexPolygon`. */
@@ -310,7 +310,7 @@ EPIX_EXPORT class ConvexPolygon {
 };
 
 /** @brief Triangle in 2D space described by its three vertices. */
-EPIX_EXPORT struct Triangle2d {
+EPIX_EXPORT struct EPIX_API Triangle2d {
     std::array<glm::vec2, 3> vertices{glm::vec2(0.0f, 0.5f), glm::vec2(-0.5f, -0.5f), glm::vec2(0.5f, -0.5f)};
 
     constexpr Triangle2d() = default;
@@ -332,7 +332,7 @@ EPIX_EXPORT struct Triangle2d {
 };
 
 /** @brief Rhombus (diamond) primitive described by its half diagonals. */
-EPIX_EXPORT struct Rhombus {
+EPIX_EXPORT struct EPIX_API Rhombus {
     glm::vec2 half_diagonals{0.5f};
 
     constexpr Rhombus() = default;
@@ -356,7 +356,7 @@ EPIX_EXPORT struct Rhombus {
 };
 
 /** @brief Annulus primitive described by its inner and outer circle. */
-EPIX_EXPORT struct Annulus {
+EPIX_EXPORT struct EPIX_API Annulus {
     Circle inner_circle{0.5f};
     Circle outer_circle{1.0f};
 
@@ -372,7 +372,7 @@ EPIX_EXPORT struct Annulus {
 };
 
 /** @brief Ellipse primitive described by its perpendicular half extents. */
-EPIX_EXPORT struct Ellipse {
+EPIX_EXPORT struct EPIX_API Ellipse {
     glm::vec2 half_size{1.0f, 0.5f};
 
     constexpr Ellipse() = default;
@@ -391,7 +391,7 @@ EPIX_EXPORT struct Ellipse {
 };
 
 /** @brief Regular polygon primitive whose vertices lie on a circumcircle. */
-EPIX_EXPORT struct RegularPolygon {
+EPIX_EXPORT struct EPIX_API RegularPolygon {
     Circle circumcircle{};
     std::uint32_t sides = 6;
 
@@ -421,7 +421,7 @@ EPIX_EXPORT struct RegularPolygon {
 };
 
 /** @brief Axis-aligned rectangle primitive described by half extents. */
-EPIX_EXPORT struct Rectangle {
+EPIX_EXPORT struct EPIX_API Rectangle {
     glm::vec2 half_size{0.5f};
 
     constexpr Rectangle() = default;
@@ -438,7 +438,7 @@ EPIX_EXPORT struct Rectangle {
 };
 
 /** @brief Capsule (stadium) primitive described by its radius and half length. */
-EPIX_EXPORT struct Capsule2d {
+EPIX_EXPORT struct EPIX_API Capsule2d {
     float radius      = 0.5f;
     float half_length = 0.5f;
 
@@ -542,22 +542,22 @@ struct InsetImpl<Rectangle> {
 };
 
 template <>
-struct InsetImpl<Rhombus> {
+struct EPIX_API InsetImpl<Rhombus> {
     static Rhombus inset(const Rhombus& shape, float distance);
 };
 
 template <>
-struct InsetImpl<Triangle2d> {
+struct EPIX_API InsetImpl<Triangle2d> {
     static Triangle2d inset(const Triangle2d& shape, float distance);
 };
 
 template <>
-struct InsetImpl<CircularSegment> {
+struct EPIX_API InsetImpl<CircularSegment> {
     static CircularSegment inset(const CircularSegment& shape, float distance);
 };
 
 template <>
-struct InsetImpl<RegularPolygon> {
+struct EPIX_API InsetImpl<RegularPolygon> {
     static RegularPolygon inset(const RegularPolygon& shape, float distance);
 };
 
@@ -625,7 +625,7 @@ inline constexpr bool is_primitive_2d_v<Ring<P>> = true;
 // ─── 3D shapes (Bevy `bevy_math::primitives::dim3`) ────────────────────────────────────────────
 
 /** @brief Sphere primitive described by its radius (Bevy `Sphere`, `dim3.rs:30-75`). */
-EPIX_EXPORT struct Sphere {
+EPIX_EXPORT struct EPIX_API Sphere {
     /** @brief The radius of the sphere. */
     float radius = 0.5f;
 
@@ -642,7 +642,7 @@ EPIX_EXPORT struct Sphere {
 };
 
 /** @brief Cuboid primitive described by its half extents. */
-EPIX_EXPORT struct Cuboid {
+EPIX_EXPORT struct EPIX_API Cuboid {
     glm::vec3 half_size{0.5f};
 
     constexpr Cuboid() = default;
@@ -660,7 +660,7 @@ EPIX_EXPORT struct Cuboid {
 };
 
 /** @brief Plane primitive described by its normal and half extents in the XZ plane. */
-EPIX_EXPORT struct Plane3d {
+EPIX_EXPORT struct EPIX_API Plane3d {
     glm::vec3 normal{0.0f, 1.0f, 0.0f};
     glm::vec2 half_size{0.5f};
 
@@ -673,7 +673,7 @@ EPIX_EXPORT struct Plane3d {
 };
 
 /** @brief Three-dimensional line segment. */
-EPIX_EXPORT struct Segment3d {
+EPIX_EXPORT struct EPIX_API Segment3d {
     std::array<glm::vec3, 2> vertices{glm::vec3(-0.5f, 0.0f, 0.0f), glm::vec3(0.5f, 0.0f, 0.0f)};
 
     constexpr Segment3d() = default;
@@ -714,7 +714,7 @@ EPIX_EXPORT struct Segment3d {
 };
 
 /** @brief Series of connected line segments in 3D space. */
-EPIX_EXPORT struct Polyline3d {
+EPIX_EXPORT struct EPIX_API Polyline3d {
     std::vector<glm::vec3> vertices{glm::vec3(-0.5f, 0.0f, 0.0f), glm::vec3(0.5f, 0.0f, 0.0f)};
 
     Polyline3d() = default;
@@ -726,7 +726,7 @@ EPIX_EXPORT struct Polyline3d {
 };
 
 /** @brief Tetrahedron described by its four vertices. */
-EPIX_EXPORT struct Tetrahedron {
+EPIX_EXPORT struct EPIX_API Tetrahedron {
     std::array<glm::vec3, 4> vertices{
         glm::vec3(0.5f, 0.5f, 0.5f),
         glm::vec3(-0.5f, 0.5f, -0.5f),
@@ -748,7 +748,7 @@ EPIX_EXPORT struct Tetrahedron {
 };
 
 /** @brief Builder used to create a cuboid mesh. */
-EPIX_EXPORT struct CuboidMeshBuilder {
+EPIX_EXPORT struct EPIX_API CuboidMeshBuilder {
     glm::vec3 half_size{0.5f};
 
     constexpr CuboidMeshBuilder() = default;
@@ -757,7 +757,7 @@ EPIX_EXPORT struct CuboidMeshBuilder {
 };
 
 /** @brief Builder used to create a plane mesh. */
-EPIX_EXPORT struct PlaneMeshBuilder {
+EPIX_EXPORT struct EPIX_API PlaneMeshBuilder {
     Plane3d plane{};
     /** @brief Number of interior splits along each axis; `0` keeps the four XZ-plane corners. */
     std::uint32_t subdivisions = 0;
@@ -785,7 +785,7 @@ EPIX_EXPORT struct PlaneMeshBuilder {
 };
 
 /** @brief Builder used to create a 3D segment mesh. */
-EPIX_EXPORT struct Segment3dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Segment3dMeshBuilder {
     Segment3d segment{};
 
     constexpr Segment3dMeshBuilder() = default;
@@ -794,7 +794,7 @@ EPIX_EXPORT struct Segment3dMeshBuilder {
 };
 
 /** @brief Owning builder used to create a connected 3D line-list mesh. */
-EPIX_EXPORT class Polyline3dMeshBuilder {
+EPIX_EXPORT class EPIX_API Polyline3dMeshBuilder {
    public:
     Polyline3dMeshBuilder() = default;
     explicit Polyline3dMeshBuilder(Polyline3d polyline) : polyline_(std::move(polyline)) {}
@@ -805,7 +805,7 @@ EPIX_EXPORT class Polyline3dMeshBuilder {
 };
 
 /** @brief Builder used to create a 3D triangle mesh. */
-EPIX_EXPORT struct Triangle3dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Triangle3dMeshBuilder {
     Triangle3d triangle{};
 
     constexpr Triangle3dMeshBuilder() = default;
@@ -814,7 +814,7 @@ EPIX_EXPORT struct Triangle3dMeshBuilder {
 };
 
 /** @brief Builder used to create a tetrahedron mesh. */
-EPIX_EXPORT struct TetrahedronMeshBuilder {
+EPIX_EXPORT struct EPIX_API TetrahedronMeshBuilder {
     Tetrahedron tetrahedron{};
 
     constexpr TetrahedronMeshBuilder() = default;
@@ -823,7 +823,7 @@ EPIX_EXPORT struct TetrahedronMeshBuilder {
 };
 
 /** @brief Cylinder primitive described by its radius and half height. */
-EPIX_EXPORT struct Cylinder {
+EPIX_EXPORT struct EPIX_API Cylinder {
     float radius      = 0.5f;
     float half_height = 0.5f;
 
@@ -843,7 +843,7 @@ EPIX_EXPORT struct Cylinder {
 EPIX_EXPORT enum class TorusKind : std::uint8_t { Ring, Horn, Spindle, Invalid };
 
 /** @brief Torus primitive described by its tube and ring radii. */
-EPIX_EXPORT struct Torus {
+EPIX_EXPORT struct EPIX_API Torus {
     float minor_radius = 0.25f;
     float major_radius = 0.75f;
 
@@ -866,7 +866,7 @@ EPIX_EXPORT struct Torus {
 EPIX_EXPORT enum class CylinderAnchor : std::uint8_t { MidPoint, Top, Bottom };
 
 /** @brief Builder used to create a cylinder mesh. */
-EPIX_EXPORT struct CylinderMeshBuilder {
+EPIX_EXPORT struct EPIX_API CylinderMeshBuilder {
     Cylinder cylinder{};
     /** @brief Vertices around the top and bottom circles. Default: 32. */
     std::uint32_t resolution = 32;
@@ -901,7 +901,7 @@ EPIX_EXPORT struct CylinderMeshBuilder {
 };
 
 /** @brief Builder used to create a torus mesh. */
-EPIX_EXPORT struct TorusMeshBuilder {
+EPIX_EXPORT struct EPIX_API TorusMeshBuilder {
     Torus torus{};
     /** @brief Vertices per circular segment of the tube. Default: 24. */
     std::uint32_t minor_resolution = 24;
@@ -937,7 +937,7 @@ EPIX_EXPORT enum class ConeAnchor : std::uint8_t { MidPoint, Tip, Base };
 
 /** @brief Cone primitive centered on the midpoint between its tip and its base
  * (Bevy `Cone`). The tip points towards +Y. */
-EPIX_EXPORT struct Cone {
+EPIX_EXPORT struct EPIX_API Cone {
     /** @brief Radius of the base. Default: 0.5. */
     float radius = 0.5f;
     /** @brief Total height. Default: 1.0. */
@@ -959,7 +959,7 @@ EPIX_EXPORT struct Cone {
 };
 
 /** @brief Builder used to create a cone mesh. */
-EPIX_EXPORT struct ConeMeshBuilder {
+EPIX_EXPORT struct EPIX_API ConeMeshBuilder {
     Cone cone{};
     /** @brief Vertices used for the base circle. Default: 32. */
     std::uint32_t resolution = 32;
@@ -982,7 +982,7 @@ EPIX_EXPORT struct ConeMeshBuilder {
 
 /** @brief Truncated cone primitive described by its two radii and height
  * (Bevy `ConicalFrustum`). */
-EPIX_EXPORT struct ConicalFrustum {
+EPIX_EXPORT struct EPIX_API ConicalFrustum {
     /** @brief Radius of the top. Default: 0.25. */
     float radius_top = 0.25f;
     /** @brief Radius of the base. Default: 0.5. */
@@ -1012,7 +1012,7 @@ EPIX_EXPORT struct ConicalFrustum {
 };
 
 /** @brief Builder used to create a conical-frustum mesh. */
-EPIX_EXPORT struct ConicalFrustumMeshBuilder {
+EPIX_EXPORT struct EPIX_API ConicalFrustumMeshBuilder {
     ConicalFrustum frustum{};
     /** @brief Vertices used for the top and bottom circles. Default: 32. */
     std::uint32_t resolution = 32;
@@ -1051,7 +1051,7 @@ EPIX_EXPORT enum class CapsuleUvProfile : std::uint8_t {
 /** @brief Capsule primitive described by its radius and its length excluding the
  * hemispheres (Bevy `bevy_math::primitives::Capsule3d`). The cylindrical segment
  * is twice `half_length` long and both ends are hemispheres of `radius`. */
-EPIX_EXPORT struct Capsule3d {
+EPIX_EXPORT struct EPIX_API Capsule3d {
     /** @brief Radius of the capsule. Default: 0.5. */
     float radius = 0.5f;
     /** @brief Half the height of the capsule, excluding the hemispheres.
@@ -1074,7 +1074,7 @@ EPIX_EXPORT struct Capsule3d {
  *
  * `height` passed to the constructor is the distance between the centres of the
  * hemispheres; `radius` is added at both ends to get the mesh's real height. */
-EPIX_EXPORT struct Capsule3dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Capsule3dMeshBuilder {
     Capsule3d capsule{};
     /** @brief Horizontal lines subdividing the cylindrical part. Default: 0. */
     std::uint32_t rings = 0;
@@ -1159,7 +1159,7 @@ EPIX_EXPORT struct IcosphereError {
 };
 
 /** @brief Builder used to create a sphere mesh (Bevy `SphereMeshBuilder`, `sphere.rs:53-232`). */
-EPIX_EXPORT struct SphereMeshBuilder {
+EPIX_EXPORT struct EPIX_API SphereMeshBuilder {
     /** @brief The sphere shape. */
     Sphere sphere{};
     /** @brief The kind of sphere mesh that will be built. */
@@ -1191,7 +1191,7 @@ EPIX_EXPORT struct SphereMeshBuilder {
 };
 
 /** @brief Builder used to create a circle mesh. */
-EPIX_EXPORT struct CircleMeshBuilder {
+EPIX_EXPORT struct EPIX_API CircleMeshBuilder {
     Circle circle{};
     std::uint32_t resolution = 32;
 
@@ -1205,7 +1205,7 @@ EPIX_EXPORT struct CircleMeshBuilder {
 };
 
 /** @brief Builder used to create a circular-sector mesh. */
-EPIX_EXPORT struct CircularSectorMeshBuilder {
+EPIX_EXPORT struct EPIX_API CircularSectorMeshBuilder {
     CircularSector sector{};
     std::uint32_t resolution = 32;
     CircularMeshUvMode uv_mode{};
@@ -1224,7 +1224,7 @@ EPIX_EXPORT struct CircularSectorMeshBuilder {
 };
 
 /** @brief Builder used to create a circular-segment mesh. */
-EPIX_EXPORT struct CircularSegmentMeshBuilder {
+EPIX_EXPORT struct EPIX_API CircularSegmentMeshBuilder {
     CircularSegment segment{};
     std::uint32_t resolution = 32;
     CircularMeshUvMode uv_mode{};
@@ -1243,14 +1243,14 @@ EPIX_EXPORT struct CircularSegmentMeshBuilder {
 };
 
 /** @brief Builder used to create a filled convex-polygon mesh. */
-EPIX_EXPORT struct ConvexPolygonMeshBuilder {
+EPIX_EXPORT struct EPIX_API ConvexPolygonMeshBuilder {
     std::vector<glm::vec2> vertices;
 
     Mesh build() const;
 };
 
 /** @brief Builder used to create an annulus mesh. */
-EPIX_EXPORT struct AnnulusMeshBuilder {
+EPIX_EXPORT struct EPIX_API AnnulusMeshBuilder {
     Annulus annulus{};
     std::uint32_t resolution = 32;
 
@@ -1265,7 +1265,7 @@ EPIX_EXPORT struct AnnulusMeshBuilder {
 };
 
 /** @brief Builder used to create a rhombus (diamond) mesh. */
-EPIX_EXPORT struct RhombusMeshBuilder {
+EPIX_EXPORT struct EPIX_API RhombusMeshBuilder {
     glm::vec2 half_diagonals{0.5f};
 
     constexpr RhombusMeshBuilder() = default;
@@ -1275,7 +1275,7 @@ EPIX_EXPORT struct RhombusMeshBuilder {
 };
 
 /** @brief Builder used to create a triangle mesh. */
-EPIX_EXPORT struct Triangle2dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Triangle2dMeshBuilder {
     Triangle2d triangle{};
 
     constexpr Triangle2dMeshBuilder() = default;
@@ -1285,7 +1285,7 @@ EPIX_EXPORT struct Triangle2dMeshBuilder {
 };
 
 /** @brief Builder used to create a capsule (stadium) mesh. */
-EPIX_EXPORT struct Capsule2dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Capsule2dMeshBuilder {
     Capsule2d capsule{};
     std::uint32_t resolution = 16;
 
@@ -1300,7 +1300,7 @@ EPIX_EXPORT struct Capsule2dMeshBuilder {
 };
 
 /** @brief Builder used to create an ellipse mesh. */
-EPIX_EXPORT struct EllipseMeshBuilder {
+EPIX_EXPORT struct EPIX_API EllipseMeshBuilder {
     Ellipse ellipse{};
     std::uint32_t resolution = 32;
 
@@ -1315,7 +1315,7 @@ EPIX_EXPORT struct EllipseMeshBuilder {
 };
 
 /** @brief Builder used to create a two-endpoint line mesh. */
-EPIX_EXPORT struct Segment2dMeshBuilder {
+EPIX_EXPORT struct EPIX_API Segment2dMeshBuilder {
     Segment2d segment{};
 
     constexpr Segment2dMeshBuilder() = default;
@@ -1324,7 +1324,7 @@ EPIX_EXPORT struct Segment2dMeshBuilder {
 };
 
 /** @brief Owning builder used to create a connected line-list mesh. */
-EPIX_EXPORT class Polyline2dMeshBuilder {
+EPIX_EXPORT class EPIX_API Polyline2dMeshBuilder {
    public:
     Polyline2dMeshBuilder() = default;
     explicit Polyline2dMeshBuilder(Polyline2d polyline) : polyline_(std::move(polyline)) {}
@@ -1335,7 +1335,7 @@ EPIX_EXPORT class Polyline2dMeshBuilder {
 };
 
 /** @brief Builder used to create a regular polygon mesh. */
-EPIX_EXPORT struct RegularPolygonMeshBuilder {
+EPIX_EXPORT struct EPIX_API RegularPolygonMeshBuilder {
     float circumradius  = 0.5f;
     std::uint32_t sides = 6;
 
@@ -1345,7 +1345,7 @@ EPIX_EXPORT struct RegularPolygonMeshBuilder {
 };
 
 /** @brief Builder used to create a rectangle mesh. */
-EPIX_EXPORT struct RectangleMeshBuilder {
+EPIX_EXPORT struct EPIX_API RectangleMeshBuilder {
     glm::vec2 half_size{0.5f};
 
     constexpr RectangleMeshBuilder() = default;
@@ -1409,7 +1409,7 @@ constexpr float volume(const T& shape) {
 
 /** @brief Bevy `Measured2d for Circle` (`dim2.rs:83`). */
 template <>
-struct Measured2dImpl<Circle> {
+struct EPIX_API Measured2dImpl<Circle> {
     static constexpr float area(const Circle& circle) noexcept {
         return std::numbers::pi_v<float> * (circle.radius * circle.radius);
     }
@@ -1420,7 +1420,7 @@ struct Measured2dImpl<Circle> {
 
 /** @brief Bevy `Measured2d for CircularSector` (`dim2.rs:307`). */
 template <>
-struct Measured2dImpl<CircularSector> {
+struct EPIX_API Measured2dImpl<CircularSector> {
     static constexpr float area(const CircularSector& sector) noexcept {
         return (sector.arc.radius * sector.arc.radius) * sector.arc.half_angle;
     }
@@ -1435,21 +1435,21 @@ struct Measured2dImpl<CircularSector> {
 
 /** @brief Bevy `Measured2d for CircularSegment` (`dim2.rs:459`). */
 template <>
-struct Measured2dImpl<CircularSegment> {
+struct EPIX_API Measured2dImpl<CircularSegment> {
     static float area(const CircularSegment& segment) noexcept;
     static float perimeter(const CircularSegment& segment) noexcept;
 };
 
 /** @brief Bevy `Measured2d for Ellipse` (`dim2.rs:886`). */
 template <>
-struct Measured2dImpl<Ellipse> {
+struct EPIX_API Measured2dImpl<Ellipse> {
     static float area(const Ellipse& ellipse) noexcept;
     static float perimeter(const Ellipse& ellipse) noexcept;
 };
 
 /** @brief Bevy `Measured2d for Annulus` (`dim2.rs:1032`). */
 template <>
-struct Measured2dImpl<Annulus> {
+struct EPIX_API Measured2dImpl<Annulus> {
     static constexpr float area(const Annulus& annulus) noexcept {
         return std::numbers::pi_v<float> * ((annulus.outer_circle.radius * annulus.outer_circle.radius) -
                                             (annulus.inner_circle.radius * annulus.inner_circle.radius));
@@ -1461,21 +1461,21 @@ struct Measured2dImpl<Annulus> {
 
 /** @brief Bevy `Measured2d for Rhombus` (`dim2.rs:1172`). */
 template <>
-struct Measured2dImpl<Rhombus> {
+struct EPIX_API Measured2dImpl<Rhombus> {
     static float area(const Rhombus& rhombus) noexcept;
     static float perimeter(const Rhombus& rhombus) noexcept;
 };
 
 /** @brief Bevy `Measured2d for Triangle2d` (`dim2.rs:1775`). */
 template <>
-struct Measured2dImpl<Triangle2d> {
+struct EPIX_API Measured2dImpl<Triangle2d> {
     static float area(const Triangle2d& triangle) noexcept;
     static float perimeter(const Triangle2d& triangle) noexcept;
 };
 
 /** @brief Bevy `Measured2d for Rectangle` (`dim2.rs:1874`). */
 template <>
-struct Measured2dImpl<Rectangle> {
+struct EPIX_API Measured2dImpl<Rectangle> {
     static constexpr float area(const Rectangle& rectangle) noexcept {
         return 4.0f * rectangle.half_size.x * rectangle.half_size.y;
     }
@@ -1486,14 +1486,14 @@ struct Measured2dImpl<Rectangle> {
 
 /** @brief Bevy `Measured2d for RegularPolygon` (`dim2.rs:2160`). */
 template <>
-struct Measured2dImpl<RegularPolygon> {
+struct EPIX_API Measured2dImpl<RegularPolygon> {
     static float area(const RegularPolygon& polygon) noexcept;
     static float perimeter(const RegularPolygon& polygon) noexcept;
 };
 
 /** @brief Bevy `Measured2d for Capsule2d` (`dim2.rs:2227`). */
 template <>
-struct Measured2dImpl<Capsule2d> {
+struct EPIX_API Measured2dImpl<Capsule2d> {
     static constexpr float area(const Capsule2d& capsule) noexcept {
         // pi*r^2 + (2r)*l
         return std::numbers::pi_v<float> * (capsule.radius * capsule.radius) +
@@ -1519,7 +1519,7 @@ struct Measured2dImpl<Ring<P>> {
 
 /** @brief Bevy `Measured2d for Plane3d` (`dim3.rs:162`). */
 template <>
-struct Measured2dImpl<Plane3d> {
+struct EPIX_API Measured2dImpl<Plane3d> {
     static constexpr float area(const Plane3d& plane) noexcept {
         return (plane.half_size.x * plane.half_size.y) * 4.0f;
     }
@@ -1530,14 +1530,14 @@ struct Measured2dImpl<Plane3d> {
 
 /** @brief Bevy `Measured2d for Triangle3d` (`dim3.rs:1410`). */
 template <>
-struct Measured2dImpl<Triangle3d> {
+struct EPIX_API Measured2dImpl<Triangle3d> {
     static float area(const Triangle3d& triangle) noexcept;
     static float perimeter(const Triangle3d& triangle) noexcept;
 };
 
 /** @brief Bevy `Measured3d for Sphere` (`dim3.rs:77`). */
 template <>
-struct Measured3dImpl<Sphere> {
+struct EPIX_API Measured3dImpl<Sphere> {
     static constexpr float area(const Sphere& sphere) noexcept {
         return 4.0f * std::numbers::pi_v<float> * (sphere.radius * sphere.radius);
     }
@@ -1548,7 +1548,7 @@ struct Measured3dImpl<Sphere> {
 
 /** @brief Bevy `Measured3d for Cuboid` (`dim3.rs:756`). */
 template <>
-struct Measured3dImpl<Cuboid> {
+struct EPIX_API Measured3dImpl<Cuboid> {
     static constexpr float area(const Cuboid& cuboid) noexcept {
         return 8.0f * (cuboid.half_size.x * cuboid.half_size.y + cuboid.half_size.y * cuboid.half_size.z +
                        cuboid.half_size.x * cuboid.half_size.z);
@@ -1560,7 +1560,7 @@ struct Measured3dImpl<Cuboid> {
 
 /** @brief Bevy `Measured3d for Cylinder` (`dim3.rs:836`). */
 template <>
-struct Measured3dImpl<Cylinder> {
+struct EPIX_API Measured3dImpl<Cylinder> {
     static constexpr float area(const Cylinder& cylinder) noexcept {
         return 2.0f * std::numbers::pi_v<float> * cylinder.radius * (cylinder.radius + 2.0f * cylinder.half_height);
     }
@@ -1569,7 +1569,7 @@ struct Measured3dImpl<Cylinder> {
 
 /** @brief Bevy `Measured3d for Capsule3d` (`dim3.rs:903`). */
 template <>
-struct Measured3dImpl<Capsule3d> {
+struct EPIX_API Measured3dImpl<Capsule3d> {
     static constexpr float area(const Capsule3d& capsule) noexcept {
         // Modified version of 2pi * r * (2r + h)
         return 4.0f * std::numbers::pi_v<float> * capsule.radius * (capsule.radius + capsule.half_length);
@@ -1583,21 +1583,21 @@ struct Measured3dImpl<Capsule3d> {
 
 /** @brief Bevy `Measured3d for Cone` (`dim3.rs:989`). */
 template <>
-struct Measured3dImpl<Cone> {
+struct EPIX_API Measured3dImpl<Cone> {
     static float area(const Cone& cone) noexcept;
     static float volume(const Cone& cone) noexcept;
 };
 
 /** @brief Bevy `Measured3d for ConicalFrustum` (`dim3.rs:1085`). */
 template <>
-struct Measured3dImpl<ConicalFrustum> {
+struct EPIX_API Measured3dImpl<ConicalFrustum> {
     static float area(const ConicalFrustum& frustum) noexcept;
     static float volume(const ConicalFrustum& frustum) noexcept;
 };
 
 /** @brief Bevy `Measured3d for Torus` (`dim3.rs:1215`). */
 template <>
-struct Measured3dImpl<Torus> {
+struct EPIX_API Measured3dImpl<Torus> {
     static constexpr float area(const Torus& torus) noexcept {
         constexpr float pi_squared = std::numbers::pi_v<float> * std::numbers::pi_v<float>;
         return 4.0f * pi_squared * torus.major_radius * torus.minor_radius;
@@ -1610,7 +1610,7 @@ struct Measured3dImpl<Torus> {
 
 /** @brief Bevy `Measured3d for Tetrahedron` (`dim3.rs:1512`). */
 template <>
-struct Measured3dImpl<Tetrahedron> {
+struct EPIX_API Measured3dImpl<Tetrahedron> {
     static float area(const Tetrahedron& tetrahedron) noexcept;
     static float volume(const Tetrahedron& tetrahedron) noexcept;
 };
@@ -1731,11 +1731,11 @@ EPIX_EXPORT struct PerimeterSegment {
 /** @brief Vertices each layer of an extrusion contributes for one segment
  * (Bevy `PerimeterSegment::vertices_per_layer`, private there: `indices.len()`
  * for `Smooth`, `2 * (indices.len() - 1)` for `Flat`). */
-EPIX_EXPORT std::uint32_t vertices_per_layer(const PerimeterSegment& segment) noexcept;
+EPIX_EXPORT EPIX_API std::uint32_t vertices_per_layer(const PerimeterSegment& segment) noexcept;
 
 /** @brief Indices each mantel segment contributes for one segment (Bevy
  * `PerimeterSegment::indices_per_segment`: `6 * (indices.len() - 1)`). */
-EPIX_EXPORT std::size_t indices_per_segment(const PerimeterSegment& segment) noexcept;
+EPIX_EXPORT EPIX_API std::size_t indices_per_segment(const PerimeterSegment& segment) noexcept;
 
 /** @brief Per-builder extrusion perimeter (Bevy `Extrudable`,
  * `extrusion.rs:76-86`). Bevy's supertrait bound is `MeshBuilder` alone, it has

@@ -26,7 +26,7 @@ namespace epix::pbr {
  *  Only a modified resource is inspected, as Bevy's `is_changed()` gate does, and
  *  nothing is written when the size is already a power of two. Bevy's
  *  `next_power_of_two` maps `0` to `1`, which the loop here reproduces. */
-EPIX_EXPORT void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map);
+EPIX_EXPORT EPIX_API void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap> shadow_map);
 
 /** @brief Rebuild the cubemap frusta of every point light that needs it (Bevy
  *  `update_point_light_frusta`, `bevy_light/src/point_light.rs:188-244`).
@@ -37,7 +37,7 @@ EPIX_EXPORT void validate_shadow_map_size(ecs::ResMut<DirectionalLightShadowMap>
  *  own. A light is skipped when neither it nor the clustered set changed, when it
  *  casts no shadows, or when it is in no cluster (see
  *  `should_update_point_light_frusta`). */
-EPIX_EXPORT void update_point_light_frusta(
+EPIX_EXPORT EPIX_API void update_point_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Ref<::epix::transform::GlobalTransform>, ecs::Ref<PointLight>,
                          ecs::Mut<::epix::camera::CubemapFrusta>>>
@@ -54,7 +54,7 @@ EPIX_EXPORT void update_point_light_frusta(
  *
  *  Without this a spot light keeps the default, never-valid `Frustum` that
  *  `check_point_light_mesh_visibility` culls against. */
-EPIX_EXPORT void update_spot_light_frusta(
+EPIX_EXPORT EPIX_API void update_spot_light_frusta(
     ecs::Res<GlobalVisibleClusterableObjects> global_lights,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const SpotLight&,
                          ecs::Mut<::epix::camera::Frustum>>,
@@ -69,7 +69,7 @@ EPIX_EXPORT void update_spot_light_frusta(
  *  near plane pushed out to infinity so a cascade culls nothing in front of the
  *  light. Unlike the point-light system this has no change detection: every
  *  shadow-casting, visible light is rebuilt each time it runs. */
-EPIX_EXPORT void update_directional_light_frusta(
+EPIX_EXPORT EPIX_API void update_directional_light_frusta(
     ecs::Query<ecs::Item<const Cascades&, const DirectionalLight&, const ::epix::camera::ViewVisibility&,
                          ecs::Mut<::epix::camera::CascadesFrusta>>,
                 ecs::Without<::epix::camera::Camera>>
@@ -82,7 +82,7 @@ EPIX_EXPORT void update_directional_light_frusta(
  *  cascades does not keep the ones it had - the builder only inserts. Lights
  *  without shadows keep whatever they have, which is nothing, since the builder
  *  skips them too - and because they are skipped, the write is a `Mut`. */
-EPIX_EXPORT void clear_directional_light_cascades(
+EPIX_EXPORT EPIX_API void clear_directional_light_cascades(
     ecs::Query<ecs::Item<const DirectionalLight&, ecs::Mut<Cascades>>> lights);
 
 /** @brief Build every directional light's cascades for every active view (Bevy
@@ -94,7 +94,7 @@ EPIX_EXPORT void clear_directional_light_cascades(
  *  Bevy's comment is explicit that the matrix must have an orthogonal upper-left
  *  3x3 and zero translation for the shadows to be numerically stable, and a light's
  *  transform is free to carry scale. */
-EPIX_EXPORT void build_directional_light_cascades(
+EPIX_EXPORT EPIX_API void build_directional_light_cascades(
     ecs::Res<DirectionalLightShadowMap> shadow_map,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Projection&,
                          const ::epix::camera::Camera&>>
@@ -122,7 +122,7 @@ EPIX_EXPORT void build_directional_light_cascades(
  *  when present. Nothing here reads change ticks, so the reads are references too.
  *
  *  Runs after visibility and transform propagation, as Bevy schedules it. */
-EPIX_EXPORT void assign_objects_to_clusters(
+EPIX_EXPORT EPIX_API void assign_objects_to_clusters(
     ecs::Commands commands,
     ecs::ResMut<GlobalVisibleClusterableObjects> global_clusterable_objects,
     ecs::Query<ecs::Item<ecs::Entity, const ::epix::transform::GlobalTransform&, const ::epix::camera::Camera&,
@@ -169,7 +169,7 @@ EPIX_EXPORT void assign_objects_to_clusters(
  *  of once per view - the same result, since the set is a union, without needing a
  *  by-entity query lookup. Bevy's parallel per-face queues are plain vectors here;
  *  again the same result, without the parallel-for machinery. */
-EPIX_EXPORT void check_point_light_mesh_visibility(
+EPIX_EXPORT EPIX_API void check_point_light_mesh_visibility(
     ecs::Query<ecs::Item<const VisibleClusterableObjects&>> visible_lights,
     ecs::Query<ecs::Item<ecs::Entity, const PointLight&, const ::epix::transform::GlobalTransform&,
                          const ::epix::camera::CubemapFrusta&, ::epix::camera::CubemapVisibleEntities&,
@@ -207,7 +207,7 @@ EPIX_EXPORT void check_point_light_mesh_visibility(
  *
  *  A mesh with no AABB or no transform is visible to every cascade, as in the point
  *  case and for the same reason. */
-EPIX_EXPORT void check_dir_light_mesh_visibility(
+EPIX_EXPORT EPIX_API void check_dir_light_mesh_visibility(
     ecs::Commands commands,
     ecs::Query<ecs::Item<const DirectionalLight&, const ::epix::camera::CascadesFrusta&,
                          ::epix::camera::CascadesVisibleEntities&, ecs::Opt<const ::epix::camera::RenderLayers&>,

@@ -79,7 +79,7 @@ enum class EdgeExistence {
     DoesNotExist,
 };
 
-struct Edges {
+struct EPIX_API Edges {
    private:
     NodeLabel m_label;
     std::vector<Edge> m_input_edges;
@@ -173,7 +173,7 @@ struct GraphInputT {};
 EPIX_EXPORT inline GraphInputT GraphInput;
 /** @brief Special node that forwards graph-level inputs to its outputs,
  * acting as the entry point for slot data. */
-EPIX_EXPORT struct GraphInputNode : public Node {
+EPIX_EXPORT struct EPIX_API GraphInputNode : public Node {
     std::vector<SlotInfo> m_inputs;
     GraphInputNode() = default;
     GraphInputNode(std::vector<SlotInfo> inputs) : m_inputs(std::move(inputs)) {}

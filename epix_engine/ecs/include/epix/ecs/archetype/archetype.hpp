@@ -149,7 +149,7 @@ struct ArchetypeEdges {
 }  // namespace internal
 /** @brief Describes the component layout of a group of entities.
  *  Entities with the same set of components share the same archetype. */
-EPIX_EXPORT struct Archetype {
+EPIX_EXPORT struct EPIX_API Archetype {
    public:
     /** @brief Create an archetype with the given component layout and register it in the component index.
      *  @param component_index Global index mapping components to archetypes.
@@ -259,7 +259,7 @@ EPIX_EXPORT struct Archetype {
 };
 /** @brief Container holding all archetypes and a component-to-archetype index.
  *  Always contains an empty archetype at index 0. */
-EPIX_EXPORT struct Archetypes {
+EPIX_EXPORT struct EPIX_API Archetypes {
     std::vector<Archetype> archetypes;
     std::unordered_map<internal::ArchetypeComponents,
                        ArchetypeId,

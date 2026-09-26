@@ -20,9 +20,12 @@
 #endif
 #include <epix/render/bind_group_layout.hpp>
 
+// Each id counter is a static data member defined in pipeline.cpp and exported
+// with its type, so ids come from one sequence for the whole process: an id
+// handed out inside the engine and one handed out by a caller cannot collide.
 #define make_atomic_id(name)                                                                            \
-    struct name {                                                                                       \
-        inline static std::atomic<std::uint64_t> counter{1};                                            \
+    struct EPIX_API name {                                                                              \
+        static std::atomic<std::uint64_t> counter;                                                       \
         static name create() noexcept { return name{counter.fetch_add(1, std::memory_order_relaxed)}; } \
         operator std::uint64_t() const noexcept { return id; }                                          \
         std::uint64_t id{0};                                                                            \

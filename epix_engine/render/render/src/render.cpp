@@ -522,11 +522,6 @@ void RenderPlugin::attach(App& app) {
                         (void)type;
                         try {
                             const std::string_view text(message);
-                            // Record it for the object-creation probes: this
-                            // wrapper/wgpu-native hands back a non-null handle
-                            // even when creation failed, so the handle alone
-                            // cannot tell a caller that it failed.
-                            GpuValidationErrorProbe::last_message = std::string(text);
                             std::stacktrace stack = std::stacktrace::current();
                             spdlog::error("WebGPU Uncaptured error: {}, with stack:\n{}", text, stack);
                         } catch (const std::exception& e) {

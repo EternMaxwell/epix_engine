@@ -85,7 +85,7 @@ inline void extract_time(ecs::Commands cmd, app::Extract<ecs::Res<epix::time::Ti
  * @brief Plugin that initializes GlobalsBuffer and updates it every frame
  * (Bevy GlobalsPlugin).
  */
-EPIX_EXPORT struct GlobalsPlugin {
+EPIX_EXPORT struct EPIX_API GlobalsPlugin {
     void attach(app::App& app);
 };
 
@@ -93,7 +93,7 @@ EPIX_EXPORT struct GlobalsPlugin {
  * @brief Plugin that provides a main-world FrameCount resource and advances
  * it every frame (Bevy bevy_diagnostic::FrameCountDiagnosticsPlugin).
  */
-EPIX_EXPORT struct FrameCountPlugin {
+EPIX_EXPORT struct EPIX_API FrameCountPlugin {
     void attach(app::App& app);
 };
 

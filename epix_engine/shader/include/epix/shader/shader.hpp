@@ -206,7 +206,7 @@ EPIX_EXPORT struct Source {
  * asset-path imports are resolved as concrete files with the correct source and
  * path semantics preserved.
  */
-EPIX_EXPORT struct ShaderImport {
+EPIX_EXPORT struct EPIX_API ShaderImport {
     /** @brief Stored import value.
      *
      * `assets::AssetPath` means "load this file".
@@ -256,7 +256,7 @@ EPIX_EXPORT struct ShaderImport {
 };
 
 // ─── Forward-declare Shader so Handle<Shader> can be used in fields ────────
-EPIX_EXPORT struct Shader;
+EPIX_EXPORT struct EPIX_API Shader;
 
 /** @brief Parsed shader asset.
  *
@@ -271,7 +271,7 @@ EPIX_EXPORT struct Shader;
  *  - Shaders added manually can also have assigned `path`, and will be resolved by the composer and compiler
  *    but will not be visible in loader and asset server, so cannot be imported by asset path, only custom name
  */
-EPIX_EXPORT struct Shader {
+EPIX_EXPORT struct EPIX_API Shader {
     /** @brief The shader asset path. */
     assets::AssetPath path;
     /** @brief Original source or bytecode. */
@@ -393,7 +393,7 @@ EPIX_EXPORT inline std::exception_ptr to_exception_ptr(const ShaderLoaderError& 
 }
 
 /** @brief Asset loader for shader files. */
-EPIX_EXPORT struct ShaderLoader {
+EPIX_EXPORT struct EPIX_API ShaderLoader {
     using Asset    = Shader;
     using Settings = ShaderSettings;
     using Error    = ShaderLoaderError;
@@ -430,7 +430,7 @@ EPIX_EXPORT struct ShaderProcessorSettings {
 };
 
 /** @brief Asset processor for shader sources. */
-EPIX_EXPORT struct ShaderProcessor {
+EPIX_EXPORT struct EPIX_API ShaderProcessor {
     using Settings     = ShaderProcessorSettings;
     using OutputLoader = ShaderLoader;
 
@@ -489,7 +489,7 @@ EPIX_EXPORT struct ShaderRef {
 };
 
 /** @brief App plugin that registers shader loading and processing. */
-EPIX_EXPORT struct ShaderPlugin {
+EPIX_EXPORT struct EPIX_API ShaderPlugin {
     /** @brief Register shader systems and asset support into the app. */
     void attach(epix::app::App& app);
 };

@@ -10,7 +10,7 @@
 #include <epix/camera/visibility.hpp>
 
 template <>
-struct epix::camera::MeshAabb<epix::mesh::Mesh> {
+struct EPIX_API epix::camera::MeshAabb<epix::mesh::Mesh> {
     static std::optional<epix::camera::Aabb> compute_aabb(const epix::mesh::Mesh& mesh);
 };
 

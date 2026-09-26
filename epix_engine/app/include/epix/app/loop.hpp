@@ -5,7 +5,7 @@
 #endif
 
 namespace epix::app {
-EPIX_EXPORT struct App;
+EPIX_EXPORT struct EPIX_API App;
 /** @brief Signal used to request application exit.
  *  Send this event to stop the main loop. */
 EPIX_EXPORT struct AppExit {
@@ -13,7 +13,7 @@ EPIX_EXPORT struct AppExit {
     int code = 0;
 };
 /** @brief Plugin that installs the main application loop. */
-EPIX_EXPORT struct LoopPlugin {
+EPIX_EXPORT struct EPIX_API LoopPlugin {
     /** @brief Register the main loop and exit event with the app. */
     void attach(App& app);
 };

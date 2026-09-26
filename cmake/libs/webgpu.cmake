@@ -1,7 +1,16 @@
 option(EPIX_WGPU_GENERATE_ON_CONFIGURE "Generate WebGPU wrapper during CMake configure (vs build time)" ON)
 
 set(EPIX_WGPU_NATIVE_VERSION "v29.0.1.1" CACHE STRING "Version of wgpu-native to fetch")
-set(EPIX_WGPU_LINK_TYPE "STATIC" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
+# The engine and its consumers both call into wgpu-native, and callers create
+# their own instances/adapters/devices. With a static wgpu-native every image
+# would carry its own copy of that state, so a shared engine uses the shared
+# runtime by default; a static engine keeps the static one.
+if (EPIX_ENABLE_SHARED)
+    set(_epix_wgpu_link_default "SHARED")
+else()
+    set(_epix_wgpu_link_default "STATIC")
+endif()
+set(EPIX_WGPU_LINK_TYPE "${_epix_wgpu_link_default}" CACHE STRING "Link type for wgpu-native (SHARED or STATIC)")
 
 include(${CMAKE_CURRENT_LIST_DIR}/wgpu_native.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/webgpu_gen_module.cmake)

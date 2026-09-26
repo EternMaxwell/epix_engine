@@ -134,7 +134,7 @@ namespace epix::sprite_render {
  * method. The mesh2d pipeline's specialization reads only this key plus the
  * material's bind group data, which is what lets one pipeline serve every mesh
  * instead of the previous per-variant shader set. */
-EPIX_EXPORT struct Mesh2dPipelineKey {
+EPIX_EXPORT struct EPIX_API Mesh2dPipelineKey {
     enum Bit : std::uint32_t {
         NONE                                      = 0,
         HDR                                       = 1u << 0u,
@@ -292,7 +292,7 @@ constexpr Mesh2dPipelineKey operator|(Mesh2dPipelineKey lhs, Mesh2dPipelineKey::
  *
  * The two layouts are descriptors, as Bevy's are; the pipeline cache interns
  * them when a pipeline is specialized against them. */
-EPIX_EXPORT struct Mesh2dPipeline {
+EPIX_EXPORT struct EPIX_API Mesh2dPipeline {
     /** @brief The specialization key of this pipeline (Bevy
      *  `SpecializedMeshPipeline::Key`). */
     using Key = Mesh2dPipelineKey;
@@ -318,7 +318,7 @@ EPIX_EXPORT struct Mesh2dPipeline {
 
 /** @brief Insert the `Mesh2dPipeline` resource (Bevy `init_mesh_2d_pipeline`,
  *  `mesh.rs:292-327`). */
-EPIX_EXPORT void init_mesh_2d_pipeline(ecs::Commands commands,
+EPIX_EXPORT EPIX_API void init_mesh_2d_pipeline(ecs::Commands commands,
                                        ecs::Res<wgpu::Device> device,
                                        ecs::Res<assets::AssetServer> asset_server);
 
@@ -375,7 +375,7 @@ EPIX_EXPORT struct Mesh2dViewBindGroup {
 
 /** @brief Prepare one `Mesh2dViewBindGroup` per `Camera2d` view from the mesh2d
  *  view layout (Bevy `prepare_mesh2d_view_bind_groups`, `mesh.rs:680-717`). */
-EPIX_EXPORT void prepare_mesh2d_view_bind_groups(
+EPIX_EXPORT EPIX_API void prepare_mesh2d_view_bind_groups(
     ecs::Commands commands,
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::Res<wgpu::Device> device,
@@ -400,7 +400,7 @@ EPIX_EXPORT struct Mesh2dBindGroup {
  *  `Mesh2dUniform` instance buffer (Bevy `prepare_mesh2d_bind_group`,
  *  `mesh.rs:657-673`).  Bevy inserts the resource only while the buffer
  *  exists. */
-EPIX_EXPORT void prepare_mesh2d_bind_group(
+EPIX_EXPORT EPIX_API void prepare_mesh2d_bind_group(
     ecs::Commands commands,
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::Res<wgpu::Device> device,
@@ -578,7 +578,7 @@ EPIX_EXPORT struct ViewSpecializationTicks {
 /** @brief Refresh each view's mesh2d key from its MSAA, HDR, tonemapping and
  *  deband state, stamping a specialization tick only when the key changes
  *  (Bevy `check_views_need_specialization`, `mesh.rs:122-156`). */
-EPIX_EXPORT void check_views_need_specialization(
+EPIX_EXPORT EPIX_API void check_views_need_specialization(
     ecs::ResMut<ViewKeyCache> view_key_cache,
     ecs::ResMut<ViewSpecializationTicks> view_specialization_ticks,
     ecs::Query<ecs::Item<const render::sync_world::MainEntity&, const render::view::ExtractedView&,
@@ -589,7 +589,7 @@ EPIX_EXPORT void check_views_need_specialization(
 
 /** @brief Insert the shared mesh2d instance buffer (Bevy
  *  `init_batched_instance_buffer`, `mesh.rs:158-161`). */
-EPIX_EXPORT void init_batched_instance_buffer(ecs::Commands commands, ecs::Res<wgpu::Device> device);
+EPIX_EXPORT EPIX_API void init_batched_instance_buffer(ecs::Commands commands, ecs::Res<wgpu::Device> device);
 
 
 

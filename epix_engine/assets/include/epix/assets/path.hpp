@@ -34,7 +34,7 @@ EPIX_EXPORT struct AssetSourceId : std::optional<std::string> {
  * @brief A full asset path, including the source and the path within the source, and an optional label.
  *
  */
-EPIX_EXPORT struct AssetPath {
+EPIX_EXPORT struct EPIX_API AssetPath {
     AssetSourceId source;
     std::filesystem::path path;
     std::optional<std::string> label;

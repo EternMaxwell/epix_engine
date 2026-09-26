@@ -35,10 +35,10 @@ EPIX_EXPORT struct NodeState;
 EPIX_EXPORT enum class NodeRunError : std::uint8_t;
 /** @brief Directed acyclic graph of render nodes that drives the rendering
  * pipeline. */
-EPIX_EXPORT struct RenderGraph;
+EPIX_EXPORT struct EPIX_API RenderGraph;
 /** @brief Context passed to a Node during graph execution, providing input/output slot access and sub-graph
  * invocation. */
-EPIX_EXPORT struct GraphContext;
+EPIX_EXPORT struct EPIX_API GraphContext;
 /** @brief Context providing GPU device access, command encoding, and render
  * pass creation during graph execution. */
 EPIX_EXPORT struct RenderContext;

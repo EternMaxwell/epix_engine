@@ -21,7 +21,7 @@
 #include <epix/ecs/world/detail/access.hpp>
 
 namespace epix::ecs::internal {
-struct BundleInserter {
+struct EPIX_API BundleInserter {
    public:
     static BundleInserter create_with_id(World& world, ArchetypeId archetype_id, BundleId bundle_id, Tick tick);
 

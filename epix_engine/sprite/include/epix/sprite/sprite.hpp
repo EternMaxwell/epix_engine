@@ -69,7 +69,7 @@ struct SpriteImageMode
 };
 
 /** @brief Normalized pivot offset of a 2D renderable from its Transform. */
-struct Anchor {
+struct EPIX_API Anchor {
     glm::vec2 value{0.0f};
 
     static const Anchor BOTTOM_LEFT;
@@ -89,7 +89,7 @@ struct Anchor {
 };
 
 /** @brief Visual sprite component matching Bevy's CPU-side `Sprite`. */
-struct Sprite {
+struct EPIX_API Sprite {
     assets::Handle<image::Image> image{image::DEFAULT_IMAGE_HANDLE};
     std::optional<image::TextureAtlas> texture_atlas;
     glm::vec4 color{1.0f};
@@ -121,12 +121,12 @@ struct Sprite {
 };
 
 /** @brief Installs CPU-side sprite components and bounds maintenance. */
-struct SpritePlugin {
+struct EPIX_API SpritePlugin {
     void attach(app::App& app);
 };
 
 /** @brief Insert or update local bounds for 2D mesh and sprite visibility. */
-EPIX_EXPORT void calculate_bounds_2d(
+EPIX_EXPORT EPIX_API void calculate_bounds_2d(
     ecs::Commands commands,
     ecs::Res<assets::Assets<mesh::Mesh>> meshes,
     ecs::Res<assets::Assets<image::Image>> images,

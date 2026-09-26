@@ -21,11 +21,11 @@
 
 namespace epix::camera {
 
-struct Frustum;
+struct EPIX_API Frustum;
 
 /** @brief Registers projection-driven frustum updates (Bevy
  * `CameraProjectionPlugin`). */
-EPIX_EXPORT struct CameraProjectionPlugin {
+EPIX_EXPORT struct EPIX_API CameraProjectionPlugin {
     void attach(epix::app::App& app);
 };
 
@@ -104,7 +104,7 @@ EPIX_EXPORT struct ScalingMode : std::variant<detail::ScalingModeWindowSize,
 
 /** @brief Orthographic camera projection with configurable scaling, near/far
  * planes, and viewport origin. */
-EPIX_EXPORT struct OrthographicProjection {
+EPIX_EXPORT struct EPIX_API OrthographicProjection {
     float near_plane = 0.0f;     // Bevy default_3d near clipping plane
     float far_plane  = 1000.0f;  // Far clipping plane
     ScalingMode scaling_mode{};
@@ -173,7 +173,7 @@ EPIX_EXPORT inline glm::mat4 perspective_infinite_reverse_rh(float fov_y_radians
 
 /** @brief Perspective camera projection with field of view, aspect ratio,
  * and near/far planes. */
-EPIX_EXPORT struct PerspectiveProjection {
+EPIX_EXPORT struct EPIX_API PerspectiveProjection {
     float fov          = glm::radians(45.0f);  // Field of view in radians
     float aspect_ratio = 1.0f;                 // Aspect ratio (width / height)
     float near_plane   = 0.1f;                 // Near clipping plane
@@ -304,7 +304,7 @@ struct DynCameraProjectionImpl final : DynCameraProjection {
     void update_projection(float width, float height) override { value.update(width, height); }
 };
 
-EPIX_EXPORT struct CustomProjection {
+EPIX_EXPORT struct EPIX_API CustomProjection {
    private:
     std::shared_ptr<DynCameraProjection> dyn_projection;
 
@@ -351,7 +351,7 @@ EPIX_EXPORT struct CustomProjection {
 
 /** @brief Variant projection type wrapping orthographic, perspective, or a
  * type-erased custom projection (Bevy `Projection`). */
-EPIX_EXPORT struct Projection {
+EPIX_EXPORT struct EPIX_API Projection {
     std::variant<OrthographicProjection, PerspectiveProjection, CustomProjection> projection;
 
     Projection() : projection(PerspectiveProjection{}) {}

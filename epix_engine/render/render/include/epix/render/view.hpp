@@ -66,7 +66,7 @@ EPIX_EXPORT struct CameraRenderGraph : public graph::GraphLabel {
  * camera-module `epix::camera::CameraPlugin`: it owns render-facing camera
  * requirements, extraction, sorting, and
  * the camera driver graph node. */
-EPIX_EXPORT struct CameraPlugin {
+EPIX_EXPORT struct EPIX_API CameraPlugin {
     void attach(epix::app::App& app);
 };
 
@@ -408,11 +408,11 @@ EPIX_EXPORT struct ViewDepthTexture {
 /** @brief Plugin that registers view extraction, target preparation, and
  * output-target preparation systems. Core pipeline plugins own depth-texture
  * preparation for the views they render. */
-EPIX_EXPORT struct ViewPlugin {
+EPIX_EXPORT struct EPIX_API ViewPlugin {
     void attach(epix::app::App& app);
 };
 
-void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
+EPIX_API void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
                                                           const camera::ExtractedCamera&,
                                                           const ExtractedView&,
                                                           const ::epix::camera::CameraMainTextureUsages&,
@@ -426,7 +426,7 @@ void prepare_view_target(epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
 /** Resolve manual texture-view targets after the general camera pass.  The
  * renderer owns `ManualTextureViews`, so this is the one accepted split from
  * Bevy's single camera system. */
-void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
+EPIX_API void update_manual_texture_view_cameras(epix::ecs::Query<epix::ecs::Item<epix::ecs::Mut<::epix::camera::Camera>,
                                                                           epix::ecs::Mut<::epix::camera::Projection>,
                                                                           const ::epix::camera::RenderTarget&>> cameras,
                                          epix::ecs::Res<texture::ManualTextureViews> manual_texture_views);
@@ -492,7 +492,7 @@ struct MipBias;
 struct TemporalJitter;
 
 /** @brief System that extracts camera data into the render world. */
-EPIX_EXPORT void extract_cameras(
+EPIX_EXPORT EPIX_API void extract_cameras(
     epix::ecs::Commands cmd,
     epix::app::Extract<
         epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity,
@@ -526,7 +526,7 @@ EPIX_EXPORT inline constexpr struct CameraDriverNodeLabelT {
 
 /** @brief Node that drives each camera's render graph in sorted order (Bevy
  * CameraDriverNode, renderer/camera_driver_node.rs). Defined in view.cpp. */
-EPIX_EXPORT struct CameraDriverNode : graph::Node {
+EPIX_EXPORT struct EPIX_API CameraDriverNode : graph::Node {
     /** Persistent query state, matching Bevy CameraDriverNode::cameras. */
     std::optional<epix::ecs::QueryState<epix::ecs::Item<const ExtractedCamera&>>> cameras;
 
@@ -610,12 +610,12 @@ EPIX_EXPORT struct ViewTargetAttachments {
 /** @brief Clears the per-frame view target attachments (Bevy
  * clear_view_attachments, view/mod.rs:1042-1044). Registered in
  * RenderSystems::ManageViews before create_surfaces. */
-void clear_view_attachments(epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
+EPIX_API void clear_view_attachments(epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
 /** @brief Prepares one output attachment per current-frame render target
  * (Bevy `prepare_view_attachments`).
  * Screenshot and other extensions may
  * replace an entry before `prepare_view_target` consumes it. */
-void prepare_view_attachments(epix::ecs::Res<window::ExtractedWindows> extracted_windows,
+EPIX_API void prepare_view_attachments(epix::ecs::Res<window::ExtractedWindows> extracted_windows,
                               epix::ecs::Res<texture::ManualTextureViews> manual_texture_views,
                               epix::ecs::Query<epix::ecs::Item<const camera::ExtractedCamera&>> cameras,
                               epix::ecs::ResMut<ViewTargetAttachments> view_target_attachments);
@@ -623,7 +623,7 @@ void prepare_view_attachments(epix::ecs::Res<window::ExtractedWindows> extracted
  * resized or changed present mode, so
  * prepare_view_target recreates them at the new size (Bevy cleanup_view_targets_for_resize, view/mod.rs:1046-1059).
  * Registered in RenderSystems::ManageViews before create_surfaces. */
-void cleanup_view_targets_for_resize(
+EPIX_API void cleanup_view_targets_for_resize(
     epix::ecs::Commands cmd,
     epix::ecs::Res<window::ExtractedWindows> windows,
     epix::ecs::Query<epix::ecs::Item<epix::ecs::Entity, const camera::ExtractedCamera&>> cameras);

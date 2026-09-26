@@ -206,7 +206,7 @@ EPIX_EXPORT struct EntityRefMut : public EntityRef {
  * Extends EntityRefMut with the ability to insert/remove components,
  * insert bundles, despawn the entity, and spawn child entities.
  */
-EPIX_EXPORT struct EntityWorldMut : public EntityRefMut {
+EPIX_EXPORT struct EPIX_API EntityWorldMut : public EntityRefMut {
    public:
     using EntityRefMut::EntityRefMut;
 

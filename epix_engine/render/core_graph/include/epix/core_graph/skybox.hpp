@@ -64,7 +64,7 @@ namespace epix::core_graph {
 
 /** @brief Uniquely identifies a configuration of the skybox shader (Bevy
  *  `SkyboxPipelineKey`, `skybox/mod.rs:182-187`). */
-EPIX_EXPORT struct SkyboxPipelineKey {
+EPIX_EXPORT struct EPIX_API SkyboxPipelineKey {
     /** @brief True when the view renders to a high dynamic range target. */
     bool hdr = false;
     /** @brief The view's MSAA sample count. */
@@ -79,7 +79,7 @@ EPIX_EXPORT struct SkyboxPipelineKey {
  *
  *  Its single bind group holds the cube texture, a filtering sampler, the
  *  view uniform (dynamic) and the skybox uniforms. */
-EPIX_EXPORT struct SkyboxPipeline {
+EPIX_EXPORT struct EPIX_API SkyboxPipeline {
     using Key = SkyboxPipelineKey;
 
     /** @brief The bind group layout shared by every specialized pipeline. */
@@ -128,7 +128,7 @@ struct PreviousViewUniforms;
 /** @brief Uniquely identifies a configuration of the skybox's motion-vector
  *  prepass pipeline (Bevy `SkyboxPrepassPipelineKey`,
  *  `skybox/prepass.rs:46-50`). */
-EPIX_EXPORT struct SkyboxPrepassPipelineKey {
+EPIX_EXPORT struct EPIX_API SkyboxPrepassPipelineKey {
     /** @brief The view's MSAA sample count. */
     std::uint32_t samples = 1;
     /** @brief True when the view also writes normals, which adds a target. */
@@ -144,7 +144,7 @@ EPIX_EXPORT struct SkyboxPrepassPipelineKey {
  *  Its bind group is the view uniform and the previous view uniform, both
  *  dynamic, and it renders into the prepass colour attachments rather than a
  *  colour target of its own. */
-EPIX_EXPORT struct SkyboxPrepassPipeline {
+EPIX_EXPORT struct EPIX_API SkyboxPrepassPipeline {
     using Key = SkyboxPrepassPipelineKey;
 
     /** @brief The bind group layout shared by every specialized pipeline. */
@@ -182,7 +182,7 @@ EPIX_EXPORT struct SkyboxPrepassBindGroup {
 /** @brief Specializes the prepass pipeline for every view that has a `Skybox`
  *  and a `MotionVectorPrepass` (Bevy `prepare_skybox_prepass_pipelines`,
  *  `skybox/prepass.rs:113-133`). */
-EPIX_EXPORT void prepare_skybox_prepass_pipelines(
+EPIX_EXPORT EPIX_API void prepare_skybox_prepass_pipelines(
     ecs::Commands commands,
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPrepassPipeline>> pipelines,
@@ -195,7 +195,7 @@ EPIX_EXPORT void prepare_skybox_prepass_pipelines(
 /** @brief Creates each view's prepass bind group from the view uniforms and the
  *  previous view uniforms, so the prepass can compute the camera's motion
  *  (Bevy `prepare_skybox_prepass_bind_groups`, `skybox/prepass.rs:138-163`). */
-EPIX_EXPORT void prepare_skybox_prepass_bind_groups(
+EPIX_EXPORT EPIX_API void prepare_skybox_prepass_bind_groups(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> device,
     ecs::Res<render::PipelineServer> pipeline_server,
@@ -211,7 +211,7 @@ EPIX_EXPORT void prepare_skybox_prepass_bind_groups(
  *  single component here, so the derivation and the upload share one system).
  *  The brightness is scaled by the view's extracted exposure, as Bevy's
  *  extraction does. */
-EPIX_EXPORT void prepare_skybox_uniforms(
+EPIX_EXPORT EPIX_API void prepare_skybox_uniforms(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> device,
     ecs::Res<wgpu::Queue> queue,
@@ -220,7 +220,7 @@ EPIX_EXPORT void prepare_skybox_uniforms(
 
 /** @brief Specializes the skybox pipeline for every view with a `Skybox` (Bevy
  *  `prepare_skybox_pipelines`, `skybox/mod.rs:243-265`). */
-EPIX_EXPORT void prepare_skybox_pipelines(
+EPIX_EXPORT EPIX_API void prepare_skybox_pipelines(
     ecs::Commands commands,
     ecs::Res<render::PipelineServer> pipeline_server,
     ecs::ResMut<render::SpecializedRenderPipelines<SkyboxPipeline>> pipelines,
@@ -232,7 +232,7 @@ EPIX_EXPORT void prepare_skybox_pipelines(
 /** @brief Creates each view's skybox bind group from its cubemap's cube view,
  *  the view uniform and its skybox uniforms (Bevy `prepare_skybox_bind_groups`,
  *  `skybox/mod.rs:270-302`). */
-EPIX_EXPORT void prepare_skybox_bind_groups(
+EPIX_EXPORT EPIX_API void prepare_skybox_bind_groups(
     ecs::Commands commands,
     ecs::Res<wgpu::Device> device,
     ecs::Res<render::PipelineServer> pipeline_server,
@@ -247,7 +247,7 @@ EPIX_EXPORT void prepare_skybox_bind_groups(
  *  The shader is registered and loaded here, the specialization cache is
  *  initialized and the pipeline itself is built in `RenderStartup`, exactly as
  *  Bevy's `init_skybox_pipeline` does. */
-EPIX_EXPORT struct SkyboxPlugin {
+EPIX_EXPORT struct EPIX_API SkyboxPlugin {
     void attach(app::App& app) const;
 };
 
@@ -266,11 +266,11 @@ struct ExtractComponent<core_graph::Skybox> {
 }  // namespace epix::render
 
 template <>
-struct std::hash<epix::core_graph::SkyboxPipelineKey> {
+struct EPIX_API std::hash<epix::core_graph::SkyboxPipelineKey> {
     std::size_t operator()(const epix::core_graph::SkyboxPipelineKey& key) const noexcept;
 };
 
 template <>
-struct std::hash<epix::core_graph::SkyboxPrepassPipelineKey> {
+struct EPIX_API std::hash<epix::core_graph::SkyboxPrepassPipelineKey> {
     std::size_t operator()(const epix::core_graph::SkyboxPrepassPipelineKey& key) const noexcept;
 };

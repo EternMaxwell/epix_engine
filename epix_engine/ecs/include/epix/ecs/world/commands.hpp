@@ -37,7 +37,7 @@ struct Command<T> {
     static void apply(T& cmd, World& world) noexcept(noexcept(cmd.apply(world))) { cmd.apply(world); }
 };
 
-struct CommandQueue {
+struct EPIX_API CommandQueue {
    public:
     CommandQueue()                    = default;
     CommandQueue(const CommandQueue&) = delete;

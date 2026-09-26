@@ -11,7 +11,7 @@
 #include <epix/app/state.hpp>
 
 namespace epix::app {
-EPIX_EXPORT struct App;
+EPIX_EXPORT struct EPIX_API App;
 /** @brief A schedule label with optional system-set transforms.
  *  Extends ScheduleLabel to support run-condition transforms for
  *  state-dependent scheduling. */
@@ -109,7 +109,7 @@ EPIX_EXPORT inline struct OnChangeT {
 } OnChange;
 
 /** @brief Plugin that registers all built-in schedules (Startup, Update, etc.). */
-EPIX_EXPORT struct MainSchedulePlugin {
+EPIX_EXPORT struct EPIX_API MainSchedulePlugin {
     /** @brief Register all built-in schedules with the app. */
     void attach(App& app);
 };

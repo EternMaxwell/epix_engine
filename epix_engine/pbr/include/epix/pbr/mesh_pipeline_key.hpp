@@ -309,7 +309,7 @@ EPIX_EXPORT class MeshPipelineViewLayoutKey {
 
     /** @brief The unique label Bevy builds from the flags (Bevy
      * `MeshPipelineViewLayoutKey::label`). */
-    std::string label() const;
+    EPIX_API std::string label() const;
 
     /** @brief The raw bits. */
     constexpr std::uint32_t bits() const noexcept { return bits_; }

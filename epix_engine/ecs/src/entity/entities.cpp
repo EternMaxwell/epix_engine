@@ -4,6 +4,7 @@
 #include <epix/ecs/entity/entities.hpp>
 
 namespace epix::ecs {
+
 void Entities::verify_flush() noexcept {
     assert(!needs_flush() && "Entities need to be flushed before accessing meta or pending!");
 }

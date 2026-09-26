@@ -32,7 +32,7 @@ namespace epix::imgui {
  *          ImGui::End();
  *      }
  */
-EPIX_EXPORT struct ImGuiPlugin {
+EPIX_EXPORT struct EPIX_API ImGuiPlugin {
     bool enable_docking   = false;
     bool enable_viewports = false;
 
@@ -47,16 +47,16 @@ EPIX_EXPORT inline struct BeginFrameSetT {
 } BeginFrameSet;
 
 // Frame lifecycle systems (main world)
-void imgui_begin_frame(
+EPIX_API void imgui_begin_frame(
     ecs::ResMut<ImGuiState> state,
     ecs::Res<glfw::GLFWwindows> windows,
     ecs::Query<ecs::Item<ecs::Entity>, ecs::With<::epix::window::Window, ::epix::window::PrimaryWindow>> primary);
-void imgui_end_frame(ecs::ResMut<ImGuiState> state);
+EPIX_API void imgui_end_frame(ecs::ResMut<ImGuiState> state);
 
 // Post-PreUpdate system that consumes input events handled by ImGui.
 // Checks ImGui::GetIO().WantCapture* flags and advances the event head
 // so later schedules do not see consumed events.
-void imgui_consume_input(ecs::Res<ImGuiState> state,
+EPIX_API void imgui_consume_input(ecs::Res<ImGuiState> state,
                          ecs::ResMut<ecs::Events<input::KeyInput>> key_events,
                          ecs::ResMut<ecs::Events<input::MouseButtonInput>> mouse_events,
                          ecs::ResMut<ecs::Events<input::MouseScroll>> scroll_events,
@@ -64,7 +64,7 @@ void imgui_consume_input(ecs::Res<ImGuiState> state,
                          ecs::ResMut<input::ButtonInput<input::MouseButton>> mouse_input);
 
 // Render system (render sub-app)
-void imgui_render(ecs::Res<ImGuiState> state,
+EPIX_API void imgui_render(ecs::Res<ImGuiState> state,
                   ecs::Res<render::window::ExtractedWindows> windows,
                   ecs::Res<wgpu::Instance> instance,
                   ecs::Res<wgpu::Adapter> adapter,

@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <algorithm>
@@ -30,7 +30,7 @@ struct EntityMeta {
 }  // namespace internal
 /** @brief Central entity allocator that manages entity ids and metadata.
  *  Supports concurrent id reservation via reserve_entities(). */
-EPIX_EXPORT struct Entities {
+EPIX_EXPORT struct EPIX_API Entities {
    private:
     std::vector<internal::EntityMeta> meta;
     std::vector<std::uint32_t> pending;

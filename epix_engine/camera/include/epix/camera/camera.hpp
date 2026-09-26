@@ -137,7 +137,7 @@ EPIX_EXPORT struct RenderTargetIdHash {
 
 /** @brief Resolved target identity (Bevy `NormalizedRenderTarget`). Render
  * code uses this after an optional primary window has been resolved. */
-EPIX_EXPORT struct NormalizedRenderTarget
+EPIX_EXPORT struct EPIX_API NormalizedRenderTarget
     : std::variant<window::NormalizedWindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
     using std::variant<window::NormalizedWindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
     RenderTargetId identity() const noexcept;
@@ -145,7 +145,7 @@ EPIX_EXPORT struct NormalizedRenderTarget
 
 /** @brief A render target that is either a GPU texture or a window
  * reference (Bevy `bevy_camera::RenderTarget`). */
-EPIX_EXPORT struct RenderTarget
+EPIX_EXPORT struct EPIX_API RenderTarget
     : std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget> {
     using std::variant<window::WindowRef, ImageRenderTarget, ManualTextureViewHandle, NoColorTarget>::variant;
     static RenderTarget from_texture(wgpu::Texture texture, float scale_factor = 1.0f) {
@@ -216,7 +216,7 @@ EPIX_EXPORT struct CameraMainTextureUsages {
  * Cameras with higher order render on top of those with lower order.
  * The computed projection and target size are updated automatically by
  * camera systems. */
-EPIX_EXPORT struct Camera {
+EPIX_EXPORT struct EPIX_API Camera {
     /** @brief The camera's viewport within the render target. */
     std::optional<Viewport> viewport;
     /** @brief Cameras with higher order are rendered on top of cameras with
@@ -529,7 +529,7 @@ EPIX_EXPORT struct CameraUpdateError : std::runtime_error {
 /** Update cameras when their render target, projection, viewport, or
  * sub-camera view changes (Bevy `camera_system`). Manual texture views are
  * resolved by the render module because that resource exists only there. */
-EPIX_EXPORT std::expected<void, CameraUpdateError> camera_system(
+EPIX_EXPORT EPIX_API std::expected<void, CameraUpdateError> camera_system(
     epix::ecs::EventReader<::epix::window::WindowResized> window_resized_reader,
     epix::ecs::EventReader<::epix::window::WindowCreated> window_created_reader,
     epix::ecs::EventReader<::epix::window::WindowScaleFactorChanged> window_scale_factor_changed_reader,
@@ -544,7 +544,7 @@ EPIX_EXPORT std::expected<void, CameraUpdateError> camera_system(
  * visibility systems, the projection plugins, and the ClearColor resource
  * (Bevy bevy_camera::CameraPlugin — the user-facing, main-world camera
  * plugin; render-world extraction lives in the render module). */
-EPIX_EXPORT struct CameraPlugin {
+EPIX_EXPORT struct EPIX_API CameraPlugin {
     void attach(epix::app::App& app);
 };
 

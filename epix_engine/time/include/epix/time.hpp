@@ -61,7 +61,7 @@ EPIX_EXPORT inline struct FixedLastT {
 /** @brief Plugin that registers all time resources and the FixedMain schedule.
  *  Adds `Time<>`, `Time<Real>`, `Time<Virtual>`, `Time<Fixed>`, `TimeUpdateConfig` resources,
  *  the real-time update system in First, and the FixedMain schedule with its sub-schedules. */
-EPIX_EXPORT struct TimePlugin {
+EPIX_EXPORT struct EPIX_API TimePlugin {
     /** @brief Build the plugin into the app. */
     void attach(epix::app::App& app);
 };

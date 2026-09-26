@@ -13,7 +13,7 @@ namespace epix::ecs {
 /** @brief Component that marks an entity as a child of another entity.
  *  When inserted, automatically updates the parent's Children component.
  *  When removed, the child is detached from the parent's children set. */
-EPIX_EXPORT struct Parent {
+EPIX_EXPORT struct EPIX_API Parent {
    public:
     /** @brief Construct a Parent linking to the given parent entity. */
     Parent(Entity parent_entity) noexcept : _entity(parent_entity) {}
@@ -34,7 +34,7 @@ EPIX_EXPORT struct Parent {
 /** @brief Component that stores the set of child entities.
  *  Automatically maintained by Parent insert/remove hooks.
  *  When this entity is despawned, all children are recursively despawned. */
-EPIX_EXPORT struct Children {
+EPIX_EXPORT struct EPIX_API Children {
    public:
     Children() noexcept = default;
 

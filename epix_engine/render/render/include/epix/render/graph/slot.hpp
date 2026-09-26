@@ -30,7 +30,7 @@ EPIX_EXPORT enum class SlotType {
 /** @brief Get a human-readable name for a SlotType.
  * @param type The slot type.
  * @return String view of the type name. */
-EPIX_EXPORT std::string_view type_name(SlotType type) noexcept;
+EPIX_EXPORT EPIX_API std::string_view type_name(SlotType type) noexcept;
 /** @brief Describes a named slot with its data type. */
 EPIX_EXPORT struct SlotInfo {
     /** @brief Name of the slot. */
@@ -132,7 +132,7 @@ EPIX_EXPORT struct SlotLabel {
     SlotLabel& operator=(const SlotLabel&)     = default;
     SlotLabel& operator=(SlotLabel&&) noexcept = default;
 };
-struct SlotInfos {
+struct EPIX_API SlotInfos {
    private:
     std::vector<SlotInfo> slots;
 

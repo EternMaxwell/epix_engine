@@ -142,7 +142,7 @@ inline void write_render_visibility_ranges(ecs::ResMut<RenderVisibilityRanges> r
  * @brief Plugin that enables RenderVisibilityRanges (Bevy
  * RenderVisibilityRangePlugin).
  */
-EPIX_EXPORT struct RenderVisibilityRangePlugin {
+EPIX_EXPORT struct EPIX_API RenderVisibilityRangePlugin {
     void attach(app::App& app);
 };
 

@@ -21,13 +21,13 @@ struct ScheduleThreadPool {
 };
 }  // namespace internal
 /** @brief Default executor using thread-pool-based parallel dispatch. */
-EPIX_EXPORT struct MultithreadClassicExecutor : ScheduleExecutor {
+EPIX_EXPORT struct EPIX_API MultithreadClassicExecutor : ScheduleExecutor {
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
     meta::type_index type() const noexcept override { return meta::type_id<MultithreadClassicExecutor>(); }
 };
 /** @brief Single-thread executor that follows classic scheduling logic
  *  while running every condition/system on the caller thread. */
-EPIX_EXPORT struct SingleThreadExecutor : ScheduleExecutor {
+EPIX_EXPORT struct EPIX_API SingleThreadExecutor : ScheduleExecutor {
     void execute(ScheduleSystems& schedule, World& world, const ExecutorConfig& config) override;
     meta::type_index type() const noexcept override { return meta::type_id<SingleThreadExecutor>(); }
 };
@@ -51,7 +51,7 @@ struct FlatGraphCache {
  *  Each set is split into pre/post nodes: children depend on the pre node and the
  *  post node depends on children's post nodes. This eliminates child_count tracking
  *  and simplifies the main execution loop to pure wait_count decrements. */
-EPIX_EXPORT struct MultithreadFlatExecutor : ScheduleExecutor {
+EPIX_EXPORT struct EPIX_API MultithreadFlatExecutor : ScheduleExecutor {
     std::shared_ptr<FlatGraphCache> m_flat_cache;
 
     void rebuild_flat_cache(const std::shared_ptr<ScheduleCache>& cache);
@@ -62,7 +62,7 @@ EPIX_EXPORT struct MultithreadFlatExecutor : ScheduleExecutor {
  *  Converts the flat pre/post graph into a pure taskflow graph at cache-build time.
  *  Access conflicts between systems are resolved by inserting dependency edges so
  *  taskflow can fully manage parallelism. Conditions use taskflow's conditional tasking. */
-EPIX_EXPORT struct TaskflowExecutor : ScheduleExecutor {
+EPIX_EXPORT struct EPIX_API TaskflowExecutor : ScheduleExecutor {
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
@@ -75,7 +75,7 @@ EPIX_EXPORT struct TaskflowExecutor : ScheduleExecutor {
     meta::type_index type() const noexcept override { return meta::type_id<TaskflowExecutor>(); }
 };
 
-EPIX_EXPORT struct AutoExecutor : ScheduleExecutor {
+EPIX_EXPORT struct EPIX_API AutoExecutor : ScheduleExecutor {
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 

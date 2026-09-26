@@ -92,16 +92,16 @@ EPIX_EXPORT enum class ImageFormat : std::uint8_t {
 /** @brief File extensions for a container format (Bevy
  * `ImageFormat::to_file_extensions`). C++ enums cannot have inherent methods, so
  * each is the namespace-scoped equivalent. */
-EPIX_EXPORT std::span<const std::string_view> to_file_extensions(ImageFormat format) noexcept;
+EPIX_EXPORT EPIX_API std::span<const std::string_view> to_file_extensions(ImageFormat format) noexcept;
 /** @brief MIME types for a container format (Bevy
  * `ImageFormat::to_mime_types`); empty when the format has no dedicated type. */
-EPIX_EXPORT std::span<const std::string_view> to_mime_types(ImageFormat format) noexcept;
+EPIX_EXPORT EPIX_API std::span<const std::string_view> to_mime_types(ImageFormat format) noexcept;
 /** @brief Resolve a MIME type, case-insensitively (Bevy
  * `ImageFormat::from_mime_type`). */
-EPIX_EXPORT std::optional<ImageFormat> from_mime_type(std::string_view mime_type) noexcept;
+EPIX_EXPORT EPIX_API std::optional<ImageFormat> from_mime_type(std::string_view mime_type) noexcept;
 /** @brief Resolve a file extension, case-insensitively (Bevy
  * `ImageFormat::from_extension`). */
-EPIX_EXPORT std::optional<ImageFormat> from_extension(std::string_view extension) noexcept;
+EPIX_EXPORT EPIX_API std::optional<ImageFormat> from_extension(std::string_view extension) noexcept;
 /** @brief Whether Epix's decoder can read this format.
  *
  * Bevy's counterpart is `ImageFormat::as_image_crate_format()`, which returns
@@ -109,11 +109,11 @@ EPIX_EXPORT std::optional<ImageFormat> from_extension(std::string_view extension
  * loader turns that into `TextureError::UnsupportedTextureFormat` naming the
  * format. Epix's decoder is `stb_image`, so the same decision is taken here and
  * the loader reports the same error with the same format name. */
-EPIX_EXPORT bool is_decodable(ImageFormat format) noexcept;
+EPIX_EXPORT EPIX_API bool is_decodable(ImageFormat format) noexcept;
 
 /** @brief The variant name of a container format, matching Rust's `Debug`
  * output that Bevy embeds in `TextureError::UnsupportedTextureFormat`. */
-EPIX_EXPORT std::string to_string(ImageFormat format);
+EPIX_EXPORT EPIX_API std::string to_string(ImageFormat format);
 
 /** @brief The sRGB counterpart of a texture format, or the format itself when
  * WebGPU has no sRGB variant for it.
@@ -122,7 +122,7 @@ EPIX_EXPORT std::string to_string(ImageFormat format);
  * selects the sRGB texture format for 8-bit data. The generated Epix bindings
  * only expose `eRGBA8UnormSrgb`/`eBGRA8UnormSrgb`, so single- and dual-channel
  * formats keep their linear format and the gap is recorded in the tracker. */
-EPIX_EXPORT wgpu::TextureFormat srgb_texture_format(wgpu::TextureFormat format) noexcept;
+EPIX_EXPORT EPIX_API wgpu::TextureFormat srgb_texture_format(wgpu::TextureFormat format) noexcept;
 
 /** @brief Error codes returned when saving an image to disk. */
 EPIX_EXPORT enum class ImageSaveError { SaveFailed };
@@ -133,7 +133,7 @@ EPIX_EXPORT enum class ImageWriteError { OutOfBounds, DataSizeMismatch };
 
 /** @brief Error returned when a texture cannot be reinterpreted as requested
  * (Bevy `TextureReinterpretationError`). */
-EPIX_EXPORT struct TextureReinterpretationError {
+EPIX_EXPORT struct EPIX_API TextureReinterpretationError {
     /** @brief C++ counterpart to `TextureReinterpretationError::IncompatibleSizes`. */
     struct IncompatibleSizes {
         wgpu::Extent3D old{};
@@ -171,7 +171,7 @@ EPIX_EXPORT struct TextureReinterpretationError {
 };
 
 /** @brief Bevy `TextureReinterpretationError`'s `Display` text. */
-EPIX_EXPORT std::string to_string(const TextureReinterpretationError& error);
+EPIX_EXPORT EPIX_API std::string to_string(const TextureReinterpretationError& error);
 
 /** @brief Error returned when accessing a specific pixel in a texture (Bevy
  * `TextureAccessError`). */
@@ -203,7 +203,7 @@ EPIX_EXPORT struct TextureAccessError {
  *
  * The `UnsupportedTextureFormat` arm renders the format through the WebGPU wrapper's `to_string`
  * rather than through a Rust-`Debug` table; see G26 in the image mismatch tracker. */
-EPIX_EXPORT std::string to_string(const TextureAccessError& error);
+EPIX_EXPORT EPIX_API std::string to_string(const TextureAccessError& error);
 
 /** @brief The number of bytes one pixel of `format` occupies, or Bevy's
  * `TextureAccessError::UnsupportedTextureFormat` for a block-compressed format
@@ -216,7 +216,7 @@ EPIX_EXPORT std::string to_string(const TextureAccessError& error);
  * (`Depth24Plus`, `Depth24PlusStencil8` and `Depth32FloatStencil8`) hit Bevy's
  * `Option::unwrap()` on `None` and panic; Epix throws `std::runtime_error` with
  * the same message. */
-EPIX_EXPORT std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::TextureFormat format);
+EPIX_EXPORT EPIX_API std::expected<std::size_t, TextureAccessError> texture_format_pixel_size(wgpu::TextureFormat format);
 
 /** @brief The number of components one texel of `format` carries (wgpu-types
  * `TextureFormat::components`).
@@ -225,7 +225,7 @@ EPIX_EXPORT std::expected<std::size_t, TextureAccessError> texture_format_pixel_
  * `TextureAspect::All` count, which is what wgpu-types' `components()` forwards to
  * `components_with_aspect`. Formats WebGPU names but `wgpu-types` does not (`eUndefined`,
  * `eForce32`) report 0. */
-EPIX_EXPORT std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept;
+EPIX_EXPORT EPIX_API std::uint8_t texture_format_components(wgpu::TextureFormat format) noexcept;
 
 /** @brief True for the 32-bit float texture formats Epix's CPU-side extensions handle
  * (`Image::blur`, `Image::resize`, `Image::save`, `Image::sample`).
@@ -233,7 +233,7 @@ EPIX_EXPORT std::uint8_t texture_format_components(wgpu::TextureFormat format) n
  * Bevy classifies a format through `wgpu::TextureFormat::sample_type`; these extensions only ever
  * see the formats `Image::from_dynamic` and the `create*` factories produce, so the float set is
  * the two 32-bit float spellings. */
-EPIX_EXPORT bool is_float_texture_format(wgpu::TextureFormat format) noexcept;
+EPIX_EXPORT EPIX_API bool is_float_texture_format(wgpu::TextureFormat format) noexcept;
 
 /** @brief The data format of a supercompressed image (Bevy `DataFormat`). */
 EPIX_EXPORT enum class DataFormat : std::uint8_t { Rgb, Rgba, Rrr, Rrrg, Rg };
@@ -347,8 +347,8 @@ EPIX_EXPORT struct TextureError {
 };
 
 /** @brief Bevy `TextureError`'s `Display` text. */
-EPIX_EXPORT std::string to_string(const TextureError& error);
-EPIX_EXPORT std::exception_ptr to_exception_ptr(const TextureError& error);
+EPIX_EXPORT EPIX_API std::string to_string(const TextureError& error);
+EPIX_EXPORT EPIX_API std::exception_ptr to_exception_ptr(const TextureError& error);
 
 /** @brief Customization point for Bevy's `BevyDefault` trait
  * (`bevy_image/src/image.rs`). */
@@ -380,7 +380,7 @@ static_assert(bevy_default<wgpu::TextureFormat>() == wgpu::TextureFormat::eRGBA8
  *
  * Covers the same set as `TextureFormat::add_srgb_suffix`; a format without an
  * sRGB variant yields an empty span. */
-EPIX_EXPORT std::span<const wgpu::TextureFormat> srgb_view_formats(wgpu::TextureFormat format) noexcept;
+EPIX_EXPORT EPIX_API std::span<const wgpu::TextureFormat> srgb_view_formats(wgpu::TextureFormat format) noexcept;
 
 template <typename T>
 struct span_type {
@@ -465,7 +465,7 @@ EPIX_EXPORT enum class ImageSamplerBorderColor {
 /** @brief Sampler configuration for an image (Bevy `ImageSamplerDescriptor`,
  * mirrors wgpu SamplerDescriptor). The default matches wgpu's default:
  * clamp-to-edge addressing, nearest filters, lod clamp 0..32. */
-EPIX_EXPORT struct ImageSamplerDescriptor {
+EPIX_EXPORT struct EPIX_API ImageSamplerDescriptor {
    private:
     friend zpp::bits::access;
     // `std::optional` and the wgpu descriptor types are not reflectable through
@@ -715,7 +715,7 @@ using Rgba32FImage = PixelBuffer<float, 4>;
  * `Image` from one and `Image::try_into_dynamic` builds one from an `Image`. Epix has no `image`
  * crate, so this value type carries the same variant set plus the conversions those two functions
  * call, using the `image` crate's own channel arithmetic. */
-EPIX_EXPORT struct DynamicImage
+EPIX_EXPORT struct EPIX_API DynamicImage
     : std::variant<Luma8Image,
                    LumaA8Image,
                    Rgb8Image,
@@ -774,7 +774,7 @@ EPIX_EXPORT namespace into_dynamic_image_error {
 
 /** @brief Errors that occur while converting an `Image` into a `DynamicImage`
  * (Bevy `IntoDynamicImageError`). */
-EPIX_EXPORT struct IntoDynamicImageError
+EPIX_EXPORT struct EPIX_API IntoDynamicImageError
     : std::variant<into_dynamic_image_error::UnsupportedFormat,
                    into_dynamic_image_error::UnknownConversionError,
                    into_dynamic_image_error::UninitializedImage> {
@@ -792,7 +792,7 @@ EPIX_EXPORT struct IntoDynamicImageError
  * Supports 1D, 2D, 2D array, and 3D images. Provides factory methods,
  * loading/saving, sampling, writing, and conversion utilities.
  */
-EPIX_EXPORT class Image {
+EPIX_EXPORT class EPIX_API Image {
    private:
     // Bevy derives the image's size, dimension, and texture format from
     // `texture_descriptor` instead of storing them as separate intrinsics, so the
@@ -1213,7 +1213,7 @@ inline const assets::Handle<Image> TRANSPARENT_IMAGE_HANDLE{
  * application plugin, so add this plugin before @c
  * render::RenderPlugin when
  * using default-sampled images. */
-EPIX_EXPORT struct ImagePlugin {
+EPIX_EXPORT struct EPIX_API ImagePlugin {
     /** @brief The sampler used by images whose sampler is @c Default. */
     ImageSamplerDescriptor default_sampler = ImageSamplerDescriptor::linear();
 

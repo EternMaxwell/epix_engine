@@ -17,7 +17,7 @@
 #include <epix/assets/io/reader.hpp>
 
 namespace epix::assets {
-EPIX_EXPORT struct FileAssetReader : public AssetReader {
+EPIX_EXPORT struct EPIX_API FileAssetReader : public AssetReader {
    private:
     std::filesystem::path m_root;
 
@@ -39,7 +39,7 @@ EPIX_EXPORT struct FileAssetReader : public AssetReader {
 };
 static_assert(!std::is_abstract_v<FileAssetReader>);
 
-EPIX_EXPORT struct FileAssetWriter : public AssetWriter {
+EPIX_EXPORT struct EPIX_API FileAssetWriter : public AssetWriter {
    private:
     std::filesystem::path m_root;
 

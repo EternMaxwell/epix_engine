@@ -14,7 +14,11 @@ module scanning, and `import std` support.
 - **Git submodules**: most dependencies live under `libs/`.
 - **Graphics stack**: render examples need WebGPU/Vulkan support on the host.
 
-The engine builds with `EPIX_CXX_MODULE=ON`; disabling it is not supported.
+The engine is built as a single library target, `epix_engine`, shared by default.
+Both the header build (`EPIX_CXX_MODULE=OFF`, the configuration the presets use)
+and the module build (`EPIX_CXX_MODULE=ON`) are supported. See
+[shared-build.md](shared-build.md) for the target layout, the `EPIX_API` rule and
+the state that must live in a translation unit under a DLL.
 
 ## Dependencies
 
@@ -67,8 +71,13 @@ To build a specific target, ask CMake for available targets for your generator o
 inspect the configure output, then pass `--target`:
 
 ```bash
-cmake --build build --target epix_ecs epix_app
+cmake --build build --target epix_engine
 ```
+
+`tests/` and `examples/` at the repository root hold one executable per source
+file, named `tests_header_<group>_<file>` / `examples_header_<group>_<file>`
+(and `*_module_*` for the module variants); every one of them links only
+`epix_engine`.
 
 ## Test
 
@@ -85,15 +94,17 @@ as `assets/...` resolve consistently.
 
 | Option | Default | Notes |
 | ------ | ------- | ----- |
-| `EPIX_ENABLE_TEST` | `ON` | Builds GoogleTest-based engine tests. |
-| `EPIX_ENABLE_EXAMPLE` | `ON` | Builds example executables from module example folders. |
+| `EPIX_ENABLE_SHARED` | `ON` | Builds `epix_engine` as a shared library; `OFF` builds a static library. |
+| `EPIX_ENABLE_TEST` | `ON` | Builds GoogleTest-based engine tests from `tests/`. |
+| `EPIX_ENABLE_EXAMPLE` | `ON` | Builds example executables from `examples/`. |
 | `EPIX_ENABLE_TRACY` | `OFF` | Enables Tracy profiling definitions. |
 | `EPIX_USE_VOLK` | `ON` | Enables Volk-related compile definitions for Vulkan loading. |
-| `EPIX_CXX_MODULE` | `ON` | Mandatory; the project errors if this is disabled. |
+| `EPIX_CXX_MODULE` | `ON` | Builds the `modules/*.cppm` units into `epix_engine`; the `*-no-modules` presets turn it off. |
 | `EPIX_IMPORT_STD` | `ON` | Enables `import std`; turn off for toolchains where standard library modules are unstable. |
 | `EPIX_WGPU_LINK_TYPE` | `STATIC` | WebGPU native link mode; accepted values are `STATIC` and `SHARED`. |
 | `EPIX_WGPU_NATIVE_VERSION` | `v25.0.2.2` | wgpu-native version fetched during configure. |
 | `EPIX_WGPU_GENERATE_ON_CONFIGURE` | `ON` | Generates the WebGPU C++ module wrapper during configure when the generator is available. |
+| `EPIX_EXAMPLE_USE_MIMALLOC` | `ON` | Links mimalloc (static) into examples; ignored while `EPIX_ENABLE_SHARED=ON`. |
 
 Use ordinary CMake cache syntax to override options:
 
@@ -116,16 +127,16 @@ may be required the first time you configure a clean build directory.
 
 ## Examples
 
-When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables for every module that adds examples.
-Examples are often located in `examples` subfolder of a module, some examples:
+When `EPIX_ENABLE_EXAMPLE=ON`, CMake creates example executables for every
+example source under `examples/<group>/{header,module}`. Some examples:
 
-- [../epix_engine/window/examples/glfw/module/module_test.cpp](../epix_engine/window/examples/glfw/module/module_test.cpp)
-	for a simple GLFW window app.
-- [../epix_engine/render/examples/module/render_plugin.cpp](../epix_engine/render/examples/module/render_plugin.cpp)
+- [../examples/window/glfw/header/](../examples/window/glfw/header/) for a simple
+	GLFW window app.
+- [../examples/render/header/render_plugin.cpp](../examples/render/header/render_plugin.cpp)
 	for the render plugin path.
-- [../epix_engine/sprite_render/examples/sprite/module/basic.cpp](../epix_engine/sprite_render/examples/sprite/module/basic.cpp)
+- [../examples/sprite_render/sprite/header/basic.cpp](../examples/sprite_render/sprite/header/basic.cpp)
 	for a small 2D sprite app.
-- [../epix_engine/sprite_render/examples/text/module/text_interactive.cpp](../epix_engine/sprite_render/examples/text/module/text_interactive.cpp)
+- [../examples/sprite_render/text/header/text_interactive.cpp](../examples/sprite_render/text/header/text_interactive.cpp)
 	for text rendering.
 
 Run examples from the build tree produced by your generator. For debugging,

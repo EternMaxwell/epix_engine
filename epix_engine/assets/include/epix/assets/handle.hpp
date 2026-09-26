@@ -52,7 +52,7 @@ struct StrongHandle : NonCopyNonMove {
     ~StrongHandle();
 };
 /** @brief Forward declaration. */
-EPIX_EXPORT struct UntypedHandle;
+EPIX_EXPORT struct EPIX_API UntypedHandle;
 /** @brief Forward declaration for make_strong. */
 EPIX_EXPORT template <Asset T>
 struct Assets;
@@ -154,7 +154,7 @@ struct Handle {
 /** @brief Type-erased handle to an asset of any type.
  *  Works like Handle<T> but stores a type_index at runtime.
  *  Can be converted to Handle<T> via try_typed() / typed(). */
-EPIX_EXPORT struct UntypedHandle {
+EPIX_EXPORT struct EPIX_API UntypedHandle {
    private:
     std::variant<std::shared_ptr<StrongHandle>, UntypedAssetId> ref;
 
@@ -301,7 +301,7 @@ Handle<T>& Handle<T>::operator=(UntypedHandle&& other) {
     return *this;
 }
 
-EPIX_EXPORT struct HandleProvider {
+EPIX_EXPORT struct EPIX_API HandleProvider {
    private:
     AssetIndexAllocator index_allocator;
     epix::async_channel::Sender<DestructionEvent> event_sender;

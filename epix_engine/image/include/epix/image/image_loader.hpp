@@ -36,7 +36,7 @@ EPIX_EXPORT struct FileTextureError {
 };
 
 /** @brief Bevy `FileTextureError`'s `Display` text. */
-EPIX_EXPORT std::string to_string(const FileTextureError& error);
+EPIX_EXPORT EPIX_API std::string to_string(const FileTextureError& error);
 
 /** @brief Error returned when loading an image through `ImageLoader` (Bevy
  * `ImageLoaderError`). Bevy marks the enum `#[non_exhaustive]`; the C++
@@ -68,11 +68,11 @@ EPIX_EXPORT struct ImageLoaderError {
 };
 
 /** @brief Bevy `ImageLoaderError`'s `Display` text. */
-EPIX_EXPORT std::string to_string(const ImageLoaderError& error);
-EPIX_EXPORT std::exception_ptr to_exception_ptr(const ImageLoaderError& error);
+EPIX_EXPORT EPIX_API std::string to_string(const ImageLoaderError& error);
+EPIX_EXPORT EPIX_API std::exception_ptr to_exception_ptr(const ImageLoaderError& error);
 
 /** @brief Asset loader for formats supported by Epix's selected decoder. */
-EPIX_EXPORT struct ImageLoader {
+EPIX_EXPORT struct EPIX_API ImageLoader {
     using Asset = Image;
     /** @brief Bevy names this `ImageLoaderSettings`; Epix's nested alias keeps
      * `ImageLoader::Settings` working as the loader seam expects. */

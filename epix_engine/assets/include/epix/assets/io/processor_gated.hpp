@@ -20,7 +20,7 @@ namespace epix::assets {
 /// An AssetReader that will prevent asset (and asset metadata) reads from returning
 /// for a given path until that path has been processed by AssetProcessor.
 /// The inner reader is borrowed (not owned) - the caller must ensure it outlives this object.
-struct ProcessorGatedReader : public AssetReader {
+struct EPIX_API ProcessorGatedReader : public AssetReader {
    private:
     const AssetReader* m_reader;  // borrowed, must outlive this
     AssetSourceId m_source;

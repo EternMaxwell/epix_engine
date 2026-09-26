@@ -39,9 +39,9 @@
 #include <epix/mesh/vertex_buffer_layout.hpp>
 
 namespace epix::mesh {
-struct Mesh;
-class SerializedMesh;
-class MeshDeserializer;
+struct EPIX_API Mesh;
+class EPIX_API SerializedMesh;
+class EPIX_API MeshDeserializer;
 
 namespace detail {
 /** @brief Rust's `assert!(condition, message)`: it panics in every build.
@@ -192,10 +192,10 @@ EPIX_EXPORT namespace mesh_triangles_error {
  * Epix uses GLM directly as its math layer, so the primitive required by
  * `Mesh::triangles` is exposed by the mesh module.
  */
-struct Triangle3dMeshBuilder;
+struct EPIX_API Triangle3dMeshBuilder;
 
 /** @brief Three vertices forming a 3D triangle (Bevy `Triangle3d`). */
-EPIX_EXPORT struct Triangle3d {
+EPIX_EXPORT struct EPIX_API Triangle3d {
     /** @brief Bevy's default triangle `[+Y * 0.5, (-0.5, -0.5, 0.0), (0.5, -0.5, 0.0)]`. */
     std::array<glm::vec3, 3> vertices{glm::vec3(0.0f, 0.5f, 0.0f), glm::vec3(-0.5f, -0.5f, 0.0f),
                                       glm::vec3(0.5f, -0.5f, 0.0f)};
@@ -472,7 +472,7 @@ EPIX_EXPORT class Indices {
 };
 
 namespace detail {
-struct MeshTriangleAt {
+struct EPIX_API MeshTriangleAt {
     const std::vector<VertexAttributeValues::Float32x3Value>* vertices;
     const Indices* indices;
     wgpu::PrimitiveTopology topology;
@@ -643,7 +643,7 @@ EPIX_EXPORT struct Aabb3d {
  * insert_indices/with_inserted_indices to add index data. Standard attribute constants
  * (ATTRIBUTE_POSITION, etc.) are provided.
  */
-EPIX_EXPORT struct Mesh {
+EPIX_EXPORT struct EPIX_API Mesh {
    private:
     using AttributeMap = std::map<MeshVertexAttributeId, detail::MeshAttributeData>;
 
@@ -1120,19 +1120,19 @@ EPIX_EXPORT struct Mesh {
 /** @brief Create a circle mesh centered at origin with given radius.
  * @param segment_count Number of line segments; auto-calculated if not provided.
  */
-EPIX_EXPORT Mesh make_circle(float radius,
-                             std::optional<glm::vec4> color             = std::nullopt,
-                             std::optional<std::uint32_t> segment_count = std::nullopt);
+EPIX_EXPORT EPIX_API Mesh make_circle(float radius,
+                                      std::optional<glm::vec4> color             = std::nullopt,
+                                      std::optional<std::uint32_t> segment_count = std::nullopt);
 /** @brief Create a box mesh on the XY plane. */
-EPIX_EXPORT Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
+EPIX_EXPORT EPIX_API Mesh make_box2d(float width, float height, std::optional<glm::vec4> color = std::nullopt);
 /** @brief Create a box mesh on the XY plane with UV coordinates. */
-EPIX_EXPORT Mesh make_box2d_uv(float width,
-                               float height,
-                               glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
-                               std::optional<glm::vec4> vertex_color = std::nullopt);
+EPIX_EXPORT EPIX_API Mesh make_box2d_uv(float width,
+                                       float height,
+                                       glm::vec4 uv_rect                     = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f),
+                                       std::optional<glm::vec4> vertex_color = std::nullopt);
 
 /** @brief Plugin that registers mesh asset loading and GPU upload systems. */
-EPIX_EXPORT struct MeshPlugin {
+EPIX_EXPORT struct EPIX_API MeshPlugin {
     void attach(app::App& app);
 };
 }  // namespace epix::mesh

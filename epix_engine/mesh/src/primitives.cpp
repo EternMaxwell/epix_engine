@@ -3011,19 +3011,19 @@ Mesh RectangleMeshBuilder::build() const {
 
 // The ring builder is defined in this translation unit, so the shape combinations that Epix
 // supports are instantiated here to keep template bodies out of the header.
-template struct RingMeshBuilder<Circle>;
-template struct RingMeshBuilder<Capsule2d>;
-template struct RingMeshBuilder<CircularSegment>;
-template struct RingMeshBuilder<Rectangle>;
-template struct RingMeshBuilder<RegularPolygon>;
-template struct RingMeshBuilder<Rhombus>;
-template struct RingMeshBuilder<Triangle2d>;
+template struct EPIX_API RingMeshBuilder<Circle>;
+template struct EPIX_API RingMeshBuilder<Capsule2d>;
+template struct EPIX_API RingMeshBuilder<CircularSegment>;
+template struct EPIX_API RingMeshBuilder<Rectangle>;
+template struct EPIX_API RingMeshBuilder<RegularPolygon>;
+template struct EPIX_API RingMeshBuilder<Rhombus>;
+template struct EPIX_API RingMeshBuilder<Triangle2d>;
 
-template struct Ring<Circle>;
-template struct Ring<Capsule2d>;
-template struct Ring<CircularSegment>;
-template struct Ring<Rectangle>;
-template struct Ring<RegularPolygon>;
-template struct Ring<Rhombus>;
-template struct Ring<Triangle2d>;
+template struct EPIX_API Ring<Circle>;
+template struct EPIX_API Ring<Capsule2d>;
+template struct EPIX_API Ring<CircularSegment>;
+template struct EPIX_API Ring<Rectangle>;
+template struct EPIX_API Ring<RegularPolygon>;
+template struct EPIX_API Ring<Rhombus>;
+template struct EPIX_API Ring<Triangle2d>;
 }  // namespace epix::mesh

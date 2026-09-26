@@ -22,7 +22,7 @@
 #include <epix/assets/path.hpp>
 
 namespace epix::assets {
-EPIX_EXPORT struct AssetSource {
+EPIX_EXPORT struct EPIX_API AssetSource {
    private:
     AssetSourceId m_id;
     std::unique_ptr<AssetReader> m_reader;                    // required
@@ -63,7 +63,7 @@ EPIX_EXPORT struct AssetSource {
         std::filesystem::path path);
 };
 
-EPIX_EXPORT struct AssetSourceBuilder {
+EPIX_EXPORT struct EPIX_API AssetSourceBuilder {
     std::function<std::unique_ptr<AssetReader>()> reader_factory;                                   // required
     std::optional<std::function<std::unique_ptr<AssetWriter>()>> writer_factory;                    // optional
     std::optional<std::function<std::unique_ptr<AssetReader>()>> processed_reader_factory;          // optional
@@ -119,7 +119,7 @@ EPIX_EXPORT struct AssetSourceBuilder {
                                                std::optional<std::filesystem::path> processed_path = std::nullopt);
 };
 
-EPIX_EXPORT struct AssetSources {
+EPIX_EXPORT struct EPIX_API AssetSources {
    private:
     AssetSource m_default;
     std::unordered_map<std::string, AssetSource> m_sources;
@@ -152,7 +152,7 @@ EPIX_EXPORT struct AssetSources {
         utils::function_ref<std::unique_ptr<AssetReader>(AssetSourceId, const AssetReader&)> factory);
 };
 
-EPIX_EXPORT struct AssetSourceBuilders {
+EPIX_EXPORT struct EPIX_API AssetSourceBuilders {
    private:
     std::unordered_map<std::string, AssetSourceBuilder> m_sources;
     std::optional<AssetSourceBuilder> m_default;

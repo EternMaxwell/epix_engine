@@ -54,7 +54,7 @@ EPIX_EXPORT struct DirEvent {
 };
 
 // Public value type: either a read-only view (std::span) or an owned shared buffer
-EPIX_EXPORT struct Value {
+EPIX_EXPORT struct EPIX_API Value {
     std::variant<std::span<const std::byte>, std::shared_ptr<std::vector<std::byte>>> v;
     static Value from_span(std::span<const std::byte> s) noexcept { return Value{.v = s}; }
     static Value from_shared(std::shared_ptr<std::vector<std::byte>> b) noexcept { return Value{.v = b}; }
@@ -66,7 +66,7 @@ EPIX_EXPORT struct Data {
 };
 
 // forward declare Directory for recursive node variant
-EPIX_EXPORT class Directory;
+EPIX_EXPORT class EPIX_API Directory;
 
 // Internal storage converts any incoming Value into a node map so stored Data is stable
 using Node = std::variant<Data, Directory>;
@@ -96,7 +96,7 @@ struct DirectoryInternal {
  * callbacks and polling for changes. The directory paths are always relative to
  * a virtual root, which is specified when creating the directory.
  */
-EPIX_EXPORT class Directory {
+EPIX_EXPORT class EPIX_API Directory {
    public:
     static Directory create(const std::filesystem::path& path);
 

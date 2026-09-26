@@ -192,7 +192,7 @@ EPIX_EXPORT namespace epix::transform {
         Propagate = 0,
     };
     /** @brief Plugin that registers transform propagation systems. */
-    struct TransformPlugin {
+    struct EPIX_API TransformPlugin {
         void attach(epix::app::App& app);
     };
 }  // namespace epix::transform

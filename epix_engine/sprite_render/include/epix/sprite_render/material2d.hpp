@@ -378,7 +378,7 @@ struct Material2dPlugin {
 /** @brief Bevy `ColorMaterialPlugin` (`color_material.rs:11-33`): publishes the
  *  color material shader, installs `Material2dPlugin<ColorMaterial>` and
  *  inserts the default magenta material. */
-EPIX_EXPORT struct ColorMaterialPlugin {
+EPIX_EXPORT struct EPIX_API ColorMaterialPlugin {
     void attach(app::App& app);
 
    private:

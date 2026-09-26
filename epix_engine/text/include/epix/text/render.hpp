@@ -32,7 +32,7 @@ namespace epix::text {
  * (`text2d.rs:95`). The `offset` field is an Epix extension: Bevy has no
  * per-entity text offset.
  */
-EPIX_EXPORT struct Text2d {
+EPIX_EXPORT struct EPIX_API Text2d {
     /** @brief Pixel offset from the entity's transform position. */
     glm::vec2 offset = glm::vec2(0.0f);
 
@@ -51,7 +51,7 @@ EPIX_EXPORT struct Text2d {
  *  `PostUpdate` inside `VisibilitySystems::CalculateBounds` and before
  *  `CheckVisibility`, exactly as `sprite::calculate_bounds_2d` is registered, so a
  *  caller with its own schedule can do the same. */
-EPIX_EXPORT void calculate_bounds_text2d(
+EPIX_EXPORT EPIX_API void calculate_bounds_text2d(
     ecs::Commands commands,
     ecs::Query<ecs::Item<ecs::Entity, const ShapedText&, const sprite::Anchor&, const TextBounds&>,
                ecs::Filter<ecs::Without<camera::Aabb>, ecs::Without<camera::NoFrustumCulling>>>
@@ -78,7 +78,7 @@ EPIX_EXPORT struct Text2dBundle {
  * (`extract_text2d_sprite`, `text2d/mod.rs:25`), which Epix mirrors by
  * extracting `ExtractedSprite`s from the text module and handing them to the
  * sprite pipeline. */
-EPIX_EXPORT struct TextRenderPlugin {
+EPIX_EXPORT struct EPIX_API TextRenderPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
 };

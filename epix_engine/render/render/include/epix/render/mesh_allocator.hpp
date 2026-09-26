@@ -307,7 +307,7 @@ EPIX_EXPORT struct MeshAllocator {
 
     /** @brief Construct after render-device initialization (Bevy `FromWorld`
      * for `MeshAllocator`). */
-    static MeshAllocator from_world(epix::ecs::World& world);
+    EPIX_API static MeshAllocator from_world(epix::ecs::World& world);
 
    private:
     explicit MeshAllocator(bool supports_general_vertex_slabs)
@@ -624,7 +624,7 @@ EPIX_EXPORT struct MeshAllocator {
                          ::epix::mesh::MeshVertexBufferLayouts& mesh_vertex_buffer_layouts,
                          const wgpu::Device& device, const wgpu::Queue& queue);
 
-    friend void allocate_and_free_meshes(
+    friend EPIX_API void allocate_and_free_meshes(
         ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
         ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
         ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts,
@@ -650,14 +650,14 @@ EPIX_EXPORT struct MeshAllocator {
 
 /** @brief Plugin that manages render-world mesh GPU allocation (Bevy
  * `bevy_render::mesh::allocator::MeshAllocatorPlugin`). */
-EPIX_EXPORT struct MeshAllocatorPlugin {
+EPIX_EXPORT struct EPIX_API MeshAllocatorPlugin {
     void attach(app::App& app);
     void ready(app::App& app);
 };
 
 /** @brief Process extracted mesh additions, modifications, and removals and
  * update their shared GPU slabs (Bevy `allocate_and_free_meshes`). */
-EPIX_EXPORT void allocate_and_free_meshes(
+EPIX_EXPORT EPIX_API void allocate_and_free_meshes(
     ecs::ResMut<MeshAllocator> mesh_allocator, ecs::Res<MeshAllocatorSettings> mesh_allocator_settings,
     ecs::Res<ExtractedAssets<::epix::render::mesh::RenderMesh>> extracted_meshes,
     ecs::ResMut<::epix::mesh::MeshVertexBufferLayouts> mesh_vertex_buffer_layouts, ecs::Res<wgpu::Device> device,

@@ -23,11 +23,11 @@
 
 namespace epix::mesh {
 
-class VertexAttributeValues;
+class EPIX_API VertexAttributeValues;
 
 /** @brief Error produced when a tagged vertex-attribute value cannot be
  * converted to the requested vector type (Bevy `FromVertexAttributeError`). */
-EPIX_EXPORT struct FromVertexAttributeError {
+EPIX_EXPORT struct EPIX_API FromVertexAttributeError {
     std::shared_ptr<VertexAttributeValues> from;
     std::string_view variant;
     std::string_view into;
@@ -77,7 +77,7 @@ EPIX_EXPORT inline glm::vec3 triangle_normal(std::array<float, 3> a, std::array<
  * for example, signed and normalized signed data cannot be confused merely
  * because both use `std::array<std::int16_t, N>`.
  */
-EPIX_EXPORT class VertexAttributeValues {
+EPIX_EXPORT class EPIX_API VertexAttributeValues {
    public:
     using Float32x2Value = std::array<float, 2>;
     using Float32x3Value = std::array<float, 3>;

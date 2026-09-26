@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>

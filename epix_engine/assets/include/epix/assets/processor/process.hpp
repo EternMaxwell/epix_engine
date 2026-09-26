@@ -32,7 +32,7 @@
 namespace epix::assets {
 
 // Forward declarations
-EPIX_EXPORT struct AssetProcessor;
+EPIX_EXPORT struct EPIX_API AssetProcessor;
 EPIX_EXPORT struct ProcessContext;
 
 // ---- Process Concept ----

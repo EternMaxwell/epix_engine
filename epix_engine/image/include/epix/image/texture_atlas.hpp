@@ -29,7 +29,7 @@ struct PackedLocation;
 }  // namespace detail
 
 /** @brief Asset describing the pixel rectangles in a texture atlas. */
-EPIX_EXPORT struct TextureAtlasLayout {
+EPIX_EXPORT struct EPIX_API TextureAtlasLayout {
     glm::uvec2 size{0u};
     std::vector<URect> textures;
 
@@ -104,7 +104,7 @@ EPIX_EXPORT struct TextureAtlasSources {
 };
 
 /** @brief Registers `TextureAtlasLayout` assets. */
-EPIX_EXPORT struct TextureAtlasPlugin {
+EPIX_EXPORT struct EPIX_API TextureAtlasPlugin {
     void attach(epix::app::App& app);
 };
 
@@ -127,7 +127,7 @@ EPIX_EXPORT namespace dynamic_texture_atlas_builder_error {
 
 /** @brief Error produced by `DynamicTextureAtlasBuilder` (Bevy
  * `DynamicTextureAtlasBuilderError`). */
-EPIX_EXPORT struct DynamicTextureAtlasBuilderError
+EPIX_EXPORT struct EPIX_API DynamicTextureAtlasBuilderError
     : std::variant<dynamic_texture_atlas_builder_error::FailedToAllocateSpace,
                    dynamic_texture_atlas_builder_error::UninitializedAtlas,
                    dynamic_texture_atlas_builder_error::UninitializedSourceTexture,
@@ -149,7 +149,7 @@ EPIX_EXPORT struct DynamicTextureAtlasBuilderError
  *
  * Like Bevy's, the allocator and the padding are private: the only surface is the constructor and
  * `add_texture`. */
-EPIX_EXPORT class DynamicTextureAtlasBuilder {
+EPIX_EXPORT class EPIX_API DynamicTextureAtlasBuilder {
    public:
     /** @brief Create a builder for an atlas of `size`, with `padding` pixels of gap between
      * textures on both axes. */
@@ -194,7 +194,7 @@ EPIX_EXPORT namespace texture_atlas_builder_error {
 }  // namespace texture_atlas_builder_error
 
 /** @brief Error produced by `TextureAtlasBuilder` (Bevy `TextureAtlasBuilderError`). */
-EPIX_EXPORT struct TextureAtlasBuilderError : std::variant<texture_atlas_builder_error::NotEnoughSpace,
+EPIX_EXPORT struct EPIX_API TextureAtlasBuilderError : std::variant<texture_atlas_builder_error::NotEnoughSpace,
                                                            texture_atlas_builder_error::WrongFormat,
                                                            texture_atlas_builder_error::UninitializedAtlas,
                                                            texture_atlas_builder_error::UninitializedSourceTexture,
@@ -219,7 +219,7 @@ using TextureAtlasBuilderResult = std::expected<T, TextureAtlasBuilderError>;
  *
  * Like Bevy's `&'a Image`, the builder *borrows* the images it packs: the referenced images must
  * outlive the builder and its `build()` call. */
-EPIX_EXPORT class [[nodiscard]] TextureAtlasBuilder {
+EPIX_EXPORT class EPIX_API [[nodiscard]] TextureAtlasBuilder {
    public:
     /** @brief Bevy's `Default`: a 256x256 initial atlas, at most 2048x2048,
      * `Rgba8UnormSrgb`, automatic format conversion, no padding. */

@@ -179,7 +179,7 @@ EPIX_EXPORT struct ViewEnvironmentMapUniformOffset {
  *  view without the component still gets the default instance - which is what makes
  *  `prepare_environment_uniform_buffer`'s offset-0 arm cover only views that
  *  extraction never saw. */
-EPIX_EXPORT void gather_environment_map_uniform(
+EPIX_EXPORT EPIX_API void gather_environment_map_uniform(
     app::Extract<ecs::Query<ecs::Item<::epix::render::sync_world::RenderEntity,
                                      ecs::Opt<const EnvironmentMapLight&>>,
                             ecs::With<::epix::camera::Camera3d>>>
@@ -195,7 +195,7 @@ EPIX_EXPORT void gather_environment_map_uniform(
  *  business, and offset 0 is the identity transform the default uniform already holds.
  *  Writing the default would work too, but it would spend a uniform slot per view that
  *  has no environment map at all. */
-EPIX_EXPORT void prepare_environment_uniform_buffer(
+EPIX_EXPORT EPIX_API void prepare_environment_uniform_buffer(
     ecs::Commands commands, ecs::Res<wgpu::Device> render_device, ecs::Res<wgpu::Queue> render_queue,
     ecs::ResMut<EnvironmentMapUniformBuffer> environment_uniform_buffer,
     ecs::Query<ecs::Item<ecs::Entity, ecs::Opt<const EnvironmentMapUniform&>>,

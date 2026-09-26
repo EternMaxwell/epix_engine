@@ -112,7 +112,7 @@ using OptRef = std::optional<std::reference_wrapper<const T>>;
  *  component flags, the shared record from the GPU factory, and the culling data
  *  only when GPU culling is on. Epix's `Resource` wrappers are reached through
  *  `operator*`, which is where Bevy derefs them. */
-EPIX_EXPORT void extract_mesh_for_gpu_building(ecs::Entity entity,
+EPIX_EXPORT EPIX_API void extract_mesh_for_gpu_building(ecs::Entity entity,
                                                const camera::ViewVisibility& view_visibility,
                                                const transform::GlobalTransform& transform,
                                                OptRef<PreviousGlobalTransform> previous_transform,
@@ -139,7 +139,7 @@ EPIX_EXPORT void extract_mesh_for_gpu_building(ecs::Entity entity,
  *  `RenderMeshInstances` sides make a runtime property; Bevy panics otherwise and
  *  Epix throws. Visibility ranges arrive as a resource rather than through the
  *  query, because they are per-range data the extraction only looks up. */
-EPIX_EXPORT void extract_meshes_for_gpu_building(
+EPIX_EXPORT EPIX_API void extract_meshes_for_gpu_building(
     ecs::ResMut<RenderMeshInstances> render_mesh_instances,
     ecs::Res<render::view::RenderVisibilityRanges> render_visibility_ranges,
     ecs::ResMut<RenderMeshInstanceGpuQueues> render_mesh_instance_queues,

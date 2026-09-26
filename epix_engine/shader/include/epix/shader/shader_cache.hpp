@@ -83,7 +83,7 @@ EPIX_EXPORT struct ShaderCacheSource {
  * - Slang compilation failed,
  * - backend shader-module creation failed.
  */
-EPIX_EXPORT struct ShaderCacheError {
+EPIX_EXPORT struct EPIX_API ShaderCacheError {
     /** @brief The requested shader asset is missing from the cache. */
     struct ShaderNotLoaded {
         assets::AssetId<Shader> id;
@@ -187,7 +187,7 @@ EPIX_EXPORT struct ShaderCacheError {
  * caches compiled modules by definition set, and tells you which pipelines need
  * to rebuild when something changes.
  */
-EPIX_EXPORT struct ShaderCache {
+EPIX_EXPORT struct EPIX_API ShaderCache {
     /** @brief Callback that turns final WGSL or SPIR-V into a backend shader module. */
     using LoadModuleFn = std::function<std::expected<wgpu::ShaderModule, ShaderCacheError>(
         const wgpu::Device&, const ShaderCacheSource&, ValidateShader)>;

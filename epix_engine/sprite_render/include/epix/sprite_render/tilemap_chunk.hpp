@@ -29,7 +29,7 @@ namespace epix::sprite_render {
 /** @brief Plugin that handles the initialization and updating of tilemap chunks
  *  (Bevy `TilemapChunkPlugin`, `tilemap_chunk/mod.rs:29-38`): adds the mesh cache
  *  and the system that keeps a chunk's tile-data image in sync with its tiles. */
-EPIX_EXPORT struct TilemapChunkPlugin {
+EPIX_EXPORT struct EPIX_API TilemapChunkPlugin {
     /** @brief Register the plugin (Bevy `Plugin::build`). */
     void attach(app::App& app);
 };
@@ -37,7 +37,7 @@ EPIX_EXPORT struct TilemapChunkPlugin {
 /** @brief Hash for the chunk-size key of `TilemapChunkMeshCache`. Bevy's
  *  `HashMap<UVec2, _>` uses Rust's `Hash for UVec2`; C++ needs an explicit hash
  *  for the vector key. */
-EPIX_EXPORT struct TilemapChunkMeshCacheHash {
+EPIX_EXPORT struct EPIX_API TilemapChunkMeshCacheHash {
     std::size_t operator()(const glm::uvec2& key) const noexcept;
 };
 
@@ -52,7 +52,7 @@ EPIX_EXPORT struct TilemapChunkMeshCache {
 /** @brief Data for a single tile in the tilemap chunk (Bevy `TileData`,
  *  `mod.rs:88-118`). Bevy stores a tagged `Color`; Epix has no `bevy_color`, so
  *  the tint is a linear `glm::vec4`, exactly as `ColorMaterial` carries it. */
-EPIX_EXPORT struct TileData {
+EPIX_EXPORT struct EPIX_API TileData {
     /** @brief The index of the tile in the corresponding tileset array texture. */
     std::uint16_t tileset_index = 0;
     /** @brief The colour tint of the tile, in linear RGBA. White leaves the
@@ -75,7 +75,7 @@ EPIX_EXPORT struct TileData {
  *  Bevy's component is `#[component(immutable)]`; Epix has no immutable
  *  components, so the struct is only conventionally immutable here. Its
  *  `on_insert` hook is the static member the component registry discovers. */
-EPIX_EXPORT struct TilemapChunk {
+EPIX_EXPORT struct EPIX_API TilemapChunk {
     /** @brief The size of the chunk in tiles. */
     glm::uvec2 chunk_size{0u};
     /** @brief The size to use for each tile, not to be confused with the size of
@@ -105,7 +105,7 @@ EPIX_EXPORT struct TilemapChunk {
  *  specific tile in the tileset; `std::nullopt` indicates an empty tile.
  *
  *  Bevy's newtype derefs to its `Vec`; Epix names the member instead. */
-EPIX_EXPORT struct TilemapChunkTileData {
+EPIX_EXPORT struct EPIX_API TilemapChunkTileData {
     /** @brief Row-major tiles, `chunk_size.x * chunk_size.y` of them, starting
      *  at the chunk's bottom-left tile. */
     std::vector<std::optional<TileData>> tiles;
@@ -124,7 +124,7 @@ EPIX_EXPORT struct TilemapChunkTileData {
  *  green and blue carry the four tint bytes, alpha carries the flags.
  *  Bevy keeps these fields private; Epix keeps them public so the layout is
  *  inspectable. */
-EPIX_EXPORT struct PackedTileData {
+EPIX_EXPORT struct EPIX_API PackedTileData {
     /** @brief The tileset array layer, in the red channel. */
     std::uint16_t tileset_index = 0;
     /** @brief The tint's sRGB bytes, in the green and blue channels. */
@@ -148,7 +148,7 @@ static_assert(sizeof(PackedTileData) == 8u);
 
 /** @brief The `Rgba16Uint` image holding one texel of `PackedTileData` per tile
  *  (Bevy `make_chunk_tile_data_image`, `tilemap_chunk_material.rs:95-114`). */
-EPIX_EXPORT image::Image make_chunk_tile_data_image(glm::uvec2 size, std::span<const PackedTileData> data);
+EPIX_EXPORT EPIX_API image::Image make_chunk_tile_data_image(glm::uvec2 size, std::span<const PackedTileData> data);
 
 /** @brief Material used for rendering tilemap chunks (Bevy `TilemapChunkMaterial`,
  *  `tilemap_chunk_material.rs:27-50`): a tileset array texture sampled by the
@@ -176,7 +176,7 @@ EPIX_EXPORT struct TilemapChunkMaterial : Material2d<TilemapChunkMaterial> {
 
 /** @brief Plugin that adds support for tilemap chunk materials (Bevy
  *  `TilemapChunkMaterialPlugin`, `tilemap_chunk_material.rs:12-21`). */
-EPIX_EXPORT struct TilemapChunkMaterialPlugin {
+EPIX_EXPORT struct EPIX_API TilemapChunkMaterialPlugin {
     /** @brief Register the plugin (Bevy `Plugin::build`). */
     void attach(app::App& app);
 };
@@ -188,7 +188,7 @@ EPIX_EXPORT struct TilemapChunkMaterialPlugin {
  *  event that makes the render world re-upload the texture; the tuple copy below
  *  is the same write, because a chunk's tile data always has exactly the length
  *  its image was created with. */
-EPIX_EXPORT void update_tilemap_chunk_indices(
+EPIX_EXPORT EPIX_API void update_tilemap_chunk_indices(
     ecs::Query<ecs::Item<ecs::Entity, const TilemapChunk&, const TilemapChunkTileData&,
                          const MeshMaterial2d<TilemapChunkMaterial>&>,
                ecs::Modified<TilemapChunkTileData>>
@@ -204,7 +204,7 @@ namespace epix::render::render_resource {
  *  declares (`tilemap_chunk_material.rs:31-36`). The material has no uniform, so
  *  its `Data` is the unit type Bevy's derive defaults to. */
 template <>
-struct AsBindGroup<epix::sprite_render::TilemapChunkMaterial> {
+struct EPIX_API AsBindGroup<epix::sprite_render::TilemapChunkMaterial> {
     using Data  = std::monostate;
     /** @brief The prepared images both textures are resolved from. */
     using Param = std::tuple<epix::ecs::Res<RenderAssets<texture::GpuImage>>>;

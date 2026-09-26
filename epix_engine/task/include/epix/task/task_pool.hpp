@@ -155,7 +155,7 @@ EPIX_EXPORT enum class TaskPoolBackend {
 
 // ── TaskPoolBuilder ────────────────────────────────────────────────────────
 
-EPIX_EXPORT struct TaskPoolBuilder {
+EPIX_EXPORT struct EPIX_API TaskPoolBuilder {
     std::optional<size_t> m_num_threads;
     std::optional<std::string> m_thread_name;
     std::function<void()> m_on_thread_spawn;
@@ -200,7 +200,7 @@ EPIX_EXPORT struct TaskPoolBuilder {
 
 // ── TaskPool ───────────────────────────────────────────────────────────────
 
-EPIX_EXPORT struct TaskPool {
+EPIX_EXPORT struct EPIX_API TaskPool {
     TaskPool();
     explicit TaskPool(TaskPoolBuilder builder);
     ~TaskPool();
@@ -284,12 +284,12 @@ EPIX_EXPORT struct TaskPool {
     template <typename F>
         requires std::invocable<F> && std::move_constructible<F>
     [[nodiscard]] auto spawn_local(F&& work) {
-        if (!t_local_ctx) {
-            t_local_ctx = std::make_unique<asio::io_context>();
-            t_local_work.emplace(asio::make_work_guard(*t_local_ctx));
+        if (!t_local_ctx()) {
+            t_local_ctx() = std::make_unique<asio::io_context>();
+            t_local_work().emplace(asio::make_work_guard(*t_local_ctx()));
         }
         auto [runnable, task] = async_task::spawn(
-            std::forward<F>(work), [ctx = t_local_ctx.get()](async_task::Runnable r, async_task::ScheduleInfo) {
+            std::forward<F>(work), [ctx = t_local_ctx().get()](async_task::Runnable r, async_task::ScheduleInfo) {
                 auto runner = std::make_shared<async_task::Runnable>(std::move(r));
                 auto poll   = std::make_shared<std::function<void()>>();
                 *poll       = [runner, ctx, poll]() {
@@ -305,12 +305,12 @@ EPIX_EXPORT struct TaskPool {
     }
 
     void with_local_executor(std::function<void()> f) {
-        if (!t_local_ctx) {
-            t_local_ctx = std::make_unique<asio::io_context>();
-            t_local_work.emplace(asio::make_work_guard(*t_local_ctx));
+        if (!t_local_ctx()) {
+            t_local_ctx() = std::make_unique<asio::io_context>();
+            t_local_work().emplace(asio::make_work_guard(*t_local_ctx()));
         }
         f();
-        t_local_ctx->poll();
+        t_local_ctx()->poll();
     }
 
     // ── scope ─────────────────────────────────────────────────────────
@@ -332,10 +332,7 @@ EPIX_EXPORT struct TaskPool {
         return scope<T>(std::forward<F>(f));
     }
 
-    [[nodiscard]] static ThreadExecutor& get_thread_executor() {
-        static thread_local ThreadExecutor s_exec;
-        return s_exec;
-    }
+    [[nodiscard]] static ThreadExecutor& get_thread_executor();
 
    private:
     friend struct TaskPoolBuilder;
@@ -346,8 +343,10 @@ EPIX_EXPORT struct TaskPool {
     TaskPoolBackend m_backend_kind = TaskPoolBackend::AsioThreadPool;
     size_t m_thread_count          = 0;
 
-    static thread_local inline std::unique_ptr<asio::io_context> t_local_ctx;
-    static thread_local inline std::optional<asio::executor_work_guard<asio::io_context::executor_type>> t_local_work;
+    // Defined in task_pool.cpp: thread-local state cannot cross a DLL boundary
+    // (MSVC C2492), so it is reached through these accessors instead.
+    static std::unique_ptr<asio::io_context>& t_local_ctx();
+    static std::optional<asio::executor_work_guard<asio::io_context::executor_type>>& t_local_work();
 
     TaskPool(std::shared_ptr<void> backend, TaskPoolBackend kind, size_t n)
         : m_backend(std::move(backend)), m_backend_kind(kind), m_thread_count(n) {}

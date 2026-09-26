@@ -35,7 +35,7 @@ EPIX_EXPORT struct AccessConflicts {
     }
 };
 /** @brief Tracks read and write access to components and resources for conflict detection. */
-EPIX_EXPORT struct Access {
+EPIX_EXPORT struct EPIX_API Access {
    public:
     Access() = default;
 
@@ -227,7 +227,7 @@ EPIX_EXPORT struct AccessFilters {
 };
 /** @brief Access descriptor with archetype filters, combining Access with with/without masks.
  *  Used to determine which archetypes a query matches and detect access conflicts. */
-EPIX_EXPORT struct FilteredAccess {
+EPIX_EXPORT struct EPIX_API FilteredAccess {
     /** @brief Create a FilteredAccess that matches all archetypes. */
     static FilteredAccess matches_everything() {
         FilteredAccess fa;
@@ -304,7 +304,7 @@ EPIX_EXPORT struct FilteredAccess {
 
 /** @brief Collection of FilteredAccess entries with a combined Access for conflict detection.
  *  Each system builds a FilteredAccessSet describing all its component/resource accesses. */
-EPIX_EXPORT struct FilteredAccessSet {
+EPIX_EXPORT struct EPIX_API FilteredAccessSet {
    public:
     /** @brief Get the combined Access of all entries. */
     const Access& combined_access() const noexcept { return _combined_access; }

@@ -39,7 +39,7 @@ namespace epix::ecs {
 /** @brief Central ECS world that owns all entities, components, resources, and archetypes.
  *  Non-copyable and movable. Provides methods for spawning entities, managing resources,
  *  and querying components. Supports change detection via ticks. */
-EPIX_EXPORT struct World {
+EPIX_EXPORT struct EPIX_API World {
    public:
     World(WorldId id)
         : _id(id),

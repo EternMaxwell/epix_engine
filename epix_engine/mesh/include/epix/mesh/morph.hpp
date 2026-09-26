@@ -51,7 +51,7 @@ struct TooManyTargets {
 }  // namespace morph_build_error
 
 /** @brief Error returned while creating morph weights or a morph-target image. */
-struct MorphBuildError : std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets> {
+struct EPIX_API MorphBuildError : std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets> {
     using Base = std::variant<morph_build_error::TooManyAttributes, morph_build_error::TooManyTargets>;
     using Base::Base;
 
@@ -86,8 +86,8 @@ struct MorphTextureRectangle {
     bool operator==(const MorphTextureRectangle&) const = default;
 };
 
-std::optional<MorphTextureRectangle> lowest_morph_texture_2d(std::uint32_t minimum_cells,
-                                                             std::uint32_t maximum_edge) noexcept;
+EPIX_API std::optional<MorphTextureRectangle> lowest_morph_texture_2d(std::uint32_t minimum_cells,
+                                                                      std::uint32_t maximum_edge) noexcept;
 }  // namespace detail
 
 /** @brief An R32Float 3D image formatted for mesh morph-target rendering. */
@@ -148,7 +148,7 @@ struct MorphTargetImage {
 };
 
 /** @brief Canonical morph weights on a glTF mesh-node parent. */
-class MorphWeights {
+class EPIX_API MorphWeights {
    public:
     MorphWeights() = default;
 
@@ -170,7 +170,7 @@ class MorphWeights {
 };
 
 /** @brief Morph weights controlling one concrete mesh primitive. */
-class MeshMorphWeights {
+class EPIX_API MeshMorphWeights {
    public:
     MeshMorphWeights() = default;
 

@@ -7,7 +7,7 @@
 #endif
 
 namespace epix::app {
-EPIX_EXPORT struct App;
+EPIX_EXPORT struct EPIX_API App;
 /** @brief Read-only state resource wrapping an enum value.
  *  Only the App can modify the underlying value; systems read it via Res<State<T>>.
  *  @tparam T An enum type representing application states. */

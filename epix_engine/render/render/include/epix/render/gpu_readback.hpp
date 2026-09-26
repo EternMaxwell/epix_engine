@@ -137,7 +137,7 @@ EPIX_EXPORT struct GpuReadbackBuffer {
  * @brief Pool of readback staging buffers keyed by size, reused across frames
  * (Bevy `GpuReadbackBufferPool`).
  */
-EPIX_EXPORT struct GpuReadbackBufferPool {
+EPIX_EXPORT struct EPIX_API GpuReadbackBufferPool {
     /** @brief Map of buffer size to the list of pooled buffers. */
     std::unordered_map<std::uint64_t, std::vector<GpuReadbackBuffer>> buffers;
 
@@ -203,27 +203,27 @@ EPIX_EXPORT struct GpuReadbackMaxUnusedFrames {
 constexpr std::uint32_t COPY_BYTES_PER_ROW_ALIGNMENT = 256;
 
 /** @brief Round `value` up to a multiple of COPY_BYTES_PER_ROW_ALIGNMENT. */
-EPIX_EXPORT std::uint32_t align_byte_size(std::uint32_t value);
+EPIX_EXPORT EPIX_API std::uint32_t align_byte_size(std::uint32_t value);
 /** @brief Size of a texture copy when rows are aligned to COPY_BYTES_PER_ROW_ALIGNMENT. */
-EPIX_EXPORT std::uint32_t get_aligned_size(const wgpu::Extent3D& extent, std::uint32_t pixel_size);
+EPIX_EXPORT EPIX_API std::uint32_t get_aligned_size(const wgpu::Extent3D& extent, std::uint32_t pixel_size);
 /** @brief Bytes per texel for the given texture format; 0 if unknown. */
-EPIX_EXPORT std::uint32_t texture_format_pixel_size(wgpu::TextureFormat format);
+EPIX_EXPORT EPIX_API std::uint32_t texture_format_pixel_size(wgpu::TextureFormat format);
 /** @brief Aligned TexelCopyBufferLayout for copying an image into a buffer. */
-EPIX_EXPORT wgpu::TexelCopyBufferLayout layout_data(const wgpu::Extent3D& extent, wgpu::TextureFormat format);
+EPIX_EXPORT EPIX_API wgpu::TexelCopyBufferLayout layout_data(const wgpu::Extent3D& extent, wgpu::TextureFormat format);
 
 }  // namespace readback
 
 /** @brief ExtractSchedule system: deliver completed readbacks to the main
  * world as events and maintain the staging-buffer pool (Bevy `sync_readbacks`).
  */
-EPIX_EXPORT void sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackComplete>>> events,
+EPIX_EXPORT EPIX_API void sync_readbacks(app::Extract<ecs::ResMut<ecs::Events<ReadbackComplete>>> events,
                                 ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
                                 ecs::ResMut<readback::GpuReadbacks> readbacks,
                                 ecs::Res<readback::GpuReadbackMaxUnusedFrames> max_unused_frames);
 
 /** @brief PrepareResources system: create readback requests from Readback
  * components (Bevy `prepare_buffers`). */
-EPIX_EXPORT void prepare_buffers(
+EPIX_EXPORT EPIX_API void prepare_buffers(
     ecs::Res<wgpu::Device> device,
     ecs::ResMut<readback::GpuReadbacks> readbacks,
     ecs::ResMut<readback::GpuReadbackBufferPool> buffer_pool,
@@ -233,21 +233,21 @@ EPIX_EXPORT void prepare_buffers(
 
 /** @brief Render system (after the graph): map the staging buffers of
  * requested readbacks asynchronously (Bevy `map_buffers`). */
-EPIX_EXPORT void map_buffers(ecs::ResMut<readback::GpuReadbacks> readbacks);
+EPIX_EXPORT EPIX_API void map_buffers(ecs::ResMut<readback::GpuReadbacks> readbacks);
 
 /**
  * @brief Issue the copy commands for all requested readbacks into the current
  * command encoder. Called from the render graph finalizer (Bevy
  * `submit_readback_commands`).
  */
-EPIX_EXPORT void submit_readback_commands(epix::ecs::World& world, const wgpu::CommandEncoder& encoder);
+EPIX_EXPORT EPIX_API void submit_readback_commands(epix::ecs::World& world, const wgpu::CommandEncoder& encoder);
 
 /**
  * @brief Plugin enabling readback of GPU buffers/textures to the CPU (Bevy
  * 'GpuReadbackPlugin'). Registers the 'Readback' component extraction, the
  * staging-buffer pool, and the extract/prepare/map pipeline.
  */
-EPIX_EXPORT struct GpuReadbackPlugin {
+EPIX_EXPORT struct EPIX_API GpuReadbackPlugin {
     /** @brief Frames a buffer may be unused before removal from the pool. */
     std::size_t max_unused_frames = 10;
     void attach(app::App& app);

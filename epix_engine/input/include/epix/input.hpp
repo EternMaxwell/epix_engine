@@ -11,11 +11,11 @@
 
 EPIX_EXPORT namespace epix::input {
     /** @brief Plugin that registers input event handling systems. */
-    struct InputPlugin {
+    struct EPIX_API InputPlugin {
         void attach(epix::app::App& app);
     };
     /** @brief Debug system that logs all received input events to the console. */
-    void log_inputs(epix::ecs::EventReader<KeyInput> key_reader, epix::ecs::EventReader<MouseButtonInput> mouse_reader,
+    EPIX_API void log_inputs(epix::ecs::EventReader<KeyInput> key_reader, epix::ecs::EventReader<MouseButtonInput> mouse_reader,
                     epix::ecs::EventReader<MouseMove> mouse_move_reader,
                     epix::ecs::EventReader<MouseScroll> mouse_scroll_reader);
 }  // namespace epix::input

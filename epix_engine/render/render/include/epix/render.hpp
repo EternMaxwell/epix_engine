@@ -77,13 +77,13 @@ EPIX_EXPORT enum class WgpuSettingsPriority {
 /** @brief Reads Bevy's `WGPU_SETTINGS_PRIO` environment setting. Only the
  * case-insensitive `compatibility`, `functionality`, and `webgl2` spellings
  * are recognized; any other value has no effect. */
-EPIX_EXPORT std::optional<WgpuSettingsPriority> settings_priority_from_env() noexcept;
+EPIX_EXPORT EPIX_API std::optional<WgpuSettingsPriority> settings_priority_from_env() noexcept;
 
 /** @brief Backend bitmask used by automatic renderer creation (wgpu
  * `Backends`). It intentionally preserves every backend selected by callers;
  * the current Slang/Vulkan workaround is applied privately when the renderer
  * creates its native instance and adapter. */
-EPIX_EXPORT struct Backends {
+EPIX_EXPORT struct EPIX_API Backends {
     enum Bit : std::uint32_t {
         Noop          = 1u << 0,
         Vulkan        = 1u << 1,
@@ -436,7 +436,7 @@ EPIX_EXPORT struct WgpuSettings {
 /** @brief Stable adapter information exposed to render systems (Bevy
  * `RenderAdapterInfo`). Native `wgpu::AdapterInfo` uses borrowed string
  * views, so Epix owns copies of those strings. */
-EPIX_EXPORT struct RenderAdapterInfo {
+EPIX_EXPORT struct EPIX_API RenderAdapterInfo {
     std::string vendor;
     std::string architecture;
     std::string device;
@@ -451,10 +451,10 @@ EPIX_EXPORT struct RenderAdapterInfo {
 
 /** @brief Returns the Qualcomm Adreno model number when available (Bevy
  * `get_adreno_model`). Non-Android builds intentionally return nullopt. */
-EPIX_EXPORT std::optional<std::uint32_t> get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept;
+EPIX_EXPORT EPIX_API std::optional<std::uint32_t> get_adreno_model(const RenderAdapterInfo& adapter_info) noexcept;
 /** @brief Returns the Mali `v1.rNNp` driver revision when available (Bevy
  * `get_mali_driver_version`). Non-Android builds intentionally return nullopt. */
-EPIX_EXPORT std::optional<std::uint32_t> get_mali_driver_version(const RenderAdapterInfo& adapter_info) noexcept;
+EPIX_EXPORT EPIX_API std::optional<std::uint32_t> get_mali_driver_version(const RenderAdapterInfo& adapter_info) noexcept;
 
 /** @brief Renderer resources supplied by an embedding application (Bevy
  * `RenderResources`). Epix deliberately exposes the native wgpu handles;
@@ -494,7 +494,7 @@ EPIX_EXPORT struct RenderCreation {
 };
 
 /** @brief Plugin that initializes the WebGPU rendering subsystem. */
-EPIX_EXPORT struct RenderPlugin {
+EPIX_EXPORT struct EPIX_API RenderPlugin {
     /** @brief Automatic or host-provided renderer creation (Bevy
      * `RenderPlugin::render_creation`). */
     RenderCreation render_creation;
@@ -506,7 +506,7 @@ EPIX_EXPORT struct RenderPlugin {
     void attach(app::App&);
     void detach(app::App&) noexcept;
 };
-void render_system(ecs::World& world);
+EPIX_API void render_system(ecs::World& world);
 }  // namespace epix::render
 
 // batching.hpp's BatchingPlugin stores RenderDebugFlags by value, so it is

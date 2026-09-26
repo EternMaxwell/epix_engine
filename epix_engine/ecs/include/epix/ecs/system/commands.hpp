@@ -39,7 +39,7 @@ static_assert(system_param<Deferred<internal::CommandQueue>>);
 EPIX_EXPORT struct EntityCommands;
 /** @brief Deferred command interface for spawning/despawning entities and managing resources.
  *  Commands are queued and applied when the world is flushed. */
-EPIX_EXPORT struct Commands {
+EPIX_EXPORT struct EPIX_API Commands {
    public:
     Commands(Deferred<internal::CommandQueue> queue, const Entities& entities) noexcept
         : command_queue(std::move(queue)), entities(&entities) {}

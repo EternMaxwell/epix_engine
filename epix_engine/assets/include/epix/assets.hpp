@@ -53,7 +53,7 @@ EPIX_EXPORT enum class AssetSystems {
 };
 /** @brief Asset plugin configuration and source setup.
  *  Mirrors Bevy's AssetPlugin role: configure sources/mode and build core resources/systems. */
-EPIX_EXPORT struct AssetPlugin {
+EPIX_EXPORT struct EPIX_API AssetPlugin {
    private:
     std::vector<std::pair<AssetSourceId, AssetSourceBuilder>> m_source_builders;
 

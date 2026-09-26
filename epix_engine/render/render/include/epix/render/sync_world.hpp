@@ -18,7 +18,7 @@ namespace epix::render::sync_world {
  * @brief Marker component: the entity must be synchronized to the render world
  * (Bevy `SyncToRenderWorld`).
  */
-EPIX_EXPORT struct SyncToRenderWorld {
+EPIX_EXPORT struct EPIX_API SyncToRenderWorld {
     static void on_add(ecs::World& world, ecs::HookContext context);
     static void on_remove(ecs::World& world, ecs::HookContext context);
 };
@@ -90,7 +90,7 @@ EPIX_EXPORT struct PendingSyncEntity {
 
 /** @brief Component remove hook used by `SyncComponentPlugin<C>` (Bevy's
  * `on_remove` registration in `SyncComponentPlugin`). */
-EPIX_EXPORT void record_component_removed(ecs::World& world, ecs::HookContext context);
+EPIX_EXPORT EPIX_API void record_component_removed(ecs::World& world, ecs::HookContext context);
 
 /**
  * @brief Synchronizes entities marked with SyncToRenderWorld between the main
@@ -98,13 +98,13 @@ EPIX_EXPORT void record_component_removed(ecs::World& world, ecs::HookContext co
  * extraction each frame. It consumes `PendingSyncEntity` lifecycle records,
  * creating, despawning, or recreating render entities as Bevy does.
  */
-EPIX_EXPORT void entity_sync_system(ecs::World& main_world, ecs::World& render_world);
+EPIX_EXPORT EPIX_API void entity_sync_system(ecs::World& main_world, ecs::World& render_world);
 
 /**
  * @brief Despawns render entities marked TemporaryRenderEntity (Bevy
  * `despawn_temporary_render_entities`). Runs in `RenderSystems::PostCleanup`.
  */
-EPIX_EXPORT void remove_temporary_render_entities(ecs::World& world);
+EPIX_EXPORT EPIX_API void remove_temporary_render_entities(ecs::World& world);
 
 /**
  * @brief Plugin that keeps entities with SyncToRenderWorld synchronized
@@ -112,7 +112,7 @@ EPIX_EXPORT void remove_temporary_render_entities(ecs::World& world);
  * RenderPlugin; the sync step itself is invoked by the render app's extract
  * function.
  */
-EPIX_EXPORT struct SyncWorldPlugin {
+EPIX_EXPORT struct EPIX_API SyncWorldPlugin {
     void attach(app::App& app);
 };
 

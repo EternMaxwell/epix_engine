@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <cstddef>
@@ -43,6 +43,8 @@ EPIX_EXPORT struct Entity {
     static const Entity PLACEHOLDER;
 };
 
+// A const constant stays in the header: both images get an identical copy, which
+// is harmless, and no image has to import the object.
 inline const Entity Entity::PLACEHOLDER{UINT32_MAX, UINT32_MAX};
 }  // namespace epix::ecs
 

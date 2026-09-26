@@ -14,7 +14,7 @@
 
 namespace epix::app {
 
-EPIX_EXPORT struct App;
+EPIX_EXPORT struct EPIX_API App;
 
 /**
  * @brief Controls how many threads are allocated to a single task pool.

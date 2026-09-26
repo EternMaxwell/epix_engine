@@ -65,7 +65,7 @@ struct CursorPos {
 struct CursorEnter {
     bool entered;
 };
-struct MouseButton {
+struct EPIX_API MouseButton {
     int button;
     int action;
     int mods;
@@ -103,10 +103,10 @@ struct UserData {
     ConQueue<std::pair<int, int>> moved;
 };
 
-int map_key_to_glfw(input::KeyCode key);
-int map_mouse_button_to_glfw(input::MouseButton button);
-input::KeyCode map_glfw_key_to_input(int key);
-input::MouseButton map_glfw_mouse_button_to_input(int button);
+EPIX_API int map_key_to_glfw(input::KeyCode key);
+EPIX_API int map_mouse_button_to_glfw(input::MouseButton button);
+EPIX_API input::KeyCode map_glfw_key_to_input(int key);
+EPIX_API input::MouseButton map_glfw_mouse_button_to_input(int button);
 /** @brief Resource mapping entity IDs to their native GLFW window
  * pointers. */
 EPIX_EXPORT struct GLFWwindows : public std::unordered_map<epix::ecs::Entity, GLFWwindow*> {};
@@ -117,7 +117,7 @@ EPIX_EXPORT struct SetClipboardString {
     std::string text;
 };
 /** @brief Resource providing read access to the system clipboard. */
-EPIX_EXPORT struct Clipboard {
+EPIX_EXPORT struct EPIX_API Clipboard {
    private:
     std::string text;
 
@@ -141,7 +141,7 @@ struct CachedWindowPosSize {
  * Supports delegating rendering to a sub-app on a separate thread via
  * `set_render_app()`.
  */
-EPIX_EXPORT struct GLFWRunner : public epix::app::AppRunner {
+EPIX_EXPORT struct EPIX_API GLFWRunner : public epix::app::AppRunner {
    public:
     GLFWRunner(epix::app::App& app);
     bool step(epix::app::App& app) override;
@@ -171,7 +171,7 @@ EPIX_EXPORT struct GLFWRunner : public epix::app::AppRunner {
 };
 /** @brief Plugin that registers the GLFW windowing backend, including
  * window creation, event dispatch, and lifecycle systems. */
-EPIX_EXPORT struct GLFWPlugin {
+EPIX_EXPORT struct EPIX_API GLFWPlugin {
     void attach(epix::app::App& app);
     void detach(epix::app::App& app);
 

@@ -156,7 +156,7 @@ EPIX_EXPORT namespace epix::sprite_render {
         return lhs;
     }
 
-    struct SpritePipeline {
+    struct EPIX_API SpritePipeline {
         using Key = SpritePipelineKey;
 
         // Descriptors, as Bevy's are; the pipeline cache interns them and the
@@ -180,14 +180,14 @@ EPIX_EXPORT namespace epix::sprite_render {
 
     namespace detail {
     /** @brief Direct Bevy scaling arithmetic, exposed for parity-oracle tests. */
-    void apply_scaling(sprite::SpriteScalingMode mode,
+    EPIX_API void apply_scaling(sprite::SpriteScalingMode mode,
                        glm::vec2 texture_size,
                        glm::vec2& quad_size,
                        glm::vec2& quad_translation,
                        glm::vec4& uv_offset_scale);
 
     /** @brief Pack an affine transform into Bevy's transposed 3x4 sprite ABI. */
-    SpriteInstance make_instance(const glm::mat4& transform, glm::vec4 color, glm::vec4 uv);
+    EPIX_API SpriteInstance make_instance(const glm::mat4& transform, glm::vec4 color, glm::vec4 uv);
     }  // namespace detail
 
 }  // namespace epix::sprite_render
@@ -237,19 +237,19 @@ EPIX_EXPORT namespace epix::sprite_render {
     namespace detail {
     using PrepareSpriteImage = std::function<std::optional<glm::vec2>(assets::AssetId<image::Image>)>;
 
-    SpritePipelineKey view_pipeline_key(bool hdr,
+    EPIX_API SpritePipelineKey view_pipeline_key(bool hdr,
                                         std::uint32_t msaa_samples,
                                         std::optional<core_graph::Tonemapping> tonemapping,
                                         std::optional<core_graph::DebandDither> dither);
 
-    void prepare_sprite_batches(SpriteMeta& sprite_meta,
+    EPIX_API void prepare_sprite_batches(SpriteMeta& sprite_meta,
                                 const ExtractedSprites& extracted_sprites,
                                 const ExtractedSlices& extracted_slices,
                                 render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>& phases,
                                 SpriteBatches& batches,
                                 const PrepareSpriteImage& prepare_image);
 
-    bool prepare_sprite_indices(SpriteMeta& sprite_meta);
+    EPIX_API bool prepare_sprite_indices(SpriteMeta& sprite_meta);
     }  // namespace detail
 
     /** @brief Binds the sprite view bind group at `Slot` (Bevy
@@ -380,7 +380,7 @@ EPIX_EXPORT namespace epix::sprite_render {
         render::phase::RenderCommandSequence<core_graph::core_2d::Transparent2D, render::phase::SetItemPipeline,
                                              SetSpriteViewBindGroup<0>, SetSpriteTextureBindGroup<1>, DrawSpriteBatch>;
 
-    struct SpriteRenderPlugin {
+    struct EPIX_API SpriteRenderPlugin {
         void attach(app::App& app);
         void ready(app::App& app);
     };
@@ -390,24 +390,24 @@ EPIX_EXPORT namespace epix::sprite_render {
         ComputeSlices,
     };
 
-    void compute_slices_on_asset_event(
+    EPIX_API void compute_slices_on_asset_event(
         ecs::Commands commands,
         ecs::EventReader<assets::AssetEvent<image::Image>> events,
         ecs::Res<assets::Assets<image::Image>> images,
         ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
         ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>> sprites);
 
-    void compute_slices_on_sprite_change(
+    EPIX_API void compute_slices_on_sprite_change(
         ecs::Commands commands,
         ecs::Res<assets::Assets<image::Image>> images,
         ecs::Res<assets::Assets<image::TextureAtlasLayout>> atlas_layouts,
         ecs::Query<ecs::Item<ecs::Entity, const sprite::Sprite&>, ecs::Filter<ecs::Modified<sprite::Sprite>>>
             changed_sprites);
 
-    void extract_sprite_events(ecs::ResMut<SpriteAssetEvents> events,
+    EPIX_API void extract_sprite_events(ecs::ResMut<SpriteAssetEvents> events,
                                app::Extract<ecs::EventReader<assets::AssetEvent<image::Image>>> image_events);
 
-    void extract_sprites(
+    EPIX_API void extract_sprites(
         ecs::ResMut<ExtractedSprites> extracted_sprites, ecs::ResMut<ExtractedSlices> extracted_slices,
         app::Extract<ecs::Query<ecs::Item<ecs::Entity, render::sync_world::RenderEntity, const camera::ViewVisibility&,
                                           const sprite::Sprite&, const transform::GlobalTransform&,
@@ -415,7 +415,7 @@ EPIX_EXPORT namespace epix::sprite_render {
             sprites,
         app::Extract<ecs::Res<assets::Assets<image::TextureAtlasLayout>>> atlases);
 
-    void queue_sprites(
+    EPIX_API void queue_sprites(
         ecs::Local<std::unordered_set<std::uint32_t>> view_entities,
         ecs::Query<ecs::Item<const render::view::RenderVisibleEntities&, const render::view::ExtractedView&,
                              const render::view::Msaa&, ecs::Opt<const core_graph::Tonemapping&>,
@@ -427,7 +427,7 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Res<render::PipelineServer> pipeline_server,
         ecs::ResMut<render::phase::ViewSortedRenderPhases<core_graph::core_2d::Transparent2D>> phases);
 
-    void prepare_sprite_view_bind_groups(
+    EPIX_API void prepare_sprite_view_bind_groups(
         ecs::Commands commands, ecs::Res<wgpu::Device> device, ecs::Res<SpritePipeline> sprite_pipeline,
         ecs::Res<render::PipelineServer> pipeline_server,
         ecs::Res<render::view::ViewUniforms> view_uniforms,
@@ -436,7 +436,7 @@ EPIX_EXPORT namespace epix::sprite_render {
         ecs::Res<core_graph::TonemappingLuts> tonemapping_luts, ecs::Res<render::RenderAssets<render::texture::GpuImage>> images,
         ecs::Res<render::texture::FallbackImage> fallback_image);
 
-    void prepare_sprite_image_bind_groups(
+    EPIX_API void prepare_sprite_image_bind_groups(
         ecs::Res<wgpu::Device> device, ecs::Res<wgpu::Queue> queue, ecs::ResMut<SpriteMeta> sprite_meta,
         ecs::Res<SpritePipeline> sprite_pipeline, ecs::ResMut<ImageBindGroups> image_bind_groups,
         ecs::Res<render::RenderAssets<render::texture::GpuImage>> gpu_images, ecs::Res<ExtractedSprites> extracted_sprites,

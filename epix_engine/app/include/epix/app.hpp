@@ -125,7 +125,7 @@ EPIX_EXPORT namespace epix::app {
     };
     /** @brief The main application. Owns a World, schedules, sub-apps, plugins, and a runner.
      *  Provides a fluent API for configuration and execution. */
-    struct App {
+    struct EPIX_API App {
        public:
         App(const AppLabel& label                                 = AppLabel::from_type<App>(),
             std::shared_ptr<std::atomic<std::uint32_t>> world_ids = std::make_shared<std::atomic<std::uint32_t>>(0));

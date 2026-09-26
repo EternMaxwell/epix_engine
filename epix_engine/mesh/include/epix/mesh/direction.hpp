@@ -119,6 +119,8 @@ EPIX_EXPORT class Dir3 {
     glm::vec3 m_value;
 };
 
+// The axis constants stay in the header as `inline const`: both images hold an
+// identical copy, which is harmless for a constant, and no image imports them.
 inline const Dir3 Dir3::X{glm::vec3(1.0f, 0.0f, 0.0f)};
 inline const Dir3 Dir3::Y{glm::vec3(0.0f, 1.0f, 0.0f)};
 inline const Dir3 Dir3::Z{glm::vec3(0.0f, 0.0f, 1.0f)};

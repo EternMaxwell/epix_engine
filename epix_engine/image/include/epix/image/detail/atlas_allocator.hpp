@@ -70,7 +70,7 @@ struct AtlasAllocation {
  * guillotine split all keep the crate's exact behaviour, because the *order* in which rectangles
  * come back out is what makes an atlas layout identical to Bevy's.
  */
-class AtlasAllocator {
+class EPIX_API AtlasAllocator {
    public:
     /** @brief Create an allocator for an atlas of `size`, with the crate's default options. */
     explicit AtlasAllocator(AtlasSize size);

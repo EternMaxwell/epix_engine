@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 
 #ifndef EPIX_CXX_MODULE
 #include <epix/common.hpp>
@@ -10,22 +10,18 @@
 
 namespace epix::task {
 
+// The pool instance itself is defined in usages.cpp: the engine and any caller
+// have to observe the SAME pool, and a function-local static kept in this header
+// would be duplicated per image.
 #define EPIX_DEFINE_TASK_POOL(Name)                                                                 \
-    EPIX_EXPORT struct Name {                                                                       \
+    EPIX_EXPORT struct EPIX_API Name {                                                              \
        private:                                                                                     \
         TaskPool m_pool;                                                                            \
         explicit Name(TaskPool p) : m_pool(std::move(p)) {}                                         \
-        static Name*& global_ptr() noexcept {                                                       \
-            static Name* ptr = nullptr;                                                             \
-            return ptr;                                                                             \
-        }                                                                                           \
+        static Name*& global_ptr() noexcept;                                                        \
                                                                                                     \
        public:                                                                                      \
-        static Name& get_or_init(TaskPool pool) {                                                   \
-            static std::once_flag flag;                                                             \
-            std::call_once(flag, [&]() { global_ptr() = new Name(std::move(pool)); });              \
-            return *global_ptr();                                                                   \
-        }                                                                                           \
+        static Name& get_or_init(TaskPool pool);                                                    \
         template <typename F>                                                                       \
             requires std::invocable<F> && std::same_as<std::invoke_result_t<F>, TaskPool>           \
         static Name& get_or_init(F&& f) {                                                           \

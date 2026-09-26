@@ -14,8 +14,8 @@
 
 namespace epix::ecs {
 
-EPIX_EXPORT struct Components;
-EPIX_EXPORT struct ComponentsRegistrator;
+EPIX_EXPORT struct EPIX_API Components;
+EPIX_EXPORT struct EPIX_API ComponentsRegistrator;
 
 namespace internal {
 struct ComponentInfo {
