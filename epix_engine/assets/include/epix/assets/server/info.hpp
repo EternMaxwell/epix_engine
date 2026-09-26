@@ -88,7 +88,14 @@ enum class HandleLoadingMode {
     Force,      /**< The handle is for an asset that should be forced to load, even if already loading/loaded. */
 };
 
-struct AssetInfos {
+struct EPIX_API AssetInfos {
+    // Move-only: the pending-task map holds move-only alternatives. Declaring the
+    // moves suppresses the copy operations, so the default constructor has to be
+    // declared as well for RwLock's in-place construction.
+    AssetInfos() = default;
+    AssetInfos(AssetInfos&&) = default;
+    AssetInfos& operator=(AssetInfos&&) = default;
+
     std::unordered_map<AssetPath, std::unordered_map<epix::meta::type_index, UntypedAssetId>> path_to_ids;
     std::unordered_map<UntypedAssetId, AssetInfo> infos;
     std::unordered_map<epix::meta::type_index, std::shared_ptr<HandleProvider>> handle_providers;
@@ -140,7 +147,7 @@ struct AssetInfos {
         std::optional<epix::meta::type_index> type,
         HandleLoadingMode loading_mode,
         std::optional<MetaTransform> meta_transform = std::nullopt);
-    EPIX_API auto get_or_create_handle_internal(const AssetPath& path,
+    auto get_or_create_handle_internal(const AssetPath& path,
                                        std::optional<epix::meta::type_index> type,
                                        HandleLoadingMode loading_mode,
                                        std::optional<MetaTransform> meta_transform = std::nullopt)
@@ -156,7 +163,7 @@ struct AssetInfos {
                std::views::filter([](const std::optional<UntypedHandle>& handle) { return handle.has_value(); }) |
                std::views::transform([](const std::optional<UntypedHandle>& handle) { return *handle; });
     }
-    EPIX_API auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
+    auto get_handle_by_path_type(const AssetPath& path, epix::meta::type_index type) const
         -> std::optional<UntypedHandle>;
     bool is_path_alive(const AssetPath& path) const noexcept;
     bool should_reload(const AssetPath& path) const noexcept;

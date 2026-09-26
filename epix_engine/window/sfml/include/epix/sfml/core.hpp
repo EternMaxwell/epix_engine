@@ -36,9 +36,11 @@ EPIX_EXPORT struct SFMLwindows : public std::unordered_map<epix::ecs::Entity, st
 EPIX_EXPORT struct PendingWindowPosition {
     std::pair<int, int> target = {0, 0};
     int retries_remaining      = 0;
+
+    bool operator==(const PendingWindowPosition&) const = default;
 };
 /** @brief Pending target positions that should be enforced until the native window settles. */
-EPIX_EXPORT struct PendingWindowPositions : public std::unordered_map<epix::ecs::Entity, PendingWindowPosition> {};
+EPIX_EXPORT struct EPIX_API PendingWindowPositions : public std::unordered_map<epix::ecs::Entity, PendingWindowPosition> {};
 
 /** @brief Event requesting the clipboard text to be set. */
 EPIX_EXPORT struct SetClipboardString {

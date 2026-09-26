@@ -498,6 +498,8 @@ EPIX_EXPORT struct EPIX_API ImageSamplerDescriptor {
     /** @brief Border color for ClampToBorder addressing. */
     std::optional<ImageSamplerBorderColor> border_color = std::nullopt;
 
+    bool operator==(const ImageSamplerDescriptor&) const = default;
+
     /** @brief Linear min/mag/mipmap filters (Bevy
      * ImageSamplerDescriptor::linear). */
     static ImageSamplerDescriptor linear() {
@@ -551,7 +553,7 @@ EPIX_EXPORT struct EPIX_API ImageSamplerDescriptor {
  * As in Bevy, the `Descriptor` alternative *carries* its descriptor, so a custom
  * descriptor cannot exist without the matching alternative and an image using the
  * global default carries no descriptor at all. */
-EPIX_EXPORT struct ImageSampler {
+EPIX_EXPORT struct EPIX_API ImageSampler {
    private:
     friend zpp::bits::access;
     // `std::variant` is not reflectable through structured bindings, so the
@@ -560,7 +562,9 @@ EPIX_EXPORT struct ImageSampler {
 
    public:
     /** @brief C++ counterpart to the payloadless `ImageSampler::Default`. */
-    struct DefaultAlternative {};
+    struct DefaultAlternative {
+        bool operator==(const DefaultAlternative&) const = default;
+    };
     /** @brief C++ counterpart to `ImageSampler::Descriptor(ImageSamplerDescriptor)`. */
     struct DescriptorAlternative {
         ImageSamplerDescriptor value;

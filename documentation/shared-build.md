@@ -156,6 +156,17 @@ members matter too: a `static const` member that is *declared* in the class and
 *defined* in a `.cpp` does need the attribute, because data requires
 `dllimport`, while an `inline const` definition in the header does not.
 
+A class that keeps such a definition **in a header** therefore cannot take the
+class-level attribute at all (C2491, and it fires in the consumer), and rewriting
+the members as in-class `static constexpr` is not a general escape on MSVC: the
+initializer is not a complete-class context, so it may neither call a member of
+its own class (C2131, which rules out every bitflags key built through
+`from_bits_retain`) nor name a member declared later (C3861/C2065). Constant
+tables like `MeshPipelineKey`, `BaseMeshPipelineKey`, `Exposure`,
+`GlobalAmbientLight` and `PhaseItemExtraIndex` stay out-of-class for that reason;
+when one of them also has an out-of-line member, that member is annotated
+individually instead, as `MeshPipelineViewLayoutKey::label()` is.
+
 ## Third-party libraries in a shared build
 
 A shared engine and its caller are two images in one process. Anything whose
